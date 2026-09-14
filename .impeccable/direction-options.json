@@ -9,7 +9,11 @@
       "lineage": "Jacquard drafting grids and campaign production tables",
       "thesis": "Every campaign becomes one woven record, with strategy, audience, copy, design, approval, and send state crossing on the same field.",
       "palette": ["#11110f", "#f3f0e8", "#9bff6a", "#8d8b84"],
-      "materials": ["inked drafting grid", "woven registration marks", "changeable brand thread"],
+      "materials": [
+        "inked drafting grid",
+        "woven registration marks",
+        "changeable brand thread"
+      ],
       "viewport": "Slim navigation rail, wide monthly campaign weave, and fixed evidence inspector joined by one live brand-colored thread.",
       "risk": "Grid becomes decorative if crossings do not encode real campaign state.",
       "raised": [
@@ -34,10 +38,38 @@
         "cols": 12,
         "rows": 10,
         "regions": [
-          {"label": "nav rail", "x": 0, "y": 0, "w": 2, "h": 10, "accent": false},
-          {"label": "month controls", "x": 2, "y": 0, "w": 7, "h": 2, "accent": false},
-          {"label": "campaign weave", "x": 2, "y": 2, "w": 7, "h": 8, "accent": true},
-          {"label": "evidence inspector", "x": 9, "y": 0, "w": 3, "h": 10, "accent": false}
+          {
+            "label": "nav rail",
+            "x": 0,
+            "y": 0,
+            "w": 2,
+            "h": 10,
+            "accent": false
+          },
+          {
+            "label": "month controls",
+            "x": 2,
+            "y": 0,
+            "w": 7,
+            "h": 2,
+            "accent": false
+          },
+          {
+            "label": "campaign weave",
+            "x": 2,
+            "y": 2,
+            "w": 7,
+            "h": 8,
+            "accent": true
+          },
+          {
+            "label": "evidence inspector",
+            "x": 9,
+            "y": 0,
+            "w": 3,
+            "h": 10,
+            "accent": false
+          }
         ]
       },
       "comp": ".impeccable/mocks/decision/assigned.webp"
@@ -49,17 +81,49 @@
       "lineage": "Creative-director light tables and marked campaign proofs",
       "thesis": "Campaign work lives as evidence under review, with every note, source, revision, and approval physically attached to its proof.",
       "palette": ["#151513", "#ebe8df", "#ff5d46", "#7c8cff"],
-      "materials": ["backlit proof surface", "registration tape", "editorial grease-pencil marks"],
+      "materials": [
+        "backlit proof surface",
+        "registration tape",
+        "editorial grease-pencil marks"
+      ],
       "viewport": "Campaign proofs occupy a generous central table; calendar strip and context drawers frame the active artifact rather than competing with it.",
       "risk": "Familiar creative-tool composition can feel less distinctive without disciplined proof annotations.",
       "wireframe": {
         "cols": 12,
         "rows": 10,
         "regions": [
-          {"label": "workspace index", "x": 0, "y": 0, "w": 2, "h": 10, "accent": false},
-          {"label": "calendar strip", "x": 2, "y": 0, "w": 10, "h": 2, "accent": false},
-          {"label": "active proof", "x": 2, "y": 2, "w": 7, "h": 8, "accent": true},
-          {"label": "review notes", "x": 9, "y": 2, "w": 3, "h": 8, "accent": false}
+          {
+            "label": "workspace index",
+            "x": 0,
+            "y": 0,
+            "w": 2,
+            "h": 10,
+            "accent": false
+          },
+          {
+            "label": "calendar strip",
+            "x": 2,
+            "y": 0,
+            "w": 10,
+            "h": 2,
+            "accent": false
+          },
+          {
+            "label": "active proof",
+            "x": 2,
+            "y": 2,
+            "w": 7,
+            "h": 8,
+            "accent": true
+          },
+          {
+            "label": "review notes",
+            "x": 9,
+            "y": 2,
+            "w": 3,
+            "h": 8,
+            "accent": false
+          }
         ]
       },
       "comp": ".impeccable/mocks/decision/model-pick.webp"
@@ -71,7 +135,11 @@
       "lineage": "rail concourse split-flap boards",
       "thesis": "Campaigns become live departures: scheduled rows, fixed operational columns, and unmistakable state changes.",
       "palette": ["#0b0b0b", "#f2f2f2", "#d99b00", "#9b1c1c"],
-      "materials": ["matte flap faces", "brushed frame", "fixed-cell lettering"],
+      "materials": [
+        "matte flap faces",
+        "brushed frame",
+        "fixed-cell lettering"
+      ],
       "viewport": "Dense live schedule fills the workspace while a compact inspector opens beneath or beside the selected campaign row.",
       "case": "Excellent scheduling clarity and operational rhythm; weaker fit for brand-rich creative work and white-label expression.",
       "risk": "Hard transport identity can overpower tenant branding and copy creation.",
@@ -79,10 +147,38 @@
         "cols": 12,
         "rows": 10,
         "regions": [
-          {"label": "navigation", "x": 0, "y": 0, "w": 2, "h": 10, "accent": false},
-          {"label": "departure controls", "x": 2, "y": 0, "w": 10, "h": 2, "accent": false},
-          {"label": "campaign board", "x": 2, "y": 2, "w": 10, "h": 6, "accent": true},
-          {"label": "selected campaign", "x": 2, "y": 8, "w": 10, "h": 2, "accent": false}
+          {
+            "label": "navigation",
+            "x": 0,
+            "y": 0,
+            "w": 2,
+            "h": 10,
+            "accent": false
+          },
+          {
+            "label": "departure controls",
+            "x": 2,
+            "y": 0,
+            "w": 10,
+            "h": 2,
+            "accent": false
+          },
+          {
+            "label": "campaign board",
+            "x": 2,
+            "y": 2,
+            "w": 10,
+            "h": 6,
+            "accent": true
+          },
+          {
+            "label": "selected campaign",
+            "x": 2,
+            "y": 8,
+            "w": 10,
+            "h": 2,
+            "accent": false
+          }
         ]
       },
       "comp": ".impeccable/mocks/decision/challenger-split-flap.webp",
@@ -96,7 +192,11 @@
       "lineage": "interactive variable-type specimens",
       "thesis": "White-label identity becomes an inspectable set of live axes that reshape every product surface without forks.",
       "palette": ["#f7f6f2", "#111111", "#3767ff", "#737373"],
-      "materials": ["foundry specimen paper", "axis rules", "live coordinate readouts"],
+      "materials": [
+        "foundry specimen paper",
+        "axis rules",
+        "live coordinate readouts"
+      ],
       "viewport": "Oversized tenant identity and campaign state demonstrate live branding axes above a precise operational grid.",
       "case": "Strong white-label mechanism and systemic clarity; less immediate campaign-planning identification.",
       "risk": "Typography can become the subject instead of retention operations.",
@@ -104,9 +204,30 @@
         "cols": 12,
         "rows": 10,
         "regions": [
-          {"label": "brand axes", "x": 0, "y": 0, "w": 3, "h": 10, "accent": false},
-          {"label": "tenant specimen", "x": 3, "y": 0, "w": 9, "h": 4, "accent": true},
-          {"label": "campaign system", "x": 3, "y": 4, "w": 9, "h": 6, "accent": false}
+          {
+            "label": "brand axes",
+            "x": 0,
+            "y": 0,
+            "w": 3,
+            "h": 10,
+            "accent": false
+          },
+          {
+            "label": "tenant specimen",
+            "x": 3,
+            "y": 0,
+            "w": 9,
+            "h": 4,
+            "accent": true
+          },
+          {
+            "label": "campaign system",
+            "x": 3,
+            "y": 4,
+            "w": 9,
+            "h": 6,
+            "accent": false
+          }
         ]
       },
       "comp": ".impeccable/mocks/decision/challenger-variable-type.webp",
@@ -120,7 +241,11 @@
       "lineage": "reference editions with keyed apparatus",
       "thesis": "Campaign evidence and operator guidance sit in exact margins around the active draft.",
       "palette": ["#eee9dc", "#171715", "#b53628"],
-      "materials": ["unbleached paper", "one-pixel rules", "rubric annotations"],
+      "materials": [
+        "unbleached paper",
+        "one-pixel rules",
+        "rubric annotations"
+      ],
       "viewport": "Twin work columns surround a keyed centre rail; notes occupy wide margins.",
       "case": "Excellent reading and annotation system; insufficient command of live schedules and visual campaign assets.",
       "kept": "One-pixel ruling and marginal annotation discipline.",
@@ -134,7 +259,11 @@
       "lineage": "celestial coordinate charts",
       "thesis": "Campaign opportunities become ranked signals plotted across a month.",
       "palette": ["#10182b", "#f4f2e8", "#dc643f"],
-      "materials": ["coordinate paper", "magnitude dots", "layered annotations"],
+      "materials": [
+        "coordinate paper",
+        "magnitude dots",
+        "layered annotations"
+      ],
       "viewport": "A plotted month field reveals clusters, gaps, and selected opportunities.",
       "case": "Useful prioritization metaphor; campaign editing and white-labeling become secondary.",
       "kept": "Strict magnitude scale for priority without noisy cards.",
@@ -162,7 +291,11 @@
       "lineage": "transforming garments and hidden tension channels",
       "thesis": "One controlled action gathers scattered campaign context into a ready operational shape.",
       "palette": ["#111111", "#d7aa35", "#45484e", "#ece9df"],
-      "materials": ["matte textile", "channel stitching", "single tension cord"],
+      "materials": [
+        "matte textile",
+        "channel stitching",
+        "single tension cord"
+      ],
       "viewport": "A central campaign plane changes shape as one action thread connects context, copy, audience, and approval.",
       "case": "Memorable action model; garment identity does not match daily retention operations closely enough.",
       "kept": "One active thread connecting action to consequences.",
@@ -189,15 +322,28 @@
       "cols": 12,
       "rows": 10,
       "regions": [
-        {"label": "sidebar", "x": 0, "y": 0, "w": 2, "h": 10, "accent": false},
-        {"label": "header", "x": 2, "y": 0, "w": 10, "h": 2, "accent": false},
-        {"label": "KPI cards", "x": 2, "y": 2, "w": 10, "h": 2, "accent": true},
-        {"label": "charts", "x": 2, "y": 4, "w": 10, "h": 3, "accent": false},
-        {"label": "table", "x": 2, "y": 7, "w": 10, "h": 3, "accent": false}
+        {
+          "label": "sidebar",
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 10,
+          "accent": false
+        },
+        { "label": "header", "x": 2, "y": 0, "w": 10, "h": 2, "accent": false },
+        {
+          "label": "KPI cards",
+          "x": 2,
+          "y": 2,
+          "w": 10,
+          "h": 2,
+          "accent": true
+        },
+        { "label": "charts", "x": 2, "y": 4, "w": 10, "h": 3, "accent": false },
+        { "label": "table", "x": 2, "y": 7, "w": 10, "h": 3, "accent": false }
       ]
     },
     "comp": ".impeccable/mocks/decision/canon.webp"
   },
   "steer": true
 }
-

@@ -1,0 +1,191 @@
+export type BrandPresentation = Readonly<{
+  productName: string
+  productDescription: string
+  workspaceName: string
+  assistantName: string
+  demoLabel: string
+  demoDescription: string
+  userName: string
+  userInitials: string
+  logo: Readonly<{
+    src: string | null
+    alt: string
+  }>
+  fonts: Readonly<{
+    display: string
+    body: string
+    data: string
+  }>
+  theme: Readonly<{
+    surface: string
+    surfaceRaised: string
+    surfaceHover: string
+    nav: string
+    navText: string
+    navMuted: string
+    text: string
+    textMuted: string
+    textFaint: string
+    line: string
+    lineStrong: string
+    primary: string
+    primaryStrong: string
+    secondary: string
+    soft: string
+    ink: string
+    onBrand: string
+    focus: string
+    danger: string
+    dangerStrong: string
+    onDanger: string
+    dangerSoft: string
+    dangerInk: string
+    warningSoft: string
+    warningInk: string
+  }>
+}>
+
+export const defaultBrandPresentation: BrandPresentation = {
+  productName: 'Grey Retention',
+  productDescription: 'Retention campaign operating system',
+  workspaceName: 'Northstar Goods',
+  assistantName: 'GROS',
+  demoLabel: 'Demo workspace',
+  demoDescription: 'Synthetic data only',
+  userName: 'Alex North',
+  userInitials: 'AN',
+  logo: {
+    src: null,
+    alt: 'Grey Retention'
+  },
+  fonts: {
+    display: 'var(--font-archivo), sans-serif',
+    body: 'var(--font-archivo), sans-serif',
+    data: 'var(--font-fragment-mono), monospace'
+  },
+  theme: {
+    surface: '#ebe8df',
+    surfaceRaised: '#f8f6ef',
+    surfaceHover: '#e1ded5',
+    nav: '#151513',
+    navText: '#ffffff',
+    navMuted: '#aaa9a3',
+    text: '#1a1a18',
+    textMuted: '#5f5e59',
+    textFaint: '#686660',
+    line: '#cfcbc0',
+    lineStrong: '#aaa69b',
+    primary: '#ff5d46',
+    primaryStrong: '#e84531',
+    secondary: '#7c8cff',
+    soft: '#dedffc',
+    ink: '#30366c',
+    onBrand: '#1a0d09',
+    focus: '#4d58d4',
+    danger: '#b3261e',
+    dangerStrong: '#8e1b15',
+    onDanger: '#ffffff',
+    dangerSoft: '#f4d5d1',
+    dangerInk: '#7d211b',
+    warningSoft: '#f2dfb8',
+    warningInk: '#664b10'
+  }
+}
+
+export function brandCssVariables(brand: BrandPresentation) {
+  return {
+    '--font-display': brand.fonts.display,
+    '--font-body': brand.fonts.body,
+    '--font-data': brand.fonts.data,
+    '--surface': brand.theme.surface,
+    '--surface-raised': brand.theme.surfaceRaised,
+    '--surface-hover': brand.theme.surfaceHover,
+    '--nav': brand.theme.nav,
+    '--nav-text': brand.theme.navText,
+    '--nav-muted': brand.theme.navMuted,
+    '--text': brand.theme.text,
+    '--text-muted': brand.theme.textMuted,
+    '--text-faint': brand.theme.textFaint,
+    '--line': brand.theme.line,
+    '--line-strong': brand.theme.lineStrong,
+    '--brand-primary': brand.theme.primary,
+    '--brand-primary-strong': brand.theme.primaryStrong,
+    '--brand-secondary': brand.theme.secondary,
+    '--brand-soft': brand.theme.soft,
+    '--brand-ink': brand.theme.ink,
+    '--on-brand': brand.theme.onBrand,
+    '--focus': brand.theme.focus,
+    '--danger': brand.theme.danger,
+    '--danger-strong': brand.theme.dangerStrong,
+    '--on-danger': brand.theme.onDanger,
+    '--danger-soft': brand.theme.dangerSoft,
+    '--danger-ink': brand.theme.dangerInk,
+    '--warning-soft': brand.theme.warningSoft,
+    '--warning-ink': brand.theme.warningInk
+  }
+}
+
+function relativeLuminance(hex: string) {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return null
+
+  const channels = [1, 3, 5].map((offset) => {
+    const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255
+    return value <= 0.04045
+      ? value / 12.92
+      : Math.pow((value + 0.055) / 1.055, 2.4)
+  })
+
+  return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+}
+
+export function contrastRatio(foreground: string, background: string) {
+  const foregroundLuminance = relativeLuminance(foreground)
+  const backgroundLuminance = relativeLuminance(background)
+
+  if (foregroundLuminance === null || backgroundLuminance === null) return 0
+
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance)
+  const darker = Math.min(foregroundLuminance, backgroundLuminance)
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
+export function hasAccessibleBrandContrast(brand: BrandPresentation) {
+  const { theme } = brand
+  const normalTextPairs = [
+    [theme.text, theme.surface],
+    [theme.textMuted, theme.surface],
+    [theme.textFaint, theme.surface],
+    [theme.textFaint, theme.surfaceRaised],
+    [theme.navText, theme.nav],
+    [theme.onBrand, theme.primary],
+    [theme.onBrand, theme.primaryStrong],
+    [theme.onDanger, theme.danger],
+    [theme.onDanger, theme.dangerStrong],
+    [theme.ink, theme.soft],
+    [theme.dangerInk, theme.dangerSoft],
+    [theme.warningInk, theme.warningSoft]
+  ] as const
+
+  const nonTextPairs = [
+    [theme.focus, theme.surface],
+    [theme.focus, theme.surfaceRaised],
+    [theme.focus, theme.surfaceHover],
+    [theme.focus, theme.soft],
+    [theme.focus, theme.nav]
+  ] as const
+
+  return (
+    normalTextPairs.every(
+      ([foreground, background]) => contrastRatio(foreground, background) >= 4.5
+    ) &&
+    nonTextPairs.every(
+      ([foreground, background]) => contrastRatio(foreground, background) >= 3
+    )
+  )
+}
+
+export function resolveAccessibleBrandPresentation(
+  brand: BrandPresentation
+): BrandPresentation {
+  return hasAccessibleBrandContrast(brand) ? brand : defaultBrandPresentation
+}

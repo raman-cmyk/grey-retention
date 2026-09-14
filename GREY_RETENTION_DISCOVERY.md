@@ -84,16 +84,16 @@ These appear in the Agents menu as “Soon” and have no client links:
 
 ## Public and authentication routes
 
-| Method | Route | Purpose / result |
-|---|---|---|
-| GET | `/` | Redirects unauthenticated users to `/login`. |
-| GET/POST | `/login` | Client email/password login. |
-| GET/POST | `/forgot-password` | Email-based reset-link request. |
-| GET/POST | `/signup` | Two-step onboarding; observed step 1 captures account/profile fields. |
-| GET/POST | `/admin/login` | Separate admin-console authentication. |
-| GET/POST | `/designer/login` | Separate designer authentication. |
-| GET | `/designer/dashboard` | Protected designer workspace; redirects unauthenticated users to `/designer/login`. |
-| POST | `/logout` | Client logout. |
+| Method   | Route                 | Purpose / result                                                                    |
+| -------- | --------------------- | ----------------------------------------------------------------------------------- |
+| GET      | `/`                   | Redirects unauthenticated users to `/login`.                                        |
+| GET/POST | `/login`              | Client email/password login.                                                        |
+| GET/POST | `/forgot-password`    | Email-based reset-link request.                                                     |
+| GET/POST | `/signup`             | Two-step onboarding; observed step 1 captures account/profile fields.               |
+| GET/POST | `/admin/login`        | Separate admin-console authentication.                                              |
+| GET/POST | `/designer/login`     | Separate designer authentication.                                                   |
+| GET      | `/designer/dashboard` | Protected designer workspace; redirects unauthenticated users to `/designer/login`. |
+| POST     | `/logout`             | Client logout.                                                                      |
 
 Signup step 1 fields: name, optional job title, email, optional phone, password, password confirmation, and “how did you hear about us?” source. The page advertises step 1 of 2; step 2 is only reachable after creating an account, which was not done during this read-only audit.
 
@@ -110,20 +110,20 @@ Observed public placeholders/broken routes:
 
 ### Routes
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/dashboard` | KPI overview and resource explorer. |
-| GET | `/dashboard?tab=overview` | Overview tab. |
-| GET | `/dashboard?tab=lists` | Klaviyo lists. |
-| GET | `/dashboard?tab=segments` | Klaviyo segments. |
-| GET | `/dashboard?tab=campaigns` | Klaviyo campaigns. |
-| GET | `/dashboard?tab=flows` | Klaviyo flows. |
-| GET | `/dashboard?tab=metrics` | Klaviyo metrics/events. |
-| GET | `/dashboard?attr=klaviyo` | Klaviyo campaign/flow revenue attribution mode. |
-| GET | `/dashboard?attr=utm` | Shopify UTM/email attribution mode. |
-| GET | `/dashboard?refresh=1` | Refreshes synced dashboard data. This was identified but not invoked. |
-| POST | `/dashboard/settings/email-revenue-goal` | Saves a monthly email-revenue goal. |
-| POST | `/dashboard/insight/refresh` | Generates/regenerates a GROS dashboard insight and consumes tokens. |
+| Method | Route                                    | Purpose                                                               |
+| ------ | ---------------------------------------- | --------------------------------------------------------------------- |
+| GET    | `/dashboard`                             | KPI overview and resource explorer.                                   |
+| GET    | `/dashboard?tab=overview`                | Overview tab.                                                         |
+| GET    | `/dashboard?tab=lists`                   | Klaviyo lists.                                                        |
+| GET    | `/dashboard?tab=segments`                | Klaviyo segments.                                                     |
+| GET    | `/dashboard?tab=campaigns`               | Klaviyo campaigns.                                                    |
+| GET    | `/dashboard?tab=flows`                   | Klaviyo flows.                                                        |
+| GET    | `/dashboard?tab=metrics`                 | Klaviyo metrics/events.                                               |
+| GET    | `/dashboard?attr=klaviyo`                | Klaviyo campaign/flow revenue attribution mode.                       |
+| GET    | `/dashboard?attr=utm`                    | Shopify UTM/email attribution mode.                                   |
+| GET    | `/dashboard?refresh=1`                   | Refreshes synced dashboard data. This was identified but not invoked. |
+| POST   | `/dashboard/settings/email-revenue-goal` | Saves a monthly email-revenue goal.                                   |
+| POST   | `/dashboard/insight/refresh`             | Generates/regenerates a GROS dashboard insight and consumes tokens.   |
 
 ### Overview behavior
 
@@ -154,21 +154,21 @@ Observed public placeholders/broken routes:
 
 ### Detail route families
 
-| Method | Route family | Purpose |
-|---|---|---|
-| GET | `/lists/{klaviyo_list_id}` | List count, opt-in mode, dates, raw Klaviyo attributes, linked resources. |
-| GET | `/lists/{id}?refresh=1` | Refresh one list. |
-| GET | `/segments/{klaviyo_segment_id}` | Segment count/state, full rule definition, dates, raw attributes. |
-| GET | `/segments/{id}?refresh=1` | Refresh one segment. |
-| GET | `/campaigns/{klaviyo_campaign_id}` | Campaign send metadata, subject/preview, audience, scheduling, tracking options, message preview. |
-| GET | `/campaigns/{id}?refresh=1` | Refresh one Klaviyo campaign. |
-| GET | `/flows/{klaviyo_flow_id}` | Trigger, action sequence, status, dates, template-ingestion state. |
-| GET | `/flows/{id}?refresh=1` | Refresh one flow. |
-| POST | `/flows/{id}/sync-templates` | Ingest the flow’s templates for AI/brand-voice context. |
-| GET | `/flow-messages/{klaviyo_message_id}` | Sandboxed stored-template preview with subject/from/preview metadata. |
-| GET | `/flow-messages/{id}?refresh=1` | Refresh one flow message/template. |
-| GET | `/metrics/{klaviyo_metric_id}` | Metric source, integration/category, tracking dates, and linked flow triggers. |
-| GET | `/metrics/{id}?refresh=1` | Refresh one metric. |
+| Method | Route family                          | Purpose                                                                                           |
+| ------ | ------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| GET    | `/lists/{klaviyo_list_id}`            | List count, opt-in mode, dates, raw Klaviyo attributes, linked resources.                         |
+| GET    | `/lists/{id}?refresh=1`               | Refresh one list.                                                                                 |
+| GET    | `/segments/{klaviyo_segment_id}`      | Segment count/state, full rule definition, dates, raw attributes.                                 |
+| GET    | `/segments/{id}?refresh=1`            | Refresh one segment.                                                                              |
+| GET    | `/campaigns/{klaviyo_campaign_id}`    | Campaign send metadata, subject/preview, audience, scheduling, tracking options, message preview. |
+| GET    | `/campaigns/{id}?refresh=1`           | Refresh one Klaviyo campaign.                                                                     |
+| GET    | `/flows/{klaviyo_flow_id}`            | Trigger, action sequence, status, dates, template-ingestion state.                                |
+| GET    | `/flows/{id}?refresh=1`               | Refresh one flow.                                                                                 |
+| POST   | `/flows/{id}/sync-templates`          | Ingest the flow’s templates for AI/brand-voice context.                                           |
+| GET    | `/flow-messages/{klaviyo_message_id}` | Sandboxed stored-template preview with subject/from/preview metadata.                             |
+| GET    | `/flow-messages/{id}?refresh=1`       | Refresh one flow message/template.                                                                |
+| GET    | `/metrics/{klaviyo_metric_id}`        | Metric source, integration/category, tracking dates, and linked flow triggers.                    |
+| GET    | `/metrics/{id}?refresh=1`             | Refresh one metric.                                                                               |
 
 Representative pages confirmed that segment definitions are rendered from the real nested Klaviyo condition JSON, campaign pages expose included/excluded audience IDs and send/tracking options, and flow pages expose ordered delay/email actions.
 
@@ -192,19 +192,19 @@ The dashboard HTML also contains a non-data string `/campaigns/show`; fetching i
 
 ### Routes and writes
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/brand` | Brand truth/identity and product intelligence. |
-| POST | `/brand/regenerate` | Regenerate all brand intelligence. |
-| POST | `/brand/regenerate/identity` | Regenerate identity only. |
-| POST | `/brand/regenerate/products` | Regenerate product intelligence only. |
-| GET | `/brand/voice` | Copy/voice intelligence. |
-| POST | `/brand/voice/regenerate` | Regenerate all voice intelligence. |
-| POST | `/brand/voice/regenerate/tone` | Tone only. |
-| POST | `/brand/voice/regenerate/vocabulary` | Vocabulary only. |
-| POST | `/brand/voice/regenerate/examples` | Examples only. |
-| POST | `/brand/voice/regenerate/audience` | Audience only. |
-| GET | `/store` | Store intelligence dashboard or connection gate. |
+| Method | Route                                | Purpose                                          |
+| ------ | ------------------------------------ | ------------------------------------------------ |
+| GET    | `/brand`                             | Brand truth/identity and product intelligence.   |
+| POST   | `/brand/regenerate`                  | Regenerate all brand intelligence.               |
+| POST   | `/brand/regenerate/identity`         | Regenerate identity only.                        |
+| POST   | `/brand/regenerate/products`         | Regenerate product intelligence only.            |
+| GET    | `/brand/voice`                       | Copy/voice intelligence.                         |
+| POST   | `/brand/voice/regenerate`            | Regenerate all voice intelligence.               |
+| POST   | `/brand/voice/regenerate/tone`       | Tone only.                                       |
+| POST   | `/brand/voice/regenerate/vocabulary` | Vocabulary only.                                 |
+| POST   | `/brand/voice/regenerate/examples`   | Examples only.                                   |
+| POST   | `/brand/voice/regenerate/audience`   | Audience only.                                   |
+| GET    | `/store`                             | Store intelligence dashboard or connection gate. |
 
 ### Brand truth
 
@@ -239,11 +239,11 @@ Planner intake nevertheless returns product choices (20 in monthly/day intake an
 
 ## Connections
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/connections` | Integration status and credential forms. |
-| POST | `/connections/klaviyo/reconnect` | Validates and swaps the private Klaviyo API key. |
-| POST | `/connections/shopify/save` | Verifies and saves Shopify domain and Admin API token. |
+| Method | Route                            | Purpose                                                |
+| ------ | -------------------------------- | ------------------------------------------------------ |
+| GET    | `/connections`                   | Integration status and credential forms.               |
+| POST   | `/connections/klaviyo/reconnect` | Validates and swaps the private Klaviyo API key.       |
+| POST   | `/connections/shopify/save`      | Verifies and saves Shopify domain and Admin API token. |
 
 Klaviyo is connected and the current page reported 188 pulled templates. Its advertised uses include flows/segments, CLTV, and deliverability. The reconnect flow validates a replacement key before overwriting the current one.
 
@@ -259,16 +259,16 @@ Brand Truth and Copy/Voice full regeneration warn that they replace all four gen
 
 ### Primary screens and exports
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/campaign-agent` | Calendar/planner UI. |
-| GET | `/campaign-agent?m=YYYY-MM` | Month navigation. |
-| GET | `/campaign-agent?use_inspiration={id}` | Opens Campaign Agent with a competitor inspiration deep-linked/preselected. |
-| GET | `/campaign-agent?use_template={id}` | Opens Campaign Agent with a reference/template deep-linked/preselected. |
-| GET | `/calendar` | Alias/entry point rendering the same Campaign Agent UI. |
-| GET | `/campaign-agent/report.xls` | Excel-format report export. |
-| GET | `/campaign-agent/report.csv` | CSV report export. |
-| GET | `/campaign-agent/report.xls?as=doc` | Word-format report export. |
+| Method | Route                                  | Purpose                                                                     |
+| ------ | -------------------------------------- | --------------------------------------------------------------------------- |
+| GET    | `/campaign-agent`                      | Calendar/planner UI.                                                        |
+| GET    | `/campaign-agent?m=YYYY-MM`            | Month navigation.                                                           |
+| GET    | `/campaign-agent?use_inspiration={id}` | Opens Campaign Agent with a competitor inspiration deep-linked/preselected. |
+| GET    | `/campaign-agent?use_template={id}`    | Opens Campaign Agent with a reference/template deep-linked/preselected.     |
+| GET    | `/calendar`                            | Alias/entry point rendering the same Campaign Agent UI.                     |
+| GET    | `/campaign-agent/report.xls`           | Excel-format report export.                                                 |
+| GET    | `/campaign-agent/report.csv`           | CSV report export.                                                          |
+| GET    | `/campaign-agent/report.xls?as=doc`    | Word-format report export.                                                  |
 
 Calendar capabilities:
 
@@ -295,14 +295,14 @@ Export implementation details:
 
 ### Monthly planner backend
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/campaign-agent/plan-month/intake.json?m=YYYY-MM` | Loads month, holidays, offers, products, references, connection/context flags, and token state. |
-| POST | `/campaign-agent/plan-chat/message` | Conversational month-planning turn using history, brief, and current calendar. |
-| POST | `/campaign-agent/plan-update` | Persists date/time/topic/offer/reference edits to a planned draft. |
-| POST | `/campaign-agent/plan-add` | Adds one or more AI-planned drafts. |
-| POST | `/campaign-agent/plan-month` | Generates a proposed month plan. |
-| POST | `/campaign-agent/plan-commit` | Commits the reviewed month plan into campaign drafts. |
+| Method | Route                                              | Purpose                                                                                         |
+| ------ | -------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| GET    | `/campaign-agent/plan-month/intake.json?m=YYYY-MM` | Loads month, holidays, offers, products, references, connection/context flags, and token state. |
+| POST   | `/campaign-agent/plan-chat/message`                | Conversational month-planning turn using history, brief, and current calendar.                  |
+| POST   | `/campaign-agent/plan-update`                      | Persists date/time/topic/offer/reference edits to a planned draft.                              |
+| POST   | `/campaign-agent/plan-add`                         | Adds one or more AI-planned drafts.                                                             |
+| POST   | `/campaign-agent/plan-month`                       | Generates a proposed month plan.                                                                |
+| POST   | `/campaign-agent/plan-commit`                      | Commits the reviewed month plan into campaign drafts.                                           |
 
 Observed request fields:
 
@@ -328,11 +328,11 @@ Across planner chats, structured UI actions can be `options`, `multi_select`, or
 
 ### Day planner backend
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/campaign-agent/plan-day/intake.json?date=YYYY-MM-DD` | Loads day-specific holidays plus products, templates, inspirations, references, best picks, and token/context flags. |
-| POST | `/campaign-agent/plan-day/chat` | Conversational day-planning turn. |
-| POST | `/campaign-agent/plan-day` | Creates a campaign draft from the day plan. |
+| Method | Route                                                  | Purpose                                                                                                              |
+| ------ | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/campaign-agent/plan-day/intake.json?date=YYYY-MM-DD` | Loads day-specific holidays plus products, templates, inspirations, references, best picks, and token/context flags. |
+| POST   | `/campaign-agent/plan-day/chat`                        | Conversational day-planning turn.                                                                                    |
+| POST   | `/campaign-agent/plan-day`                             | Creates a campaign draft from the day plan.                                                                          |
 
 Day-chat requests submit the target `date` and serialized `history`. Draft creation can submit `send_date`, `channel`, `product_focus`, `focus_today`, `title`, `discount_code`, `planned_time`, selected product IDs, holiday ID, offer labels, reference ID/kind, and copy mode.
 
@@ -342,11 +342,11 @@ The day-chat response uses `ok`, `message`, optional `blocks`, `fields_known`, s
 
 ### Multi-day event planner backend
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/campaign-agent/event-chat/intake.json` | Loads product options and Shopify status. |
-| POST | `/campaign-agent/event-chat/message` | Conversational sequence planning/editing. |
-| POST | `/campaign-agent/event-chat/generate` | Commits/generates the multi-day event campaign sequence. |
+| Method | Route                                    | Purpose                                                  |
+| ------ | ---------------------------------------- | -------------------------------------------------------- |
+| GET    | `/campaign-agent/event-chat/intake.json` | Loads product options and Shopify status.                |
+| POST   | `/campaign-agent/event-chat/message`     | Conversational sequence planning/editing.                |
+| POST   | `/campaign-agent/event-chat/generate`    | Commits/generates the multi-day event campaign sequence. |
 
 The event intake exposed up to 200 product records in the observed workspace.
 
@@ -356,24 +356,24 @@ Each event-sequence row sent back to the agent includes ID, date/time, server an
 
 ### Calendar synchronization and related actions
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/campaign-agent/klaviyo-month.json?m=YYYY-MM` | Returns Klaviyo campaigns grouped by date, status, time, edit URL, and external-opening behavior. |
-| POST | `/campaign-agent/reference-upload` | Uploads a reference design image. |
-| POST | `/campaign-agent/inspiration-analysis` | AI-extracts strategy/analysis from a competitor inspiration. |
-| POST | `/campaign-agent/holidays` | Adds a planner-visible holiday/event via AJAX. |
-| POST | `/campaign-agent/holidays/{id}/delete` | Removes a planner-created holiday/event. |
+| Method | Route                                          | Purpose                                                                                           |
+| ------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| GET    | `/campaign-agent/klaviyo-month.json?m=YYYY-MM` | Returns Klaviyo campaigns grouped by date, status, time, edit URL, and external-opening behavior. |
+| POST   | `/campaign-agent/reference-upload`             | Uploads a reference design image.                                                                 |
+| POST   | `/campaign-agent/inspiration-analysis`         | AI-extracts strategy/analysis from a competitor inspiration.                                      |
+| POST   | `/campaign-agent/holidays`                     | Adds a planner-visible holiday/event via AJAX.                                                    |
+| POST   | `/campaign-agent/holidays/{id}/delete`         | Removes a planner-created holiday/event.                                                          |
 
 ## Campaign draft workspace
 
 ### Main route and data model
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/campaign-drafts/{draft_id}` | Full campaign authoring/review workspace. |
-| POST | `/campaign-drafts/{draft_id}` | Saves campaign metadata, audience, creative settings, and content. |
-| GET | `/campaign-drafts/{draft_id}/card.json` | Compact workflow/card state used by the calendar dialogs. |
-| POST | `/campaign-drafts/{draft_id}/delete` | Deletes a draft. |
+| Method | Route                                   | Purpose                                                            |
+| ------ | --------------------------------------- | ------------------------------------------------------------------ |
+| GET    | `/campaign-drafts/{draft_id}`           | Full campaign authoring/review workspace.                          |
+| POST   | `/campaign-drafts/{draft_id}`           | Saves campaign metadata, audience, creative settings, and content. |
+| GET    | `/campaign-drafts/{draft_id}/card.json` | Compact workflow/card state used by the calendar dialogs.          |
+| POST   | `/campaign-drafts/{draft_id}/delete`    | Deletes a draft.                                                   |
 
 The main save payload can include:
 
@@ -403,22 +403,22 @@ Observed channel values are `email` (Email Design), `email_text` (Email Text), a
 
 ### AI, reference, audience, and content actions
 
-| Method | Route family | Purpose |
-|---|---|---|
-| POST | `/campaign-drafts/{id}/best-send-time-suggest` | AI-suggests time of day and rationale. |
-| POST | `/campaign-drafts/{id}/regenerate-subjects` | Generates subject options. |
-| POST | `/campaign-drafts/{id}/generate-copy` | Generates or regenerates campaign body copy. |
-| POST | `/campaign-drafts/{id}/ask-gros` | One-off GROS question about the draft. |
-| POST | `/campaign-drafts/{id}/gros-chat` | Multi-turn structured GROS editor chat. |
-| POST | `/campaign-drafts/{id}/gros-action` | Applies a structured GROS edit/action. |
-| POST | `/campaign-drafts/{id}/suggest-references` | Requests GROS-ranked reference/template suggestions for this draft. |
-| POST | `/campaign-drafts/{id}/apply-reference` | Attaches or clears a template/inspiration reference and copy mode. |
-| POST | `/campaign-drafts/extract-patterns` | Extracts layout/copy strategy patterns from a reference source. |
-| GET | `/campaign-drafts/copy-source/inspiration?type=design|text` | Competitor reference library JSON. |
-| GET | `/campaign-drafts/copy-source/reference` | Tenant/global reference library JSON. |
-| GET | `/campaign-drafts/copy-source/inspiration/{id}/preview` | Raw/sandboxable competitor-email preview. |
-| POST | `/campaign-drafts/{id}/refresh-audience` | Recalculates/refreshes audience selection. |
-| POST | `/campaign-drafts/{id}/confirm-audience-send` | Confirms audience for sending. |
+| Method | Route family                                            | Purpose                                                             |
+| ------ | ------------------------------------------------------- | ------------------------------------------------------------------- |
+| POST   | `/campaign-drafts/{id}/best-send-time-suggest`          | AI-suggests time of day and rationale.                              |
+| POST   | `/campaign-drafts/{id}/regenerate-subjects`             | Generates subject options.                                          |
+| POST   | `/campaign-drafts/{id}/generate-copy`                   | Generates or regenerates campaign body copy.                        |
+| POST   | `/campaign-drafts/{id}/ask-gros`                        | One-off GROS question about the draft.                              |
+| POST   | `/campaign-drafts/{id}/gros-chat`                       | Multi-turn structured GROS editor chat.                             |
+| POST   | `/campaign-drafts/{id}/gros-action`                     | Applies a structured GROS edit/action.                              |
+| POST   | `/campaign-drafts/{id}/suggest-references`              | Requests GROS-ranked reference/template suggestions for this draft. |
+| POST   | `/campaign-drafts/{id}/apply-reference`                 | Attaches or clears a template/inspiration reference and copy mode.  |
+| POST   | `/campaign-drafts/extract-patterns`                     | Extracts layout/copy strategy patterns from a reference source.     |
+| GET    | `/campaign-drafts/copy-source/inspiration?type=design   | text`                                                               | Competitor reference library JSON. |
+| GET    | `/campaign-drafts/copy-source/reference`                | Tenant/global reference library JSON.                               |
+| GET    | `/campaign-drafts/copy-source/inspiration/{id}/preview` | Raw/sandboxable competitor-email preview.                           |
+| POST   | `/campaign-drafts/{id}/refresh-audience`                | Recalculates/refreshes audience selection.                          |
+| POST   | `/campaign-drafts/{id}/confirm-audience-send`           | Confirms audience for sending.                                      |
 
 The embedded draft GROS client keeps up to 30 local transcript turns but sends only the latest 10 `{role,text}` turns with each request. `/gros-chat` returns an `ok` result, reply text, and optionally a `proposed_action`; proposed actions have an ID, `kind`, and JSON `params` and require explicit Confirm or Skip interaction. Confirmed actions are POSTed to `/gros-action`. Its response can provide `message`/`error`, surgical `updates` for the current form, and a `reload` flag for changes that affect rendered cards, assignments, body, status, or schedule. This embedded transcript is client-local and distinct from the separate persistent `/gros` chat feature.
 
@@ -450,11 +450,11 @@ These are invoked through a shared CSRF-protected draft action helper.
 
 ### Designer workflow
 
-| Method | Route | Purpose |
-|---|---|---|
-| POST | `/campaign-drafts/{id}/assign-designer` | Assigns/reassigns a designer with optional owner notes. |
-| POST | `/campaign-drafts/{id}/reject-design` | Rejects submitted design with required feedback. |
-| POST | `/campaign-drafts/{id}/fix-design` | Requests corrections/reassignment from the calendar card workflow. |
+| Method | Route                                   | Purpose                                                            |
+| ------ | --------------------------------------- | ------------------------------------------------------------------ |
+| POST   | `/campaign-drafts/{id}/assign-designer` | Assigns/reassigns a designer with optional owner notes.            |
+| POST   | `/campaign-drafts/{id}/reject-design`   | Rejects submitted design with required feedback.                   |
+| POST   | `/campaign-drafts/{id}/fix-design`      | Requests corrections/reassignment from the calendar card workflow. |
 
 The observed tenant had one selectable designer. The UI supports assignment notes, uploaded/final design state, approval, rejection feedback, and eventual scheduling.
 
@@ -487,13 +487,13 @@ One of the two drafts has a final uploaded design; the other does not.
 
 ### Routes and writes
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/library/inspirations` | Competitor domains and captured emails. |
-| POST | `/library/inspirations/domains` | Adds a competitor domain. |
-| POST | `/library/inspirations/domains/{id}/delete` | Stops/removes tracking for a domain. |
-| GET | `/library/best-picks` | Admin-curated drag/drop templates. |
-| GET | `/campaign-agent/templates/{id}/preview` | Renders the selected Best Pick/template in the preview modal. |
+| Method | Route                                       | Purpose                                                       |
+| ------ | ------------------------------------------- | ------------------------------------------------------------- |
+| GET    | `/library/inspirations`                     | Competitor domains and captured emails.                       |
+| POST   | `/library/inspirations/domains`             | Adds a competitor domain.                                     |
+| POST   | `/library/inspirations/domains/{id}/delete` | Stops/removes tracking for a domain.                          |
+| GET    | `/library/best-picks`                       | Admin-curated drag/drop templates.                            |
+| GET    | `/campaign-agent/templates/{id}/preview`    | Renders the selected Best Pick/template in the preview modal. |
 
 Observed state:
 
@@ -511,11 +511,11 @@ The library supports filtering design vs text emails, viewing a rendered/raw pre
 
 ## Ask GROS
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/gros` | GROS chat list/start screen. |
-| GET | `/gros/new` | Dedicated new-chat screen with private/shared creation forms. |
-| POST | `/gros/new` | Creates a private or tenant-shared chat. |
+| Method | Route       | Purpose                                                       |
+| ------ | ----------- | ------------------------------------------------------------- |
+| GET    | `/gros`     | GROS chat list/start screen.                                  |
+| GET    | `/gros/new` | Dedicated new-chat screen with private/shared creation forms. |
+| POST   | `/gros/new` | Creates a private or tenant-shared chat.                      |
 
 The workspace has no existing GROS chats. A chat can be Private (only the current user) or Shared (tenant-wide). The dedicated new-chat screen says GROS knows the brand, voice, recent emails, and 188 email templates, matching the current Connections count, and can advise on retention strategy, subject lines, segmentation, and drafting.
 
@@ -523,30 +523,30 @@ The post-creation chat route and message endpoints were not observable without c
 
 ## Settings
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/settings` | Campaign defaults and timezone display. |
-| POST | `/settings/campaign-defaults` | Saves defaults applied to new campaign drafts. |
+| Method | Route                         | Purpose                                        |
+| ------ | ----------------------------- | ---------------------------------------------- |
+| GET    | `/settings`                   | Campaign defaults and timezone display.        |
+| POST   | `/settings/campaign-defaults` | Saves defaults applied to new campaign drafts. |
 
 Defaults include featured product, sender name, primary link, included/excluded audience segments, footer inclusion, and footer-source template. The timezone is described as synced from Klaviyo and not editable in Grey Retention.
 
 ## Holidays & Events
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/holidays` | Tenant moments plus platform calendar. |
-| POST | `/holidays` | Adds a tenant holiday/event. |
+| Method | Route       | Purpose                                |
+| ------ | ----------- | -------------------------------------- |
+| GET    | `/holidays` | Tenant moments plus platform calendar. |
+| POST   | `/holidays` | Adds a tenant holiday/event.           |
 
 Fields: name, date, kind (holiday/event), annual recurrence, and notes for the AI strategist. Tenant entries appear in the calendar and planner wizards. The page also shows upcoming platform-managed events such as Halloween, Veterans Day, Thanksgiving, Black Friday, Cyber Monday, Giving Tuesday, and Hanukkah.
 
 ## Team and permissions
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/team` | Tenant member list and invitation UI. |
-| POST | `/team/invite` | Invites a user with Staff or Admin role. |
-| POST | `/team/{member_id}/role` | Changes a member’s role. |
-| POST | `/team/{member_id}/deactivate` | Activates/deactivates a member. |
+| Method | Route                          | Purpose                                  |
+| ------ | ------------------------------ | ---------------------------------------- |
+| GET    | `/team`                        | Tenant member list and invitation UI.    |
+| POST   | `/team/invite`                 | Invites a user with Staff or Admin role. |
+| POST   | `/team/{member_id}/role`       | Changes a member’s role.                 |
+| POST   | `/team/{member_id}/deactivate` | Activates/deactivates a member.          |
 
 Role model observed:
 
@@ -560,14 +560,14 @@ The current workspace showed two members: one Owner and one active non-owner Adm
 
 ### Routes
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/support` | Ticket list and active conversation. |
-| GET | `/support?t={ticket_id}` | Opens one ticket. |
-| POST | `/support/tickets` | Creates a ticket with optional attachment. |
-| POST | `/support/send` | Sends a ticket message with optional attachment. |
-| GET | `/support/poll?t={id}&after={message_id}` | Polls for new messages and status every five seconds. |
-| POST | `/support/tickets/{id}/close` | Resolves/closes a ticket. |
+| Method | Route                                     | Purpose                                               |
+| ------ | ----------------------------------------- | ----------------------------------------------------- |
+| GET    | `/support`                                | Ticket list and active conversation.                  |
+| GET    | `/support?t={ticket_id}`                  | Opens one ticket.                                     |
+| POST   | `/support/tickets`                        | Creates a ticket with optional attachment.            |
+| POST   | `/support/send`                           | Sends a ticket message with optional attachment.      |
+| GET    | `/support/poll?t={id}&after={message_id}` | Polls for new messages and status every five seconds. |
+| POST   | `/support/tickets/{id}/close`             | Resolves/closes a ticket.                             |
 
 The UI accepts image/PDF attachments, performs optimistic message rendering, and uses periodic polling rather than WebSockets. One historical closed ticket with two messages was present.
 
@@ -575,20 +575,20 @@ Ticket creation submits `subject`, `body`, and optional `attachment`; replies su
 
 ## Feature requests
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/feedback` | Request list and status filters. |
-| POST | `/feedback` | Submits feedback. |
+| Method | Route       | Purpose                          |
+| ------ | ----------- | -------------------------------- |
+| GET    | `/feedback` | Request list and status filters. |
+| POST   | `/feedback` | Submits feedback.                |
 
 Request types: Feature Request, Improve Existing, Bug, and General Feedback. Status filters: All, Open, Planned, and Done. Submission fields are `kind`, `subject`, and `body`; the subject is capped at 200 characters, and the client mirrors server rules by enabling submission only at four or more subject characters and ten or more body characters. No requests were present in the observed workspace.
 
 ## Profile
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/profile` | Account information and password management. |
-| POST | `/profile` | Updates name, job title, and phone. |
-| POST | `/profile/password` | Validates current password and sets a new password. |
+| Method | Route               | Purpose                                             |
+| ------ | ------------------- | --------------------------------------------------- |
+| GET    | `/profile`          | Account information and password management.        |
+| POST   | `/profile`          | Updates name, job title, and phone.                 |
+| POST   | `/profile/password` | Validates current password and sets a new password. |
 
 Email is locked and must be changed through support.
 
@@ -596,25 +596,25 @@ Email is locked and must be changed through support.
 
 The admin application is a separate super-admin surface, not merely an elevated client navigation. Its main routes are:
 
-| Area | Primary route(s) | Purpose |
-|---|---|---|
-| Overview | `/admin/dashboard` | Tenant, user, package, MRR, provider, AI-usage, and SMTP summary. |
-| Clients | `/admin/clients`, `/admin/clients/{tenant_id}` | Tenant roster, onboarding, integrations, classification, team, content state, AI activity, and token package. |
-| Designers | `/admin/designers`, `/admin/designers/oversight` | Designer accounts, tenant access, assignments, SLA review, and notification delivery. |
-| Prompt engine | `/admin/prompts` | Versioned prompt contracts, generation/revision, model settings, tests, healing, reset, and delete. |
-| LLM controls | `/admin/llm-controls` | Per-tenant provider/model/token overrides and spend caps. |
-| Email Knowledge | `/admin/email-knowledge` | Global rule/play/craft entries injected by tenant classification and AI scope. |
-| Competitor inbox | `/admin/competitor-inspirations` | IMAP collection, sender mapping, classification, curation, and client windows. |
-| Template library | `/admin/templates`, `/admin/templates/categories` | Uploads, best picks, library filters, and a three-level industry taxonomy. |
-| Global holidays | `/admin/holidays` | Platform events inherited by every tenant. |
-| Reporting | `/admin/reports` | AI calls, tokens, cost, errors, timeouts, and projections by tenant/engine/provider. |
-| Packages | `/admin/packages` | Token entitlements, prices, billing-cycle duration, default package, and assignments. |
-| Settings | `/admin/settings` | Site, signup, SMTP, and AI-provider configuration. |
-| Operations | `/admin/operations` | Admin accounts, roles, notifications, and Klaviyo connection tests. |
-| Cron monitor | `/admin/cron-jobs` | Job definitions, recent executions, output, manual test-run controls, and queue actions. |
-| Feedback | `/admin/feedback` | Cross-tenant feature-request triage. |
-| Support | `/admin/support` | Cross-tenant ticket queue and live polling/replies. |
-| Account | `/admin/profile` | Admin profile and password management. |
+| Area             | Primary route(s)                                  | Purpose                                                                                                       |
+| ---------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Overview         | `/admin/dashboard`                                | Tenant, user, package, MRR, provider, AI-usage, and SMTP summary.                                             |
+| Clients          | `/admin/clients`, `/admin/clients/{tenant_id}`    | Tenant roster, onboarding, integrations, classification, team, content state, AI activity, and token package. |
+| Designers        | `/admin/designers`, `/admin/designers/oversight`  | Designer accounts, tenant access, assignments, SLA review, and notification delivery.                         |
+| Prompt engine    | `/admin/prompts`                                  | Versioned prompt contracts, generation/revision, model settings, tests, healing, reset, and delete.           |
+| LLM controls     | `/admin/llm-controls`                             | Per-tenant provider/model/token overrides and spend caps.                                                     |
+| Email Knowledge  | `/admin/email-knowledge`                          | Global rule/play/craft entries injected by tenant classification and AI scope.                                |
+| Competitor inbox | `/admin/competitor-inspirations`                  | IMAP collection, sender mapping, classification, curation, and client windows.                                |
+| Template library | `/admin/templates`, `/admin/templates/categories` | Uploads, best picks, library filters, and a three-level industry taxonomy.                                    |
+| Global holidays  | `/admin/holidays`                                 | Platform events inherited by every tenant.                                                                    |
+| Reporting        | `/admin/reports`                                  | AI calls, tokens, cost, errors, timeouts, and projections by tenant/engine/provider.                          |
+| Packages         | `/admin/packages`                                 | Token entitlements, prices, billing-cycle duration, default package, and assignments.                         |
+| Settings         | `/admin/settings`                                 | Site, signup, SMTP, and AI-provider configuration.                                                            |
+| Operations       | `/admin/operations`                               | Admin accounts, roles, notifications, and Klaviyo connection tests.                                           |
+| Cron monitor     | `/admin/cron-jobs`                                | Job definitions, recent executions, output, manual test-run controls, and queue actions.                      |
+| Feedback         | `/admin/feedback`                                 | Cross-tenant feature-request triage.                                                                          |
+| Support          | `/admin/support`                                  | Cross-tenant ticket queue and live polling/replies.                                                           |
+| Account          | `/admin/profile`                                  | Admin profile and password management.                                                                        |
 
 “Campaign Tracker” and “Messages” are announced as Soon and expose no working admin destinations.
 
@@ -639,11 +639,11 @@ Brand classification writes to `POST /admin/clients/{id}/brand-classification` w
 
 Corvidae was the only Shopify-connected tenant. Its connection reported API version 2026-04, Basic plan, USD currency, 52 products, no orders, and two customers. Its initial sync remained labelled “running” after roughly 102 days, while recent bulk-product, bulk-order, bulk-customer, and REST-prime jobs were failed; an earlier bulk-product job had completed and produced the 52 products. Admin controls include:
 
-| Method | Route | Payload / effect |
-|---|---|---|
-| POST | `/admin/clients/{id}/shopify/sync-depth` | `sync_depth`: all, last 365 days, or last 90 days. |
-| POST | `/admin/clients/{id}/shopify/trigger-sync` | Starts a Shopify synchronization. Not invoked. |
-| POST | `/admin/clients/{id}/brand-classification` | Saves shared industry and brand type. Not invoked. |
+| Method | Route                                      | Payload / effect                                   |
+| ------ | ------------------------------------------ | -------------------------------------------------- |
+| POST   | `/admin/clients/{id}/shopify/sync-depth`   | `sync_depth`: all, last 365 days, or last 90 days. |
+| POST   | `/admin/clients/{id}/shopify/trigger-sync` | Starts a Shopify synchronization. Not invoked.     |
+| POST   | `/admin/clients/{id}/brand-classification` | Saves shared industry and brand type. Not invoked. |
 
 HeavenTallow was marked grandfathered with Shopify optional. The other unconnected tenants simply showed no Shopify connection.
 
@@ -651,12 +651,12 @@ HeavenTallow was marked grandfathered with Shopify optional. The other unconnect
 
 The per-tenant debug screens expose the last 100 calls, one-hour and 24-hour counts, success rate, average latency, failed endpoints, sanitized parameters, and response excerpts. At observation time:
 
-| Tenant | Calls in 24h | Failed | Success | Average latency |
-|---|---:|---:|---:|---:|
-| HeavenTallow | 85,919 | 480 | 99.4% | 586 ms |
-| Corvidae | 54,720 | 480 | 99.1% | 591 ms |
-| PHOLOH | 23,575 | 491 | 97.9% | 553 ms |
-| GOALPINE | 22,057 | 480 | 97.8% | 634 ms |
+| Tenant       | Calls in 24h | Failed | Success | Average latency |
+| ------------ | -----------: | -----: | ------: | --------------: |
+| HeavenTallow |       85,919 |    480 |   99.4% |          586 ms |
+| Corvidae     |       54,720 |    480 |   99.1% |          591 ms |
+| PHOLOH       |       23,575 |    491 |   97.9% |          553 ms |
+| GOALPINE     |       22,057 |    480 |   97.8% |          634 ms |
 
 All four tenants repeatedly failed the same request: `GET campaigns/` with email-channel filtering and `page[size]=50`. Klaviyo returned HTTP 400 because `page_size` is not valid for the campaign resource. Roughly 480 failures per tenant/day equals one failure every three minutes; that matches the observed real template-sync cadence, so the template sweep is the likely caller. That caller attribution is an evidence-based inference, not a server-source confirmation.
 
@@ -666,14 +666,14 @@ Successful diagnostic records also showed flow, flow-action, flow-message, and t
 
 Each tenant has private operator guidance at `/admin/clients/{id}/admin-takes`. The action family is:
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/admin/clients/{id}/admin-takes` | Lists private prompt guidance. |
-| GET | `/admin/clients/{id}/admin-takes/new` | New-entry form. |
-| POST | `/admin/clients/{id}/admin-takes/create` | Creates an entry from `category`, `body`, `is_active`, and `sort_order`. |
-| GET | `/admin/clients/{id}/admin-takes/{take_id}/edit` | Edit form. |
-| POST | `/admin/clients/{id}/admin-takes/{take_id}/update` | Updates an entry. |
-| POST | `/admin/clients/{id}/admin-takes/{take_id}/delete` | Deletes an entry. |
+| Method | Route                                              | Purpose                                                                  |
+| ------ | -------------------------------------------------- | ------------------------------------------------------------------------ |
+| GET    | `/admin/clients/{id}/admin-takes`                  | Lists private prompt guidance.                                           |
+| GET    | `/admin/clients/{id}/admin-takes/new`              | New-entry form.                                                          |
+| POST   | `/admin/clients/{id}/admin-takes/create`           | Creates an entry from `category`, `body`, `is_active`, and `sort_order`. |
+| GET    | `/admin/clients/{id}/admin-takes/{take_id}/edit`   | Edit form.                                                               |
+| POST   | `/admin/clients/{id}/admin-takes/{take_id}/update` | Updates an entry.                                                        |
+| POST   | `/admin/clients/{id}/admin-takes/{take_id}/delete` | Deletes an entry.                                                        |
 
 The eight categories are campaign direction, copy voice, product focus, segment and audience, offer and promo posture, deliverability status, flow notes, and what has proven effective. PHOLOH had one active entry in each category; the other three tenants had none. The private bodies were not retained.
 
@@ -715,19 +715,19 @@ Thirty expect JSON. The four text contracts are `campaign.ask_gros_inline`, `das
 
 Prompt administration exposes:
 
-| Method | Route | Behavior |
-|---|---|---|
-| GET/POST | `/admin/prompts` | Registry, create form, filters, and selected prompt editor. |
-| GET | `/admin/prompts?key={key}` | Opens one contract. |
-| POST | `/admin/prompts/{key}` | Saves a new version. |
-| POST | `/admin/prompts/{key}/reset` | Restores the shipped default, including text/model/settings. |
-| POST | `/admin/prompts/{key}/delete` | Deletes a contract; UI warns wired agents will break. |
-| POST | `/admin/prompts/{key}/test` | Executes with supplied variable values and returns provider/model, tokens, latency, and JSON/text or an error. Not invoked. |
-| POST | `/admin/prompts/{key}/heal` | Synchronizes declared variables with placeholders found in the prompt. |
-| POST | `/admin/prompts/generate` | AI-generates label, description, system/user prompts, and variables from `intent`, `key_name`, and `expects_json`. Not invoked. |
-| POST | `/admin/prompts/revise` | AI-revises a contract from `key_name` and `instruction`, reporting dropped variables. Not invoked. |
-| POST | `/admin/prompts/bulk-llm` | Version-bumps selected `keys[]` with provider, model, temperature, and max-token settings. |
-| GET | `/admin/prompts/inject-preview` | Composes and diagnoses tenant/scope knowledge blocks. |
+| Method   | Route                           | Behavior                                                                                                                        |
+| -------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| GET/POST | `/admin/prompts`                | Registry, create form, filters, and selected prompt editor.                                                                     |
+| GET      | `/admin/prompts?key={key}`      | Opens one contract.                                                                                                             |
+| POST     | `/admin/prompts/{key}`          | Saves a new version.                                                                                                            |
+| POST     | `/admin/prompts/{key}/reset`    | Restores the shipped default, including text/model/settings.                                                                    |
+| POST     | `/admin/prompts/{key}/delete`   | Deletes a contract; UI warns wired agents will break.                                                                           |
+| POST     | `/admin/prompts/{key}/test`     | Executes with supplied variable values and returns provider/model, tokens, latency, and JSON/text or an error. Not invoked.     |
+| POST     | `/admin/prompts/{key}/heal`     | Synchronizes declared variables with placeholders found in the prompt.                                                          |
+| POST     | `/admin/prompts/generate`       | AI-generates label, description, system/user prompts, and variables from `intent`, `key_name`, and `expects_json`. Not invoked. |
+| POST     | `/admin/prompts/revise`         | AI-revises a contract from `key_name` and `instruction`, reporting dropped variables. Not invoked.                              |
+| POST     | `/admin/prompts/bulk-llm`       | Version-bumps selected `keys[]` with provider, model, temperature, and max-token settings.                                      |
+| GET      | `/admin/prompts/inject-preview` | Composes and diagnoses tenant/scope knowledge blocks.                                                                           |
 
 Tenant-level controls live under `/admin/llm-controls/{tenant_id}` with a corresponding clear action. Fields are `provider_override`, `model_override`, `max_tokens_override`, daily and monthly USD spend caps, and an operator note. Overrides apply to every AI call for the tenant. Effective maximum output is the lower of the prompt and tenant limits; token-package balances remain an independent gate. Spend caps reset at UTC midnight and month boundary.
 
@@ -751,17 +751,17 @@ The admin competitor inbox is backed by a shared Gmail/IMAP collector using an a
 
 The interface loads 60 records at a time, sorts design-led versus text-led email, allows manual correction, and provides a curator description capped at 1,000 characters. GROS uses that description to match inspiration to campaign title/goals. The first sender mapping activates a tenant request and notifies the client. PHOLOH's client library showed 41 mapped items, demonstrating that the 355-message inbox is global while the client view is mapping-constrained.
 
-| Method | Route | Purpose |
-|---|---|---|
-| POST | `/admin/inspirations/sync` | Runs collector ingestion. Not invoked. |
-| POST | `/admin/inspirations/settings` | Saves collector email, app password, and client window. |
-| POST | `/admin/inspirations/map` | Maps a sender to a requested tenant domain. |
-| POST | `/admin/inspirations/unmap` | Removes that mapping. |
-| POST | `/admin/inspirations/reclassify` | Re-runs classification. Not invoked. |
-| POST | `/admin/inspirations/{id}/type` | Sets email type. |
-| POST | `/admin/inspirations/{id}/description` | Saves curator guidance. |
-| POST | `/admin/inspirations/{id}/delete` | Deletes an inspiration. |
-| GET | `/admin/inspirations/{id}/preview` | Renders the collected raw-email HTML. |
+| Method | Route                                  | Purpose                                                 |
+| ------ | -------------------------------------- | ------------------------------------------------------- |
+| POST   | `/admin/inspirations/sync`             | Runs collector ingestion. Not invoked.                  |
+| POST   | `/admin/inspirations/settings`         | Saves collector email, app password, and client window. |
+| POST   | `/admin/inspirations/map`              | Maps a sender to a requested tenant domain.             |
+| POST   | `/admin/inspirations/unmap`            | Removes that mapping.                                   |
+| POST   | `/admin/inspirations/reclassify`       | Re-runs classification. Not invoked.                    |
+| POST   | `/admin/inspirations/{id}/type`        | Sets email type.                                        |
+| POST   | `/admin/inspirations/{id}/description` | Saves curator guidance.                                 |
+| POST   | `/admin/inspirations/{id}/delete`      | Deletes an inspiration.                                 |
+| GET    | `/admin/inspirations/{id}/preview`     | Renders the collected raw-email HTML.                   |
 
 ### Holidays, packages, and reporting
 
@@ -769,12 +769,12 @@ The admin calendar contained 27 global events inherited by every client; tenants
 
 Four active packages existed:
 
-| Package | Input tokens | Output tokens | Price/cycle | Assigned tenants |
-|---|---:|---:|---:|---:|
-| Trial | 200,000,000 | 500,000 | Free / 14 days | 3 |
-| Starter | 2,000,000 | 500,000 | $49 / 30 days | 0 |
-| Growth | 8,000,000 | 2,000,000 | $149 / 30 days | 0 |
-| Scale | 25,000,000 | 6,000,000 | $399 / 30 days | 1 |
+| Package | Input tokens | Output tokens |    Price/cycle | Assigned tenants |
+| ------- | -----------: | ------------: | -------------: | ---------------: |
+| Trial   |  200,000,000 |       500,000 | Free / 14 days |                3 |
+| Starter |    2,000,000 |       500,000 |  $49 / 30 days |                0 |
+| Growth  |    8,000,000 |     2,000,000 | $149 / 30 days |                0 |
+| Scale   |   25,000,000 |     6,000,000 | $399 / 30 days |                1 |
 
 Package create/edit/default/delete actions are rooted at `/admin/packages`. Records contain name, description, input/output tokens, price in cents, currency, cycle days, sort order, and active state. Supported currencies are USD, EUR, GBP, AUD, CAD, INR, and NPR. Editing a package does not rebill currently assigned tenants until the next cycle. The Trial input allowance is 8× Scale and 100× Starter, almost certainly a configuration error rather than an intentional paid-tier progression.
 
@@ -796,13 +796,13 @@ The current account was `super_admin`; the second recognized role is `admin`. `/
 
 Admin support uses an incrementally loaded cross-tenant queue:
 
-| Method | Route | Contract |
-|---|---|---|
-| GET | `/admin/support` | Search, status filters, list, and selected conversation. |
-| GET | `/admin/support/list?offset={n}&status={status}&q={query}` | `{ok, tickets, has_more}`. |
-| GET | `/admin/clients/{tenant}/support/poll?t={ticket}&after={message}` | `{ok, messages, status}`; UI polls every 20 seconds. |
-| POST | `/admin/clients/{tenant}/support/send` | `ticket_id`, `body`, optional attachment. |
-| POST | `/admin/clients/{tenant}/support/tickets/{ticket}/status` | Sets open, awaiting, progress, answered, or closed. |
+| Method | Route                                                             | Contract                                                 |
+| ------ | ----------------------------------------------------------------- | -------------------------------------------------------- |
+| GET    | `/admin/support`                                                  | Search, status filters, list, and selected conversation. |
+| GET    | `/admin/support/list?offset={n}&status={status}&q={query}`        | `{ok, tickets, has_more}`.                               |
+| GET    | `/admin/clients/{tenant}/support/poll?t={ticket}&after={message}` | `{ok, messages, status}`; UI polls every 20 seconds.     |
+| POST   | `/admin/clients/{tenant}/support/send`                            | `ticket_id`, `body`, optional attachment.                |
+| POST   | `/admin/clients/{tenant}/support/tickets/{ticket}/status`         | Sets open, awaiting, progress, answered, or closed.      |
 
 One closed ticket existed and its schema was inspected without retaining subject, message bodies, attachments, or personal names. `/admin/feedback` supports open, triaged, in-progress, done, and won't-fix filters, but contained no records; record-level update routes therefore could not be discovered from rendered controls.
 
@@ -812,13 +812,13 @@ Admin profile routes are `GET/POST /admin/profile` and `POST /admin/profile/pass
 
 The cron monitor exposes five jobs and recent execution history:
 
-| Job | Advertised cadence | Entrypoint | Function |
-|---|---|---|---|
-| `sync_shopify` | Every 5–15 min | `cli/sync_shopify.php` | Polls Shopify bulk operations and performs incremental REST pulls. |
-| `sync_templates` | Daily 03:00 | `cli/sync_templates.php` | Sweeps Klaviyo flows/campaigns and ingests templates. |
-| `warm_dashboards` | Every 5 min | `cli/warm_dashboards.php` | Prewarms active-tenant dashboards. |
-| `gros_actions` | Every minute | `bin/cron.php gros_actions` | Drains operator-confirmed actions such as `push_to_klaviyo`. |
-| `inspirations_sync` | Every 10 min | `bin/cron.php inspirations_sync` | Runs the IMAP inspiration collector and mapping workflow. |
+| Job                 | Advertised cadence | Entrypoint                       | Function                                                           |
+| ------------------- | ------------------ | -------------------------------- | ------------------------------------------------------------------ |
+| `sync_shopify`      | Every 5–15 min     | `cli/sync_shopify.php`           | Polls Shopify bulk operations and performs incremental REST pulls. |
+| `sync_templates`    | Daily 03:00        | `cli/sync_templates.php`         | Sweeps Klaviyo flows/campaigns and ingests templates.              |
+| `warm_dashboards`   | Every 5 min        | `cli/warm_dashboards.php`        | Prewarms active-tenant dashboards.                                 |
+| `gros_actions`      | Every minute       | `bin/cron.php gros_actions`      | Drains operator-confirmed actions such as `push_to_klaviyo`.       |
+| `inspirations_sync` | Every 10 min       | `bin/cron.php inspirations_sync` | Runs the IMAP inspiration collector and mapping workflow.          |
 
 `gros_actions` documents multi-worker-safe atomic compare-and-set claiming. Its Klaviyo side effect creates a campaign as Draft; the operator must finalize it in Klaviyo. Recent successful action kinds included `best_send_time` and `generate_copy`.
 

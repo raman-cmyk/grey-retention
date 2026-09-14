@@ -1,9 +1,13 @@
 # Grey Retention MVP — Build Plan
 
-Status: planning complete; implementation not started  
-Source of product truth: `GREY_RETENTION_DISCOVERY.md`  
-Architecture source of truth: `docs/ARCHITECTURE_BLUEPRINT.md`  
-Parallel-work source of truth: `docs/PARALLEL_TASKS.md`  
+Status: M0 foundation in verification
+
+Source of product truth: `GREY_RETENTION_DISCOVERY.md`
+
+Architecture source of truth: `docs/ARCHITECTURE_BLUEPRINT.md`
+
+Parallel-work source of truth: `docs/PARALLEL_TASKS.md`
+
 Execution ledger: `docs/BUILD_LEDGER.md`
 
 ## 1. Goal
