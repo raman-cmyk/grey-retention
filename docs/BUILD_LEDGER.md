@@ -6,7 +6,7 @@ This file is the durable cross-task memory. Every implementation task must updat
 
 | ID | Workstream | Depends on | Status | Owner/task | Verification | Notes |
 |---|---|---|---|---|---|---|
-| FND-001 | Repository foundation | — | in_progress | root integration task | Private GitHub repository created; product/design choice pending. | Must run first. |
+| FND-001 | Repository foundation | — | in_progress | root integration task | Private GitHub repository and durable product record created; code-first confirmed. | Must run first. |
 | IAM-001 | Auth, tenancy, RLS | FND-001 | blocked | unassigned | — | Starts after foundation. |
 | UI-001 | Design system and shells | FND-001 | blocked | unassigned | — | Can parallel IAM. |
 | CAM-001 | Campaign/calendar domain | IAM-001, UI-001 | blocked | unassigned | — | P0 vertical slice. |
@@ -37,7 +37,7 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 | Money | Integer micro-USD internally | Avoids floating-point cost errors. |
 | IDs | UUID primary keys; external IDs in unique scoped columns | Stable internal identity and provider reconciliation. |
 
-Open decision: confirm customer-facing product name and Impeccable code-first versus comp-first default before UI scaffold begins.
+Open decision: confirm whether new visual world may replace the observed charcoal/system-blue identity. Code-first default is confirmed.
 
 ## Migration allocation
 
