@@ -37,7 +37,7 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 | Money | Integer micro-USD internally | Avoids floating-point cost errors. |
 | IDs | UUID primary keys; external IDs in unique scoped columns | Stable internal identity and provider reconciliation. |
 
-Open decision: confirm whether new visual world may replace the observed charcoal/system-blue identity. Code-first default is confirmed.
+Confirmed: original replacement visual world, white-label-first architecture, code-first build path, DRY shared implementation. Direction selection is in progress under Impeccable seed `0a100401`.
 
 ## Migration allocation
 

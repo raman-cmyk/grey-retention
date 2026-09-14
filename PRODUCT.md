@@ -62,8 +62,9 @@ Admin and designer applications are separate authorization surfaces within one w
 
 - Working and customer-facing name: Grey Retention.
 - Product voice: direct, operational, calm, precise, and accountable.
+- Product will be white-labelled and sold to multiple customers. Name, logos, palette, typography, domains, email identity, feature availability, and customer-facing copy must be configurable without code forks.
 - No logo, final identity assets, testimonials, customer claims, or approved marketing claims have been supplied.
-- Existing deployed interface is behavioral evidence, not mandatory visual authority. Final visual-world decision remains open.
+- Existing deployed interface is behavioral evidence, not visual authority. User confirmed an original replacement world rather than preserving the old charcoal/system-blue treatment.
 
 ## Evidence on Hand
 
@@ -82,8 +83,8 @@ No source code, official brand assets, customer testimonials, approved benchmark
 3. Tenant isolation, usage accounting, and job visibility are product features.
 4. Integration failures remain recoverable and diagnosable without database access.
 5. Dense operational information stays calm, legible, and action-oriented.
+6. Shared code and domain contracts remain clean and DRY; white-label differences enter through data and tokens, never duplicated feature implementations.
 
 ## Accessibility & Inclusion
 
 Target WCAG 2.2 AA for core journeys. Keyboard operation, visible focus, semantic landmarks, labelled forms, non-color-only status, reduced-motion support, responsive layouts, and assistive-technology-friendly async feedback are required.
-
