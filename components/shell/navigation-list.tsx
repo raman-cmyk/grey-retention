@@ -77,7 +77,7 @@ export function NavigationList({
             href={href}
             onClick={onNavigate}
             aria-current={current ? 'page' : undefined}
-            className="group flex min-h-10 items-center gap-3 rounded-[10px] px-3 text-sm text-[var(--nav-muted)] transition-colors hover:bg-white/7 hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none aria-[current=page]:bg-white/10 aria-[current=page]:text-white"
+            className="group flex min-h-10 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm text-[var(--nav-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--nav-text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none aria-[current=page]:bg-[var(--surface-hover)] aria-[current=page]:font-medium aria-[current=page]:text-[var(--nav-text)]"
           >
             <Icon className="size-[1.05rem] stroke-[1.8]" aria-hidden />
             <span>{itemLabel}</span>

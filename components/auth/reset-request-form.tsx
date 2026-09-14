@@ -15,12 +15,12 @@ export function ResetRequestForm() {
   return (
     <form action={action} className="mt-9 space-y-5">
       <label className="block">
-        <span className="mb-2 block text-sm font-medium text-white/78">
+        <span className="mb-2 block text-sm font-medium text-[var(--text)]">
           Email
         </span>
         <TextField name="email" type="email" autoComplete="email" required />
         {state.fieldErrors?.email && (
-          <span className="mt-2 block text-sm text-[#ffb4aa]">
+          <span className="mt-2 block text-sm text-[var(--danger-ink)]">
             {state.fieldErrors.email[0]}
           </span>
         )}

@@ -8,7 +8,7 @@ This file is the durable cross-task memory. Every implementation task must updat
 | ------- | -------------------------------------- | ---------------- | ----------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | FND-001 | Repository foundation                  | —                | complete    | root integration task | Frozen install; format/lint/typecheck; 8 tests; 26-route build; Playwright 4/4; Impeccable PASS; CI verify/browser/database green. | Commit `dc8a429`; [CI run 34826503699](https://github.com/lookitsme/grey-retention/actions/runs/34826503699). |
 | IAM-001 | Auth, tenancy, RLS                     | FND-001          | complete    | root integration task | CI: reset/seed + 18 RLS assertions; 11 unit tests; 30-route build; 6 browser checks.                                               | Commit `e1ca4ce`; [CI run 34828884619](https://github.com/lookitsme/grey-retention/actions/runs/34828884619). |
-| UI-001  | Design system and shells               | FND-001          | in_progress | root integration task | Foundation includes validated theme, primitives, responsive role shells, and smoke coverage.                                       | Active next lane: shared states, forms, dialogs, tables, and shell context.                                   |
+| UI-001  | Design system and shells               | FND-001          | in_progress | root integration task | Reference-neutral semantic theme; responsive role/auth shells; 11 tests; 30-route build; desktop/mobile visual QA.                 | Theme slice complete; active next lane: shared states, forms, dialogs, tables, and shell context.             |
 | CAM-001 | Campaign/calendar domain               | IAM-001, UI-001  | blocked     | unassigned            | —                                                                                                                                  | P0 vertical slice.                                                                                            |
 | AI-001  | Prompt engine, Brand Truth, GROS       | IAM-001          | blocked     | unassigned            | —                                                                                                                                  | Fake provider first.                                                                                          |
 | INT-001 | Queue and Klaviyo integration          | IAM-001          | blocked     | unassigned            | —                                                                                                                                  | Fixture adapter first.                                                                                        |
@@ -22,24 +22,25 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 ## Global decisions
 
-| Decision      | Value                                                     | Reason                                                             |
-| ------------- | --------------------------------------------------------- | ------------------------------------------------------------------ |
-| Runtime       | Next.js App Router + TypeScript                           | One deployable web application with server-rendered role surfaces. |
-| Architecture  | Modular monolith with explicit domain modules             | Fast MVP iteration without premature distributed-system overhead.  |
-| Hosting       | Vercel                                                    | Preview deployments and server functions.                          |
-| Backend       | Supabase Postgres/Auth/Storage/Realtime/Queues            | Durable relational core and tenant security.                       |
-| Isolation     | Server authorization plus PostgreSQL RLS                  | Deny-by-default tenant boundaries with defense in depth.           |
-| Data access   | `@supabase/ssr` plus generated database types and SQL/RPC | Keeps RLS authoritative and avoids a competing schema source.      |
-| Validation    | Zod                                                       | Shared environment, form, action, and adapter validation.          |
-| UI            | Tailwind CSS + accessible headless primitives             | Fast, consistent, responsive implementation.                       |
-| Tests         | Vitest + Playwright + pgTAP/SQL security tests            | Covers code, user journeys, and RLS.                               |
-| Async         | Durable queue + idempotent workers                        | External API work must survive retries and timeouts.               |
-| Demo behavior | Seeded fixtures + fake adapters                           | Complete workflow without external secrets or billable calls.      |
-| Dates         | Store UTC; render in tenant IANA timezone                 | Removes the timezone contradiction found in the reference product. |
-| Money         | Integer micro-USD internally                              | Avoids floating-point cost errors.                                 |
-| IDs           | UUID primary keys; external IDs in unique scoped columns  | Stable internal identity and provider reconciliation.              |
+| Decision      | Value                                                                     | Reason                                                                      |
+| ------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Runtime       | Next.js App Router + TypeScript                                           | One deployable web application with server-rendered role surfaces.          |
+| Architecture  | Modular monolith with explicit domain modules                             | Fast MVP iteration without premature distributed-system overhead.           |
+| Hosting       | Vercel                                                                    | Preview deployments and server functions.                                   |
+| Backend       | Supabase Postgres/Auth/Storage/Realtime/Queues                            | Durable relational core and tenant security.                                |
+| Isolation     | Server authorization plus PostgreSQL RLS                                  | Deny-by-default tenant boundaries with defense in depth.                    |
+| Data access   | `@supabase/ssr` plus generated database types and SQL/RPC                 | Keeps RLS authoritative and avoids a competing schema source.               |
+| Validation    | Zod                                                                       | Shared environment, form, action, and adapter validation.                   |
+| UI            | Tailwind CSS + accessible headless primitives                             | Fast, consistent, responsive implementation.                                |
+| Tests         | Vitest + Playwright + pgTAP/SQL security tests                            | Covers code, user journeys, and RLS.                                        |
+| Async         | Durable queue + idempotent workers                                        | External API work must survive retries and timeouts.                        |
+| Demo behavior | Seeded fixtures + fake adapters                                           | Complete workflow without external secrets or billable calls.               |
+| Dates         | Store UTC; render in tenant IANA timezone                                 | Removes the timezone contradiction found in the reference product.          |
+| Money         | Integer micro-USD internally                                              | Avoids floating-point cost errors.                                          |
+| IDs           | UUID primary keys; external IDs in unique scoped columns                  | Stable internal identity and provider reconciliation.                       |
+| Visual system | Cool neutral field, white panels, graphite actions, blue interaction cues | Matches the user-selected reference theme through original semantic tokens. |
 
-Confirmed: original replacement visual world, white-label-first architecture, code-first build path, DRY shared implementation. The selected Impeccable direction uses seed `0a100401`; its durable contract is `DESIGN.md` plus `.impeccable/design.json`.
+Confirmed: reference-neutral visual direction, white-label-first architecture, code-first build path, DRY shared implementation. The selected Impeccable direction uses seed `6f728f1c`; its durable contract is `DESIGN.md` plus `.impeccable/design.json`.
 
 ## Migration allocation
 
@@ -97,6 +98,17 @@ Append entries using this exact shape:
 - Verification run: `pnpm verify` (4 files, 11 tests; 30-route production build); `pnpm test:e2e` (6/6); GitHub CI 34828884619 verify/browser/database jobs green; clean reset and seed; pgTAP identity/RLS suite 18/18.
 - Known issues: Seed identities intentionally have no passwords; create login-capable local users through Supabase Studio/Auth Admin API. Hosted Supabase and Vercel are not connected or deployed yet because external mutation needs explicit authorization.
 - Next consumer: UI-001, then CAM-001/AI-001/INT-001 against the stable request-context and tenant-isolation contracts.
+
+### 2026-09-14 — UI-001 — reference-neutral theme refresh
+
+- Status: review
+- Branch/worktree: `main` / `/Users/able/Documents/ChatGPT/Grey Retention`
+- Commit(s): current UI-001 theme commit; hash reported at handoff.
+- Changed contracts: Default `BrandPresentation` now uses the user-selected cool neutral theme; Inter is the shared display/body/data face; navigation, auth, buttons, status, and review surfaces consume accessible semantic tokens without dark-rail assumptions. Updated `DESIGN.md` and `.impeccable/design.json` to seed `6f728f1c`.
+- Migrations: none.
+- Verification run: `pnpm verify` (4 files, 11 tests; 30-route production build); `pnpm test:e2e` (6/6); Impeccable detector; Playwright screenshots at 1440×1000 and 390×844 for authenticated dashboard plus desktop auth.
+- Known issues: Remaining UI-001 shared states, dialogs, and data-table primitives are outside this theme slice. Vercel preview SSO protection was disabled so the app's own role login is the only access gate.
+- Next consumer: remaining UI-001 component work, then CAM-001 and OPS-001.
 
 ## Release checklist
 

@@ -38,9 +38,9 @@ export function MobileNavigation({
       {open && (
         <div
           id={menuId}
-          className="absolute top-12 left-0 w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-[var(--radius-panel)] border border-white/10 bg-[var(--nav)] text-white shadow-2xl"
+          className="absolute top-12 left-0 w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--nav)] text-[var(--nav-text)] shadow-[0_18px_45px_-28px_rgba(29,29,31,.35)]"
         >
-          <div className="border-b border-white/10 px-4 py-4">
+          <div className="border-b border-[var(--line)] px-4 py-4">
             <BrandMark brand={brand} />
           </div>
           <NavigationList

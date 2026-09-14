@@ -85,7 +85,7 @@ export default function DashboardPage() {
                   {date.day}
                 </span>
                 <span>
-                  <span className="block font-[family-name:var(--font-data)] text-[0.6rem] tracking-[0.08em] text-[var(--text-faint)]">
+                  <span className="block font-[family-name:var(--font-data)] text-[0.68rem] tracking-[0.08em] text-[var(--text-faint)]">
                     {date.weekday}
                   </span>
                   <span
@@ -142,7 +142,7 @@ export default function DashboardPage() {
                     <p className="mt-1.5 text-sm text-[var(--text-muted)]">
                       {campaign.audience}
                     </p>
-                    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 font-[family-name:var(--font-data)] text-[0.62rem] tracking-[0.04em] text-[var(--text-faint)] uppercase">
+                    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 font-[family-name:var(--font-data)] text-[0.68rem] tracking-[0.04em] text-[var(--text-faint)] uppercase">
                       <span>{campaign.proofId}</span>
                       <span className="inline-flex items-center gap-1">
                         <MessageSquareText className="size-3" aria-hidden />
@@ -193,8 +193,8 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        <aside className="order-1 rounded-[var(--radius-panel)] bg-[var(--nav)] p-5 text-white shadow-[0_22px_60px_-45px_rgba(0,0,0,.9)] xl:sticky xl:top-[6.25rem] xl:order-2 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:self-start">
-          <div className="flex items-center justify-between border-b border-white/12 pb-4">
+        <aside className="order-1 rounded-[var(--radius-panel)] bg-[var(--surface-raised)] p-5 text-[var(--text)] shadow-[0_22px_60px_-45px_rgba(29,29,31,.3)] xl:sticky xl:top-[6.25rem] xl:order-2 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:self-start">
+          <div className="flex items-center justify-between border-b border-[var(--line)] pb-4">
             <h2 className="text-sm font-bold">Review rail</h2>
             <Sparkles
               className="size-4 text-[var(--brand-primary)]"
@@ -202,19 +202,19 @@ export default function DashboardPage() {
             />
           </div>
           <div className="py-6">
-            <p className="font-[family-name:var(--font-data)] text-[0.65rem] tracking-[0.06em] text-white/45 uppercase">
+            <p className="font-[family-name:var(--font-data)] text-[0.65rem] tracking-[0.06em] text-[var(--text-faint)] uppercase">
               Highest-leverage action
             </p>
             <h3 className="mt-3 text-xl leading-6 font-bold">
               Resolve copy before design handoff.
             </h3>
-            <p className="mt-3 text-sm leading-6 text-white/62">
+            <p className="mt-3 text-sm leading-6 text-[var(--text-muted)]">
               Autumn field notes has audience and offer context. Two body
               decisions remain open.
             </p>
             <Button className="mt-6 w-full">Open proof</Button>
           </div>
-          <dl className="space-y-4 border-t border-white/12 pt-5">
+          <dl className="space-y-4 border-t border-[var(--line)] pt-5">
             {[
               ['Brand context', 'Ready'],
               ['Audience', 'Engaged 90d'],
@@ -225,8 +225,8 @@ export default function DashboardPage() {
                 key={term}
                 className="flex items-baseline justify-between gap-4 text-xs"
               >
-                <dt className="text-white/45">{term}</dt>
-                <dd className="text-right font-medium text-white/82">
+                <dt className="text-[var(--text-faint)]">{term}</dt>
+                <dd className="text-right font-medium text-[var(--text)]">
                   {detail}
                 </dd>
               </div>

@@ -1,99 +1,89 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-14T14:40:00+05:45",
+  "generatedAt": "2026-09-14T16:50:00+05:45",
   "title": "Design System: Grey Retention",
   "extensions": {
     "colorMeta": {
-      "registration-coral": {
+      "graphite-action": {
         "role": "primary",
-        "displayName": "Registration Coral",
-        "canonical": "#ff5d46",
+        "displayName": "Graphite Action",
+        "canonical": "#1d1d1f",
         "tonalRamp": [
-          "#4f1008",
-          "#782014",
-          "#a63222",
-          "#cf4432",
-          "#ff5d46",
-          "#ff8978",
-          "#ffb8ac",
-          "#ffe9e4"
+          "#000000",
+          "#1d1d1f",
+          "#46464a",
+          "#626267",
+          "#86868b",
+          "#c7c7cc",
+          "#e2e2e4",
+          "#f5f5f7"
         ]
       },
-      "editorial-violet": {
+      "interaction-blue": {
         "role": "secondary",
-        "displayName": "Editorial Violet",
-        "canonical": "#7c8cff",
+        "displayName": "Interaction Blue",
+        "canonical": "#0066cc",
         "tonalRamp": [
-          "#141a4f",
-          "#242d78",
-          "#3945a3",
-          "#5664cf",
-          "#7c8cff",
-          "#9eabff",
-          "#c3caff",
-          "#eceeff"
+          "#002b59",
+          "#004a94",
+          "#0066cc",
+          "#2f80d0",
+          "#73a9df",
+          "#b7d4ef",
+          "#e8f1fb",
+          "#f5f9fd"
         ]
       },
-      "proof-paper": {
+      "workspace": {
         "role": "neutral",
-        "displayName": "Proof Paper",
-        "canonical": "#ebe8df",
+        "displayName": "Workspace",
+        "canonical": "#f9f9fb",
         "tonalRamp": [
-          "#24231f",
-          "#46443e",
-          "#69665e",
-          "#8d8980",
-          "#b2aea5",
-          "#d2cec5",
-          "#ebe8df",
-          "#faf9f5"
+          "#1d1d1f",
+          "#46464a",
+          "#626267",
+          "#86868b",
+          "#c7c7cc",
+          "#e2e2e4",
+          "#f5f5f7",
+          "#f9f9fb"
         ]
       },
-      "rail-ink": {
+      "panel": {
         "role": "neutral",
-        "displayName": "Rail Ink",
-        "canonical": "#151513",
+        "displayName": "Panel",
+        "canonical": "#ffffff",
         "tonalRamp": [
-          "#151513",
-          "#30302c",
-          "#50504a",
-          "#73726b",
-          "#98978f",
-          "#bdbcb4",
-          "#deddd6",
-          "#f7f6f1"
+          "#1d1d1f",
+          "#46464a",
+          "#626267",
+          "#86868b",
+          "#c7c7cc",
+          "#e2e2e4",
+          "#f5f5f7",
+          "#ffffff"
         ]
       }
     },
     "typographyMeta": {
       "display": {
         "displayName": "Display",
-        "purpose": "Page thesis and active artifact titles."
+        "purpose": "Page headings and primary workspace titles."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Operational explanation and context."
+        "purpose": "Operational controls, explanation, and context."
       },
       "data": {
-        "displayName": "Evidence Data",
-        "purpose": "Dates, proof IDs, state, and provenance."
+        "displayName": "Data Label",
+        "purpose": "Compact state, date, and provenance labels without a typeface change."
       }
     },
     "shadows": [
       {
-        "name": "proof-lift",
-        "value": "0 22px 60px -45px rgba(31,29,24,.65)",
-        "purpose": "Lift the main working proof from the paper field."
-      },
-      {
-        "name": "rail-lift",
-        "value": "0 22px 60px -45px rgba(0,0,0,.9)",
-        "purpose": "Separate the focused review rail."
-      },
-      {
-        "name": "action-glow",
-        "value": "0 8px 20px -12px var(--brand-primary)",
-        "purpose": "Emphasize the primary action only."
+        "name": "workspace-lift",
+        "value": "0 24px 65px -42px rgba(29,29,31,.28)",
+        "purpose": "Lift only a major working surface from the neutral field."
       }
     ],
     "motion": [
@@ -116,7 +106,7 @@
       "refersTo": "button-primary",
       "description": "Consequential forward action.",
       "html": "<button class=\"ds-btn-primary\">CREATE CAMPAIGN</button>",
-      "css": ".ds-btn-primary{min-height:40px;padding:10px 16px;border:0;border-radius:var(--radius-control,10px);background:var(--brand-primary,#ff5d46);color:var(--on-brand,#1a0d09);font:600 14px Archivo,sans-serif;transition:background-color 150ms ease-out,transform 150ms ease-out}.ds-btn-primary:hover{background:var(--brand-primary-strong,#e84531)}.ds-btn-primary:focus-visible{outline:2px solid var(--focus,#4d58d4);outline-offset:2px}.ds-btn-primary:active{transform:translateY(1px)}"
+      "css": ".ds-btn-primary{min-height:40px;padding:10px 16px;border:0;border-radius:var(--radius-control,8px);background:var(--brand-primary,#1d1d1f);color:var(--on-brand,#fff);font:600 14px Inter,sans-serif;transition:background-color 150ms ease-out,transform 150ms ease-out}.ds-btn-primary:hover{background:var(--brand-primary-strong,#000)}.ds-btn-primary:focus-visible{outline:2px solid var(--focus,#0066cc);outline-offset:2px}.ds-btn-primary:active{transform:translateY(1px)}"
     },
     {
       "name": "Secondary Button",
@@ -124,90 +114,68 @@
       "refersTo": "button-secondary",
       "description": "Available action below the primary hierarchy.",
       "html": "<button class=\"ds-btn-secondary\">VIEW PLAN</button>",
-      "css": ".ds-btn-secondary{min-height:40px;padding:10px 16px;border:1px solid var(--line-strong,#aaa69b);border-radius:var(--radius-control,10px);background:var(--surface-raised,#f8f6ef);color:var(--text,#1a1a18);font:600 14px Archivo,sans-serif;transition:background-color 150ms ease-out}.ds-btn-secondary:hover{background:var(--surface-hover,#e1ded5)}.ds-btn-secondary:focus-visible{outline:2px solid var(--focus,#4d58d4);outline-offset:2px}"
+      "css": ".ds-btn-secondary{min-height:40px;padding:10px 16px;border:1px solid var(--line-strong,#c7c7cc);border-radius:var(--radius-control,8px);background:var(--surface-raised,#fff);color:var(--text,#1d1d1f);font:600 14px Inter,sans-serif}.ds-btn-secondary:hover{background:var(--surface-hover,#f5f5f7)}.ds-btn-secondary:focus-visible{outline:2px solid var(--focus,#0066cc);outline-offset:2px}"
     },
     {
       "name": "Text Field",
       "kind": "input",
-      "description": "Quiet field with explicit focus.",
+      "description": "White field with neutral outline and explicit blue focus.",
       "html": "<input class=\"ds-field\" placeholder=\"Campaign title\">",
-      "css": ".ds-field{min-height:44px;padding:0 14px;border:1px solid var(--line-strong,#aaa69b);border-radius:var(--radius-control,10px);background:var(--surface-raised,#f8f6ef);color:var(--text,#1a1a18);font:400 14px Archivo,sans-serif}.ds-field::placeholder{color:var(--text-faint,#686660)}.ds-field:hover{background:var(--surface-hover,#e1ded5)}.ds-field:focus-visible{outline:2px solid var(--focus,#4d58d4);outline-offset:0}"
+      "css": ".ds-field{min-height:44px;padding:0 14px;border:1px solid var(--line-strong,#c7c7cc);border-radius:var(--radius-control,8px);background:var(--surface-raised,#fff);color:var(--text,#1d1d1f);font:400 14px Inter,sans-serif}.ds-field::placeholder{color:var(--text-faint,#626267)}.ds-field:hover{background:var(--surface-hover,#f5f5f7)}.ds-field:focus-visible{outline:2px solid var(--focus,#0066cc)}"
     },
     {
       "name": "Navigation Item",
       "kind": "nav",
-      "description": "Muted rail link with tonal active state.",
+      "description": "Muted graphite link with pale neutral active state.",
       "html": "<a class=\"ds-nav-item ds-active\" href=\"#\">OVERVIEW</a>",
-      "css": ".ds-nav-item{display:flex;align-items:center;min-height:40px;padding:0 12px;border-radius:10px;color:var(--nav-muted,#aaa9a3);font:400 14px Archivo,sans-serif;text-decoration:none}.ds-nav-item:hover,.ds-nav-item.ds-active{background:rgba(255,255,255,.1);color:var(--nav-text,#fff)}.ds-nav-item:focus-visible{outline:2px solid var(--focus,#4d58d4);outline-offset:0}"
+      "css": ".ds-nav-item{display:flex;align-items:center;min-height:40px;padding:0 12px;border-radius:8px;color:var(--nav-muted,#646468);font:400 14px Inter,sans-serif;text-decoration:none}.ds-nav-item:hover,.ds-nav-item.ds-active{background:var(--surface-hover,#f5f5f7);color:var(--nav-text,#1d1d1f)}.ds-nav-item.ds-active{font-weight:500}.ds-nav-item:focus-visible{outline:2px solid var(--focus,#0066cc)}"
     },
     {
       "name": "Status Mark",
       "kind": "chip",
-      "refersTo": "status-warning",
-      "description": "Text-first campaign state with supporting tone.",
-      "html": "<span class=\"ds-status\">COPY REVIEW</span>",
-      "css": ".ds-status{display:inline-flex;align-items:center;min-height:24px;padding:0 10px;border-radius:999px;background:var(--warning-soft,#f2dfb8);color:var(--warning-ink,#664b10);font:400 11px 'Fragment Mono',monospace;letter-spacing:.04em;text-transform:uppercase}"
-    },
-    {
-      "name": "Proof Row",
-      "kind": "custom",
-      "description": "Campaign evidence record with an active registration rule.",
-      "html": "<article class=\"ds-proof\"><time>SEP 17</time><div><strong>Autumn field notes</strong><p>Engaged 90d</p><small>PF-0917 · 2 NOTES · 4 SOURCES</small></div><span>COPY REVIEW</span></article>",
-      "css": ".ds-proof{display:grid;grid-template-columns:104px 1fr 144px;min-height:128px;border-left:3px solid var(--brand-primary,#ff5d46);border-bottom:1px solid var(--line,#cfcbc0);background:var(--surface-raised,#f8f6ef);color:var(--text,#1a1a18)}.ds-proof>*{display:flex;flex-direction:column;justify-content:center;padding:16px 20px}.ds-proof time,.ds-proof small{color:var(--text-faint,#686660);font:400 10px 'Fragment Mono',monospace;letter-spacing:.04em}.ds-proof strong{font:700 16px Archivo,sans-serif}.ds-proof p{margin:6px 0;color:var(--text-muted,#5f5e59);font:400 14px Archivo,sans-serif}"
-    },
-    {
-      "name": "Review Rail",
-      "kind": "card",
-      "description": "Sticky highest-leverage action and evidence summary.",
-      "html": "<aside class=\"ds-review\"><small>HIGHEST-LEVERAGE ACTION</small><h3>Resolve copy before design handoff.</h3><button>OPEN PROOF</button></aside>",
-      "css": ".ds-review{padding:20px;border-radius:var(--radius-panel,14px);background:var(--nav,#151513);color:var(--nav-text,#fff);font-family:Archivo,sans-serif}.ds-review small{color:var(--nav-muted,#aaa9a3);font-family:'Fragment Mono',monospace;letter-spacing:.06em}.ds-review h3{font-size:20px;line-height:1.2}.ds-review button{width:100%;min-height:40px;border:0;border-radius:10px;background:var(--brand-primary,#ff5d46);color:var(--on-brand,#1a0d09);font-weight:700}.ds-review button:focus-visible{outline:2px solid var(--focus,#4d58d4);outline-offset:2px}"
+      "description": "Text-first state with a quiet semantic surface.",
+      "html": "<span class=\"ds-status\">ACTIVE</span>",
+      "css": ".ds-status{display:inline-flex;align-items:center;min-height:24px;padding:0 10px;border-radius:999px;background:var(--brand-soft,#e8f1fb);color:var(--brand-ink,#004a94);font:500 11px Inter,sans-serif;letter-spacing:.04em;text-transform:uppercase}"
     }
   ],
   "narrative": {
-    "northStar": "The Proof Table",
-    "overview": "Campaign work appears as evidence under review, not as a generic analytics dashboard. Warm proof paper, ink-dark rails, one-pixel rules, registration coral, and editorial violet create a calm operational surface where sources, notes, state, and next action remain physically connected. The system is dense but never frantic. Hierarchy comes from scale, ruling, tonal layers, and attached annotations rather than card proliferation. Tenant identity enters through one validated presentation object and CSS variables; product behavior never forks with the theme.",
+    "northStar": "Quiet Operations",
+    "overview": "A cool neutral workspace with white navigation and panels, graphite typography, near-black actions, blue interaction cues, and restrained rules. It follows the user-selected visual character of the reference product through an original, semantic, white-label-ready implementation.",
     "keyCharacteristics": [
-      "Warm paper field with a fixed dark operational rail.",
-      "Campaign rows carry proof IDs, sources, notes, audience, date, and text status.",
-      "Coral registers the active artifact and consequential action; violet supports secondary active state.",
-      "Mobile becomes action-first: review rail, proofs, then compact metrics.",
-      "White-label themes fail safely to the accessible default palette."
+      "Cool off-white application field with white navigation and work surfaces.",
+      "Inter typography throughout the operational interface.",
+      "Graphite primary actions and blue interaction cues.",
+      "Pale gray active navigation with accessible text contrast.",
+      "Tenant palettes continue to flow through validated semantic tokens."
     ],
     "rules": [
       {
-        "name": "The Registration Rule",
-        "body": "Coral identifies the current consequence or next action. Do not scatter it across passive decoration.",
+        "name": "The Black Action Rule",
+        "body": "Primary actions use graphite rather than a bright brand fill.",
+        "section": "colors"
+      },
+      {
+        "name": "The Blue Interaction Rule",
+        "body": "Blue communicates interaction or state, never passive decoration.",
         "section": "colors"
       },
       {
         "name": "The Contrast Gate Rule",
-        "body": "Tenant palettes must pass the semantic contrast validator. Unsafe primary, hover, danger, focus, or text pairs fall back to the default presentation.",
-        "section": "colors"
-      },
-      {
-        "name": "The Evidence Type Rule",
-        "body": "Mono type is for traceable operational data, never for long prose or personality styling.",
-        "section": "typography"
-      },
-      {
-        "name": "The Flat-by-Default Rule",
-        "body": "Add shadows only when an artifact must sit above the working field; never shadow every container.",
-        "section": "elevation"
+        "body": "Tenant palettes must pass semantic text and focus contrast validation.",
+        "section": "accessibility"
       }
     ],
     "dos": [
-      "Do attach evidence, provenance, status, and action to the campaign artifact they describe.",
-      "Do preserve action-first ordering on mobile.",
-      "Do keep tenant identity in BrandPresentation, project it through CSS variables, and run contrast validation.",
-      "Do use semantic landmarks, visible focus, labelled controls, text status, and reduced-motion behavior.",
-      "Do use the design seed 0a100401 when extending this visual lineage."
+      "Keep dense operational information calm and scannable.",
+      "Use the shared semantic tokens on client, admin, designer, and authentication surfaces.",
+      "Keep tenant branding data-driven and contrast validated.",
+      "Use visible focus, labelled controls, and text-first status."
     ],
     "donts": [
-      "Don't regress into a generic KPI-card dashboard or disconnected recommendation cards.",
-      "Don't fork code for tenant branding or hardcode customer identity inside reusable components.",
-      "Don't use faint text below 4.5:1, invisible focus below 3:1, or fixed foreground colors over tenant-controlled backgrounds.",
-      "Don't let secondary metrics appear before the highest-leverage action on mobile.",
-      "Don't use color-only state or decorative accents without operational meaning."
+      "Do not reintroduce orange or coral as the default theme.",
+      "Do not use a dark default navigation rail.",
+      "Do not copy proprietary source or assets from the reference product.",
+      "Do not use low-contrast gray text or decorative action glows."
     ]
   }
 }

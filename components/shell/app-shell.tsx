@@ -40,7 +40,7 @@ export function AppShell({
         Skip to content
       </a>
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-[15.5rem] border-r border-[var(--line)] bg-[var(--nav)] text-[var(--nav-text)] lg:flex lg:flex-col">
-        <div className="flex h-[4.75rem] items-center border-b border-white/10 px-5">
+        <div className="flex h-[4.75rem] items-center border-b border-[var(--line)] px-5">
           <BrandMark brand={presentation} />
         </div>
         <NavigationList
@@ -48,17 +48,17 @@ export function AppShell({
           label={`${contextLabel} navigation`}
           variant="sidebar"
         />
-        <div className="border-t border-white/10 p-4">
+        <div className="border-t border-[var(--line)] p-4">
           <p className="font-[family-name:var(--font-data)] text-[0.65rem] tracking-[0.08em] text-[var(--nav-muted)] uppercase">
             {presentation.demoLabel}
           </p>
-          <p className="mt-1 text-sm font-semibold text-white">
+          <p className="mt-1 text-sm font-semibold text-[var(--nav-text)]">
             {presentation.demoDescription}
           </p>
           <form action={signOut} className="mt-4">
             <button
               type="submit"
-              className="text-xs font-semibold text-[var(--nav-muted)] underline underline-offset-4 hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
+              className="text-xs font-semibold text-[var(--nav-muted)] underline underline-offset-4 hover:text-[var(--nav-text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
             >
               Sign out
             </button>

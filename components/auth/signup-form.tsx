@@ -15,29 +15,29 @@ export function SignupForm() {
   return (
     <form action={action} className="mt-9 grid gap-5 sm:grid-cols-2">
       <label className="block sm:col-span-2">
-        <span className="mb-2 block text-sm font-medium text-white/78">
+        <span className="mb-2 block text-sm font-medium text-[var(--text)]">
           Name
         </span>
         <TextField name="name" autoComplete="name" required />
         {state.fieldErrors?.name && (
-          <span className="mt-2 block text-sm text-[#ffb4aa]">
+          <span className="mt-2 block text-sm text-[var(--danger-ink)]">
             {state.fieldErrors.name[0]}
           </span>
         )}
       </label>
       <label className="block sm:col-span-2">
-        <span className="mb-2 block text-sm font-medium text-white/78">
+        <span className="mb-2 block text-sm font-medium text-[var(--text)]">
           Work email
         </span>
         <TextField name="email" type="email" autoComplete="email" required />
         {state.fieldErrors?.email && (
-          <span className="mt-2 block text-sm text-[#ffb4aa]">
+          <span className="mt-2 block text-sm text-[var(--danger-ink)]">
             {state.fieldErrors.email[0]}
           </span>
         )}
       </label>
       <label className="block sm:col-span-2">
-        <span className="mb-2 block text-sm font-medium text-white/78">
+        <span className="mb-2 block text-sm font-medium text-[var(--text)]">
           Password
         </span>
         <TextField
@@ -48,7 +48,7 @@ export function SignupForm() {
           required
         />
         {state.fieldErrors?.password && (
-          <span className="mt-2 block text-sm text-[#ffb4aa]">
+          <span className="mt-2 block text-sm text-[var(--danger-ink)]">
             {state.fieldErrors.password[0]}
           </span>
         )}

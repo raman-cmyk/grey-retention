@@ -6,7 +6,7 @@ export default function SignupPage() {
       <h1 className="font-[family-name:var(--font-display)] text-4xl leading-none font-bold tracking-[-0.035em]">
         Create workspace.
       </h1>
-      <p className="mt-4 text-sm leading-6 text-white/62">
+      <p className="mt-4 text-sm leading-6 text-[var(--text-muted)]">
         Create your account. Workspace provisioning follows confirmation.
       </p>
       <SignupForm />

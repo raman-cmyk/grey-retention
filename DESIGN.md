@@ -1,49 +1,41 @@
 ---
 name: Grey Retention
-description: A calm proof table for accountable retention-campaign operations.
+description: A quiet, neutral operating workspace for retention teams.
 colors:
-  registration-coral: '#ff5d46'
-  registration-coral-strong: '#e84531'
-  editorial-violet: '#7c8cff'
-  editorial-violet-soft: '#dedffc'
-  editorial-violet-ink: '#30366c'
-  proof-paper: '#ebe8df'
-  raised-proof: '#f8f6ef'
-  proof-hover: '#e1ded5'
-  rail-ink: '#151513'
-  primary-ink: '#1a1a18'
-  muted-ink: '#5f5e59'
-  faint-ink: '#686660'
-  rule: '#cfcbc0'
-  rule-strong: '#aaa69b'
-  focus: '#4d58d4'
-  warning-paper: '#f2dfb8'
-  warning-ink: '#664b10'
-  danger: '#b3261e'
-  danger-strong: '#8e1b15'
-  danger-paper: '#f4d5d1'
-  danger-ink: '#7d211b'
+  workspace: '#f9f9fb'
+  panel: '#ffffff'
+  panel-hover: '#f5f5f7'
+  graphite: '#1d1d1f'
+  graphite-muted: '#46464a'
+  graphite-faint: '#626267'
+  rule: '#e2e2e4'
+  rule-strong: '#c7c7cc'
+  action: '#1d1d1f'
+  action-hover: '#000000'
+  interaction-blue: '#0066cc'
+  interaction-blue-soft: '#e8f1fb'
+  interaction-blue-ink: '#004a94'
 typography:
   display:
-    fontFamily: 'Archivo, sans-serif'
+    fontFamily: 'Inter, sans-serif'
     fontSize: 'clamp(2.25rem, 4vw, 3rem)'
     fontWeight: 700
     lineHeight: 1
     letterSpacing: '-0.035em'
   body:
-    fontFamily: 'Archivo, sans-serif'
+    fontFamily: 'Inter, sans-serif'
     fontSize: '0.875rem'
     fontWeight: 400
     lineHeight: 1.5
   data:
-    fontFamily: 'Fragment Mono, monospace'
+    fontFamily: 'Inter, sans-serif'
     fontSize: '0.68rem'
-    fontWeight: 400
+    fontWeight: 500
     lineHeight: 1.2
-    letterSpacing: '0.06em'
+    letterSpacing: '0.04em'
 rounded:
-  control: '10px'
-  panel: '14px'
+  control: '8px'
+  panel: '16px'
   pill: '999px'
 spacing:
   xs: '8px'
@@ -53,152 +45,108 @@ spacing:
   xl: '32px'
 components:
   button-primary:
-    backgroundColor: '{colors.registration-coral}'
-    textColor: '{colors.primary-ink}'
+    backgroundColor: '{colors.action}'
+    textColor: '#ffffff'
     rounded: '{rounded.control}'
     padding: '10px 16px'
     height: '40px'
   button-secondary:
-    backgroundColor: '{colors.raised-proof}'
-    textColor: '{colors.primary-ink}'
+    backgroundColor: '{colors.panel}'
+    textColor: '{colors.graphite}'
     rounded: '{rounded.control}'
     padding: '10px 16px'
     height: '40px'
-  status-warning:
-    backgroundColor: '{colors.warning-paper}'
-    textColor: '{colors.warning-ink}'
-    typography: '{typography.data}'
-    rounded: '{rounded.pill}'
-    padding: '6px 10px'
 ---
 
 # Design System: Grey Retention
 
 ## Overview
 
-**Creative North Star: "The Proof Table"**
+**Creative North Star: “Quiet Operations”**
 
-Campaign work appears as evidence under review, not as a generic analytics dashboard. Warm proof paper, ink-dark rails, one-pixel rules, registration coral, and editorial violet create a calm operational surface where sources, notes, state, and next action remain physically connected.
+Grey Retention uses the visual language requested from the reference product: a cool off-white workspace, white navigation and panels, graphite typography, near-black primary actions, blue interaction cues, and restrained borders. The interface should feel like a composed operating tool rather than a decorated marketing surface.
 
-The system is dense but never frantic. Hierarchy comes from scale, ruling, tonal layers, and attached annotations rather than card proliferation. Tenant identity enters through one validated presentation object and CSS variables; product behavior never forks with the theme.
+This is a clean-room token implementation. The reference is visual evidence only; components, layout code, and product behavior remain original and white-label-ready.
 
-**Key Characteristics:**
+## Core characteristics
 
-- Warm paper field with a fixed dark operational rail.
-- Campaign rows carry proof IDs, sources, notes, audience, date, and text status.
-- Coral registers the active artifact and consequential action; violet supports secondary active state.
-- Mobile becomes action-first: review rail, proofs, then compact metrics.
-- White-label themes fail safely to the accessible default palette.
+- Cool `#f9f9fb` application field with white navigation and work surfaces.
+- Inter throughout for a compact, familiar operational rhythm.
+- Near-black buttons for consequential actions; blue is reserved for links, focus, selection, and system cues.
+- Pale gray active navigation instead of a dark rail or colored marker.
+- One-pixel neutral rules, 8px controls, and 16px containers.
+- Tenant identity continues to enter through `BrandPresentation` and semantic CSS variables.
 
-## Colors
+## Color rules
 
-The palette behaves like marked-up editorial proof: mostly paper and ink, with accents used as registration signals rather than decoration.
+### Neutrals
 
-### Primary
+- **Workspace** (`#f9f9fb`): page background.
+- **Panel** (`#ffffff`): navigation, cards, inputs, and raised work areas.
+- **Panel hover** (`#f5f5f7`): hover and current navigation state.
+- **Graphite** (`#1d1d1f`): headings and primary text.
+- **Muted / faint graphite** (`#46464a` / `#626267`): supporting text that remains AA-readable.
+- **Rule / strong rule** (`#e2e2e4` / `#c7c7cc`): structural separation and control outlines.
 
-- **Registration Coral** (`#ff5d46`): Primary actions, active proof registration, and attention marks.
-- **Coral Strong** (`#e84531`): Primary hover state.
+### Actions and interaction
 
-### Secondary
+- **Action** (`#1d1d1f`): primary buttons and the default logo tile.
+- **Action hover** (`#000000`): primary hover state.
+- **Interaction blue** (`#0066cc`): links, keyboard focus, and active system cues.
+- **Blue soft / ink** (`#e8f1fb` / `#004a94`): selected and informational states.
 
-- **Editorial Violet** (`#7c8cff`): Secondary active state and notification cues.
-- **Violet Proof / Ink** (`#dedffc` / `#30366c`): Accessible paired treatment for active status.
+**The Black Action Rule.** Primary actions use graphite, not a bright brand fill. Tenant themes may replace the action pair only when the contrast validator accepts them.
 
-### Neutral
-
-- **Proof Paper** (`#ebe8df`): Application field.
-- **Raised Proof** (`#f8f6ef`): Campaign artifacts and controls.
-- **Rail Ink** (`#151513`): Persistent navigation and high-leverage review surfaces.
-- **Primary / Muted / Faint Ink** (`#1a1a18`, `#5f5e59`, `#686660`): Ordered text hierarchy. Faint ink remains WCAG AA for normal text on both paper surfaces.
-- **Rule / Strong Rule** (`#cfcbc0`, `#aaa69b`): Structural separation.
-
-**The Registration Rule.** Coral identifies the current consequence or next action. Do not scatter it across passive decoration.
-
-**The Contrast Gate Rule.** Tenant palettes must pass the semantic contrast validator. Unsafe primary, hover, danger, focus, or text pairs fall back to the default presentation.
+**The Blue Interaction Rule.** Blue communicates interaction or system state. It is not background decoration.
 
 ## Typography
 
-**Display Font:** Archivo with sans-serif fallback  
-**Body Font:** Archivo with sans-serif fallback  
-**Label/Mono Font:** Fragment Mono with monospace fallback
+Inter is the display, body, and data face. Hierarchy comes from size and weight rather than switching to a decorative or monospace face.
 
-**Character:** Archivo gives headings and controls direct operational weight. Fragment Mono makes dates, proof IDs, evidence counts, and uppercase labels feel registered and inspectable.
+- **Display:** 700 weight, tight but never below `-0.04em` tracking.
+- **Title:** 600–700 weight at 1–1.25rem.
+- **Body:** 400 weight at 0.875–1rem with 1.5 line height.
+- **Data label:** 500 weight at 0.68rem with modest uppercase tracking where the label represents state or provenance.
 
-### Hierarchy
+## Layout and surfaces
 
-- **Display** (700, `clamp(2.25rem, 4vw, 3rem)`, 1): Page thesis and primary artifact title.
-- **Title** (700, 1–1.25rem): Proof names and review actions.
-- **Body** (400, 0.875–1rem, 1.5): Explanations and audience context; keep long copy near 65 characters.
-- **Data label** (400, 0.6–0.68rem, 0.04–0.08em, uppercase): Dates, IDs, evidence, state, and provenance.
+Desktop keeps a fixed 15.5rem navigation rail and a 4.75rem sticky header. Both are white with neutral rules. Main content sits on the cool workspace field and caps at the established readable widths.
 
-**The Evidence Type Rule.** Mono type is for traceable operational data, never for long prose or personality styling.
-
-## Layout
-
-Desktop uses a `15.5rem` fixed navigation rail, a `4.75rem` sticky header, a wide proof workspace, and a `22rem` sticky review rail. The campaign date strip spans the workspace before the active-proof grid. Main content caps at `92rem`.
-
-Panels use 20–24px internal spacing and 20px major gaps. One-pixel rules carry alignment through headers, rows, evidence, and metrics. At mobile widths the date strip scrolls horizontally, the review action moves before the proof list, proof statuses remain textual, and metrics stay in one compact three-column strip.
-
-## Elevation & Depth
-
-The system is flat by default. Tonal contrast and rules create structure; broad low-opacity shadows lift only major working artifacts and the dark review rail. Primary buttons receive a restrained coral glow to emphasize action.
-
-### Shadow Vocabulary
-
-- **Proof lift** (`0 22px 60px -45px rgba(31,29,24,.65)`): Main proof container.
-- **Rail lift** (`0 22px 60px -45px rgba(0,0,0,.9)`): Dark review rail.
-- **Action glow** (`0 8px 20px -12px var(--brand-primary)`): Primary button only.
-
-**The Flat-by-Default Rule.** Add shadows only when an artifact must sit above the working field; never shadow every container.
-
-## Shapes
-
-Controls use 10px corners, panels use 14px corners, and statuses use full pills. One-pixel rules and square internal row intersections keep the rounded outer shells from becoming soft card stacks. The active proof gains a straight coral registration rule on its leading edge.
+Panels are white and mostly flat. Use either a one-pixel border or a broad, low-opacity shadow when a major working object needs elevation—never both by habit. Mobile navigation uses the same white surface and active-state treatment as desktop.
 
 ## Components
 
 ### Buttons
 
-- **Shape:** 10px radius; minimum height 40px.
-- **Primary:** Registration coral with accessible dark text; strong coral on hover.
-- **Focus:** Two-pixel validated focus ring with paper offset.
-- **Secondary / Quiet:** Raised proof or transparent treatment; hierarchy stays below primary action.
-- **Danger:** Configurable danger and on-danger tokens; both resting and hover pairs require AA contrast.
-
-### Status marks
-
-Compact mono uppercase pills combine text and tone. Never represent campaign state with color alone.
-
-### Proof table
-
-Each row binds date, title, audience, proof ID, note count, source count, state, and registration marker. The selected row receives a coral leading rule and connects to the review rail's evidence summary and action.
-
-### Cards / Containers
-
-Use raised proof for the active artifact, rail ink for the focused review surface, 14px outer radius, and strong internal rules. Avoid unrelated equal-weight cards.
-
-### Inputs / Fields
-
-Fields use raised proof, 10px corners, a strong inset rule, and the shared validated focus color. Placeholder text uses faint ink and must retain AA contrast.
+- Primary: graphite fill, white label, 8px radius, no colored glow.
+- Secondary: white fill with strong neutral inset rule.
+- Quiet: transparent with pale gray hover.
+- Focus: 2px interaction-blue ring with visible offset.
 
 ### Navigation
 
-Desktop navigation is a fixed ink rail with muted default links and a tonal active row. All links use the shared validated focus token. Mobile navigation is a labelled button with real `aria-expanded` state and a dismissing popover.
+Navigation defaults to accessible muted graphite. Hover and current routes use `#f5f5f7` with full graphite text. Current state remains visible without relying on color alone through a modest weight increase.
 
-## Do's and Don'ts
+### Inputs
 
-### Do:
+Inputs use white fill, 8px corners, strong neutral outline, readable placeholders, and the shared blue focus ring.
 
-- **Do** attach evidence, provenance, status, and action to the campaign artifact they describe.
-- **Do** preserve action-first ordering on mobile.
-- **Do** keep tenant identity in `BrandPresentation`, project it through CSS variables, and run contrast validation.
-- **Do** use semantic landmarks, visible focus, labelled controls, text status, and reduced-motion behavior.
-- **Do** use the design seed `0a100401` when extending this visual lineage.
+### Status marks
 
-### Don't:
+Compact text-first pills may use blue, amber, red, or neutral soft surfaces. Status is never encoded by color alone.
 
-- **Don't** regress into a generic KPI-card dashboard or disconnected recommendation cards.
-- **Don't** fork code for tenant branding or hardcode customer identity inside reusable components.
-- **Don't** use faint text below 4.5:1, invisible focus below 3:1, or fixed foreground colors over tenant-controlled backgrounds.
-- **Don't** let secondary metrics appear before the highest-leverage action on mobile.
-- **Don't** use color-only state or decorative accents without operational meaning.
+## Accessibility and white-label rules
+
+- Preserve WCAG 2.2 AA contrast for text and focus indicators.
+- Keep semantic landmarks, labelled controls, keyboard operation, reduced motion, and text status.
+- Project tenant themes through `BrandPresentation`; never fork shared components for a customer palette.
+- Reject tenant palettes that fail the shared contrast gate.
+- Do not reintroduce orange/coral as the default theme.
+
+## Do / do not
+
+Do keep dense operational information calm and scannable. Do use blue only where interaction or state earns it. Do keep navigation and authentication visually continuous with the workspace.
+
+Do not recreate proprietary source or assets from the reference product. Do not use a dark default sidebar, colored action glows, generic gradient decoration, or low-contrast gray text.
+
+Design seed: `6f728f1c`.

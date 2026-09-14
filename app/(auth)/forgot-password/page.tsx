@@ -7,12 +7,12 @@ export default function ForgotPasswordPage() {
       <h1 className="font-[family-name:var(--font-display)] text-4xl leading-none font-bold tracking-[-0.035em]">
         Reset access.
       </h1>
-      <p className="mt-4 text-sm leading-6 text-white/62">
+      <p className="mt-4 text-sm leading-6 text-[var(--text-muted)]">
         Enter your account email. We will send a time-limited reset link.
       </p>
       <ResetRequestForm />
       <Link
-        className="mt-5 inline-block text-sm text-white/65 underline hover:text-white"
+        className="mt-5 inline-block text-sm text-[var(--brand-secondary)] underline hover:text-[var(--brand-ink)]"
         href="/login"
       >
         Back to sign in

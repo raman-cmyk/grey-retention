@@ -32,12 +32,12 @@ export function SignInPanel({
       <h1 className="font-[family-name:var(--font-display)] text-4xl leading-none font-bold tracking-[-0.035em]">
         {title}
       </h1>
-      <p className="mt-4 max-w-sm text-sm leading-6 text-white/62">
+      <p className="mt-4 max-w-sm text-sm leading-6 text-[var(--text-muted)]">
         {description}
       </p>
       <form action={formAction} className="mt-9 space-y-5">
         <label className="block">
-          <span className="mb-2 block text-sm font-medium text-white/78">
+          <span className="mb-2 block text-sm font-medium text-[var(--text)]">
             Email
           </span>
           <TextField
@@ -53,14 +53,14 @@ export function SignInPanel({
           {state.fieldErrors?.email && (
             <span
               id="email-error"
-              className="mt-2 block text-sm text-[#ffb4aa]"
+              className="mt-2 block text-sm text-[var(--danger-ink)]"
             >
               {state.fieldErrors.email[0]}
             </span>
           )}
         </label>
         <label className="block">
-          <span className="mb-2 block text-sm font-medium text-white/78">
+          <span className="mb-2 block text-sm font-medium text-[var(--text)]">
             Password
           </span>
           <TextField
@@ -76,7 +76,7 @@ export function SignInPanel({
           {state.fieldErrors?.password && (
             <span
               id="password-error"
-              className="mt-2 block text-sm text-[#ffb4aa]"
+              className="mt-2 block text-sm text-[var(--danger-ink)]"
             >
               {state.fieldErrors.password[0]}
             </span>
@@ -88,7 +88,7 @@ export function SignInPanel({
       </form>
       <AuthFeedback state={state} />
       <Link
-        className="mt-5 inline-block text-sm text-white/65 underline hover:text-white"
+        className="mt-5 inline-block text-sm text-[var(--brand-secondary)] underline hover:text-[var(--brand-ink)]"
         href={resetHref}
       >
         Forgot password?

@@ -9,7 +9,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary:
-          'bg-[var(--brand-primary)] text-[var(--on-brand)] shadow-[0_8px_20px_-12px_var(--brand-primary)] hover:bg-[var(--brand-primary-strong)]',
+          'bg-[var(--brand-primary)] text-[var(--on-brand)] hover:bg-[var(--brand-primary-strong)]',
         secondary:
           'bg-[var(--surface-raised)] text-[var(--text)] ring-1 ring-inset ring-[var(--line-strong)] hover:bg-[var(--surface-hover)]',
         quiet:

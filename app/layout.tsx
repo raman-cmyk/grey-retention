@@ -1,21 +1,14 @@
 import type { Metadata } from 'next'
-import { Archivo, Fragment_Mono } from 'next/font/google'
+import { Inter } from 'next/font/google'
 import {
   brandCssVariables,
   defaultBrandPresentation
 } from '@/lib/branding/presentation'
 import './globals.css'
 
-const archivo = Archivo({
-  variable: '--font-archivo',
+const inter = Inter({
+  variable: '--font-inter',
   subsets: ['latin'],
-  display: 'swap'
-})
-
-const fragmentMono = Fragment_Mono({
-  variable: '--font-fragment-mono',
-  subsets: ['latin'],
-  weight: '400',
   display: 'swap'
 })
 
@@ -30,19 +23,19 @@ export const metadata: Metadata = {
 
 /*
 THESIS: Campaign work becomes evidence under review; refuse generic KPI-card dashboard composition.
-OWN-WORLD: Warm proof surface, ink-dark rails, registration coral, editorial violet, attached annotations.
+OWN-WORLD: Cool neutral workspace, white navigation and panels, near-black actions, blue interaction cues.
 STORY: Operator sees what needs attention, opens one campaign proof, traces evidence, then acts.
 FIRST VIEWPORT: Compact navigation, month strip, generous active proof table, fixed review rail; primary action attached to proof.
-FORM: Proof Table, grounded direction 1, seed 0a100401.
+FORM: Quiet Operations, reference-neutral direction, seed 6f728f1c.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 */
 export default function RootLayout({
   children
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${archivo.variable} ${fragmentMono.variable}`}>
+    <html lang="en" className={inter.variable}>
       <body
-        data-design-seed="0a100401"
+        data-design-seed="6f728f1c"
         style={
           brandCssVariables(defaultBrandPresentation) as React.CSSProperties
         }

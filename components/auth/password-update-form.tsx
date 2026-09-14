@@ -15,7 +15,7 @@ export function PasswordUpdateForm() {
   return (
     <form action={action} className="mt-9 space-y-5">
       <label className="block">
-        <span className="mb-2 block text-sm font-medium text-white/78">
+        <span className="mb-2 block text-sm font-medium text-[var(--text)]">
           New password
         </span>
         <TextField
@@ -27,7 +27,7 @@ export function PasswordUpdateForm() {
         />
       </label>
       <label className="block">
-        <span className="mb-2 block text-sm font-medium text-white/78">
+        <span className="mb-2 block text-sm font-medium text-[var(--text)]">
           Confirm password
         </span>
         <TextField
