@@ -4,19 +4,19 @@ This file is the durable cross-task memory. Every implementation task must updat
 
 ## Current state
 
-| ID      | Workstream                             | Depends on       | Status  | Owner/task            | Verification                                                                                     | Notes                                                                |
-| ------- | -------------------------------------- | ---------------- | ------- | --------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| FND-001 | Repository foundation                  | —                | review  | root integration task | Frozen install; format/lint/typecheck; 8 tests; 26-route build; Playwright 4/4; Impeccable PASS. | Database reset/pgTAP pending CI because local Docker is unavailable. |
-| IAM-001 | Auth, tenancy, RLS                     | FND-001          | blocked | unassigned            | —                                                                                                | Starts after foundation.                                             |
-| UI-001  | Design system and shells               | FND-001          | blocked | unassigned            | —                                                                                                | Can parallel IAM.                                                    |
-| CAM-001 | Campaign/calendar domain               | IAM-001, UI-001  | blocked | unassigned            | —                                                                                                | P0 vertical slice.                                                   |
-| AI-001  | Prompt engine, Brand Truth, GROS       | IAM-001          | blocked | unassigned            | —                                                                                                | Fake provider first.                                                 |
-| INT-001 | Queue and Klaviyo integration          | IAM-001          | blocked | unassigned            | —                                                                                                | Fixture adapter first.                                               |
-| OPS-001 | Admin core, packages, jobs             | IAM-001, UI-001  | blocked | unassigned            | —                                                                                                | Must consume shared contracts.                                       |
-| REF-001 | References and competitor intelligence | CAM-001, INT-001 | blocked | unassigned            | —                                                                                                | P1 after campaign IDs stabilize.                                     |
-| DSG-001 | Designer workflow                      | CAM-001, IAM-001 | blocked | unassigned            | —                                                                                                | Uses Storage policies.                                               |
-| SUP-001 | Team, settings, holidays, support      | IAM-001, UI-001  | blocked | unassigned            | —                                                                                                | Mostly independent after M1.                                         |
-| QUA-001 | Integration, E2E, deployment           | all P0           | blocked | unassigned            | —                                                                                                | One integration owner.                                               |
+| ID      | Workstream                             | Depends on       | Status      | Owner/task            | Verification                                                                                                                       | Notes                                                                                                         |
+| ------- | -------------------------------------- | ---------------- | ----------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| FND-001 | Repository foundation                  | —                | complete    | root integration task | Frozen install; format/lint/typecheck; 8 tests; 26-route build; Playwright 4/4; Impeccable PASS; CI verify/browser/database green. | Commit `dc8a429`; [CI run 34826503699](https://github.com/lookitsme/grey-retention/actions/runs/34826503699). |
+| IAM-001 | Auth, tenancy, RLS                     | FND-001          | in_progress | root integration task | —                                                                                                                                  | Active next build lane.                                                                                       |
+| UI-001  | Design system and shells               | FND-001          | ready       | unassigned            | Foundation includes validated theme, primitives, responsive role shells, and smoke coverage.                                       | Complete remaining shared states/components after IAM contracts stabilize.                                    |
+| CAM-001 | Campaign/calendar domain               | IAM-001, UI-001  | blocked     | unassigned            | —                                                                                                                                  | P0 vertical slice.                                                                                            |
+| AI-001  | Prompt engine, Brand Truth, GROS       | IAM-001          | blocked     | unassigned            | —                                                                                                                                  | Fake provider first.                                                                                          |
+| INT-001 | Queue and Klaviyo integration          | IAM-001          | blocked     | unassigned            | —                                                                                                                                  | Fixture adapter first.                                                                                        |
+| OPS-001 | Admin core, packages, jobs             | IAM-001, UI-001  | blocked     | unassigned            | —                                                                                                                                  | Must consume shared contracts.                                                                                |
+| REF-001 | References and competitor intelligence | CAM-001, INT-001 | blocked     | unassigned            | —                                                                                                                                  | P1 after campaign IDs stabilize.                                                                              |
+| DSG-001 | Designer workflow                      | CAM-001, IAM-001 | blocked     | unassigned            | —                                                                                                                                  | Uses Storage policies.                                                                                        |
+| SUP-001 | Team, settings, holidays, support      | IAM-001, UI-001  | blocked     | unassigned            | —                                                                                                                                  | Mostly independent after M1.                                                                                  |
+| QUA-001 | Integration, E2E, deployment           | all P0           | blocked     | unassigned            | —                                                                                                                                  | One integration owner.                                                                                        |
 
 Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
@@ -39,7 +39,7 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 | Money         | Integer micro-USD internally                              | Avoids floating-point cost errors.                                 |
 | IDs           | UUID primary keys; external IDs in unique scoped columns  | Stable internal identity and provider reconciliation.              |
 
-Confirmed: original replacement visual world, white-label-first architecture, code-first build path, DRY shared implementation. Direction selection is in progress under Impeccable seed `0a100401`.
+Confirmed: original replacement visual world, white-label-first architecture, code-first build path, DRY shared implementation. The selected Impeccable direction uses seed `0a100401`; its durable contract is `DESIGN.md` plus `.impeccable/design.json`.
 
 ## Migration allocation
 
@@ -75,6 +75,17 @@ Append entries using this exact shape:
 - Known issues:
 - Next consumer:
 ```
+
+### 2026-09-14 — FND-001 — root integration task
+
+- Status: complete
+- Branch/worktree: `main` / `/Users/able/Documents/ChatGPT/Grey Retention`
+- Commit(s): `dc8a429`
+- Changed contracts: Strict Next.js/TypeScript app; role route groups and shells; typed result/error/logging/id/time/money/provider/job/status helpers; validated white-label `BrandPresentation`; Supabase SSR boundary; CI and test commands; `DESIGN.md` and `.impeccable/design.json`.
+- Migrations: `20260914000000_foundation.sql`
+- Verification run: `pnpm install --frozen-lockfile`; `pnpm verify` (3 files, 8 tests; 26-route production build); `pnpm test:e2e` (4/4); Impeccable detector/review PASS; GitHub CI 34826503699 verify/browser/database jobs green, including Supabase reset and pgTAP.
+- Known issues: GitHub warns that v4 setup actions target deprecated Node 20 internally; runners force Node 24 and all jobs pass. Local database verification requires Docker, so CI remains authoritative on this host.
+- Next consumer: IAM-001, then remaining UI-001 states against stable request-context contracts.
 
 ## Release checklist
 
