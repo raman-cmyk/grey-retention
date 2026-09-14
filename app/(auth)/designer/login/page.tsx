@@ -5,6 +5,7 @@ export default function DesignerLoginPage() {
     <SignInPanel
       title="Your proofs are ready."
       description="Review assigned campaign context, submit design work, and respond to feedback."
+      surface="designer"
       resetHref="/forgot-password"
     />
   )

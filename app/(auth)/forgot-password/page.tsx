@@ -1,6 +1,5 @@
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { TextField } from '@/components/ui/text-field'
+import { ResetRequestForm } from '@/components/auth/reset-request-form'
 
 export default function ForgotPasswordPage() {
   return (
@@ -9,19 +8,9 @@ export default function ForgotPasswordPage() {
         Reset access.
       </h1>
       <p className="mt-4 text-sm leading-6 text-white/62">
-        Enter account email. Reset link delivery arrives in IAM-001.
+        Enter your account email. We will send a time-limited reset link.
       </p>
-      <form className="mt-9 space-y-5">
-        <label className="block">
-          <span className="mb-2 block text-sm font-medium text-white/78">
-            Email
-          </span>
-          <TextField name="email" type="email" autoComplete="email" required />
-        </label>
-        <Button className="w-full" type="submit">
-          Request reset link
-        </Button>
-      </form>
+      <ResetRequestForm />
       <Link
         className="mt-5 inline-block text-sm text-white/65 underline hover:text-white"
         href="/login"

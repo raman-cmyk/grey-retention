@@ -1,11 +1,13 @@
 import { AppShell } from '@/components/shell/app-shell'
 import { designerNavigation } from '@/components/shell/nav-data'
+import { requireRequestContext } from '@/features/auth/application/request-context'
 
-export default function DesignerLayout({
+export default async function DesignerLayout({
   children
 }: {
   children: React.ReactNode
 }) {
+  await requireRequestContext('designer')
   return (
     <AppShell
       navigation={designerNavigation}

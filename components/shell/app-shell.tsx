@@ -7,6 +7,7 @@ import {
   type BrandPresentation
 } from '@/lib/branding/presentation'
 import type { NavigationItem } from './nav-data'
+import { signOut } from '@/features/auth/presentation/actions'
 import { MobileNavigation } from './mobile-navigation'
 import { NavigationList } from './navigation-list'
 
@@ -54,6 +55,14 @@ export function AppShell({
           <p className="mt-1 text-sm font-semibold text-white">
             {presentation.demoDescription}
           </p>
+          <form action={signOut} className="mt-4">
+            <button
+              type="submit"
+              className="text-xs font-semibold text-[var(--nav-muted)] underline underline-offset-4 hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
+            >
+              Sign out
+            </button>
+          </form>
         </div>
       </aside>
 

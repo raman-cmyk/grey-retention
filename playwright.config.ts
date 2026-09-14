@@ -17,7 +17,8 @@ export default defineConfig({
     { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } }
   ],
   webServer: {
-    command: 'pnpm exec next dev --hostname 127.0.0.1 --port 3100',
+    command:
+      'AUTH_MODE=demo pnpm exec next dev --hostname 127.0.0.1 --port 3100',
     url: `${baseURL}/login`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000

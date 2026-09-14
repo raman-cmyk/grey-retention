@@ -1,5 +1,4 @@
-import { Button } from '@/components/ui/button'
-import { TextField } from '@/components/ui/text-field'
+import { SignupForm } from '@/components/auth/signup-form'
 
 export default function SignupPage() {
   return (
@@ -8,36 +7,9 @@ export default function SignupPage() {
         Create workspace.
       </h1>
       <p className="mt-4 text-sm leading-6 text-white/62">
-        Account and tenant provisioning arrives in IAM-001.
+        Create your account. Workspace provisioning follows confirmation.
       </p>
-      <form className="mt-9 grid gap-5 sm:grid-cols-2">
-        <label className="block sm:col-span-2">
-          <span className="mb-2 block text-sm font-medium text-white/78">
-            Name
-          </span>
-          <TextField name="name" autoComplete="name" required />
-        </label>
-        <label className="block sm:col-span-2">
-          <span className="mb-2 block text-sm font-medium text-white/78">
-            Work email
-          </span>
-          <TextField name="email" type="email" autoComplete="email" required />
-        </label>
-        <label className="block sm:col-span-2">
-          <span className="mb-2 block text-sm font-medium text-white/78">
-            Password
-          </span>
-          <TextField
-            name="password"
-            type="password"
-            autoComplete="new-password"
-            required
-          />
-        </label>
-        <Button className="sm:col-span-2" type="submit">
-          Continue
-        </Button>
-      </form>
+      <SignupForm />
     </div>
   )
 }

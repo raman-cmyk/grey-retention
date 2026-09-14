@@ -35,3 +35,35 @@ test('proof table adapts to desktop and mobile viewports', async ({
     )
   }
 })
+
+test('demo identities remain separated by role surface', async ({
+  page,
+  request
+}) => {
+  const cases = [
+    { surface: 'client', path: '/dashboard', heading: 'Campaign proof table' },
+    {
+      surface: 'admin',
+      path: '/admin/dashboard',
+      heading: 'Platform operations'
+    },
+    {
+      surface: 'designer',
+      path: '/designer/dashboard',
+      heading: 'Assignment desk'
+    }
+  ] as const
+
+  for (const account of cases) {
+    await page.goto(account.path)
+    await expect(
+      page.getByRole('heading', { name: account.heading })
+    ).toBeVisible()
+    const response = await request.get(`/api/v1/me?surface=${account.surface}`)
+    expect(response.ok()).toBe(true)
+    expect((await response.json()).data.kind).toBe(account.surface)
+  }
+
+  const invalid = await request.get('/api/v1/me?surface=unknown')
+  expect(invalid.status()).toBe(400)
+})
