@@ -7,8 +7,8 @@ This file is the durable cross-task memory. Every implementation task must updat
 | ID      | Workstream                             | Depends on       | Status      | Owner/task            | Verification                                                                                                                       | Notes                                                                                                         |
 | ------- | -------------------------------------- | ---------------- | ----------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | FND-001 | Repository foundation                  | —                | complete    | root integration task | Frozen install; format/lint/typecheck; 8 tests; 26-route build; Playwright 4/4; Impeccable PASS; CI verify/browser/database green. | Commit `dc8a429`; [CI run 34826503699](https://github.com/lookitsme/grey-retention/actions/runs/34826503699). |
-| IAM-001 | Auth, tenancy, RLS                     | FND-001          | in_progress | root integration task | —                                                                                                                                  | Active next build lane.                                                                                       |
-| UI-001  | Design system and shells               | FND-001          | ready       | unassigned            | Foundation includes validated theme, primitives, responsive role shells, and smoke coverage.                                       | Complete remaining shared states/components after IAM contracts stabilize.                                    |
+| IAM-001 | Auth, tenancy, RLS                     | FND-001          | complete    | root integration task | CI: reset/seed + 18 RLS assertions; 11 unit tests; 30-route build; 6 browser checks.                                               | Commit `e1ca4ce`; [CI run 34828884619](https://github.com/lookitsme/grey-retention/actions/runs/34828884619). |
+| UI-001  | Design system and shells               | FND-001          | in_progress | root integration task | Foundation includes validated theme, primitives, responsive role shells, and smoke coverage.                                       | Active next lane: shared states, forms, dialogs, tables, and shell context.                                   |
 | CAM-001 | Campaign/calendar domain               | IAM-001, UI-001  | blocked     | unassigned            | —                                                                                                                                  | P0 vertical slice.                                                                                            |
 | AI-001  | Prompt engine, Brand Truth, GROS       | IAM-001          | blocked     | unassigned            | —                                                                                                                                  | Fake provider first.                                                                                          |
 | INT-001 | Queue and Klaviyo integration          | IAM-001          | blocked     | unassigned            | —                                                                                                                                  | Fixture adapter first.                                                                                        |
@@ -86,6 +86,17 @@ Append entries using this exact shape:
 - Verification run: `pnpm install --frozen-lockfile`; `pnpm verify` (3 files, 8 tests; 26-route production build); `pnpm test:e2e` (4/4); Impeccable detector/review PASS; GitHub CI 34826503699 verify/browser/database jobs green, including Supabase reset and pgTAP.
 - Known issues: GitHub warns that v4 setup actions target deprecated Node 20 internally; runners force Node 24 and all jobs pass. Local database verification requires Docker, so CI remains authoritative on this host.
 - Next consumer: IAM-001, then remaining UI-001 states against stable request-context contracts.
+
+### 2026-09-14 — IAM-001 — root integration task
+
+- Status: complete
+- Branch/worktree: `main` / `/Users/able/Documents/ChatGPT/Grey Retention`
+- Commit(s): `e1ca4ce`
+- Changed contracts: Typed client/admin/designer `RequestContext`; active-tenant cookie validated against membership; Supabase SSR client/session-refresh proxy; role-specific page gates; JSON `/api/v1/me`; login/logout/signup/reset/callback/onboarding actions; transactional workspace creation; explicit tenant/platform authorization helpers.
+- Migrations: `20260914010000_identity_tenancy.sql`
+- Verification run: `pnpm verify` (4 files, 11 tests; 30-route production build); `pnpm test:e2e` (6/6); GitHub CI 34828884619 verify/browser/database jobs green; clean reset and seed; pgTAP identity/RLS suite 18/18.
+- Known issues: Seed identities intentionally have no passwords; create login-capable local users through Supabase Studio/Auth Admin API. Hosted Supabase and Vercel are not connected or deployed yet because external mutation needs explicit authorization.
+- Next consumer: UI-001, then CAM-001/AI-001/INT-001 against the stable request-context and tenant-isolation contracts.
 
 ## Release checklist
 

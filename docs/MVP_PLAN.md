@@ -1,6 +1,6 @@
 # Grey Retention MVP — Build Plan
 
-Status: M0 foundation in verification
+Status: M1 identity complete; shared UI completion in progress
 
 Source of product truth: `GREY_RETENTION_DISCOVERY.md`
 
