@@ -5,9 +5,10 @@ This repository is a clean-room implementation derived from observed product beh
 Before changing code, read completely:
 
 1. `docs/MVP_PLAN.md`
-2. `docs/ARCHITECTURE_BLUEPRINT.md`
-3. `docs/PARALLEL_TASKS.md`
-4. `docs/BUILD_LEDGER.md`
+2. `docs/SYSTEM_ARCHITECTURE.md`
+3. `docs/ARCHITECTURE_BLUEPRINT.md`
+4. `docs/PARALLEL_TASKS.md`
+5. `docs/BUILD_LEDGER.md`
 
 Use `GREY_RETENTION_DISCOVERY.md` for behavioral reference. The architecture blueprint wins when the original product exhibits a defect or contradiction.
 

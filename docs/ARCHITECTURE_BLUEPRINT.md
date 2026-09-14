@@ -2,6 +2,8 @@
 
 This document defines the shared contracts for all implementation tasks. A feature task may extend these contracts, but it must record the change in `docs/BUILD_LEDGER.md` and must not silently introduce a competing pattern.
 
+The rationale, NFRs, failure modes, deployment path, and scalability thresholds live in `docs/SYSTEM_ARCHITECTURE.md`. Significant decisions are recorded in `docs/adr/`.
+
 ## 1. System shape
 
 ```text
@@ -38,25 +40,25 @@ The browser never receives the Supabase service-role key, tenant integration cre
 
 ## 2. Technology baseline
 
-| Concern | Choice |
-|---|---|
-| Language | TypeScript with strict mode |
-| Web framework | Next.js App Router |
-| Package manager | pnpm |
-| Database/Auth/Storage | Supabase |
-| Styling | Tailwind CSS and CSS variables |
-| Components | Accessible headless primitives; wrap them in project-owned components |
-| Forms | React Hook Form plus Zod where client interactivity is needed; server validation is always authoritative |
-| Server validation | Zod |
-| Date/time | UTC persistence, tenant IANA timezone presentation |
-| Query caching | Server Components first; TanStack Query only for polling/infinite/client-mutated views |
-| Tables | TanStack Table for data-heavy admin screens |
-| Charts | Recharts or an equivalently lightweight accessible library |
-| Unit/integration tests | Vitest and Testing Library |
-| Browser tests | Playwright |
-| Database/RLS tests | pgTAP or SQL tests run against local Supabase |
-| Logging | Structured JSON with request, tenant, user, job, and external-request correlation IDs |
-| Error tracking | Adapter interface; console/local implementation first, hosted provider later |
+| Concern                | Choice                                                                                                   |
+| ---------------------- | -------------------------------------------------------------------------------------------------------- |
+| Language               | TypeScript with strict mode                                                                              |
+| Web framework          | Next.js App Router                                                                                       |
+| Package manager        | pnpm                                                                                                     |
+| Database/Auth/Storage  | Supabase                                                                                                 |
+| Styling                | Tailwind CSS and CSS variables                                                                           |
+| Components             | Accessible headless primitives; wrap them in project-owned components                                    |
+| Forms                  | React Hook Form plus Zod where client interactivity is needed; server validation is always authoritative |
+| Server validation      | Zod                                                                                                      |
+| Date/time              | UTC persistence, tenant IANA timezone presentation                                                       |
+| Query caching          | Server Components first; TanStack Query only for polling/infinite/client-mutated views                   |
+| Tables                 | TanStack Table for data-heavy admin screens                                                              |
+| Charts                 | Recharts or an equivalently lightweight accessible library                                               |
+| Unit/integration tests | Vitest and Testing Library                                                                               |
+| Browser tests          | Playwright                                                                                               |
+| Database/RLS tests     | pgTAP or SQL tests run against local Supabase                                                            |
+| Logging                | Structured JSON with request, tenant, user, job, and external-request correlation IDs                    |
+| Error tracking         | Adapter interface; console/local implementation first, hosted provider later                             |
 
 Pin exact versions in the lockfile during FND-001. Subsequent tasks must not replace these choices without recording an architecture decision.
 
@@ -164,15 +166,15 @@ Route folders compose pages; business logic lives in `features/` or `lib/`. A pa
 
 ### Required tables
 
-| Table | Essential fields and constraints |
-|---|---|
-| `profiles` | `id = auth.users.id`, name, job title, phone, status, timestamps |
-| `platform_admins` | profile ID unique, role, active, invited/accepted timestamps |
-| `tenants` | UUID, slug unique, name, status, timezone, onboarding state, timestamps |
-| `tenant_memberships` | tenant/profile unique pair, role, status, invited_by, accepted_at |
-| `tenant_invites` | tenant, normalized email, role, token hash, expiry, accepted/revoked timestamps |
-| `designers` | profile ID unique, status, activation state, last login |
-| `designer_tenant_access` | designer/tenant unique pair |
+| Table                    | Essential fields and constraints                                                |
+| ------------------------ | ------------------------------------------------------------------------------- |
+| `profiles`               | `id = auth.users.id`, name, job title, phone, status, timestamps                |
+| `platform_admins`        | profile ID unique, role, active, invited/accepted timestamps                    |
+| `tenants`                | UUID, slug unique, name, status, timezone, onboarding state, timestamps         |
+| `tenant_memberships`     | tenant/profile unique pair, role, status, invited_by, accepted_at               |
+| `tenant_invites`         | tenant, normalized email, role, token hash, expiry, accepted/revoked timestamps |
+| `designers`              | profile ID unique, status, activation state, last login                         |
+| `designer_tenant_access` | designer/tenant unique pair                                                     |
 
 ### Request context
 
@@ -180,7 +182,12 @@ Every protected server entrypoint resolves one typed context:
 
 ```ts
 type RequestContext =
-  | { kind: 'client'; userId: string; tenantId: string; tenantRole: 'owner' | 'admin' | 'staff' }
+  | {
+      kind: 'client'
+      userId: string
+      tenantId: string
+      tenantRole: 'owner' | 'admin' | 'staff'
+    }
   | { kind: 'admin'; userId: string; adminRole: 'super_admin' | 'admin' }
   | { kind: 'designer'; userId: string; designerId: string }
 ```
@@ -340,20 +347,20 @@ Protected JSON routes return JSON `401`/`403`, never an HTML login redirect. Pag
 
 ### Core API families
 
-| Family | Representative endpoints |
-|---|---|
-| Session/context | `GET /api/v1/me`, `GET /api/v1/tenant-context` |
-| Dashboard | `GET /api/v1/dashboard/overview`, resource/detail queries |
-| Campaign calendar | `GET /api/v1/calendar`, `POST /api/v1/calendar/plan` |
-| Campaigns | create/read/update, typed transitions, audiences, products, references, comments |
-| AI | generation request, call status, GROS proposal, confirm/reject action |
-| Integrations | connection verification, sync request/status, diagnostics |
-| References | cursor library, upload metadata, signed URL |
-| Support | cursor ticket list, messages, reply, status |
-| Admin | tenant/prompt/package/job/report/provider operations |
-| Webhooks | `/api/webhooks/klaviyo`, `/api/webhooks/shopify`, `/api/webhooks/email` |
-| Workers | `/api/internal/jobs/drain`, `/api/internal/jobs/{kind}` |
-| Health | `/api/health/live`, `/api/health/ready` |
+| Family            | Representative endpoints                                                         |
+| ----------------- | -------------------------------------------------------------------------------- |
+| Session/context   | `GET /api/v1/me`, `GET /api/v1/tenant-context`                                   |
+| Dashboard         | `GET /api/v1/dashboard/overview`, resource/detail queries                        |
+| Campaign calendar | `GET /api/v1/calendar`, `POST /api/v1/calendar/plan`                             |
+| Campaigns         | create/read/update, typed transitions, audiences, products, references, comments |
+| AI                | generation request, call status, GROS proposal, confirm/reject action            |
+| Integrations      | connection verification, sync request/status, diagnostics                        |
+| References        | cursor library, upload metadata, signed URL                                      |
+| Support           | cursor ticket list, messages, reply, status                                      |
+| Admin             | tenant/prompt/package/job/report/provider operations                             |
+| Webhooks          | `/api/webhooks/klaviyo`, `/api/webhooks/shopify`, `/api/webhooks/email`          |
+| Workers           | `/api/internal/jobs/drain`, `/api/internal/jobs/{kind}`                          |
+| Health            | `/api/health/live`, `/api/health/ready`                                          |
 
 Cursor pagination is preferred over offset pagination for externally growing collections and message feeds.
 
@@ -376,7 +383,10 @@ interface CommerceProvider {
   verifyConnection(): Promise<ConnectionHealth>
   startBulkSync(resource: CommerceResource): Promise<ExternalOperation>
   pollBulkOperation(id: string): Promise<ExternalOperationState>
-  listIncremental(resource: CommerceResource, cursor?: string): Promise<Page<unknown>>
+  listIncremental(
+    resource: CommerceResource,
+    cursor?: string
+  ): Promise<Page<unknown>>
 }
 
 interface AiProvider {
@@ -547,4 +557,3 @@ These do not block M0 and must be resolved only when their owning task reaches t
 - Whether preparing a Klaviyo draft is allowed in the first external beta.
 
 Until resolved, use interfaces and fake adapters rather than embedding assumptions.
-
