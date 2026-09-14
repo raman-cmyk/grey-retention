@@ -1,0 +1,25 @@
+# Dependencies and builds
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+
+# Environment and hosting
+.env
+.env.*
+!.env.example
+.vercel/
+supabase/.temp/
+
+# Local tooling and audit material
+.audit/
+.impeccable/review/
+.impeccable/mocks/
+
+# Editor and OS
+.DS_Store
+*.swp
+*.swo
+
