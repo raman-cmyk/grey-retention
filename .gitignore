@@ -17,9 +17,9 @@ supabase/.temp/
 .audit/
 .impeccable/review/
 .impeccable/mocks/
+.impeccable/questions/
 
 # Editor and OS
 .DS_Store
 *.swp
 *.swo
-
