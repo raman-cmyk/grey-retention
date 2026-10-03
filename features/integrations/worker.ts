@@ -2,6 +2,10 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import { deliveryPackageSchema } from '@/features/workflow/domain/contracts'
+import {
+  referenceJobKinds,
+  runReferenceJob
+} from '@/features/references/worker'
 import { generateFixtureCopy } from '@/features/ai/fixture-copy'
 import { onboardingJobKinds, runOnboardingJob } from '@/features/assets/worker'
 import { PersistedFixtureDeliveryProvider } from './fixture-delivery'
@@ -20,7 +24,9 @@ export async function runFixtureJobs(
     if (!job) break
     if (!job.lease_token) throw new Error('Job lease missing')
     try {
-      if (onboardingJobKinds.includes(job.kind)) {
+      if (referenceJobKinds.includes(job.kind)) {
+        await runReferenceJob(db, job)
+      } else if (onboardingJobKinds.includes(job.kind)) {
         await runOnboardingJob(db, job)
       } else if (job.kind === 'copy.generate') {
         const campaignResult = await db

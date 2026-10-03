@@ -15,9 +15,11 @@ Branch: `codex/grey-retention-v2`, base `b6f92a7`. No pushes, PRs, merges, deplo
 
 ## Active checkpoint
 
-V2-003 gate passed: private ZIP/import/correction and fixture Drive/commerce/kit behavior persists. Clean reset/types, 89 DB assertions, full verify with 24 unit tests and 14/14 combined desktop/mobile journeys pass. The local checkpoint commit is recorded after creation.
+V2-003 gate passed: private ZIP/import/correction and fixture Drive/commerce/kit behavior persists. Clean reset/types, 89 DB assertions, full verify with 24 unit tests and 14/14 combined desktop/mobile journeys pass. Commit `7120cf1`.
 
-The exact next action is to claim V2-004 in the ledger and implement shared synthetic capture with tenant-private subscriptions/playbooks. V2-004 through V2-010 remain unimplemented at this checkpoint; V2-011 acceptance remains open.
+V2-004 gate passed: shared fictional capture, private subscriptions/playbooks and sandbox previews. Clean reset/types, 107 DB assertions, full verify with 28 unit tests, 16/16 combined browser journeys.
+
+The exact next action is to commit V2-004, claim V2-005 and implement guarded planning/bulk copy. V2-005 through V2-010 remain unimplemented; V2-011 acceptance remains open.
 
 ## Schema and verification
 
@@ -25,10 +27,10 @@ Migrations are allocated to their documented namespaces and types are CLI-genera
 
 - Foundation `20260914000000`; IAM `20260914010000`.
 - Brand/AI `20260914020000`–`20260914020002`.
-- Jobs/providers/connections `20260914030000`–`20260914030001`.
-- Campaigns `20260914040000`; assets `20260914050000`.
+- Jobs/providers/connections `20260914030000`–`20260914030002`.
+- Campaigns `20260914040000`; assets/references `20260914050000`–`20260914050001`.
 - Designers `20260914060000`; notifications `20260914070000`.
-- Transactional cross-domain commands `20260914090000`–`20260914090003`.
+- Transactional cross-domain commands `20260914090000`–`20260914090004`.
 
 Commands: `pnpm supabase:reset`, `pnpm supabase:types`, format generated types, `pnpm test:db`, `pnpm verify`, `pnpm test:e2e`. Tests use real local Auth sessions and private Storage, never a linked remote reset. Browser traces/screenshots and sanitized command logs are ignored under `.audit`/`test-results`.
 

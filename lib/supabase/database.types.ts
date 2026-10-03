@@ -940,6 +940,182 @@ export type Database = {
           }
         ]
       }
+      competitor_captures: {
+        Row: {
+          created_at: string
+          cursor: string | null
+          domain: string
+          id: string
+          last_error: string | null
+          last_received_at: string | null
+          status: string
+          synthetic: boolean
+        }
+        Insert: {
+          created_at?: string
+          cursor?: string | null
+          domain: string
+          id?: string
+          last_error?: string | null
+          last_received_at?: string | null
+          status?: string
+          synthetic?: boolean
+        }
+        Update: {
+          created_at?: string
+          cursor?: string | null
+          domain?: string
+          id?: string
+          last_error?: string | null
+          last_received_at?: string | null
+          status?: string
+          synthetic?: boolean
+        }
+        Relationships: []
+      }
+      competitor_emails: {
+        Row: {
+          capture_id: string
+          created_at: string
+          external_id: string
+          id: string
+          micro: Json
+          received_at: string
+          safe_html: string
+          subject: string
+          synthetic: boolean
+          text_content: string
+        }
+        Insert: {
+          capture_id: string
+          created_at?: string
+          external_id: string
+          id?: string
+          micro: Json
+          received_at: string
+          safe_html: string
+          subject: string
+          synthetic?: boolean
+          text_content: string
+        }
+        Update: {
+          capture_id?: string
+          created_at?: string
+          external_id?: string
+          id?: string
+          micro?: Json
+          received_at?: string
+          safe_html?: string
+          subject?: string
+          synthetic?: boolean
+          text_content?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'competitor_emails_capture_id_fkey'
+            columns: ['capture_id']
+            isOneToOne: false
+            referencedRelation: 'competitor_captures'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      competitor_sequences: {
+        Row: {
+          capture_id: string
+          confidence: string
+          evidence_ids: string[]
+          id: string
+          key: string
+          pattern: string
+          synthetic: boolean
+        }
+        Insert: {
+          capture_id: string
+          confidence: string
+          evidence_ids: string[]
+          id?: string
+          key: string
+          pattern: string
+          synthetic?: boolean
+        }
+        Update: {
+          capture_id?: string
+          confidence?: string
+          evidence_ids?: string[]
+          id?: string
+          key?: string
+          pattern?: string
+          synthetic?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'competitor_sequences_capture_id_fkey'
+            columns: ['capture_id']
+            isOneToOne: false
+            referencedRelation: 'competitor_captures'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      competitor_subscriptions: {
+        Row: {
+          active: boolean
+          capture_id: string
+          created_at: string
+          created_by: string
+          id: string
+          label: string
+          private_rules: string
+          revision: number
+          tenant_id: string
+        }
+        Insert: {
+          active?: boolean
+          capture_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          label: string
+          private_rules?: string
+          revision?: number
+          tenant_id: string
+        }
+        Update: {
+          active?: boolean
+          capture_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          label?: string
+          private_rules?: string
+          revision?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'competitor_subscriptions_capture_id_fkey'
+            columns: ['capture_id']
+            isOneToOne: false
+            referencedRelation: 'competitor_captures'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'competitor_subscriptions_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'competitor_subscriptions_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       delivery_packages: {
         Row: {
           campaign_id: string
@@ -1592,6 +1768,63 @@ export type Database = {
           }
         ]
       }
+      playbooks: {
+        Row: {
+          brand_revision: number
+          created_at: string
+          created_by: string
+          evidence_ids: string[]
+          id: string
+          patterns: Json
+          revision: number
+          source_count: number
+          subscription_revisions: Json
+          synthetic: boolean
+          tenant_id: string
+        }
+        Insert: {
+          brand_revision: number
+          created_at?: string
+          created_by: string
+          evidence_ids: string[]
+          id?: string
+          patterns: Json
+          revision: number
+          source_count: number
+          subscription_revisions: Json
+          synthetic?: boolean
+          tenant_id: string
+        }
+        Update: {
+          brand_revision?: number
+          created_at?: string
+          created_by?: string
+          evidence_ids?: string[]
+          id?: string
+          patterns?: Json
+          revision?: number
+          source_count?: number
+          subscription_revisions?: Json
+          synthetic?: boolean
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'playbooks_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'playbooks_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       product_variants: {
         Row: {
           id: string
@@ -2127,8 +2360,16 @@ export type Database = {
         Args: { input?: Json; kind: string; t: string }
         Returns: string
       }
+      enqueue_reference_job: {
+        Args: { kind: string; subscription?: string; t: string }
+        Returns: string
+      }
       fail_job: {
         Args: { failure: string; job: string; lease: string }
+        Returns: undefined
+      }
+      finish_capture_job: {
+        Args: { job: string; lease: string; output: Json }
         Returns: undefined
       }
       finish_copy_job: {
@@ -2140,6 +2381,10 @@ export type Database = {
         Returns: undefined
       }
       finish_onboarding_job: {
+        Args: { job: string; lease: string; output: Json }
+        Returns: undefined
+      }
+      finish_playbook_job: {
         Args: { job: string; lease: string; output: Json }
         Returns: undefined
       }
@@ -2261,6 +2506,25 @@ export type Database = {
           path: string
         }
         Returns: string
+      }
+      subscribe_competitor: {
+        Args: {
+          domain: string
+          label: string
+          private_rules?: string
+          t: string
+        }
+        Returns: string
+      }
+      update_competitor_subscription: {
+        Args: {
+          active: boolean
+          expected_revision: number
+          private_rules: string
+          subscription: string
+          t: string
+        }
+        Returns: undefined
       }
     }
     Enums: {

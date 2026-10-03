@@ -86,6 +86,25 @@ export async function onboardingWorkspace() {
         ).data?.signedUrl ?? null
     }))
   )
+  const subscriptions = await db
+    .from('competitor_subscriptions')
+    .select('capture_id')
+    .eq('tenant_id', t)
+    .eq('active', true)
+  const captureIds = (subscriptions.data ?? []).map((s) => s.capture_id)
+  const [captures, emailEvidence] = await Promise.all([
+    db.from('competitor_captures').select('id,status').in('id', captureIds),
+    db
+      .from('competitor_emails')
+      .select('id,capture_id')
+      .in('capture_id', captureIds)
+  ])
+  if (subscriptions.error || captures.error || emailEvidence.error)
+    return {
+      ...base,
+      error: 'Capture readiness unavailable. Retry after migrations.',
+      setup: null
+    }
   const state = readiness({
     connected:
       connections.data?.some(
@@ -102,7 +121,11 @@ export async function onboardingWorkspace() {
     classifiedAssets: previews.filter(
       (a) => a.category && a.category !== 'unusable'
     ).length,
-    competitors: []
+    competitors: (captures.data ?? []).map((c) => ({
+      status: c.status,
+      emails: (emailEvidence.data ?? []).filter((e) => e.capture_id === c.id)
+        .length
+    }))
   })
   return {
     ...base,

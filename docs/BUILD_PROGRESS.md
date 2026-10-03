@@ -4,9 +4,9 @@ Checkpoint: October 4, 2026. Branch `codex/grey-retention-v2`; base `b6f92a7`.
 
 ## Active task
 
-V2-003 gate passed. Next eligible task V2-004: shared synthetic competitor capture, tenant-private subscriptions/playbooks, sanitization/dedupe, extraction and sequence evidence. Sequential root execution; no agents.
+V2-004 gate passed. Next eligible task V2-005: guarded rolling plans, lineage, weekly copy review/bulk exact approvals and rejection/reminder policy. Sequential root execution; no agents.
 
-Next action: commit V2-003, claim V2-004 in the ledger, implement/test its persisted capture and intelligence slice. Live providers and real evaluation remain disabled/unverified.
+Next action: commit this checkpoint, claim V2-005, implement/test persisted planning and approval behavior. Live providers/paid AI remain disabled.
 
 ## Checkpoints
 
@@ -18,7 +18,9 @@ Migrations: foundation `20260914000000`; identity `20260914010000`; brand/catalo
 
 - V2-002 complete: clean reset/types; 59 DB assertions; full verify 19 unit tests; 10/10 authenticated desktop/mobile journeys. Uploaded original PNGs, owner feedback/resubmission/exact approval, immutable package, schedule and confirmed cancel persist; Storage isolation and stale/replay paths pass. Commit `2f5a676`.
 
-- V2-003 complete: clean reset/types; 89 DB assertions; full verify 24 unit tests; 14/14 desktop/mobile journeys. Private ZIP/Drive artifacts, repeat dedupe, corrections, kit/catalog fixtures and readiness verified. Commit recorded after commit.
+- V2-003 complete: clean reset/types; 89 DB assertions; full verify 24 unit tests; 14/14 desktop/mobile journeys. Private ZIP/Drive artifacts, repeat dedupe, corrections, kit/catalog fixtures and readiness verified. Commit `7120cf1`.
+
+- V2-004 complete: clean reset/types; 107 DB assertions; full verify 28 unit tests; 16/16 desktop/mobile journeys. Shared capture dedupe, private rules/playbooks, sandbox previews, evidence thresholds and sequence gaps/false matches verified. Commit recorded after commit.
 
 ## Decisions and limits
 

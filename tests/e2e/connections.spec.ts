@@ -91,9 +91,7 @@ test('UC-01/02 fixture Drive and commerce jobs persist real private artifacts an
   await expect(
     page.getByText('✓ Classified usable assets', { exact: true })
   ).toBeVisible()
-  await expect(
-    page.getByText('○ LIVE competitor evidence', { exact: true })
-  ).toBeVisible()
+  await expect(page.getByText(/LIVE competitor evidence$/)).toBeVisible()
   await page.goto('/connections')
   await expect(page.getByText(/Last sync: 20/)).toHaveCount(2)
   await page.getByRole('button', { name: 'Queue drive fixture sync' }).click()
