@@ -335,6 +335,55 @@ export type Database = {
           }
         ]
       }
+      assignment_requests: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          id: string
+          requested_by: string
+          state: string
+          tenant_id: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          id?: string
+          requested_by: string
+          state?: string
+          tenant_id: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          id?: string
+          requested_by?: string
+          state?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'assignment_requests_requested_by_fkey'
+            columns: ['requested_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'assignment_requests_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'request_campaign_tenant'
+            columns: ['tenant_id', 'campaign_id']
+            isOneToOne: false
+            referencedRelation: 'campaigns'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       audiences: {
         Row: {
           account_id: string
@@ -570,6 +619,42 @@ export type Database = {
           },
           {
             foreignKeyName: 'brand_versions_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      budget_alerts: {
+        Row: {
+          created_at: string
+          cycle_id: string
+          tenant_id: string
+          window_key: string
+        }
+        Insert: {
+          created_at?: string
+          cycle_id: string
+          tenant_id: string
+          window_key: string
+        }
+        Update: {
+          created_at?: string
+          cycle_id?: string
+          tenant_id?: string
+          window_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'budget_alerts_cycle_id_fkey'
+            columns: ['cycle_id']
+            isOneToOne: false
+            referencedRelation: 'package_cycles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'budget_alerts_tenant_id_fkey'
             columns: ['tenant_id']
             isOneToOne: false
             referencedRelation: 'tenants'
@@ -1069,6 +1154,130 @@ export type Database = {
           }
         ]
       }
+      chat_messages: {
+        Row: {
+          actor_id: string
+          body: string
+          conversation_id: string
+          created_at: string
+          evidence: Json
+          id: string
+          role: string
+          synthetic: boolean
+          tenant_id: string
+        }
+        Insert: {
+          actor_id: string
+          body: string
+          conversation_id: string
+          created_at?: string
+          evidence?: Json
+          id?: string
+          role: string
+          synthetic?: boolean
+          tenant_id: string
+        }
+        Update: {
+          actor_id?: string
+          body?: string
+          conversation_id?: string
+          created_at?: string
+          evidence?: Json
+          id?: string
+          role?: string
+          synthetic?: boolean
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'chat_messages_actor_id_fkey'
+            columns: ['actor_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'chat_messages_tenant_id_conversation_id_fkey'
+            columns: ['tenant_id', 'conversation_id']
+            isOneToOne: false
+            referencedRelation: 'conversations'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      chat_proposals: {
+        Row: {
+          actor_id: string
+          campaign_id: string
+          confirmed_at: string | null
+          consequence: string
+          conversation_id: string
+          created_at: string
+          expires_at: string
+          id: string
+          kind: string
+          payload: Json
+          payload_hash: string | null
+          status: string
+          target_revisions: Json
+          tenant_id: string
+        }
+        Insert: {
+          actor_id: string
+          campaign_id: string
+          confirmed_at?: string | null
+          consequence: string
+          conversation_id: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          kind: string
+          payload: Json
+          payload_hash?: string | null
+          status?: string
+          target_revisions: Json
+          tenant_id: string
+        }
+        Update: {
+          actor_id?: string
+          campaign_id?: string
+          confirmed_at?: string | null
+          consequence?: string
+          conversation_id?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          kind?: string
+          payload?: Json
+          payload_hash?: string | null
+          status?: string
+          target_revisions?: Json
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'chat_proposals_actor_id_fkey'
+            columns: ['actor_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'chat_proposals_tenant_id_conversation_id_fkey'
+            columns: ['tenant_id', 'conversation_id']
+            isOneToOne: false
+            referencedRelation: 'conversations'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'proposal_campaign_tenant'
+            columns: ['tenant_id', 'campaign_id']
+            isOneToOne: false
+            referencedRelation: 'campaigns'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       competitor_captures: {
         Row: {
           created_at: string
@@ -1238,6 +1447,51 @@ export type Database = {
           },
           {
             foreignKeyName: 'competitor_subscriptions_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      conversations: {
+        Row: {
+          created_at: string
+          creator_id: string
+          id: string
+          status: string
+          tenant_id: string
+          title: string
+          visibility: string
+        }
+        Insert: {
+          created_at?: string
+          creator_id: string
+          id?: string
+          status?: string
+          tenant_id: string
+          title: string
+          visibility?: string
+        }
+        Update: {
+          created_at?: string
+          creator_id?: string
+          id?: string
+          status?: string
+          tenant_id?: string
+          title?: string
+          visibility?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'conversations_creator_id_fkey'
+            columns: ['creator_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'conversations_tenant_id_fkey'
             columns: ['tenant_id']
             isOneToOne: false
             referencedRelation: 'tenants'
@@ -1926,6 +2180,51 @@ export type Database = {
           }
         ]
       }
+      holidays: {
+        Row: {
+          created_at: string
+          created_by: string
+          event_date: string
+          id: string
+          name: string
+          notes: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          event_date: string
+          id?: string
+          name: string
+          notes?: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          event_date?: string
+          id?: string
+          name?: string
+          notes?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'holidays_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'holidays_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       job_runs: {
         Row: {
           attempt: number
@@ -2307,6 +2606,108 @@ export type Database = {
           }
         ]
       }
+      package_cycles: {
+        Row: {
+          allocation_micro: number
+          created_at: string
+          daily_micro: number
+          ends_at: string
+          id: string
+          package_id: string
+          reserved_micro: number
+          snapshot: Json
+          starts_at: string
+          state: string
+          tenant_id: string
+          used_micro: number
+        }
+        Insert: {
+          allocation_micro: number
+          created_at?: string
+          daily_micro: number
+          ends_at: string
+          id?: string
+          package_id: string
+          reserved_micro?: number
+          snapshot: Json
+          starts_at?: string
+          state?: string
+          tenant_id: string
+          used_micro?: number
+        }
+        Update: {
+          allocation_micro?: number
+          created_at?: string
+          daily_micro?: number
+          ends_at?: string
+          id?: string
+          package_id?: string
+          reserved_micro?: number
+          snapshot?: Json
+          starts_at?: string
+          state?: string
+          tenant_id?: string
+          used_micro?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'package_cycles_package_id_fkey'
+            columns: ['package_id']
+            isOneToOne: false
+            referencedRelation: 'packages'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'package_cycles_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      packages: {
+        Row: {
+          active: boolean
+          allocation_micro: number
+          created_at: string
+          currency: string
+          cycle_days: number
+          daily_micro: number
+          id: string
+          name: string
+          price_minor: number
+          revision: number
+          synthetic: boolean
+        }
+        Insert: {
+          active?: boolean
+          allocation_micro: number
+          created_at?: string
+          currency?: string
+          cycle_days?: number
+          daily_micro: number
+          id?: string
+          name: string
+          price_minor?: number
+          revision?: number
+          synthetic?: boolean
+        }
+        Update: {
+          active?: boolean
+          allocation_micro?: number
+          created_at?: string
+          currency?: string
+          cycle_days?: number
+          daily_micro?: number
+          id?: string
+          name?: string
+          price_minor?: number
+          revision?: number
+          synthetic?: boolean
+        }
+        Relationships: []
+      }
       planning_preferences: {
         Row: {
           discount_cap: number
@@ -2674,6 +3075,99 @@ export type Database = {
           }
         ]
       }
+      support_messages: {
+        Row: {
+          actor_id: string
+          body: string
+          created_at: string
+          id: string
+          tenant_id: string
+          ticket_id: string
+        }
+        Insert: {
+          actor_id: string
+          body: string
+          created_at?: string
+          id?: string
+          tenant_id: string
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string
+          body?: string
+          created_at?: string
+          id?: string
+          tenant_id?: string
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'support_messages_actor_id_fkey'
+            columns: ['actor_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'support_messages_tenant_id_ticket_id_fkey'
+            columns: ['tenant_id', 'ticket_id']
+            isOneToOne: false
+            referencedRelation: 'support_tickets'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      support_tickets: {
+        Row: {
+          created_at: string
+          creator_id: string
+          id: string
+          kind: string
+          revision: number
+          state: string
+          subject: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          creator_id: string
+          id?: string
+          kind: string
+          revision?: number
+          state?: string
+          subject: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          creator_id?: string
+          id?: string
+          kind?: string
+          revision?: number
+          state?: string
+          subject?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'support_tickets_creator_id_fkey'
+            columns: ['creator_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'support_tickets_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       tenant_invites: {
         Row: {
           accepted_at: string | null
@@ -2822,6 +3316,56 @@ export type Database = {
         }
         Relationships: []
       }
+      usage_reservations: {
+        Row: {
+          actual_micro: number | null
+          created_at: string
+          cycle_id: string
+          estimate_micro: number
+          expires_at: string
+          feature: string
+          id: string
+          local_date: string
+          operation_id: string
+          state: string
+          tenant_id: string
+        }
+        Insert: {
+          actual_micro?: number | null
+          created_at?: string
+          cycle_id: string
+          estimate_micro: number
+          expires_at?: string
+          feature: string
+          id?: string
+          local_date: string
+          operation_id: string
+          state?: string
+          tenant_id: string
+        }
+        Update: {
+          actual_micro?: number | null
+          created_at?: string
+          cycle_id?: string
+          estimate_micro?: number
+          expires_at?: string
+          feature?: string
+          id?: string
+          local_date?: string
+          operation_id?: string
+          state?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'usage_reservations_tenant_id_cycle_id_fkey'
+            columns: ['tenant_id', 'cycle_id']
+            isOneToOne: false
+            referencedRelation: 'package_cycles'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       verified_design_uploads: {
         Row: {
           assignment_id: string
@@ -2965,14 +3509,64 @@ export type Database = {
           }
         ]
       }
+      workspace_events: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          detail: Json
+          entity_id: string | null
+          id: string
+          kind: string
+          tenant_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          detail?: Json
+          entity_id?: string | null
+          id?: string
+          kind: string
+          tenant_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          detail?: Json
+          entity_id?: string | null
+          id?: string
+          kind?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'workspace_events_actor_id_fkey'
+            columns: ['actor_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'workspace_events_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      accept_team_invite: { Args: { invite: string }; Returns: string }
       add_campaign_note: {
         Args: { body: string; t: string; target_id: string }
         Returns: undefined
+      }
+      add_holiday: {
+        Args: { event_date: string; name: string; notes: string; t: string }
+        Returns: string
       }
       approve_brand: {
         Args: { expected_revision: number; t: string }
@@ -2995,6 +3589,17 @@ export type Database = {
         Returns: number
       }
       approve_plan: { Args: { plan: string; t: string }; Returns: undefined }
+      ask_fixture_gros: {
+        Args: {
+          campaign: string
+          chat: string
+          intent?: string
+          question: string
+          t: string
+          value?: string
+        }
+        Returns: string
+      }
       assign_campaign: {
         Args: {
           campaign: string
@@ -3002,6 +3607,10 @@ export type Database = {
           expected_copy: number
           t: string
         }
+        Returns: string
+      }
+      assign_fixture_package: {
+        Args: { package: string; t: string }
         Returns: string
       }
       assignable_designers: {
@@ -3064,6 +3673,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      create_conversation: {
+        Args: { t: string; title: string; visibility?: string }
+        Returns: string
+      }
       create_delivery_package: {
         Args: {
           campaign: string
@@ -3103,6 +3716,19 @@ export type Database = {
         }
         Returns: string
       }
+      decide_chat_proposal: {
+        Args: {
+          decision: string
+          expected_hash: string
+          proposal: string
+          t: string
+        }
+        Returns: undefined
+      }
+      define_fixture_package: {
+        Args: { allocation: number; daily: number; name: string }
+        Returns: string
+      }
       design_operations: {
         Args: never
         Returns: {
@@ -3128,6 +3754,7 @@ export type Database = {
         Args: { expected_revision: number; package: string; t: string }
         Returns: string
       }
+      enqueue_health_check: { Args: { t: string }; Returns: undefined }
       enqueue_l1_delivery: {
         Args: {
           expected_revision: number
@@ -3177,6 +3804,10 @@ export type Database = {
         Args: { job: string; lease: string }
         Returns: undefined
       }
+      finish_health_check: {
+        Args: { job: string; lease: string }
+        Returns: undefined
+      }
       finish_onboarding_job: {
         Args: { job: string; lease: string; output: Json }
         Returns: undefined
@@ -3205,12 +3836,46 @@ export type Database = {
         Args: { job: string; lease: string; stage: string }
         Returns: string
       }
+      fixture_usage_summary: {
+        Args: { t: string }
+        Returns: {
+          day_micro: number
+          feature: string
+          held_micro: number
+          used_micro: number
+        }[]
+      }
+      invite_team: {
+        Args: {
+          email: string
+          role: Database['public']['Enums']['tenant_role']
+          t: string
+        }
+        Returns: string
+      }
+      my_pending_invites: {
+        Args: never
+        Returns: {
+          id: string
+          role: Database['public']['Enums']['tenant_role']
+          tenant_name: string
+        }[]
+      }
+      open_support_ticket: {
+        Args: { body: string; kind: string; subject: string; t: string }
+        Returns: string
+      }
+      operator_diagnostics: { Args: never; Returns: Json }
       prepare_copy_review: {
         Args: { t: string; week: string }
         Returns: string
       }
       queue_ready_l1: { Args: { t: string }; Returns: number }
       queue_weekly_copy: { Args: { t: string; week: string }; Returns: number }
+      reconcile_fixture_usage: {
+        Args: { actual: number; reservation: string; t: string }
+        Returns: undefined
+      }
       record_asset_upload: {
         Args: {
           actor: string
@@ -3273,11 +3938,30 @@ export type Database = {
         }
         Returns: undefined
       }
+      reply_support: {
+        Args: {
+          body: string
+          expected_revision: number
+          state: string
+          t: string
+          ticket: string
+        }
+        Returns: undefined
+      }
       request_reschedule: {
         Args: {
           campaign: string
           expected_revision: number
           scheduled_at: string
+          t: string
+        }
+        Returns: string
+      }
+      reserve_fixture_usage: {
+        Args: {
+          estimate: number
+          feature: string
+          operation: string
           t: string
         }
         Returns: string
@@ -3334,6 +4018,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      revoke_team_invite: {
+        Args: { invite: string; t: string }
+        Returns: undefined
+      }
       save_brand: {
         Args: {
           brand_name: string
@@ -3378,6 +4066,10 @@ export type Database = {
         Args: { delivery: string; t: string }
         Returns: string
       }
+      set_conversation_visibility: {
+        Args: { chat: string; t: string; visibility: string }
+        Returns: undefined
+      }
       set_fixture_connection: {
         Args: { folder?: string; provider: string; status: string; t: string }
         Returns: undefined
@@ -3420,6 +4112,16 @@ export type Database = {
           expected_revision: number
           private_rules: string
           subscription: string
+          t: string
+        }
+        Returns: undefined
+      }
+      update_team_access: {
+        Args: {
+          expected_at: string
+          membership: string
+          role: Database['public']['Enums']['tenant_role']
+          status: Database['public']['Enums']['membership_status']
           t: string
         }
         Returns: undefined

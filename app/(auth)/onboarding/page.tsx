@@ -1,3 +1,4 @@
+import { InvitationPanel } from '@/features/operations/panels'
 import { WorkspaceForm } from '@/components/auth/workspace-form'
 
 export default function OnboardingPage() {
@@ -12,6 +13,7 @@ export default function OnboardingPage() {
       <p className="mt-4 text-sm leading-6 text-[var(--text-muted)]">
         This creates the tenant boundary and makes you its first owner.
       </p>
+      <InvitationPanel />
       <WorkspaceForm />
     </div>
   )

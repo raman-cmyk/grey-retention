@@ -1,10 +1,18 @@
-import { PlaceholderPage } from '@/components/shell/placeholder-page'
-
-export default function GrosPage() {
+import { PageHeading } from '@/components/ui/workspace'
+import { GrosPanel, validChatId } from '@/features/gros/panel'
+export default async function GrosPage({
+  searchParams
+}: {
+  searchParams: Promise<{ chat?: string }>
+}) {
+  const p = await searchParams
   return (
-    <PlaceholderPage
-      title="Ask GROS"
-      description="Governed strategy proposals and confirmed actions arrive in AI-001."
-    />
+    <div className="mx-auto max-w-6xl">
+      <PageHeading
+        title="Ask GROS"
+        description="Private and shared conversations, evidence explanations and explicit version-bound proposals."
+      />
+      <GrosPanel chatId={validChatId(p.chat)} />
+    </div>
   )
 }

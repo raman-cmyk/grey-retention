@@ -19,6 +19,8 @@ export async function runFixtureJobs(
 ) {
   if (process.env.ADAPTER_MODE === 'real')
     throw new Error('Live providers are disabled for this build.')
+  const health = await db.rpc('enqueue_health_check', { t: tenantId })
+  if (health.error) throw health.error
   const sweep = await db.rpc('queue_ready_l1', { t: tenantId })
   if (sweep.error) throw sweep.error
   let processed = 0
@@ -29,7 +31,34 @@ export async function runFixtureJobs(
     if (!job) break
     if (!job.lease_token) throw new Error('Job lease missing')
     try {
-      if (job.kind === 'design.render') {
+      const budgetFeature =
+        job.kind === 'copy.generate'
+          ? 'copy'
+          : job.kind === 'design.render'
+            ? 'design'
+            : job.kind === 'assets.classify'
+              ? 'assets'
+              : job.kind === 'playbook.synthesize'
+                ? 'playbook'
+                : job.kind === 'calendar.plan'
+                  ? 'calendar'
+                  : null
+      if (budgetFeature) {
+        const reservation = await db.rpc('reserve_fixture_usage', {
+          t: tenantId,
+          operation: job.id,
+          feature: budgetFeature,
+          estimate: 2000
+        })
+        if (reservation.error) throw reservation.error
+      }
+      if (job.kind === 'ops.health') {
+        const r = await db.rpc('finish_health_check', {
+          job: job.id,
+          lease: job.lease_token
+        })
+        if (r.error) throw r.error
+      } else if (job.kind === 'design.render') {
         await runRenderJob(db, job)
       } else if (planningJobKinds.includes(job.kind)) {
         await runPlanningJob(db, job)

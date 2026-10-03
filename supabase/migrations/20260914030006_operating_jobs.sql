@@ -1,0 +1,2 @@
+alter table public.job_runs drop constraint job_runs_kind_check;
+alter table public.job_runs add constraint job_runs_kind_check check(kind in ('copy.generate','delivery.schedule','delivery.cancel','delivery.reschedule','assets.classify','drive.sync','commerce.sync','brand.extract','competitors.capture','playbook.synthesize','calendar.plan','reviews.remind','design.render','ops.health'));
