@@ -74,7 +74,7 @@ export const resolveRequestContext = cache(
       const { data, error } = await supabase.rpc('resolve_client_context', {
         requested_tenant_id: requestedTenant.success
           ? requestedTenant.data
-          : null
+          : undefined
       })
       const row = data?.[0]
       if (error || !row) return null

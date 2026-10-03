@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     if (!error) {
       if (next === '/dashboard') {
         const { data } = await supabase!.rpc('resolve_client_context', {
-          requested_tenant_id: null
+          requested_tenant_id: undefined
         })
         if (!data?.[0]) {
           return NextResponse.redirect(new URL('/onboarding', request.url))
