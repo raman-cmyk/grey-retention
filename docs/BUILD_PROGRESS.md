@@ -4,17 +4,19 @@ Checkpoint: October 4, 2026. Branch `codex/grey-retention-v2`; base `b6f92a7`.
 
 ## Active task
 
-V2-002: root integration owner, sequential execution. No agents. Owns designer workflow, minimal jobs/delivery/provider fixtures, notifications, campaign copy/approval wiring, shared dialogs/tables, allocated migrations and tests.
+V2-002 gate passed. Next eligible task V2-003: onboarding, private asset ingestion/classification/gallery, Drive and commerce fixtures, readiness and brand revision corrections. Sequential root implementation; no agents.
 
-Next action: implement version-bound copy generation/approval; admin assignment; private Storage submissions; owner section feedback/resubmission approval; immutable final package and durable fake schedule/cancel with leases/idempotency. Then run DB/type/unit/browser gates and continue V2-003 onward.
+Next action: record this tested commit, claim V2-003, then implement/test its persisted asset/readiness slice. Reschedule/fault fidelity belongs to V2-007; renderer/assets assembly to V2-006. All external operations remain simulated.
 
 ## Checkpoints
 
 - Planning preserved: `bf6f968`.
 - V2-000 complete: `b5dd47f`, `pnpm verify` — 15 tests, lint/format/types/build.
-- V2-001 core gate passed (review; shared dialog/table remainder carried into V2-002): clean reset and reproducible synthetic seed; generated types; `pnpm test:db` 33 assertions; `pnpm verify` 16 tests and production build; `pnpm test:e2e` 8 authenticated journeys across desktop/mobile. Screenshots inspected; no overflow; cross-tenant read and unauthorized approval denied. Commit recorded next.
+- V2-001 complete (shared dialogs/tables verified in V2-002): clean reset and reproducible synthetic seed; generated types; `pnpm test:db` 33 assertions; `pnpm verify` 16 tests and production build; `pnpm test:e2e` 8 authenticated journeys across desktop/mobile. Screenshots inspected; no overflow; cross-tenant read and unauthorized approval denied. Commit `35243ae`.
 
 Migrations: foundation `20260914000000`; identity `20260914010000`; brand/catalog `20260914020000`; campaigns `20260914040000`; transactional commands `20260914090000`. Generated types come only from `supabase gen types typescript --local`.
+
+- V2-002 complete: clean reset/types; 59 DB assertions; full verify 19 unit tests; 10/10 authenticated desktop/mobile journeys. Uploaded original PNGs, owner feedback/resubmission/exact approval, immutable package, schedule and confirmed cancel persist; Storage isolation and stale/replay paths pass. Commit recorded below.
 
 ## Decisions and limits
 
@@ -29,4 +31,4 @@ Brand facts/offers require owner; staff can edit unapproved drafts; platform adm
 - Docker application started by this run for local infrastructure; it was initially stopped. No Grey Retention containers existed before the run. Other stopped project containers untouched.
 - Supabase project `grey-retention`: task-created disposable local containers; configuration ports 54321–54324, 54327, 8083 (inspect actual listeners at cleanup). `pnpm supabase:stop` at finish; no remote linked project is accessed/reset.
 - App/test server port 3100: tracked Playwright sessions ended and port verified closed.
-- Current verify session: tracked by tool; no persistent worker/server.
+- No active app/test/worker session. Local Supabase remains tracked for subsequent phases.

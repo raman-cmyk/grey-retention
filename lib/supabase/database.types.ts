@@ -34,6 +34,66 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_calls: {
+        Row: {
+          cost_micro_usd: number
+          created_at: string
+          feature: string
+          id: string
+          input_revisions: Json
+          input_tokens: number
+          job_id: string
+          output_tokens: number
+          prompt_version: string
+          provider: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          cost_micro_usd?: number
+          created_at?: string
+          feature: string
+          id?: string
+          input_revisions: Json
+          input_tokens: number
+          job_id: string
+          output_tokens: number
+          prompt_version: string
+          provider: string
+          status: string
+          tenant_id: string
+        }
+        Update: {
+          cost_micro_usd?: number
+          created_at?: string
+          feature?: string
+          id?: string
+          input_revisions?: Json
+          input_tokens?: number
+          job_id?: string
+          output_tokens?: number
+          prompt_version?: string
+          provider?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'ai_calls_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'ai_job'
+            columns: ['job_id']
+            isOneToOne: true
+            referencedRelation: 'job_runs'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       audiences: {
         Row: {
           account_id: string
@@ -507,6 +567,238 @@ export type Database = {
           }
         ]
       }
+      delivery_packages: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          created_by: string
+          id: string
+          revision: number
+          snapshot: Json
+          tenant_id: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          revision: number
+          snapshot: Json
+          tenant_id: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          revision?: number
+          snapshot?: Json
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'delivery_packages_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'delivery_packages_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'package_campaign_tenant'
+            columns: ['tenant_id', 'campaign_id']
+            isOneToOne: false
+            referencedRelation: 'campaigns'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      designer_assignments: {
+        Row: {
+          assigned_by: string
+          brief: Json
+          campaign_id: string
+          copy_revision: number
+          created_at: string
+          designer_id: string
+          due_at: string
+          id: string
+          state: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_by: string
+          brief: Json
+          campaign_id: string
+          copy_revision: number
+          created_at?: string
+          designer_id: string
+          due_at: string
+          id?: string
+          state?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_by?: string
+          brief?: Json
+          campaign_id?: string
+          copy_revision?: number
+          created_at?: string
+          designer_id?: string
+          due_at?: string
+          id?: string
+          state?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'designer_assignments_assigned_by_fkey'
+            columns: ['assigned_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'designer_assignments_designer_id_fkey'
+            columns: ['designer_id']
+            isOneToOne: false
+            referencedRelation: 'designers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'designer_assignments_tenant_id_campaign_id_fkey'
+            columns: ['tenant_id', 'campaign_id']
+            isOneToOne: false
+            referencedRelation: 'campaigns'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      designer_reviews: {
+        Row: {
+          actor_id: string
+          assignment_id: string
+          created_at: string
+          decision: string
+          feedback: string
+          id: string
+          section: string
+          submission_id: string
+          tenant_id: string
+        }
+        Insert: {
+          actor_id: string
+          assignment_id: string
+          created_at?: string
+          decision: string
+          feedback: string
+          id?: string
+          section: string
+          submission_id: string
+          tenant_id: string
+        }
+        Update: {
+          actor_id?: string
+          assignment_id?: string
+          created_at?: string
+          decision?: string
+          feedback?: string
+          id?: string
+          section?: string
+          submission_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'designer_reviews_actor_id_fkey'
+            columns: ['actor_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'designer_reviews_submission_id_fkey'
+            columns: ['submission_id']
+            isOneToOne: false
+            referencedRelation: 'designer_submissions'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'designer_reviews_tenant_id_assignment_id_fkey'
+            columns: ['tenant_id', 'assignment_id']
+            isOneToOne: false
+            referencedRelation: 'designer_assignments'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      designer_submissions: {
+        Row: {
+          assignment_id: string
+          copy_revision: number
+          created_at: string
+          id: string
+          notes: string
+          revision: number
+          storage_path: string
+          submitted_by: string
+          tenant_id: string
+        }
+        Insert: {
+          assignment_id: string
+          copy_revision: number
+          created_at?: string
+          id?: string
+          notes: string
+          revision: number
+          storage_path: string
+          submitted_by: string
+          tenant_id: string
+        }
+        Update: {
+          assignment_id?: string
+          copy_revision?: number
+          created_at?: string
+          id?: string
+          notes?: string
+          revision?: number
+          storage_path?: string
+          submitted_by?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'designer_submissions_storage_path_fkey'
+            columns: ['storage_path']
+            isOneToOne: true
+            referencedRelation: 'verified_design_uploads'
+            referencedColumns: ['storage_path']
+          },
+          {
+            foreignKeyName: 'designer_submissions_submitted_by_fkey'
+            columns: ['submitted_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'designer_submissions_tenant_id_assignment_id_fkey'
+            columns: ['tenant_id', 'assignment_id']
+            isOneToOne: false
+            referencedRelation: 'designer_assignments'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       designer_tenant_access: {
         Row: {
           created_at: string
@@ -593,6 +885,235 @@ export type Database = {
             columns: ['profile_id']
             isOneToOne: true
             referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      fixture_deliveries: {
+        Row: {
+          created_at: string
+          id: string
+          idempotency_key: string
+          package_id: string
+          scheduled_at: string | null
+          snapshot: Json
+          state: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          package_id: string
+          scheduled_at?: string | null
+          snapshot: Json
+          state: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          package_id?: string
+          scheduled_at?: string | null
+          snapshot?: Json
+          state?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'fixture_deliveries_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'fixture_deliveries_tenant_id_package_id_fkey'
+            columns: ['tenant_id', 'package_id']
+            isOneToOne: false
+            referencedRelation: 'delivery_packages'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      job_runs: {
+        Row: {
+          attempt: number
+          available_at: string
+          campaign_id: string | null
+          checkpoint: Json
+          created_at: string
+          created_by: string
+          error_code: string | null
+          failure_class: string | null
+          id: string
+          idempotency_key: string
+          input: Json
+          kind: string
+          lease_token: string | null
+          lease_until: string | null
+          max_attempts: number
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempt?: number
+          available_at?: string
+          campaign_id?: string | null
+          checkpoint?: Json
+          created_at?: string
+          created_by: string
+          error_code?: string | null
+          failure_class?: string | null
+          id?: string
+          idempotency_key: string
+          input: Json
+          kind: string
+          lease_token?: string | null
+          lease_until?: string | null
+          max_attempts?: number
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempt?: number
+          available_at?: string
+          campaign_id?: string | null
+          checkpoint?: Json
+          created_at?: string
+          created_by?: string
+          error_code?: string | null
+          failure_class?: string | null
+          id?: string
+          idempotency_key?: string
+          input?: Json
+          kind?: string
+          lease_token?: string | null
+          lease_until?: string | null
+          max_attempts?: number
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'job_campaign_tenant'
+            columns: ['tenant_id', 'campaign_id']
+            isOneToOne: false
+            referencedRelation: 'campaigns'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'job_runs_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'job_runs_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      notification_deliveries: {
+        Row: {
+          channel: string
+          created_at: string
+          id: string
+          notification_id: string
+          provider: string
+          state: string
+          tenant_id: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          id?: string
+          notification_id: string
+          provider: string
+          state: string
+          tenant_id: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          id?: string
+          notification_id?: string
+          provider?: string
+          state?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'notification_deliveries_notification_id_fkey'
+            columns: ['notification_id']
+            isOneToOne: true
+            referencedRelation: 'notifications'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'notification_deliveries_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      notifications: {
+        Row: {
+          created_at: string
+          entity_id: string | null
+          id: string
+          kind: string
+          message: string
+          read_at: string | null
+          recipient_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id?: string | null
+          id?: string
+          kind: string
+          message: string
+          read_at?: string | null
+          recipient_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string | null
+          id?: string
+          kind?: string
+          message?: string
+          read_at?: string | null
+          recipient_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'notifications_recipient_id_fkey'
+            columns: ['recipient_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'notifications_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
             referencedColumns: ['id']
           }
         ]
@@ -929,6 +1450,54 @@ export type Database = {
         }
         Relationships: []
       }
+      verified_design_uploads: {
+        Row: {
+          assignment_id: string
+          byte_size: number
+          created_at: string
+          media_type: string
+          sha256: string
+          storage_path: string
+          tenant_id: string
+          uploaded_by: string
+        }
+        Insert: {
+          assignment_id: string
+          byte_size: number
+          created_at?: string
+          media_type: string
+          sha256: string
+          storage_path: string
+          tenant_id: string
+          uploaded_by: string
+        }
+        Update: {
+          assignment_id?: string
+          byte_size?: number
+          created_at?: string
+          media_type?: string
+          sha256?: string
+          storage_path?: string
+          tenant_id?: string
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'verified_design_uploads_tenant_id_assignment_id_fkey'
+            columns: ['tenant_id', 'assignment_id']
+            isOneToOne: false
+            referencedRelation: 'designer_assignments'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'verified_design_uploads_uploaded_by_fkey'
+            columns: ['uploaded_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -945,6 +1514,65 @@ export type Database = {
       approve_calendar: {
         Args: { expected_revision: number; t: string; target_id: string }
         Returns: undefined
+      }
+      approve_copy: {
+        Args: { campaign: string; expected_revision: number; t: string }
+        Returns: undefined
+      }
+      assign_campaign: {
+        Args: {
+          campaign: string
+          designer: string
+          expected_copy: number
+          t: string
+        }
+        Returns: string
+      }
+      assignable_designers: {
+        Args: { t: string }
+        Returns: {
+          id: string
+          name: string
+        }[]
+      }
+      assignment_brief: { Args: { assignment: string }; Returns: Json }
+      claim_job: {
+        Args: { t: string }
+        Returns: {
+          attempt: number
+          available_at: string
+          campaign_id: string | null
+          checkpoint: Json
+          created_at: string
+          created_by: string
+          error_code: string | null
+          failure_class: string | null
+          id: string
+          idempotency_key: string
+          input: Json
+          kind: string
+          lease_token: string | null
+          lease_until: string | null
+          max_attempts: number
+          status: string
+          tenant_id: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: '*'
+          to: 'job_runs'
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      create_delivery_package: {
+        Args: {
+          campaign: string
+          expected_revision: number
+          settings: Json
+          t: string
+        }
+        Returns: string
       }
       create_offer: {
         Args: {
@@ -976,6 +1604,58 @@ export type Database = {
         }
         Returns: string
       }
+      design_operations: {
+        Args: never
+        Returns: {
+          assignment_id: string
+          campaign_id: string
+          copy_revision: number
+          design_state: string
+          designer_id: string
+          due_at: string
+          tenant_id: string
+          title: string
+        }[]
+      }
+      enqueue_cancel: {
+        Args: { campaign: string; expected_revision: number; t: string }
+        Returns: string
+      }
+      enqueue_copy: {
+        Args: { campaign: string; expected_revision: number; t: string }
+        Returns: string
+      }
+      enqueue_delivery: {
+        Args: { expected_revision: number; package: string; t: string }
+        Returns: string
+      }
+      fail_job: {
+        Args: { failure: string; job: string; lease: string }
+        Returns: undefined
+      }
+      finish_copy_job: {
+        Args: { job: string; lease: string; output: Json }
+        Returns: undefined
+      }
+      finish_delivery_job: {
+        Args: { job: string; lease: string }
+        Returns: undefined
+      }
+      fixture_delivery_command: {
+        Args: { command: string; job: string; lease: string }
+        Returns: Json
+      }
+      record_design_upload: {
+        Args: {
+          actor: string
+          assignment: string
+          byte_size: number
+          hash: string
+          media_type: string
+          path: string
+        }
+        Returns: undefined
+      }
       resolve_admin_context: {
         Args: never
         Returns: {
@@ -998,6 +1678,17 @@ export type Database = {
           designer_id: string
         }[]
       }
+      review_design: {
+        Args: {
+          decision: string
+          expected_revision: number
+          feedback: string
+          section: string
+          submission: string
+          t: string
+        }
+        Returns: undefined
+      }
       save_brand: {
         Args: {
           brand_name: string
@@ -1016,6 +1707,24 @@ export type Database = {
           input?: Json
           t: string
           target_id?: string
+        }
+        Returns: string
+      }
+      save_copy: {
+        Args: {
+          campaign: string
+          expected_revision: number
+          input: Json
+          t: string
+        }
+        Returns: undefined
+      }
+      submit_design: {
+        Args: {
+          assignment: string
+          expected_revision: number
+          notes: string
+          path: string
         }
         Returns: string
       }

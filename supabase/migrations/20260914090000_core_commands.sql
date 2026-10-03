@@ -13,7 +13,7 @@ begin
  perform private.require_member(t,true);
  perform 1 from public.tenants where id=t for update;
  select * into current from public.brand_profiles where tenant_id=t for update;
- if found and current.revision<>expected_revision then raise exception 'Stale brand revision' using errcode='40001'; end if;
+ if found and current.revision is distinct from expected_revision then raise exception 'Stale brand revision' using errcode='40001'; end if;
  if not found and expected_revision<>0 then raise exception 'Stale brand revision' using errcode='40001'; end if;
  insert into public.brand_profiles(tenant_id,brand_name,domain,positioning,voice,prohibitions,corrections,revision)
  values(t,brand_name,domain,positioning,voice,prohibitions,jsonb_build_object('positioning',positioning,'voice',voice,'prohibitions',prohibitions),1)
@@ -50,7 +50,7 @@ begin
  if target_id is not null then
  select * into current from public.campaigns where id=target_id and tenant_id=t for update;
  if not found then raise exception 'Campaign unavailable' using errcode='42501'; end if;
- if current.calendar_revision<>expected_revision then raise exception 'Stale campaign revision; refresh before saving' using errcode='40001'; end if;
+ if current.calendar_revision is distinct from expected_revision then raise exception 'Stale campaign revision; refresh before saving' using errcode='40001'; end if;
  if current.delivery_state in ('queued','preparing','prepared','scheduling','scheduled','sent','reconciling') then raise exception 'Delivery active; reconcile or cancel before editing' using errcode='23514'; end if;
  if current.calendar_state='approved' and not private.is_active_member(t,array['owner']::public.tenant_role[]) then raise exception 'Only owner may revise approved entry' using errcode='42501'; end if;
  material := (current.title,current.goal,current.channel,current.product_id,current.offer_id,current.reference_notes) is distinct from (input->>'title',input->>'goal',input->>'channel',nullif(input->>'product_id','')::uuid,nullif(input->>'offer_id','')::uuid,coalesce(input->>'reference_notes',''));
@@ -75,7 +75,7 @@ begin
  perform private.require_member(t,true);
  select * into current from public.campaigns where id=target_id and tenant_id=t for update;
  if not found then raise exception 'Campaign unavailable' using errcode='42501'; end if;
- if current.calendar_revision<>expected_revision then raise exception 'Stale calendar revision' using errcode='40001'; end if;
+ if current.calendar_revision is distinct from expected_revision then raise exception 'Stale calendar revision' using errcode='40001'; end if;
  if current.audience_id is null then raise exception 'Select an audience first' using errcode='23514'; end if;
  if current.planned_at<=now() then raise exception 'Choose a future schedule' using errcode='23514'; end if;
  if not exists(select 1 from public.brand_profiles b where b.tenant_id=t and b.approved_revision=b.revision) then raise exception 'Approve brand context first' using errcode='23514'; end if;

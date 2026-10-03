@@ -18,7 +18,11 @@ export function CampaignEditor({
   audiences: Row<'audiences'>[]
 }) {
   return (
-    <ActionForm action={saveCampaign} className="grid gap-5">
+    <ActionForm
+      key={`${campaign?.id ?? 'new'}:${campaign?.calendar_revision ?? 0}`}
+      action={saveCampaign}
+      className="grid gap-5"
+    >
       <input type="hidden" name="id" value={campaign?.id ?? ''} />
       <input
         type="hidden"

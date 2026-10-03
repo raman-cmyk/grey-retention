@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/workspace'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { campaignDetail } from '@/features/campaigns/data'
+import { WorkflowPanel } from '@/features/campaigns/workflow-panel'
 import { CampaignEditor } from '@/features/campaigns/editor'
 import { approveCalendar, addNote } from '@/features/campaigns/actions'
 export default async function CampaignPage({
@@ -92,6 +93,12 @@ export default async function CampaignPage({
           </Panel>
         </div>
       </div>
+      <WorkflowPanel
+        campaign={campaign}
+        content={detail.content}
+        owner={context.tenantRole === 'owner'}
+        brand={data!.brand}
+      />
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Panel title="Workspace notes">
           {detail.comments.map((c) => (
