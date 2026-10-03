@@ -29,6 +29,14 @@ test('UC-06/07/09/10 owner-designer revision loop, exact approvals, simulated sc
   const title = `Synthetic design loop ${testInfo.project.name} ${Date.now()}`
   await page.getByLabel('Campaign title').fill(title)
   await page
+    .getByLabel(/^Send time/)
+    .fill(
+      new Date(
+        Date.now() +
+          (testInfo.project.name.startsWith('mobile') ? 45 : 7) * 86400000
+      ).toISOString()
+    )
+  await page
     .getByLabel('Goal and approved facts')
     .fill(
       'Original fictional collection note; no discount or invented urgency.'

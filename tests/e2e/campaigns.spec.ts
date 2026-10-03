@@ -8,6 +8,14 @@ test('UC-05 owner creates, edits, refreshes and approves a persisted calendar ve
   const title = `Synthetic browser proof ${Date.now()}`
   await page.getByLabel('Campaign title').fill(title)
   await page
+    .getByLabel(/^Send time/)
+    .fill(
+      new Date(
+        Date.now() +
+          (testInfo.project.name.startsWith('mobile') ? 45 : 7) * 86400000
+      ).toISOString()
+    )
+  await page
     .getByLabel('Goal and approved facts')
     .fill('A fictional, non-discounted update. No invented claims.')
   await page

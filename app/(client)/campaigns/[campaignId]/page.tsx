@@ -1,3 +1,4 @@
+import { RejectionForm } from '@/features/planning/panels'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
 import {
@@ -32,6 +33,12 @@ export default async function CampaignPage({
         description={`${campaign.synthetic ? 'Synthetic demo · ' : ''}${new Intl.DateTimeFormat('en', { timeZone: campaign.timezone, dateStyle: 'full', timeStyle: 'short' }).format(new Date(campaign.planned_at))} · ${campaign.timezone}`}
       />
       {error && <Notice error>{error}</Notice>}
+      {campaign.superseded_by_plan && (
+        <Notice>
+          This historical draft was superseded by regeneration. Approved entries
+          and audit history were retained.
+        </Notice>
+      )}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <Panel title="Calendar entry">
           <CampaignEditor
@@ -57,6 +64,7 @@ export default async function CampaignPage({
               ))}
             </dl>
             {context.tenantRole === 'owner' &&
+              !campaign.superseded_by_plan &&
               campaign.calendar_state !== 'approved' && (
                 <ActionForm action={approveCalendar} className="mt-5">
                   <input type="hidden" name="id" value={campaign.id} />
@@ -75,6 +83,9 @@ export default async function CampaignPage({
               belong to platform admin.
             </p>
           </Panel>
+          {context.tenantRole === 'owner' && !campaign.superseded_by_plan && (
+            <RejectionForm campaign={campaign} versionKind="calendar" />
+          )}
           <Panel title="Approval history">
             {detail.approvals.length ? (
               detail.approvals.map((a) => (

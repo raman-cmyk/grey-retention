@@ -19,7 +19,7 @@ V2-003 gate passed: private ZIP/import/correction and fixture Drive/commerce/kit
 
 V2-004 gate passed: shared fictional capture, private subscriptions/playbooks and sandbox previews. Clean reset/types, 107 DB assertions, full verify with 28 unit tests, 16/16 combined browser journeys.
 
-The exact next action is to commit V2-004, claim V2-005 and implement guarded planning/bulk copy. V2-005 through V2-010 remain unimplemented; V2-011 acceptance remains open.
+Commit `7f54944`. V2-005 gate passed: clean reset/types, 121 DB assertions, full verify with 31 unit tests/build, 18/18 desktop/mobile journeys. Independent guards and immutable exact weekly copy approval persist. The exact next action is to claim and implement V2-006 rendering/assembly. V2-006 through V2-010 remain unimplemented; V2-011 acceptance remains open.
 
 ## Schema and verification
 
@@ -27,10 +27,10 @@ Migrations are allocated to their documented namespaces and types are CLI-genera
 
 - Foundation `20260914000000`; IAM `20260914010000`.
 - Brand/AI `20260914020000`–`20260914020002`.
-- Jobs/providers/connections `20260914030000`–`20260914030002`.
-- Campaigns `20260914040000`; assets/references `20260914050000`–`20260914050001`.
+- Jobs/providers/connections `20260914030000`–`20260914030003`.
+- Campaigns `20260914040000`–`20260914040001`; assets/references `20260914050000`–`20260914050001`.
 - Designers `20260914060000`; notifications `20260914070000`.
-- Transactional cross-domain commands `20260914090000`–`20260914090004`.
+- Transactional cross-domain commands `20260914090000`–`20260914090005`.
 
 Commands: `pnpm supabase:reset`, `pnpm supabase:types`, format generated types, `pnpm test:db`, `pnpm verify`, `pnpm test:e2e`. Tests use real local Auth sessions and private Storage, never a linked remote reset. Browser traces/screenshots and sanitized command logs are ignored under `.audit`/`test-results`.
 

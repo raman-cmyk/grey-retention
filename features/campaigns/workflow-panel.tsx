@@ -1,3 +1,4 @@
+import { RejectionForm } from '@/features/planning/panels'
 import Image from 'next/image'
 import type { Database } from '@/lib/supabase/database.types'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
@@ -69,12 +70,15 @@ export async function WorkflowPanel({
                 </SubmitButton>
               </Command>
             )}
+            {content?.validation_errors.length ? (
+              <Notice error>{content.validation_errors.join(', ')}</Notice>
+            ) : null}
             {content?.body && (
               <>
                 <p className="my-4 text-xs text-[var(--text-muted)]">
-                  Generation uses the original clean-room fixture provider.
-                  Claims, discounts and deadlines require further guardrail
-                  evaluation before production use.
+                  Original fixture copy. Structured discount, deadline and
+                  owner-prohibition guards run on every approval. Real
+                  factual/creative quality remains unverified.
                 </p>
                 <ActionForm
                   key={c.copy_revision}
@@ -159,6 +163,7 @@ export async function WorkflowPanel({
                 )}
               </>
             )}
+            {owner && <RejectionForm campaign={c} />}
             {c.copy_state === 'approved' && (
               <Notice>
                 Owner approved copy v{c.copy_revision}. Platform admin may

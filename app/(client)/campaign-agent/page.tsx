@@ -4,6 +4,7 @@ import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
 import { StatusMark } from '@/components/ui/status-mark'
 import { campaignWorkspace } from '@/features/campaigns/data'
 import { CampaignEditor } from '@/features/campaigns/editor'
+import { PlanningPanel } from '@/features/planning/panels'
 export default async function CampaignAgentPage({
   searchParams
 }: {
@@ -19,10 +20,12 @@ export default async function CampaignAgentPage({
         month: '2-digit'
       }).format(new Date())
   const campaigns =
-    data?.campaigns.filter((c) =>
-      new Date(c.planned_at)
-        .toLocaleDateString('en-CA', { timeZone: c.timezone })
-        .startsWith(month)
+    data?.campaigns.filter(
+      (c) =>
+        (params.view === 'history' || !c.superseded_by_plan) &&
+        new Date(c.planned_at)
+          .toLocaleDateString('en-CA', { timeZone: c.timezone })
+          .startsWith(month)
     ) ?? []
   return (
     <div className="mx-auto max-w-6xl">
@@ -53,6 +56,7 @@ export default async function CampaignAgentPage({
               >
                 <option value="calendar">Calendar</option>
                 <option value="list">List</option>
+                <option value="history">History including superseded</option>
               </select>
             </label>
             <button className="min-h-10 rounded-lg bg-[var(--brand-primary)] px-4 text-sm text-[var(--on-brand)]">
@@ -110,6 +114,20 @@ export default async function CampaignAgentPage({
               </div>
             )}
           </Panel>
+          <div className="mt-5">
+            <Link
+              href="/copy-review"
+              className="text-sm font-semibold underline"
+            >
+              Open weekly copy review
+            </Link>
+          </div>
+          <PlanningPanel
+            tenantId={context.tenantId}
+            owner={context.tenantRole === 'owner'}
+            campaigns={data!.campaigns}
+            audiences={data!.audiences}
+          />
           <Panel title="Create a campaign" className="mt-6">
             <CampaignEditor
               products={data!.products}

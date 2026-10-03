@@ -720,12 +720,16 @@ export type Database = {
           created_by: string
           cta: string
           id: string
+          input_revisions: Json
           preheader: string
           primary_url: string
           revision: number
           subject: string
           subject_options: string[]
           tenant_id: string
+          validation_errors: string[]
+          validation_state: string
+          verified_claims: Json
         }
         Insert: {
           body?: string
@@ -734,12 +738,16 @@ export type Database = {
           created_by: string
           cta?: string
           id?: string
+          input_revisions?: Json
           preheader?: string
           primary_url?: string
           revision: number
           subject?: string
           subject_options?: string[]
           tenant_id: string
+          validation_errors?: string[]
+          validation_state?: string
+          verified_claims?: Json
         }
         Update: {
           body?: string
@@ -748,12 +756,16 @@ export type Database = {
           created_by?: string
           cta?: string
           id?: string
+          input_revisions?: Json
           preheader?: string
           primary_url?: string
           revision?: number
           subject?: string
           subject_options?: string[]
           tenant_id?: string
+          validation_errors?: string[]
+          validation_state?: string
+          verified_claims?: Json
         }
         Relationships: [
           {
@@ -817,6 +829,106 @@ export type Database = {
           }
         ]
       }
+      campaign_rejections: {
+        Row: {
+          actor_id: string
+          campaign_id: string
+          created_at: string
+          id: string
+          kind: string
+          reason: string
+          revision: number
+          scope: string
+          tenant_id: string
+        }
+        Insert: {
+          actor_id: string
+          campaign_id: string
+          created_at?: string
+          id?: string
+          kind: string
+          reason: string
+          revision: number
+          scope: string
+          tenant_id: string
+        }
+        Update: {
+          actor_id?: string
+          campaign_id?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          reason?: string
+          revision?: number
+          scope?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'campaign_rejections_actor_id_fkey'
+            columns: ['actor_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'campaign_rejections_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'rejection_campaign_tenant'
+            columns: ['tenant_id', 'campaign_id']
+            isOneToOne: false
+            referencedRelation: 'campaigns'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      campaign_sequences: {
+        Row: {
+          brief: string
+          created_at: string
+          id: string
+          key: string
+          plan_id: string
+          tenant_id: string
+        }
+        Insert: {
+          brief: string
+          created_at?: string
+          id?: string
+          key: string
+          plan_id: string
+          tenant_id: string
+        }
+        Update: {
+          brief?: string
+          created_at?: string
+          id?: string
+          key?: string
+          plan_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'campaign_sequences_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'sequence_plan_tenant'
+            columns: ['tenant_id', 'plan_id']
+            isOneToOne: false
+            referencedRelation: 'calendar_plans'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       campaigns: {
         Row: {
           audience_id: string | null
@@ -840,6 +952,7 @@ export type Database = {
           reference_notes: string
           sequence_id: string | null
           sequence_position: number | null
+          superseded_by_plan: string | null
           synthetic: boolean
           tenant_id: string
           timezone: string
@@ -868,6 +981,7 @@ export type Database = {
           reference_notes?: string
           sequence_id?: string | null
           sequence_position?: number | null
+          superseded_by_plan?: string | null
           synthetic?: boolean
           tenant_id: string
           timezone: string
@@ -896,6 +1010,7 @@ export type Database = {
           reference_notes?: string
           sequence_id?: string | null
           sequence_position?: number | null
+          superseded_by_plan?: string | null
           synthetic?: boolean
           tenant_id?: string
           timezone?: string
@@ -903,6 +1018,20 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: 'campaign_sequence_tenant'
+            columns: ['tenant_id', 'sequence_id']
+            isOneToOne: false
+            referencedRelation: 'campaign_sequences'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'campaign_superseded_tenant'
+            columns: ['tenant_id', 'superseded_by_plan']
+            isOneToOne: false
+            referencedRelation: 'calendar_plans'
+            referencedColumns: ['tenant_id', 'id']
+          },
           {
             foreignKeyName: 'campaigns_created_by_fkey'
             columns: ['created_by']
@@ -1109,6 +1238,60 @@ export type Database = {
           },
           {
             foreignKeyName: 'competitor_subscriptions_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      copy_review_batches: {
+        Row: {
+          approved_at: string | null
+          created_at: string
+          created_by: string
+          expires_at: string
+          id: string
+          revisions: Json
+          status: string
+          tenant_id: string
+          timezone: string
+          week_start: string
+        }
+        Insert: {
+          approved_at?: string | null
+          created_at?: string
+          created_by: string
+          expires_at?: string
+          id?: string
+          revisions: Json
+          status?: string
+          tenant_id: string
+          timezone: string
+          week_start: string
+        }
+        Update: {
+          approved_at?: string | null
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          id?: string
+          revisions?: Json
+          status?: string
+          tenant_id?: string
+          timezone?: string
+          week_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'copy_review_batches_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'copy_review_batches_tenant_id_fkey'
             columns: ['tenant_id']
             isOneToOne: false
             referencedRelation: 'tenants'
@@ -1730,6 +1913,132 @@ export type Database = {
           }
         ]
       }
+      owner_rules: {
+        Row: {
+          active: boolean
+          audience_id: string | null
+          campaign_id: string | null
+          created_at: string
+          created_by: string
+          forbidden_phrase: string
+          id: string
+          revision: number
+          scope: string
+          sequence_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          active?: boolean
+          audience_id?: string | null
+          campaign_id?: string | null
+          created_at?: string
+          created_by: string
+          forbidden_phrase: string
+          id?: string
+          revision?: number
+          scope: string
+          sequence_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          active?: boolean
+          audience_id?: string | null
+          campaign_id?: string | null
+          created_at?: string
+          created_by?: string
+          forbidden_phrase?: string
+          id?: string
+          revision?: number
+          scope?: string
+          sequence_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'owner_rules_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'owner_rules_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'rule_audience_tenant'
+            columns: ['tenant_id', 'audience_id']
+            isOneToOne: false
+            referencedRelation: 'audiences'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'rule_campaign_tenant'
+            columns: ['tenant_id', 'campaign_id']
+            isOneToOne: false
+            referencedRelation: 'campaigns'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'rule_sequence_tenant'
+            columns: ['tenant_id', 'sequence_id']
+            isOneToOne: false
+            referencedRelation: 'campaign_sequences'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      planning_preferences: {
+        Row: {
+          discount_cap: number
+          generation: number
+          revision: number
+          sitewide_gap: number
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+          weekly_cap: number
+        }
+        Insert: {
+          discount_cap?: number
+          generation?: number
+          revision?: number
+          sitewide_gap?: number
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+          weekly_cap?: number
+        }
+        Update: {
+          discount_cap?: number
+          generation?: number
+          revision?: number
+          sitewide_gap?: number
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          weekly_cap?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'planning_preferences_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'planning_preferences_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       platform_admins: {
         Row: {
           accepted_at: string | null
@@ -2227,6 +2536,11 @@ export type Database = {
         Args: { campaign: string; expected_revision: number; t: string }
         Returns: undefined
       }
+      approve_copy_batch: {
+        Args: { batch: string; t: string }
+        Returns: number
+      }
+      approve_plan: { Args: { plan: string; t: string }; Returns: undefined }
       assign_campaign: {
         Args: {
           campaign: string
@@ -2360,10 +2674,15 @@ export type Database = {
         Args: { input?: Json; kind: string; t: string }
         Returns: string
       }
+      enqueue_plan: {
+        Args: { audience: string; starts_at: string; t: string }
+        Returns: string
+      }
       enqueue_reference_job: {
         Args: { kind: string; subscription?: string; t: string }
         Returns: string
       }
+      enqueue_review_reminders: { Args: { t: string }; Returns: string }
       fail_job: {
         Args: { failure: string; job: string; lease: string }
         Returns: undefined
@@ -2384,14 +2703,27 @@ export type Database = {
         Args: { job: string; lease: string; output: Json }
         Returns: undefined
       }
+      finish_plan_job: {
+        Args: { job: string; lease: string; output: Json }
+        Returns: string
+      }
       finish_playbook_job: {
         Args: { job: string; lease: string; output: Json }
+        Returns: undefined
+      }
+      finish_reminder_job: {
+        Args: { job: string; lease: string }
         Returns: undefined
       }
       fixture_delivery_command: {
         Args: { command: string; job: string; lease: string }
         Returns: Json
       }
+      prepare_copy_review: {
+        Args: { t: string; week: string }
+        Returns: string
+      }
+      queue_weekly_copy: { Args: { t: string; week: string }; Returns: number }
       record_asset_upload: {
         Args: {
           actor: string
@@ -2429,6 +2761,18 @@ export type Database = {
       }
       refresh_catalog_stock: {
         Args: { product: string; stock: number; t: string }
+        Returns: undefined
+      }
+      reject_campaign_version: {
+        Args: {
+          campaign: string
+          expected_revision: number
+          forbidden_phrase?: string
+          kind: string
+          reason: string
+          scope: string
+          t: string
+        }
         Returns: undefined
       }
       resolve_admin_context: {
@@ -2496,6 +2840,16 @@ export type Database = {
       }
       set_fixture_connection: {
         Args: { folder?: string; provider: string; status: string; t: string }
+        Returns: undefined
+      }
+      set_planning_preferences: {
+        Args: {
+          discounted: number
+          expected_revision: number
+          gap: number
+          t: string
+          weekly: number
+        }
         Returns: undefined
       }
       submit_design: {

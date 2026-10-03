@@ -4,9 +4,7 @@ Checkpoint: October 4, 2026. Branch `codex/grey-retention-v2`; base `b6f92a7`.
 
 ## Active task
 
-V2-004 gate passed. Next eligible task V2-005: guarded rolling plans, lineage, weekly copy review/bulk exact approvals and rejection/reminder policy. Sequential root execution; no agents.
-
-Next action: commit this checkpoint, claim V2-005, implement/test persisted planning and approval behavior. Live providers/paid AI remain disabled.
+V2-005 verified; recording focused checkpoint before claiming V2-006. Sequential root execution; no agents. Next action: fixture design orchestration, real inspectable strip artifacts, owner section review, guarded assembly and private template reuse.
 
 ## Checkpoints
 
@@ -20,7 +18,9 @@ Migrations: foundation `20260914000000`; identity `20260914010000`; brand/catalo
 
 - V2-003 complete: clean reset/types; 89 DB assertions; full verify 24 unit tests; 14/14 desktop/mobile journeys. Private ZIP/Drive artifacts, repeat dedupe, corrections, kit/catalog fixtures and readiness verified. Commit `7120cf1`.
 
-- V2-004 complete: clean reset/types; 107 DB assertions; full verify 28 unit tests; 16/16 desktop/mobile journeys. Shared capture dedupe, private rules/playbooks, sandbox previews, evidence thresholds and sequence gaps/false matches verified. Commit recorded after commit.
+- V2-004 complete: clean reset/types; 107 DB assertions; full verify 28 unit tests; 16/16 desktop/mobile journeys. Shared capture dedupe, private rules/playbooks, sandbox previews, evidence thresholds and sequence gaps/false matches verified. Commit `7f54944`.
+
+- V2-005 complete: clean reset/types, 121 DB assertions, full verify 31 unit tests/build; 18/18 real-auth desktop/mobile journeys. Rolling/month and exact weekly generated-copy reviews persist; screenshots inspected and port 3100 closed. Commit recorded after checkpoint.
 
 ## Decisions and limits
 
