@@ -163,6 +163,11 @@ export type CampaignResults = {
   source: 'fixture' | 'provider'
   collectedAt: string
   complete: boolean
+  comparable: boolean
+  windowStart: string
+  windowEnd: string
+  currency: 'USD'
+  confounders: string[]
   recipients: number
   clicks: number
   revenueMinor: number

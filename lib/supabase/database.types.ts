@@ -428,6 +428,38 @@ export type Database = {
           }
         ]
       }
+      autopilot_streaks: {
+        Row: {
+          consecutive_sends: number
+          generation: number
+          last_rejection_at: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          consecutive_sends?: number
+          generation?: number
+          last_rejection_at?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          consecutive_sends?: number
+          generation?: number
+          last_rejection_at?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'autopilot_streaks_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       brand_events: {
         Row: {
           action: string
@@ -969,6 +1001,146 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'campaigns'
             referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      campaign_results: {
+        Row: {
+          clicks: number
+          collected_at: string
+          comparable: boolean
+          complete: boolean
+          confounders: Json
+          created_at: string
+          currency: string
+          delivery_id: string
+          id: string
+          package_id: string
+          recipients: number
+          revenue_minor: number
+          source: string
+          spam: number
+          tenant_id: string
+          unsubscribes: number
+          window_end: string
+          window_key: string
+          window_start: string
+        }
+        Insert: {
+          clicks: number
+          collected_at: string
+          comparable: boolean
+          complete: boolean
+          confounders: Json
+          created_at?: string
+          currency: string
+          delivery_id: string
+          id?: string
+          package_id: string
+          recipients: number
+          revenue_minor: number
+          source: string
+          spam: number
+          tenant_id: string
+          unsubscribes: number
+          window_end: string
+          window_key: string
+          window_start: string
+        }
+        Update: {
+          clicks?: number
+          collected_at?: string
+          comparable?: boolean
+          complete?: boolean
+          confounders?: Json
+          created_at?: string
+          currency?: string
+          delivery_id?: string
+          id?: string
+          package_id?: string
+          recipients?: number
+          revenue_minor?: number
+          source?: string
+          spam?: number
+          tenant_id?: string
+          unsubscribes?: number
+          window_end?: string
+          window_key?: string
+          window_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'campaign_results_delivery_id_fkey'
+            columns: ['delivery_id']
+            isOneToOne: false
+            referencedRelation: 'fixture_deliveries'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'campaign_results_package_id_fkey'
+            columns: ['package_id']
+            isOneToOne: false
+            referencedRelation: 'delivery_packages'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'campaign_results_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      campaign_send_metadata: {
+        Row: {
+          campaign_id: string
+          comparison_key: Json
+          created_at: string
+          package_id: string
+          snapshot: Json
+          subject_group: string
+          tenant_id: string
+        }
+        Insert: {
+          campaign_id: string
+          comparison_key: Json
+          created_at?: string
+          package_id: string
+          snapshot: Json
+          subject_group: string
+          tenant_id: string
+        }
+        Update: {
+          campaign_id?: string
+          comparison_key?: Json
+          created_at?: string
+          package_id?: string
+          snapshot?: Json
+          subject_group?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'campaign_send_metadata_package_id_fkey'
+            columns: ['package_id']
+            isOneToOne: true
+            referencedRelation: 'delivery_packages'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'campaign_send_metadata_tenant_id_campaign_id_fkey'
+            columns: ['tenant_id', 'campaign_id']
+            isOneToOne: false
+            referencedRelation: 'campaigns'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'campaign_send_metadata_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
           }
         ]
       }
@@ -2180,6 +2352,42 @@ export type Database = {
           }
         ]
       }
+      fixture_metric_controls: {
+        Row: {
+          delivery_id: string
+          scenario: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          delivery_id: string
+          scenario: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          delivery_id?: string
+          scenario?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'fixture_metric_controls_delivery_id_fkey'
+            columns: ['delivery_id']
+            isOneToOne: true
+            referencedRelation: 'fixture_deliveries'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'fixture_metric_controls_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       holidays: {
         Row: {
           created_at: string
@@ -2303,6 +2511,222 @@ export type Database = {
           },
           {
             foreignKeyName: 'job_runs_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      l2_silence_candidates: {
+        Row: {
+          brand_revision: number
+          campaign_id: string
+          content_id: string
+          created_at: string
+          created_by: string
+          eligible_at: string
+          id: string
+          policy_revision: number
+          simulated_at: string | null
+          status: string
+          streak_generation: number
+          target_revisions: Json
+          tenant_id: string
+        }
+        Insert: {
+          brand_revision: number
+          campaign_id: string
+          content_id: string
+          created_at?: string
+          created_by: string
+          eligible_at: string
+          id?: string
+          policy_revision: number
+          simulated_at?: string | null
+          status?: string
+          streak_generation: number
+          target_revisions: Json
+          tenant_id: string
+        }
+        Update: {
+          brand_revision?: number
+          campaign_id?: string
+          content_id?: string
+          created_at?: string
+          created_by?: string
+          eligible_at?: string
+          id?: string
+          policy_revision?: number
+          simulated_at?: string | null
+          status?: string
+          streak_generation?: number
+          target_revisions?: Json
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'l2_silence_candidates_content_id_fkey'
+            columns: ['content_id']
+            isOneToOne: false
+            referencedRelation: 'campaign_content'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'l2_silence_candidates_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'l2_silence_candidates_tenant_id_campaign_id_fkey'
+            columns: ['tenant_id', 'campaign_id']
+            isOneToOne: false
+            referencedRelation: 'campaigns'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      l2_simulation_policies: {
+        Row: {
+          approved_by: string
+          design_delegation: boolean
+          enabled: boolean
+          production_enabled: boolean
+          required_sends: number
+          revision: number
+          silence_hours: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approved_by: string
+          design_delegation?: boolean
+          enabled?: boolean
+          production_enabled?: boolean
+          required_sends?: number
+          revision?: number
+          silence_hours?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approved_by?: string
+          design_delegation?: boolean
+          enabled?: boolean
+          production_enabled?: boolean
+          required_sends?: number
+          revision?: number
+          silence_hours?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'l2_simulation_policies_approved_by_fkey'
+            columns: ['approved_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'l2_simulation_policies_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      learned_rules: {
+        Row: {
+          comparison_key: Json
+          created_at: string
+          evidence: Json
+          evidence_hash: string
+          id: string
+          kind: string
+          preferred_group: string
+          revision: number
+          status: string
+          summary: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          comparison_key: Json
+          created_at?: string
+          evidence: Json
+          evidence_hash: string
+          id?: string
+          kind: string
+          preferred_group: string
+          revision?: number
+          status?: string
+          summary: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          comparison_key?: Json
+          created_at?: string
+          evidence?: Json
+          evidence_hash?: string
+          id?: string
+          kind?: string
+          preferred_group?: string
+          revision?: number
+          status?: string
+          summary?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'learned_rules_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      learning_runs: {
+        Row: {
+          created_at: string
+          detail: Json
+          id: string
+          job_id: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          detail: Json
+          id?: string
+          job_id: string
+          status: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          detail?: Json
+          id?: string
+          job_id?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'learning_runs_job_id_fkey'
+            columns: ['job_id']
+            isOneToOne: true
+            referencedRelation: 'job_runs'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'learning_runs_tenant_id_fkey'
             columns: ['tenant_id']
             isOneToOne: false
             referencedRelation: 'tenants'
@@ -3037,6 +3461,41 @@ export type Database = {
           }
         ]
       }
+      result_digests: {
+        Row: {
+          created_at: string
+          id: string
+          local_date: string
+          observed_at: string
+          snapshot: Json
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          local_date: string
+          observed_at: string
+          snapshot: Json
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          local_date?: string
+          observed_at?: string
+          snapshot?: Json
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'result_digests_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       segment_registry: {
         Row: {
           account_id: string
@@ -3568,6 +4027,10 @@ export type Database = {
         Args: { event_date: string; name: string; notes: string; t: string }
         Returns: string
       }
+      advance_results_clock: {
+        Args: { observed_at: string; t: string }
+        Returns: number
+      }
       approve_brand: {
         Args: { expected_revision: number; t: string }
         Returns: undefined
@@ -3750,6 +4213,7 @@ export type Database = {
         Args: { campaign: string; expected_revision: number; t: string }
         Returns: string
       }
+      enqueue_daily_result_digest: { Args: { t: string }; Returns: undefined }
       enqueue_delivery: {
         Args: { expected_revision: number; package: string; t: string }
         Returns: string
@@ -3764,6 +4228,7 @@ export type Database = {
         }
         Returns: string
       }
+      enqueue_learning: { Args: { t: string }; Returns: string }
       enqueue_onboarding_job: {
         Args: { input?: Json; kind: string; t: string }
         Returns: string
@@ -3808,6 +4273,10 @@ export type Database = {
         Args: { job: string; lease: string }
         Returns: undefined
       }
+      finish_learning_job: {
+        Args: { job: string; lease: string }
+        Returns: undefined
+      }
       finish_onboarding_job: {
         Args: { job: string; lease: string; output: Json }
         Returns: undefined
@@ -3828,6 +4297,18 @@ export type Database = {
         Args: { job: string; lease: string; output: Json }
         Returns: string
       }
+      finish_result_digest: {
+        Args: { job: string; lease: string }
+        Returns: undefined
+      }
+      finish_result_job: {
+        Args: { job: string; lease: string; output: Json }
+        Returns: string
+      }
+      fixture_copy_preference: {
+        Args: { campaign: string; t: string }
+        Returns: Json
+      }
       fixture_delivery_command: {
         Args: { command: string; job: string; lease: string }
         Returns: Json
@@ -3835,6 +4316,15 @@ export type Database = {
       fixture_fault_probe: {
         Args: { job: string; lease: string; stage: string }
         Returns: string
+      }
+      fixture_result_payload: {
+        Args: {
+          delivery: string
+          job: string
+          lease: string
+          window_key: string
+        }
+        Returns: Json
       }
       fixture_usage_summary: {
         Args: { t: string }
@@ -3868,6 +4358,10 @@ export type Database = {
       operator_diagnostics: { Args: never; Returns: Json }
       prepare_copy_review: {
         Args: { t: string; week: string }
+        Returns: string
+      }
+      prepare_l2_silence: {
+        Args: { campaign: string; expected_copy: number; t: string }
         Returns: string
       }
       queue_ready_l1: { Args: { t: string }; Returns: number }
@@ -4007,6 +4501,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      review_learned_rule: {
+        Args: {
+          decision: string
+          expected_revision: number
+          rule: string
+          t: string
+        }
+        Returns: undefined
+      }
       review_render: {
         Args: {
           decision: string
@@ -4062,6 +4565,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      save_l2_simulation_policy: {
+        Args: {
+          enabled: boolean
+          expected_revision: number
+          required_sends?: number
+          t: string
+        }
+        Returns: undefined
+      }
       save_own_template: {
         Args: { delivery: string; t: string }
         Returns: string
@@ -4078,6 +4590,10 @@ export type Database = {
         Args: { campaign: string; scenario: string; t: string }
         Returns: undefined
       }
+      set_fixture_metrics: {
+        Args: { delivery: string; scenario: string; t: string }
+        Returns: undefined
+      }
       set_planning_preferences: {
         Args: {
           discounted: number
@@ -4086,6 +4602,19 @@ export type Database = {
           t: string
           weekly: number
         }
+        Returns: undefined
+      }
+      simulate_l2_schedule: {
+        Args: {
+          candidate: string
+          expected_delivery: number
+          package: string
+          t: string
+        }
+        Returns: string
+      }
+      simulate_l2_silence: {
+        Args: { candidate: string; observed_at: string; t: string }
         Returns: undefined
       }
       submit_design: {

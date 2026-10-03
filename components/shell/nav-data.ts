@@ -38,6 +38,7 @@ export function createClientNavigation(
       href: '/competitor-agent',
       icon: 'inspirations'
     },
+    { label: 'Results & learning', href: '/reports', icon: 'admin-overview' },
     { label: 'Connections', href: '/connections', icon: 'connections' },
     { label: 'Team', href: '/team', icon: 'team' },
     { label: 'Support', href: '/support', icon: 'support' },

@@ -1,3 +1,4 @@
+import { resultSchema } from '@/features/reporting/contracts'
 import { ProviderFault } from './failures'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
@@ -112,8 +113,14 @@ export class PersistedFixtureDeliveryProvider implements DeliveryProvider {
     return reconcileSchema.parse(await this.command('reconcile'))
   }
   async results(id: string, window: '48h' | '7d'): Promise<CampaignResults> {
-    throw new Error(
-      `Results for ${id} (${window}) are unavailable until V2-009.`
-    )
+    if (!this.job.lease_token) throw new Error('Missing result lease')
+    const r = await this.db.rpc('fixture_result_payload', {
+      job: this.job.id,
+      lease: this.job.lease_token,
+      delivery: id,
+      window_key: window
+    })
+    if (r.error) throw r.error
+    return resultSchema.parse(r.data)
   }
 }

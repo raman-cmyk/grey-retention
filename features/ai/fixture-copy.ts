@@ -8,7 +8,14 @@ export const copyOutputSchema = z.object({
   preheader: z.string().max(300),
   body: z.string().min(1).max(20000),
   cta: z.string().min(1).max(200),
-  url: httpsUrl
+  url: httpsUrl,
+  learningPreference: z
+    .object({
+      ruleId: z.uuid(),
+      preferredGroup: z.enum(['short', 'detailed']),
+      evidenceHash: z.string().length(64)
+    })
+    .optional()
 })
 export function generateFixtureCopy(input: {
   brandRevision: number
@@ -16,12 +23,28 @@ export function generateFixtureCopy(input: {
   title: string
   productTitle: string | null
   url: string
+  learningPreference?: {
+    ruleId: string
+    preferredGroup: 'short' | 'detailed'
+    evidenceHash: string
+  }
 }) {
   const topic = input.productTitle ?? input.title
   return copyOutputSchema.parse({
     brandRevision: input.brandRevision,
     synthetic: true,
-    subject: `A closer look: ${topic}`.slice(0, 200),
+    subject:
+      input.learningPreference?.preferredGroup === 'short'
+        ? 'A considered note'
+        : input.learningPreference?.preferredGroup === 'detailed'
+          ? `A closer look at the details: ${topic}, considered at your own pace`.slice(
+              0,
+              200
+            )
+          : `A closer look: ${topic}`.slice(0, 200),
+    ...(input.learningPreference
+      ? { learningPreference: input.learningPreference }
+      : {}),
     subjects: [
       `A closer look: ${topic}`.slice(0, 200),
       `A note from ${input.brandName}`.slice(0, 200),

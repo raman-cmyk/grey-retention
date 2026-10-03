@@ -1,4 +1,6 @@
 import 'server-only'
+import { reportingJobKinds, runReportingJob } from '@/features/reporting/worker'
+import { z } from 'zod'
 import { classifyFailure, ProviderFault } from './failures'
 import { runRenderJob } from '@/features/rendering/worker'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -21,6 +23,8 @@ export async function runFixtureJobs(
     throw new Error('Live providers are disabled for this build.')
   const health = await db.rpc('enqueue_health_check', { t: tenantId })
   if (health.error) throw health.error
+  const digest = await db.rpc('enqueue_daily_result_digest', { t: tenantId })
+  if (digest.error) throw digest.error
   const sweep = await db.rpc('queue_ready_l1', { t: tenantId })
   if (sweep.error) throw sweep.error
   let processed = 0
@@ -42,7 +46,9 @@ export async function runFixtureJobs(
                 ? 'playbook'
                 : job.kind === 'calendar.plan'
                   ? 'calendar'
-                  : null
+                  : job.kind === 'learning.synthesize'
+                    ? 'learning'
+                    : null
       if (budgetFeature) {
         const reservation = await db.rpc('reserve_fixture_usage', {
           t: tenantId,
@@ -52,7 +58,9 @@ export async function runFixtureJobs(
         })
         if (reservation.error) throw reservation.error
       }
-      if (job.kind === 'ops.health') {
+      if (reportingJobKinds.includes(job.kind)) {
+        await runReportingJob(db, job)
+      } else if (job.kind === 'ops.health') {
         const r = await db.rpc('finish_health_check', {
           job: job.id,
           lease: job.lease_token
@@ -95,7 +103,20 @@ export async function runFixtureJobs(
           productTitle = product.data.title
           url = product.data.url
         }
+        const preference = await db.rpc('fixture_copy_preference', {
+          t: tenantId,
+          campaign: c.id
+        })
+        if (preference.error) throw preference.error
+        const learned = z
+          .object({
+            ruleId: z.uuid(),
+            preferredGroup: z.enum(['short', 'detailed']),
+            evidenceHash: z.string().length(64)
+          })
+          .safeParse(preference.data)
         const output = generateFixtureCopy({
+          ...(learned.success ? { learningPreference: learned.data } : {}),
           brandRevision: brand.data.revision,
           brandName: brand.data.brand_name,
           title: c.title,
