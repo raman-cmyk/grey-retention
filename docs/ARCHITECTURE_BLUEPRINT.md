@@ -571,3 +571,13 @@ These do not block M0 and must be resolved only when their owning task reaches t
 - Whether preparing a Klaviyo draft is allowed in the first external beta.
 
 Until resolved, use interfaces and fake adapters rather than embedding assumptions.
+
+## V2-000 contract freeze — October 4, 2026
+
+Code contracts are in `features/workflow/domain/contracts.ts`; capability, chat/proposal, material edit and retry policies are in `features/workflow/domain/policy.ts`. Approval revisions are independent of job/provider outcomes. Owner-only approval/scheduling does not transfer to platform operators. Designers use assignment policy, never tenant-wide campaign queries. Private chat is creator-scoped; shared visibility never grants another actor's proposal confirmation.
+
+Material edits: brief invalidates calendar/copy/design/delivery; copy invalidates copy/design/delivery; design invalidates design/delivery; audience or schedule invalidates calendar/delivery; sender invalidates delivery; links/footer invalidate design/delivery. Approval history remains append-only. Packages are immutable database snapshots with source approval IDs and source revisions. Any invalidation requires a new package; scheduled edits first reconcile/cancel under delivery policy.
+
+Queue policy: initial attempt plus three eligible transient retries; unknown side effects reconcile to found/absent/unknown before retry. Durable job records include lease tokens/expiry, checkpoint, attempts, availability and a unique tenant/idempotency key. Provider preparation, scheduling and sent confirmation remain distinct states.
+
+Schema sequencing: domain tables are allocated to their existing blocks, with cross-domain foreign keys/RPC wiring deferred to `2026091409xxxx` where sort-order requires it. Only Supabase schema tooling generates database types. No new runtime dependencies. Local generated `graphify-out` artifacts are excluded from format/lint checks; their contents remain untouched.
