@@ -1351,6 +1351,63 @@ export type Database = {
           }
         ]
       }
+      design_renders: {
+        Row: {
+          campaign_id: string
+          copy_revision: number
+          created_at: string
+          created_by: string
+          id: string
+          input_revisions: Json
+          revision: number
+          source: string
+          source_id: string | null
+          strips: Json
+          tenant_id: string
+        }
+        Insert: {
+          campaign_id: string
+          copy_revision: number
+          created_at?: string
+          created_by: string
+          id?: string
+          input_revisions: Json
+          revision: number
+          source: string
+          source_id?: string | null
+          strips: Json
+          tenant_id: string
+        }
+        Update: {
+          campaign_id?: string
+          copy_revision?: number
+          created_at?: string
+          created_by?: string
+          id?: string
+          input_revisions?: Json
+          revision?: number
+          source?: string
+          source_id?: string | null
+          strips?: Json
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'design_renders_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'design_renders_tenant_id_campaign_id_fkey'
+            columns: ['tenant_id', 'campaign_id']
+            isOneToOne: false
+            referencedRelation: 'campaigns'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       designer_assignments: {
         Row: {
           assigned_by: string
@@ -1913,6 +1970,68 @@ export type Database = {
           }
         ]
       }
+      own_templates: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          created_by: string
+          delivery_id: string
+          id: string
+          name: string
+          skeleton: Json
+          tenant_id: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          created_by: string
+          delivery_id: string
+          id?: string
+          name: string
+          skeleton: Json
+          tenant_id: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          created_by?: string
+          delivery_id?: string
+          id?: string
+          name?: string
+          skeleton?: Json
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'own_templates_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'own_templates_delivery_id_fkey'
+            columns: ['delivery_id']
+            isOneToOne: true
+            referencedRelation: 'fixture_deliveries'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'own_templates_tenant_id_campaign_id_fkey'
+            columns: ['tenant_id', 'campaign_id']
+            isOneToOne: false
+            referencedRelation: 'campaigns'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'own_templates_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       owner_rules: {
         Row: {
           active: boolean
@@ -2265,6 +2384,61 @@ export type Database = {
         }
         Relationships: []
       }
+      render_reviews: {
+        Row: {
+          actor_id: string
+          created_at: string
+          decision: string
+          feedback: string
+          id: string
+          render_id: string
+          section: string
+          tenant_id: string
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string
+          decision: string
+          feedback: string
+          id?: string
+          render_id: string
+          section: string
+          tenant_id: string
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string
+          decision?: string
+          feedback?: string
+          id?: string
+          render_id?: string
+          section?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'render_reviews_actor_id_fkey'
+            columns: ['actor_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'render_reviews_render_id_fkey'
+            columns: ['render_id']
+            isOneToOne: false
+            referencedRelation: 'design_renders'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'render_reviews_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       tenant_invites: {
         Row: {
           accepted_at: string | null
@@ -2457,6 +2631,51 @@ export type Database = {
             columns: ['uploaded_by']
             isOneToOne: false
             referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      verified_render_uploads: {
+        Row: {
+          byte_size: number
+          created_at: string
+          job_id: string
+          section: string
+          sha256: string
+          storage_path: string
+          tenant_id: string
+        }
+        Insert: {
+          byte_size: number
+          created_at?: string
+          job_id: string
+          section: string
+          sha256: string
+          storage_path: string
+          tenant_id: string
+        }
+        Update: {
+          byte_size?: number
+          created_at?: string
+          job_id?: string
+          section?: string
+          sha256?: string
+          storage_path?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'verified_render_uploads_job_id_fkey'
+            columns: ['job_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'verified_render_uploads_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
             referencedColumns: ['id']
           }
         ]
@@ -2682,6 +2901,17 @@ export type Database = {
         Args: { kind: string; subscription?: string; t: string }
         Returns: string
       }
+      enqueue_render: {
+        Args: {
+          campaign: string
+          expected_copy: number
+          expected_design: number
+          source?: string
+          source_id?: string
+          t: string
+        }
+        Returns: string
+      }
       enqueue_review_reminders: { Args: { t: string }; Returns: string }
       fail_job: {
         Args: { failure: string; job: string; lease: string }
@@ -2714,6 +2944,10 @@ export type Database = {
       finish_reminder_job: {
         Args: { job: string; lease: string }
         Returns: undefined
+      }
+      finish_render_job: {
+        Args: { job: string; lease: string; output: Json }
+        Returns: string
       }
       fixture_delivery_command: {
         Args: { command: string; job: string; lease: string }
@@ -2756,6 +2990,17 @@ export type Database = {
           import_id: string
           status: string
           t: string
+        }
+        Returns: undefined
+      }
+      record_render_upload: {
+        Args: {
+          byte_size: number
+          hash: string
+          job: string
+          lease: string
+          path: string
+          section: string
         }
         Returns: undefined
       }
@@ -2808,6 +3053,17 @@ export type Database = {
         }
         Returns: undefined
       }
+      review_render: {
+        Args: {
+          decision: string
+          expected_revision: number
+          feedback: string
+          render: string
+          section: string
+          t: string
+        }
+        Returns: undefined
+      }
       save_brand: {
         Args: {
           brand_name: string
@@ -2837,6 +3093,10 @@ export type Database = {
           t: string
         }
         Returns: undefined
+      }
+      save_own_template: {
+        Args: { delivery: string; t: string }
+        Returns: string
       }
       set_fixture_connection: {
         Args: { folder?: string; provider: string; status: string; t: string }

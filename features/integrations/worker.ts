@@ -1,4 +1,5 @@
 import 'server-only'
+import { runRenderJob } from '@/features/rendering/worker'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import { deliveryPackageSchema } from '@/features/workflow/domain/contracts'
@@ -25,7 +26,9 @@ export async function runFixtureJobs(
     if (!job) break
     if (!job.lease_token) throw new Error('Job lease missing')
     try {
-      if (planningJobKinds.includes(job.kind)) {
+      if (job.kind === 'design.render') {
+        await runRenderJob(db, job)
+      } else if (planningJobKinds.includes(job.kind)) {
         await runPlanningJob(db, job)
       } else if (referenceJobKinds.includes(job.kind)) {
         await runReferenceJob(db, job)

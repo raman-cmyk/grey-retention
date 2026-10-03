@@ -43,7 +43,18 @@ export const assignmentBriefSchema = z.object({
     prohibitions: z.string(),
     referenceStructure: z.string(),
     copyRevision: z.number(),
-    assetPaths: z.array(z.string())
+    assetPaths: z.array(z.string()),
+    brandRevision: z.number().optional(),
+    sequenceBrief: z.string().nullable().optional(),
+    kit: z
+      .object({
+        revision: z.number(),
+        colors: z.array(z.string()),
+        fonts: z.array(z.string()),
+        approved: z.boolean()
+      })
+      .nullable()
+      .optional()
   }),
   tenantId: z.uuid(),
   campaignId: z.uuid(),

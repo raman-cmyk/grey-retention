@@ -67,7 +67,16 @@ export async function assignmentDetail(id: string) {
         ).data?.signedUrl ?? null
     }))
   )
+  const inspirationAssets = await Promise.all(
+    parsed.data.brief.assetPaths.map(async (path) => ({
+      path,
+      preview:
+        (await db.storage.from('brand-assets').createSignedUrl(path, 300)).data
+          ?.signedUrl ?? null
+    }))
+  )
   return {
+    inspirationAssets,
     context,
     ...parsed.data,
     submissions: previews,

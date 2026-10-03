@@ -77,7 +77,24 @@ export async function workflowData(campaignId: string) {
     reviews = r.data ?? []
   }
   const pkg = deliveryPackageSchema.safeParse(packages.data?.[0]?.snapshot)
+  const artifactPreviews = pkg.success
+    ? await Promise.all(
+        pkg.data.assetPaths.map(
+          async (path) =>
+            (
+              await db.storage
+                .from(
+                  path.endsWith('.svg')
+                    ? 'email-artifacts'
+                    : 'designer-submissions'
+                )
+                .createSignedUrl(path, 300)
+            ).data?.signedUrl ?? null
+        )
+      )
+    : []
   return {
+    artifactPreviews,
     assignment,
     submissions,
     reviews,

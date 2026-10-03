@@ -39,6 +39,14 @@ export default async function AssignmentPage({
           <dl className="space-y-4 text-sm">
             {[
               ['Brand', b.brandName],
+              ['Brand revision', String(b.brandRevision ?? 'Snapshot')],
+              ['Sequence brief', b.sequenceBrief ?? 'Standalone entry'],
+              [
+                'Brand kit',
+                b.kit
+                  ? `${b.kit.colors.join(', ')} · ${b.kit.fonts.join(', ')} · ${b.kit.approved ? 'owner approved' : 'awaiting approval'}`
+                  : 'No kit in the assigned snapshot'
+              ],
               ['Subject', b.subject],
               ['Preview', b.preheader],
               ['Body', b.body],
@@ -59,6 +67,22 @@ export default async function AssignmentPage({
               </div>
             ))}
           </dl>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            {data.inspirationAssets.map(
+              (a) =>
+                a.preview && (
+                  <Image
+                    key={a.path}
+                    src={a.preview}
+                    width={200}
+                    height={200}
+                    unoptimized
+                    alt="Private asset included in this assigned inspiration pack"
+                    className="h-auto w-full rounded border border-[var(--line)]"
+                  />
+                )
+            )}
+          </div>
         </Panel>
         <div className="space-y-6">
           <Panel title="Submit a design revision">

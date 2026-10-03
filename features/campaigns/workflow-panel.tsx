@@ -1,4 +1,5 @@
 import { RejectionForm } from '@/features/planning/panels'
+import { RenderPanel } from '@/features/rendering/panel'
 import Image from 'next/image'
 import type { Database } from '@/lib/supabase/database.types'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
@@ -173,146 +174,159 @@ export async function WorkflowPanel({
           </>
         )}
       </Panel>
-      <Panel title="Owner design review">
-        {data.assignment ? (
-          <div>
-            <p className="mb-4 text-sm">
-              Assignment {data.assignment.state.replaceAll('_', ' ')} · due{' '}
-              {new Intl.DateTimeFormat('en', {
-                timeZone: c.timezone,
-                dateStyle: 'medium',
-                timeStyle: 'short'
-              }).format(new Date(data.assignment.due_at))}
-              {new Date(data.assignment.due_at).getTime() <
-                new Date().getTime() && data.assignment.state !== 'approved'
-                ? ' · SLA escalation required'
-                : ''}
-            </p>
-            {latest ? (
-              <>
-                <h3 className="mb-3 font-semibold">
-                  Design v{latest.revision} · copy v{latest.copy_revision}
-                </h3>
-                {latest.preview ? (
-                  <Image
-                    src={latest.preview}
-                    alt={`Submitted campaign design version ${latest.revision}`}
-                    width={600}
-                    height={800}
-                    unoptimized
-                    className="mb-4 h-auto max-h-[45rem] w-auto max-w-full rounded-lg border border-[var(--line)]"
-                  />
-                ) : (
-                  <Notice error>
-                    Private preview unavailable. Refresh for a new signed URL.
-                  </Notice>
-                )}
-                <p className="mb-4 text-sm whitespace-pre-wrap">
-                  {latest.notes}
-                </p>
-                {!currentDesign && (
-                  <Notice error>
-                    This submission refers to an older copy or design revision.
-                    A new submission is required.
-                  </Notice>
-                )}
-                {owner && currentDesign && c.design_state === 'submitted' && (
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    <ActionForm action={workflowAction} className="grid gap-3">
-                      <input type="hidden" name="kind" value="review_design" />
-                      <input type="hidden" name="id" value={latest.id} />
-                      <input
-                        type="hidden"
-                        name="revision"
-                        value={c.design_revision}
-                      />
-                      <input type="hidden" name="decision" value="revision" />
-                      <Field label="Design section">
-                        <TextField
+      <RenderPanel campaign={c} owner={owner} />
+      {(data.assignment ||
+        !['submitted', 'revisions_requested', 'owner_approved'].includes(
+          c.design_state
+        )) && (
+        <Panel title="Owner design review">
+          {data.assignment ? (
+            <div>
+              <p className="mb-4 text-sm">
+                Assignment {data.assignment.state.replaceAll('_', ' ')} · due{' '}
+                {new Intl.DateTimeFormat('en', {
+                  timeZone: c.timezone,
+                  dateStyle: 'medium',
+                  timeStyle: 'short'
+                }).format(new Date(data.assignment.due_at))}
+                {new Date(data.assignment.due_at).getTime() <
+                  new Date().getTime() && data.assignment.state !== 'approved'
+                  ? ' · SLA escalation required'
+                  : ''}
+              </p>
+              {latest ? (
+                <>
+                  <h3 className="mb-3 font-semibold">
+                    Design v{latest.revision} · copy v{latest.copy_revision}
+                  </h3>
+                  {latest.preview ? (
+                    <Image
+                      src={latest.preview}
+                      alt={`Submitted campaign design version ${latest.revision}`}
+                      width={600}
+                      height={800}
+                      unoptimized
+                      className="mb-4 h-auto max-h-[45rem] w-auto max-w-full rounded-lg border border-[var(--line)]"
+                    />
+                  ) : (
+                    <Notice error>
+                      Private preview unavailable. Refresh for a new signed URL.
+                    </Notice>
+                  )}
+                  <p className="mb-4 text-sm whitespace-pre-wrap">
+                    {latest.notes}
+                  </p>
+                  {!currentDesign && (
+                    <Notice error>
+                      This submission refers to an older copy or design
+                      revision. A new submission is required.
+                    </Notice>
+                  )}
+                  {owner && currentDesign && c.design_state === 'submitted' && (
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      <ActionForm
+                        action={workflowAction}
+                        className="grid gap-3"
+                      >
+                        <input
+                          type="hidden"
+                          name="kind"
+                          value="review_design"
+                        />
+                        <input type="hidden" name="id" value={latest.id} />
+                        <input
+                          type="hidden"
+                          name="revision"
+                          value={c.design_revision}
+                        />
+                        <input type="hidden" name="decision" value="revision" />
+                        <Field label="Design section">
+                          <TextField
+                            name="section"
+                            required
+                            placeholder="Hero, product strip, footer…"
+                          />
+                        </Field>
+                        <Field label="Requested revision">
+                          <textarea
+                            name="feedback"
+                            className={controlClass}
+                            rows={3}
+                            required
+                            minLength={5}
+                          />
+                        </Field>
+                        <div>
+                          <SubmitButton variant="secondary">
+                            Request section revision
+                          </SubmitButton>
+                        </div>
+                      </ActionForm>
+                      <Command
+                        kind="review_design"
+                        id={latest.id}
+                        revision={c.design_revision}
+                      >
+                        <input name="decision" type="hidden" value="approved" />
+                        <input
                           name="section"
-                          required
-                          placeholder="Hero, product strip, footer…"
+                          type="hidden"
+                          value="whole_design"
                         />
-                      </Field>
-                      <Field label="Requested revision">
-                        <textarea
+                        <input
                           name="feedback"
-                          className={controlClass}
-                          rows={3}
-                          required
-                          minLength={5}
+                          type="hidden"
+                          value="Owner approved exact final version."
                         />
-                      </Field>
-                      <div>
-                        <SubmitButton variant="secondary">
-                          Request section revision
+                        <p className="mb-4 text-sm leading-6">
+                          Confirm that this exact design implements approved
+                          copy v{c.copy_revision}. Later material changes need
+                          new approval.
+                        </p>
+                        <SubmitButton>
+                          Approve design v{c.design_revision}
                         </SubmitButton>
-                      </div>
-                    </ActionForm>
-                    <Command
-                      kind="review_design"
-                      id={latest.id}
-                      revision={c.design_revision}
-                    >
-                      <input name="decision" type="hidden" value="approved" />
-                      <input
-                        name="section"
-                        type="hidden"
-                        value="whole_design"
-                      />
-                      <input
-                        name="feedback"
-                        type="hidden"
-                        value="Owner approved exact final version."
-                      />
-                      <p className="mb-4 text-sm leading-6">
-                        Confirm that this exact design implements approved copy
-                        v{c.copy_revision}. Later material changes need new
-                        approval.
-                      </p>
-                      <SubmitButton>
-                        Approve design v{c.design_revision}
-                      </SubmitButton>
-                    </Command>
-                  </div>
-                )}
-                {c.design_state === 'owner_approved' && (
-                  <Notice>
-                    Brand owner approved exact design v{c.design_revision}.
-                  </Notice>
-                )}
-              </>
-            ) : (
-              <Notice>
-                Waiting for the assigned designer’s first submission.
-              </Notice>
-            )}
-            <details className="mt-5">
-              <summary className="cursor-pointer text-sm font-medium">
-                Submission and section feedback history
-              </summary>
-              <div className="mt-3 space-y-3 text-sm">
-                {data.submissions.map((s) => (
-                  <p key={s.id}>
-                    Design v{s.revision} · copy v{s.copy_revision} · {s.notes}
-                  </p>
-                ))}
-                {data.reviews.map((r) => (
-                  <p key={r.id}>
-                    {r.decision} · {r.section}: {r.feedback}
-                  </p>
-                ))}
-              </div>
-            </details>
-          </div>
-        ) : (
-          <Notice>
-            {c.copy_state === 'approved'
-              ? 'Approved copy is waiting for platform assignment.'
-              : 'Approve copy before design assignment.'}
-          </Notice>
-        )}
-      </Panel>
+                      </Command>
+                    </div>
+                  )}
+                  {c.design_state === 'owner_approved' && (
+                    <Notice>
+                      Brand owner approved exact design v{c.design_revision}.
+                    </Notice>
+                  )}
+                </>
+              ) : (
+                <Notice>
+                  Waiting for the assigned designer’s first submission.
+                </Notice>
+              )}
+              <details className="mt-5">
+                <summary className="cursor-pointer text-sm font-medium">
+                  Submission and section feedback history
+                </summary>
+                <div className="mt-3 space-y-3 text-sm">
+                  {data.submissions.map((s) => (
+                    <p key={s.id}>
+                      Design v{s.revision} · copy v{s.copy_revision} · {s.notes}
+                    </p>
+                  ))}
+                  {data.reviews.map((r) => (
+                    <p key={r.id}>
+                      {r.decision} · {r.section}: {r.feedback}
+                    </p>
+                  ))}
+                </div>
+              </details>
+            </div>
+          ) : (
+            <Notice>
+              {c.copy_state === 'approved'
+                ? 'Approved copy is waiting for platform assignment.'
+                : 'Approve copy before design assignment.'}
+            </Notice>
+          )}
+        </Panel>
+      )}
       {owner && c.design_state === 'owner_approved' && (
         <Panel title="Assemble a reviewed delivery package">
           <p className="mb-4 text-sm leading-6 text-[var(--text-muted)]">
@@ -414,10 +428,14 @@ export async function WorkflowPanel({
           <iframe
             title="Final email preview"
             sandbox=""
-            srcDoc={pkg.html.replace(
-              'cid:design-artifact',
-              latest?.preview ?? ''
-            )}
+            srcDoc={pkg.html
+              .replace(
+                'cid:design-artifact',
+                data.artifactPreviews[0] ?? latest?.preview ?? ''
+              )
+              .replace('cid:hero', data.artifactPreviews[0] ?? '')
+              .replace('cid:copy', data.artifactPreviews[1] ?? '')
+              .replace('cid:cta', data.artifactPreviews[2] ?? '')}
             className="mb-5 h-[36rem] w-full rounded-lg border border-[var(--line)] bg-white"
           />
           {owner && currentPackage && c.delivery_state === 'ready' && (

@@ -4,7 +4,7 @@ Checkpoint: October 4, 2026. Branch `codex/grey-retention-v2`; base `b6f92a7`.
 
 ## Active task
 
-V2-005 verified; recording focused checkpoint before claiming V2-006. Sequential root execution; no agents. Next action: fixture design orchestration, real inspectable strip artifacts, owner section review, guarded assembly and private template reuse.
+V2-006 verified; recording local checkpoint before claiming V2-007. Sequential root execution; no agents. Next action: canonical account mappings, L0/L1 standing policies, persisted fault/reconcile/reschedule/cancel semantics, 100 fixture pushes and confirmed-send/template gate.
 
 ## Checkpoints
 
@@ -20,7 +20,9 @@ Migrations: foundation `20260914000000`; identity `20260914010000`; brand/catalo
 
 - V2-004 complete: clean reset/types; 107 DB assertions; full verify 28 unit tests; 16/16 desktop/mobile journeys. Shared capture dedupe, private rules/playbooks, sandbox previews, evidence thresholds and sequence gaps/false matches verified. Commit `7f54944`.
 
-- V2-005 complete: clean reset/types, 121 DB assertions, full verify 31 unit tests/build; 18/18 real-auth desktop/mobile journeys. Rolling/month and exact weekly generated-copy reviews persist; screenshots inspected and port 3100 closed. Commit recorded after checkpoint.
+- V2-005 complete: clean reset/types, 121 DB assertions, full verify 31 unit tests/build; 18/18 real-auth desktop/mobile journeys. Rolling/month and exact weekly generated-copy reviews persist; screenshots inspected and port 3100 closed. Commit `cdeb997`.
+
+- V2-006 complete: clean reset/types, 145 DB assertions, full verify 35 unit tests/build, 20/20 combined browser journeys and 2/2 focused rechecks. Private real SVG artifacts, scoped inspiration, focused revisions, exact owner review and immutable assembly persist. Token-redacting runner verified; port 3100 closed. Commit recorded after checkpoint.
 
 ## Decisions and limits
 
