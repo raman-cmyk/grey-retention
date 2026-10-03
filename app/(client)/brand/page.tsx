@@ -7,11 +7,13 @@ import {
 } from '@/components/ui/workspace'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { TextField } from '@/components/ui/text-field'
-import { campaignWorkspace } from '@/features/campaigns/data'
+import { onboardingWorkspace } from '@/features/onboarding/data'
+import { BrandEvidence, StockRefresh } from '@/features/onboarding/panels'
+import Link from 'next/link'
 import { futureIso } from '@/lib/time'
 import { brandAction } from '@/features/brand/actions'
 export default async function BrandPage() {
-  const { context, data, error } = await campaignWorkspace()
+  const { context, data, error, setup } = await onboardingWorkspace()
   const b = data?.brand
   return (
     <div className="mx-auto max-w-5xl">
@@ -28,7 +30,11 @@ export default async function BrandPage() {
           >
             {context.tenantRole === 'owner' ? (
               <>
-                <ActionForm action={brandAction} className="grid gap-5">
+                <ActionForm
+                  key={b?.revision ?? 0}
+                  action={brandAction}
+                  className="grid gap-5"
+                >
                   <input name="kind" type="hidden" value="save" />
                   <input
                     name="revision"
@@ -91,6 +97,15 @@ export default async function BrandPage() {
               </p>
             )}
           </Panel>
+          <p className="text-sm">
+            <Link href="/assets" className="underline">
+              Private asset gallery
+            </Link>{' '}
+            ·{' '}
+            <Link href="/connections" className="underline">
+              Fixture connections
+            </Link>
+          </p>
           <div className="grid gap-6 lg:grid-cols-2">
             <Panel title="Catalog">
               {data!.products.map((p) => (
@@ -111,6 +126,9 @@ export default async function BrandPage() {
                       timeStyle: 'short'
                     }).format(new Date(p.stock_observed_at))}
                   </p>
+                  {context.tenantRole === 'owner' && (
+                    <StockRefresh product={p} />
+                  )}
                 </article>
               ))}
               {context.tenantRole === 'owner' && (
@@ -215,6 +233,12 @@ export default async function BrandPage() {
               )}
             </Panel>
           </div>
+          {setup && (
+            <BrandEvidence
+              setup={setup}
+              owner={context.tenantRole === 'owner'}
+            />
+          )}
         </div>
       )}
     </div>

@@ -16,12 +16,12 @@ export function ActionForm({
   children: ReactNode
   className?: string
 }) {
-  const [state, dispatch] = useActionState(action, {})
+  const [state, dispatch, pending] = useActionState(action, {})
   return (
-    <form action={dispatch} className={className}>
+    <form action={dispatch} className={className} aria-busy={pending}>
       {children}
       <p aria-live="polite" className="mt-3 text-sm">
-        {state.error ?? state.message}
+        {pending ? '' : (state.error ?? state.message)}
       </p>
     </form>
   )

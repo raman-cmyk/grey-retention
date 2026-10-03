@@ -6,6 +6,7 @@ import type { FormResult } from '@/components/ui/action-form'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { validateRaster } from '@/features/assets/raster'
 import { assignmentBriefSchema, validateDesignBytes } from './uploads'
 export async function assignDesigner(
   _state: FormResult,
@@ -83,6 +84,7 @@ export async function submitDesign(
       throw new Error('Maximum design size is 10 MiB.')
     const bytes = new Uint8Array(await file.arrayBuffer())
     const { mediaType, extension } = validateDesignBytes(bytes, file.name)
+    validateRaster(bytes, mediaType)
     path = `${brief.tenantId}/${brief.assignmentId}/${randomUUID()}.${extension}`
     const upload = await service.storage
       .from('designer-submissions')

@@ -94,6 +94,247 @@ export type Database = {
           }
         ]
       }
+      asset_events: {
+        Row: {
+          action: string
+          actor_id: string | null
+          asset_id: string
+          created_at: string
+          detail: Json
+          id: string
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          asset_id: string
+          created_at?: string
+          detail: Json
+          id?: string
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          asset_id?: string
+          created_at?: string
+          detail?: Json
+          id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'asset_events_actor_id_fkey'
+            columns: ['actor_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'asset_events_tenant_id_asset_id_fkey'
+            columns: ['tenant_id', 'asset_id']
+            isOneToOne: false
+            referencedRelation: 'assets'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'asset_events_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      asset_import_items: {
+        Row: {
+          asset_id: string | null
+          error_code: string | null
+          filename: string
+          id: string
+          import_id: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          asset_id?: string | null
+          error_code?: string | null
+          filename: string
+          id?: string
+          import_id: string
+          status: string
+          tenant_id: string
+        }
+        Update: {
+          asset_id?: string | null
+          error_code?: string | null
+          filename?: string
+          id?: string
+          import_id?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'asset_import_items_tenant_id_asset_id_fkey'
+            columns: ['tenant_id', 'asset_id']
+            isOneToOne: false
+            referencedRelation: 'assets'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'asset_import_items_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'asset_import_items_tenant_id_import_id_fkey'
+            columns: ['tenant_id', 'import_id']
+            isOneToOne: false
+            referencedRelation: 'asset_imports'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      asset_imports: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          idempotency_key: string
+          source: string
+          state: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          idempotency_key: string
+          source: string
+          state?: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          idempotency_key?: string
+          source?: string
+          state?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'asset_imports_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'asset_imports_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      assets: {
+        Row: {
+          byte_size: number
+          category: string | null
+          classification_source: string | null
+          confidence: number | null
+          created_at: string
+          filename: string
+          id: string
+          media_type: string
+          product_id: string | null
+          revision: number
+          sha256: string
+          source: string
+          storage_path: string
+          synthetic: boolean
+          tenant_id: string
+          updated_at: string
+          uploaded_by: string
+          variant_id: string | null
+        }
+        Insert: {
+          byte_size: number
+          category?: string | null
+          classification_source?: string | null
+          confidence?: number | null
+          created_at?: string
+          filename: string
+          id?: string
+          media_type: string
+          product_id?: string | null
+          revision?: number
+          sha256: string
+          source: string
+          storage_path: string
+          synthetic?: boolean
+          tenant_id: string
+          updated_at?: string
+          uploaded_by: string
+          variant_id?: string | null
+        }
+        Update: {
+          byte_size?: number
+          category?: string | null
+          classification_source?: string | null
+          confidence?: number | null
+          created_at?: string
+          filename?: string
+          id?: string
+          media_type?: string
+          product_id?: string | null
+          revision?: number
+          sha256?: string
+          source?: string
+          storage_path?: string
+          synthetic?: boolean
+          tenant_id?: string
+          updated_at?: string
+          uploaded_by?: string
+          variant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'assets_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'assets_tenant_id_product_id_fkey'
+            columns: ['tenant_id', 'product_id']
+            isOneToOne: false
+            referencedRelation: 'products'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'assets_tenant_id_variant_id_fkey'
+            columns: ['tenant_id', 'variant_id']
+            isOneToOne: false
+            referencedRelation: 'product_variants'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'assets_uploaded_by_fkey'
+            columns: ['uploaded_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       audiences: {
         Row: {
           account_id: string
@@ -133,6 +374,96 @@ export type Database = {
             foreignKeyName: 'audiences_tenant_id_fkey'
             columns: ['tenant_id']
             isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      brand_events: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          id: string
+          revision: number
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          revision: number
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          revision?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_events_actor_id_fkey'
+            columns: ['actor_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_events_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      brand_kits: {
+        Row: {
+          approved_by: string | null
+          colors: string[]
+          fonts: string[]
+          revision: number
+          source_text: string
+          synthetic: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approved_by?: string | null
+          colors?: string[]
+          fonts?: string[]
+          revision?: number
+          source_text?: string
+          synthetic?: boolean
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approved_by?: string | null
+          colors?: string[]
+          fonts?: string[]
+          revision?: number
+          source_text?: string
+          synthetic?: boolean
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_kits_approved_by_fkey'
+            columns: ['approved_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_kits_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
             referencedRelation: 'tenants'
             referencedColumns: ['id']
           }
@@ -199,6 +530,48 @@ export type Database = {
             foreignKeyName: 'brand_profiles_tenant_id_fkey'
             columns: ['tenant_id']
             isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      brand_versions: {
+        Row: {
+          created_at: string
+          id: string
+          recorded_by: string | null
+          revision: number
+          snapshot: Json
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          recorded_by?: string | null
+          revision: number
+          snapshot: Json
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          recorded_by?: string | null
+          revision?: number
+          snapshot?: Json
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_versions_recorded_by_fkey'
+            columns: ['recorded_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_versions_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
             referencedRelation: 'tenants'
             referencedColumns: ['id']
           }
@@ -1219,6 +1592,54 @@ export type Database = {
           }
         ]
       }
+      product_variants: {
+        Row: {
+          id: string
+          observed_at: string
+          product_id: string
+          sku: string
+          stock: number
+          synthetic: boolean
+          tenant_id: string
+          title: string
+        }
+        Insert: {
+          id?: string
+          observed_at?: string
+          product_id: string
+          sku: string
+          stock: number
+          synthetic?: boolean
+          tenant_id: string
+          title: string
+        }
+        Update: {
+          id?: string
+          observed_at?: string
+          product_id?: string
+          sku?: string
+          stock?: number
+          synthetic?: boolean
+          tenant_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'product_variants_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'product_variants_tenant_id_product_id_fkey'
+            columns: ['tenant_id', 'product_id']
+            isOneToOne: false
+            referencedRelation: 'products'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       products: {
         Row: {
           created_at: string
@@ -1498,6 +1919,56 @@ export type Database = {
           }
         ]
       }
+      workspace_connections: {
+        Row: {
+          fixture_account: string
+          folder_id: string | null
+          last_error: string | null
+          last_sync_at: string | null
+          mode: string
+          provider: string
+          read_only: boolean
+          revision: number
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          fixture_account: string
+          folder_id?: string | null
+          last_error?: string | null
+          last_sync_at?: string | null
+          mode?: string
+          provider: string
+          read_only?: boolean
+          revision?: number
+          status: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          fixture_account?: string
+          folder_id?: string | null
+          last_error?: string | null
+          last_sync_at?: string | null
+          mode?: string
+          provider?: string
+          read_only?: boolean
+          revision?: number
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'workspace_connections_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -1508,6 +1979,10 @@ export type Database = {
         Returns: undefined
       }
       approve_brand: {
+        Args: { expected_revision: number; t: string }
+        Returns: undefined
+      }
+      approve_brand_kit: {
         Args: { expected_revision: number; t: string }
         Returns: undefined
       }
@@ -1536,6 +2011,10 @@ export type Database = {
         }[]
       }
       assignment_brief: { Args: { assignment: string }; Returns: Json }
+      begin_asset_import: {
+        Args: { key: string; source: string; t: string }
+        Returns: string
+      }
       claim_job: {
         Args: { t: string }
         Returns: {
@@ -1564,6 +2043,21 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      complete_asset_import: {
+        Args: { import_id: string; t: string }
+        Returns: undefined
+      }
+      correct_asset: {
+        Args: {
+          asset: string
+          category: string
+          expected_revision: number
+          product?: string
+          t: string
+          variant?: string
+        }
+        Returns: undefined
       }
       create_delivery_package: {
         Args: {
@@ -1629,6 +2123,10 @@ export type Database = {
         Args: { expected_revision: number; package: string; t: string }
         Returns: string
       }
+      enqueue_onboarding_job: {
+        Args: { input?: Json; kind: string; t: string }
+        Returns: string
+      }
       fail_job: {
         Args: { failure: string; job: string; lease: string }
         Returns: undefined
@@ -1641,9 +2139,26 @@ export type Database = {
         Args: { job: string; lease: string }
         Returns: undefined
       }
+      finish_onboarding_job: {
+        Args: { job: string; lease: string; output: Json }
+        Returns: undefined
+      }
       fixture_delivery_command: {
         Args: { command: string; job: string; lease: string }
         Returns: Json
+      }
+      record_asset_upload: {
+        Args: {
+          actor: string
+          byte_size: number
+          filename: string
+          hash: string
+          media_type: string
+          path: string
+          source: string
+          t: string
+        }
+        Returns: string
       }
       record_design_upload: {
         Args: {
@@ -1654,6 +2169,21 @@ export type Database = {
           media_type: string
           path: string
         }
+        Returns: undefined
+      }
+      record_import_item: {
+        Args: {
+          asset?: string
+          error_code?: string
+          filename: string
+          import_id: string
+          status: string
+          t: string
+        }
+        Returns: undefined
+      }
+      refresh_catalog_stock: {
+        Args: { product: string; stock: number; t: string }
         Returns: undefined
       }
       resolve_admin_context: {
@@ -1717,6 +2247,10 @@ export type Database = {
           input: Json
           t: string
         }
+        Returns: undefined
+      }
+      set_fixture_connection: {
+        Args: { folder?: string; provider: string; status: string; t: string }
         Returns: undefined
       }
       submit_design: {

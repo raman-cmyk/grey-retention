@@ -581,3 +581,7 @@ Material edits: brief invalidates calendar/copy/design/delivery; copy invalidate
 Queue policy: initial attempt plus three eligible transient retries; unknown side effects reconcile to found/absent/unknown before retry. Durable job records include lease tokens/expiry, checkpoint, attempts, availability and a unique tenant/idempotency key. Provider preparation, scheduling and sent confirmation remain distinct states.
 
 Schema sequencing: domain tables are allocated to their existing blocks, with cross-domain foreign keys/RPC wiring deferred to `2026091409xxxx` where sort-order requires it. Only Supabase schema tooling generates database types. No new runtime dependencies. Local generated `graphify-out` artifacts are excluded from format/lint checks; their contents remain untouched.
+
+### V2-003 evidence and intake extension
+
+Brand-kit extraction uses a typed `BrandKitExtractor` seam for supplied text tokens in fixture mode; no external/PDF inference is claimed. Asset hashes are tenant-scoped and immutable Storage paths are content-addressed. Original files and per-file import outcomes persist; owner corrections supersede stale classifier jobs. Brand revision corrections retain prior snapshots/events and invalidate dependent unsent approvals; active delivery must be cancelled/reconciled first. Competitor readiness remains an explicit unmet requirement until capture integration.

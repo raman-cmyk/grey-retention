@@ -4,9 +4,9 @@ Checkpoint: October 4, 2026. Branch `codex/grey-retention-v2`; base `b6f92a7`.
 
 ## Active task
 
-V2-002 gate passed. Next eligible task V2-003: onboarding, private asset ingestion/classification/gallery, Drive and commerce fixtures, readiness and brand revision corrections. Sequential root implementation; no agents.
+V2-003 gate passed. Next eligible task V2-004: shared synthetic competitor capture, tenant-private subscriptions/playbooks, sanitization/dedupe, extraction and sequence evidence. Sequential root execution; no agents.
 
-Next action: record this tested commit, claim V2-003, then implement/test its persisted asset/readiness slice. Reschedule/fault fidelity belongs to V2-007; renderer/assets assembly to V2-006. All external operations remain simulated.
+Next action: commit V2-003, claim V2-004 in the ledger, implement/test its persisted capture and intelligence slice. Live providers and real evaluation remain disabled/unverified.
 
 ## Checkpoints
 
@@ -16,7 +16,9 @@ Next action: record this tested commit, claim V2-003, then implement/test its pe
 
 Migrations: foundation `20260914000000`; identity `20260914010000`; brand/catalog `20260914020000`; campaigns `20260914040000`; transactional commands `20260914090000`. Generated types come only from `supabase gen types typescript --local`.
 
-- V2-002 complete: clean reset/types; 59 DB assertions; full verify 19 unit tests; 10/10 authenticated desktop/mobile journeys. Uploaded original PNGs, owner feedback/resubmission/exact approval, immutable package, schedule and confirmed cancel persist; Storage isolation and stale/replay paths pass. Commit recorded below.
+- V2-002 complete: clean reset/types; 59 DB assertions; full verify 19 unit tests; 10/10 authenticated desktop/mobile journeys. Uploaded original PNGs, owner feedback/resubmission/exact approval, immutable package, schedule and confirmed cancel persist; Storage isolation and stale/replay paths pass. Commit `2f5a676`.
+
+- V2-003 complete: clean reset/types; 89 DB assertions; full verify 24 unit tests; 14/14 desktop/mobile journeys. Private ZIP/Drive artifacts, repeat dedupe, corrections, kit/catalog fixtures and readiness verified. Commit recorded after commit.
 
 ## Decisions and limits
 

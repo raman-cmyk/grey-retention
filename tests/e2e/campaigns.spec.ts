@@ -19,6 +19,9 @@ test('UC-05 owner creates, edits, refreshes and approves a persisted calendar ve
   await expect(page).toHaveURL(/\/campaigns\//)
   await page.getByLabel('Campaign title').fill(`${title} revised`)
   await page.getByRole('button', { name: 'Save calendar revision' }).click()
+  await expect(
+    page.getByRole('heading', { name: `${title} revised`, exact: true })
+  ).toBeVisible()
   await page.reload()
   await expect(page.getByLabel('Campaign title')).toHaveValue(
     `${title} revised`
