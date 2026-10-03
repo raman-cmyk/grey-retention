@@ -122,7 +122,7 @@ export async function reportingAction(
     const x = e as { code?: string; message?: string }
     return {
       error:
-        x.code === '40001'
+        x.code === 'PT409'
           ? 'Exact version, evidence or policy changed. Refresh and review again.'
           : x.code === '23514'
             ? x.message

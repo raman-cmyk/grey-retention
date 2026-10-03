@@ -86,7 +86,7 @@ export async function brandAction(
   if (error)
     return {
       error:
-        error.code === '40001'
+        error.code === 'PT409'
           ? 'Brand context changed. Refresh before approving.'
           : 'Could not save. Check permissions and field values.'
     }

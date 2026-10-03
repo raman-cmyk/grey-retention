@@ -8,7 +8,7 @@ select is((select count(*) from public.workspace_connections),1::bigint,'fixture
 select lives_ok($$select public.enqueue_onboarding_job('00000000-0000-4000-8000-000000000101','drive.sync')$$,'fixture sync queued');
 select is(public.enqueue_onboarding_job('00000000-0000-4000-8000-000000000101','drive.sync'),(select id from public.job_runs where kind='drive.sync'),'sync replay returns same durable job');
 select public.claim_job('00000000-0000-4000-8000-000000000101');
-select throws_ok($$select public.finish_onboarding_job((select id from public.job_runs where kind='drive.sync'),null,'{"synthetic":true}')$$,'40001',null,'null lease cannot complete job');
+select throws_ok($$select public.finish_onboarding_job((select id from public.job_runs where kind='drive.sync'),null,'{"synthetic":true}')$$,'PT409',null,'null lease cannot complete job');
 reset role;
 -- SQL metadata fixture; browser tests upload real raster bytes separately.
 insert into storage.objects(bucket_id,name) values('brand-assets','00000000-0000-4000-8000-000000000101/'||repeat('a',64)||'.png');
@@ -30,7 +30,7 @@ select public.enqueue_onboarding_job('00000000-0000-4000-8000-000000000101','ass
 select public.claim_job('00000000-0000-4000-8000-000000000101');
 select throws_ok($$select public.record_asset_upload('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000001','x','x',repeat('a',64),'image/png',100,'upload')$$,'42501',null,'client cannot bypass binary verification');
 select lives_ok($$select public.correct_asset('00000000-0000-4000-8000-000000000101',(select id from public.assets),1,'logo')$$,'owner correction persists');
-select throws_ok($$select public.correct_asset('00000000-0000-4000-8000-000000000101',(select id from public.assets),1,'product')$$,'40001',null,'stale correction denied');
+select throws_ok($$select public.correct_asset('00000000-0000-4000-8000-000000000101',(select id from public.assets),1,'product')$$,'PT409',null,'stale correction denied');
 select is((select classification_source from public.assets),'owner','owner tags retained');
 select lives_ok($$select public.finish_onboarding_job((select id from public.job_runs where kind='assets.classify'),(select lease_token from public.job_runs where kind='assets.classify'),jsonb_build_object('synthetic',true,'assets',jsonb_build_array(jsonb_build_object('id',(select id from public.assets),'category','unusable','confidence',0))))$$,'stale fixture classification skips manual correction');
 select is((select category from public.assets),'logo','late classification cannot replace owner tags');
@@ -38,7 +38,7 @@ select public.enqueue_onboarding_job('00000000-0000-4000-8000-000000000101','bra
 select public.claim_job('00000000-0000-4000-8000-000000000101');
 select lives_ok($$select public.finish_onboarding_job((select id from public.job_runs where kind='brand.extract'),(select lease_token from public.job_runs where kind='brand.extract'),'{"synthetic":true,"colors":["#112233"],"fonts":["Inter"]}')$$,'structured brand kit extraction persists');
 select lives_ok($$select public.approve_brand_kit('00000000-0000-4000-8000-000000000101',1)$$,'owner approves current extracted kit');
-select throws_ok($$select public.approve_brand_kit('00000000-0000-4000-8000-000000000101',2)$$,'40001',null,'stale kit approval denied');
+select throws_ok($$select public.approve_brand_kit('00000000-0000-4000-8000-000000000101',2)$$,'PT409',null,'stale kit approval denied');
 
 select lives_ok($$select public.save_brand('00000000-0000-4000-8000-000000000101',1,'Original demo brand','cedar-lane.example','Corrected fictional facts','Plain voice','No invented offers')$$,'owner brand correction stored');
 select is((select count(*) from public.brand_versions),2::bigint,'brand version history retained');

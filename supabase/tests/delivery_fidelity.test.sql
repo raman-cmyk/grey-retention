@@ -91,7 +91,7 @@ select is((select count(*) from public.own_templates),1::bigint,'replayed sent c
 select throws_ok($$select public.enqueue_cancel('00000000-0000-4000-8000-000000000102',current_setting('test.sent')::uuid,(select delivery_revision from public.campaigns where id=current_setting('test.sent')::uuid))$$,'23514',null,'sent cannot be recalled');
 select throws_ok($$select public.save_delivery_policy('00000000-0000-4000-8000-000000000102',0,'L1',true,'{}')$$,'23514',null,'standing policy cannot omit defaults');
 select lives_ok($$select public.save_delivery_policy('00000000-0000-4000-8000-000000000102',0,'L1',true,'{"senderName":"Synthetic North","senderEmail":"studio@north-studio.example","address":"42 Fictional Road","unsubscribeUrl":"https://north-studio.example/unsubscribe","privacyUrl":"https://north-studio.example/privacy"}')$$,'owner explicitly grants standing L1');
-select throws_ok($$select public.save_delivery_policy('00000000-0000-4000-8000-000000000102',0,'L0',false,'{"senderName":"Synthetic North","senderEmail":"studio@north-studio.example","address":"42 Fictional Road","unsubscribeUrl":"https://north-studio.example/unsubscribe","privacyUrl":"https://north-studio.example/privacy"}')$$,'40001',null,'policy lost update is rejected');
+select throws_ok($$select public.save_delivery_policy('00000000-0000-4000-8000-000000000102',0,'L0',false,'{"senderName":"Synthetic North","senderEmail":"studio@north-studio.example","address":"42 Fictional Road","unsubscribeUrl":"https://north-studio.example/unsubscribe","privacyUrl":"https://north-studio.example/privacy"}')$$,'PT409',null,'policy lost update is rejected');
 reset role;
 select set_config('test.l1',pg_temp.ready_fixture(103)::text,true);
 set local role authenticated;
@@ -159,7 +159,7 @@ select set_config('test.lease',(select lease_token::text from public.claim_job('
 select is(public.fixture_fault_probe(current_setting('test.j')::uuid,current_setting('test.lease')::uuid,'before'),'auth','permanent auth classified explicitly');
 select public.fail_job(current_setting('test.j')::uuid,current_setting('test.lease')::uuid,'auth');
 select is((select status from public.job_runs where id=current_setting('test.j')::uuid),'failed','permanent auth does not blindly retry');
-select throws_ok($$select public.fixture_delivery_command(current_setting('test.j')::uuid,current_setting('test.lease')::uuid,'prepare')$$,'40001',null,'expired/finished lease cannot dispatch');
+select throws_ok($$select public.fixture_delivery_command(current_setting('test.j')::uuid,current_setting('test.lease')::uuid,'prepare')$$,'PT409',null,'expired/finished lease cannot dispatch');
 select set_config('test.past',pg_temp.ready_fixture(109)::text,true);
 select set_config('test.j',public.enqueue_delivery('00000000-0000-4000-8000-000000000102',(select id from public.delivery_packages where campaign_id=current_setting('test.past')::uuid),(select delivery_revision from public.campaigns where id=current_setting('test.past')::uuid))::text,true);
 update public.campaigns set planned_at=now()-interval '1 day' where id=current_setting('test.past')::uuid;

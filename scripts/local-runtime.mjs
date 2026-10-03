@@ -73,7 +73,9 @@ export async function prepareAccounts() {
   writeFileSync('.audit/local-accounts.json', JSON.stringify(accounts), {
     mode: 0o600
   })
-  return { ...status, accounts }
+  const cronSecret = randomBytes(32).toString('hex')
+  writeFileSync('.audit/local-cron-secret.txt', cronSecret, { mode: 0o600 })
+  return { ...status, accounts, cronSecret }
 }
 export function localEnvironment(status) {
   return {
@@ -84,7 +86,8 @@ export function localEnvironment(status) {
     NEXT_PUBLIC_SUPABASE_URL: status.url,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: status.anon,
     SUPABASE_SERVICE_ROLE_KEY: status.service,
-    GREY_LOCAL_E2E: '1'
+    GREY_LOCAL_E2E: '1',
+    CRON_SECRET: status.cronSecret
   }
 }
 export function accounts() {

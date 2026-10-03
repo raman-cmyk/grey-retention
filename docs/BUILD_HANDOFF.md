@@ -1,45 +1,95 @@
 # Grey Retention v2 build handoff
 
-This is a rolling local checkpoint report. Execution continues sequentially under the unattended-session authorization.
+Branch: `codex/grey-retention-v2`. Base: `b6f92a7`. Local implementation only; no push, PR, merge or deployment. Existing planning and visual direction are preserved. Execution was sequential, without subagents.
 
-Branch: `codex/grey-retention-v2`, base `b6f92a7`. No pushes, PRs, merges, deployments, live account connections, email/SMS, paid AI or proprietary source/data imports.
+Status: V2-000–010 committed; V2-011 final combined fixture gates passed and its local checkpoint/cleanup is being recorded. The persisted core loop is implemented with local Auth/Postgres/private Storage and labelled synthetic providers. This is not a production release or a claim that all extended use-case targets have passed.
 
-## Verified commits
+## Commits and migrations
 
-| Task                  | Commit    | Result                                                                                                                                                                                                                                           |
-| --------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Planning preservation | `bf6f968` | Existing authorized planning documents retained.                                                                                                                                                                                                 |
-| V2-000                | `b5dd47f` | Role/version/provider/policy contracts; full verify, 15 unit tests.                                                                                                                                                                              |
-| V2-001                | `35243ae` | Persisted brand/catalog/calendar, owner approval and tenant isolation; 33 DB assertions, 8 desktop/mobile journeys. Shared dialog/table remainder completed in V2-002.                                                                           |
-| V2-002                | `2f5a676` | Original fixture copy, assigned designer private uploads, owner feedback/resubmission/exact approval, immutable package, durable fixture schedule and confirmed cancel; 59 DB assertions, full verify 19 unit tests, 10 desktop/mobile journeys. |
+All versions below use the `20260914` prefix; concatenate the eight-digit prefix with the six-digit suffix shown. No existing migration was renumbered. Foundation `20260914000000` and IAM `20260914010000` are retained.
 
-## Active checkpoint
+| Task                     | Local commit             | Migration suffixes                                         | Checkpoint                                                                                                                                        |
+| ------------------------ | ------------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Planning preservation    | `bf6f968`                | —                                                          | Authorized planning changes preserved before implementation.                                                                                      |
+| V2-000 contracts         | `b5dd47f`                | —                                                          | Roles, revision invalidation, typed provider/job ports and development policies.                                                                  |
+| V2-001 core persistence  | `35243ae`                | `020000`, `040000`, `090000`                               | Owner calendar/brand/product/offer workflow and tenant boundaries.                                                                                |
+| V2-002 human design loop | `2f5a676`                | `020001`, `030000`, `060000`, `070000`, `090001`, `090002` | Copy → admin assignment → private submission → owner revisions → exact design approval → package → fixture schedule/cancel.                       |
+| V2-003 onboarding/assets | `7120cf1`                | `020002`, `030001`, `050000`, `090003`                     | Private uploads/ZIP, content hashes, corrections, fixture Drive/catalog/kit and readiness.                                                        |
+| V2-004 intelligence      | `7f54944`                | `030002`, `050001`, `090004`                               | Shared fictional capture, private subscriptions/rules/playbooks and sequence evidence.                                                            |
+| V2-005 planning/copy     | `cdeb997`                | `030003`, `040001`, `090005`                               | Independent hard guards, preserved calendar history, exact weekly approvals and rejection rules.                                                  |
+| V2-006 rendered design   | `bab8d1c`                | `030004`, `050002`, `060001`, `090006`                     | Real original SVG strips, focused revisions, owner review, text email and trusted assembly.                                                       |
+| V2-007 delivery          | `3b7d554`                | `030005`, `040002`, `090007`                               | Snapshot fidelity, reconciliation/faults, reschedule/cancel, L0/L1 and own sent skeletons.                                                        |
+| V2-008 GROS/operations   | `0f12322`                | `020003`, `030006`, `070001`, `080000`, `090008`           | Creator/private and member/shared chats, confirmed actor-bound proposals, budgets/team/support/diagnostics.                                       |
+| V2-009 reporting/L2      | `dfed204`                | `030007`, `040003`, `080001`, `090009`                     | Frozen send metadata, 48h/7d results, comparable evidence, pin/dismiss and version-bound 72h simulation.                                          |
+| V2-010 optimizer/library | `5e77cfe`                | `030008`, `080002`, `090010`                               | Protected purchaser/consent fixtures, audited reversal, performance links and structural drafts.                                                  |
+| V2-011 integration       | Pending final checkpoint | `090011`                                                   | Tenant-first locks, stale usage recovery, paged GROS, event/learning lineage, local cron/webhook gates, admin escalation, conflict/cleanup fixes. |
 
-V2-003 gate passed: private ZIP/import/correction and fixture Drive/commerce/kit behavior persists. Clean reset/types, 89 DB assertions, full verify with 24 unit tests and 14/14 combined desktop/mobile journeys pass. Commit `7120cf1`.
+Generated database types come only from `supabase gen types typescript --local`. Clean reset applies every migration in numeric order and the deterministic original seed. External source/database/customer records were not imported.
 
-V2-004 gate passed: shared fictional capture, private subscriptions/playbooks and sandbox previews. Clean reset/types, 107 DB assertions, full verify with 28 unit tests, 16/16 combined browser journeys.
+## Verification
 
-Commit `7f54944`. V2-005 gate passed: clean reset/types, 121 DB assertions, full verify with 31 unit tests/build, 18/18 desktop/mobile journeys. Independent guards and immutable exact weekly copy approval persist. Commit `cdeb997`. V2-006 gate passed: clean reset/types, 145 DB assertions, full verify with 35 unit tests/build, final 20/20 browser journeys plus 2/2 focused reload/strip-preservation rechecks. Real private synthetic SVG artifacts, section reviews and assembled links/footer persist. Own-template positive acceptance follows confirmed fixture sends in V2-007. Commit `bab8d1c`. V2-007 gate passed: final reset/191 DB assertions, full verify 37 tests/build, 22 browser journeys plus 2 text-preview checks. 100 persisted pushes match exact packages; owner L0/L1 and fault/reconcile/reschedule/cancel/send/template paths pass. The exact next action is to claim V2-008 GROS/operations. V2-008 through V2-010 remain open, followed by V2-011 acceptance.
+Final combined gates passed on the complete integration schema.
 
-## Schema and verification
+- Clean disposable local reset, type generation and pgTAP/RLS checks: **332/332 assertions across 14 SQL files passed**, including administrative escalation coverage.
+- `pnpm verify`: **format, lint, typecheck, 47/47 unit tests across 20 files and production build passed** after all integration changes.
+- `node scripts/test-concurrency.mjs`: 20 real concurrent enqueue/duplicate-completion races passed with 20 exact immutable versions, no deadlocks and six enqueue replays in the final run. The forced shared-to-private chat race denied a waiting staff request before message/budget mutation. Only local original synthetic campaigns were created.
+- `node scripts/test-budget.mjs`: 20 concurrent requests, exactly ten accepted at the allowance; replay, actual reconciliation and deduplicated 80% alerts passed. The original fixture package was restored.
+- `pnpm test:e2e`: **38/38 desktop/mobile journeys passed** in 2.7 minutes on a fresh local seed. The first integration run was interrupted after a new event selector matched both month and review cards; it was corrected before the clean combined pass. Browser tests authenticate normally and use persisted domain actions.
+- Actual descendant HTTP-server cleanup unit test passed. Interrupting the integration browser runner stopped its descendants and closed port 3100.
+- Screenshots from prior phase gates were inspected at desktop/mobile widths. Current desktop/mobile GROS screenshots were inspected. The local browser-runtime client scan found no service-key/cron-secret values or service-key environment reference in 23 checked files; sanitized runner output contained no raw JWT/signed-preview token. Scan metadata contains no secrets.
 
-Migrations are allocated to their documented namespaces and types are CLI-generated:
+An actual duplicate RPC completion exposed endless retries of custom SQLSTATE `40001` in the local PostgREST version. Integration migration converts application business conflicts to `PT409` (HTTP 409), preserving exact revision/lease checks and function ACLs. Historical migrations remain intact; actual database serialization errors are not translated. The concurrency proof now returns promptly. [Supabase's documented issue](https://supabase.com/docs/guides/troubleshooting/high-cpu-and-infinite-transaction-retries-when-using-custom-error-codes-in-rpc-functions-77326b) supports this correction. The initial failures and subsequent passing logs remain in ignored `.audit/`.
 
-- Foundation `20260914000000`; IAM `20260914010000`.
-- Brand/AI `20260914020000`–`20260914020002`.
-- Jobs/providers/connections `20260914030000`–`20260914030005`.
-- Campaigns `20260914040000`–`20260914040002`; assets/references `20260914050000`–`20260914050002`.
-- Designers `20260914060000`–`20260914060001`; notifications `20260914070000`.
-- Transactional cross-domain commands `20260914090000`–`20260914090007`.
+Run DB tests immediately after reset, before browser/concurrency proofs mutate seed fixtures. Run build and browser gates sequentially because they share `.next`. Auth preparation regenerates local credentials/cron secrets; do not run account/proof scripts while a local browser server is active.
 
-Commands: `pnpm supabase:reset`, `pnpm supabase:types`, format generated types, `pnpm test:db`, `pnpm verify`, `pnpm test:e2e`. Tests use real local Auth sessions and private Storage, never a linked remote reset. Browser traces/screenshots and sanitized command logs are ignored under `.audit`/`test-results`.
+## Acceptance mapping
 
-## Capability limits
+These are implemented fixture paths, not blanket completion claims for every requirement in `USE_CASES.md`.
 
-Persisted application state and role/tenant authorization are real local behavior. AI copy/classification/kit extraction, Drive/commerce connections, notifications/email audits and delivery outcomes are labelled fixtures. No live send has occurred. Real vision accuracy, real-provider acceptance, aesthetic design quality, production L2/delegation, SMS consent, real suppression and cross-client publication remain unverified or disabled. SVG codec/resize and live-client compatibility remain unverified. GROS, budgets, results, learning and optimizer acceptance belong to later phases. Live-provider adapters remain disabled contract drafts.
+| Use case | Screens                                                                                            | Actual tests / scope                                                                                                                                                                                                                                                                    |
+| -------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| UC-01    | `/onboarding`, `/brand`, `/connections`                                                            | `connections.spec.ts`, `assets.spec.ts`; identity/core/assets SQL. Persisted facts, owner corrections, offers, fixture health/readiness. Website crawl and real credential validation remain unavailable.                                                                               |
+| UC-02    | `/assets`                                                                                          | `assets.spec.ts`, `connections.spec.ts`; assets SQL and ZIP/raster unit tests. Real private Storage, dedupe/recovery/signatures, synthetic classification and owner correction.                                                                                                         |
+| UC-03–04 | `/competitor-agent`, `/competitor-agent/[subscriptionId]`                                          | `references.spec.ts`, `planning.spec.ts`; references SQL and sequence tests. Fictional opt-in/capture; evidence-linked tenant-private playbooks.                                                                                                                                        |
+| UC-05–06 | `/campaign-agent`, `/campaigns/[campaignId]`, `/copy-review`                                       | Campaigns/planning/design-loop browser tests; core/planning SQL and guard tests. Exact calendar/copy reviews, stale atomic batches and hard-rule precedence. Custom events annotate eligible tenant-local weekday slots; they do not imply offers or override cadence.                  |
+| UC-07    | `/admin/designers`, `/designer/dashboard`, `/designer/assignments/[assignmentId]`, campaign review | `design-loop.spec.ts`; design-delivery/escalation SQL. Admin assigns/reassigns, records verified SLA/blockage issues and resolves audited escalation; owner retains exact creative approval.                                                                                            |
+| UC-08–09 | Campaign fixture design/assembly review                                                            | `rendering.spec.ts`, text-preview browser test; rendering SQL and renderer/assembly tests. Private original artifacts with source revisions and distinct footer destinations. Real vision/aesthetic/email-client quality is unverified.                                                 |
+| UC-10    | Campaign delivery panel, `/connections`                                                            | `design-loop.spec.ts`, `scheduling.spec.ts`; delivery-fidelity SQL includes 100 consecutive exact fixture pushes and faults/retries/reconciliation. No real campaign was created or sent.                                                                                               |
+| UC-11    | `/gros`                                                                                            | `gros.spec.ts`, `history.spec.ts`; GROS/integration SQL. Creator-private/shared RLS, actor/hash/revision/expiry confirmation, long-history cursor pages, keyboard Enter/Escape/focus return. Sidebar lists latest 100; older authorized conversations remain accessible by direct link. |
+| UC-12–13 | `/reports`, campaign policy panel                                                                  | `statistics.spec.ts`, `scheduling.spec.ts`; results-learning/delivery SQL. Windowed fixture attribution, five samples/side, pin/dismiss, ten-send default streak and exact 72h L2 simulation. Owner design approval remains mandatory.                                                  |
+| UC-14    | Usage, `/admin/operations`, internal fixture route                                                 | Budget/concurrency scripts, `security.spec.ts`, cron/queue tests and SQL. Atomic reservation/recovery, bounded leases/retries, sanitized diagnostics, authenticated loopback dispatch. Live webhook endpoint fails closed.                                                              |
+| UC-15–16 | `/optimizer`, `/email-library`                                                                     | `templates.spec.ts`; optimizer/library SQL and unit tests. Owner-approved fake sweep, 12-calendar-month purchaser protection, consent-aware reason-only reversal and structural draft creation.                                                                                         |
+| UC-17    | —                                                                                                  | Deliberately deferred public archive; no publication permissions or capture budget were assumed.                                                                                                                                                                                        |
+| UC-18    | `/team`, `/settings`, `/support`, `/admin/operations`, `/admin/designers`                          | `gros.spec.ts`, design-loop browser test; identity/GROS/escalation SQL. Verified-email local invitation acceptance, last-owner guard, role/team audit, events/support, packages and operator metadata. Broader original OPS-001 remains incomplete.                                     |
 
-## Local environment and tracked processes
+## Implemented, simulated and unverified
 
-Existing `.env.local` is preserved. Test tooling resolves only loopback Supabase, creates random local fixture passwords in ignored `.audit/local-accounts.json`, and supplies local env without printing credentials. Use `pnpm supabase:start` then `pnpm test:e2e` for reproducible local journeys; do not copy fixture credentials or local service keys into source.
+Real local behavior: authentication, server authorization/RLS, relational persistence, private Storage uploads/artifacts, exact approvals, audit/version history, durable leased jobs, budget reservations, supported UI actions and safe local process ownership. Owner reviews and revises both human and fixture design paths. Admin escalation resolves an administrative issue without approving copy/design.
 
-Docker was initially stopped and was started for this run. Only task-created `grey-retention` Supabase containers remain active for ongoing database work. Playwright app servers on port 3100 are tracked and stop after each run. Stop local Supabase and verify its listeners and port 3100 are closed when execution finishes. Final cleanup results will be recorded here.
+Synthetic external behavior: copy/GROS generation, classification/matching, brand-kit extraction from supplied fields, Drive/commerce capture, competitor micro/playbook extraction, link checks, provider schedule/send/cancel/reconciliation/results, email notifications, cost/pricing, winback/suppression and L2 frozen clocks. Every such result is labelled synthetic; provider adapters do not contact live accounts.
+
+Remaining blockers and acceptance limits:
+
+- Live Klaviyo/Shopify/Drive/mailbox/AI transports and webhook signatures remain disabled. The Klaviyo request draft was checked against official documentation, but account/revision/segment definitions and actual acceptance still need a separate contract evaluation.
+- Original self-contained SVG fixture strips are previewable. Raster/hosted production artifacts, email-client/provider compatibility, aesthetic review rubric and real vision/product matching accuracy have not been evaluated. The 90% real-image target is unverified.
+- ZIP intake is bounded to 100 files per recoverable batch, 10 MiB compressed/20 MiB expanded and validated raster content. Approximately 500-image acceptance needs an explicit multi-batch load test; it is not claimed from small fixtures. Ambiguous products/variants stay unresolved.
+- Calendar fixtures use conservative educational sequences; event annotation follows normal weekday/cadence eligibility. Richer event/offer strategy, sequence exception semantics and sequence-wide creative quality remain unverified.
+- Influential learning currently compares subject length within complete comparable seven-day cohorts, with source windows/confounders and pinned-rule lineage. Broader angle/offer/design pattern evaluation remains future work; simulation does not establish causality or real revenue.
+- Production L2, unattended design approval delegation, real SMS/quiet-hour/consent behavior, suppression/reversal transport and cross-client template publication are disabled. Public archive is a separate track.
+- Owner onboarding/month-review time targets, representative accessibility/usability review, full 500-asset scaling, production rate limits/monitoring and the broader admin release lane have not passed production acceptance. Responsive and keyboard checks cover the tested core paths only.
+
+## Local startup and environment
+
+Dependencies: Node >=22, pinned pnpm, installed repository dependencies, Docker and the repository's Supabase CLI. No dependency was added for convenience or rendering.
+
+1. Start Docker, then `pnpm supabase:start` in this repository. Confirm that the project is the intended disposable **local** `grey-retention` instance.
+2. For a fresh demo, use `pnpm supabase:reset` only against that verified disposable local instance. This erases its local fixtures, not a remote project. Never reset an unknown/shared database.
+3. Run `node scripts/local-dev.mjs`. It verifies loopback Supabase, prepares original synthetic users and starts a tracked server at `http://127.0.0.1:3100` with `AUTH_MODE=supabase` and `ADAPTER_MODE=fake`.
+4. Synthetic emails are `owner@grey-retention.test`, `admin@grey-retention.test`, `designer@grey-retention.test`, `other-owner@grey-retention.test` and `staff@grey-retention.test`. Random passwords are kept only in ignored, mode-0600 `.audit/local-accounts.json`; do not commit/share that file. The random local cron secret is likewise ignored/private.
+5. Stop with Ctrl+C, verify port 3100 closed, then `pnpm supabase:stop` when finished. Keep production previews/watchers/tunnels tracked if separately requested.
+
+The existing `.env.local` was not inspected, printed or changed. Local keys are obtained internally from local CLI status and passed only to the child runtime; service credentials stay server-only. `pnpm test:e2e` uses the same isolated local environment. No preview is intended to remain running at handoff.
+
+## Exact next action
+
+After this tested local handoff, create a local follow-up acceptance specification for production rendering/provider contracts: confirm canonical segment/consent rules, choose compatible hosted/raster email artifacts, define the shared human/AI design rubric and a labelled original 100-image matching evaluation. Keep transports disabled until the human explicitly authorizes real providers/evaluation. Do not push/deploy/send as part of this handoff.

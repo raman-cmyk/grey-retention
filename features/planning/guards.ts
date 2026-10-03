@@ -10,6 +10,7 @@ export const plannedEntrySchema = z.object({
   channel: z.enum(['email_design', 'email_text']),
   sequenceKey: z.string().max(100).nullable(),
   sequencePosition: z.number().int().min(1).max(10).nullable(),
+  holidayId: z.uuid().nullable().optional(),
   referenceNotes: z.string().max(5000)
 })
 export type PlannedEntry = z.infer<typeof plannedEntrySchema>

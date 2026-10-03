@@ -96,7 +96,7 @@ export async function onboardingAction(
       })
     if (result?.error)
       return {
-        error: ['23514', '40001'].includes(result.error.code ?? '')
+        error: ['23514', 'PT409'].includes(result.error.code ?? '')
           ? result.error.message
           : 'Command denied or unavailable.'
       }

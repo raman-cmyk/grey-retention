@@ -11,6 +11,7 @@ export function generateRollingFixture(input: {
   brandName: string
   existing: PlanGuardRow[]
   evergreenOffer: { id: string; startsAt: string; endsAt: string } | null
+  holidays?: { id: string; name: string; date: string; notes: string }[]
   policy: { weeklyCap: number; discountCap: number; sitewideGap: number }
 }) {
   const entries: PlannedEntry[] = [],
@@ -44,16 +45,28 @@ export function generateRollingFixture(input: {
         .length
     )
       continue
+    const localDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: input.timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(date)
+    const event = input.holidays?.find((h) => h.date === localDate)
     const ordinal = entries.length + 1,
       sequencePosition = ordinal % 2 === 1 ? 1 : 2
     entries.push(
       plannedEntrySchema.parse({
         title:
-          `${input.brandName}: ${sequencePosition === 1 ? 'a considered introduction' : 'a closer look'} · Synthetic ${ordinal}`.slice(
+          `${input.brandName}: ${event?.name ?? (sequencePosition === 1 ? 'a considered introduction' : 'a closer look')} · Synthetic ${ordinal}`.slice(
             0,
             200
           ),
-        goal: 'Original fixture editorial; approved brand facts only. No invented offer, urgency, proof or stock claim.',
+        goal:
+          'Original fixture editorial; approved brand facts only. No invented offer, urgency, proof or stock claim.' +
+          (event
+            ? ` Workspace event: ${event.name} (${event.date}); no offer or deadline implied.`
+            : ''),
+        holidayId: event?.id ?? null,
         plannedAt: date.toISOString(),
         audienceId: input.audienceId,
         productId: null,

@@ -119,7 +119,7 @@ export async function deliveryAction(
     const x = e as { code?: string; message?: string }
     return {
       error:
-        x.code === '40001'
+        x.code === 'PT409'
           ? 'This version changed. Refresh and review again.'
           : x.code === '42501'
             ? 'Permission denied.'

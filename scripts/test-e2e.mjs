@@ -1,3 +1,4 @@
+import { stopProcessTree } from './process-tree.mjs'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { sanitizeLog } from './sanitize-log.mjs'
@@ -16,8 +17,14 @@ for (const [input, output] of [
     output.write(`${sanitizeLog(line)}\n`)
   )
 }
+let stopping
 for (const signal of ['SIGINT', 'SIGTERM'])
-  process.on(signal, () => child.kill(signal))
+  process.on(signal, () => {
+    if (!stopping && child.pid)
+      stopping = stopProcessTree(child.pid, signal).catch(() => {
+        process.exitCode = 1
+      })
+  })
 child.on('exit', (code) => {
   process.exitCode = code ?? 1
 })

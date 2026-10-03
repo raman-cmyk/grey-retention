@@ -11,7 +11,7 @@ select is((select count(*) from public.optimizer_candidates where sweep_id=curre
 select is((select reason from public.optimizer_candidates c join public.optimizer_profiles p on p.id=c.profile_id where c.sweep_id=current_setting('test.s')::uuid and p.external_id='original-fixture-3'),'protected_purchaser_12_months','purchaser at 200 days remains protected despite 180-day candidate rule');
 select ok(not exists(select 1 from public.optimizer_candidates c join public.optimizer_profiles p on p.id=c.profile_id where c.eligible and (p.hard_bounce or p.spam or p.consent<>'subscribed')),'hard bounce/spam/consent never enter winback');
 select public.change_fixture_profile_evidence('00000000-0000-4000-8000-000000000102',current_setting('test.p2')::uuid,1,'subscribed',false,false,false);
-select throws_ok($$select public.approve_optimizer('00000000-0000-4000-8000-000000000102',current_setting('test.s')::uuid,1)$$,'40001',null,'evidence change invalidates exact preview');
+select throws_ok($$select public.approve_optimizer('00000000-0000-4000-8000-000000000102',current_setting('test.s')::uuid,1)$$,'PT409',null,'evidence change invalidates exact preview');
 select set_config('test.s',public.preview_optimizer('00000000-0000-4000-8000-000000000102',now())::text,true);
 select public.approve_optimizer('00000000-0000-4000-8000-000000000102',current_setting('test.s')::uuid,1);
 select set_config('test.s2',public.preview_optimizer('00000000-0000-4000-8000-000000000102',now())::text,true);

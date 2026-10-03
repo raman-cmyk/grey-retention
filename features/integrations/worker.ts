@@ -22,6 +22,8 @@ export async function runFixtureJobs(
 ) {
   if (process.env.ADAPTER_MODE === 'real')
     throw new Error('Live providers are disabled for this build.')
+  const recovered = await db.rpc('recover_expired_usage', { t: tenantId })
+  if (recovered.error) throw recovered.error
   const health = await db.rpc('enqueue_health_check', { t: tenantId })
   if (health.error) throw health.error
   const digest = await db.rpc('enqueue_daily_result_digest', { t: tenantId })

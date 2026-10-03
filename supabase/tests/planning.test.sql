@@ -16,7 +16,7 @@ select public.save_copy('00000000-0000-4000-8000-000000000101','00000000-0000-40
 select public.save_copy('00000000-0000-4000-8000-000000000101',current_setting('test.new_campaign')::uuid,1,'{"subject":"Original sibling","preheader":"Synthetic","body":"Explore the details.","cta":"Explore","url":"https://cedar-lane.example"}');
 select set_config('test.batch',public.prepare_copy_review('00000000-0000-4000-8000-000000000101',(select planned_at::date from public.campaigns where id='00000000-0000-4000-8000-000000000601'))::text,true);
 select public.save_copy('00000000-0000-4000-8000-000000000101',current_setting('test.new_campaign')::uuid,2,'{"subject":"Changed sibling","preheader":"Synthetic","body":"New exact wording.","cta":"Explore","url":"https://cedar-lane.example"}');
-select throws_ok($$select public.approve_copy_batch('00000000-0000-4000-8000-000000000101',current_setting('test.batch')::uuid)$$,'40001','Batch stale; no unseen version was approved','concurrent edit rejects whole batch');
+select throws_ok($$select public.approve_copy_batch('00000000-0000-4000-8000-000000000101',current_setting('test.batch')::uuid)$$,'PT409','Batch stale; no unseen version was approved','concurrent edit rejects whole batch');
 select is((select count(*) from public.campaigns where copy_state='approved'),0::bigint,'stale batch rolls back all approvals');
 select set_config('test.batch2',public.prepare_copy_review('00000000-0000-4000-8000-000000000101',(select planned_at::date from public.campaigns where id='00000000-0000-4000-8000-000000000601'))::text,true);
 select is(public.approve_copy_batch('00000000-0000-4000-8000-000000000101',current_setting('test.batch2')::uuid),2,'current batch approved atomically');

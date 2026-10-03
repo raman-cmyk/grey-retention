@@ -6,10 +6,10 @@ select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001'
 select public.approve_calendar('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601',1);
 select set_config('test.copy_job',public.enqueue_copy('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601',1)::text,true);
 select set_config('test.lease',(select lease_token::text from public.claim_job('00000000-0000-4000-8000-000000000101')),true);
-select throws_ok($$select public.finish_copy_job(current_setting('test.copy_job')::uuid,null,'{}')$$,'40001','Lease unavailable','null lease cannot bypass lock');
+select throws_ok($$select public.finish_copy_job(current_setting('test.copy_job')::uuid,null,'{}')$$,'PT409','Lease unavailable','null lease cannot bypass lock');
 select lives_ok($$select public.finish_copy_job(current_setting('test.copy_job')::uuid,current_setting('test.lease')::uuid,'{"brandRevision":1,"synthetic":true,"subject":"Field notes","subjects":["Field notes","A considered layer","Explore the details"],"preheader":"Original fixture","body":"A fictional overshirt to explore at your own pace.","cta":"Explore","url":"https://cedar-lane.example/products/overshirt"}')$$,'leased copy job persists a new version');
 select is((select copy_revision from public.campaigns where id='00000000-0000-4000-8000-000000000601'),2,'copy revision incremented');
-select throws_ok($$select public.finish_copy_job(current_setting('test.copy_job')::uuid,current_setting('test.lease')::uuid,'{}')$$,'40001','Lease unavailable','replay cannot create a second content revision');
+select throws_ok($$select public.finish_copy_job(current_setting('test.copy_job')::uuid,current_setting('test.lease')::uuid,'{}')$$,'PT409','Lease unavailable','replay cannot create a second content revision');
 select lives_ok($$select public.approve_copy('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601',2)$$,'owner approves current copy');
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',true);
 select throws_ok($$select public.approve_copy('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601',2)$$,'42501','Access denied','operator cannot creatively approve copy');
@@ -33,7 +33,7 @@ select is((select count(*)::integer from public.designer_submissions),2,'resubmi
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',true);
 select throws_ok($$select public.review_design('00000000-0000-4000-8000-000000000101',current_setting('test.final_submission')::uuid,5,'approved','whole','Approved')$$,'42501','Access denied','operator cannot approve final design');
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',true);
-select throws_ok($$select public.review_design('00000000-0000-4000-8000-000000000101',current_setting('test.first_submission')::uuid,4,'approved','whole','Approved')$$,'40001','Stale design version','old submission approval rejected');
+select throws_ok($$select public.review_design('00000000-0000-4000-8000-000000000101',current_setting('test.first_submission')::uuid,4,'approved','whole','Approved')$$,'PT409','Stale design version','old submission approval rejected');
 select lives_ok($$select public.review_design('00000000-0000-4000-8000-000000000101',current_setting('test.final_submission')::uuid,5,'approved','whole','Owner approved')$$,'owner approves exact final version');
 select throws_ok($$select public.create_delivery_package('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601',7,'{}')$$,'23514','Footer, HTTPS links and sender required','missing footer blocks package');
 select set_config('test.package',public.create_delivery_package('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601',7,'{"senderName":"Synthetic Cedar","senderEmail":"studio@cedar-lane.example","address":"42 Fictional Lane, Demo Town","unsubscribeUrl":"https://cedar-lane.example/unsubscribe","privacyUrl":"https://cedar-lane.example/privacy","html":"<script>caller injection must be ignored</script>"}')::text,true);

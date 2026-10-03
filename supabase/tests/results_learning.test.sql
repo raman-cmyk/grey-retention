@@ -50,7 +50,7 @@ select throws_ok($$select public.prepare_l2_silence('00000000-0000-4000-8000-000
 select public.advance_results_clock('00000000-0000-4000-8000-000000000102',now()+interval '200 days');
 select set_config('test.pull',(select id::text from public.claim_job('00000000-0000-4000-8000-000000000102')),true);
 select set_config('test.lease',(select lease_token::text from public.job_runs where id=current_setting('test.pull')::uuid),true);
-select throws_ok($$select public.fixture_result_payload(current_setting('test.pull')::uuid,gen_random_uuid(),(select (input->>'deliveryId')::uuid from public.job_runs where id=current_setting('test.pull')::uuid),'48h')$$,'40001',null,'wrong result lease cannot read fixture provider context');
+select throws_ok($$select public.fixture_result_payload(current_setting('test.pull')::uuid,gen_random_uuid(),(select (input->>'deliveryId')::uuid from public.job_runs where id=current_setting('test.pull')::uuid),'48h')$$,'PT409',null,'wrong result lease cannot read fixture provider context');
 select throws_ok($$select public.finish_result_job(current_setting('test.pull')::uuid,current_setting('test.lease')::uuid,'{"source":"provider","revenueMinor":999999}')$$,'23514',null,'caller cannot forge fixture source or revenue');
 select public.finish_result_job(current_setting('test.pull')::uuid,current_setting('test.lease')::uuid,public.fixture_result_payload(current_setting('test.pull')::uuid,current_setting('test.lease')::uuid,(select (input->>'deliveryId')::uuid from public.job_runs where id=current_setting('test.pull')::uuid),(select input->>'window' from public.job_runs where id=current_setting('test.pull')::uuid)));
 select pg_temp.run_reports();
@@ -85,7 +85,7 @@ select is((select status from public.learned_rules where id=current_setting('tes
 select set_config('test.candidate',public.prepare_l2_silence('00000000-0000-4000-8000-000000000102',current_setting('test.pending')::uuid,2)::text,true);
 select throws_ok($$select public.simulate_l2_silence('00000000-0000-4000-8000-000000000102',current_setting('test.candidate')::uuid,now()+interval '71 hours')$$,'23514',null,'71 hours cannot approve silence');
 select public.save_copy('00000000-0000-4000-8000-000000000102',current_setting('test.pending')::uuid,2,'{"subject":"A revised note","preheader":"Fixture","body":"An original revised educational note.","cta":"Explore","url":"https://north-studio.example/collection"}');
-select throws_ok($$select public.simulate_l2_silence('00000000-0000-4000-8000-000000000102',current_setting('test.candidate')::uuid,now()+interval '72 hours')$$,'40001',null,'copy edit invalidates exact silence candidate');
+select throws_ok($$select public.simulate_l2_silence('00000000-0000-4000-8000-000000000102',current_setting('test.candidate')::uuid,now()+interval '72 hours')$$,'PT409',null,'copy edit invalidates exact silence candidate');
 select set_config('test.candidate',public.prepare_l2_silence('00000000-0000-4000-8000-000000000102',current_setting('test.pending')::uuid,3)::text,true);
 select lives_ok($$select public.simulate_l2_silence('00000000-0000-4000-8000-000000000102',current_setting('test.candidate')::uuid,now()+interval '72 hours')$$,'frozen 72-hour clock approves exact validated copy');
 select is((select design_state from public.campaigns where id=current_setting('test.pending')::uuid),'unassigned','L2 silence does not approve design');
@@ -97,7 +97,7 @@ select ok(not exists(select 1 from public.l2_simulation_policies where productio
 select set_config('test.reject',pg_temp.pending_fixture(40)::text,true);
 select public.reject_campaign_version('00000000-0000-4000-8000-000000000102',current_setting('test.reject')::uuid,'copy',2,'Owner rejects this synthetic version','single','');
 select is((select consecutive_sends from public.autopilot_streaks where tenant_id='00000000-0000-4000-8000-000000000102'),0,'owner rejection resets conservative consecutive streak');
-select throws_ok($$select public.simulate_l2_silence('00000000-0000-4000-8000-000000000102',current_setting('test.candidate')::uuid,now()+interval '72 hours')$$,'40001',null,'rejection generation invalidates previous simulation');
+select throws_ok($$select public.simulate_l2_silence('00000000-0000-4000-8000-000000000102',current_setting('test.candidate')::uuid,now()+interval '72 hours')$$,'PT409',null,'rejection generation invalidates previous simulation');
 select public.review_learned_rule('00000000-0000-4000-8000-000000000102',current_setting('test.rule')::uuid,3,'pinned');
 select set_config('test.hard',pg_temp.pending_fixture(60)::text,true);
 select public.reject_campaign_version('00000000-0000-4000-8000-000000000102',current_setting('test.reject')::uuid,'copy',2,'Explicit owner phrase prohibition wins','audience','considered');

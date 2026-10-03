@@ -139,7 +139,7 @@ export async function workflowAction(
     const e = error as { code?: string; message?: string }
     return {
       error:
-        e.code === '40001'
+        e.code === 'PT409'
           ? 'This version or lease changed. Refresh and review again.'
           : e.code === '42501'
             ? 'Permission denied.'

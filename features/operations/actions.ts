@@ -125,7 +125,7 @@ export async function operationAction(
       error:
         v.code === '42501'
           ? 'Permission denied.'
-          : v.code === '40001'
+          : v.code === 'PT409'
             ? 'This version changed. Refresh before retrying.'
             : v.code === '23514'
               ? v.message

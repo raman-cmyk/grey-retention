@@ -1334,6 +1334,7 @@ export type Database = {
           created_at: string
           evidence: Json
           id: string
+          message_index: number
           role: string
           synthetic: boolean
           tenant_id: string
@@ -1345,6 +1346,7 @@ export type Database = {
           created_at?: string
           evidence?: Json
           id?: string
+          message_index: number
           role: string
           synthetic?: boolean
           tenant_id: string
@@ -1356,6 +1358,7 @@ export type Database = {
           created_at?: string
           evidence?: Json
           id?: string
+          message_index?: number
           role?: string
           synthetic?: boolean
           tenant_id?: string
@@ -4428,6 +4431,22 @@ export type Database = {
         Args: { allocation: number; daily: number; name: string }
         Returns: string
       }
+      design_escalation_operations: {
+        Args: never
+        Returns: {
+          assignment_id: string
+          campaign_id: string
+          can_escalate: boolean
+          design_revision: number
+          due_at: string
+          escalation_id: string
+          issue_state: string
+          reason: string
+          sla_overdue: boolean
+          tenant_id: string
+          title: string
+        }[]
+      }
       design_operations: {
         Args: never
         Returns: {
@@ -4493,6 +4512,16 @@ export type Database = {
         Returns: string
       }
       enqueue_review_reminders: { Args: { t: string }; Returns: string }
+      escalate_design: {
+        Args: {
+          campaign: string
+          category: string
+          expected_design: number
+          reason: string
+          t: string
+        }
+        Returns: string
+      }
       fail_job: {
         Args: { failure: string; job: string; lease: string }
         Returns: undefined
@@ -4669,6 +4698,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      recover_expired_usage: { Args: { t: string }; Returns: number }
       refresh_catalog_stock: {
         Args: { product: string; stock: number; t: string }
         Returns: undefined
@@ -4728,6 +4758,10 @@ export type Database = {
           tenant_slug: string
           tenant_timezone: string
         }[]
+      }
+      resolve_design_escalation: {
+        Args: { escalation: string; resolution: string; t: string }
+        Returns: undefined
       }
       resolve_designer_context: {
         Args: never

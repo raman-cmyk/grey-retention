@@ -35,7 +35,7 @@ export async function assignDesigner(
   if (error)
     return {
       error:
-        error.code === '23514' || error.code === '40001'
+        error.code === '23514' || error.code === 'PT409'
           ? error.message
           : 'Assignment denied or unavailable.'
     }
@@ -44,6 +44,67 @@ export async function assignDesigner(
   revalidatePath(`/campaigns/${v.campaign}`)
   return {
     message: 'Approved brief assigned. Owner retains final design approval.'
+  }
+}
+export async function designEscalation(
+  _state: FormResult,
+  form: FormData
+): Promise<FormResult> {
+  await requireRequestContext('admin')
+  const parsed = z
+    .discriminatedUnion('kind', [
+      z.object({
+        kind: z.literal('escalate'),
+        tenant: z.uuid(),
+        campaign: z.uuid(),
+        revision: z.coerce.number().int().positive(),
+        category: z.enum(['blocked', 'sla_overdue', 'no_designer']),
+        notes: z.string().trim().min(10).max(2000)
+      }),
+      z.object({
+        kind: z.literal('resolve'),
+        tenant: z.uuid(),
+        escalation: z.uuid(),
+        notes: z.string().trim().min(10).max(2000)
+      })
+    ])
+    .safeParse(Object.fromEntries(form))
+  if (!parsed.success)
+    return {
+      error:
+        'Choose an issue and supply 10–2000 characters of administrative notes.'
+    }
+  const db = await createClient()
+  if (!db || process.env.AUTH_MODE === 'demo')
+    return { error: 'Supabase authentication required.' }
+  const v = parsed.data
+  const result =
+    v.kind === 'escalate'
+      ? await db.rpc('escalate_design', {
+          t: v.tenant,
+          campaign: v.campaign,
+          expected_design: v.revision,
+          category: v.category,
+          reason: v.notes
+        })
+      : await db.rpc('resolve_design_escalation', {
+          t: v.tenant,
+          escalation: v.escalation,
+          resolution: v.notes
+        })
+  if (result.error)
+    return {
+      error: ['23514', 'PT409'].includes(result.error.code)
+        ? result.error.message
+        : 'Escalation denied or unavailable.'
+    }
+  revalidatePath('/admin/designers')
+  revalidatePath('/campaigns/[campaignId]', 'page')
+  return {
+    message:
+      v.kind === 'escalate'
+        ? 'Design issue recorded. Owner creative approval remains required.'
+        : 'Administrative issue resolved; creative approval is unchanged.'
   }
 }
 export async function submitDesign(

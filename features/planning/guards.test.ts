@@ -104,3 +104,27 @@ describe('independent planning guards', () => {
     )
   })
 })
+it('retains owner event provenance without inventing an offer or weakening cadence', () => {
+  const id = '00000000-0000-4000-8000-000000000555'
+  const plan = generateRollingFixture({
+    start: '2027-03-04T10:00:00Z',
+    timezone: 'Asia/Kathmandu',
+    audienceId: '00000000-0000-4000-8000-000000000501',
+    brandName: 'Synthetic',
+    existing: [],
+    evergreenOffer: null,
+    holidays: [
+      {
+        id,
+        name: 'Original studio day',
+        date: '2027-03-04',
+        notes: 'Owner supplied'
+      }
+    ],
+    policy: { weeklyCap: 5, discountCap: 40, sitewideGap: 7 }
+  })
+  const event = plan.entries.find((e) => e.holidayId === id)
+  expect(event?.title).toContain('Original studio day')
+  expect(event?.offerId).toBeNull()
+  expect(event?.goal).toContain('no offer or deadline implied')
+})

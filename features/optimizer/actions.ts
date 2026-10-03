@@ -107,7 +107,7 @@ export async function optimizerAction(
     const x = e as { code?: string; message?: string }
     return {
       error:
-        x.code === '40001'
+        x.code === 'PT409'
           ? 'Preview or profile changed. Refresh and review again.'
           : x.code === '23514'
             ? x.message

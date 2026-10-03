@@ -6,7 +6,7 @@ select is((select count(*)::integer from public.campaigns),1,'owner only sees ow
 select is((select count(*)::integer from public.products),1,'catalog is tenant scoped');
 select lives_ok($$select public.approve_calendar('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601',1)$$,'owner approves current calendar');
 select is((select count(*)::integer from public.campaign_approvals),1,'approval persisted');
-select throws_ok($$select public.approve_calendar('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601',0)$$,'40001','Stale calendar revision','stale approval rejected');
+select throws_ok($$select public.approve_calendar('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601',0)$$,'PT409','Stale calendar revision','stale approval rejected');
 select throws_ok($$select public.approve_calendar('00000000-0000-4000-8000-000000000102','00000000-0000-4000-8000-000000000602',1)$$,'42501','Access denied','cross-tenant approve denied');
 select throws_ok($$select public.save_campaign('00000000-0000-4000-8000-000000000101',null,0,'{"title":"Foreign audience","goal":"test","channel":"email_design","planned_at":"2030-01-01T00:00:00Z","audience_id":"00000000-0000-4000-8000-000000000502"}')$$,'23503',null,'composite FK blocks foreign audience');
 select lives_ok($$select public.add_campaign_note('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601','Persisted synthetic note')$$,'notes persist');

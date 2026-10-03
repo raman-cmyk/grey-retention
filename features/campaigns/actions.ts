@@ -20,7 +20,7 @@ async function access(ownerOnly = false) {
 }
 function failure(error: unknown): FormResult {
   const e = error as { code?: string; message?: string }
-  if (e.code === '40001')
+  if (e.code === 'PT409')
     return { error: 'This version changed. Refresh before trying again.' }
   if (e.code === '42501')
     return { error: 'You do not have permission for this action.' }

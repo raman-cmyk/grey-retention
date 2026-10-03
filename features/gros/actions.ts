@@ -51,6 +51,14 @@ export async function grosAction(
   let newChat: string | null = null
   try {
     const v = parsed.data
+    if (
+      v.kind === 'ask' &&
+      v.intent === 'select_reference' &&
+      !z.uuid().safeParse(v.value).success
+    )
+      return {
+        error: 'Choose a valid UUID from the authorized reference choices.'
+      }
     let r
     if (v.kind === 'create') {
       const result = await db.rpc('create_conversation', {
@@ -91,7 +99,7 @@ export async function grosAction(
     const x = e as { code?: string; message?: string }
     return {
       error:
-        x.code === '40001'
+        x.code === 'PT409'
           ? x.message
           : x.code === '42501'
             ? 'Conversation or proposal permission denied.'

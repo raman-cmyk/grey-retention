@@ -86,6 +86,42 @@ test('UC-06/07/09/10 owner-designer revision loop, exact approvals, simulated sc
   await expect(
     row.getByRole('button', { name: 'Reassign approved brief' })
   ).toBeVisible()
+  const issue = page.locator('article').filter({
+    has: page.getByRole('heading', {
+      name: `${title} · escalation none`,
+      exact: true
+    })
+  })
+  await issue
+    .getByLabel('Escalation reason')
+    .fill(
+      'Original synthetic workflow blocked; admin is coordinating the designer.'
+    )
+  await issue
+    .getByRole('button', { name: 'Record design issue', exact: true })
+    .click()
+  await page.reload()
+  const openIssue = page.locator('article').filter({
+    has: page.getByRole('heading', {
+      name: `${title} · escalation open`,
+      exact: true
+    })
+  })
+  await expect(openIssue).toContainText(
+    'Original synthetic workflow blocked; admin is coordinating the designer.'
+  )
+  await openIssue
+    .getByLabel('Administrative resolution')
+    .fill('The assigned designer is available; owner review remains required.')
+  await openIssue
+    .getByRole('button', { name: 'Resolve design issue', exact: true })
+    .click()
+  await expect(
+    page.getByRole('heading', {
+      name: `${title} · escalation resolved`,
+      exact: true
+    })
+  ).toBeVisible()
   await page.context().clearCookies()
   await login(page, 'designer')
   await page.getByRole('link', { name: new RegExp(title) }).click()

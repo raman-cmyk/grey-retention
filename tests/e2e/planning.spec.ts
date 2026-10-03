@@ -6,7 +6,42 @@ test('UC-05/06 guarded month review and exact weekly copy batch persist', async 
 }, info) => {
   test.setTimeout(120_000)
   const role = info.project.name.startsWith('mobile') ? 'other' : 'owner'
+  const start = new Date(Date.now() + 7 * 86400000).toISOString()
+  const timezone = role === 'owner' ? 'Asia/Kathmandu' : 'Australia/Melbourne'
+  const eventSlot = new Date(start)
+  while (
+    ['Sat', 'Sun'].includes(
+      new Intl.DateTimeFormat('en', {
+        timeZone: timezone,
+        weekday: 'short'
+      }).format(eventSlot)
+    )
+  ) {
+    eventSlot.setUTCDate(eventSlot.getUTCDate() + 1)
+  }
+  const eventDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(eventSlot)
+  const eventName = `Original studio day ${info.project.name}`
   await login(page, role)
+  await page.goto('/settings')
+  await page.getByLabel('Event name').fill(eventName)
+  await page.getByLabel('Event date').fill(eventDate)
+  await page
+    .getByLabel('Event notes')
+    .fill('Original owner-supplied event; no offer implied.')
+  await page
+    .getByRole('button', { name: 'Save workspace event', exact: true })
+    .click()
+  await expect(
+    page.getByText(
+      `${eventDate} · ${eventName} · Original owner-supplied event; no offer implied.`,
+      { exact: true }
+    )
+  ).toBeVisible()
   await page.goto('/brand')
   await page
     .getByLabel('Offer label', { exact: true })
@@ -74,7 +109,6 @@ test('UC-05/06 guarded month review and exact weekly copy batch persist', async 
     before + 1
   )
   await page.goto('/campaign-agent')
-  const start = new Date(Date.now() + 7 * 86400000).toISOString()
   await page
     .getByLabel('Rolling start (ISO timestamp with timezone)')
     .fill(start)
@@ -85,6 +119,9 @@ test('UC-05/06 guarded month review and exact weekly copy batch persist', async 
   await page.getByRole('button', { name: 'Run planning fixture jobs' }).click()
   await expect(
     page.getByRole('button', { name: 'Review plan approval' })
+  ).toBeVisible()
+  await expect(
+    page.getByRole('link', { name: new RegExp(eventName) }).first()
   ).toBeVisible()
   expect(
     await page.getByRole('link', { name: /Synthetic \d+/ }).count()

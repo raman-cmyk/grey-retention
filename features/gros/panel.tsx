@@ -7,11 +7,17 @@ import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { grosAction } from './actions'
 import { z } from 'zod'
-export async function GrosPanel({ chatId }: { chatId?: string }) {
+export async function GrosPanel({
+  chatId,
+  before
+}: {
+  chatId?: string
+  before?: number
+}) {
   const ctx = await requireRequestContext('client'),
     db = await createClient()
   if (!db) return <Notice error>Supabase authentication required.</Notice>
-  const [chats, campaigns] = await Promise.all([
+  const [chats, campaigns, selected, references] = await Promise.all([
     db
       .from('conversations')
       .select('*')
@@ -24,11 +30,24 @@ export async function GrosPanel({ chatId }: { chatId?: string }) {
       .eq('tenant_id', ctx.tenantId)
       .is('superseded_by_plan', null)
       .order('planned_at')
-      .limit(100)
+      .limit(100),
+    chatId
+      ? db
+          .from('conversations')
+          .select('*')
+          .eq('tenant_id', ctx.tenantId)
+          .eq('id', chatId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    db
+      .from('competitor_emails')
+      .select('id,subject')
+      .order('received_at', { ascending: false })
+      .limit(20)
   ])
-  if (chats.error || campaigns.error)
+  if (chats.error || campaigns.error || selected.error || references.error)
     return <Notice error>Conversation data unavailable.</Notice>
-  const active = chats.data?.find((c) => c.id === chatId)
+  const active = selected.data
   const [messages, proposals] = active
     ? await Promise.all([
         db
@@ -36,7 +55,8 @@ export async function GrosPanel({ chatId }: { chatId?: string }) {
           .select('*')
           .eq('tenant_id', ctx.tenantId)
           .eq('conversation_id', active.id)
-          .order('created_at')
+          .lt('message_index', before ?? Number.MAX_SAFE_INTEGER)
+          .order('message_index', { ascending: false })
           .limit(100),
         db
           .from('chat_proposals')
@@ -136,7 +156,7 @@ export async function GrosPanel({ chatId }: { chatId?: string }) {
                 </div>
               )}
               <ol className="my-5 space-y-4">
-                {messages.data?.map((m) => (
+                {messages.data?.toReversed().map((m) => (
                   <li
                     key={m.id}
                     className="rounded-lg border border-[var(--line)] p-4"
@@ -154,6 +174,35 @@ export async function GrosPanel({ chatId }: { chatId?: string }) {
                   </li>
                 ))}
               </ol>
+              <p className="my-3 text-xs">
+                Messages are paged in groups of 100.{' '}
+                {messages.data?.at(-1)?.message_index &&
+                  messages.data.at(-1)!.message_index > 1 && (
+                    <Link
+                      className="mr-3 underline"
+                      href={`/gros?chat=${active.id}&before=${messages.data.at(-1)!.message_index}`}
+                    >
+                      Earlier messages
+                    </Link>
+                  )}
+                {before && (
+                  <Link className="underline" href={`/gros?chat=${active.id}`}>
+                    Latest messages
+                  </Link>
+                )}
+              </p>
+              {references.data?.length ? (
+                <details className="my-4 text-sm">
+                  <summary>Authorized reference choices</summary>
+                  <ul>
+                    {references.data.map((r) => (
+                      <li className="mt-2 break-words" key={r.id}>
+                        {r.subject} · <code>{r.id}</code>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
               <ActionForm action={grosAction} className="grid gap-4">
                 <input name="kind" type="hidden" value="ask" />
                 <input name="chat" type="hidden" value={active.id} />
@@ -277,4 +326,14 @@ export async function GrosPanel({ chatId }: { chatId?: string }) {
 }
 export function validChatId(value: unknown) {
   return z.uuid().safeParse(value).success ? (value as string) : undefined
+}
+
+export function validMessageCursor(value: unknown) {
+  const parsed = z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(Number.MAX_SAFE_INTEGER)
+    .safeParse(value)
+  return parsed.success ? parsed.data : undefined
 }

@@ -19,7 +19,17 @@ export async function runPlanningJob(
   const input = z
     .object({
       startsAt: z.iso.datetime({ offset: true }),
-      audienceId: z.uuid()
+      audienceId: z.uuid(),
+      holidays: z
+        .array(
+          z.object({
+            id: z.uuid(),
+            name: z.string(),
+            date: z.iso.date(),
+            notes: z.string()
+          })
+        )
+        .default([])
     })
     .parse(job.input)
   const [brand, tenant, preferences, campaigns, offers] = await Promise.all([
@@ -56,6 +66,7 @@ export async function runPlanningJob(
     timezone: tenant.data.timezone,
     audienceId: input.audienceId,
     brandName: brand.data.brand_name,
+    holidays: input.holidays,
     existing: (campaigns.data ?? [])
       .filter(
         (c) =>

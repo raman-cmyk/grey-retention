@@ -4,7 +4,7 @@ Checkpoint: October 4, 2026. Branch `codex/grey-retention-v2`; base `b6f92a7`.
 
 ## Active task
 
-V2-010 verified and ready to commit. Clean reset/types, 302 DB assertions, full verify 43 unit tests/build and 34/34 authenticated desktop/mobile journeys pass. Next action: commit checkpoint; claim V2-011 and resolve narrow integration issues, repeat clean full gates, write acceptance mapping/final handoff and stop task-started processes.
+V2-011 fixture implementation verified; root is recording the local checkpoint and cleanup. Final clean reset/types/seed and 332 DB assertions pass; full verify passes 47 unit tests plus format/lint/types/build; all 38 real-auth desktop/mobile browser journeys pass. Actual 20 concurrent completion races, forced shared-to-private privacy race and 20-request budget cap proof pass. Admin escalation now persists issue/resolution audit without creative approval. A real PostgREST retry defect was fixed with PT409 business conflicts; guards/ACLs and historical migrations preserved. Next: commit verified integration, stop local Supabase/task-started Docker, verify all ports/processes closed, and record final handoff. No agents/live providers/push/deployment.
 
 ## Checkpoints
 
@@ -30,6 +30,8 @@ Migrations: foundation `20260914000000`; identity `20260914010000`; brand/catalo
 
 - V2-009 complete: `dfed204`; clean reset, 269 DB assertions, full verify 40 tests/build; 28 existing journeys plus 2/2 corrected reporting journeys.
 
+- V2-010 complete: `5e77cfe`; clean reset/types, 302 DB assertions, full verify 43 tests/build, full 34/34 browser journeys.
+
 ## Decisions and limits
 
 Required project/build/use-case/UML/design documents read completely; relevant discovery and installed Next.js guides read. Original planning changes preserved. No live provider, old source/database/customer imports, paid AI, pushes, merges or deployment.
@@ -43,4 +45,4 @@ Brand facts/offers require owner; staff can edit unapproved drafts; platform adm
 - Docker application started by this run for local infrastructure; it was initially stopped. No Grey Retention containers existed before the run. Other stopped project containers untouched.
 - Supabase project `grey-retention`: task-created disposable local containers; configuration ports 54321–54324, 54327, 8083 (inspect actual listeners at cleanup). `pnpm supabase:stop` at finish; no remote linked project is accessed/reset.
 - App/test server port 3100: tracked Playwright sessions ended and port verified closed.
-- V2-010 browser session 66763 finished; port 3100 verified closed. Local Supabase remains tracked for final integration.
+- Final integration pipeline session 90673 finished; all 38 browser journeys passed. Port 3100 closure is being verified. Supabase remains tracked solely for final cleanup.

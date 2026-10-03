@@ -18,7 +18,7 @@ select lives_ok($$select public.subscribe_competitor('00000000-0000-4000-8000-00
 select is((select count(*) from public.competitor_captures),1::bigint,'one shared identity');
 select is((select count(*) from public.competitor_emails),10::bigint,'subscribed tenant sees shared safe records');
 select is((select private_rules from public.competitor_subscriptions),'Tenant two different private rule','other private rules excluded');
-select throws_ok($$select public.update_competitor_subscription('00000000-0000-4000-8000-000000000102',(select id from public.competitor_subscriptions),99,false,'')$$,'40001',null,'stale subscription update rejected');
+select throws_ok($$select public.update_competitor_subscription('00000000-0000-4000-8000-000000000102',(select id from public.competitor_subscriptions),99,false,'')$$,'PT409',null,'stale subscription update rejected');
 select lives_ok($$select public.update_competitor_subscription('00000000-0000-4000-8000-000000000102',(select id from public.competitor_subscriptions),1,false,'')$$,'unsubscribe persists');
 select is((select count(*) from public.competitor_emails),0::bigint,'unsubscribe revokes capture reads');
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000003","role":"authenticated"}',true);

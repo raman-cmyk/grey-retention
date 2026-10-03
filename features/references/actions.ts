@@ -76,7 +76,7 @@ export async function referenceAction(
     if (v.kind === 'run') await runFixtureJobs(db, context.tenantId)
     if (result?.error)
       return {
-        error: ['23514', '40001'].includes(result.error.code ?? '')
+        error: ['23514', 'PT409'].includes(result.error.code ?? '')
           ? result.error.message
           : 'Reference command denied or unavailable.'
       }
