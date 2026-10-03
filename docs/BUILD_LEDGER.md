@@ -30,7 +30,7 @@ This file is the durable cross-task memory. Every implementation task must updat
 | V2-008  | GROS and operating surfaces            | V2-007           | complete    | root v2 implementation | —                                                                                                                                  | Private/shared chat, version-bound proposals, spend, diagnostics, team/support.                                                   |
 | V2-009  | Results, learning and L2 simulation    | V2-008           | complete    | root v2 implementation | —                                                                                                                                  | Timed results, evidence thresholds; production L2/design delegation disabled.                                                     |
 | V2-010  | Optimizer fixtures and libraries       | V2-009           | complete    | root v2 implementation | —                                                                                                                                  | Protected-profile sweep simulation and own-template reuse; public archive separate.                                               |
-| V2-011  | Integrated acceptance and handoff      | V2-010           | complete    | root v2 integration    | `20260914090011`                                                                                                                   | Full checks, reproducibility, honest capability report, progress/handoff, process cleanup.                                        |
+| V2-011  | Integrated acceptance and handoff      | V2-010           | in_progress | root v2 integration    | `20260914090011`                                                                                                                   | Full checks, reproducibility, honest capability report, progress/handoff, process cleanup.                                        |
 
 Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
@@ -312,3 +312,14 @@ Append entries using this exact shape:
 - Known issues: Full production v2 remains unverified: live provider/vision/design/email-client evaluation, large asset-batch scaling, representative usability, production L2/design delegation, SMS/suppression policy and broader original operations lane. Public archive/cross-client publication remain deferred. No production/readiness/quality claim from fixtures.
 - Cleanup: local Supabase stopped with backups; all task-created containers stopped, Docker Desktop stopped (backend/UI gone) and ports 3100, 54320–54324, 54327, 54329, 8083 verified closed. No task-owned app/test/proof process remains. Unrelated stopped containers preserved.
 - Next consumer: `docs/BUILD_HANDOFF.md`; local acceptance specification for disabled provider/rendering/evaluation contracts under separate authorization for external work.
+
+### 2026-10-04 — V2-011 — positive learning browser acceptance audit
+
+- Status: review
+- Branch/worktree: `codex/grey-retention-v2` / current project.
+- Commit(s): pending verified checkpoint.
+- Changed contracts: none; owns `tests/e2e/zz-learning.spec.ts` and checkpoint/handoff documentation only. Reopened integration verification to demonstrate owner inspection/pinning/dismissal of a real persisted rule in a browser, complementing the existing SQL evidence gate.
+- Migrations: none.
+- Verification run: fresh reset; 332/332 DB assertions; regenerated CLI types format back to the exact committed schema; full verify 47/47 unit tests, format/lint/typecheck/build; expanded browser suite 40/40 in 2.8 minutes. Positive-rule artifacts inspected at desktop/mobile widths; foreign read and direct rule mutation denied. Initial isolated run passed 2/2. The first combined run passed 38 existing journeys; the thirty-day gate correctly excluded this test's earlier samples because another journey sent later. The setup now derives its separate cohort/clock from the existing horizon; guards are unchanged, and the final clean combined run passes.
+- Known issues: positive rule review now has actual browser coverage with authenticated domain RPCs, exact approvals, leased fixture delivery/results and persisted samples; no inserted rule or external transport. Existing production/provider/vision/L2 limits remain. Local service cleanup is in progress.
+- Next consumer: final process cleanup and requirement-by-requirement handoff audit.
