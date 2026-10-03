@@ -1,3 +1,4 @@
+import { ProviderFault } from './failures'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import type { Database } from '@/lib/supabase/database.types'
@@ -64,10 +65,39 @@ export class PersistedFixtureDeliveryProvider implements DeliveryProvider {
       throw new Error('Provider identity unavailable')
     return result.identity
   }
-  async reschedule(): Promise<DeliveryIdentity> {
-    throw new Error(
-      'Rescheduling requires a new reviewed package; V2-007 extends the fixture contract.'
+  async reschedule(
+    id: string,
+    scheduledAt: string,
+    idempotencyKey: string
+  ): Promise<DeliveryIdentity> {
+    if (idempotencyKey !== this.job.idempotency_key)
+      throw new Error('Idempotency mismatch')
+    const result = identitySchema.parse(await this.command('reschedule'))
+    if (
+      result.id !== id ||
+      Date.parse(result.scheduledAt ?? '') !== Date.parse(scheduledAt)
     )
+      throw new Error('Provider reschedule mismatch')
+    return result
+  }
+  async probe(stage: 'before' | 'after_schedule') {
+    const r = await this.db.rpc('fixture_fault_probe', {
+      job: this.job.id,
+      lease: this.job.lease_token!,
+      stage
+    })
+    if (r.error) throw r.error
+    const failure = z
+      .enum([
+        'none',
+        'transient',
+        'rate_limit',
+        'unknown_outcome',
+        'auth',
+        'validation'
+      ])
+      .parse(r.data)
+    if (failure !== 'none') throw new ProviderFault(failure)
   }
   async cancel(id: string, idempotencyKey: string) {
     if (idempotencyKey !== this.job.idempotency_key)

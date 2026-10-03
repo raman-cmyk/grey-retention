@@ -1,4 +1,5 @@
 import 'server-only'
+import { classifyFailure, ProviderFault } from './failures'
 import { runRenderJob } from '@/features/rendering/worker'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
@@ -18,6 +19,8 @@ export async function runFixtureJobs(
 ) {
   if (process.env.ADAPTER_MODE === 'real')
     throw new Error('Live providers are disabled for this build.')
+  const sweep = await db.rpc('queue_ready_l1', { t: tenantId })
+  if (sweep.error) throw sweep.error
   let processed = 0
   for (let n = 0; n < Math.min(limit, 4); n++) {
     const claimed = await db.rpc('claim_job', { t: tenantId })
@@ -88,17 +91,39 @@ export async function runFixtureJobs(
           throw new Error('Package unavailable')
         const pkg = deliveryPackageSchema.parse(packageResult.data.snapshot)
         const provider = new PersistedFixtureDeliveryProvider(db, job)
+        await provider.probe('before')
+        const reconciliation = await provider.reconcile(job.idempotency_key)
+        if (reconciliation.outcome === 'unknown')
+          throw new ProviderFault('unknown_outcome')
         if (job.kind === 'delivery.schedule') {
-          const reconciliation = await provider.reconcile(job.idempotency_key)
-          if (reconciliation.outcome === 'unknown')
-            throw new Error('Reconciliation is inconclusive')
           const identity =
             reconciliation.outcome === 'found'
               ? reconciliation.identity
               : await provider.prepare(pkg, job.idempotency_key)
-          await provider.schedule(identity, pkg.scheduledAt)
+          if (identity.state === 'prepared')
+            await provider.schedule(identity, pkg.scheduledAt)
+          else if (!['scheduled', 'sent'].includes(identity.state))
+            throw new Error('Provider is no longer schedulable')
+          await provider.probe('after_schedule')
+        } else if (job.kind === 'delivery.reschedule') {
+          if (reconciliation.outcome !== 'found')
+            throw new ProviderFault('unknown_outcome')
+          if (
+            reconciliation.identity.packageId !== pkg.id ||
+            Date.parse(reconciliation.identity.scheduledAt ?? '') !==
+              Date.parse(pkg.scheduledAt)
+          )
+            await provider.reschedule(
+              input.providerId ?? '',
+              pkg.scheduledAt,
+              job.idempotency_key
+            )
+          await provider.probe('after_schedule')
         } else if (job.kind === 'delivery.cancel') {
-          await provider.cancel(input.providerId ?? '', job.idempotency_key)
+          if (reconciliation.outcome !== 'found')
+            throw new ProviderFault('unknown_outcome')
+          if (!['cancelled', 'sent'].includes(reconciliation.identity.state))
+            await provider.cancel(input.providerId ?? '', job.idempotency_key)
         } else throw new Error('Unsupported job kind')
         const result = await db.rpc('finish_delivery_job', {
           job: job.id,
@@ -107,11 +132,11 @@ export async function runFixtureJobs(
         if (result.error) throw result.error
       }
       processed++
-    } catch {
+    } catch (error) {
       const failed = await db.rpc('fail_job', {
         job: job.id,
         lease: job.lease_token,
-        failure: 'validation'
+        failure: classifyFailure(error)
       })
       if (failed.error)
         throw new Error('Job failed; lease recovery is required.')

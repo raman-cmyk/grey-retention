@@ -4,7 +4,7 @@ Checkpoint: October 4, 2026. Branch `codex/grey-retention-v2`; base `b6f92a7`.
 
 ## Active task
 
-V2-006 verified; recording local checkpoint before claiming V2-007. Sequential root execution; no agents. Next action: canonical account mappings, L0/L1 standing policies, persisted fault/reconcile/reschedule/cancel semantics, 100 fixture pushes and confirmed-send/template gate.
+V2-007 verified; next eligible task V2-008. Sequential root execution; no agents. Next action: claim V2-008, implement persisted creator-private/workspace-shared chats, actor/revision/expiry-bound proposals, atomic fixture budgets and operating surfaces.
 
 ## Checkpoints
 
@@ -22,7 +22,9 @@ Migrations: foundation `20260914000000`; identity `20260914010000`; brand/catalo
 
 - V2-005 complete: clean reset/types, 121 DB assertions, full verify 31 unit tests/build; 18/18 real-auth desktop/mobile journeys. Rolling/month and exact weekly generated-copy reviews persist; screenshots inspected and port 3100 closed. Commit `cdeb997`.
 
-- V2-006 complete: clean reset/types, 145 DB assertions, full verify 35 unit tests/build, 20/20 combined browser journeys and 2/2 focused rechecks. Private real SVG artifacts, scoped inspiration, focused revisions, exact owner review and immutable assembly persist. Token-redacting runner verified; port 3100 closed. Commit recorded after checkpoint.
+- V2-006 complete: clean reset/types, 145 DB assertions, full verify 35 unit tests/build, 20/20 combined browser journeys and 2/2 focused rechecks. Private real SVG artifacts, scoped inspiration, focused revisions, exact owner review and immutable assembly persist. Token-redacting runner verified; port 3100 closed. Commit `bab8d1c`.
+
+- V2-007 complete: final clean reset, 191 DB assertions (100 snapshot-exact fixture pushes), full verify 37 unit tests/build; 22/22 browser journeys plus 2/2 text-preview reload checks. Mobile delivery also exercised the added server reconciliation guard. Preview/screenshots inspected; port 3100 closed. Checkpoint commit pending hash.
 
 ## Decisions and limits
 
@@ -37,4 +39,4 @@ Brand facts/offers require owner; staff can edit unapproved drafts; platform adm
 - Docker application started by this run for local infrastructure; it was initially stopped. No Grey Retention containers existed before the run. Other stopped project containers untouched.
 - Supabase project `grey-retention`: task-created disposable local containers; configuration ports 54321–54324, 54327, 8083 (inspect actual listeners at cleanup). `pnpm supabase:stop` at finish; no remote linked project is accessed/reset.
 - App/test server port 3100: tracked Playwright sessions ended and port verified closed.
-- No active app/test/worker session. Local Supabase remains tracked for subsequent phases.
+- No active app/test/worker session. Interrupted Playwright descendants were explicitly stopped; subsequent complete runs exited and port 3100 is closed. Local Supabase remains tracked for subsequent phases.

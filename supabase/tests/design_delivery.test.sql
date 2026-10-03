@@ -40,6 +40,7 @@ select set_config('test.package',public.create_delivery_package('00000000-0000-4
 select ok((select snapshot->>'html' not like '%<script>%' from public.delivery_packages where id=current_setting('test.package')::uuid),'caller HTML never replaces approved content');
 select set_config('test.schedule_job',public.enqueue_delivery('00000000-0000-4000-8000-000000000101',current_setting('test.package')::uuid,8)::text,true);
 select set_config('test.schedule_lease',(select lease_token::text from public.claim_job('00000000-0000-4000-8000-000000000101')),true);
+select public.fixture_delivery_command(current_setting('test.schedule_job')::uuid,current_setting('test.schedule_lease')::uuid,'reconcile');
 select lives_ok($$select public.fixture_delivery_command(current_setting('test.schedule_job')::uuid,current_setting('test.schedule_lease')::uuid,'prepare')$$,'provider preparation persisted');
 select lives_ok($$select public.fixture_delivery_command(current_setting('test.schedule_job')::uuid,current_setting('test.schedule_lease')::uuid,'schedule')$$,'provider confirms schedule separately');
 select lives_ok($$select public.finish_delivery_job(current_setting('test.schedule_job')::uuid,current_setting('test.schedule_lease')::uuid)$$,'confirmed provider state completes durable intent');
@@ -47,6 +48,7 @@ select is((select count(*)::integer from public.fixture_deliveries),1,'exactly o
 select is(public.enqueue_delivery('00000000-0000-4000-8000-000000000101',current_setting('test.package')::uuid,8)::text,current_setting('test.schedule_job'),'replayed scheduling intent returns original job');
 select set_config('test.cancel_job',public.enqueue_cancel('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601',8)::text,true);
 select set_config('test.cancel_lease',(select lease_token::text from public.claim_job('00000000-0000-4000-8000-000000000101')),true);
+select public.fixture_delivery_command(current_setting('test.cancel_job')::uuid,current_setting('test.cancel_lease')::uuid,'reconcile');
 select public.fixture_delivery_command(current_setting('test.cancel_job')::uuid,current_setting('test.cancel_lease')::uuid,'cancel');
 select public.finish_delivery_job(current_setting('test.cancel_job')::uuid,current_setting('test.cancel_lease')::uuid);
 select is((select delivery_state from public.campaigns where id='00000000-0000-4000-8000-000000000601'),'cancelled','cancellation only follows confirmed provider result');

@@ -1,3 +1,4 @@
+import { DeliveryOperations } from '@/features/delivery/panels'
 import { RejectionForm } from '@/features/planning/panels'
 import { RenderPanel } from '@/features/rendering/panel'
 import Image from 'next/image'
@@ -342,7 +343,9 @@ export async function WorkflowPanel({
               <Field label="Sender name">
                 <TextField
                   name="senderName"
-                  defaultValue={brand?.brand_name ?? ''}
+                  defaultValue={
+                    data.defaults.senderName ?? brand?.brand_name ?? ''
+                  }
                   required
                 />
               </Field>
@@ -350,13 +353,21 @@ export async function WorkflowPanel({
                 <TextField
                   name="senderEmail"
                   type="email"
-                  defaultValue={brand?.domain ? `studio@${brand.domain}` : ''}
+                  defaultValue={
+                    data.defaults.senderEmail ??
+                    (brand?.domain ? `studio@${brand.domain}` : '')
+                  }
                   required
                 />
               </Field>
             </div>
             <Field label="Footer postal address">
-              <TextField name="address" required minLength={5} />
+              <TextField
+                name="address"
+                defaultValue={data.defaults.address}
+                required
+                minLength={5}
+              />
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Unsubscribe HTTPS URL">
@@ -364,7 +375,8 @@ export async function WorkflowPanel({
                   name="unsubscribeUrl"
                   type="url"
                   defaultValue={
-                    brand?.domain ? `https://${brand.domain}/unsubscribe` : ''
+                    data.defaults.unsubscribeUrl ??
+                    (brand?.domain ? `https://${brand.domain}/unsubscribe` : '')
                   }
                   required
                 />
@@ -374,7 +386,8 @@ export async function WorkflowPanel({
                   name="privacyUrl"
                   type="url"
                   defaultValue={
-                    brand?.domain ? `https://${brand.domain}/privacy` : ''
+                    data.defaults.privacyUrl ??
+                    (brand?.domain ? `https://${brand.domain}/privacy` : '')
                   }
                   required
                 />
@@ -451,22 +464,26 @@ export async function WorkflowPanel({
               </Command>
             </ConfirmDialog>
           )}
-          {owner && c.delivery_state === 'scheduled' && (
-            <ConfirmDialog
-              danger
-              label="Review cancellation"
-              title="Confirm cancellation request"
-              description="Cancellation becomes final only when the fixture provider confirms it. A sent campaign cannot be recalled."
-            >
-              <Command kind="cancel" id={c.id} revision={c.delivery_revision}>
-                <SubmitButton variant="danger">
-                  Request simulated cancellation
-                </SubmitButton>
-              </Command>
-            </ConfirmDialog>
-          )}
+          {owner &&
+            ['scheduled', 'queued', 'reconciling', 'failed'].includes(
+              c.delivery_state
+            ) && (
+              <ConfirmDialog
+                danger
+                label="Review cancellation"
+                title="Confirm cancellation request"
+                description="Cancellation becomes final only when the fixture provider confirms it. A sent campaign cannot be recalled."
+              >
+                <Command kind="cancel" id={c.id} revision={c.delivery_revision}>
+                  <SubmitButton variant="danger">
+                    Request simulated cancellation
+                  </SubmitButton>
+                </Command>
+              </ConfirmDialog>
+            )}
         </Panel>
       )}
+      <DeliveryOperations campaign={c} owner={owner} />
       <Panel title="Durable fixture jobs">
         {owner && (
           <ActionForm action={workflowAction} className="mb-5">

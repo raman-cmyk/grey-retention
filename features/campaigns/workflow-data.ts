@@ -6,33 +6,39 @@ export async function workflowData(campaignId: string) {
   const context = await requireRequestContext('client')
   const db = await createClient()
   if (!db || process.env.AUTH_MODE === 'demo') return null
-  const [assignments, packages, jobs, notifications] = await Promise.all([
-    db
-      .from('designer_assignments')
-      .select('*')
-      .eq('tenant_id', context.tenantId)
-      .eq('campaign_id', campaignId)
-      .neq('state', 'cancelled'),
-    db
-      .from('delivery_packages')
-      .select('*')
-      .eq('tenant_id', context.tenantId)
-      .eq('campaign_id', campaignId)
-      .order('revision', { ascending: false }),
-    db
-      .from('job_runs')
-      .select('id,kind,status,attempt,error_code,checkpoint,created_at')
-      .eq('tenant_id', context.tenantId)
-      .eq('campaign_id', campaignId)
-      .order('created_at', { ascending: false }),
-    db
-      .from('notifications')
-      .select('*')
-      .eq('recipient_id', context.userId)
-      .eq('entity_id', campaignId)
-      .order('created_at', { ascending: false })
-      .limit(20)
-  ])
+  const [assignments, packages, jobs, notifications, policy] =
+    await Promise.all([
+      db
+        .from('designer_assignments')
+        .select('*')
+        .eq('tenant_id', context.tenantId)
+        .eq('campaign_id', campaignId)
+        .neq('state', 'cancelled'),
+      db
+        .from('delivery_packages')
+        .select('*')
+        .eq('tenant_id', context.tenantId)
+        .eq('campaign_id', campaignId)
+        .order('revision', { ascending: false }),
+      db
+        .from('job_runs')
+        .select('id,kind,status,attempt,error_code,checkpoint,created_at')
+        .eq('tenant_id', context.tenantId)
+        .eq('campaign_id', campaignId)
+        .order('created_at', { ascending: false }),
+      db
+        .from('notifications')
+        .select('*')
+        .eq('recipient_id', context.userId)
+        .eq('entity_id', campaignId)
+        .order('created_at', { ascending: false })
+        .limit(20),
+      db
+        .from('delivery_policies')
+        .select('defaults')
+        .eq('tenant_id', context.tenantId)
+        .maybeSingle()
+    ])
   const assignment = assignments.data?.[0]
   let submissions: {
     id: string
@@ -95,13 +101,16 @@ export async function workflowData(campaignId: string) {
     : []
   return {
     artifactPreviews,
+    defaults: (policy.data?.defaults ?? {}) as Record<string, string>,
     assignment,
     submissions,
     reviews,
     package: pkg.success ? pkg.data : null,
     jobs: jobs.data ?? [],
     notifications: notifications.data ?? [],
-    error: [assignments, packages, jobs, notifications].some((r) => r.error)
+    error: [assignments, packages, jobs, notifications, policy].some(
+      (r) => r.error
+    )
       ? 'Some workflow records are unavailable.'
       : null
   }

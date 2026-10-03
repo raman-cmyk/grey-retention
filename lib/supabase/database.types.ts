@@ -1351,6 +1351,93 @@ export type Database = {
           }
         ]
       }
+      delivery_policies: {
+        Row: {
+          approved_by: string
+          defaults: Json
+          enabled: boolean
+          level: string
+          revision: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approved_by: string
+          defaults: Json
+          enabled?: boolean
+          level?: string
+          revision?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approved_by?: string
+          defaults?: Json
+          enabled?: boolean
+          level?: string
+          revision?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'delivery_policies_approved_by_fkey'
+            columns: ['approved_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'delivery_policies_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      delivery_policy_events: {
+        Row: {
+          actor_id: string
+          created_at: string
+          id: string
+          revision: number
+          snapshot: Json
+          tenant_id: string
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string
+          id?: string
+          revision: number
+          snapshot: Json
+          tenant_id: string
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string
+          id?: string
+          revision?: number
+          snapshot?: Json
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'delivery_policy_events_actor_id_fkey'
+            columns: ['actor_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'delivery_policy_events_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       design_renders: {
         Row: {
           campaign_id: string
@@ -1685,6 +1772,7 @@ export type Database = {
           idempotency_key: string
           package_id: string
           scheduled_at: string | null
+          sent_at: string | null
           snapshot: Json
           state: string
           tenant_id: string
@@ -1696,6 +1784,7 @@ export type Database = {
           idempotency_key: string
           package_id: string
           scheduled_at?: string | null
+          sent_at?: string | null
           snapshot: Json
           state: string
           tenant_id: string
@@ -1707,6 +1796,7 @@ export type Database = {
           idempotency_key?: string
           package_id?: string
           scheduled_at?: string | null
+          sent_at?: string | null
           snapshot?: Json
           state?: string
           tenant_id?: string
@@ -1726,6 +1816,113 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'delivery_packages'
             referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      fixture_delivery_history: {
+        Row: {
+          delivery_id: string
+          id: string
+          package_id: string
+          recorded_at: string
+          scheduled_at: string | null
+          snapshot: Json
+          state: string
+          tenant_id: string
+        }
+        Insert: {
+          delivery_id: string
+          id?: string
+          package_id: string
+          recorded_at?: string
+          scheduled_at?: string | null
+          snapshot: Json
+          state: string
+          tenant_id: string
+        }
+        Update: {
+          delivery_id?: string
+          id?: string
+          package_id?: string
+          recorded_at?: string
+          scheduled_at?: string | null
+          snapshot?: Json
+          state?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'fixture_delivery_history_delivery_id_fkey'
+            columns: ['delivery_id']
+            isOneToOne: false
+            referencedRelation: 'fixture_deliveries'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'fixture_delivery_history_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'fixture_delivery_history_tenant_id_package_id_fkey'
+            columns: ['tenant_id', 'package_id']
+            isOneToOne: false
+            referencedRelation: 'delivery_packages'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      fixture_fault_controls: {
+        Row: {
+          campaign_id: string
+          consumed: boolean
+          revision: number
+          scenario: string
+          tenant_id: string
+          updated_at: string
+          updated_by: string
+        }
+        Insert: {
+          campaign_id: string
+          consumed?: boolean
+          revision?: number
+          scenario: string
+          tenant_id: string
+          updated_at?: string
+          updated_by: string
+        }
+        Update: {
+          campaign_id?: string
+          consumed?: boolean
+          revision?: number
+          scenario?: string
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'fault_campaign_tenant'
+            columns: ['tenant_id', 'campaign_id']
+            isOneToOne: true
+            referencedRelation: 'campaigns'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'fixture_fault_controls_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'fixture_fault_controls_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
           }
         ]
       }
@@ -2439,6 +2636,44 @@ export type Database = {
           }
         ]
       }
+      segment_registry: {
+        Row: {
+          account_id: string
+          canonical_key: string
+          created_at: string
+          definition: string
+          provider_id: string
+          synthetic: boolean
+          tenant_id: string
+        }
+        Insert: {
+          account_id: string
+          canonical_key: string
+          created_at?: string
+          definition: string
+          provider_id: string
+          synthetic?: boolean
+          tenant_id: string
+        }
+        Update: {
+          account_id?: string
+          canonical_key?: string
+          created_at?: string
+          definition?: string
+          provider_id?: string
+          synthetic?: boolean
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'segment_registry_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       tenant_invites: {
         Row: {
           accepted_at: string | null
@@ -2814,6 +3049,10 @@ export type Database = {
         Args: { import_id: string; t: string }
         Returns: undefined
       }
+      confirm_fixture_sent: {
+        Args: { delivery: string; observed_at: string; t: string }
+        Returns: undefined
+      }
       correct_asset: {
         Args: {
           asset: string
@@ -2889,6 +3128,15 @@ export type Database = {
         Args: { expected_revision: number; package: string; t: string }
         Returns: string
       }
+      enqueue_l1_delivery: {
+        Args: {
+          expected_revision: number
+          package: string
+          policy_revision: number
+          t: string
+        }
+        Returns: string
+      }
       enqueue_onboarding_job: {
         Args: { input?: Json; kind: string; t: string }
         Returns: string
@@ -2953,10 +3201,15 @@ export type Database = {
         Args: { command: string; job: string; lease: string }
         Returns: Json
       }
+      fixture_fault_probe: {
+        Args: { job: string; lease: string; stage: string }
+        Returns: string
+      }
       prepare_copy_review: {
         Args: { t: string; week: string }
         Returns: string
       }
+      queue_ready_l1: { Args: { t: string }; Returns: number }
       queue_weekly_copy: { Args: { t: string; week: string }; Returns: number }
       record_asset_upload: {
         Args: {
@@ -3020,6 +3273,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      request_reschedule: {
+        Args: {
+          campaign: string
+          expected_revision: number
+          scheduled_at: string
+          t: string
+        }
+        Returns: string
+      }
       resolve_admin_context: {
         Args: never
         Returns: {
@@ -3041,6 +3303,14 @@ export type Database = {
         Returns: {
           designer_id: string
         }[]
+      }
+      resolve_fixture_outcome: {
+        Args: { job: string; t: string }
+        Returns: undefined
+      }
+      retry_fixture_job: {
+        Args: { job: string; t: string }
+        Returns: undefined
       }
       review_design: {
         Args: {
@@ -3094,12 +3364,26 @@ export type Database = {
         }
         Returns: undefined
       }
+      save_delivery_policy: {
+        Args: {
+          defaults: Json
+          enabled: boolean
+          expected_revision: number
+          level: string
+          t: string
+        }
+        Returns: undefined
+      }
       save_own_template: {
         Args: { delivery: string; t: string }
         Returns: string
       }
       set_fixture_connection: {
         Args: { folder?: string; provider: string; status: string; t: string }
+        Returns: undefined
+      }
+      set_fixture_fault: {
+        Args: { campaign: string; scenario: string; t: string }
         Returns: undefined
       }
       set_planning_preferences: {

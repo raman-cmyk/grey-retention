@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import { deliveryPackageSchema } from '@/features/workflow/domain/contracts'
+import { klaviyoCampaignRequest } from './klaviyo-contract'
 import { PersistedFixtureDeliveryProvider } from './fixture-delivery'
 const id = '00000000-0000-4000-8000-000000000001'
 it('requires idempotency, returns persisted reconciliation and refuses schedule drift', async () => {
@@ -51,6 +52,19 @@ it('requires idempotency, returns persisted reconciliation and refuses schedule 
     sourceRevisions: { calendar: 1, copy: 1, design: 1 },
     createdAt: '2026-10-04T00:00:00Z',
     synthetic: true
+  })
+  const request = klaviyoCampaignRequest(pkg).data.attributes
+  expect(request.audiences).toEqual({
+    included: pkg.audience.includes,
+    excluded: pkg.audience.excludes
+  })
+  expect(request.send_strategy.options_static.datetime).toBe(pkg.scheduledAt)
+  expect(
+    request['campaign-messages'].data[0].attributes.definition.content
+  ).toMatchObject({
+    subject: pkg.subject,
+    preview_text: pkg.preheader,
+    from_email: pkg.sender.email
   })
   await expect(provider.prepare(pkg, 'wrong-key')).rejects.toThrow(
     'Idempotency'
