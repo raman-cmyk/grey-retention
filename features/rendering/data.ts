@@ -2,7 +2,11 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { stripSchema } from './renderer'
 import { z } from 'zod'
-export async function renderData(tenantId: string, campaignId: string) {
+export async function renderData(
+  tenantId: string,
+  campaignId: string,
+  structureId?: string
+) {
   const db = await createClient()
   if (!db) return null
   const [renders, templates, references] = await Promise.all([
@@ -24,6 +28,18 @@ export async function renderData(tenantId: string, campaignId: string) {
       .limit(20)
   ])
   if ([renders, templates, references].some((r) => r.error)) return null
+  if (
+    structureId &&
+    z.uuid().safeParse(structureId).success &&
+    !references.data?.some((r) => r.id === structureId)
+  ) {
+    const selected = await db
+      .from('competitor_emails')
+      .select('id,subject')
+      .eq('id', structureId)
+      .maybeSingle()
+    if (selected.data) references.data?.push(selected.data)
+  }
   const latest = renders.data?.[0],
     strips = latest ? z.array(stripSchema).parse(latest.strips) : []
   const previews = await Promise.all(

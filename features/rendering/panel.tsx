@@ -12,7 +12,11 @@ export async function RenderPanel({
   campaign: Database['public']['Tables']['campaigns']['Row']
   owner: boolean
 }) {
-  const data = await renderData(c.tenant_id, c.id)
+  const data = await renderData(
+    c.tenant_id,
+    c.id,
+    (c.lineage as { structureId?: string })?.structureId
+  )
   if (!data) return <Notice error>Render data unavailable.</Notice>
   const r = data.latest,
     current =
@@ -35,7 +39,14 @@ export async function RenderPanel({
           <input name="copy" type="hidden" value={c.copy_revision} />
           <input name="design" type="hidden" value={c.design_revision} />
           <Field label="Rendering structure">
-            <select name="source" className={controlClass}>
+            <select
+              name="source"
+              className={controlClass}
+              defaultValue={
+                (c.lineage as { structureSource?: string })?.structureSource ??
+                'fixture_structure'
+              }
+            >
               <option value="fixture_structure">
                 Original fixture structure
               </option>
@@ -46,7 +57,13 @@ export async function RenderPanel({
             </select>
           </Field>
           <Field label="Optional structure reference">
-            <select name="sourceId" className={controlClass}>
+            <select
+              name="sourceId"
+              className={controlClass}
+              defaultValue={
+                (c.lineage as { structureId?: string })?.structureId ?? ''
+              }
+            >
               <option value="">No source for fixture structure</option>
               {data.templates.map((t) => (
                 <option key={t.id} value={t.id}>

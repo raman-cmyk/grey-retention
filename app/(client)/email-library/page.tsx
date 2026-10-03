@@ -1,3 +1,4 @@
+import { OwnLibraryPanel } from '@/features/library/panel'
 import Link from 'next/link'
 import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
 import { referenceWorkspace } from '@/features/references/data'
@@ -10,6 +11,7 @@ export default async function EmailLibrary() {
         title="Subscribed email library"
         description="Original synthetic records from active subscribed sources. Only safe text previews and structural evidence are available; private workspace rules stay private."
       />
+      <OwnLibraryPanel />
       <Panel title={`${data.emails.length} captured reference emails`}>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {data.emails.map((e) => (

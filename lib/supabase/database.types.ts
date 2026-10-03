@@ -2890,6 +2890,222 @@ export type Database = {
           }
         ]
       }
+      optimizer_candidates: {
+        Row: {
+          eligible: boolean
+          profile_id: string
+          profile_revision: number
+          reason: string
+          state: string
+          sweep_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          eligible: boolean
+          profile_id: string
+          profile_revision: number
+          reason: string
+          state?: string
+          sweep_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          eligible?: boolean
+          profile_id?: string
+          profile_revision?: number
+          reason?: string
+          state?: string
+          sweep_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'optimizer_candidates_sweep_id_fkey'
+            columns: ['sweep_id']
+            isOneToOne: false
+            referencedRelation: 'optimizer_sweeps'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'optimizer_candidates_tenant_id_profile_id_fkey'
+            columns: ['tenant_id', 'profile_id']
+            isOneToOne: false
+            referencedRelation: 'optimizer_profiles'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      optimizer_events: {
+        Row: {
+          created_at: string
+          detail: Json
+          id: string
+          kind: string
+          profile_id: string
+          sweep_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          detail: Json
+          id?: string
+          kind: string
+          profile_id: string
+          sweep_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          detail?: Json
+          id?: string
+          kind?: string
+          profile_id?: string
+          sweep_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'optimizer_events_sweep_id_fkey'
+            columns: ['sweep_id']
+            isOneToOne: false
+            referencedRelation: 'optimizer_sweeps'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'optimizer_events_tenant_id_profile_id_fkey'
+            columns: ['tenant_id', 'profile_id']
+            isOneToOne: false
+            referencedRelation: 'optimizer_profiles'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      optimizer_profiles: {
+        Row: {
+          consent: string
+          created_at: string
+          email: string
+          external_id: string
+          fixture_responds: boolean
+          hard_bounce: boolean
+          id: string
+          last_engaged_at: string | null
+          last_order_at: string | null
+          revision: number
+          spam: boolean
+          suppression_reasons: string[]
+          synthetic: boolean
+          tenant_id: string
+        }
+        Insert: {
+          consent: string
+          created_at?: string
+          email: string
+          external_id: string
+          fixture_responds?: boolean
+          hard_bounce?: boolean
+          id?: string
+          last_engaged_at?: string | null
+          last_order_at?: string | null
+          revision?: number
+          spam?: boolean
+          suppression_reasons?: string[]
+          synthetic?: boolean
+          tenant_id: string
+        }
+        Update: {
+          consent?: string
+          created_at?: string
+          email?: string
+          external_id?: string
+          fixture_responds?: boolean
+          hard_bounce?: boolean
+          id?: string
+          last_engaged_at?: string | null
+          last_order_at?: string | null
+          revision?: number
+          spam?: boolean
+          suppression_reasons?: string[]
+          synthetic?: boolean
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'optimizer_profiles_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      optimizer_sweeps: {
+        Row: {
+          approved_by: string | null
+          created_at: string
+          created_by: string
+          expires_at: string
+          id: string
+          observed_at: string
+          pricing_snapshot: Json
+          revision: number
+          snapshot: Json
+          state: string
+          tenant_id: string
+        }
+        Insert: {
+          approved_by?: string | null
+          created_at?: string
+          created_by: string
+          expires_at?: string
+          id?: string
+          observed_at: string
+          pricing_snapshot: Json
+          revision?: number
+          snapshot: Json
+          state?: string
+          tenant_id: string
+        }
+        Update: {
+          approved_by?: string | null
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          id?: string
+          observed_at?: string
+          pricing_snapshot?: Json
+          revision?: number
+          snapshot?: Json
+          state?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'optimizer_sweeps_approved_by_fkey'
+            columns: ['approved_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'optimizer_sweeps_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'optimizer_sweeps_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       own_templates: {
         Row: {
           campaign_id: string
@@ -4027,6 +4243,10 @@ export type Database = {
         Args: { event_date: string; name: string; notes: string; t: string }
         Returns: string
       }
+      advance_optimizer_clock: {
+        Args: { observed_at: string; sweep: string; t: string }
+        Returns: number
+      }
       advance_results_clock: {
         Args: { observed_at: string; t: string }
         Returns: number
@@ -4050,6 +4270,10 @@ export type Database = {
       approve_copy_batch: {
         Args: { batch: string; t: string }
         Returns: number
+      }
+      approve_optimizer: {
+        Args: { expected_revision: number; sweep: string; t: string }
+        Returns: undefined
       }
       approve_plan: { Args: { plan: string; t: string }; Returns: undefined }
       ask_fixture_gros: {
@@ -4087,6 +4311,18 @@ export type Database = {
       begin_asset_import: {
         Args: { key: string; source: string; t: string }
         Returns: string
+      }
+      change_fixture_profile_evidence: {
+        Args: {
+          bounce: boolean
+          consent: string
+          expected_revision: number
+          profile: string
+          recent_order: boolean
+          spam: boolean
+          t: string
+        }
+        Returns: undefined
       }
       claim_job: {
         Args: { t: string }
@@ -4205,6 +4441,10 @@ export type Database = {
           title: string
         }[]
       }
+      draft_from_structure: {
+        Args: { input: Json; source: string; source_id: string; t: string }
+        Returns: string
+      }
       enqueue_cancel: {
         Args: { campaign: string; expected_revision: number; t: string }
         Returns: string
@@ -4281,6 +4521,10 @@ export type Database = {
         Args: { job: string; lease: string; output: Json }
         Returns: undefined
       }
+      finish_optimizer_job: {
+        Args: { job: string; lease: string; output: Json }
+        Returns: undefined
+      }
       finish_plan_job: {
         Args: { job: string; lease: string; output: Json }
         Returns: string
@@ -4317,6 +4561,10 @@ export type Database = {
         Args: { job: string; lease: string; stage: string }
         Returns: string
       }
+      fixture_optimizer_payload: {
+        Args: { job: string; lease: string }
+        Returns: Json
+      }
       fixture_result_payload: {
         Args: {
           delivery: string
@@ -4335,6 +4583,7 @@ export type Database = {
           used_micro: number
         }[]
       }
+      install_optimizer_fixture: { Args: { t: string }; Returns: undefined }
       invite_team: {
         Args: {
           email: string
@@ -4362,6 +4611,10 @@ export type Database = {
       }
       prepare_l2_silence: {
         Args: { campaign: string; expected_copy: number; t: string }
+        Returns: string
+      }
+      preview_optimizer: {
+        Args: { observed_at: string; t: string }
         Returns: string
       }
       queue_ready_l1: { Args: { t: string }; Returns: number }
@@ -4488,6 +4741,10 @@ export type Database = {
       }
       retry_fixture_job: {
         Args: { job: string; t: string }
+        Returns: undefined
+      }
+      reverse_fixture_suppression: {
+        Args: { expected_revision: number; profile: string; t: string }
         Returns: undefined
       }
       review_design: {

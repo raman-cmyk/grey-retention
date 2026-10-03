@@ -1,4 +1,5 @@
 import 'server-only'
+import { optimizerJobKinds, runOptimizerJob } from '@/features/optimizer/worker'
 import { reportingJobKinds, runReportingJob } from '@/features/reporting/worker'
 import { z } from 'zod'
 import { classifyFailure, ProviderFault } from './failures'
@@ -58,7 +59,9 @@ export async function runFixtureJobs(
         })
         if (reservation.error) throw reservation.error
       }
-      if (reportingJobKinds.includes(job.kind)) {
+      if (optimizerJobKinds.includes(job.kind)) {
+        await runOptimizerJob(db, job)
+      } else if (reportingJobKinds.includes(job.kind)) {
         await runReportingJob(db, job)
       } else if (job.kind === 'ops.health') {
         const r = await db.rpc('finish_health_check', {

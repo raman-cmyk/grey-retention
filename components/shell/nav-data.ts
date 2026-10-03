@@ -39,6 +39,12 @@ export function createClientNavigation(
       icon: 'inspirations'
     },
     { label: 'Results & learning', href: '/reports', icon: 'admin-overview' },
+    { label: 'Bill optimizer', href: '/optimizer', icon: 'operations' },
+    {
+      label: 'Templates & references',
+      href: '/email-library',
+      icon: 'templates'
+    },
     { label: 'Connections', href: '/connections', icon: 'connections' },
     { label: 'Team', href: '/team', icon: 'team' },
     { label: 'Support', href: '/support', icon: 'support' },
