@@ -4,7 +4,7 @@ Checkpoint: October 4, 2026. Branch `codex/grey-retention-v2`; base `b6f92a7`.
 
 ## Active task
 
-V2-011 fixture implementation verified; root is recording the local checkpoint and cleanup. Final clean reset/types/seed and 332 DB assertions pass; full verify passes 47 unit tests plus format/lint/types/build; all 38 real-auth desktop/mobile browser journeys pass. Actual 20 concurrent completion races, forced shared-to-private privacy race and 20-request budget cap proof pass. Admin escalation now persists issue/resolution audit without creative approval. A real PostgREST retry defect was fixed with PT409 business conflicts; guards/ACLs and historical migrations preserved. Next: commit verified integration, stop local Supabase/task-started Docker, verify all ports/processes closed, and record final handoff. No agents/live providers/push/deployment.
+V2-000–V2-011 eligible local fixture gates complete. Integration checkpoint `0bb2a3e`; final handoff/cleanup documentation follows it. Branch remains local and the working tree is clean after the final documentation commit. Clean reset/types/seed, 332 DB assertions, full verify (47 unit tests, format/lint/types/build), all 38 authenticated desktop/mobile journeys and actual completion/privacy/budget concurrency proofs pass. Admin escalation preserves owner creative approval; private/shared GROS rechecks visibility under locks. No task-started server, worker or Docker container remains running; all configured ports closed. See `docs/BUILD_HANDOFF.md` for commits/migrations, startup, acceptance mapping and external blockers. Exact next action: local production-rendering/provider/evaluation acceptance specification, with live transport and production L2/design delegation still disabled. No agents, live providers, push, PR, merge or deployment.
 
 ## Checkpoints
 
@@ -32,6 +32,8 @@ Migrations: foundation `20260914000000`; identity `20260914010000`; brand/catalo
 
 - V2-010 complete: `5e77cfe`; clean reset/types, 302 DB assertions, full verify 43 tests/build, full 34/34 browser journeys.
 
+- V2-011 complete (eligible fixture gate): `0bb2a3e`; final clean reset/types and 332 assertions; full verify 47 tests/build; 38/38 browser journeys; actual concurrent completion, forced visibility and budget proofs; client/log scan, screenshots, keyboard and cleanup checks passed. Whole production v2 remains externally unverified.
+
 ## Decisions and limits
 
 Required project/build/use-case/UML/design documents read completely; relevant discovery and installed Next.js guides read. Original planning changes preserved. No live provider, old source/database/customer imports, paid AI, pushes, merges or deployment.
@@ -42,7 +44,4 @@ Brand facts/offers require owner; staff can edit unapproved drafts; platform adm
 
 ## Tracked processes
 
-- Docker application started by this run for local infrastructure; it was initially stopped. No Grey Retention containers existed before the run. Other stopped project containers untouched.
-- Supabase project `grey-retention`: task-created disposable local containers; configuration ports 54321–54324, 54327, 8083 (inspect actual listeners at cleanup). `pnpm supabase:stop` at finish; no remote linked project is accessed/reset.
-- App/test server port 3100: tracked Playwright sessions ended and port verified closed.
-- Final integration pipeline session 90673 finished; all 38 browser journeys passed. Port 3100 closure is being verified. Supabase remains tracked solely for final cleanup.
+None remain active. Final pipeline session 90673 ended successfully. Interrupted browser sessions were stopped with descendant cleanup; final normal runner closed port 3100. `pnpm supabase:stop` (session 35881, finished) stopped all task-created `grey-retention` containers and retained disposable local backups. No Docker containers were running afterward; task-started Docker Desktop was stopped with its CLI (session 88471, completed), and backend/UI processes are gone, restoring its initial stopped state. Previously stopped unrelated containers were untouched. No task-owned Next/Playwright/proof process remains. Ports 3100, 54320–54324, 54327, 54329 and 8083 all tested closed; proof saved in ignored `.audit/cleanup-ports-v2-011.json`.
