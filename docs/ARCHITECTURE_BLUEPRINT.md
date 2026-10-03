@@ -4,6 +4,17 @@ This document defines the shared contracts for all implementation tasks. A featu
 
 The rationale, NFRs, failure modes, deployment path, and scalability thresholds live in `docs/SYSTEM_ARCHITECTURE.md`. Significant decisions are recorded in `docs/adr/`.
 
+## October 4, 2026 — New-product v2 amendment
+
+The user confirmed a new implementation and owner-led design review. `docs/UML_DIAGRAMS.md` describes the updated use-case, main sequence, and workflow views; `docs/OVERNIGHT_BUILD_PLAN.md` assigns the implementation phases and reversible development defaults. Those confirmed product changes supersede older admin-review wording. Existing technology, security, path ownership, and migration-allocation contracts remain in force.
+
+- Owner approval binds to the current copy/design revision. Section feedback and each resubmission are retained. Platform admin handles assignment, SLA issues, and escalation, not silent creative approval.
+- Separate calendar/content approval, design workflow, delivery, and background-job states. Material changes invalidate dependent approvals and delivery-package confirmations; a job error does not erase an owner's creative decision.
+- Private GROS conversations are creator-scoped by default; workspace-shared conversations require active permitted membership. Proposal confirmation is actor-, tenant-, and target-version-bound.
+- Implement prepare/schedule/reschedule/cancel/reconcile/results ports and simulated delivery. Real account mutation, live sending, paid AI, and deployment are not authorized by the build plan.
+- L0 requires owner scheduling confirmation. L1 background scheduling uses a persisted standing policy after required owner approvals; new GROS mutations remain confirm-gated. Production L2 and fully unattended design delegation stay disabled until their policy is explicitly settled.
+- The current code has only foundation-level provider contracts. V2-000 must extend and test those contracts before dependent features; this documentation amendment does not claim the code already implements them.
+
 ## 1. System shape
 
 ```text
@@ -282,20 +293,21 @@ Each synchronized table has a unique `(tenant_id, external_id)` constraint, `ext
 
 ### Campaign
 
+Target v2 lifecycle uses separate domain records rather than one overloaded status:
+
 ```text
-draft
-  → planned
-  → ready_for_design
-  → assigned
-  → in_design
-  → submitted
-      ├─→ revisions_requested → in_design
-      ├─→ tenant_rejected → in_design or cancelled
-      └─→ approved → scheduled → prepared_in_klaviyo
-Any pre-final state → cancelled
+Calendar entry: proposed → owner_approved | rejected
+Copy revision: draft → pending_approval → approved | rejected
+Design: unassigned → assigned → in_design → submitted
+         ├─→ revisions_requested → in_design → new submission
+         └─→ owner_approved (exact current submission)
+Delivery: not_ready → ready → queued → preparing → prepared
+            → scheduling → scheduled → sent
+Unknown provider outcome → reconciliation; no blind duplicate creation
+Cancellation request → provider-confirmed cancelled or actual provider outcome
 ```
 
-Transitions occur through a domain service that verifies actor, current state, prerequisites, and idempotency. UI buttons never update the state column directly.
+These are target semantics, not automatically introduced enum values. V2-000 freezes exact typed states and compatibility before migrations. Transitions occur through a domain service that verifies actor, current state, approved revisions, prerequisites, and idempotency. UI buttons never update state columns directly. Preserve approval history on revisions, errors, and cancellation.
 
 ### Background job
 
@@ -316,7 +328,7 @@ proposed → confirmed → queued → executing → succeeded
     └─→ rejected                 └─→ failed
 ```
 
-Side-effecting actions cannot skip confirmation. Reconfirm if the proposal payload or target campaign changed.
+New side-effecting GROS proposals cannot skip confirmation. Reconfirm if the proposal payload, actor authority, or target revision changed. A standing background automation policy is a separate audited authorization record, not a shortcut that marks every chat proposal confirmed.
 
 ## 7. Server contracts
 
@@ -395,6 +407,8 @@ interface AiProvider {
 ```
 
 Each interface has `fake`, `fixture`, and `real` implementations. Fixtures include success, pagination, rate limit, unauthorized, validation error, timeout, and partial-failure cases.
+
+V2-000 extends the actual repository ports to cover canonical segment mapping, immutable delivery packages, prepare/schedule/reschedule/cancel, provider-state reconciliation, and results collection. Also define commerce, asset classification, Drive sync, capture, renderer, and notification boundaries. Unknown remote outcomes must reconcile before any repeat side effect. Real implementations remain disabled during the unattended run.
 
 Klaviyo traversal must follow the response's next-link/cursor and use resource-specific query parameters. Do not globally apply one pagination parameter—the discovered application currently fails because it does this for campaigns.
 

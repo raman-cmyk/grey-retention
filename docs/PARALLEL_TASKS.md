@@ -1,8 +1,10 @@
 # Grey Retention MVP — Parallel Task Blueprint
 
+October 4, 2026 amendment: follow `docs/OVERNIGHT_BUILD_PLAN.md` for the new v2 sequential implementation assignment. Do not restart completed foundation/identity work. The bounded baseline prompts below remain reference lanes; the owner-led design approval correction overrides their older admin-review wording. The unattended assignment does not itself authorize spawning agents or live provider operations.
+
 ## 1. Recommended operating model
 
-Different chats are a good fit if they run in isolated Git worktrees and share the committed blueprint. The current planning folder is not yet a Git repository, so FND-001 runs locally first and creates the initial repository/commit. The stronger model is:
+Different chats are a good fit if explicitly requested and run in isolated Git worktrees with the same integrated blueprint. Foundation and identity now exist; inspect the ledger before choosing remaining work. For explicitly authorized parallel work, the model is:
 
 - one foundation task first;
 - up to four feature tasks concurrently after each dependency gate;
@@ -149,7 +151,7 @@ Sanitize email HTML and render only in a sandboxed iframe. Test duplicate catego
 ```text
 Build task DSG-001 after campaign and identity contracts are merged. Work autonomously in an isolated worktree.
 
-Read AGENTS.md and all project documents plus both designer workflow discovery sections. Claim DSG-001. Using the `2026091406xxxx` migration namespace, implement designer assignments, submissions, and reviews; explicit state transitions; due dates/SLA state; tenant access; and assignment-scoped Storage policies. Build designer activation/login landing behavior, dashboard, assignment detail, submission/revision workflow, and client/admin approve/reject/revision/tenant-rejection experiences. Use notification interfaces rather than owning delivery infrastructure.
+Read AGENTS.md and all project documents plus both designer workflow discovery sections. Claim DSG-001. Using the `2026091406xxxx` migration namespace, implement designer assignments, versioned submissions, section feedback, and owner reviews; explicit state transitions; due dates/SLA state; tenant access; and assignment-scoped Storage policies. Build designer activation/login landing behavior, dashboard, assignment detail, submission/revision workflow, and owner approve/reject/revision experiences. Admin handles assignment, SLA intervention, and escalation; it cannot silently replace owner creative approval. Approval binds to the exact current submission and approved copy version. Use notification interfaces rather than owning delivery infrastructure.
 
 Designers must not enumerate unrelated tenant campaigns or assets. Add state-machine, two-tenant/designer authorization, file-access, SLA, route-action, and Playwright tests covering assignment through approval and revision. Update ledger/handoff, commit, and report the hash and verification.
 ```
