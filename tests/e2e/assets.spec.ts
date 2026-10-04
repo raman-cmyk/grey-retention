@@ -22,6 +22,9 @@ test('UC-01/02 private ZIP intake, replay, classification and owner correction p
   ])
   await login(page)
   await page.goto('/assets')
+  await expect(
+    page.getByRole('link', { name: 'all', exact: true })
+  ).toHaveAttribute('aria-current', 'page')
   await page.getByLabel('Brand image files or one ZIP').setInputFiles({
     name: 'original-synthetic-kit.zip',
     mimeType: 'application/zip',
@@ -61,6 +64,12 @@ test('UC-01/02 private ZIP intake, replay, classification and owner correction p
   await expect(
     card.getByText('logo · v2 · fixture', { exact: true })
   ).toBeVisible()
+  await expect(
+    card.getByLabel(`Category for ${name}`, { exact: true })
+  ).toBeHidden()
+  await card
+    .getByLabel(`Review classification for ${name}`, { exact: true })
+    .click()
   await card
     .getByLabel(`Category for ${name}`, { exact: true })
     .selectOption('proof')

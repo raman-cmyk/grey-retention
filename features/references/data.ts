@@ -2,32 +2,59 @@ import 'server-only'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { createClient } from '@/lib/supabase/server'
 import { microSchema, intelligenceProfile } from './intelligence'
+import { readPages } from '@/lib/db/read-pages'
 export async function referenceWorkspace() {
   const context = await requireRequestContext('client'),
     db = await createClient()
   if (!db || process.env.AUTH_MODE === 'demo')
     return { context, data: null, error: 'Supabase authentication required.' }
-  const subscriptions = await db
-    .from('competitor_subscriptions')
-    .select('*')
-    .eq('tenant_id', context.tenantId)
-    .order('label')
+  const subscriptions = await readPages((from, to) =>
+    db
+      .from('competitor_subscriptions')
+      .select('*')
+      .eq('tenant_id', context.tenantId)
+      .order('label')
+      .order('id')
+      .range(from, to)
+  )
   const ids = (subscriptions.data ?? [])
     .filter((s) => s.active)
     .map((s) => s.capture_id)
   const [captures, emails, sequences, playbooks, jobs] = await Promise.all([
-    db.from('competitor_captures').select('*').in('id', ids),
-    db
-      .from('competitor_emails')
-      .select('*')
-      .in('capture_id', ids)
-      .order('received_at', { ascending: false }),
-    db.from('competitor_sequences').select('*').in('capture_id', ids),
-    db
-      .from('playbooks')
-      .select('*')
-      .eq('tenant_id', context.tenantId)
-      .order('revision', { ascending: false }),
+    readPages((from, to) =>
+      db
+        .from('competitor_captures')
+        .select('*')
+        .in('id', ids)
+        .order('id')
+        .range(from, to)
+    ),
+    readPages((from, to) =>
+      db
+        .from('competitor_emails')
+        .select('*')
+        .in('capture_id', ids)
+        .order('received_at', { ascending: false })
+        .order('id')
+        .range(from, to)
+    ),
+    readPages((from, to) =>
+      db
+        .from('competitor_sequences')
+        .select('*')
+        .in('capture_id', ids)
+        .order('id')
+        .range(from, to)
+    ),
+    readPages((from, to) =>
+      db
+        .from('playbooks')
+        .select('*')
+        .eq('tenant_id', context.tenantId)
+        .order('revision', { ascending: false })
+        .order('id')
+        .range(from, to)
+    ),
     db
       .from('job_runs')
       .select('*')
@@ -80,5 +107,46 @@ export async function referenceWorkspace() {
       jobs: jobs.data ?? []
     },
     error: null
+  }
+}
+
+export async function referenceEmailDetail(id: string) {
+  const context = await requireRequestContext('client'),
+    db = await createClient()
+  if (!db || process.env.AUTH_MODE === 'demo')
+    return {
+      context,
+      email: null,
+      error: 'Supabase authentication required.'
+    }
+  const subscriptions = await readPages((from, to) =>
+    db
+      .from('competitor_subscriptions')
+      .select('capture_id')
+      .eq('tenant_id', context.tenantId)
+      .eq('active', true)
+      .order('id')
+      .range(from, to)
+  )
+  if (subscriptions.error)
+    return {
+      context,
+      email: null,
+      error: 'Reference evidence unavailable. Refresh to retry.'
+    }
+  const ids = (subscriptions.data ?? []).map((s) => s.capture_id)
+  if (!ids.length) return { context, email: null, error: null }
+  const email = await db
+    .from('competitor_emails')
+    .select('*')
+    .eq('id', id)
+    .in('capture_id', ids)
+    .maybeSingle()
+  return {
+    context,
+    email: email.data,
+    error: email.error
+      ? 'Reference evidence unavailable. Refresh to retry.'
+      : null
   }
 }

@@ -11,6 +11,17 @@ test('UC-11 creator-private/shared chats and actor-bound confirmed draft edits p
     .getByRole('button', { name: 'Create conversation', exact: true })
     .click()
   await expect(page).toHaveURL(/\/gros\?chat=/)
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Conversations', exact: true })
+      .locator('a[aria-current="page"]')
+  ).toContainText(privateTitle)
+  await expect(
+    page.getByRole('heading', {
+      name: 'Your conversation starts here',
+      exact: true
+    })
+  ).toBeVisible()
   const privateUrl = page.url()
   const campaign = await page
     .getByLabel('Campaign context')
@@ -44,7 +55,7 @@ test('UC-11 creator-private/shared chats and actor-bound confirmed draft edits p
     .fill('Propose a new original education goal.')
   await page.getByLabel('GROS request').selectOption('edit_goal')
   await page
-    .getByLabel('Proposed goal or reference UUID')
+    .getByLabel('Proposed goal', { exact: true })
     .fill(`Original synthetic GROS goal ${info.project.name}`)
   await page
     .getByRole('button', { name: 'Ask fixture GROS', exact: true })
@@ -52,6 +63,14 @@ test('UC-11 creator-private/shared chats and actor-bound confirmed draft edits p
   await expect(
     page.getByRole('heading', { name: 'edit_goal · pending', exact: true })
   ).toBeVisible()
+  const proposal = page
+    .getByRole('heading', { name: 'edit_goal · pending', exact: true })
+    .locator('..')
+  await expect(proposal.locator('pre')).toBeHidden()
+  await proposal.getByText('Inspect exact payload', { exact: true }).click()
+  await expect(proposal.locator('pre')).toContainText(
+    `Original synthetic GROS goal ${info.project.name}`
+  )
   await page
     .getByRole('button', { name: 'Review proposal confirmation', exact: true })
     .click()
@@ -67,7 +86,7 @@ test('UC-11 creator-private/shared chats and actor-bound confirmed draft edits p
     .getByLabel('Question or reason')
     .fill('Another proposal must remain mine.')
   await page
-    .getByLabel('Proposed goal or reference UUID')
+    .getByLabel('Proposed goal', { exact: true })
     .fill('Original pending education goal')
   await page
     .getByRole('button', { name: 'Ask fixture GROS', exact: true })

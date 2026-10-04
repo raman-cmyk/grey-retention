@@ -2,6 +2,7 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { stripSchema } from './renderer'
 import { z } from 'zod'
+import { readPages } from '@/lib/db/read-pages'
 export async function renderData(
   tenantId: string,
   campaignId: string,
@@ -9,6 +10,17 @@ export async function renderData(
 ) {
   const db = await createClient()
   if (!db) return null
+  const subscriptions = await readPages((from, to) =>
+    db
+      .from('competitor_subscriptions')
+      .select('capture_id')
+      .eq('tenant_id', tenantId)
+      .eq('active', true)
+      .order('id')
+      .range(from, to)
+  )
+  if (subscriptions.error) return null
+  const captureIds = (subscriptions.data ?? []).map((s) => s.capture_id)
   const [renders, templates, references] = await Promise.all([
     db
       .from('design_renders')
@@ -24,7 +36,9 @@ export async function renderData(
     db
       .from('competitor_emails')
       .select('id,subject')
+      .in('capture_id', captureIds)
       .order('received_at', { ascending: false })
+      .order('id')
       .limit(20)
   ])
   if ([renders, templates, references].some((r) => r.error)) return null
@@ -37,7 +51,9 @@ export async function renderData(
       .from('competitor_emails')
       .select('id,subject')
       .eq('id', structureId)
+      .in('capture_id', captureIds)
       .maybeSingle()
+    if (selected.error) return null
     if (selected.data) references.data?.push(selected.data)
   }
   const latest = renders.data?.[0],

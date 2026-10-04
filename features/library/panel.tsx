@@ -6,10 +6,24 @@ import { Panel, Notice, Field, controlClass } from '@/components/ui/workspace'
 import { TextField } from '@/components/ui/text-field'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { libraryDraftAction } from './actions'
+import { StructurePicker } from './source-picker'
+import { readPages } from '@/lib/db/read-pages'
 export async function OwnLibraryPanel() {
   const ctx = await requireRequestContext('client'),
     db = await createClient()
   if (!db) return <Notice error>Supabase authentication required.</Notice>
+  const subscriptions = await readPages((from, to) =>
+    db
+      .from('competitor_subscriptions')
+      .select('capture_id')
+      .eq('tenant_id', ctx.tenantId)
+      .eq('active', true)
+      .order('id')
+      .range(from, to)
+  )
+  if (subscriptions.error)
+    return <Notice error>Authorized library unavailable.</Notice>
+  const captureIds = (subscriptions.data ?? []).map((s) => s.capture_id)
   const [templates, references, audiences] = await Promise.all([
     db
       .from('own_templates')
@@ -19,7 +33,9 @@ export async function OwnLibraryPanel() {
     db
       .from('competitor_emails')
       .select('id,subject,micro')
+      .in('capture_id', captureIds)
       .order('received_at', { ascending: false })
+      .order('id')
       .limit(50),
     db.from('audiences').select('id,label').eq('tenant_id', ctx.tenantId)
   ])
@@ -94,42 +110,11 @@ export async function OwnLibraryPanel() {
             action={libraryDraftAction}
             className="grid gap-4 sm:grid-cols-2"
           >
-            <Field label="Draft structure source">
-              <select
-                name="source"
-                className={controlClass}
-                defaultValue={
-                  templates.data?.length
-                    ? 'own_template'
-                    : 'reference_structure'
-                }
-              >
-                <option value="own_template">
-                  Own confirmed-send skeleton
-                </option>
-                <option value="reference_structure">
-                  Subscribed reference structure
-                </option>
-              </select>
-            </Field>
-            <Field label="Authorized structure">
-              <select name="sourceId" className={controlClass} required>
-                <optgroup label="Own structures">
-                  {templates.data?.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Subscribed reference structures">
-                  {references.data?.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.subject} · structure only
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-            </Field>
+            <StructurePicker
+              label="Authorized structure"
+              templates={templates.data ?? []}
+              references={references.data ?? []}
+            />
             <Field label="New draft title">
               <TextField name="title" required minLength={2} maxLength={200} />
             </Field>

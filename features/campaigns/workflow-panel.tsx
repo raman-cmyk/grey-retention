@@ -54,7 +54,7 @@ export async function WorkflowPanel({
   return (
     <div className="mt-6 space-y-6">
       {data.error && <Notice error>{data.error}</Notice>}
-      <Panel title={`Copy review · version ${c.copy_revision}`}>
+      <Panel id="copy" title={`Copy review · version ${c.copy_revision}`}>
         {c.calendar_state !== 'approved' ? (
           <Notice>
             Approve the calendar entry before generating or approving copy.
@@ -175,7 +175,9 @@ export async function WorkflowPanel({
           </>
         )}
       </Panel>
-      <RenderPanel campaign={c} owner={owner} />
+      <div id="design" className="scroll-mt-24">
+        <RenderPanel campaign={c} owner={owner} />
+      </div>
       {(data.assignment ||
         !['submitted', 'revisions_requested', 'owner_approved'].includes(
           c.design_state
@@ -328,162 +330,176 @@ export async function WorkflowPanel({
           )}
         </Panel>
       )}
-      {owner && c.design_state === 'owner_approved' && (
-        <Panel title="Assemble a reviewed delivery package">
-          <p className="mb-4 text-sm leading-6 text-[var(--text-muted)]">
-            The immutable package takes copy and design from current owner
-            approvals. Link, stock and audience validation use local fixtures.
-            Enter a complete sender/footer; live execution remains disabled.
-          </p>
-          <ActionForm action={workflowAction} className="grid gap-4">
-            <input type="hidden" name="kind" value="package" />
-            <input type="hidden" name="id" value={c.id} />
-            <input type="hidden" name="revision" value={c.delivery_revision} />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Sender name">
-                <TextField
-                  name="senderName"
-                  defaultValue={
-                    data.defaults.senderName ?? brand?.brand_name ?? ''
-                  }
-                  required
-                />
-              </Field>
-              <Field label="Sender email">
-                <TextField
-                  name="senderEmail"
-                  type="email"
-                  defaultValue={
-                    data.defaults.senderEmail ??
-                    (brand?.domain ? `studio@${brand.domain}` : '')
-                  }
-                  required
-                />
-              </Field>
-            </div>
-            <Field label="Footer postal address">
-              <TextField
-                name="address"
-                defaultValue={data.defaults.address}
-                required
-                minLength={5}
+      <div id="delivery" className="scroll-mt-24 space-y-6">
+        {owner && c.design_state === 'owner_approved' && (
+          <Panel title="Assemble a reviewed delivery package">
+            <p className="mb-4 text-sm leading-6 text-[var(--text-muted)]">
+              The immutable package takes copy and design from current owner
+              approvals. Link, stock and audience validation use local fixtures.
+              Enter a complete sender/footer; live execution remains disabled.
+            </p>
+            <ActionForm action={workflowAction} className="grid gap-4">
+              <input type="hidden" name="kind" value="package" />
+              <input type="hidden" name="id" value={c.id} />
+              <input
+                type="hidden"
+                name="revision"
+                value={c.delivery_revision}
               />
-            </Field>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Unsubscribe HTTPS URL">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Sender name">
+                  <TextField
+                    name="senderName"
+                    defaultValue={
+                      data.defaults.senderName ?? brand?.brand_name ?? ''
+                    }
+                    required
+                  />
+                </Field>
+                <Field label="Sender email">
+                  <TextField
+                    name="senderEmail"
+                    type="email"
+                    defaultValue={
+                      data.defaults.senderEmail ??
+                      (brand?.domain ? `studio@${brand.domain}` : '')
+                    }
+                    required
+                  />
+                </Field>
+              </div>
+              <Field label="Footer postal address">
                 <TextField
-                  name="unsubscribeUrl"
-                  type="url"
-                  defaultValue={
-                    data.defaults.unsubscribeUrl ??
-                    (brand?.domain ? `https://${brand.domain}/unsubscribe` : '')
-                  }
+                  name="address"
+                  defaultValue={data.defaults.address}
                   required
+                  minLength={5}
                 />
               </Field>
-              <Field label="Privacy HTTPS URL">
-                <TextField
-                  name="privacyUrl"
-                  type="url"
-                  defaultValue={
-                    data.defaults.privacyUrl ??
-                    (brand?.domain ? `https://${brand.domain}/privacy` : '')
-                  }
-                  required
-                />
-              </Field>
-            </div>
-            <div>
-              <SubmitButton variant="secondary">
-                Validate fixture delivery package
-              </SubmitButton>
-            </div>
-          </ActionForm>
-        </Panel>
-      )}
-      {pkg && (
-        <Panel
-          title={`Final delivery preview · package v${pkg.revision}${currentPackage ? '' : ' · superseded'}`}
-        >
-          <Notice>
-            Simulation only. Provider acceptance, links and recipients have not
-            been evaluated against a live account.
-          </Notice>
-          <dl className="my-4 grid gap-3 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="text-[var(--text-muted)]">Audience/account</dt>
-              <dd>
-                {pkg.audience.accountId} · {pkg.audience.includes.join(', ')}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[var(--text-muted)]">Required exclusions</dt>
-              <dd>{pkg.audience.excludes.join(', ')}</dd>
-            </div>
-            <div>
-              <dt className="text-[var(--text-muted)]">Sender</dt>
-              <dd>
-                {pkg.sender.name} · {pkg.sender.email}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[var(--text-muted)]">Schedule</dt>
-              <dd>
-                {new Intl.DateTimeFormat('en', {
-                  timeZone: pkg.timezone,
-                  dateStyle: 'full',
-                  timeStyle: 'short'
-                }).format(new Date(pkg.scheduledAt))}{' '}
-                · {pkg.timezone}
-              </dd>
-            </div>
-          </dl>
-          <iframe
-            title="Final email preview"
-            sandbox=""
-            srcDoc={pkg.html
-              .replace(
-                'cid:design-artifact',
-                data.artifactPreviews[0] ?? latest?.preview ?? ''
-              )
-              .replace('cid:hero', data.artifactPreviews[0] ?? '')
-              .replace('cid:copy', data.artifactPreviews[1] ?? '')
-              .replace('cid:cta', data.artifactPreviews[2] ?? '')}
-            className="mb-5 h-[36rem] w-full rounded-lg border border-[var(--line)] bg-white"
-          />
-          {owner && currentPackage && c.delivery_state === 'ready' && (
-            <ConfirmDialog
-              label="Review scheduling confirmation"
-              title="Confirm simulated scheduling"
-              description={`Schedule immutable package v${pkg.revision} for the displayed audience and time. This records owner confirmation and queues a fixture job.`}
-            >
-              <Command kind="schedule" id={pkg.id} revision={pkg.revision}>
-                <SubmitButton>
-                  Confirm package v{pkg.revision} scheduling
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Unsubscribe HTTPS URL">
+                  <TextField
+                    name="unsubscribeUrl"
+                    type="url"
+                    defaultValue={
+                      data.defaults.unsubscribeUrl ??
+                      (brand?.domain
+                        ? `https://${brand.domain}/unsubscribe`
+                        : '')
+                    }
+                    required
+                  />
+                </Field>
+                <Field label="Privacy HTTPS URL">
+                  <TextField
+                    name="privacyUrl"
+                    type="url"
+                    defaultValue={
+                      data.defaults.privacyUrl ??
+                      (brand?.domain ? `https://${brand.domain}/privacy` : '')
+                    }
+                    required
+                  />
+                </Field>
+              </div>
+              <div>
+                <SubmitButton variant="secondary">
+                  Validate fixture delivery package
                 </SubmitButton>
-              </Command>
-            </ConfirmDialog>
-          )}
-          {owner &&
-            ['scheduled', 'queued', 'reconciling', 'failed'].includes(
-              c.delivery_state
-            ) && (
+              </div>
+            </ActionForm>
+          </Panel>
+        )}
+        {pkg && (
+          <Panel
+            title={`Final delivery preview · package v${pkg.revision}${currentPackage ? '' : ' · superseded'}`}
+          >
+            <Notice>
+              Simulation only. Provider acceptance, links and recipients have
+              not been evaluated against a live account.
+            </Notice>
+            <dl className="my-4 grid gap-3 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-[var(--text-muted)]">Audience/account</dt>
+                <dd>
+                  {pkg.audience.accountId} · {pkg.audience.includes.join(', ')}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[var(--text-muted)]">
+                  Required exclusions
+                </dt>
+                <dd>{pkg.audience.excludes.join(', ')}</dd>
+              </div>
+              <div>
+                <dt className="text-[var(--text-muted)]">Sender</dt>
+                <dd>
+                  {pkg.sender.name} · {pkg.sender.email}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[var(--text-muted)]">Schedule</dt>
+                <dd>
+                  {new Intl.DateTimeFormat('en', {
+                    timeZone: pkg.timezone,
+                    dateStyle: 'full',
+                    timeStyle: 'short'
+                  }).format(new Date(pkg.scheduledAt))}{' '}
+                  · {pkg.timezone}
+                </dd>
+              </div>
+            </dl>
+            <iframe
+              title="Final email preview"
+              sandbox=""
+              srcDoc={pkg.html
+                .replace(
+                  'cid:design-artifact',
+                  data.artifactPreviews[0] ?? latest?.preview ?? ''
+                )
+                .replace('cid:hero', data.artifactPreviews[0] ?? '')
+                .replace('cid:copy', data.artifactPreviews[1] ?? '')
+                .replace('cid:cta', data.artifactPreviews[2] ?? '')}
+              className="mb-5 h-[36rem] w-full rounded-lg border border-[var(--line)] bg-white"
+            />
+            {owner && currentPackage && c.delivery_state === 'ready' && (
               <ConfirmDialog
-                danger
-                label="Review cancellation"
-                title="Confirm cancellation request"
-                description="Cancellation becomes final only when the fixture provider confirms it. A sent campaign cannot be recalled."
+                label="Review scheduling confirmation"
+                title="Confirm simulated scheduling"
+                description={`Schedule immutable package v${pkg.revision} for the displayed audience and time. This records owner confirmation and queues a fixture job.`}
               >
-                <Command kind="cancel" id={c.id} revision={c.delivery_revision}>
-                  <SubmitButton variant="danger">
-                    Request simulated cancellation
+                <Command kind="schedule" id={pkg.id} revision={pkg.revision}>
+                  <SubmitButton>
+                    Confirm package v{pkg.revision} scheduling
                   </SubmitButton>
                 </Command>
               </ConfirmDialog>
             )}
-        </Panel>
-      )}
-      <DeliveryOperations campaign={c} owner={owner} />
+            {owner &&
+              ['scheduled', 'queued', 'reconciling', 'failed'].includes(
+                c.delivery_state
+              ) && (
+                <ConfirmDialog
+                  danger
+                  label="Review cancellation"
+                  title="Confirm cancellation request"
+                  description="Cancellation becomes final only when the fixture provider confirms it. A sent campaign cannot be recalled."
+                >
+                  <Command
+                    kind="cancel"
+                    id={c.id}
+                    revision={c.delivery_revision}
+                  >
+                    <SubmitButton variant="danger">
+                      Request simulated cancellation
+                    </SubmitButton>
+                  </Command>
+                </ConfirmDialog>
+              )}
+          </Panel>
+        )}
+        <DeliveryOperations campaign={c} owner={owner} />
+      </div>
       <Panel title="Durable fixture jobs">
         {owner && (
           <ActionForm action={workflowAction} className="mb-5">

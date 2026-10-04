@@ -5,6 +5,7 @@ import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { renderData } from './data'
 import { renderAction } from './actions'
+import { StructurePicker } from '@/features/library/source-picker'
 export async function RenderPanel({
   campaign: c,
   owner
@@ -38,45 +39,16 @@ export async function RenderPanel({
           <input name="id" type="hidden" value={c.id} />
           <input name="copy" type="hidden" value={c.copy_revision} />
           <input name="design" type="hidden" value={c.design_revision} />
-          <Field label="Rendering structure">
-            <select
-              name="source"
-              className={controlClass}
-              defaultValue={
-                (c.lineage as { structureSource?: string })?.structureSource ??
-                'fixture_structure'
-              }
-            >
-              <option value="fixture_structure">
-                Original fixture structure
-              </option>
-              <option value="own_template">Own confirmed-send skeleton</option>
-              <option value="reference_structure">
-                Subscribed reference structure only
-              </option>
-            </select>
-          </Field>
-          <Field label="Optional structure reference">
-            <select
-              name="sourceId"
-              className={controlClass}
-              defaultValue={
-                (c.lineage as { structureId?: string })?.structureId ?? ''
-              }
-            >
-              <option value="">No source for fixture structure</option>
-              {data.templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-              {data.references.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.subject}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <StructurePicker
+            label="Rendering structure"
+            templates={data.templates}
+            references={data.references}
+            allowFixture
+            defaultSource={
+              (c.lineage as { structureSource?: string })?.structureSource
+            }
+            defaultId={(c.lineage as { structureId?: string })?.structureId}
+          />
           <div>
             <SubmitButton variant="secondary">
               {c.design_state === 'revisions_requested'

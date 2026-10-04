@@ -1,140 +1,85 @@
 import Link from 'next/link'
-import type { Route } from 'next'
+import { ArrowRight, Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
-import { StatusMark } from '@/components/ui/status-mark'
 import { campaignWorkspace } from '@/features/campaigns/data'
 import { CampaignEditor } from '@/features/campaigns/editor'
+import { CampaignCalendar } from '@/features/campaigns/calendar'
+import {
+  calendarMonth,
+  calendarView
+} from '@/features/campaigns/calendar-model'
 import { PlanningPanel } from '@/features/planning/panels'
 export default async function CampaignAgentPage({
   searchParams
 }: {
-  searchParams: Promise<{ m?: string; view?: string }>
+  searchParams: Promise<{ m?: string | string[]; view?: string | string[] }>
 }) {
   const { context, data, error } = await campaignWorkspace()
   const params = await searchParams
-  const month = /^\d{4}-\d{2}$/.test(params.m ?? '')
-    ? params.m!
-    : new Intl.DateTimeFormat('en-CA', {
-        timeZone: context.timezone,
-        year: 'numeric',
-        month: '2-digit'
-      }).format(new Date())
-  const campaigns =
-    data?.campaigns.filter(
-      (c) =>
-        (params.view === 'history' || !c.superseded_by_plan) &&
-        new Date(c.planned_at)
-          .toLocaleDateString('en-CA', { timeZone: c.timezone })
-          .startsWith(month)
-    ) ?? []
+  const month = calendarMonth(params.m, context.timezone)
+  const view = calendarView(params.view)
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeading
         title="Campaign calendar"
-        description={`Plan and review exact campaign versions. Times shown in ${context.timezone}. Fixture audiences never send to real recipients.`}
+        description="Shape the month, review each campaign, and keep every approval tied to the right version."
+        action={
+          data && (
+            <Button asChild>
+              <a href="#create-campaign">
+                <Plus className="size-4" aria-hidden="true" />
+                New campaign
+              </a>
+            </Button>
+          )
+        }
       />
       {error ? (
         <Notice error>{error}</Notice>
       ) : (
         <>
-          <form className="mb-5 flex flex-wrap items-end gap-3">
-            <label className="text-sm">
-              Month
-              <input
-                name="m"
-                type="month"
-                defaultValue={month}
-                className="ml-2 rounded-lg border border-[var(--line-strong)] bg-white p-2"
-              />
-            </label>
-            <label className="text-sm">
-              View
-              <select
-                name="view"
-                defaultValue={params.view ?? 'calendar'}
-                className="ml-2 rounded-lg border border-[var(--line-strong)] bg-white p-2"
-              >
-                <option value="calendar">Calendar</option>
-                <option value="list">List</option>
-                <option value="history">History including superseded</option>
-              </select>
-            </label>
-            <button className="min-h-10 rounded-lg bg-[var(--brand-primary)] px-4 text-sm text-[var(--on-brand)]">
-              Show month
-            </button>
-          </form>
-          <Panel title={`${month} · ${campaigns.length} entries`}>
-            {campaigns.length === 0 ? (
-              <Notice>
-                No entries for this month. Create a campaign below.
-              </Notice>
-            ) : (
-              <div
-                className={
-                  params.view === 'list'
-                    ? 'divide-y divide-[var(--line)]'
-                    : 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3'
-                }
-              >
-                {campaigns.map((c) => (
-                  <Link
-                    key={c.id}
-                    href={`/campaigns/${c.id}` as Route}
-                    className="block rounded-lg border border-[var(--line)] p-4 transition-colors hover:bg-[var(--surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
-                  >
-                    <time
-                      className="text-xs text-[var(--text-muted)]"
-                      dateTime={c.planned_at}
-                    >
-                      {new Intl.DateTimeFormat('en', {
-                        timeZone: c.timezone,
-                        month: 'short',
-                        day: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit'
-                      }).format(new Date(c.planned_at))}
-                    </time>
-                    <h3 className="mt-2 font-semibold">{c.title}</h3>
-                    <p className="my-2 text-xs text-[var(--text-muted)]">
-                      {c.channel === 'email_design'
-                        ? 'Design email'
-                        : 'Text email'}{' '}
-                      · revision {c.calendar_revision}
-                      {c.synthetic ? ' · Synthetic demo' : ''}
-                    </p>
-                    <StatusMark
-                      tone={
-                        c.calendar_state === 'approved' ? 'active' : 'neutral'
-                      }
-                    >
-                      {c.calendar_state}
-                    </StatusMark>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </Panel>
-          <div className="mt-5">
+          <CampaignCalendar
+            campaigns={data!.campaigns}
+            month={month}
+            view={view}
+            timezone={context.timezone}
+          />
+          {context.tenantRole === 'owner' && (
             <Link
               href="/copy-review"
-              className="text-sm font-semibold underline"
+              className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-5 py-4 transition-colors hover:bg-[var(--surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
             >
-              Open weekly copy review
+              <div>
+                <span className="text-sm font-semibold">
+                  Weekly copy review
+                </span>
+                <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
+                  Review approved calendar entries and confirm the exact copy
+                  batch.
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--brand-ink)]">
+                Open weekly copy review
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </span>
             </Link>
-          </div>
+          )}
           <PlanningPanel
             tenantId={context.tenantId}
             owner={context.tenantRole === 'owner'}
             campaigns={data!.campaigns}
             audiences={data!.audiences}
           />
-          <Panel title="Create a campaign" className="mt-6">
-            <CampaignEditor
-              products={data!.products}
-              offers={data!.offers}
-              audiences={data!.audiences}
-            />
-          </Panel>
+          <div id="create-campaign" className="mt-6 scroll-mt-28">
+            <Panel title="Create a campaign">
+              <CampaignEditor
+                products={data!.products}
+                offers={data!.offers}
+                audiences={data!.audiences}
+              />
+            </Panel>
+          </div>
         </>
       )}
     </div>

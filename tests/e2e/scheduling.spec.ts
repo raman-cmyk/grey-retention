@@ -227,7 +227,7 @@ test('UC-09 persisted timeout reconciliation, reschedule, cancellation and L1 se
   await expect(page.getByText(/Campaign delivery: sent/)).toBeVisible()
   await expect(
     page
-      .getByLabel('Optional structure reference')
+      .getByLabel('Rendering structure')
       .locator('option')
       .filter({ hasText: 'own skeleton' })
   ).toHaveCount(1)

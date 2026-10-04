@@ -2,6 +2,7 @@
 import { useActionState, type ReactNode } from 'react'
 import { useFormStatus } from 'react-dom'
 import { Button } from './button'
+import { cn } from '@/lib/utils'
 export type FormResult = { error?: string; message?: string }
 export type FormAction = (
   state: FormResult,
@@ -20,7 +21,18 @@ export function ActionForm({
   return (
     <form action={dispatch} className={className} aria-busy={pending}>
       {children}
-      <p aria-live="polite" className="mt-3 text-sm">
+      <p
+        aria-live="polite"
+        className={cn(
+          'text-sm empty:hidden',
+          !pending &&
+            (state.error || state.message) &&
+            'mt-3 rounded-lg px-3 py-2',
+          state.error
+            ? 'bg-[var(--danger-soft)] text-[var(--danger-ink)]'
+            : 'bg-[var(--brand-soft)] text-[var(--brand-ink)]'
+        )}
+      >
         {pending ? '' : (state.error ?? state.message)}
       </p>
     </form>

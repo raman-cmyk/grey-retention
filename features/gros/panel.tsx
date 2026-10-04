@@ -6,6 +6,7 @@ import { TextField } from '@/components/ui/text-field'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { grosAction } from './actions'
+import { conversationReferenceChoices } from './reference-choices'
 import { z } from 'zod'
 export async function GrosPanel({
   chatId,
@@ -39,11 +40,7 @@ export async function GrosPanel({
           .eq('id', chatId)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
-    db
-      .from('competitor_emails')
-      .select('id,subject')
-      .order('received_at', { ascending: false })
-      .limit(20)
+    conversationReferenceChoices(db, ctx.tenantId)
   ])
   if (chats.error || campaigns.error || selected.error || references.error)
     return <Notice error>Conversation data unavailable.</Notice>
@@ -74,24 +71,39 @@ export async function GrosPanel({
     <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
       <div className="space-y-6">
         <Panel title="Visible conversations">
-          <ul className="space-y-3 text-sm">
-            {chats.data?.map((c) => (
-              <li key={c.id}>
-                <Link
-                  href={`/gros?chat=${c.id}`}
-                  className="font-semibold break-words underline"
-                >
-                  {c.title}
-                </Link>
-                <p>
-                  {c.visibility} ·{' '}
-                  {c.creator_id === ctx.userId
-                    ? 'you created this'
-                    : 'workspace shared'}
-                </p>
-              </li>
-            ))}
-          </ul>
+          <nav aria-label="Conversations">
+            <ul className="space-y-2 text-sm">
+              {chats.data?.map((c) => (
+                <li key={c.id}>
+                  <Link
+                    href={`/gros?chat=${c.id}`}
+                    aria-current={active?.id === c.id ? 'page' : undefined}
+                    className={`block rounded-lg border px-3 py-3 ${
+                      active?.id === c.id
+                        ? 'border-[var(--line-strong)] bg-[var(--surface-hover)]'
+                        : 'border-transparent hover:bg-[var(--surface-hover)]'
+                    }`}
+                  >
+                    <span className="block font-semibold break-words">
+                      {c.title}
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-[var(--text-muted)]">
+                      {c.visibility === 'private' ? 'Private' : 'Shared'} ·{' '}
+                      {c.creator_id === ctx.userId
+                        ? 'Created by you'
+                        : 'Workspace conversation'}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          {!chats.data?.length && (
+            <p className="text-sm leading-6 text-[var(--text-muted)]">
+              No conversations yet. Start one below to keep your campaign
+              questions and decisions together.
+            </p>
+          )}
           {chatId && !active && (
             <Notice error>
               Conversation unavailable to your active membership.
@@ -155,55 +167,75 @@ export async function GrosPanel({
                   </ConfirmDialog>
                 </div>
               )}
-              <ol className="my-5 space-y-4">
-                {messages.data?.toReversed().map((m) => (
-                  <li
-                    key={m.id}
-                    className="rounded-lg border border-[var(--line)] p-4"
-                  >
-                    <p className="mb-2 text-xs font-semibold uppercase">
-                      {m.role === 'assistant'
-                        ? 'Synthetic GROS'
-                        : m.actor_id === ctx.userId
-                          ? 'You'
-                          : 'Workspace member'}
-                    </p>
-                    <p className="text-sm break-words whitespace-pre-wrap">
-                      {m.body}
-                    </p>
-                  </li>
-                ))}
-              </ol>
-              <p className="my-3 text-xs">
-                Messages are paged in groups of 100.{' '}
-                {messages.data?.at(-1)?.message_index &&
-                  messages.data.at(-1)!.message_index > 1 && (
-                    <Link
-                      className="mr-3 underline"
-                      href={`/gros?chat=${active.id}&before=${messages.data.at(-1)!.message_index}`}
+              {messages.data?.length ? (
+                <ol
+                  aria-label="Conversation messages"
+                  className="my-6 space-y-5"
+                >
+                  {messages.data?.toReversed().map((m) => (
+                    <li
+                      key={m.id}
+                      className={`max-w-[94%] rounded-xl p-4 sm:max-w-[88%] ${
+                        m.role === 'assistant'
+                          ? 'border border-[var(--line)] bg-[var(--surface-raised)]'
+                          : 'ml-auto bg-[var(--surface-hover)]'
+                      }`}
                     >
-                      Earlier messages
+                      <p
+                        className={`mb-2 text-xs font-semibold ${m.role === 'assistant' ? 'text-[var(--brand-ink)]' : 'text-[var(--text-muted)]'}`}
+                      >
+                        {m.role === 'assistant'
+                          ? 'Synthetic GROS'
+                          : m.actor_id === ctx.userId
+                            ? 'You'
+                            : 'Workspace member'}
+                      </p>
+                      <p className="text-sm leading-6 break-words whitespace-pre-wrap">
+                        {m.body}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <div className="my-6 rounded-xl border border-dashed border-[var(--line-strong)] bg-[var(--surface-hover)] px-5 py-7">
+                  <h3 className="text-sm font-semibold">
+                    {before
+                      ? 'No earlier messages'
+                      : 'Your conversation starts here'}
+                  </h3>
+                  <p className="mt-2 max-w-[54ch] text-sm leading-6 text-[var(--text-muted)]">
+                    {before
+                      ? 'You have reached the beginning of this conversation. Return to the latest messages to continue.'
+                      : 'Choose a campaign and ask about its progress, or propose a change for review. Proposed changes need your confirmation.'}
+                  </p>
+                </div>
+              )}
+              {(!!messages.data?.length || before) && (
+                <p className="my-3 text-xs text-[var(--text-faint)]">
+                  Messages are paged in groups of 100.{' '}
+                  {messages.data?.at(-1)?.message_index &&
+                    messages.data.at(-1)!.message_index > 1 && (
+                      <Link
+                        className="mr-3 underline"
+                        href={`/gros?chat=${active.id}&before=${messages.data.at(-1)!.message_index}`}
+                      >
+                        Earlier messages
+                      </Link>
+                    )}
+                  {before && (
+                    <Link
+                      className="underline"
+                      href={`/gros?chat=${active.id}`}
+                    >
+                      Latest messages
                     </Link>
                   )}
-                {before && (
-                  <Link className="underline" href={`/gros?chat=${active.id}`}>
-                    Latest messages
-                  </Link>
-                )}
-              </p>
-              {references.data?.length ? (
-                <details className="my-4 text-sm">
-                  <summary>Authorized reference choices</summary>
-                  <ul>
-                    {references.data.map((r) => (
-                      <li className="mt-2 break-words" key={r.id}>
-                        {r.subject} · <code>{r.id}</code>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              ) : null}
-              <ActionForm action={grosAction} className="grid gap-4">
+                </p>
+              )}
+              <ActionForm
+                action={grosAction}
+                className="grid gap-4 border-t border-[var(--line)] pt-5"
+              >
                 <input name="kind" type="hidden" value="ask" />
                 <input name="chat" type="hidden" value={active.id} />
                 <Field label="Campaign context">
@@ -229,9 +261,6 @@ export async function GrosPanel({
                   <select name="intent" className={controlClass}>
                     <option value="explain">Explain why and show status</option>
                     <option value="edit_goal">Propose a goal edit</option>
-                    <option value="select_reference">
-                      Propose a subscribed reference UUID
-                    </option>
                     {ctx.tenantRole === 'owner' && (
                       <>
                         <option value="schedule">
@@ -245,16 +274,90 @@ export async function GrosPanel({
                     )}
                   </select>
                 </Field>
-                <Field label="Proposed goal or reference UUID">
+                <Field label="Proposed goal">
                   <textarea
                     name="value"
                     className={controlClass}
                     rows={2}
                     maxLength={5000}
+                    placeholder="Enter the new goal when proposing a goal edit."
                   />
                 </Field>
                 <SubmitButton>Ask fixture GROS</SubmitButton>
               </ActionForm>
+              <details className="mt-6 border-t border-[var(--line)] pt-4">
+                <summary className="text-sm font-medium text-[var(--brand-secondary)]">
+                  Propose a campaign reference
+                </summary>
+                {references.data?.length ? (
+                  <ActionForm action={grosAction} className="mt-4 grid gap-4">
+                    <input name="kind" type="hidden" value="ask" />
+                    <input name="chat" type="hidden" value={active.id} />
+                    <input
+                      name="intent"
+                      type="hidden"
+                      value="select_reference"
+                    />
+                    <Field label="Campaign for this reference">
+                      <select name="campaign" className={controlClass} required>
+                        <option value="">Choose an authorized campaign</option>
+                        {campaigns.data?.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.title}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Authorized campaign reference">
+                      <select
+                        name="value"
+                        className={controlClass}
+                        required
+                        defaultValue=""
+                      >
+                        <option value="">Choose a subscribed reference</option>
+                        {references.data.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.subject}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Reference request reason">
+                      <textarea
+                        name="question"
+                        className={controlClass}
+                        rows={2}
+                        required
+                        maxLength={5000}
+                      />
+                    </Field>
+                    <p className="text-xs leading-5 text-[var(--text-muted)]">
+                      Available references come from your active subscriptions.
+                      Review the proposal before applying it to the campaign.
+                      {references.data.length === 20 &&
+                        ' Showing the 20 most recent references.'}
+                    </p>
+                    <div>
+                      <SubmitButton variant="secondary">
+                        Propose reference
+                      </SubmitButton>
+                    </div>
+                  </ActionForm>
+                ) : (
+                  <p className="mt-3 text-sm leading-6 text-[var(--text-muted)]">
+                    No subscribed references are available. Add a subscription
+                    in{' '}
+                    <Link
+                      href="/competitor-agent"
+                      className="text-[var(--brand-secondary)] underline"
+                    >
+                      Competitor Agent
+                    </Link>{' '}
+                    to select a reference here.
+                  </p>
+                )}
+              </details>
             </Panel>
             <Panel title="Exact proposals">
               {proposals.data?.length ? (
@@ -267,9 +370,14 @@ export async function GrosPanel({
                       {p.kind} · {p.status}
                     </h3>
                     <p className="my-3">{p.consequence}</p>
-                    <pre className="overflow-x-auto rounded-lg bg-[var(--surface-hover)] p-3 text-xs whitespace-pre-wrap">
-                      {JSON.stringify(p.payload, null, 2)}
-                    </pre>
+                    <details className="my-3">
+                      <summary className="text-xs font-medium text-[var(--brand-secondary)]">
+                        Inspect exact payload
+                      </summary>
+                      <pre className="mt-3 overflow-x-auto rounded-lg bg-[var(--surface-hover)] p-3 text-xs break-words whitespace-pre-wrap">
+                        {JSON.stringify(p.payload, null, 2)}
+                      </pre>
+                    </details>
                     <p className="my-3">
                       Expires{' '}
                       {new Intl.DateTimeFormat('en', {
@@ -313,9 +421,23 @@ export async function GrosPanel({
             </Panel>
           </>
         ) : (
-          <Notice>
-            Select or create a conversation. Private visibility is the default.
-          </Notice>
+          <Panel
+            title={
+              chats.data?.length
+                ? 'Choose a conversation'
+                : 'Start your first conversation'
+            }
+          >
+            <p className="max-w-[54ch] text-sm leading-6 text-[var(--text-muted)]">
+              Keep campaign questions, proposed changes and decisions in one
+              place. Select a conversation or create one to get started.
+            </p>
+            <p className="mt-4 text-xs leading-5 text-[var(--text-faint)]">
+              Conversations are private by default. GROS uses synthetic answers
+              with persisted evidence; proposed changes always need
+              confirmation.
+            </p>
+          </Panel>
         )}
         {[messages, proposals].some((r) => r.error) && (
           <Notice error>Some conversation records are unavailable.</Notice>

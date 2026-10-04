@@ -10,15 +10,15 @@ test('client login presents a labelled access form', async ({ page }) => {
   await expect(page.getByLabel('Password')).toBeVisible()
 })
 
-test('proof table adapts to desktop and mobile viewports', async ({
+test('workspace overview adapts to desktop and mobile viewports', async ({
   page
 }, testInfo) => {
   await login(page)
   await expect(
-    page.getByRole('heading', { name: 'Campaign proof table' })
+    page.getByRole('heading', { name: 'Workspace overview' })
   ).toBeVisible()
   await expect(
-    page.getByRole('heading', { name: 'Active proofs' })
+    page.getByRole('heading', { name: 'Campaign workspace' })
   ).toBeVisible()
 
   if (testInfo.project.name === 'mobile-chromium') {
@@ -41,7 +41,7 @@ test('authenticated identities remain separated by role surface', async ({
   page
 }) => {
   const cases = [
-    { surface: 'client', path: '/dashboard', heading: 'Campaign proof table' },
+    { surface: 'client', path: '/dashboard', heading: 'Workspace overview' },
     {
       surface: 'admin',
       path: '/admin/dashboard',

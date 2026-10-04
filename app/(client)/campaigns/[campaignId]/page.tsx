@@ -12,6 +12,7 @@ import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { campaignDetail } from '@/features/campaigns/data'
 import { WorkflowPanel } from '@/features/campaigns/workflow-panel'
 import { CampaignEditor } from '@/features/campaigns/editor'
+import { WorkflowNavigation } from '@/features/campaigns/workflow-navigation'
 import { approveCalendar, addNote } from '@/features/campaigns/actions'
 export default async function CampaignPage({
   params
@@ -33,6 +34,7 @@ export default async function CampaignPage({
         description={`${campaign.synthetic ? 'Synthetic demo · ' : ''}${new Intl.DateTimeFormat('en', { timeZone: campaign.timezone, dateStyle: 'full', timeStyle: 'short' }).format(new Date(campaign.planned_at))} · ${campaign.timezone}`}
       />
       {error && <Notice error>{error}</Notice>}
+      <WorkflowNavigation campaign={campaign} />
       {campaign.superseded_by_plan && (
         <Notice>
           This historical draft was superseded by regeneration. Approved entries
@@ -40,7 +42,7 @@ export default async function CampaignPage({
         </Notice>
       )}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <Panel title="Calendar entry">
+        <Panel id="brief" title="Calendar entry">
           <CampaignEditor
             campaign={campaign}
             products={data!.products}
@@ -110,7 +112,7 @@ export default async function CampaignPage({
         owner={context.tenantRole === 'owner'}
         brand={data!.brand}
       />
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <div id="history" className="mt-6 grid scroll-mt-24 gap-6 lg:grid-cols-2">
         <Panel title="Workspace notes">
           {detail.comments.map((c) => (
             <p

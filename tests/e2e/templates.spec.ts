@@ -99,7 +99,12 @@ test('UC-16 own performance links and original structural draft require normal a
   await expect(
     page.getByText(/Synthetic 7d metrics: complete · clicks/)
   ).toBeVisible()
-  await page.getByLabel('Draft structure source').selectOption('own_template')
+  const ownStructure = await page
+    .getByLabel('Authorized structure')
+    .locator('option[value^="own_template:"]')
+    .first()
+    .getAttribute('value')
+  await page.getByLabel('Authorized structure').selectOption(ownStructure!)
   await page
     .getByLabel('New draft title')
     .fill(`Original derived ${info.project.name}`)

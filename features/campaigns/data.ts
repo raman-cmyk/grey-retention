@@ -1,6 +1,7 @@
 import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { requireRequestContext } from '@/features/auth/application/request-context'
+import { readPages } from '@/lib/db/read-pages'
 
 export async function campaignWorkspace() {
   const context = await requireRequestContext('client')
@@ -12,22 +13,41 @@ export async function campaignWorkspace() {
       error: 'Connect a local Supabase session to use persisted campaigns.'
     }
   const [campaigns, products, offers, audiences, brand] = await Promise.all([
-    db
-      .from('campaigns')
-      .select('*')
-      .eq('tenant_id', context.tenantId)
-      .order('planned_at'),
-    db
-      .from('products')
-      .select('*')
-      .eq('tenant_id', context.tenantId)
-      .order('title'),
-    db
-      .from('offers')
-      .select('*')
-      .eq('tenant_id', context.tenantId)
-      .order('label'),
-    db.from('audiences').select('*').eq('tenant_id', context.tenantId),
+    readPages((from, to) =>
+      db
+        .from('campaigns')
+        .select('*')
+        .eq('tenant_id', context.tenantId)
+        .order('planned_at')
+        .order('id')
+        .range(from, to)
+    ),
+    readPages((from, to) =>
+      db
+        .from('products')
+        .select('*')
+        .eq('tenant_id', context.tenantId)
+        .order('title')
+        .order('id')
+        .range(from, to)
+    ),
+    readPages((from, to) =>
+      db
+        .from('offers')
+        .select('*')
+        .eq('tenant_id', context.tenantId)
+        .order('label')
+        .order('id')
+        .range(from, to)
+    ),
+    readPages((from, to) =>
+      db
+        .from('audiences')
+        .select('*')
+        .eq('tenant_id', context.tenantId)
+        .order('id')
+        .range(from, to)
+    ),
     db
       .from('brand_profiles')
       .select('*')
@@ -63,7 +83,14 @@ export async function campaignDetail(id: string) {
       comments: [],
       approvals: []
     }
-  const campaign = workspace.data.campaigns.find((c) => c.id === id)
+  const db = (await createClient())!
+  const record = await db
+    .from('campaigns')
+    .select('*')
+    .eq('tenant_id', workspace.context.tenantId)
+    .eq('id', id)
+    .maybeSingle()
+  const campaign = record.data
   if (!campaign)
     return {
       ...workspace,
@@ -71,9 +98,11 @@ export async function campaignDetail(id: string) {
       content: null,
       events: [],
       comments: [],
-      approvals: []
+      approvals: [],
+      error: record.error
+        ? 'Campaign data is unavailable. Refresh to retry.'
+        : workspace.error
     }
-  const db = (await createClient())!
   const [content, events, comments, approvals] = await Promise.all([
     db
       .from('campaign_content')
@@ -89,18 +118,26 @@ export async function campaignDetail(id: string) {
       .eq('campaign_id', id)
       .order('created_at', { ascending: false })
       .limit(50),
-    db
-      .from('campaign_comments')
-      .select('*')
-      .eq('tenant_id', workspace.context.tenantId)
-      .eq('campaign_id', id)
-      .order('created_at'),
-    db
-      .from('campaign_approvals')
-      .select('*')
-      .eq('tenant_id', workspace.context.tenantId)
-      .eq('campaign_id', id)
-      .order('created_at')
+    readPages((from, to) =>
+      db
+        .from('campaign_comments')
+        .select('*')
+        .eq('tenant_id', workspace.context.tenantId)
+        .eq('campaign_id', id)
+        .order('created_at')
+        .order('id')
+        .range(from, to)
+    ),
+    readPages((from, to) =>
+      db
+        .from('campaign_approvals')
+        .select('*')
+        .eq('tenant_id', workspace.context.tenantId)
+        .eq('campaign_id', id)
+        .order('created_at')
+        .order('id')
+        .range(from, to)
+    )
   ])
   return {
     ...workspace,

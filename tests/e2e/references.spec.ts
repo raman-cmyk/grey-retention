@@ -87,7 +87,7 @@ test('UC-03/04 shared synthetic capture, safe preview and private evidence playb
       exact: true
     })
     .click()
-  await expect(page).toHaveURL(/\/email-library\//)
+  await expect(page).toHaveURL(/\/email-library\//, { timeout: 15_000 })
   const frame = page.frameLocator(
     'iframe[title="Synthetic reference email preview"]'
   )

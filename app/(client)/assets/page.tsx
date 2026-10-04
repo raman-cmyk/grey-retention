@@ -91,7 +91,12 @@ export default async function AssetsPage({
               <Link
                 key={c}
                 href={`/assets?category=${c}`}
-                className="rounded-lg border border-[var(--line)] px-3 py-2"
+                aria-current={(category ?? 'all') === c ? 'page' : undefined}
+                className={`rounded-lg border px-3 py-2 capitalize ${
+                  (category ?? 'all') === c
+                    ? 'border-[var(--brand-secondary)] bg-[var(--brand-soft)] font-semibold text-[var(--brand-ink)]'
+                    : 'border-[var(--line)] text-[var(--text-muted)] hover:bg-[var(--surface-hover)]'
+                }`}
               >
                 {c}
               </Link>
@@ -107,9 +112,9 @@ export default async function AssetsPage({
               {shown.map((a) => (
                 <article
                   key={a.id}
-                  className="min-w-0 rounded-xl border border-[var(--line)] p-4"
+                  className="min-w-0 overflow-hidden rounded-xl border border-[var(--line)] p-4"
                 >
-                  <div className="flex h-44 items-center justify-center rounded-lg bg-[var(--surface-muted)]">
+                  <div className="flex h-44 items-center justify-center rounded-lg bg-[var(--surface-hover)]">
                     {a.preview ? (
                       <Image
                         src={a.preview}
@@ -131,72 +136,84 @@ export default async function AssetsPage({
                     {a.classification_source ?? 'unclassified'}
                     {a.synthetic ? ' · Synthetic graphic' : ''}
                   </p>
-                  <p className="my-2 text-xs">
+                  <p className="mt-2 text-xs leading-5 text-[var(--text-muted)]">
                     Match:{' '}
                     {data.data!.products.find((p) => p.id === a.product_id)
                       ?.title ?? 'Unresolved'}
                     {a.variant_id ? ' · variant matched' : ''}
                   </p>
                   {owner && (
-                    <ActionForm
-                      key={a.revision}
-                      action={onboardingAction}
-                      className="mt-4 grid gap-3"
-                    >
-                      <input type="hidden" name="kind" value="correct" />
-                      <input type="hidden" name="asset" value={a.id} />
-                      <input type="hidden" name="revision" value={a.revision} />
-                      <Field label={`Category for ${a.filename}`}>
-                        <select
-                          name="category"
-                          className={controlClass}
-                          defaultValue={a.category ?? 'unusable'}
-                        >
-                          {[
-                            'product',
-                            'lifestyle',
-                            'proof',
-                            'logo',
-                            'unusable'
-                          ].map((c) => (
-                            <option key={c} value={c}>
-                              {c}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                      <Field label={`Product for ${a.filename}`}>
-                        <select
-                          name="product"
-                          className={controlClass}
-                          defaultValue={a.product_id ?? ''}
-                        >
-                          <option value="">Unresolved / not a product</option>
-                          {data.data!.products.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.title}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                      <Field label={`Variant for ${a.filename}`}>
-                        <select
-                          name="variant"
-                          className={controlClass}
-                          defaultValue={a.variant_id ?? ''}
-                        >
-                          <option value="">No variant match</option>
-                          {setup.variants.map((v) => (
-                            <option key={v.id} value={v.id}>
-                              {v.title} · {v.sku}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                      <SubmitButton variant="secondary">
-                        Save owner correction
-                      </SubmitButton>
-                    </ActionForm>
+                    <details className="mt-4 border-t border-[var(--line)] pt-3">
+                      <summary
+                        aria-label={`Review classification for ${a.filename}`}
+                        className="text-sm font-medium text-[var(--brand-secondary)]"
+                      >
+                        Review classification
+                      </summary>
+                      <ActionForm
+                        key={a.revision}
+                        action={onboardingAction}
+                        className="mt-4 grid gap-3"
+                      >
+                        <input type="hidden" name="kind" value="correct" />
+                        <input type="hidden" name="asset" value={a.id} />
+                        <input
+                          type="hidden"
+                          name="revision"
+                          value={a.revision}
+                        />
+                        <Field label={`Category for ${a.filename}`}>
+                          <select
+                            name="category"
+                            className={controlClass}
+                            defaultValue={a.category ?? 'unusable'}
+                          >
+                            {[
+                              'product',
+                              'lifestyle',
+                              'proof',
+                              'logo',
+                              'unusable'
+                            ].map((c) => (
+                              <option key={c} value={c}>
+                                {c}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                        <Field label={`Product for ${a.filename}`}>
+                          <select
+                            name="product"
+                            className={controlClass}
+                            defaultValue={a.product_id ?? ''}
+                          >
+                            <option value="">Unresolved / not a product</option>
+                            {data.data!.products.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.title}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                        <Field label={`Variant for ${a.filename}`}>
+                          <select
+                            name="variant"
+                            className={controlClass}
+                            defaultValue={a.variant_id ?? ''}
+                          >
+                            <option value="">No variant match</option>
+                            {setup.variants.map((v) => (
+                              <option key={v.id} value={v.id}>
+                                {v.title} · {v.sku}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                        <SubmitButton variant="secondary">
+                          Save owner correction
+                        </SubmitButton>
+                      </ActionForm>
+                    </details>
                   )}
                 </article>
               ))}

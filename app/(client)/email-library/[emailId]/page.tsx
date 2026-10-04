@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
 import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
-import { referenceWorkspace } from '@/features/references/data'
+import { referenceEmailDetail } from '@/features/references/data'
 import { microSchema } from '@/features/references/intelligence'
 export default async function EmailPreview({
   params
@@ -10,8 +10,8 @@ export default async function EmailPreview({
 }) {
   const { emailId } = await params
   if (!z.uuid().safeParse(emailId).success) notFound()
-  const { data } = await referenceWorkspace(),
-    e = data?.emails.find((e) => e.id === emailId)
+  const { email: e, error } = await referenceEmailDetail(emailId)
+  if (error) return <Notice error>{error}</Notice>
   if (!e) notFound()
   const micro = microSchema.parse(e.micro)
   return (

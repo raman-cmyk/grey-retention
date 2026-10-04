@@ -10,15 +10,12 @@ export function PageHeading({
   action?: ReactNode
 }) {
   return (
-    <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line-strong)] pb-6">
-      <div>
-        <p className="mb-2 text-xs tracking-wide text-[var(--text-muted)] uppercase">
-          Retention workspace
-        </p>
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+    <header className="mb-7 flex flex-wrap items-center justify-between gap-4">
+      <div className="min-w-0 flex-1 basis-72">
+        <h1 className="text-2xl leading-tight font-semibold tracking-[-0.03em] break-words sm:text-3xl">
           {title}
         </h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--text-muted)]">
+        <p className="mt-2 max-w-[72ch] text-sm leading-6 text-[var(--text-muted)]">
           {description}
         </p>
       </div>
@@ -29,20 +26,39 @@ export function PageHeading({
 export function Panel({
   title,
   children,
-  className
+  className,
+  id,
+  action,
+  description
 }: {
   title: string
   children: ReactNode
   className?: string
+  id?: string
+  action?: ReactNode
+  description?: string
 }) {
   return (
     <section
+      id={id}
       className={cn(
-        'rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-5 sm:p-6',
+        'min-w-0 scroll-mt-24 rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-5 sm:p-6',
         className
       )}
     >
-      <h2 className="mb-5 text-lg font-semibold">{title}</h2>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold tracking-[-0.015em]">
+            {title}
+          </h2>
+          {description && (
+            <p className="mt-1 text-sm leading-5 text-[var(--text-muted)]">
+              {description}
+            </p>
+          )}
+        </div>
+        {action}
+      </div>
       {children}
     </section>
   )
@@ -60,8 +76,8 @@ export function Notice({
       className={cn(
         'rounded-lg border p-4 text-sm leading-6',
         error
-          ? 'border-[var(--danger)] text-[var(--danger)]'
-          : 'border-[var(--line)] text-[var(--text-muted)]'
+          ? 'border-[var(--danger)] bg-[var(--danger-soft)] text-[var(--danger-ink)]'
+          : 'border-[var(--line)] bg-[var(--surface-hover)] text-[var(--text-muted)]'
       )}
     >
       {children}

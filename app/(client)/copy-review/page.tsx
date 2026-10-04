@@ -8,6 +8,8 @@ import { campaignWorkspace } from '@/features/campaigns/data'
 import { planningData } from '@/features/planning/data'
 import { PlanningCommand, PlanningJobs } from '@/features/planning/panels'
 import { localWeek } from '@/features/planning/guards'
+import { reviewWeek } from '@/features/planning/review-week'
+import { Button } from '@/components/ui/button'
 export default async function CopyReview({
   searchParams
 }: {
@@ -15,11 +17,15 @@ export default async function CopyReview({
 }) {
   const { context, data, error } = await campaignWorkspace(),
     p = await searchParams
-  const week = /^\d{4}-\d{2}-\d{2}$/.test(p.week ?? '')
-    ? localWeek(`${p.week}T12:00:00Z`, context.timezone)
-    : localWeek(new Date().toISOString(), context.timezone)
+  const week = reviewWeek(p.week, context.timezone)
   const planning = await planningData(context.tenantId),
-    owner = context.tenantRole === 'owner'
+    owner = context.tenantRole === 'owner',
+    entries = (data?.campaigns ?? []).filter(
+      (c) =>
+        !c.superseded_by_plan &&
+        c.calendar_state === 'approved' &&
+        localWeek(c.planned_at, c.timezone) === week
+    )
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeading
@@ -30,15 +36,15 @@ export default async function CopyReview({
         <Notice error>{error ?? 'Review data unavailable.'}</Notice>
       ) : (
         <>
-          <form className="mb-5 flex items-end gap-3">
+          <form className="mb-5 flex flex-wrap items-end gap-3">
             <Field label="Week containing date">
               <TextField type="date" name="week" defaultValue={week} />
             </Field>
-            <button className="rounded bg-[var(--brand-primary)] p-3 text-white">
+            <Button type="submit" variant="secondary">
               Show week
-            </button>
+            </Button>
           </form>
-          {owner && (
+          {owner && entries.length > 0 && (
             <div className="mb-5 flex flex-wrap gap-3">
               {(['queue_week', 'review_week'] as const).map((kind) => (
                 <PlanningCommand key={kind} kind={kind}>
@@ -53,39 +59,45 @@ export default async function CopyReview({
             </div>
           )}
           <Panel title="Approved calendar entries">
-            {data.campaigns
-              .filter(
-                (c) =>
-                  !c.superseded_by_plan &&
-                  c.calendar_state === 'approved' &&
-                  localWeek(c.planned_at, c.timezone) === week
+            {!entries.length && (
+              <div className="rounded-lg border border-dashed border-[var(--line-strong)] p-6 text-sm">
+                <p className="font-medium">
+                  No approved calendar entries this week.
+                </p>
+                <p className="mt-2 text-[var(--text-muted)]">
+                  Choose another week or approve entries in your campaign
+                  calendar before preparing copy.
+                </p>
+                <Link
+                  href="/campaign-agent"
+                  className="mt-4 inline-block font-medium text-[var(--brand-ink)] underline"
+                >
+                  Open campaign calendar
+                </Link>
+              </div>
+            )}
+            {entries.map((c) => {
+              const v = planning.contents.find(
+                (v) => v.campaign_id === c.id && v.revision === c.copy_revision
               )
-              .map((c) => {
-                const v = planning.contents.find(
-                  (v) =>
-                    v.campaign_id === c.id && v.revision === c.copy_revision
-                )
-                return (
-                  <div
-                    key={c.id}
-                    className="border-b border-[var(--line)] py-4"
+              return (
+                <div key={c.id} className="border-b border-[var(--line)] py-4">
+                  <Link
+                    className="font-semibold"
+                    href={`/campaigns/${c.id}` as Route}
                   >
-                    <Link
-                      className="font-semibold"
-                      href={`/campaigns/${c.id}` as Route}
-                    >
-                      {c.title}
-                    </Link>
-                    <p className="text-sm">
-                      Copy v{c.copy_revision} · {c.copy_state} · validation{' '}
-                      {v?.validation_state ?? 'pending'}
-                    </p>
-                    {v?.validation_errors.length ? (
-                      <Notice error>{v.validation_errors.join(', ')}</Notice>
-                    ) : null}
-                  </div>
-                )
-              })}
+                    {c.title}
+                  </Link>
+                  <p className="text-sm">
+                    Copy v{c.copy_revision} · {c.copy_state} · validation{' '}
+                    {v?.validation_state ?? 'pending'}
+                  </p>
+                  {v?.validation_errors.length ? (
+                    <Notice error>{v.validation_errors.join(', ')}</Notice>
+                  ) : null}
+                </div>
+              )
+            })}
           </Panel>
           {planning.batches
             .filter(
@@ -106,8 +118,13 @@ export default async function CopyReview({
                   className="mt-6"
                 >
                   <p className="mb-4 text-sm">
-                    Review expires {new Date(b.expires_at).toLocaleString('en')}
-                    . Confirmed versions: {refs.length}.
+                    Review expires{' '}
+                    {new Intl.DateTimeFormat('en', {
+                      timeZone: context.timezone,
+                      dateStyle: 'medium',
+                      timeStyle: 'short'
+                    }).format(new Date(b.expires_at))}{' '}
+                    ({context.timezone}) . Confirmed versions: {refs.length}.
                   </p>
                   {refs.map((r) => {
                     const v = planning.contents.find(

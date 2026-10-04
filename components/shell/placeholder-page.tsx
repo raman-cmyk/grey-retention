@@ -1,5 +1,7 @@
 import { ArrowUpRight } from 'lucide-react'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { StatusMark } from '@/components/ui/status-mark'
 
 export function PlaceholderPage({
   title,
@@ -9,19 +11,23 @@ export function PlaceholderPage({
   description: string
 }) {
   return (
-    <section className="mx-auto flex min-h-[65vh] max-w-5xl items-center">
+    <section className="mx-auto max-w-6xl py-3">
       <div className="max-w-2xl">
-        <h1 className="font-[family-name:var(--font-display)] text-4xl leading-[0.98] font-bold tracking-[-0.035em] sm:text-6xl">
-          {title}
-        </h1>
-        <p className="mt-5 max-w-[65ch] text-base leading-7 text-[var(--text-muted)]">
+        <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+        <p className="mt-3 max-w-[65ch] text-sm leading-6 text-[var(--text-muted)]">
           {description}
         </p>
-        <div className="mt-8 flex gap-3">
-          <Button>
-            Continue setup <ArrowUpRight className="size-4" aria-hidden />
+        <div className="mt-8 rounded-2xl border border-[var(--line)] bg-[var(--surface-raised)] p-6">
+          <StatusMark tone="warning">Planned area</StatusMark>
+          <p className="mt-4 text-sm leading-6 text-[var(--text-muted)]">
+            This area is still being built. Packages, provider health and job
+            diagnostics are available in Operations.
+          </p>
+          <Button asChild variant="secondary" className="mt-5">
+            <Link href="/admin/operations">
+              Open operations <ArrowUpRight className="size-4" aria-hidden />
+            </Link>
           </Button>
-          <Button variant="secondary">View build plan</Button>
         </div>
       </div>
     </section>
