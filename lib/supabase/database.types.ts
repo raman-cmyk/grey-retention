@@ -2194,6 +2194,317 @@ export type Database = {
           }
         ]
       }
+      email_generations: {
+        Row: {
+          brand_revision: number
+          cost_micro: number
+          created_at: string
+          created_by: string
+          diagnostic: string | null
+          dispatches: number
+          failure_code: string | null
+          id: string
+          input_tokens: number
+          job_id: string
+          model: string | null
+          options: Json
+          output_revision: number | null
+          output_tokens: number
+          prompt_version: string
+          provider: string | null
+          request_key: string
+          response_id: string | null
+          result_id: string
+          source_sha256: string
+          state: string
+          target_revision: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          brand_revision: number
+          cost_micro?: number
+          created_at?: string
+          created_by: string
+          diagnostic?: string | null
+          dispatches?: number
+          failure_code?: string | null
+          id?: string
+          input_tokens?: number
+          job_id: string
+          model?: string | null
+          options?: Json
+          output_revision?: number | null
+          output_tokens?: number
+          prompt_version: string
+          provider?: string | null
+          request_key: string
+          response_id?: string | null
+          result_id: string
+          source_sha256: string
+          state?: string
+          target_revision: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          brand_revision?: number
+          cost_micro?: number
+          created_at?: string
+          created_by?: string
+          diagnostic?: string | null
+          dispatches?: number
+          failure_code?: string | null
+          id?: string
+          input_tokens?: number
+          job_id?: string
+          model?: string | null
+          options?: Json
+          output_revision?: number | null
+          output_tokens?: number
+          prompt_version?: string
+          provider?: string | null
+          request_key?: string
+          response_id?: string | null
+          result_id?: string
+          source_sha256?: string
+          state?: string
+          target_revision?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'email_generations_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_generations_tenant_id_job_id_fkey'
+            columns: ['tenant_id', 'job_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'email_generations_tenant_id_result_id_fkey'
+            columns: ['tenant_id', 'result_id']
+            isOneToOne: false
+            referencedRelation: 'email_results'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      email_result_revisions: {
+        Row: {
+          body_text: string
+          campaign_copy_revision: number
+          checks: Json
+          created_at: string
+          created_by: string
+          cta_label: string
+          cta_url: string
+          generation_id: string | null
+          html: string | null
+          id: string
+          origin: string
+          preheader: string
+          restored_from: number | null
+          result_id: string
+          revision: number
+          subject: string
+          subject_options: string[]
+          tenant_id: string
+        }
+        Insert: {
+          body_text?: string
+          campaign_copy_revision: number
+          checks?: Json
+          created_at?: string
+          created_by: string
+          cta_label?: string
+          cta_url?: string
+          generation_id?: string | null
+          html?: string | null
+          id?: string
+          origin: string
+          preheader?: string
+          restored_from?: number | null
+          result_id: string
+          revision: number
+          subject: string
+          subject_options?: string[]
+          tenant_id: string
+        }
+        Update: {
+          body_text?: string
+          campaign_copy_revision?: number
+          checks?: Json
+          created_at?: string
+          created_by?: string
+          cta_label?: string
+          cta_url?: string
+          generation_id?: string | null
+          html?: string | null
+          id?: string
+          origin?: string
+          preheader?: string
+          restored_from?: number | null
+          result_id?: string
+          revision?: number
+          subject?: string
+          subject_options?: string[]
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'email_result_revisions_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_result_revisions_tenant_id_result_id_fkey'
+            columns: ['tenant_id', 'result_id']
+            isOneToOne: false
+            referencedRelation: 'email_results'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'email_revision_generation'
+            columns: ['tenant_id', 'generation_id']
+            isOneToOne: false
+            referencedRelation: 'email_generations'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      email_results: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          created_by: string
+          current_revision: number
+          id: string
+          mode: string
+          source_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          created_by: string
+          current_revision?: number
+          id?: string
+          mode: string
+          source_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          created_by?: string
+          current_revision?: number
+          id?: string
+          mode?: string
+          source_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'email_results_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_results_tenant_id_campaign_id_fkey'
+            columns: ['tenant_id', 'campaign_id']
+            isOneToOne: false
+            referencedRelation: 'campaigns'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'email_results_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_results_tenant_id_source_id_fkey'
+            columns: ['tenant_id', 'source_id']
+            isOneToOne: false
+            referencedRelation: 'email_sources'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
+      email_sources: {
+        Row: {
+          created_at: string
+          created_by: string
+          format: string
+          id: string
+          original: string
+          original_sha256: string
+          reference_import_id: string
+          subject: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          format: string
+          id?: string
+          original: string
+          original_sha256: string
+          reference_import_id: string
+          subject: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          format?: string
+          id?: string
+          original?: string
+          original_sha256?: string
+          reference_import_id?: string
+          subject?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'email_sources_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_sources_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_sources_tenant_id_reference_import_id_fkey'
+            columns: ['tenant_id', 'reference_import_id']
+            isOneToOne: true
+            referencedRelation: 'reference_imports'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       fixture_deliveries: {
         Row: {
           created_at: string
@@ -4372,6 +4683,17 @@ export type Database = {
         Args: { key: string; source: string; t: string }
         Returns: string
       }
+      begin_email_dispatch: {
+        Args: {
+          estimate: number
+          job: string
+          lease: string
+          model: string
+          prompt_version: string
+          provider: string
+        }
+        Returns: string
+      }
       change_fixture_profile_evidence: {
         Args: {
           bounce: boolean
@@ -4383,6 +4705,20 @@ export type Database = {
           t: string
         }
         Returns: undefined
+      }
+      claim_email_generation: {
+        Args: { generation: string; t: string }
+        Returns: {
+          actor: string
+          attempt: number
+          brand_revision: number
+          generation_id: string
+          job_id: string
+          lease_token: string
+          options: Json
+          result_id: string
+          source_id: string
+        }[]
       }
       claim_job: {
         Args: { t: string }
@@ -4441,6 +4777,16 @@ export type Database = {
           campaign: string
           expected_revision: number
           settings: Json
+          t: string
+        }
+        Returns: string
+      }
+      create_email_result: {
+        Args: {
+          import_id: string
+          mode: string
+          options?: Json
+          request_key: string
           t: string
         }
         Returns: string
@@ -4589,6 +4935,10 @@ export type Database = {
         }
         Returns: string
       }
+      fail_email_generation: {
+        Args: { failure: Json; job: string; lease: string }
+        Returns: string
+      }
       fail_job: {
         Args: { failure: string; job: string; lease: string }
         Returns: undefined
@@ -4604,6 +4954,10 @@ export type Database = {
       finish_delivery_job: {
         Args: { job: string; lease: string }
         Returns: undefined
+      }
+      finish_email_generation: {
+        Args: { job: string; lease: string; output: Json; usage: Json }
+        Returns: number
       }
       finish_health_check: {
         Args: { job: string; lease: string }
@@ -4796,6 +5150,16 @@ export type Database = {
         }
         Returns: undefined
       }
+      request_email_rewrite: {
+        Args: {
+          expected_revision: number
+          options?: Json
+          request_key: string
+          result: string
+          t: string
+        }
+        Returns: string
+      }
       request_reschedule: {
         Args: {
           campaign: string
@@ -4843,6 +5207,15 @@ export type Database = {
       resolve_fixture_outcome: {
         Args: { job: string; t: string }
         Returns: undefined
+      }
+      restore_email_revision: {
+        Args: {
+          expected_revision: number
+          from_revision: number
+          result: string
+          t: string
+        }
+        Returns: number
       }
       retry_fixture_job: {
         Args: { job: string; t: string }
@@ -4926,6 +5299,15 @@ export type Database = {
           t: string
         }
         Returns: undefined
+      }
+      save_email_revision: {
+        Args: {
+          expected_revision: number
+          input: Json
+          result: string
+          t: string
+        }
+        Returns: number
       }
       save_l2_simulation_policy: {
         Args: {

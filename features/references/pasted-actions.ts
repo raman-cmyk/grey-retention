@@ -87,5 +87,6 @@ export async function importPastedReference(
     }
   for (const path of ['/get-started', '/first-draft', '/import-reference'])
     revalidatePath(path)
-  redirect(`/first-draft?imported=${result.data}` as Route)
+  // Next step of the simple flow: choose to rewrite it or copy it.
+  redirect(`/create-email/${result.data}` as Route)
 }

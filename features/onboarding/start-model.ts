@@ -8,8 +8,8 @@ export function startProgress(input: {
 }) {
   const steps = [
     { id: 'brand', label: 'Your brand', complete: input.hasBrand },
-    { id: 'reference', label: 'Find an email', complete: input.hasEmails },
-    { id: 'draft', label: 'Your first draft', complete: input.hasCampaign }
+    { id: 'reference', label: 'Add an email', complete: input.hasEmails },
+    { id: 'draft', label: 'Your email', complete: input.hasCampaign }
   ] as const
   return {
     steps,

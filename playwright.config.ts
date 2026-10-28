@@ -18,10 +18,25 @@ export default defineConfig({
     { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } }
   ],
-  webServer: {
-    command: 'pnpm exec next dev --hostname 127.0.0.1 --port 3100',
-    url: `${baseURL}/login`,
-    reuseExistingServer: false,
-    timeout: 120_000
-  }
+  webServer: [
+    // Loopback OpenAI test double; the app accepts plain HTTP only for loopback outside production.
+    {
+      command: 'node scripts/fake-openai.mjs',
+      url: 'http://127.0.0.1:3199/health',
+      reuseExistingServer: false,
+      timeout: 30_000
+    },
+    {
+      command: 'pnpm exec next dev --hostname 127.0.0.1 --port 3100',
+      url: `${baseURL}/login`,
+      reuseExistingServer: false,
+      timeout: 120_000,
+      env: {
+        ...(process.env as Record<string, string>),
+        OPENAI_API_KEY: 'local-fake-openai-key',
+        OPENAI_BASE_URL: 'http://127.0.0.1:3199/v1',
+        OPENAI_TIMEOUT_MS: '15000'
+      }
+    }
+  ]
 })

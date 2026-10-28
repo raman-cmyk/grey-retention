@@ -73,15 +73,20 @@ test('owner pastes a hostile email, recovers from failure, replays safely and re
   )
   await page.getByLabel('Web address').fill('https://shop.example/spring')
   await page.getByRole('button', { name: 'Save and use this email' }).click()
+  // Saving opens the rewrite-or-copy choice for the saved email.
   await expect(page).toHaveURL(
-    /\/first-draft\?attempt=[a-f0-9-]+&imported=[a-f0-9-]+$/
+    /\/create-email\/[a-f0-9-]+\?attempt=[a-f0-9-]+$/
   )
-  const importedId = new URL(page.url()).searchParams.get('imported')!
+  const importedId = new URL(page.url()).pathname.split('/').at(-1)!
   // Replaying the same request returns the same saved reference.
   await page.goto(attemptUrl)
   await fillPaste(page, subject, 'https://shop.example/spring')
   await page.getByRole('button', { name: 'Save and use this email' }).click()
-  await expect(page).toHaveURL(new RegExp(`imported=${importedId}$`))
+  await expect(page).toHaveURL(new RegExp(`/create-email/${importedId}\\?`))
+  await page
+    .getByRole('link', { name: 'Use only its outline in a new plan' })
+    .click()
+  await expect(page).toHaveURL(new RegExp(`imported=${importedId}`))
   const saved = await db
     .from('reference_imports')
     .select('id,origin,original_body,readable_text,source_url,structure')
@@ -273,7 +278,8 @@ test('a long paste keeps the full original and labels the limited preview after 
     page.getByText(/Preview limited to the first 20,000/)
   ).toContainText('will be saved unchanged')
   await page.getByRole('button', { name: 'Save and use this email' }).click()
-  await expect(page).toHaveURL(/imported=[a-f0-9-]+$/)
+  await expect(page).toHaveURL(/\/create-email\/[a-f0-9-]+\?attempt=/)
+  const longId = new URL(page.url()).pathname.split('/').at(-1)!
   const saved = await db
     .from('reference_imports')
     .select('original_body,readable_text')
@@ -287,7 +293,7 @@ test('a long paste keeps the full original and labels the limited preview after 
   expect(
     saved.data!.readable_text.endsWith(`a${String.fromCodePoint(0x2026)}`)
   ).toBe(true)
-  await page.reload()
+  await page.goto(`/first-draft?imported=${longId}`)
   await page.getByText('See the email you added', { exact: true }).click()
   await expect(
     page.getByText(/Preview limited to the first 20,000/)

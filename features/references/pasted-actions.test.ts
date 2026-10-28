@@ -40,7 +40,7 @@ beforeEach(() => {
   })
 })
 describe('Pasted reference import command', () => {
-  it('saves server-derived readable text for the authorized tenant and opens the composer', async () => {
+  it('saves server-derived readable text for the authorized tenant and opens the rewrite-or-copy choice', async () => {
     const data = form()
     data.set('tenantId', crypto.randomUUID())
     await expect(importPastedReference({}, data)).rejects.toThrow(
@@ -57,9 +57,7 @@ describe('Pasted reference import command', () => {
         source_url: 'https://shop.example/spring'
       }
     })
-    expect(redirect).toHaveBeenCalledWith(
-      `/first-draft?imported=${referenceId}`
-    )
+    expect(redirect).toHaveBeenCalledWith(`/create-email/${referenceId}`)
     expect(revalidatePath).toHaveBeenCalledWith('/get-started')
   })
   it('keeps CRLF in the original, normalizes only the preview and replays identically', async () => {

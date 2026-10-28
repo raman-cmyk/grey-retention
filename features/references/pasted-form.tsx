@@ -119,8 +119,8 @@ export function PastedReferenceForm({ requestKey }: { requestKey: string }) {
         </div>
       </details>
       <p className="text-xs leading-5 text-[var(--text-muted)]">
-        Saved privately in this workspace as an email you added — not as a
-        tracked competitor. Nothing is analyzed or rewritten yet.
+        Saved privately in this workspace exactly as pasted — not as a tracked
+        competitor. Next, choose to rewrite it for your brand or copy it.
       </p>
       <SubmitButton>Save and use this email</SubmitButton>
     </ActionForm>
