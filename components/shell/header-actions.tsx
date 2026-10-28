@@ -176,6 +176,7 @@ export function HeaderActions({
           <NavigationList
             navigation={matches}
             label="Search results"
+            expandGroups
             variant="popover"
             onNavigate={() => search.current?.close()}
           />
