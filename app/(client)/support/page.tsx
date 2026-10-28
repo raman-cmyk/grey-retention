@@ -1,10 +1,13 @@
-import { PlaceholderPage } from '@/components/shell/placeholder-page'
-
-export default function SupportPage() {
+import { PageHeading } from '@/components/ui/workspace'
+import { SupportPanel } from '@/features/operations/panels'
+export default function Page() {
   return (
-    <PlaceholderPage
-      title="Support"
-      description="Tenant tickets, messages, attachments, and status tracking arrive in SUP-001."
-    />
+    <div className="mx-auto max-w-5xl">
+      <PageHeading
+        title="Support"
+        description="Persisted support and feedback threads scoped to your workspace."
+      />
+      <SupportPanel />
+    </div>
   )
 }

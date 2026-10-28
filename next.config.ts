@@ -6,7 +6,7 @@ const contentSecurityPolicy = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ''}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' blob: data: https:",
+  `img-src 'self' blob: data: https:${isDevelopment ? ' http://127.0.0.1:54321' : ''}`,
   "font-src 'self' data:",
   "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
   "object-src 'none'",
@@ -39,6 +39,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   typedRoutes: true,
+  experimental: { serverActions: { bodySizeLimit: '12mb' } },
   async headers() {
     return [{ source: '/(.*)', headers: securityHeaders }]
   }

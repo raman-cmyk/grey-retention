@@ -4,7 +4,7 @@ export default function AdminPromptsPage() {
   return (
     <PlaceholderPage
       title="Prompt engine"
-      description="Versioned prompt contracts, injection preview, tests, and model controls arrive in AI-001."
+      description="Prompt version management, knowledge previews and model controls are planned."
     />
   )
 }

@@ -4,6 +4,8 @@ export type NavigationIcon =
   | 'admin-overview'
   | 'assignments'
   | 'brand'
+  | 'assets'
+  | 'copy'
   | 'campaigns'
   | 'clients'
   | 'connections'
@@ -23,25 +25,82 @@ export type NavigationItem = {
   label: string
   href: Route
   icon: NavigationIcon
+  group?: string
 }
 
 export function createClientNavigation(
   assistantName: string
 ): NavigationItem[] {
   return [
-    { label: 'Overview', href: '/dashboard', icon: 'overview' },
-    { label: 'Brand & store', href: '/brand', icon: 'brand' },
-    { label: 'Campaign agent', href: '/campaign-agent', icon: 'campaigns' },
-    { label: `Ask ${assistantName}`, href: '/gros', icon: 'gros' },
+    {
+      label: 'Overview',
+      href: '/dashboard',
+      icon: 'overview',
+      group: 'Workspace'
+    },
+    {
+      label: 'Campaign agent',
+      href: '/campaign-agent',
+      icon: 'campaigns',
+      group: 'Workspace'
+    },
+    {
+      label: 'Copy review',
+      href: '/copy-review',
+      icon: 'copy',
+      group: 'Workspace'
+    },
+    {
+      label: `Ask ${assistantName}`,
+      href: '/gros',
+      icon: 'gros',
+      group: 'Workspace'
+    },
+    {
+      label: 'Brand & store',
+      href: '/brand',
+      icon: 'brand',
+      group: 'Brand & intelligence'
+    },
+    {
+      label: 'Assets',
+      href: '/assets',
+      icon: 'assets',
+      group: 'Brand & intelligence'
+    },
     {
       label: 'Competitor agent',
       href: '/competitor-agent',
-      icon: 'inspirations'
+      icon: 'inspirations',
+      group: 'Brand & intelligence'
     },
-    { label: 'Connections', href: '/connections', icon: 'connections' },
-    { label: 'Team', href: '/team', icon: 'team' },
-    { label: 'Support', href: '/support', icon: 'support' },
-    { label: 'Settings', href: '/settings', icon: 'settings' }
+    {
+      label: 'Results & learning',
+      href: '/reports',
+      icon: 'admin-overview',
+      group: 'Brand & intelligence'
+    },
+    {
+      label: 'Templates & references',
+      href: '/email-library',
+      icon: 'templates',
+      group: 'Brand & intelligence'
+    },
+    {
+      label: 'Connections',
+      href: '/connections',
+      icon: 'connections',
+      group: 'Manage'
+    },
+    {
+      label: 'Bill optimizer',
+      href: '/optimizer',
+      icon: 'operations',
+      group: 'Manage'
+    },
+    { label: 'Team', href: '/team', icon: 'team', group: 'Manage' },
+    { label: 'Support', href: '/support', icon: 'support', group: 'Manage' },
+    { label: 'Settings', href: '/settings', icon: 'settings', group: 'Manage' }
   ]
 }
 

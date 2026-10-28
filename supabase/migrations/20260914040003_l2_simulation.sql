@@ -1,0 +1,10 @@
+create table public.autopilot_streaks (
+ tenant_id uuid primary key references public.tenants(id),consecutive_sends integer not null default 0 check(consecutive_sends>=0),generation integer not null default 1,last_rejection_at timestamptz,updated_at timestamptz not null default now()
+);
+create table public.l2_simulation_policies (
+ tenant_id uuid primary key references public.tenants(id),revision integer not null default 1,enabled boolean not null default false,required_sends integer not null default 10 check(required_sends between 1 and 100),silence_hours integer not null default 72 check(silence_hours=72),production_enabled boolean not null default false check(not production_enabled),design_delegation boolean not null default false check(not design_delegation),approved_by uuid not null references public.profiles(id),updated_at timestamptz not null default now()
+);
+create table public.l2_silence_candidates (
+ id uuid primary key default gen_random_uuid(),tenant_id uuid not null,campaign_id uuid not null,content_id uuid not null references public.campaign_content(id),target_revisions jsonb not null,policy_revision integer not null,streak_generation integer not null,brand_revision integer not null,created_by uuid not null references public.profiles(id),created_at timestamptz not null default now(),eligible_at timestamptz not null,status text not null default 'pending' check(status in ('pending','approved')),simulated_at timestamptz,unique(campaign_id,content_id,policy_revision,streak_generation),foreign key(tenant_id,campaign_id) references public.campaigns(tenant_id,id)
+);
+do $$declare tab text;begin foreach tab in array array['autopilot_streaks','l2_simulation_policies','l2_silence_candidates'] loop execute format('alter table public.%I enable row level security',tab);execute format('create policy tenant_read on public.%I for select to authenticated using(private.is_active_member(tenant_id,array[''owner'',''admin'']::public.tenant_role[]))',tab);execute format('grant select on public.%I to authenticated',tab);end loop;end $$;

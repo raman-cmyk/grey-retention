@@ -1,10 +1,13 @@
-import { PlaceholderPage } from '@/components/shell/placeholder-page'
-
-export default function AdminOperationsPage() {
+import { PageHeading } from '@/components/ui/workspace'
+import { OperatorPanel } from '@/features/operations/panels'
+export default function Page() {
   return (
-    <PlaceholderPage
-      title="Operations"
-      description="Admin accounts, provider health, packages, reports, and jobs arrive in OPS-001."
-    />
+    <div className="mx-auto max-w-6xl">
+      <PageHeading
+        title="Operations"
+        description="Sanitized jobs, provider health, immutable fixture packages and tenant support."
+      />
+      <OperatorPanel />
+    </div>
   )
 }

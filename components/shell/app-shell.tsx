@@ -1,4 +1,4 @@
-import { Bell, ChevronDown, Search } from 'lucide-react'
+import { Layers } from 'lucide-react'
 import { BrandMark } from '@/components/brand/brand-mark'
 import {
   brandCssVariables,
@@ -10,18 +10,21 @@ import type { NavigationItem } from './nav-data'
 import { signOut } from '@/features/auth/presentation/actions'
 import { MobileNavigation } from './mobile-navigation'
 import { NavigationList } from './navigation-list'
+import { HeaderActions } from './header-actions'
 
 export function AppShell({
   children,
   navigation,
   workspace,
   contextLabel = 'Client workspace',
+  identity = { name: 'Your account', initials: 'YA', role: 'Workspace member' },
   brand = defaultBrandPresentation
 }: {
   children: React.ReactNode
   navigation: NavigationItem[]
   workspace?: string
   contextLabel?: string
+  identity?: { name: string; initials: string; role: string }
   brand?: BrandPresentation
 }) {
   const presentation = resolveAccessibleBrandPresentation(brand)
@@ -48,14 +51,18 @@ export function AppShell({
           label={`${contextLabel} navigation`}
           variant="sidebar"
         />
-        <div className="border-t border-[var(--line)] p-4">
-          <p className="font-[family-name:var(--font-data)] text-[0.65rem] tracking-[0.08em] text-[var(--nav-muted)] uppercase">
+        <div className="border-t border-[var(--line)] px-5 py-4">
+          <div className="flex items-center gap-2 text-xs font-medium text-[var(--nav-text)]">
+            <span
+              className="size-1.5 rounded-full bg-[var(--text-faint)]"
+              aria-hidden
+            />
             {presentation.demoLabel}
-          </p>
-          <p className="mt-1 text-sm font-semibold text-[var(--nav-text)]">
+          </div>
+          <p className="mt-1.5 text-xs text-[var(--nav-muted)]">
             {presentation.demoDescription}
           </p>
-          <form action={signOut} className="mt-4">
+          <form action={signOut} className="mt-3">
             <button
               type="submit"
               className="text-xs font-semibold text-[var(--nav-muted)] underline underline-offset-4 hover:text-[var(--nav-text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
@@ -67,51 +74,27 @@ export function AppShell({
       </aside>
 
       <div className="lg:pl-[15.5rem]">
-        <header className="sticky top-0 z-10 flex min-h-[4.75rem] items-center gap-3 border-b border-[var(--line)] bg-[color-mix(in_srgb,var(--surface)_94%,transparent)] px-4 backdrop-blur-md sm:px-6 lg:gap-4 lg:px-8">
+        <header className="sticky top-0 z-10 flex min-h-[4.75rem] items-center gap-3 border-b border-[var(--line)] bg-[var(--nav)] px-4 sm:px-6 lg:gap-4 lg:px-8">
           <MobileNavigation
             navigation={navigation}
             contextLabel={contextLabel}
             brand={presentation}
           />
-          <button
-            className="flex min-w-0 items-center gap-2 text-left"
-            type="button"
-          >
-            <span className="truncate text-sm font-semibold">
-              {workspaceName}
-            </span>
-            <ChevronDown
-              className="size-4 text-[var(--text-muted)]"
-              aria-hidden
-            />
-          </button>
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              type="button"
-              className="grid size-10 place-items-center rounded-[var(--radius-control)] text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
-              aria-label="Search"
-            >
-              <Search className="size-[1.1rem]" aria-hidden />
-            </button>
-            <button
-              type="button"
-              className="relative grid size-10 place-items-center rounded-[var(--radius-control)] text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
-              aria-label="Notifications, 1 unread"
-            >
-              <Bell className="size-[1.1rem]" aria-hidden />
-              <span
-                className="absolute top-2.5 right-2.5 size-1.5 rounded-full bg-[var(--brand-secondary)]"
-                aria-hidden
-              />
-            </button>
-            <button
-              type="button"
-              aria-label={`Open account menu for ${presentation.userName}`}
-              className="grid size-9 place-items-center rounded-full bg-[var(--brand-soft)] text-xs font-bold text-[var(--brand-ink)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
-            >
-              {presentation.userInitials}
-            </button>
+          <Layers
+            className="hidden size-4 text-[var(--text-faint)] lg:block"
+            aria-hidden
+          />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{workspaceName}</p>
+            <p className="mt-0.5 hidden text-[0.6875rem] text-[var(--text-faint)] sm:block">
+              {contextLabel}
+            </p>
           </div>
+          <HeaderActions
+            navigation={navigation}
+            identity={identity}
+            contextLabel={contextLabel}
+          />
         </header>
         <main id="main-content" className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           {children}

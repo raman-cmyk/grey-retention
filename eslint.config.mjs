@@ -11,6 +11,7 @@ export default defineConfig([
     'coverage/**',
     'playwright-report/**',
     'test-results/**',
-    'supabase/.temp/**'
+    'supabase/.temp/**',
+    'graphify-out/**'
   ])
 ])

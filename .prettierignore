@@ -7,3 +7,6 @@ test-results
 pnpm-lock.yaml
 .audit
 .impeccable/questions
+
+# Generated local code-graph cache
+graphify-out

@@ -1,10 +1,13 @@
-import { PlaceholderPage } from '@/components/shell/placeholder-page'
-
-export default function TeamPage() {
+import { PageHeading } from '@/components/ui/workspace'
+import { TeamPanel } from '@/features/operations/panels'
+export default function Page() {
   return (
-    <PlaceholderPage
-      title="Team"
-      description="Tenant memberships and invitations arrive across IAM-001 and SUP-001."
-    />
+    <div className="mx-auto max-w-5xl">
+      <PageHeading
+        title="Team"
+        description="Workspace membership and invitation history. External email delivery is simulated."
+      />
+      <TeamPanel />
+    </div>
   )
 }

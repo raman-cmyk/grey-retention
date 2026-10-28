@@ -4,6 +4,8 @@ Status: Proposed v1 for stakeholder review
 
 Last updated: 2026-09-14
 
+Product amendment, October 4, 2026: the new v2 plan is `docs/OVERNIGHT_BUILD_PLAN.md`, with owner-led design approval and version-bound revisions in `docs/UML_DIAGRAMS.md`. Admin handles assignment and escalation. Delivery/scheduling/cancellation implementation is included through fake/fixture adapters; real external execution remains separately authorization-gated. Existing infrastructure choices and quality/security boundaries remain in force.
+
 This document explains the system shape, quality targets, component boundaries, failure handling, and growth path. `docs/ARCHITECTURE_BLUEPRINT.md` remains the implementation contract. Decisions are recorded in `docs/adr/`.
 
 ## 1. Requirements summary
@@ -14,7 +16,7 @@ The MVP must support these persisted, tenant-aware journeys:
 
 1. A tenant member signs in, maintains brand/store context, and sees synchronized or seeded retention data.
 2. An operator plans a campaign, generates AI-assisted content, selects an audience/products/references, reviews the result, and advances it through a controlled state machine.
-3. A designer receives only assigned work, submits revisions, and participates in approval.
+3. A designer receives only assigned work and submits revisions; the brand owner reviews and approves the exact design version, while platform admin handles assignment/escalation.
 4. A platform administrator manages tenants, prompts, packages, jobs, provider health, support, and diagnostics.
 5. Klaviyo data synchronizes through retryable, observable jobs. Shopify remains optional for the first vertical slice.
 6. Demo mode completes the core journey without third-party secrets or billable calls.
@@ -44,7 +46,7 @@ These are initial MVP targets, not promises to customers. Revisit after real usa
 - Web is the only first-class client for the MVP.
 - Product requirements will evolve; domain seams and provider ports must absorb change.
 - Launch geography, regulated-data obligations, exact tenant count, and paid service budget are not yet confirmed.
-- Live sends are out of scope. Preparing a provider-side draft requires explicit confirmation and remains a launch-gate decision.
+- Live external execution is out of scope for the unattended build. Implement simulated prepare/schedule/reschedule/cancel/reconcile contracts and policy checks. Real account mutation and sends require separate explicit user authorization.
 
 ## 2. Architecture style
 
@@ -273,7 +275,7 @@ The first likely extraction candidate is asynchronous provider synchronization, 
 
 - RBAC plus tenant/resource policy checks; RLS is mandatory defense in depth.
 - Sensitive credentials use server-held encryption keys or platform-managed secrets.
-- Side-effecting AI/provider actions require explicit confirmation and audit.
+- New side-effecting GROS proposals require explicit confirmation and audit. Background L1 scheduling uses a persisted standing policy after required owner approvals; it is not unrestricted agent authority. Live execution remains separately gated.
 - Webhook signatures and replay windows are verified before enqueue.
 - Rate limit auth, generation, upload, invitation, connection-test, and support-write endpoints.
 - Store the minimum provider payload needed; bound and redact raw snapshots.

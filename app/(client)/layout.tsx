@@ -2,6 +2,7 @@ import { AppShell } from '@/components/shell/app-shell'
 import { createClientNavigation } from '@/components/shell/nav-data'
 import { defaultBrandPresentation } from '@/lib/branding/presentation'
 import { requireRequestContext } from '@/features/auth/application/request-context'
+import { shellIdentity } from '@/features/auth/presentation/shell-identity'
 
 export default async function ClientLayout({
   children
@@ -16,6 +17,7 @@ export default async function ClientLayout({
       )}
       brand={defaultBrandPresentation}
       workspace={context.tenantName}
+      identity={await shellIdentity(context)}
     >
       {children}
     </AppShell>

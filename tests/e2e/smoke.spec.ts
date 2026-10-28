@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { login } from './accounts'
 
 test('client login presents a labelled access form', async ({ page }) => {
   await page.goto('/login')
@@ -9,19 +10,19 @@ test('client login presents a labelled access form', async ({ page }) => {
   await expect(page.getByLabel('Password')).toBeVisible()
 })
 
-test('proof table adapts to desktop and mobile viewports', async ({
+test('workspace overview adapts to desktop and mobile viewports', async ({
   page
 }, testInfo) => {
-  await page.goto('/dashboard')
+  await login(page)
   await expect(
-    page.getByRole('heading', { name: 'Campaign proof table' })
+    page.getByRole('heading', { name: 'Workspace overview' })
   ).toBeVisible()
   await expect(
-    page.getByRole('heading', { name: 'Active proofs' })
+    page.getByRole('heading', { name: 'Campaign workspace' })
   ).toBeVisible()
 
   if (testInfo.project.name === 'mobile-chromium') {
-    await expect(page.getByText('Copy review').first()).toBeVisible()
+    await expect(page.getByText('Autumn field notes').first()).toBeVisible()
     await page.getByRole('button', { name: 'Open navigation' }).click()
     await expect(
       page.getByRole('navigation', {
@@ -36,12 +37,11 @@ test('proof table adapts to desktop and mobile viewports', async ({
   }
 })
 
-test('demo identities remain separated by role surface', async ({
-  page,
-  request
+test('authenticated identities remain separated by role surface', async ({
+  page
 }) => {
   const cases = [
-    { surface: 'client', path: '/dashboard', heading: 'Campaign proof table' },
+    { surface: 'client', path: '/dashboard', heading: 'Workspace overview' },
     {
       surface: 'admin',
       path: '/admin/dashboard',
@@ -55,15 +55,18 @@ test('demo identities remain separated by role surface', async ({
   ] as const
 
   for (const account of cases) {
-    await page.goto(account.path)
+    await page.context().clearCookies()
+    await login(page, account.surface === 'client' ? 'owner' : account.surface)
     await expect(
       page.getByRole('heading', { name: account.heading })
     ).toBeVisible()
-    const response = await request.get(`/api/v1/me?surface=${account.surface}`)
+    const response = await page.request.get(
+      `/api/v1/me?surface=${account.surface}`
+    )
     expect(response.ok()).toBe(true)
     expect((await response.json()).data.kind).toBe(account.surface)
   }
 
-  const invalid = await request.get('/api/v1/me?surface=unknown')
+  const invalid = await page.request.get('/api/v1/me?surface=unknown')
   expect(invalid.status()).toBe(400)
 })

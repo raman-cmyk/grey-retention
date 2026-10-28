@@ -4,7 +4,7 @@ export default function AdminClientsPage() {
   return (
     <PlaceholderPage
       title="Client operations"
-      description="Tenant roster, classification, integration state, and usage arrive in OPS-001."
+      description="A tenant roster with brand classification, integration status and usage controls is planned."
     />
   )
 }

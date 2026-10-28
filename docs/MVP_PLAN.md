@@ -2,6 +2,10 @@
 
 Status: M1 identity complete; shared UI completion in progress
 
+Updated October 4, 2026: the new-product v2 implementation sequence and paste-ready autonomous-agent assignment are in `docs/OVERNIGHT_BUILD_PLAN.md`. Updated product diagrams are in `docs/UML_DIAGRAMS.md`, with requirements in `docs/USE_CASES.md`. Execute from the actual ledger state; completed M0/M1 work must not be restarted. The historical milestones below remain baseline scope, supplemented by the v2 plan.
+
+Confirmed product correction: the brand owner reviews designs, requests revisions from the designer/AI path, and approves the exact final version. Platform admins handle assignment, SLA issues, and escalation. Simulated delivery/scheduling/cancellation are implementation scope; live provider operations and deployment still require separate explicit user authorization. Fully unattended L2 design delegation remains unresolved and disabled.
+
 Source of product truth: `GREY_RETENTION_DISCOVERY.md`
 
 Architecture source of truth: `docs/ARCHITECTURE_BLUEPRINT.md`
@@ -21,7 +25,7 @@ Build a clean-room, production-shaped MVP of Grey Retention using Next.js, Verce
 5. The user plans a campaign on a calendar and creates a draft.
 6. The user selects an audience, products, references, copy, and schedule.
 7. AI assists through centrally governed prompt contracts and usage controls.
-8. The draft moves through review and optional designer handoff.
+8. Approved copy moves through designer/AI production, owner-led design review, versioned revisions, and owner final approval.
 9. An admin can operate tenants, prompts, jobs, packages, and support.
 
 ## 2. Delivery principles
@@ -68,7 +72,7 @@ Build a clean-room, production-shaped MVP of Grey Retention using Next.js, Verce
 ### Explicitly deferred
 
 - Subscription payment collection and automatic invoicing; packages and entitlements are implemented, but billing can remain manual.
-- Sending a live Klaviyo campaign. MVP creates or prepares a draft and requires explicit operator confirmation.
+- Executing a live Klaviyo send or mutating a live account. Implement the delivery port, simulated scheduling/cancellation/reconciliation, and L0/L1 policies under the v2 plan; real execution remains disabled until separately authorized.
 - A perfect reproduction of undisclosed prompt text or proprietary scoring formulas.
 - Enterprise SSO, advanced compliance, mobile applications, and multi-region failover.
 
@@ -146,12 +150,12 @@ Deliver:
 
 - Tenant references and global templates.
 - Competitor sender/domain mapping and mock/inbound collector adapter.
-- Designer accounts, assignments, submissions, revisions, approvals, and tenant rejection.
+- Designer accounts, assignments, submissions, section feedback, revisions, and exact-version owner approval; admins manage assignment/escalation.
 - Storage policies for reference and submission files.
 
 Exit gate:
 
-- A draft can select a reference, enter design review, receive a submission, and reach approval.
+- A draft can select a reference, receive a submission, enter owner design review, request/resubmit revisions, and reach owner approval of the exact current version.
 - File access is signed and tenant/assignment scoped.
 
 ### M5 — admin operations and stabilization
