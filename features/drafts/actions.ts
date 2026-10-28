@@ -42,9 +42,19 @@ export async function createFirstDraft(
         error instanceof Error ? error.message : 'Choose a valid date and time.'
     }
   }
-  const source = x.source === 'original' ? 'original' : 'reference_structure'
-  const sourceId = source === 'original' ? undefined : x.source
-  if (source === 'reference_structure' && !z.uuid().safeParse(sourceId).success)
+  const source =
+    x.source === 'original'
+      ? 'original'
+      : x.source.startsWith('imported:')
+        ? 'imported_reference'
+        : 'reference_structure'
+  const sourceId =
+    source === 'original'
+      ? undefined
+      : source === 'imported_reference'
+        ? x.source.slice('imported:'.length)
+        : x.source
+  if (source !== 'original' && !z.uuid().safeParse(sourceId).success)
     return { error: 'Choose an available reference or start from scratch.' }
   const db = await createClient()
   if (!db || process.env.AUTH_MODE === 'demo')

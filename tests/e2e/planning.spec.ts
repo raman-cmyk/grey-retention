@@ -147,11 +147,11 @@ test('UC-05/06 guarded month review and exact weekly copy batch persist', async 
       exact: true
     })
     .click()
+  // The submit button relabels to "Saving…" while pending, so its absence does
+  // not prove completion. The outer review control renders only while proposed
+  // entries exist, so it unmounts only after the approval has persisted.
   await expect(
-    page.getByRole('button', {
-      name: 'Approve reviewed calendar plan',
-      exact: true
-    })
+    page.getByRole('button', { name: 'Review plan approval', exact: true })
   ).toHaveCount(0)
   await page.goto(
     `/copy-review?week=${localWeek(firstEntryTime, role === 'owner' ? 'Asia/Kathmandu' : 'Australia/Melbourne')}`

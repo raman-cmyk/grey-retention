@@ -15,11 +15,33 @@ test('UC-12 windowed fixture results, insufficient learning and default L2 bound
     })
     .click()
   await expect(
-    page.getByRole('heading', { name: /Synthetic L1 send .* · 7d/ })
+    page
+      .getByText(
+        'Synthetic reporting operation persisted. No measured revenue, real send or paid AI.',
+        { exact: true }
+      )
+      .first()
   ).toBeVisible()
-  await expect(
-    page.getByRole('heading', { name: /Synthetic L1 send .* · 48h/ })
-  ).toBeVisible()
+  // Each request drains at most four fixture jobs, oldest available first.
+  // Jobs left by earlier journeys in this shared tenant can use that budget
+  // before both matured pulls (which share one timestamp), so drain the
+  // remainder through the owner's existing run control.
+  const sevenDay = page.getByRole('heading', {
+    name: /Synthetic L1 send .* · 7d/
+  })
+  const twoDay = page.getByRole('heading', {
+    name: /Synthetic L1 send .* · 48h/
+  })
+  await expect(async () => {
+    if ((await sevenDay.count()) && (await twoDay.count())) return
+    await page
+      .getByRole('button', { name: 'Run reporting fixture jobs', exact: true })
+      .click()
+    await expect(sevenDay).toBeVisible({ timeout: 3_000 })
+    await expect(twoDay).toBeVisible({ timeout: 3_000 })
+  }).toPass({ timeout: 30_000 })
+  await expect(sevenDay).toBeVisible()
+  await expect(twoDay).toBeVisible()
   await page.reload()
   await expect(
     page.getByText('Complete · Comparable cohort · source: fixture').first()

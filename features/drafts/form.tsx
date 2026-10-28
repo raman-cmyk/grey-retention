@@ -7,6 +7,7 @@ import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { TextField } from '@/components/ui/text-field'
 import { Field, controlClass } from '@/components/ui/workspace'
 import { localTimeCandidates } from '@/lib/local-time'
+import { PastedText } from '@/features/references/pasted-text'
 import { createFirstDraft } from './actions'
 
 export type DraftReference = {
@@ -15,25 +16,44 @@ export type DraftReference = {
   safe_html: string
   received_at: string
 }
+export type ImportedDraftReference = {
+  id: string
+  subject: string
+  readable_text: string
+  source_description: string
+  source_url: string | null
+  structure: string[]
+  created_at: string
+}
+export const importedSource = (id: string) => `imported:${id}`
 export function FirstDraftForm({
   references,
+  imported = [],
   audiences,
   timezone,
   defaultDate,
   requestKey,
   selectedReference,
+  selectedImport,
   brandName
 }: {
   references: DraftReference[]
+  imported?: ImportedDraftReference[]
   audiences: { id: string; label: string }[]
   timezone: string
   defaultDate: string
   requestKey: string
   selectedReference?: string
+  selectedImport?: string
   brandName: string
 }) {
   const initial = references.find((item) => item.id === selectedReference)
-  const [source, setSource] = useState(initial?.id ?? 'original')
+  const initialImport = imported.find((item) => item.id === selectedImport)
+  const [source, setSource] = useState(
+    initialImport
+      ? importedSource(initialImport.id)
+      : (initial?.id ?? 'original')
+  )
   const [title, setTitle] = useState(`${brandName} · new email`.slice(0, 200))
   const [goal, setGoal] = useState('')
   const [date, setDate] = useState(defaultDate)
@@ -41,6 +61,12 @@ export function FirstDraftForm({
   const [audience, setAudience] = useState('')
   const [channel, setChannel] = useState('email_design')
   const reference = references.find((item) => item.id === source)
+  const pasted = imported.find((item) => importedSource(item.id) === source)
+  const dateLabel = (value: string) =>
+    new Intl.DateTimeFormat('en', {
+      dateStyle: 'medium',
+      timeZone: timezone
+    }).format(new Date(value))
   const candidates = localTimeCandidates(date, timezone)
   const occurrenceLabel = (value: string) =>
     new Intl.DateTimeFormat('en', {
@@ -64,24 +90,64 @@ export function FirstDraftForm({
           onChange={(event) => setSource(event.target.value)}
         >
           <option value="original">A new idea from scratch</option>
-          {references.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.subject} · sample reference
-            </option>
-          ))}
+          {imported.length > 0 && (
+            <optgroup label="Emails you added">
+              {imported.map((item) => (
+                <option key={item.id} value={importedSource(item.id)}>
+                  {item.subject} · added by you
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {references.length > 0 && (
+            <optgroup label="Sample references">
+              {references.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.subject} · sample reference
+                </option>
+              ))}
+            </optgroup>
+          )}
         </select>
       </Field>
+      <Link
+        href="/import-reference"
+        className="-mt-3 block text-xs text-[var(--text-muted)] underline underline-offset-4"
+      >
+        Have an email to start from? Paste it
+      </Link>
+      {pasted && (
+        <div className="rounded-xl border border-[var(--line)] p-4">
+          <p className="text-sm font-semibold break-words">{pasted.subject}</p>
+          <p className="mt-1 text-xs leading-5 break-words text-[var(--text-muted)]">
+            Added by you · {dateLabel(pasted.created_at)}
+            {pasted.source_description && ` · ${pasted.source_description}`}.
+            Your draft follows its outline ({pasted.structure.join(' · ')}). Its
+            wording, images, links and offers are not copied, and it has not
+            been analyzed by AI.
+          </p>
+          {pasted.source_url && (
+            <p className="mt-1 text-xs break-all text-[var(--text-muted)]">
+              Source noted: {pasted.source_url}
+            </p>
+          )}
+          <details className="mt-3">
+            <summary className="cursor-pointer text-sm">
+              See the email you added
+            </summary>
+            <div className="mt-3">
+              <PastedText text={pasted.readable_text} />
+            </div>
+          </details>
+        </div>
+      )}
       {reference && (
         <div className="rounded-xl border border-[var(--line)] p-4">
           <p className="text-sm font-semibold">{reference.subject}</p>
           <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
-            Sample source ·{' '}
-            {new Intl.DateTimeFormat('en', {
-              dateStyle: 'medium',
-              timeZone: timezone
-            }).format(new Date(reference.received_at))}
-            . We reuse its section structure; its wording, images and offers are
-            not copied into your draft.
+            Sample source · {dateLabel(reference.received_at)}. We reuse its
+            section structure; its wording, images and offers are not copied
+            into your draft.
           </p>
           <details className="mt-3">
             <summary className="cursor-pointer text-sm">

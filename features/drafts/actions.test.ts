@@ -85,6 +85,25 @@ describe('First draft command', () => {
     expect((await createFirstDraft({}, data)).error).toContain('does not exist')
     expect(rpc).not.toHaveBeenCalled()
   })
+  it('sends an owner-imported source as its own source class', async () => {
+    const importedId = crypto.randomUUID()
+    const data = form()
+    data.set('source', `imported:${importedId}`)
+    await expect(createFirstDraft({}, data)).rejects.toThrow('NEXT_REDIRECT')
+    expect(rpc).toHaveBeenCalledWith(
+      'create_first_draft',
+      expect.objectContaining({
+        source: 'imported_reference',
+        source_id: importedId
+      })
+    )
+    rpc.mockClear()
+    data.set('source', 'imported:not-a-uuid')
+    expect((await createFirstDraft({}, data)).error).toContain(
+      'available reference'
+    )
+    expect(rpc).not.toHaveBeenCalled()
+  })
   it('reports a conflicting replay without redirecting or altering a saved draft', async () => {
     rpc.mockResolvedValue({ data: null, error: { code: 'PT409' } })
     expect((await createFirstDraft({}, form())).error).toContain(

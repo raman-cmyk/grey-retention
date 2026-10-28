@@ -14,6 +14,7 @@ import { WorkflowPanel } from '@/features/campaigns/workflow-panel'
 import { CampaignEditor } from '@/features/campaigns/editor'
 import { WorkflowNavigation } from '@/features/campaigns/workflow-navigation'
 import { approveCalendar, addNote } from '@/features/campaigns/actions'
+import { PastedSourcePanel } from '@/features/references/pasted-provenance'
 export default async function CampaignPage({
   params
 }: {
@@ -41,6 +42,13 @@ export default async function CampaignPage({
           and audit history were retained.
         </Notice>
       )}
+      <div className="mb-6 empty:hidden">
+        <PastedSourcePanel
+          tenantId={campaign.tenant_id}
+          timezone={context.timezone}
+          lineage={campaign.lineage}
+        />
+      </div>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <Panel id="brief" title="Calendar entry">
           <CampaignEditor
