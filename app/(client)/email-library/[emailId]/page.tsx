@@ -1,3 +1,6 @@
+import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+import type { Route } from 'next'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
 import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
@@ -19,6 +22,13 @@ export default async function EmailPreview({
       <PageHeading
         title={e.subject}
         description={`Synthetic source · received ${e.received_at} · record ${e.id}`}
+        action={
+          <Button asChild>
+            <Link href={`/first-draft?reference=${e.id}` as Route}>
+              Use for my brand
+            </Link>
+          </Button>
+        }
       />
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel title="Sandboxed safe preview">

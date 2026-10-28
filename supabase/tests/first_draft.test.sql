@@ -1,0 +1,41 @@
+begin;
+select no_plan();
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',true);
+select set_config('test.draft_key',gen_random_uuid()::text,true);
+select set_config('test.draft_input',jsonb_build_object('title','Original composer acceptance','goal','Introduce the original fictional studio','channel','email_design','planned_at',now()+interval '30 days','audience_id','','product_id','','offer_id','','reference_notes','')::text,true);
+select set_config('test.draft_campaign',public.create_first_draft('00000000-0000-4000-8000-000000000101',current_setting('test.draft_key')::uuid,'original',current_setting('test.draft_input')::jsonb)::text,true);
+select is(public.create_first_draft('00000000-0000-4000-8000-000000000101',current_setting('test.draft_key')::uuid,'original',current_setting('test.draft_input')::jsonb),current_setting('test.draft_campaign')::uuid,'retry returns exact saved campaign');
+select is((select count(*) from private.first_draft_requests where request_key=current_setting('test.draft_key')::uuid),1::bigint,'one receipt per actor and intent');
+select ok((select calendar_state='proposed' and copy_state='draft' and design_state='unassigned' and delivery_state='not_ready' from public.campaigns where id=current_setting('test.draft_campaign')::uuid),'creating a brief does not approve, generate, schedule or send');
+select throws_ok($$select public.create_first_draft('00000000-0000-4000-8000-000000000101',current_setting('test.draft_key')::uuid,'original',current_setting('test.draft_input')::jsonb||'{"title":"Changed retry"}')$$,'PT409',null,'changed payload cannot reuse intent');
+select throws_ok($$select public.create_first_draft('00000000-0000-4000-8000-000000000101',null,'original',current_setting('test.draft_input')::jsonb)$$,'23514',null,'null intent rejected');
+select throws_ok($$select public.create_first_draft('00000000-0000-4000-8000-000000000101',gen_random_uuid(),'original',current_setting('test.draft_input')::jsonb||'{"planned_at":"2000-01-01"}')$$,'23514',null,'past date rejected');
+select throws_ok($$select public.create_first_draft('00000000-0000-4000-8000-000000000101',gen_random_uuid(),'original',current_setting('test.draft_input')::jsonb||'{"planned_at":"infinity"}')$$,'23514',null,'infinite dates rejected');
+select throws_ok($$select public.create_first_draft('00000000-0000-4000-8000-000000000101',gen_random_uuid(),'original',current_setting('test.draft_input')::jsonb||'{"approvalBypass":true}')$$,'23514',null,'unknown command fields rejected');
+select throws_ok($$select public.create_first_draft('00000000-0000-4000-8000-000000000101',gen_random_uuid(),'original',current_setting('test.draft_input')::jsonb||'{"audience_id":"00000000-0000-4000-8000-000000000502"}')$$,'23503',null,'cross-tenant audience rejected');
+select ok((select relrowsecurity from pg_class where oid='private.first_draft_requests'::regclass),'private receipts have defense-in-depth RLS');
+select ok(not has_table_privilege('authenticated','private.first_draft_requests','SELECT,INSERT,UPDATE,DELETE'),'authenticated clients cannot inspect or forge receipts');
+select ok(not has_function_privilege('anon','public.create_first_draft(uuid,uuid,text,jsonb,uuid)','EXECUTE'),'anonymous callers cannot run command');
+select ok(not has_function_privilege('service_role','public.create_first_draft(uuid,uuid,text,jsonb,uuid)','EXECUTE'),'service role is not an owner bypass');
+select ok(has_function_privilege('authenticated','public.create_first_draft(uuid,uuid,text,jsonb,uuid)','EXECUTE'),'authenticated callers can reach guarded command');
+-- Original reference fixtures, not customer or competitor content.
+insert into public.competitor_captures(domain) values('composer-source.example');
+insert into public.competitor_emails(capture_id,external_id,received_at,subject,text_content,safe_html,micro)
+select id,'original-composer-example',now(),'Original sample subject','Original fictional sample body','<p>Original fictional sample body</p>','{"strips":["Hero","CTA"],"synthetic":true}' from public.competitor_captures where domain='composer-source.example';
+select set_config('test.draft_reference',(select e.id::text from public.competitor_emails e join public.competitor_captures c on c.id=e.capture_id where c.domain='composer-source.example'),true);
+select throws_ok($$select public.create_first_draft('00000000-0000-4000-8000-000000000101',gen_random_uuid(),'reference_structure',current_setting('test.draft_input')::jsonb,current_setting('test.draft_reference')::uuid)$$,'42501',null,'unsubscribed source rejected');
+select public.subscribe_competitor('00000000-0000-4000-8000-000000000101','composer-source.example','Original composer sample');
+select set_config('test.structural_campaign',public.create_first_draft('00000000-0000-4000-8000-000000000101',gen_random_uuid(),'reference_structure',current_setting('test.draft_input')::jsonb,current_setting('test.draft_reference')::uuid)::text,true);
+select ok((select lineage->>'structureId'=current_setting('test.draft_reference') and lineage->'structure'='["Hero","CTA"]'::jsonb and lineage->>'copyReusable'='false' and calendar_state='proposed' from public.campaigns where id=current_setting('test.structural_campaign')::uuid),'source lineage persists as structure only without approvals');
+update public.competitor_subscriptions set active=false where tenant_id='00000000-0000-4000-8000-000000000101';
+select throws_ok($$select public.create_first_draft('00000000-0000-4000-8000-000000000101',gen_random_uuid(),'reference_structure',current_setting('test.draft_input')::jsonb,current_setting('test.draft_reference')::uuid)$$,'42501',null,'inactive subscription cannot create another draft');
+-- Membership in another tenant must not provide a source to this tenant.
+insert into public.tenant_memberships(tenant_id,profile_id,role,status) values('00000000-0000-4000-8000-000000000102','00000000-0000-4000-8000-000000000001','owner','active');
+select public.subscribe_competitor('00000000-0000-4000-8000-000000000102','composer-source.example','Other workspace sample');
+select throws_ok($$select public.create_first_draft('00000000-0000-4000-8000-000000000101',gen_random_uuid(),'reference_structure',current_setting('test.draft_input')::jsonb,current_setting('test.draft_reference')::uuid)$$,'42501',null,'multi-workspace owner cannot use another tenant subscription');
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000004',true);
+select throws_ok($$select public.create_first_draft('00000000-0000-4000-8000-000000000101',current_setting('test.draft_key')::uuid,'original',current_setting('test.draft_input')::jsonb)$$,'42501',null,'foreign owner cannot replay a receipt');
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000005',true);
+select throws_ok($$select public.create_first_draft('00000000-0000-4000-8000-000000000101',gen_random_uuid(),'original',current_setting('test.draft_input')::jsonb)$$,'42501',null,'staff cannot use owner composer');
+select * from finish();
+rollback;
