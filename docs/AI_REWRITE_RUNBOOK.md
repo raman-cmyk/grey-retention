@@ -34,7 +34,9 @@ Responses API via native `fetch` (`features/email-generation/openai.ts`): `store
 
 ## Live acceptance checklist (pending)
 
-Not yet run. No OpenAI API key and service credential are configured in any server environment this work could use, so no request has reached the real API; all provider behaviour so far was exercised against mocked HTTP and a loopback test double. Once `OPENAI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY` and `EMAIL_REWRITE_TENANT_IDS` (the pilot workspace's UUID) are set in the hosting environment's server settings:
+The hosted app is [grey-retention-app.vercel.app](https://grey-retention-app.vercel.app/get-started). Server-only OpenAI and Supabase credentials and the founder workspace pilot grant are configured. On October 29, 2026, model access was verified and one real rewrite reached OpenAI, which returned `429 credit_balance_exhausted`. The application recorded one dispatch, zero tokens and cost, released the usage reservation, stopped without automatic retry, showed the billing/access message and successfully offered the exact-copy fallback. No successful real-model output exists, so output quality and billed-usage reconciliation remain unverified. The user explicitly chose to leave live rewriting pending; make no more live requests until they ask to resume after funding the API account. No credential values belong in this repository.
+
+When the user resumes live acceptance with API credits available:
 
 1. Confirm the key and service credential are present only in server environment settings, and that a workspace not on the list sees "not set up" with no request made.
 2. Rewrite one short synthetic text email and one synthetic HTML email; check subject/body quality, that brand facts are used and no source brand/links/offers leak, and that `email_generations.cost_micro` matches the provider usage page.

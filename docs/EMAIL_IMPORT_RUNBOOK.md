@@ -9,7 +9,7 @@ Owner flow: **Add an email you like** → choose **Upload a file** (beside **Pas
 | `SUPABASE_SERVICE_ROLE_KEY` | File upload                | Server-only. Raw files are written and read by the server worker only. Missing → owners see "File upload is not set up for this workspace yet"; paste and copy keep working.              |
 | `EMAIL_IMPORT_TENANT_IDS`   | File upload (hosted pilot) | Server-only comma-separated exact workspace UUIDs (at most 50, no wildcard). Required whenever Storage is not a local loopback stack or `NODE_ENV=production`. Empty → no hosted uploads. |
 
-`EMAIL_IMPORT_TENANT_IDS` must be added blank to the public `.env.example` by root integration (this task could not edit that file). It is independent of `EMAIL_REWRITE_TENANT_IDS`; enabling uploads grants no AI rewriting and vice versa. No OpenAI key is needed for file import.
+Root integration added `EMAIL_IMPORT_TENANT_IDS` blank to the public `.env.example`. It is independent of `EMAIL_REWRITE_TENANT_IDS`; enabling uploads grants no AI rewriting and vice versa. No OpenAI key is needed for file import.
 
 ## Why a pilot gate
 
@@ -51,4 +51,14 @@ A retry with the same request key resumes at whichever step stopped (lost respon
 
 ## Remaining (not built in this slice)
 
-Hero-image extraction, inline/attachment image capture or editing, ZIP/mbox/Outlook `.msg`/image imports, UTF-7 and other charsets the runtime cannot decode, S/MIME or PGP messages, deletion/retention controls for uploaded files, files above 4 MiB (needs direct-to-Storage signed upload/download instead of function bodies), upload byte-progress (the UI shows persisted stages), and live hosted acceptance (hosting is pending).
+Hero-image extraction, inline/attachment image capture or editing, ZIP/mbox/Outlook `.msg`/image imports, UTF-7 and other charsets the runtime cannot decode, S/MIME or PGP messages, deletion/retention controls for uploaded files, files above 4 MiB (needs direct-to-Storage signed upload/download instead of function bodies), upload byte-progress (the UI shows persisted stages), and broader live operational/isolation acceptance (the single-owner hosted smoke below passed).
+
+## Hosted acceptance — October 29, 2026
+
+The tested application from commit `af007a2` is deployed at [grey-retention-app.vercel.app](https://grey-retention-app.vercel.app/get-started) under the user’s Vercel account. The existing Supabase project now has all 45 repository migrations through 90015; identity/workspace row counts were preserved. Only the founder workspace is enabled for hosted uploads and real rewriting; grants stay server-side.
+
+A synthetic EML of exactly 4,194,304 bytes completed the real browser upload → private Storage → trusted worker → Copy/Rewrite choice. The saved size and SHA-256 matched the original; the authenticated original-file download was byte-identical, including the attachment and MIME bytes. The copy fallback after OpenAI rejected an unfunded request saved an exact HTML version. A manual heading/link edit then saved owner-edit Version 2; Version 1 and the original raw file stayed unchanged. Samples remain unapproved, and nothing was sent. This verifies a single-owner hosted happy path, not broad live tenant isolation, load, delivery or email-client fidelity. Local negative/concurrency acceptance is in the ledger.
+
+Account setup limitation: the database remains in `lookitsme’s Org`. The connected user lacks `auth_config_write` / `project_admin_write`, and the Auth URL controls are disabled. The Site URL is still localhost. The project owner/admin must set Site URL to `https://grey-retention-app.vercel.app` and add `https://grey-retention-app.vercel.app/**` to redirect URLs. Existing password sign-in is verified; new sign-up/reset redirects are not ready. Do not disable email confirmation or change permissions to work around this.
+
+Deployment hygiene: `.vercelignore` excludes private local operational artifacts, environment files, test output and build caches. A deployment dry-run checked the 419-file source manifest. Commits use the authenticated GitHub account’s noreply identity in this repository; the previous machine-local email was not associated with an authorized Vercel contributor. GitHub Actions remains disabled; reported checks are local, not remote CI.
