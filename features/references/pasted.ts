@@ -82,11 +82,13 @@ export function looksLikeMarkup(value: string) {
  * styling and embedded-document content is removed entirely; remaining tags
  * are dropped, so images, links, tracking pixels and forms are never loaded.
  * `limited` reports that the readable result was cut at the preview bound;
- * the original paste itself is never shortened.
+ * the original paste itself is never shortened. A trusted `format` (from an
+ * uploaded file's parser) overrides markup detection, so a text file containing
+ * a literal "<p>" keeps it and HTML without ordinary tags is still decoded.
  */
-export function pastedReadable(raw: string) {
+export function pastedReadable(raw: string, format?: 'html' | 'text') {
   let text = raw.replace(/\r\n?/g, '\n')
-  if (looksLikeMarkup(text)) {
+  if (format ? format === 'html' : looksLikeMarkup(text)) {
     text = text
       .replace(/<!--[\s\S]*?(-->|$)/g, ' ')
       .replace(/<!\[CDATA\[[\s\S]*?(\]\]>|$)/gi, ' ')

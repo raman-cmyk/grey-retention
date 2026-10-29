@@ -174,15 +174,22 @@ export async function GettingStarted({ step }: { step?: string }) {
             Start with one email.
           </h1>
           <p className="mt-3 text-sm leading-6 text-[var(--text-muted)]">
-            Paste an email you like — your own or one you received. Then rewrite
-            it for your brand or keep an exact copy to edit.
+            Paste or upload an email you like — your own or one you received.
+            Then rewrite it for your brand or keep an exact copy to edit.
           </p>
           {owner ? (
-            <Button asChild className="mt-7">
-              <Link href="/import-reference">
-                Paste an email <ArrowRight className="size-4" aria-hidden />
-              </Link>
-            </Button>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Button asChild>
+                <Link href="/import-reference">
+                  Paste an email <ArrowRight className="size-4" aria-hidden />
+                </Link>
+              </Button>
+              <Button asChild variant="secondary">
+                <Link href={'/import-reference?mode=file' as Route}>
+                  Upload a file
+                </Link>
+              </Button>
+            </div>
           ) : (
             <div className="mt-7">
               <Notice>Ask your workspace owner to add reference emails.</Notice>

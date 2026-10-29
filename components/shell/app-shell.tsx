@@ -18,7 +18,11 @@ export function AppShell({
   workspace,
   contextLabel = 'Client workspace',
   identity = { name: 'Your account', initials: 'YA', role: 'Workspace member' },
-  brand = defaultBrandPresentation
+  brand = defaultBrandPresentation,
+  status = {
+    label: 'Your workspace',
+    description: 'Emails are saved privately'
+  }
 }: {
   children: React.ReactNode
   navigation: NavigationItem[]
@@ -26,8 +30,17 @@ export function AppShell({
   contextLabel?: string
   identity?: { name: string; initials: string; role: string }
   brand?: BrandPresentation
+  /** Shown for real signed-in sessions; demo mode always uses the brand's demo copy. */
+  status?: { label: string; description: string }
 }) {
   const presentation = resolveAccessibleBrandPresentation(brand)
+  const shown =
+    process.env.AUTH_MODE === 'demo'
+      ? {
+          label: presentation.demoLabel,
+          description: presentation.demoDescription
+        }
+      : status
   const workspaceName = workspace ?? presentation.workspaceName
   const brandStyle = brandCssVariables(presentation) as React.CSSProperties
 
@@ -57,10 +70,10 @@ export function AppShell({
               className="size-1.5 rounded-full bg-[var(--text-faint)]"
               aria-hidden
             />
-            {presentation.demoLabel}
+            {shown.label}
           </div>
           <p className="mt-1.5 text-xs text-[var(--nav-muted)]">
-            {presentation.demoDescription}
+            {shown.description}
           </p>
           <form action={signOut} className="mt-3">
             <button
@@ -79,6 +92,7 @@ export function AppShell({
             navigation={navigation}
             contextLabel={contextLabel}
             brand={presentation}
+            statusDescription={shown.description}
           />
           <Layers
             className="hidden size-4 text-[var(--text-faint)] lg:block"

@@ -341,6 +341,7 @@ describe('worker', () => {
       email_sources: {
         subject: 'Acme spring',
         original: injected,
+        format: 'html',
         reference_import_id: 'i'
       },
       brand_profiles: {

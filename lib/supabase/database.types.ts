@@ -2194,6 +2194,116 @@ export type Database = {
           }
         ]
       }
+      email_file_imports: {
+        Row: {
+          attachment_count: number | null
+          byte_size: number
+          content_format: string | null
+          created_at: string
+          created_by: string
+          failure_code: string | null
+          file_kind: string
+          file_name: string
+          header_date: string | null
+          header_from: string | null
+          header_subject: string | null
+          id: string
+          job_id: string | null
+          media_type: string
+          notes: string[]
+          reference_import_id: string | null
+          retries: number
+          sha256: string
+          state: string
+          storage_path: string
+          tenant_id: string
+          title: string
+          updated_at: string
+          upload_expires_at: string
+        }
+        Insert: {
+          attachment_count?: number | null
+          byte_size: number
+          content_format?: string | null
+          created_at?: string
+          created_by: string
+          failure_code?: string | null
+          file_kind: string
+          file_name: string
+          header_date?: string | null
+          header_from?: string | null
+          header_subject?: string | null
+          id?: string
+          job_id?: string | null
+          media_type: string
+          notes?: string[]
+          reference_import_id?: string | null
+          retries?: number
+          sha256: string
+          state?: string
+          storage_path: string
+          tenant_id: string
+          title?: string
+          updated_at?: string
+          upload_expires_at?: string
+        }
+        Update: {
+          attachment_count?: number | null
+          byte_size?: number
+          content_format?: string | null
+          created_at?: string
+          created_by?: string
+          failure_code?: string | null
+          file_kind?: string
+          file_name?: string
+          header_date?: string | null
+          header_from?: string | null
+          header_subject?: string | null
+          id?: string
+          job_id?: string | null
+          media_type?: string
+          notes?: string[]
+          reference_import_id?: string | null
+          retries?: number
+          sha256?: string
+          state?: string
+          storage_path?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+          upload_expires_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'email_file_imports_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_file_imports_reference_fkey'
+            columns: ['tenant_id', 'reference_import_id']
+            isOneToOne: false
+            referencedRelation: 'reference_imports'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'email_file_imports_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_file_imports_tenant_id_job_id_fkey'
+            columns: ['tenant_id', 'job_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       email_generations: {
         Row: {
           brand_revision: number
@@ -3938,39 +4048,48 @@ export type Database = {
       }
       reference_imports: {
         Row: {
+          content_format: string | null
           created_at: string
           created_by: string
+          file_import_id: string | null
           id: string
           origin: string
           original_body: string
           readable_text: string
           source_description: string
+          source_kind: string
           source_url: string | null
           structure: Json
           subject: string
           tenant_id: string
         }
         Insert: {
+          content_format?: string | null
           created_at?: string
           created_by: string
+          file_import_id?: string | null
           id?: string
           origin?: string
           original_body: string
           readable_text: string
           source_description?: string
+          source_kind?: string
           source_url?: string | null
           structure: Json
           subject: string
           tenant_id: string
         }
         Update: {
+          content_format?: string | null
           created_at?: string
           created_by?: string
+          file_import_id?: string | null
           id?: string
           origin?: string
           original_body?: string
           readable_text?: string
           source_description?: string
+          source_kind?: string
           source_url?: string | null
           structure?: Json
           subject?: string
@@ -3983,6 +4102,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'profiles'
             referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'reference_imports_file_import_fkey'
+            columns: ['tenant_id', 'file_import_id']
+            isOneToOne: false
+            referencedRelation: 'email_file_imports'
+            referencedColumns: ['tenant_id', 'id']
           },
           {
             foreignKeyName: 'reference_imports_tenant_id_fkey'
@@ -4614,6 +4740,15 @@ export type Database = {
         Args: { event_date: string; name: string; notes: string; t: string }
         Returns: string
       }
+      admit_email_file_upload: {
+        Args: { input: Json; request_key: string; t: string }
+        Returns: {
+          import_id: string
+          needs_upload: boolean
+          state: string
+          storage_path: string
+        }[]
+      }
       advance_optimizer_clock: {
         Args: { observed_at: string; sweep: string; t: string }
         Returns: number
@@ -4705,6 +4840,21 @@ export type Database = {
           t: string
         }
         Returns: undefined
+      }
+      claim_email_file_import: {
+        Args: { import: string; t: string }
+        Returns: {
+          actor: string
+          attempt: number
+          byte_size: number
+          file_kind: string
+          file_name: string
+          job_id: string
+          lease_token: string
+          sha256: string
+          storage_path: string
+          title: string
+        }[]
       }
       claim_email_generation: {
         Args: { generation: string; t: string }
@@ -4935,6 +5085,10 @@ export type Database = {
         }
         Returns: string
       }
+      fail_email_file_import: {
+        Args: { failure: Json; job: string; lease: string }
+        Returns: string
+      }
       fail_email_generation: {
         Args: { failure: Json; job: string; lease: string }
         Returns: string
@@ -4942,6 +5096,10 @@ export type Database = {
       fail_job: {
         Args: { failure: string; job: string; lease: string }
         Returns: undefined
+      }
+      finalize_email_file_upload: {
+        Args: { import: string; t: string }
+        Returns: string
       }
       finish_capture_job: {
         Args: { job: string; lease: string; output: Json }
@@ -4954,6 +5112,10 @@ export type Database = {
       finish_delivery_job: {
         Args: { job: string; lease: string }
         Returns: undefined
+      }
+      finish_email_file_import: {
+        Args: { job: string; lease: string; output: Json }
+        Returns: string
       }
       finish_email_generation: {
         Args: { job: string; lease: string; output: Json; usage: Json }
@@ -5216,6 +5378,10 @@ export type Database = {
           t: string
         }
         Returns: number
+      }
+      retry_email_file_import: {
+        Args: { import: string; t: string }
+        Returns: string
       }
       retry_fixture_job: {
         Args: { job: string; t: string }

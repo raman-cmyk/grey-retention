@@ -6,7 +6,9 @@ import { Field, Notice, controlClass } from '@/components/ui/workspace'
 import { chooseEmailOutcome } from './actions'
 import { rewriteAvailability } from './config'
 import { emailChoice } from './data'
-import { emailFormat } from './html'
+import { sourceFormat } from './html'
+import { fileForReference } from '@/features/email-import/data'
+import { FileDetails } from '@/features/email-import/details'
 import { EmailPreview } from './preview'
 import { readablePastedText } from '@/features/references/pasted'
 import { httpsLink } from './rewrite'
@@ -15,12 +17,14 @@ export async function ChooseOutcome({
   tenantId,
   importId,
   attempt,
-  owner
+  owner,
+  admin = false
 }: {
   tenantId: string
   importId: string
   attempt: string
   owner: boolean
+  admin?: boolean
 }) {
   const { data, error } = await emailChoice(tenantId, importId)
   if (!data)
@@ -41,7 +45,12 @@ export async function ChooseOutcome({
       </div>
     )
   const original = data.imported.original_body
-  const html = emailFormat(original) === 'html'
+  // Uploaded files carry a trusted parser format; pastes keep inferring it.
+  const format = sourceFormat(data.imported)
+  const html = format === 'html'
+  const file = data.imported.file_import_id
+    ? await fileForReference(tenantId, importId)
+    : null
   const availability = rewriteAvailability(tenantId)
   // Without a website or product the rewrite needs a destination for its button.
   const needsLink = !httpsLink(data.brand?.domain) && data.products.length === 0
@@ -68,10 +77,11 @@ export async function ChooseOutcome({
           <EmailPreview
             title="The email you added"
             html={html ? original : null}
-            text={html ? '' : readablePastedText(original)}
+            text={html ? '' : file ? original : readablePastedText(original)}
           />
         </div>
       </details>
+      {file && <FileDetails file={file} canDownload={owner || admin} />}
       {error && (
         <div className="mt-5">
           <Notice error>{error}</Notice>

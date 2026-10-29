@@ -11,11 +11,13 @@ import { signOut } from '@/features/auth/presentation/actions'
 export function MobileNavigation({
   navigation,
   contextLabel,
-  brand
+  brand,
+  statusDescription
 }: {
   navigation: NavigationItem[]
   contextLabel: string
   brand: BrandPresentation
+  statusDescription: string
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   const menuId = useId()
@@ -55,9 +57,7 @@ export function MobileNavigation({
           onNavigate={() => ref.current?.close()}
         />
         <div className="border-t border-[var(--line)] p-5">
-          <p className="text-xs text-[var(--nav-muted)]">
-            {brand.demoDescription}
-          </p>
+          <p className="text-xs text-[var(--nav-muted)]">{statusDescription}</p>
           <form action={signOut} className="mt-3">
             <button
               type="submit"

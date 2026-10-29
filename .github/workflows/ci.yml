@@ -33,7 +33,7 @@ jobs:
 
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -50,6 +50,7 @@ jobs:
       - run: pnpm test:e2e
       - run: node scripts/test-first-draft.mjs
       - run: node scripts/test-email-concurrency.mjs
+      - run: node scripts/test-email-import-concurrency.mjs
 
   database:
     runs-on: ubuntu-latest

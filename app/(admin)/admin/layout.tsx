@@ -14,6 +14,10 @@ export default async function AdminLayout({
       navigation={adminNavigation}
       workspace="Platform operations"
       contextLabel="Admin console"
+      status={{
+        label: 'Platform operations',
+        description: 'Signed in to the admin console'
+      }}
       identity={await shellIdentity(context)}
     >
       {children}

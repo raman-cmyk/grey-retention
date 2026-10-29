@@ -14,6 +14,7 @@ import {
 } from './actions'
 import { rewriteAvailability } from './config'
 import { emailResult } from './data'
+import { fileForReference } from '@/features/email-import/data'
 import { htmlEditable, suggestedPrimary } from './html'
 import { EmailPreview } from './preview'
 import { htmlFingerprint } from './rewrite'
@@ -75,6 +76,7 @@ export async function EmailResultView({
       </Notice>
     )
   const { result, source, revision, revisions, generations, campaign } = data
+  const file = await fileForReference(tenantId, source.reference_import_id)
   const latest = generations[0]
   const writing = latest && ['queued', 'running'].includes(latest.state)
   // A failure is shown until a newer version is saved.
@@ -561,7 +563,9 @@ export async function EmailResultView({
         </details>
         <details className="rounded-lg border border-[var(--line)] px-4 py-3">
           <summary className="cursor-pointer text-sm">
-            The email you added · kept exactly as pasted
+            {file
+              ? 'The email you added · from your uploaded file'
+              : 'The email you added · kept exactly as pasted'}
           </summary>
           <div className="mt-4">
             <EmailPreview
@@ -570,12 +574,26 @@ export async function EmailResultView({
               text={source.original}
             />
           </div>
-          <a
-            className="mt-4 inline-flex items-center gap-1 text-sm underline underline-offset-4"
-            href={download(result.id, 'original')}
-          >
-            <Download className="size-4" aria-hidden /> Download the original
-          </a>
+          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
+            <a
+              className="inline-flex items-center gap-1 text-sm underline underline-offset-4"
+              href={download(result.id, 'original')}
+            >
+              <Download className="size-4" aria-hidden />
+              {file
+                ? 'Download the email content (decoded)'
+                : 'Download the original'}
+            </a>
+            {file && owner && (
+              <a
+                className="inline-flex items-center gap-1 text-sm underline underline-offset-4"
+                href={download(result.id, 'file')}
+              >
+                <Download className="size-4" aria-hidden /> Download original
+                file (exact bytes)
+              </a>
+            )}
+          </div>
         </details>
       </div>
     </div>

@@ -46,7 +46,15 @@ async function expectPreviewFits(page: Page, title: string) {
   const canvas = page.getByTestId('email-canvas').first()
   const frame = page.locator(`iframe[title="${title}"]`)
   await expect(frame).toBeVisible()
-  await expect(canvas).toHaveAttribute('data-scale', /\d/)
+  // The server renders scale 1 before hydration; wait until the published
+  // scale matches the measured container (retried, no fixed sleep).
+  await expect
+    .poll(async () => {
+      const width = (await canvas.boundingBox())?.width ?? 0
+      const scale = Number(await canvas.getAttribute('data-scale'))
+      return Math.abs(scale - Math.min(1, Math.max(0.3, width / 640)))
+    })
+    .toBeLessThan(0.005)
   const box = (await canvas.boundingBox())!
   const shown = (await frame.boundingBox())!
   expect(shown.width).toBeLessThanOrEqual(box.width + 1)
