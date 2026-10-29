@@ -60,8 +60,7 @@
       "acceptance": "Display genuinely discovered identity/assets and let the operator confirm or correct them.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-006",
@@ -71,8 +70,7 @@
       "acceptance": "Fix wrong brand name/logo/product without opening a full settings section.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-007",
@@ -82,8 +80,7 @@
       "acceptance": "Offer retry or minimal manual setup while retaining submitted URL and actual error.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-008",
@@ -106,8 +103,7 @@
       "acceptance": "Adding more competitors later does not restart onboarding.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-010",
@@ -117,8 +113,7 @@
       "acceptance": "Show whether an archive exists or collection is still awaiting setup/first email.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-011",
@@ -199,8 +194,7 @@
       "acceptance": "Ask only about unresolved products that affect the selected draft.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-017",
@@ -210,8 +204,7 @@
       "acceptance": "Request it for a specific catalog/inventory need, with accurate capability boundaries.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-018",
@@ -221,8 +214,7 @@
       "acceptance": "Request it when export/account data is needed, preserving the draft during authorization.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-019",
@@ -232,8 +224,7 @@
       "acceptance": "Use validated provider authorization; keep manual credential guidance in advanced help.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-020",
@@ -243,8 +234,7 @@
       "acceptance": "Read/write descriptions match actual granted scopes and action authorization.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-021",
@@ -254,8 +244,7 @@
       "acceptance": "Present usual footer and audience choices with previews; keep IDs in advanced details.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-022",
@@ -305,8 +294,7 @@
       "acceptance": "A changed merchant URL invalidates affected inferred facts/mappings rather than reusing stale results.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-026",
@@ -316,8 +304,7 @@
       "acceptance": "Loading/error/result labels reflect actual jobs; no staged animation is mistaken for successful production.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-027",
@@ -327,8 +314,7 @@
       "acceptance": "Retry the failed step while preserving accepted inputs and completed work.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-028",
@@ -362,8 +348,7 @@
       "acceptance": "Adopt existing workspace defaults rather than create duplicate external objects.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-031",
@@ -373,8 +358,7 @@
       "acceptance": "Another store receives separate identity, audience and footer mappings.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-032",
@@ -410,8 +394,7 @@
       "acceptance": "Record stage progress, errors, drop-off, wait time and first useful draft without fabricated timing claims.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ONB-035",
@@ -421,8 +404,7 @@
       "acceptance": "At least four of five initial target operators complete/reopen a useful draft without coaching before wider rollout.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-001",
@@ -432,8 +414,7 @@
       "acceptance": "A valid client reaches only its workspace; logout ends the session.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-002",
@@ -443,8 +424,7 @@
       "acceptance": "Capture name, job title, email, phone, referral source and matching password confirmation.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-003",
@@ -454,8 +434,7 @@
       "acceptance": "Expiring reset links complete once and cannot reset another account.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-004",
@@ -465,8 +444,7 @@
       "acceptance": "Account setup and brand/store setup preserve progress and validation errors.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-005",
@@ -476,8 +454,7 @@
       "acceptance": "Validate and retain the merchant website used for brand context.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-006",
@@ -487,8 +464,7 @@
       "acceptance": "Keep the selected hero and additional product references.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-007",
@@ -498,8 +474,7 @@
       "acceptance": "Validate connection and retain account identity without exposing the key.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-008",
@@ -509,8 +484,7 @@
       "acceptance": "A missing Shopify connection has an explicit incomplete state.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-009",
@@ -520,8 +494,7 @@
       "acceptance": "Industry selection influences the recorded brand profile.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-010",
@@ -531,8 +504,7 @@
       "acceptance": "Save operator-provided ad copy as context; do not label it automatically collected ads.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-011",
@@ -542,8 +514,7 @@
       "acceptance": "Retain market context and use it only for the correct tenant.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-012",
@@ -553,8 +524,7 @@
       "acceptance": "Name/contact updates persist and remain scoped to the account.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-013",
@@ -564,8 +534,7 @@
       "acceptance": "Existing credential verification and new credential validation work.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-014",
@@ -575,8 +544,7 @@
       "acceptance": "Show users and pending invitations for this workspace.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-015",
@@ -586,8 +554,7 @@
       "acceptance": "Invite the intended address with an expiring acceptance link.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-016",
@@ -597,8 +564,7 @@
       "acceptance": "A revoked invitation cannot subsequently grant membership.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-017",
@@ -608,8 +574,7 @@
       "acceptance": "The invited identity joins only the intended workspace.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-018",
@@ -619,8 +584,7 @@
       "acceptance": "Owner-managed role changes preserve the supported manager/member model and prevent privilege escalation.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-019",
@@ -630,8 +594,7 @@
       "acceptance": "A deactivated teammate loses workspace access.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-020",
@@ -641,8 +604,7 @@
       "acceptance": "Client, admin and designer menus expose appropriate actions.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ACC-021",
@@ -652,8 +614,7 @@
       "acceptance": "Navigation state and account actions remain accessible.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-001",
@@ -663,8 +624,7 @@
       "acceptance": "Show each integration's connected, missing and failed state.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-002",
@@ -674,8 +634,7 @@
       "acceptance": "Validate the correct shop before saving its connection.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-003",
@@ -685,8 +644,7 @@
       "acceptance": "Report actionable connection errors without revealing credentials.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-004",
@@ -696,8 +654,7 @@
       "acceptance": "A sync request creates trackable work rather than claiming immediate completion.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-005",
@@ -707,8 +664,7 @@
       "acceptance": "Stop using the disconnected account and explain retained data behavior.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-006",
@@ -718,8 +674,7 @@
       "acceptance": "A failing replacement credential leaves the prior valid connection intact.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-007",
@@ -729,8 +684,7 @@
       "acceptance": "Imported product IDs and tenant association remain stable.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-008",
@@ -740,8 +694,7 @@
       "acceptance": "Historical order ingestion handles pagination and partial progress.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-009",
@@ -751,8 +704,7 @@
       "acceptance": "Customer records retain correct external IDs and tenant scope.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-010",
@@ -762,8 +714,7 @@
       "acceptance": "In-progress, failed and completed imports are distinguishable.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-011",
@@ -773,8 +724,7 @@
       "acceptance": "Subsequent sync updates existing records without duplicates.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-012",
@@ -784,8 +734,7 @@
       "acceptance": "Configured history depth is applied to the intended tenant.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-013",
@@ -795,8 +744,7 @@
       "acceptance": "Manual sync is logged and reports eventual outcome.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-014",
@@ -806,8 +754,7 @@
       "acceptance": "Organization, sender settings, timezone, currency and address remain tied to the right account.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-015",
@@ -817,8 +764,7 @@
       "acceptance": "Email HTML and metadata from supported campaigns are available for reuse.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-016",
@@ -828,8 +774,7 @@
       "acceptance": "Flow message templates are collected with their source identities.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-017",
@@ -839,8 +784,7 @@
       "acceptance": "An operator can refresh a selected flow's templates.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-018",
@@ -850,8 +794,7 @@
       "acceptance": "Authentication, rate-limit and network failures produce different recovery instructions.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CON-019",
@@ -861,8 +804,7 @@
       "acceptance": "Admin diagnostics expose endpoint outcomes while protecting credentials.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "STR-001",
@@ -872,8 +814,7 @@
       "acceptance": "Show available synced commerce summaries or a connection next step.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "STR-002",
@@ -883,8 +824,7 @@
       "acceptance": "Search/filter/paging controls return the intended synced products.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "STR-003",
@@ -894,8 +834,7 @@
       "acceptance": "Unavailable products are distinguishable from unknown inventory.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "STR-004",
@@ -905,8 +844,7 @@
       "acceptance": "Orders are scoped and navigable across pages.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "STR-005",
@@ -916,8 +854,7 @@
       "acceptance": "Show the selected order and line-item context without cross-tenant access.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "STR-006",
@@ -927,8 +864,7 @@
       "acceptance": "Customers are scoped and searchable using supported controls.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "STR-007",
@@ -938,8 +874,7 @@
       "acceptance": "Show the intended customer's available order history/context.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "STR-008",
@@ -949,8 +884,7 @@
       "acceptance": "A disconnected store gives one clear action rather than empty metrics.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "STR-009",
@@ -960,8 +894,7 @@
       "acceptance": "Sales-derived product rankings distinguish actual sales from catalog position.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "BRD-001",
@@ -971,8 +904,7 @@
       "acceptance": "Generate brand identity from available sources with a visible generation timestamp.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "BRD-002",
@@ -982,8 +914,7 @@
       "acceptance": "Extract product context or explain missing product sources.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "BRD-003",
@@ -993,8 +924,7 @@
       "acceptance": "Store extracted offers as sourced context, not verified discount configuration.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "BRD-004",
@@ -1004,8 +934,7 @@
       "acceptance": "Store source-derived social proof for the correct brand.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "BRD-005",
@@ -1015,8 +944,7 @@
       "acceptance": "Refresh supported sections and show partial failures.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "BRD-006",
@@ -1026,8 +954,7 @@
       "acceptance": "A section refresh does not overwrite unrelated sections.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "BRD-007",
@@ -1037,8 +964,7 @@
       "acceptance": "Retain structured tone guidance for copy generation.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "BRD-008",
@@ -1048,8 +974,7 @@
       "acceptance": "Retain preferred/avoided language guidance.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "BRD-009",
@@ -1059,8 +984,7 @@
       "acceptance": "Keep writing examples separate from verified business facts.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "BRD-010",
@@ -1070,8 +994,7 @@
       "acceptance": "Preserve brand audience context for generation.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "BRD-011",
@@ -1081,8 +1004,7 @@
       "acceptance": "Refresh voice sections with errors and timestamps visible.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "BRD-012",
@@ -1092,8 +1014,7 @@
       "acceptance": "Only the requested voice section is replaced.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "BRD-013",
@@ -1103,8 +1024,7 @@
       "acceptance": "Support impulse, drop/hype, replenishable, high-AOV, subscription, gifting and dropship classifications.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "BRD-014",
@@ -1114,8 +1034,7 @@
       "acceptance": "Knowledge selection can use the recorded industry ID.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "BRD-015",
@@ -1125,8 +1044,7 @@
       "acceptance": "Missing or thin website content produces an explicit data gap.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "BRD-016",
@@ -1136,8 +1054,7 @@
       "acceptance": "Assistant context can be cached and deliberately refreshed.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-001",
@@ -1147,8 +1064,7 @@
       "acceptance": "New generated drafts inherit the chosen product and can override it.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-002",
@@ -1158,8 +1074,7 @@
       "acceptance": "The selected sender name appears on new drafts and outbound payloads.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-003",
@@ -1169,8 +1084,7 @@
       "acceptance": "New drafts inherit the intended main destination.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-004",
@@ -1180,8 +1094,7 @@
       "acceptance": "New drafts inherit selected send-to audience labels.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-005",
@@ -1191,8 +1104,7 @@
       "acceptance": "New drafts inherit selected do-not-send labels.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-006",
@@ -1202,8 +1114,7 @@
       "acceptance": "Changing one draft leaves workspace defaults unchanged.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-007",
@@ -1213,8 +1124,7 @@
       "acceptance": "Operators can locate the intended product without scanning the catalog.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-008",
@@ -1224,8 +1134,7 @@
       "acceptance": "Lists/segments can be searched and distinguished by kind.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-009",
@@ -1235,8 +1144,7 @@
       "acceptance": "New campaigns inherit the chosen inclusion state.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-010",
@@ -1246,8 +1154,7 @@
       "acceptance": "Extract the selected template footer and record its source.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-011",
@@ -1257,8 +1164,7 @@
       "acceptance": "Reuse the saved footer snapshot without re-extracting every generation.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-012",
@@ -1268,8 +1174,7 @@
       "acceptance": "Draft footer takes precedence over tenant footer.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-013",
@@ -1279,8 +1184,7 @@
       "acceptance": "Build the fallback with the intended organization and available mailing address.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-014",
@@ -1290,8 +1194,7 @@
       "acceptance": "Preserve the recipient-specific unsubscribe tag in outbound content.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-015",
@@ -1301,8 +1204,7 @@
       "acceptance": "Use the brand's known destinations, not the reference competitor's.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-016",
@@ -1312,8 +1214,7 @@
       "acceptance": "Show Klaviyo-derived timezone and local current time in Settings.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DEF-017",
@@ -1323,8 +1224,7 @@
       "acceptance": "Explicitly keep retired; builder returns empty and save forces the default off.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-001",
@@ -1334,8 +1234,7 @@
       "acceptance": "A draft retains its internal title separately from subject and body.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-002",
@@ -1359,8 +1258,7 @@
       "acceptance": "A user can find and reopen existing drafts.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-004",
@@ -1370,8 +1268,7 @@
       "acceptance": "Renaming a campaign does not silently rewrite its subject.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-005",
@@ -1381,8 +1278,7 @@
       "acceptance": "Brief changes persist and affect subsequent requested generation.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-006",
@@ -1392,8 +1288,7 @@
       "acceptance": "Retain email/SMS/WhatsApp model values; delivery support must be tested separately.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-007",
@@ -1403,8 +1298,7 @@
       "acceptance": "Preserve the selected email variant in UI and data.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-008",
@@ -1414,8 +1308,7 @@
       "acceptance": "Display available options and regenerate on request.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-009",
@@ -1425,8 +1318,7 @@
       "acceptance": "A manually chosen subject survives save/reopen.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-010",
@@ -1436,8 +1328,7 @@
       "acceptance": "The chosen preview text reaches the outbound campaign payload.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-011",
@@ -1447,8 +1338,7 @@
       "acceptance": "Per-campaign sender choice overrides defaults.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-012",
@@ -1458,8 +1348,7 @@
       "acceptance": "Missing sender address produces an actionable error before push.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-013",
@@ -1469,8 +1358,7 @@
       "acceptance": "The intended campaign destination survives generation and edits.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-014",
@@ -1480,8 +1368,7 @@
       "acceptance": "Selected product IDs persist in the draft.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-015",
@@ -1491,8 +1378,7 @@
       "acceptance": "Retain top performers, new arrivals, clearance, seasonal and bundles choices.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-016",
@@ -1502,8 +1388,7 @@
       "acceptance": "Generation uses the selected offer context rather than every offer by default.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-017",
@@ -1513,8 +1398,7 @@
       "acceptance": "Retain an operator-specified code without claiming it exists in Shopify.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-018",
@@ -1524,8 +1408,7 @@
       "acceptance": "The requested number of sections is available to generation.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-019",
@@ -1535,8 +1418,7 @@
       "acceptance": "The draft's selected section structure can be saved.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-020",
@@ -1546,8 +1428,7 @@
       "acceptance": "Keep block representation alongside rendered HTML/plain text.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-021",
@@ -1571,8 +1452,7 @@
       "acceptance": "Persist allowed HTML and reject/clean unsupported content.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-023",
@@ -1582,8 +1462,7 @@
       "acceptance": "Save text/design copy from the campaign modal.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-024",
@@ -1593,8 +1472,7 @@
       "acceptance": "Apply a requested revision to the intended campaign.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-025",
@@ -1604,8 +1482,7 @@
       "acceptance": "Record copy-finalized state and expose the correct next action.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-026",
@@ -1615,8 +1492,7 @@
       "acceptance": "Reload shows the same saved copy/design/status.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-027",
@@ -1626,8 +1502,7 @@
       "acceptance": "Remove it from active work without losing its history.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-028",
@@ -1637,8 +1512,7 @@
       "acceptance": "Restore an archived draft to an editable state.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-029",
@@ -1648,8 +1522,7 @@
       "acceptance": "Explain local versus external deletion outcome; preserve sent external records as required.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-030",
@@ -1659,8 +1532,7 @@
       "acceptance": "Mark when an assignment must be updated/reassigned after material edits.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CMP-031",
@@ -1670,8 +1542,7 @@
       "acceptance": "Retain submitted checklist state; do not equate storage with checks being enforced.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-001",
@@ -1681,8 +1552,7 @@
       "acceptance": "Select a tenant-accessible previous draft.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-002",
@@ -1692,8 +1562,7 @@
       "acceptance": "Select an ingested template from the current tenant.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-003",
@@ -1703,8 +1572,7 @@
       "acceptance": "Load an authorized reference design.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-004",
@@ -1714,8 +1582,7 @@
       "acceptance": "Extract from a supported library asset.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-005",
@@ -1725,8 +1592,7 @@
       "acceptance": "Load a captured inspiration email as source.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-006",
@@ -1736,8 +1602,7 @@
       "acceptance": "Retain the full pattern extraction result; this is not pixel-exact reconstruction.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-007",
@@ -1747,8 +1612,7 @@
       "acceptance": "Keep extracted offer/message mechanics separate from layout.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-008",
@@ -1758,8 +1622,7 @@
       "acceptance": "Keep extracted visual structure separate from strategy.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-009",
@@ -1769,8 +1632,7 @@
       "acceptance": "Pass an available image to supported vision analysis.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-010",
@@ -1780,8 +1642,7 @@
       "acceptance": "Explain when reference analysis lacks rendered pixels.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-011",
@@ -1805,8 +1666,7 @@
       "acceptance": "Preserve selected extraction through new-draft submission.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-013",
@@ -1816,8 +1676,7 @@
       "acceptance": "Replace the reference without accidentally creating another draft.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-014",
@@ -1827,8 +1686,7 @@
       "acceptance": "Clear the reference deliberately and retain unrelated campaign content.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-015",
@@ -1838,8 +1696,7 @@
       "acceptance": "Suggested references show usable sources for the campaign.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-016",
@@ -1849,8 +1706,7 @@
       "acceptance": "Advice attaches to the selected campaign; it is not automatic model training.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-017",
@@ -1860,8 +1716,7 @@
       "acceptance": "Return actionable layout advice for the chosen draft.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REF-018",
@@ -1886,8 +1741,7 @@
       "acceptance": "Previous/next month preserves the selected context.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-002",
@@ -1897,8 +1751,7 @@
       "acceptance": "Both views use the same work/status data.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-003",
@@ -1908,8 +1761,7 @@
       "acceptance": "Filter all/draft/assigned/scheduled/sent without changing records.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-004",
@@ -1919,8 +1771,7 @@
       "acceptance": "Filter design email/text email/SMS consistently.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-005",
@@ -1930,8 +1781,7 @@
       "acceptance": "Distinguish local work from external historical campaigns.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-006",
@@ -1941,8 +1791,7 @@
       "acceptance": "Show loading/failure state while historical sends load.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-007",
@@ -1952,8 +1801,7 @@
       "acceptance": "Clicking an item opens the intended existing draft.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-008",
@@ -1963,8 +1811,7 @@
       "acceptance": "A day-specific brief becomes correctly dated work.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-009",
@@ -1974,8 +1821,7 @@
       "acceptance": "Capture answers before committing generated work.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-010",
@@ -1985,8 +1831,7 @@
       "acceptance": "Month intake and context produce reviewable planned campaigns.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-011",
@@ -1996,8 +1841,7 @@
       "acceptance": "Retain chosen offers/strategy throughout generation.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-012",
@@ -2007,8 +1851,7 @@
       "acceptance": "Create the requested number/channel of planned campaigns.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-013",
@@ -2018,8 +1861,7 @@
       "acceptance": "Draft plan changes become persisted work only on the explicit commit path.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-014",
@@ -2029,8 +1871,7 @@
       "acceptance": "Apply updates to the intended planned campaign.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-015",
@@ -2040,8 +1881,7 @@
       "acceptance": "Record event name, purpose, dates and available context.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-016",
@@ -2051,8 +1891,7 @@
       "acceptance": "Create linked campaign drafts associated with one event.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-017",
@@ -2062,8 +1901,7 @@
       "acceptance": "Show relevant platform holidays without turning them into sends.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-018",
@@ -2073,8 +1911,7 @@
       "acceptance": "Create/delete own events without changing other tenants.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-019",
@@ -2084,8 +1921,7 @@
       "acceptance": "Planner explains an invalid past date before generation.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-020",
@@ -2095,8 +1931,7 @@
       "acceptance": "Moving a calendar item updates the intended send time.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-021",
@@ -2106,8 +1941,7 @@
       "acceptance": "Choose a captured design and a target date.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-022",
@@ -2117,8 +1951,7 @@
       "acceptance": "Create from a curated template without an admin-only link.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-023",
@@ -2128,8 +1961,7 @@
       "acceptance": "Analyze a selected reference within calendar context.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-024",
@@ -2139,8 +1971,7 @@
       "acceptance": "The exported report matches selected campaign period and fields.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-025",
@@ -2150,8 +1981,7 @@
       "acceptance": "Export opens as intended; verify actual format separately.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAL-026",
@@ -2161,8 +1991,7 @@
       "acceptance": "Provide structured report data matching the current report.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-001",
@@ -2172,8 +2001,7 @@
       "acceptance": "Designer access is distinct from client/admin access.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-002",
@@ -2183,8 +2011,7 @@
       "acceptance": "Designer chooses credentials using the intended expiring activation link.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-003",
@@ -2194,8 +2021,7 @@
       "acceptance": "Show only authorized assignments and deadlines.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-004",
@@ -2205,8 +2031,7 @@
       "acceptance": "Search/filter/page the designer's authorized clients.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-005",
@@ -2216,8 +2041,7 @@
       "acceptance": "Open work for an assigned client without exposing another tenant.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-006",
@@ -2227,8 +2051,7 @@
       "acceptance": "Show saved copy, products, reference and owner notes.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-007",
@@ -2238,8 +2061,7 @@
       "acceptance": "Authorized template/reference/inspiration previews load under designer permissions.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-008",
@@ -2249,8 +2071,7 @@
       "acceptance": "Pending work enters the supported in-progress state.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-009",
@@ -2260,8 +2081,7 @@
       "acceptance": "A supported uploaded design is attached to its assignment.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-010",
@@ -2271,8 +2091,7 @@
       "acceptance": "Track repeated submissions and revision count.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-011",
@@ -2282,8 +2101,7 @@
       "acceptance": "Only authorized admin/designer/client roles can fetch it.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-012",
@@ -2293,8 +2111,7 @@
       "acceptance": "Assign the selected authorized designer.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-013",
@@ -2304,8 +2121,7 @@
       "acceptance": "Use the supported assignment policy and expose who was assigned.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-014",
@@ -2315,8 +2131,7 @@
       "acceptance": "Create visible unassigned work rather than a false assigned state.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-015",
@@ -2326,8 +2141,7 @@
       "acceptance": "Stop the selected assignment with an audit/notification outcome.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-016",
@@ -2337,8 +2151,7 @@
       "acceptance": "Preserve feedback and identify who rejected the design.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-017",
@@ -2348,8 +2161,7 @@
       "acceptance": "Assign within the intended client scope.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-018",
@@ -2359,8 +2171,7 @@
       "acceptance": "Only the chosen submission moves into approved state.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-019",
@@ -2370,8 +2181,7 @@
       "acceptance": "Store reviewer feedback and preserve previous submission history.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-020",
@@ -2381,8 +2191,7 @@
       "acceptance": "Admin sees pending, submitted, revised and approved work.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-021",
@@ -2392,8 +2201,7 @@
       "acceptance": "Deadlines and breach status use consistent times.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-022",
@@ -2403,8 +2211,7 @@
       "acceptance": "Background breach handling is logged; deployment cadence remains unverified.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-023",
@@ -2414,8 +2221,7 @@
       "acceptance": "Accept supported final file types with correct size/type validation.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-024",
@@ -2425,8 +2231,7 @@
       "acceptance": "Replacing a final design updates only that draft and handles old assets.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-025",
@@ -2436,8 +2241,7 @@
       "acceptance": "Supported image widths/types are normalized before slicing.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-026",
@@ -2447,8 +2251,7 @@
       "acceptance": "Record slice order, paths, byte limits and target URL.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "DES-027",
@@ -2458,8 +2261,7 @@
       "acceptance": "Client final outranks designer output, which outranks generated body.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-001",
@@ -2469,8 +2271,7 @@
       "acceptance": "Resolve each intended included list/segment in the correct account.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-002",
@@ -2480,8 +2281,7 @@
       "acceptance": "Resolve every intended exclusion before executing.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-003",
@@ -2491,8 +2291,7 @@
       "acceptance": "Refresh available recipients and invalidate stale UI counts.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-004",
@@ -2502,8 +2301,7 @@
       "acceptance": "A threshold breach creates a visible gate and recorded decision.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-005",
@@ -2513,8 +2311,7 @@
       "acceptance": "A gate confirmation is scoped to the intended push, not blanket permission.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-006",
@@ -2524,8 +2321,7 @@
       "acceptance": "A recommendation includes its rationale and can be overridden.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-007",
@@ -2535,8 +2331,7 @@
       "acceptance": "Convert input consistently and preserve the intended brand time.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-008",
@@ -2546,8 +2341,7 @@
       "acceptance": "Enforce prerequisites before moving work toward execution.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-009",
@@ -2557,8 +2351,7 @@
       "acceptance": "Local/external status determines the supported reschedule path.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-010",
@@ -2568,8 +2361,7 @@
       "acceptance": "Expose whether an external send was actually cancelled.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-011",
@@ -2579,8 +2371,7 @@
       "acceptance": "Background generation reports queued/running/succeeded/failed state.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-012",
@@ -2590,8 +2381,7 @@
       "acceptance": "The queued action updates only its intended draft.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-013",
@@ -2601,8 +2391,7 @@
       "acceptance": "An approved push has an idempotency key and action identity.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-014",
@@ -2612,8 +2401,7 @@
       "acceptance": "A due locally scheduled campaign enters execution through the scheduler.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-015",
@@ -2623,8 +2411,7 @@
       "acceptance": "Persist the returned external template identity and errors.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-016",
@@ -2634,8 +2421,7 @@
       "acceptance": "Create the intended email campaign with subject, preview, sender and audience.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-017",
@@ -2645,8 +2431,7 @@
       "acceptance": "Link the intended template to the returned message.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-018",
@@ -2656,8 +2441,7 @@
       "acceptance": "A manual draft push is distinguishable from requesting a send.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-019",
@@ -2667,8 +2451,7 @@
       "acceptance": "A scheduled auto-send path can request a Klaviyo job; live completion is not verified.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-020",
@@ -2678,8 +2461,7 @@
       "acceptance": "Save external identities for recovery and status lookup.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-021",
@@ -2689,8 +2471,7 @@
       "acceptance": "Retryable failures use recorded attempts and do not loop indefinitely.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-022",
@@ -2700,8 +2481,7 @@
       "acceptance": "Concurrent workers do not both claim one queued action.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-023",
@@ -2711,8 +2491,7 @@
       "acceptance": "Action status includes useful output without revealing secrets.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-024",
@@ -2722,8 +2501,7 @@
       "acceptance": "Empty subject/body and malformed content produce blocking errors.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "EXE-025",
@@ -2733,8 +2511,7 @@
       "acceptance": "Missing links, placeholder destinations and alt issues are reported.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-001",
@@ -2744,8 +2521,7 @@
       "acceptance": "Validate, normalize and deduplicate domains per tenant.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-002",
@@ -2755,8 +2531,7 @@
       "acceptance": "Stop that tenant's visibility without deleting shared ingestion history unexpectedly.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-003",
@@ -2766,8 +2541,7 @@
       "acceptance": "New domain request creates the supported notification event.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-004",
@@ -2777,8 +2551,7 @@
       "acceptance": "Configure an operator-authorized collector mailbox without exposing its credential.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-005",
@@ -2788,8 +2561,7 @@
       "acceptance": "Track mailbox UID and UID validity to process new messages.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-006",
@@ -2799,8 +2571,7 @@
       "acceptance": "Initial/reset import has an explicit cap and no claim of complete history.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-007",
@@ -2810,8 +2581,7 @@
       "acceptance": "A large inbox continues over multiple tracked runs.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-008",
@@ -2834,8 +2604,7 @@
       "acceptance": "Retain from, return-path and DKIM domain observations.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-010",
@@ -2845,8 +2614,7 @@
       "acceptance": "Repeated message IDs do not create duplicate captured emails.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-011",
@@ -2856,8 +2624,7 @@
       "acceptance": "A newly observed sender appears for admin mapping.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-012",
@@ -2867,8 +2634,7 @@
       "acceptance": "Only mapped senders appear for the intended tracked brand.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-013",
@@ -2878,8 +2644,7 @@
       "acceptance": "Removing a mapping stops incorrect brand attribution.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-014",
@@ -2889,8 +2654,7 @@
       "acceptance": "Manual ingestion uses the same recorded path as background polling.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-015",
@@ -2900,8 +2664,7 @@
       "acceptance": "Show last collection attempt and its error/outcome.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-016",
@@ -2911,8 +2674,7 @@
       "acceptance": "Document the existing 100-message retention cap instead of promising unlimited history.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-017",
@@ -2922,8 +2684,7 @@
       "acceptance": "Recent feed window is bounded/configurable rather than full archive by default.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-018",
@@ -2933,8 +2694,7 @@
       "acceptance": "Store email type and allow correction of misclassification.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-019",
@@ -2944,8 +2704,7 @@
       "acceptance": "Admin can re-evaluate supported captured messages.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-020",
@@ -2955,8 +2714,7 @@
       "acceptance": "A corrected type is visible in filters.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-021",
@@ -2966,8 +2724,7 @@
       "acceptance": "Admin description changes remain attached to the right capture.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-022",
@@ -2977,8 +2734,7 @@
       "acceptance": "Preview captured content without granting it authority to execute actions.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-023",
@@ -2988,8 +2744,7 @@
       "acceptance": "Admin deletion has clear scope and explicit outcome.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-024",
@@ -2999,8 +2754,7 @@
       "acceptance": "UI promises auto-subscribe but traced path notifies admins; implement or relabel.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-025",
@@ -3010,8 +2764,7 @@
       "acceptance": "Categories can be created, renamed and removed without orphaning intended files.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-026",
@@ -3021,8 +2774,7 @@
       "acceptance": "Curators manage supported template files and metadata.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-027",
@@ -3032,8 +2784,7 @@
       "acceptance": "Authorized users retrieve/remove the intended asset.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "INT-028",
@@ -3043,8 +2794,7 @@
       "acceptance": "Client search/browse exposes curated assets without admin access.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-001",
@@ -3054,8 +2804,7 @@
       "acceptance": "Conversation history remains attached to the correct tenant/user.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-002",
@@ -3065,8 +2814,7 @@
       "acceptance": "Visibility selection determines which teammates can read the thread.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-003",
@@ -3076,8 +2824,7 @@
       "acceptance": "Only the permitted owner can rename a conversation.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-004",
@@ -3087,8 +2834,7 @@
       "acceptance": "A private/shared change follows ownership rules.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-005",
@@ -3098,8 +2844,7 @@
       "acceptance": "Delete the intended conversation with explicit outcome.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-006",
@@ -3109,8 +2854,7 @@
       "acceptance": "Refresh context and show whether it succeeded.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-007",
@@ -3120,8 +2864,7 @@
       "acceptance": "Assistant can use ingested email context with source identity.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-008",
@@ -3131,8 +2874,7 @@
       "acceptance": "Picker choices persist into the intended conversational brief.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-009",
@@ -3142,8 +2884,7 @@
       "acceptance": "A chat-created draft becomes an inspectable campaign object.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-010",
@@ -3153,8 +2894,7 @@
       "acceptance": "Assignment uses the intended draft and designer scope.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-011",
@@ -3164,8 +2904,7 @@
       "acceptance": "The assistant receives the selected campaign context.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-012",
@@ -3175,8 +2914,7 @@
       "acceptance": "Conversation remains scoped to the current campaign.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-013",
@@ -3186,8 +2924,7 @@
       "acceptance": "Agent proposals are distinct from approved execution.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-014",
@@ -3197,8 +2934,7 @@
       "acceptance": "Tool returns source-derived product context.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-015",
@@ -3208,8 +2944,7 @@
       "acceptance": "Tool returns stored offer context with correct tenant scope.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-016",
@@ -3219,8 +2954,7 @@
       "acceptance": "Tool uses current tenant facts.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-017",
@@ -3230,8 +2964,7 @@
       "acceptance": "Tool returns intended historical campaign records.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-018",
@@ -3241,8 +2974,7 @@
       "acceptance": "Tool distinguishes relevant audience definitions.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-019",
@@ -3252,8 +2984,7 @@
       "acceptance": "Response identifies recommendation rather than scheduled execution.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-020",
@@ -3263,8 +2994,7 @@
       "acceptance": "Resolve specific selected products.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-021",
@@ -3274,8 +3004,7 @@
       "acceptance": "Keep period/source/currency with the response.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-022",
@@ -3285,8 +3014,7 @@
       "acceptance": "Use supported purchase/behavior evidence.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-023",
@@ -3296,8 +3024,7 @@
       "acceptance": "Do not substitute missing statistics with fabricated results.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-024",
@@ -3307,8 +3034,7 @@
       "acceptance": "Return available engagement evidence with limitations.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-025",
@@ -3318,8 +3044,7 @@
       "acceptance": "Return supported abandoned-checkout context.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-026",
@@ -3329,8 +3054,7 @@
       "acceptance": "Separate observed discount use from inferred uplift.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-027",
@@ -3340,8 +3064,7 @@
       "acceptance": "Expose supported flow context.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-028",
@@ -3351,8 +3074,7 @@
       "acceptance": "Use available funnel statistics and identify gaps.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-029",
@@ -3362,8 +3084,7 @@
       "acceptance": "Compare consistent periods/denominators.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-030",
@@ -3373,8 +3094,7 @@
       "acceptance": "Change only the approved draft subject.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-031",
@@ -3384,8 +3104,7 @@
       "acceptance": "Change the intended campaign time with proper approval.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-032",
@@ -3395,8 +3114,7 @@
       "acceptance": "Keep assignment tenant/draft scoped.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "GRO-033",
@@ -3406,8 +3124,7 @@
       "acceptance": "Use an inspectable approval/execution path.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-001",
@@ -3417,8 +3134,7 @@
       "acceptance": "Show connected organization/timezone/currency consistently.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-002",
@@ -3428,8 +3144,7 @@
       "acceptance": "Browse supported list data and resource detail.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-003",
@@ -3439,8 +3154,7 @@
       "acceptance": "Browse supported segment data and resource detail.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-004",
@@ -3450,8 +3164,7 @@
       "acceptance": "Browse historical campaign records and selected details.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-005",
@@ -3461,8 +3174,7 @@
       "acceptance": "Browse flow records, steps and supported messages.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-006",
@@ -3472,8 +3184,7 @@
       "acceptance": "Open the intended message/template context.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-007",
@@ -3483,8 +3194,7 @@
       "acceptance": "Browse event metric definitions and details.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-008",
@@ -3494,8 +3204,7 @@
       "acceptance": "Search the supported dashboard resources within tenant scope.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-009",
@@ -3505,8 +3214,7 @@
       "acceptance": "Save a target separately from measured revenue.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-010",
@@ -3516,8 +3224,7 @@
       "acceptance": "Klaviyo versus UTM views clearly identify different definitions.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-011",
@@ -3527,8 +3234,7 @@
       "acceptance": "Chart labels preserve time period and currency.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-012",
@@ -3538,8 +3244,7 @@
       "acceptance": "Use available metrics with correct comparisons.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-013",
@@ -3549,8 +3254,7 @@
       "acceptance": "Show source/time window with available counts.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-014",
@@ -3560,8 +3264,7 @@
       "acceptance": "Dashboard and calendar agree on which work is upcoming.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-015",
@@ -3571,8 +3274,7 @@
       "acceptance": "Requested insight uses current metrics and records usage.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-016",
@@ -3582,8 +3284,7 @@
       "acceptance": "Cache age and refresh behavior are visible.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-017",
@@ -3593,8 +3294,7 @@
       "acceptance": "Background warm runs are logged; actual deployment cadence needs validation.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-018",
@@ -3604,8 +3304,7 @@
       "acceptance": "Shared performance context supports report generation.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-019",
@@ -3615,8 +3314,7 @@
       "acceptance": "Unavailable campaign stats are labeled missing, not recency-ranked winners.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-020",
@@ -3626,8 +3324,7 @@
       "acceptance": "Show active package and remaining input/output allowance.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-021",
@@ -3637,8 +3334,7 @@
       "acceptance": "Do not present the coming-soon labels as functioning analytics.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "RPT-022",
@@ -3648,8 +3344,7 @@
       "acceptance": "Show as unimplemented until backed by verified data.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-001",
@@ -3659,8 +3354,7 @@
       "acceptance": "Admins can find a prompt by purpose/key.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-002",
@@ -3670,8 +3364,7 @@
       "acceptance": "Changes persist with intended scope and active state.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-003",
@@ -3681,8 +3374,7 @@
       "acceptance": "Preserve runtime variables and structured-output expectations.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-004",
@@ -3692,8 +3384,7 @@
       "acceptance": "Detect missing/unused bindings and unhealthy trigger mapping.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-005",
@@ -3703,8 +3394,7 @@
       "acceptance": "Repair/reset the intended prompt with an inspectable result.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-006",
@@ -3714,8 +3404,7 @@
       "acceptance": "AI output remains a draft until saved.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-007",
@@ -3725,8 +3414,7 @@
       "acceptance": "Requested revisions can be reviewed before save.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-008",
@@ -3736,8 +3424,7 @@
       "acceptance": "Report the selected prompt test outcome and usage.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-009",
@@ -3747,8 +3434,7 @@
       "acceptance": "Apply only to selected prompts and report partial failures.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-010",
@@ -3758,8 +3444,7 @@
       "acceptance": "Keep prompt versions/generation metadata available for traceability.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-011",
@@ -3769,8 +3454,7 @@
       "acceptance": "Inspect the actual scoped expertise/context a tenant receives.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-012",
@@ -3780,8 +3464,7 @@
       "acceptance": "Create/edit/disable plays, crafts and rules.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-013",
@@ -3791,8 +3474,7 @@
       "acceptance": "Select expertise by context and active state.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-014",
@@ -3802,8 +3484,7 @@
       "acceptance": "Retain explicit sort order for applicable guidance.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-015",
@@ -3813,8 +3494,7 @@
       "acceptance": "Create/edit/delete hidden tenant guidance without cross-brand contamination.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-016",
@@ -3824,8 +3504,7 @@
       "acceptance": "Configured provider/model selection reaches the intended adapter.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-017",
@@ -3835,8 +3514,7 @@
       "acceptance": "Test configured provider with safe diagnostics.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-018",
@@ -3846,8 +3524,7 @@
       "acceptance": "Tenant override save/clear returns to the correct fallback.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-019",
@@ -3885,8 +3562,7 @@
       "acceptance": "Configure allowance, price, currency, cycle, ordering and active/default state.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-022",
@@ -3896,8 +3572,7 @@
       "acceptance": "New/existing tenant allowance follows configured package rules.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-023",
@@ -3907,8 +3582,7 @@
       "acceptance": "Filter supported usage reports with correct tenant/provider context.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-024",
@@ -3918,8 +3592,7 @@
       "acceptance": "Inspect intended client accounts and connection summaries.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-025",
@@ -3929,8 +3602,7 @@
       "acceptance": "Report platform totals and recent tenants from available data.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-026",
@@ -3940,8 +3612,7 @@
       "acceptance": "Only authorized admins can grant/revoke the intended admin invitation.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-027",
@@ -3951,8 +3622,7 @@
       "acceptance": "Enforce super-admin versus admin permissions.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-028",
@@ -3962,8 +3632,7 @@
       "acceptance": "Persist intended profile/credential changes with role verification.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-029",
@@ -3973,8 +3642,7 @@
       "acceptance": "Store and test supported platform settings without exposing secrets.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-030",
@@ -3984,8 +3652,7 @@
       "acceptance": "Create, enable/disable and reassign authorized designer accounts.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADM-031",
@@ -3995,8 +3662,7 @@
       "acceptance": "Resend the intended activation/reset link without creating duplicate accounts.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-001",
@@ -4006,8 +3672,7 @@
       "acceptance": "Create a tenant-scoped support conversation.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-002",
@@ -4017,8 +3682,7 @@
       "acceptance": "Messages attach to the intended thread and sender.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-003",
@@ -4028,8 +3692,7 @@
       "acceptance": "Type/size/access checks protect uploaded files.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-004",
@@ -4039,8 +3702,7 @@
       "acceptance": "New replies appear without duplication.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-005",
@@ -4050,8 +3712,7 @@
       "acceptance": "Closing the ticket updates the correct thread.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-006",
@@ -4061,8 +3722,7 @@
       "acceptance": "Admin can locate the intended tenant conversation.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-007",
@@ -4072,8 +3732,7 @@
       "acceptance": "Replies and ticket transitions are logged for the right tenant.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-008",
@@ -4083,8 +3742,7 @@
       "acceptance": "Client can submit feedback with clear receipt.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-009",
@@ -4094,8 +3752,7 @@
       "acceptance": "Admin can read/update request status.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-010",
@@ -4105,8 +3762,7 @@
       "acceptance": "Assignment, review, cancellation and support events use configured destinations.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-011",
@@ -4116,8 +3772,7 @@
       "acceptance": "Supported notification settings apply to intended events.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-012",
@@ -4127,8 +3782,7 @@
       "acceptance": "Show sent/queued/failed notification outcomes.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-013",
@@ -4138,8 +3792,7 @@
       "acceptance": "List Shopify sync, template ingest, warmers, action queue and inspiration sync.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-014",
@@ -4149,8 +3802,7 @@
       "acceptance": "Show success, partial and failure without interpreting no data as success.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-015",
@@ -4160,8 +3812,7 @@
       "acceptance": "Inspect recent runs by job key.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-016",
@@ -4171,8 +3822,7 @@
       "acceptance": "Run only an allowed job and record the outcome.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-017",
@@ -4182,8 +3832,7 @@
       "acceptance": "Require the intended explicit destructive action and scope.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-018",
@@ -4193,8 +3842,7 @@
       "acceptance": "Show recent work, attempt count, errors and external IDs.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-019",
@@ -4204,8 +3852,7 @@
       "acceptance": "Admin diagnostics use resolved runtime paths.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-020",
@@ -4215,8 +3862,7 @@
       "acceptance": "Relevant changes retain actor, tenant and target context.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-021",
@@ -4226,8 +3872,7 @@
       "acceptance": "Every read/write checks the correct tenant and role.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-022",
@@ -4237,8 +3882,7 @@
       "acceptance": "State-changing forms reject invalid request tokens.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-023",
@@ -4248,8 +3892,7 @@
       "acceptance": "Verify credential encryption and rotation behavior before reuse.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "OPS-024",
@@ -4273,8 +3916,7 @@
       "acceptance": "Do not count as implemented until backed by the list-health release gate.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LEG-002",
@@ -4284,8 +3926,7 @@
       "acceptance": "Keep visible only when it has a defined working capability.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LEG-003",
@@ -4295,8 +3936,7 @@
       "acceptance": "Distinguish from current flow read/report support.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LEG-004",
@@ -4306,8 +3946,7 @@
       "acceptance": "Distinguish from basic content warnings.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LEG-005",
@@ -4317,8 +3956,7 @@
       "acceptance": "Do not infer automated experiments from this menu label.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LEG-006",
@@ -4328,8 +3966,7 @@
       "acceptance": "Exclude from existing delivered capability claims.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LEG-007",
@@ -4339,8 +3976,7 @@
       "acceptance": "Keep separate from existing support messages.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LEG-008",
@@ -4350,8 +3986,7 @@
       "acceptance": "Implement a real version history or relabel the inactive surface.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LEG-009",
@@ -4361,8 +3996,7 @@
       "acceptance": "Reconcile dashboard messaging with actual supported approvals.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LEG-010",
@@ -4372,8 +4006,7 @@
       "acceptance": "Retain as schema legacy; do not promise outbound WhatsApp from current email runner.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-001",
@@ -4383,8 +4016,7 @@
       "acceptance": "On first use the next action is Add competitors; afterwards it is Browse new captures.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-002",
@@ -4394,8 +4026,7 @@
       "acceptance": "Every screen identifies the selected merchant store before any action.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-003",
@@ -4405,8 +4036,7 @@
       "acceptance": "A competitor can never be selected as a send destination by mistake.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-004",
@@ -4416,8 +4046,7 @@
       "acceptance": "Keep the original, editable replica and relevant settings within one project; onboarding initially shows the result with comparison/settings available on demand.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-005",
@@ -4427,8 +4056,7 @@
       "acceptance": "Preserve useful campaign/calendar/library patterns; validate names and progressive reveal with operators before enforcing a new navigation structure.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-006",
@@ -4438,8 +4066,7 @@
       "acceptance": "Source, editable replica and setup/checks stay in one project.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-007",
@@ -4462,8 +4089,7 @@
       "acceptance": "Desktop/mobile views use comparable widths and selectable original/output.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-009",
@@ -4473,8 +4099,7 @@
       "acceptance": "List content, asset, layout, footer, audience and offer differences.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-010",
@@ -4484,8 +4109,7 @@
       "acceptance": "Map products, offers and destinations once with reusable defaults.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-011",
@@ -4508,8 +4132,7 @@
       "acceptance": "Collecting, Ready, Needs setup, In production, Needs review, Scheduled, Sending, Sent and Failed have exact meanings.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-013",
@@ -4519,8 +4142,7 @@
       "acceptance": "Disconnected integrations and incomplete assets show a useful next step.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-014",
@@ -4530,8 +4152,7 @@
       "acceptance": "Edits survive reopen and show a saved/failed/pending state.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-015",
@@ -4541,8 +4162,7 @@
       "acceptance": "Return to the same incomplete stage without retyping prior answers.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-016",
@@ -4552,8 +4172,7 @@
       "acceptance": "Restore a prior local version without undoing external sends.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-017",
@@ -4563,8 +4182,7 @@
       "acceptance": "An operator can search/select/map/review without a mouse.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-018",
@@ -4574,8 +4192,7 @@
       "acceptance": "Editor remains usable at agreed laptop/mobile widths and zoom.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-019",
@@ -4585,8 +4202,7 @@
       "acceptance": "Select captures/projects explicitly; show per-item results and failures.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-020",
@@ -4596,8 +4212,7 @@
       "acceptance": "One definition of status, footer, audience and offer is reused across screens.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-021",
@@ -4607,8 +4222,7 @@
       "acceptance": "Delete/untrack/archive/cancel use different labels and explanations.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-022",
@@ -4618,8 +4232,7 @@
       "acceptance": "Ask questions about the selected source/project without leaving it.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-023",
@@ -4629,8 +4242,7 @@
       "acceptance": "Results show owning store/brand and source type.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-024",
@@ -4640,8 +4252,7 @@
       "acceptance": "Unreleased capabilities stay out of primary operator navigation.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-025",
@@ -4651,8 +4262,7 @@
       "acceptance": "Show meaningful collection, production, approval and execution events.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "UX-026",
@@ -4662,8 +4272,7 @@
       "acceptance": "A novice can add brands and produce one mapped draft without outside instructions.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-001",
@@ -4673,8 +4282,7 @@
       "acceptance": "Accept website/domain and resolve confirmed brand identity.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-002",
@@ -4684,8 +4292,7 @@
       "acceptance": "Group brand websites/sender domains without guessing ambiguous matches.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-003",
@@ -4695,8 +4302,7 @@
       "acceptance": "Each monitoring journey has an identifiable authorized inbox/address.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-004",
@@ -4706,8 +4312,7 @@
       "acceptance": "Show Not subscribed, Awaiting confirmation, Collecting, No messages yet and Needs attention.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-005",
@@ -4717,8 +4322,7 @@
       "acceptance": "Complete ordinary signup steps where supported; leave required human steps explicit.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-006",
@@ -4728,8 +4332,7 @@
       "acceptance": "Record confirmation success and first received email separately.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-007",
@@ -4754,8 +4357,7 @@
       "acceptance": "Retain supplied pixels with an explicit missing-HTML limitation.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-009",
@@ -4765,8 +4367,7 @@
       "acceptance": "Forwarded messages retain original metadata where available.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-010",
@@ -4776,8 +4377,7 @@
       "acceptance": "Import merchant-owned historical templates alongside competitor captures.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-011",
@@ -4787,8 +4387,7 @@
       "acceptance": "Define history/retention beyond the old 100-message sender cap.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-012",
@@ -4812,8 +4411,7 @@
       "acceptance": "Display actual observation time and available original sent time with timezone.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-014",
@@ -4823,8 +4421,7 @@
       "acceptance": "Operators can distinguish new material from reviewed material.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-015",
@@ -4834,8 +4431,7 @@
       "acceptance": "Group references by brand, offer, product, event and manual tags.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-016",
@@ -4845,8 +4441,7 @@
       "acceptance": "Search filters combine predictably and can be cleared.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-017",
@@ -4856,8 +4451,7 @@
       "acceptance": "Show last success, last message, collector errors and coverage limitations.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-018",
@@ -4867,8 +4461,7 @@
       "acceptance": "Group repeated/resend variants without losing individual receipts.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-019",
@@ -4878,8 +4471,7 @@
       "acceptance": "Show when captures and external assets were last available.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-020",
@@ -4889,8 +4481,7 @@
       "acceptance": "Keep welcome, browsing and checkout observations separate with explicit setup provenance.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-021",
@@ -4900,8 +4491,7 @@
       "acceptance": "Order receipts within a known journey rather than inventing unseen steps.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-022",
@@ -4911,8 +4501,7 @@
       "acceptance": "Every inferred tactic cites captures and states observation coverage.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-023",
@@ -4922,8 +4511,7 @@
       "acceptance": "Show observed send intervals/frequency for the selected monitoring window.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-024",
@@ -4933,8 +4521,7 @@
       "acceptance": "Extract claims and expiry text without treating them as verified merchant offers.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-025",
@@ -4944,8 +4531,7 @@
       "acceptance": "Group related messages with editable inferred boundaries.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-026",
@@ -4955,8 +4541,7 @@
       "acceptance": "Compare observable patterns using equivalent collection windows.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-027",
@@ -4966,8 +4551,7 @@
       "acceptance": "Explain match to the merchant's product/offer goal rather than claim competitor profitability.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-028",
@@ -4977,8 +4561,7 @@
       "acceptance": "Alert on selected meaningful changes with frequency controls.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-029",
@@ -4988,8 +4571,7 @@
       "acceptance": "Correct sender attribution and reprocess affected captures.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "WATCH-030",
@@ -4999,8 +4581,7 @@
       "acceptance": "Unknown spend, revenue, recipient size and unseen flow branches remain unknown.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-001",
@@ -5010,8 +4591,7 @@
       "acceptance": "Connect authorized account and display granted read capabilities.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-002",
@@ -5021,8 +4601,7 @@
       "acceptance": "Import supported status, creative, copy, destination and campaign/ad IDs.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-003",
@@ -5032,8 +4611,7 @@
       "acceptance": "Only show metrics the connected account and permissions actually provide.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-004",
@@ -5043,8 +4621,7 @@
       "acceptance": "Associate a watched brand with confirmed public advertiser/page identity.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-005",
@@ -5054,8 +4631,7 @@
       "acceptance": "Record supported country, platform, date and provider restrictions.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-006",
@@ -5065,8 +4641,7 @@
       "acceptance": "Operator can attach a source URL/capture when automatic coverage is unavailable.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-007",
@@ -5076,8 +4651,7 @@
       "acceptance": "Retain observed creative and source IDs with first/last seen timestamps.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-008",
@@ -5087,8 +4661,7 @@
       "acceptance": "Separate source-reported active from last observed and unknown.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-009",
@@ -5098,8 +4671,7 @@
       "acceptance": "Store supported observed text and destination with evidence.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-010",
@@ -5109,8 +4681,7 @@
       "acceptance": "Suggested matches remain inspectable/correctable.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-011",
@@ -5120,8 +4691,7 @@
       "acceptance": "Compare observed promises and highlight contradictions.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-012",
@@ -5131,8 +4701,7 @@
       "acceptance": "Missing spend/conversion/targeting data is visibly unavailable.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-013",
@@ -5142,8 +4711,7 @@
       "acceptance": "Read supported code and automatic discounts using authorized scope.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-014",
@@ -5153,8 +4721,7 @@
       "acceptance": "Track starts/ends, min spend, products/collections, customers and usage limits where provided.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-015",
@@ -5164,8 +4731,7 @@
       "acceptance": "Preserve combination constraints rather than assuming codes combine.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-016",
@@ -5175,8 +4741,7 @@
       "acceptance": "Capture banners, PDP pricing, shipping thresholds, bundles and visible terms.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-017",
@@ -5186,8 +4751,7 @@
       "acceptance": "Track public offers with locale and capture time, without claiming private discount access.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-018",
@@ -5197,8 +4761,7 @@
       "acceptance": "Separate API-verified, storefront-observed and manually approved offers.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-019",
@@ -5208,8 +4771,7 @@
       "acceptance": "Active, scheduled, expired, disabled and unverified states affect eligibility.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-020",
@@ -5219,8 +4781,7 @@
       "acceptance": "A copied 30% offer stays a proposal until approved/verified for this store.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-021",
@@ -5230,8 +4791,7 @@
       "acceptance": "Test the intended link/code behavior in a permitted non-purchase check.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-022",
@@ -5241,8 +4801,7 @@
       "acceptance": "Unavailable selected variants block or flag the affected campaign before approval/send.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-023",
@@ -5252,8 +4811,7 @@
       "acceptance": "Keep prior observed values and change times rather than overwrite history.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-024",
@@ -5263,8 +4821,7 @@
       "acceptance": "Refresh on chosen cadence and expose stale/error states.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "ADS-025",
@@ -5274,8 +4831,7 @@
       "acceptance": "Notify selected meaningful changes without repeated unchanged notices.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-001",
@@ -5298,8 +4854,7 @@
       "acceptance": "Preserve execution while substituting selected merchant branding/products/links/offers.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-003",
@@ -5309,8 +4864,7 @@
       "acceptance": "Reuse inferred sequence/mechanics while generating new content.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-004",
@@ -5320,8 +4874,7 @@
       "acceptance": "Create linked editable projects from selected observed messages.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-005",
@@ -5331,8 +4884,7 @@
       "acceptance": "Show which parts are preserved, changed, missing or unsupported.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-006",
@@ -5342,8 +4894,7 @@
       "acceptance": "Extract supported layout tree, content, styles and image references.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-007",
@@ -5353,8 +4904,7 @@
       "acceptance": "Record viewport, fonts, loaded assets and rendering environment.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-008",
@@ -5364,8 +4914,7 @@
       "acceptance": "Identify extracted text and uncertain text regions for operator correction.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-009",
@@ -5375,8 +4924,7 @@
       "acceptance": "Capture available families, sizes, weights, colors, spacing and button style.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-010",
@@ -5386,8 +4934,7 @@
       "acceptance": "Represent desktop/mobile layout rules where observable.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-011",
@@ -5426,8 +4973,7 @@
       "acceptance": "Locked content survives later layout regeneration.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-014",
@@ -5437,8 +4983,7 @@
       "acceptance": "Locked hierarchy/spacing survives copy changes.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-015",
@@ -5448,8 +4993,7 @@
       "acceptance": "Show which image is original versus mapped/generated.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-016",
@@ -5459,8 +5003,7 @@
       "acceptance": "Suggest actual merchant SKUs with confirmable matches.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-017",
@@ -5470,8 +5013,7 @@
       "acceptance": "Missing product mapping remains visible and prevents accidental competitor destinations.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-018",
@@ -5481,8 +5023,7 @@
       "acceptance": "Replace identity components using merchant canonical assets.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-019",
@@ -5492,8 +5033,7 @@
       "acceptance": "Resolve source promises to verified merchant offers or explicit proposals.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-020",
@@ -5517,8 +5057,7 @@
       "acceptance": "Remove source-specific trackers while preserving our intentional tracking configuration.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-022",
@@ -5528,8 +5067,7 @@
       "acceptance": "Do not send another recipient's personalized unsubscribe/account URLs.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-023",
@@ -5539,8 +5077,7 @@
       "acceptance": "Generate/replace selected imagery with visible provenance and approval.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-024",
@@ -5550,8 +5087,7 @@
       "acceptance": "Flag altered packaging/labels/shape in generated asset review.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-025",
@@ -5561,8 +5097,7 @@
       "acceptance": "Separate destinations for hero, product cards and footer links.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-026",
@@ -5572,8 +5107,7 @@
       "acceptance": "Compare at declared widths and report meaningful visual mismatches.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-027",
@@ -5583,8 +5117,7 @@
       "acceptance": "Show supported readability behavior and unresolved rendering issues.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-028",
@@ -5594,8 +5127,7 @@
       "acceptance": "Allow overlay/side-by-side and highlight changed text, assets and geometry.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-029",
@@ -5605,8 +5137,7 @@
       "acceptance": "Explain deviations; never silently report perfect fidelity.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-030",
@@ -5629,8 +5160,7 @@
       "acceptance": "Prove export/edit round trip for supported template types/revisions.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-032",
@@ -5640,8 +5170,7 @@
       "acceptance": "Choose source for each section without losing provenance.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-033",
@@ -5651,8 +5180,7 @@
       "acceptance": "Regenerate only failed/unlocked work and preserve accepted sections.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-034",
@@ -5662,8 +5190,7 @@
       "acceptance": "Run multiple selected captures with per-item progress/cost/result.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REP-035",
@@ -5673,8 +5200,7 @@
       "acceptance": "Retain source capture, version, mode and mappings for each project.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-001",
@@ -5684,8 +5210,7 @@
       "acceptance": "Each store has logical keys for header/footer/social/offer bar and external mappings.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-002",
@@ -5695,8 +5220,7 @@
       "acceptance": "Use footer.default for every applicable project independent of display name.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-003",
@@ -5706,8 +5230,7 @@
       "acceptance": "Map logical footer to account-specific universal-content ID rather than a copied HTML string.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-004",
@@ -5717,8 +5240,7 @@
       "acceptance": "Show candidate matches; operator resolves ambiguity before adopting.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-005",
@@ -5728,8 +5250,7 @@
       "acceptance": "Repeated setup reuses the existing mapped object rather than creating duplicates.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-006",
@@ -5739,8 +5260,7 @@
       "acceptance": "Editor round trip proves actual shared reference instead of flattened HTML copy.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-007",
@@ -5750,8 +5270,7 @@
       "acceptance": "Edit brand address, unsubscribe, social destinations and presentation in one place.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-008",
@@ -5761,8 +5280,7 @@
       "acceptance": "Show linked draft/template dependencies and approval invalidations before shared updates.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-009",
@@ -5772,8 +5290,7 @@
       "acceptance": "Keep previous definitions and restore through a controlled external update.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-010",
@@ -5783,8 +5300,7 @@
       "acceptance": "Map explicit locale/market keys with deterministic fallback.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-011",
@@ -5794,8 +5310,7 @@
       "acceptance": "An override is visible as detached/version-pinned rather than silently canonical.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-012",
@@ -5805,8 +5320,7 @@
       "acceptance": "Detect original embedded footer before attaching the merchant footer.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-013",
@@ -5816,8 +5330,7 @@
       "acceptance": "Reintroduce only as explicit canonical component; old retired fields do not count as support.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-014",
@@ -5827,8 +5340,7 @@
       "acceptance": "Define audience.engaged_30d, audience.vip and exclusion.recent_buyers as configurable concepts.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-015",
@@ -5838,8 +5350,7 @@
       "acceptance": "Each store/account has its own IDs even if display names match.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-016",
@@ -5849,8 +5360,7 @@
       "acceptance": "Operator reviews exact consent, event, time window and market rules before creation.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-017",
@@ -5860,8 +5370,7 @@
       "acceptance": "Show definition differences and do not match by name alone.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-018",
@@ -5871,8 +5380,7 @@
       "acceptance": "Repeated onboarding resolves or creates one mapped external object.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-019",
@@ -5882,8 +5390,7 @@
       "acceptance": "External rename changes the label while preserving ID mapping.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-020",
@@ -5893,8 +5400,7 @@
       "acceptance": "Missing external ID blocks sending and asks for explicit remapping.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-021",
@@ -5904,8 +5410,7 @@
       "acceptance": "Show external IDs/counts/definitions before selecting a candidate.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-022",
@@ -5915,8 +5420,7 @@
       "acceptance": "External edits are compared to the approved definition hash/version.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-023",
@@ -5926,8 +5430,7 @@
       "acceptance": "All intended exclusions resolve; unknown exclusion never silently disappears.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-024",
@@ -5937,8 +5440,7 @@
       "acceptance": "Map sender name/address/reply-to by store with verified available settings.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-025",
@@ -5948,8 +5450,7 @@
       "acceptance": "Create deterministic readable names with source, mode and version metadata.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-026",
@@ -5959,8 +5460,7 @@
       "acceptance": "Store account, logical key, external type/ID, display name, version, hash and sync time.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-027",
@@ -5970,8 +5470,7 @@
       "acceptance": "Show why a field is default/inherited/overridden on the current project.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "CAN-028",
@@ -5981,8 +5480,7 @@
       "acceptance": "Re-running setup creates no duplicates and explains conflicts before changing external objects.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-001",
@@ -5992,8 +5490,7 @@
       "acceptance": "Show available read/write tools, connection state and required permissions per provider.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-002",
@@ -6003,8 +5500,7 @@
       "acceptance": "Use documented tools with the intended account and configurable read/write scope.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-003",
@@ -6014,8 +5510,7 @@
       "acceptance": "Provide products/orders/discount capabilities without assuming an undocumented official MCP.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-004",
@@ -6025,8 +5520,7 @@
       "acceptance": "Plug in a validated provider with explicit coverage and cost metadata.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-005",
@@ -6036,8 +5530,7 @@
       "acceptance": "Use authorized Canva/asset tools where useful; keep a manual import fallback.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-006",
@@ -6047,8 +5540,7 @@
       "acceptance": "External agents can invoke a documented versioned tool surface for our own project objects.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-007",
@@ -6058,8 +5550,7 @@
       "acceptance": "Return only the requesting operator's authorized watched brands.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-008",
@@ -6069,8 +5560,7 @@
       "acceptance": "Filter by brand/date/type/tags and return source IDs.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-009",
@@ -6080,8 +5570,7 @@
       "acceptance": "Return observations and inference labels with evidence references.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-010",
@@ -6091,8 +5580,7 @@
       "acceptance": "Create an inspectable draft with source/mode/store identifiers.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-011",
@@ -6102,8 +5590,7 @@
       "acceptance": "Validate store ownership and preserve changes as versioned draft state.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-012",
@@ -6113,8 +5600,7 @@
       "acceptance": "Use optimistic version checks and per-block locks.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-013",
@@ -6124,8 +5610,7 @@
       "acceptance": "Return named blocking findings and nonblocking issues for the exact version.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-014",
@@ -6135,8 +5620,7 @@
       "acceptance": "Export only the intended version and record destination identity.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-015",
@@ -6146,8 +5630,7 @@
       "acceptance": "Return a concrete action proposal rather than an unreviewed send.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-016",
@@ -6157,8 +5640,7 @@
       "acceptance": "Verify authorized actor and bind approval to content/audience/schedule version.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-017",
@@ -6168,8 +5650,7 @@
       "acceptance": "Reject missing, expired or stale approval and deduplicate execution.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-018",
@@ -6179,8 +5660,7 @@
       "acceptance": "Return partial success, external IDs and recoverable failure states.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-019",
@@ -6190,8 +5670,7 @@
       "acceptance": "Cancel only actions still eligible and report external outcome.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-020",
@@ -6201,8 +5680,7 @@
       "acceptance": "Authorized consumers receive scoped completion/change events with retry/deduplication.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-021",
@@ -6212,8 +5690,7 @@
       "acceptance": "Reject unknown/malformed parameters with actionable errors.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-022",
@@ -6223,8 +5700,7 @@
       "acceptance": "A research-only session cannot mutate campaigns or offers.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-023",
@@ -6234,8 +5710,7 @@
       "acceptance": "The model cannot choose arbitrary unauthorized tenant identifiers.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-024",
@@ -6245,8 +5720,7 @@
       "acceptance": "Provider credentials never enter prompts or tool result text.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-025",
@@ -6256,8 +5730,7 @@
       "acceptance": "Instructions inside captured emails/ads cannot authorize tool actions.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-026",
@@ -6267,8 +5740,7 @@
       "acceptance": "Long agent loops stop predictably with resumable state.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-027",
@@ -6278,8 +5750,7 @@
       "acceptance": "Revocation stops new provider calls and exposes reconnection steps.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "MCP-028",
@@ -6289,8 +5760,7 @@
       "acceptance": "Record actor, arguments with redaction, approval, result and external effects.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-001",
@@ -6300,8 +5770,7 @@
       "acceptance": "Store accepted/rejected edits linked to source, campaign and field.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-002",
@@ -6311,8 +5780,7 @@
       "acceptance": "Explicit brand rules take priority and are labeled.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-003",
@@ -6322,8 +5790,7 @@
       "acceptance": "Only observed own-account metrics can update performance recommendations.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-004",
@@ -6333,8 +5800,7 @@
       "acceptance": "Repeated competitor creative is a pattern signal, not proof of conversion.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-005",
@@ -6344,8 +5810,7 @@
       "acceptance": "Wait for an appropriate configured window before assessing a send.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-006",
@@ -6355,8 +5820,7 @@
       "acceptance": "Learn preferred layout/voice choices without overwriting business facts.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-007",
@@ -6366,8 +5830,7 @@
       "acceptance": "Every preference update has provenance, confidence and version.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-008",
@@ -6377,8 +5840,7 @@
       "acceptance": "New captures update a dated inference snapshot with supporting evidence.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-009",
@@ -6388,8 +5850,7 @@
       "acceptance": "Flag pattern changes against prior comparable observations.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-010",
@@ -6399,8 +5860,7 @@
       "acceptance": "Inventory, offers, identity and policy changes invalidate affected assumptions.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-011",
@@ -6410,8 +5870,7 @@
       "acceptance": "Show old rule, new evidence, proposed rule and expected scope.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-012",
@@ -6421,8 +5880,7 @@
       "acceptance": "Refresh competitor strategy, voice, offers or product mapping independently.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-013",
@@ -6432,8 +5890,7 @@
       "acceptance": "A candidate prompt/rule must pass representative tasks before becoming active.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-014",
@@ -6443,8 +5900,7 @@
       "acceptance": "Compare candidate approach to current one with controlled scoring.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-015",
@@ -6454,8 +5910,7 @@
       "acceptance": "Record audience assignment and uncertainty before claiming uplift.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-016",
@@ -6465,8 +5920,7 @@
       "acceptance": "Insufficient volume produces inconclusive rather than winner labels.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-017",
@@ -6476,8 +5930,7 @@
       "acceptance": "Account for offer/audience/season differences in performance comparisons.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-018",
@@ -6487,8 +5940,7 @@
       "acceptance": "Restore prior memory/prompt version and identify affected projects.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-019",
@@ -6498,8 +5950,7 @@
       "acceptance": "Remove a selected preference from active memory with explicit scope.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-020",
@@ -6509,8 +5960,7 @@
       "acceptance": "Private brand/source/outcome data does not become another tenant's context.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-021",
@@ -6520,8 +5970,7 @@
       "acceptance": "Show what changed, why, last evaluation and failures.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LRN-022",
@@ -6531,8 +5980,7 @@
       "acceptance": "Label retrieval/memory/prompt updates accurately; model fine-tuning is a separate future capability.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-001",
@@ -6542,8 +5990,7 @@
       "acceptance": "Copy/design/audience/offer/footer/schedule belong to the same immutable review version.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-002",
@@ -6553,8 +6000,7 @@
       "acceptance": "Changes to send-affecting content/configuration require review of the new version.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-003",
@@ -6564,8 +6010,7 @@
       "acceptance": "Run checks on the exact exported artifact, not only an earlier copy draft.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-004",
@@ -6575,8 +6020,7 @@
       "acceptance": "All intended destinations/UTMs work and no unexpected competitor links remain.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-005",
@@ -6586,8 +6030,7 @@
       "acceptance": "Changed live inputs block or re-open review according to policy.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-006",
@@ -6597,8 +6040,7 @@
       "acceptance": "Accepted send job is not labeled Sent until the supported external state confirms it.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-007",
@@ -6608,8 +6050,7 @@
       "acceptance": "Resume after template creation/campaign creation without producing duplicates.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-008",
@@ -6619,8 +6060,7 @@
       "acceptance": "A timeout after request does not trigger an unverified duplicate send.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-009",
@@ -6630,8 +6070,7 @@
       "acceptance": "If sending has started, report actual limitations rather than pretend cancellation succeeded.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-010",
@@ -6654,8 +6093,7 @@
       "acceptance": "Warn before one operator overwrites another's newer version.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-012",
@@ -6665,8 +6103,7 @@
       "acceptance": "Referenced active assets are not pruned out from beneath scheduled campaigns.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-013",
@@ -6676,8 +6113,7 @@
       "acceptance": "Keep representative source/output pairs and evaluate declared fidelity targets.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-014",
@@ -6701,8 +6137,7 @@
       "acceptance": "Attempt cross-tenant reads/writes/downloads through UI/API/MCP.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-016",
@@ -6712,8 +6147,7 @@
       "acceptance": "Research roles cannot send and stale approvals cannot execute.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-017",
@@ -6723,8 +6157,7 @@
       "acceptance": "Expired token/rate limit/provider outage leaves recoverable visible state.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-018",
@@ -6734,8 +6167,7 @@
       "acceptance": "New memory/rules do not break locked facts or prior required behaviors.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-019",
@@ -6745,8 +6177,7 @@
       "acceptance": "Missing metrics/captures/offers remain unknown rather than zero/active.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-020",
@@ -6756,8 +6187,7 @@
       "acceptance": "A first-time operator completes core tasks without guided assistance at agreed success/time targets.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-021",
@@ -6767,8 +6197,7 @@
       "acceptance": "Set and measure agreed feed/editor/preview/job latency targets.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-022",
@@ -6778,8 +6207,7 @@
       "acceptance": "Every failed collection/production/execution job has a visible owner/recovery path.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-023",
@@ -6789,8 +6217,7 @@
       "acceptance": "Every old feature is kept, replaced, deferred or retired explicitly by ID.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-024",
@@ -6800,8 +6227,7 @@
       "acceptance": "Restore project metadata/asset mappings and prove external IDs remain correctly associated.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "REL-025",
@@ -6811,8 +6237,7 @@
       "acceptance": "A checked item requires test/demo evidence, reviewer and date.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "KLA-001",
@@ -6822,8 +6247,7 @@
       "acceptance": "Recommendations link directly to captures/account evidence.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "KLA-002",
@@ -6833,8 +6257,7 @@
       "acceptance": "Apply versioned repeatable process instructions with declared scope.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "KLA-003",
@@ -6844,8 +6267,7 @@
       "acceptance": "Schedule analysis separately from permission to send customer messages.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "KLA-004",
@@ -6855,8 +6277,7 @@
       "acceptance": "A finding focuses the exact block/link/audience setting to fix.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "KLA-005",
@@ -6866,8 +6287,7 @@
       "acceptance": "Operator reviews selected changes before updating the current version.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "KLA-006",
@@ -6877,8 +6297,7 @@
       "acceptance": "Preserve useful editor handoff rather than only flattening finished imagery.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "KLA-007",
@@ -6888,8 +6307,7 @@
       "acceptance": "Retrieve authorized external assets without repeated uploads.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "KLA-008",
@@ -6899,8 +6317,7 @@
       "acceptance": "Show metered work and stop/pause at operator-configured limits.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     },
     {
       "id": "LEG-011",
@@ -6910,8 +6327,7 @@
       "acceptance": "A locally scheduled SMS is never shown as externally scheduled/sent without a real provider delivery path.",
       "status": "unverified",
       "implementation_tasks": [],
-      "verification": [],
-      "remaining": ""
+      "verification": []
     }
   ]
 }
