@@ -1,0 +1,13 @@
+.git
+.audit
+coverage
+playwright-report
+test-results
+node_modules
+.next
+.vercel
+.env
+.env.*
+graphify-out
+supabase/.temp
+supabase/.branches
