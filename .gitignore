@@ -24,3 +24,7 @@ supabase/.temp/
 .DS_Store
 *.swp
 *.swo
+
+# Claude Code personal overrides (shared config in .claude/settings.json and CLAUDE.md is committed)
+.claude/settings.local.json
+CLAUDE.local.md
