@@ -122,6 +122,23 @@ export function CampaignOverview({
           </Button>
         }
       />
+      {data.campaigns.length === 0 && (
+        <div className="mb-7 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-5">
+          <div>
+            <h2 className="text-sm font-semibold">
+              New here? Start with one email.
+            </h2>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">
+              Add your brand, find a reference and plan your first draft.
+            </p>
+          </div>
+          <Button asChild variant="secondary">
+            <Link href="/get-started">
+              Get started <ArrowRight className="size-4" aria-hidden />
+            </Link>
+          </Button>
+        </div>
+      )}
       <dl className="mb-7 grid gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-5 sm:grid-cols-3 sm:gap-6 sm:divide-x sm:divide-[var(--line)]">
         {[
           {

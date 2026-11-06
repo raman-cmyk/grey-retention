@@ -40,3 +40,15 @@ No dependencies, database migrations, provider transport, approval authority or 
 The UI-002 handoff entry in `BUILD_LEDGER.md` records the final cleanup and limitations. Local logs and original synthetic screenshots are in ignored `.audit/`; that directory also contains private local credentials and must not be published.
 
 The pre-existing local preview at `http://127.0.0.1:3100` and its Supabase stack were preserved. A separate disposable stack is used for full fixture acceptance and stopped afterward. No external provider was connected, no email was sent, and no deployment/push/merge was performed.
+
+## October 28 follow-up: onboarding first (ONB-001)
+
+The first-use UI now starts with one visible workspace question. Workspace address and device timezone are suggested and remain editable in a disclosure; server errors reopen those details and preserve typed values. The shared authentication shell is a centered form rather than a decorative split dashboard.
+
+New workspaces enter `/get-started`. This authorized guide derives progress from the current tenant's saved brand, active-subscription email evidence and campaigns. Owners can save brand basics and optional voice/rules with the existing revision-checked command; staff see guidance instead of editing controls. Saved rules are preserved when revisiting setup. Saving does not approve a brand version or relax any sending requirement.
+
+The sidebar keeps the competitor → references → campaign workflow visible, with additional tools and account management in expandable groups. The active group opens automatically. Search results stay fully expanded. Empty workspaces receive a direct setup entry point.
+
+This is the first simplification slice. Reference capture still uses fictional `.example` sources; setup hands off to the existing competitor/library/calendar screens. Automatic website extraction, real competitor collection, exact visual reconstruction, a dedicated first-draft composer and measured first-session usability remain future work. The guide says this directly; it does not display fabricated scan progress or successful live connections.
+
+Verification is recorded in the ONB-001 ledger handoff. No dependency, database migration, provider transport or approval authority changed.

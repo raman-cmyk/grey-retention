@@ -56,6 +56,7 @@ test('workspace navigation, page search and account actions work with keyboard a
       viewport: innerHeight
     }))
     expect(dimensions.height).toBeLessThanOrEqual(dimensions.viewport)
+    await dialog.locator('summary').filter({ hasText: 'Manage' }).click()
     await dialog
       .getByRole('link', { name: 'Settings', exact: true })
       .scrollIntoViewIfNeeded()
@@ -119,4 +120,26 @@ test('core workspace surfaces render without overflow and invalid review dates r
     }
   }
   expect(errors).toEqual([])
+})
+
+test('guided setup can be revisited without changing saved brand details', async ({
+  page
+}) => {
+  await login(page)
+  await page.goto('/get-started?step=brand')
+  await expect(
+    page.getByRole('heading', { name: 'Which store is yours?' })
+  ).toBeVisible()
+  await expect(
+    page.getByRole('navigation', { name: 'Setup progress' })
+  ).toBeVisible()
+  await expect(page.getByLabel('Brand name')).not.toHaveValue('')
+  await expect(page.getByText('Brand voice and rules · optional')).toBeVisible()
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth
+    )
+  ).toBe(true)
+  await page.getByRole('link', { name: 'Exit setup' }).click()
+  await expect(page).toHaveURL(/\/dashboard$/)
 })

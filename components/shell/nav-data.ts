@@ -1,6 +1,7 @@
 import type { Route } from 'next'
 
 export type NavigationIcon =
+  | 'start'
   | 'admin-overview'
   | 'assignments'
   | 'brand'
@@ -26,6 +27,7 @@ export type NavigationItem = {
   href: Route
   icon: NavigationIcon
   group?: string
+  collapsible?: boolean
 }
 
 export function createClientNavigation(
@@ -33,9 +35,27 @@ export function createClientNavigation(
 ): NavigationItem[] {
   return [
     {
+      label: 'Get started',
+      href: '/get-started',
+      icon: 'start',
+      group: 'Workspace'
+    },
+    {
       label: 'Overview',
       href: '/dashboard',
       icon: 'overview',
+      group: 'Workspace'
+    },
+    {
+      label: 'Competitor agent',
+      href: '/competitor-agent',
+      icon: 'inspirations',
+      group: 'Workspace'
+    },
+    {
+      label: 'Templates & references',
+      href: '/email-library',
+      icon: 'templates',
       group: 'Workspace'
     },
     {
@@ -45,62 +65,74 @@ export function createClientNavigation(
       group: 'Workspace'
     },
     {
-      label: 'Copy review',
-      href: '/copy-review',
-      icon: 'copy',
-      group: 'Workspace'
-    },
-    {
       label: `Ask ${assistantName}`,
       href: '/gros',
       icon: 'gros',
       group: 'Workspace'
     },
     {
+      label: 'Copy review',
+      href: '/copy-review',
+      icon: 'copy',
+      group: 'More tools',
+      collapsible: true
+    },
+    {
       label: 'Brand & store',
       href: '/brand',
       icon: 'brand',
-      group: 'Brand & intelligence'
+      group: 'More tools',
+      collapsible: true
     },
     {
       label: 'Assets',
       href: '/assets',
       icon: 'assets',
-      group: 'Brand & intelligence'
-    },
-    {
-      label: 'Competitor agent',
-      href: '/competitor-agent',
-      icon: 'inspirations',
-      group: 'Brand & intelligence'
+      group: 'More tools',
+      collapsible: true
     },
     {
       label: 'Results & learning',
       href: '/reports',
       icon: 'admin-overview',
-      group: 'Brand & intelligence'
-    },
-    {
-      label: 'Templates & references',
-      href: '/email-library',
-      icon: 'templates',
-      group: 'Brand & intelligence'
-    },
-    {
-      label: 'Connections',
-      href: '/connections',
-      icon: 'connections',
-      group: 'Manage'
+      group: 'More tools',
+      collapsible: true
     },
     {
       label: 'Bill optimizer',
       href: '/optimizer',
       icon: 'operations',
-      group: 'Manage'
+      group: 'More tools',
+      collapsible: true
     },
-    { label: 'Team', href: '/team', icon: 'team', group: 'Manage' },
-    { label: 'Support', href: '/support', icon: 'support', group: 'Manage' },
-    { label: 'Settings', href: '/settings', icon: 'settings', group: 'Manage' }
+    {
+      label: 'Connections',
+      href: '/connections',
+      icon: 'connections',
+      group: 'Manage',
+      collapsible: true
+    },
+    {
+      label: 'Team',
+      href: '/team',
+      icon: 'team',
+      group: 'Manage',
+      collapsible: true
+    },
+    {
+      label: 'Support',
+      href: '/support',
+      icon: 'support',
+      group: 'Manage',
+      collapsible: true
+    },
+    {
+      label: 'Settings',
+      href: '/settings',
+      icon: 'settings',
+      group: 'Manage',
+      collapsible: true
+    }
   ]
 }
 
