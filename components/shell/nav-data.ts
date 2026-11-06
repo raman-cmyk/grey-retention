@@ -194,3 +194,25 @@ export function isCurrentPath(pathname: string, href: string) {
     (parentAreas[href] ?? []).some((child) => under(pathname, child))
   )
 }
+
+/**
+ * The nav item for `pathname`: the most specific match wins, whatever the
+ * nav order (so /campaigns/klaviyo/… is Dashboard, /campaigns/… Campaigns).
+ */
+export function currentNavigationHref(
+  navigation: ShellNavigation,
+  pathname: string
+) {
+  let best: { href: string; length: number } | null = null
+  for (const item of navigationLinks(navigation)) {
+    const base = item.href.split(/[?#]/)[0]
+    const candidates = [base, ...(parentAreas[base] ?? [])]
+    for (const candidate of candidates)
+      if (
+        under(pathname, candidate) &&
+        (!best || candidate.length > best.length)
+      )
+        best = { href: item.href, length: candidate.length }
+  }
+  return best?.href ?? null
+}

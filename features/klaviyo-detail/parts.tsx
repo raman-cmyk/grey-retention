@@ -9,6 +9,7 @@ import { requireRequestContext } from '@/features/auth/application/request-conte
 import { klaviyoData, type KlaviyoData } from '@/features/klaviyo-data/reader'
 import { sourceLine } from '@/features/dashboard/sections'
 import { validTimezone } from '@/lib/brand-time'
+import { SampleNote } from './sample-note'
 
 const label =
   'tracking-label font-mono text-[0.6875rem] font-semibold text-[var(--text-muted)] uppercase'
@@ -22,27 +23,18 @@ export async function loadKlaviyo() {
   return { context, timezone, now, data }
 }
 
-/** Detail-page frame: back to the dashboard tab, Refresh, sample note. */
+/** Detail-page frame: back to the dashboard tab and the sample-data note. */
 export function KlaviyoDetail({
   from,
-  sample,
   children
 }: {
   from: unknown
-  sample: boolean
   children: ReactNode
 }) {
   const back = dashboardBack(from)
   return (
     <DetailPage backHref={back.href} backLabel={back.label}>
-      {sample && (
-        <p className="text-xs text-[var(--text-muted)]">
-          <strong className="font-semibold text-[var(--warning-ink)]">
-            Sample Klaviyo data
-          </strong>{' '}
-          — made up for this preview, not synced from a real account.
-        </p>
-      )}
+      <SampleNote />
       {children}
     </DetailPage>
   )
@@ -58,6 +50,9 @@ export function NotConnected({
   const back = dashboardBack(from)
   return (
     <DetailPage backHref={back.href} backLabel={back.label}>
+      <h1 className="tracking-display font-serif text-[1.875rem] leading-tight font-normal">
+        Klaviyo details
+      </h1>
       <Notice>
         {sourceLine(data, new Date())} This page has nothing to show yet.
         {data.state === 'not_connected' && (

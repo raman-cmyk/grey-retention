@@ -37,23 +37,23 @@ Pill/status colour roles used everywhere:
 
 ## 1. Route map
 
-| Route                                                                                                | Screen                            | In sidebar       |
-| ---------------------------------------------------------------------------------------------------- | --------------------------------- | ---------------- |
-| `/dashboard` (`?tab=lists\|segments\|campaigns\|flows\|metrics`, `?attr=klaviyo\|utm`, `?refresh=1`) | Dashboard                         | ✔                |
-| `/lists/:id`, `/segments/:id`, `/campaigns/:id`, `/flows/:id`, `/metrics/:id`                        | Klaviyo object detail pages       | —                |
-| `/flow-messages/:id`                                                                                 | Flow email preview                | —                |
-| `/brand` · `/brand/voice` · `/store`                                                                 | Brand & Store (3 sub-tabs)        | ✔ Brand & Store  |
-| `/campaign-agent` (`?m=YYYY-MM`) and `/calendar`                                                     | Campaign planner (calendar/table) | ✔ Campaign Agent |
-| `/campaign-drafts` (`?status=draft\|ready\|pushed`)                                                  | Drafts list                       | —                |
-| `/campaign-drafts/new`                                                                               | New campaign draft (brief form)   | —                |
-| `/campaign-drafts/:id?view=1`                                                                        | Draft editor                      | —                |
-| `/gros`, `/gros/:threadId`                                                                           | Ask GROS chat                     | ✔                |
-| `/library/inspirations`                                                                              | Competitor Agent                  | ✔                |
-| `/support` (`?t=:ticketId`)                                                                          | Support tickets                   | ✔                |
-| `/settings`                                                                                          | Settings (campaign defaults)      | ✔ Workspace      |
-| `/holidays`                                                                                          | Holidays & Events                 | ✔ Workspace      |
-| `/connections`                                                                                       | Connections                       | ✔ Workspace      |
-| `/profile`                                                                                           | Profile                           | account menu     |
+| Route                                                                                                                                                                | Screen                            | In sidebar       |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ---------------- |
+| `/dashboard` (`?tab=lists\|segments\|campaigns\|flows\|metrics`, `?attr=klaviyo\|utm`, `?refresh=1`)                                                                 | Dashboard                         | ✔                |
+| `/lists/:id`, `/segments/:id`, `/campaigns/klaviyo/:id` (built; was `/campaigns/:id`, which is now this workspace's own campaign page), `/flows/:id`, `/metrics/:id` | Klaviyo object detail pages       | —                |
+| `/flow-messages/:id`                                                                                                                                                 | Flow email preview                | —                |
+| `/brand` · `/brand/voice` · `/store`                                                                                                                                 | Brand & Store (3 sub-tabs)        | ✔ Brand & Store  |
+| `/campaign-agent` (`?m=YYYY-MM`) and `/calendar`                                                                                                                     | Campaign planner (calendar/table) | ✔ Campaign Agent |
+| `/campaign-drafts` (`?status=draft\|ready\|pushed`)                                                                                                                  | Drafts list                       | —                |
+| `/campaign-drafts/new`                                                                                                                                               | New campaign draft (brief form)   | —                |
+| `/campaign-drafts/:id?view=1`                                                                                                                                        | Draft editor                      | —                |
+| `/gros`, `/gros/:threadId`                                                                                                                                           | Ask GROS chat                     | ✔                |
+| `/library/inspirations`                                                                                                                                              | Competitor Agent                  | ✔                |
+| `/support` (`?t=:ticketId`)                                                                                                                                          | Support tickets                   | ✔                |
+| `/settings`                                                                                                                                                          | Settings (campaign defaults)      | ✔ Workspace      |
+| `/holidays`                                                                                                                                                          | Holidays & Events                 | ✔ Workspace      |
+| `/connections`                                                                                                                                                       | Connections                       | ✔ Workspace      |
+| `/profile`                                                                                                                                                           | Profile                           | account menu     |
 
 Not crawled (needs a logged-out or admin session): login, signup, onboarding, password reset, admin/designer views. Capture those separately before building them.
 
@@ -270,7 +270,7 @@ Built as shared parts in `components/ui/detail-page.tsx` and `lib/brand-time.ts`
 
 ## 4. Klaviyo detail pages
 
-Built from sample Klaviyo data (fake provider), labelled on every page. Klaviyo campaigns live at `/campaigns/klaviyo/:id` (`/campaigns/:id` is this workspace's own campaign page). "Back to dashboard" returns to the tab the owner came from. There is no Refresh yet: sample data has nothing to re-pull.
+Built from sample Klaviyo data (fake provider), labelled on every page. Words follow the real status: a draft or cancelled campaign never reads "was sent". Not built yet (OWNER_JOURNEYS.md §4 extras): "Open in Klaviyo", opens/clicks/revenue per flow email, and "Use as reference design" on a flow email. Klaviyo campaigns live at `/campaigns/klaviyo/:id` (`/campaigns/:id` is this workspace's own campaign page). "Back to dashboard" returns to the tab the owner came from. There is no Refresh yet: sample data has nothing to re-pull.
 
 ### List `/lists/:id`
 
@@ -290,7 +290,7 @@ Built from sample Klaviyo data (fake provider), labelled on every page. Klaviyo 
 - [x] "How this segment is defined": the rules as a sentence. The raw JSON moved to Advanced details (OWNER_JOURNEYS.md §4 and §18.9 fix).
 - [x] Timeline, Advanced details.
 
-### Campaign `/campaigns/:id`
+### Campaign `/campaigns/klaviyo/:id`
 
 - [x] Hero (CAMPAIGN) + status pill (DRAFT / SENT …).
 - [x] 3 small cards:

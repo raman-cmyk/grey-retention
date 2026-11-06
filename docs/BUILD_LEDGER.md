@@ -121,6 +121,10 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
   - "Back to dashboard" uses `features/dashboard/back.ts`, which returns to the tab the owner came from, scrolled to the card.
   - Raw rules and delays live only in Advanced details.
   - There is no Refresh and no "Open in Klaviyo" while the data is sample.
+  - Campaign wording follows the real status, from `campaignWords`.
+  - The port also carries `sendStrategy` and flow-wait `daysOfWeek`, so nothing claims "Static" or "any day" without data. `FlowMessage.delay` is removed.
+  - The sidebar picks the most specific match (`currentNavigationHref`), whatever the nav order.
+  - `proxy.ts` now matches every workspace page, including the new detail routes and the existing `/campaigns`, `/reports`, `/assets` …, so a page opened in a new tab refreshes its session. This is a foundation-config change, recorded here.
 - DS-006 (2026-11-06): the composer (`features/composer/`) saves a paste through the same `savePastedReference` helper as the paste form (extracted from `importPastedReference` into server-only `features/references/pasted-save.ts`, messages unchanged) and redirects to `/create-email/{id}?mode=copy|rewrite`. The choose page only marks that outcome ("Your choice in the composer", primary button); it never starts a copy or rewrite by itself, so owner confirmation and paid-AI gates are unchanged. EXACT→copy, REBRAND→rewrite, ADAPT disabled with a reason. Subject comes from the HTML `<title>` or first readable line; a link-only paste is refused with an honest message. Composer is owner-only on the dashboard and the setup reference step; the existing Paste/Upload links stay.
 
 - STAB-001 (2026-11-06): `GET /api/internal/jobs` is the scheduled worker. It requires `Authorization: Bearer CRON_SECRET` (existing env contract, unchanged; checked before anything else), runs only when `ADAPTER_MODE` is `fake` or unset, and visits workspaces through the existing `runFixtureJobs` path in bounded batches (≤100 workspaces, ≤4 jobs per visit, ≤3 visits, no new visit after 40 s, `maxDuration` 60). Workspaces with due or stale-leased jobs go first (the active-workspace filter is part of that query); the other active workspaces get daily housekeeping in random order. `email.rewrite` and `email.import` are never dispatched by the scheduler, so it cannot start or retry paid AI. Service-role reads of `tenants` and `job_runs` select IDs only; every claim still goes through `claim_job`/`worker_access`. The former `GET` 405 response is replaced by this handler; `POST` loopback dispatch is unchanged. Triggers: Vercel cron daily (Hobby limit) plus a GitHub Actions schedule every 10 minutes with the repository secret `CRON_SECRET`, fixed to the production HTTPS address and off until the repository variable `SCHEDULED_JOBS_ENABLED` is `true` (skipped runs use no Actions minutes; about 4,400 minutes a month when on). Shared config: `playwright.config.ts` gains a `scheduled-sweep` project that depends on the desktop and mobile projects, because the sweep drains every workspace's queue. See `docs/SCHEDULED_JOBS_RUNBOOK.md`.
@@ -801,6 +805,25 @@ Append entries using this exact shape:
     - a disconnected workspace sees the not-connected notice instead of sample numbers.
   - Words tests (opt-in, waits, steps, live line, trigger, rates) and back-link tests.
   - `test:e2e` not runnable here.
-- Review: see the UIR-004 pull request.
+- Review: `code-reviewer` blocked on two things:
+  1. Draft, scheduled and cancelled Klaviyo campaigns read "was sent".
+  2. Flow Advanced details printed counts twice.
+     Both are fixed and tested. Also fixed:
+  - values shown as Klaviyo's that the port didn't carry (send strategy, wait days);
+  - linked resources that contradicted the page (profiles, tags);
+  - segment sentences that didn't match their rules;
+  - the history-back link taking over modified clicks or leaving the app;
+  - new routes outside the session proxy;
+  - an order-dependent sidebar match;
+  - the dead `delay` field;
+  - wait rounding;
+  - "Wait Waits";
+  - the trigger example;
+  - a muted warning;
+  - empty dates;
+  - duplicate status maps and tab checks;
+  - unencoded ids;
+  - spec paths.
+    New tests cover draft and cancelled wording, Advanced labels, the unavailable state, tenant-scoped connection reads, no reads when signed out, and back-link clicks. A new e2e check walks the six pages for a heading and no overflow.
 - Known issues: no "Sync templates" (flow emails as AI context), no "Open in Klaviyo", no per-email flow performance, and no "Use as reference design" on flow emails yet.
 - Next consumer: §6 Campaign planner (UIR-006) and the status system (UIR-015).

@@ -41,7 +41,7 @@ export default async function FlowPage({
   const trigger = triggerWords(flow)
   const notLive = liveEmailsLine(flow)
   return (
-    <KlaviyoDetail from={from} sample>
+    <KlaviyoDetail from={from}>
       <DetailHero
         icon={Workflow}
         kind="Flow"
@@ -52,7 +52,11 @@ export default async function FlowPage({
           </Pill>
         }
       >
-        {notLive}
+        {notLive && (
+          <span className="font-medium text-[var(--warning-ink)]">
+            {notLive}
+          </span>
+        )}
       </DetailHero>
       <div className="grid gap-5 sm:grid-cols-3">
         <InfoCard
@@ -116,7 +120,9 @@ export default async function FlowPage({
                       </Pill>
                     </p>
                     <Link
-                      href={`/flow-messages/${step.message.id}` as Route}
+                      href={
+                        `/flow-messages/${encodeURIComponent(step.message.id)}` as Route
+                      }
                       className="mt-2 flex items-center gap-3 rounded-[var(--radius-small)] bg-[var(--surface-hover)] px-3 py-2 text-sm hover:bg-[var(--line)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden"
                     >
                       <Eye
@@ -170,12 +176,11 @@ export default async function FlowPage({
         }}
         linked={[
           {
-            label: `Flow actions · ${steps.length} items`,
+            label: 'Flow actions',
             items: steps.map((s) =>
               s.kind === 'wait' ? s.text : s.message.name
             )
-          },
-          { label: 'Tags · 0 items', items: [] }
+          }
         ]}
       />
     </KlaviyoDetail>

@@ -104,7 +104,7 @@ export function sampleKlaviyoSnapshot({
       starred: true,
       active: true,
       profileCount: 4210,
-      rules: 'Opened or clicked an email in the last 30 days.',
+      rules: 'Opened an email in the last 30 days.',
       definition: {
         condition_groups: [
           {
@@ -129,7 +129,7 @@ export function sampleKlaviyoSnapshot({
       starred: false,
       active: true,
       profileCount: 7930,
-      rules: 'Opened or clicked an email in the last 90 days.',
+      rules: 'Opened an email in the last 90 days.',
       definition: {
         condition_groups: [
           {
@@ -204,7 +204,7 @@ export function sampleKlaviyoSnapshot({
       starred: false,
       active: true,
       profileCount: 640,
-      rules: 'Ordered before, but not in the last 180 days.',
+      rules: 'Last placed an order more than 180 days ago.',
       definition: {
         condition_groups: [
           {
@@ -229,7 +229,7 @@ export function sampleKlaviyoSnapshot({
       starred: false,
       active: true,
       profileCount: 10950,
-      rules: 'Subscribed, but has never placed an order.',
+      rules: 'Has never placed an order.',
       definition: {
         condition_groups: [
           {
@@ -272,6 +272,7 @@ export function sampleKlaviyoSnapshot({
       id,
       name,
       localTime: id === 'CMPhol007',
+      sendStrategy: 'static',
       fromEmail: 'hello@shop.example',
       status,
       sendTime,
@@ -425,7 +426,7 @@ export function sampleKlaviyoSnapshot({
         previewText: 'A sample preview line for this flow email.',
         templateUpdated: iso(now, 20 + index),
         delaySeconds,
-        delay: delaySeconds === 0 ? 'Right away' : 'Later',
+        daysOfWeek: null,
         templateName: `${name} · ${stepName}`,
         html: sampleEmail(
           subject,

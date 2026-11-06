@@ -3,11 +3,11 @@ import { notFound } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { AdvancedDetails, DetailHero } from '@/components/ui/detail-page'
 import { Pill } from '@/components/ui/pill'
-import type { PillTone } from '@/lib/campaign-status'
 import { formatBrandDateTime, timezoneLabel } from '@/lib/brand-time'
+import { campaignTone } from '@/features/dashboard/klaviyo-card'
 import { EmailPreviewCard } from '@/features/email-generation/preview-card'
 import { formatCount, formatMoney } from '@/features/klaviyo-data/summary'
-import type { AudienceRef, KlaviyoCampaign } from '@/lib/providers/klaviyo-read'
+import type { AudienceRef } from '@/lib/providers/klaviyo-read'
 import {
   InfoCard,
   KlaviyoDetail,
@@ -15,14 +15,11 @@ import {
   NotConnected,
   smallLabel
 } from '@/features/klaviyo-detail/parts'
-import { percent } from '@/features/klaviyo-detail/words'
-
-const tones: Record<KlaviyoCampaign['status'], PillTone> = {
-  sent: 'solid',
-  scheduled: 'info',
-  draft: 'warning',
-  cancelled: 'danger'
-}
+import {
+  campaignWords,
+  percent,
+  strategyWords
+} from '@/features/klaviyo-detail/words'
 
 function Chips({
   title,
@@ -72,40 +69,47 @@ export default async function KlaviyoCampaignPage({
   const campaign = data.snapshot.campaigns.find((c) => c.id === klaviyoId)
   if (!campaign) notFound()
   const tz = timezone
+  const words = campaignWords(campaign.status, campaign.sendTime !== null)
+  const strategy = strategyWords[campaign.sendStrategy]
   const when = (value: string | null) =>
     value ? `${formatBrandDateTime(value, tz)} (${timezoneLabel(tz)})` : null
   const stats = campaign.stats
   return (
-    <KlaviyoDetail from={from} sample>
+    <KlaviyoDetail from={from}>
       <DetailHero
         icon={Mail}
         kind="Campaign"
         title={campaign.name}
-        status={<Pill tone={tones[campaign.status]}>{campaign.status}</Pill>}
+        status={
+          <Pill tone={campaignTone[campaign.status]}>{campaign.status}</Pill>
+        }
       />
       <div className="grid gap-5 sm:grid-cols-3">
-        <InfoCard title="Channel" value="✉ Email" />
+        <InfoCard
+          title="Channel"
+          value={
+            <>
+              <span aria-hidden>✉ </span>Email
+            </>
+          }
+        />
         <InfoCard
           title="Send time"
           value={
             campaign.sendTime
-              ? formatBrandDateTime(campaign.sendTime, tz)
+              ? (formatBrandDateTime(campaign.sendTime, tz) ?? 'Not known')
               : 'Not scheduled'
           }
           line={campaign.sendTime ? timezoneLabel(tz) : undefined}
         />
         <InfoCard
           title="Created"
-          value={formatBrandDateTime(campaign.created, tz)}
+          value={formatBrandDateTime(campaign.created, tz) ?? 'Not known'}
           line={timezoneLabel(tz)}
         />
       </div>
       {stats && (
-        <section
-          aria-label="How it did"
-          className="rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-6"
-        >
-          <h2 className="mb-4 text-base font-semibold">How it did</h2>
+        <Card title="How it did">
           <dl className="grid grid-cols-2 gap-4 sm:grid-cols-5">
             {(
               [
@@ -124,9 +128,9 @@ export default async function KlaviyoCampaignPage({
               </div>
             ))}
           </dl>
-        </section>
+        </Card>
       )}
-      <Card title="What was sent">
+      <Card title={words.what}>
         <h3 className={smallLabel}>Message label (internal)</h3>
         <p className="mt-1 text-sm">{campaign.templateName}</p>
         <dl className="mt-4 space-y-3 rounded-[var(--radius-control)] bg-[var(--surface-hover)] p-4 text-sm">
@@ -155,28 +159,34 @@ export default async function KlaviyoCampaignPage({
         templateName={campaign.templateName}
         source="klaviyo"
       />
-      <Card title="Who received this">
+      <Card title={words.who}>
         <p className="-mt-2 mb-4 text-sm text-[var(--text-muted)]">
-          The lists and segments this campaign was sent to.
+          {words.whoLine}
         </p>
         <div className="grid gap-5 sm:grid-cols-2">
           <Chips title="Included" audiences={campaign.included} />
           <Chips title="Excluded" audiences={campaign.excluded} />
         </div>
       </Card>
-      <Card title="How it was sent">
-        <p className="text-sm font-medium">Static</p>
-        <p className="text-sm text-[var(--text-muted)]">
-          Sent at a fixed date and time you scheduled.
-        </p>
-        <p className="mt-3 text-sm">
-          {campaign.sendTime
-            ? `Scheduled for: ${when(campaign.sendTime)}`
-            : 'Not scheduled yet.'}
-        </p>
-        {campaign.localTime && (
-          <p className="mt-1 text-sm text-[var(--text-muted)]">
-            Sent in each recipient&apos;s local timezone.
+      <Card title={words.how}>
+        {campaign.sendTime ? (
+          <>
+            <p className="text-sm font-medium">{strategy.label}</p>
+            <p className="text-sm text-[var(--text-muted)]">{strategy.line}</p>
+            {words.timeLabel && (
+              <p className="mt-3 text-sm">
+                {words.timeLabel}: {when(campaign.sendTime)}
+              </p>
+            )}
+            {campaign.localTime && (
+              <p className="mt-1 text-sm text-[var(--text-muted)]">
+                Sent in each recipient&apos;s local timezone.
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-[var(--text-muted)]">
+            No send time is set yet.
           </p>
         )}
       </Card>
@@ -186,7 +196,7 @@ export default async function KlaviyoCampaignPage({
           name: campaign.name,
           status: campaign.status,
           send_time: campaign.sendTime,
-          send_strategy: 'static',
+          send_strategy: campaign.sendStrategy,
           is_local: campaign.localTime,
           subject: campaign.subject,
           preview_text: campaign.previewText,
@@ -197,8 +207,7 @@ export default async function KlaviyoCampaignPage({
         }}
         linked={[
           { label: 'Included', items: campaign.included.map((a) => a.name) },
-          { label: 'Excluded', items: campaign.excluded.map((a) => a.name) },
-          { label: 'Tags', items: [] }
+          { label: 'Excluded', items: campaign.excluded.map((a) => a.name) }
         ]}
       />
     </KlaviyoDetail>

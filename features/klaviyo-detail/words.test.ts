@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { sampleKlaviyoSnapshot } from '@/lib/providers/fake-klaviyo-read'
 import {
+  campaignWords,
   flowSteps,
   liveEmailsLine,
   optInWords,
@@ -22,9 +23,16 @@ describe('detail page words', () => {
   })
 
   it('describes waits in plain words', () => {
-    expect(waitWords(45 * 60)).toBe('Waits 45 minutes · any day')
-    expect(waitWords(86400 + 3600)).toBe('Waits 1 day 1 hour · any day')
-    expect(waitWords(0)).toBe('Waits no time · any day')
+    expect(waitWords(45 * 60)).toBe('45 minutes · any day')
+    expect(waitWords(86400 + 3600)).toBe('1 day 1 hour · any day')
+    expect(waitWords(0)).toBe('no time · any day')
+    // Rounded to whole minutes first: never "60 minutes" or "23 hours 60 minutes".
+    expect(waitWords(3599)).toBe('1 hour · any day')
+    expect(waitWords(86399)).toBe('1 day · any day')
+    expect(waitWords(20)).toBe('less than a minute · any day')
+    expect(waitWords(7200, ['monday', 'friday'])).toBe(
+      '2 hours · only on Monday, Friday'
+    )
   })
 
   it('builds the action sequence with a wait before delayed emails', () => {
@@ -53,5 +61,18 @@ describe('detail page words', () => {
     )
     expect(percent(41, 100)).toBe('41.0%')
     expect(percent(1, 0)).toBe('—')
+  })
+
+  it('never says a draft or cancelled campaign was sent', () => {
+    expect(campaignWords('sent', true).what).toBe('What was sent')
+    expect(campaignWords('scheduled', true).who).toBe('Who will get this')
+    expect(campaignWords('cancelled', true).whoLine).toMatch(
+      /^Cancelled before it was sent/
+    )
+    expect(campaignWords('draft', false).timeLabel).toBeNull()
+    for (const status of ['scheduled', 'cancelled', 'draft'] as const)
+      expect(JSON.stringify(campaignWords(status, true))).not.toMatch(
+        /was sent to|What was sent/
+      )
   })
 })

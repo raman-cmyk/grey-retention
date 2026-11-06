@@ -31,7 +31,7 @@ export default async function ListPage({
   if (!list) notFound()
   const optIn = optInWords(list.optIn)
   return (
-    <KlaviyoDetail from={from} sample>
+    <KlaviyoDetail from={from}>
       <DetailHero icon={List} kind="List" title={list.name} />
       <div className="grid gap-5 sm:grid-cols-2">
         <InfoCard
@@ -68,8 +68,7 @@ export default async function ListPage({
                 (f) => f.trigger.kind === 'list' && f.trigger.name === list.name
               )
               .map((f) => f.name)
-          },
-          { label: 'Tags', items: [] }
+          }
         ]}
       />
     </KlaviyoDetail>

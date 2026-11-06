@@ -86,6 +86,34 @@ test('workspace sidebar, account menu and mobile drawer work with keyboard and s
   }
 })
 
+test('Klaviyo detail pages render with a heading and no overflow', async ({
+  page
+}) => {
+  await login(page)
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  for (const path of [
+    '/lists/LSTnews01?from=lists',
+    '/segments/SEGeng030?from=segments',
+    '/campaigns/klaviyo/CMPspr001?from=campaigns',
+    '/flows/FLWpst004?from=flows',
+    '/flow-messages/FLWpst004M2',
+    '/metrics/METord005?from=metrics'
+  ]) {
+    await page.goto(path)
+    // Sample data when the workspace's Klaviyo is connected, otherwise the
+    // "Klaviyo details" notice; both have one page heading.
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth
+      ),
+      path
+    ).toBe(true)
+  }
+  expect(errors).toEqual([])
+})
+
 test('core workspace surfaces render without overflow and invalid review dates recover', async ({
   page
 }, info) => {

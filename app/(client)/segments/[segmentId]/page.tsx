@@ -31,7 +31,7 @@ export default async function SegmentPage({
   const segment = data.snapshot.segments.find((s) => s.id === segmentId)
   if (!segment) notFound()
   return (
-    <KlaviyoDetail from={from} sample>
+    <KlaviyoDetail from={from}>
       <DetailHero
         icon={Filter}
         kind="Segment"
@@ -43,7 +43,11 @@ export default async function SegmentPage({
             ) : (
               <Pill>Inactive</Pill>
             )}
-            {segment.starred && <Pill tone="warning">★ Starred</Pill>}
+            {segment.starred && (
+              <Pill tone="warning">
+                <span aria-hidden>★ </span>Starred
+              </Pill>
+            )}
           </span>
         }
       />
@@ -88,8 +92,6 @@ export default async function SegmentPage({
           updated: segment.updated
         }}
         linked={[
-          { label: 'Profiles', items: [] },
-          { label: 'Tags', items: [] },
           {
             label: 'Campaigns',
             items: data.snapshot.campaigns

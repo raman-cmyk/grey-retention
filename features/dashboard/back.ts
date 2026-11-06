@@ -1,5 +1,5 @@
 import type { Route } from 'next'
-import { klaviyoTabs } from './klaviyo-card'
+import { parseTab } from './klaviyo-card'
 
 /**
  * Where "Back to dashboard" goes from a Klaviyo detail page: the tab the
@@ -7,9 +7,8 @@ import { klaviyoTabs } from './klaviyo-card'
  * Job 5 fix). Anything unexpected goes to the top of the dashboard.
  */
 export function dashboardBack(from: unknown): { href: Route; label: string } {
-  const tab =
-    typeof from === 'string' ? from : Array.isArray(from) ? from[0] : ''
-  return tab !== 'overview' && (klaviyoTabs as readonly unknown[]).includes(tab)
+  const tab = parseTab(from)
+  return tab !== 'overview'
     ? {
         href: `/dashboard?tab=${tab}#klaviyo-data` as Route,
         label: 'Back to dashboard'

@@ -6,6 +6,7 @@ import { Pill } from '@/components/ui/pill'
 import { formatBrandDateTime, timezoneLabel } from '@/lib/brand-time'
 import { EmailPreviewCard } from '@/features/email-generation/preview-card'
 import { HistoryBack } from '@/features/klaviyo-detail/history-back'
+import { SampleNote } from '@/features/klaviyo-detail/sample-note'
 import {
   loadKlaviyo,
   NotConnected,
@@ -31,13 +32,10 @@ export default async function FlowMessagePage({
   const tz = timezone
   return (
     <div className="mx-auto w-full max-w-[var(--gr-detail-max)] space-y-5">
-      <HistoryBack fallback={`/flows/${flow.id}?from=flows` as Route} />
-      <p className="text-xs text-[var(--text-muted)]">
-        <strong className="font-semibold text-[var(--warning-ink)]">
-          Sample Klaviyo data
-        </strong>{' '}
-        — not a real account.
-      </p>
+      <HistoryBack
+        fallback={`/flows/${encodeURIComponent(flow.id)}?from=flows` as Route}
+      />
+      <SampleNote />
       <Card>
         <div className="flex flex-wrap items-center gap-2">
           <span className={`${smallLabel} inline-flex items-center gap-1.5`}>

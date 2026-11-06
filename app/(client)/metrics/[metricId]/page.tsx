@@ -27,7 +27,7 @@ export default async function MetricPage({
   const metric = data.snapshot.metrics.find((m) => m.id === metricId)
   if (!metric) notFound()
   return (
-    <KlaviyoDetail from={from} sample>
+    <KlaviyoDetail from={from}>
       <DetailHero icon={BarChart3} kind="Metric" title={metric.name} />
       <Card title="What this measures">
         <p className="text-base">{metric.measures}</p>

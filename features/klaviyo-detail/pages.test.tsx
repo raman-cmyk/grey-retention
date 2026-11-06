@@ -10,10 +10,14 @@ vi.stubGlobal(
   }
 )
 const connections = vi.hoisted(() => ({
-  rows: null as null | { provider: string; status: string }[]
+  rows: null as null | { provider: string; status: string }[],
+  tenant: null as unknown,
+  mode: 'fake' as 'fake' | 'real',
+  denied: false,
+  reads: 0
 }))
 vi.mock('@/lib/env/server', () => ({
-  getServerEnvironment: () => ({ ADAPTER_MODE: 'fake' })
+  getServerEnvironment: () => ({ ADAPTER_MODE: connections.mode })
 }))
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () =>
@@ -22,20 +26,27 @@ vi.mock('@/lib/supabase/server', () => ({
       : {
           from: () => ({
             select: () => ({
-              eq: async () => ({ data: connections.rows, error: null })
+              eq: async (column: string, value: unknown) => {
+                connections.reads++
+                connections.tenant = [column, value]
+                return { data: connections.rows, error: null }
+              }
             })
           })
         }
 }))
 vi.mock('@/features/auth/application/request-context', () => ({
-  requireRequestContext: async () => ({
-    kind: 'client',
-    tenantId: 't1',
-    tenantName: 'Northwind',
-    tenantRole: 'owner',
-    timezone: 'Australia/Sydney',
-    userId: 'u1'
-  })
+  requireRequestContext: async () => {
+    if (connections.denied) throw new Error('NEXT_REDIRECT /login')
+    return {
+      kind: 'client',
+      tenantId: 't1',
+      tenantName: 'Northwind',
+      tenantRole: 'owner',
+      timezone: 'Australia/Sydney',
+      userId: 'u1'
+    }
+  }
 }))
 vi.mock('next/navigation', () => ({
   notFound: () => {
@@ -63,6 +74,10 @@ const props = (key: string, id: string, from?: string) => ({
 afterEach(() => {
   cleanup()
   connections.rows = null
+  connections.tenant = null
+  connections.mode = 'fake'
+  connections.denied = false
+  connections.reads = 0
 })
 
 describe('Klaviyo detail pages (§4)', () => {
@@ -84,13 +99,11 @@ describe('Klaviyo detail pages (§4)', () => {
   it('segment: active and starred pills, rules as a sentence, JSON only in Advanced', async () => {
     render(await SegmentPage(props('segmentId', 'SEGeng030')))
     expect(screen.getByText('Active')).toBeInTheDocument()
-    expect(screen.getByText('★ Starred')).toBeInTheDocument()
+    expect(screen.getByText('Starred')).toBeInTheDocument()
     const rules = screen.getByRole('region', {
       name: 'How this segment is defined'
     })
-    expect(rules).toHaveTextContent(
-      'Opened or clicked an email in the last 30 days.'
-    )
+    expect(rules).toHaveTextContent('Opened an email in the last 30 days.')
     expect(rules).not.toHaveTextContent('condition_groups')
     expect(
       screen.getByText('Advanced details').closest('details')
@@ -107,7 +120,7 @@ describe('Klaviyo detail pages (§4)', () => {
     expect(stats).toHaveTextContent('41.0%')
     expect(
       screen.getByRole('region', { name: 'How it was sent' })
-    ).toHaveTextContent(/Scheduled for: .*\(Sydney time\)/)
+    ).toHaveTextContent(/Sent at: .*\(Sydney time\)/)
     const frame = screen.getByTitle('Preview of Spring restock')
     expect(frame.getAttribute('sandbox')).toBe('')
     expect(frame.getAttribute('srcdoc')).not.toContain('unsubscribe')
@@ -126,7 +139,7 @@ describe('Klaviyo detail pages (§4)', () => {
   it('flow: warns when a live flow has emails off, waits in words, links each email', async () => {
     render(await FlowPage(props('flowId', 'FLWpst004')))
     expect(screen.getByText('1 of 2 emails is not live.')).toBeInTheDocument()
-    expect(screen.getByText('Waits 10 days · any day')).toBeInTheDocument()
+    expect(screen.getByText('10 days · any day')).toBeInTheDocument()
     expect(screen.getByText('Metric: Placed Order')).toBeInTheDocument()
     expect(
       screen.getAllByRole('link', { name: /Open this email/ })[0]
@@ -184,8 +197,66 @@ describe('Klaviyo detail pages (§4)', () => {
     render(await FlowPage(props('flowId', 'FLWpst004', 'flows')))
     expect(screen.getByText(/Klaviyo is disconnected/)).toBeInTheDocument()
     expect(
+      screen.getByRole('heading', { level: 1, name: 'Klaviyo details' })
+    ).toBeInTheDocument()
+    expect(
       screen.getByRole('link', { name: 'Go to Connections' })
     ).toBeInTheDocument()
     expect(screen.queryByText('Post-purchase')).not.toBeInTheDocument()
+  })
+
+  it('campaign: a draft or cancelled campaign never reads "was sent"', async () => {
+    render(await CampaignPage(props('klaviyoId', 'CMPdrf008')))
+    expect(
+      screen.getByRole('region', { name: 'Who it is set to go to' })
+    ).toHaveTextContent('Not sent yet')
+    expect(screen.getByText('No send time is set yet.')).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent(/was sent to|What was sent/)
+    cleanup()
+    render(await CampaignPage(props('klaviyoId', 'CMPcnl009')))
+    expect(
+      screen.getByRole('region', { name: 'Who it was set to go to' })
+    ).toHaveTextContent('Cancelled before it was sent')
+    expect(
+      screen.getByRole('region', { name: 'How it was planned' })
+    ).toHaveTextContent('Was scheduled for:')
+    expect(document.body).not.toHaveTextContent(/was sent to|What was sent/)
+  })
+
+  it('flow: Advanced details counts each list once and invents no tags', async () => {
+    render(await FlowPage(props('flowId', 'FLWpst004')))
+    const linked = screen.getByRole('region', { name: 'Linked resources' })
+    expect(linked).toHaveTextContent('Flow actions · 3 items')
+    expect(linked).not.toHaveTextContent(/items · \d+ items/)
+    expect(linked).not.toHaveTextContent('Tags')
+    expect(screen.getByText('1 of 2 emails is not live.').className).toContain(
+      'warning'
+    )
+  })
+
+  it('reads the connection for the signed-in workspace only', async () => {
+    connections.rows = [{ provider: 'klaviyo', status: 'connected' }]
+    render(await ListPage(props('listId', 'LSTnews01')))
+    expect(connections.tenant).toEqual(['tenant_id', 't1'])
+  })
+
+  it('says unavailable in real mode, without sending a connected owner to reconnect', async () => {
+    connections.mode = 'real'
+    render(await MetricPage(props('metricId', 'METord005')))
+    expect(
+      screen.getByText(/aren't available in this version yet/)
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: 'Go to Connections' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('reads nothing when the visitor is not signed in', async () => {
+    connections.denied = true
+    connections.rows = [{ provider: 'klaviyo', status: 'connected' }]
+    await expect(ListPage(props('listId', 'LSTnews01'))).rejects.toThrow(
+      'NEXT_REDIRECT'
+    )
+    expect(connections.reads).toBe(0)
   })
 })

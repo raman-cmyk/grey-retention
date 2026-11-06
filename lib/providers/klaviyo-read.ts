@@ -58,6 +58,8 @@ export type KlaviyoCampaign = {
   name: string
   /** Sent in each recipient's local timezone. */
   localTime: boolean
+  /** Klaviyo's send strategy: a fixed time, Smart Send Time, or throttled. */
+  sendStrategy: 'static' | 'smart' | 'throttled'
   fromEmail: string
   status: 'sent' | 'scheduled' | 'draft' | 'cancelled'
   sendTime: string | null
@@ -87,7 +89,8 @@ export type FlowMessage = {
   templateUpdated: string
   /** Wait before this email, in seconds (0 = right away). */
   delaySeconds: number
-  delay: string
+  /** Days the wait may end on (e.g. ['monday']); null means any day. */
+  daysOfWeek: string[] | null
   templateName: string
   html: string
 }

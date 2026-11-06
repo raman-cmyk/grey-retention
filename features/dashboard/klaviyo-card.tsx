@@ -304,7 +304,7 @@ function Row({
   )
 }
 
-const campaignTone: Record<KlaviyoCampaign['status'], PillTone> = {
+export const campaignTone: Record<KlaviyoCampaign['status'], PillTone> = {
   sent: 'solid',
   scheduled: 'info',
   draft: 'warning',
@@ -319,7 +319,7 @@ function detailHref(
   if (!links[kind]) return null
   // Local campaigns own /campaigns/:id; Klaviyo campaigns live under klaviyo/.
   const base = kind === 'campaigns' ? '/campaigns/klaviyo' : `/${kind}`
-  return `${base}/${id}?from=${kind}` as Route
+  return `${base}/${encodeURIComponent(id)}?from=${kind}` as Route
 }
 
 export function KlaviyoDataCard({
