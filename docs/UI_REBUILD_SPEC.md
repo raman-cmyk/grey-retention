@@ -348,25 +348,27 @@ Built from sample Klaviyo data (fake provider), labelled on every page. Words fo
 
 ## 5. Brand & Store
 
+> **As built (UIR-005, cloud lane):** OWNER_JOURNEYS §18 decision 5 merges Brand Truth and Copy & Voice into one editable **Brand profile** at `/brand` (`/brand/voice` opens its Copy & Voice part). The sub-tabs are therefore Brand profile · Store. Every field is editable. Brand name, website, positioning, Do and Don’t are the brand details the AI reads after the owner approves; they are marked “AI reads” and only the owner changes them. The other fields have a per-field lock and are honest notes the AI does not read yet. “Regenerate” is “Redo with AI”: a sample writer that only fills empty fields with text marked “Sample:” and never changes the owner’s words. The muted line says the AI uses the approved version. Store keeps the sub-tabs when Shopify is missing (brief fix). A brand-mismatch banner (decision 6) sits under the header. Still open: the token strip (decision 8 moves it to a small “AI credits” indicator from the shared components) and the connected Store dashboard (next PR).
+
 Shared header:
 
-- [ ] Centred column, ~920px.
-- [ ] Muted line "Auto-generated from your website and Klaviyo data." on the left.
-- [ ] Right side: muted "Last synced 96 days ago" + primary `✦ Regenerate All`.
-- [ ] **Add the H1 "Brand & Store"**. The old page had no title; this is a fix.
-- [ ] Sub-tabs (text with an underline on the active one): Brand Truth `/brand` · Copy & Voice `/brand/voice` · Store `/store`.
+- [x] Centred column, ~920px.
+- [x] Muted line "Auto-generated from your website and Klaviyo data." on the left.
+- [x] Right side: muted "Last synced 96 days ago" + primary `✦ Regenerate All`.
+- [x] **Add the H1 "Brand & Store"**. The old page had no title; this is a fix.
+- [x] Sub-tabs (text with an underline on the active one): Brand Truth `/brand` · Copy & Voice `/brand/voice` · Store `/store`.
 - [ ] Token plan strip.
-- [ ] Section card pattern:
+- [x] Section card pattern:
   - title + "Updated 96 days ago" (muted)
   - round `⟳` icon button on the right, tooltip "Regenerate this section", which regenerates that section only
   - fields are tiny uppercase labels + values
 
 ### Brand Truth
 
-- [ ] **Brand Identity:**
+- [x] **Brand Identity:**
   - 2-col grid: BRAND NAME, NICHE, POSITIONING, GEOGRAPHIC MARKET
   - full-width fields: ORIGIN STORY, TARGET AUDIENCE
-- [ ] **Product Intelligence:**
+- [x] **Product Intelligence:**
   - shows the products when there are any
   - empty/warning state: warning callout (border + tint, ⓘ icon) with:
     - bold "No products extracted"
@@ -375,26 +377,26 @@ Shared header:
 
 ### Copy & Voice
 
-- [ ] **Tone of Voice:**
+- [x] **Tone of Voice:**
   - 4 tiles in a row: FORMALITY / ENERGY / WARMTH / ARCHETYPE
   - 2 columns of bullets: `✓ DO` (success colour) and `✕ DON'T` (danger colour)
-- [ ] **Vocabulary:**
+- [x] **Vocabulary:**
   - PREFERRED: success chips
   - AVOID: danger chips
   - divider
   - BRAND-SPECIFIC TERMS: "**term** — muted definition" lines
   - divider
   - SIGNATURE PHRASES: italic quoted lines. Keep `{{ placeholders }}` verbatim.
-- [ ] **Sample Copy:** 2×2 groups SUBJECT LINES / OPENING LINES / CTAS / SIGN-OFFS. Each item is a light rounded row.
+- [x] **Sample Copy:** 2×2 groups SUBJECT LINES / OPENING LINES / CTAS / SIGN-OFFS. Each item is a light rounded row.
   - Nice-to-have: copy-on-click.
-- [ ] **Audience:**
+- [x] **Audience:**
   - PRIMARY PERSONA paragraph + muted "Age range: 16-28"
   - 3 bullet columns: PAIN POINTS / MOTIVATIONS / EMOTIONAL NOTES
 
 ### Store
 
 - [ ] When Shopify is connected: a store dashboard with revenue trends, top customers and out-of-stock alerts. No old design exists for this, so design it in the same card language.
-- [ ] When it isn't connected:
+- [x] When it isn't connected:
   - the header and tabs are hidden
   - a centred empty card: success-tint tile with a bag icon, bold "Connect Shopify to see Store Intelligence", muted "Once connected, we'll bulk-import your products, orders, and customers, then render a live dashboard with revenue trends, top customers, and out-of-stock alerts.", and primary `🔗 Go to Connections`
 

@@ -181,7 +181,9 @@ const parentAreas: Record<string, readonly string[]> = {
   ],
   // `/campaigns/:id` is this workspace's own campaign page, so it belongs to
   // Campaigns; Klaviyo campaigns live under `/campaigns/klaviyo/:id`.
-  '/campaign-agent': ['/campaigns', '/campaign-drafts', '/calendar']
+  '/campaign-agent': ['/campaigns', '/campaign-drafts', '/calendar'],
+  // Brand & Store keeps its Store tab under the same sidebar item.
+  '/brand': ['/store']
 }
 
 function under(pathname: string, href: string) {

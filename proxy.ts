@@ -54,6 +54,7 @@ export const config = {
     '/reports/:path*',
     '/segments/:path*',
     '/brand/:path*',
+    '/store/:path*',
     '/campaign-agent/:path*',
     '/competitor-agent/:path*',
     '/connections/:path*',
