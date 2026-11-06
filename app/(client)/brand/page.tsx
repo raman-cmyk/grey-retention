@@ -7,17 +7,10 @@ import { brandProfileData } from '@/features/brand-profile/data'
 import {
   ApprovalBar,
   BrandHeader,
-  MismatchBanner,
-  updatedAgo
+  MismatchBanner
 } from '@/features/brand-profile/header'
-import {
-  BrandProfile,
-  type SectionView
-} from '@/features/brand-profile/profile'
-import {
-  savedBrandDefaults,
-  sectionKeys
-} from '@/features/brand-profile/sections'
+import { BrandProfile } from '@/features/brand-profile/profile'
+import { lastUpdated, profileViews } from '@/features/brand-profile/view'
 
 export const metadata: Metadata = { title: 'Brand Intelligence' }
 
@@ -25,54 +18,26 @@ export default async function BrandPage() {
   const { context, data, error, setup } = await onboardingWorkspace()
   const owner = context.tenantRole === 'owner'
   if (error || !data)
-    return <Notice error>{error ?? 'Brand details unavailable.'}</Notice>
+    return (
+      <div className="mx-auto max-w-[920px]">
+        <BrandHeader active="profile" owner={false} lastUpdated={null} />
+        <Notice error>{error ?? 'Brand details unavailable.'}</Notice>
+      </div>
+    )
   const profile = await brandProfileData(context.tenantId, data.brand)
-  const sections = profile?.sections ?? []
-  const latest =
-    sections
-      .map((s) => s.updatedAt)
-      .sort()
-      .at(-1) ?? null
-  // Unsaved Identity and Tone show the brand details the AI already reads.
-  const defaults = data.brand ? savedBrandDefaults(data.brand) : {}
-  const views: SectionView[] = sectionKeys.flatMap((key): SectionView[] => {
-    const saved = sections.find((s) => s.section === key)
-    if (saved)
-      return [
-        {
-          section: key,
-          content: saved.content,
-          locked: saved.locked,
-          source: saved.source,
-          revision: saved.revision,
-          updated: updatedAgo(saved.updatedAt)
-        }
-      ]
-    const content = defaults[key]
-    return content
-      ? [
-          {
-            section: key,
-            content,
-            locked: [],
-            source: 'saved',
-            revision: 0,
-            updated: null
-          }
-        ]
-      : []
-  })
+  const rows = profile?.sections ?? []
+  const views = profileViews(data.brand, rows)
   return (
     <div className="mx-auto max-w-[920px]">
       <BrandHeader
         active="profile"
         owner={owner}
-        lastUpdated={updatedAgo(latest)}
+        lastUpdated={lastUpdated(rows)}
         revisions={Object.fromEntries(
-          sections.map((s) => [s.section, s.revision])
+          views.map((v) => [v.section, v.revision])
         )}
       />
-      <MismatchBanner mismatches={profile?.mismatches ?? []} />
+      <MismatchBanner mismatches={profile?.mismatches ?? []} owner={owner} />
       <ApprovalBar brand={data.brand} owner={owner} />
       {profile?.unavailable && (
         <Notice error>
@@ -81,7 +46,10 @@ export default async function BrandPage() {
         </Notice>
       )}
       <BrandProfile owner={owner} products={data.products} views={views} />
-      <h2 className="tracking-label mt-12 mb-4 font-mono text-[0.6875rem] font-semibold text-[var(--text-muted)] uppercase">
+      <h2
+        id="catalogue"
+        className="tracking-label mt-12 mb-4 scroll-mt-24 font-mono text-[0.6875rem] font-semibold text-[var(--text-muted)] uppercase"
+      >
         Catalogue, offers and brand kit
       </h2>
       <div className="space-y-6">

@@ -2,15 +2,7 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { brandMismatches } from './mismatch'
 import type { SectionContent, SectionKey } from './sections'
-
-export type SectionRow = {
-  section: SectionKey
-  content: SectionContent
-  locked: string[]
-  source: 'sample' | 'owner'
-  revision: number
-  updatedAt: string
-}
+import type { SectionRow } from './view'
 // The display columns come from migration 20260914090017 (UIR-013) and may
 // be missing on an older hosted database.
 type Connection = {
@@ -39,7 +31,6 @@ export async function brandProfileData(
     section: row.section as SectionKey,
     content: (row.content ?? {}) as SectionContent,
     locked: row.locked ?? [],
-    source: row.source as 'sample' | 'owner',
     revision: row.revision,
     updatedAt: row.updated_at
   }))

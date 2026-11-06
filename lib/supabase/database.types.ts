@@ -5504,12 +5504,14 @@ export type Database = {
       save_brand_section: {
         Args: {
           content: Json
+          expected_brand_revision?: number
           expected_revision: number
+          facts?: Json
           locked?: string[]
           section: string
           t: string
         }
-        Returns: number
+        Returns: Json
       }
       save_campaign: {
         Args: {

@@ -958,7 +958,7 @@
       "verification": [
         "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. Redo all applies every section with its own revision check, stops at the first conflict and says how many were updated."
       ],
-      "remaining": "Suggestions come from the sample writer, not a live model."
+      "remaining": "Suggestions come from the sample writer (fills empty fields with marked sample text), not a live model. The AI reads only brand name, website, positioning, Do and Don't; the other notes are not read by any AI feature yet."
     },
     {
       "id": "BRD-006",
@@ -971,7 +971,7 @@
       "verification": [
         "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. A section redo changes only that section (pgTAP: Identity untouched after a Tone redo) and keeps locked fields."
       ],
-      "remaining": "Suggestions come from the sample writer, not a live model."
+      "remaining": "Suggestions come from the sample writer (fills empty fields with marked sample text), not a live model. The AI reads only brand name, website, positioning, Do and Don't; the other notes are not read by any AI feature yet."
     },
     {
       "id": "BRD-007",
@@ -1025,9 +1025,9 @@
       "status": "verified_fixture",
       "implementation_tasks": ["UIR-005"],
       "verification": [
-        "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. Redo all covers the Copy & Voice sections; each card shows its update time and any error message."
+        "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. Redo all covers every section and reports errors in the header; each card shows its update time and its own errors."
       ],
-      "remaining": "Suggestions come from the sample writer, not a live model."
+      "remaining": "Suggestions come from the sample writer (fills empty fields with marked sample text), not a live model. The AI reads only brand name, website, positioning, Do and Don't; the other notes are not read by any AI feature yet."
     },
     {
       "id": "BRD-012",
@@ -1040,7 +1040,7 @@
       "verification": [
         "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. Only the requested voice section is replaced; locked fields survive (pgTAP and browser)."
       ],
-      "remaining": "Suggestions come from the sample writer, not a live model."
+      "remaining": "Suggestions come from the sample writer (fills empty fields with marked sample text), not a live model. The AI reads only brand name, website, positioning, Do and Don't; the other notes are not read by any AI feature yet."
     },
     {
       "id": "BRD-013",

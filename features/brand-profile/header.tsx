@@ -6,16 +6,6 @@ import { redoAllBrandSections } from './actions'
 import type { Mismatch } from './mismatch'
 import { sectionKeys } from './sections'
 
-/** "today", "yesterday", "96 days ago". */
-export function updatedAgo(iso: string | null | undefined, now = Date.now()) {
-  if (!iso) return null
-  const days = Math.max(0, Math.floor((now - Date.parse(iso)) / 86_400_000))
-  return new Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(
-    -days,
-    'day'
-  )
-}
-
 /** Brand & Store sub-tabs; kept visible on every tab (owner brief §5 fix). */
 export function BrandTabs({ active }: { active: 'profile' | 'store' }) {
   const tabs = [
@@ -59,10 +49,11 @@ export function BrandHeader({
         Brand & Store
       </h1>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-[var(--text-muted)]">
-          A sample profile made from your saved brand details. Edit anything; AI
-          never changes a field you lock.
-        </p>
+        {active === 'profile' && (
+          <p className="max-w-prose text-sm text-[var(--text-muted)]">
+            Your brand in your words. The AI uses the version you approve.
+          </p>
+        )}
         {active === 'profile' && (
           <div className="flex items-center gap-3">
             <span className="text-sm text-[var(--text-muted)]">
@@ -84,6 +75,9 @@ export function BrandHeader({
                   <Sparkles className="size-4" aria-hidden="true" />
                   Redo all with AI
                 </SubmitButton>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
+                  Sample writer: fills empty fields only.
+                </p>
               </ActionForm>
             )}
           </div>
@@ -95,7 +89,13 @@ export function BrandHeader({
 }
 
 /** Big banner when the profile does not look like the connected accounts. */
-export function MismatchBanner({ mismatches }: { mismatches: Mismatch[] }) {
+export function MismatchBanner({
+  mismatches,
+  owner
+}: {
+  mismatches: Mismatch[]
+  owner: boolean
+}) {
   if (!mismatches.length) return null
   return (
     <section
@@ -110,13 +110,17 @@ export function MismatchBanner({ mismatches }: { mismatches: Mismatch[] }) {
         {mismatches.map((m) => (
           <p key={m.source}>{m.message}</p>
         ))}
-        <p>
-          Fix the Brand Identity below, or check the account on{' '}
-          <Link href="/connections" className="font-medium underline">
-            Connections
-          </Link>
-          .
-        </p>
+        {owner ? (
+          <p>
+            Fix the Brand Identity below, or check the account on{' '}
+            <Link href="/connections" className="font-medium underline">
+              Connections
+            </Link>
+            . If both are right, you can ignore this note.
+          </p>
+        ) : (
+          <p>Ask the workspace owner to check the Brand Identity.</p>
+        )}
       </div>
     </section>
   )

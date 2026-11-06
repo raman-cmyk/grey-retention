@@ -4,8 +4,12 @@ vi.mock('server-only', () => ({}))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 const auth = vi.hoisted(() => ({ requireRequestContext: vi.fn() }))
 const supabase = vi.hoisted(() => ({ createClient: vi.fn() }))
+const env = vi.hoisted(() => ({
+  values: { AUTH_MODE: 'supabase', AI_DEFAULT_PROVIDER: 'fake' }
+}))
 vi.mock('@/features/auth/application/request-context', () => auth)
 vi.mock('@/lib/supabase/server', () => supabase)
+vi.mock('@/lib/env/server', () => ({ getServerEnvironment: () => env.values }))
 
 import {
   redoAllBrandSections,
@@ -22,145 +26,254 @@ function form(values: Record<string, string | string[]>) {
 }
 
 let rpc: ReturnType<typeof vi.fn>
+let sectionRows: { section: string; content: object; locked: string[] }[]
 beforeEach(() => {
-  vi.stubEnv('AI_DEFAULT_PROVIDER', 'fake')
-  vi.stubEnv('AUTH_MODE', 'supabase')
+  env.values = { AUTH_MODE: 'supabase', AI_DEFAULT_PROVIDER: 'fake' }
   auth.requireRequestContext.mockResolvedValue({
     tenantId: tenant,
     tenantRole: 'owner',
     tenantName: 'Cedar Lane workspace'
   })
-  rpc = vi.fn(async () => ({ data: 2, error: null }))
-  const query = (data: unknown) => {
+  rpc = vi.fn(async () => ({
+    data: { revision: 4, brand_changed: false },
+    error: null
+  }))
+  sectionRows = []
+  const query = (table: string) => {
     const chain: Record<string, unknown> = {}
     for (const op of ['select', 'eq', 'order', 'limit']) chain[op] = () => chain
-    chain.maybeSingle = async () => ({ data })
+    chain.maybeSingle = async () => ({ data: { brand_name: 'Cedar Lane' } })
     chain.then = (resolve: (v: unknown) => unknown) =>
-      resolve({
-        data: [{ title: 'Field overshirt', url: 'https://x.example/p' }]
-      })
+      resolve(
+        table === 'products'
+          ? { data: [{ title: 'Field overshirt', url: 'https://x.example/p' }] }
+          : { data: sectionRows, error: null }
+      )
     return chain
   }
-  supabase.createClient.mockResolvedValue({
-    rpc,
-    from: (table: string) =>
-      query(
-        table === 'brand_profiles'
-          ? {
-              brand_name: 'Cedar Lane',
-              domain: 'cedar-lane.example',
-              positioning: 'Quiet layers.',
-              voice: 'Calm.',
-              prohibitions: 'No hype.'
-            }
-          : null
-      )
-  })
+  supabase.createClient.mockResolvedValue({ rpc, from: query })
 })
 afterEach(() => {
-  vi.unstubAllEnvs()
   vi.clearAllMocks()
 })
 
 describe('saveBrandSection', () => {
-  it('saves the owner’s edit with locks and says when re-approval is needed', async () => {
+  it('saves notes, locks and brand facts with both revisions', async () => {
     const result = await saveBrandSection(
       {},
       form({
         section: 'identity',
         revision: '3',
+        brand_revision: '7',
         brand_name: ' Cedar Lane ',
+        website: 'cedar-lane.example',
+        positioning: 'Quiet layers.\r\nFor weekends.',
         niche: 'Outdoor layers',
-        lock: ['niche', 'bogus']
+        lock: ['niche', 'bogus', 'positioning']
       })
     )
-    expect(result.message).toBe(
-      'Saved. Your brand needs approving again before the AI uses the change.'
-    )
+    expect(result).toEqual({ message: 'Saved.' })
     expect(rpc).toHaveBeenCalledWith('save_brand_section', {
       t: tenant,
       section: 'identity',
       expected_revision: 3,
-      content: { brand_name: 'Cedar Lane', niche: 'Outdoor layers' },
-      locked: ['niche']
+      content: { niche: 'Outdoor layers' },
+      locked: ['niche'],
+      facts: {
+        brand_name: 'Cedar Lane',
+        domain: 'cedar-lane.example',
+        positioning: 'Quiet layers.\nFor weekends.'
+      },
+      expected_brand_revision: 7
     })
   })
 
-  it('does not mention approval for sections the AI does not read directly', async () => {
+  it('says approval is needed only when brand facts really changed', async () => {
+    rpc.mockResolvedValue({
+      data: { revision: 2, brand_changed: true },
+      error: null
+    })
     const result = await saveBrandSection(
+      {},
+      form({
+        section: 'tone',
+        revision: '1',
+        brand_revision: '7',
+        do: 'Be brief',
+        dont: ''
+      })
+    )
+    expect(result.message).toBe(
+      'Saved. Your brand details changed: approve the brand again before the AI uses them. Campaigns not sent yet went back to draft.'
+    )
+  })
+
+  it('sends no brand facts for sections without them', async () => {
+    await saveBrandSection(
       {},
       form({ section: 'vocabulary', revision: '0', preferred: 'layers' })
     )
-    expect(result.message).toBe('Saved.')
+    expect(rpc).toHaveBeenCalledWith('save_brand_section', {
+      t: tenant,
+      section: 'vocabulary',
+      expected_revision: 0,
+      content: { preferred: ['layers'] },
+      locked: []
+    })
   })
 
-  it('refuses staff before reading the form', async () => {
+  it('refuses staff and demo sessions before reading the form', async () => {
     auth.requireRequestContext.mockResolvedValue({
       tenantId: tenant,
       tenantRole: 'staff',
       tenantName: 'x'
     })
-    expect(
-      await saveBrandSection({}, form({ section: 'identity', revision: '0' }))
-    ).toEqual({
+    const staffForm = form({ section: 'identity', revision: '0' })
+    const read = vi.spyOn(staffForm, 'get')
+    expect(await saveBrandSection({}, staffForm)).toEqual({
       error: 'Only the workspace owner can change the Brand profile.'
     })
+    expect(read).not.toHaveBeenCalled()
+    auth.requireRequestContext.mockResolvedValue({
+      tenantId: tenant,
+      tenantRole: 'owner',
+      tenantName: 'x'
+    })
+    env.values = { ...env.values, AUTH_MODE: 'demo' }
+    expect(
+      (await saveBrandSection({}, form({ section: 'audience', revision: '0' })))
+        .error
+    ).toBe('Please sign in again. Your changes are still here.')
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('refuses unknown sections and too-long fields without saving', async () => {
-    expect(
-      (await saveBrandSection({}, form({ section: 'pricing', revision: '0' })))
-        .error
-    ).toBe('Reload the page and try again.')
-    expect(
-      (
-        await saveBrandSection(
-          {},
-          form({
-            section: 'tone',
-            revision: '0',
-            do: Array(16).fill('x').join('\n')
-          })
-        )
-      ).error
-    ).toBe('Do: at most 15 lines.')
+  it('refuses bad input without saving', async () => {
+    const tries = [
+      [{ section: 'pricing', revision: '0' }, 'Reload the page and try again.'],
+      [
+        { section: 'identity', revision: '1', brand_name: 'Cedar' },
+        'Reload the page and try again.'
+      ],
+      [
+        {
+          section: 'identity',
+          revision: '1',
+          brand_revision: '2',
+          brand_name: 'C'
+        },
+        'Brand name: at least 2 characters.'
+      ],
+      [
+        {
+          section: 'vocabulary',
+          revision: '0',
+          avoid: Array(16).fill('x').join('\n')
+        },
+        'Avoid: at most 15 lines.'
+      ]
+    ] as const
+    for (const [values, error] of tries)
+      expect((await saveBrandSection({}, form(values))).error).toBe(error)
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('explains a stale edit instead of overwriting it', async () => {
-    rpc.mockResolvedValue({ data: null, error: { code: 'PT409' } })
-    expect(
-      (await saveBrandSection({}, form({ section: 'audience', revision: '1' })))
-        .error
-    ).toContain('changed in another window')
+  it('explains each refusal in plain words', async () => {
+    const cases = [
+      [
+        { code: 'PT409', message: 'This section changed in another window' },
+        'This section changed in another window. Reload the page to see the latest version.'
+      ],
+      [
+        { code: 'PT409', message: 'Brand details changed in another window' },
+        'Your brand details were changed somewhere else (for example on Get started). Reload the page to see them, then edit again.'
+      ],
+      [
+        {
+          code: '23514',
+          message:
+            'Cancel or reconcile active delivery before correcting brand facts'
+        },
+        'A campaign is on its way to Klaviyo right now. Wait until it is scheduled, or cancel it, before changing the brand details.'
+      ],
+      [
+        { code: '23514', message: 'Save the Brand Identity first' },
+        'Save the Brand Identity first (it needs a brand name).'
+      ],
+      [
+        { code: '23514', message: 'Check the section fields' },
+        'Check the fields and try again.'
+      ],
+      [
+        { code: '42501', message: 'Access denied' },
+        'Only the workspace owner can change the Brand profile.'
+      ],
+      [
+        { code: 'XX000', message: 'boom' },
+        'We could not save this section. Nothing was changed. Try again.'
+      ]
+    ] as const
+    for (const [error, text] of cases) {
+      rpc.mockResolvedValueOnce({ data: null, error })
+      expect(
+        (
+          await saveBrandSection(
+            {},
+            form({
+              section: 'tone',
+              revision: '1',
+              brand_revision: '2',
+              do: 'x'
+            })
+          )
+        ).error
+      ).toBe(text)
+    }
   })
 })
 
 describe('redoBrandSection', () => {
-  it('applies a sample suggestion built from saved facts', async () => {
+  it('fills only empty fields, from the saved section', async () => {
+    sectionRows = [
+      {
+        section: 'identity',
+        content: { niche: 'Outdoor layers', origin_story: '' },
+        locked: ['target_audience']
+      }
+    ]
+    rpc.mockResolvedValue({ data: 3, error: null })
+    const result = await redoBrandSection(
+      {},
+      form({ section: 'identity', revision: '2' })
+    )
+    expect(result.message).toBe(
+      'Sample text added to 2 empty fields (not real AI, nothing was spent). Your own words and locked fields were kept.'
+    )
+    expect(rpc).toHaveBeenCalledWith('apply_brand_suggestion', {
+      t: tenant,
+      section: 'identity',
+      expected_revision: 2,
+      suggestion: {
+        geographic_market:
+          'Sample: add the country or region you sell to here.',
+        origin_story:
+          'Sample: add how the brand started, in your own words here.'
+      }
+    })
+  })
+
+  it('changes nothing when there is nothing to fill', async () => {
     const result = await redoBrandSection(
       {},
       form({ section: 'tone', revision: '2' })
     )
-    expect(result.message).toBe(
-      'Sample suggestion applied (not real AI, nothing was spent). Fields you locked were kept.'
-    )
-    const [name, args] = rpc.mock.calls[0]!
-    expect(name).toBe('apply_brand_suggestion')
-    expect(args).toMatchObject({
-      t: tenant,
-      section: 'tone',
-      expected_revision: 2
-    })
-    expect(args.suggestion.do).toEqual(['Calm'])
-    expect(args.suggestion.dont).toEqual(['No hype'])
+    expect(result.message).toMatch(/^Nothing to add/)
+    expect(rpc).not.toHaveBeenCalled()
   })
 
   it('refuses when AI is not on the sample provider', async () => {
-    vi.stubEnv('AI_DEFAULT_PROVIDER', 'openai')
+    env.values = { ...env.values, AI_DEFAULT_PROVIDER: 'openai' }
     expect(
-      (await redoBrandSection({}, form({ section: 'tone', revision: '2' })))
+      (await redoBrandSection({}, form({ section: 'audience', revision: '2' })))
         .error
     ).toBe('AI suggestions are not switched on yet. Nothing was changed.')
     expect(rpc).not.toHaveBeenCalled()
@@ -173,10 +286,24 @@ describe('redoBrandSection', () => {
       tenantName: 'x'
     })
     expect(
-      (await redoBrandSection({}, form({ section: 'tone', revision: '2' })))
+      (await redoBrandSection({}, form({ section: 'audience', revision: '2' })))
         .error
     ).toContain('owner')
     expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('explains a stale redo', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: {
+        code: 'PT409',
+        message: 'This section changed in another window'
+      }
+    })
+    expect(
+      (await redoBrandSection({}, form({ section: 'audience', revision: '1' })))
+        .error
+    ).toContain('changed in another window')
   })
 })
 
@@ -192,15 +319,18 @@ describe('redoAllBrandSections', () => {
     ].map((k, i) => [`revision:${k}`, String(i)])
   )
 
-  it('redoes every section with its own revision', async () => {
+  it('fills every section that has empty fields, each with its revision', async () => {
+    rpc.mockResolvedValue({ data: 1, error: null })
     const result = await redoAllBrandSections({}, form(revisions))
-    expect(result.message).toContain('every section')
+    expect(result.message).toMatch(
+      /^Sample text added to \d+ empty fields across the profile/
+    )
+    // Tone has no sample text to add (no facts to guess from).
     expect(
       rpc.mock.calls.map(([, a]) => [a.section, a.expected_revision])
     ).toEqual([
       ['identity', 0],
       ['products', 1],
-      ['tone', 2],
       ['vocabulary', 3],
       ['sample_copy', 4],
       ['audience', 5]
@@ -208,20 +338,36 @@ describe('redoAllBrandSections', () => {
   })
 
   it('stops at the first conflict and says how far it got', async () => {
-    rpc
-      .mockResolvedValueOnce({ data: 1, error: null })
-      .mockResolvedValueOnce({ data: null, error: { code: 'PT409' } })
+    rpc.mockResolvedValueOnce({ data: 1, error: null }).mockResolvedValueOnce({
+      data: null,
+      error: {
+        code: 'PT409',
+        message: 'This section changed in another window'
+      }
+    })
     const result = await redoAllBrandSections({}, form(revisions))
     expect(result.error).toMatch(
-      /^1 of 6 sections updated\. This section changed in another window/
+      /^Sample text added to 4 empty fields before this stopped\. This section changed in another window/
     )
     expect(rpc).toHaveBeenCalledTimes(2)
   })
 
-  it('needs every revision', async () => {
+  it('needs every revision, and the owner, and the sample writer', async () => {
     expect(
       (await redoAllBrandSections({}, form({ 'revision:identity': '0' }))).error
     ).toBe('Reload the page and try again.')
+    env.values = { ...env.values, AI_DEFAULT_PROVIDER: 'openai' }
+    expect((await redoAllBrandSections({}, form(revisions))).error).toBe(
+      'AI suggestions are not switched on yet. Nothing was changed.'
+    )
+    auth.requireRequestContext.mockResolvedValue({
+      tenantId: tenant,
+      tenantRole: 'staff',
+      tenantName: 'x'
+    })
+    expect((await redoAllBrandSections({}, form(revisions))).error).toContain(
+      'owner'
+    )
     expect(rpc).not.toHaveBeenCalled()
   })
 })
