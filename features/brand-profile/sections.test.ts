@@ -98,14 +98,15 @@ describe('readSectionForm', () => {
       'tone',
       form({
         formality: 'Casual',
-        do: 'Use U.S. spelling. Write like Dr. Bronner’s label.\r\nBe brief',
+        do: 'Use U.S. spelling. Write like Mr. Pemberly’s field notes.\r\nBe brief',
         dont: '',
         lock: ['formality', 'do']
       })
     )
     expect(content).toEqual({ formality: 'Casual' })
     expect(facts).toEqual({
-      voice: 'Use U.S. spelling. Write like Dr. Bronner’s label.\nBe brief',
+      voice:
+        'Use U.S. spelling. Write like Mr. Pemberly’s field notes.\nBe brief',
       prohibitions: ''
     })
     expect(locked).toEqual(['formality'])

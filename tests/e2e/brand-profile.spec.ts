@@ -88,13 +88,15 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
   await tone.getByRole('button', { name: 'Edit Tone of Voice' }).click()
   await tone
     .getByLabel('Do', { exact: true })
-    .fill('Use U.S. spelling. Write like Dr. Bronner’s label.\nBe brief.')
+    .fill(
+      'Use U.S. spelling. Write like Mr. Pemberly’s field notes.\nBe brief.'
+    )
   await tone.getByRole('button', { name: 'Save Tone of Voice' }).click()
   await expect(
     tone.getByText(/^Saved\. Your brand details changed/)
   ).toBeVisible()
   await expect(
-    tone.getByText('Use U.S. spelling. Write like Dr. Bronner’s label.')
+    tone.getByText('Use U.S. spelling. Write like Mr. Pemberly’s field notes.')
   ).toBeVisible()
   await expect(
     page.getByRole('button', { name: 'Approve brand v2' })

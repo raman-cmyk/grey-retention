@@ -1,5 +1,5 @@
 begin;
-select plan(55);
+select plan(67);
 
 -- Known starting point, whatever earlier scripts did to the seed data.
 delete from public.brand_profile_sections
@@ -8,6 +8,10 @@ update public.brand_profiles
   set approved_revision = revision, approved_by = '00000000-0000-4000-8000-000000000001', approved_at = now()
   where tenant_id = '00000000-0000-4000-8000-000000000101';
 delete from public.brand_profiles where tenant_id = '00000000-0000-4000-8000-000000000102';
+-- No campaign of workspace 101 is mid-delivery (other scripts may leave one).
+update public.campaigns set delivery_state = 'not_ready'
+  where tenant_id = '00000000-0000-4000-8000-000000000101'
+    and delivery_state in ('queued','preparing','prepared','scheduling','scheduled','reconciling');
 update public.campaigns set delivery_state = 'not_ready', calendar_state = 'approved'
   where id = '00000000-0000-4000-8000-000000000601';
 select set_config('test.rev', revision::text, true) from public.brand_profiles
@@ -15,7 +19,8 @@ select set_config('test.rev', revision::text, true) from public.brand_profiles
 
 -- Grants: members only read; every write goes through the commands.
 select ok(not has_table_privilege('anon','public.brand_profile_sections','select'),'anon cannot read sections');
-select ok(not has_table_privilege('authenticated','public.brand_profile_sections','insert,update,delete'),'members cannot write the table directly');
+select ok(not has_table_privilege('authenticated','public.brand_profile_sections','insert,update,delete,truncate'),'members cannot write the table directly');
+select ok(not has_table_privilege('anon','public.brand_profile_sections','truncate'),'anon cannot truncate');
 select ok(not has_table_privilege('service_role','public.brand_profile_sections','select,insert,update,delete'),'service role has no table access');
 select ok(not has_function_privilege('anon','public.save_brand_section(uuid,text,integer,jsonb,text[],jsonb,integer)','execute'),'anon cannot save');
 select ok(not has_function_privilege('service_role','public.apply_brand_suggestion(uuid,text,integer,jsonb)','execute'),'service role cannot redo');
@@ -78,12 +83,12 @@ select throws_ok(
 -- Tone: voice and prohibitions are kept as written (no splitting or limits per line).
 select is(
   public.save_brand_section('00000000-0000-4000-8000-000000000101','tone',0,'{"formality":"Casual"}','{formality}',
-    jsonb_build_object('voice',E'Use U.S. spelling. Write like Dr. Bronner''s label.\n'||repeat('y',400),'prohibitions','No hype'),
+    jsonb_build_object('voice',E'Use U.S. spelling. Write like Mr. Pemberly''s field notes.\n'||repeat('y',400),'prohibitions','No hype'),
     current_setting('test.rev')::int + 1),
   '{"revision":1,"brand_changed":true}'::jsonb,'owner saves Tone with its rules and locks Formality');
 select is(
   (select row(voice, prohibitions)::text from public.brand_profiles),
-  row(E'Use U.S. spelling. Write like Dr. Bronner''s label.\n'||repeat('y',400),'No hype')::text,
+  row(E'Use U.S. spelling. Write like Mr. Pemberly''s field notes.\n'||repeat('y',400),'No hype')::text,
   'Do / Don''t text is stored verbatim as the voice and prohibitions');
 select is(
   public.save_brand_section('00000000-0000-4000-8000-000000000101','tone',1,'{"formality":"Casual"}','{formality}',
@@ -117,6 +122,10 @@ select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000
 select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000000000101','audience',0,'{}','{nope}')$$,'23514',null,'locking an unknown field refused');
 select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000000000101','audience',0,'{}',array[null]::text[])$$,'23514',null,'a NULL lock is refused');
 select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000000000101','pricing',0,'{}')$$,'23514',null,'unknown section refused');
+select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000000000101','identity',3,'{}','{}','"x"',current_setting('test.rev')::int + 3)$$,'23514',null,'facts must be an object');
+select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000000000101','identity',3,'{}','{}','{"brand_name":5}',current_setting('test.rev')::int + 3)$$,'23514',null,'facts must be text');
+select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000000000101','identity',3,'{}','{}','{"brand_name":"Cedar Lane Goods"}',null)$$,'PT409',null,'facts without a brand revision are refused');
+select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000000000101','tone',3,'{}','{}','{"voice":"x"}',current_setting('test.rev')::int + 2)$$,'PT409',null,'a stale brand revision is refused on Tone too');
 
 -- Redo with AI: locked and omitted fields keep their value; facts never change.
 select is(
@@ -143,6 +152,24 @@ select is(
   (select row(revision - current_setting('test.rev')::int, prohibitions)::text from public.brand_profiles),
   row(3,'')::text,'no redo changed the brand');
 
+-- The older brand commands (Get started) and this page never overwrite each other.
+select lives_ok(
+  $$select public.save_brand('00000000-0000-4000-8000-000000000101',current_setting('test.rev')::int + 3,
+    'Cedar Lane Goods','cedar-lane.example','Changed on Get started.','','')$$,
+  'Get started saves the brand');
+select throws_ok(
+  $$select public.save_brand_section('00000000-0000-4000-8000-000000000101','identity',3,'{}','{}',
+    '{"positioning":"Text from a page opened earlier"}',current_setting('test.rev')::int + 3)$$,
+  'PT409','Brand details changed in another window','a page opened before that save cannot overwrite it');
+select is((select positioning from public.brand_profiles),'Changed on Get started.','the newer text is kept');
+select throws_ok(
+  $$select public.approve_brand('00000000-0000-4000-8000-000000000101',current_setting('test.rev')::int + 3)$$,
+  'PT409',null,'approving an older version is refused');
+select lives_ok(
+  $$select public.approve_brand('00000000-0000-4000-8000-000000000101',current_setting('test.rev')::int + 4)$$,
+  'approving the current version works');
+select ok((select approved_revision = revision from public.brand_profiles),'the current version is approved');
+
 -- Staff and the team admin read but cannot edit or redo.
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000005","role":"authenticated"}',true);
 select is((select count(*) from public.brand_profile_sections),4::bigint,'staff can read the profile');
@@ -155,6 +182,7 @@ select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
 select is((select count(*) from public.brand_profile_sections),0::bigint,'other workspace cannot read');
 select throws_ok($$select public.apply_brand_suggestion('00000000-0000-4000-8000-000000000101','audience',2,'{}')$$,'42501',null,'other workspace cannot redo');
+select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000000000101','audience',2,'{}')$$,'42501',null,'other workspace cannot edit');
 select throws_ok(
   $$select public.save_brand_section('00000000-0000-4000-8000-000000000102','tone',0,'{}','{}','{"voice":"Calm"}',0)$$,
   '23514','Save the Brand Identity first','Tone needs a brand first');

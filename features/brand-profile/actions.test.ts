@@ -16,6 +16,7 @@ import {
   redoBrandSection,
   saveBrandSection
 } from './actions'
+import { SampleBrandProfileWriter } from './writer'
 
 const tenant = '00000000-0000-4000-8000-000000000101'
 function form(values: Record<string, string | string[]>) {
@@ -259,6 +260,25 @@ describe('redoBrandSection', () => {
           'Sample: add how the brand started, in your own words here.'
       }
     })
+  })
+
+  it('never sends an empty value, so a suggestion cannot blank a field', async () => {
+    vi.spyOn(
+      SampleBrandProfileWriter.prototype,
+      'suggest'
+    ).mockResolvedValueOnce({
+      primary_persona: '',
+      pain_points: [],
+      age_range: 'Sample: add an age range here.'
+    })
+    rpc.mockResolvedValue({ data: 2, error: null })
+    await redoBrandSection({}, form({ section: 'audience', revision: '1' }))
+    expect(rpc).toHaveBeenCalledWith(
+      'apply_brand_suggestion',
+      expect.objectContaining({
+        suggestion: { age_range: 'Sample: add an age range here.' }
+      })
+    )
   })
 
   it('changes nothing when there is nothing to fill', async () => {

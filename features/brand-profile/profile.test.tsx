@@ -36,7 +36,8 @@ const brand = {
   brand_name: 'Cedar Lane',
   domain: 'cedar-lane.example',
   positioning: 'Quiet layers.',
-  voice: 'Say what it is\nUse U.S. spelling. Write like Dr. Bronner’s label.',
+  voice:
+    'Say what it is\nUse U.S. spelling. Write like Mr. Pemberly’s field notes.',
   prohibitions: 'No hype',
   revision: 7
 }
@@ -113,7 +114,7 @@ describe('BrandProfile', () => {
     // Rules are shown line by line, exactly as written.
     expect(
       within(tone).getByText(
-        'Use U.S. spelling. Write like Dr. Bronner’s label.'
+        'Use U.S. spelling. Write like Mr. Pemberly’s field notes.'
       )
     ).toBeVisible()
     expect(within(tone).getAllByLabelText('Do')).toHaveLength(2)

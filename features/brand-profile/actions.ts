@@ -10,12 +10,17 @@ import {
   contentSchema,
   factsSchema,
   hasFacts,
+  isEmptyValue,
   readSectionForm,
   sectionKeys,
   type SectionContent,
   type SectionKey
 } from './sections'
-import { brandProfileWriter, type WriterFacts } from './writer'
+import {
+  brandProfileWriter,
+  type BrandProfileWriter,
+  type WriterFacts
+} from './writer'
 
 const revision = z.string().regex(/^\d+$/).transform(Number)
 const target = z.object({
@@ -170,6 +175,17 @@ async function currentSections(db: Db, tenantId: string) {
   )
 }
 
+/** A suggestion never blanks a field: empty values are dropped. */
+async function suggest(
+  writer: BrandProfileWriter,
+  input: Parameters<BrandProfileWriter['suggest']>[0]
+) {
+  const raw = await writer.suggest(input)
+  return Object.fromEntries(
+    Object.entries(raw).filter(([, value]) => !isEmptyValue(value))
+  ) as SectionContent
+}
+
 const fieldCount = (n: number) =>
   n === 1 ? '1 empty field' : `${n} empty fields`
 const nothingToAdd =
@@ -199,7 +215,7 @@ export async function redoBrandSection(
   ])
   if (!current) return { error: failed({}) }
   const { section } = picked.data
-  const suggestion = await writer.suggest({
+  const suggestion = await suggest(writer, {
     section,
     facts,
     current: current.get(section)?.content ?? {},
@@ -246,7 +262,7 @@ export async function redoAllBrandSections(
   if (!current) return { error: failed({}) }
   let filled = 0
   for (const [index, section] of sectionKeys.entries()) {
-    const suggestion = await writer.suggest({
+    const suggestion = await suggest(writer, {
       section,
       facts,
       current: current.get(section)?.content ?? {},
