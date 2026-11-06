@@ -210,13 +210,7 @@ export async function GettingStarted({ step }: { step?: string }) {
               : 'Give your email a goal, choose an audience and pick a date. You’ll review the copy and design before delivery.'}
           </p>
           <Button asChild className="mt-7">
-            <Link
-              href={
-                data.campaigns.length
-                  ? '/dashboard'
-                  : '/campaign-agent#create-campaign'
-              }
-            >
+            <Link href={data.campaigns.length ? '/dashboard' : '/first-draft'}>
               {data.campaigns.length
                 ? 'Open my workspace'
                 : 'Plan my first email'}{' '}

@@ -11,15 +11,22 @@ export type FormAction = (
 export function ActionForm({
   action,
   children,
-  className
+  className,
+  preserveValues = false
 }: {
   action: FormAction
   children: ReactNode
   className?: string
+  preserveValues?: boolean
 }) {
   const [state, dispatch, pending] = useActionState(action, {})
   return (
-    <form action={dispatch} className={className} aria-busy={pending}>
+    <form
+      action={dispatch}
+      className={className}
+      aria-busy={pending}
+      onReset={preserveValues ? (event) => event.preventDefault() : undefined}
+    >
       {children}
       <p
         aria-live="polite"

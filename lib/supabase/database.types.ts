@@ -4388,6 +4388,16 @@ export type Database = {
         }
         Returns: string
       }
+      create_first_draft: {
+        Args: {
+          input: Json
+          request_key: string
+          source: string
+          source_id?: string
+          t: string
+        }
+        Returns: string
+      }
       create_offer: {
         Args: {
           conditions: string

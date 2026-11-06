@@ -52,3 +52,11 @@ The sidebar keeps the competitor → references → campaign workflow visible, w
 This is the first simplification slice. Reference capture still uses fictional `.example` sources; setup hands off to the existing competitor/library/calendar screens. Automatic website extraction, real competitor collection, exact visual reconstruction, a dedicated first-draft composer and measured first-session usability remain future work. The guide says this directly; it does not display fabricated scan progress or successful live connections.
 
 Verification is recorded in the ONB-001 ledger handoff. No dependency, database migration, provider transport or approval authority changed.
+
+## October 28 follow-up: first-draft composer (DRF-001)
+
+`/first-draft` now accepts an original idea or a source preselected through “Use for my brand.” The main question is the goal; name, workspace-local date, audience and format are optional plan details. The source has an optional sandboxed preview, visible sample provenance and persisted structural lineage. No integration or audience is needed to save the initial brief. Approval, generation and sending remain separate guarded operations in the same saved campaign workspace.
+
+Draft request identities survive refresh in the URL and are bound to authenticated owner, tenant and payload in private receipts. Concurrent identical retries return the same campaign; changed-input replays fail without overwriting it. Removed source access leaves the user's goal and selections intact so they can choose another source or start from scratch. Date conversion rejects skipped local times and asks which occurrence to use for repeated local times. Broader date-editor replacement and live-send timezone acceptance remain separate work.
+
+The canonical implementation register is now `docs/feature-register.json` with all 620 clean-room requirements, explicit partial status and remaining acceptance conditions. `docs/FEATURE_ROADMAP.md` gives the delivery order. The next item is reference upload/paste intake; real capture, exact visual reconstruction, provider connections and measured usability are still pending.

@@ -115,7 +115,7 @@ export function CampaignOverview({
         description={`${date} · ${context.tenantName}. Keep the next campaign moving.`}
         action={
           <Button asChild>
-            <Link href="/campaign-agent#create-campaign">
+            <Link href="/first-draft">
               <Plus className="size-4" aria-hidden />
               Create campaign
             </Link>
