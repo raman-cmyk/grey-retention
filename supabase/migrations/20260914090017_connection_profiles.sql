@@ -1,4 +1,4 @@
--- UIR-13: what the Connections screen shows for a connected Klaviyo or Shopify
+-- UIR-013: what the Connections screen shows for a connected Klaviyo or Shopify
 -- account. Numbered in the integration range so it applies after 90016 on the
 -- hosted project (Supabase refuses out-of-order versions by default).
 --

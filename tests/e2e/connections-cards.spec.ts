@@ -22,7 +22,7 @@ async function connectKlaviyo(page: Page, key: string) {
   return card
 }
 
-test('UIR-13 owner connects sample Klaviyo and Shopify accounts', async ({
+test('UIR-013 owner connects sample Klaviyo and Shopify accounts', async ({
   page
 }, info) => {
   await login(page, info.project.name.startsWith('mobile') ? 'other' : 'owner')
@@ -106,7 +106,7 @@ test('UIR-13 owner connects sample Klaviyo and Shopify accounts', async ({
     expect(html).not.toContain(secret)
 })
 
-test('UIR-13 staff see connection state without connect controls', async ({
+test('UIR-013 staff see connection state without connect controls', async ({
   page
 }, info) => {
   test.skip(
@@ -122,4 +122,29 @@ test('UIR-13 staff see connection state without connect controls', async ({
   await expect(
     page.getByRole('button', { name: 'Connect Shopify' })
   ).toHaveCount(0)
+})
+
+test('UIR-013 Connections fits a 375px screen and works by keyboard', async ({
+  page
+}, info) => {
+  test.skip(info.project.name.startsWith('mobile'), 'Sets its own viewport')
+  await page.setViewportSize({ width: 375, height: 812 })
+  await login(page, 'owner')
+  await page.goto('/connections')
+  const fits = () =>
+    page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)
+  expect(await fits()).toBe(true)
+  // Open the Shopify form with Enter and move between its fields with Tab.
+  const open = page.getByRole('button', {
+    name: /^(Connect Shopify|Update access token)$/
+  })
+  await open.focus()
+  await page.keyboard.press('Enter')
+  const domain = page.getByLabel('Shop domain')
+  await expect(domain).toBeVisible()
+  await domain.focus()
+  await page.keyboard.type('cedar-lane')
+  await page.keyboard.press('Tab')
+  await expect(page.getByLabel('Admin API access token')).toBeFocused()
+  expect(await fits()).toBe(true)
 })

@@ -42,6 +42,28 @@ describe('ConnectionsBoard', () => {
     ).toBeVisible()
   })
 
+  it('says what is missing while Shopify is not connected', () => {
+    render(<ConnectionsBoard owner klaviyo={null} shopify={null} />)
+    expect(
+      within(card('Shopify')).getByText(
+        'Without Shopify: no Store page, no UTM revenue, product list may be outdated.'
+      )
+    ).toBeVisible()
+    cleanup()
+    render(
+      <ConnectionsBoard
+        owner
+        klaviyo={null}
+        shopify={{
+          ...klaviyo,
+          shopDomain: 'cedar.myshopify.com',
+          templateCount: null
+        }}
+      />
+    )
+    expect(screen.queryByText(/Without Shopify/)).toBeNull()
+  })
+
   it('offers a key input and Connect when Klaviyo is not connected', () => {
     render(<ConnectionsBoard owner klaviyo={null} shopify={null} />)
     const key = within(card('Klaviyo')).getByLabelText('Private API key')

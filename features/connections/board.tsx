@@ -293,6 +293,13 @@ function ShopifyCard({
             {!connected && <ArrowRight className="size-4" aria-hidden="true" />}
           </Button>
         )}
+        {!connected && (
+          // Owner brief §13: say what is missing without Shopify.
+          <p className="text-xs text-[var(--warning-ink)]">
+            Without Shopify: no Store page, no UTM revenue, product list may be
+            outdated.
+          </p>
+        )}
         {!owner && !connected && (
           <p className="text-sm text-[var(--text-muted)]">
             Not connected. Ask your workspace owner to connect Shopify.
