@@ -1,5 +1,5 @@
 begin;
-select plan(25);
+select plan(26);
 
 -- Owner of workspace 101 (seed brand "Cedar Lane", approved).
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
@@ -53,6 +53,10 @@ select is(
   row('Warm','["Say what it is", "Be brief"]'::jsonb,'["AI rule"]'::jsonb,'sample','{do}'::text[])::text,
   'locked Do list kept; unlocked fields replaced; locks unchanged');
 select throws_ok($$select public.apply_brand_suggestion('00000000-0000-4000-8000-000000000101','tone',2,'{"made_up":"x"}')$$,'23514',null,'invalid suggestion refused');
+select is(
+  (select row(revision, content->>'niche')::text from public.brand_profile_sections where section='identity'),
+  row(2,'Outdoor layers and caps')::text,
+  'redoing Tone leaves the Identity section untouched');
 select is(
   public.save_brand_section('00000000-0000-4000-8000-000000000101','tone',2,'{"do":[],"dont":[]}'),
   3,'clearing both lists is allowed');
