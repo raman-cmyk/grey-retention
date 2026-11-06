@@ -32,7 +32,9 @@ export async function emailChoice(tenantId: string, importId: string) {
   const [imported, brand, products, offers, results] = await Promise.all([
     db
       .from('reference_imports')
-      .select('id,subject,original_body,created_at')
+      .select(
+        'id,subject,original_body,content_format,file_import_id,created_at'
+      )
       .eq('tenant_id', tenantId)
       .eq('id', importId)
       .maybeSingle(),

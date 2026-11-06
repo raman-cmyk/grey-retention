@@ -10,8 +10,10 @@ import {
   placeholderImage,
   previewHtml,
   rewriteHtml,
+  sourceFormat,
   suggestedPrimary
 } from './html'
+import { pastedReadable } from '@/features/references/pasted'
 
 // Original synthetic hostile email; every external host is fictional.
 const hostile = `<!doctype html><html><head>
@@ -138,6 +140,24 @@ describe('format, text and rewrite helpers', () => {
   it('treats plain text as text', () => {
     expect(emailFormat('Hello\r\n\r\nPlain words, 5 < 6')).toBe('text')
     expect(emailFormat('<p>Hi</p>')).toBe('html')
+  })
+  it('trusts an uploaded file format over markup inference; pastes still infer', () => {
+    const literal = 'Use <p> and <svg> in templates'
+    expect(
+      sourceFormat({ original_body: literal, content_format: 'text' })
+    ).toBe('text')
+    expect(
+      sourceFormat({
+        original_body: 'Fish &amp; chips',
+        content_format: 'html'
+      })
+    ).toBe('html')
+    expect(sourceFormat({ original_body: literal, content_format: null })).toBe(
+      'html'
+    )
+    expect(pastedReadable(literal, 'text').text).toBe(literal)
+    expect(pastedReadable('Fish &amp; chips', 'html').text).toBe('Fish & chips')
+    expect(pastedReadable(literal).text).not.toContain('<p>')
   })
   it('extracts readable text from layout', () => {
     expect(

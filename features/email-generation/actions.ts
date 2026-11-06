@@ -11,7 +11,7 @@ import { requireRequestContext } from '@/features/auth/application/request-conte
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { rewriteAvailability } from './config'
-import { editHtml, emailFormat, htmlEditable, htmlToText } from './html'
+import { editHtml, htmlEditable, htmlToText, sourceFormat } from './html'
 import { htmlFingerprint, httpsLink } from './rewrite'
 import { runEmailGeneration } from './worker'
 
@@ -79,7 +79,7 @@ export async function chooseEmailOutcome(
   const x = parsed.data
   const imported = await db
     .from('reference_imports')
-    .select('original_body')
+    .select('original_body,content_format')
     .eq('tenant_id', context.tenantId)
     .eq('id', x.importId)
     .maybeSingle()
@@ -87,7 +87,7 @@ export async function chooseEmailOutcome(
     return { error: 'This email is not available in this workspace.' }
   const options: Record<string, string> = {}
   if (x.mode === 'copy') {
-    if (emailFormat(imported.data.original_body) === 'html')
+    if (sourceFormat(imported.data) === 'html')
       options.textVersion = htmlToText(imported.data.original_body).slice(
         0,
         100_000

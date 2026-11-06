@@ -45,15 +45,18 @@ const nextConfig: NextConfig = {
       { source: '/(.*)', headers: securityHeaders },
       // Email downloads are untrusted markup: later rules win, so the
       // attachment keeps an opaque sandbox instead of the app policy.
-      {
-        source: '/api/v1/emails/:resultId/export',
+      ...[
+        '/api/v1/emails/:resultId/export',
+        '/api/v1/email-imports/:importId/file'
+      ].map((source) => ({
+        source,
         headers: [
           {
             key: 'Content-Security-Policy',
             value: "sandbox; default-src 'none'"
           }
         ]
-      }
+      }))
     ]
   }
 }

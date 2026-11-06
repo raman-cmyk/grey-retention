@@ -23,6 +23,7 @@ export default async function CreateEmailPage({
       importId={importId}
       attempt={attempt!}
       owner={context.tenantRole === 'owner'}
+      admin={context.tenantRole === 'admin'}
     />
   )
 }

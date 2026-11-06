@@ -47,15 +47,19 @@ export function ActionForm({
 }
 export function SubmitButton({
   children,
-  variant = 'primary'
+  variant = 'primary',
+  pendingLabel = 'Saving…',
+  disabled = false
 }: {
   children: ReactNode
   variant?: 'primary' | 'secondary' | 'danger' | 'quiet'
+  pendingLabel?: string
+  disabled?: boolean
 }) {
   const { pending } = useFormStatus()
   return (
-    <Button type="submit" disabled={pending} variant={variant}>
-      {pending ? 'Saving…' : children}
+    <Button type="submit" disabled={pending || disabled} variant={variant}>
+      {pending ? pendingLabel : children}
     </Button>
   )
 }

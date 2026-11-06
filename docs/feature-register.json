@@ -6,7 +6,7 @@
   "features": [
     {
       "id": "ONB-001",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Onboarding as first release milestone",
       "priority": "P0",
       "acceptance": "Approve/test the first-use journey before treating main-workspace redesign as complete.",
@@ -19,7 +19,7 @@
     },
     {
       "id": "ONB-002",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Single merchant URL first screen",
       "priority": "P0",
       "acceptance": "A new operator sees one URL field and one main action without a settings grid.",
@@ -30,7 +30,7 @@
     },
     {
       "id": "ONB-003",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Minimal account creation",
       "priority": "P0",
       "acceptance": "Capture only necessary authentication data and preserve preview progress across signup.",
@@ -41,7 +41,7 @@
     },
     {
       "id": "ONB-004",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Preserve existing useful visual language",
       "priority": "P0",
       "acceptance": "Keep familiar calendar/campaign/library patterns unless observed usability evidence supports a change.",
@@ -54,7 +54,7 @@
     },
     {
       "id": "ONB-005",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Derived brand preview confirmation",
       "priority": "P0",
       "acceptance": "Display genuinely discovered identity/assets and let the operator confirm or correct them.",
@@ -64,7 +64,7 @@
     },
     {
       "id": "ONB-006",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Inline minimal corrections",
       "priority": "P0",
       "acceptance": "Fix wrong brand name/logo/product without opening a full settings section.",
@@ -74,7 +74,7 @@
     },
     {
       "id": "ONB-007",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Blocked website manual fallback",
       "priority": "P0",
       "acceptance": "Offer retry or minimal manual setup while retaining submitted URL and actual error.",
@@ -84,7 +84,7 @@
     },
     {
       "id": "ONB-008",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "One competitor sufficient to proceed",
       "priority": "P0",
       "acceptance": "Adding one valid watched brand unlocks the next supported step; five to ten is optional capacity.",
@@ -97,7 +97,7 @@
     },
     {
       "id": "ONB-009",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Optional additional watched brands",
       "priority": "P0",
       "acceptance": "Adding more competitors later does not restart onboarding.",
@@ -107,7 +107,7 @@
     },
     {
       "id": "ONB-010",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Honest competitor collection states",
       "priority": "P0",
       "acceptance": "Show whether an archive exists or collection is still awaiting setup/first email.",
@@ -117,21 +117,23 @@
     },
     {
       "id": "ONB-011",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "No first-draft wait for future email",
       "priority": "P0",
       "acceptance": "Allow an accessible existing capture, an explicit example or operator-imported reference.",
       "status": "partial",
-      "implementation_tasks": ["DRF-001", "REF-002"],
+      "implementation_tasks": ["DRF-001", "REF-002", "REF-003"],
       "verification": [
         "DRF-001: 107 unit tests; 352 database assertions; 56 desktop/mobile journeys; 12 concurrent replay requests. See BUILD_LEDGER for scope.",
-        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only."
+        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only.",
+        "REF-003 (2026-10-29): 600 SQL assertions (85 new), 211 unit tests (34 new), 8/8 email-import desktop/mobile journeys at the final 4 MiB raw bound, focused 24/24 import/copy/rewrite/paste/onboarding journeys, file-import concurrency script; an earlier full fresh run (76/76, before review fixes) is recorded in BUILD_LEDGER. Local loopback fixture acceptance only; PostalMime 4.1.4 parser; no provider or paid AI. Owners can also upload an exported email file and continue to copy/rewrite without setup questions.",
+        "2026-10-29 hosted smoke in the founder workspace: a synthetic 4,194,304-byte multipart EML uploaded and processed successfully with one attachment and the correct HTML body. Stored size/SHA-256 and the authenticated original-file download matched the uploaded bytes exactly. Copy fallback after the provider rejection saved an exact HTML revision. Both sample campaigns remain unapproved; nothing was sent. Broader live isolation/operations acceptance remains separate."
       ],
-      "remaining": "Captured references, an original idea or an owner-pasted email can create an unapproved brief immediately. File/EML import and first useful generated output remain."
+      "remaining": "Captured references, an original idea, a pasted email or an uploaded email file can start work immediately. An explicit example source class remains."
     },
     {
       "id": "ONB-012",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Example reference provenance",
       "priority": "P0",
       "acceptance": "An example remains labeled as example through its derived project and never masquerades as the watched brand.",
@@ -145,7 +147,7 @@
     },
     {
       "id": "ONB-013",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Plain-language first replica action",
       "priority": "P0",
       "acceptance": "Use for my brand defaults to rebrand while advanced modes remain accessible later.",
@@ -153,13 +155,14 @@
       "implementation_tasks": ["DRF-001", "AI-002", "REP-001"],
       "verification": [
         "DRF-001: 107 unit tests; 352 database assertions; 56 desktop/mobile journeys; 12 concurrent replay requests. See BUILD_LEDGER for scope.",
-        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Paste, then choose \"Rewrite for my brand\" or \"Copy this email\", then a saved editable result."
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Paste, then choose \"Rewrite for my brand\" or \"Copy this email\", then a saved editable result.",
+        "2026-10-29 hosted acceptance: sign-in and provider/model access verified; one real OpenAI rewrite reached the provider and returned 429 credit_balance_exhausted. The application recorded one dispatch, zero tokens/cost, released the reservation, stopped without automatic retry, and offered a working exact-copy fallback. The user explicitly deferred further live rewriting. This does not verify real-model output quality."
       ],
-      "remaining": "Advanced reconstruction modes (adapt strategy, asset handling) remain. Live OpenAI acceptance pending server key and service credential configuration; model quality unverified. Real OpenAI requests are limited to a temporary server-side workspace allowlist (EMAIL_REWRITE_TENANT_IDS, default deny); commercial entitlements and billing are not implemented."
+      "remaining": "Advanced reconstruction modes (adapt strategy, asset handling) remain. The hosted server key, service credential and pilot access are configured. OpenAI rejected the first real request with credit_balance_exhausted; the user deferred further live rewriting, so model quality remains unverified. Real OpenAI requests are limited to a temporary server-side workspace allowlist (EMAIL_REWRITE_TENANT_IDS, default deny); commercial entitlements and billing are not implemented."
     },
     {
       "id": "ONB-014",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "One dominant result preview",
       "priority": "P0",
       "acceptance": "The initial result shows the email and next action without a full inspector or side-by-side comparison by default.",
@@ -172,7 +175,7 @@
     },
     {
       "id": "ONB-015",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Optional original comparison",
       "priority": "P0",
       "acceptance": "An operator can reveal the source on demand without losing their draft.",
@@ -185,7 +188,7 @@
     },
     {
       "id": "ONB-016",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Contextual missing product mapping",
       "priority": "P0",
       "acceptance": "Ask only about unresolved products that affect the selected draft.",
@@ -195,7 +198,7 @@
     },
     {
       "id": "ONB-017",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Just-in-time Shopify connection",
       "priority": "P0",
       "acceptance": "Request it for a specific catalog/inventory need, with accurate capability boundaries.",
@@ -205,7 +208,7 @@
     },
     {
       "id": "ONB-018",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Just-in-time Klaviyo connection",
       "priority": "P0",
       "acceptance": "Request it when export/account data is needed, preserving the draft during authorization.",
@@ -215,7 +218,7 @@
     },
     {
       "id": "ONB-019",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Supported connect flow with technical fallback",
       "priority": "P0",
       "acceptance": "Use validated provider authorization; keep manual credential guidance in advanced help.",
@@ -225,7 +228,7 @@
     },
     {
       "id": "ONB-020",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Truthful permission explanation",
       "priority": "P0",
       "acceptance": "Read/write descriptions match actual granted scopes and action authorization.",
@@ -235,7 +238,7 @@
     },
     {
       "id": "ONB-021",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Plain-language footer/audience adoption",
       "priority": "P0",
       "acceptance": "Present usual footer and audience choices with previews; keep IDs in advanced details.",
@@ -245,7 +248,7 @@
     },
     {
       "id": "ONB-022",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Progressive setup without dead ends",
       "priority": "P0",
       "acceptance": "Skipping optional setup preserves progress and makes unavailable capabilities explicit.",
@@ -258,7 +261,7 @@
     },
     {
       "id": "ONB-023",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Persistent onboarding session",
       "priority": "P0",
       "acceptance": "Back, refresh and reauthentication resume the last valid stage and entered data.",
@@ -271,7 +274,7 @@
     },
     {
       "id": "ONB-024",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "No duplicate setup on retry",
       "priority": "P0",
       "acceptance": "Repeated submissions create no duplicate merchant/watched-brand/draft objects.",
@@ -285,7 +288,7 @@
     },
     {
       "id": "ONB-025",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Dependency invalidation on changed inputs",
       "priority": "P0",
       "acceptance": "A changed merchant URL invalidates affected inferred facts/mappings rather than reusing stale results.",
@@ -295,7 +298,7 @@
     },
     {
       "id": "ONB-026",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Honest background work state",
       "priority": "P0",
       "acceptance": "Loading/error/result labels reflect actual jobs; no staged animation is mistaken for successful production.",
@@ -305,7 +308,7 @@
     },
     {
       "id": "ONB-027",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Recover failed first production",
       "priority": "P0",
       "acceptance": "Retry the failed step while preserving accepted inputs and completed work.",
@@ -315,7 +318,7 @@
     },
     {
       "id": "ONB-028",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Existing draft handoff",
       "priority": "P0",
       "acceptance": "Keep working on this draft opens the same saved project in the main workspace.",
@@ -328,7 +331,7 @@
     },
     {
       "id": "ONB-029",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Returning user bypass",
       "priority": "P0",
       "acceptance": "Completed onboarding does not replay on every login.",
@@ -339,7 +342,7 @@
     },
     {
       "id": "ONB-030",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Invited teammate onboarding",
       "priority": "P0",
       "acceptance": "Adopt existing workspace defaults rather than create duplicate external objects.",
@@ -349,7 +352,7 @@
     },
     {
       "id": "ONB-031",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "New store onboarding isolation",
       "priority": "P0",
       "acceptance": "Another store receives separate identity, audience and footer mappings.",
@@ -359,7 +362,7 @@
     },
     {
       "id": "ONB-032",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "No forced product tour",
       "priority": "P0",
       "acceptance": "Core workflow is learnable by doing; contextual help is optional and re-openable.",
@@ -372,7 +375,7 @@
     },
     {
       "id": "ONB-033",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Accessible first-use journey",
       "priority": "P0",
       "acceptance": "Keyboard, screen readers, narrow screens and zoom support all required inputs/actions.",
@@ -385,7 +388,7 @@
     },
     {
       "id": "ONB-034",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Onboarding activation instrumentation",
       "priority": "P0",
       "acceptance": "Record stage progress, errors, drop-off, wait time and first useful draft without fabricated timing claims.",
@@ -395,7 +398,7 @@
     },
     {
       "id": "ONB-035",
-      "category": "Onboarding and first useful draft \u2014 highest priority",
+      "category": "Onboarding and first useful draft — highest priority",
       "feature": "Observed first-user release gate",
       "priority": "P0",
       "acceptance": "At least four of five initial target operators complete/reopen a useful draft without coaching before wider rollout.",
@@ -1242,9 +1245,10 @@
       "status": "partial",
       "implementation_tasks": ["AI-002", "REP-001"],
       "verification": [
-        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Rewrite uses the frozen tenant brand revision, selected product/offer and records provider, model, prompt version and usage."
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Rewrite uses the frozen tenant brand revision, selected product/offer and records provider, model, prompt version and usage.",
+        "2026-10-29 hosted acceptance: sign-in and provider/model access verified; one real OpenAI rewrite reached the provider and returned 429 credit_balance_exhausted. The application recorded one dispatch, zero tokens/cost, released the reservation, stopped without automatic retry, and offered a working exact-copy fallback. The user explicitly deferred further live rewriting. This does not verify real-model output quality."
       ],
-      "remaining": "Calendar/brief-based generation paths remain fixture-only. Live OpenAI acceptance pending server key and service credential configuration; model quality unverified. Real OpenAI requests are limited to a temporary server-side workspace allowlist (EMAIL_REWRITE_TENANT_IDS, default deny); commercial entitlements and billing are not implemented."
+      "remaining": "Calendar/brief-based generation paths remain fixture-only. The hosted server key, service credential and pilot access are configured. OpenAI rejected the first real request with credit_balance_exhausted; the user deferred further live rewriting, so model quality remains unverified. Real OpenAI requests are limited to a temporary server-side workspace allowlist (EMAIL_REWRITE_TENANT_IDS, default deny); commercial entitlements and billing are not implemented."
     },
     {
       "id": "CMP-003",
@@ -1435,9 +1439,10 @@
       "status": "partial",
       "implementation_tasks": ["AI-002", "REP-001"],
       "verification": [
-        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Rewrite produces subject/preheader/body/CTA; failures, refusals and stale results never replace saved versions."
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Rewrite produces subject/preheader/body/CTA; failures, refusals and stale results never replace saved versions.",
+        "2026-10-29 hosted acceptance: sign-in and provider/model access verified; one real OpenAI rewrite reached the provider and returned 429 credit_balance_exhausted. The application recorded one dispatch, zero tokens/cost, released the reservation, stopped without automatic retry, and offered a working exact-copy fallback. The user explicitly deferred further live rewriting. This does not verify real-model output quality."
       ],
-      "remaining": "Only the pasted-email rewrite path is real-provider capable. Live OpenAI acceptance pending server key and service credential configuration; model quality unverified. Real OpenAI requests are limited to a temporary server-side workspace allowlist (EMAIL_REWRITE_TENANT_IDS, default deny); commercial entitlements and billing are not implemented."
+      "remaining": "Pasted and uploaded email rewrite paths are real-provider capable; calendar/brief generation still uses fixtures. The hosted server key, service credential and pilot access are configured. OpenAI rejected the first real request with credit_balance_exhausted; the user deferred further live rewriting, so model quality remains unverified. Real OpenAI requests are limited to a temporary server-side workspace allowlist (EMAIL_REWRITE_TENANT_IDS, default deny); commercial entitlements and billing are not implemented."
     },
     {
       "id": "CMP-022",
@@ -1646,11 +1651,12 @@
       "priority": "P1",
       "acceptance": "Record extraction type, source and time on the target draft.",
       "status": "partial",
-      "implementation_tasks": ["REF-002"],
+      "implementation_tasks": ["REF-002", "REF-003"],
       "verification": [
-        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only."
+        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only.",
+        "REF-003 (2026-10-29): 600 SQL assertions (85 new), 211 unit tests (34 new), 8/8 email-import desktop/mobile journeys at the final 4 MiB raw bound, focused 24/24 import/copy/rewrite/paste/onboarding journeys, file-import concurrency script; an earlier full fresh run (76/76, before review fixes) is recorded in BUILD_LEDGER. Local loopback fixture acceptance only; PostalMime 4.1.4 parser; no provider or paid AI. File-based drafts/results record the file import id in campaign lineage alongside source class, origin and time."
       ],
-      "remaining": "Imported-reference drafts record source class, source ID, outline, origin and import time in campaign lineage plus an audit event. Provenance for real image/HTML analysis remains; no analysis exists."
+      "remaining": "Provenance for real image/HTML analysis remains; no analysis exists."
     },
     {
       "id": "REF-012",
@@ -1718,12 +1724,14 @@
       "feature": "Tenant-private reference upload",
       "priority": "P1",
       "acceptance": "An operator-uploaded reference remains scoped to its tenant.",
-      "status": "partial",
-      "implementation_tasks": ["REF-002"],
+      "status": "verified_fixture",
+      "implementation_tasks": ["REF-002", "REF-003"],
       "verification": [
-        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only."
+        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only.",
+        "REF-003 (2026-10-29): 600 SQL assertions (85 new), 211 unit tests (34 new), 8/8 email-import desktop/mobile journeys at the final 4 MiB raw bound, focused 24/24 import/copy/rewrite/paste/onboarding journeys, file-import concurrency script; an earlier full fresh run (76/76, before review fixes) is recorded in BUILD_LEDGER. Local loopback fixture acceptance only; PostalMime 4.1.4 parser; no provider or paid AI. Uploaded reference files are tenant-private: private bucket with no client writes, owner/admin-only Storage reads, tenant-filtered routes, foreign 404, two-workspace SQL/browser denial.",
+        "2026-10-29 hosted smoke in the founder workspace: a synthetic 4,194,304-byte multipart EML uploaded and processed successfully with one attachment and the correct HTML body. Stored size/SHA-256 and the authenticated original-file download matched the uploaded bytes exactly. Copy fallback after the provider rejection saved an exact HTML revision. Both sample campaigns remain unapproved; nothing was sent. Broader live isolation/operations acceptance remains separate."
       ],
-      "remaining": "Owner-pasted references are tenant-private (RLS, server tenant filters, two-workspace denial tests). File upload and storage-backed references remain."
+      "remaining": "One-owner hosted smoke passed; broader live operational/isolation acceptance remains. Hosted uploads still require the server-side EMAIL_IMPORT_TENANT_IDS pilot grant."
     },
     {
       "id": "CAL-001",
@@ -2581,9 +2589,12 @@
       "feature": "MIME parsing",
       "priority": "P1",
       "acceptance": "Extract supported HTML/text, subject, sender, date and hero image.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["REF-003"],
+      "verification": [
+        "REF-003 (2026-10-29): 600 SQL assertions (85 new), 211 unit tests (34 new), 8/8 email-import desktop/mobile journeys at the final 4 MiB raw bound, focused 24/24 import/copy/rewrite/paste/onboarding journeys, file-import concurrency script; an earlier full fresh run (76/76, before review fixes) is recorded in BUILD_LEDGER. Local loopback fixture acceptance only; PostalMime 4.1.4 parser; no provider or paid AI. Uploaded .eml files: HTML/text selection (multipart/alternative prefers HTML), decoded subject, sender and date stored as unverified owner-imported metadata; charsets, QP/base64, nesting and resource limits enforced."
+      ],
+      "remaining": "Hero image extraction is not built; inline/attachment images are not captured. Applies to owner uploads only; inbound competitor mail still uses fixtures."
     },
     {
       "id": "INT-009",
@@ -3524,9 +3535,10 @@
       "status": "partial",
       "implementation_tasks": ["AI-002", "REP-001"],
       "verification": [
-        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Strict JSON schema plus server validation; malformed output fails recoverably (one bounded repair) without saving."
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Strict JSON schema plus server validation; malformed output fails recoverably (one bounded repair) without saving.",
+        "2026-10-29 hosted acceptance: sign-in and provider/model access verified; one real OpenAI rewrite reached the provider and returned 429 credit_balance_exhausted. The application recorded one dispatch, zero tokens/cost, released the reservation, stopped without automatic retry, and offered a working exact-copy fallback. The user explicitly deferred further live rewriting. This does not verify real-model output quality."
       ],
-      "remaining": "Other AI features still use fixtures. Live OpenAI acceptance pending server key and service credential configuration; model quality unverified. Real OpenAI requests are limited to a temporary server-side workspace allowlist (EMAIL_REWRITE_TENANT_IDS, default deny); commercial entitlements and billing are not implemented."
+      "remaining": "Other AI features still use fixtures. The hosted server key, service credential and pilot access are configured. OpenAI rejected the first real request with credit_balance_exhausted; the user deferred further live rewriting, so model quality remains unverified. Real OpenAI requests are limited to a temporary server-side workspace allowlist (EMAIL_REWRITE_TENANT_IDS, default deny); commercial entitlements and billing are not implemented."
     },
     {
       "id": "ADM-020",
@@ -3537,7 +3549,8 @@
       "status": "partial",
       "implementation_tasks": ["AI-002", "REP-001"],
       "verification": [
-        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Rewrite records input/output tokens, cost, response id, prompt version and generation per call; reservations settle to actual cost."
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Rewrite records input/output tokens, cost, response id, prompt version and generation per call; reservations settle to actual cost.",
+        "2026-10-29 hosted acceptance: sign-in and provider/model access verified; one real OpenAI rewrite reached the provider and returned 429 credit_balance_exhausted. The application recorded one dispatch, zero tokens/cost, released the reservation, stopped without automatic retry, and offered a working exact-copy fallback. The user explicitly deferred further live rewriting. This does not verify real-model output quality."
       ],
       "remaining": "Fixture features record synthetic usage only; admin usage reports do not yet show rewrite cost. Real OpenAI requests are limited to a temporary server-side workspace allowlist (EMAIL_REWRITE_TENANT_IDS, default deny); commercial entitlements and billing are not implemented."
     },
@@ -3890,7 +3903,8 @@
       "status": "partial",
       "implementation_tasks": ["AI-002", "REP-001"],
       "verification": [
-        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Rewrite failures show plain owner messages; diagnostics are allowlisted codes only."
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Rewrite failures show plain owner messages; diagnostics are allowlisted codes only.",
+        "2026-10-29 hosted acceptance: sign-in and provider/model access verified; one real OpenAI rewrite reached the provider and returned 429 credit_balance_exhausted. The application recorded one dispatch, zero tokens/cost, released the reservation, stopped without automatic retry, and offered a working exact-copy fallback. The user explicitly deferred further live rewriting. This does not verify real-model output quality."
       ],
       "remaining": "Other AI paths not audited in this task."
     },
@@ -4326,12 +4340,14 @@
       "feature": "Import email HTML/EML",
       "priority": "P0",
       "acceptance": "Preserve original source and identify it as operator-imported rather than live collected.",
-      "status": "partial",
-      "implementation_tasks": ["REF-002"],
+      "status": "verified_fixture",
+      "implementation_tasks": ["REF-002", "REF-003"],
       "verification": [
-        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only."
+        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only.",
+        "REF-003 (2026-10-29): 600 SQL assertions (85 new), 211 unit tests (34 new), 8/8 email-import desktop/mobile journeys at the final 4 MiB raw bound, focused 24/24 import/copy/rewrite/paste/onboarding journeys, file-import concurrency script; an earlier full fresh run (76/76, before review fixes) is recorded in BUILD_LEDGER. Local loopback fixture acceptance only; PostalMime 4.1.4 parser; no provider or paid AI. Pasted source and uploaded .html/.htm/.txt/.eml files are preserved (raw file bytes immutable in tenant-private Storage, decoded source immutable) and labelled owner-imported, never live collected.",
+        "2026-10-29 hosted smoke in the founder workspace: a synthetic 4,194,304-byte multipart EML uploaded and processed successfully with one attachment and the correct HTML body. Stored size/SHA-256 and the authenticated original-file download matched the uploaded bytes exactly. Copy fallback after the provider rejection saved an exact HTML revision. Both sample campaigns remain unapproved; nothing was sent. Broader live isolation/operations acceptance remains separate."
       ],
-      "remaining": "Pasted subject and text or HTML source is saved verbatim, labelled owner-imported and shown only as extracted plain text. HTML/EML file upload, MIME parsing, sender/date metadata and a sandboxed visual preview remain."
+      "remaining": "One-owner hosted smoke passed; broader live acceptance remains. ZIP/mbox/.msg imports are not supported."
     },
     {
       "id": "WATCH-008",
@@ -4380,11 +4396,12 @@
       "priority": "P0",
       "acceptance": "Original HTML/text/assets metadata are not overwritten by edits.",
       "status": "partial",
-      "implementation_tasks": ["REF-002"],
+      "implementation_tasks": ["REF-002", "REF-003"],
       "verification": [
-        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only."
+        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only.",
+        "REF-003 (2026-10-29): 600 SQL assertions (85 new), 211 unit tests (34 new), 8/8 email-import desktop/mobile journeys at the final 4 MiB raw bound, focused 24/24 import/copy/rewrite/paste/onboarding journeys, file-import concurrency script; an earlier full fresh run (76/76, before review fixes) is recorded in BUILD_LEDGER. Local loopback fixture acceptance only; PostalMime 4.1.4 parser; no provider or paid AI. Uploaded raw files are write-once objects with frozen hash/size/name metadata (update-blocking trigger); exports after owner edits stay byte-identical."
       ],
-      "remaining": "Pasted originals are immutable to clients (no update/delete grants; insert only through the guarded RPC). Edit/version flows and other capture classes remain."
+      "remaining": "Asset capture (images) and other capture classes remain."
     },
     {
       "id": "WATCH-013",
@@ -4928,7 +4945,8 @@
       "status": "partial",
       "implementation_tasks": ["AI-002", "REP-001"],
       "verification": [
-        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. HTML results edit visible text blocks, links and an explicit main button while layout is kept."
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. HTML results edit visible text blocks, links and an explicit main button while layout is kept.",
+        "2026-10-29 hosted manual-edit smoke: the imported-file copy was edited through text/link controls and saved as owner_edit Version 2. The heading and normalized button destination updated; Version 1 still matched the immutable decoded source, and the 4 MiB original file hash/size remained unchanged. The draft stayed unapproved; no email was sent."
       ],
       "remaining": "Image/product blocks not editable; very large or deeply nested emails fall back to the HTML code editor."
     },
@@ -4941,9 +4959,11 @@
       "status": "verified_fixture",
       "implementation_tasks": ["AI-002", "REP-001"],
       "verification": [
-        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Separate immutable source copy; version 1 equals the original; authenticated download is byte-identical after edits."
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Separate immutable source copy; version 1 equals the original; authenticated download is byte-identical after edits.",
+        "2026-10-29 hosted smoke in the founder workspace: a synthetic 4,194,304-byte multipart EML uploaded and processed successfully with one attachment and the correct HTML body. Stored size/SHA-256 and the authenticated original-file download matched the uploaded bytes exactly. Copy fallback after the provider rejection saved an exact HTML revision. Both sample campaigns remain unapproved; nothing was sent. Broader live isolation/operations acceptance remains separate.",
+        "2026-10-29 hosted manual-edit smoke: the imported-file copy was edited through text/link controls and saved as owner_edit Version 2. The heading and normalized button destination updated; Version 1 still matched the immutable decoded source, and the 4 MiB original file hash/size remained unchanged. The draft stayed unapproved; no email was sent."
       ],
-      "remaining": "Live hosting not verified."
+      "remaining": "One-owner hosted preservation and original-file download verified. Broader live acceptance and rendering fidelity remain separate."
     },
     {
       "id": "REP-013",
@@ -5024,7 +5044,8 @@
       "status": "partial",
       "implementation_tasks": ["AI-002", "REP-001"],
       "verification": [
-        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Rewrite constrains the button to brand links and replaces source links; copy edits change chosen links only."
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Rewrite constrains the button to brand links and replaces source links; copy edits change chosen links only.",
+        "2026-10-29 hosted manual-edit smoke: the imported-file copy was edited through text/link controls and saved as owner_edit Version 2. The heading and normalized button destination updated; Version 1 still matched the immutable decoded source, and the 4 MiB original file hash/size remained unchanged. The draft stayed unapproved; no email was sent."
       ],
       "remaining": "No report of remaining competitor links in copy mode."
     },
@@ -6101,11 +6122,12 @@
       "priority": "P0",
       "acceptance": "Imported active content cannot execute privileged app actions or access internal services.",
       "status": "partial",
-      "implementation_tasks": ["REF-002"],
+      "implementation_tasks": ["REF-002", "REF-003"],
       "verification": [
-        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only."
+        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only.",
+        "REF-003 (2026-10-29): 600 SQL assertions (85 new), 211 unit tests (34 new), 8/8 email-import desktop/mobile journeys at the final 4 MiB raw bound, focused 24/24 import/copy/rewrite/paste/onboarding journeys, file-import concurrency script; an earlier full fresh run (76/76, before review fixes) is recorded in BUILD_LEDGER. Local loopback fixture acceptance only; PostalMime 4.1.4 parser; no provider or paid AI. Uploaded HTML/EML is previewed only in the opaque sandbox; raw files download only as sandboxed, nosniff, no-store attachments; no remote, CID or attachment URL is ever fetched."
       ],
-      "remaining": "Pasted content is never rendered as markup; scripts, frames, images, links and tracking are stripped; source URLs are validated (http/https, no credentials) and never fetched. Sandboxed rendering and URL validation for other import paths remain."
+      "remaining": "Sandboxed rendering and URL validation for other future import paths remain."
     },
     {
       "id": "REL-015",

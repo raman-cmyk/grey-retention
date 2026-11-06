@@ -452,8 +452,9 @@ export function CampaignOverview({
             </div>
           </Link>
           <p className="px-1 text-xs leading-5 text-[var(--text-faint)]">
-            Synthetic workspace. Delivery and results use fixtures; live
-            providers remain disabled.
+            {process.env.AUTH_MODE === 'demo'
+              ? 'Synthetic workspace. Delivery and results use fixtures; live providers remain disabled.'
+              : 'Sending and performance data use samples. Emails you add and create are saved.'}
           </p>
         </div>
       </div>

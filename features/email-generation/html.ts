@@ -19,6 +19,20 @@ export function emailFormat(original: string): EmailFormat {
   return looksLikeMarkup(original) ? 'html' : 'text'
 }
 
+/**
+ * Format of an added email: an uploaded file's trusted parser format, else the
+ * paste inference. Matches `create_email_result`, so choose, preview, copy,
+ * edit and rewrite all agree.
+ */
+export function sourceFormat(source: {
+  original_body: string
+  content_format?: string | null
+}): EmailFormat {
+  return source.content_format === 'html' || source.content_format === 'text'
+    ? source.content_format
+    : emailFormat(source.original_body)
+}
+
 /** Removed with their contents in every derived document. */
 const removedElements = new Set([
   'script',

@@ -4,7 +4,6 @@ import type { Database, Json } from '@/lib/supabase/database.types'
 import { AiProviderError, type AiProvider } from '@/lib/providers/contracts'
 import { logger } from '@/lib/logger'
 import { rewriteSetup, type RewriteSetup } from './config'
-import { emailFormat } from './html'
 import { OpenAiResponsesProvider, responsesRequestBody } from './openai'
 import { costMicro, estimateMicro, maxRequestBytes } from './pricing'
 import { rewritePromptVersion, type BrandFacts } from './prompt'
@@ -76,7 +75,7 @@ async function loadContext(
   const [source, brand, tenant, product, offer] = await Promise.all([
     db
       .from('email_sources')
-      .select('subject,original,reference_import_id')
+      .select('subject,original,format,reference_import_id')
       .eq('tenant_id', tenantId)
       .eq('id', claim.source_id)
       .maybeSingle(),
@@ -157,7 +156,8 @@ async function loadContext(
     allowedLinks: [...new Set(links)].slice(0, 3),
     ownerNote: options.note ?? '',
     subject: source.data.subject,
-    format: emailFormat(source.data.original),
+    // The immutable source copy's stored format (trusted for uploaded files).
+    format: source.data.format === 'html' ? 'html' : 'text',
     original: source.data.original,
     sourceHosts: sourceHosts(
       source.data.original,
