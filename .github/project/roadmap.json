@@ -778,6 +778,115 @@
         "Fake-provider fixtures include a matching and a mismatching brand."
       ],
       "doneWhen": "A mismatching workspace shows the warning before any AI step, a matching one doesn't, and tests cover both plus a missing connection."
+    },
+    {
+      "id": "UIR-022",
+      "title": "Shared reference library component",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "replication",
+      "problem": "Lane: **cloud** builds it in UIR-009; the **browser** lane uses it in UIR-007. `docs/OWNER_JOURNEYS.md` §18 decision 12 and §7.2: the old app had three different reference pickers (New draft, the editor's design picker, the Inspiration page) with different tabs and counts (\"Your Templates 0\" in one place, uploads in another). Build one reference library component and use it everywhere.",
+      "scope": [
+        "One component with the same tabs (yours, competitors, best picks) and the same counts wherever it appears.",
+        "Used by the New draft reference step, the editor's design picker and the Inspiration page.",
+        "Search and real thumbnails (sandboxed previews, links off); an empty tab says so plainly.",
+        "Cloud lane builds it inside UIR-009; the browser lane wires it into UIR-007."
+      ],
+      "doneWhen": "New draft, the editor and Inspiration show the same library with the same tabs and counts, and tests cover search, empty tabs and picking a reference."
+    },
+    {
+      "id": "UIR-023",
+      "title": "One brand timezone everywhere",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "operator-ux",
+      "problem": "Lane: **cloud** builds the shared helper and the Settings part; the **browser** lane adopts it in the planner and drafts. `docs/OWNER_JOURNEYS.md` §18 decision 14: times appeared in different timezones on different screens. Use one brand timezone (from Klaviyo, editable in Settings) and show it next to every time: calendar, table, detail pages and the schedule step.",
+      "scope": [
+        "The brand timezone comes from the connected Klaviyo account and can be changed in Settings.",
+        "One shared helper formats every date and time and names the timezone.",
+        "Calendar, table, Klaviyo detail pages, the draft editor and the schedule confirmation show the timezone next to the time.",
+        "Tests cover daylight-saving changes and a missing or invalid timezone."
+      ],
+      "doneWhen": "Every owner screen that shows a time uses the one brand timezone and names it, and tests cover DST and fallback."
+    },
+    {
+      "id": "UIR-024",
+      "title": "AI credits indicator and usage page",
+      "milestone": "M1.5",
+      "priority": "P1",
+      "type": "feature",
+      "area": "reporting",
+      "problem": "Lane: **cloud**. `docs/OWNER_JOURNEYS.md` §18 decision 8: the old app showed a raw token strip. Show a small AI credits indicator (what is left this cycle) and a usage page that explains in plain words what used credits.",
+      "scope": [
+        "Small credits indicator in the shell (the shared component exists from UIR-002).",
+        "Usage page: credits used per feature and per day this cycle, and when the cycle resets.",
+        "Owner and workspace admin only; staff see no billing numbers.",
+        "Fake provider usage only; no paid AI."
+      ],
+      "doneWhen": "The owner sees credits left and a plain usage page, staff don't, and tests cover the empty cycle, a full cycle and permissions."
+    },
+    {
+      "id": "UIR-025",
+      "title": "Designer workspace in the new layout",
+      "milestone": "M1.5",
+      "priority": "P1",
+      "type": "feature",
+      "area": "campaign-copy",
+      "problem": "Lane: **browser**, after UIR-007. `docs/OWNER_JOURNEYS.md` Job 3: the designer assignment, submission and the owner's design review (including \"Reject design & ask designer to redo\") still use the old layout. Rebuild them in the new layout with the one status system.",
+      "scope": [
+        "Designer screens: assignments list, brief, submission with files, revision requests.",
+        "Owner design review on the campaign: approve, or reject with section feedback (\"Reject design & ask designer to redo\") with a confirm.",
+        "Statuses use the UIR-015 words (With designer, Needs your approval).",
+        "Only the owner approves; designers see only their own assignments."
+      ],
+      "doneWhen": "A designer can take an assignment and submit, the owner can approve or ask for a redo, and tests cover the owner, designer and other-designer paths."
+    },
+    {
+      "id": "UIR-026",
+      "title": "Admin console screens in the new layout",
+      "milestone": "M1.5",
+      "priority": "P1",
+      "type": "feature",
+      "area": "support-ops",
+      "problem": "Lane: **cloud**, after its other M1.5 screens. The platform admin console (clients, prompts, templates, designers, operations) still uses the old layout. Rebuild it in the new layout.",
+      "scope": [
+        "Clients, Prompt engine, Templates, Designers and Operations pages in the new shell and components.",
+        "Admins never creatively approve anything on behalf of an owner.",
+        "Shared loading, empty and error states; tables with keyboard access."
+      ],
+      "doneWhen": "Every admin page uses the new layout, works at desktop and 375px with keyboard, and tests cover admin-only access."
+    },
+    {
+      "id": "UIR-027",
+      "title": "Playwright journeys for the Top 5 owner jobs",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "chore",
+      "area": "release-gates",
+      "problem": "Lane: **browser**, once Campaigns and drafts land; the **cloud** lane adds the steps for its screens. `docs/OWNER_JOURNEYS.md` §1 lists five owner jobs (plan next month, make one email for a day, review copy and design then hand to a designer, approve and send to Klaviyo, see how an email is doing). Each becomes an end-to-end Playwright journey on fake providers.",
+      "scope": [
+        "One journey per owner job from §1, desktop and mobile projects.",
+        "Each journey follows the checks listed under its job and asserts the honest sample/fake labels.",
+        "Runs in the Browser CI job on fake providers only."
+      ],
+      "doneWhen": "All five owner jobs pass as Playwright journeys in CI on desktop and mobile."
+    },
+    {
+      "id": "UIR-028",
+      "title": "375px mobile and keyboard pass over every owner screen",
+      "milestone": "M1.5",
+      "priority": "P1",
+      "type": "chore",
+      "area": "operator-ux",
+      "problem": "Lane: **whichever lane finishes its M1.5 list first**. The M1.5 goal requires every rebuilt screen to work at 375px and with the keyboard only. Do one pass over every owner screen and fix what fails.",
+      "scope": [
+        "Every owner screen at 375px: no sideways scroll, readable tables, reachable actions.",
+        "Keyboard only: visible focus, sensible order, dialogs trap and return focus, Escape closes.",
+        "An automated check per screen in the Browser job (overflow and focus)."
+      ],
+      "doneWhen": "Every owner screen passes the 375px and keyboard checks in CI, and any failures found are fixed."
     }
   ]
 }
