@@ -300,7 +300,7 @@ Simplify:
 
 Controls and behaviour:
 
-- [ ] Month arrows are links `?m=YYYY-MM`. A "Today" link appears only when viewing another month. (new)
+- [x] Month arrows are links `?m=YYYY-MM`. A "Today" link appears only when viewing another month. (new) (UIR-006)
 - [ ] The sync label next to the month reads "Syncing", then a green italic "Loaded". (new: the "Loaded" state)
 - [ ] **Report ▾** has links, not buttons:
   - Excel → `/campaign-agent/report.xls`
@@ -308,13 +308,13 @@ Controls and behaviour:
   - Word → `/campaign-agent/report.xls?as=doc`
   - None of them carry `?m=`, so they likely export a fixed period, not the viewed month. **(fix: export the viewed month and say which month in the file name)**
   - Not downloaded.
-- [ ] Status filter (All / Draft / Assigned / Scheduled / Sent) and channel filter (All / Design / Text / SMS) **combine (AND)**.
+- [x] Status filter (All / Draft / Assigned / Scheduled / Sent) and channel filter (All / Design / Text / SMS) **combine (AND)**. (UIR-006: the one status system's words; no SMS channel in this product yet. Filters live in the URL, Reset appears, and an empty filter says so.)
   - A `✕ Reset` button appears once any filter is not "All". (new)
   - Filters are not saved in the URL. Save them, so links and Back keep them. **(fix)**
   - When no chip matches, show an empty message on the calendar. **(fix: the old grid just went blank)**
-- [ ] Active filter and view pills keep a readable label. **(fix: white-on-white bug, confirmed on Draft, Text Email and Table)**
-- [ ] Holiday chips stay visible whatever the filter (keep).
-- [ ] Synced Klaviyo chips:
+- [x] Active filter and view pills keep a readable label. **(fix: white-on-white bug, confirmed on Draft, Text Email and Table)**
+- [x] Holiday chips stay visible whatever the filter (keep).
+- [x] Synced Klaviyo chips: (UIR-006: link to the §4 Klaviyo page with Back to the same planner view; the tooltip has the real time and timezone.)
   - link to `/campaigns/:id`
   - tooltip "<name> · Klaviyo: Sent at HH:MM" or "· Klaviyo: Cancelled at HH:MM (click to edit in Klaviyo)"
   - **(fix)** HH:MM was "17:11" on every chip. Show the real send time with timezone.
@@ -323,14 +323,14 @@ Controls and behaviour:
   - tooltip "<title> · drag to reschedule"
   - dragging moves the draft to the target day and saves it (new; not tried because it writes)
   - after a drag, show a toast with Undo
-- [ ] A cell that holds a local draft does not show "+ plan send" (seen on the draft's day). Allow several sends per day, or explain the limit. (new)
-- [ ] Past days still offer "+ plan send". Block it or ask "This day has passed. Plan anyway?" **(fix)**
+- [x] A cell that holds a local draft does not show "+ plan send" (seen on the draft's day). Allow several sends per day, or explain the limit. (new) (UIR-006: several sends per day are allowed; "+ plan send" stays on every future day.)
+- [x] Past days still offer "+ plan send". Block it or ask "This day has passed. Plan anyway?" **(fix)** (UIR-006: blocked on past days.)
 - [x] A draft dated in the past that was never sent is flagged as "Missed" or "Overdue". **(fix: the old app kept it as a normal grey Draft)** (UIR-015: Missed; a send stuck in delivery past its time is a Delivery problem.)
-- [ ] Klaviyo campaigns with status DRAFT (no send time) appear somewhere, e.g. an "Unscheduled" tray under the calendar. **(fix: they appeared nowhere)**
+- [x] Klaviyo campaigns with status DRAFT (no send time) appear somewhere, e.g. an "Unscheduled" tray under the calendar. **(fix: they appeared nowhere)** (UIR-006: "Not scheduled in Klaviyo" row.)
 - [ ] Table view columns: **WHEN · <TZ>** / TITLE / CHANNEL / OFFER / DISCOUNT CODE / STATUS (lowercase pill, e.g. "draft") / actions **Open** · **Delete** (danger).
   - Delete must confirm.
   - The table must include synced Klaviyo sends, like the calendar. **(fix: the old table showed only local drafts)** (new: exact columns and the Delete action)
-- [ ] View toggle (Calendar / Table) is client-side and not in the URL. Save it per viewer. (minor)
+- [x] View toggle (Calendar / Table) is client-side and not in the URL. Save it per viewer. (minor) (UIR-006: the view lives in the URL, so links and Back keep it.)
 - [ ] Platform holidays are US-centric (Veterans Day, Thanksgiving…) for a brand outside the US. Pick the holiday set by the brand's country or let the owner choose. **(fix)**
 
 Modals (behaviour beyond the spec):
