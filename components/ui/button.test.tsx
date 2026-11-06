@@ -36,11 +36,12 @@ describe('Button', () => {
     expect(buttonVariants()).toBe(buttonVariants({ variant: 'primary' }))
   })
 
-  it('keeps a visible focus ring and never uses shadows or pills', () => {
+  it('keeps a visible focus ring and only rounds fully when asked', () => {
     for (const variant of [
       'primary',
       'accent',
       'secondary',
+      'outline',
       'quiet',
       'danger'
     ] as const) {
@@ -48,7 +49,17 @@ describe('Button', () => {
       expect(classes).toContain('focus-visible:ring-2')
       expect(classes).toContain('rounded-[var(--radius-control)]')
       expect(classes).not.toMatch(/\bshadow-|rounded-full/)
+      expect(buttonVariants({ variant, shape: 'pill' })).toMatch(
+        /rounded-full$/
+      )
     }
+  })
+
+  it('draws the page-header outline button with a visible border', () => {
+    const classes = buttonVariants({ variant: 'outline', shape: 'pill' })
+    expect(classes).toContain('border-[var(--line-strong)]')
+    expect(classes).toContain('bg-[var(--surface-raised)]')
+    expect(classes).not.toContain('rounded-[var(--radius-control)]')
   })
 
   it('does not fire when disabled', async () => {

@@ -613,9 +613,13 @@
       "feature": "Collapsible sidebar and account menu",
       "priority": "P1",
       "acceptance": "Navigation state and account actions remain accessible.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-002"],
+      "verification": [
+        "components/shell/shell-state.test.ts",
+        "components/shell/sidebar.test.tsx"
+      ],
+      "remaining": "Unit tests cover keyboard order, Escape, focus-out, rail focus and persistence. The browser journey in tests/e2e/workspace-ui.spec.ts is updated but has not run yet (no Docker in the browser lane)."
     },
     {
       "id": "CON-001",
@@ -3918,9 +3922,10 @@
       "feature": "List Health sidebar placeholder",
       "priority": "P2",
       "acceptance": "Do not count as implemented until backed by the list-health release gate.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-002"],
+      "verification": ["components/shell/sidebar.test.tsx"],
+      "remaining": "Shown as a disabled SOON item in the sidebar Agents group (UI_REBUILD_SPEC.md §2); no capability behind it yet."
     },
     {
       "id": "LEG-002",
@@ -3928,9 +3933,10 @@
       "feature": "Bill Optimizer sidebar placeholder",
       "priority": "P2",
       "acceptance": "Keep visible only when it has a defined working capability.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-002"],
+      "verification": ["components/shell/sidebar.test.tsx"],
+      "remaining": "Agents › Bill Optimizer links to the fixture-only /optimizer page (local profile sweeps with owner approval); no live billing data."
     },
     {
       "id": "LEG-003",
@@ -3938,9 +3944,10 @@
       "feature": "Flow Audit sidebar placeholder",
       "priority": "P2",
       "acceptance": "Distinguish from current flow read/report support.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-002"],
+      "verification": ["components/shell/sidebar.test.tsx"],
+      "remaining": "Shown as a disabled SOON item in the sidebar Agents group (UI_REBUILD_SPEC.md §2); no capability behind it yet."
     },
     {
       "id": "LEG-004",
@@ -3948,9 +3955,10 @@
       "feature": "Deliverability sidebar placeholder",
       "priority": "P2",
       "acceptance": "Distinguish from basic content warnings.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-002"],
+      "verification": ["components/shell/sidebar.test.tsx"],
+      "remaining": "Shown as a disabled SOON item in the sidebar Agents group (UI_REBUILD_SPEC.md §2); no capability behind it yet."
     },
     {
       "id": "LEG-005",
@@ -3958,9 +3966,10 @@
       "feature": "A/B Test Monitor sidebar placeholder",
       "priority": "P2",
       "acceptance": "Do not infer automated experiments from this menu label.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-002"],
+      "verification": ["components/shell/sidebar.test.tsx"],
+      "remaining": "Shown as a disabled SOON item in the sidebar Agents group (UI_REBUILD_SPEC.md §2); no capability behind it yet."
     },
     {
       "id": "LEG-006",
@@ -4270,7 +4279,8 @@
       "acceptance": "Unreleased capabilities stay out of primary operator navigation.",
       "status": "planned",
       "implementation_tasks": [],
-      "verification": []
+      "verification": [],
+      "remaining": "Overridden for now by the M1.5 1:1 rebuild: the old app shows four unbuilt agents as SOON items in a collapsed Agents group (never links). Revisit after M1.5 (OWNER_JOURNEYS.md §2 suggests one \"Coming soon\" row)."
     },
     {
       "id": "UX-025",
