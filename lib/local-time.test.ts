@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   localDateTime,
   localTimeCandidates,
-  resolveLocalTime
+  occurrenceField,
+  resolveLocalTime,
+  resolveLocalTimeFields
 } from './local-time'
 
 describe('Workspace local time', () => {
@@ -50,5 +52,112 @@ describe('Workspace local time', () => {
     expect(
       localTimeCandidates('2026-10-04T02:15', 'Australia/Lord_Howe')
     ).toEqual([])
+  })
+})
+
+describe('resolveLocalTimeFields (date-and-time pickers)', () => {
+  it('converts picked workspace times to exact UTC and keeps other fields', () => {
+    const result = resolveLocalTimeFields(
+      {
+        kind: 'offer',
+        starts_at: '2026-11-06T09:00',
+        ends_at: '2026-12-06T21:30'
+      },
+      ['starts_at', 'ends_at'],
+      'Asia/Kathmandu'
+    )
+    expect(result).toEqual({
+      ok: true,
+      values: {
+        kind: 'offer',
+        starts_at: '2026-11-06T03:15:00.000Z',
+        ends_at: '2026-12-06T15:45:00.000Z'
+      }
+    })
+  })
+
+  it('saves the same local time it shows back', () => {
+    const result = resolveLocalTimeFields(
+      { planned_at: '2026-07-01T18:05' },
+      ['planned_at'],
+      'Australia/Melbourne'
+    )
+    if (!result.ok) throw new Error(result.error)
+    expect(
+      localDateTime(result.values.planned_at as string, 'Australia/Melbourne')
+    ).toBe('2026-07-01T18:05')
+  })
+
+  it('leaves missing or empty fields for the schema to reject', () => {
+    expect(
+      resolveLocalTimeFields(
+        { kind: 'run', start: '' },
+        ['start', 'other'],
+        'UTC'
+      )
+    ).toEqual({ ok: true, values: { kind: 'run', start: '' } })
+  })
+
+  it.each([
+    ['an old ISO value', '2026-11-01T10:00:00Z'],
+    ['an offset value', '2026-11-01T10:00+05:45'],
+    ['free text', 'tomorrow at ten'],
+    ['a date only', '2026-11-01']
+  ])('refuses %s instead of guessing', (_label, value) => {
+    expect(
+      resolveLocalTimeFields({ start: value }, ['start'], 'Asia/Kathmandu')
+    ).toEqual({ ok: false, error: 'Choose a date and time.' })
+  })
+
+  it('refuses a non-text value', () => {
+    expect(
+      resolveLocalTimeFields({ start: 42 }, ['start'], 'UTC')
+    ).toMatchObject({ ok: false })
+  })
+
+  it('refuses a time skipped when clocks go forward', () => {
+    const result = resolveLocalTimeFields(
+      { scheduledAt: '2026-03-08T02:30' },
+      ['scheduledAt'],
+      'America/New_York'
+    )
+    expect(result).toMatchObject({ ok: false })
+    expect(!result.ok && result.error).toContain('does not exist')
+  })
+
+  it('asks which one when a time happens twice, and uses the choice', () => {
+    const value = { observedAt: '2026-11-01T01:30' }
+    const missing = resolveLocalTimeFields(
+      value,
+      ['observedAt'],
+      'America/New_York'
+    )
+    expect(!missing.ok && missing.error).toContain('occurs twice')
+    expect(
+      resolveLocalTimeFields(
+        { ...value, [occurrenceField('observedAt')]: 'later' },
+        ['observedAt'],
+        'America/New_York'
+      )
+    ).toEqual({ ok: true, values: { observedAt: '2026-11-01T06:30:00.000Z' } })
+    expect(
+      resolveLocalTimeFields(
+        { ...value, observedAtOccurrence: 'earlier' },
+        ['observedAt'],
+        'America/New_York'
+      )
+    ).toEqual({ ok: true, values: { observedAt: '2026-11-01T05:30:00.000Z' } })
+  })
+
+  it('uses the server timezone, not anything the browser sends', () => {
+    const result = resolveLocalTimeFields(
+      { start: '2026-11-06T09:00', timezone: 'UTC' },
+      ['start'],
+      'Asia/Kathmandu'
+    )
+    expect(result).toMatchObject({
+      ok: true,
+      values: { start: '2026-11-06T03:15:00.000Z' }
+    })
   })
 })

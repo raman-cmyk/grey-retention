@@ -67,6 +67,7 @@ export default async function CampaignAgentPage({
           )}
           <PlanningPanel
             tenantId={context.tenantId}
+            timezone={context.timezone}
             owner={context.tenantRole === 'owner'}
             campaigns={data!.campaigns}
             audiences={data!.audiences}
@@ -74,6 +75,7 @@ export default async function CampaignAgentPage({
           <div id="create-campaign" className="mt-6 scroll-mt-28">
             <Panel title="Create a campaign">
               <CampaignEditor
+                timezone={context.timezone}
                 products={data!.products}
                 offers={data!.offers}
                 audiences={data!.audiences}

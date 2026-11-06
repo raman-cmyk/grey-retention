@@ -53,6 +53,7 @@ export default async function CampaignPage({
         <Panel id="brief" title="Calendar entry">
           <CampaignEditor
             campaign={campaign}
+            timezone={context.timezone}
             products={data!.products}
             offers={data!.offers}
             audiences={data!.audiences}

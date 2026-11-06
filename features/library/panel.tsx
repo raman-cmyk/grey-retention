@@ -8,6 +8,8 @@ import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { libraryDraftAction } from './actions'
 import { StructurePicker } from './source-picker'
 import { readPages } from '@/lib/db/read-pages'
+import { LocalDateTimeField } from '@/components/ui/local-date-time-field'
+import { futureIso } from '@/lib/time'
 export async function OwnLibraryPanel() {
   const ctx = await requireRequestContext('client'),
     db = await createClient()
@@ -121,15 +123,12 @@ export async function OwnLibraryPanel() {
             <Field label="New draft goal">
               <TextField name="goal" maxLength={5000} />
             </Field>
-            <Field label="New draft send time (ISO with timezone)">
-              <TextField
-                name="plannedAt"
-                required
-                defaultValue={new Date(
-                  new Date().getTime() + 14 * 86400000
-                ).toISOString()}
-              />
-            </Field>
+            <LocalDateTimeField
+              name="plannedAt"
+              label="New draft send time"
+              timezone={ctx.timezone}
+              defaultValue={futureIso(14)}
+            />
             <Field label="New draft audience">
               <select name="audience" className={controlClass}>
                 {audiences.data?.map((a) => (

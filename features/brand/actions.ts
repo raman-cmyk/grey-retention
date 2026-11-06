@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { createClient } from '@/lib/supabase/server'
 import type { FormResult } from '@/components/ui/action-form'
+import { resolveLocalTimeFields } from '@/lib/local-time'
 const schema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('save'),
@@ -42,7 +43,15 @@ export async function brandAction(
   const context = await requireRequestContext('client')
   if (context.tenantRole !== 'owner')
     return { error: 'Only an owner may update or approve brand inputs.' }
-  const parsed = schema.safeParse(Object.fromEntries(form))
+  // Picked times are workspace-local wall times; convert them with the
+  // authorized workspace timezone before validation.
+  const when = resolveLocalTimeFields(
+    Object.fromEntries(form),
+    ['starts_at', 'ends_at'],
+    context.timezone
+  )
+  if (!when.ok) return { error: when.error }
+  const parsed = schema.safeParse(when.values)
   if (!parsed.success)
     return { error: parsed.error.issues[0]?.message ?? 'Check the fields.' }
   const db = await createClient()

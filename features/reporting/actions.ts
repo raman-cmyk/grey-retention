@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import type { FormResult } from '@/components/ui/action-form'
 import { runFixtureJobs } from '@/features/integrations/worker'
+import { resolveLocalTimeFields } from '@/lib/local-time'
 const schema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('clock'),
@@ -52,7 +53,15 @@ export async function reportingAction(
   const ctx = await requireRequestContext('client')
   if (ctx.tenantRole !== 'owner')
     return { error: 'Brand owner permission required.' }
-  const v = schema.safeParse(Object.fromEntries(form))
+  // Picked times are workspace-local wall times; convert them with the
+  // authorized workspace timezone before validation.
+  const when = resolveLocalTimeFields(
+    Object.fromEntries(form),
+    ['observedAt'],
+    ctx.timezone
+  )
+  if (!when.ok) return { error: when.error }
+  const v = schema.safeParse(when.values)
   if (!v.success)
     return { error: 'Check fields and include a timezone in dates.' }
   const db = await createClient()

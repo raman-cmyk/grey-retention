@@ -7,6 +7,8 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { TextField } from '@/components/ui/text-field'
 import { planningAction } from './actions'
 import { planningData } from './data'
+import { LocalDateTimeField } from '@/components/ui/local-date-time-field'
+import { futureIso } from '@/lib/time'
 type Campaign = Database['public']['Tables']['campaigns']['Row']
 export function PlanningCommand({
   kind,
@@ -28,10 +30,13 @@ export async function PlanningPanel({
   tenantId,
   owner,
   campaigns,
-  audiences
+  audiences,
+  timezone
 }: {
   tenantId: string
   owner: boolean
+  /** Workspace timezone; the planning action converts the picked start with it. */
+  timezone: string
   campaigns: Campaign[]
   audiences: Database['public']['Tables']['audiences']['Row'][]
 }) {
@@ -53,15 +58,12 @@ export async function PlanningPanel({
             className="mt-4 grid gap-4 sm:grid-cols-2"
           >
             <input name="kind" type="hidden" value="plan" />
-            <Field label="Rolling start (ISO timestamp with timezone)">
-              <TextField
-                name="start"
-                required
-                defaultValue={new Date(
-                  new Date().getTime() + 86400000
-                ).toISOString()}
-              />
-            </Field>
+            <LocalDateTimeField
+              name="start"
+              label="Plan starts"
+              timezone={timezone}
+              defaultValue={futureIso(1)}
+            />
             <Field label="Planning audience">
               <select name="audience" className={controlClass}>
                 {audiences.map((a) => (

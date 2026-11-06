@@ -5,6 +5,7 @@ import type { FormResult } from '@/components/ui/action-form'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { createClient } from '@/lib/supabase/server'
 import { runFixtureJobs } from '@/features/integrations/worker'
+import { resolveLocalTimeFields } from '@/lib/local-time'
 const schema = z.discriminatedUnion('kind', [
   z.object({ kind: z.enum(['install', 'run']) }),
   z.object({
@@ -42,7 +43,15 @@ export async function optimizerAction(
 ): Promise<FormResult> {
   const ctx = await requireRequestContext('client')
   if (ctx.tenantRole !== 'owner') return { error: 'Owner permission required.' }
-  const v = schema.safeParse(Object.fromEntries(form))
+  // Picked times are workspace-local wall times; convert them with the
+  // authorized workspace timezone before validation.
+  const when = resolveLocalTimeFields(
+    Object.fromEntries(form),
+    ['observedAt'],
+    ctx.timezone
+  )
+  if (!when.ok) return { error: when.error }
+  const v = schema.safeParse(when.values)
   if (!v.success) return { error: 'Check fixture operation fields.' }
   const db = await createClient()
   if (!db || process.env.AUTH_MODE === 'demo')

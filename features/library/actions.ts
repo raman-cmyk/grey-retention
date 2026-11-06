@@ -5,6 +5,7 @@ import { z } from 'zod'
 import type { FormResult } from '@/components/ui/action-form'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { createClient } from '@/lib/supabase/server'
+import { resolveLocalTimeFields } from '@/lib/local-time'
 const schema = z.object({
   source: z.enum(['own_template', 'reference_structure']),
   sourceId: z.uuid(),
@@ -20,7 +21,15 @@ export async function libraryDraftAction(
 ): Promise<FormResult> {
   const ctx = await requireRequestContext('client')
   if (ctx.tenantRole !== 'owner') return { error: 'Owner permission required.' }
-  const v = schema.safeParse(Object.fromEntries(form))
+  // Picked times are workspace-local wall times; convert them with the
+  // authorized workspace timezone before validation.
+  const when = resolveLocalTimeFields(
+    Object.fromEntries(form),
+    ['plannedAt'],
+    ctx.timezone
+  )
+  if (!when.ok) return { error: when.error }
+  const v = schema.safeParse(when.values)
   if (!v.success)
     return {
       error: 'Select a permitted source, audience and future timestamp.'

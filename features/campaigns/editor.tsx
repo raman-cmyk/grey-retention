@@ -3,6 +3,7 @@ import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { Field, controlClass } from '@/components/ui/workspace'
 import { TextField } from '@/components/ui/text-field'
 import { futureIso } from '@/lib/time'
+import { LocalDateTimeField } from '@/components/ui/local-date-time-field'
 import { saveCampaign } from './actions'
 type Row<T extends keyof Database['public']['Tables']> =
   Database['public']['Tables'][T]['Row']
@@ -10,9 +11,12 @@ export function CampaignEditor({
   campaign,
   products,
   offers,
-  audiences
+  audiences,
+  timezone
 }: {
   campaign?: Row<'campaigns'>
+  /** Workspace timezone; the save action converts the picked time with it. */
+  timezone: string
   products: Row<'products'>[]
   offers: Row<'offers'>[]
   audiences: Row<'audiences'>[]
@@ -58,17 +62,12 @@ export function CampaignEditor({
             <option value="email_text">Text email</option>
           </select>
         </Field>
-        <Field label="Send time (ISO UTC, e.g. 2026-11-01T10:00:00Z)">
-          <TextField
-            name="planned_at"
-            defaultValue={
-              campaign?.planned_at
-                ? new Date(campaign.planned_at).toISOString()
-                : futureIso(7)
-            }
-            required
-          />
-        </Field>
+        <LocalDateTimeField
+          name="planned_at"
+          label="Send time"
+          timezone={timezone}
+          defaultValue={campaign?.planned_at ?? futureIso(7)}
+        />
       </div>
       <Field label="Audience">
         <select

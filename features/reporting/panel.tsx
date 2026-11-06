@@ -9,6 +9,7 @@ import { TextField } from '@/components/ui/text-field'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { reportingAction } from './actions'
+import { LocalDateTimeField } from '@/components/ui/local-date-time-field'
 function Command({
   kind,
   id,
@@ -207,9 +208,12 @@ export async function ReportingPanel() {
         {owner && (
           <div className="my-5 grid gap-4 sm:grid-cols-2">
             <Command kind="clock">
-              <Field label="Synthetic reporting clock (ISO with timezone)">
-                <TextField name="observedAt" required defaultValue={clock} />
-              </Field>
+              <LocalDateTimeField
+                name="observedAt"
+                label="Sample reporting clock"
+                timezone={ctx.timezone}
+                defaultValue={clock}
+              />
               <SubmitButton>Advance fixture reporting clock</SubmitButton>
             </Command>
             <Command kind="run">
@@ -477,13 +481,18 @@ export async function ReportingPanel() {
                     description="The server rechecks policy, streak, brand and every target revision. Owner design approval is still required."
                   >
                     <Command kind="silence_apply" id={x.id}>
-                      <Field label="Frozen silence clock">
-                        <TextField
-                          name="observedAt"
-                          required
-                          defaultValue={x.eligible_at}
-                        />
-                      </Field>
+                      <LocalDateTimeField
+                        name="observedAt"
+                        label="Frozen silence clock"
+                        timezone={ctx.timezone}
+                        // Round up: the picker works in whole minutes and the
+                        // clock must not be earlier than eligibility.
+                        defaultValue={
+                          new Date(
+                            Math.ceil(Date.parse(x.eligible_at) / 60000) * 60000
+                          )
+                        }
+                      />
                       <SubmitButton>
                         Confirm frozen-clock silence simulation
                       </SubmitButton>

@@ -4,6 +4,8 @@ import { TextField } from '@/components/ui/text-field'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DataTable } from '@/components/ui/data-table'
+import { LocalDateTimeField } from '@/components/ui/local-date-time-field'
+import { requireRequestContext } from '@/features/auth/application/request-context'
 import { deliveryAction } from './actions'
 import type { Database } from '@/lib/supabase/database.types'
 type Row<T extends keyof Database['public']['Tables']> =
@@ -165,6 +167,7 @@ export async function DeliveryOperations({
 }) {
   const db = await createClient()
   if (!db) return null
+  const { timezone } = await requireRequestContext('client')
   const [p, j, fault] = await Promise.all([
     db
       .from('delivery_packages')
@@ -262,15 +265,14 @@ export async function DeliveryOperations({
                       name="revision"
                       value={c.delivery_revision}
                     />
-                    <Field label="New schedule with timezone">
-                      <TextField
-                        name="scheduledAt"
-                        defaultValue={new Date(
-                          new Date(c.planned_at).getTime() + 3600000
-                        ).toISOString()}
-                        required
-                      />
-                    </Field>
+                    <LocalDateTimeField
+                      name="scheduledAt"
+                      label="New send time"
+                      timezone={timezone}
+                      defaultValue={
+                        new Date(new Date(c.planned_at).getTime() + 3600000)
+                      }
+                    />
                     <SubmitButton>Confirm fixture reschedule</SubmitButton>
                   </ActionForm>
                 </ConfirmDialog>

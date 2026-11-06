@@ -1,10 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { Panel, Notice, Field, controlClass } from '@/components/ui/workspace'
-import { TextField } from '@/components/ui/text-field'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { optimizerAction } from './actions'
+import { LocalDateTimeField } from '@/components/ui/local-date-time-field'
 function Command({
   kind,
   id,
@@ -91,13 +91,12 @@ export async function OptimizerPanel() {
               </SubmitButton>
             </Command>
             <Command kind="preview">
-              <Field label="Sweep preview clock (current ISO time)">
-                <TextField
-                  name="observedAt"
-                  defaultValue={new Date().toISOString()}
-                  required
-                />
-              </Field>
+              <LocalDateTimeField
+                name="observedAt"
+                label="Sample sweep clock"
+                timezone={ctx.timezone}
+                defaultValue={new Date()}
+              />
               <SubmitButton>Preview protected candidates</SubmitButton>
             </Command>
             <Command kind="run">
@@ -154,15 +153,16 @@ export async function OptimizerPanel() {
             {owner && ['approved', 'winback_wait'].includes(s.state) && (
               <div className="mt-5">
                 <Command kind="clock" id={s.id}>
-                  <Field label="Frozen sweep clock">
-                    <TextField
-                      name="observedAt"
-                      defaultValue={new Date(
+                  <LocalDateTimeField
+                    name="observedAt"
+                    label="Frozen sweep clock"
+                    timezone={ctx.timezone}
+                    defaultValue={
+                      new Date(
                         new Date(s.observed_at).getTime() + 11 * 86400000
-                      ).toISOString()}
-                      required
-                    />
-                  </Field>
+                      )
+                    }
+                  />
                   <SubmitButton>Advance fixture sweep clock</SubmitButton>
                 </Command>
               </div>

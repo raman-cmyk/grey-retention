@@ -12,6 +12,7 @@ import { BrandEvidence, StockRefresh } from '@/features/onboarding/panels'
 import Link from 'next/link'
 import { futureIso } from '@/lib/time'
 import { brandAction } from '@/features/brand/actions'
+import { LocalDateTimeField } from '@/components/ui/local-date-time-field'
 export default async function BrandPage() {
   const { context, data, error, setup } = await onboardingWorkspace()
   const b = data?.brand
@@ -210,20 +211,18 @@ export default async function BrandPage() {
                       rows={2}
                     />
                   </Field>
-                  <Field label="Valid from (ISO UTC)">
-                    <TextField
-                      name="starts_at"
-                      defaultValue={new Date().toISOString()}
-                      required
-                    />
-                  </Field>
-                  <Field label="Valid until (ISO UTC)">
-                    <TextField
-                      name="ends_at"
-                      defaultValue={futureIso(30)}
-                      required
-                    />
-                  </Field>
+                  <LocalDateTimeField
+                    name="starts_at"
+                    label="Valid from"
+                    timezone={context.timezone}
+                    defaultValue={new Date()}
+                  />
+                  <LocalDateTimeField
+                    name="ends_at"
+                    label="Valid until"
+                    timezone={context.timezone}
+                    defaultValue={futureIso(30)}
+                  />
                   <div>
                     <SubmitButton variant="secondary">
                       Save permitted offer

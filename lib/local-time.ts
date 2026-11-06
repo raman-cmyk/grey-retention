@@ -55,3 +55,45 @@ export function resolveLocalTime(
     ? candidates[candidates.length - 1]
     : candidates[0]
 }
+
+/** Form field carrying the owner's choice for a time that occurs twice. */
+export function occurrenceField(name: string) {
+  return `${name}Occurrence`
+}
+
+const localPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/
+
+/**
+ * Server-side conversion for date-and-time pickers. Owners pick a wall time in
+ * the workspace timezone (`YYYY-MM-DDTHH:mm`, the `datetime-local` format);
+ * this turns each named field into an exact UTC ISO time before the action's
+ * schema runs. The timezone must come from the authorized request context,
+ * never from the browser. Missing or empty fields are left for the schema to
+ * reject. Occurrence choices are consumed and removed.
+ */
+export function resolveLocalTimeFields(
+  values: Record<string, unknown>,
+  fields: readonly string[],
+  timezone: string
+):
+  { ok: true; values: Record<string, unknown> } | { ok: false; error: string } {
+  const out = { ...values }
+  for (const field of fields) {
+    const raw = out[field]
+    const occurrence = out[occurrenceField(field)]
+    delete out[occurrenceField(field)]
+    if (raw === undefined || raw === '') continue
+    if (typeof raw !== 'string' || !localPattern.test(raw))
+      return { ok: false, error: 'Choose a date and time.' }
+    try {
+      out[field] = resolveLocalTime(
+        raw,
+        timezone,
+        typeof occurrence === 'string' ? occurrence : undefined
+      )
+    } catch (error) {
+      return { ok: false, error: (error as Error).message }
+    }
+  }
+  return { ok: true, values: out }
+}

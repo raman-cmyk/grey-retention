@@ -7,6 +7,7 @@ import { requireRequestContext } from '@/features/auth/application/request-conte
 import { can } from '@/features/workflow/domain/policy'
 import { createClient } from '@/lib/supabase/server'
 import type { FormResult } from '@/components/ui/action-form'
+import { resolveLocalTimeFields } from '@/lib/local-time'
 import { campaignInputSchema, revisionSchema } from './schema'
 
 async function access(ownerOnly = false) {
@@ -42,11 +43,22 @@ export async function saveCampaign(
   let id: string
   try {
     const { context, db } = await access()
+    // The picker sends a workspace-local wall time; convert it here with the
+    // authorized workspace timezone.
+    const when = resolveLocalTimeFields(
+      {
+        planned_at: form.get('planned_at'),
+        planned_atOccurrence: form.get('planned_atOccurrence')
+      },
+      ['planned_at'],
+      context.timezone
+    )
+    if (!when.ok) throw new Error(when.error)
     const input = campaignInputSchema.parse({
       title: form.get('title'),
       goal: form.get('goal'),
       channel: form.get('channel'),
-      planned_at: form.get('planned_at'),
+      planned_at: when.values.planned_at,
       audience_id: form.get('audience_id'),
       product_id: form.get('product_id'),
       offer_id: form.get('offer_id'),
