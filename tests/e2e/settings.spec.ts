@@ -25,9 +25,11 @@ test('UIR-011 owner sets campaign defaults on every tab and saves once', async (
   await expect(page.getByText(/No products yet/)).toBeVisible()
 
   await page.getByRole('tab', { name: 'Sender Name' }).click()
-  await page.getByLabel('Sender name').fill('Settings Studio Team')
+  await page
+    .getByRole('textbox', { name: 'Sender name', exact: true })
+    .fill('Settings Studio Team')
   await page.getByRole('tab', { name: 'Primary Link' }).click()
-  const link = page.getByLabel('Primary link')
+  const link = page.getByRole('textbox', { name: 'Primary link', exact: true })
   await link.fill('settings-studio.example/new')
   // The browser checks the address first; the server says the same.
   await link.evaluate((input: HTMLInputElement) => (input.type = 'text'))
@@ -53,13 +55,13 @@ test('UIR-011 owner sets campaign defaults on every tab and saves once', async (
 
   await page.reload()
   await page.getByRole('tab', { name: 'Sender Name' }).click()
-  await expect(page.getByLabel('Sender name')).toHaveValue(
-    'Settings Studio Team'
-  )
+  await expect(
+    page.getByRole('textbox', { name: 'Sender name', exact: true })
+  ).toHaveValue('Settings Studio Team')
   await page.getByRole('tab', { name: 'Primary Link' }).click()
-  await expect(page.getByLabel('Primary link')).toHaveValue(
-    'https://settings-studio.example/new'
-  )
+  await expect(
+    page.getByRole('textbox', { name: 'Primary link', exact: true })
+  ).toHaveValue('https://settings-studio.example/new')
   await page.getByRole('tab', { name: 'Email Settings' }).click()
   await expect(page.getByLabel(/Include footer/)).not.toBeChecked()
 })
@@ -79,8 +81,10 @@ test('UIR-011 staff see the defaults but cannot change them', async ({
   await expect(page.getByRole('button', { name: 'Save defaults' })).toHaveCount(
     0
   )
+  // Staff can still look through the tabs; the fields are read-only.
+  await page.getByRole('tab', { name: 'Sender Name' }).click()
   await expect(
-    page.getByRole('group', { name: 'Campaign defaults' })
+    page.getByRole('textbox', { name: 'Sender name', exact: true })
   ).toBeDisabled()
 })
 
@@ -99,5 +103,7 @@ test('UIR-011 Settings fits 375px and the tabs work by keyboard', async ({
   await page.getByRole('tab', { name: 'Featured Product' }).focus()
   await page.keyboard.press('ArrowRight')
   await expect(page.getByRole('tab', { name: 'Sender Name' })).toBeFocused()
-  await expect(page.getByLabel('Sender name')).toBeVisible()
+  await expect(
+    page.getByRole('textbox', { name: 'Sender name', exact: true })
+  ).toBeVisible()
 })

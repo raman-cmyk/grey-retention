@@ -213,9 +213,10 @@ export function DefaultsForm({
             </p>
           )}
         </div>
+        {/* Tabs stay usable for everyone; only the fields are read-only. */}
+        <Tabs active={tab} onChange={setTab} panelId={panelId} />
         <fieldset disabled={!owner} className="min-w-0">
           <legend className="sr-only">Campaign defaults</legend>
-          <Tabs active={tab} onChange={setTab} panelId={panelId} />
           <Panel
             id={panelId('product')}
             active={tab === 'product'}

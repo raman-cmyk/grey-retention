@@ -87,7 +87,7 @@ describe('DefaultsForm', () => {
     ).toBeVisible()
   })
 
-  it('is read-only for everyone but the owner', () => {
+  it('is read-only for everyone but the owner, but tabs still switch', async () => {
     render(<DefaultsForm {...props} owner={false} />)
     expect(
       screen.getByText('Only the workspace owner can change these.')
@@ -96,6 +96,9 @@ describe('DefaultsForm', () => {
     expect(
       screen.getByRole('group', { name: 'Campaign defaults' })
     ).toBeDisabled()
+    await userEvent.click(screen.getByRole('tab', { name: 'Sender Name' }))
+    expect(screen.getByRole('textbox', { name: 'Sender name' })).toBeDisabled()
+    expect(screen.getByRole('textbox', { name: 'Sender name' })).toBeVisible()
   })
 })
 
