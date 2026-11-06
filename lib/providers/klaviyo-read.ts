@@ -56,6 +56,9 @@ export type CampaignStats = {
 export type KlaviyoCampaign = {
   id: string
   name: string
+  /** Sent in each recipient's local timezone. */
+  localTime: boolean
+  fromEmail: string
   status: 'sent' | 'scheduled' | 'draft' | 'cancelled'
   sendTime: string | null
   subject: string
@@ -76,6 +79,14 @@ export type FlowMessage = {
   id: string
   name: string
   subject: string
+  status: 'live' | 'draft'
+  fromLabel: string
+  fromEmail: string
+  replyTo: string | null
+  previewText: string
+  templateUpdated: string
+  /** Wait before this email, in seconds (0 = right away). */
+  delaySeconds: number
   delay: string
   templateName: string
   html: string
@@ -97,6 +108,9 @@ export type KlaviyoMetric = {
   name: string
   integration: 'Klaviyo' | 'Shopify'
   category: 'Internal' | 'eCommerce'
+  /** Plain English, e.g. "Someone completed a purchase." */
+  measures: string
+  events30d: number
   created: string
 }
 

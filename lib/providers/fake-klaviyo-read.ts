@@ -271,6 +271,8 @@ export function sampleKlaviyoSnapshot({
     return {
       id,
       name,
+      localTime: id === 'CMPhol007',
+      fromEmail: 'hello@shop.example',
       status,
       sendTime,
       subject,
@@ -404,24 +406,33 @@ export function sampleKlaviyoSnapshot({
     status: KlaviyoFlow['status'],
     trigger: KlaviyoFlow['trigger'],
     revenue: number,
-    steps: [string, string, string][]
+    steps: [string, string, number, 'live' | 'draft'][]
   ): KlaviyoFlow => ({
     id,
     name,
     status,
     trigger,
     revenue30d: m(revenue),
-    messages: steps.map(([stepName, subject, delay], index) => ({
-      id: `${id}M${index + 1}`,
-      name: stepName,
-      subject,
-      delay,
-      templateName: `${name} · ${stepName}`,
-      html: sampleEmail(
+    messages: steps.map(
+      ([stepName, subject, delaySeconds, stepStatus], index) => ({
+        id: `${id}M${index + 1}`,
+        name: stepName,
         subject,
-        'This is a sample flow email from the fake Klaviyo provider.'
-      )
-    })),
+        status: status === 'draft' ? 'draft' : stepStatus,
+        fromLabel: 'Sample Store',
+        fromEmail: 'hello@shop.example',
+        replyTo: index === 0 ? 'help@shop.example' : null,
+        previewText: 'A sample preview line for this flow email.',
+        templateUpdated: iso(now, 20 + index),
+        delaySeconds,
+        delay: delaySeconds === 0 ? 'Right away' : 'Later',
+        templateName: `${name} · ${stepName}`,
+        html: sampleEmail(
+          subject,
+          'This is a sample flow email from the fake Klaviyo provider.'
+        )
+      })
+    ),
     created: iso(now, 380),
     updated: iso(now, 12)
   })
@@ -433,9 +444,9 @@ export function sampleKlaviyoSnapshot({
       { kind: 'list', name: 'Newsletter' },
       804500,
       [
-        ['Welcome 1', 'Welcome to Sample Store', 'Right away'],
-        ['Welcome 2', 'How we roast', '2 days later'],
-        ['Welcome 3', 'Your first-order gift', '4 days later']
+        ['Welcome 1', 'Welcome to Sample Store', 0, 'live'],
+        ['Welcome 2', 'How we roast', 172800, 'live'],
+        ['Welcome 3', 'Your first-order gift', 345600, 'live']
       ]
     ),
     flow(
@@ -445,8 +456,8 @@ export function sampleKlaviyoSnapshot({
       { kind: 'metric', name: 'Started Checkout' },
       912030,
       [
-        ['Reminder', 'You left something behind', '4 hours later'],
-        ['Last call', 'Still thinking it over?', '1 day later']
+        ['Reminder', 'You left something behind', 14400, 'live'],
+        ['Last call', 'Still thinking it over?', 86400, 'live']
       ]
     ),
     flow(
@@ -455,7 +466,7 @@ export function sampleKlaviyoSnapshot({
       'live',
       { kind: 'metric', name: 'Viewed Product' },
       216840,
-      [['Nudge', 'Still curious?', '2 hours later']]
+      [['Nudge', 'Still curious?', 2700, 'live']]
     ),
     flow(
       'FLWpst004',
@@ -464,8 +475,8 @@ export function sampleKlaviyoSnapshot({
       { kind: 'metric', name: 'Placed Order' },
       330400,
       [
-        ['Thank you', 'Thank you for your order', 'Right away'],
-        ['Review ask', 'How was your coffee?', '10 days later']
+        ['Thank you', 'Thank you for your order', 0, 'live'],
+        ['Review ask', 'How was your coffee?', 864000, 'draft']
       ]
     ),
     flow(
@@ -474,23 +485,83 @@ export function sampleKlaviyoSnapshot({
       'draft',
       { kind: 'metric', name: 'Placed Order' },
       0,
-      [['Come back', 'It has been a while', '180 days after last order']]
+      [['Come back', 'It has been a while', 15552000, 'draft']]
     )
   ]
-  const metrics = [
-    ['METopn001', 'Opened Email', 'Klaviyo', 'Internal'],
-    ['METclk002', 'Clicked Email', 'Klaviyo', 'Internal'],
-    ['METrcv003', 'Received Email', 'Klaviyo', 'Internal'],
-    ['METuns004', 'Unsubscribed', 'Klaviyo', 'Internal'],
-    ['METord005', 'Placed Order', 'Shopify', 'eCommerce'],
-    ['METchk006', 'Started Checkout', 'Shopify', 'eCommerce'],
-    ['METvpr007', 'Viewed Product', 'Shopify', 'eCommerce'],
-    ['METful008', 'Fulfilled Order', 'Shopify', 'eCommerce']
-  ].map(([id, name, integration, category], index) => ({
+  const metrics = (
+    [
+      [
+        'METopn001',
+        'Opened Email',
+        'Klaviyo',
+        'Internal',
+        'Someone opened one of your emails.',
+        61240
+      ],
+      [
+        'METclk002',
+        'Clicked Email',
+        'Klaviyo',
+        'Internal',
+        'Someone clicked a link in one of your emails.',
+        4120
+      ],
+      [
+        'METrcv003',
+        'Received Email',
+        'Klaviyo',
+        'Internal',
+        'One of your emails reached an inbox.',
+        148600
+      ],
+      [
+        'METuns004',
+        'Unsubscribed',
+        'Klaviyo',
+        'Internal',
+        'Someone stopped getting your emails.',
+        212
+      ],
+      [
+        'METord005',
+        'Placed Order',
+        'Shopify',
+        'eCommerce',
+        'Someone completed a purchase.',
+        1380
+      ],
+      [
+        'METchk006',
+        'Started Checkout',
+        'Shopify',
+        'eCommerce',
+        'Someone began checking out.',
+        1799
+      ],
+      [
+        'METvpr007',
+        'Viewed Product',
+        'Shopify',
+        'eCommerce',
+        'Someone looked at a product page.',
+        30450
+      ],
+      [
+        'METful008',
+        'Fulfilled Order',
+        'Shopify',
+        'eCommerce',
+        'An order was shipped.',
+        1322
+      ]
+    ] as const
+  ).map(([id, name, integration, category, measures, events30d], index) => ({
     id,
     name,
-    integration: integration as 'Klaviyo' | 'Shopify',
-    category: category as 'Internal' | 'eCommerce',
+    integration,
+    category,
+    measures,
+    events30d,
     created: iso(now, 420 - index)
   }))
 

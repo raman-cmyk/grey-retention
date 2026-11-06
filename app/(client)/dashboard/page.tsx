@@ -74,6 +74,13 @@ export default async function DashboardPage({
           tabHrefs={view.tabHrefs}
           timezone={view.timezone}
           credits={view.credits}
+          links={{
+            lists: true,
+            segments: true,
+            campaigns: true,
+            flows: true,
+            metrics: true
+          }}
         />
       )}
       <CampaignOverview
