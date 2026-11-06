@@ -42,6 +42,21 @@ export function formatBrandDateTime(
   return `${day} · ${time}`
 }
 
+/** `Oct 7, 2026` (date only), or null for a missing or invalid date. */
+export function formatBrandDate(
+  value: Date | string | number | null | undefined,
+  timezone: string
+) {
+  const date = toDate(value)
+  if (!date) return null
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: validZone(timezone) ? timezone : 'UTC',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  }).format(date)
+}
+
 /** "Sydney time" for `Australia/Sydney`; "UTC" for UTC or an invalid zone. */
 export function timezoneLabel(timezone: string) {
   if (!validZone(timezone) || /^(etc\/)?(utc|gmt)$/i.test(timezone))

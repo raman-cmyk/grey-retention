@@ -19,6 +19,7 @@ import {
   NextCampaignCard,
   RevenueCard
 } from '@/features/dashboard/sections'
+import { KlaviyoDataCard, parseTab } from '@/features/dashboard/klaviyo-card'
 import { klaviyoData } from '@/features/klaviyo-data/reader'
 import { Notice } from '@/components/ui/workspace'
 
@@ -27,6 +28,7 @@ type Params = {
   p?: string
   attr?: string | string[]
   insight?: string | string[]
+  tab?: string | string[]
 }
 
 const one = (value: string | string[] | undefined) =>
@@ -102,6 +104,20 @@ export default async function DashboardPage({
           />
         )}
       </div>
+      {snapshot && (
+        <KlaviyoDataCard
+          snapshot={snapshot}
+          tab={parseTab(params.tab)}
+          credits={{
+            // AI usage is not metered per workspace yet: sample numbers.
+            plan: 'Sample plan',
+            renewsInDays: 30,
+            used: 2500,
+            included: 10000,
+            sample: true
+          }}
+        />
+      )}
       <CampaignOverview
         workspace={workspace}
         focus={params.focus}
