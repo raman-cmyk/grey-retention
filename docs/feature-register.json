@@ -152,13 +152,14 @@
       "priority": "P0",
       "acceptance": "Use for my brand defaults to rebrand while advanced modes remain accessible later.",
       "status": "partial",
-      "implementation_tasks": ["DRF-001", "AI-002", "REP-001"],
+      "implementation_tasks": ["AI-002", "DRF-001", "DS-006", "REP-001"],
       "verification": [
         "DRF-001: 107 unit tests; 352 database assertions; 56 desktop/mobile journeys; 12 concurrent replay requests. See BUILD_LEDGER for scope.",
         "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Paste, then choose \"Rewrite for my brand\" or \"Copy this email\", then a saved editable result.",
-        "2026-10-29 hosted acceptance: sign-in and provider/model access verified; one real OpenAI rewrite reached the provider and returned 429 credit_balance_exhausted. The application recorded one dispatch, zero tokens/cost, released the reservation, stopped without automatic retry, and offered a working exact-copy fallback. The user explicitly deferred further live rewriting. This does not verify real-model output quality."
+        "2026-10-29 hosted acceptance: sign-in and provider/model access verified; one real OpenAI rewrite reached the provider and returned 429 credit_balance_exhausted. The application recorded one dispatch, zero tokens/cost, released the reservation, stopped without automatic retry, and offered a working exact-copy fallback. The user explicitly deferred further live rewriting. This does not verify real-model output quality.",
+        "DS-006 (2026-11-06): composer unit tests (modes, link refusal, owner-only action, redirect with the chosen outcome, Ctrl+Enter submit) and preview at 1280px/375px."
       ],
-      "remaining": "Advanced reconstruction modes (adapt strategy, asset handling) remain. The hosted server key, service credential and pilot access are configured. OpenAI rejected the first real request with credit_balance_exhausted; the user deferred further live rewriting, so model quality remains unverified. Real OpenAI requests are limited to a temporary server-side workspace allowlist (EMAIL_REWRITE_TENANT_IDS, default deny); commercial entitlements and billing are not implemented."
+      "remaining": "Advanced reconstruction modes (adapt strategy, asset handling) remain. The hosted server key, service credential and pilot access are configured. OpenAI rejected the first real request with credit_balance_exhausted; the user deferred further live rewriting, so model quality remains unverified. Real OpenAI requests are limited to a temporary server-side workspace allowlist (EMAIL_REWRITE_TENANT_IDS, default deny); commercial entitlements and billing are not implemented. DS-006 (2026-11-06): the composer defaults to REBRAND and marks it on the next page; Exact stays one click away."
     },
     {
       "id": "ONB-014",
@@ -4081,11 +4082,12 @@
       "priority": "P0",
       "acceptance": "Exact reconstruction, Rebrand and Adapt strategy describe what changes before generation.",
       "status": "partial",
-      "implementation_tasks": ["AI-002", "REP-001"],
+      "implementation_tasks": ["AI-002", "DS-006", "REP-001"],
       "verification": [
-        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. \"Rewrite for my brand\" and \"Copy this email\" state what changes before running."
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. \"Rewrite for my brand\" and \"Copy this email\" state what changes before running.",
+        "DS-006 (2026-11-06): composer unit tests (modes, link refusal, owner-only action, redirect with the chosen outcome, Ctrl+Enter submit) and preview at 1280px/375px."
       ],
-      "remaining": "Adapt-strategy mode not built."
+      "remaining": "Adapt-strategy mode not built. DS-006 (2026-11-06): the composer on the dashboard and setup names EXACT, REBRAND and ADAPT and says in one line what each changes before anything is made; Adapt is shown as not available yet. Remaining: Adapt itself, and mode-specific previews of what will be preserved."
     },
     {
       "id": "UX-008",

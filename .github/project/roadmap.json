@@ -68,6 +68,12 @@
       "doneWhen": "Every owner, admin and designer screen uses the shared tokens and components, there are no leftover old colours or pill buttons, the composer component exists, and screens pass WCAG AA contrast, keyboard and 375px checks."
     },
     {
+      "key": "M1.5",
+      "title": "M1.5 Old-app UI rebuild",
+      "goal": "Rebuild every screen of the old app 1:1 in structure and behaviour from docs/UI_REBUILD_SPEC.md: the shell and shared components, dashboard, Klaviyo detail pages, brand and store, campaign planner and modals, campaign drafts and editor, Ask GROS, competitor agent, support, settings, holidays, connections and profile. Colours, fonts and icons come from the new design tokens; the §0 layout facts (20px cards, 12px controls, 255px/56px sidebar, outlined icons) win where they differ. The §15 old-app bugs are fixed, not copied. Data comes from the fake providers with honest labels; nothing live is switched on.",
+      "doneWhen": "Every checkbox in docs/UI_REBUILD_SPEC.md §2–§14 is ticked, each screen works at desktop and 375px with keyboard access, and every §15 bug is fixed."
+    },
+    {
       "key": "M2",
       "title": "M2 Onboarding",
       "goal": "A new brand owner goes from store URL to brand preview to one competitor to a first useful draft without help (ONB-001 to ONB-035). Every step is honest about what is real, can be skipped or resumed, and never creates duplicates.",
@@ -442,6 +448,227 @@
         "Add a unit test that fails if owner-facing components contain the banned words."
       ],
       "doneWhen": "No owner-facing screen shows \"fixture\", \"synthetic\", \"tenant\" or an ISO timestamp, and a test guards it."
+    },
+    {
+      "id": "UIR-002",
+      "title": "§2 App shell and shared components",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "operator-ux",
+      "problem": "Lane: **browser**. Rebuild §2 of `docs/UI_REBUILD_SPEC.md` 1:1 in structure and behaviour: the sidebar (expanded 255px, collapsed 56px rail with tooltips, Agents group with SOON items, Workspace group, persisted group/collapse state), the account popover, the page-header and detail-page patterns, and the shared components: token plan strip, email preview card, list/segment picker, product radio picker, status/type/domain pills, chat UI, confirm dialog and step modal. Build this first: the cloud lane's screens use these components.",
+      "scope": [
+        "Follow every `- [ ]` line in §2 and tick it in `docs/UI_REBUILD_SPEC.md` in the same PR.",
+        "Use the new design tokens for colour, fonts and icons; keep the §0 layout facts (20px cards, 12px controls, sizes, outlined icons).",
+        "Fix the matching §15 old-app bugs instead of copying them.",
+        "Data from the fake providers with honest labels; no live Klaviyo, Shopify, AI or email.",
+        "One spec section (or sub-section) per PR; claim with the `wip` label and a lane comment first."
+      ],
+      "doneWhen": "Every checkbox in §2 of docs/UI_REBUILD_SPEC.md is ticked, the screens work at desktop and 375px with keyboard access, and tests cover behaviour, authorization and failure paths."
+    },
+    {
+      "id": "UIR-003",
+      "title": "§3 Dashboard",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "reporting",
+      "problem": "Lane: **browser**. Rebuild §3 of `docs/UI_REBUILD_SPEC.md` 1:1 in structure and behaviour: the KPI strip, email-revenue gauge with Klaviyo/UTM toggle and monthly goal, next-campaign countdown, mini calendar, approval placeholder, GROS insight card, and the Detailed Klaviyo data card with revenue chart (with per-bar tooltips) and the Overview/Lists/Segments/Campaigns/Flows/Metrics tabs driven by ?tab=.",
+      "scope": [
+        "Follow every `- [ ]` line in §3 and tick it in `docs/UI_REBUILD_SPEC.md` in the same PR.",
+        "Use the new design tokens for colour, fonts and icons; keep the §0 layout facts (20px cards, 12px controls, sizes, outlined icons).",
+        "Fix the matching §15 old-app bugs instead of copying them.",
+        "Data from the fake providers with honest labels; no live Klaviyo, Shopify, AI or email.",
+        "One spec section (or sub-section) per PR; claim with the `wip` label and a lane comment first."
+      ],
+      "doneWhen": "Every checkbox in §3 of docs/UI_REBUILD_SPEC.md is ticked, the screens work at desktop and 375px with keyboard access, and tests cover behaviour, authorization and failure paths."
+    },
+    {
+      "id": "UIR-004",
+      "title": "§4 Klaviyo detail pages",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "reporting",
+      "problem": "Lane: **browser**. Rebuild §4 of `docs/UI_REBUILD_SPEC.md` 1:1 in structure and behaviour: the list, segment, campaign, flow, flow-message and metric detail pages with the shared hero, stat, timeline and Advanced details cards; campaign audiences show names, not raw ids.",
+      "scope": [
+        "Follow every `- [ ]` line in §4 and tick it in `docs/UI_REBUILD_SPEC.md` in the same PR.",
+        "Use the new design tokens for colour, fonts and icons; keep the §0 layout facts (20px cards, 12px controls, sizes, outlined icons).",
+        "Fix the matching §15 old-app bugs instead of copying them.",
+        "Data from the fake providers with honest labels; no live Klaviyo, Shopify, AI or email.",
+        "One spec section (or sub-section) per PR; claim with the `wip` label and a lane comment first."
+      ],
+      "doneWhen": "Every checkbox in §4 of docs/UI_REBUILD_SPEC.md is ticked, the screens work at desktop and 375px with keyboard access, and tests cover behaviour, authorization and failure paths."
+    },
+    {
+      "id": "UIR-005",
+      "title": "§5 Brand & Store",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "brand-voice",
+      "problem": "Lane: **cloud**. Rebuild §5 of `docs/UI_REBUILD_SPEC.md` 1:1 in structure and behaviour: the Brand & Store header with an H1 (missing in the old app), Brand Truth, Copy & Voice and Store tabs, per-section regenerate, and the Product Intelligence and Shopify empty states.",
+      "scope": [
+        "Follow every `- [ ]` line in §5 and tick it in `docs/UI_REBUILD_SPEC.md` in the same PR.",
+        "Use the new design tokens for colour, fonts and icons; keep the §0 layout facts (20px cards, 12px controls, sizes, outlined icons).",
+        "Fix the matching §15 old-app bugs instead of copying them.",
+        "Data from the fake providers with honest labels; no live Klaviyo, Shopify, AI or email.",
+        "One spec section (or sub-section) per PR; claim with the `wip` label and a lane comment first."
+      ],
+      "doneWhen": "Every checkbox in §5 of docs/UI_REBUILD_SPEC.md is ticked, the screens work at desktop and 375px with keyboard access, and tests cover behaviour, authorization and failure paths."
+    },
+    {
+      "id": "UIR-006",
+      "title": "§6 Campaign Agent planner and modals",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "calendar",
+      "problem": "Lane: **browser**. Rebuild §6 of `docs/UI_REBUILD_SPEC.md` 1:1 in structure and behaviour: the month toolbar with Report export, status/channel filters and Calendar/Table views, the calendar grid with holiday and campaign chips and a correct-date \"+ plan send\", the table view that shows the same campaigns, and the holidays, multi-day event (with retry), generate-calendar brief and plan-send modals, plus the Competitor Inspirations and Best Picks cards.",
+      "scope": [
+        "Follow every `- [ ]` line in §6 and tick it in `docs/UI_REBUILD_SPEC.md` in the same PR.",
+        "Use the new design tokens for colour, fonts and icons; keep the §0 layout facts (20px cards, 12px controls, sizes, outlined icons).",
+        "Fix the matching §15 old-app bugs instead of copying them.",
+        "Data from the fake providers with honest labels; no live Klaviyo, Shopify, AI or email.",
+        "One spec section (or sub-section) per PR; claim with the `wip` label and a lane comment first."
+      ],
+      "doneWhen": "Every checkbox in §6 of docs/UI_REBUILD_SPEC.md is ticked, the screens work at desktop and 375px with keyboard access, and tests cover behaviour, authorization and failure paths."
+    },
+    {
+      "id": "UIR-007",
+      "title": "§7 Campaign drafts list, new draft and editor",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "campaign-copy",
+      "problem": "Lane: **browser**. Rebuild §7 of `docs/UI_REBUILD_SPEC.md` 1:1 in structure and behaviour: the drafts list with status counts, the new-draft brief form with context tiles and Start-from pickers, and the draft editor: section cards, sticky preview panel, sticky action bar, Copy Editor, design picker with drag-and-drop, Ask GROS drawer with confirm-before-apply actions, and an unsaved-changes warning.",
+      "scope": [
+        "Follow every `- [ ]` line in §7 and tick it in `docs/UI_REBUILD_SPEC.md` in the same PR.",
+        "Use the new design tokens for colour, fonts and icons; keep the §0 layout facts (20px cards, 12px controls, sizes, outlined icons).",
+        "Fix the matching §15 old-app bugs instead of copying them.",
+        "Data from the fake providers with honest labels; no live Klaviyo, Shopify, AI or email.",
+        "One spec section (or sub-section) per PR; claim with the `wip` label and a lane comment first."
+      ],
+      "doneWhen": "Every checkbox in §7 of docs/UI_REBUILD_SPEC.md is ticked, the screens work at desktop and 375px with keyboard access, and tests cover behaviour, authorization and failure paths."
+    },
+    {
+      "id": "UIR-008",
+      "title": "§8 Ask GROS",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "gros",
+      "problem": "Lane: **cloud**. Rebuild §8 of `docs/UI_REBUILD_SPEC.md` 1:1 in structure and behaviour: the two-pane chat with thread list, inline rename, private/shared toggle, delete with confirm, markdown replies, greeting, and a composer where ⌘/Ctrl+Enter sends.",
+      "scope": [
+        "Follow every `- [ ]` line in §8 and tick it in `docs/UI_REBUILD_SPEC.md` in the same PR.",
+        "Use the new design tokens for colour, fonts and icons; keep the §0 layout facts (20px cards, 12px controls, sizes, outlined icons).",
+        "Fix the matching §15 old-app bugs instead of copying them.",
+        "Data from the fake providers with honest labels; no live Klaviyo, Shopify, AI or email.",
+        "One spec section (or sub-section) per PR; claim with the `wip` label and a lane comment first."
+      ],
+      "doneWhen": "Every checkbox in §8 of docs/UI_REBUILD_SPEC.md is ticked, the screens work at desktop and 375px with keyboard access, and tests cover behaviour, authorization and failure paths."
+    },
+    {
+      "id": "UIR-009",
+      "title": "§9 Competitor Agent",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "competitor-watch",
+      "problem": "Lane: **cloud**. Rebuild §9 of `docs/UI_REBUILD_SPEC.md` 1:1 in structure and behaviour: the Competitor Inspirations page with tracked domains (limit 10, LIVE/PENDING pills, domain validation), info tip, type filter, card grid with Use this design, and Load more.",
+      "scope": [
+        "Follow every `- [ ]` line in §9 and tick it in `docs/UI_REBUILD_SPEC.md` in the same PR.",
+        "Use the new design tokens for colour, fonts and icons; keep the §0 layout facts (20px cards, 12px controls, sizes, outlined icons).",
+        "Fix the matching §15 old-app bugs instead of copying them.",
+        "Data from the fake providers with honest labels; no live Klaviyo, Shopify, AI or email.",
+        "One spec section (or sub-section) per PR; claim with the `wip` label and a lane comment first."
+      ],
+      "doneWhen": "Every checkbox in §9 of docs/UI_REBUILD_SPEC.md is ticked, the screens work at desktop and 375px with keyboard access, and tests cover behaviour, authorization and failure paths."
+    },
+    {
+      "id": "UIR-010",
+      "title": "§10 Support",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "support-ops",
+      "problem": "Lane: **cloud**. Rebuild §10 of `docs/UI_REBUILD_SPEC.md` 1:1 in structure and behaviour: the support conversation and ticket list with search, ?t= selection, attachments and the New Support modal.",
+      "scope": [
+        "Follow every `- [ ]` line in §10 and tick it in `docs/UI_REBUILD_SPEC.md` in the same PR.",
+        "Use the new design tokens for colour, fonts and icons; keep the §0 layout facts (20px cards, 12px controls, sizes, outlined icons).",
+        "Fix the matching §15 old-app bugs instead of copying them.",
+        "Data from the fake providers with honest labels; no live Klaviyo, Shopify, AI or email.",
+        "One spec section (or sub-section) per PR; claim with the `wip` label and a lane comment first."
+      ],
+      "doneWhen": "Every checkbox in §10 of docs/UI_REBUILD_SPEC.md is ticked, the screens work at desktop and 375px with keyboard access, and tests cover behaviour, authorization and failure paths."
+    },
+    {
+      "id": "UIR-011",
+      "title": "§11 Settings",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "campaign-defaults",
+      "problem": "Lane: **cloud**. Rebuild §11 of `docs/UI_REBUILD_SPEC.md` 1:1 in structure and behaviour: the read-only timezone card with a live clock and the campaign defaults tabs (featured product, sender name, primary link, audience, email settings) with one Save defaults.",
+      "scope": [
+        "Follow every `- [ ]` line in §11 and tick it in `docs/UI_REBUILD_SPEC.md` in the same PR.",
+        "Use the new design tokens for colour, fonts and icons; keep the §0 layout facts (20px cards, 12px controls, sizes, outlined icons).",
+        "Fix the matching §15 old-app bugs instead of copying them.",
+        "Data from the fake providers with honest labels; no live Klaviyo, Shopify, AI or email.",
+        "One spec section (or sub-section) per PR; claim with the `wip` label and a lane comment first."
+      ],
+      "doneWhen": "Every checkbox in §11 of docs/UI_REBUILD_SPEC.md is ticked, the screens work at desktop and 375px with keyboard access, and tests cover behaviour, authorization and failure paths."
+    },
+    {
+      "id": "UIR-012",
+      "title": "§12 Holidays & Events",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "calendar",
+      "problem": "Lane: **cloud**. Rebuild §12 of `docs/UI_REBUILD_SPEC.md` 1:1 in structure and behaviour: the add-entry form, the Yours list with edit and delete, and the platform holidays for the next 90 days.",
+      "scope": [
+        "Follow every `- [ ]` line in §12 and tick it in `docs/UI_REBUILD_SPEC.md` in the same PR.",
+        "Use the new design tokens for colour, fonts and icons; keep the §0 layout facts (20px cards, 12px controls, sizes, outlined icons).",
+        "Fix the matching §15 old-app bugs instead of copying them.",
+        "Data from the fake providers with honest labels; no live Klaviyo, Shopify, AI or email.",
+        "One spec section (or sub-section) per PR; claim with the `wip` label and a lane comment first."
+      ],
+      "doneWhen": "Every checkbox in §12 of docs/UI_REBUILD_SPEC.md is ticked, the screens work at desktop and 375px with keyboard access, and tests cover behaviour, authorization and failure paths."
+    },
+    {
+      "id": "UIR-013",
+      "title": "§13 Connections",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "connections",
+      "problem": "Lane: **cloud**. Rebuild §13 of `docs/UI_REBUILD_SPEC.md` 1:1 in structure and behaviour: the Klaviyo and Shopify cards with connected/disconnected states, key swap with validation, the Shopify custom-app form with scopes, common issues, and autocomplete off on the shop domain. Fake providers only.",
+      "scope": [
+        "Follow every `- [ ]` line in §13 and tick it in `docs/UI_REBUILD_SPEC.md` in the same PR.",
+        "Use the new design tokens for colour, fonts and icons; keep the §0 layout facts (20px cards, 12px controls, sizes, outlined icons).",
+        "Fix the matching §15 old-app bugs instead of copying them.",
+        "Data from the fake providers with honest labels; no live Klaviyo, Shopify, AI or email.",
+        "One spec section (or sub-section) per PR; claim with the `wip` label and a lane comment first."
+      ],
+      "doneWhen": "Every checkbox in §13 of docs/UI_REBUILD_SPEC.md is ticked, the screens work at desktop and 375px with keyboard access, and tests cover behaviour, authorization and failure paths."
+    },
+    {
+      "id": "UIR-014",
+      "title": "§14 Profile",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "accounts",
+      "problem": "Lane: **cloud**. Rebuild §14 of `docs/UI_REBUILD_SPEC.md` 1:1 in structure and behaviour: the account information and change-password cards with inline validation.",
+      "scope": [
+        "Follow every `- [ ]` line in §14 and tick it in `docs/UI_REBUILD_SPEC.md` in the same PR.",
+        "Use the new design tokens for colour, fonts and icons; keep the §0 layout facts (20px cards, 12px controls, sizes, outlined icons).",
+        "Fix the matching §15 old-app bugs instead of copying them.",
+        "Data from the fake providers with honest labels; no live Klaviyo, Shopify, AI or email.",
+        "One spec section (or sub-section) per PR; claim with the `wip` label and a lane comment first."
+      ],
+      "doneWhen": "Every checkbox in §14 of docs/UI_REBUILD_SPEC.md is ticked, the screens work at desktop and 375px with keyboard access, and tests cover behaviour, authorization and failure paths."
     }
   ]
 }

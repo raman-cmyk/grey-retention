@@ -49,7 +49,10 @@ describe('design tokens', () => {
       hairline: '#262626',
       accent: '#4d6bff'
     })
-    expect(scaleTokens.radius).toBe('4px')
+    expect(scaleTokens['radius-panel']).toBe('20px')
+    expect(scaleTokens['radius-control']).toBe('12px')
+    expect(scaleTokens['sidebar-width']).toBe('255px')
+    expect(scaleTokens['sidebar-rail']).toBe('56px')
     expect(scaleTokens['content-max']).toBe('1280px')
   })
 

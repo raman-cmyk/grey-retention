@@ -1,4 +1,7 @@
 import Link from 'next/link'
+import { rewriteAvailability } from '@/features/email-generation/config'
+import { Composer } from '@/features/composer/composer'
+import { randomUUID } from 'node:crypto'
 import type { Route } from 'next'
 import { Check, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -178,8 +181,18 @@ export async function GettingStarted({ step }: { step?: string }) {
             Then rewrite it for your brand or keep an exact copy to edit.
           </p>
           {owner ? (
-            <div className="mt-7 flex flex-wrap gap-3">
-              <Button asChild>
+            <div className="mt-7">
+              <Composer
+                requestKey={randomUUID()}
+                brandName={brand?.brand_name ?? null}
+                productCount={data.products.length}
+                rewriteReady={rewriteAvailability(context.tenantId).ready}
+              />
+            </div>
+          ) : null}
+          {owner ? (
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Button asChild variant="secondary">
                 <Link href="/import-reference">
                   Paste an email <ArrowRight className="size-4" aria-hidden />
                 </Link>

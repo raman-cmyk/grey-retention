@@ -1,0 +1,826 @@
+# Old app → new app: 1:1 UI/UX rebuild spec
+
+Source: `demo.gravtyretention.com` (old Grey Retention app), crawled screen by screen on 6 Nov 2026.
+
+**Goal:** rebuild every screen, layout, control, empty state and small interaction below in the new app — **1:1 in structure and behaviour**.
+
+**Do NOT copy branding.** Colours, fonts, logo and icon style come from the new design system (DS-001 tokens, exa.ai-inspired). Where this doc says "black button" or "blue pill", read it as "primary button" / "info pill" in the new tokens. Sizes and spacing in §0 are layout facts, not branding — keep them.
+
+Every `- [ ]` line is an acceptance check. A screen is done when every box on it is ticked.
+
+---
+
+## 0. Layout facts (keep these, restyle the colours)
+
+| Thing           | Old value                                                         |
+| --------------- | ----------------------------------------------------------------- |
+| Base text       | 17px / 25.5px (body copy in cards mostly 14–15px)                 |
+| H1              | 30px, weight 600                                                  |
+| Field label     | 11px, weight 600, UPPERCASE, muted colour, letter-spaced          |
+| Card            | white, 1px border, radius 20px, no shadow, ~24px padding          |
+| Input           | 14px, radius 12px, padding 8px 12px, 1px border                   |
+| Button          | 14px weight 500, radius 12px, padding 8px 16px                    |
+| Page background | off-white (one step darker than cards)                            |
+| Sidebar         | 255px expanded / ~56px collapsed rail                             |
+| Icons           | outlined icon set, ~20px (old app used Material Symbols Outlined) |
+
+Pill/status colour roles used everywhere:
+
+- **success** — LIVE, active, Connected, green ✓ tiles
+- **warning** — DRAFT, PENDING, Product Intelligence callout
+- **danger** — CANCELLED, Delete, Log out, Discard
+- **info** — WRITING, DESIGN, Scheduled
+- **accent-2** — TEXT type pill, cultural holidays
+- **solid / inverted** — SENT, active filter pill
+
+---
+
+## 1. Route map
+
+| Route                                                                                                | Screen                            | In sidebar       |
+| ---------------------------------------------------------------------------------------------------- | --------------------------------- | ---------------- |
+| `/dashboard` (`?tab=lists\|segments\|campaigns\|flows\|metrics`, `?attr=klaviyo\|utm`, `?refresh=1`) | Dashboard                         | ✔                |
+| `/lists/:id`, `/segments/:id`, `/campaigns/:id`, `/flows/:id`, `/metrics/:id`                        | Klaviyo object detail pages       | —                |
+| `/flow-messages/:id`                                                                                 | Flow email preview                | —                |
+| `/brand` · `/brand/voice` · `/store`                                                                 | Brand & Store (3 sub-tabs)        | ✔ Brand & Store  |
+| `/campaign-agent` (`?m=YYYY-MM`) and `/calendar`                                                     | Campaign planner (calendar/table) | ✔ Campaign Agent |
+| `/campaign-drafts` (`?status=draft\|ready\|pushed`)                                                  | Drafts list                       | —                |
+| `/campaign-drafts/new`                                                                               | New campaign draft (brief form)   | —                |
+| `/campaign-drafts/:id?view=1`                                                                        | Draft editor                      | —                |
+| `/gros`, `/gros/:threadId`                                                                           | Ask GROS chat                     | ✔                |
+| `/library/inspirations`                                                                              | Competitor Agent                  | ✔                |
+| `/support` (`?t=:ticketId`)                                                                          | Support tickets                   | ✔                |
+| `/settings`                                                                                          | Settings (campaign defaults)      | ✔ Workspace      |
+| `/holidays`                                                                                          | Holidays & Events                 | ✔ Workspace      |
+| `/connections`                                                                                       | Connections                       | ✔ Workspace      |
+| `/profile`                                                                                           | Profile                           | account menu     |
+
+Not crawled (needs a logged-out or admin session): login, signup, onboarding, password reset, admin/designer views. Capture those separately before building them.
+
+---
+
+## 2. App shell
+
+### Sidebar (expanded)
+
+- [ ] Top block: square workspace avatar with first letter, workspace name (bold), user name (small, muted) under it, and a `<` collapse button on the right.
+- [ ] Nav items are icon + label rows. The active item gets a rounded filled background.
+  - Dashboard
+  - Brand & Store
+  - Campaign Agent
+  - Ask GROS
+  - Competitor Agent
+  - Support
+- [ ] Divider after the nav items.
+- [ ] Collapsible group **Agents** (robot icon, chevron). Its children are disabled, greyed, and each has a `SOON` pill. They are not clickable.
+  - List Health
+  - Bill Optimizer
+  - Flow Audit
+  - Deliverability
+  - A/B Test Monitor
+- [ ] Collapsible group **Workspace** (briefcase icon): Settings, Holidays & Events, Connections.
+- [ ] Each group's open/closed state persists across page loads.
+- [ ] Bottom account button: round avatar letter, name (bold), email (muted), up/down chevron. Clicking it opens the account menu.
+- [ ] Account menu is a popover that opens upward:
+  - header with name and email
+  - 👤 Profile Update → `/profile`
+  - 🔗 Connections
+  - divider
+  - **Log out** in danger colour
+- [ ] Account menu closes on Esc or an outside click.
+
+### Sidebar (collapsed)
+
+- [ ] `<` collapses the sidebar to an icon rail (~56px). The rail shows the avatar plus a `>` expand button, nav icons only, group icons, and the avatar at the bottom.
+- [ ] The active icon keeps the filled background.
+- [ ] **Add tooltips** on hover with the item label. The old app had none; this is a fix, not a change of behaviour.
+- [ ] Collapsed state persists.
+
+### Page header pattern
+
+- [ ] H1 + muted subtitle on the left; optional actions on the right (outline pill button, icon + label).
+
+### Detail-page pattern (all Klaviyo objects)
+
+- [ ] Narrow centred column, ~1020px wide.
+- [ ] Top row: `← Back to dashboard` (muted link) on the left, outline `⟳ Refresh` on the right.
+- [ ] **Hero card:**
+  - 44px rounded-square icon tile (inverted colours)
+  - tiny uppercase type label: `LIST` / `SEGMENT` / `CAMPAIGN` / `FLOW` / `METRIC`
+  - large title
+  - status pill underneath, where the object has one
+- [ ] Then stat cards, plain-English explainer cards, and a **Timeline** card (CREATED / LAST UPDATED).
+  - Date format: `Oct 7, 2026 · 10:49 PM`
+  - Muted relative time under each date: `4 weeks ago`
+- [ ] Last card is a collapsible **Advanced details** row (tune icon, object id in mono on the right). When expanded it shows:
+  - "All attributes from Klaviyo" as a 2-col key/value grid
+  - "Linked resources" (PROFILES / TAGS / FLOW TRIGGERS, showing `none` when empty)
+
+### Shared components to build once
+
+- [ ] **Token plan strip** (used on Dashboard and Brand): bolt icon, "Scale plan · renews in 30 days", and a token-remaining line. On the right, two thin progress bars labelled IN and OUT, each with a %.
+- [ ] **Email preview card:**
+  - title "Email preview" + mono pill with the template name
+  - right side: `⛶ Fullscreen` (browser Fullscreen API on the iframe) and `⟳ Refresh` (reloads the iframe)
+  - body: sandboxed iframe on an inset grey area, fixed height, scrolls inside
+  - caption under it: "Rendered preview from Klaviyo's stored template. Some external assets (fonts, tracking pixels) may not load due to sandbox isolation."
+- [ ] **List/segment picker:**
+  - label `SEND TO  N SELECTED` + `Clear` link on the right
+  - search box "Search lists & segments..."
+  - scrolling checklist: round checkbox + name + small outline tag `LIST` or `SEGMENT` on the right
+- [ ] **Product radio picker:**
+  - search box "Search products…"
+  - bordered scroll box (~300px)
+  - first option italic muted ("— no default (let AI pick) —" or "— let AI pick from broader product focus —")
+  - each product shown as `“Name”` + muted `(vendor)`
+- [ ] **Status pill**, **type pill** (DESIGN / TEXT), and **domain pill** (uppercase domain).
+- [ ] **Chat UI:**
+  - user bubble on the right, assistant bubble on the left
+  - optional tiny caption under each bubble (YOU / GROS)
+  - typing indicator (3 animated dots)
+  - quick-reply chips
+  - composer: `+` attach button, input, round send button
+  - auto-scrolls to the newest message
+- [ ] **Confirm dialog:**
+  - large warning "!" circle icon, bold title, body text
+  - secondary + danger buttons (see the multi-day event discard dialog)
+- [ ] **Modal:**
+  - optional `STEP 1 OF 2` label + 2-segment progress bar
+  - title, subtitle, ✕
+  - scrolling body
+  - sticky footer: `Cancel` text button on the left, primary button on the right
+
+---
+
+## 3. Dashboard `/dashboard`
+
+- [ ] Header "Dashboard" / "Retention health at a glance." + `⟳ Refresh` (re-pulls Klaviyo).
+
+### KPI strip
+
+- [ ] 8 small cards in one row (they scroll horizontally on narrow screens):
+
+  | Label            | Value  | Caption            |
+  | ---------------- | ------ | ------------------ |
+  | CLTV             | —      | Coming soon        |
+  | LIST GROWTH      | 16.5K  | ↑ 15% vs 30d       |
+  | REV (PURCHASERS) | $22.6K | 6 flows · 30d      |
+  | REV (NON-PURCH)  | $26.2K | 19 campaigns · 30d |
+  | RPR              | —      | Coming soon        |
+  | DELIVERABILITY   | —      | Coming soon        |
+  | ACTIVE SUBS      | 16.5K  | ↑ 15% vs 30d       |
+  | ABANDONED        | 419    | checkouts · 30d    |
+
+- [ ] Each card: tiny uppercase label (truncates with …), big value, small caption.
+- [ ] An up trend shows in the success colour with ↑. A down trend uses the danger colour.
+- [ ] A metric that isn't ready yet shows `—`, an ⓘ icon with a tooltip, and "Coming soon".
+
+### Row 2 (3 cards)
+
+- [ ] **Email revenue this month:**
+  - small label at the top
+  - segmented toggle `Klaviyo | UTM`
+    - Klaviyo tooltip: "Klaviyo $flow and $campaign attribution (last 30d, clamped to MTD)"
+    - UTM tooltip: "Shopify orders with utm_source=klaviyo or utm_medium=email (month-to-date)"
+  - **semicircle gauge** (track + fill = revenue/goal), value `$15,845.99` in the centre, "of $300,000 goal" under it
+  - disclosure `▸ Set monthly goal`, which opens a number input (placeholder "e.g. 40000") + Save
+- [ ] **Next campaign countdown:**
+  - clock icon
+  - countdown to the next scheduled or planned send
+  - empty state: "—" + "No scheduled or planned campaigns. Schedule one to see the countdown." + link `Schedule a campaign →` (`/campaign-drafts/new`)
+- [ ] **Campaign Calendar mini:**
+  - header + `View All` (`/calendar`)
+  - list of upcoming campaigns
+  - empty state: "No upcoming campaigns. [Create one →]"
+
+### Row 3
+
+- [ ] **Small card:** medal icon, "—", "Campaign approval workflow not yet built". This is a placeholder slot for approvals.
+- [ ] **Wide GROS insight card:**
+  - inverted pill `✦ GROS` + green live dot
+  - `⟳ Generate` text button on the right, with tooltip "Regenerate insight (consumes tokens from your package)"
+  - body: italic muted placeholder "Click "Generate" to get a fresh GROS insight on your retention performance — runs against your current metrics and brand context. Tokens deducted from your active Token Package."
+  - after generating, the insight text replaces the placeholder
+
+### Detailed Klaviyo data card
+
+- [ ] Header: database icon + "Detailed Klaviyo data", muted "Lists, segments, campaigns, flows, metrics" on the right.
+- [ ] Token plan strip.
+- [ ] **Revenue (Overview tab only):**
+  - label "REVENUE · LAST 30 DAYS"
+  - huge number `A$70,178`
+  - caption "attributed to Klaviyo emails & flows · 30 active days"
+  - right side: two mini stat boxes, AVG / DAY and BEST DAY (+ date)
+  - 30-bar daily chart; the best day's bar is highlighted in the accent colour; x labels at start / middle / end
+  - **Add a hover tooltip per bar** (date + amount). The old app had none.
+- [ ] **Tabs** (underline style, icon + label + count pill; the active tab's count pill is inverted):
+  - Overview
+  - Lists 9
+  - Segments 21
+  - Campaigns 41
+  - Flows 7
+  - Metrics 60
+- [ ] Tabs change `?tab=`. The old app reloaded the whole page; client-side switching is fine as long as the URL updates and the back button works.
+
+**Overview tab**
+
+- [ ] 6 stat cards:
+  - LISTS — "view all"
+  - SEGMENTS — "view all"
+  - CAMPAIGNS — "view all"
+  - FLOWS — "7 live · 0 draft"
+  - METRICS — "event types"
+  - INDUSTRY — value wraps
+- [ ] "view all" switches to that tab.
+- [ ] **Account card:**
+  - "Account" title + masked key on the right, in mono (`pk_YxS7U••••••••9de0`)
+  - 5 columns: ORGANIZATION / INDUSTRY / TIMEZONE / CURRENCY / LOCALE
+- [ ] Info bar: "**What's next:** Switch tabs above to drill into lists, segments, campaigns, flows, or metrics. Click any row inside a tab to see full details." Each object word is a link to its tab.
+
+**Lists tab**
+
+- [ ] Card header: icon + "Lists" + count pill.
+- [ ] Columns: NAME / OPT-IN / UPDATED / CREATED.
+- [ ] Each row has a `›` chevron, the whole row is clickable, and it opens `/lists/:id`.
+
+**Segments tab**
+
+- [ ] Columns: NAME / STATE / UPDATED / CREATED.
+- [ ] Starred segments show an outline star before the name.
+- [ ] STATE shows an `active` pill in the success colour.
+
+**Campaigns tab**
+
+- [ ] Columns: NAME / STATUS / REVENUE (30D) / SEND TIME. Revenue is right-aligned and tabular (`A$372` or `—`).
+- [ ] Status pills: SENT (solid), CANCELLED (danger), DRAFT (warning).
+
+**Flows tab**
+
+- [ ] Header on the right: "30d revenue: **A$22,638** · ● 7 live · ● 0 draft".
+- [ ] Columns: NAME / TRIGGER (Metric, Added to List) / STATUS (LIVE) / REVENUE (30D), revenue right-aligned.
+
+**Metrics tab**
+
+- [ ] Columns: NAME / INTEGRATION (Klaviyo, Shopify) / CATEGORY (Internal, eCommerce) / CREATED.
+
+---
+
+## 4. Klaviyo detail pages
+
+### List `/lists/:id`
+
+- [ ] Hero (LIST).
+- [ ] Two cards:
+  - **SUBSCRIBERS:** big number + "people on this list"
+  - **SIGN-UP METHOD:** `single_opt_in` + a plain-English line. Single opt-in: "Single opt-in — subscribers are added immediately after signing up. Faster growth, but riskier." Double opt-in needs its own line.
+- [ ] Timeline card.
+- [ ] Advanced details (NAME, CREATED, UPDATED, OPT IN PROCESS, PROFILE COUNT + Linked resources).
+
+### Segment `/segments/:id`
+
+- [ ] Hero (SEGMENT) + ACTIVE pill.
+- [ ] Two cards:
+  - PROFILES IN SEGMENT: `1,476` "people match"
+  - WHAT THIS IS: "A **segment** is a dynamic group — profiles enter and exit automatically based on rules you set up in Klaviyo. Unlike lists (which are static and require explicit sign-up), segments recalculate as your data changes." + Active pill
+- [ ] "How this segment is defined" / "The rules below determine who's in this segment." + mono code block with the raw JSON definition.
+- [ ] Timeline, Advanced details.
+
+### Campaign `/campaigns/:id`
+
+- [ ] Hero (CAMPAIGN) + status pill (DRAFT / SENT …).
+- [ ] 3 small cards:
+  - CHANNEL: ✉ Email
+  - SEND TIME: "Not scheduled" or the date
+  - CREATED
+- [ ] **What was sent:**
+  - MESSAGE LABEL (INTERNAL)
+  - inset email-header box: FROM (name bold + `<email>` muted), SUBJECT, PREVIEW TEXT (italic, in quotes)
+- [ ] Email preview card (shared component).
+- [ ] **Who received this** / "The lists and segments this campaign was sent to." INCLUDED chips and EXCLUDED chips. Show names; the old app showed raw ids, which is a fix.
+- [ ] **How it was sent:**
+  - "Static" + "Sent at a fixed date and time you scheduled."
+  - "Scheduled for: Nov 6, 2026 · 4:52 AM"
+  - "Sent in each recipient's local timezone" (only when that's on)
+- [ ] Advanced details.
+
+### Flow `/flows/:id`
+
+- [ ] Hero (FLOW) + LIVE pill.
+- [ ] 3 cards:
+  - **REVENUE · 30 DAYS** (highlighted card with an info-tint background): `A$503`, "attributed to this flow"
+  - **WHAT TRIGGERS THIS FLOW:** "Metric" + "Triggered when someone performs a specific event (like placing an order)"
+  - **STEPS IN THIS FLOW:** `3`, "actions in the sequence"
+- [ ] **Action sequence** / "The steps Klaviyo runs when this flow triggers." A vertical list where each step has:
+  - a numbered filled circle
+  - a step card: icon + name (Wait / Send email) + status pill
+- [ ] Wait step: `▸ Settings` disclosure that opens a raw JSON block (days_of_week, delay_seconds).
+  - Nice-to-have: also show plain English, e.g. "Waits 45 min, any day".
+- [ ] Send-email step: inner row with eye icon, subject (bold), "From: Dreams Studio", and `→`. Clicking it opens `/flow-messages/:id`.
+- [ ] Card footer: robot icon + "**2** email templates from this flow have been ingested for AI use. They're now part of the context your [Copy & Voice] profile reads from." + outline `⟳ Sync templates`.
+- [ ] Timeline, Advanced details.
+
+### Flow message `/flow-messages/:id`
+
+- [ ] `← Back` (history back).
+- [ ] Header card:
+  - `✉ FLOW MESSAGE` label + mono template pill on the right
+  - title = subject
+  - italic preview text
+  - 3 columns: FROM (name + `<email>`) / REPLY TO / TEMPLATE UPDATED
+- [ ] Email preview card.
+
+### Metric `/metrics/:id`
+
+- [ ] Hero (METRIC).
+- [ ] "What this measures" card with one line (e.g. "A custom event tracked in your Klaviyo account.").
+- [ ] 3 cards:
+  - SOURCE: "Where the events come from"
+  - CATEGORY: "Type of integration"
+  - TRACKING SINCE: "First event date"
+- [ ] Advanced details.
+
+---
+
+## 5. Brand & Store
+
+Shared header:
+
+- [ ] Centred column, ~920px.
+- [ ] Muted line "Auto-generated from your website and Klaviyo data." on the left.
+- [ ] Right side: muted "Last synced 96 days ago" + primary `✦ Regenerate All`.
+- [ ] **Add the H1 "Brand & Store"**. The old page had no title; this is a fix.
+- [ ] Sub-tabs (text with an underline on the active one): Brand Truth `/brand` · Copy & Voice `/brand/voice` · Store `/store`.
+- [ ] Token plan strip.
+- [ ] Section card pattern:
+  - title + "Updated 96 days ago" (muted)
+  - round `⟳` icon button on the right, tooltip "Regenerate this section", which regenerates that section only
+  - fields are tiny uppercase labels + values
+
+### Brand Truth
+
+- [ ] **Brand Identity:**
+  - 2-col grid: BRAND NAME, NICHE, POSITIONING, GEOGRAPHIC MARKET
+  - full-width fields: ORIGIN STORY, TARGET AUDIENCE
+- [ ] **Product Intelligence:**
+  - shows the products when there are any
+  - empty/warning state: warning callout (border + tint, ⓘ icon) with:
+    - bold "No products extracted"
+    - "The website scrape didn't return enough product detail and either Shopify isn't connected, isn't synced yet, or the catalog is empty."
+    - "Fixes: [connect Shopify] (we'll use your synced catalog as the source), or set a [Hero Product URL] in Brand settings, then click the refresh icon above."
+
+### Copy & Voice
+
+- [ ] **Tone of Voice:**
+  - 4 tiles in a row: FORMALITY / ENERGY / WARMTH / ARCHETYPE
+  - 2 columns of bullets: `✓ DO` (success colour) and `✕ DON'T` (danger colour)
+- [ ] **Vocabulary:**
+  - PREFERRED: success chips
+  - AVOID: danger chips
+  - divider
+  - BRAND-SPECIFIC TERMS: "**term** — muted definition" lines
+  - divider
+  - SIGNATURE PHRASES: italic quoted lines. Keep `{{ placeholders }}` verbatim.
+- [ ] **Sample Copy:** 2×2 groups SUBJECT LINES / OPENING LINES / CTAS / SIGN-OFFS. Each item is a light rounded row.
+  - Nice-to-have: copy-on-click.
+- [ ] **Audience:**
+  - PRIMARY PERSONA paragraph + muted "Age range: 16-28"
+  - 3 bullet columns: PAIN POINTS / MOTIVATIONS / EMOTIONAL NOTES
+
+### Store
+
+- [ ] When Shopify is connected: a store dashboard with revenue trends, top customers and out-of-stock alerts. No old design exists for this, so design it in the same card language.
+- [ ] When it isn't connected:
+  - the header and tabs are hidden
+  - a centred empty card: success-tint tile with a bag icon, bold "Connect Shopify to see Store Intelligence", muted "Once connected, we'll bulk-import your products, orders, and customers, then render a live dashboard with revenue trends, top customers, and out-of-stock alerts.", and primary `🔗 Go to Connections`
+
+---
+
+## 6. Campaign Agent (planner) `/campaign-agent`, `/calendar`
+
+The whole page is one wide card (toolbar + grid), followed by two library cards.
+
+### Toolbar row 1
+
+- [ ] Left: round `<`, month label "November 2026" (bold), round `>`. These change `?m=`.
+- [ ] While pulling Klaviyo, show a muted italic "Syncing" next to the month label.
+- [ ] Right side, in order:
+  1. `⬇ Report ▾` dropdown: **Excel (.xls)**, **CSV**, **Word (.doc)**, each with a file-type icon. It exports the month's plan.
+  2. `🎉 Holidays & Events` (outline): opens the holidays modal (§6.4).
+  3. `📅 Launch a multi-day event ✦` (outline, sparkle in the accent colour): opens the multi-day wizard (§6.5).
+  4. Primary `📅 Generate Campaign Calendar ✦`: opens the brief wizard (§6.6).
+
+### Toolbar row 2
+
+- [ ] Status pill group: **All status** / Draft / Assigned / Scheduled / Sent. Single select; the active pill is inverted.
+- [ ] Vertical divider.
+- [ ] Channel pill group: **All channels** / ✉ Design Email / 📄 Text Email / 💬 SMS.
+- [ ] Right: segmented `📅 Calendar | ☰ Table`.
+- [ ] Filters apply to both the calendar and table views.
+
+### Calendar grid
+
+- [ ] SUN–SAT header (tiny caps), 7 columns, ~110px-tall cells, thin grid lines.
+- [ ] Day number at the top-left of each cell:
+  - past days: muted number + slightly tinted cell background
+  - **today**: filled accent circle with the number in contrasting text
+- [ ] **Holiday chips** sit to the right of the day number: small tinted pills (civic = info, cultural/religious = accent-2, commercial = danger).
+- [ ] **Campaign chip:**
+  - full-width rounded pill with a channel/send icon + name
+  - colour = status: Sent solid, Scheduled info-tint, Assigned to Designer warning-tint, Draft neutral
+  - hover tooltip: "G | Quick eye test · Klaviyo: Sent at 17:11"
+  - click opens the campaign: `/campaigns/:id` for synced ones, the draft editor for drafts
+- [ ] **Hover any cell** → muted "+ plan send" appears bottom-centre. Clicking it opens the plan-send modal for that date (§6.7).
+  - Fix: the old app opened the wrong date when clicked.
+- [ ] Legend under the grid: ■ Sent ■ Scheduled ■ Assigned to Designer ■ Draft.
+
+### Table view
+
+- [ ] Same toolbar. Table of the month's campaigns, same data as the calendar.
+- [ ] Empty state (centred, muted): "☰ No campaigns this month. Plan some on the calendar view, or wait for past Klaviyo sends to surface."
+- [ ] Fix: the old app's table missed campaigns that the calendar showed, and its active Table button rendered blank.
+
+### 6.4 Modal "Your holidays & events" (small, ~520px)
+
+- [ ] Muted intro: "Private to your brand — they appear on your calendar, in the planner wizards, and the AI strategists plan around them. Platform-wide holidays are managed by Grey Retention. [Manage on the Holidays & Events page →]"
+- [ ] Form:
+  - NAME (placeholder "e.g. Brand anniversary, Summer drop")
+  - DATE (date input) + TYPE select (Holiday / Event) side by side
+  - checkbox "Repeats annually (same date)"
+  - right-aligned primary `Add`
+- [ ] Divider + "YOURS (N)" list with a delete option on each row. Empty: "Nothing yet — add your first above."
+- [ ] A new entry shows on the calendar immediately.
+
+### 6.5 Modal "Launch a multi-day event" (2-step chat wizard, ~760px)
+
+- [ ] Header:
+  - `STEP 1 OF 2` + progress bar
+  - title "Lets understand your event first" (fix the typo → "Let's")
+  - sub "Tell GROS about the launch — it'll draft the full multi-day sequence."
+- [ ] Chat opens with a pre-seeded user bubble: "I want to launch a multi-day event."
+- [ ] Scripted questions. Each answer becomes a user bubble, and typing a free answer also works.
+  1. "What kind of event are you launching?"
+     - chips: Product launch / Flash sale / Restock / Bundle/Collab drop / Site-wide sale
+  2. "Which product(s) should this feature? Search and pick, or skip to keep it general."
+     - **inline product picker**: search box + scrolling checkbox list (multi-select) + confirm, and a full-width "Skip — no specific product"
+     - skip bubble text: "No specific product — keep it general"
+  3. "How many sends (separate emails/SMS) do you want for this event? Or type a number."
+     - round chips: 1 / 2 / 3 / 5
+  4. "How many of each channel for your N sends? They should add up to N."
+     - inline form: caption "Distribute N sends across channels · 0/N" turns success colour with "N/N ✓" when the numbers match
+     - 3 boxed number inputs: Email Design / Email Text / SMS
+     - `Set channels →` stays disabled until the sum matches
+     - bubble text: "Use 2 Email Design, 1 SMS."
+  5. "What offer should this run? Or type the exact offer, e.g. "20% off for first 10 customers"."
+     - chips: Percent off / Free gift / No discount — just hype
+  6. "Over how many days should the N sends run? Or type a number of days."
+     - chips: 3 days / 5 days / 7 days
+  7. Typing indicator, then the AI builds the plan.
+     - **Must handle errors:** the old app showed "AI returned an unparseable response. Please try again." with no button. Add a `Retry` button.
+- [ ] Composer: `+` attach, "Type your message...", round send button.
+- [ ] Footer: `Cancel` on the left, primary `Next →` on the right. Next is disabled until the chat is complete, and leads to step 2 (plan review → create campaigns).
+- [ ] **Closing mid-way** (✕ or Cancel) opens the confirm dialog:
+  - "!" icon
+  - "Discard this event plan?"
+  - "**Heads up:** closing now won't save anything — the sequence you've planned with GROS will be lost and no campaigns will be created. You'll have to start over."
+  - buttons: `Keep editing` (secondary) / `Discard & close` (danger)
+- [ ] Closing before anything has been answered skips the confirm.
+
+### 6.6 Modal "Generate Campaign Calendar" → "Build the brief" (STEP 1 OF 2)
+
+- [ ] Sub "Answer a few questions and the agent drafts your calendar."
+- [ ] "HOW MANY OF EACH DO YOU WANT TO SEND THE SELECTED MONTH": 3 stepper boxes, each with label, `−`, big number and `+` (min 0).
+  - defaults: Email Design 4, Email Text 0, SMS 0
+- [ ] "PRODUCT FOCUS": 3 toggle buttons — Choose a product / **Best Sellers** (on by default) / New Arrivals.
+  - **Multi-select:** each button toggles on/off, and several can be on at once.
+  - Turning on "Choose a product" reveals a full-width "Select products ▾" multi-select dropdown under the buttons.
+- [ ] "HOLIDAYS & EVENTS": stacked full-width selectable rows, one per holiday in that month, all **pre-selected**.
+  - selected row = tinted background + accent border + filled check circle
+  - clicking a row toggles it
+- [ ] Dashed row `+ Custom event` reveals an inline input "Name your event..." + `Add`, which adds a selected row.
+- [ ] "ANYTHING ELSE THIS MONTH?" textarea, placeholder "e.g. push the new Hydrate line, retire the Spring SKUs by end of month, lean into UGC…"
+- [ ] Footer: Cancel / primary `Continue →`. Step 2 = the AI drafts the month; the user reviews, then the drafts land on the calendar.
+
+### 6.7 Modal "Plan send" (from "+ plan send")
+
+- [ ] `STEP 1 OF 2`, title "What do you wanna send on this day?", sub with the full date ("Saturday, November 7, 2026").
+- [ ] Opens with the typing indicator, then GROS asks: "Hi there! What are we looking to send out on Saturday, November 7th?"
+- [ ] Free AI chat with the `+` attach button.
+- [ ] Footer: Cancel / `Next →`, disabled until the plan is ready.
+
+### 6.8 Competitor Inspirations card (below the calendar)
+
+- [ ] Title + "Real newsletters from the competitors you track — click one to read it, pick it as a Reference Design when drafting." + `Browse library →` on the right.
+- [ ] "SHOW" + segmented All / Email Design / Email Text.
+- [ ] 5-column grid of tall cards:
+  - top: a scaled live render of the email (clipped, ~500px)
+  - bottom: type pill (DESIGN / TEXT) + `⤢` expand icon on the right, subject (bold, 1-line truncate), "domain · Nov 6" (small, accent)
+- [ ] **Card hover:** accent border + an inverted pill "✦ Use this design" overlaid top-right.
+- [ ] `⤢` or a card click opens a large modal:
+  - header: ✉ subject, `✦ Use this design`, ✕
+  - body: the full email scrolling on a grey background
+- [ ] "Use this design" opens a small dialog **"Send on which day?"**:
+  - "We will start a campaign for this date using **<subject>** as the reference design."
+  - date input (defaults to today)
+  - `Cancel` / primary `Continue`, which starts the plan-send flow with that reference attached
+- [ ] Centred outline pill `Load more (15 more)`, which pages 15 at a time.
+
+### 6.9 Our Best Picks card
+
+- [ ] Title + "Top-performing templates from the Grey Retention library — pick one when drafting." + `Browse library →`.
+- [ ] Same grid as 6.8. Empty: outline star, "No best picks uploaded yet." / "Reach out to your admin — they curate this library."
+
+---
+
+## 7. Campaign drafts
+
+### List `/campaign-drafts`
+
+- [ ] H1 "Campaign Agent" + "AI-drafted campaigns that you can edit, review, then push to Klaviyo." Primary `✦ New campaign` on the right.
+- [ ] Status pills with counts: ALL (2) / DRAFTS (2) / READY (0) / PUSHED (0).
+- [ ] Table columns:
+  - TITLE / SUBJECT (bold title + muted "Subject: …")
+  - STATUS (e.g. WRITING, info pill)
+  - PLANNED (date)
+  - UPDATED (relative)
+  - `Open →` (accent)
+- [ ] The whole row is clickable.
+
+### New draft `/campaign-drafts/new`
+
+- [ ] `← Back to Campaign Agent`, H1 "New campaign draft", "Give us a brief — we'll draft the subject + body in your brand voice." Column ~800px.
+- [ ] Card **What we'll use as context**: 3 success-tint tiles with ✓:
+  - Brand Truth "Generated — ready"
+  - Copy & Voice "Generated — ready"
+  - Email templates "218 ingested from Klaviyo"
+  - A missing one should show a warning tile with a fix link.
+- [ ] Card **✔ Pre-filled from your brand profile** + tiny caps "NO NEED TO REPEAT IN THE BRIEF":
+  - INDUSTRY and SITE
+  - footnote "Want to change any of these? Update them on your [brand profile]."
+- [ ] Card **Start from…** / "Optional. Pre-fills the brief from an existing source you can then edit." 4 option tiles (icon, title, description):
+  - **Recent campaign** — "Copy the brief, subject and structure from one of your past drafts."
+    - opens modal "Pick a past campaign": rows with title, 2-line summary, relative time; hover/selected = tint + accent border
+  - **Klaviyo template** — "Adapt the tone and structure of an existing template in your Klaviyo account."
+    - opens modal "Pick a Klaviyo template": rows with name, "Subject: …", "From: <flow>", and "Flow" + time on the right
+  - **Reference design** — "Pick from the curated library of high-quality reference emails — vision-enabled pattern extraction."
+    - opens modal "Pick a reference design": rows with 80px thumbnail, name, muted source, "YOURS" pill
+  - **Blank** — "Start with a clean slate — fill in the form below yourself."
+  - Picking a source closes the modal, marks that tile selected, and pre-fills the form.
+- [ ] **Form card:**
+  - INTERNAL TITLE (placeholder "e.g. May welcome flow announcement"), help "Just for you — won't be visible to recipients."
+  - CAMPAIGN BRIEF: tall textarea with a multi-line example placeholder (3 bullet examples), help "The more specific you are, the better the draft. Mention any codes, deadlines, products, or angles you want included."
+  - NUMBER OF SECTIONS (number, default 3), help "Sections like Hero, Product Grid, CTA, Social Proof."
+  - EMAIL STRUCTURE: checkbox "Include footer" (checked by default), help "Pre-checked — uncheck if this campaign shouldn't have one."
+  - divider, then muted "Takes ~15-30 seconds." on the left and primary `✦ Generate draft` on the right
+  - while generating: show a loading state on the button, then go to the editor
+
+### Draft editor `/campaign-drafts/:id` (core screen)
+
+Layout:
+
+- [ ] Left scrolling column (~750px) of section cards.
+- [ ] Right **sticky** panel (~360px).
+- [ ] **Sticky bottom action bar** floating over the left column (rounded card with shadow): `Cancel` (muted) · outline `💾 Save Changes` · primary `📤 Schedule`.
+- [ ] Floating bottom-right pill `✦ Ask GROS`.
+- [ ] Unsaved changes: warn before leaving the page. The old app didn't; this is a fix.
+
+Left column cards, in order:
+
+1. - [ ] **Header:** inline-editable title (large, bold); pills WRITING · DRAFT · EMAIL; small select on the right (Draft / Ready).
+2. - [ ] **📅 Send Schedule:** DATE · TIME · CHANNEL (Email Design / Email Text / SMS) · WORKFLOW (Draft / Assigned to designer / Pending approval / Scheduled / Sent).
+3. - [ ] **🕘 Best Send Time** — "time of day only, AI-suggested on demand":
+   - text input showing the recommendation + reason
+   - `✦ AI Suggest` (tooltip "Ask AI for a time-of-day recommendation")
+   - `→ Use this` (tooltip "Auto-pick a date/time from the recommendation"), which fills TIME
+4. - [ ] **Subject Lines** — "pick one or write your own", with `⟳ Regenerate` on the right:
+   - 3 radio rows; the selected one is tinted with an accent border; empty rows show italic "(empty — click Regenerate)"
+   - divider
+   - "OR WRITE YOUR OWN" + live counter `0/60`; input "Custom subject line (overrides the radio above)"
+   - "PREVIEW TEXT" + counter `90/120`
+5. - [ ] **📄 Campaign Summary:** textarea.
+6. - [ ] **📦 Featured Product:** "0 selected" on the right; explainer "Pick the single product this campaign features. The AI body generator and GROS chat both see this — including sales, quantities and recent orders pulled from Shopify — so they can write copy specific to it."; product radio picker; help "Leave "— let AI pick —" selected to give the AI free reign. Hit Save Changes below to apply."
+7. - [ ] **👥 Audience** — "pick lists / segments to include + exclude":
+   - `⟳ Refresh` on the right
+   - caption "9 lists (from live) · 21 segments (from live)."
+   - SEND TO picker + DON'T SEND TO picker
+   - help "Exclude wins. Anyone in both Send-to and Don't-send-to lists gets skipped."
+8. - [ ] **🪪 Sender Name** — "what shows in the recipient's inbox "From" field":
+   - input + outline `↺ Use Klaviyo`
+   - when overridden, show the note "✎ Override active. Your Klaviyo default is **PHOLOH**. The value above is what gets pushed to Klaviyo as the campaign's From name."
+9. - [ ] **🔗 Primary Link** — "destination for hero CTA + body links":
+   - mono URL input
+   - help "Used for both email (hero button + body links) and SMS (the link inserted in the message). Must start with https://. Leave blank to let the AI pick a relevant destination from your products."
+   - validate that it starts with https://
+10. - [ ] **Email Settings:** checkbox Include footer + FOOTER SOURCE select ("Use my default setting" + every template), help "Override just this campaign's footer."
+11. - [ ] **🏷 Active Offers** — "tick the offers that apply to this campaign":
+    - search "Search offers..." + checkbox rows
+    - help "Leave all unchecked to apply every active offer (default). Tick specific offers to scope this campaign to just those."
+    - input "Add your own offer, e.g. 20% off sitewide this weekend" + `+ Add`
+12. - [ ] **🖼 Reference Design:**
+    - big thumbnail placeholder on the left
+    - on the right: italic "No design selected", "Pick a design from one of three libraries: your team's own templates, competitor inspirations, or admin-curated best picks.", and primary `Choose a Design`
+    - **Design picker modal:** "Choose a design for this email" / "GROS will write copy that fits perfectly to the design you select."
+      - tab pills with counts: Your Templates N / Competitor Inspirations N / Best Picks N
+      - 4-column thumbnail grid; each card has a `⤢` open icon, subject, domain · date
+      - empty tab: "No Your Templates uploaded yet." (fix the wording → "No templates uploaded yet.") + "Reach out to your admin — they curate this library."
+      - footer: muted "Click a card to pick, or drag it onto the preview slot." + `Done`
+      - **drag-and-drop onto the preview** must work
+    - **Picking a card** opens the follow-up modal "✦ What do you wanna copy from this design?", with "Source: <subject> (<domain>)" and 3 option rows:
+      - ✦ **Copy Everything** — "Full pattern framework — what this email does, how copy is written, section-by-section breakdown, design patterns, replication brief."
+      - 💡 **Copy Strategy** — "Strategic framework — emotional journey, hook pattern, urgency drivers, objection overcome, replication brief."
+      - ▦ **Copy Design Layout** — "Layout + formatting system — section order, typography, CTA placement, visual hierarchy, Klaviyo-builder spec."
+      - muted link "Skip — just keep the design"
+13. - [ ] **👤+ Assignment:** "Once the brief is locked, assign this campaign to a designer. They get a 24-hour SLA to deliver the finished email design, then admin reviews before it's ready to use." + primary `👤+ Assign to <designer name>`.
+
+Right panel:
+
+- [ ] Header "👁 Email Preview".
+- [ ] Rendered email, scrolling inside the panel.
+- [ ] Full-width accent `✦ Regenerate Copy`.
+- [ ] Outline `✎ Open Copy Editor` + caption "Copy Editor enables inline editing of the preview. Click Apply to attach your edits to the form, then Save Changes below."
+- [ ] Meta: Draft ID #649 · Created · Last edited.
+- [ ] **Copy Editor on:**
+  - preview gets a 2px accent border
+  - header shows an `EDITING` pill + `Cancel` + primary `Apply`
+  - preview text becomes editable in place
+  - the button changes to `✎ Close Copy Editor`
+  - Apply writes the edits into the form; Cancel reverts them
+- [ ] **Ask GROS drawer** (replaces the right panel, full height, ~400px):
+  - header "✦ GROS" + "Agentic — proposes actions, you confirm." + 🧹 clear + ✕
+  - empty state: 👋, "Hi! I'm GROS.", "I can answer questions about this campaign — and take action on your behalf. Try: "Change the subject to: Free shipping today only." or "Schedule this for Friday at 9am.""
+  - composer placeholder "Try: change the title to Holiday Sale / Or: schedule this for Friday at 9am."
+  - proposed actions render as a confirm card (Apply / Dismiss) **before** anything changes
+
+---
+
+## 8. Ask GROS `/gros`
+
+- [ ] Two panes filling the viewport height; no page scroll.
+- [ ] **Left pane (~280px):**
+  - header "✦ Ask GROS" + round `+` (New private chat)
+  - thread list: the active thread has a tinted background + a left accent bar; each row shows the title (bold) and "🔒 5 msg · 46 days ago" (the lock icon shows only on private threads)
+  - muted footer "GROS knows 218 of your email templates."
+- [ ] **Right pane header:**
+  - thread title as an inline-editable input (rename on blur or Enter)
+  - on the right: pill `🔒 PRIVATE` (or SHARED) and text buttons `⟳ Refresh data` (tooltip "Force GROS to re-read your latest Klaviyo + Shopify data."), `👥 Make shared` (toggles to "Make private"), and `🗑 Delete` (danger, asks to confirm)
+- [ ] Messages:
+  - GROS on the left: light bubble, max ~75% width, renders markdown (lists, bold, line breaks)
+  - user on the right: inverted pill bubble
+- [ ] The first assistant message in a new thread is a greeting: "Hi <first name> — I'm GROS, your marketing assistant. I've got your store's data in front of me, so I can help you plan campaigns, dig into how things are performing, or just talk through an idea.\n\nWhat's on your mind?"
+- [ ] Composer:
+  - multi-line textarea with an accent focus ring, placeholder "Ask GROS anything in this thread…"
+  - square send button
+  - caption "⌘/Ctrl + Enter to send. Tokens deducted from your Token Package."
+  - **⌘/Ctrl+Enter sends; Enter adds a new line**
+- [ ] While a reply is coming: typing indicator; streaming is preferred.
+
+---
+
+## 9. Competitor Agent `/library/inspirations`
+
+- [ ] `← Back to Campaign Agent`.
+- [ ] H1 "Competitor Inspirations" + "Real newsletters from the competitors you track — browse them here, pick one as a reference design when planning a campaign."
+- [ ] Big counter on the right: `41` / tiny "EMAILS".
+- [ ] **Card "🔍 Your competitor domains (6/10)":**
+  - explainer "Add a brand you want to learn from. Our system auto subscribes to their newsletter and starts showing you designs once the competitor begins sending us emails — their latest 20 sends show up below and in the Competitor tab of every design picker."
+  - on the right: input placeholder "brand.com" + primary `+ Track`
+  - domain chips: domain (bold) + status pill (**LIVE** success / **PENDING** warning) + `✕` remove
+  - limit 10: disable Track at 10/10
+  - validate that the input is a domain
+- [ ] **Info tip bar:** 💡 "**To build from one of these:** open a draft or the calendar planner and pick it from the _Competitor_ tab — the agent extracts its copy strategy and layout for you." + `Open calendar →` on the right.
+- [ ] SHOW pills: All / Email Design / Email Text.
+- [ ] 5-column grid of cards:
+  - live render (scrollable inside, ~500px)
+  - footer: domain pill (`FITMINT.US`), type pill, date on the right, subject (bold, 2 lines), sender brand name (muted)
+  - hover: accent border + "✦ Use this design", which opens the "Send on which day?" dialog (§6.8)
+- [ ] `Load more (26 more)`.
+
+---
+
+## 10. Support `/support`
+
+- [ ] H1 "Support" + "Talk to an Email Marketing Expert."
+- [ ] Two columns: conversation card (~2/3) and ticket list (~1/3).
+- [ ] **Conversation:**
+  - header: subject (bold) + "Support #7 · opened Jul 5, 2026" (muted), status pill on the right (Open / Closed)
+  - user messages: right, inverted pill, time under it ("Jul 5, 2:13 AM")
+  - staff messages: left, tiny caps label "SUPPORT · ADMIN" above, light bubble, time under it
+  - composer: round `📎` (tooltip "Attach an image or PDF (10 MB max)") + input "Type a message…" + round send button
+  - closed tickets: disable the composer, or reopen the ticket on send (decide which)
+- [ ] **Ticket list:**
+  - full-width primary `+ New Support`
+  - search "🔍 Search support requests…" filters as you type
+  - ticket cards: subject (bold), status pill, date on the right, last-message preview (muted); the selected card has a strong border; selecting sets `?t=`
+- [ ] **New Support modal** (~480px):
+  - SUBJECT (placeholder "e.g. Campaign not syncing to Klaviyo")
+  - DESCRIBE THE ISSUE textarea ("What's happening?")
+  - `📎 Attach image / PDF`
+  - full-width primary `Create Support`
+
+---
+
+## 11. Settings `/settings`
+
+- [ ] H1 "Settings" + "Set defaults that apply to every campaign you generate. You can still change them on any individual draft." Column ~900px.
+- [ ] **🕘 Timezone (read-only):**
+  - "Campaign send times are scheduled in your brand's timezone, synced from your Klaviyo account. Update it in Klaviyo if it's wrong."
+  - BRAND TIMEZONE "US/Pacific (UTC-08:00)" and CURRENT LOCAL TIME "Fri, Nov 6 2026 · 9:07 AM" (live clock)
+- [ ] **Campaign defaults:** "These pre-fill on every new campaign. Each draft shows the value and lets you override it before sending, and the chosen values are pushed to Klaviyo."
+  - underline tabs, switched on the client: Featured Product / Sender Name / Primary Link / Audience / Email Settings
+  - **Featured Product:** "The single product new campaigns feature by default. The AI body generator sees its Shopify sales, quantities, and recent orders." + product radio picker
+  - **Sender Name:** "The "from" name recipients see. Leave blank to use your Klaviyo account default." + input
+  - **Primary Link:** "The destination URL for the main CTA and body links. Leave blank to let the AI choose." + URL input
+  - **Audience:** "Default "Send to" and "Don't send to" audiences for new campaigns." + two list/segment pickers
+  - **Email Settings:**
+    - "Email Settings (default for new campaigns)" + explainer ("New email campaigns start with the footer checked. You can change it per campaign on the draft. The footer is built from your Klaviyo brand settings (organization, mailing address, unsubscribe link) when the campaign is pushed.")
+    - checkbox "Include footer" + muted "(logo, unsubscribe link, social icons)"
+    - divider
+    - FOOTER SOURCE select ("Auto — built from my brand settings" + every Klaviyo template), help "We pull the bottom block (unsubscribe + address) from the chosen email."
+    - small muted "Heads up: a Klaviyo template is a whole email, so we extract the footer automatically — give the next test send a quick look to confirm it came through cleanly. If extraction misses, we fall back to the auto-built block."
+- [ ] One right-aligned primary `Save defaults` under the card. It saves all tabs; show a success toast.
+
+---
+
+## 12. Holidays & Events `/holidays`
+
+- [ ] H1 + "Your brand's own moments — anniversaries, drops, sales windows. They appear on your calendar, in the planner wizards, and the AI strategists plan around them."
+- [ ] **Left card "Add an entry"** (~360px):
+  - NAME ("e.g. Brand anniversary, Summer drop")
+  - DATE + TYPE (Holiday / Event)
+  - checkbox "Repeats annually (same date)"
+  - NOTES FOR THE AI STRATEGIST (optional) textarea ("e.g. Our biggest drop of the year — tease it early.")
+  - full-width primary `Add entry`
+- [ ] **Right card "Yours"** + "N total": list with edit/delete on each row. Empty: "Nothing yet — add your first on the left."
+- [ ] **Card "Platform holidays & events · next 90 days · managed by Grey Retention":**
+  - wrap of chips, each with the date (mono, muted) and the name (bold, coloured by category)
+  - order: Nov 11 Veterans Day, Nov 26 Thanksgiving, Nov 27 Black Friday, Nov 30 Cyber Monday, Dec 1 Giving Tuesday, Dec 4 Hanukkah begins, Dec 14 Free Shipping Day, Dec 24 Christmas Eve, Dec 25 Christmas Day, Dec 26 Boxing Day, Dec 31 New Year's Eve
+
+---
+
+## 13. Connections `/connections`
+
+- [ ] H1 "Connections" + "Connect your tools to unlock the agents." Two equal cards.
+- [ ] **Klaviyo card:**
+  - tinted tile with a mail icon
+  - top-right pill "✔ PULLED 218 TEMPLATES"
+  - title
+  - "+" benefit list: Unlocks flows & segments / Sync CLTV data / Deliverability insights
+  - connected state:
+    - full-width accent button "✓ Klaviyo Connected"
+    - caption "Dreams Studio · pk_YxS7U••••••••9de0"
+    - link `Update API key`, which reveals a password input "pk_…", full-width `Validate & swap key`, and the caption "The new key is validated against Klaviyo before we save. If it fails, your existing key stays in place."
+  - disconnected state: key input + Connect
+- [ ] **Shopify card:**
+  - tinted tile with a bag icon
+  - "+" list: Products & inventory / Orders & customers / Discount-code creation
+  - bottom-aligned primary `Connect Shopify →`, which reveals a full-width card **Connect your Shopify store**:
+    - explainer: "Create a Custom App in your Shopify admin, give it read access to **products, orders, customers, and analytics**, then paste the Admin API access token here." + link "How to create a Custom App →"
+    - SHOP DOMAIN, help "The `.myshopify.com` address, not your custom domain."
+    - ADMIN API ACCESS TOKEN (password field), help "Starts with `shpat_` or `shpca_`. In your Custom App: **Configuration → Install app → API credentials tab → "Admin API access token" section → Reveal token once**."
+    - ⚠ warning line: "Not the same as the API secret key (`shpss_…`) or the API key. The access token is shown only ONCE — if you missed it, uninstall and reinstall the app to regenerate."
+    - grey box "Required scopes:" with mono chips: read_products, read_orders, read_customers, read_analytics
+    - primary `🔗 Verify & connect` on the right
+    - divider + collapsible "(?) COMMON ISSUES"
+  - add `autocomplete="off"` on the domain field: the browser autofilled an email address there in the old app
+
+---
+
+## 14. Profile `/profile`
+
+- [ ] H1 "Profile" + "Update your account information and password." Column ~670px.
+- [ ] **Card "Account information" / "Name, job title, and contact phone."**:
+  - NAME
+  - EMAIL 🔒 (disabled), help "Email is locked. Contact support if you need to change it."
+  - JOB TITLE
+  - PHONE
+  - `Save changes`
+- [ ] **Card "Change password" / "At least 8 characters. We'll verify your current password first."**:
+  - CURRENT PASSWORD / NEW PASSWORD / CONFIRM NEW PASSWORD
+  - `Update password`
+  - inline errors for a mismatch, a password under 8 characters, or a wrong current password
+
+---
+
+## 15. Old-app bugs: fix these, don't copy them
+
+1. Brand & Store had no H1 (§5).
+2. "+ plan send" opened the wrong date (§6).
+3. Table view missed campaigns the calendar showed. Also, every toggle that becomes active after a click (the Table button, and status pills like "Scheduled") rendered white text on white, so it looked blank. Only the default-active ones looked right (§6).
+4. The multi-day wizard died on "AI returned an unparseable response" with no retry (§6.5).
+5. "Lets" typo in the wizard title; "No Your Templates uploaded yet." wording (§6.5, §7).
+6. Campaign detail showed raw list/segment ids instead of names (§4).
+7. No tooltips on the collapsed sidebar or the revenue bars (§2, §3).
+8. Shopify domain field accepted browser-autofilled email (§13).
+9. Some inspiration thumbnails rendered blank white (lazy iframe never loaded). Show a skeleton, then the render, and fall back to the mail icon (§6.8).
+
+---
+
+## 16. Suggested build order
+
+1. Shell + shared components (§2)
+2. Connections (§13): everything else depends on Klaviyo/Shopify
+3. Dashboard + detail pages (§3–4)
+4. Brand & Store (§5)
+5. Settings, Holidays, Profile (§11, 12, 14)
+6. Campaign planner + modals (§6)
+7. Drafts list, New draft, Draft editor (§7)
+8. Ask GROS (§8), Competitor Agent (§9), Support (§10)
