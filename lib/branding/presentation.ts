@@ -1,3 +1,5 @@
+import { colorThemes, scaleTokens } from '@/lib/design/tokens'
+
 export type BrandPresentation = Readonly<{
   productName: string
   productDescription: string
@@ -45,6 +47,8 @@ export type BrandPresentation = Readonly<{
   }>
 }>
 
+const light = colorThemes.light
+
 export const defaultBrandPresentation: BrandPresentation = {
   productName: 'Grey Retention',
   productDescription: 'Retention campaign operating system',
@@ -59,36 +63,40 @@ export const defaultBrandPresentation: BrandPresentation = {
     alt: 'Grey Retention'
   },
   fonts: {
-    display: 'var(--font-inter), sans-serif',
-    body: 'var(--font-inter), sans-serif',
-    data: 'var(--font-inter), sans-serif'
+    display: scaleTokens['font-display'],
+    body: scaleTokens['font-ui'],
+    data: scaleTokens['font-mono']
   },
+  // The default theme is the Grey Retention design language (docs/DESIGN.md).
+  // Values come from lib/design/tokens.ts so the two can never drift.
   theme: {
-    surface: '#f9f9fb',
-    surfaceRaised: '#ffffff',
-    surfaceHover: '#f5f5f7',
-    nav: '#ffffff',
-    navText: '#1d1d1f',
-    navMuted: '#646468',
-    text: '#1d1d1f',
-    textMuted: '#46464a',
-    textFaint: '#626267',
-    line: '#e2e2e4',
-    lineStrong: '#c7c7cc',
-    primary: '#1d1d1f',
-    primaryStrong: '#000000',
-    secondary: '#0066cc',
-    soft: '#e8f1fb',
-    ink: '#004a94',
-    onBrand: '#ffffff',
-    focus: '#0066cc',
-    danger: '#dc2626',
-    dangerStrong: '#b91c1c',
-    onDanger: '#ffffff',
-    dangerSoft: '#fee2e2',
-    dangerInk: '#991b1b',
-    warningSoft: '#fef3c7',
-    warningInk: '#7a4e00'
+    surface: light.canvas,
+    surfaceRaised: light.surface,
+    surfaceHover: light['canvas-sunken'],
+    nav: light.canvas,
+    navText: light.ink,
+    navMuted: light['ink-muted'],
+    text: light.ink,
+    textMuted: light['ink-muted'],
+    // `ink-subtle` is below 4.5:1 on the canvas, so small faint text uses
+    // `ink-muted` (see the accessibility limits in docs/DESIGN.md).
+    textFaint: light['ink-muted'],
+    line: light.hairline,
+    lineStrong: light['hairline-strong'],
+    primary: light.ink,
+    primaryStrong: light['ink-strong'],
+    secondary: light.accent,
+    soft: light['accent-faint'],
+    ink: light['accent-strong'],
+    onBrand: light['on-ink'],
+    focus: light.accent,
+    danger: light.danger,
+    dangerStrong: light['danger-strong'],
+    onDanger: light['on-danger'],
+    dangerSoft: light['danger-faint'],
+    dangerInk: light.danger,
+    warningSoft: light['warning-faint'],
+    warningInk: light.warning
   }
 }
 

@@ -36,7 +36,7 @@ export function BrandMark({
         </span>
       )}
       {!compact && (
-        <span className="font-[family-name:var(--font-display)] text-sm font-bold tracking-[-0.02em]">
+        <span className="font-[family-name:var(--font-display)] text-base font-normal tracking-[-0.01em]">
           {brand.productName}
         </span>
       )}

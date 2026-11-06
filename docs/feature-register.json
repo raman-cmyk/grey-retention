@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-10-29",
+  "updated": "2026-11-06",
   "scope": "Clean-room product requirements. Legacy capability inventory is not acceptance of this new implementation. Task IDs in BUILD_LEDGER are separate from feature IDs here.",
   "status_rule": "Only tested acceptance earns verified_fixture; partial implementations remain partial. Production acceptance is separate.",
   "features": [
@@ -46,11 +46,11 @@
       "priority": "P0",
       "acceptance": "Keep familiar calendar/campaign/library patterns unless observed usability evidence supports a change.",
       "status": "partial",
-      "implementation_tasks": ["ONB-001", "DRF-001"],
+      "implementation_tasks": ["ONB-001", "DRF-001", "DS-001"],
       "verification": [
         "DRF-001: 107 unit tests; 352 database assertions; 56 desktop/mobile journeys; 12 concurrent replay requests. See BUILD_LEDGER for scope."
       ],
-      "remaining": "Shared neutral visual language is retained. User usability acceptance remains."
+      "remaining": "Calendar, campaign and library patterns are unchanged. 2026-11-06 (DS-001): on the owner's request the visual language moved to docs/DESIGN.md (warm canvas, Newsreader/Geist/Geist Mono, one blue accent, 4px shapes); this changes colours, type and shape only, not layouts or workflows. User usability acceptance remains."
     },
     {
       "id": "ONB-005",
@@ -4190,9 +4190,12 @@
       "feature": "Readable controls and responsive layout",
       "priority": "P0",
       "acceptance": "Editor remains usable at agreed laptop/mobile widths and zoom.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["DS-001"],
+      "verification": [
+        "DS-001 (2026-11-06): pnpm verify (242 unit tests incl. token contrast/sync and default-theme tests, build); computed styles checked on /login, /signup and 404 at 1280px and 375px."
+      ],
+      "remaining": "DS-001 (2026-11-06): one 4px shape, AA-checked colour tokens (text 4.5:1, control outlines 3:1) and readable Geist UI type at 15px are applied app-wide; auth and error pages checked at 1280px and 375px without horizontal scroll. Remaining: shell, editor and table layouts at agreed laptop/mobile widths and 200% zoom (DS-002 to DS-005)."
     },
     {
       "id": "UX-019",

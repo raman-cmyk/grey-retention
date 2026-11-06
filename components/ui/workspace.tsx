@@ -12,7 +12,7 @@ export function PageHeading({
   return (
     <header className="mb-7 flex flex-wrap items-center justify-between gap-4">
       <div className="min-w-0 flex-1 basis-72">
-        <h1 className="text-2xl leading-tight font-semibold tracking-[-0.03em] break-words sm:text-3xl">
+        <h1 className="tracking-display font-[family-name:var(--font-display)] text-3xl leading-tight font-normal break-words sm:text-4xl">
           {title}
         </h1>
         <p className="mt-2 max-w-[72ch] text-sm leading-6 text-[var(--text-muted)]">
