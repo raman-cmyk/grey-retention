@@ -3,8 +3,9 @@ import { readFileSync } from 'node:fs'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { test, expect, type APIRequestContext } from '@playwright/test'
 
-// Runs last: the scheduled sweep is global, so it must not drain jobs that
-// earlier journeys deliberately leave queued for their own buttons.
+// Own Playwright project that depends on the desktop and mobile journeys:
+// the sweep is global, so it must not drain jobs that other journeys leave
+// queued for their own buttons.
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
 const options = { auth: { persistSession: false, autoRefreshToken: false } }
@@ -74,20 +75,32 @@ const sweep = (request: APIRequestContext, authorization?: string) =>
     headers: authorization ? { authorization } : {}
   })
 
+const localSecret = () => readFileSync('.audit/local-cron-secret.txt', 'utf8')
+const localAccounts = () =>
+  JSON.parse(readFileSync('.audit/local-accounts.json', 'utf8')) as Record<
+    string,
+    { email: string; password: string }
+  >
+const serviceClient = () =>
+  createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, options)
+
+/** Finishes work left by earlier journeys so this test's jobs are next in line. */
+async function drain(request: APIRequestContext, secret: string) {
+  for (let n = 0; n < 20; n++) {
+    const response = await sweep(request, `Bearer ${secret}`)
+    expect(response.status()).toBe(200)
+    if ((await response.json()).processed === 0) return
+  }
+  throw new Error('The queue did not drain within 20 sweeps.')
+}
+
 test('STAB-001 scheduled sweep finishes queued work once per job across workspaces', async ({
   request
-}, info) => {
-  test.skip(info.project.name.startsWith('mobile'), 'API journey; no layout')
+}) => {
   requireLocal()
-  const admin = createClient(
-    url,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    options
-  )
-  const accounts = JSON.parse(
-    readFileSync('.audit/local-accounts.json', 'utf8')
-  ) as Record<string, { email: string; password: string }>
-  const secret = readFileSync('.audit/local-cron-secret.txt', 'utf8')
+  const admin = serviceClient()
+  const accounts = localAccounts()
+  const secret = localSecret()
 
   // Unauthorized calls never run anything.
   expect((await sweep(request)).status()).toBe(401)
@@ -98,6 +111,7 @@ test('STAB-001 scheduled sweep finishes queued work once per job across workspac
   const owner = await signIn(accounts.owner!.email, accounts.owner!.password)
   const other = await signIn(accounts.other!.email, accounts.other!.password)
   expect(owner.tenant).not.toBe(other.tenant)
+  await drain(request, secret)
   const jobs = [
     await queueCopy(owner),
     await queueCopy(owner),
@@ -179,4 +193,87 @@ test('STAB-001 scheduled sweep finishes queued work once per job across workspac
       (await admin.from('job_runs').select('attempt').eq('id', job).single())
         .data
     ).toEqual({ attempt: 1 })
+})
+
+test('STAB-001 scheduled sweep retries failed jobs and recovers crashed workers', async ({
+  request
+}) => {
+  requireLocal()
+  const admin = serviceClient()
+  const accounts = localAccounts()
+  const secret = localSecret()
+  const owner = await signIn(accounts.owner!.email, accounts.owner!.password)
+  await drain(request, secret)
+  const retried = await queueCopy(owner),
+    crashed = await queueCopy(owner),
+    exhausted = await queueCopy(owner)
+  const past = new Date(Date.now() - 60_000).toISOString()
+  const setJob = async (id: string, values: Record<string, unknown>) =>
+    expect(
+      (await admin.from('job_runs').update(values).eq('id', id)).error
+    ).toBeNull()
+  // Attempt 1 failed with a temporary error, and its back-off has passed.
+  await setJob(retried.job, {
+    status: 'retry_wait',
+    attempt: 1,
+    failure_class: 'transient',
+    error_code: 'fixture_transient',
+    available_at: past
+  })
+  // A worker stopped in the middle of attempt 1; its lease has expired.
+  await setJob(crashed.job, {
+    status: 'running',
+    attempt: 1,
+    lease_token: randomUUID(),
+    lease_until: past
+  })
+  // The fourth and last attempt stopped the same way: no fifth try.
+  await setJob(exhausted.job, {
+    status: 'running',
+    attempt: 4,
+    lease_token: randomUUID(),
+    lease_until: past
+  })
+
+  const response = await sweep(request, `Bearer ${secret}`)
+  expect(response.status()).toBe(200)
+  expect(await response.json()).toMatchObject({ failed: 0 })
+
+  const state = async ({
+    job,
+    campaign
+  }: {
+    job: string
+    campaign: string
+  }) => {
+    const [run, content] = await Promise.all([
+      admin
+        .from('job_runs')
+        .select('status,attempt,error_code')
+        .eq('id', job)
+        .single(),
+      admin
+        .from('campaign_content')
+        .select('id', { count: 'exact', head: true })
+        .eq('campaign_id', campaign)
+        .eq('revision', 2)
+    ])
+    return { ...run.data, versions: content.count }
+  }
+  expect(await state(retried)).toMatchObject({
+    status: 'succeeded',
+    attempt: 2,
+    versions: 1
+  })
+  expect(await state(crashed)).toMatchObject({
+    status: 'succeeded',
+    attempt: 2,
+    versions: 1
+  })
+  expect(await state(exhausted)).toEqual({
+    status: 'failed',
+    attempt: 4,
+    error_code: 'stale_lease',
+    versions: 0
+  })
 })

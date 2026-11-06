@@ -32,12 +32,13 @@ export const separatelyDispatchedKinds = ['email.rewrite', 'email.import']
 export type ScheduledRun = {
   /** Workspaces visited at least once. */
   tenants: number
-  /** Jobs that finished (succeeded or recorded their outcome). */
+  /** Jobs that succeeded. Failed attempts are recorded on the job for retry. */
   processed: number
   /** Workspace visits that stopped on an error; their jobs stay queued. */
   failed: number
   /** Workspaces not reached in this request; the next request picks them up. */
   deferred: number
+  /** Passes over the workspace list that visited at least one workspace. */
   rounds: number
 }
 
@@ -50,7 +51,11 @@ export type SchedulerOptions = {
 
 const excludedKinds = `(${separatelyDispatchedKinds.map((k) => `"${k}"`).join(',')})`
 
-/** Workspaces with due or stale-leased jobs, oldest waiting work first. */
+/**
+ * Active workspaces with due or stale-leased jobs, oldest waiting work first.
+ * The active filter is part of the query, so waiting work is found however
+ * many workspaces exist.
+ */
 export async function tenantsWithDueJobs(
   db: Db,
   nowIso: string,
@@ -59,7 +64,8 @@ export async function tenantsWithDueJobs(
   const [due, stale] = await Promise.all([
     db
       .from('job_runs')
-      .select('tenant_id')
+      .select('tenant_id, tenants!inner(status)')
+      .eq('tenants.status', 'active')
       .in('status', ['queued', 'retry_wait'])
       .lt('attempt', 4)
       .lte('available_at', nowIso)
@@ -68,7 +74,8 @@ export async function tenantsWithDueJobs(
       .limit(scanRows),
     db
       .from('job_runs')
-      .select('tenant_id')
+      .select('tenant_id, tenants!inner(status)')
+      .eq('tenants.status', 'active')
       .in('status', ['leased', 'running'])
       .lt('lease_until', nowIso)
       .not('kind', 'in', excludedKinds)
@@ -119,14 +126,11 @@ export async function runScheduledJobs(
     .limit(limits.activeRows)
   if (active.error) throw active.error
   const activeIds = active.data.map((row) => row.id)
-  const isActive = new Set(activeIds)
-  const due = (
-    await tenantsWithDueJobs(
-      db,
-      new Date(started).toISOString(),
-      limits.scanRows
-    )
-  ).filter((id) => isActive.has(id))
+  const due = await tenantsWithDueJobs(
+    db,
+    new Date(started).toISOString(),
+    limits.scanRows
+  )
   const waiting = new Set(due)
   const candidates = [
     ...due,
@@ -144,13 +148,14 @@ export async function runScheduledJobs(
     outOfTime = false,
     pending = queue
   while (pending.length > 0 && rounds < limits.maxRounds && !outOfTime) {
-    rounds++
     const busy: string[] = []
+    let visits = 0
     for (const tenantId of pending) {
       if (now() - started >= limits.budgetMs) {
         outOfTime = true
         break
       }
+      if (visits++ === 0) rounds++
       visited.add(tenantId)
       try {
         const count = await run(db, tenantId, limits.jobsPerTenant)

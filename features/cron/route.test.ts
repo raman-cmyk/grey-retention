@@ -58,6 +58,13 @@ describe('GET /api/internal/jobs (scheduled sweep)', () => {
     expect(scheduler.runScheduledJobs).not.toHaveBeenCalled()
   })
 
+  it('checks the secret before revealing anything about configuration', async () => {
+    vi.stubEnv('ADAPTER_MODE', 'real')
+    service.createServiceClient.mockReturnValue(null)
+    expect((await GET(request('Bearer wrong'))).status).toBe(401)
+    expect(scheduler.runScheduledJobs).not.toHaveBeenCalled()
+  })
+
   it('refuses to run when live providers are configured', async () => {
     vi.stubEnv('ADAPTER_MODE', 'real')
     const response = await GET(request(`Bearer ${secret}`))

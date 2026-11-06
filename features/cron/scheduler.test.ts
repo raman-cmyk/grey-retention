@@ -80,6 +80,11 @@ describe('tenantsWithDueJobs', () => {
       ['lease_until', '2026-11-06T10:00:00.000Z']
     ])
     for (const call of calls) {
+      expect(call.ops).toContainEqual([
+        'select',
+        ['tenant_id, tenants!inner(status)']
+      ])
+      expect(call.ops).toContainEqual(['eq', ['tenants.status', 'active']])
       expect(call.ops).toContainEqual(['limit', [50]])
       expect(call.ops).toContainEqual([
         'not',
@@ -95,6 +100,10 @@ describe('tenantsWithDueJobs', () => {
   it('fails instead of guessing when the queue cannot be read', async () => {
     const { db } = fakeDb({ due: new Error('read failed') })
     await expect(tenantsWithDueJobs(db, 'x')).rejects.toThrow('read failed')
+    const stale = fakeDb({ stale: new Error('stale read failed') })
+    await expect(tenantsWithDueJobs(stale.db, 'x')).rejects.toThrow(
+      'stale read failed'
+    )
   })
 })
 
@@ -130,16 +139,22 @@ describe('runScheduledJobs', () => {
     expect(calls[0]!.ops).toContainEqual(['eq', ['status', 'active']])
   })
 
-  it('runs workspaces with waiting jobs first and skips inactive ones', async () => {
+  it('runs workspaces with waiting jobs first, then housekeeping for the rest', async () => {
     const { db } = fakeDb({
       tenants: ids('a', 'b', 'c'),
-      due: tenantRows('c', 'paused'),
+      due: tenantRows('c'),
       stale: tenantRows('b')
     })
     run.mockImplementation(async (_db, tenant) => (tenant === 'c' ? 2 : 1))
     const result = await runScheduledJobs(db, { run, random: () => 0 })
     expect(run.mock.calls.map(([, t]) => t)).toEqual(['c', 'b', 'a'])
     expect(result).toMatchObject({ tenants: 3, processed: 4, failed: 0 })
+  })
+
+  it('still visits a waiting workspace outside the active-workspace page', async () => {
+    const { db } = fakeDb({ tenants: ids('a'), due: tenantRows('z') })
+    await runScheduledJobs(db, { run, limits: { activeRows: 1 } })
+    expect(run.mock.calls.map(([, t]) => t)).toEqual(['z', 'a'])
   })
 
   it('gives busy workspaces extra rounds, bounded by maxRounds', async () => {
@@ -182,7 +197,26 @@ describe('runScheduledJobs', () => {
       limits: { budgetMs: 40_000 }
     })
     expect(run).toHaveBeenCalledTimes(3)
-    expect(result).toMatchObject({ tenants: 3, processed: 3, deferred: 1 })
+    expect(result).toMatchObject({
+      tenants: 3,
+      processed: 3,
+      deferred: 1,
+      rounds: 1
+    })
+  })
+
+  it('counts no round when the budget is already spent', async () => {
+    const { db } = fakeDb({ tenants: ids('a') })
+    const result = await runScheduledJobs(db, {
+      run,
+      now: (() => {
+        let t = 0
+        return () => (t += 50_000) - 50_000
+      })(),
+      limits: { budgetMs: 40_000 }
+    })
+    expect(run).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ tenants: 0, rounds: 0, deferred: 1 })
   })
 
   it('caps the number of workspaces per request', async () => {

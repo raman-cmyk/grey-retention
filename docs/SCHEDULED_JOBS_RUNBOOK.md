@@ -4,13 +4,13 @@ Background work — sample copy drafts, design renders, sample scheduling and ca
 
 ## How it works
 
-| Piece                                  | What it does                                                                                                        |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/internal/jobs`               | The worker. Needs `Authorization: Bearer <CRON_SECRET>`; anything else gets `401` and runs nothing.                 |
-| `.github/workflows/scheduled-jobs.yml` | Calls the worker every 10 minutes (minute 3, 13, 23 …). This is the frequent trigger.                               |
-| `vercel.json` cron                     | Calls the worker once a day (around 01:07 UTC). Vercel's Hobby plan allows only daily crons, so this is a backstop. |
-| `features/cron/scheduler.ts`           | Visits workspaces in bounded batches: waiting work first, then daily housekeeping for the rest.                     |
-| `POST /api/internal/jobs` (unchanged)  | Loopback-only test dispatch for one workspace; refused anywhere but a local fake stack.                             |
+| Piece                                  | What it does                                                                                                       |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/internal/jobs`               | The worker. Needs `Authorization: Bearer <CRON_SECRET>`; anything else gets `401` and runs nothing.                |
+| `.github/workflows/scheduled-jobs.yml` | Calls the worker every 10 minutes (minute 3, 13, 23 …) once switched on. This is the frequent trigger.             |
+| `vercel.json` cron                     | Calls the worker once a day, some time between 01:00 and 02:00 UTC (Hobby crons are not minute-exact). A backstop. |
+| `features/cron/scheduler.ts`           | Visits workspaces in bounded batches: waiting work first, then daily housekeeping for the rest.                    |
+| `POST /api/internal/jobs` (unchanged)  | Loopback-only test dispatch for one workspace; refused anywhere but a local fake stack.                            |
 
 One request visits at most 100 workspaces, claims at most 4 jobs per workspace per visit (up to 3 visits when a workspace still has more), and starts no new visit after 40 seconds (the route may run for 60). Workspaces it did not reach are reported as `deferred` and picked up by the next run.
 
@@ -20,8 +20,8 @@ The response contains counts only, for example `{"live":false,"tenants":3,"proce
 
 - **Fails closed.** No secret configured, a secret shorter than 32 characters, a wrong secret or a non-`Bearer` header → `401`. `ADAPTER_MODE=real` (or any value other than `fake`) → `503`: this worker only has sample (fixture) providers. Nothing talks to live Klaviyo, Shopify or email.
 - **No paid AI.** AI rewrites (`email.rewrite`) and uploaded-file imports (`email.import`) are never picked up. They keep their own resume path on the owner's page, so the scheduler cannot start or retry anything that costs real money.
-- **Safe to run twice at once.** Vercel and GitHub may overlap, and cron delivery is at-least-once. Each job is claimed under the workspace lock with one lease (`claim_job`, `for update skip locked`), retries stop after 4 attempts, stale leases are recovered, and daily housekeeping jobs have unique keys. The browser test `tests/e2e/zzz-scheduled-jobs.spec.ts` runs three sweeps at the same moment and checks every job ran exactly once.
-- **Paused workspaces are skipped.** Only `active` workspaces are visited; the database re-checks this on every claim.
+- **Safe to run twice at once.** Vercel and GitHub may overlap, and cron delivery is at-least-once. Each job is claimed under the workspace lock with one lease (`claim_job`, `for update skip locked`), retries stop after 4 attempts, stale leases are recovered, and daily housekeeping jobs have unique keys. The browser test `tests/e2e/scheduled-sweep.spec.ts` runs three sweeps at the same moment and checks every job ran exactly once. It also checks that a job whose retry wait has passed runs again (attempt 2), a job left by a crashed worker is picked up again (attempt 2), and a job that already used its fourth attempt is marked failed instead of tried a fifth time.
+- **Paused workspaces are skipped.** Only `active` workspaces are visited (waiting work is looked up with that filter in the same query); the database re-checks this on every claim.
 - **One broken workspace does not stop the others.** Its visit is counted in `failed`, logged with the workspace ID and error code (never a message or secret), and its jobs stay queued for the next run.
 
 ## Setup (Raman)
@@ -30,19 +30,21 @@ You need one random secret and you put the **same value** in two places. Do not 
 
 1. **Make the secret.** Use your password manager to generate a random password of at least 40 characters, letters and numbers only (no spaces or quotes).
 2. **Vercel:** Project `grey-retention-app` → Settings → Environment Variables → add `CRON_SECRET` with that value for **Production** → Save → redeploy (Deployments → latest → Redeploy) so the app sees it.
-3. **GitHub:** repository → Settings → Secrets and variables → Actions → **Secrets** tab → New repository secret → name `CRON_SECRET`, same value.
+3. **GitHub secret:** repository → Settings → Secrets and variables → Actions → **Secrets** tab → New repository secret → name `CRON_SECRET`, same value.
 4. **Turn on GitHub Actions** if it is still off: repository → Settings → Actions → General → "Allow all actions and reusable workflows" → Save. Without this neither CI nor the 10-minute schedule runs (the daily Vercel cron still does).
+5. **Switch the 10-minute schedule on** (read the cost note first): same page as step 3 → **Variables** tab → New repository variable → name `SCHEDULED_JOBS_ENABLED`, value `true`. Until this exists every scheduled run is skipped and uses no Actions minutes.
 
 ### Check it works
 
-- GitHub → Actions → **Scheduled jobs** → "Run workflow". The run log ends with a line like `{"live":false,"tenants":…}`. A red run shows the HTTP status (`401` = the two secrets differ; `503` = server setup).
+- GitHub → Actions → **Scheduled jobs** → "Run workflow". The run log ends with a line like `{"live":false,"tenants":…}`. A red run shows the reason: the secret is missing, `401` (the two secrets differ) or `503` (server setup). A yellow warning means some workspace visits stopped on an error; their jobs wait for the next run and the Vercel function logs show the error code.
 - Or queue some sample work (for example "Generate copy" on a campaign) and wait up to 10 minutes: the campaign moves on without pressing "Run fixture jobs".
 
 ### Pause or change
 
-- **Pause:** GitHub → Settings → Secrets and variables → Actions → **Variables** tab → add `SCHEDULED_JOBS_PAUSED` = `true`. Paused runs are skipped and use no Actions minutes. Delete the variable to resume.
-- **Different address** (for example a staging app): add the variable `SCHEDULED_JOBS_URL` with the full `…/api/internal/jobs` address.
+- **Pause:** GitHub → Settings → Secrets and variables → Actions → **Variables** tab → change `SCHEDULED_JOBS_ENABLED` to `false` (or delete it). Skipped runs use no Actions minutes. Set it back to `true` to resume. Queued work then waits for the daily Vercel run.
 - **Different frequency:** edit the `cron:` line in `.github/workflows/scheduled-jobs.yml`.
+- **Change the secret:** generate a new one, then update Vercel (and redeploy) and the GitHub secret one right after the other. Runs in between get `401` and do nothing; queued work simply waits for the next run.
+- The address is fixed to `https://grey-retention-app.vercel.app` and HTTPS only, so the secret is never sent anywhere else.
 
 ### Cost note
 
@@ -53,4 +55,5 @@ The repository is private, so GitHub Actions minutes count against the account a
 - The "Run fixture jobs" buttons still exist; hiding them from brand owners is STAB-002.
 - AI rewrites and file imports resume from the owner's page, not from the scheduler (by design, see Safety).
 - There is no admin screen for the last run's status, duration and errors yet (register item OPS-014); use the GitHub Actions run log or Vercel function logs.
-- More than 1,000 active workspaces would need cursor paging for housekeeping; waiting work is still found first.
+- With more than 1,000 active workspaces, daily housekeeping would need cursor paging; workspaces with waiting jobs are still found and visited first.
+- A workspace visit that starts just before the 40-second cut-off can run past Vercel's 60-second limit. If it is stopped mid-job, that job's lease is recovered on the next run and one of its four attempts is used.

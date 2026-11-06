@@ -2482,7 +2482,7 @@
       "status": "verified_fixture",
       "implementation_tasks": ["STAB-001"],
       "verification": [
-        "STAB-001 (2026-11-06): tests/e2e/zzz-scheduled-jobs.spec.ts fires three scheduled sweeps at the same moment against the local database; three queued copy jobs in two workspaces each finish once (attempt 1, one generated version). Claims use claim_job with the workspace lock and for update skip locked."
+        "STAB-001 (2026-11-06): tests/e2e/scheduled-sweep.spec.ts fires three scheduled sweeps at the same moment against the local database; three queued copy jobs in two workspaces each finish once (attempt 1, one generated version). Claims use claim_job with the workspace lock and for update skip locked."
       ],
       "remaining": "Not yet observed on the hosted app with live providers; GitHub Actions and CRON_SECRET must be configured for the schedule to run."
     },
