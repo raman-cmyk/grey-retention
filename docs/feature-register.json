@@ -613,13 +613,13 @@
       "feature": "Collapsible sidebar and account menu",
       "priority": "P1",
       "acceptance": "Navigation state and account actions remain accessible.",
-      "status": "verified_fixture",
+      "status": "partial",
       "implementation_tasks": ["UIR-002"],
       "verification": [
         "components/shell/shell-state.test.ts",
         "components/shell/sidebar.test.tsx"
       ],
-      "remaining": "Browser journey in tests/e2e/workspace-ui.spec.ts is updated for the new sidebar but was not run in the browser lane (no Docker here)."
+      "remaining": "Unit tests cover keyboard order, Escape, focus-out, rail focus and persistence. The browser journey in tests/e2e/workspace-ui.spec.ts is updated but has not run yet (no Docker in the browser lane)."
     },
     {
       "id": "CON-001",
@@ -3936,7 +3936,7 @@
       "status": "partial",
       "implementation_tasks": ["UIR-002"],
       "verification": ["components/shell/sidebar.test.tsx"],
-      "remaining": "Shown as a disabled SOON item in the sidebar Agents group (UI_REBUILD_SPEC.md §2); no capability behind it yet."
+      "remaining": "Agents › Bill Optimizer links to the fixture-only /optimizer page (local profile sweeps with owner approval); no live billing data."
     },
     {
       "id": "LEG-003",
@@ -4277,10 +4277,10 @@
       "feature": "No dead agent menus",
       "priority": "P0",
       "acceptance": "Unreleased capabilities stay out of primary operator navigation.",
-      "status": "partial",
-      "implementation_tasks": ["UIR-002"],
-      "verification": ["components/shell/sidebar.test.tsx"],
-      "remaining": "Old-app 1:1: the Agents group shows five SOON items, collapsed by default, never links, read as \"<name> — Coming soon\". Request a Feature and Profile Update are SOON until /feedback and /profile exist."
+      "status": "planned",
+      "implementation_tasks": [],
+      "verification": [],
+      "remaining": "Overridden for now by the M1.5 1:1 rebuild: the old app shows four unbuilt agents as SOON items in a collapsed Agents group (never links). Revisit after M1.5 (OWNER_JOURNEYS.md §2 suggests one \"Coming soon\" row)."
     },
     {
       "id": "UX-025",

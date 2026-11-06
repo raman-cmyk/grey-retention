@@ -102,7 +102,8 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
         icon: 'agents',
         items: [
           { label: 'List Health', icon: 'list-health', soon: true },
-          { label: 'Bill Optimizer', icon: 'bill', soon: true },
+          // A fixture-backed optimizer page exists, so this one is a link.
+          { label: 'Bill Optimizer', href: '/optimizer', icon: 'bill' },
           { label: 'Flow Audit', icon: 'flow-audit', soon: true },
           { label: 'Deliverability', icon: 'deliverability', soon: true },
           { label: 'A/B Test Monitor', icon: 'ab-test', soon: true }
@@ -116,7 +117,11 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
         items: [
           { label: 'Settings', href: '/settings', icon: 'settings' },
           // Holidays live on Settings until /holidays is built (§12).
-          { label: 'Holidays & Events', href: '/settings', icon: 'holidays' },
+          {
+            label: 'Holidays & Events',
+            href: '/settings#holidays',
+            icon: 'holidays'
+          },
           { label: 'Connections', href: '/connections', icon: 'connections' },
           { label: 'Team', href: '/team', icon: 'team' },
           // /feedback is built by the other lane (OWNER_JOURNEYS.md §15).
@@ -136,10 +141,7 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
           },
           { label: 'Copy review', href: '/copy-review', icon: 'copy' },
           { label: 'Assets', href: '/assets', icon: 'assets' },
-          { label: 'Results & learning', href: '/reports', icon: 'reports' },
-          // The old app shows Bill Optimizer as SOON under Agents; our fixture
-          // page stays reachable here until that agent is rebuilt.
-          { label: 'Bill optimizer', href: '/optimizer', icon: 'bill' }
+          { label: 'Results & learning', href: '/reports', icon: 'reports' }
         ]
       }
     ]
@@ -169,6 +171,8 @@ export const designerNavigation: ShellNavigation = {
 // Child pages highlight their parent area (OWNER_JOURNEYS.md §2 fix).
 const parentAreas: Record<string, readonly string[]> = {
   '/dashboard': ['/lists', '/segments', '/flows', '/flow-messages', '/metrics'],
+  // `/campaigns/:id` is today's local campaign review page, so it belongs to
+  // Campaigns; the Klaviyo campaign detail page (§4) will need its own path.
   '/campaign-agent': ['/campaigns', '/campaign-drafts', '/calendar']
 }
 

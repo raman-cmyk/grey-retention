@@ -42,7 +42,14 @@ export async function AppShell({
       contextLabel={contextLabel}
       workspaceName={workspace ?? presentation.workspaceName}
       identity={identity}
-      demo={process.env.AUTH_MODE === 'demo'}
+      demo={
+        process.env.AUTH_MODE === 'demo'
+          ? {
+              label: presentation.demoLabel,
+              description: presentation.demoDescription
+            }
+          : null
+      }
       initialState={parseShellState(store.get(shellCookieName)?.value)}
       style={brandCssVariables(presentation) as React.CSSProperties}
     >

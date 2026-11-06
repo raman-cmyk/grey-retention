@@ -68,7 +68,7 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 | DS-006 | Composer (paste email, Exact / Rebrand / Adapt) | DS-005 | review | Claude Code browser lane | pnpm verify; composer helper, action and component tests; preview at 1280/375px | Owns `features/composer/*`, `features/references/pasted-save.ts`, composer placement on the dashboard and setup, `preferred` marking on the choose page. Issue #45. |
 
-| UIR-002 | Old-app shell and shared components (spec §0, §2) | DS-006 | in_progress | Claude Code browser lane | Part 1 tokens merged (#252). Part 2 sidebar: pnpm verify; 22 shell tests; demo screenshots at 1280/375px | Owns `components/shell/*` (sidebar, rail, account menu, drawer, `gr_shell` cookie), `nav-data.ts` labels, the `outline` button and `pill` shape. Part 3 (shared components) still to do. Issue #238. |
+| UIR-002 | Old-app shell and shared components (spec §0, §2) | DS-006 | review | Claude Code browser lane | Part 1 tokens merged (#252). Part 2 sidebar: pnpm verify; 37 shell/identity tests; demo screenshots at 1280/375px; e2e updated, not run (no Docker) | Owns `components/shell/*` (sidebar, rail, account menu, drawer, `gr_shell` cookie), `nav-data.ts` labels, the `outline` button and `pill` shape. Part 3 (shared components) still to do. Issue #238. |
 
 ## Global decisions
 
@@ -76,7 +76,7 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 - M1.5 (2026-11-06): on Raman's instruction the old app is rebuilt 1:1 from `docs/UI_REBUILD_SPEC.md` before M2. New milestone "M1.5 Old-app UI rebuild" in `.github/project/roadmap.json` with work items UIR-002…UIR-014 (GitHub #238–#250, one per spec section). Lanes: browser §2, §3, §4, §6, §7; cloud §5, §8–§14. Branding stays from the design tokens; §0 layout facts (20px cards, 12px controls, sizes, 255/56px sidebar, outlined icons) override `docs/DESIGN.md` where they differ. DS-007 is parked. Each PR ticks its spec checkboxes and fixes the §15 bugs.
 - M1.5 additions (2026-11-06): from `docs/OWNER_JOURNEYS.md` (#253), seven more M1.5 work items: UIR-015 one campaign status system (#254), UIR-016 owner Approve step before Schedule (#255), UIR-017 drafts merged into Campaigns (#256), UIR-018 one "+ New" menu (#257), all browser lane; UIR-019 Team (#258), UIR-020 Request a Feature (#259), UIR-021 brand-mismatch guard (#260), all cloud lane. The editable Brand profile with "Redo with AI" stays inside UIR-005 (§5, cloud lane). The five owner jobs in the brief's §1 become Playwright journeys once their screens exist.
-- UIR-002 part 2 (2026-11-06): the workspace shell follows `docs/UI_REBUILD_SPEC.md` §2 for layout and `docs/OWNER_JOURNEYS.md` §2/§18 for behaviour and labels (the brief wins where they differ). The sidebar is 255px and collapses to a 56px icon rail. Collapse and group state live in the `gr_shell` cookie (`components/shell/shell-state.ts`; the server reads it, so the first paint is right). `ShellNavigation` is now `{ primary, groups }`, and groups can hold SOON items that are never links. Labels: "Campaigns" (was Campaign Agent), "Inspiration" (was Competitor Agent), Workspace = Settings, Holidays & Events, Connections, Team, Request a Feature. The account menu has Profile Update and Log out (no duplicate Connections). Child pages highlight their parent area (`isCurrentPath`). The header search ("Find a page") and the `status` / `workspaceLabel` shell props are removed. Temporary until the other lane's routes land: Holidays & Events → `/settings`, while Request a Feature and Profile Update show SOON. The Bill optimizer page stays reachable under More tools while Agents › Bill Optimizer stays SOON as in the old app.
+- UIR-002 part 2 (2026-11-06): the workspace shell follows `docs/UI_REBUILD_SPEC.md` §2 for layout and `docs/OWNER_JOURNEYS.md` §2/§18 for behaviour and labels (the brief wins where they differ). The sidebar is 255px and collapses to a 56px icon rail. Collapse and group state live in the `gr_shell` cookie (`components/shell/shell-state.ts`; the server reads it, so the first paint is right). `ShellNavigation` is now `{ primary, groups }`, and groups can hold SOON items that are never links. Labels: "Campaigns" (was Campaign Agent), "Inspiration" (was Competitor Agent), Workspace = Settings, Holidays & Events, Connections, Team, Request a Feature. The account menu has Profile Update and Log out (no duplicate Connections). Child pages highlight their parent area (`isCurrentPath`). The header search ("Find a page") and the `status` / `workspaceLabel` shell props are removed. Temporary until the other lane's routes land: Holidays & Events → `/settings#holidays`, while Request a Feature and Profile Update show SOON. Agents › Bill Optimizer links to the existing fixture `/optimizer` page (the other four agents stay SOON). The M1.5 1:1 rebuild overrides UX-024 (no dead agent menus) for now. `Button` gained an `outline` variant and a `shape` variant (`control` 12px default | `pill`); the radius moved from the base class into `shape`. `AppShell` is async (it reads the cookie), and `ShellFrame` takes `demo: { label, description } | null` from the brand presentation. `ShellIdentity` has `email`, read from the session only when its `sub` matches the request's user. `/campaigns/:id` (today's local campaign review) highlights Campaigns; the §4 Klaviyo campaign detail page will need its own path.
 - OWNER_JOURNEYS (2026-11-06): `docs/OWNER_JOURNEYS.md` (#253) is the behaviour brief. Every M1.5 screen is built to both it and the spec. The 20 decisions in its §18 win over the spec. Browser lane: status system, owner Approve step, drafts merged into Campaigns, "+ New" menu. Cloud lane: Brand profile, brand-mismatch guard, Team, Request a Feature, holidays.
 
 - DS-006 (2026-11-06): the composer (`features/composer/`) saves a paste through the same `savePastedReference` helper as the paste form (extracted from `importPastedReference` into server-only `features/references/pasted-save.ts`, messages unchanged) and redirects to `/create-email/{id}?mode=copy|rewrite`. The choose page only marks that outcome ("Your choice in the composer", primary button); it never starts a copy or rewrite by itself, so owner confirmation and paid-AI gates are unchanged. EXACT→copy, REBRAND→rewrite, ADAPT disabled with a reason. Subject comes from the HTML `<title>` or first readable line; a link-only paste is refused with an honest message. Composer is owner-only on the dashboard and the setup reference step; the existing Paste/Upload links stay.
@@ -576,3 +576,40 @@ Append entries using this exact shape:
 - Review: `code-reviewer` blocked on one denial-of-service risk, fixed: `composeEmail` checks the 100,000-character limit before any parsing, and the subject now comes from the upload parser's bounded `htmlTitle` (first 20,000 characters, bounded tag regex; a 1.2 MB hostile `<title` string runs in milliseconds, tested). Subjects are entity-decoded, stripped of control/invisible/bidi characters and clipped without splitting emoji (`cleanText`/`clipText`, now exported from `features/email-import/parse.ts`; subject logic lives in server-only `features/composer/subject.ts`). Also fixed: save failures carry a `reason` so the composer words them for its own fields (500-email limit, conflict keeps the text); Rebrand is disabled with a reason and Exact is the default when rewriting is not set up for the workspace, and the choose page makes Copy primary in that case; copy says the email is saved to the workspace now; oversized pastes are flagged instead of silently cut; Ctrl/⌘+Enter respects the pending and link state and is announced with `aria-keyshortcuts`; legend "What to make"; footer status "Not set up yet"; typed routes. New tests: subject (entities, invisible titles, emoji cut, hostile input), action (size before parse, limit wording), composer (rewrite off, oversized, link shortcut), setup step for staff, `/create-email` mode handling, `ChooseOutcome` marking without starting work.
 - Known issues: URLs cannot be read yet; Brand/Products/Footer are status links, not pickers; Adapt is not built (M4); dashboard owner-only placement has no unit test (overview has no test harness yet; e2e covers the page).
 - Next consumer: DS-007 (owner-facing copy sweep), then M2 onboarding.
+
+### 2026-11-06 — UIR-002 part 2 — old-app sidebar, rail and account menu
+
+- Status: review
+- Branch/worktree: `claude/uir-002-2-app-shell-and-shared-components` from `main` at `3c0c0db`. GitHub issue #238 (browser lane).
+- Commit(s): see the UIR-002 part 2 pull request.
+- Changed contracts:
+  - `ShellNavigation` is `{ primary, groups }`, and groups may hold SOON items.
+  - `AppShell` is async and drops the `status` and `workspaceLabel` props.
+  - `ShellFrame` and `ShellIdentity.email` are new.
+  - Collapse and group state live in the `gr_shell` cookie.
+  - `Button` has the `outline` variant and the `shape` variant.
+  - The header page search, `navigation-list` and `mobile-navigation` are removed.
+  - See the UIR-002 part 2 Global decision.
+- Migrations: none.
+- Verification run: `pnpm verify` (see PR for counts).
+  - New tests: workspace block; six primary pages and parent-area highlighting; SOON items that are never links; Workspace items; the group holding the current page opens without saving; the demo label.
+  - Rail: tooltips on hover and focus (Escape hides them); focus kept after expanding to a group; current-section cue; `aria-controls`; cookie persistence and safe parsing (including already-decoded values).
+  - Account menu: opens upward; Tab moves from the button into the menu; leaving it or pressing Escape closes it; outside click.
+  - Drawer opens and closes; skip link and main landmark; admin and designer shells; the session email only for the matching user.
+  - Demo screenshots at 1280px (expanded, rail with tooltip, account menu) and 375px (drawer): no horizontal scroll, no page errors.
+  - `test:e2e` not runnable here (no Docker); `smoke.spec.ts` and `workspace-ui.spec.ts` are updated for the new DOM, including a keyboard-only account menu path.
+- Review: `code-reviewer` blocked on the account menu focus order (it came before the button, so Tab skipped it) and on ACC-021 being marked verified without a browser run. Both are fixed: the menu now follows the button and closes when focus leaves, and ACC-021 is `partial`. Also fixed:
+  - focus after expanding the rail;
+  - the current page hidden inside a closed group or the rail;
+  - an undefined radius variable;
+  - the contradictory Bill Optimizer entries;
+  - UX-024 reported as progress (now `planned`, with a decision);
+  - the page-header outline pill now in use on Campaigns, and DESIGN.md updated;
+  - Holidays opens its own panel (`/settings#holidays`);
+  - the extra session-email risk (sub check plus tests);
+  - the drawer and frame tests;
+  - the demo label from the brand presentation;
+  - a `Secure` cookie on https;
+  - `aria-controls` on the toggle.
+- Known issues: the rail tooltip is not hoverable (WCAG 1.4.13); it repeats the icon's accessible name. "Request a Feature" and "Profile Update" are SOON until the cloud lane's `/feedback` and `/profile` exist. The `/competitor-agent` heading and the GROS panel still say "Competitor"; the cloud lane was told.
+- Next consumer: UIR-002 part 3 (shared components), then §3 Dashboard.

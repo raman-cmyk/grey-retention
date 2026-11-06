@@ -49,12 +49,16 @@ export type ShellIdentity = {
   role: string
 }
 
+/** Shown as a "Demo" pill while the app runs on demo sign-in. */
+export type ShellDemo = { label: string; description: string }
+
 type Mode = 'full' | 'rail' | 'drawer'
 
 const iconClass = 'size-5 shrink-0 stroke-[1.6]'
 
 function persist(state: ShellState) {
-  document.cookie = `${shellCookieName}=${serializeShellState(state)}; path=/; max-age=31536000; samesite=lax`
+  const secure = location.protocol === 'https:' ? '; secure' : ''
+  document.cookie = `${shellCookieName}=${serializeShellState(state)}; path=/; max-age=31536000; samesite=lax${secure}`
 }
 
 type RailTip = { label: string; top: number; left: number }
@@ -89,7 +93,7 @@ function RailTooltip({ tip }: { tip: RailTip }) {
       aria-hidden
       data-testid="rail-tooltip"
       style={{ top: tip.top, left: tip.left }}
-      className="pointer-events-none fixed z-50 -translate-y-1/2 rounded-[var(--radius-small)] bg-[var(--text)] px-2.5 py-1.5 text-xs font-medium whitespace-nowrap text-[var(--surface-raised)]"
+      className="pointer-events-none fixed z-50 -translate-y-1/2 rounded-sm bg-[var(--text)] px-2.5 py-1.5 text-xs font-medium whitespace-nowrap text-[var(--surface-raised)]"
     >
       {tip.label}
     </span>
@@ -162,7 +166,7 @@ function SoonItem({
   const Icon = navigationIcons[icon]
   return (
     <span
-      aria-disabled="true"
+      data-soon
       className={cn(
         rowClass,
         'cursor-not-allowed pl-9 text-[var(--text-faint)] opacity-70'
@@ -183,6 +187,9 @@ function Group({
   open,
   mode,
   currentHref,
+  holdsCurrent,
+  focusToggle,
+  onFocused,
   onToggle,
   onExpandTo,
   onNavigate
@@ -191,23 +198,38 @@ function Group({
   open: boolean
   mode: Mode
   currentHref: string | null
+  /** The current page is inside this group. */
+  holdsCurrent: boolean
+  /** Move focus to the toggle (after the rail expanded to this group). */
+  focusToggle: boolean
+  onFocused: () => void
   onToggle: () => void
   onExpandTo: () => void
   onNavigate?: () => void
 }) {
   const id = useId()
+  const toggle = useRef<HTMLButtonElement>(null)
   const Icon = navigationIcons[group.icon]
-  const tip = useRailTip(group.label, mode === 'rail')
-  if (mode === 'rail')
+  const rail = mode === 'rail'
+  const tip = useRailTip(group.label, rail)
+  useEffect(() => {
+    if (!rail && focusToggle) {
+      toggle.current?.focus()
+      onFocused()
+    }
+  }, [rail, focusToggle, onFocused])
+  if (rail)
     return (
       <button
         {...tip}
         type="button"
         onClick={onExpandTo}
-        aria-label={`${group.label}: expand the sidebar`}
+        data-current={holdsCurrent || undefined}
+        aria-label={`${group.label}${holdsCurrent ? ' (current section)' : ''}: expand the sidebar`}
         className={cn(
           rowClass,
-          'justify-center px-0 hover:bg-[var(--surface-hover)] hover:text-[var(--nav-text)]'
+          'justify-center px-0 hover:bg-[var(--surface-hover)] hover:text-[var(--nav-text)]',
+          'data-[current]:bg-[var(--surface-hover)] data-[current]:text-[var(--nav-text)] forced-colors:data-[current]:outline forced-colors:data-[current]:outline-1'
         )}
       >
         <Icon className={iconClass} aria-hidden />
@@ -216,6 +238,7 @@ function Group({
   return (
     <div>
       <button
+        ref={toggle}
         type="button"
         onClick={onToggle}
         aria-expanded={open}
@@ -293,7 +316,7 @@ function AccountLinks() {
   return (
     <>
       <span
-        aria-disabled="true"
+        data-soon
         className="flex min-h-10 cursor-not-allowed items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm text-[var(--text-faint)]"
       >
         <UserRound className="size-4" aria-hidden />
@@ -329,7 +352,7 @@ function Avatar({
       aria-hidden
       className={cn(
         'grid size-9 shrink-0 place-items-center bg-[var(--brand-primary)] text-sm font-semibold text-[var(--on-brand)]',
-        round ? 'rounded-full' : 'rounded-[var(--radius-small)]'
+        round ? 'rounded-full' : 'rounded-sm'
       )}
     >
       {letter}
@@ -356,28 +379,15 @@ function AccountMenu({
   const tip = useRailTip(identity.name, rail && !open)
   const letter = identity.initials.slice(0, 1) || identity.name.slice(0, 1)
   return (
-    <div ref={container} className="relative">
-      {open && (
-        <div
-          id={`${id}-menu`}
-          className={cn(
-            'absolute bottom-full z-30 mb-2 w-60 rounded-[var(--radius-control)] border border-[var(--line-strong)] bg-[var(--surface-raised)] p-2 shadow-[0_8px_24px_-12px_rgb(17_17_17/0.25)]',
-            rail ? 'left-0' : 'inset-x-0 w-auto'
-          )}
-        >
-          <div className="border-b border-[var(--line)] px-3 pt-2 pb-3">
-            <p className="text-sm font-semibold break-words">{identity.name}</p>
-            {identity.email && (
-              <p className="mt-0.5 text-xs break-all text-[var(--text-muted)]">
-                {identity.email}
-              </p>
-            )}
-          </div>
-          <div className="pt-1">
-            <AccountLinks />
-          </div>
-        </div>
-      )}
+    <div
+      ref={container}
+      className="relative"
+      onBlur={(event) => {
+        // Tabbing out of the menu closes it (focus stays where it went).
+        const next = event.relatedTarget as Node | null
+        if (open && next && !container.current?.contains(next)) close(false)
+      }}
+    >
       <button
         {...tip}
         ref={trigger}
@@ -411,6 +421,28 @@ function AccountMenu({
           </>
         )}
       </button>
+      {/* After the button, so Tab moves from the button into the menu. */}
+      {open && (
+        <div
+          id={`${id}-menu`}
+          className={cn(
+            'absolute bottom-full z-30 mb-2 w-60 rounded-[var(--radius-control)] border border-[var(--line-strong)] bg-[var(--surface-raised)] p-2 shadow-[0_8px_24px_-12px_rgb(17_17_17/0.25)]',
+            rail ? 'left-0' : 'inset-x-0 w-auto'
+          )}
+        >
+          <div className="border-b border-[var(--line)] px-3 pt-2 pb-3">
+            <p className="text-sm font-semibold break-words">{identity.name}</p>
+            {identity.email && (
+              <p className="mt-0.5 text-xs break-all text-[var(--text-muted)]">
+                {identity.email}
+              </p>
+            )}
+          </div>
+          <div className="pt-1">
+            <AccountLinks />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -432,7 +464,7 @@ function SidebarContent({
   contextLabel: string
   workspaceName: string
   identity: ShellIdentity
-  demo: boolean
+  demo: ShellDemo | null
   state: ShellState
   onState: (state: ShellState) => void
   onNavigate?: () => void
@@ -441,10 +473,28 @@ function SidebarContent({
   const pathname = usePathname()
   const rail = mode === 'rail'
   const hideTip = useContext(RailTipContext)?.hide
+  const navId = useId()
   const currentHref =
     navigationLinks(navigation).find((item) =>
       isCurrentPath(pathname, item.href)
     )?.href ?? null
+  const currentGroup =
+    navigation.groups.find((group) =>
+      group.items.some((item) => !isSoon(item) && item.href === currentHref)
+    )?.id ?? null
+  // The group holding the current page opens on each new page, unless the
+  // owner toggles it here; that choice is still saved as usual.
+  const [toggledHere, setToggledHere] = useState<{
+    pathname: string
+    ids: string[]
+  }>({ pathname, ids: [] })
+  const [focusGroup, setFocusGroup] = useState<string | null>(null)
+  const clearFocusGroup = useCallback(() => setFocusGroup(null), [])
+  const isOpen = (group: NavigationGroup) =>
+    group.id === currentGroup &&
+    !(toggledHere.pathname === pathname && toggledHere.ids.includes(group.id))
+      ? true
+      : groupOpen(state, group.id, group.defaultOpen)
   const letter = workspaceName.trim().slice(0, 1).toUpperCase() || 'W'
   const toggleTip = useRailTip('Expand sidebar', rail)
   return (
@@ -464,8 +514,14 @@ function SidebarContent({
             <p className="flex items-center gap-2 truncate text-sm font-semibold text-[var(--nav-text)]">
               <span className="truncate">{workspaceName}</span>
               {demo && (
-                <span className="tracking-label rounded-full border border-[var(--line-strong)] px-1.5 py-0.5 font-mono text-[0.625rem] leading-none text-[var(--text-muted)] uppercase">
-                  Demo
+                <span
+                  title={`${demo.label}: ${demo.description}`}
+                  className="tracking-label shrink-0 rounded-full border border-[var(--line-strong)] px-1.5 py-0.5 font-mono text-[0.625rem] leading-none text-[var(--text-muted)] uppercase"
+                >
+                  <span aria-hidden>Demo</span>
+                  <span className="sr-only">
+                    {demo.label}: {demo.description}
+                  </span>
                 </span>
               )}
             </p>
@@ -489,6 +545,7 @@ function SidebarContent({
             type="button"
             aria-label="Toggle sidebar"
             aria-expanded={!rail}
+            aria-controls={navId}
             onClick={() => onState({ ...state, collapsed: !rail })}
             className="group relative grid size-8 place-items-center rounded-[var(--radius-control)] text-[var(--nav-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--nav-text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
           >
@@ -501,6 +558,7 @@ function SidebarContent({
         )}
       </div>
       <nav
+        id={navId}
         onScroll={hideTip}
         aria-label={`${contextLabel} ${mode === 'drawer' ? 'mobile navigation' : 'navigation'}`}
         className={cn(
@@ -524,25 +582,33 @@ function SidebarContent({
           <Group
             key={group.id}
             group={group}
-            open={groupOpen(state, group.id, group.defaultOpen)}
+            open={isOpen(group)}
             mode={mode}
             currentHref={currentHref}
+            holdsCurrent={group.id === currentGroup}
+            focusToggle={focusGroup === group.id}
+            onFocused={clearFocusGroup}
             onNavigate={onNavigate}
-            onToggle={() =>
+            onToggle={() => {
+              setToggledHere((previous) => ({
+                pathname,
+                ids: [
+                  ...(previous.pathname === pathname ? previous.ids : []),
+                  group.id
+                ]
+              }))
               onState({
                 ...state,
-                groups: {
-                  ...state.groups,
-                  [group.id]: !groupOpen(state, group.id, group.defaultOpen)
-                }
+                groups: { ...state.groups, [group.id]: !isOpen(group) }
               })
-            }
-            onExpandTo={() =>
+            }}
+            onExpandTo={() => {
+              setFocusGroup(group.id)
               onState({
                 collapsed: false,
                 groups: { ...state.groups, [group.id]: true }
               })
-            }
+            }}
           />
         ))}
       </nav>
@@ -596,7 +662,7 @@ export function ShellFrame({
   contextLabel: string
   workspaceName: string
   identity: ShellIdentity
-  demo: boolean
+  demo: ShellDemo | null
   initialState: ShellState
   style?: React.CSSProperties
   children: ReactNode

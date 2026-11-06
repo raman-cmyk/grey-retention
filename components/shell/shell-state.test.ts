@@ -10,6 +10,12 @@ describe('shell state cookie', () => {
     expect(parseShellState(serializeShellState(state))).toEqual(state)
   })
 
+  it('reads the value whether or not the framework already decoded it', () => {
+    const state = { collapsed: false, groups: { more: true } }
+    const raw = serializeShellState(state)
+    expect(parseShellState(decodeURIComponent(raw))).toEqual(state)
+  })
+
   it('falls back safely on missing, broken or oversized values', () => {
     const empty = { collapsed: false, groups: {} }
     expect(parseShellState(undefined)).toEqual(empty)

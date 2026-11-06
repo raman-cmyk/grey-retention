@@ -73,13 +73,13 @@ Not crawled (needs a logged-out or admin session): login, signup, onboarding, pa
   - Support
   - Child pages highlight their parent area: detail pages → Dashboard, `/campaign-drafts*` → Campaigns (OWNER_JOURNEYS.md §2 fix).
 - [x] Divider after the nav items.
-- [x] Collapsible group **Agents** (robot icon, chevron). Its children are disabled, greyed, and each has a `SOON` pill. They are not clickable. Screen readers hear "<name> — Coming soon".
+- [x] Collapsible group **Agents** (robot icon, chevron). Its children are disabled, greyed, and each has a `SOON` pill. They are not clickable. Screen readers hear "<name> — Coming soon". Exception: Bill Optimizer links to the fixture optimizer page this app already has.
   - List Health
   - Bill Optimizer
   - Flow Audit
   - Deliverability
   - A/B Test Monitor
-- [x] Collapsible group **Workspace** (briefcase icon): Settings, Holidays & Events, Connections, plus Team and Request a Feature (OWNER_JOURNEYS.md §2). Holidays & Events opens `/settings` until §12 builds `/holidays`. Request a Feature is SOON until `/feedback` exists.
+- [x] Collapsible group **Workspace** (briefcase icon): Settings, Holidays & Events, Connections, plus Team and Request a Feature (OWNER_JOURNEYS.md §2). Holidays & Events opens `/settings#holidays` until §12 builds `/holidays`. Request a Feature is SOON until `/feedback` exists.
 - [x] Each group's open/closed state persists across page loads.
 - [x] Bottom account button: round avatar letter, name (bold), email (muted), up/down chevron. Clicking it opens the account menu.
 - [x] Account menu is a popover that opens upward:

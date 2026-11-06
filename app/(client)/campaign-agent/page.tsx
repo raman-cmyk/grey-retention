@@ -26,7 +26,7 @@ export default async function CampaignAgentPage({
         description="Shape the month, review each campaign, and keep every approval tied to the right version."
         action={
           data && (
-            <Button asChild>
+            <Button asChild variant="outline" shape="pill">
               <a href="#create-campaign">
                 <Plus className="size-4" aria-hidden="true" />
                 New campaign

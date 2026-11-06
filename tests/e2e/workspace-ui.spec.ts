@@ -39,14 +39,19 @@ test('workspace sidebar, account menu and mobile drawer work with keyboard and s
     await expect(page.getByTestId('rail-tooltip')).toHaveText('Dashboard')
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    // The open Agents group survived the reload.
+    await expect(agents).toHaveAttribute('aria-expanded', 'true')
 
+    // Keyboard only: open the menu, Tab into it, Escape returns to the button.
     const account = page.getByRole('button', { name: /^Open account menu/ })
-    await account.click()
+    await account.focus()
+    await page.keyboard.press('Enter')
     const logOut = page
-      .locator(`#${await account.getAttribute('aria-controls')}`)
+      .locator(`[id="${await account.getAttribute('aria-controls')}"]`)
       .getByRole('button', { name: 'Log out', exact: true })
     await expect(logOut).toBeVisible()
-    await logOut.focus()
+    await page.keyboard.press('Tab')
+    await expect(logOut).toBeFocused()
     await page.keyboard.press('Escape')
     await expect(account).toBeFocused()
     await expect(logOut).not.toBeVisible()
