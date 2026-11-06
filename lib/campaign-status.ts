@@ -27,7 +27,7 @@ export const campaignStatuses = {
   needs_approval: {
     label: 'Needs your approval',
     tone: 'warning',
-    meaning: 'Waiting for you to approve it before it can be scheduled.'
+    meaning: 'Waiting for you: approve it, then schedule it.'
   },
   scheduled: {
     label: 'Scheduled',

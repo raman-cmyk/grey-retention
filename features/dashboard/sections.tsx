@@ -9,6 +9,7 @@ import {
 import type { Route } from 'next'
 import Link from 'next/link'
 import { Card } from '@/components/ui/card'
+import { StatusPill } from '@/components/ui/pill'
 import {
   formatBrandDateTime,
   relativeTime,
@@ -367,6 +368,7 @@ export function CalendarMiniCard({
                     {formatBrandDateTime(send.at, timezone)}
                   </p>
                 </div>
+                <StatusPill status={send.status} />
                 {send.source === 'klaviyo' && (
                   <span className="tracking-label rounded-full bg-[var(--brand-soft)] px-2 py-0.5 text-[0.6875rem] font-semibold text-[var(--brand-ink)] uppercase">
                     Klaviyo

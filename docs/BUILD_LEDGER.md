@@ -81,6 +81,7 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 | UIR-005 | Old-app rebuild §5 Brand & Store (part 1: Brand profile, Store empty state) | UIR-013 | review | Claude Code cloud lane | pnpm verify; 50 unit tests in features/brand-profile; 67 pgTAP for brand sections; brand-profile journeys desktop+mobile, staff, 375px keyboard | Owns `features/brand-profile/*`, `features/brand/catalogue-panels.tsx`, `app/(client)/brand/page.tsx`, `/brand/voice`, `/store`, migrations `20260914090018` and `20260914090019`, their pgTAP file and generated types. Needs migrations 20260914090018 then 20260914090019 on production, after 20260914090017. Store dashboard and AI-credits indicator still open. |
 
 | UIR-014 | Old-app rebuild §14 Profile | UIR-002 | review | Claude Code cloud lane | pnpm verify; features/profile and components/shell 58/58; profile_update pgTAP 7/7; profile journeys desktop+mobile, 375px keyboard; workspace-ui journeys | Owns `features/profile/*`, `app/(client)/profile/page.tsx`, `tests/e2e/profile.spec.ts`, `supabase/tests/profile_update.test.sql`; narrow shared edits: `ShellNavigation.profileHref` (client only) and the account menu/drawer link (sidebar.tsx + tests), `lib/supabase/stateless.ts`, `/profile` in `proxy.ts`. No migration. |
+| UIR-015 | One campaign status system | UIR-002 | review | Claude Code browser lane | pnpm verify; status derivation tests for every state; calendar, list and dashboard show the one pill | Owns `features/campaigns/status.ts` (`campaignStatusOf`, `hasDeliveryProblem`) and the status pills on the calendar, the Your campaigns list and the dashboard mini calendar. Issue #254. |
 
 ## Global decisions
 
@@ -147,6 +148,17 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
   - The port also carries `sendStrategy` and flow-wait `daysOfWeek`, so nothing claims "Static" or "any day" without data. `FlowMessage.delay` is removed.
   - The sidebar picks the most specific match (`currentNavigationHref`), whatever the nav order.
   - `proxy.ts` matches the new Klaviyo detail routes (`/campaigns/klaviyo`, `/lists`, `/segments`, `/flows`, `/flow-messages`, `/metrics`), so a detail page opened in a new tab refreshes its session. An earlier version matched every signed-in page; the browser journeys on the server-action-heavy pages (campaign workflow, references) then failed twice, so those pages stay out of the proxy until that is proven safe. This is a foundation-config change, recorded here.
+
+- UIR-015 (2026-11-06): every campaign shows ONE status, derived by `features/campaigns/status.ts` from the real state machine and never picked by hand. The order of checks:
+  1. Sent or Cancelled (delivery; a rejected calendar entry is Cancelled too);
+  2. Scheduled (queued … scheduled, reconciling);
+  3. Missed (time passed before scheduling);
+  4. With designer (assigned, revisions requested);
+  5. Needs your approval (calendar entry, copy, a delivered design, or copy and design approved and waiting for the owner's approve-and-schedule);
+  6. otherwise Draft.
+
+  Replaced plan entries show "Replaced", and failed or blocked deliveries add a "Delivery problem" pill. The calendar's old Approved / Needs review / Rejected words and the raw "Copy draft · Delivery not ready" line are gone.
+
 - DS-006 (2026-11-06): the composer (`features/composer/`) saves a paste through the same `savePastedReference` helper as the paste form (extracted from `importPastedReference` into server-only `features/references/pasted-save.ts`, messages unchanged) and redirects to `/create-email/{id}?mode=copy|rewrite`. The choose page only marks that outcome ("Your choice in the composer", primary button); it never starts a copy or rewrite by itself, so owner confirmation and paid-AI gates are unchanged. EXACT→copy, REBRAND→rewrite, ADAPT disabled with a reason. Subject comes from the HTML `<title>` or first readable line; a link-only paste is refused with an honest message. Composer is owner-only on the dashboard and the setup reference step; the existing Paste/Upload links stay.
 
 - STAB-001 (2026-11-06): `GET /api/internal/jobs` is the scheduled worker. It requires `Authorization: Bearer CRON_SECRET` (existing env contract, unchanged; checked before anything else), runs only when `ADAPTER_MODE` is `fake` or unset, and visits workspaces through the existing `runFixtureJobs` path in bounded batches (≤100 workspaces, ≤4 jobs per visit, ≤3 visits, no new visit after 40 s, `maxDuration` 60). Workspaces with due or stale-leased jobs go first (the active-workspace filter is part of that query); the other active workspaces get daily housekeeping in random order. `email.rewrite` and `email.import` are never dispatched by the scheduler, so it cannot start or retry paid AI. Service-role reads of `tenants` and `job_runs` select IDs only; every claim still goes through `claim_job`/`worker_access`. The former `GET` 405 response is replaced by this handler; `POST` loopback dispatch is unchanged. Triggers: Vercel cron daily (Hobby limit) plus a GitHub Actions schedule every 10 minutes with the repository secret `CRON_SECRET`, fixed to the production HTTPS address and off until the repository variable `SCHEDULED_JOBS_ENABLED` is `true` (skipped runs use no Actions minutes; about 4,400 minutes a month when on). Shared config: `playwright.config.ts` gains a `scheduled-sweep` project that depends on the desktop and mobile projects, because the sweep drains every workspace's queue. See `docs/SCHEDULED_JOBS_RUNBOOK.md`.
@@ -887,3 +899,18 @@ Append entries using this exact shape:
 - Review: code-reviewer found admin/designer links to a client-only page and menus left open (blocking), plus proxy matcher, byte limit, error mapping, thin route and test gaps; all fixed as above.
 - Known issues: the current-password check guards the form but is not a security boundary while Supabase "secure password change" is off (`supabase/config.toml`; hosted setting not verified): a holder of the session could call Auth directly. Turning it on needs reauthentication handling (follow-up). Phone numbers are visible to teammates (existing RLS). Length limits are app-side only (no database checks; IAM follow-up). Admin and designer surfaces have no profile page yet.
 - Next consumer: none.
+
+### 2026-11-06 — UIR-015 — one campaign status system
+
+- Status: review
+- Branch/worktree: `claude/uir-015-one-campaign-status-system` from `main` at `c498052`. GitHub issue #254 (browser lane).
+- Commit(s): see the UIR-015 pull request.
+- Changed contracts: new `features/campaigns/status.ts`; `CalendarCampaign` includes `design_state`; `UpcomingSend` has `status`; the "Needs your approval" meaning is now "Waiting for you: approve it, then schedule it." See the UIR-015 Global decision.
+- Migrations: none (derived from existing columns).
+- Verification run: `pnpm verify` (see PR for counts).
+  - Status tests: Draft; every owner-approval case, including text versus design emails; With designer; every Scheduled delivery state; Sent only when confirmed; Cancelled; Missed, with scheduled and sent winning over the clock; replaced plans; delivery problems.
+  - Calendar, list, Your campaigns and dashboard mini calendar show the pill.
+  - `test:e2e` not runnable here; no e2e asserts the old words.
+- Review: see the UIR-015 pull request.
+- Known issues: the status is shown, but its filters arrive with the §6 planner toolbar. The real owner Approve step is UIR-016.
+- Next consumer: UIR-006 §6 planner (filters and chips), UIR-016 Approve step.

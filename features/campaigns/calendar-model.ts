@@ -10,6 +10,7 @@ export type CalendarCampaign = Pick<
   | 'calendar_revision'
   | 'calendar_state'
   | 'copy_state'
+  | 'design_state'
   | 'delivery_state'
   | 'synthetic'
   | 'superseded_by_plan'

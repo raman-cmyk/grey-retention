@@ -113,7 +113,12 @@ describe('dashboard model', () => {
       'Later local'
     ])
     expect(sends[0].href).toBe('/campaigns/b')
-    expect(sends[1]).toMatchObject({ source: 'klaviyo', href: null })
+    expect(sends[1]).toMatchObject({
+      source: 'klaviyo',
+      href: null,
+      status: 'scheduled'
+    })
+    expect(sends[0].status).toBe('draft')
   })
 
   it('words the countdown plainly, with a date beyond a month', () => {

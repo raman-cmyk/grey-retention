@@ -21,6 +21,7 @@ function campaign(
     calendar_revision: 1,
     calendar_state: 'proposed',
     copy_state: 'draft',
+    design_state: 'unassigned',
     delivery_state: 'not_ready',
     synthetic: true,
     superseded_by_plan: null,

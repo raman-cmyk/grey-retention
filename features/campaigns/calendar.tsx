@@ -4,8 +4,10 @@ import { ChevronLeft, ChevronRight, CalendarDays, List } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Notice } from '@/components/ui/workspace'
 import { StatusMark } from '@/components/ui/status-mark'
+import { Pill, StatusPill } from '@/components/ui/pill'
 import { cn } from '@/lib/utils'
 import { controlClass } from '@/components/ui/control'
+import { campaignStatusOf, hasDeliveryProblem } from './status'
 import {
   buildCampaignCalendar,
   type CalendarCampaign,
@@ -27,18 +29,29 @@ function calendarHref(month: string, view: CalendarView) {
   return `/campaign-agent?m=${month}&view=${view}` as Route
 }
 
-function calendarStatus(campaign: CalendarCampaign) {
-  if (campaign.superseded_by_plan)
-    return { label: 'Superseded', tone: 'neutral' } as const
-  if (campaign.calendar_state === 'approved')
-    return { label: 'Approved', tone: 'active' } as const
-  if (campaign.calendar_state === 'rejected')
-    return { label: 'Rejected', tone: 'danger' } as const
-  return { label: 'Needs review', tone: 'warning' } as const
-}
-
-function displayState(state: string) {
-  return state.replaceAll('_', ' ')
+/** The one campaign status (UIR-015), or "Replaced" for history entries. */
+function CampaignStatusPill({
+  campaign,
+  compact = false
+}: {
+  campaign: CalendarCampaign
+  compact?: boolean
+}) {
+  const status = campaignStatusOf(campaign)
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      {status ? (
+        <StatusPill status={status} />
+      ) : (
+        <Pill title="A newer plan replaced this entry.">Replaced</Pill>
+      )}
+      {hasDeliveryProblem(campaign) && (
+        <Pill tone="danger" title="Delivery stopped with an error.">
+          {compact ? 'Problem' : 'Delivery problem'}
+        </Pill>
+      )}
+    </span>
+  )
 }
 
 function CampaignCard({
@@ -50,7 +63,6 @@ function CampaignCard({
   timezone: string
   compact?: boolean
 }) {
-  const status = calendarStatus(campaign)
   return (
     <Link
       href={`/campaigns/${campaign.id}` as Route}
@@ -83,21 +95,14 @@ function CampaignCard({
         {campaign.title}
       </h3>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <StatusMark
-          tone={status.tone}
-          variant="text"
-          className={compact ? 'min-h-5 text-[0.6875rem]' : undefined}
-        >
-          {status.label}
-        </StatusMark>
+        <CampaignStatusPill campaign={campaign} compact={compact} />
         <span className="text-[0.65rem] text-[var(--text-muted)]">
           v{campaign.calendar_revision}
         </span>
       </div>
       {!compact && (
         <p className="mt-2 text-xs leading-5 text-[var(--text-muted)]">
-          Copy {displayState(campaign.copy_state)} · Delivery{' '}
-          {displayState(campaign.delivery_state)}
+          {campaign.channel === 'email_design' ? 'Design email' : 'Text email'}
           {campaign.synthetic && ' · Synthetic demo'}
         </p>
       )}
@@ -247,7 +252,6 @@ function CampaignList({
       aria-label="Campaign list"
     >
       {campaigns.map((campaign) => {
-        const status = calendarStatus(campaign)
         return (
           <li key={campaign.id}>
             <Link
@@ -281,16 +285,12 @@ function CampaignList({
                 <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
                   {campaign.channel === 'email_design'
                     ? 'Design email'
-                    : 'Text email'}{' '}
-                  · Copy {displayState(campaign.copy_state)} · Delivery{' '}
-                  {displayState(campaign.delivery_state)}
+                    : 'Text email'}
                   {campaign.synthetic && ' · Synthetic demo'}
                 </p>
               </div>
               <div className="flex items-center gap-2 sm:justify-end">
-                <StatusMark tone={status.tone} variant="text">
-                  {status.label}
-                </StatusMark>
+                <CampaignStatusPill campaign={campaign} />
                 <span className="text-xs text-[var(--text-muted)]">
                   v{campaign.calendar_revision}
                 </span>

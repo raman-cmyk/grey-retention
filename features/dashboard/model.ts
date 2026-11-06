@@ -1,5 +1,7 @@
 import type { Route } from 'next'
 import type { OverviewCampaign } from '@/features/campaigns/overview-model'
+import { campaignStatusOf } from '@/features/campaigns/status'
+import type { CampaignStatus } from '@/lib/campaign-status'
 import {
   formatCount,
   formatMoney,
@@ -124,6 +126,8 @@ export type UpcomingSend = {
   at: string
   source: 'workspace' | 'klaviyo'
   href: `/campaigns/${string}` | null
+  /** The one campaign status (UIR-015). */
+  status: CampaignStatus
 }
 
 /**
@@ -151,7 +155,8 @@ export function upcomingSends(
       name: c.title,
       at: c.planned_at,
       source: 'workspace',
-      href: `/campaigns/${c.id}` as const
+      href: `/campaigns/${c.id}` as const,
+      status: campaignStatusOf(c, now) ?? 'draft'
     }))
   const klaviyo: UpcomingSend[] = snapshot
     ? upcomingKlaviyoCampaigns(snapshot, now).map((c) => ({
@@ -159,7 +164,8 @@ export function upcomingSends(
         name: c.name,
         at: c.sendTime!,
         source: 'klaviyo',
-        href: null
+        href: null,
+        status: 'scheduled' as const
       }))
     : []
   return [...local, ...klaviyo].sort(

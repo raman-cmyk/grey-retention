@@ -7,7 +7,8 @@ import type { Route } from 'next'
 import { ArrowRight, Check, Plus, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Panel, Notice } from '@/components/ui/workspace'
-import { StatusMark } from '@/components/ui/status-mark'
+import { Pill, StatusPill } from '@/components/ui/pill'
+import { campaignStatusOf, hasDeliveryProblem } from './status'
 import { StatGrid, StatTile } from '@/components/ui/stat-tile'
 import {
   campaignNextStep,
@@ -56,6 +57,19 @@ export function CampaignStages({ campaign }: { campaign: OverviewCampaign }) {
         </li>
       ))}
     </ol>
+  )
+}
+
+/** The one campaign status (UIR-015), plus a delivery problem if any. */
+function CampaignPill({ campaign }: { campaign: OverviewCampaign }) {
+  const status = campaignStatusOf(campaign)
+  return (
+    <span className="inline-flex flex-wrap justify-end gap-1.5">
+      {status ? <StatusPill status={status} /> : <Pill>Replaced</Pill>}
+      {hasDeliveryProblem(campaign) && (
+        <Pill tone="danger">Delivery problem</Pill>
+      )}
+    </span>
   )
 }
 
@@ -275,7 +289,6 @@ export function CampaignOverview({
             <div className="divide-y divide-[var(--line)]">
               {shown.map((c) => {
                 const planned = new Date(c.planned_at),
-                  review = campaignReview(c),
                   next = campaignNextStep(c)
                 return (
                   <Link
@@ -313,21 +326,12 @@ export function CampaignOverview({
                       <CampaignStages campaign={c} />
                     </div>
                     <div className="flex items-center justify-between gap-3 sm:justify-end">
-                      <StatusMark
-                        tone={
-                          ['failed', 'blocked', 'reconciling'].includes(
-                            c.delivery_state
-                          )
-                            ? 'danger'
-                            : review
-                              ? 'warning'
-                              : c.delivery_state === 'scheduled'
-                                ? 'active'
-                                : 'neutral'
-                        }
-                      >
-                        {next}
-                      </StatusMark>
+                      <span className="flex flex-col items-end gap-1 text-right">
+                        <CampaignPill campaign={c} />
+                        <span className="text-xs text-[var(--text-muted)]">
+                          Next: {next}
+                        </span>
+                      </span>
                       <ArrowRight
                         className="size-4 text-[var(--text-faint)]"
                         aria-hidden
