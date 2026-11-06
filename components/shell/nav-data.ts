@@ -116,12 +116,7 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
         defaultOpen: true,
         items: [
           { label: 'Settings', href: '/settings', icon: 'settings' },
-          // Holidays live on Settings until /holidays is built (§12).
-          {
-            label: 'Holidays & Events',
-            href: '/settings#holidays',
-            icon: 'holidays'
-          },
+          { label: 'Holidays & Events', href: '/holidays', icon: 'holidays' },
           { label: 'Connections', href: '/connections', icon: 'connections' },
           { label: 'Team', href: '/team', icon: 'team' },
           // /feedback is built by the other lane (OWNER_JOURNEYS.md §15).

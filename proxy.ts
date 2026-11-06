@@ -44,6 +44,7 @@ export const config = {
     '/competitor-agent/:path*',
     '/connections/:path*',
     '/gros/:path*',
+    '/holidays/:path*',
     '/onboarding/:path*',
     '/settings/:path*',
     '/support/:path*',

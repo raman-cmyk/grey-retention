@@ -1,10 +1,6 @@
 import { PageHeading } from '@/components/ui/workspace'
 import { requireRequestContext } from '@/features/auth/application/request-context'
-import {
-  NotificationPanel,
-  BudgetPanel,
-  HolidayPanel
-} from '@/features/operations/panels'
+import { NotificationPanel, BudgetPanel } from '@/features/operations/panels'
 import { PolicyPanel } from '@/features/delivery/panels'
 export default async function SettingsPage() {
   const ctx = await requireRequestContext('client')
@@ -19,13 +15,6 @@ export default async function SettingsPage() {
           <BudgetPanel tenantId={ctx.tenantId} />
         )}
         <NotificationPanel />
-        {/* Sidebar "Holidays & Events" links here until /holidays exists. */}
-        <div id="holidays" className="scroll-mt-6">
-          <HolidayPanel
-            tenantId={ctx.tenantId}
-            owner={ctx.tenantRole === 'owner'}
-          />
-        </div>
         <PolicyPanel
           tenantId={ctx.tenantId}
           owner={ctx.tenantRole === 'owner'}
