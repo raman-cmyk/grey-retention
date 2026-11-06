@@ -29,7 +29,7 @@ select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000
 select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000000000101','identity',2,jsonb_build_object('niche',repeat('x',201)))$$,'23514',null,'too-long text refused');
 select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000000000101','tone',0,'{"do":[1,2]}')$$,'23514',null,'non-text list item refused');
 select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000000000101','tone',0,'{"do":"one string"}')$$,'23514',null,'a list must be a list');
-select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000000000101','tone',0,jsonb_build_object('do',(select jsonb_agg('x') from generate_series(1,16))))$$,'23514',null,'more than 15 items refused');
+select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000000000101','tone',0,jsonb_build_object('do',(select jsonb_agg('x'::text) from generate_series(1,16))))$$,'23514',null,'more than 15 items refused');
 select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000000000101','vocabulary',0,'{"terms":[{"term":"a","definition":"b","extra":1}]}')$$,'23514',null,'term with extra keys refused');
 select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000000000101','tone',0,'{}','{nope}')$$,'23514',null,'locking an unknown field refused');
 select throws_ok($$select public.save_brand_section('00000000-0000-4000-8000-000000000101','pricing',0,'{}')$$,'23514',null,'unknown section refused');

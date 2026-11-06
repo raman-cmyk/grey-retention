@@ -63,7 +63,8 @@ begin
       if char_length(v #>> '{}') > spec.max_length then return false; end if;
     else
       if jsonb_typeof(v) <> 'array' then return false; end if;
-      if jsonb_array_length(v) > case when spec.kind = 'list' then 15 else 30 end then return false; end if;
+      -- Parentheses keep CASE's own THEN from ending the IF condition.
+      if jsonb_array_length(v) > (case when spec.kind = 'list' then 15 else 30 end) then return false; end if;
       for item in select * from jsonb_array_elements(v) loop
         if spec.kind = 'list' then
           if jsonb_typeof(item) <> 'string' then return false; end if;

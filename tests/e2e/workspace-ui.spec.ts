@@ -86,7 +86,7 @@ test('core workspace surfaces render without overflow and invalid review dates r
     ['/campaign-agent', 'Campaign calendar'],
     ['/copy-review?week=2026-99-99', 'Weekly copy review'],
     ['/copy-review?week=2026-02-31', 'Weekly copy review'],
-    ['/brand', 'Brand and store'],
+    ['/brand', 'Brand & Store'],
     ['/assets', 'Brand assets'],
     ['/gros', 'Ask GROS'],
     ['/competitor-agent', 'Competitor intelligence'],
