@@ -14,12 +14,7 @@ import {
 } from './sections'
 import { SampleBrandProfileWriter, brandProfileWriter } from './writer'
 import { brandMismatches, nameWords, sameName, siteName } from './mismatch'
-import {
-  lastUpdated,
-  profileViews,
-  updatedAgo,
-  type SectionRow
-} from './view'
+import { lastUpdated, profileViews, updatedAgo, type SectionRow } from './view'
 
 // The newest migration that defines the field list is the one in force.
 const migrations = join(import.meta.dirname, '../../supabase/migrations')
