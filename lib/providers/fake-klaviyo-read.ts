@@ -1,11 +1,13 @@
+import { validTimezone } from '@/lib/brand-time'
 import type {
   AudienceRef,
   DailyRevenue,
   KlaviyoCampaign,
   KlaviyoFlow,
+  KlaviyoReadProvider,
   KlaviyoSnapshot,
   Money
-} from './types'
+} from './klaviyo-read'
 
 /**
  * Deterministic SAMPLE Klaviyo data for the fake provider. Every name is
@@ -19,13 +21,23 @@ const DAY = 24 * 3600 * 1000
 function iso(now: Date, daysAgo: number, hour = 10, minute = 0) {
   const date = new Date(now.getTime() - daysAgo * DAY)
   date.setUTCHours(hour, minute, 0, 0)
+  // Never in the future for "past" records (before 10:00 UTC, for example).
+  if (daysAgo >= 0 && date > now) date.setTime(now.getTime() - 60_000)
   return date.toISOString()
+}
+
+/** The last `count` calendar days in `timezone`, oldest first (DST-safe). */
+export function lastDays(now: Date, timezone: string, count: number) {
+  const [y, m, d] = dayKey(now, timezone).split('-').map(Number)
+  return Array.from({ length: count }, (_, i) =>
+    new Date(Date.UTC(y, m - 1, d - (count - 1 - i))).toISOString().slice(0, 10)
+  )
 }
 
 function dayKey(value: string | Date, timezone: string) {
   const date = typeof value === 'string' ? new Date(value) : value
   return new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
+    timeZone: validTimezone(timezone),
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
@@ -487,9 +499,7 @@ export function sampleKlaviyoSnapshot({
   const flowTotal = flows.reduce((sum, f) => sum + f.revenue30d.minor, 0)
   const weights = Array.from({ length: 30 }, (_, i) => 3 + ((i * 7) % 5))
   const weightSum = weights.reduce((a, b) => a + b, 0)
-  const days = Array.from({ length: 30 }, (_, i) =>
-    dayKey(new Date(now.getTime() - (29 - i) * DAY), timezone)
-  )
+  const days = lastDays(now, timezone, 30)
   const amounts = weights.map((w) => Math.floor((flowTotal * w) / weightSum))
   amounts[29] += flowTotal - amounts.reduce((a, b) => a + b, 0)
   for (const c of campaigns) {
@@ -506,7 +516,7 @@ export function sampleKlaviyoSnapshot({
     account: {
       organization: 'Sample Store (sample data)',
       industry: 'Food & Beverage',
-      timezone,
+      timezone: validTimezone(timezone),
       currency,
       locale: 'en-US',
       maskedKey: 'pk_SAMP••••••••0000'
@@ -519,6 +529,21 @@ export function sampleKlaviyoSnapshot({
     daily,
     activeSubscribers: { count: 16520, changePercent: 15 },
     abandonedCheckouts30d: 419,
-    syncedAt: new Date(now.getTime() - 12 * 60 * 1000).toISOString()
+    // Sample data is never synced from Klaviyo.
+    syncedAt: null
+  }
+}
+
+/** The fake Klaviyo read adapter: labelled sample data, never a network call. */
+export class FakeKlaviyoReadProvider implements KlaviyoReadProvider {
+  async snapshot({
+    timezone,
+    now
+  }: {
+    tenantId: string
+    timezone: string
+    now: Date
+  }) {
+    return sampleKlaviyoSnapshot({ now, timezone })
   }
 }

@@ -1,3 +1,4 @@
+import type { Route } from 'next'
 import type { OverviewCampaign } from '@/features/campaigns/overview-model'
 import {
   formatCount,
@@ -6,7 +7,56 @@ import {
   revenueSummary,
   upcomingKlaviyoCampaigns
 } from '@/features/klaviyo-data/summary'
-import type { KlaviyoSnapshot } from '@/features/klaviyo-data/types'
+import { formatBrandDate } from '@/lib/brand-time'
+import type { KlaviyoSnapshot } from '@/lib/providers/klaviyo-read'
+
+/** The dashboard's URL state; every link keeps the parts it doesn't change. */
+export type DashboardQuery = {
+  tab?: string
+  attr?: string
+  insight?: string
+  focus?: string
+  p?: string
+}
+
+const order: (keyof DashboardQuery)[] = ['tab', 'attr', 'insight', 'focus', 'p']
+
+export function readQuery(
+  raw: Record<string, string | string[] | undefined>
+): DashboardQuery {
+  const one = (value: string | string[] | undefined) =>
+    (Array.isArray(value) ? value[0] : value)?.slice(0, 64)
+  return Object.fromEntries(
+    order.flatMap((key) => {
+      const value = one(raw[key])
+      return value ? [[key, value]] : []
+    })
+  )
+}
+
+/**
+ * `/dashboard?…` with `patch` applied to the current query (null removes a
+ * key), so switching attribution keeps the open Klaviyo tab and the reverse
+ * (docs/OWNER_JOURNEYS.md §3: the toggle changes ONLY the gauge card).
+ */
+export function dashboardHref(
+  current: DashboardQuery,
+  patch: Partial<Record<keyof DashboardQuery, string | null>>,
+  hash?: string
+): Route {
+  const next = { ...current }
+  for (const [key, value] of Object.entries(patch) as [
+    keyof DashboardQuery,
+    string | null
+  ][]) {
+    if (value === null) delete next[key]
+    else next[key] = value
+  }
+  const params = new URLSearchParams()
+  for (const key of order) if (next[key]) params.set(key, next[key]!)
+  const query = params.toString()
+  return `/dashboard${query ? `?${query}` : ''}${hash ? `#${hash}` : ''}` as Route
+}
 
 export type Kpi = {
   label: string
@@ -23,31 +73,42 @@ export type Kpi = {
 export function dashboardKpis(snapshot: KlaviyoSnapshot): Kpi[] {
   const summary = revenueSummary(snapshot)
   const subs = snapshot.activeSubscribers
-  const newSubs = Math.round(
-    subs.count - subs.count / (1 + subs.changePercent / 100)
-  )
-  const trend = subs.changePercent >= 0 ? 'up' : 'down'
+  const previous =
+    subs.changePercent > -100
+      ? subs.count / (1 + subs.changePercent / 100)
+      : null
+  const net = previous === null ? null : Math.round(subs.count - previous)
+  const trend =
+    subs.changePercent > 0 ? 'up' : subs.changePercent < 0 ? 'down' : undefined
+  const plural = (n: number, word: string) =>
+    `${n} ${word}${n === 1 ? '' : 's'}`
   return [
     {
       label: 'Active subscribers',
       value: formatCount(subs.count, true),
-      caption: `${trend === 'up' ? '↑' : '↓'} ${Math.abs(subs.changePercent)}% vs previous 30d`,
+      caption:
+        previous === null
+          ? 'no subscribers in the previous 30d'
+          : `${trend === 'up' ? '↑ ' : trend === 'down' ? '↓ ' : ''}${Math.abs(subs.changePercent)}% vs previous 30d`,
       trend
     },
     {
-      label: 'List growth',
-      value: `${newSubs >= 0 ? '+' : '−'}${formatCount(Math.abs(newSubs), true)}`,
-      caption: 'new subscribers · 30d'
+      label: 'Net change',
+      value:
+        net === null
+          ? '—'
+          : `${net > 0 ? '+' : net < 0 ? '−' : ''}${formatCount(Math.abs(net), true)}`,
+      caption: 'subscribers · 30d'
     },
     {
       label: 'Revenue · flows',
       value: formatMoney(summary.flows, { compact: true }),
-      caption: `${summary.liveFlows} live flows · 30d`
+      caption: `from ${plural(summary.earningFlows, 'flow')} · 30d`
     },
     {
       label: 'Revenue · campaigns',
       value: formatMoney(summary.campaigns, { compact: true }),
-      caption: `${summary.sentCampaigns} campaigns · 30d`
+      caption: `from ${plural(summary.earningCampaigns, 'campaign')} · 30d`
     },
     {
       label: 'Abandoned checkouts',
@@ -67,7 +128,8 @@ export type UpcomingSend = {
 
 /**
  * Next sends from BOTH this workspace and Klaviyo (docs/OWNER_JOURNEYS.md §3
- * fix: the old app said "No upcoming campaigns" while drafts existed).
+ * fix: the old app said "No upcoming campaigns" while drafts existed). Only
+ * campaigns that can still send count: not rejected, failed or blocked.
  */
 export function upcomingSends(
   campaigns: readonly OverviewCampaign[],
@@ -78,7 +140,10 @@ export function upcomingSends(
     .filter(
       (c) =>
         !c.superseded_by_plan &&
-        !['sent', 'cancelled'].includes(c.delivery_state) &&
+        c.calendar_state !== 'rejected' &&
+        !['sent', 'cancelled', 'failed', 'blocked'].includes(
+          c.delivery_state
+        ) &&
         Date.parse(c.planned_at) > now.getTime()
     )
     .map((c) => ({
@@ -103,12 +168,13 @@ export function upcomingSends(
   )
 }
 
-/** "in 2 days 4 hours", "in 35 minutes", "now". */
-export function countdown(at: string, now: Date) {
+/** "in 2 days 4 hours", "in 35 minutes", "now"; past a month, the date. */
+export function countdown(at: string, now: Date, timezone = 'UTC') {
   const ms = Date.parse(at) - now.getTime()
   if (!Number.isFinite(ms) || ms <= 0) return 'now'
   const minutes = Math.floor(ms / 60000)
   const days = Math.floor(minutes / 1440)
+  if (days > 30) return `on ${formatBrandDate(at, timezone)}`
   const hours = Math.floor((minutes % 1440) / 60)
   const mins = minutes % 60
   const plural = (n: number, word: string) =>
@@ -120,13 +186,14 @@ export function countdown(at: string, now: Date) {
   return `in ${plural(Math.max(1, mins), 'minute')}`
 }
 
-/** Email revenue this month against an optional goal (for the gauge). */
+/** Email revenue this month (brand timezone) against an optional goal. */
 export function gauge(
   snapshot: KlaviyoSnapshot,
   now: Date,
-  goalMinor: number | null
+  goalMinor: number | null,
+  timezone: string
 ) {
-  const value = monthToDate(snapshot, now)
+  const value = monthToDate(snapshot, now, timezone)
   const fraction =
     goalMinor && goalMinor > 0
       ? Math.min(1, Math.max(0, value.minor / goalMinor))
@@ -143,8 +210,9 @@ export function gauge(
 }
 
 /**
- * A short insight written from the numbers, with no AI (the AI runs in
- * sample mode). Mentions the top flow, the best campaign and the best day.
+ * A short insight written from the numbers, with no AI. Mentions the share
+ * of revenue by source (always adding up to 100%), the top flow and the best
+ * campaign.
  */
 export function numbersInsight(snapshot: KlaviyoSnapshot) {
   const summary = revenueSummary(snapshot)
@@ -156,10 +224,11 @@ export function numbersInsight(snapshot: KlaviyoSnapshot) {
   const topCampaign = [...snapshot.campaigns]
     .filter((c) => c.revenue30d)
     .sort((a, b) => b.revenue30d!.minor - a.revenue30d!.minor)[0]
-  const share = (minor: number) =>
-    Math.round((minor / summary.total.minor) * 100)
+  const flowShare = Math.round(
+    (summary.flows.minor / summary.total.minor) * 100
+  )
   const parts = [
-    `Flows earned ${share(summary.flows.minor)}% of your email revenue in the last 30 days, campaigns ${share(summary.campaigns.minor)}%.`
+    `Flows earned ${flowShare}% of your email revenue in the last 30 days, campaigns ${100 - flowShare}%.`
   ]
   if (topFlow && topFlow.revenue30d.minor > 0)
     parts.push(

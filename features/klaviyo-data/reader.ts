@@ -1,20 +1,72 @@
 import 'server-only'
 import { cache } from 'react'
-import { sampleKlaviyoSnapshot } from './fixture'
-import type { KlaviyoData } from './types'
+import { getServerEnvironment } from '@/lib/env/server'
+import { FakeKlaviyoReadProvider } from '@/lib/providers/fake-klaviyo-read'
+import type { KlaviyoSnapshot } from '@/lib/providers/klaviyo-read'
+import { createClient } from '@/lib/supabase/server'
+
+export type ConnectionState =
+  'connected' | 'disconnected' | 'expired' | 'error' | 'missing' | 'unknown'
+
+/** What owner screens may show about Klaviyo, always stated honestly. */
+export type KlaviyoData =
+  | { state: 'sample'; snapshot: KlaviyoSnapshot; shopify: ConnectionState }
+  | { state: 'not_connected'; reason: ConnectionState }
+  | { state: 'unavailable' }
+
+const states = new Set<ConnectionState>([
+  'connected',
+  'disconnected',
+  'expired',
+  'error'
+])
+
+/** The workspace's (fixture) connections, or null without a database. */
+async function connections(tenantId: string) {
+  const db = await createClient()
+  if (!db || process.env.AUTH_MODE === 'demo') return null
+  const { data, error } = await db
+    .from('workspace_connections')
+    .select('provider,status')
+    .eq('tenant_id', tenantId)
+  if (error) return { klaviyo: 'unknown', shopify: 'unknown' } as const
+  const get = (provider: string): ConnectionState => {
+    const status = data?.find((row) => row.provider === provider)?.status
+    return status && states.has(status as ConnectionState)
+      ? (status as ConnectionState)
+      : 'missing'
+  }
+  return { klaviyo: get('klaviyo'), shopify: get('shopify') }
+}
 
 /**
- * The brand's Klaviyo data for owner screens. With the fake provider
- * (`ADAPTER_MODE=fake`, the default) it is labelled sample data. The live
- * read adapter is not built yet, so real mode honestly reports "not
- * connected" instead of showing anything made up.
+ * One workspace's Klaviyo data for owner screens.
+ * - Fake adapters (`ADAPTER_MODE=fake`, the default): labelled SAMPLE data,
+ *   but only while the workspace's Klaviyo connection is on.
+ * - Real mode: "unavailable", because the live read adapter is not built
+ *   yet; it never claims a connected account is disconnected.
+ * `now` is passed as milliseconds so request-level caching works.
  */
 export const klaviyoData = cache(
-  async (timezone: string, now: Date = new Date()): Promise<KlaviyoData> => {
-    if (process.env.ADAPTER_MODE === 'real') return { state: 'not_connected' }
+  async (
+    tenantId: string,
+    timezone: string,
+    nowMs: number
+  ): Promise<KlaviyoData> => {
+    if (getServerEnvironment().ADAPTER_MODE === 'real')
+      return { state: 'unavailable' }
+    const connection = await connections(tenantId)
+    if (connection && connection.klaviyo !== 'connected')
+      return { state: 'not_connected', reason: connection.klaviyo }
+    const snapshot = await new FakeKlaviyoReadProvider().snapshot({
+      tenantId,
+      timezone,
+      now: new Date(nowMs)
+    })
     return {
       state: 'sample',
-      snapshot: sampleKlaviyoSnapshot({ now, timezone })
+      snapshot,
+      shopify: connection?.shopify ?? 'missing'
     }
   }
 )

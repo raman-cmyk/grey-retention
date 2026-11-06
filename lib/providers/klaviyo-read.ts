@@ -1,8 +1,12 @@
 /**
- * Read-only view of a brand's Klaviyo account, used by the dashboard (§3)
- * and the Klaviyo detail pages (§4) of docs/UI_REBUILD_SPEC.md. Money is in
- * minor units (cents) of the ONE account currency, so every card shows the
- * same currency (docs/OWNER_JOURNEYS.md §3 fix).
+ * Klaviyo READ port: a read-only snapshot of one workspace's Klaviyo account
+ * for the dashboard (§3) and the detail pages (§4) of docs/UI_REBUILD_SPEC.md.
+ * The fake (`fake-klaviyo-read.ts`) returns labelled sample data. A live
+ * adapter must read a tenant-scoped snapshot written by the sync job, never
+ * call Klaviyo during a page request.
+ *
+ * Money is in minor units of the ONE account currency, so every card shows
+ * the same currency (docs/OWNER_JOURNEYS.md §3 fix).
  */
 
 export type Money = { minor: number; currency: string }
@@ -109,9 +113,15 @@ export type KlaviyoSnapshot = {
   daily: DailyRevenue[]
   activeSubscribers: { count: number; changePercent: number }
   abandonedCheckouts30d: number
-  syncedAt: string
+  /** When the snapshot was last synced from Klaviyo; null for sample data. */
+  syncedAt: string | null
 }
 
-/** Where the numbers come from; "sample" is always shown to the owner. */
-export type KlaviyoData =
-  { state: 'sample'; snapshot: KlaviyoSnapshot } | { state: 'not_connected' }
+export interface KlaviyoReadProvider {
+  snapshot(input: {
+    tenantId: string
+    /** The one brand timezone every date is shown in. */
+    timezone: string
+    now: Date
+  }): Promise<KlaviyoSnapshot>
+}

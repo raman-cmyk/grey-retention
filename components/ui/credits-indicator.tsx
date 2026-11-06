@@ -13,6 +13,7 @@ export function CreditsIndicator({
   used,
   included,
   sample,
+  format = (value: number) => value.toLocaleString('en-US'),
   className
 }: {
   plan: string
@@ -22,6 +23,8 @@ export function CreditsIndicator({
   /** True while the numbers come from the fake provider. Required, so fake
    * numbers can never be shown as real by forgetting it. */
   sample: boolean
+  /** Formats an amount, e.g. as money when the allowance is in dollars. */
+  format?: (value: number) => string
   className?: string
 }) {
   const known =
@@ -80,7 +83,7 @@ export function CreditsIndicator({
           >
             {empty
               ? 'No credits left'
-              : `${left.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} left`}
+              : `${format(left)} of ${format(total)} left`}
             {low && ' — running low'}
           </p>
           <div

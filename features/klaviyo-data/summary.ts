@@ -1,4 +1,23 @@
-import type { KlaviyoCampaign, KlaviyoSnapshot, Money } from './types'
+import { validTimezone } from '@/lib/brand-time'
+import type {
+  KlaviyoCampaign,
+  KlaviyoSnapshot,
+  Money
+} from '@/lib/providers/klaviyo-read'
+
+/** Decimal places of a currency (2 for USD, 0 for JPY, 3 for KWD). */
+export function currencyDigits(currency: string) {
+  try {
+    return (
+      new Intl.NumberFormat('en', {
+        style: 'currency',
+        currency
+      }).resolvedOptions().maximumFractionDigits ?? 2
+    )
+  } catch {
+    return 2
+  }
+}
 
 /** One money format for every card: `$22.6K` (compact) or `$22,638`. */
 export function formatMoney(
@@ -8,7 +27,7 @@ export function formatMoney(
     cents = false
   }: { compact?: boolean; cents?: boolean } = {}
 ) {
-  const amount = value.minor / 100
+  const amount = value.minor / 10 ** currencyDigits(value.currency)
   try {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -29,8 +48,11 @@ export function formatCount(value: number, compact = false) {
   }).format(value)
 }
 
+/** Adds amounts of ONE currency; amounts in another currency are left out. */
 const sum = (values: Money[], currency: string): Money => ({
-  minor: values.reduce((total, v) => total + v.minor, 0),
+  minor: values
+    .filter((v) => v.currency === currency)
+    .reduce((total, v) => total + v.minor, 0),
   currency
 })
 
@@ -71,14 +93,23 @@ export function revenueSummary(snapshot: KlaviyoSnapshot) {
     bestDay: best,
     liveFlows: snapshot.flows.filter((f) => f.status === 'live').length,
     draftFlows: snapshot.flows.filter((f) => f.status === 'draft').length,
-    sentCampaigns: snapshot.campaigns.filter((c) => c.status === 'sent').length
+    /** Campaigns that earned revenue in the 30-day window. */
+    earningCampaigns: snapshot.campaigns.filter(
+      (c) => c.revenue30d && c.revenue30d.minor > 0
+    ).length,
+    /** Flows that earned revenue in the 30-day window. */
+    earningFlows: snapshot.flows.filter((f) => f.revenue30d.minor > 0).length
   }
 }
 
-/** Email revenue in the current month, in the account timezone. */
-export function monthToDate(snapshot: KlaviyoSnapshot, now: Date): Money {
+/** Email revenue in the current month, in the brand timezone. */
+export function monthToDate(
+  snapshot: KlaviyoSnapshot,
+  now: Date,
+  timezone: string
+): Money {
   const month = new Intl.DateTimeFormat('en-CA', {
-    timeZone: snapshot.account.timezone,
+    timeZone: validTimezone(timezone),
     year: 'numeric',
     month: '2-digit'
   }).format(now)
@@ -107,9 +138,16 @@ export function upcomingKlaviyoCampaigns(
 
 /** Campaigns by send time, newest first; never-sent drafts last (§3 fix). */
 export function campaignsNewestFirst(campaigns: readonly KlaviyoCampaign[]) {
+  // A missing or unreadable send time sorts last.
+  const time = (c: KlaviyoCampaign) => {
+    const ms = c.sendTime === null ? NaN : Date.parse(c.sendTime)
+    return Number.isFinite(ms) ? ms : null
+  }
   return [...campaigns].sort((a, b) => {
-    if (a.sendTime === null) return b.sendTime === null ? 0 : 1
-    if (b.sendTime === null) return -1
-    return Date.parse(b.sendTime) - Date.parse(a.sendTime)
+    const ta = time(a)
+    const tb = time(b)
+    if (ta === null) return tb === null ? 0 : 1
+    if (tb === null) return -1
+    return tb - ta
   })
 }

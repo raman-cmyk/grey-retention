@@ -19,6 +19,11 @@ function validZone(timezone: string) {
   }
 }
 
+/** The timezone if this runtime knows it, otherwise UTC (never throws). */
+export function validTimezone(timezone: string) {
+  return validZone(timezone) ? timezone : 'UTC'
+}
+
 /** `Oct 7, 2026 · 10:49 PM`, or null for a missing or invalid date. */
 export function formatBrandDateTime(
   value: Date | string | number | null | undefined,

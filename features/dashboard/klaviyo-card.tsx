@@ -16,7 +16,11 @@ import type { ReactNode } from 'react'
 import { CreditsIndicator } from '@/components/ui/credits-indicator'
 import { Pill } from '@/components/ui/pill'
 import type { PillTone } from '@/lib/campaign-status'
-import { formatBrandDate } from '@/lib/brand-time'
+import {
+  formatBrandDate,
+  formatBrandDateTime,
+  timezoneLabel
+} from '@/lib/brand-time'
 import { cn } from '@/lib/utils'
 import {
   campaignsNewestFirst,
@@ -27,7 +31,7 @@ import {
 import type {
   KlaviyoCampaign,
   KlaviyoSnapshot
-} from '@/features/klaviyo-data/types'
+} from '@/lib/providers/klaviyo-read'
 
 export const klaviyoTabs = [
   'overview',
@@ -58,23 +62,29 @@ const tabMeta: Record<KlaviyoTab, { text: string; icon: LucideIcon }> = {
   metrics: { text: 'Metrics', icon: BarChart3 }
 }
 
-const tabHref = (tab: KlaviyoTab) =>
-  (tab === 'overview'
-    ? '/dashboard#klaviyo-data'
-    : `/dashboard?tab=${tab}#klaviyo-data`) as Route
-
-/**
- * Row links to the Klaviyo detail pages (§4). They stay off until those
- * pages exist, so no row ever leads to a missing page.
- */
+/** Which object kinds have detail pages (§4); rows link only to those. */
 export type DetailLinks = Partial<
   Record<'lists' | 'segments' | 'campaigns' | 'flows' | 'metrics', boolean>
 >
 
+export type Credits = {
+  plan: string
+  renewsInDays: number | null
+  used: number
+  included: number
+  sample: boolean
+  format?: (value: number) => string
+}
+
 /** The 30-day revenue headline and bar chart (Overview tab only). */
-export function RevenueChart({ snapshot }: { snapshot: KlaviyoSnapshot }) {
+export function RevenueChart({
+  snapshot,
+  timezone
+}: {
+  snapshot: KlaviyoSnapshot
+  timezone: string
+}) {
   const summary = revenueSummary(snapshot)
-  const tz = snapshot.account.timezone
   const max = Math.max(1, ...snapshot.daily.map((d) => d.revenue.minor))
   const best = summary.bestDay
   const dayLabel = (date: string) =>
@@ -119,11 +129,18 @@ export function RevenueChart({ snapshot }: { snapshot: KlaviyoSnapshot }) {
       </div>
       <div
         role="img"
-        aria-label={`Daily revenue for the last 30 days in ${tz}. Best day ${best ? `${dayLabel(best.date)}, ${formatMoney(best.revenue)}` : 'none'}. The table below lists every day.`}
+        aria-label={`Daily revenue for the last 30 days (${timezoneLabel(timezone)}). Best day ${best ? `${dayLabel(best.date)}, ${formatMoney(best.revenue)}` : 'none'}. The table below lists every day.`}
         className="mt-5 flex h-32 items-end gap-[3px]"
       >
-        {snapshot.daily.map((day) => {
+        {snapshot.daily.map((day, index) => {
           const isBest = best?.date === day.date
+          // Keep the edge tooltips inside the card.
+          const align =
+            index < 4
+              ? 'left-0'
+              : index > snapshot.daily.length - 5
+                ? 'right-0'
+                : 'left-1/2 -translate-x-1/2'
           return (
             <div
               key={day.date}
@@ -139,7 +156,10 @@ export function RevenueChart({ snapshot }: { snapshot: KlaviyoSnapshot }) {
               {/* Hover tooltip (§15 bug 7: the old bars had none). */}
               <span
                 aria-hidden
-                className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 hidden -translate-x-1/2 rounded-sm bg-[var(--text)] px-2 py-1 text-xs whitespace-nowrap text-[var(--surface-raised)] group-hover:block"
+                className={cn(
+                  'pointer-events-none absolute bottom-full z-10 mb-2 hidden rounded-sm bg-[var(--text)] px-2 py-1 text-xs whitespace-nowrap text-[var(--surface-raised)] group-hover:block',
+                  align
+                )}
               >
                 {dayLabel(day.date)} · {formatMoney(day.revenue)}
               </span>
@@ -188,11 +208,14 @@ function Table({
   caption,
   headers,
   right = [],
+  linked,
   children
 }: {
   caption: string
   headers: string[]
   right?: number[]
+  /** Rows link to detail pages, so an "Open" column is shown. */
+  linked: boolean
   children: ReactNode
 }) {
   return (
@@ -214,12 +237,14 @@ function Table({
                 {h}
               </th>
             ))}
-            <th
-              scope="col"
-              className="w-8 border-b border-[var(--line)] bg-[var(--surface-hover)]"
-            >
-              <span className="sr-only">Open</span>
-            </th>
+            {linked && (
+              <th
+                scope="col"
+                className="w-8 border-b border-[var(--line)] bg-[var(--surface-hover)]"
+              >
+                <span className="sr-only">Open</span>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--line)]">{children}</tbody>
@@ -228,7 +253,7 @@ function Table({
   )
 }
 
-/** A row whose first cell links to the detail page when it exists. */
+/** A row whose name links to the detail page when it exists. */
 function Row({
   href,
   name,
@@ -244,13 +269,13 @@ function Row({
 }) {
   return (
     <tr className={cn(href && 'relative hover:bg-[var(--surface)]')}>
-      <td className="px-3 py-2.5">
+      <th scope="row" className="px-3 py-2.5 text-left font-normal">
         <span className="flex items-center gap-1.5">
           {prefix}
           {href ? (
             <Link
               href={href}
-              className="font-medium break-words after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-[var(--focus)] focus-visible:after:ring-inset"
+              className="font-medium break-words after:absolute after:inset-0 focus-visible:outline-hidden focus-visible:after:ring-2 focus-visible:after:ring-[var(--focus)] focus-visible:after:ring-inset"
             >
               {name}
             </Link>
@@ -258,7 +283,7 @@ function Row({
             <span className="font-medium break-words">{name}</span>
           )}
         </span>
-      </td>
+      </th>
       {cells.map((cell, i) => (
         <td
           key={i}
@@ -270,9 +295,11 @@ function Row({
           {cell}
         </td>
       ))}
-      <td className="px-2 text-[var(--text-muted)]">
-        {href && <ChevronRight className="size-4" aria-hidden />}
-      </td>
+      {href && (
+        <td className="px-2 text-[var(--text-muted)]">
+          <ChevronRight className="size-4" aria-hidden />
+        </td>
+      )}
     </tr>
   )
 }
@@ -289,27 +316,31 @@ function detailHref(
   kind: keyof DetailLinks,
   id: string
 ): Route | null {
-  return links[kind] ? (`/${kind}/${id}?from=${kind}` as Route) : null
+  if (!links[kind]) return null
+  // Local campaigns own /campaigns/:id; Klaviyo campaigns live under klaviyo/.
+  const base = kind === 'campaigns' ? '/campaigns/klaviyo' : `/${kind}`
+  return `${base}/${id}?from=${kind}` as Route
 }
 
 export function KlaviyoDataCard({
   snapshot,
   tab,
+  tabHrefs,
+  timezone,
   links = {},
   credits
 }: {
   snapshot: KlaviyoSnapshot
   tab: KlaviyoTab
+  /** Each tab's link; built by the page so other dashboard state is kept. */
+  tabHrefs: Record<KlaviyoTab, Route>
+  /** The one brand timezone. */
+  timezone: string
   links?: DetailLinks
-  credits: {
-    plan: string
-    renewsInDays: number | null
-    used: number
-    included: number
-    sample: boolean
-  }
+  /** AI credits, or null when this viewer may not see them. */
+  credits: Credits | null
 }) {
-  const tz = snapshot.account.timezone
+  const tz = timezone
   const date = (value: string | null) => formatBrandDate(value, tz) ?? '—'
   const summary = revenueSummary(snapshot)
   const counts: Record<KlaviyoTab, number | null> = {
@@ -335,8 +366,8 @@ export function KlaviyoDataCard({
           Lists, segments, campaigns, flows, metrics
         </p>
       </div>
-      <CreditsIndicator className="mt-4" {...credits} />
-      {tab === 'overview' && <RevenueChart snapshot={snapshot} />}
+      {credits && <CreditsIndicator className="mt-4" {...credits} />}
+      {tab === 'overview' && <RevenueChart snapshot={snapshot} timezone={tz} />}
       <nav
         aria-label="Klaviyo data"
         className="mt-6 overflow-x-auto border-b border-[var(--line)]"
@@ -348,10 +379,10 @@ export function KlaviyoDataCard({
             return (
               <li key={key}>
                 <Link
-                  href={tabHref(key)}
+                  href={tabHrefs[key]}
                   scroll={false}
                   aria-current={current ? 'page' : undefined}
-                  className="-mb-px flex min-h-11 items-center gap-2 border-b-2 border-transparent px-3 text-sm text-[var(--text-muted)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none aria-[current=page]:border-[var(--text)] aria-[current=page]:font-medium aria-[current=page]:text-[var(--text)]"
+                  className="-mb-px flex min-h-11 items-center gap-2 border-b-2 border-transparent px-3 text-sm text-[var(--text-muted)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden aria-[current=page]:border-[var(--text)] aria-[current=page]:font-medium aria-[current=page]:text-[var(--text)]"
                 >
                   <Icon className="size-4" aria-hidden />
                   {tabMeta[key].text}
@@ -402,7 +433,7 @@ export function KlaviyoDataCard({
                   <dd className="text-xs text-[var(--text-muted)]">
                     {target ? (
                       <Link
-                        href={tabHref(target)}
+                        href={tabHrefs[target]}
                         scroll={false}
                         className="underline underline-offset-4 hover:text-[var(--text)]"
                       >
@@ -438,7 +469,7 @@ export function KlaviyoDataCard({
                   [
                     ['Organization', snapshot.account.organization],
                     ['Industry', snapshot.account.industry],
-                    ['Timezone', tz],
+                    ['Timezone', timezoneLabel(tz)],
                     ['Currency', snapshot.account.currency],
                     ['Locale', snapshot.account.locale]
                   ] as const
@@ -457,7 +488,7 @@ export function KlaviyoDataCard({
               ).map((key, i, all) => (
                 <span key={key}>
                   <Link
-                    href={tabHref(key)}
+                    href={tabHrefs[key]}
                     scroll={false}
                     className="underline underline-offset-4"
                   >
@@ -479,6 +510,7 @@ export function KlaviyoDataCard({
         )}
         {tab === 'lists' && (
           <Table
+            linked={Boolean(links.lists)}
             caption="Lists"
             headers={['Name', 'Profiles', 'Opt-in', 'Updated', 'Created']}
             right={[1]}
@@ -501,6 +533,7 @@ export function KlaviyoDataCard({
         )}
         {tab === 'segments' && (
           <Table
+            linked={Boolean(links.segments)}
             caption="Segments"
             headers={['Name', 'Profiles', 'State', 'Updated', 'Created']}
             right={[1]}
@@ -541,9 +574,10 @@ export function KlaviyoDataCard({
               <strong className="text-[var(--text)]">
                 {formatMoney(summary.campaigns)}
               </strong>{' '}
-              · newest first
+              · newest first · times in {timezoneLabel(tz)}
             </p>
             <Table
+              linked={Boolean(links.campaigns)}
               caption="Campaigns, newest first"
               headers={['Name', 'Status', 'Revenue (30d)', 'Send time']}
               right={[2]}
@@ -559,7 +593,9 @@ export function KlaviyoDataCard({
                       {c.status}
                     </Pill>,
                     c.revenue30d ? formatMoney(c.revenue30d) : '—',
-                    c.sendTime ? date(c.sendTime) : 'Not scheduled'
+                    c.sendTime
+                      ? (formatBrandDateTime(c.sendTime, tz) ?? '—')
+                      : 'Not scheduled'
                   ]}
                 />
               ))}
@@ -573,11 +609,18 @@ export function KlaviyoDataCard({
               <strong className="text-[var(--text)]">
                 {formatMoney(summary.flows)}
               </strong>{' '}
-              · <span className="text-success">●</span> {summary.liveFlows} live
-              · <span className="text-[var(--warning-ink)]">●</span>{' '}
+              ·{' '}
+              <span className="text-success" aria-hidden>
+                ●
+              </span>{' '}
+              {summary.liveFlows} live ·{' '}
+              <span className="text-[var(--warning-ink)]" aria-hidden>
+                ●
+              </span>{' '}
               {summary.draftFlows} draft
             </p>
             <Table
+              linked={Boolean(links.flows)}
               caption="Flows"
               headers={['Name', 'Trigger', 'Status', 'Revenue (30d)']}
               right={[3]}
@@ -607,6 +650,7 @@ export function KlaviyoDataCard({
         )}
         {tab === 'metrics' && (
           <Table
+            linked={Boolean(links.metrics)}
             caption="Metrics"
             headers={['Name', 'Integration', 'Category', 'Created']}
           >

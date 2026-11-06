@@ -1,15 +1,6 @@
-import { campaignWorkspace } from '@/features/campaigns/data'
 import { CampaignOverview } from '@/features/campaigns/overview'
-import {
-  campaignReview,
-  overviewModel
-} from '@/features/campaigns/overview-model'
-import {
-  dashboardKpis,
-  gauge,
-  numbersInsight,
-  upcomingSends
-} from '@/features/dashboard/model'
+import { KlaviyoDataCard } from '@/features/dashboard/klaviyo-card'
+import { dashboardView } from '@/features/dashboard/load'
 import {
   ApprovalsCard,
   CalendarMiniCard,
@@ -19,20 +10,6 @@ import {
   NextCampaignCard,
   RevenueCard
 } from '@/features/dashboard/sections'
-import { KlaviyoDataCard, parseTab } from '@/features/dashboard/klaviyo-card'
-import { klaviyoData } from '@/features/klaviyo-data/reader'
-import { Notice } from '@/components/ui/workspace'
-
-type Params = {
-  focus?: string
-  p?: string
-  attr?: string | string[]
-  insight?: string | string[]
-  tab?: string | string[]
-}
-
-const one = (value: string | string[] | undefined) =>
-  Array.isArray(value) ? value[0] : value
 
 /**
  * Dashboard (docs/UI_REBUILD_SPEC.md §3, behaviour from
@@ -42,86 +19,68 @@ const one = (value: string | string[] | undefined) =>
 export default async function DashboardPage({
   searchParams
 }: {
-  searchParams: Promise<Params>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const [workspace, params] = await Promise.all([
-    campaignWorkspace(),
-    searchParams
-  ])
-  const now = new Date()
-  const timezone = workspace.context.timezone
-  const klaviyo = await klaviyoData(timezone, now)
-  const snapshot = klaviyo.state === 'sample' ? klaviyo.snapshot : null
-  const campaigns = workspace.data?.campaigns ?? []
-  const attribution = one(params.attr) === 'utm' ? 'utm' : 'klaviyo'
-  const sends = upcomingSends(campaigns, snapshot, now)
-  const waiting = overviewModel(campaigns).reviews.map((c) => ({
-    id: c.id,
-    title: c.title,
-    step: campaignReview(c) ?? 'Review'
-  }))
-  const revenue = snapshot ? gauge(snapshot, now, null) : null
+  const view = await dashboardView(await searchParams)
   return (
     <div className="mx-auto max-w-6xl">
-      <DashboardHeader
-        syncedAt={snapshot?.syncedAt ?? null}
-        sample={klaviyo.state === 'sample'}
-        now={now}
-      />
-      {snapshot ? (
-        <KpiStrip kpis={dashboardKpis(snapshot)} />
-      ) : (
-        <Notice>
-          Klaviyo is not connected, so there are no Klaviyo numbers yet.
-        </Notice>
-      )}
+      <DashboardHeader data={view.klaviyo} now={view.now} />
+      {view.kpis && <KpiStrip kpis={view.kpis} />}
       <div className="mb-5 grid gap-5 lg:grid-cols-3">
-        {revenue ? (
+        {view.revenue && (
           <RevenueCard
-            attribution={attribution}
-            value={revenue.label}
-            goal={revenue.goal}
-            fraction={revenue.fraction}
-            shopifyConnected={false}
+            attribution={view.attribution}
+            hrefs={view.attributionHrefs}
+            value={view.revenue.label}
+            utmValue={null}
+            goal={view.revenue.goal}
+            fraction={view.revenue.fraction}
+            shopify={view.shopify}
           />
-        ) : null}
+        )}
         <NextCampaignCard
-          next={sends[0] ?? null}
-          timezone={timezone}
-          now={now}
+          next={view.sends[0] ?? null}
+          timezone={view.timezone}
+          now={view.now}
+          owner={view.owner}
+          campaignsFailed={view.campaignsFailed}
         />
-        <CalendarMiniCard sends={sends} timezone={timezone} />
+        <CalendarMiniCard
+          sends={view.sends}
+          timezone={view.timezone}
+          owner={view.owner}
+          campaignsFailed={view.campaignsFailed}
+        />
       </div>
       <div className="grid gap-5 lg:grid-cols-3">
         <ApprovalsCard
-          waiting={waiting}
-          owner={workspace.context.tenantRole === 'owner'}
+          waiting={view.waiting}
+          owner={view.owner}
+          seeAll={view.seeAllWaiting}
+          campaignsFailed={view.campaignsFailed}
         />
-        {snapshot && (
+        {view.insight && (
           <InsightCard
-            insight={numbersInsight(snapshot)}
-            shown={one(params.insight) === '1'}
+            insight={view.insight}
+            shown={view.insightShown}
+            generate={view.insightHref}
           />
         )}
       </div>
-      {snapshot && (
+      {view.snapshot && (
         <KlaviyoDataCard
-          snapshot={snapshot}
-          tab={parseTab(params.tab)}
-          credits={{
-            // AI usage is not metered per workspace yet: sample numbers.
-            plan: 'Sample plan',
-            renewsInDays: 30,
-            used: 2500,
-            included: 10000,
-            sample: true
-          }}
+          snapshot={view.snapshot}
+          tab={view.tab}
+          tabHrefs={view.tabHrefs}
+          timezone={view.timezone}
+          credits={view.credits}
         />
       )}
       <CampaignOverview
-        workspace={workspace}
-        focus={params.focus}
-        page={params.p}
+        workspace={view.workspace}
+        focus={view.query.focus}
+        page={view.query.p}
+        linkTo={view.campaignLink}
       />
     </div>
   )

@@ -8,59 +8,81 @@ import {
 } from 'lucide-react'
 import type { Route } from 'next'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/detail-page'
-import { Pill } from '@/components/ui/pill'
+import { Card } from '@/components/ui/card'
 import {
   formatBrandDateTime,
   relativeTime,
   timezoneLabel
 } from '@/lib/brand-time'
 import { cn } from '@/lib/utils'
+import type {
+  ConnectionState,
+  KlaviyoData
+} from '@/features/klaviyo-data/reader'
 import { countdown, type Kpi, type UpcomingSend } from './model'
 
 const label =
   'tracking-label font-mono text-[0.6875rem] font-semibold text-[var(--text-muted)] uppercase'
 
-/** Page header: title, subtitle, sample-data note, last sync and Refresh. */
+const notConnectedWords: Record<ConnectionState, string> = {
+  connected: 'Klaviyo is connected.',
+  disconnected: 'Klaviyo is disconnected.',
+  expired: 'The Klaviyo connection has expired.',
+  error: 'The Klaviyo connection has an error.',
+  missing: 'Klaviyo is not connected yet.',
+  unknown: "We couldn't check the Klaviyo connection."
+}
+
+/** Where the numbers come from, said plainly (no invented sync times). */
+export function sourceLine(data: KlaviyoData, now: Date) {
+  if (data.state === 'unavailable')
+    return "Klaviyo numbers aren't available in this version yet."
+  if (data.state === 'not_connected') return notConnectedWords[data.reason]
+  return data.snapshot.syncedAt
+    ? `Last synced ${relativeTime(data.snapshot.syncedAt, now)}.`
+    : 'Sample Klaviyo data: made up for this preview, not synced from a real account.'
+}
+
+/**
+ * Page header. Refresh is not offered: sample data has nothing to re-pull,
+ * and a live re-pull will be a server action with a pending state.
+ */
 export function DashboardHeader({
-  syncedAt,
-  sample,
+  data,
   now
 }: {
-  syncedAt: string | null
-  sample: boolean
+  data: KlaviyoData
   now: Date
 }) {
   return (
-    <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
-      <div className="min-w-0 flex-1 basis-72">
-        <h1 className="tracking-display font-serif text-[1.875rem] leading-tight font-normal">
-          Dashboard
-        </h1>
-        <p className="mt-2 text-sm text-[var(--text-muted)]">
-          Retention health at a glance.
-        </p>
-        <p className="mt-1 text-xs text-[var(--text-muted)]">
-          {sample && (
-            <>
-              <strong className="font-semibold text-[var(--warning-ink)]">
-                Sample Klaviyo data
-              </strong>{' '}
-              — not a real account.{' '}
-            </>
-          )}
-          {syncedAt
-            ? `Last synced ${relativeTime(syncedAt, now)}.`
-            : 'Klaviyo is not connected yet.'}
-        </p>
-      </div>
-      <Button asChild variant="outline" shape="pill">
-        <Link href={'/dashboard?refresh=1' as Route} prefetch={false}>
-          <RefreshCw className="size-4" aria-hidden />
-          Refresh
-        </Link>
-      </Button>
+    <header className="mb-6">
+      <h1 className="tracking-display font-serif text-[1.875rem] leading-tight font-normal">
+        Dashboard
+      </h1>
+      <p className="mt-2 text-sm text-[var(--text-muted)]">
+        Retention health at a glance.
+      </p>
+      <p
+        className={cn(
+          'mt-1 text-xs',
+          data.state === 'sample'
+            ? 'font-medium text-[var(--warning-ink)]'
+            : 'text-[var(--text-muted)]'
+        )}
+      >
+        {sourceLine(data, now)}
+        {data.state !== 'sample' && (
+          <>
+            {' '}
+            <Link
+              href="/connections"
+              className="font-medium text-[var(--text)] underline underline-offset-4"
+            >
+              Go to Connections
+            </Link>
+          </>
+        )}
+      </p>
     </header>
   )
 }
@@ -131,35 +153,40 @@ function Gauge({ fraction }: { fraction: number }) {
 
 const attributionHelp = {
   klaviyo:
-    'Klaviyo $flow and $campaign attribution (last 30d, clamped to month to date)',
-  utm: 'Shopify orders with utm_source=klaviyo or utm_medium=email (month to date)'
+    'Klaviyo $flow and $campaign attribution (last 30 days, clamped to this month).',
+  utm: 'Shopify orders with utm_source=klaviyo or utm_medium=email (this month).'
 }
 
 export function RevenueCard({
   attribution,
+  hrefs,
   value,
+  utmValue,
   goal,
   fraction,
-  shopifyConnected
+  shopify
 }: {
   attribution: 'klaviyo' | 'utm'
+  hrefs: Record<'klaviyo' | 'utm', Route>
   value: string
+  /** UTM revenue this month, or null while there is no UTM source. */
+  utmValue: string | null
   goal: string | null
   fraction: number
-  shopifyConnected: boolean
+  shopify: ConnectionState
 }) {
   const option = (key: 'klaviyo' | 'utm', text: string) => (
     <Link
-      href={`/dashboard?attr=${key}` as Route}
+      href={hrefs[key]}
       aria-current={attribution === key ? 'true' : undefined}
-      title={attributionHelp[key]}
       scroll={false}
-      className="rounded-[calc(var(--radius-control)-2px)] px-3 py-1 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none aria-[current=true]:bg-[var(--brand-primary)] aria-[current=true]:text-[var(--on-brand)]"
+      className="rounded-[calc(var(--radius-control)-2px)] px-3 py-1 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden aria-[current=true]:bg-[var(--brand-primary)] aria-[current=true]:text-[var(--on-brand)]"
     >
       {text}
     </Link>
   )
-  const utmMissing = attribution === 'utm' && !shopifyConnected
+  const utm = attribution === 'utm'
+  const shown = utm ? utmValue : value
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -172,22 +199,25 @@ export function RevenueCard({
           {option('utm', 'UTM')}
         </nav>
       </div>
-      <div className="relative mt-4">
-        <Gauge fraction={utmMissing ? 0 : fraction} />
+      <p className="mt-2 text-xs text-[var(--text-muted)]">
+        {attributionHelp[attribution]}
+      </p>
+      <div className="relative mt-3">
+        <Gauge fraction={shown === null ? 0 : fraction} />
         <div className="absolute inset-x-0 bottom-0 text-center">
-          <p className="text-2xl font-semibold tabular-nums">
-            {utmMissing ? '—' : value}
-          </p>
+          <p className="text-2xl font-semibold tabular-nums">{shown ?? '—'}</p>
         </div>
       </div>
       <p className="mt-2 text-center text-xs text-[var(--text-muted)]">
-        {utmMissing
-          ? 'UTM attribution needs Shopify.'
+        {shown === null
+          ? shopify === 'connected'
+            ? "UTM attribution isn't available yet."
+            : 'UTM attribution needs Shopify.'
           : goal
             ? `of ${goal} goal`
             : 'No monthly goal set yet.'}
       </p>
-      {utmMissing && (
+      {shown === null && shopify !== 'connected' && (
         <p className="mt-2 text-center text-sm">
           <Link
             href="/connections"
@@ -201,14 +231,31 @@ export function RevenueCard({
   )
 }
 
+function CreateLink({ owner, text }: { owner: boolean; text: string }) {
+  if (!owner) return null
+  return (
+    <Link
+      href="/first-draft"
+      className="font-medium text-[var(--text)] underline underline-offset-4"
+    >
+      {text}
+    </Link>
+  )
+}
+
 export function NextCampaignCard({
   next,
   timezone,
-  now
+  now,
+  owner,
+  campaignsFailed
 }: {
   next: UpcomingSend | null
   timezone: string
   now: Date
+  owner: boolean
+  /** This workspace's campaigns could not be loaded. */
+  campaignsFailed: boolean
 }) {
   return (
     <Card>
@@ -218,7 +265,9 @@ export function NextCampaignCard({
       </div>
       {next ? (
         <div className="mt-4">
-          <p className="text-2xl font-semibold">{countdown(next.at, now)}</p>
+          <p className="text-2xl font-semibold">
+            {countdown(next.at, now, timezone)}
+          </p>
           <p className="mt-2 text-sm break-words">
             {next.href ? (
               <Link
@@ -232,7 +281,7 @@ export function NextCampaignCard({
             )}
           </p>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
-            {formatBrandDateTime(next.at, timezone)} ({timezoneLabel(timezone)})
+            {formatBrandDateTime(next.at, timezone)} ({timezoneLabel(timezone)}){' '}
             ·{' '}
             {next.source === 'klaviyo'
               ? 'Klaviyo (sample)'
@@ -243,15 +292,22 @@ export function NextCampaignCard({
         <div className="mt-4">
           <p className="text-2xl font-semibold">—</p>
           <p className="mt-2 text-sm text-[var(--text-muted)]">
-            No scheduled or planned campaigns. Plan one to see the countdown.
+            {campaignsFailed
+              ? "We couldn't load your campaigns, so the next send is unknown."
+              : 'No scheduled or planned campaigns. Plan one to see the countdown.'}
           </p>
-          <Link
-            href="/first-draft"
-            className="mt-3 inline-block text-sm font-medium underline underline-offset-4"
-          >
-            Create a campaign →
-          </Link>
+          {!campaignsFailed && (
+            <p className="mt-3 text-sm">
+              <CreateLink owner={owner} text="Create a campaign →" />
+            </p>
+          )}
         </div>
+      )}
+      {next && campaignsFailed && (
+        <p className="mt-2 text-xs text-[var(--warning-ink)]">
+          Your own campaigns couldn&apos;t be loaded; this may not be the next
+          one.
+        </p>
       )}
     </Card>
   )
@@ -259,15 +315,19 @@ export function NextCampaignCard({
 
 export function CalendarMiniCard({
   sends,
-  timezone
+  timezone,
+  owner,
+  campaignsFailed
 }: {
   sends: UpcomingSend[]
   timezone: string
+  owner: boolean
+  campaignsFailed: boolean
 }) {
   const shown = sends.slice(0, 50)
   return (
     <Card>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <CalendarDays className="size-5 text-[var(--text-muted)]" aria-hidden />
         <h2 className={label}>Campaign calendar</h2>
         <Link
@@ -277,6 +337,14 @@ export function CalendarMiniCard({
           View all
         </Link>
       </div>
+      <p className="mt-1 text-xs text-[var(--text-muted)]">
+        Times in {timezoneLabel(timezone)}
+      </p>
+      {campaignsFailed && (
+        <p className="mt-2 text-xs text-[var(--warning-ink)]">
+          We couldn&apos;t load your campaigns; only Klaviyo sends are shown.
+        </p>
+      )}
       {shown.length ? (
         <ul className="mt-3 max-h-56 divide-y divide-[var(--line)] overflow-y-auto">
           {shown.map((send) => (
@@ -299,21 +367,22 @@ export function CalendarMiniCard({
                     {formatBrandDateTime(send.at, timezone)}
                   </p>
                 </div>
-                {send.source === 'klaviyo' && <Pill tone="info">Klaviyo</Pill>}
+                {send.source === 'klaviyo' && (
+                  <span className="tracking-label rounded-full bg-[var(--brand-soft)] px-2 py-0.5 text-[0.6875rem] font-semibold text-[var(--brand-ink)] uppercase">
+                    Klaviyo
+                  </span>
+                )}
               </div>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mt-4 text-sm text-[var(--text-muted)]">
-          No upcoming campaigns.{' '}
-          <Link
-            href="/first-draft"
-            className="font-medium text-[var(--text)] underline underline-offset-4"
-          >
-            Create one →
-          </Link>
-        </p>
+        !campaignsFailed && (
+          <p className="mt-4 text-sm text-[var(--text-muted)]">
+            No upcoming campaigns.{' '}
+            <CreateLink owner={owner} text="Create one →" />
+          </p>
+        )
       )}
       {sends.length > shown.length && (
         <p className="mt-2 text-xs text-[var(--text-muted)]">
@@ -330,10 +399,14 @@ export function CalendarMiniCard({
  */
 export function ApprovalsCard({
   waiting,
-  owner
+  owner,
+  seeAll,
+  campaignsFailed
 }: {
   waiting: { id: string; title: string; step: string }[]
   owner: boolean
+  seeAll: Route
+  campaignsFailed: boolean
 }) {
   return (
     <Card>
@@ -343,37 +416,45 @@ export function ApprovalsCard({
           {owner ? 'Waiting for you' : 'Waiting for the owner'}
         </h2>
       </div>
-      <p className="mt-3 text-3xl font-semibold tabular-nums">
-        {waiting.length}
-      </p>
-      {waiting.length ? (
-        <ul className="mt-2 space-y-1.5 text-sm">
-          {waiting.slice(0, 3).map((c) => (
-            <li key={c.id} className="break-words">
-              <Link
-                href={`/campaigns/${c.id}`}
-                className="font-medium underline-offset-4 hover:underline"
-              >
-                {c.title}
-              </Link>{' '}
-              <span className="text-[var(--text-muted)]">· {c.step}</span>
-            </li>
-          ))}
-          {waiting.length > 3 && (
-            <li>
-              <Link
-                href={'/dashboard?focus=review#your-campaigns' as Route}
-                className="text-[var(--text-muted)] underline underline-offset-4"
-              >
-                See all {waiting.length}
-              </Link>
-            </li>
-          )}
-        </ul>
-      ) : (
-        <p className="mt-1 text-sm text-[var(--text-muted)]">
-          Nothing needs approval right now.
+      {campaignsFailed ? (
+        <p className="mt-3 text-sm text-[var(--text-muted)]">
+          We couldn&apos;t load your campaigns.
         </p>
+      ) : (
+        <>
+          <p className="mt-3 text-3xl font-semibold tabular-nums">
+            {waiting.length}
+          </p>
+          {waiting.length ? (
+            <ul className="mt-2 space-y-1.5 text-sm">
+              {waiting.slice(0, 3).map((c) => (
+                <li key={c.id} className="break-words">
+                  <Link
+                    href={`/campaigns/${c.id}`}
+                    className="font-medium underline-offset-4 hover:underline"
+                  >
+                    {c.title}
+                  </Link>{' '}
+                  <span className="text-[var(--text-muted)]">· {c.step}</span>
+                </li>
+              ))}
+              {waiting.length > 3 && (
+                <li>
+                  <Link
+                    href={seeAll}
+                    className="text-[var(--text-muted)] underline underline-offset-4"
+                  >
+                    See all {waiting.length}
+                  </Link>
+                </li>
+              )}
+            </ul>
+          ) : (
+            <p className="mt-1 text-sm text-[var(--text-muted)]">
+              Nothing needs approval right now.
+            </p>
+          )}
+        </>
       )}
     </Card>
   )
@@ -381,23 +462,23 @@ export function ApprovalsCard({
 
 export function InsightCard({
   insight,
-  shown
+  shown,
+  generate
 }: {
   insight: string
   shown: boolean
+  generate: Route
 }) {
   return (
     <Card className="lg:col-span-2">
       <div className="flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--inverse)] px-2.5 py-1 text-xs font-semibold text-[var(--on-inverse)]">
           <Sparkles className="size-3.5" aria-hidden /> GROS
-          <span className="bg-success size-1.5 rounded-full" aria-hidden />
         </span>
         <Link
-          href={'/dashboard?insight=1' as Route}
+          href={generate}
           scroll={false}
-          title="Writes a short insight from your numbers. No AI credits are used while the AI is in sample mode."
-          className="ml-auto inline-flex min-h-9 items-center gap-1.5 rounded-[var(--radius-control)] px-2 text-sm font-medium text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
+          className="ml-auto inline-flex min-h-9 items-center gap-1.5 rounded-[var(--radius-control)] px-2 text-sm font-medium text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden"
         >
           <RefreshCw className="size-4" aria-hidden />
           Generate
@@ -413,8 +494,8 @@ export function InsightCard({
         </>
       ) : (
         <p className="mt-4 text-sm leading-6 text-[var(--text-muted)] italic">
-          Click “Generate” to get a short insight on your retention performance,
-          written from your current numbers.
+          Click “Generate” for a short insight on your retention performance,
+          written from your current numbers. No AI is used.
         </p>
       )}
     </Card>
