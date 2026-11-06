@@ -6,7 +6,7 @@ select set_config('test.private',public.create_conversation('00000000-0000-4000-
 select set_config('test.shared',public.create_conversation('00000000-0000-4000-8000-000000000101','Original shared synthetic chat','shared')::text,true);
 select public.ask_fixture_gros('00000000-0000-4000-8000-000000000101',current_setting('test.private')::uuid,'00000000-0000-4000-8000-000000000601','Why is this campaign here?','explain','');
 select is((select count(*) from public.chat_messages),2::bigint,'GROS explanation and question persist');
-select ok((select body like '%Reason and evidence%' from public.chat_messages where role='assistant'),'explanation includes persisted lineage');
+select ok((select body like '%Next step:%' and body not like '%{%' from public.chat_messages where role='assistant'),'explanation is plain language with a next step and no raw JSON');
 select set_config('test.proposal',public.ask_fixture_gros('00000000-0000-4000-8000-000000000101',current_setting('test.shared')::uuid,'00000000-0000-4000-8000-000000000601','Clarify the goal.','edit_goal','A new original synthetic education goal')::text,true);
 select set_config('test.hash',(select payload_hash from public.chat_proposals where id=current_setting('test.proposal')::uuid),true);
 select isnt((select goal from public.campaigns where id='00000000-0000-4000-8000-000000000601'),'A new original synthetic education goal','proposal does not mutate campaign before confirmation');

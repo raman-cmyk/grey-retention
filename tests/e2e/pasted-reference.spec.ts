@@ -139,7 +139,7 @@ test('owner pastes a hostile email, recovers from failure, replays safely and re
   await expect(
     page.getByRole('heading', { name: 'Starting point · email you added' })
   ).toBeVisible()
-  await expect(page.getByText(/not collected competitor/)).toBeVisible()
+  await expect(page.getByText(/were not copied/)).toBeVisible()
   const campaign = await db
     .from('campaigns')
     .select('lineage,calendar_state,copy_state,delivery_state')

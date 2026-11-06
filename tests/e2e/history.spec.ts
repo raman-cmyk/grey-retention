@@ -37,9 +37,7 @@ test('UC-11 paged GROS history retains old and newest messages after refresh', a
     await page
       .getByLabel('Question or reason')
       .fill(`Original history question ${info.project.name} ${n}`)
-    await page
-      .getByRole('button', { name: 'Ask fixture GROS', exact: true })
-      .click()
+    await page.getByRole('button', { name: 'Ask GROS', exact: true }).click()
     await expect(
       page.getByText(`Original history question ${info.project.name} ${n}`, {
         exact: true

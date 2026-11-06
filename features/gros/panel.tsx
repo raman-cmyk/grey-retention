@@ -137,10 +137,10 @@ export async function GrosPanel({
           <>
             <Panel title={`${active.title} · ${active.visibility}`}>
               <Notice>
-                Original synthetic GROS answers use authorized persisted
-                evidence. Shared visibility does not permit another member to
-                execute your proposal. Proposals expire after 15 minutes;
-                material changes require a new proposal.
+                GROS reports where each campaign stands and what to do next.
+                Changes it proposes only happen after you confirm them, and
+                expire after 15 minutes. Only the person who asked can confirm a
+                change, even in a shared conversation.
               </Notice>
               {active.creator_id === ctx.userId && (
                 <div className="mt-4">
@@ -185,7 +185,7 @@ export async function GrosPanel({
                         className={`mb-2 text-xs font-semibold ${m.role === 'assistant' ? 'text-[var(--brand-ink)]' : 'text-[var(--text-muted)]'}`}
                       >
                         {m.role === 'assistant'
-                          ? 'Synthetic GROS'
+                          ? 'GROS'
                           : m.actor_id === ctx.userId
                             ? 'You'
                             : 'Workspace member'}
@@ -283,7 +283,7 @@ export async function GrosPanel({
                     placeholder="Enter the new goal when proposing a goal edit."
                   />
                 </Field>
-                <SubmitButton>Ask fixture GROS</SubmitButton>
+                <SubmitButton>Ask GROS</SubmitButton>
               </ActionForm>
               <details className="mt-6 border-t border-[var(--line)] pt-4">
                 <summary className="text-sm font-medium text-[var(--brand-secondary)]">
@@ -433,9 +433,8 @@ export async function GrosPanel({
               place. Select a conversation or create one to get started.
             </p>
             <p className="mt-4 text-xs leading-5 text-[var(--text-faint)]">
-              Conversations are private by default. GROS uses synthetic answers
-              with persisted evidence; proposed changes always need
-              confirmation.
+              Conversations are private by default. Changes GROS proposes always
+              need your confirmation.
             </p>
           </Panel>
         )}
