@@ -17,6 +17,7 @@ export function AppShell({
   navigation,
   workspace,
   contextLabel = 'Client workspace',
+  workspaceLabel = contextLabel,
   identity = { name: 'Your account', initials: 'YA', role: 'Workspace member' },
   brand = defaultBrandPresentation,
   status = {
@@ -28,6 +29,8 @@ export function AppShell({
   navigation: NavigationItem[]
   workspace?: string
   contextLabel?: string
+  /** Visible label above the workspace or store name in the header (UX-002). */
+  workspaceLabel?: string
   identity?: { name: string; initials: string; role: string }
   brand?: BrandPresentation
   /** Shown for real signed-in sessions; demo mode always uses the brand's demo copy. */
@@ -51,7 +54,7 @@ export function AppShell({
     >
       <a
         href="#main-content"
-        className="fixed top-3 left-3 z-50 -translate-y-20 rounded-md bg-[var(--text)] px-4 py-2 text-sm text-[var(--surface)] focus:translate-y-0"
+        className="fixed top-3 left-3 z-50 -translate-y-20 rounded-[var(--radius-control)] bg-[var(--text)] px-4 py-2 text-sm text-[var(--surface)] focus:translate-y-0"
       >
         Skip to content
       </a>
@@ -65,11 +68,8 @@ export function AppShell({
           variant="sidebar"
         />
         <div className="border-t border-[var(--line)] px-5 py-4">
-          <div className="flex items-center gap-2 text-xs font-medium text-[var(--nav-text)]">
-            <span
-              className="size-1.5 rounded-full bg-[var(--text-faint)]"
-              aria-hidden
-            />
+          <div className="tracking-label flex items-center gap-2 font-mono text-[0.6875rem] text-[var(--nav-text)] uppercase">
+            <span className="size-1.5 bg-[var(--text-faint)]" aria-hidden />
             {shown.label}
           </div>
           <p className="mt-1.5 text-xs text-[var(--nav-muted)]">
@@ -98,20 +98,24 @@ export function AppShell({
             className="hidden size-4 text-[var(--text-faint)] lg:block"
             aria-hidden
           />
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{workspaceName}</p>
-            <p className="mt-0.5 hidden text-[0.6875rem] text-[var(--text-faint)] sm:block">
-              {contextLabel}
+          <div className="min-w-0" data-testid="shell-workspace">
+            <p className="tracking-label font-mono text-[0.6875rem] leading-none text-[var(--nav-muted)] uppercase">
+              {workspaceLabel}
+            </p>
+            <p className="mt-1 truncate text-sm font-medium text-[var(--nav-text)]">
+              {workspaceName}
             </p>
           </div>
           <HeaderActions
             navigation={navigation}
             identity={identity}
-            contextLabel={contextLabel}
+            contextLabel={workspaceLabel}
           />
         </header>
-        <main id="main-content" className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-          {children}
+        <main id="main-content" className="px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
+          <div className="mx-auto w-full max-w-[var(--gr-content-max)]">
+            {children}
+          </div>
         </main>
       </div>
     </div>

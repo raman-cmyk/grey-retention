@@ -72,7 +72,7 @@ export function NavigationList({
   return (
     <nav
       className={cn(
-        'space-y-1 px-3 py-4',
+        'space-y-1 px-3 py-5',
         variant === 'sidebar' && 'flex-1 overflow-y-auto'
       )}
       aria-label={label}
@@ -90,9 +90,9 @@ export function NavigationList({
                 aria-current={
                   isCurrentPath(pathname, href) ? 'page' : undefined
                 }
-                className="group flex min-h-10 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm text-[var(--nav-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--nav-text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none aria-[current=page]:bg-[var(--surface-hover)] aria-[current=page]:font-semibold aria-[current=page]:text-[var(--nav-text)]"
+                className="group relative flex min-h-10 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm text-[var(--nav-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--nav-text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none aria-[current=page]:font-medium aria-[current=page]:text-[var(--nav-text)] aria-[current=page]:before:absolute aria-[current=page]:before:inset-y-2 aria-[current=page]:before:left-0 aria-[current=page]:before:border-l-2 aria-[current=page]:before:border-[var(--nav-text)]"
               >
-                <Icon className="size-[1.05rem] stroke-[1.8]" aria-hidden />
+                <Icon className="size-4 stroke-[1.6]" aria-hidden />
                 <span>{itemLabel}</span>
               </Link>
             )
@@ -102,9 +102,9 @@ export function NavigationList({
               <details
                 key={`${group}-${pathname}`}
                 open={items.some((item) => isCurrentPath(pathname, item.href))}
-                className="mt-3 border-t border-[var(--line)] pt-2"
+                className="mt-4 border-t border-[var(--line)] pt-2"
               >
-                <summary className="cursor-pointer rounded-md px-3 py-3 text-xs font-medium text-[var(--nav-muted)] focus-visible:ring-2 focus-visible:ring-[var(--focus)]">
+                <summary className="tracking-label cursor-pointer rounded-[var(--radius-control)] px-3 py-3 font-mono text-[0.6875rem] text-[var(--nav-muted)] uppercase hover:text-[var(--nav-text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)]">
                   {group}
                 </summary>
                 <div className="space-y-1 pb-2">{links}</div>
@@ -113,7 +113,7 @@ export function NavigationList({
           return (
             <div key={group ?? 'navigation'} className="space-y-1">
               {group && (
-                <p className="px-3 pb-2 text-[0.6875rem] font-medium text-[var(--nav-muted)]">
+                <p className="tracking-label px-3 pb-2 font-mono text-[0.6875rem] text-[var(--nav-muted)] uppercase">
                   {group}
                 </p>
               )}
