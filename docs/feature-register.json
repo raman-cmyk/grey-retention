@@ -46,11 +46,11 @@
       "priority": "P0",
       "acceptance": "Keep familiar calendar/campaign/library patterns unless observed usability evidence supports a change.",
       "status": "partial",
-      "implementation_tasks": ["ONB-001", "DRF-001"],
+      "implementation_tasks": ["ONB-001", "DRF-001", "DS-001"],
       "verification": [
         "DRF-001: 107 unit tests; 352 database assertions; 56 desktop/mobile journeys; 12 concurrent replay requests. See BUILD_LEDGER for scope."
       ],
-      "remaining": "Shared neutral visual language is retained. User usability acceptance remains."
+      "remaining": "Calendar, campaign and library patterns are unchanged. 2026-11-06 (DS-001): on the owner's request the visual language moved to docs/DESIGN.md (warm canvas, Newsreader/Geist/Geist Mono, one blue accent, 4px shapes); this changes colours, type and shape only, not layouts or workflows. User usability acceptance remains."
     },
     {
       "id": "ONB-005",
@@ -4027,9 +4027,12 @@
       "feature": "Store switcher in global chrome",
       "priority": "P0",
       "acceptance": "Every screen identifies the selected merchant store before any action.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["DS-002"],
+      "verification": [
+        "DS-002 (2026-11-06): unit tests render the shell with the store label and name ahead of page content; demo-mode screenshots of owner, admin and designer shells at 1280px and 375px."
+      ],
+      "remaining": "DS-002 (2026-11-06): every screen inside the workspace shell shows a STORE label with the selected store name in the header before page content (desktop and mobile). Remaining: the setup screens outside the shell (/get-started, /first-draft, /import-reference, /create-email/[importId], where the rewrite starts) do not show the store yet; switching between several stores from the header; showing the store inside dialogs that start external actions."
     },
     {
       "id": "UX-003",
@@ -4133,9 +4136,12 @@
       "feature": "Plain-language statuses",
       "priority": "P0",
       "acceptance": "Collecting, Ready, Needs setup, In production, Needs review, Scheduled, Sending, Sent and Failed have exact meanings.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["DS-004"],
+      "verification": [
+        "DS-004 (2026-11-06): lib/status-vocabulary.ts defines the nine statuses with label, tone and meaning; StatusMark status=… renders them as text with a decorative dot and the meaning as a tooltip; unit tests cover the words, distinct meanings and Sent-only-when-confirmed."
+      ],
+      "remaining": "DS-004 (2026-11-06): the shared vocabulary and StatusMark exist. Remaining: campaign overview, calendar, competitor and delivery screens still compute their own status words; they must map their states onto this list, and the meanings need a visible help entry."
     },
     {
       "id": "UX-013",
@@ -4193,9 +4199,13 @@
       "feature": "Readable controls and responsive layout",
       "priority": "P0",
       "acceptance": "Editor remains usable at agreed laptop/mobile widths and zoom.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["DS-001", "DS-002", "DS-003"],
+      "verification": [
+        "DS-001 (2026-11-06): pnpm verify (242 unit tests incl. token contrast/sync and default-theme tests, build); computed styles checked on /login, /signup and 404 at 1280px and 375px.",
+        "DS-003 (2026-11-06): unit tests for button roles, focus rings, segmented control keyboard/form behaviour and text links; /onboarding and /settings controls measured at 1280px and 375px (4px radius, #8a8580 outline, 15px text, no horizontal scroll)."
+      ],
+      "remaining": "Done: shared 4px radius, AA-checked colour tokens (text 4.5:1, control outlines 3:1) and Geist UI type app-wide (DS-001); auth/error pages and the owner, admin and designer shells checked at 1280px and 375px with keyboard focus and no horizontal scroll (DS-002); native inputs, selects and text areas share one control style (15px text, 44px minimum height, 3:1 outline), including page search and the calendar month picker; the file picker and the mono HTML editor keep their own sizes on the same outline (DS-003). Remaining: status marks are still pills, body text size is unchanged (mostly 14px), and editor and table layouts still need checking at agreed laptop/mobile widths and 200% zoom (DS-004, DS-005)."
     },
     {
       "id": "UX-019",

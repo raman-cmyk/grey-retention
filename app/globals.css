@@ -1,40 +1,90 @@
 @import 'tailwindcss';
+@import './styles/tokens.css';
 
+/*
+ * Semantic variables used by every component. The white-label
+ * `BrandPresentation` (lib/branding/presentation.ts) sets the same names on
+ * <body>, so a customer theme replaces them; these :root values are the
+ * Grey Retention defaults from app/styles/tokens.css (docs/DESIGN.md).
+ * Legacy name → design token: surface = canvas, surface-raised = surface,
+ * surface-hover = canvas-sunken, text = ink, line = hairline,
+ * brand-primary = ink, brand-secondary = accent, brand-soft = accent-faint,
+ * brand-ink = accent-strong.
+ */
 :root {
-  --font-display: var(--font-inter), sans-serif;
-  --font-body: var(--font-inter), sans-serif;
-  --font-data: var(--font-inter), sans-serif;
-  --surface: #f9f9fb;
-  --surface-raised: #ffffff;
-  --surface-hover: #f5f5f7;
-  --nav: #ffffff;
-  --nav-text: #1d1d1f;
-  --nav-muted: #646468;
-  --text: #1d1d1f;
-  --text-muted: #46464a;
-  --text-faint: #626267;
-  --line: #e2e2e4;
-  --line-strong: #c7c7cc;
-  --brand-primary: #1d1d1f;
-  --brand-primary-strong: #000000;
-  --brand-secondary: #0066cc;
-  --brand-soft: #e8f1fb;
-  --brand-ink: #004a94;
-  --on-brand: #ffffff;
-  --focus: #0066cc;
-  --danger: #dc2626;
-  --danger-strong: #b91c1c;
-  --on-danger: #ffffff;
-  --danger-soft: #fee2e2;
-  --danger-ink: #991b1b;
-  --warning-soft: #fef3c7;
-  --warning-ink: #7a4e00;
-  --radius-control: 8px;
-  --radius-panel: 16px;
+  --font-display: var(--gr-font-display);
+  --font-body: var(--gr-font-ui);
+  --font-data: var(--gr-font-mono);
+  --surface: var(--gr-canvas);
+  --surface-raised: var(--gr-surface);
+  --surface-hover: var(--gr-canvas-sunken);
+  --nav: var(--gr-canvas);
+  --nav-text: var(--gr-ink);
+  --nav-muted: var(--gr-ink-muted);
+  --text: var(--gr-ink);
+  --text-muted: var(--gr-ink-muted);
+  --text-faint: var(--gr-ink-muted);
+  --line: var(--gr-hairline);
+  --line-strong: var(--gr-hairline-strong);
+  --brand-primary: var(--gr-ink);
+  --brand-primary-strong: var(--gr-ink-strong);
+  --brand-secondary: var(--gr-accent);
+  --on-brand-secondary: var(--gr-on-accent);
+  --brand-soft: var(--gr-accent-faint);
+  --brand-ink: var(--gr-accent-strong);
+  --on-brand: var(--gr-on-ink);
+  --focus: var(--gr-accent);
+  --danger: var(--gr-danger);
+  --danger-strong: var(--gr-danger-strong);
+  --on-danger: var(--gr-on-danger);
+  --danger-soft: var(--gr-danger-faint);
+  --danger-ink: var(--gr-danger);
+  --warning-soft: var(--gr-warning-faint);
+  --warning-ink: var(--gr-warning);
+  --inverse: var(--gr-inverse);
+  --on-inverse: var(--gr-on-inverse);
+  --on-inverse-muted: var(--gr-on-inverse-muted);
+  --radius-control: var(--gr-radius);
+  --radius-panel: var(--gr-radius);
 }
 
+/*
+ * Tailwind names for the design language. Colours resolve through the
+ * semantic variables above so white-label themes keep working. Every
+ * rounded-* step is the single 4px radius; rounded-full stays for avatars.
+ */
 @theme inline {
   --font-sans: var(--font-body);
+  --font-serif: var(--font-display);
+  --font-mono: var(--font-data);
+  --color-canvas: var(--surface);
+  --color-canvas-sunken: var(--surface-hover);
+  --color-surface: var(--surface-raised);
+  --color-ink: var(--text);
+  --color-ink-strong: var(--brand-primary-strong);
+  --color-ink-muted: var(--text-muted);
+  --color-hairline: var(--line);
+  --color-hairline-strong: var(--line-strong);
+  --color-accent: var(--brand-secondary);
+  --color-accent-strong: var(--brand-ink);
+  --color-accent-faint: var(--brand-soft);
+  --color-danger: var(--danger);
+  --color-danger-faint: var(--danger-soft);
+  --color-warning: var(--warning-ink);
+  --color-warning-faint: var(--warning-soft);
+  --color-success: var(--gr-success);
+  --color-success-faint: var(--gr-success-faint);
+  --radius: var(--gr-radius);
+  --radius-xs: var(--gr-radius);
+  --radius-sm: var(--gr-radius);
+  --radius-md: var(--gr-radius);
+  --radius-lg: var(--gr-radius);
+  --radius-xl: var(--gr-radius);
+  --radius-2xl: var(--gr-radius);
+  --radius-3xl: var(--gr-radius);
+  --radius-4xl: var(--gr-radius);
+  --tracking-display: var(--gr-tracking-display);
+  --tracking-label: var(--gr-tracking-label);
 }
 
 * {
@@ -54,6 +104,7 @@ body {
   color: var(--text);
   font-family: var(--font-body);
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
@@ -80,8 +131,8 @@ select {
 
 summary:focus-visible,
 a:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 3px;
+  outline: var(--gr-focus-width) solid var(--focus);
+  outline-offset: var(--gr-focus-offset);
 }
 
 input::placeholder,
@@ -90,7 +141,7 @@ textarea::placeholder {
 }
 
 dialog::backdrop {
-  background: rgb(29 29 31 / 30%);
+  background: rgb(17 17 17 / 30%);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -101,5 +152,16 @@ dialog::backdrop {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Native checkboxes and radios follow the ink colour and stay 16px. In the
+   base layer so utilities (sr-only, size-*) can still override them. */
+@layer base {
+  input[type='checkbox'],
+  input[type='radio'] {
+    accent-color: var(--brand-primary);
+    inline-size: 1rem;
+    block-size: 1rem;
   }
 }

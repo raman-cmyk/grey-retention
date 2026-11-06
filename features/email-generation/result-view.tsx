@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { cn } from '@/lib/utils'
 import Link from 'next/link'
 import type { Route } from 'next'
 import { Download } from 'lucide-react'
@@ -147,7 +148,7 @@ export async function EmailResultView({
             defaultValue={revision.html}
             maxLength={300000}
             spellCheck={false}
-            className={`${controlClass} font-mono text-xs`}
+            className={cn(controlClass, 'font-mono text-xs')}
           />
         </Field>
       )}

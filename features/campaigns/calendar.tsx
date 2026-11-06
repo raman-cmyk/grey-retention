@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Notice } from '@/components/ui/workspace'
 import { StatusMark } from '@/components/ui/status-mark'
 import { cn } from '@/lib/utils'
+import { controlClass } from '@/components/ui/control'
 import {
   buildCampaignCalendar,
   type CalendarCampaign,
@@ -84,11 +85,8 @@ function CampaignCard({
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <StatusMark
           tone={status.tone}
-          className={
-            compact
-              ? 'min-h-5 px-1.5 text-[0.6875rem] tracking-normal normal-case'
-              : 'tracking-normal normal-case'
-          }
+          variant="text"
+          className={compact ? 'min-h-5 text-[0.6875rem]' : undefined}
         >
           {status.label}
         </StatusMark>
@@ -216,10 +214,7 @@ function CampaignAgenda({
                 {day.label}
               </time>
               {day.today && (
-                <StatusMark
-                  tone="active"
-                  className="tracking-normal normal-case"
-                >
+                <StatusMark tone="active" variant="text">
                   Today
                 </StatusMark>
               )}
@@ -293,10 +288,7 @@ function CampaignList({
                 </p>
               </div>
               <div className="flex items-center gap-2 sm:justify-end">
-                <StatusMark
-                  tone={status.tone}
-                  className="tracking-normal normal-case"
-                >
+                <StatusMark tone={status.tone} variant="text">
                   {status.label}
                 </StatusMark>
                 <span className="text-xs text-[var(--text-muted)]">
@@ -434,7 +426,10 @@ export function CampaignCalendar({
             min="0001-01"
             max="9999-12"
             defaultValue={month}
-            className="min-h-9 max-w-full rounded-lg border border-[var(--line-strong)] bg-[var(--surface-raised)] px-2.5 text-xs focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
+            className={cn(
+              controlClass,
+              'min-h-9 w-auto max-w-full px-2.5 py-1 text-xs'
+            )}
           />
           <Button variant="secondary" size="sm" className="min-h-9">
             Show month

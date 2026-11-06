@@ -12,7 +12,7 @@ export function PageHeading({
   return (
     <header className="mb-7 flex flex-wrap items-center justify-between gap-4">
       <div className="min-w-0 flex-1 basis-72">
-        <h1 className="text-2xl leading-tight font-semibold tracking-[-0.03em] break-words sm:text-3xl">
+        <h1 className="tracking-display font-[family-name:var(--font-display)] text-3xl leading-tight font-normal break-words sm:text-4xl">
           {title}
         </h1>
         <p className="mt-2 max-w-[72ch] text-sm leading-6 text-[var(--text-muted)]">
@@ -29,7 +29,8 @@ export function Panel({
   className,
   id,
   action,
-  description
+  description,
+  eyebrow
 }: {
   title: string
   children: ReactNode
@@ -37,18 +38,25 @@ export function Panel({
   id?: string
   action?: ReactNode
   description?: string
+  /** Optional mono uppercase label above the title. */
+  eyebrow?: string
 }) {
   return (
     <section
       id={id}
       className={cn(
-        'min-w-0 scroll-mt-24 rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-5 sm:p-6',
+        'min-w-0 scroll-mt-24 rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-4 sm:p-6',
         className
       )}
     >
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold tracking-[-0.015em]">
+          {eyebrow && (
+            <p className="tracking-label mb-1.5 font-mono text-[0.6875rem] text-[var(--text-muted)] uppercase">
+              {eyebrow}
+            </p>
+          )}
+          <h2 className="text-lg leading-snug font-medium tracking-[-0.01em]">
             {title}
           </h2>
           {description && (
@@ -74,7 +82,7 @@ export function Notice({
     <p
       role={error ? 'alert' : 'status'}
       className={cn(
-        'rounded-lg border p-4 text-sm leading-6',
+        'rounded-[var(--radius-control)] border p-4 text-sm leading-6',
         error
           ? 'border-[var(--danger)] bg-[var(--danger-soft)] text-[var(--danger-ink)]'
           : 'border-[var(--line)] bg-[var(--surface-hover)] text-[var(--text-muted)]'
@@ -103,5 +111,4 @@ export function Field({
     </div>
   )
 }
-export const controlClass =
-  'min-h-11 w-full rounded-lg border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:ring-2 focus:ring-[var(--focus)]'
+export { controlClass } from './control'

@@ -29,7 +29,7 @@ export function SignInPanel({
   )
   return (
     <div>
-      <h1 className="font-[family-name:var(--font-display)] text-4xl leading-none font-bold tracking-[-0.035em]">
+      <h1 className="tracking-display font-[family-name:var(--font-display)] text-4xl leading-none font-normal">
         {title}
       </h1>
       <p className="mt-4 max-w-sm text-sm leading-6 text-[var(--text-muted)]">

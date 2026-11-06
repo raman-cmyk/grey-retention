@@ -1,6 +1,6 @@
 # Grey Retention design language
 
-Status: **approved direction, not yet applied.** The live app still uses the older "Quiet Operations" theme described in the root [`DESIGN.md`](../DESIGN.md). Milestone **M1 Design system** moves every screen to this document (issues DS-001 to DS-007). The tokens already exist in [`lib/design/tokens.ts`](../lib/design/tokens.ts) and [`app/styles/tokens.css`](../app/styles/tokens.css).
+Status: **foundation applied (DS-001).** Fonts, colours and the 4px shape are live on every screen through [`lib/design/tokens.ts`](../lib/design/tokens.ts), [`app/styles/tokens.css`](../app/styles/tokens.css) and the default white-label theme. The remaining M1 issues (DS-002 to DS-007) rebuild the shell, components and states to the patterns below.
 
 ## In plain words
 
@@ -23,7 +23,7 @@ The feel is deeply inspired by exa.ai: editorial, research-grade, generous white
 
 ## Colour
 
-Use tokens, never raw hex values. In CSS: `var(--gr-accent)`. In TypeScript: `colorThemes.light.accent` from `lib/design/tokens.ts`.
+Use tokens, never raw hex values. In components use the Tailwind names (`bg-surface`, `text-accent`, `border-hairline-strong`) or the semantic variables (`var(--brand-secondary)`); both follow a customer's white-label theme. The raw `--gr-*` variables and `colorThemes` in `lib/design/tokens.ts` are the defaults only and must not be used directly in components.
 
 ### Light theme (default)
 
@@ -33,6 +33,7 @@ Use tokens, never raw hex values. In CSS: `var(--gr-accent)`. In TypeScript: `co
 | `canvas-sunken`      | `#f0ece8`             | Recessed areas: composer tray, code/preview wells, table header |
 | `surface`            | `#ffffff`             | Cards, panels, inputs, menus                                    |
 | `ink`                | `#111111`             | Headings, body text, primary button fill                        |
+| `ink-strong`         | `#000000`             | Hover/pressed state of the black primary button                 |
 | `ink-muted`          | `#58544e`             | Secondary text, captions, mono labels                           |
 | `ink-subtle`         | `#787572`             | Small meta text **on white only**; icons; disabled hints        |
 | `hairline`           | `#e5e5e5`             | Dividers, card borders, grid lines (decorative)                 |
@@ -50,6 +51,7 @@ Use tokens, never raw hex values. In CSS: `var(--gr-accent)`. In TypeScript: `co
 | `success` / `-faint` | `#2f6b4f` / `#e8f1ec` | Muted green status                                              |
 | `warning` / `-faint` | `#7a5300` / `#f6eedb` | Muted amber status                                              |
 | `danger` / `-faint`  | `#a3352b` / `#f8e8e5` | Muted red status and errors                                     |
+| `danger-strong`      | `#842a22`             | Hover/pressed state of a destructive button                     |
 | `on-danger`          | `#ffffff`             | Text on a destructive button                                    |
 
 ### Dark theme
@@ -109,13 +111,19 @@ Rules: one display title per page; never bold the serif; never set paragraphs in
 
 Disabled buttons keep their shape, drop to `ink-subtle` text and explain why nearby. Loading buttons keep their width and show a small spinner plus the label ("Saving…").
 
+In code: `Button` from `components/ui/button.tsx` with `variant="primary" | "accent" | "secondary" | "quiet" | "danger"` (`SubmitButton` takes the same variants), and `TextLink` from `components/ui/text-link.tsx` for the tertiary arrow link.
+
 ### Segmented toggle and chips
 
-A row of joined 4px segments with hairline dividers. Labels are mono uppercase (`EXACT`, `REBRAND`, `ADAPT`; `DESKTOP`, `MOBILE`). Selected: `accent-faint` fill and `accent-text` label plus a 1px `accent` outline; unselected: `surface` with `ink-muted` label. It is a radio group for keyboard and screen readers (arrow keys move, one selected).
+A row of joined 4px segments with hairline dividers. Labels are mono uppercase (`EXACT`, `REBRAND`, `ADAPT`; `DESKTOP`, `MOBILE`). Selected: `accent-faint` fill and `accent-text` label plus a 1px `accent` outline; unselected: `surface` with `ink-muted` label. Keyboard focus is a 2px ink outline inside the segment, so it is distinct from selection. It is a radio group for keyboard and screen readers (arrow keys move, one selected). Unavailable options stay visible, disabled, with their reason written underneath.
+
+In code: `SegmentedControl` from `components/ui/segmented-control.tsx` (a native radio group with a legend; options may carry a description and a `disabledReason`).
 
 ### Form controls
 
-Inputs, selects and text areas: `surface` fill, 1px `hairline-strong` outline, 4px radius, 40px tall (text areas grow), 15px Geist text. Labels sit above in 13px Geist 500; help text below in `ink-muted`; errors in `danger` with an icon and text (never colour alone). Focus: 2px `accent` ring with 2px offset. Dates and times always use pickers in the workspace timezone and display readable local text ("Tue 12 Nov, 9:00 am"), never ISO strings.
+Inputs, selects and text areas: `surface` fill, 1px `hairline-strong` outline, 4px radius, at least 44px tall (text areas grow), 15px Geist text. Labels sit above in 13px Geist 500; help text below in `ink-muted`; errors in `danger` with an icon and text (never colour alone). Focus: the outline turns `accent` and gains a 1px `accent` ring (2px of blue in total). Dates and times always use pickers in the workspace timezone and display readable local text ("Tue 12 Nov, 9:00 am"), never ISO strings.
+
+In code: `controlClass` from `components/ui/control.ts` for every native input, select and text area, `TextField` for inputs, and `Field` from `components/ui/workspace.tsx` for the label. Checkboxes and radios use the ink colour by default.
 
 ### Cards and panels
 
@@ -193,13 +201,17 @@ Technical words may appear in admin-only screens and developer tools. DS-007 add
 
 ## White-label
 
-Grey Retention is sold white-label (`PRODUCT.md`): name, logo, palette, typography, domains and customer-facing copy must be configurable without code changes. This document is the **default** theme. A customer theme is data passed through the existing `BrandPresentation` contract (`lib/branding/presentation.ts`): it may replace any colour token and the three font roles, but it is accepted only if every pair in `contrastRules` still passes (otherwise the default is used, as the current contrast gate already does). Layout, spacing, 4px shapes, hairline structure and components are shared; they are never forked per customer.
+Grey Retention is sold white-label (`PRODUCT.md`): name, logo, palette, typography, domains and customer-facing copy must be configurable without code changes. This document is the **default** theme. A customer theme is data passed through the existing `BrandPresentation` contract (`lib/branding/presentation.ts`): it may replace the colours of its `theme` and the three font roles. `hasAccessibleBrandContrast` checks text, muted and faint text, accent links, error and warning text, button labels and control outlines against the page and white panels; a theme that fails any pair is rejected and the default is used. Success colours are not tenant-themable yet. Layout, spacing, 4px shapes, hairline structure and components are shared; they are never forked per customer.
 
 ## Implementation notes
 
 - Tokens: `lib/design/tokens.ts` (source of truth) and `app/styles/tokens.css` (`--gr-*` custom properties, light on `:root`, dark on `[data-theme='dark']`). The test fails if the two differ.
-- DS-001 imports `tokens.css` into `app/globals.css`, maps the tokens into the Tailwind 4 `@theme` (for example `--color-canvas: var(--gr-canvas)`), loads the fonts with `next/font` into `--font-newsreader`, `--font-geist` and `--font-geist-mono`, and updates the `BrandPresentation` defaults. Until then the tokens are not loaded by the app, so this document changes nothing on the live site.
-- Replace the old root `DESIGN.md` once every screen has moved.
+- `app/globals.css` imports `tokens.css`. The older semantic variables that components already use (`--surface`, `--text`, `--line`, `--brand-primary`, `--brand-secondary`, …) now point at the tokens, and `lib/branding/presentation.ts` builds the default white-label theme from `colorThemes.light`, so there is one source for every value.
+- Tailwind names (Tailwind 4 `@theme`): colours `canvas`, `canvas-sunken`, `surface`, `ink`, `ink-strong`, `ink-muted`, `hairline`, `hairline-strong`, `accent`, `accent-strong`, `accent-faint`, `danger`, `warning`, `success` (+ `-faint`); fonts `font-serif` (display), `font-sans` (UI), `font-mono` (labels/numbers); tracking `tracking-display`, `tracking-label`. Every `rounded-*` step is 4px; `rounded-full` remains for avatars. New code uses these names, for example `bg-surface border border-hairline text-ink`.
+- Fonts load with `next/font/google` in `app/layout.tsx` as `--font-newsreader`, `--font-geist` and `--font-geist-mono`; they are self-hosted at build time.
+- Dark mode is defined in tokens but not switched on: the white-label theme is applied inline on `<body>`, so dark mode needs a dark `BrandPresentation` variant first. Until then the app is light only.
+- Naming trap: Tailwind `bg-surface` is the white panel (`--surface-raised`), while the older variable `var(--surface)` is the page canvas; `text-ink` is near-black, while the older `--brand-ink` is dark blue. When replacing `bg-[var(--surface)]`, use `bg-canvas`.
+- Replace the old root `DESIGN.md` once DS-002 to DS-007 are done.
 
 ## Do and don't
 

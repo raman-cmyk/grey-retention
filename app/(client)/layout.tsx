@@ -16,6 +16,7 @@ export default async function ClientLayout({
         defaultBrandPresentation.assistantName
       )}
       brand={defaultBrandPresentation}
+      workspaceLabel="Store"
       workspace={context.tenantName}
       identity={await shellIdentity(context)}
     >

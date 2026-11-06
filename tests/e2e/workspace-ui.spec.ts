@@ -8,6 +8,10 @@ test('workspace navigation, page search and account actions work with keyboard a
   await expect(
     page.getByRole('heading', { name: 'Workspace overview', exact: true })
   ).toBeVisible()
+  const store = page.getByTestId('shell-workspace')
+  await expect(store).toBeVisible()
+  await expect(store).toContainText('Store')
+  expect((await store.innerText()).trim().split('\n').length).toBeGreaterThan(1)
   const trigger = page.getByRole('button', { name: 'Search workspace' })
   await trigger.click()
   const search = page.getByRole('dialog', { name: 'Find a page' })
