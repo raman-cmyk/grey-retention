@@ -63,42 +63,43 @@ Not crawled (needs a logged-out or admin session): login, signup, onboarding, pa
 
 ### Sidebar (expanded)
 
-- [ ] Top block: square workspace avatar with first letter, workspace name (bold), user name (small, muted) under it, and a `<` collapse button on the right.
-- [ ] Nav items are icon + label rows. The active item gets a rounded filled background.
+- [x] Top block: square workspace avatar with first letter, workspace name (bold), user name (small, muted) under it, and a `<` collapse button on the right.
+- [x] Nav items are icon + label rows. The active item gets a rounded filled background.
   - Dashboard
   - Brand & Store
-  - Campaign Agent
+  - Campaigns (was Campaign Agent: OWNER_JOURNEYS.md §18.2)
   - Ask GROS
-  - Competitor Agent
+  - Inspiration (was Competitor Agent: §18.2)
   - Support
-- [ ] Divider after the nav items.
-- [ ] Collapsible group **Agents** (robot icon, chevron). Its children are disabled, greyed, and each has a `SOON` pill. They are not clickable.
+  - Child pages highlight their parent area: detail pages → Dashboard, `/campaign-drafts*` → Campaigns (OWNER_JOURNEYS.md §2 fix).
+- [x] Divider after the nav items.
+- [x] Collapsible group **Agents** (robot icon, chevron). Its children are disabled, greyed, and each has a `SOON` pill. They are not clickable. Screen readers hear "<name> — Coming soon". Exception: Bill Optimizer links to the fixture optimizer page this app already has.
   - List Health
   - Bill Optimizer
   - Flow Audit
   - Deliverability
   - A/B Test Monitor
-- [ ] Collapsible group **Workspace** (briefcase icon): Settings, Holidays & Events, Connections.
-- [ ] Each group's open/closed state persists across page loads.
-- [ ] Bottom account button: round avatar letter, name (bold), email (muted), up/down chevron. Clicking it opens the account menu.
-- [ ] Account menu is a popover that opens upward:
+- [x] Collapsible group **Workspace** (briefcase icon): Settings, Holidays & Events, Connections, plus Team and Request a Feature (OWNER_JOURNEYS.md §2). Holidays & Events opens `/settings#holidays` until §12 builds `/holidays`. Request a Feature is SOON until `/feedback` exists.
+- [x] Each group's open/closed state persists across page loads.
+- [x] Bottom account button: round avatar letter, name (bold), email (muted), up/down chevron. Clicking it opens the account menu.
+- [x] Account menu is a popover that opens upward:
   - header with name and email
-  - 👤 Profile Update → `/profile`
-  - 🔗 Connections
+  - 👤 Profile Update → `/profile` (shown as SOON until §14 builds `/profile`)
+  - ~~🔗 Connections~~ removed: it is already in Workspace (OWNER_JOURNEYS.md §18.18)
   - divider
   - **Log out** in danger colour
-- [ ] Account menu closes on Esc or an outside click.
+- [x] Account menu closes on Esc or an outside click.
 
 ### Sidebar (collapsed)
 
-- [ ] `<` collapses the sidebar to an icon rail (~56px). The rail shows the avatar plus a `>` expand button, nav icons only, group icons, and the avatar at the bottom.
-- [ ] The active icon keeps the filled background.
-- [ ] **Add tooltips** on hover with the item label. The old app had none; this is a fix, not a change of behaviour.
-- [ ] Collapsed state persists.
+- [x] `<` collapses the sidebar to an icon rail (~56px). The rail shows the avatar plus a `>` expand button, nav icons only, group icons, and the avatar at the bottom.
+- [x] The active icon keeps the filled background.
+- [x] **Add tooltips** on hover with the item label. The old app had none; this is a fix, not a change of behaviour.
+- [x] Collapsed state persists.
 
 ### Page header pattern
 
-- [ ] H1 + muted subtitle on the left; optional actions on the right (outline pill button, icon + label).
+- [x] H1 + muted subtitle on the left; optional actions on the right (outline pill button, icon + label).
 
 ### Detail-page pattern (all Klaviyo objects)
 

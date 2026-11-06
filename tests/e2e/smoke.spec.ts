@@ -30,10 +30,11 @@ test('workspace overview adapts to desktop and mobile viewports', async ({
       })
     ).toBeVisible()
   } else {
-    await expect(page.getByRole('link', { name: 'Overview' })).toHaveAttribute(
-      'aria-current',
-      'page'
-    )
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Client workspace navigation' })
+        .getByRole('link', { name: 'Dashboard', exact: true })
+    ).toHaveAttribute('aria-current', 'page')
   }
 })
 

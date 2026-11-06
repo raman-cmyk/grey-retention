@@ -223,4 +223,4 @@ Grey Retention is sold white-label (`PRODUCT.md`): name, logo, palette, typograp
 
 Do: lots of whitespace · one serif title per page · mono for facts · hairline grids · one blue key action · honest empty states · plain words.
 
-Don't: shadows, gradients or glows · pill buttons · more than one blue button per screen · blue headings or backgrounds · ISO timestamps or developer words on owner screens · copied third-party logos, copy or images.
+Don't: shadows, gradients or glows · pill buttons (the one exception is the outline pill for page-header actions, `variant="outline" shape="pill"`, from UI_REBUILD_SPEC.md §2) · more than one blue button per screen · blue headings or backgrounds · ISO timestamps or developer words on owner screens · copied third-party logos, copy or images.
