@@ -1924,9 +1924,12 @@
       "feature": "Global holiday overlays",
       "priority": "P1",
       "acceptance": "Show relevant platform holidays without turning them into sends.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-012"],
+      "verification": [
+        "UIR-012 (2026-11-06): /holidays shows platform holidays for the next 90 days by country (US, UK, Australia, Canada, New Zealand, India, international shopping days), computed in features/holidays/platform.ts; unit and browser tests."
+      ],
+      "remaining": "Calendar and planner overlays (browser lane, spec §6) still need to read platformHolidays; moon-calendar dates are listed until 2030."
     },
     {
       "id": "CAL-018",
@@ -1934,9 +1937,12 @@
       "feature": "Private tenant events",
       "priority": "P1",
       "acceptance": "Create/delete own events without changing other tenants.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-012"],
+      "verification": [
+        "UIR-012 (2026-11-06): /holidays adds, edits and deletes the workspace's own holidays and events (type, yearly repeat, notes for the AI strategist) through owner-only save_holiday / delete_holiday; pgTAP (roles, other workspace sees nothing, stale edits), unit and desktop/mobile browser tests."
+      ],
+      "remaining": "The planner modal's \"YOURS (N)\" list reads these entries in the browser lane's planner (UIR §6)."
     },
     {
       "id": "CAL-019",

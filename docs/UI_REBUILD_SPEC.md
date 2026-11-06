@@ -745,17 +745,19 @@ Right panel:
 
 ## 12. Holidays & Events `/holidays`
 
-- [ ] H1 + "Your brand's own moments — anniversaries, drops, sales windows. They appear on your calendar, in the planner wizards, and the AI strategists plan around them."
-- [ ] **Left card "Add an entry"** (~360px):
+- [x] H1 + "Your brand's own moments — anniversaries, drops, sales windows. They appear on your calendar, in the planner wizards, and the AI strategists plan around them."
+- [x] **Left card "Add an entry"** (~360px):
   - NAME ("e.g. Brand anniversary, Summer drop")
   - DATE + TYPE (Holiday / Event)
   - checkbox "Repeats annually (same date)"
   - NOTES FOR THE AI STRATEGIST (optional) textarea ("e.g. Our biggest drop of the year — tease it early.")
   - full-width primary `Add entry`
-- [ ] **Right card "Yours"** + "N total": list with edit/delete on each row. Empty: "Nothing yet — add your first on the left."
-- [ ] **Card "Platform holidays & events · next 90 days · managed by Grey Retention":**
+- [x] **Right card "Yours"** + "N total": list with edit/delete on each row. Empty: "Nothing yet — add your first on the left."
+- [x] **Card "Platform holidays & events · next 90 days · managed by Grey Retention":**
   - wrap of chips, each with the date (mono, muted) and the name (bold, coloured by category)
   - order: Nov 11 Veterans Day, Nov 26 Thanksgiving, Nov 27 Black Friday, Nov 30 Cyber Monday, Dec 1 Giving Tuesday, Dec 4 Hanukkah begins, Dec 14 Free Shipping Day, Dec 24 Christmas Eve, Dec 25 Christmas Day, Dec 26 Boxing Day, Dec 31 New Year's Eve
+
+> **As built (UIR-012, cloud lane):** layout as above. Each entry in Yours shows its next date (a yearly entry shows this year's or next year's date), Holiday or Event, "Every year" and the notes; Edit opens the same fields inline and Delete asks first. The platform card follows the brand's country (OWNER_JOURNEYS §18 decision 20): the owner picks United States, United Kingdom, Australia, Canada, New Zealand, India or International (shopping days only); before that the country is guessed from the workspace timezone and the card says so. "managed by" shows the product's name from the white-label brand presentation. Chip colours: public holidays in the brand colour, celebrations in accent-2, shopping days in the danger colour. Dates are computed, not stored; moon-calendar dates (Hanukkah, Diwali, Holi, Lunar New Year, Matariki) are listed until 2030.
 
 ---
 
