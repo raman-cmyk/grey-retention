@@ -19,6 +19,11 @@ function validZone(timezone: string) {
   }
 }
 
+/** The timezone if this runtime knows it, otherwise UTC (never throws). */
+export function validTimezone(timezone: string) {
+  return validZone(timezone) ? timezone : 'UTC'
+}
+
 /** `Oct 7, 2026 · 10:49 PM`, or null for a missing or invalid date. */
 export function formatBrandDateTime(
   value: Date | string | number | null | undefined,
@@ -40,6 +45,21 @@ export function formatBrandDateTime(
     hour12: true
   }).format(date)
   return `${day} · ${time}`
+}
+
+/** `Oct 7, 2026` (date only), or null for a missing or invalid date. */
+export function formatBrandDate(
+  value: Date | string | number | null | undefined,
+  timezone: string
+) {
+  const date = toDate(value)
+  if (!date) return null
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: validZone(timezone) ? timezone : 'UTC',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  }).format(date)
 }
 
 /** "Sydney time" for `Australia/Sydney`; "UTC" for UTC or an invalid zone. */

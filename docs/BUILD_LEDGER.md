@@ -72,6 +72,8 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 | UIR-002 | Old-app shell and shared components (spec §0, §2) | DS-006 | review | Claude Code browser lane | Parts 1–3 merged (#252, #263, #264). Part 4 detail-page pattern: pnpm verify; 13 component test files; e2e not runnable here | Owns `components/shell/*`, `nav-data.ts` labels, the `outline` button and `pill` shape, `components/ui/{pill,alert-dialog,modal,audience-picker,product-picker,picker-parts,chat,credits-indicator}.tsx`, `lib/campaign-status.ts`, `features/email-generation/{preview-card,preview-card-frame,plain-text-email,safe-preview}.tsx`. Part 4 adds `components/ui/{detail-page,card,refresh-button}.tsx` and `lib/brand-time.ts`. Issue #238. |
 
+| UIR-003 | Old-app dashboard (spec §3) | UIR-002 | review | Claude Code browser lane | pnpm verify; dashboard, Klaviyo data, reader and credits tests; demo screenshots at 1280/375px; e2e headings updated, not run (no Docker) | Owns `app/(client)/dashboard/page.tsx`, `features/dashboard/*`, `features/klaviyo-data/*`, `lib/providers/{klaviyo-read,fake-klaviyo-read}.ts`, `features/operations/credits.ts` (read-only), the "Your campaigns" wrapper in `features/campaigns/overview.tsx`. Issue #239. |
+
 ## Global decisions
 
 - STAB-004 (2026-11-06): CI is split into three workflows. `ci.yml` (`verify`: format, lint, typecheck, unit tests, build) runs on every pull request and push to `main` and is the only check to require on `main`. `database.yml` (pgTAP) and `browser.yml` (Playwright plus the first-draft and email concurrency scripts) run on pull requests only when their files change, skip drafts, can be run by hand, and no longer re-run on push to `main`; both start a lean local Supabase (`-x studio,logflare,vector,imgproxy,edge-runtime,realtime,postgres-meta,supavisor`). Reason: the repository is private, so every job costs Actions minutes (GitHub rounds up per job); the full browser job is about 25 minutes. Path-filtered workflows must not be required checks, or pull requests that do not touch them would wait forever. Owner decision (2026-11-06): the scheduled-jobs workflow runs every 30 minutes (`3,33 * * * *`, about 1,500 Actions minutes a month), replacing the 10-minute schedule recorded under STAB-001.
@@ -98,6 +100,18 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
   - `components/ui/card.tsx` is the shared 20px card, named by its title.
   - `components/ui/detail-page.tsx` holds `DetailPage` (the back link target is the caller's choice), `DetailHero`, `TimelineCard` and `AdvancedDetails`, which shows attributes as bounded text and linked resources with item counts.
   - `RefreshButton` is the pending-aware outline Refresh for a form with a server action.
+- UIR-003 (2026-11-06): the dashboard reads Klaviyo through a new READ port, `KlaviyoReadProvider` in `lib/providers/klaviyo-read.ts`.
+  - It returns a typed snapshot: account, lists, segments, campaigns, flows, metrics and 30 days of revenue, in minor units of one currency.
+  - The fake (`lib/providers/fake-klaviyo-read.ts`) returns SAMPLE data, labelled as sample on every screen, with totals that reconcile and `syncedAt: null`.
+  - `features/klaviyo-data/reader.ts` decides what owner screens may show:
+    - `sample` only while the workspace's Klaviyo connection (`workspace_connections`) is `connected` (or without a database in demo sign-in);
+    - `not_connected` with the reason otherwise;
+    - `unavailable` in real mode until a live adapter exists. The live adapter must read a tenant-scoped snapshot written by the sync job, not call Klaviyo during the request.
+  - One brand timezone (the workspace's) is passed to every card (§18.14).
+  - Dashboard links keep the rest of the URL state (`dashboardHref`).
+  - AI credits come from the active `package_cycles` row through `features/operations/credits.ts`, shown only to owner and admin, as on Settings.
+  - "Your campaigns" (the former overview) stays under the dashboard until UIR-017 moves the list into Campaigns.
+  - Not built: monthly goal saving (needs a migration), Refresh (nothing to re-pull), a UTM figure, and AI insight (the insight is written from the numbers, no AI).
 - DS-006 (2026-11-06): the composer (`features/composer/`) saves a paste through the same `savePastedReference` helper as the paste form (extracted from `importPastedReference` into server-only `features/references/pasted-save.ts`, messages unchanged) and redirects to `/create-email/{id}?mode=copy|rewrite`. The choose page only marks that outcome ("Your choice in the composer", primary button); it never starts a copy or rewrite by itself, so owner confirmation and paid-AI gates are unchanged. EXACT→copy, REBRAND→rewrite, ADAPT disabled with a reason. Subject comes from the HTML `<title>` or first readable line; a link-only paste is refused with an honest message. Composer is owner-only on the dashboard and the setup reference step; the existing Paste/Upload links stay.
 
 - STAB-001 (2026-11-06): `GET /api/internal/jobs` is the scheduled worker. It requires `Authorization: Bearer CRON_SECRET` (existing env contract, unchanged; checked before anything else), runs only when `ADAPTER_MODE` is `fake` or unset, and visits workspaces through the existing `runFixtureJobs` path in bounded batches (≤100 workspaces, ≤4 jobs per visit, ≤3 visits, no new visit after 40 s, `maxDuration` 60). Workspaces with due or stale-leased jobs go first (the active-workspace filter is part of that query); the other active workspaces get daily housekeeping in random order. `email.rewrite` and `email.import` are never dispatched by the scheduler, so it cannot start or retry paid AI. Service-role reads of `tenants` and `job_runs` select IDs only; every claim still goes through `claim_job`/`worker_access`. The former `GET` 405 response is replaced by this handler; `POST` loopback dispatch is unchanged. Triggers: Vercel cron daily (Hobby limit) plus a GitHub Actions schedule every 10 minutes with the repository secret `CRON_SECRET`, fixed to the production HTTPS address and off until the repository variable `SCHEDULED_JOBS_ENABLED` is `true` (skipped runs use no Actions minutes; about 4,400 minutes a month when on). Shared config: `playwright.config.ts` gains a `scheduled-sweep` project that depends on the desktop and mobile projects, because the sweep drains every workspace's queue. See `docs/SCHEDULED_JOBS_RUNBOOK.md`.
@@ -707,3 +721,48 @@ Append entries using this exact shape:
   - "12 months ago".
 - Known issues: none beyond §4 using it.
 - Next consumer: UIR-003 §3 Dashboard, then UIR-004 §4 Klaviyo detail pages.
+
+### 2026-11-06 — UIR-003 — old-app dashboard
+
+- Status: review
+- Branch/worktree: `claude/uir-003-2-klaviyo-data-card` from `main` at `4d1cce2`. GitHub issue #239 (browser lane).
+- Commit(s): see the UIR-003 pull request.
+- Changed contracts:
+  - new Klaviyo READ port and fake (`lib/providers/klaviyo-read.ts`, `fake-klaviyo-read.ts`);
+  - `features/klaviyo-data/reader.ts` (`sample` | `not_connected` | `unavailable`);
+  - `lib/brand-time.ts` gains `validTimezone`;
+  - `CreditsIndicator` takes `format`;
+  - `CampaignOverview` renders as the "Your campaigns" section and takes `linkTo`;
+  - the dashboard H1 is "Dashboard" (e2e updated).
+  - See the UIR-003 Global decision.
+- Migrations: none.
+- Verification run: `pnpm verify` (see PR for counts).
+  - Data: totals reconcile; one currency; audience names instead of ids; `.example` hosts only; no past record in the future; 30 unique consecutive days across US, Sydney and London clock changes; month-to-date in the brand timezone, including the Sydney month edge; newest-first sorting with bad times; money by each currency's decimals (JPY, KWD).
+  - Reader: sample only when connected; not connected with the reason; demo; real mode `unavailable`.
+  - Model: links keep other state; KPIs (real only, flat and −100% cases); upcoming sends skip rejected, failed and blocked; countdown wording and dates beyond a month; insight shares add up to 100.
+  - Cards: honest header states, with no sync claim and no Refresh; attribution links keep the tab and show a visible definition; UTM never shows the Klaviyo number; the campaigns-failed states; owner-only create links; staff wording.
+  - Data card: tabs keep state; chart, account and timezone; credits on every tab when allowed; campaign times; row headers; detail links only when pages exist; the Klaviyo campaign path.
+  - Credits: the active cycle is read, hidden from staff, and says "not available" without a cycle.
+  - Demo screenshots at 1280px and 375px: no horizontal scroll, no page errors.
+  - `test:e2e` not runnable here. The `Workspace overview` heading checks are now `Dashboard`; campaign links on `/dashboard` stay real links (mini calendar, approvals and Your campaigns).
+- Review: `code-reviewer` blocked on two things:
+  1. Dashboard links wiped each other's state (UTM reset the tab), against §3.
+  2. An invented "Last synced 12 minutes ago" with a Refresh that did nothing.
+     Both are fixed. Also fixed:
+  - made-up AI credits (now from `package_cycles`, owner and admin only);
+  - tenant connection state ignored (sample only when connected; real Shopify state for UTM, which never shows the Klaviyo number);
+  - real mode telling connected owners they were disconnected;
+  - false empty states when campaigns fail to load;
+  - DST days in the sample chart;
+  - two-decimal money only;
+  - two timezone sources;
+  - KPI captions that miscounted;
+  - rejected or failed campaigns shown as next;
+  - the Klaviyo campaign path clash (`/campaigns/klaviyo/:id`);
+  - no provider port;
+  - hover-only definitions;
+  - missing timezone labels;
+  - several table and accessibility nits;
+  - ledger and spec notes.
+- Known issues: monthly goal saving (RPT-009) needs a migration. No live Klaviyo numbers, Refresh, UTM figures or AI insight yet. Dashboard rows link to detail pages once §4 lands.
+- Next consumer: UIR-004 §4 Klaviyo detail pages (turns on row links).
