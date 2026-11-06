@@ -4919,6 +4919,16 @@ export type Database = {
         }
         Returns: undefined
       }
+      change_team_member: {
+        Args: {
+          expected_at: string
+          membership: string
+          role: Database['public']['Enums']['tenant_role']
+          status: Database['public']['Enums']['membership_status']
+          t: string
+        }
+        Returns: undefined
+      }
       claim_email_file_import: {
         Args: { import: string; t: string }
         Returns: {
@@ -5420,6 +5430,10 @@ export type Database = {
         }
         Returns: string
       }
+      resend_team_invite: {
+        Args: { invite: string; t: string }
+        Returns: undefined
+      }
       reserve_fixture_usage: {
         Args: {
           estimate: number
@@ -5645,6 +5659,19 @@ export type Database = {
           t: string
         }
         Returns: string
+      }
+      team_members: {
+        Args: { t: string }
+        Returns: {
+          email: string
+          id: string
+          is_me: boolean
+          name: string
+          profile_id: string
+          role: Database['public']['Enums']['tenant_role']
+          status: Database['public']['Enums']['membership_status']
+          updated_at: string
+        }[]
       }
       update_competitor_subscription: {
         Args: {

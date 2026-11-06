@@ -130,19 +130,21 @@ test('UC-18 team invitation audit, event and support response survive refresh', 
 }, info) => {
   await login(page)
   await page.goto('/team')
-  const email = `synthetic-${info.project.name}@grey-retention.test`
-  await page.getByLabel('Invited email').fill(email)
-  await page
-    .getByRole('button', { name: 'Save simulated invitation', exact: true })
-    .click()
-  const invitation = page.locator('li').filter({ hasText: email })
+  const email = `synthetic-${info.project.name}-${Date.now()}@grey-retention.test`
+  const invite = page.getByRole('region', { name: 'Invite a teammate' })
+  await invite.getByLabel('Email', { exact: true }).fill(email)
+  await invite.getByRole('button', { name: 'Send invite', exact: true }).click()
+  const invitation = page
+    .getByRole('region', { name: /Pending invites/ })
+    .getByRole('listitem')
+    .filter({ hasText: email })
   await expect(invitation).toBeVisible()
   await invitation
-    .getByRole('button', { name: 'Revoke invitation', exact: true })
+    .getByRole('button', { name: `Cancel invite to ${email}`, exact: true })
     .click()
-  await expect(invitation).toContainText('revoked')
+  await expect(invitation).toHaveCount(0)
   await page.reload()
-  await expect(page.getByText(/invitation_revoked/).first()).toBeVisible()
+  await expect(page.getByText(email)).toHaveCount(0)
   await page.goto('/settings')
   await page
     .getByLabel('Event name')
