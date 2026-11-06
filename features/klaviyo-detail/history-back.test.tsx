@@ -1,16 +1,26 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { Route } from 'next'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const back = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ back }) }))
 const { cameFromThisApp, HistoryBack } = await import('./history-back')
 const fallback = '/flows/F1?from=flows' as Route
 
+function setHistoryLength(length: number) {
+  Object.defineProperty(window.history, 'length', {
+    configurable: true,
+    value: length
+  })
+}
+
+beforeEach(() => setHistoryLength(2))
+
 afterEach(() => {
   cleanup()
   back.mockReset()
   Object.defineProperty(document, 'referrer', { configurable: true, value: '' })
+  Reflect.deleteProperty(window.history, 'length')
 })
 
 describe('history back', () => {
@@ -36,6 +46,21 @@ describe('history back', () => {
     })
     fireEvent.click(link)
     expect(back).toHaveBeenCalledOnce()
+  })
+
+  it('opens the fallback in a new tab that has an app referrer but no history', () => {
+    // Middle-click on "Open this email" makes a tab whose referrer is the
+    // flow page, but there is nothing to go back to.
+    Object.defineProperty(document, 'referrer', {
+      configurable: true,
+      value: `${window.location.origin}/flows/F1`
+    })
+    setHistoryLength(1)
+    render(<HistoryBack fallback={fallback} />)
+    const link = screen.getByRole('link', { name: 'Back' })
+    expect(fireEvent.click(link)).toBe(true)
+    expect(back).not.toHaveBeenCalled()
+    expect(link).toHaveAttribute('href', fallback)
   })
 
   it('lets modified clicks open the fallback in a new tab', () => {

@@ -17,7 +17,7 @@ export function cameFromThisApp(referrer: string, origin: string) {
 
 /**
  * `← Back` that goes back in history when the owner came from inside the
- * app, and otherwise opens `fallback`. Modified clicks (new tab, new
+ * app in this tab, and otherwise opens `fallback`. Modified clicks (new tab, new
  * window) always follow the link.
  */
 export function HistoryBack({ fallback }: { fallback: Route }) {
@@ -31,7 +31,11 @@ export function HistoryBack({ fallback }: { fallback: Route }) {
       event.altKey
     )
       return
-    if (cameFromThisApp(document.referrer, window.location.origin)) {
+    // A new tab has a referrer but no history, so it needs both checks.
+    if (
+      window.history.length > 1 &&
+      cameFromThisApp(document.referrer, window.location.origin)
+    ) {
       event.preventDefault()
       router.back()
     }
