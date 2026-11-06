@@ -36,8 +36,9 @@ test('UC-14 internal worker requires a secret, validates scope and rejects disab
     data: { originalFixture: true }
   })
   expect(webhook.status()).toBe(503)
+  // GET is the scheduled sweep (Vercel cron / GitHub Actions); it needs the secret.
   const method = await page.request.get('/api/internal/jobs')
-  expect(method.status()).toBe(405)
+  expect(method.status()).toBe(401)
   const secure = await page.request.get('/reports')
   expect(secure.headers()['x-content-type-options']).toBe('nosniff')
   expect(secure.headers()['content-security-policy']).toContain(

@@ -1,9 +1,61 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { z } from 'zod'
-import { cronAuthorized, localFixtureDispatch } from '@/features/cron/gate'
+import {
+  cronAuthorized,
+  localFixtureDispatch,
+  scheduledDispatchAllowed
+} from '@/features/cron/gate'
+import { runScheduledJobs } from '@/features/cron/scheduler'
+import { logger } from '@/lib/logger'
 import { createServiceClient } from '@/lib/supabase/service'
 import { runFixtureJobs } from '@/features/integrations/worker'
 export const runtime = 'nodejs'
+export const maxDuration = 60
+const noStore = { 'cache-control': 'no-store' }
+
+/**
+ * Scheduled sweep: Vercel cron and the GitHub Actions schedule call this with
+ * `Authorization: Bearer <CRON_SECRET>`. It runs due jobs for every active
+ * workspace in bounded batches through the fixture adapters only.
+ */
+export async function GET(request: NextRequest) {
+  if (
+    !cronAuthorized(
+      request.headers.get('authorization'),
+      process.env.CRON_SECRET
+    )
+  )
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401, headers: noStore }
+    )
+  if (!scheduledDispatchAllowed(process.env.ADAPTER_MODE))
+    return NextResponse.json(
+      { error: 'Scheduled jobs run only with sample providers in this build.' },
+      { status: 503, headers: noStore }
+    )
+  const db = createServiceClient()
+  if (!db)
+    return NextResponse.json(
+      { error: 'Server configuration unavailable' },
+      { status: 503, headers: noStore }
+    )
+  try {
+    const run = await runScheduledJobs(db)
+    logger.info('Scheduled job run finished', run)
+    return NextResponse.json({ live: false, ...run }, { headers: noStore })
+  } catch (error) {
+    logger.error('Scheduled job run could not start', {
+      code: (error as { code?: string }).code ?? 'scheduler_error'
+    })
+    return NextResponse.json(
+      { error: 'Scheduled run failed; queued work stays for the next run.' },
+      { status: 500, headers: noStore }
+    )
+  }
+}
+
+/** Loopback-only fixture dispatch for one workspace (local tests). */
 export async function POST(request: NextRequest) {
   if (
     !cronAuthorized(

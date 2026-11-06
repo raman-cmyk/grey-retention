@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3100'
+const scheduledSweep = /scheduled-sweep\.spec\.ts$/
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -15,8 +16,24 @@ export default defineConfig({
     trace: 'on-first-retry'
   },
   projects: [
-    { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } }
+    {
+      name: 'desktop-chromium',
+      testIgnore: scheduledSweep,
+      use: { ...devices['Desktop Chrome'] }
+    },
+    {
+      name: 'mobile-chromium',
+      testIgnore: scheduledSweep,
+      use: { ...devices['Pixel 7'] }
+    },
+    // The scheduled sweep drains every workspace's queue, so it runs only
+    // after all desktop and mobile journeys have finished.
+    {
+      name: 'scheduled-sweep',
+      testMatch: scheduledSweep,
+      dependencies: ['desktop-chromium', 'mobile-chromium'],
+      use: { ...devices['Desktop Chrome'] }
+    }
   ],
   webServer: [
     // Loopback OpenAI test double; the app accepts plain HTTP only for loopback outside production.

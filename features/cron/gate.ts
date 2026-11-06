@@ -11,6 +11,13 @@ export function cronAuthorized(
     provided.length === expected.length && timingSafeEqual(provided, expected)
   )
 }
+/**
+ * The scheduled sweep only has fixture adapters. An unset mode is fake (the
+ * environment default); `real` or any unknown value is refused.
+ */
+export function scheduledDispatchAllowed(mode: string | undefined) {
+  return (mode ?? 'fake') === 'fake'
+}
 export function localFixtureDispatch(
   mode: string | undefined,
   url: string | undefined
