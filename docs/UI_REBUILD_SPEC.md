@@ -542,15 +542,15 @@ The whole page is one wide card (toolbar + grid), followed by two library cards.
 
 ### List `/campaign-drafts`
 
-- [ ] H1 "Campaign Agent" + "AI-drafted campaigns that you can edit, review, then push to Klaviyo." Primary `✦ New campaign` on the right.
-- [ ] Status pills with counts: ALL (2) / DRAFTS (2) / READY (0) / PUSHED (0).
-- [ ] Table columns:
+- [x] H1 "Campaign Agent" + "AI-drafted campaigns that you can edit, review, then push to Klaviyo." Primary `✦ New campaign` on the right. (UIR-017, OWNER_JOURNEYS.md §18.1: the list is the Campaigns page's Table view, under the H1 "Campaigns"; "New campaign" is the one `+ New` menu. `/campaign-drafts` redirects there and keeps its filter.)
+- [x] Status pills with counts: ALL (2) / DRAFTS (2) / READY (0) / PUSHED (0). (The one status system's words, each with its count this month; old `?status=draft|ready|pushed` links map to Draft / Needs your approval / Scheduled.)
+- [x] Table columns: (UIR-017: When · TZ (the planned date), Title, Channel, Status, From, Updated (relative); the title is the link. Not yet: the muted "Subject: …" line, because the subject lives in copy versions.)
   - TITLE / SUBJECT (bold title + muted "Subject: …")
   - STATUS (e.g. WRITING, info pill)
   - PLANNED (date)
   - UPDATED (relative)
   - `Open →` (accent)
-- [ ] The whole row is clickable.
+- [ ] The whole row is clickable. (Not yet: the title is the link.)
 
 ### New draft `/campaign-drafts/new`
 

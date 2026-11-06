@@ -10,6 +10,7 @@ import {
   plannerMonth,
   plannerSummary,
   readPlannerQuery,
+  statusCounts,
   type PlannerHoliday
 } from './model'
 
@@ -120,6 +121,8 @@ export async function plannerView(
     summary: campaignsFailed
       ? 'Your campaigns could not load, so this month is not complete.'
       : plannerSummary(inMonth, klaviyoLabel),
+    // Counts in the status pills follow the channel filter only.
+    counts: statusCounts(filterEntries(inMonth, { ...query, status: 'all' })),
     owner: context.tenantRole === 'owner'
   }
 }

@@ -95,6 +95,8 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 | UIR-006 | Campaigns planner part 1 (spec §6 toolbar, grid, table) | UIR-004, UIR-015 | review | Claude Code browser lane | pnpm verify; planner model, UI, loader, + New menu and first-draft date tests; demo screenshots at 1440/390px; `calendar-view` e2e rewritten for Table, replaced entries, filters and + New | Owns `features/planner/*`, `app/(client)/campaign-agent/page.tsx`, `features/drafts/default-date.ts`; removes `features/campaigns/calendar.tsx`. Issue #242. |
 
+| UIR-017 | Campaign drafts merged into Campaigns as its list view | UIR-006 | review | Claude Code browser lane | pnpm verify; counts, old-filter mapping, table rows for unscheduled Klaviyo drafts, update times, specific empty message and old-link redirect tests; `calendar-view` e2e matches counted pills | Owns `app/(client)/campaign-drafts/**` (redirects) and the list parts of `features/planner/*`. Issue #256. |
+
 ## Global decisions
 
 - Ready buttons (2026-11-07): `SubmitButton` and the `ConfirmDialog` trigger stay disabled until the page is interactive (`components/ui/use-hydrated.ts`, `useSyncExternalStore`: false in the server HTML and during hydration, true in the browser). A click on a slow page before hydration used to post the form natively, so the page reloaded and its "saved" message was lost, or the dialog never opened. This was the first failure behind the mobile UC-09/12/16 browser runs. Playwright waits for a button to be enabled before it clicks, so the journeys no longer race hydration. Unit tests render on the client and are unaffected.
@@ -200,6 +202,11 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
   - Holiday chips show this workspace's own holidays and events in one tone (no holiday type in the schema yet). `Holidays & Events` links to `/settings#holidays` until the §6.4 modal.
   - `features/campaigns/calendar.tsx` and `buildCampaignCalendar` are removed; `calendar-model.ts` keeps the month and timezone helpers. `pillToneClasses` is exported from `components/ui/pill.tsx` so chips match pill colours.
   - Not built yet: Report export, §6.4–§6.7 popups, inspiration cards (§18.11 makes them a library link).
+- UIR-017 (2026-11-06): the old drafts list is the Campaigns Table view (OWNER_JOURNEYS.md §18.1).
+  - `/campaign-drafts` redirects to `/campaign-agent?view=table` and keeps its filter (`legacyDraftStatus`: draft/writing → Draft, ready → Needs your approval, pushed → Scheduled). `/campaign-drafts/new` goes to `/first-draft`, and `/campaign-drafts/:id` to `/campaigns/:id`. `proxy.ts` matches `/campaign-drafts`.
+  - The table lists this workspace's campaigns, the Klaviyo sends AND the Klaviyo drafts with no send time ("No send time"), with an Updated column in relative words. In the table view the separate "Not scheduled in Klaviyo" row is not repeated.
+  - Each status pill shows its count this month, following the channel filter (`statusCounts`). An empty status filter says "No <status> campaigns this month."
+  - Not built: Delete (no delete command exists yet; it needs a 09 migration), the muted subject line and whole-row links.
 
 - DS-006 (2026-11-06): the composer (`features/composer/`) saves a paste through the same `savePastedReference` helper as the paste form (extracted from `importPastedReference` into server-only `features/references/pasted-save.ts`, messages unchanged) and redirects to `/create-email/{id}?mode=copy|rewrite`. The choose page only marks that outcome ("Your choice in the composer", primary button); it never starts a copy or rewrite by itself, so owner confirmation and paid-AI gates are unchanged. EXACT→copy, REBRAND→rewrite, ADAPT disabled with a reason. Subject comes from the HTML `<title>` or first readable line; a link-only paste is refused with an honest message. Composer is owner-only on the dashboard and the setup reference step; the existing Paste/Upload links stay.
 
@@ -1090,3 +1097,19 @@ Append entries using this exact shape:
 - Review: rls-migration-reviewer "not ready": a key could sit after the website's host (`https://x.example/?key=pk_…`); fixed in 090032. code-reviewer "not ready": the 0000 sample moved the brand timezone to Europe/Berlin and it stayed (now it reports the workspace timezone); the matching sample echoed the profile's website, which went stale after a correction (now it reports none); the catalogue warning ran without a profile website and fired at exactly half (now it needs a website and more than half); country codes are now names; the Brand page and Ask GROS keep their name and store warnings on an older database; `brandGuard` no longer reads the profile sections; the Shopify store's address counts as the brand's own website; `hostOf` trims. Second round: both reviewers "ready". Left as nits: IDN hosts are shown as punycode (`xn--…`); Klaviyo/Shopify currency and country differences are tagged `shopify`; a 301-character origin sent straight to the database is refused (23514) instead of being "not reported" (the app never sends one; real host names are at most 253 characters).
 - Known issues: the Brand check shows on Ask GROS and the planner; the campaign detail page (browser lane's #284 edits it) and Create email still need the one-line `<BrandCheck>`. Today's accounts are samples: a Klaviyo key ending in 0000 connects another brand's sample account (Northwind Outdoor (sample)) so the warning can be tried. Follow-up for whoever touches onboarding jobs next (found by the browser lane): `finish_onboarding_job` raises 'Connection changed' and `onboarding_lease` 'Lease unavailable' with SQLSTATE 40001, which PostgREST retries; they need PT409 in a new migration at the next free number.
 - Next consumer: browser lane (Brand check on the campaign detail page and Create email).
+
+### 2026-11-06 — UIR-017 — campaign drafts merged into Campaigns
+
+- Status: review
+- Branch/worktree: `claude/uir-017-campaign-drafts-merged-into-campaigns-as-its-lis` on top of UIR-006. GitHub issue #256 (browser lane).
+- Commit(s): see the UIR-017 pull request.
+- Changed contracts: `PlannerEntry.updated`; `statusCounts` and `legacyDraftStatus` in `features/planner/model.ts`; `Planner` takes `counts` and `now`; new redirect routes under `app/(client)/campaign-drafts/`; `proxy.ts` matcher. See the UIR-017 Global decision.
+- Migrations: none.
+- Verification run: `pnpm verify` (see PR for counts).
+  - Model: counts per status (replaced entries excluded), update times from both sources, old filter words mapped.
+  - Card: pills with counts, unscheduled Klaviyo drafts as table rows with "No send time" and their own back link, the tray not repeated in the table, "No Sent campaigns this month.", relative update times on a fixed clock.
+  - Redirects: old list with and without a filter (array values too), New, and a draft id (encoded).
+  - `test:e2e` not runnable here; `calendar-view.spec.ts` matches the counted pills.
+- Review: see the UIR-017 pull request.
+- Known issues: no Delete action (needs a delete command and a migration); no subject line in the table; the title, not the whole row, is the link.
+- Next consumer: UIR-016 Approve step, UIR-018 "+ New" on the dashboard.

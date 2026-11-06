@@ -11,7 +11,11 @@ import {
 import type { Route } from 'next'
 import Link from 'next/link'
 import { pillToneClasses, StatusPill } from '@/components/ui/pill'
-import { formatBrandDateTime, timezoneLabel } from '@/lib/brand-time'
+import {
+  formatBrandDateTime,
+  relativeTime,
+  timezoneLabel
+} from '@/lib/brand-time'
 import {
   campaignStatuses,
   campaignStatusOrder,
@@ -331,12 +335,19 @@ function Agenda({
 
 function Table({
   entries,
+  unscheduled,
+  query,
   timezone,
   klaviyoLabel,
   filtered,
-  campaignsFailed
+  campaignsFailed,
+  now
 }: {
   entries: PlannerEntry[]
+  now?: Date
+  /** Klaviyo drafts with no send time: listed too, so nothing is hidden. */
+  unscheduled: KlaviyoCampaign[]
+  query: PlannerQuery
   timezone: string
   klaviyoLabel: string
   /** Filters are on: the card already says nothing matches. */
@@ -344,7 +355,7 @@ function Table({
   /** The page already says the campaigns could not load. */
   campaignsFailed: boolean
 }) {
-  if (!entries.length)
+  if (!entries.length && !unscheduled.length)
     return filtered || campaignsFailed ? null : (
       <p className="flex items-center justify-center gap-2 p-10 text-center text-sm text-[var(--text-muted)]">
         <Table2 className="size-4" aria-hidden />
@@ -388,6 +399,12 @@ function Table({
             >
               From
             </th>
+            <th
+              scope="col"
+              className="border-b border-[var(--line)] px-3 py-2 font-normal"
+            >
+              Updated
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--line)]">
@@ -421,6 +438,34 @@ function Table({
                     ? 'This workspace · synthetic demo'
                     : 'This workspace'}
               </td>
+              <td className="px-3 py-2.5 whitespace-nowrap text-[var(--text-muted)]">
+                {relativeTime(entry.updated, now) ?? '—'}
+              </td>
+            </tr>
+          ))}
+          {unscheduled.map((c) => (
+            <tr key={`u-${c.id}`}>
+              <td className="px-3 py-2.5 whitespace-nowrap text-[var(--text-muted)]">
+                No send time
+              </td>
+              <th scope="row" className="px-3 py-2.5 text-left font-medium">
+                <Link
+                  href={klaviyoCampaignHref(c.id, query)}
+                  className="break-words underline-offset-4 hover:underline"
+                >
+                  {c.name}
+                </Link>
+              </th>
+              <td className="px-3 py-2.5 whitespace-nowrap">Design email</td>
+              <td className="px-3 py-2.5">
+                <StatusPill status="draft" />
+              </td>
+              <td className="px-3 py-2.5 whitespace-nowrap text-[var(--text-muted)]">
+                {klaviyoLabel}
+              </td>
+              <td className="px-3 py-2.5 whitespace-nowrap text-[var(--text-muted)]">
+                {relativeTime(c.updated, now) ?? '—'}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -444,9 +489,11 @@ export function Planner({
   klaviyoLine,
   klaviyoLabel,
   summary,
+  counts = {},
   canPlan,
   campaignsFailed = false,
-  newItems
+  newItems,
+  now
 }: {
   query: PlannerQuery
   month: {
@@ -466,6 +513,10 @@ export function Planner({
   klaviyoLabel: string
   /** The whole month in one line, whatever the filters. */
   summary: string
+  /** The clock for "updated 2 days ago" (tests pass a fixed one). */
+  now?: Date
+  /** How many campaigns each status pill would show this month. */
+  counts?: Partial<Record<'all' | CampaignStatus, number>>
   /** Owners may plan a send on a day ("+ plan send"). */
   canPlan: boolean
   /** This workspace's campaigns did not load: no "empty month" messages. */
@@ -578,7 +629,10 @@ export function Planner({
             >
               {status === 'all'
                 ? 'All statuses'
-                : campaignStatuses[status].label}
+                : campaignStatuses[status].label}{' '}
+              <span className="tabular-nums opacity-70">
+                ({counts[status] ?? 0})
+              </span>
             </Link>
           ))}
         </nav>
@@ -634,7 +688,9 @@ export function Planner({
           role="status"
           className="border-b border-[var(--line)] px-4 py-3 text-sm text-[var(--text-muted)]"
         >
-          No campaigns match these filters this month.{' '}
+          {query.status !== 'all' && query.channel === 'all'
+            ? `No ${campaignStatuses[query.status].label} campaigns this month.`
+            : 'No campaigns match these filters this month.'}{' '}
           <Link
             href={href({ status: 'all', channel: 'all' })}
             className="font-medium text-[var(--text)] underline underline-offset-4"
@@ -666,10 +722,13 @@ export function Planner({
       ) : (
         <Table
           entries={month.monthEntries}
+          unscheduled={showTray ? unscheduled : []}
+          query={query}
           timezone={timezone}
           klaviyoLabel={klaviyoLabel}
           filtered={filtered}
           campaignsFailed={campaignsFailed}
+          now={now}
         />
       )}
       <div className="flex flex-wrap items-center gap-3 border-t border-[var(--line)] px-4 py-3 text-xs text-[var(--text-muted)]">
@@ -691,7 +750,7 @@ export function Planner({
         </Link>
         <span className="ml-auto">Times: {timezoneLabel(timezone)}</span>
       </div>
-      {showTray && (
+      {showTray && query.view === 'calendar' && (
         <section
           aria-labelledby="planner-unscheduled"
           className="border-t border-[var(--line)] p-4"

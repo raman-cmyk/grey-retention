@@ -1337,9 +1337,12 @@
       "feature": "Draft listing and detail",
       "priority": "P1",
       "acceptance": "A user can find and reopen existing drafts.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-017"],
+      "verification": [
+        "UIR-017 (2026-11-06): features/planner/model.test.ts, planner.test.tsx and legacy-redirects.test.ts: every draft (this workspace and Klaviyo, scheduled or not) is a row in the Campaigns table with its status and update time; old /campaign-drafts links land there."
+      ],
+      "remaining": "Reopening a draft opens /campaigns/:id (this workspace) or the Klaviyo detail page; the §7.3 draft editor rebuild is still to do."
     },
     {
       "id": "CMP-004",

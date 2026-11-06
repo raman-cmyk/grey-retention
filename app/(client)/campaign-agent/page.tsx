@@ -44,6 +44,7 @@ export default async function CampaignAgentPage({
         campaignsFailed={view.campaignsFailed}
         klaviyoLabel={view.klaviyoLabel}
         summary={view.summary}
+        counts={view.counts}
         newItems={[
           ...(data
             ? [

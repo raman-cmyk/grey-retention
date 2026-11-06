@@ -11,6 +11,8 @@ import {
   plannerMonth,
   plannerSummary,
   readPlannerQuery,
+  legacyDraftStatus,
+  statusCounts,
   type PlannerQuery
 } from './model'
 
@@ -237,6 +239,44 @@ describe('planner entries', () => {
     expect(ids(query({ status: 'draft', channel: 'email_text' }))).toEqual([
       'b'
     ])
+  })
+})
+
+describe('drafts merged into the planner (UIR-017)', () => {
+  it('counts each status for the pills, and keeps update times', () => {
+    const { entries } = plannerEntries({
+      campaigns: [
+        local({ id: 'a', updated_at: '2026-11-05T10:00:00Z' }),
+        local({ id: 'b', copy_state: 'pending_approval' }),
+        local({ id: 'c', superseded_by_plan: 'p2' })
+      ],
+      snapshot: snapshot([kCampaign({})]),
+      timezone: tz,
+      now,
+      includeReplaced: true
+    })
+    expect(statusCounts(entries)).toEqual({
+      all: 4,
+      draft: 1,
+      needs_approval: 1,
+      sent: 1
+    })
+    expect(entries.find((e) => e.id === 'a')?.updated).toBe(
+      '2026-11-05T10:00:00Z'
+    )
+    expect(entries.find((e) => e.id === 'K1')?.updated).toBe(
+      '2026-10-01T00:00:00Z'
+    )
+  })
+
+  it('maps the old drafts list filters to the one status system', () => {
+    expect(legacyDraftStatus('draft')).toBe('draft')
+    expect(legacyDraftStatus('writing')).toBe('draft')
+    expect(legacyDraftStatus('ready')).toBe('needs_approval')
+    expect(legacyDraftStatus('pushed')).toBe('scheduled')
+    expect(legacyDraftStatus('sent')).toBe('sent')
+    expect(legacyDraftStatus('nonsense')).toBe('all')
+    expect(legacyDraftStatus(undefined)).toBe('all')
   })
 })
 

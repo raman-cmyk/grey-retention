@@ -29,6 +29,7 @@ const entry = (over: Partial<PlannerEntry>): PlannerEntry => ({
   status: 'needs_approval',
   source: 'workspace',
   synthetic: false,
+  updated: null,
   href: '/campaigns/c1' as Route,
   tooltip:
     'Holiday gift guide · Needs your approval · Nov 20, 10:00 AM (New York time)',
@@ -48,7 +49,8 @@ function show({
   canPlan = true,
   items = newItems,
   unscheduled = [] as KlaviyoCampaign[],
-  campaignsFailed = false
+  campaignsFailed = false,
+  counts = {} as Partial<Record<string, number>>
 } = {}) {
   const month = plannerMonth({
     month: query.m,
@@ -66,6 +68,8 @@ function show({
       klaviyoLine="Klaviyo sends here are sample data, not from a real account."
       klaviyoLabel="Klaviyo sample"
       summary={plannerSummary(month.monthEntries)}
+      counts={counts}
+      now={now}
       canPlan={canPlan}
       campaignsFailed={campaignsFailed}
       newItems={items}
@@ -149,9 +153,11 @@ describe('Campaigns planner', () => {
     })
     const status = screen.getByRole('navigation', { name: 'Filter by status' })
     expect(
-      within(status).getByRole('link', { name: 'Scheduled' })
+      within(status).getByRole('link', { name: /^Scheduled \(/ })
     ).toHaveAttribute('aria-current', 'true')
-    expect(within(status).getByRole('link', { name: 'Draft' })).toHaveAttribute(
+    expect(
+      within(status).getByRole('link', { name: /^Draft \(/ })
+    ).toHaveAttribute(
       'href',
       '/campaign-agent?m=2026-11&status=draft&channel=email_text'
     )
@@ -248,10 +254,10 @@ describe('Campaigns planner', () => {
       expect(within(legend).getByText(word)).toBeVisible()
     const status = screen.getByRole('navigation', { name: 'Filter by status' })
     expect(
-      within(status).getByRole('link', { name: 'Cancelled' })
+      within(status).getByRole('link', { name: /^Cancelled \(/ })
     ).toBeVisible()
     expect(
-      within(status).getByRole('link', { name: 'Delivery problem' })
+      within(status).getByRole('link', { name: /^Delivery problem \(/ })
     ).toBeVisible()
   })
 
@@ -307,13 +313,59 @@ describe('Campaigns planner', () => {
     ).toBeInTheDocument()
   })
 
+  it('shows how many campaigns each status pill holds', () => {
+    show({ counts: { all: 3, draft: 2, sent: 1 } })
+    const status = screen.getByRole('navigation', { name: 'Filter by status' })
+    expect(
+      within(status).getByRole('link', { name: 'All statuses (3)' })
+    ).toBeVisible()
+    expect(
+      within(status).getByRole('link', { name: 'Draft (2)' })
+    ).toBeVisible()
+    expect(
+      within(status).getByRole('link', { name: 'Missed (0)' })
+    ).toBeVisible()
+  })
+
+  it('lists Klaviyo drafts with no send time in the table, with update times', () => {
+    show({
+      query: { ...base, view: 'table' },
+      entries: [entry({ updated: '2026-11-05T12:00:00Z' })],
+      unscheduled: [
+        {
+          id: 'K9',
+          name: 'Cold brew season',
+          updated: '2026-10-30T12:00:00Z'
+        } as KlaviyoCampaign
+      ]
+    })
+    const table = screen.getByRole('table', { name: 'Campaigns this month' })
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toHaveTextContent('1 day ago')
+    expect(rows[1]).toHaveTextContent('No send time')
+    expect(rows[1]).toHaveTextContent('Cold brew season')
+    expect(rows[1]).toHaveTextContent('Klaviyo sample')
+    expect(rows[1]).toHaveTextContent('1 week ago')
+    expect(
+      within(rows[1]).getByRole('link', { name: 'Cold brew season' })
+    ).toHaveAttribute(
+      'href',
+      '/campaigns/klaviyo/K9?from=planner&m=2026-11&view=table'
+    )
+    // In the table they are rows, so the separate tray is not repeated.
+    expect(
+      screen.queryByRole('region', { name: 'Not scheduled in Klaviyo' })
+    ).toBeNull()
+  })
+
   it('says so when the table has nothing this month, once', () => {
     show({ query: { ...base, view: 'table' }, entries: [] })
     expect(screen.getByText(/No campaigns this month\./)).toBeVisible()
     cleanup()
     show({ query: { ...base, view: 'table', status: 'sent' }, entries: [] })
     expect(screen.getByRole('status')).toHaveTextContent(
-      'No campaigns match these filters this month.'
+      'No Sent campaigns this month.'
     )
     expect(screen.queryByText(/No campaigns this month\./)).toBeNull()
   })

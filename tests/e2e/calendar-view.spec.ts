@@ -46,7 +46,7 @@ test('calendar month grid and view navigation preserve the selected month', asyn
   // Filters survive month changes.
   await page
     .getByRole('navigation', { name: 'Filter by status' })
-    .getByRole('link', { name: 'Scheduled', exact: true })
+    .getByRole('link', { name: /^Scheduled \(\d+\)$/ })
     .click()
   await expect(page).toHaveURL(/status=scheduled/)
   await page.getByLabel('Month', { exact: true }).fill('2024-12')

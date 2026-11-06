@@ -88,6 +88,8 @@ export type PlannerEntry = {
   source: 'workspace' | 'klaviyo'
   /** A made-up campaign from the planning fixtures ("Synthetic demo"). */
   synthetic: boolean
+  /** When it last changed, for the table's Updated column. */
+  updated: string | null
   href: Route
   /** Hover text with the real time and timezone (OWNER_JOURNEYS §6 fix). */
   tooltip: string
@@ -135,7 +137,10 @@ export function plannerEntries({
   query,
   klaviyoLabel = 'Klaviyo sample'
 }: {
-  campaigns: readonly (CalendarCampaign & { design_state: string })[]
+  campaigns: readonly (CalendarCampaign & {
+    design_state: string
+    updated_at?: string
+  })[]
   snapshot: KlaviyoSnapshot | null
   timezone: string
   now?: Date
@@ -164,6 +169,7 @@ export function plannerEntries({
         status,
         source: 'workspace',
         synthetic: c.synthetic,
+        updated: c.updated_at ?? null,
         href: `/campaigns/${encodeURIComponent(c.id)}` as Route,
         tooltip: `${c.title} · ${status ? campaignStatuses[status].label : 'Replaced'}${c.synthetic ? ' · Synthetic demo' : ''} · ${when(c.planned_at)}`
       }
@@ -179,6 +185,7 @@ export function plannerEntries({
       status: klaviyoStatus[c.status],
       source: 'klaviyo',
       synthetic: false,
+      updated: c.updated,
       href: klaviyoCampaignHref(c.id, query),
       tooltip: `${c.name} · ${klaviyoLabel}: ${klaviyoVerb[c.status]} ${when(c.sendTime!)}`
     }))
@@ -229,6 +236,32 @@ export function plannerSummary(
     if (n) parts.push(`${n} ${word}`)
   }
   return parts.join(' · ')
+}
+
+/**
+ * How many entries each status filter would show (the counts in the pills,
+ * OWNER_JOURNEYS.md §7.1). Give it the month's entries with the channel
+ * filter applied, not the status filter.
+ */
+export function statusCounts(entries: readonly PlannerEntry[]) {
+  const counts: Partial<Record<'all' | CampaignStatus, number>> = {
+    all: entries.length
+  }
+  for (const e of entries)
+    if (e.status) counts[e.status] = (counts[e.status] ?? 0) + 1
+  return counts
+}
+
+/**
+ * The old drafts list's filters (`/campaign-drafts?status=…`) in the one
+ * status system, so old links keep working (UIR-017).
+ */
+export function legacyDraftStatus(value: unknown): 'all' | CampaignStatus {
+  if (value === 'draft' || value === 'drafts' || value === 'writing')
+    return 'draft'
+  if (value === 'ready') return 'needs_approval'
+  if (value === 'pushed') return 'scheduled'
+  return isCampaignStatus(value) ? value : 'all'
 }
 
 /** Status and channel filters combine (AND). Replaced entries match "All". */
