@@ -4149,9 +4149,12 @@
       "feature": "Explain missing data in place",
       "priority": "P0",
       "acceptance": "Disconnected integrations and incomplete assets show a useful next step.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["DS-005"],
+      "verification": [
+        "DS-005 (2026-11-06): EmptyState, WorkspaceLoading and WorkspaceError unit tests; dashboard, competitor agent, email library and copy review empty states use EmptyState with a plain next step; preview checked at 1280px and 375px."
+      ],
+      "remaining": "DS-005 (2026-11-06): the dashboard, competitor agent, email library and copy review explain an empty list in place with a next step, and every workspace has a shared loading skeleton and an error state with retry and a support reference. Remaining: disconnected Klaviyo/Shopify and incomplete assets inside campaigns, reports and settings still show plain notices without a next step."
     },
     {
       "id": "UX-014",
