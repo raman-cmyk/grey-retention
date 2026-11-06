@@ -83,10 +83,10 @@ describe('PasswordForm', () => {
         confirm: 'The new passwords do not match.'
       }
     })
-    render(<PasswordForm />)
+    render(<PasswordForm email="owner@example.com" />)
     expect(
       screen.getByText(
-        "At least 8 characters. We'll verify your current password first."
+        "At least 12 characters. We'll verify your current password first."
       )
     ).toBeVisible()
     for (const label of [

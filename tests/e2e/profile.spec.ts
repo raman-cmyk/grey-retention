@@ -61,14 +61,20 @@ test('UIR-014 owner updates details and changes password with inline checks', as
   page
 }, info) => {
   const { email, password } = await freshOwner(page)
-  if (info.project.name.startsWith('mobile')) await page.goto('/profile')
-  else {
-    // The account menu links here (it was "coming soon" before).
-    await page
+  if (info.project.name.startsWith('mobile')) {
+    // The drawer links here and closes after the click.
+    await page.getByRole('button', { name: 'Open navigation' }).click()
+    const drawer = page.locator('dialog[open]')
+    await drawer.getByRole('link', { name: 'Profile Update' }).click()
+    await expect(page.locator('dialog[open]')).toHaveCount(0)
+  } else {
+    // The account menu links here (it was "coming soon" before) and closes.
+    const menu = page
       .getByRole('button', { name: /^Open account menu for / })
       .first()
-      .click()
+    await menu.click()
     await page.getByRole('link', { name: 'Profile Update' }).click()
+    await expect(menu).toHaveAttribute('aria-expanded', 'false')
   }
   await expect(page).toHaveURL(/\/profile$/)
   await expect(
@@ -119,7 +125,7 @@ test('UIR-014 owner updates details and changes password with inline checks', as
     input.removeAttribute('minlength')
   )
   await update.click()
-  await expect(page.getByText('Use at least 8 characters.')).toBeVisible()
+  await expect(page.getByText('Use at least 12 characters.')).toBeVisible()
 
   // A real change works and the new password signs in.
   const fresh = `new-${randomUUID()}`
@@ -130,6 +136,12 @@ test('UIR-014 owner updates details and changes password with inline checks', as
   await expect(page.getByText('Password updated.')).toBeVisible()
   await expect(current).toHaveValue('')
   await page.context().clearCookies()
+  // The old password no longer works; the new one does.
+  await page.goto('/login')
+  await page.getByLabel('Email', { exact: true }).fill(email)
+  await page.getByLabel('Password', { exact: true }).fill(password)
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await expect(page.getByText('Email or password is incorrect.')).toBeVisible()
   await signIn(page, email, fresh)
 })
 

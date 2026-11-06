@@ -336,6 +336,37 @@ describe('account menu', () => {
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
   })
 
+  it('closes after following Profile Update', async () => {
+    shell()
+    const trigger = screen.getAllByRole('button', {
+      name: 'Open account menu for Rae Owner'
+    })[0]
+    await userEvent.click(trigger)
+    const profile = screen.getByRole('link', { name: 'Profile Update' })
+    profile.addEventListener('click', (event) => event.preventDefault())
+    await userEvent.click(profile)
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('has no Profile Update where the surface has no profile page', async () => {
+    for (const navigation of [adminNavigation, designerNavigation]) {
+      const { unmount } = shell(undefined, { navigation })
+      const trigger = screen.getAllByRole('button', {
+        name: 'Open account menu for Rae Owner'
+      })[0]
+      await userEvent.click(trigger)
+      const menu = document.getElementById(
+        trigger.getAttribute('aria-controls')!
+      )!
+      expect(within(menu).queryByRole('link')).toBeNull()
+      expect(
+        within(menu).getByRole('button', { name: 'Log out' })
+      ).toBeInTheDocument()
+      expect(document.querySelector('dialog a[href="/profile"]')).toBeNull()
+      unmount()
+    }
+  })
+
   it('closes on an outside click', async () => {
     shell()
     const trigger = screen.getAllByRole('button', {
@@ -382,6 +413,15 @@ describe('small screens', () => {
     const support = within(drawer).getByRole('link', { name: 'Support' })
     support.addEventListener('click', (event) => event.preventDefault())
     await userEvent.click(support)
+    expect(drawer).not.toHaveAttribute('open')
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Open navigation' })
+    )
+    const profile = within(drawer).getByRole('link', {
+      name: 'Profile Update'
+    })
+    profile.addEventListener('click', (event) => event.preventDefault())
+    await userEvent.click(profile)
     expect(drawer).not.toHaveAttribute('open')
   })
 })

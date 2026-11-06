@@ -4,10 +4,10 @@ vi.mock('server-only', () => ({}))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 const auth = vi.hoisted(() => ({ requireRequestContext: vi.fn() }))
 const server = vi.hoisted(() => ({ createClient: vi.fn() }))
-const stateless = vi.hoisted(() => ({ createClient: vi.fn() }))
+const stateless = vi.hoisted(() => ({ createStatelessClient: vi.fn() }))
 vi.mock('@/features/auth/application/request-context', () => auth)
 vi.mock('@/lib/supabase/server', () => server)
-vi.mock('@supabase/supabase-js', () => stateless)
+vi.mock('@/lib/supabase/stateless', () => stateless)
 
 import { changePassword, updateAccount } from './actions'
 
@@ -20,28 +20,27 @@ function form(values: Record<string, string>) {
 
 let update: ReturnType<typeof vi.fn>
 let updateUser: ReturnType<typeof vi.fn>
+let getUser: ReturnType<typeof vi.fn>
 let signIn: ReturnType<typeof vi.fn>
+let signOut: ReturnType<typeof vi.fn>
 let eq: ReturnType<typeof vi.fn>
 beforeEach(() => {
   vi.stubEnv('AUTH_MODE', 'supabase')
-  vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'http://127.0.0.1:54321')
-  vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon')
   auth.requireRequestContext.mockResolvedValue({ userId: user.id })
   eq = vi.fn(() => ({
     select: async () => ({ data: [{ id: user.id }], error: null })
   }))
   update = vi.fn(() => ({ eq }))
   updateUser = vi.fn(async () => ({ error: null }))
+  getUser = vi.fn(async () => ({ data: { user }, error: null }))
   server.createClient.mockResolvedValue({
-    auth: {
-      getUser: async () => ({ data: { user }, error: null }),
-      updateUser
-    },
+    auth: { getUser, updateUser },
     from: () => ({ update })
   })
   signIn = vi.fn(async () => ({ data: { user: { id: user.id } }, error: null }))
-  stateless.createClient.mockReturnValue({
-    auth: { signInWithPassword: signIn, signOut: vi.fn(async () => ({})) }
+  signOut = vi.fn(async () => ({}))
+  stateless.createStatelessClient.mockReturnValue({
+    auth: { signInWithPassword: signIn, signOut }
   })
 })
 afterEach(() => {
@@ -60,6 +59,7 @@ describe('updateAccount', () => {
       })
     )
     expect(result).toEqual({ status: 'success', message: 'Saved.' })
+    expect(auth.requireRequestContext).toHaveBeenCalledWith('client')
     expect(update).toHaveBeenCalledWith({
       full_name: 'Rae Owner',
       job_title: 'Founder',
@@ -77,16 +77,29 @@ describe('updateAccount', () => {
     })
   })
 
-  it('explains bad fields next to them without saving', async () => {
+  it('explains bad fields next to them, with a summary, without saving', async () => {
     const result = await updateAccount(
       {},
-      form({ name: '', jobTitle: 'x'.repeat(121), phone: 'call me' })
+      form({ name: 'R', jobTitle: 'x'.repeat(121), phone: 'call me' })
     )
-    expect(result.fieldErrors).toEqual({
-      name: 'Enter your name.',
-      jobTitle: 'Use at most 120 characters.',
-      phone: 'Use digits, spaces and + ( ) - only.'
+    expect(result).toEqual({
+      status: 'error',
+      message: 'Check the fields marked below.',
+      fieldErrors: {
+        name: 'Use at least 2 characters.',
+        jobTitle: 'Use at most 120 characters.',
+        phone: 'Use digits, spaces and + ( ) - . only.'
+      }
     })
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('refuses phone numbers with no digits or hidden line breaks', async () => {
+    for (const phone of ['+()-', '555\n0101', '555\t0101'])
+      expect(
+        (await updateAccount({}, form({ name: 'Rae', jobTitle: '', phone })))
+          .fieldErrors?.phone
+      ).toBeDefined()
     expect(update).not.toHaveBeenCalled()
   })
 
@@ -98,12 +111,26 @@ describe('updateAccount', () => {
     ).toContain('Nothing was changed')
   })
 
-  it('refuses demo sign-in', async () => {
+  it('stops before writing when the request context redirects', async () => {
+    auth.requireRequestContext.mockRejectedValue(new Error('NEXT_REDIRECT'))
+    await expect(
+      updateAccount({}, form({ name: 'Rae', jobTitle: '', phone: '' }))
+    ).rejects.toThrow('NEXT_REDIRECT')
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('refuses demo sign-in and a failed user check', async () => {
     vi.stubEnv('AUTH_MODE', 'demo')
     expect(
       (await updateAccount({}, form({ name: 'Rae', jobTitle: '', phone: '' })))
         .message
-    ).toContain('sign in again')
+    ).toBe('Please sign in again.')
+    vi.stubEnv('AUTH_MODE', 'supabase')
+    getUser.mockResolvedValue({ data: { user: null }, error: { status: 401 } })
+    expect(
+      (await updateAccount({}, form({ name: 'Rae', jobTitle: '', phone: '' })))
+        .message
+    ).toBe('Please sign in again.')
     expect(update).not.toHaveBeenCalled()
   })
 })
@@ -111,38 +138,54 @@ describe('updateAccount', () => {
 describe('changePassword', () => {
   const good = {
     current: 'old-password',
-    next: 'new-password-1',
-    confirm: 'new-password-1'
+    next: 'new-password-12',
+    confirm: 'new-password-12'
   }
 
-  it('checks the current password with a separate client, then updates', async () => {
+  it('checks the current password with a throwaway session, then updates', async () => {
     expect(await changePassword({}, form(good))).toEqual({
       status: 'success',
       message: 'Password updated.'
     })
-    expect(stateless.createClient).toHaveBeenCalledWith(
-      'http://127.0.0.1:54321',
-      'anon',
-      {
-        auth: { persistSession: false, autoRefreshToken: false }
-      }
-    )
     expect(signIn).toHaveBeenCalledWith({
       email: user.email,
       password: 'old-password'
     })
-    expect(updateUser).toHaveBeenCalledWith({ password: 'new-password-1' })
+    expect(signOut).toHaveBeenCalledWith({ scope: 'local' })
+    expect(updateUser).toHaveBeenCalledWith({ password: 'new-password-12' })
   })
 
   it('says when the current password is wrong and changes nothing', async () => {
     signIn.mockResolvedValue({
       data: { user: null },
-      error: { message: 'Invalid login' }
+      error: { code: 'invalid_credentials', status: 400 }
     })
     expect(await changePassword({}, form(good))).toEqual({
       status: 'error',
+      message: 'Check the fields marked below.',
       fieldErrors: { current: 'That is not your current password.' }
     })
+    expect(signOut).toHaveBeenCalled()
+    expect(updateUser).not.toHaveBeenCalled()
+  })
+
+  it('does not call a rate limit or an outage a wrong password', async () => {
+    signIn.mockResolvedValueOnce({
+      data: { user: null },
+      error: { code: 'over_request_rate_limit', status: 429 }
+    })
+    expect((await changePassword({}, form(good))).message).toBe(
+      'Too many attempts. Wait a few minutes, then try again.'
+    )
+    signIn.mockResolvedValueOnce({
+      data: { user: null },
+      error: { code: 'unexpected_failure', status: 500 }
+    })
+    const outage = await changePassword({}, form(good))
+    expect(outage.fieldErrors).toBeUndefined()
+    expect(outage.message).toBe(
+      'We could not check your current password. Nothing was changed. Try again.'
+    )
     expect(updateUser).not.toHaveBeenCalled()
   })
 
@@ -151,20 +194,25 @@ describe('changePassword', () => {
       data: { user: { id: 'someone-else' } },
       error: null
     })
-    expect(
-      (await changePassword({}, form(good))).fieldErrors?.current
-    ).toBeDefined()
+    expect((await changePassword({}, form(good))).status).toBe('error')
+    expect(signOut).toHaveBeenCalled()
     expect(updateUser).not.toHaveBeenCalled()
   })
 
   it.each([
     [
-      { ...good, next: 'short', confirm: 'short' },
+      { ...good, next: 'short-pass', confirm: 'short-pass' },
       'next',
-      'Use at least 8 characters.'
+      'Use at least 12 characters.'
     ],
     [
-      { ...good, confirm: 'different-1' },
+      // 36 emoji are 36 letters but 144 bytes; Auth allows 72 bytes.
+      { ...good, next: '🙂'.repeat(36), confirm: '🙂'.repeat(36) },
+      'next',
+      'Too long: use fewer characters (letters outside English count as 2–4).'
+    ],
+    [
+      { ...good, confirm: 'different-12' },
       'confirm',
       'The new passwords do not match.'
     ],
@@ -179,15 +227,52 @@ describe('changePassword', () => {
     async (values, field, message) => {
       const result = await changePassword({}, form(values))
       expect(result.fieldErrors?.[field]).toBe(message)
+      expect(result.message).toBe('Check the fields marked below.')
       expect(signIn).not.toHaveBeenCalled()
       expect(updateUser).not.toHaveBeenCalled()
     }
   )
 
+  it('accepts 72 English letters and refuses the same new password', async () => {
+    const long = 'a'.repeat(72)
+    expect(
+      (await changePassword({}, form({ ...good, next: long, confirm: long })))
+        .status
+    ).toBe('success')
+    const same = 'same-password-1'
+    expect(
+      (
+        await changePassword(
+          {},
+          form({ current: same, next: same, confirm: same })
+        )
+      ).fieldErrors?.next
+    ).toBe('Choose a password different from your current one.')
+  })
+
+  it('shows weak or reused passwords next to the field', async () => {
+    updateUser.mockResolvedValueOnce({ error: { code: 'weak_password' } })
+    expect((await changePassword({}, form(good))).fieldErrors?.next).toMatch(
+      /too easy to guess/
+    )
+    updateUser.mockResolvedValueOnce({ error: { code: 'same_password' } })
+    expect((await changePassword({}, form(good))).fieldErrors?.next).toBe(
+      'Choose a password different from your current one.'
+    )
+  })
+
   it('keeps the old password when the update fails', async () => {
-    updateUser.mockResolvedValue({ error: { message: 'weak' } })
+    updateUser.mockResolvedValue({ error: { code: 'unexpected_failure' } })
     expect((await changePassword({}, form(good))).message).toBe(
       'We could not change your password. Your old password still works.'
     )
+  })
+
+  it('checks the session before reading the form', async () => {
+    auth.requireRequestContext.mockRejectedValue(new Error('NEXT_REDIRECT'))
+    await expect(changePassword({}, form(good))).rejects.toThrow(
+      'NEXT_REDIRECT'
+    )
+    expect(signIn).not.toHaveBeenCalled()
   })
 })

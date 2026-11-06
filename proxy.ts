@@ -45,6 +45,7 @@ export const config = {
     '/connections/:path*',
     '/gros/:path*',
     '/onboarding/:path*',
+    '/profile/:path*',
     '/settings/:path*',
     '/support/:path*',
     '/team/:path*',

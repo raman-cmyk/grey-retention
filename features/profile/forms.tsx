@@ -1,10 +1,29 @@
 'use client'
-import { useActionState, useId, type ReactNode } from 'react'
+import {
+  useActionState,
+  useEffect,
+  useId,
+  useRef,
+  type ReactNode,
+  type RefObject
+} from 'react'
 import Link from 'next/link'
 import { Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { TextField } from '@/components/ui/text-field'
 import { changePassword, updateAccount, type ProfileResult } from './actions'
+import { PASSWORD_MIN } from './rules'
+
+/** After a refused save, move focus to the first field with an error. */
+function useFocusFirstError(
+  state: ProfileResult,
+  form: RefObject<HTMLFormElement | null>
+) {
+  useEffect(() => {
+    if (!state.fieldErrors) return
+    form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
+  }, [state, form])
+}
 
 const labelClass =
   'tracking-label block font-mono text-[0.6875rem] font-semibold text-[var(--text-muted)] uppercase'
@@ -97,6 +116,8 @@ export function AccountForm({
 }) {
   const [state, action, pending] = useActionState(updateAccount, {})
   const errors = state.fieldErrors ?? {}
+  const formRef = useRef<HTMLFormElement>(null)
+  useFocusFirstError(state, formRef)
   return (
     <Card
       title="Account information"
@@ -104,6 +125,7 @@ export function AccountForm({
     >
       {/* Keep what the owner typed after an error (React resets forms after an action). */}
       <form
+        ref={formRef}
         action={action}
         className="space-y-5"
         aria-busy={pending}
@@ -115,6 +137,7 @@ export function AccountForm({
           defaultValue={name}
           autoComplete="name"
           required
+          minLength={2}
           maxLength={120}
           error={errors.name}
         />
@@ -166,16 +189,32 @@ export function AccountForm({
   )
 }
 
-export function PasswordForm() {
+export function PasswordForm({ email }: { email: string }) {
   const [state, action, pending] = useActionState(changePassword, {})
   const errors = state.fieldErrors ?? {}
+  const formRef = useRef<HTMLFormElement>(null)
+  useFocusFirstError(state, formRef)
   return (
     <Card
       title="Change password"
-      description="At least 8 characters. We'll verify your current password first."
+      description={`At least ${PASSWORD_MIN} characters. We'll verify your current password first.`}
     >
       {/* Password fields are cleared after every attempt (React's default). */}
-      <form action={action} className="space-y-5" aria-busy={pending}>
+      <form
+        ref={formRef}
+        action={action}
+        className="space-y-5"
+        aria-busy={pending}
+      >
+        {/* Lets password managers save the new password for this account. */}
+        <input
+          type="text"
+          name="username"
+          autoComplete="username"
+          value={email}
+          readOnly
+          hidden
+        />
         <Input
           name="current"
           label="Current password"
@@ -189,8 +228,7 @@ export function PasswordForm() {
           label="New password"
           type="password"
           autoComplete="new-password"
-          minLength={8}
-          maxLength={72}
+          minLength={PASSWORD_MIN}
           required
           error={errors.next}
         />
