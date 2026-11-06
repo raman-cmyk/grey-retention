@@ -550,6 +550,60 @@ export type Database = {
           }
         ]
       }
+      brand_profile_sections: {
+        Row: {
+          content: Json
+          edited_at: string | null
+          edited_by: string | null
+          generated_at: string | null
+          locked: string[]
+          revision: number
+          section: string
+          source: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          content?: Json
+          edited_at?: string | null
+          edited_by?: string | null
+          generated_at?: string | null
+          locked?: string[]
+          revision?: number
+          section: string
+          source: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          content?: Json
+          edited_at?: string | null
+          edited_by?: string | null
+          generated_at?: string | null
+          locked?: string[]
+          revision?: number
+          section?: string
+          source?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_profile_sections_edited_by_fkey'
+            columns: ['edited_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_profile_sections_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       brand_profiles: {
         Row: {
           approved_at: string | null
@@ -4820,6 +4874,15 @@ export type Database = {
         Args: { observed_at: string; t: string }
         Returns: number
       }
+      apply_brand_suggestion: {
+        Args: {
+          expected_revision: number
+          section: string
+          suggestion: Json
+          t: string
+        }
+        Returns: number
+      }
       approve_brand: {
         Args: { expected_revision: number; t: string }
         Returns: undefined
@@ -5515,6 +5578,18 @@ export type Database = {
           voice: string
         }
         Returns: undefined
+      }
+      save_brand_section: {
+        Args: {
+          content: Json
+          expected_brand_revision?: number
+          expected_revision: number
+          facts?: Json
+          locked?: string[]
+          section: string
+          t: string
+        }
+        Returns: Json
       }
       save_campaign: {
         Args: {
