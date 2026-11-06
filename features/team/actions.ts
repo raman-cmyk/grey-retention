@@ -32,6 +32,11 @@ function failed(error: DbError): FormResult {
   if (error.code === 'PT409') {
     if (says(error, 'Already a member'))
       return { error: 'This person is already on the team.' }
+    if (says(error, 'Deactivated member'))
+      return {
+        error:
+          'This person is deactivated. Use Reactivate in the members list instead.'
+      }
     if (says(error, 'Already invited'))
       return {
         error:

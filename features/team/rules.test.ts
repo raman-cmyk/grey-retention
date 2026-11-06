@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   canManageTeam,
+  eventText,
   expiryText,
   initial,
   inviteSchema,
@@ -48,6 +49,59 @@ describe('team rules', () => {
     expect(message('boss@example.com', 'owner')).toBe(
       'Choose Staff or Manager.'
     )
+  })
+
+  it('explains team changes in plain sentences', () => {
+    const say = (kind: string, detail: Record<string, unknown>) =>
+      eventText(kind, detail, 'Sam', 'new@example.com')
+    expect(say('membership_insert', {})).toBe('Sam joined the team')
+    expect(
+      say('membership_update', {
+        beforeStatus: 'active',
+        afterStatus: 'inactive'
+      })
+    ).toBe('Sam was deactivated')
+    expect(
+      say('membership_update', {
+        beforeStatus: 'inactive',
+        afterStatus: 'active'
+      })
+    ).toBe('Sam was reactivated')
+    expect(
+      say('membership_update', {
+        beforeStatus: 'invited',
+        afterStatus: 'active'
+      })
+    ).toBe('Sam joined the team')
+    expect(
+      say('membership_update', {
+        beforeStatus: 'active',
+        afterStatus: 'active',
+        beforeRole: 'staff',
+        afterRole: 'admin'
+      })
+    ).toBe('Sam is now a Manager')
+    expect(
+      say('membership_update', {
+        beforeStatus: 'active',
+        afterStatus: 'active',
+        beforeRole: 'staff',
+        afterRole: 'staff'
+      })
+    ).toBeNull()
+    expect(say('invitation_simulated', { role: 'admin' })).toBe(
+      'Invite saved for new@example.com as Manager'
+    )
+    expect(say('invitation_resent', {})).toBe(
+      'Invite to new@example.com renewed'
+    )
+    expect(say('invitation_revoked', {})).toBe(
+      'Invite to new@example.com cancelled'
+    )
+    expect(say('invitation_revoked', { reason: 'expired' })).toBe(
+      'Expired invite to new@example.com cancelled'
+    )
+    expect(say('support_opened', {})).toBeNull()
   })
 
   it('shows a letter for the avatar', () => {

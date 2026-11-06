@@ -2,7 +2,13 @@ import type { Metadata } from 'next'
 import { Notice } from '@/components/ui/workspace'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { teamPage } from '@/features/team/data'
-import { InviteCard, InvitesCard, MembersCard } from '@/features/team/team-view'
+import {
+  ActivityCard,
+  InviteCard,
+  InvitesCard,
+  MembersCard
+} from '@/features/team/team-view'
+import { validTimezone } from '@/lib/brand-time'
 
 export const metadata: Metadata = { title: 'Team' }
 
@@ -39,6 +45,18 @@ export default async function TeamPage() {
               <Notice error>
                 We could not load the pending invites. Reload the page to try
                 again.
+              </Notice>
+            ))}
+          {page.canManage &&
+            (page.events ? (
+              <ActivityCard
+                events={page.events}
+                timezone={validTimezone(ctx.timezone)}
+              />
+            ) : (
+              <Notice error>
+                We could not load the recent team changes. Reload the page to
+                try again.
               </Notice>
             ))}
         </div>

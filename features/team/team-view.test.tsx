@@ -13,7 +13,7 @@ const actions = vi.hoisted(() => ({
 }))
 vi.mock('./actions', () => actions)
 
-import { InviteCard, InvitesCard, MembersCard } from './team-view'
+import { ActivityCard, InviteCard, InvitesCard, MembersCard } from './team-view'
 import type { TeamMember } from './rules'
 
 installDialogPolyfill()
@@ -24,6 +24,7 @@ afterEach(() => {
 
 const owner: TeamMember = {
   id: 'm-owner',
+  profileId: 'p-owner',
   name: 'Olive Owner',
   email: 'owner@example.com',
   role: 'owner',
@@ -33,6 +34,7 @@ const owner: TeamMember = {
 }
 const staff: TeamMember = {
   id: 'm-staff',
+  profileId: 'p-staff',
   name: 'Sam Staff',
   email: 'sam@example.com',
   role: 'staff',
@@ -90,7 +92,14 @@ describe('InviteCard', () => {
     expect(
       await screen.findByText('This person is already on the team.')
     ).toBeVisible()
-    expect(screen.getByLabelText('Email')).toHaveValue('sam@example.com')
+    const email = screen.getByLabelText('Email')
+    expect(email).toHaveValue('sam@example.com')
+    // The field points at the reason, and the cursor is back in it.
+    expect(email).toHaveAttribute('aria-invalid', 'true')
+    expect(email).toHaveAccessibleDescription(
+      'This person is already on the team.'
+    )
+    await vi.waitFor(() => expect(email).toHaveFocus())
   })
 })
 
@@ -115,18 +124,24 @@ describe('MembersCard', () => {
     ).toBeVisible()
   })
 
-  it('asks before changing a role, and Cancel changes nothing', async () => {
+  it('changes nothing until Change role and Yes; Cancel keeps the role', async () => {
     render(<MembersCard members={[owner, staff]} canManage />)
     const select = screen.getByLabelText('Role for Sam Staff')
+    const change = screen.getByRole('button', {
+      name: 'Change role for Sam Staff'
+    })
+    expect(change).toBeDisabled()
     await userEvent.selectOptions(select, 'admin')
+    // Picking alone opens nothing (keyboard users can browse the list).
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(change).toBeEnabled()
+    await userEvent.click(change)
     const dialog = screen.getByRole('alertdialog')
     expect(within(dialog).getByText('Make Sam Staff a Manager?')).toBeVisible()
-    expect(select).toHaveValue('staff')
     await userEvent.click(
       within(dialog).getByRole('button', { name: 'Cancel' })
     )
     expect(actions.changeMember).not.toHaveBeenCalled()
-    expect(select).toHaveValue('staff')
   })
 
   it('changes the role after Yes, with the version shown', async () => {
@@ -137,6 +152,9 @@ describe('MembersCard', () => {
     await userEvent.selectOptions(
       screen.getByLabelText('Role for Sam Staff'),
       'admin'
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Change role for Sam Staff' })
     )
     await userEvent.click(
       within(screen.getByRole('alertdialog')).getByRole('button', {
@@ -263,5 +281,34 @@ describe('InvitesCard', () => {
   it('shows the empty state', () => {
     render(<InvitesCard invites={[]} now={now} />)
     expect(screen.getByText('No pending invites.')).toBeVisible()
+  })
+})
+
+describe('ActivityCard', () => {
+  it('lists recent team changes with who and when', () => {
+    render(
+      <ActivityCard
+        timezone="Asia/Kathmandu"
+        events={[
+          {
+            id: 'e1',
+            text: 'Sam Staff was deactivated',
+            by: 'you',
+            at: '2026-11-06T10:00:00Z'
+          }
+        ]}
+      />
+    )
+    expect(
+      screen.getByRole('heading', { name: 'Recent team changes' })
+    ).toBeVisible()
+    expect(
+      screen.getByText('Sam Staff was deactivated').closest('li')
+    ).toHaveTextContent('Sam Staff was deactivated · by you · Nov 6')
+  })
+
+  it('says when nothing changed yet', () => {
+    render(<ActivityCard timezone="UTC" events={[]} />)
+    expect(screen.getByText('No changes yet.')).toBeVisible()
   })
 })

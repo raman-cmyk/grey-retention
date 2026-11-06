@@ -29,6 +29,7 @@ import {
   roleLabel,
   type AssignableRole,
   type PendingInvite,
+  type TeamEvent,
   type TeamMember
 } from './rules'
 
@@ -37,20 +38,34 @@ const labelClass =
 const cardClass =
   'space-y-5 rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-6'
 
-/** A polite live region that is always on the page (so it is announced). */
-function Status({ state, pending }: { state: FormResult; pending: boolean }) {
+/**
+ * A polite live region that is always rendered (never display:none), so
+ * every screen reader announces what appears in it.
+ */
+function Status({
+  state,
+  pending,
+  id
+}: {
+  state: FormResult
+  pending: boolean
+  id?: string
+}) {
+  const text = pending ? '' : (state.error ?? state.message ?? '')
   return (
     <p
+      id={id}
       aria-live="polite"
       className={cn(
-        'text-sm empty:hidden',
-        !pending && (state.error || state.message) && 'rounded-lg px-3 py-2',
-        state.error
-          ? 'bg-[var(--danger-soft)] text-[var(--danger-ink)]'
-          : 'bg-[var(--brand-soft)] text-[var(--brand-ink)]'
+        'text-sm',
+        !text
+          ? 'sr-only'
+          : state.error
+            ? 'rounded-lg bg-[var(--danger-soft)] px-3 py-2 text-[var(--danger-ink)]'
+            : 'rounded-lg bg-[var(--brand-soft)] px-3 py-2 text-[var(--brand-ink)]'
       )}
     >
-      {pending ? '' : (state.error ?? state.message ?? '')}
+      {text}
     </p>
   )
 }
@@ -87,6 +102,10 @@ export function InviteCard() {
     if (round > 0) document.getElementById(`${idBase}-${round}-email`)?.focus()
   }, [round, idBase])
   const id = `${idBase}-${round}`
+  // After a refusal the cursor goes back to Email, which points at the reason.
+  useEffect(() => {
+    if (state.error) document.getElementById(`${id}-email`)?.focus()
+  }, [state, id])
   return (
     <section aria-labelledby={`${idBase}-title`} className={cardClass}>
       <div className="space-y-1">
@@ -118,6 +137,8 @@ export function InviteCard() {
             placeholder="teammate@company.com"
             maxLength={254}
             required
+            aria-invalid={state.error ? true : undefined}
+            aria-describedby={state.error ? `${idBase}-status` : undefined}
           />
         </div>
         <div className="space-y-2">
@@ -144,7 +165,7 @@ export function InviteCard() {
         {roleHelp.admin} <strong className="text-[var(--text)]">Staff:</strong>{' '}
         {roleHelp.staff} {ownerOnlyNote}
       </p>
-      <Status state={state} pending={pending} />
+      <Status state={state} pending={pending} id={`${idBase}-status`} />
     </section>
   )
 }
@@ -168,6 +189,10 @@ function MemberRow({
 }) {
   const editable = canManage && member.role !== 'owner' && !member.isMe
   const name = member.name || member.email
+  // The role picked in the list; nothing changes until "Change role" and Yes.
+  const [picked, setPicked] = useState<AssignableRole>(
+    member.role === 'admin' ? 'admin' : 'staff'
+  )
   return (
     <li className="flex flex-wrap items-center gap-3 border-b border-[var(--line)] py-4 last:border-b-0">
       <span
@@ -209,15 +234,10 @@ function MemberRow({
             </label>
             <select
               id={`${idBase}-role-${member.id}`}
-              // Shows the saved role; a change only happens after "Yes".
-              value={member.role}
+              value={picked}
               disabled={busy}
               onChange={(event) =>
-                onAsk({
-                  kind: 'role',
-                  member,
-                  role: event.target.value === 'admin' ? 'admin' : 'staff'
-                })
+                setPicked(event.target.value === 'admin' ? 'admin' : 'staff')
               }
               className={cn(controlClass, 'w-auto')}
             >
@@ -227,6 +247,16 @@ function MemberRow({
                 </option>
               ))}
             </select>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={busy || picked === member.role}
+              aria-label={`Change role for ${name}`}
+              onClick={() => onAsk({ kind: 'role', member, role: picked })}
+            >
+              Change role
+            </Button>
           </>
         )}
         {editable && (
@@ -449,6 +479,44 @@ export function InvitesCard({
                   Cancel
                 </Button>
               </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+/** "Recent team changes" (owners and managers): who changed what, when. */
+export function ActivityCard({
+  events,
+  timezone
+}: {
+  events: TeamEvent[]
+  timezone: string
+}) {
+  const id = useId()
+  const date = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    month: 'short',
+    day: 'numeric'
+  })
+  return (
+    <section aria-labelledby={id} className={cardClass}>
+      <h2 id={id} className="text-lg font-semibold">
+        Recent team changes
+      </h2>
+      {events.length === 0 ? (
+        <p className="text-sm text-[var(--text-muted)]">No changes yet.</p>
+      ) : (
+        <ul className="space-y-2 text-sm">
+          {events.map((event) => (
+            <li key={event.id}>
+              {event.text}
+              <span className="text-[var(--text-muted)]">
+                {' '}
+                · by {event.by} · {date.format(new Date(event.at))}
+              </span>
             </li>
           ))}
         </ul>

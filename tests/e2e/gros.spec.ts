@@ -144,7 +144,15 @@ test('UC-18 team invitation audit, event and support response survive refresh', 
     .click()
   await expect(invitation).toHaveCount(0)
   await page.reload()
-  await expect(page.getByText(email)).toHaveCount(0)
+  await expect(
+    page.getByRole('region', { name: /Pending invites/ }).getByText(email)
+  ).toHaveCount(0)
+  // The audit survives the refresh.
+  await expect(
+    page
+      .getByRole('region', { name: 'Recent team changes' })
+      .getByText(`Invite to ${email} cancelled`, { exact: false })
+  ).toBeVisible()
   await page.goto('/settings')
   await page
     .getByLabel('Event name')

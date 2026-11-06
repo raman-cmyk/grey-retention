@@ -95,6 +95,7 @@ describe('inviteTeammate', () => {
     const cases = [
       [{ code: 'PT409', message: 'Already a member' }, /already on the team/],
       [{ code: 'PT409', message: 'Already invited' }, /Use Resend/],
+      [{ code: 'PT409', message: 'Deactivated member' }, /Use Reactivate/],
       [
         { code: '42501', message: 'Team administrator required' },
         /Only the owner or a manager/
@@ -199,6 +200,10 @@ describe('changeMember', () => {
     ).toBe('Reload the page and try again.')
     expect(
       (await changeMember({}, form({ ...change, status: 'invited' }))).error
+    ).toBe('Reload the page and try again.')
+    expect(
+      (await changeMember({}, form({ ...change, updatedAt: 'yesterday' })))
+        .error
     ).toBe('Reload the page and try again.')
     signedInAs('staff')
     expect((await changeMember({}, form(change))).error).toMatch(

@@ -28,6 +28,7 @@ export const ownerOnlyNote =
 
 export type TeamMember = {
   id: string
+  profileId: string
   name: string
   email: string
   role: TeamRole
@@ -62,10 +63,61 @@ export const inviteSchema = z.object({
 
 export const memberChangeSchema = z.object({
   id: z.uuid(),
-  updatedAt: z.string().min(1),
+  updatedAt: z.iso.datetime({ offset: true }),
   role: z.enum(['admin', 'staff']),
   status: z.enum(['active', 'inactive'])
 })
+
+/** One line in "Recent team changes". */
+export type TeamEvent = { id: string; text: string; by: string; at: string }
+
+/** The workspace log kinds the Team page explains. */
+export const teamEventKinds = [
+  'membership_insert',
+  'membership_update',
+  'invitation_simulated',
+  'invitation_resent',
+  'invitation_revoked'
+] as const
+
+type Detail = Record<string, unknown>
+const asRole = (value: unknown) =>
+  value === 'owner' || value === 'admin' || value === 'staff' ? value : null
+
+/**
+ * A plain sentence for one log entry, or null for entries the page does not
+ * explain. `who` names a membership, `invitee` an invite's address.
+ */
+export function eventText(
+  kind: string,
+  detail: Detail,
+  who: string,
+  invitee: string
+): string | null {
+  if (kind === 'membership_insert') return `${who} joined the team`
+  if (kind === 'membership_update') {
+    if (detail.beforeStatus === 'active' && detail.afterStatus === 'inactive')
+      return `${who} was deactivated`
+    if (detail.beforeStatus === 'inactive' && detail.afterStatus === 'active')
+      return `${who} was reactivated`
+    if (detail.beforeStatus === 'invited' && detail.afterStatus === 'active')
+      return `${who} joined the team`
+    const role = asRole(detail.afterRole)
+    if (role && role !== detail.beforeRole)
+      return `${who} is now ${role === 'admin' ? 'a Manager' : role === 'staff' ? 'Staff' : 'an Owner'}`
+    return null
+  }
+  if (kind === 'invitation_simulated') {
+    const role = asRole(detail.role)
+    return `Invite saved for ${invitee}${role ? ` as ${roleLabel[role]}` : ''}`
+  }
+  if (kind === 'invitation_resent') return `Invite to ${invitee} renewed`
+  if (kind === 'invitation_revoked')
+    return detail.reason === 'expired'
+      ? `Expired invite to ${invitee} cancelled`
+      : `Invite to ${invitee} cancelled`
+  return null
+}
 
 /** The letter in the round avatar: the name's first, else the email's. */
 export function initial(member: { name: string; email: string }) {

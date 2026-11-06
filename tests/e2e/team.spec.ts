@@ -91,15 +91,27 @@ test('UIR-019 owner invites, resends, cancels, changes a role and deactivates', 
   await expect(pending.getByText('Invite cancelled.')).toBeVisible()
   await expect(pending.getByText('No pending invites.')).toBeVisible()
 
-  // Role: asks first; Cancel keeps Staff.
+  // Role: picking opens nothing; Change role asks first; Cancel saves nothing.
   const role = row.getByLabel('Role for Sam Teammate')
+  const changeRole = row.getByRole('button', {
+    name: 'Change role for Sam Teammate'
+  })
+  await expect(changeRole).toBeDisabled()
   await role.selectOption('admin')
   const dialog = page.getByRole('alertdialog')
+  await expect(dialog).toHaveCount(0)
+  await changeRole.click()
   await expect(dialog.getByText('Make Sam Teammate a Manager?')).toBeVisible()
   await dialog.getByRole('button', { name: 'Cancel' }).click()
-  await expect(role).toHaveValue('staff')
+  await page.reload()
+  await expect(
+    page
+      .getByRole('region', { name: /Members/ })
+      .getByLabel('Role for Sam Teammate')
+  ).toHaveValue('staff')
   await role.selectOption('admin')
-  await dialog.getByRole('button', { name: 'Change role' }).click()
+  await changeRole.click()
+  await dialog.getByRole('button', { name: 'Change role', exact: true }).click()
   await expect(
     members.getByText('Sam Teammate is now a Manager.')
   ).toBeVisible()
@@ -124,9 +136,27 @@ test('UIR-019 owner invites, resends, cancels, changes a role and deactivates', 
     page.getByRole('region', { name: /Members/ }).getByRole('heading')
   ).toHaveText('Members (1) · 1 deactivated')
   await expect(again).toContainText('Deactivated')
+  // A deactivated teammate is reactivated, not invited again.
+  const invite2 = page.getByRole('region', { name: 'Invite a teammate' })
+  await invite2.getByLabel('Email', { exact: true }).fill(mate.email)
+  await invite2.getByRole('button', { name: 'Send invite' }).click()
+  await expect(invite2.getByText(/Use Reactivate/)).toBeVisible()
   await again.getByRole('button', { name: 'Reactivate Sam Teammate' }).click()
   await dialog.getByRole('button', { name: 'Reactivate' }).click()
   await expect(page.getByText('Sam Teammate was reactivated.')).toBeVisible()
+
+  // Who changed what, after a reload.
+  await page.reload()
+  const changes = page.getByRole('region', { name: 'Recent team changes' })
+  await expect(
+    changes.getByText('Sam Teammate was deactivated', { exact: false })
+  ).toContainText('by you')
+  await expect(
+    changes.getByText('Sam Teammate is now a Manager', { exact: false })
+  ).toBeVisible()
+  await expect(
+    changes.getByText(`Invite to ${newcomer} cancelled`, { exact: false })
+  ).toBeVisible()
 })
 
 test('UIR-019 staff see the team but cannot change it', async ({
