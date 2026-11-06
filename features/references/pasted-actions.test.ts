@@ -15,6 +15,7 @@ vi.mock('@/features/auth/application/request-context', () => ({
 vi.mock('@/lib/supabase/server', () => ({ createClient }))
 vi.mock('next/navigation', () => ({ redirect }))
 vi.mock('next/cache', () => ({ revalidatePath }))
+vi.mock('server-only', () => ({}))
 const tenantId = crypto.randomUUID()
 const referenceId = crypto.randomUUID()
 function form(overrides: Record<string, string> = {}) {

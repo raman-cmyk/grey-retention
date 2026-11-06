@@ -1,4 +1,7 @@
 import Link from 'next/link'
+import { rewriteAvailability } from '@/features/email-generation/config'
+import { Composer } from '@/features/composer/composer'
+import { randomUUID } from 'node:crypto'
 import { EmptyState } from '@/components/ui/empty-state'
 import type { Route } from 'next'
 import { ArrowRight, Check, Plus, Sparkles } from 'lucide-react'
@@ -116,6 +119,22 @@ export function CampaignOverview({
           </Button>
         }
       />
+      {owner && (
+        <section aria-labelledby="composer-title" className="mb-8">
+          <h2
+            id="composer-title"
+            className="tracking-label mb-3 font-mono text-[0.6875rem] text-[var(--text-muted)] uppercase"
+          >
+            Make your version of an email
+          </h2>
+          <Composer
+            requestKey={randomUUID()}
+            brandName={data.brand?.brand_name ?? null}
+            productCount={data.products.length}
+            rewriteReady={rewriteAvailability(context.tenantId).ready}
+          />
+        </section>
+      )}
       {data.campaigns.length === 0 && (
         <div className="mb-7 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-5">
           <div>

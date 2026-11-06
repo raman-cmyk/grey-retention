@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { cn } from '@/lib/utils'
 import type { Route } from 'next'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { TextField } from '@/components/ui/text-field'
@@ -18,14 +19,30 @@ export async function ChooseOutcome({
   importId,
   attempt,
   owner,
-  admin = false
+  admin = false,
+  preferred
 }: {
   tenantId: string
   importId: string
   attempt: string
   owner: boolean
   admin?: boolean
+  /** Outcome the owner picked in the composer; marked, never auto-run. */
+  preferred?: 'copy' | 'rewrite'
 }) {
+  const sectionClass = (outcome: 'copy' | 'rewrite') =>
+    cn(
+      'rounded-[var(--radius-panel)] border p-5',
+      preferred === outcome
+        ? 'border-[var(--brand-secondary)] ring-1 ring-[var(--brand-secondary)]'
+        : 'border-[var(--line-strong)]'
+    )
+  const choiceLabel = (outcome: 'copy' | 'rewrite') =>
+    preferred === outcome ? (
+      <p className="tracking-label mb-2 font-mono text-[0.6875rem] text-[var(--brand-secondary)] uppercase">
+        Your choice in the composer
+      </p>
+    ) : null
   const { data, error } = await emailChoice(tenantId, importId)
   if (!data)
     return (
@@ -95,8 +112,9 @@ export async function ChooseOutcome({
         <div className="mt-7 space-y-5">
           <section
             aria-labelledby="choose-rewrite"
-            className="rounded-xl border border-[var(--line-strong)] p-5"
+            className={sectionClass('rewrite')}
           >
+            {choiceLabel('rewrite')}
             <h2 id="choose-rewrite" className="font-semibold">
               Rewrite for my brand
             </h2>
@@ -198,7 +216,11 @@ export async function ChooseOutcome({
                     </Field>
                   </div>
                 </details>
-                <SubmitButton>Rewrite for my brand</SubmitButton>
+                <SubmitButton
+                  variant={preferred === 'copy' ? 'secondary' : 'primary'}
+                >
+                  Rewrite for my brand
+                </SubmitButton>
               </ActionForm>
             ) : (
               <p className="mt-4 rounded-lg bg-[var(--surface-hover)] p-4 text-sm leading-6">
@@ -210,8 +232,9 @@ export async function ChooseOutcome({
           </section>
           <section
             aria-labelledby="choose-copy"
-            className="rounded-xl border border-[var(--line-strong)] p-5"
+            className={sectionClass('copy')}
           >
+            {choiceLabel('copy')}
             <h2 id="choose-copy" className="font-semibold">
               Copy this email
             </h2>
@@ -226,7 +249,16 @@ export async function ChooseOutcome({
               <input type="hidden" name="attempt" value={attempt} />
               <input type="hidden" name="importId" value={importId} />
               <input type="hidden" name="mode" value="copy" />
-              <SubmitButton variant="secondary">Copy this email</SubmitButton>
+              <SubmitButton
+                variant={
+                  preferred === 'copy' ||
+                  (preferred === 'rewrite' && !availability.ready)
+                    ? 'primary'
+                    : 'secondary'
+                }
+              >
+                Copy this email
+              </SubmitButton>
             </ActionForm>
           </section>
         </div>

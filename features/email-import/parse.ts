@@ -169,7 +169,8 @@ function looksLikeMessage(text: string) {
   )
 }
 
-function clean(value: string, max: number) {
+/** Removes control and invisible characters, collapses spaces, clips pair-safely. */
+export function cleanText(value: string, max: number) {
   return clipText(value.replace(controls, '').replace(/\s+/g, ' ').trim(), max)
 }
 
@@ -186,7 +187,8 @@ export function contractDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(iso) ? iso : null
 }
 
-function htmlTitle(html: string) {
+/** Bounded <title> reader: linear time on untrusted HTML of any size. */
+export function htmlTitle(html: string) {
   const match = /<title\b[^>]{0,200}>([^<]{1,1000})<\/title>/i.exec(
     html.slice(0, 20_000)
   )
@@ -212,7 +214,7 @@ function chooseSubject(
 ) {
   for (const candidate of candidates) {
     if (!candidate) continue
-    const subject = clean(candidate, fileLimits.title)
+    const subject = cleanText(candidate, fileLimits.title)
     if (!subject.value) continue
     if (subject.cut) notes.push('subject_shortened')
     return subject.value
@@ -326,10 +328,10 @@ export async function parseEmailFile(
   if (html && text) notes.push('text_part_available')
 
   const headerSubject = email.subject
-    ? clean(email.subject, 2000).value || null
+    ? cleanText(email.subject, 2000).value || null
     : null
   const from = formatAddress(email.from)
-  const sender = from ? clean(from, 400) : null
+  const sender = from ? cleanText(from, 400) : null
   if (sender?.cut) notes.push('sender_shortened')
   const headerDate = email.date ? contractDate(email.date) : null
   if (email.date && !headerDate) notes.push('date_unreadable')
