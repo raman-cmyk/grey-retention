@@ -1,0 +1,69 @@
+name: Browser
+
+# Desktop and mobile Playwright journeys plus the concurrency scripts, on a
+# fresh local Supabase with fake providers. Runs only when app, test or
+# database files change (or by hand), and skips draft pull requests.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'app/**'
+      - 'components/**'
+      - 'features/**'
+      - 'lib/**'
+      - 'supabase/**'
+      - 'scripts/**'
+      - 'tests/e2e/**'
+      - 'playwright.config.ts'
+      - 'next.config.ts'
+      - 'proxy.ts'
+      - 'postcss.config.mjs'
+      - 'tsconfig.json'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/browser.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser:
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Reuse the downloaded browser between runs; system packages still install.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: pnpm exec playwright install --with-deps chromium
+      # Only the services the journeys use: database, auth, REST, storage, mail.
+      - run: pnpm exec supabase start -x studio,logflare,vector,imgproxy,edge-runtime,realtime,postgres-meta,supavisor
+      - run: pnpm supabase:reset
+      - run: pnpm test:e2e
+      - run: node scripts/test-first-draft.mjs
+      - run: node scripts/test-email-concurrency.mjs
+      - run: node scripts/test-email-import-concurrency.mjs
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
