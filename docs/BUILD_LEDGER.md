@@ -83,6 +83,8 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 | UIR-014 | Old-app rebuild §14 Profile | UIR-002 | review | Claude Code cloud lane | pnpm verify; features/profile and components/shell 58/58; profile_update pgTAP 7/7; profile journeys desktop+mobile, 375px keyboard; workspace-ui journeys | Owns `features/profile/*`, `app/(client)/profile/page.tsx`, `tests/e2e/profile.spec.ts`, `supabase/tests/profile_update.test.sql`; narrow shared edits: `ShellNavigation.profileHref` (client only) and the account menu/drawer link (sidebar.tsx + tests), `lib/supabase/stateless.ts`, `/profile` in `proxy.ts`. No migration. |
 | UIR-015 | One campaign status system | UIR-002 | review | Claude Code browser lane | pnpm verify; status derivation tests for every state; calendar, list and dashboard show the one pill | Owns `features/campaigns/status.ts` (`campaignStatusOf`, `hasDeliveryProblem`) and the status pills on the calendar, the Your campaigns list and the dashboard mini calendar. Issue #254. |
 
+| UIR-015 | One campaign status system | UIR-002 | review | Claude Code browser lane | pnpm verify; status derivation tests for every state; calendar, list and dashboard show the one pill | Owns `features/campaigns/status.ts` (`campaignStatusOf`, `stepStateWords`) and `status-pill.tsx` and the status pills on the calendar, the Your campaigns list and the dashboard mini calendar. Issue #254. |
+
 ## Global decisions
 
 - CI browser timeout (2026-11-07): on CI, Playwright `expect()` checks wait up to 15s instead of 5s (`playwright.config.ts`; locally still 5s). Since the Connections, Brand, Profile and Dashboard journeys landed, a Browser run takes 20–30 minutes on one dev server, and the last mobile journeys (UC-09, UC-12, UC-16) timed out at whichever server action was slowest, on every pull request. Checks must still come true; they only get more time. Side finding for a follow-up: `finish_onboarding_job` and `private.onboarding_lease` raise SQLSTATE 40001 ('Connection changed', 'Lease unavailable'), the PT409 trap in CLAUDE.md; a stale `commerce.sync` (queued, then the Shopify revision bumped) hits it. That needs a new migration.
@@ -152,14 +154,16 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 - UIR-015 (2026-11-06): every campaign shows ONE status, derived by `features/campaigns/status.ts` from the real state machine and never picked by hand. The order of checks:
   1. Sent, Cancelled and Scheduled come only from delivery, and only once the provider confirmed them.
   2. Failed, blocked and unconfirmed (`reconciling`) deliveries are a **Delivery problem**, a new status (danger), whatever the clock says.
-  3. Missed: the time passed without a confirmed schedule. The worker refuses past times, so an in-flight delivery (queued … scheduling) will not send.
-  4. An in-flight delivery for a future time is Scheduled; "Next: Waiting for confirmation".
+  3. An in-flight delivery (queued … scheduling) is Scheduled for a future time ("Next: Waiting for confirmation"), and a Delivery problem once its time passed: the worker refuses past times, and the date can't be edited while delivery is active.
+  4. Anything else whose time passed is Missed ("Next: Pick a new date").
   5. Needs your approval: a new or moved date first; then With designer (assigned, or revisions on a design email); then copy or a delivered design waiting; then the final approve-and-schedule step, once the date, copy AND design are approved. Text emails get a text design the owner reviews, so they pass the design step too.
-  6. Otherwise Draft, including a turned-down date (it can be revised and approved again).
+  6. Otherwise Draft, including a turned-down date (it can be revised and approved again; copy and design approvals wait for it).
+
+  Missed and Delivery problem campaigns have their own "Needs a look" tile and filter, and come first in the dashboard's "Waiting for you".
 
   Replaced plan entries show "Replaced". The overview's "Next:", its tiles and filters, the dashboard's "Waiting for you" and upcoming sends, and the calendar's month line ("4 campaigns · 1 needs your approval · 1 scheduled") all come from the same status; the old "awaiting review · approved" line is gone. The campaign page shows the pill and plain words per step (`stepStateWords`). `hasDeliveryProblem` is removed (the status says it); the pill lives in `features/campaigns/status-pill.tsx`.
   - Still raw: the delivery panel's "Campaign delivery: …" line (e2e asserts it), the planning panel, `/copy-review` and admin designers. GROS replies use their own delivery words (`20260914090016_gros_readable_reply.sql`); integration note for the GROS domain.
-  - Render-path revisions on a design email read "With designer" until designer assignments are loaded with campaigns.
+  - Render-path revisions on a design email read "With designer", and a text email given to a human designer reads "Draft" once changes are asked, until active designer assignments are loaded with campaigns.
 
 - DS-006 (2026-11-06): the composer (`features/composer/`) saves a paste through the same `savePastedReference` helper as the paste form (extracted from `importPastedReference` into server-only `features/references/pasted-save.ts`, messages unchanged) and redirects to `/create-email/{id}?mode=copy|rewrite`. The choose page only marks that outcome ("Your choice in the composer", primary button); it never starts a copy or rewrite by itself, so owner confirmation and paid-AI gates are unchanged. EXACT→copy, REBRAND→rewrite, ADAPT disabled with a reason. Subject comes from the HTML `<title>` or first readable line; a link-only paste is refused with an honest message. Composer is owner-only on the dashboard and the setup reference step; the existing Paste/Upload links stay.
 
@@ -928,6 +932,6 @@ Append entries using this exact shape:
      All four are fixed and tested. Also fixed: failed deliveries read "Needs your approval"; a turned-down date read "Cancelled"; a moved date was hidden by "With designer"; "Next:", tiles, filters and "Waiting for you" disagreed with the pill; the campaign page showed raw states; the dashboard's next campaign had no pill.
 - Known issues:
   - raw state words remain on the delivery and planning panels, `/copy-review` and admin designers (listed in the Global decision);
-  - render-path revisions on design emails read "With designer";
+  - render-path revisions on design emails read "With designer", and revisions on a text email given to a human designer read "Draft" (both need designer assignments loaded with campaigns);
   - the real owner Approve step is UIR-016.
 - Next consumer: UIR-006 §6 planner (filters and chips), UIR-016 Approve step.

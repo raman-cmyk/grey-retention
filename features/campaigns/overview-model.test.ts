@@ -99,9 +99,11 @@ describe('next step agrees with the status pill', () => {
     for (const delivery_state of ['failed', 'blocked', 'reconciling'])
       expect(next({ delivery_state })).toBe('Check delivery')
     expect(next({ planned_at: '2026-11-01T09:00:00Z' })).toBe('Pick a new date')
+    // Approved and in delivery when its time passed: check delivery (the
+    // date can't be edited while delivery is active).
     expect(
       next({ delivery_state: 'queued', planned_at: '2026-11-01T09:00:00Z' })
-    ).toBe('Pick a new date')
+    ).toBe('Check delivery')
     // Missed campaigns are not in the approval queue.
     expect(review({ planned_at: '2026-11-01T09:00:00Z' })).toBeNull()
   })

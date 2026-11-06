@@ -13,7 +13,8 @@ export function WorkflowNavigation({
 }: {
   campaign: OverviewCampaign
 }) {
-  const next = campaignNextStep(campaign) ?? 'Nothing to do now'
+  const step = campaignNextStep(campaign)
+  const next = step ?? 'Nothing to do now'
   const word = next.toLowerCase()
   const target =
     word.includes('calendar') || word.includes('date')
@@ -82,13 +83,15 @@ export function WorkflowNavigation({
           <a href="#history" className="text-xs text-[var(--text-muted)]">
             History & notes
           </a>
-          <a
-            href={target}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--brand-secondary)]"
-          >
-            Go to step
-            <ArrowRight className="size-3.5" aria-hidden />
-          </a>
+          {step && (
+            <a
+              href={target}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--brand-secondary)]"
+            >
+              Go to step
+              <ArrowRight className="size-3.5" aria-hidden />
+            </a>
+          )}
         </div>
       </div>
     </div>

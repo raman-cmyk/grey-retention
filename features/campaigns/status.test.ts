@@ -73,6 +73,10 @@ describe('one campaign status', () => {
     expect(status({ calendar_state: 'rejected' })).toBe('draft')
     // Nothing to approve and schedule until the date is approved again.
     expect(status({ ...approved, calendar_state: 'rejected' })).toBe('draft')
+    // Copy approval is blocked while the date is turned down.
+    expect(
+      status({ calendar_state: 'rejected', copy_state: 'pending_approval' })
+    ).toBe('draft')
   })
 
   it('is Scheduled only when confirmed, or on its way for a future time', () => {
@@ -112,11 +116,12 @@ describe('one campaign status', () => {
     expect(
       status({ ...approved, delivery_state: 'ready', planned_at: past })
     ).toBe('missed')
-    // The worker refuses past times, so an in-flight send will not go out.
+    // The worker refuses past times and the date can't be edited while
+    // delivery is active, so an in-flight send past its time is a problem.
     for (const state of ['queued', 'preparing', 'prepared', 'scheduling'])
       expect(
         status({ ...approved, delivery_state: state, planned_at: past })
-      ).toBe('missed')
+      ).toBe('delivery_problem')
     // Confirmed scheduled or sent wins over the clock.
     expect(
       status({ ...approved, delivery_state: 'scheduled', planned_at: past })

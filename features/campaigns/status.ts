@@ -28,17 +28,18 @@ const problems = new Set(['failed', 'blocked', 'reconciling'])
  *    the provider confirmed them.
  * 2. A failed, blocked or unconfirmed (`reconciling`) delivery is a Delivery
  *    problem, whatever the clock says.
- * 3. A campaign whose time passed without a confirmed schedule is Missed:
- *    the worker refuses past times, so an in-flight delivery will not send.
- * 4. An in-flight delivery (queued … scheduling) for a future time is
- *    Scheduled: the owner approved it and delivery is setting it up.
+ * 3. An in-flight delivery (queued … scheduling) is Scheduled for a future
+ *    time, and a Delivery problem once its time passed (the worker refuses
+ *    past times, and the date can't be edited while delivery is active).
+ * 4. Anything else whose time passed is Missed.
  * 5. Needs your approval: a moved or new calendar entry first, then a
  *    designer at work is With designer, then copy or a delivered design
  *    waiting, then — copy AND design approved, for every channel (text
  *    emails get a text design the owner reviews) — the final
  *    approve-and-schedule step.
  * 6. Everything else is Draft, including a rejected calendar entry (it can
- *    be revised and approved again).
+ *    be revised and approved again; nothing else can be approved until
+ *    then).
  *
  * Returns null for entries replaced by a newer plan (they are history).
  */
@@ -52,11 +53,18 @@ export function campaignStatusOf(
   if (c.delivery_state === 'scheduled') return 'scheduled'
   if (problems.has(c.delivery_state)) return 'delivery_problem'
   const planned = Date.parse(c.planned_at)
-  if (Number.isFinite(planned) && planned <= now.getTime()) return 'missed'
-  if (inFlight.has(c.delivery_state)) return 'scheduled'
+  const past = Number.isFinite(planned) && planned <= now.getTime()
+  // Approved and being set up, but its time passed: the worker will refuse
+  // it and the date cannot be edited while delivery is active.
+  if (inFlight.has(c.delivery_state))
+    return past ? 'delivery_problem' : 'scheduled'
+  if (past) return 'missed'
   if (c.calendar_state === 'proposed') return 'needs_approval'
-  // The render path (no human designer) also asks for revisions; text
-  // emails only use that path, so their revisions are back with the owner.
+  // A turned-down date blocks the copy and design approvals too.
+  if (c.calendar_state === 'rejected') return 'draft'
+  // The render path (no human designer) also asks for revisions. Text
+  // emails usually use it, so their revisions are taken as the owner's
+  // (a text email given to a human designer reads Draft: known issue).
   if (
     c.design_state === 'assigned' ||
     (c.design_state === 'revisions_requested' && c.channel !== 'email_text')

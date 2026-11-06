@@ -99,13 +99,17 @@ export function CampaignOverview({
         </Notice>
       </section>
     )
-  const model = overviewModel(data.campaigns)
+  // One clock for the whole list, so a pill and its queue always agree.
+  const now = new Date()
+  const model = overviewModel(data.campaigns, now)
   const selection =
     focus === 'review'
       ? model.reviews
       : focus === 'scheduled'
         ? model.scheduled
-        : model.current
+        : focus === 'attention'
+          ? model.attention
+          : model.current
   const brandApproved = Boolean(
     data.brand && data.brand.approved_revision === data.brand.revision
   )
@@ -116,7 +120,10 @@ export function CampaignOverview({
   const shown = selection.slice((currentPage - 1) * 10, currentPage * 10)
   const pageLink = (number: number) =>
     linkTo({
-      focus: focus === 'review' || focus === 'scheduled' ? focus : null,
+      focus:
+        focus === 'review' || focus === 'scheduled' || focus === 'attention'
+          ? focus
+          : null,
       p: String(number)
     })
   const date = new Intl.DateTimeFormat('en', {
@@ -180,7 +187,7 @@ export function CampaignOverview({
           </Button>
         </div>
       )}
-      <StatGrid label="Campaign progress" className="mb-7" columns={3}>
+      <StatGrid label="Campaign progress" className="mb-7" columns={4}>
         <StatTile
           label="Needs your approval"
           value={model.reviews.length}
@@ -200,6 +207,12 @@ export function CampaignOverview({
           value={model.scheduled.length}
           caption="Sample sends only — no real email goes out yet"
           href={linkTo({ focus: 'scheduled', p: null })}
+        />
+        <StatTile
+          label="Needs a look"
+          value={model.attention.length}
+          caption="Missed, or a delivery problem"
+          href={linkTo({ focus: 'attention', p: null })}
         />
       </StatGrid>
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
@@ -224,7 +237,9 @@ export function CampaignOverview({
               {
                 label: 'All campaigns',
                 href: linkTo({ focus: null, p: null }),
-                active: !['review', 'scheduled'].includes(focus ?? '')
+                active: !['review', 'scheduled', 'attention'].includes(
+                  focus ?? ''
+                )
               },
               {
                 label: 'Needs your approval',
@@ -235,6 +250,11 @@ export function CampaignOverview({
                 label: 'Scheduled',
                 href: linkTo({ focus: 'scheduled', p: null }),
                 active: focus === 'scheduled'
+              },
+              {
+                label: 'Needs a look',
+                href: linkTo({ focus: 'attention', p: null }),
+                active: focus === 'attention'
               }
             ].map((tab) => (
               <Link
@@ -256,14 +276,18 @@ export function CampaignOverview({
                     : 'Nothing is waiting for the brand owner.'
                   : focus === 'scheduled'
                     ? 'No campaigns scheduled yet.'
-                    : 'Start your first campaign.'
+                    : focus === 'attention'
+                      ? 'Nothing needs a look.'
+                      : 'Start your first campaign.'
               }
               description={
                 focus === 'review'
                   ? owner
                     ? 'Campaigns appear here when a date, copy or design needs your decision, or one is ready to approve and schedule.'
                     : 'Campaigns appear here when a date, copy or design needs the brand owner’s decision, or one is ready to approve and schedule.'
-                  : 'Plan a campaign, review its copy and design, then prepare delivery.'
+                  : focus === 'attention'
+                    ? 'Campaigns appear here when their time passed before they were scheduled, or when sending failed or could not be confirmed.'
+                    : 'Plan a campaign, review its copy and design, then prepare delivery.'
               }
               action={
                 <Button asChild variant="secondary">
@@ -275,7 +299,7 @@ export function CampaignOverview({
             <div className="divide-y divide-[var(--line)]">
               {shown.map((c) => {
                 const planned = new Date(c.planned_at),
-                  next = campaignNextStep(c)
+                  next = campaignNextStep(c, now)
                 return (
                   <Link
                     key={c.id}
@@ -313,7 +337,7 @@ export function CampaignOverview({
                     </div>
                     <div className="flex items-center justify-between gap-3 sm:justify-end">
                       <span className="flex flex-col items-end gap-1 text-right">
-                        <CampaignPill campaign={c} />
+                        <CampaignPill campaign={c} now={now} />
                         {next && (
                           <span className="text-xs text-[var(--text-muted)]">
                             Next: {next}
@@ -366,7 +390,7 @@ export function CampaignOverview({
                 className="mb-3 block rounded-lg bg-[var(--surface-hover)] p-3"
               >
                 <p className="text-xs font-medium text-[var(--brand-ink)]">
-                  {campaignReview(c)}
+                  {campaignReview(c, now)}
                 </p>
                 <p className="mt-1 text-sm font-medium break-words">
                   {c.title}
