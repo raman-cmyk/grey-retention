@@ -763,8 +763,8 @@ Right panel:
 
 ## 13. Connections `/connections`
 
-- [ ] H1 "Connections" + "Connect your tools to unlock the agents." Two equal cards.
-- [ ] **Klaviyo card:**
+- [x] H1 "Connections" + "Connect your tools to unlock the agents." Two equal cards.
+- [x] **Klaviyo card:**
   - tinted tile with a mail icon
   - top-right pill "✔ PULLED 218 TEMPLATES"
   - title
@@ -774,7 +774,7 @@ Right panel:
     - caption "Dreams Studio · pk_YxS7U••••••••9de0"
     - link `Update API key`, which reveals a password input "pk_…", full-width `Validate & swap key`, and the caption "The new key is validated against Klaviyo before we save. If it fails, your existing key stays in place."
   - disconnected state: key input + Connect
-- [ ] **Shopify card:**
+- [x] **Shopify card:**
   - tinted tile with a bag icon
   - "+" list: Products & inventory / Orders & customers / Discount-code creation
   - bottom-aligned primary `Connect Shopify →`, which reveals a full-width card **Connect your Shopify store**:

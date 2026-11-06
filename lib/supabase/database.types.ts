@@ -4687,6 +4687,9 @@ export type Database = {
       }
       workspace_connections: {
         Row: {
+          account_label: string | null
+          connected_at: string | null
+          credential_hint: string | null
           fixture_account: string
           folder_id: string | null
           last_error: string | null
@@ -4695,11 +4698,16 @@ export type Database = {
           provider: string
           read_only: boolean
           revision: number
+          shop_domain: string | null
           status: string
+          template_count: number | null
           tenant_id: string
           updated_at: string
         }
         Insert: {
+          account_label?: string | null
+          connected_at?: string | null
+          credential_hint?: string | null
           fixture_account: string
           folder_id?: string | null
           last_error?: string | null
@@ -4708,11 +4716,16 @@ export type Database = {
           provider: string
           read_only?: boolean
           revision?: number
+          shop_domain?: string | null
           status: string
+          template_count?: number | null
           tenant_id: string
           updated_at?: string
         }
         Update: {
+          account_label?: string | null
+          connected_at?: string | null
+          credential_hint?: string | null
           fixture_account?: string
           folder_id?: string | null
           last_error?: string | null
@@ -4721,7 +4734,9 @@ export type Database = {
           provider?: string
           read_only?: boolean
           revision?: number
+          shop_domain?: string | null
           status?: string
+          template_count?: number | null
           tenant_id?: string
           updated_at?: string
         }
@@ -4969,6 +4984,17 @@ export type Database = {
       confirm_fixture_sent: {
         Args: { delivery: string; observed_at: string; t: string }
         Returns: undefined
+      }
+      connect_sample_provider: {
+        Args: {
+          account_label: string
+          credential_hint: string
+          provider: string
+          shop_domain?: string
+          t: string
+          template_count?: number
+        }
+        Returns: number
       }
       correct_asset: {
         Args: {
