@@ -12,7 +12,7 @@ export function PageHeading({
   return (
     <header className="mb-7 flex flex-wrap items-center justify-between gap-4">
       <div className="min-w-0 flex-1 basis-72">
-        <h1 className="tracking-display font-[family-name:var(--font-display)] text-3xl leading-tight font-normal break-words sm:text-4xl">
+        <h1 className="tracking-display font-serif text-[1.875rem] leading-tight font-normal break-words">
           {title}
         </h1>
         <p className="mt-2 max-w-[72ch] text-sm leading-6 text-[var(--text-muted)]">
@@ -45,7 +45,7 @@ export function Panel({
     <section
       id={id}
       className={cn(
-        'min-w-0 scroll-mt-24 rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-4 sm:p-6',
+        'min-w-0 scroll-mt-24 rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-6',
         className
       )}
     >
@@ -102,7 +102,10 @@ export function Field({
   const id = useId()
   return (
     <div className="min-w-0 space-y-2 text-sm font-medium">
-      <label htmlFor={id} className="block">
+      <label
+        htmlFor={id}
+        className="tracking-label block font-mono text-[0.6875rem] font-semibold text-[var(--text-muted)] uppercase"
+      >
         {label}
       </label>
       {isValidElement<{ id?: string }>(children)

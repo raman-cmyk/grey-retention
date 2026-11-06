@@ -44,14 +44,15 @@
   --inverse: var(--gr-inverse);
   --on-inverse: var(--gr-on-inverse);
   --on-inverse-muted: var(--gr-on-inverse-muted);
-  --radius-control: var(--gr-radius);
-  --radius-panel: var(--gr-radius);
+  --radius-control: var(--gr-radius-control);
+  --radius-panel: var(--gr-radius-panel);
 }
 
 /*
  * Tailwind names for the design language. Colours resolve through the
  * semantic variables above so white-label themes keep working. Every
- * rounded-* step is the single 4px radius; rounded-full stays for avatars.
+ * rounded-sm is 8px, rounded-md/lg 12px (controls), rounded-xl and up 20px
+ * (cards); rounded-full stays for avatars and pills.
  */
 @theme inline {
   --font-sans: var(--font-body);
@@ -72,17 +73,20 @@
   --color-danger-faint: var(--danger-soft);
   --color-warning: var(--warning-ink);
   --color-warning-faint: var(--warning-soft);
+  --color-accent-2: var(--gr-accent-2);
+  --color-accent-2-faint: var(--gr-accent-2-faint);
   --color-success: var(--gr-success);
   --color-success-faint: var(--gr-success-faint);
-  --radius: var(--gr-radius);
-  --radius-xs: var(--gr-radius);
-  --radius-sm: var(--gr-radius);
-  --radius-md: var(--gr-radius);
-  --radius-lg: var(--gr-radius);
-  --radius-xl: var(--gr-radius);
-  --radius-2xl: var(--gr-radius);
-  --radius-3xl: var(--gr-radius);
-  --radius-4xl: var(--gr-radius);
+  /* §0 layout facts: 12px controls, 20px cards, 8px small chips. */
+  --radius: var(--gr-radius-small);
+  --radius-xs: var(--gr-radius-small);
+  --radius-sm: var(--gr-radius-small);
+  --radius-md: var(--gr-radius-control);
+  --radius-lg: var(--gr-radius-control);
+  --radius-xl: var(--gr-radius-panel);
+  --radius-2xl: var(--gr-radius-panel);
+  --radius-3xl: var(--gr-radius-panel);
+  --radius-4xl: var(--gr-radius-panel);
   --tracking-display: var(--gr-tracking-display);
   --tracking-label: var(--gr-tracking-label);
 }
@@ -103,6 +107,8 @@ body {
   background: var(--surface);
   color: var(--text);
   font-family: var(--font-body);
+  font-size: var(--gr-text-body);
+  line-height: var(--gr-leading-body);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
