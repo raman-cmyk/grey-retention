@@ -1,4 +1,9 @@
-import { ArrowLeft, SlidersHorizontal, type LucideIcon } from 'lucide-react'
+import {
+  ArrowLeft,
+  ChevronRight,
+  SlidersHorizontal,
+  type LucideIcon
+} from 'lucide-react'
 import type { Route } from 'next'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
@@ -7,13 +12,16 @@ import {
   relativeTime,
   timezoneLabel
 } from '@/lib/brand-time'
-import { cn } from '@/lib/utils'
+import { Card } from './card'
+
+export { Card }
 
 /**
  * Detail-page pattern for Klaviyo objects (docs/UI_REBUILD_SPEC.md §2):
  * a narrow ~1020px column, a muted back link with an optional Refresh on the
  * right, then the hero, stat and explainer cards, the timeline and the
- * Advanced details row.
+ * Advanced details row. Where "back" goes is the page's choice (the
+ * dashboard pages return to the tab the owner came from).
  */
 export function DetailPage({
   backHref,
@@ -32,7 +40,7 @@ export function DetailPage({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href={backHref}
-          className="inline-flex min-h-10 items-center gap-2 rounded-[var(--radius-control)] text-sm text-[var(--text-muted)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
+          className="inline-flex min-h-10 items-center gap-2 rounded-[var(--radius-control)] text-sm text-[var(--text-muted)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden"
         >
           <ArrowLeft className="size-4" aria-hidden />
           {backLabel}
@@ -41,53 +49,6 @@ export function DetailPage({
       </div>
       {children}
     </div>
-  )
-}
-
-const dashboardTabs = [
-  'lists',
-  'segments',
-  'campaigns',
-  'flows',
-  'metrics'
-] as const
-export type DashboardTab = (typeof dashboardTabs)[number]
-
-/**
- * "Back" returns to the dashboard tab the owner came from
- * (docs/OWNER_JOURNEYS.md Job 5 fix). Anything unexpected goes to Overview.
- */
-export function dashboardBack(from: unknown): {
-  href: Route
-  label: string
-} {
-  const tab =
-    typeof from === 'string' ? from : Array.isArray(from) ? from[0] : ''
-  return (dashboardTabs as readonly string[]).includes(tab)
-    ? { href: `/dashboard?tab=${tab}` as Route, label: 'Back to dashboard' }
-    : { href: '/dashboard', label: 'Back to dashboard' }
-}
-
-export function Card({
-  title,
-  className,
-  children
-}: {
-  title?: string
-  className?: string
-  children: ReactNode
-}) {
-  return (
-    <section
-      aria-label={title}
-      className={cn(
-        'rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-6',
-        className
-      )}
-    >
-      {title && <h2 className="mb-4 text-base font-semibold">{title}</h2>}
-      {children}
-    </section>
   )
 }
 
@@ -209,7 +170,7 @@ export function attributeText(value: unknown) {
         ? String(value)
         : (() => {
             try {
-              return JSON.stringify(value)
+              return JSON.stringify(value) ?? '[unreadable]'
             } catch {
               return '[unreadable]'
             }
@@ -237,7 +198,11 @@ export function AdvancedDetails({
   const entries = Object.entries(attributes).slice(0, 200)
   return (
     <details className="group rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)]">
-      <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 rounded-[var(--radius-panel)] px-6 focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 rounded-[var(--radius-panel)] px-6 focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden [&::-webkit-details-marker]:hidden">
+        <ChevronRight
+          className="size-4 text-[var(--text-muted)] transition-transform group-open:rotate-90 motion-reduce:transition-none"
+          aria-hidden
+        />
         <SlidersHorizontal
           className="size-5 text-[var(--text-muted)]"
           aria-hidden
@@ -280,7 +245,8 @@ export function AdvancedDetails({
             {linked.map((group) => (
               <div key={group.label}>
                 <dt className="tracking-label font-mono text-[0.6875rem] text-[var(--text-muted)] uppercase">
-                  {group.label}
+                  {group.label} · {group.items.length}{' '}
+                  {group.items.length === 1 ? 'item' : 'items'}
                 </dt>
                 <dd className="mt-0.5 text-sm break-words">
                   {group.items.length ? group.items.join(', ') : 'none'}

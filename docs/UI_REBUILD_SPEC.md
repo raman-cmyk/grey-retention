@@ -103,6 +103,8 @@ Not crawled (needs a logged-out or admin session): login, signup, onboarding, pa
 
 ### Detail-page pattern (all Klaviyo objects)
 
+Built as shared parts in `components/ui/detail-page.tsx` and `lib/brand-time.ts`; the §4 pages use them.
+
 - [x] Narrow centred column, ~1020px wide.
 - [x] Top row: `← Back to dashboard` (muted link) on the left, outline `⟳ Refresh` on the right. Back returns to the dashboard tab the owner came from (`?from=campaigns` → `/dashboard?tab=campaigns`, OWNER_JOURNEYS.md Job 5 fix).
 - [x] **Hero card:**

@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   AdvancedDetails,
   attributeText,
-  dashboardBack,
   DetailHero,
   DetailPage,
   TimelineCard
@@ -16,24 +15,11 @@ import { Pill } from './pill'
 afterEach(cleanup)
 
 describe('detail page pattern', () => {
-  it('goes back to the dashboard tab the owner came from', () => {
-    expect(dashboardBack('campaigns')).toEqual({
-      href: '/dashboard?tab=campaigns',
-      label: 'Back to dashboard'
-    })
-    expect(dashboardBack(['flows', 'x'])).toMatchObject({
-      href: '/dashboard?tab=flows'
-    })
-    for (const bad of [undefined, '', 'admin', '//evil.example', 42])
-      expect(dashboardBack(bad).href).toBe('/dashboard')
-  })
-
   it('lays out back link, Refresh and the hero in a narrow column', () => {
-    const back = dashboardBack('lists')
     render(
       <DetailPage
-        backHref={back.href}
-        backLabel={back.label}
+        backHref="/dashboard?tab=lists#klaviyo-data"
+        backLabel="Back to dashboard"
         action={
           <form action={vi.fn<(form: FormData) => void>()}>
             <RefreshButton />
@@ -50,7 +36,7 @@ describe('detail page pattern', () => {
     )
     expect(
       screen.getByRole('link', { name: 'Back to dashboard' })
-    ).toHaveAttribute('href', '/dashboard?tab=lists')
+    ).toHaveAttribute('href', '/dashboard?tab=lists#klaviyo-data')
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { level: 1, name: 'Newsletter' })
@@ -114,7 +100,10 @@ describe('detail page pattern', () => {
     expect(attrs.querySelector('img')).toBeNull()
     const linked = screen.getByRole('region', { name: 'Linked resources' })
     expect(linked).toHaveTextContent('VIP, Spring')
+    expect(linked).toHaveTextContent('Tags · 2 items')
+    expect(linked).toHaveTextContent('Profiles · 0 items')
     expect(within(linked).getAllByText('none')).toHaveLength(2)
+    expect(details.querySelector('summary svg')).not.toBeNull()
   })
 
   it('turns any value into bounded text', () => {
@@ -124,5 +113,7 @@ describe('detail page pattern', () => {
     const loop: Record<string, unknown> = {}
     loop.self = loop
     expect(attributeText(loop)).toBe('[unreadable]')
+    expect(attributeText(() => 1)).toBe('[unreadable]')
+    expect(attributeText({ toJSON: () => undefined })).toBe('[unreadable]')
   })
 })

@@ -25,6 +25,7 @@ describe('brand time', () => {
     expect(timezoneLabel('America/Los_Angeles')).toBe('Los Angeles time')
     expect(timezoneLabel('UTC')).toBe('UTC')
     expect(timezoneLabel('Mars/Base')).toBe('UTC')
+    expect(timezoneLabel('Etc/GMT+5')).toBe('UTC-5')
   })
 
   it('says how long ago in words', () => {
@@ -34,5 +35,7 @@ describe('brand time', () => {
     expect(relativeTime('2026-11-09T12:00:00Z', now)).toBe('in 3 days')
     expect(relativeTime('2024-11-01T00:00:00Z', now)).toBe('2 years ago')
     expect(relativeTime('garbage', now)).toBeNull()
+    expect(relativeTime('2025-11-09T12:00:00Z', now)).toBe('11 months ago')
+    expect(relativeTime('2026-09-25T12:00:00Z', now)).toBe('1 month ago')
   })
 })

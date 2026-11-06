@@ -46,6 +46,17 @@ export function formatBrandDateTime(
 export function timezoneLabel(timezone: string) {
   if (!validZone(timezone) || /^(etc\/)?(utc|gmt)$/i.test(timezone))
     return 'UTC'
+  // Etc/GMT+5 means UTC−5 (POSIX sign), so name it by its real offset.
+  if (/^etc\//i.test(timezone))
+    return (
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        timeZoneName: 'shortOffset'
+      })
+        .formatToParts(new Date())
+        .find((part) => part.type === 'timeZoneName')
+        ?.value.replace('GMT', 'UTC') ?? 'UTC'
+    )
   const city = timezone.split('/').at(-1)!.replaceAll('_', ' ')
   return `${city} time`
 }
@@ -73,7 +84,15 @@ export function relativeTime(
   if (Math.abs(seconds) < 60) return 'just now'
   const format = new Intl.RelativeTimeFormat('en-US', { numeric: 'always' })
   for (const [unit, size, from] of units)
-    if (Math.abs(seconds) >= from)
-      return format.format(Math.trunc(seconds / size), unit)
+    if (Math.abs(seconds) >= from) {
+      const amount = Math.trunc(seconds / size)
+      // 360–364 days is still "11 months", never "12 months".
+      return unit === 'month'
+        ? format.format(
+            Math.sign(amount) * Math.min(11, Math.abs(amount)),
+            unit
+          )
+        : format.format(amount, unit)
+    }
   return 'just now'
 }
