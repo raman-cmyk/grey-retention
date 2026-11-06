@@ -364,9 +364,9 @@ Simplify:
 ### 7.1 List
 
 - **Purpose:** "All my AI-drafted campaigns and their status."
-- [ ] Filter links: `?status=draft|ready|pushed`. Counts show in every pill (ALL (2) / DRAFTS (2) / READY (0) / PUSHED (0)).
-- [ ] An empty filtered view says "No <status> campaigns." **(fix)** The old app showed the first-run text "No campaign drafts yet — Click New campaign, give us a brief like 'Welcome new customers with a 10% off code'…" even though 2 drafts existed.
-- [ ] The STATUS column shows the same status vocabulary as the filters. **(fix: the old column showed WRITING under the DRAFTS filter)**
+- [x] Filter links: `?status=draft|ready|pushed`. Counts show in every pill (ALL (2) / DRAFTS (2) / READY (0) / PUSHED (0)). (UIR-017: old links map onto the one status system; every pill shows its count.)
+- [x] An empty filtered view says "No <status> campaigns." **(fix)** The old app showed the first-run text "No campaign drafts yet — Click New campaign, give us a brief like 'Welcome new customers with a 10% off code'…" even though 2 drafts existed.
+- [x] The STATUS column shows the same status vocabulary as the filters. **(fix: the old column showed WRITING under the DRAFTS filter)**
 - [ ] UPDATED uses the same relative format as the "Pick a past campaign" modal. **(fix: the list said "122 days ago", the modal "4mo ago")**
 - [ ] Rows link to `/campaign-drafts/:id?view=1`. `?view=1` changes nothing visible. Drop it, or make it a real read-only mode.
 
