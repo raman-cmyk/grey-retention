@@ -6,6 +6,8 @@ import {
   plannerEntries,
   plannerMonth,
   plannerSummary,
+  statusCounts,
+  undatedShown,
   type PlannerEntry,
   type PlannerQuery
 } from './model'
@@ -304,6 +306,7 @@ describe('Campaigns planner', () => {
         klaviyoLine=""
         klaviyoLabel="Klaviyo sample"
         summary="0 campaigns"
+        counts={{}}
         canPlan
         newItems={[]}
       />
@@ -365,7 +368,7 @@ describe('Campaigns planner', () => {
     cleanup()
     show({ query: { ...base, view: 'table', status: 'sent' }, entries: [] })
     expect(screen.getByRole('status')).toHaveTextContent(
-      'No Sent campaigns this month.'
+      'Nothing was sent this month.'
     )
     expect(screen.queryByText(/No campaigns this month\./)).toBeNull()
   })
@@ -383,14 +386,62 @@ describe('Campaigns planner', () => {
       within(tray).getByRole('link', { name: /Draft idea/ })
     ).toHaveAttribute('href', '/campaigns/klaviyo/K%202?from=planner&m=2026-11')
     cleanup()
-    // The tray holds design-email drafts, so it follows the filters.
+  })
+
+  it('agrees with itself: an undated Klaviyo draft is counted, listed, and not "nothing"', () => {
+    const undated = [
+      {
+        id: 'K9',
+        name: 'Cold brew season',
+        updated: null
+      } as unknown as KlaviyoCampaign
+    ]
+    const query = { ...base, view: 'table' as const, status: 'draft' as const }
     show({
-      query: { ...base, status: 'sent' },
-      unscheduled: [{ id: 'K2', name: 'Draft idea' } as KlaviyoCampaign]
+      query,
+      entries: [],
+      unscheduled: undatedShown(undated, query),
+      counts: statusCounts(
+        [],
+        undatedShown(undated, { status: 'all', channel: 'all' }).length
+      )
     })
+    const status = screen.getByRole('navigation', { name: 'Filter by status' })
     expect(
-      screen.queryByRole('region', { name: 'Not scheduled in Klaviyo' })
-    ).toBeNull()
+      within(status).getByRole('link', { name: 'Draft (1)' })
+    ).toBeVisible()
+    expect(
+      within(status).getByRole('link', { name: 'All statuses (1)' })
+    ).toBeVisible()
+    expect(screen.queryByRole('status')).toBeNull()
+    const rows = within(
+      screen.getByRole('table', { name: 'Campaigns this month' })
+    )
+      .getAllByRole('row')
+      .slice(1)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toHaveTextContent('Cold brew season')
+  })
+
+  it('says each empty status in its own plain sentence', () => {
+    show({ query: { ...base, status: 'needs_approval' }, entries: [] })
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Nothing needs your approval this month.'
+    )
+  })
+
+  it('shows the exact update time and timezone on hover', () => {
+    show({
+      query: { ...base, view: 'table' },
+      entries: [entry({ updated: '2026-11-05T12:00:00Z' })]
+    })
+    const time = screen.getByText('1 day ago')
+    expect(time.tagName).toBe('TIME')
+    expect(time).toHaveAttribute('dateTime', '2026-11-05T12:00:00Z')
+    expect(time).toHaveAttribute(
+      'title',
+      expect.stringContaining('(New York time)')
+    )
   })
 
   it('shows a delivery problem and a replaced entry in words, not colour only', () => {

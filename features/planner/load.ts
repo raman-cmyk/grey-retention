@@ -11,6 +11,7 @@ import {
   plannerSummary,
   readPlannerQuery,
   statusCounts,
+  undatedShown,
   type PlannerHoliday
 } from './model'
 
@@ -113,7 +114,6 @@ export async function plannerView(
     query,
     timezone,
     month,
-    unscheduled,
     holidaysFailed,
     klaviyoLine: klaviyoLine(klaviyo),
     klaviyoLabel,
@@ -121,8 +121,16 @@ export async function plannerView(
     summary: campaignsFailed
       ? 'Your campaigns could not load, so this month is not complete.'
       : plannerSummary(inMonth, klaviyoLabel),
-    // Counts in the status pills follow the channel filter only.
-    counts: statusCounts(filterEntries(inMonth, { ...query, status: 'all' })),
+    // Counts in the status pills follow the channel filter only, and
+    // include the undated Klaviyo drafts the table lists.
+    counts: statusCounts(
+      filterEntries(inMonth, { ...query, status: 'all' }),
+      undatedShown(unscheduled, { status: 'all', channel: query.channel })
+        .length
+    ),
+    // The undated Klaviyo drafts this view lists (same rule everywhere).
+    unscheduled: undatedShown(unscheduled, query),
+    now,
     owner: context.tenantRole === 'owner'
   }
 }

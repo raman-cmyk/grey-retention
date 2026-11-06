@@ -24,6 +24,7 @@ import {
 import type { KlaviyoCampaign } from '@/lib/providers/klaviyo-read'
 import { cn } from '@/lib/utils'
 import {
+  emptyStatusWords,
   filtersActive,
   klaviyoCampaignHref,
   plannerHref,
@@ -333,6 +334,28 @@ function Agenda({
   )
 }
 
+/** "2 days ago", with the exact time and timezone on hover. */
+function UpdatedTime({
+  iso,
+  timezone,
+  now
+}: {
+  iso: string | null
+  timezone: string
+  now?: Date
+}) {
+  const words = relativeTime(iso, now)
+  if (!iso || !words) return <>—</>
+  return (
+    <time
+      dateTime={iso}
+      title={`${formatBrandDateTime(iso, timezone)} (${timezoneLabel(timezone)})`}
+    >
+      {words}
+    </time>
+  )
+}
+
 function Table({
   entries,
   unscheduled,
@@ -439,7 +462,11 @@ function Table({
                     : 'This workspace'}
               </td>
               <td className="px-3 py-2.5 whitespace-nowrap text-[var(--text-muted)]">
-                {relativeTime(entry.updated, now) ?? '—'}
+                <UpdatedTime
+                  iso={entry.updated}
+                  timezone={timezone}
+                  now={now}
+                />
               </td>
             </tr>
           ))}
@@ -464,7 +491,7 @@ function Table({
                 {klaviyoLabel}
               </td>
               <td className="px-3 py-2.5 whitespace-nowrap text-[var(--text-muted)]">
-                {relativeTime(c.updated, now) ?? '—'}
+                <UpdatedTime iso={c.updated} timezone={timezone} now={now} />
               </td>
             </tr>
           ))}
@@ -489,7 +516,7 @@ export function Planner({
   klaviyoLine,
   klaviyoLabel,
   summary,
-  counts = {},
+  counts,
   canPlan,
   campaignsFailed = false,
   newItems,
@@ -516,7 +543,7 @@ export function Planner({
   /** The clock for "updated 2 days ago" (tests pass a fixed one). */
   now?: Date
   /** How many campaigns each status pill would show this month. */
-  counts?: Partial<Record<'all' | CampaignStatus, number>>
+  counts: Partial<Record<'all' | CampaignStatus, number>>
   /** Owners may plan a send on a day ("+ plan send"). */
   canPlan: boolean
   /** This workspace's campaigns did not load: no "empty month" messages. */
@@ -527,11 +554,8 @@ export function Planner({
   const href = (patch: Partial<PlannerQuery>) => plannerHref(query, patch)
   const filtered = filtersActive(query)
   const backQuery = `from=planner&${plannerHref(query, {}).split('?')[1]}`
-  // The tray holds Klaviyo design-email drafts, so it follows the filters.
-  const showTray =
-    unscheduled.length > 0 &&
-    (query.status === 'all' || query.status === 'draft') &&
-    query.channel !== 'email_text'
+  // `unscheduled` already follows the filters (undatedShown).
+  const showTray = unscheduled.length > 0
   return (
     <section
       aria-labelledby="planner-month"
@@ -630,7 +654,7 @@ export function Planner({
               {status === 'all'
                 ? 'All statuses'
                 : campaignStatuses[status].label}{' '}
-              <span className="tabular-nums opacity-70">
+              <span className="font-normal tabular-nums">
                 ({counts[status] ?? 0})
               </span>
             </Link>
@@ -683,13 +707,13 @@ export function Planner({
           ))}
         </nav>
       </div>
-      {filtered && month.monthEntries.length === 0 && (
+      {filtered && month.monthEntries.length + unscheduled.length === 0 && (
         <p
           role="status"
           className="border-b border-[var(--line)] px-4 py-3 text-sm text-[var(--text-muted)]"
         >
           {query.status !== 'all' && query.channel === 'all'
-            ? `No ${campaignStatuses[query.status].label} campaigns this month.`
+            ? emptyStatusWords[query.status]
             : 'No campaigns match these filters this month.'}{' '}
           <Link
             href={href({ status: 'all', channel: 'all' })}
@@ -722,7 +746,7 @@ export function Planner({
       ) : (
         <Table
           entries={month.monthEntries}
-          unscheduled={showTray ? unscheduled : []}
+          unscheduled={unscheduled}
           query={query}
           timezone={timezone}
           klaviyoLabel={klaviyoLabel}

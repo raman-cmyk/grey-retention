@@ -156,8 +156,34 @@ describe('planner loader', () => {
     expect(view.campaignsFailed).toBe(false)
     expect(view.summary).toBe('1 campaign (1 Klaviyo sample) · 1 scheduled')
     expect(view.unscheduled.map((c) => c.id)).toEqual(['K3'])
+    // The undated Klaviyo draft is listed (and counted) in the table; the
+    // cancelled one without a time is not.
+    expect(view.counts).toEqual({ all: 2, scheduled: 1, draft: 1 })
+    // The month line counts the whole month, whatever the filters.
     const filtered = await plannerView({ status: 'sent' })
     expect(filtered.month.monthEntries).toEqual([])
     expect(filtered.summary).toBe('1 campaign (1 Klaviyo sample) · 1 scheduled')
+  })
+
+  it('counts and lists undated Klaviyo drafts with the same rule', async () => {
+    createClient.mockResolvedValue(null)
+    klaviyoData.mockResolvedValue({
+      state: 'sample',
+      shopify: 'missing',
+      snapshot: {
+        campaigns: [
+          { id: 'U1', name: 'Undated', status: 'draft', sendTime: null }
+        ]
+      }
+    })
+    const all = await plannerView({ view: 'table' })
+    expect(all.counts).toEqual({ all: 1, draft: 1 })
+    expect(all.unscheduled.map((c) => c.id)).toEqual(['U1'])
+    const sent = await plannerView({ view: 'table', status: 'sent' })
+    expect(sent.counts).toEqual({ all: 1, draft: 1 })
+    expect(sent.unscheduled).toEqual([])
+    const text = await plannerView({ channel: 'email_text' })
+    expect(text.counts).toEqual({ all: 0 })
+    expect(text.unscheduled).toEqual([])
   })
 })

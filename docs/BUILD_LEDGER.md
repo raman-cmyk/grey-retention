@@ -205,8 +205,10 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 - UIR-017 (2026-11-06): the old drafts list is the Campaigns Table view (OWNER_JOURNEYS.md §18.1).
   - `/campaign-drafts` redirects to `/campaign-agent?view=table` and keeps its filter (`legacyDraftStatus`: draft/writing → Draft, ready → Needs your approval, pushed → Scheduled). `/campaign-drafts/new` goes to `/first-draft`, and `/campaign-drafts/:id` to `/campaigns/:id`. `proxy.ts` matches `/campaign-drafts`.
   - The table lists this workspace's campaigns, the Klaviyo sends AND the Klaviyo drafts with no send time ("No send time"), with an Updated column in relative words. In the table view the separate "Not scheduled in Klaviyo" row is not repeated.
-  - Each status pill shows its count this month, following the channel filter (`statusCounts`). An empty status filter says "No <status> campaigns this month."
-  - Not built: Delete (no delete command exists yet; it needs a 09 migration), the muted subject line and whole-row links.
+  - Each status pill shows its count this month, following the channel filter (`statusCounts`), with the undated Klaviyo drafts under All and Draft; one rule (`undatedShown`) decides which of them a view counts and lists, so pills, rows and the empty message always agree. Replaced entries are not counted. An empty status filter gets its own plain sentence (`emptyStatusWords`, e.g. "Nothing needs your approval this month.").
+  - The Updated column says "2 days ago" with the exact time and the brand timezone on hover; the page passes one clock (`now`) to statuses and update times.
+  - Old links open the current month, so a draft planned for another month is in that month's view.
+  - Not built: Delete (no delete command exists yet; it needs a new migration numbered after the latest on main), the muted subject line and whole-row links.
 
 - DS-006 (2026-11-06): the composer (`features/composer/`) saves a paste through the same `savePastedReference` helper as the paste form (extracted from `importPastedReference` into server-only `features/references/pasted-save.ts`, messages unchanged) and redirects to `/create-email/{id}?mode=copy|rewrite`. The choose page only marks that outcome ("Your choice in the composer", primary button); it never starts a copy or rewrite by itself, so owner confirmation and paid-AI gates are unchanged. EXACT→copy, REBRAND→rewrite, ADAPT disabled with a reason. Subject comes from the HTML `<title>` or first readable line; a link-only paste is refused with an honest message. Composer is owner-only on the dashboard and the setup reference step; the existing Paste/Upload links stay.
 
@@ -1110,6 +1112,6 @@ Append entries using this exact shape:
   - Card: pills with counts, unscheduled Klaviyo drafts as table rows with "No send time" and their own back link, the tray not repeated in the table, "No Sent campaigns this month.", relative update times on a fixed clock.
   - Redirects: old list with and without a filter (array values too), New, and a draft id (encoded).
   - `test:e2e` not runnable here; `calendar-view.spec.ts` matches the counted pills.
-- Review: see the UIR-017 pull request.
-- Known issues: no Delete action (needs a delete command and a migration); no subject line in the table; the title, not the whole row, is the link.
+- Review: `code-reviewer` blocked on counts and the empty message ignoring the undated Klaviyo drafts the table lists. Fixed with one rule for counting and listing, plus tests that build pills and rows from the same data. Also fixed: awkward empty sentences, faint counts (contrast), untested load counts, Updated without the exact time, two clocks, optional counts, the URL built in the route (`legacyDraftsHref`), replaced entries counted under All; and an e2e check for old links, including signed out.
+- Known issues: the redirect pages sit under the client loading boundary, so a redirect may arrive as a client redirect rather than a 307 (owners still land in the right place); no Delete action (needs a delete command and a migration); no subject line in the table; the title, not the whole row, is the link.
 - Next consumer: UIR-016 Approve step, UIR-018 "+ New" on the dashboard.

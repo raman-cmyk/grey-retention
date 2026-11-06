@@ -11,8 +11,11 @@ import {
   plannerMonth,
   plannerSummary,
   readPlannerQuery,
+  emptyStatusWords,
+  legacyDraftsHref,
   legacyDraftStatus,
   statusCounts,
+  undatedShown,
   type PlannerQuery
 } from './model'
 
@@ -255,9 +258,17 @@ describe('drafts merged into the planner (UIR-017)', () => {
       now,
       includeReplaced: true
     })
+    // The replaced entry is history and is not counted.
     expect(statusCounts(entries)).toEqual({
-      all: 4,
+      all: 3,
       draft: 1,
+      needs_approval: 1,
+      sent: 1
+    })
+    // Undated Klaviyo drafts count under All and Draft.
+    expect(statusCounts(entries, 2)).toEqual({
+      all: 5,
+      draft: 3,
       needs_approval: 1,
       sent: 1
     })
@@ -269,9 +280,38 @@ describe('drafts merged into the planner (UIR-017)', () => {
     )
   })
 
+  it('lists undated Klaviyo drafts only under All and Draft, never Text email', () => {
+    const undated = [kCampaign({ id: 'U1', sendTime: null, status: 'draft' })]
+    expect(undatedShown(undated, query())).toHaveLength(1)
+    expect(undatedShown(undated, query({ status: 'draft' }))).toHaveLength(1)
+    expect(undatedShown(undated, query({ status: 'sent' }))).toEqual([])
+    expect(undatedShown(undated, query({ channel: 'email_text' }))).toEqual([])
+    expect(
+      undatedShown(undated, query({ channel: 'email_design' }))
+    ).toHaveLength(1)
+  })
+
+  it('sends old drafts links to the Campaigns table', () => {
+    expect(legacyDraftsHref('ready')).toBe(
+      '/campaign-agent?view=table&status=needs_approval'
+    )
+    expect(legacyDraftsHref(['pushed'])).toBe(
+      '/campaign-agent?view=table&status=scheduled'
+    )
+    expect(legacyDraftsHref(undefined)).toBe('/campaign-agent?view=table')
+  })
+
+  it('has a plain empty sentence for every status', () => {
+    for (const status of Object.keys(emptyStatusWords))
+      expect(emptyStatusWords[status as keyof typeof emptyStatusWords]).toMatch(
+        /this month\.$/
+      )
+  })
+
   it('maps the old drafts list filters to the one status system', () => {
     expect(legacyDraftStatus('draft')).toBe('draft')
     expect(legacyDraftStatus('writing')).toBe('draft')
+    expect(legacyDraftStatus('drafts')).toBe('draft')
     expect(legacyDraftStatus('ready')).toBe('needs_approval')
     expect(legacyDraftStatus('pushed')).toBe('scheduled')
     expect(legacyDraftStatus('sent')).toBe('sent')

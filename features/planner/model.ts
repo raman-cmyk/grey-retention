@@ -243,13 +243,53 @@ export function plannerSummary(
  * OWNER_JOURNEYS.md §7.1). Give it the month's entries with the channel
  * filter applied, not the status filter.
  */
-export function statusCounts(entries: readonly PlannerEntry[]) {
+export function statusCounts(
+  entries: readonly PlannerEntry[],
+  /** Klaviyo drafts with no send time that the table lists too. */
+  undated = 0
+) {
+  // Replaced entries are history: not counted, like the month line.
+  const current = entries.filter((e) => e.status)
   const counts: Partial<Record<'all' | CampaignStatus, number>> = {
-    all: entries.length
+    all: current.length + undated
   }
-  for (const e of entries)
-    if (e.status) counts[e.status] = (counts[e.status] ?? 0) + 1
+  for (const e of current) counts[e.status!] = (counts[e.status!] ?? 0) + 1
+  if (undated) counts.draft = (counts.draft ?? 0) + undated
   return counts
+}
+
+/**
+ * Klaviyo drafts with no send time are design-email Drafts: they show under
+ * "All" and "Draft", and not under the Text email channel.
+ */
+export function undatedShown(
+  undated: readonly KlaviyoCampaign[],
+  query: Pick<PlannerQuery, 'status' | 'channel'>
+) {
+  return (query.status === 'all' || query.status === 'draft') &&
+    query.channel !== 'email_text'
+    ? [...undated]
+    : []
+}
+
+/** What an empty status filter says, one plain sentence per status. */
+export const emptyStatusWords: Record<CampaignStatus, string> = {
+  draft: 'No drafts this month.',
+  with_designer: 'No campaigns are with a designer this month.',
+  needs_approval: 'Nothing needs your approval this month.',
+  scheduled: 'Nothing is scheduled this month.',
+  sent: 'Nothing was sent this month.',
+  cancelled: 'No campaigns were cancelled this month.',
+  missed: 'No missed campaigns this month.',
+  delivery_problem: 'No delivery problems this month.'
+}
+
+/** Where an old `/campaign-drafts?status=…` link goes now (UIR-017). */
+export function legacyDraftsHref(status: unknown): Route {
+  const value = legacyDraftStatus(Array.isArray(status) ? status[0] : status)
+  const params = new URLSearchParams({ view: 'table' })
+  if (value !== 'all') params.set('status', value)
+  return `/campaign-agent?${params}` as Route
 }
 
 /**
