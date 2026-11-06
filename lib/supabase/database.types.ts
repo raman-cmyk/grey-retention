@@ -550,6 +550,60 @@ export type Database = {
           }
         ]
       }
+      brand_profile_sections: {
+        Row: {
+          content: Json
+          edited_at: string | null
+          edited_by: string | null
+          generated_at: string | null
+          locked: string[]
+          revision: number
+          section: string
+          source: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          content?: Json
+          edited_at?: string | null
+          edited_by?: string | null
+          generated_at?: string | null
+          locked?: string[]
+          revision?: number
+          section: string
+          source: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          content?: Json
+          edited_at?: string | null
+          edited_by?: string | null
+          generated_at?: string | null
+          locked?: string[]
+          revision?: number
+          section?: string
+          source?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_profile_sections_edited_by_fkey'
+            columns: ['edited_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_profile_sections_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       brand_profiles: {
         Row: {
           approved_at: string | null
@@ -4697,6 +4751,9 @@ export type Database = {
       }
       workspace_connections: {
         Row: {
+          account_label: string | null
+          connected_at: string | null
+          credential_hint: string | null
           fixture_account: string
           folder_id: string | null
           last_error: string | null
@@ -4705,11 +4762,16 @@ export type Database = {
           provider: string
           read_only: boolean
           revision: number
+          shop_domain: string | null
           status: string
+          template_count: number | null
           tenant_id: string
           updated_at: string
         }
         Insert: {
+          account_label?: string | null
+          connected_at?: string | null
+          credential_hint?: string | null
           fixture_account: string
           folder_id?: string | null
           last_error?: string | null
@@ -4718,11 +4780,16 @@ export type Database = {
           provider: string
           read_only?: boolean
           revision?: number
+          shop_domain?: string | null
           status: string
+          template_count?: number | null
           tenant_id: string
           updated_at?: string
         }
         Update: {
+          account_label?: string | null
+          connected_at?: string | null
+          credential_hint?: string | null
           fixture_account?: string
           folder_id?: string | null
           last_error?: string | null
@@ -4731,7 +4798,9 @@ export type Database = {
           provider?: string
           read_only?: boolean
           revision?: number
+          shop_domain?: string | null
           status?: string
+          template_count?: number | null
           tenant_id?: string
           updated_at?: string
         }
@@ -4819,6 +4888,15 @@ export type Database = {
       }
       advance_results_clock: {
         Args: { observed_at: string; t: string }
+        Returns: number
+      }
+      apply_brand_suggestion: {
+        Args: {
+          expected_revision: number
+          section: string
+          suggestion: Json
+          t: string
+        }
         Returns: number
       }
       approve_brand: {
@@ -4970,6 +5048,17 @@ export type Database = {
       confirm_fixture_sent: {
         Args: { delivery: string; observed_at: string; t: string }
         Returns: undefined
+      }
+      connect_sample_provider: {
+        Args: {
+          account_label: string
+          credential_hint: string
+          provider: string
+          shop_domain?: string
+          t: string
+          template_count?: number
+        }
+        Returns: number
       }
       correct_asset: {
         Args: {
@@ -5501,6 +5590,18 @@ export type Database = {
           voice: string
         }
         Returns: undefined
+      }
+      save_brand_section: {
+        Args: {
+          content: Json
+          expected_brand_revision?: number
+          expected_revision: number
+          facts?: Json
+          locked?: string[]
+          section: string
+          t: string
+        }
+        Returns: Json
       }
       save_campaign: {
         Args: {

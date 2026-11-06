@@ -68,9 +68,12 @@
       "feature": "Inline minimal corrections",
       "priority": "P0",
       "acceptance": "Fix wrong brand name/logo/product without opening a full settings section.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-005"],
+      "verification": [
+        "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. The owner fixes a wrong brand name, positioning, website or rules inline; Identity/Tone edits update what the AI reads and ask for re-approval."
+      ],
+      "remaining": "Logo and product corrections still live in the catalogue and brand-kit panels; not yet inline in onboarding."
     },
     {
       "id": "ONB-007",
@@ -473,9 +476,12 @@
       "feature": "Klaviyo key onboarding",
       "priority": "P1",
       "acceptance": "Validate connection and retain account identity without exposing the key.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-013"],
+      "verification": [
+        "UIR-013 (2026-11-06): /connections rebuilt per docs/UI_REBUILD_SPEC.md §13 with the sample verifier; unit, pgTAP and desktop/mobile browser tests. Key format is checked, the account label and a masked hint are kept, the full key is never saved or shown (pgTAP: no key/token column; browser: page HTML never contains it)."
+      ],
+      "remaining": "Real validation against Klaviyo and encrypted storage for live use."
     },
     {
       "id": "ACC-008",
@@ -627,9 +633,12 @@
       "feature": "Connections overview",
       "priority": "P1",
       "acceptance": "Show each integration's connected, missing and failed state.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-013"],
+      "verification": [
+        "UIR-013 (2026-11-06): /connections rebuilt per docs/UI_REBUILD_SPEC.md §13 with the sample verifier; unit, pgTAP and desktop/mobile browser tests. Each card shows Connected, not connected, or a needs-attention warning for expired/failing connections (board.test.tsx)."
+      ],
+      "remaining": "Live provider health checks are not built; states come from saved sample connections."
     },
     {
       "id": "CON-002",
@@ -637,9 +646,12 @@
       "feature": "Save Shopify domain and token",
       "priority": "P1",
       "acceptance": "Validate the correct shop before saving its connection.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-013"],
+      "verification": [
+        "UIR-013 (2026-11-06): /connections rebuilt per docs/UI_REBUILD_SPEC.md §13 with the sample verifier; unit, pgTAP and desktop/mobile browser tests. Shop domain is normalised and must be a .myshopify.com address (emails and custom domains refused); token must be shpat_/shpca_; only a masked hint is saved."
+      ],
+      "remaining": "No live check that the token belongs to that shop; needs a reviewed live Shopify verifier and encrypted credential storage."
     },
     {
       "id": "CON-003",
@@ -647,9 +659,12 @@
       "feature": "Test Shopify access",
       "priority": "P1",
       "acceptance": "Report actionable connection errors without revealing credentials.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-013"],
+      "verification": [
+        "UIR-013 (2026-11-06): /connections rebuilt per docs/UI_REBUILD_SPEC.md §13 with the sample verifier; unit, pgTAP and desktop/mobile browser tests. Format problems (email in domain, custom domain, API secret, API key) get plain fixes without echoing the pasted value (credentials.test.ts, actions.test.ts)."
+      ],
+      "remaining": "Live access errors (wrong scopes, revoked token) cannot be reported until a live verifier exists."
     },
     {
       "id": "CON-004",
@@ -657,9 +672,12 @@
       "feature": "Start Shopify sync",
       "priority": "P1",
       "acceptance": "A sync request creates trackable work rather than claiming immediate completion.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-013"],
+      "verification": [
+        "UIR-013 (2026-11-06): /connections rebuilt per docs/UI_REBUILD_SPEC.md §13 with the sample verifier; unit, pgTAP and desktop/mobile browser tests. Connecting Shopify queues the idempotent sample commerce.sync job that the scheduled worker runs (actions.test.ts)."
+      ],
+      "remaining": "Sync progress is shown only in Sample data tools; live product sync is not built."
     },
     {
       "id": "CON-005",
@@ -677,9 +695,12 @@
       "feature": "Reconnect Klaviyo atomically",
       "priority": "P1",
       "acceptance": "A failing replacement credential leaves the prior valid connection intact.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-013"],
+      "verification": [
+        "UIR-013 (2026-11-06): /connections rebuilt per docs/UI_REBUILD_SPEC.md §13 with the sample verifier; unit, pgTAP and desktop/mobile browser tests. A failing replacement key leaves the saved connection and its hint unchanged; a passing one replaces it (connections-cards.spec.ts reload check)."
+      ],
+      "remaining": "Live Klaviyo key verification is not built."
     },
     {
       "id": "CON-007",
@@ -917,9 +938,12 @@
       "feature": "Product intelligence generation",
       "priority": "P1",
       "acceptance": "Extract product context or explain missing product sources.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-005"],
+      "verification": [
+        "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. Product Intelligence lists catalogue products or shows the no-products callout with working links to Connections and the Hero Product URL field."
+      ],
+      "remaining": "Real website/product extraction is not built; the sample writer only summarises saved catalogue products."
     },
     {
       "id": "BRD-003",
@@ -947,9 +971,12 @@
       "feature": "Regenerate all brand facts",
       "priority": "P1",
       "acceptance": "Refresh supported sections and show partial failures.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-005"],
+      "verification": [
+        "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. Redo all applies every section with its own revision check, stops at the first conflict and says how many were updated."
+      ],
+      "remaining": "Suggestions come from the sample writer (fills empty fields with marked sample text), not a live model. The AI reads only brand name, website, positioning, Do and Don't; the other notes are not read by any AI feature yet."
     },
     {
       "id": "BRD-006",
@@ -957,9 +984,12 @@
       "feature": "Regenerate one fact section",
       "priority": "P1",
       "acceptance": "A section refresh does not overwrite unrelated sections.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-005"],
+      "verification": [
+        "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. A section redo changes only that section (pgTAP: Identity untouched after a Tone redo) and keeps locked fields."
+      ],
+      "remaining": "Suggestions come from the sample writer (fills empty fields with marked sample text), not a live model. The AI reads only brand name, website, positioning, Do and Don't; the other notes are not read by any AI feature yet."
     },
     {
       "id": "BRD-007",
@@ -977,9 +1007,12 @@
       "feature": "Vocabulary profile",
       "priority": "P1",
       "acceptance": "Retain preferred/avoided language guidance.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-005"],
+      "verification": [
+        "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. Preferred/avoid chips, brand terms and signature phrases are saved, validated (15/30 item limits) and shown with {{ placeholders }} verbatim."
+      ],
+      "remaining": "Learning vocabulary from real campaigns is not built."
     },
     {
       "id": "BRD-009",
@@ -1007,9 +1040,12 @@
       "feature": "Regenerate all voice sections",
       "priority": "P1",
       "acceptance": "Refresh voice sections with errors and timestamps visible.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-005"],
+      "verification": [
+        "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. Redo all covers every section and reports errors in the header; each card shows its update time and its own errors."
+      ],
+      "remaining": "Suggestions come from the sample writer (fills empty fields with marked sample text), not a live model. The AI reads only brand name, website, positioning, Do and Don't; the other notes are not read by any AI feature yet."
     },
     {
       "id": "BRD-012",
@@ -1017,9 +1053,12 @@
       "feature": "Regenerate one voice section",
       "priority": "P1",
       "acceptance": "Only the requested voice section is replaced.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-005"],
+      "verification": [
+        "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. Only the requested voice section is replaced; locked fields survive (pgTAP and browser)."
+      ],
+      "remaining": "Suggestions come from the sample writer (fills empty fields with marked sample text), not a live model. The AI reads only brand name, website, positioning, Do and Don't; the other notes are not read by any AI feature yet."
     },
     {
       "id": "BRD-013",
