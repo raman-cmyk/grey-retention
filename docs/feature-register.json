@@ -3799,9 +3799,11 @@
       "feature": "Feature request submission",
       "priority": "P1",
       "acceptance": "Client can submit feedback with clear receipt.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-020"],
+      "verification": [
+        "UIR-020 (2026-11-06): /feedback sends a feature request (type, subject, details) through the member-only request_feature command and confirms \"Thanks — your request was sent.\"; it is listed with its type and status. pgTAP feature_requests, unit and browser tests."
+      ]
     },
     {
       "id": "OPS-009",
@@ -3809,9 +3811,12 @@
       "feature": "Feature request moderation",
       "priority": "P1",
       "acceptance": "Admin can read/update request status.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-020"],
+      "verification": [
+        "UIR-020 (2026-11-06): requests appear in the admin support queue, where the platform team replies and sets the state; the owner sees open as Open, in progress as Planned, closed as Done (pgTAP: an operator reply and state change is visible to the owner)."
+      ],
+      "remaining": "The admin queue still names the states open / in progress / closed and shows no request type; a dedicated admin view is UIR-026."
     },
     {
       "id": "OPS-010",

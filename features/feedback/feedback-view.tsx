@@ -31,19 +31,25 @@ const statusTone = {
   done: 'success'
 } as const
 
+/**
+ * A polite live region that is always rendered (never display:none), so
+ * every screen reader announces what appears in it.
+ */
 function Status({ state }: { state: FormResult }) {
+  const text = state.error ?? state.message ?? ''
   return (
     <p
       aria-live="polite"
       className={cn(
-        'text-sm empty:hidden',
-        (state.error || state.message) && 'rounded-lg px-3 py-2',
-        state.error
-          ? 'bg-[var(--danger-soft)] text-[var(--danger-ink)]'
-          : 'bg-[var(--brand-soft)] text-[var(--brand-ink)]'
+        'text-sm',
+        !text
+          ? 'sr-only'
+          : state.error
+            ? 'rounded-lg bg-[var(--danger-soft)] px-3 py-2 text-[var(--danger-ink)]'
+            : 'rounded-lg bg-[var(--brand-soft)] px-3 py-2 text-[var(--brand-ink)]'
       )}
     >
-      {state.error ?? state.message ?? ''}
+      {text}
     </p>
   )
 }
