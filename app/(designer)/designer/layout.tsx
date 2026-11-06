@@ -14,10 +14,6 @@ export default async function DesignerLayout({
       navigation={designerNavigation}
       workspace="Design desk"
       contextLabel="Designer workspace"
-      status={{
-        label: 'Design desk',
-        description: 'Only work assigned to you is shown'
-      }}
       identity={await shellIdentity(context)}
     >
       {children}

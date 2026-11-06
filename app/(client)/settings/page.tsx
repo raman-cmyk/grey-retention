@@ -19,10 +19,13 @@ export default async function SettingsPage() {
           <BudgetPanel tenantId={ctx.tenantId} />
         )}
         <NotificationPanel />
-        <HolidayPanel
-          tenantId={ctx.tenantId}
-          owner={ctx.tenantRole === 'owner'}
-        />
+        {/* Sidebar "Holidays & Events" links here until /holidays exists. */}
+        <div id="holidays" className="scroll-mt-6">
+          <HolidayPanel
+            tenantId={ctx.tenantId}
+            owner={ctx.tenantRole === 'owner'}
+          />
+        </div>
         <PolicyPanel
           tenantId={ctx.tenantId}
           owner={ctx.tenantRole === 'owner'}
