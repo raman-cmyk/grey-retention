@@ -1,5 +1,7 @@
 # Feature delivery order
 
+> Superseded for planning by [`ROADMAP.md`](ROADMAP.md) (milestones M0–M6 and GitHub issues, November 2026). This file keeps the delivery history up to REF-003.
+
 The user authorized continued sequential implementation on October 28, 2026. The [feature register](feature-register.json) contains all 620 clean-room requirements from the planning checklist. Existing legacy capabilities are inventory evidence, not verified implementation of this repository. No legacy source, prompts, credentials or customer content is imported.
 
 Feature IDs refer to requirements; task IDs in [BUILD_LEDGER](BUILD_LEDGER.md) refer to code changes. Similar prefixes do not mean the numbering is interchangeable. A partial feature keeps its missing acceptance conditions visible.

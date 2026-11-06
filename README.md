@@ -2,6 +2,8 @@
 
 White-label retention campaign operating system. Clean-room MVP built from documented product behavior.
 
+**Plan and work order:** see [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
 ## Start
 
 ```bash
@@ -35,10 +37,13 @@ pnpm supabase:types
 ## Project contracts
 
 - `PRODUCT.md` — durable product truth
-- `DESIGN.md` — generated after Impeccable finish review
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — milestones M0–M6, work order, and how one issue goes from branch to live
+- [`docs/DESIGN.md`](docs/DESIGN.md) — the Grey Retention design language and tokens (applied in milestone M1)
+- `DESIGN.md` — the current (older) theme, replaced by `docs/DESIGN.md` during M1
 - `docs/SYSTEM_ARCHITECTURE.md` — architecture, NFRs, failure modes, and growth path
 - `docs/ARCHITECTURE_BLUEPRINT.md` — technical source of truth
 - `docs/adr/` — architecture decision records
-- `docs/MVP_PLAN.md` — milestones and acceptance gates
+- `docs/MVP_PLAN.md` — original MVP milestones and acceptance gates
+- `docs/feature-register.json` — all 620 requirements with status
 - `docs/PARALLEL_TASKS.md` — autonomous workstream prompts
 - `docs/BUILD_LEDGER.md` — durable cross-task state

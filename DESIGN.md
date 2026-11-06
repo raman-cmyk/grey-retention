@@ -60,6 +60,8 @@ components:
 
 # Design System: Grey Retention
 
+> **Being replaced.** This describes the theme the live app uses today. The new Grey Retention design language is [`docs/DESIGN.md`](docs/DESIGN.md); milestone M1 (DS-001 to DS-007) moves every screen to it, after which this file is retired.
+
 ## Overview
 
 **Creative North Star: “Quiet Operations”**

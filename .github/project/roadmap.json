@@ -1,0 +1,447 @@
+{
+  "$comment": "Source of truth for GitHub labels, milestones and roadmap issues. scripts/github/project-plan.mjs turns this file plus docs/feature-register.json into issue specs; .github/workflows/project-sync.yml applies labels and milestones. Edit here, not in the GitHub UI.",
+  "labels": {
+    "priority": [
+      {
+        "name": "priority:P0",
+        "color": "b60205",
+        "description": "Must ship for the product to work; do these first"
+      },
+      {
+        "name": "priority:P1",
+        "color": "d93f0b",
+        "description": "Important; after the milestone's P0 work"
+      },
+      {
+        "name": "priority:P2",
+        "color": "fbca04",
+        "description": "Nice to have or legacy clean-up"
+      }
+    ],
+    "type": [
+      {
+        "name": "type:feature",
+        "color": "1f40ed",
+        "description": "New owner-visible capability"
+      },
+      {
+        "name": "type:bug",
+        "color": "d73a4a",
+        "description": "Something works wrongly or confuses the owner"
+      },
+      {
+        "name": "type:chore",
+        "color": "c5def5",
+        "description": "Infrastructure, CI, clean-up; no new capability"
+      },
+      {
+        "name": "type:design",
+        "color": "111111",
+        "description": "Visual design system and layout work"
+      }
+    ],
+    "extra": [
+      {
+        "name": "epic",
+        "color": "5319e7",
+        "description": "Tracks every register item of one category"
+      },
+      {
+        "name": "wip",
+        "color": "fbca04",
+        "description": "Claimed: someone is working on this now (see the claim comment)"
+      }
+    ],
+    "areaColor": "e7ebfd"
+  },
+  "milestones": [
+    {
+      "key": "M0",
+      "title": "M0 Stabilize",
+      "goal": "Make the live app safe and dependable before we add more. Background jobs run on a schedule (a Vercel cron calls /api/internal/jobs with CRON_SECRET), so brand owners no longer need developer test buttons; those buttons are then hidden. Owners pick dates and times with normal pickers in their own timezone instead of typing ISO strings. CI checks every pull request again, and the seed test accounts are removed from production.",
+      "doneWhen": "A queued job on the live app finishes without anyone pressing a button, no owner screen shows a test button or an ISO time field, every PR shows a green CI check, and production has no @grey-retention.test accounts."
+    },
+    {
+      "key": "M1",
+      "title": "M1 Design system",
+      "goal": "Give Grey Retention its own calm, editorial, research-grade look (docs/DESIGN.md): warm off-white canvas, near-black ink, one electric-blue accent, an editorial serif for titles, Geist for UI and Geist Mono for labels and numbers, 4px corners and hairline borders. Apply it to the shell, navigation, buttons, forms, cards, tables and empty/loading/error states, and build the signature composer box.",
+      "doneWhen": "Every owner, admin and designer screen uses the shared tokens and components, there are no leftover old colours or pill buttons, the composer component exists, and screens pass WCAG AA contrast, keyboard and 375px checks."
+    },
+    {
+      "key": "M2",
+      "title": "M2 Onboarding",
+      "goal": "A new brand owner goes from store URL to brand preview to one competitor to a first useful draft without help (ONB-001 to ONB-035). Every step is honest about what is real, can be skipped or resumed, and never creates duplicates.",
+      "doneWhen": "All ONB P0 items are verified with tests, and a first-time owner can enter a store URL, confirm the brand, add one competitor and open a useful draft in one sitting."
+    },
+    {
+      "key": "M3",
+      "title": "M3 Competitor watch",
+      "goal": "Owners add and watch 5 to 10 competitor brands. Grey Retention collects their real emails into a searchable library, shows honest collection states (Not subscribed, Awaiting confirmation, Collecting, No messages yet, Needs attention) and keeps every original email unchanged.",
+      "doneWhen": "An owner can add a competitor, see its true collection state, and browse, filter and search its captured emails with correct dates and sources."
+    },
+    {
+      "key": "M4",
+      "title": "M4 Replication engine",
+      "goal": "Turn any competitor email or sequence into the owner's own version with three named modes (Exact, Rebrand, Adapt), a side-by-side comparison with the original, product mapping, locks and an honest list of differences.",
+      "doneWhen": "An owner can pick a captured email or sequence, choose Exact, Rebrand or Adapt, map products, compare original and result side by side and get an editable email that keeps its source lineage."
+    },
+    {
+      "key": "M5",
+      "title": "M5 Store + delivery",
+      "goal": "Bring in the owner's real store data (Shopify products, offers and ads) and deliver finished emails to Klaviyo: live connect, one fixed footer and stable segment names per store, safe export and scheduling, and send-state reconciliation that never sends twice.",
+      "doneWhen": "With the owner's OK, a draft uses real store products and offers, is exported or scheduled in Klaviyo with the store's canonical footer and audiences, and its sent state matches Klaviyo."
+    },
+    {
+      "key": "M6",
+      "title": "M6 Intelligence",
+      "goal": "Help owners understand and outsmart competitors: observed sequences and playbooks, an MCP server so other AI agents can use Grey Retention, a learning loop that improves drafts from feedback, and the remaining admin console pages (Clients, Prompt engine, Templates).",
+      "doneWhen": "Owners can see a competitor's observed sequences and playbook with evidence, an external agent can work through the MCP server with the same permissions, feedback measurably changes later drafts, and admins have working Clients, Prompt engine and Templates pages."
+    }
+  ],
+  "categories": {
+    "ONB": {
+      "area": "onboarding",
+      "milestone": "M2"
+    },
+    "ACC": {
+      "area": "accounts",
+      "milestone": "M2"
+    },
+    "CON": {
+      "area": "connections",
+      "milestone": "M5"
+    },
+    "STR": {
+      "area": "store-intelligence",
+      "milestone": "M5"
+    },
+    "BRD": {
+      "area": "brand-voice",
+      "milestone": "M4"
+    },
+    "DEF": {
+      "area": "campaign-defaults",
+      "milestone": "M5"
+    },
+    "CMP": {
+      "area": "campaign-copy",
+      "milestone": "M4"
+    },
+    "REF": {
+      "area": "references",
+      "milestone": "M3"
+    },
+    "CAL": {
+      "area": "calendar",
+      "milestone": "M6"
+    },
+    "DES": {
+      "area": "designers",
+      "milestone": "M6"
+    },
+    "EXE": {
+      "area": "execution",
+      "milestone": "M5"
+    },
+    "INT": {
+      "area": "competitor-library",
+      "milestone": "M3"
+    },
+    "GRO": {
+      "area": "gros",
+      "milestone": "M6"
+    },
+    "RPT": {
+      "area": "reporting",
+      "milestone": "M6"
+    },
+    "ADM": {
+      "area": "admin",
+      "milestone": "M6"
+    },
+    "OPS": {
+      "area": "support-ops",
+      "milestone": "M6"
+    },
+    "LEG": {
+      "area": "legacy-gaps",
+      "milestone": "M6"
+    },
+    "UX": {
+      "area": "operator-ux",
+      "milestone": "M1"
+    },
+    "WATCH": {
+      "area": "competitor-watch",
+      "milestone": "M3"
+    },
+    "ADS": {
+      "area": "ads-offers",
+      "milestone": "M5"
+    },
+    "REP": {
+      "area": "replication",
+      "milestone": "M4"
+    },
+    "CAN": {
+      "area": "footers-segments",
+      "milestone": "M5"
+    },
+    "MCP": {
+      "area": "mcp",
+      "milestone": "M6"
+    },
+    "LRN": {
+      "area": "learning",
+      "milestone": "M6"
+    },
+    "REL": {
+      "area": "release-gates",
+      "milestone": "M5"
+    },
+    "KLA": {
+      "area": "klaviyo-patterns",
+      "milestone": "M6"
+    }
+  },
+  "milestoneOverrides": {
+    "UX-024": "M0",
+    "REL-010": "M0",
+    "UX-001": "M2",
+    "UX-011": "M2",
+    "UX-015": "M2",
+    "UX-026": "M2",
+    "REL-020": "M2",
+    "UX-003": "M3",
+    "UX-019": "M3",
+    "UX-023": "M3",
+    "UX-006": "M4",
+    "UX-007": "M4",
+    "UX-008": "M4",
+    "UX-009": "M4",
+    "UX-010": "M4",
+    "UX-014": "M4",
+    "UX-016": "M4",
+    "REL-011": "M4",
+    "REL-013": "M4",
+    "REL-014": "M4",
+    "REP-031": "M5",
+    "UX-022": "M6",
+    "UX-025": "M6",
+    "WATCH-021": "M6",
+    "WATCH-022": "M6",
+    "WATCH-023": "M6",
+    "WATCH-024": "M6",
+    "WATCH-025": "M6",
+    "WATCH-026": "M6",
+    "WATCH-027": "M6",
+    "WATCH-028": "M6",
+    "REL-018": "M6",
+    "REL-021": "M6",
+    "REL-022": "M6",
+    "REL-023": "M6"
+  },
+  "typeOverrides": {
+    "ONB-004": "design",
+    "UX-018": "design",
+    "UX-020": "design",
+    "ONB-034": "chore",
+    "ONB-035": "chore",
+    "REL-010": "chore",
+    "REL-013": "chore",
+    "REL-015": "chore",
+    "REL-016": "chore",
+    "REL-017": "chore",
+    "REL-018": "chore",
+    "REL-019": "chore",
+    "REL-020": "chore",
+    "REL-021": "chore",
+    "REL-022": "chore",
+    "REL-023": "chore",
+    "REL-024": "chore",
+    "REL-025": "chore"
+  },
+  "workItems": [
+    {
+      "id": "STAB-001",
+      "title": "Scheduled job worker",
+      "milestone": "M0",
+      "priority": "P0",
+      "type": "chore",
+      "area": "support-ops",
+      "problem": "Queued jobs (rewrites, imports, reports, planning) only run when someone presses a developer button or keeps a page open. `app/api/internal/jobs/route.ts` accepts only loopback fixture dispatch, so nothing runs on its own in production.",
+      "scope": [
+        "Add a Vercel cron in `vercel.json` that calls `/api/internal/jobs` on a schedule with `Authorization: Bearer CRON_SECRET`.",
+        "Let the route run real queued jobs across workspaces in bounded batches (leases, retries and idempotency stay as they are); keep fixture-only dispatch for local fake mode.",
+        "Reject missing or wrong secrets; never expose the secret to the browser.",
+        "Tests: authorized run, unauthorized request, empty queue, failed job retried, lease not taken twice."
+      ],
+      "doneWhen": "On the live app a queued job finishes within one cron interval without anyone pressing a button, and a request without the secret gets 401."
+    },
+    {
+      "id": "STAB-002",
+      "title": "Hide developer test buttons from brand owners",
+      "milestone": "M0",
+      "priority": "P0",
+      "type": "chore",
+      "area": "operator-ux",
+      "blockedBy": "STAB-001",
+      "problem": "Owner screens show buttons such as \"Run planning fixture jobs\", \"Run reference fixture jobs\", \"Run reporting fixture jobs\" and \"Run optimizer fixture jobs\" (features/planning, references, reporting, optimizer, onboarding panels). They only exist because no worker runs jobs.",
+      "scope": [
+        "Only after STAB-001 is live: remove these buttons from owner and staff screens, or show them only in local fake mode to platform admins.",
+        "Replace them with honest status text (Queued, Working, Done, Failed with retry).",
+        "Tests: owners never see the buttons in production mode; jobs still complete through the worker."
+      ],
+      "doneWhen": "No owner or staff screen on the live app shows a \"Run … jobs\" button, and the work those buttons did still happens automatically."
+    },
+    {
+      "id": "STAB-003",
+      "title": "Date and time pickers instead of typed ISO times",
+      "milestone": "M0",
+      "priority": "P0",
+      "type": "bug",
+      "area": "operator-ux",
+      "problem": "Some forms ask owners to type values like `2026-11-01T10:00:00Z` (for example \"Send time (ISO UTC …)\" in `features/campaigns/editor.tsx` and \"Rolling start (ISO timestamp with timezone)\" in `features/planning/panels.tsx`).",
+      "scope": [
+        "Replace every typed ISO field with date and time pickers in the workspace timezone, reusing the tested `lib/local-time.ts` conversion (skipped and repeated DST times).",
+        "Show times to owners as readable local text, never as ISO strings.",
+        "Tests: conversion across DST, invalid input, server-side validation, keyboard use and 375px layout."
+      ],
+      "doneWhen": "No owner-facing form asks for an ISO time, and a time picked in the workspace timezone is saved and shown back as the same local time."
+    },
+    {
+      "id": "STAB-004",
+      "title": "Re-enable CI on pull requests",
+      "milestone": "M0",
+      "priority": "P0",
+      "type": "chore",
+      "area": "release-gates",
+      "problem": "GitHub Actions is turned off for this repository, so `.github/workflows/ci.yml` (verify, database and browser jobs) has not run since October 28. Pull requests merge without an automatic check.",
+      "scope": [
+        "Owner turns Actions back on (Settings → Actions → General → Allow all actions).",
+        "Confirm the verify, database and browser jobs pass on a pull request; fix or time-box the slow browser job so private-repo minutes stay affordable.",
+        "Make `verify` a required check on `main` (branch protection)."
+      ],
+      "doneWhen": "Every new pull request shows green verify, database and browser checks, and `main` cannot merge a red pull request."
+    },
+    {
+      "id": "STAB-005",
+      "title": "Remove seed test accounts from production",
+      "milestone": "M0",
+      "priority": "P0",
+      "type": "chore",
+      "area": "accounts",
+      "problem": "Synthetic seed users (`*@grey-retention.test`, for example owner, admin, designer, staff and other-owner) and their demo workspaces may exist in the live Supabase project.",
+      "scope": [
+        "Read-only check of the live project first and a written list for Raman: which test accounts and workspaces exist and what they own.",
+        "With Raman's explicit OK, remove them with a reviewed, reversible script (backup first), keeping real accounts untouched.",
+        "Make sure seeds only run locally, never against production."
+      ],
+      "doneWhen": "The live project has no `@grey-retention.test` users or their demo workspaces, real accounts are unchanged, and seeds cannot reach production."
+    },
+    {
+      "id": "DS-001",
+      "title": "Design tokens and fonts wired into the app",
+      "milestone": "M1",
+      "priority": "P0",
+      "type": "design",
+      "area": "operator-ux",
+      "problem": "The new tokens in `app/styles/tokens.css` and `lib/design/tokens.ts` exist but nothing uses them yet; the app still uses the old Inter/graphite theme.",
+      "scope": [
+        "Load Newsreader (display), Geist (UI) and Geist Mono (labels and numbers) with `next/font`.",
+        "Map the `--gr-*` tokens into the Tailwind theme and the white-label `BrandPresentation` defaults; keep tenant themes working and contrast-checked.",
+        "Retire the old token values once every screen moved over."
+      ],
+      "doneWhen": "The root layout uses the new fonts and tokens, the old palette is gone, and contrast tests pass for every token pair in light and dark."
+    },
+    {
+      "id": "DS-002",
+      "title": "App shell and navigation in the new look",
+      "milestone": "M1",
+      "priority": "P0",
+      "type": "design",
+      "area": "operator-ux",
+      "problem": "Shell, sidebar, header and mobile navigation still use the old theme.",
+      "scope": [
+        "Warm canvas, hairline dividers, mono uppercase group labels, 1280px content width.",
+        "Store name always visible (UX-002); five clear primary destinations (UX-004, UX-005).",
+        "Keyboard, focus and 375px behaviour checked in Playwright."
+      ],
+      "doneWhen": "Owner, admin and designer shells use the new look on desktop and at 375px with visible focus and no horizontal scroll."
+    },
+    {
+      "id": "DS-003",
+      "title": "Buttons, links, segmented toggles and form controls",
+      "milestone": "M1",
+      "priority": "P0",
+      "type": "design",
+      "area": "operator-ux",
+      "problem": "Buttons and inputs use 8px radius, the old colours and no segmented toggle.",
+      "scope": [
+        "Primary solid black, single key action in accent blue, secondary light grey, tertiary text link with arrow, destructive (UX-021).",
+        "Segmented toggle with mono uppercase labels; inputs, selects, checkboxes, text areas with 4px radius and AA borders.",
+        "Unit tests for variants and accessible names."
+      ],
+      "doneWhen": "All buttons and form controls come from the shared components in the new style, and no screen builds its own button styles."
+    },
+    {
+      "id": "DS-004",
+      "title": "Cards, stat tiles, tables and split report sections",
+      "milestone": "M1",
+      "priority": "P0",
+      "type": "design",
+      "area": "operator-ux",
+      "problem": "Panels use 16px radius and shadows; there is no stat tile, hairline grid or split section.",
+      "scope": [
+        "Hairline grid layouts (logo-wall / stat-grid style), stat tile with big mono number and small caption.",
+        "Tables with hairline rows and mono headers; split section with dark panel left and light data panel right for reports.",
+        "Shared status vocabulary component (UX-012)."
+      ],
+      "doneWhen": "Dashboard, reports and list screens use the shared card, tile, table and split components."
+    },
+    {
+      "id": "DS-005",
+      "title": "Empty, loading and error states",
+      "milestone": "M1",
+      "priority": "P0",
+      "type": "design",
+      "area": "operator-ux",
+      "problem": "Empty, loading and error states are inconsistent and some explain missing data poorly.",
+      "scope": [
+        "One empty state pattern with a plain sentence and a next step (UX-013).",
+        "Loading skeletons in the new style; error states with retry.",
+        "Tests for each state on the main owner screens."
+      ],
+      "doneWhen": "Every owner list and detail screen has a tested empty, loading and error state in the new style."
+    },
+    {
+      "id": "DS-006",
+      "title": "Composer component (paste email or URL, Exact / Rebrand / Adapt)",
+      "milestone": "M1",
+      "priority": "P0",
+      "type": "design",
+      "area": "replication",
+      "problem": "The signature input of the product does not exist yet.",
+      "scope": [
+        "One large box: paste a competitor email or URL; segmented mode chips EXACT / REBRAND / ADAPT; small mono option groups underneath (Brand, Products, Footer); one blue submit arrow.",
+        "Use it on onboarding and the dashboard, wired to the existing paste and import flows (modes not yet built show as unavailable, not fake).",
+        "Keyboard-only use, screen-reader labels, 375px layout."
+      ],
+      "doneWhen": "Onboarding and the dashboard show the composer; pasting an email and pressing the arrow opens the existing copy/rewrite flow with the chosen mode."
+    },
+    {
+      "id": "DS-007",
+      "title": "Owner-facing copy sweep",
+      "milestone": "M1",
+      "priority": "P0",
+      "type": "design",
+      "area": "operator-ux",
+      "problem": "Owner screens still show words like \"fixture\", \"synthetic\", \"tenant\" and raw ISO timestamps.",
+      "scope": [
+        "Replace them with short, confident, plain words; keep technical terms in admin-only or developer-only places.",
+        "Add a unit test that fails if owner-facing components contain the banned words."
+      ],
+      "doneWhen": "No owner-facing screen shows \"fixture\", \"synthetic\", \"tenant\" or an ISO timestamp, and a test guards it."
+    }
+  ]
+}
