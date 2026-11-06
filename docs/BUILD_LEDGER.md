@@ -56,6 +56,8 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 | DS-001 | Design tokens and fonts wired into the app | DOC-003 | review | Claude Code browser lane | pnpm verify: 242 unit tests, build; computed styles on /login, /signup, 404 at 1280/375px | Owns `app/globals.css`, `app/layout.tsx` fonts, default theme in `lib/branding/presentation.ts`, display-heading weights. Issue #40. |
 
+| DS-002 | App shell and navigation in the new look | DS-001 | review | Claude Code browser lane | pnpm verify; 4 new shell tests; demo-mode screenshots and keyboard check at 1280/375px | Owns `components/shell/*` styling and the `workspaceLabel` prop. Issue #41. |
+
 ## Global decisions
 
 - DS-001 (2026-11-06): the default white-label theme (`defaultBrandPresentation`) is now built from `lib/design/tokens.ts`, and `app/globals.css` maps the existing semantic variables (`--surface`, `--text`, `--line`, `--brand-*`, `--danger*`, `--warning*`, `--radius-*`) to the `--gr-*` tokens. Variable names are unchanged, so no component contract changed. `textFaint` uses `ink-muted` (AA on the canvas). Added tokens `ink-strong` and `danger-strong` for hover states. Tailwind 4 `@theme` gains design names (`bg-canvas`, `text-ink`, `border-hairline`, `font-serif`, `font-mono`, `tracking-display`) that resolve through the white-label variables; every `rounded-*` step is 4px. Fonts: Newsreader, Geist, Geist Mono via `next/font/google` (Inter removed). The `data-design-seed` attribute was removed. Dark mode stays off until a dark `BrandPresentation` variant exists.
@@ -473,3 +475,14 @@ Append entries using this exact shape:
 - Review: `code-reviewer` found nothing blocking. Fixed in the PR: the white-label contrast gate now also checks accent links, error and warning text on page and panels, and control outlines (4 new tests); the shell root sets `font-sans` so a tenant body font applies; bare `rounded` uses the 4px token; the brand tile is 4px; auth success text uses the `success` token; DESIGN.md and UX-018 wording corrected. Left as notes: success colours are not tenant-themable; tenant font strings are not validated; `font-mono` follows the tenant data font (HTML editor); three fonts preload on every route; `.impeccable/design.json` still holds the old theme and is superseded by `docs/DESIGN.md`.
 - Known issues: components still carry their old layouts, pill status marks and a few shadows; DS-002 to DS-005 replace those. `PageHeading` is now a 30/36px serif; e2e (which checks for horizontal scroll at mobile widths) has not run because there is no Docker here. Dark mode not enabled.
 - Next consumer: DS-002 (shell and navigation).
+
+### 2026-11-06 — DS-002 — app shell and navigation in the new look
+
+- Status: review
+- Branch/worktree: `claude/ds-002-app-shell-and-navigation-in-the-new-look` from `main` at `cc026a3`. GitHub issue #41 (browser lane).
+- Commit(s): see the DS-002 pull request.
+- Changed contracts: `AppShell` gains an optional `workspaceLabel` (visible label above the workspace/store name; defaults to `contextLabel`). The client layout passes "Store". Landmark and control names used by e2e (`Client workspace navigation`, `Open navigation`, `Find a page`, `Sign out`, `Manage`) are unchanged.
+- Migrations: none.
+- Verification run: `pnpm verify` (see PR for counts). New `components/shell/app-shell.test.tsx`: store label and name appear before page content, admin/designer fall back to their context label, landmark names stay stable, the content sits in one 1280px column, and the current page is marked by weight and a bar, not colour alone. `next dev` in `AUTH_MODE=demo` with fake providers: owner, admin and designer shells at 1280px and 375px with no horizontal scroll; mobile drawer opens and shows the Manage group and Sign out; Tab order Skip to content → navigation shows the focus ring. (Dev-mode scripts only start on `localhost`, not `127.0.0.1`; noted for future local checks.) `test:e2e`/`test:db` not runnable here (no Docker).
+- Known issues: navigation still has six primary links and "Get started" stays visible after setup; UX-004/UX-005 own that change. Account menu and search dialog keep their structure; DS-003 restyles buttons and inputs inside them.
+- Next consumer: DS-003 (buttons, links, toggles, form controls).

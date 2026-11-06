@@ -69,11 +69,11 @@ export function HeaderActions({
         type="button"
         onClick={openSearch}
         aria-label="Search workspace"
-        className="flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none sm:border sm:border-[var(--line)] sm:bg-[var(--surface-raised)]"
+        className="flex min-h-10 items-center gap-2 rounded-[var(--radius-control)] px-2.5 text-sm text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none sm:border sm:border-[var(--line)] sm:bg-[var(--surface-raised)]"
       >
         <Search className="size-4" aria-hidden />
         <span className="hidden sm:inline">Find a page</span>
-        <kbd className="ml-5 hidden rounded border border-[var(--line)] px-1.5 py-0.5 font-sans text-xs text-[var(--text-faint)] xl:inline">
+        <kbd className="tracking-label ml-5 hidden rounded border border-[var(--line)] px-1.5 py-0.5 font-mono text-[0.6875rem] text-[var(--text-faint)] uppercase xl:inline">
           ⌘ K / Ctrl K
         </kbd>
       </button>
@@ -91,7 +91,7 @@ export function HeaderActions({
           aria-label={`Open account menu for ${identity.name}`}
           className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-lg p-1 [&::-webkit-details-marker]:hidden"
         >
-          <span className="grid size-8 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface-hover)] text-[0.6875rem] font-semibold">
+          <span className="grid size-8 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface-hover)] font-mono text-[0.6875rem] font-medium">
             {identity.initials}
           </span>
           <ChevronDown
@@ -99,9 +99,9 @@ export function HeaderActions({
             aria-hidden
           />
         </summary>
-        <div className="absolute top-12 right-0 z-30 w-60 rounded-xl bg-[var(--surface-raised)] p-2 shadow-[0_8px_35px_-8px_rgba(29,29,31,0.22)]">
+        <div className="absolute top-12 right-0 z-30 w-60 rounded-[var(--radius-control)] border border-[var(--line-strong)] bg-[var(--surface-raised)] p-2">
           <div className="border-b border-[var(--line)] px-3 py-3">
-            <p className="text-sm font-semibold break-words">{identity.name}</p>
+            <p className="text-sm font-medium break-words">{identity.name}</p>
             <p className="mt-1 text-xs text-[var(--text-muted)] capitalize">
               {identity.role} · {contextLabel}
             </p>
@@ -146,7 +146,10 @@ export function HeaderActions({
         className="m-auto max-h-[80dvh] w-[min(32rem,calc(100%_-_2rem))] overflow-y-auto rounded-2xl border border-[var(--line)] bg-[var(--surface-raised)] text-[var(--text)]"
       >
         <div className="flex items-center justify-between border-b border-[var(--line)] px-5 py-4">
-          <h2 id="workspace-search-title" className="font-semibold">
+          <h2
+            id="workspace-search-title"
+            className="tracking-display font-[family-name:var(--font-display)] text-xl font-normal"
+          >
             Find a page
           </h2>
           <button

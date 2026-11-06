@@ -4024,9 +4024,12 @@
       "feature": "Store switcher in global chrome",
       "priority": "P0",
       "acceptance": "Every screen identifies the selected merchant store before any action.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["DS-002"],
+      "verification": [
+        "DS-002 (2026-11-06): unit tests render the shell with the store label and name ahead of page content; demo-mode screenshots of owner, admin and designer shells at 1280px and 375px."
+      ],
+      "remaining": "DS-002 (2026-11-06): every owner screen shows a STORE label with the selected store name in the header before any page content (desktop and mobile). Remaining: switching between several stores from the header, and showing the store inside dialogs that start external actions."
     },
     {
       "id": "UX-003",
@@ -4191,11 +4194,11 @@
       "priority": "P0",
       "acceptance": "Editor remains usable at agreed laptop/mobile widths and zoom.",
       "status": "partial",
-      "implementation_tasks": ["DS-001"],
+      "implementation_tasks": ["DS-001", "DS-002"],
       "verification": [
         "DS-001 (2026-11-06): pnpm verify (242 unit tests incl. token contrast/sync and default-theme tests, build); computed styles checked on /login, /signup and 404 at 1280px and 375px."
       ],
-      "remaining": "DS-001 (2026-11-06): the shared 4px radius, AA-checked colour tokens (text 4.5:1, control outlines 3:1) and Geist UI type are applied app-wide; auth and error pages checked at 1280px and 375px without horizontal scroll. Remaining: status marks are still pills, body text size is unchanged (mostly 14px), and shell, editor and table layouts still need checking at agreed laptop/mobile widths and 200% zoom (DS-002 to DS-005)."
+      "remaining": "DS-001 (2026-11-06): the shared 4px radius, AA-checked colour tokens (text 4.5:1, control outlines 3:1) and Geist UI type are applied app-wide; auth and error pages checked at 1280px and 375px without horizontal scroll. Remaining: status marks are still pills, body text size is unchanged (mostly 14px), the shell is checked at 1280px and 375px with keyboard focus and no horizontal scroll (DS-002), and editor and table layouts still need checking at agreed laptop/mobile widths and 200% zoom (DS-002 to DS-005)."
     },
     {
       "id": "UX-019",
