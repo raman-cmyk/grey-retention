@@ -50,16 +50,17 @@ Why some items sit outside their category's usual milestone: `UX-024` (no dead m
 
 ## Labels
 
-| Label                                       | Meaning                                                  |
-| ------------------------------------------- | -------------------------------------------------------- |
-| `priority:P0` / `P1` / `P2`                 | Order of work inside a milestone (P0 first)              |
-| `type:feature` / `bug` / `chore` / `design` | What kind of change it is                                |
-| `area:<category>`                           | One per register category, for example `area:onboarding` |
-| `epic`                                      | The category tracking issue                              |
+| Label                                       | Meaning                                                       |
+| ------------------------------------------- | ------------------------------------------------------------- |
+| `priority:P0` / `P1` / `P2`                 | Order of work inside a milestone (P0 first)                   |
+| `type:feature` / `bug` / `chore` / `design` | What kind of change it is                                     |
+| `area:<category>`                           | One per register category, for example `area:onboarding`      |
+| `epic`                                      | The category tracking issue                                   |
+| `wip`                                       | Claimed: someone is working on it now (see the claim comment) |
 
 ## How we work (one issue at a time)
 
-1. **Pick** the next open P0 issue in the current milestone (lowest milestone first). Run `/start-task <ID>`; it reads the required docs, claims the ledger row and writes a short plan.
+1. **Pick** the next open P0 issue in the current milestone (lowest milestone first). Run `/start-task <ID>`; it reads the required docs, claims the ledger row and writes a short plan. The issue ID is the ledger task ID. Two IDs already name earlier ledger rows for the same features — `ONB-001` (simple first-use experience) and `REP-001` (exact replication) — so their issues continue those rows and add new handoff entries instead of creating duplicates.
 2. **Branch** from the latest `main`: `claude/<id>-<slug>` — the exact name is at the bottom of each issue. One issue per pull request.
 3. **Build** with tests for behaviour, authorization, state changes and failure paths. Keep routes thin; logic in `features/` or `lib/`. External systems only through typed adapters with fakes.
 4. **Check**: `/verify` (or `pnpm verify`) must pass; add `pnpm supabase:reset && pnpm test:db` for SQL and `pnpm test:e2e` for UI flows. Run the `code-reviewer` subagent before the PR, and `rls-migration-reviewer` for anything under `supabase/`.

@@ -193,7 +193,7 @@ Technical words may appear in admin-only screens and developer tools. DS-007 add
 
 ## White-label
 
-Customers may later theme their workspace through the existing `BrandPresentation` contract (`lib/branding/presentation.ts`). A tenant theme may replace the accent pair and the logo only if it passes the same contrast checks; the canvas, ink, type and shapes stay the Grey Retention system. Shared components are never forked per customer.
+Grey Retention is sold white-label (`PRODUCT.md`): name, logo, palette, typography, domains and customer-facing copy must be configurable without code changes. This document is the **default** theme. A customer theme is data passed through the existing `BrandPresentation` contract (`lib/branding/presentation.ts`): it may replace any colour token and the three font roles, but it is accepted only if every pair in `contrastRules` still passes (otherwise the default is used, as the current contrast gate already does). Layout, spacing, 4px shapes, hairline structure and components are shared; they are never forked per customer.
 
 ## Implementation notes
 

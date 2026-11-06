@@ -86,11 +86,13 @@ function client(token, repository, { pauseMs = 1000 } = {}) {
         body: body ? JSON.stringify(body) : undefined
       }
     )
+    const errorText = response.ok ? '' : await response.clone().text()
     const limited =
       response.status === 429 ||
       (response.status === 403 &&
-        response.headers.get('x-ratelimit-remaining') === '0') ||
-      (response.status === 403 && response.headers.has('retry-after'))
+        (response.headers.get('x-ratelimit-remaining') === '0' ||
+          response.headers.has('retry-after') ||
+          /rate limit/i.test(errorText)))
     if (limited && attempt < 4) {
       const wait = Number(response.headers.get('retry-after') ?? 60) * 1000
       console.log(`Rate limited; waiting ${wait / 1000}s`)
@@ -99,7 +101,7 @@ function client(token, repository, { pauseMs = 1000 } = {}) {
     }
     if (!response.ok)
       throw new Error(
-        `${method} ${path} failed: ${response.status} ${await response.text()}`
+        `${method} ${path} failed: ${response.status} ${errorText}`
       )
     if (method !== 'GET') await sleep(pauseMs)
     return {

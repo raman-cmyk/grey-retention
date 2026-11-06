@@ -45,6 +45,11 @@
         "name": "epic",
         "color": "5319e7",
         "description": "Tracks every register item of one category"
+      },
+      {
+        "name": "wip",
+        "color": "fbca04",
+        "description": "Claimed: someone is working on this now (see the claim comment)"
       }
     ],
     "areaColor": "e7ebfd"
@@ -94,32 +99,110 @@
     }
   ],
   "categories": {
-    "ONB": { "area": "onboarding", "milestone": "M2" },
-    "ACC": { "area": "accounts", "milestone": "M2" },
-    "CON": { "area": "connections", "milestone": "M5" },
-    "STR": { "area": "store-intelligence", "milestone": "M5" },
-    "BRD": { "area": "brand-voice", "milestone": "M4" },
-    "DEF": { "area": "campaign-defaults", "milestone": "M5" },
-    "CMP": { "area": "campaign-copy", "milestone": "M4" },
-    "REF": { "area": "references", "milestone": "M3" },
-    "CAL": { "area": "calendar", "milestone": "M6" },
-    "DES": { "area": "designers", "milestone": "M6" },
-    "EXE": { "area": "execution", "milestone": "M5" },
-    "INT": { "area": "competitor-library", "milestone": "M3" },
-    "GRO": { "area": "gros", "milestone": "M6" },
-    "RPT": { "area": "reporting", "milestone": "M6" },
-    "ADM": { "area": "admin", "milestone": "M6" },
-    "OPS": { "area": "support-ops", "milestone": "M6" },
-    "LEG": { "area": "legacy-gaps", "milestone": "M6" },
-    "UX": { "area": "operator-ux", "milestone": "M1" },
-    "WATCH": { "area": "competitor-watch", "milestone": "M3" },
-    "ADS": { "area": "ads-offers", "milestone": "M5" },
-    "REP": { "area": "replication", "milestone": "M4" },
-    "CAN": { "area": "footers-segments", "milestone": "M5" },
-    "MCP": { "area": "mcp", "milestone": "M6" },
-    "LRN": { "area": "learning", "milestone": "M6" },
-    "REL": { "area": "release-gates", "milestone": "M5" },
-    "KLA": { "area": "klaviyo-patterns", "milestone": "M6" }
+    "ONB": {
+      "area": "onboarding",
+      "milestone": "M2"
+    },
+    "ACC": {
+      "area": "accounts",
+      "milestone": "M2"
+    },
+    "CON": {
+      "area": "connections",
+      "milestone": "M5"
+    },
+    "STR": {
+      "area": "store-intelligence",
+      "milestone": "M5"
+    },
+    "BRD": {
+      "area": "brand-voice",
+      "milestone": "M4"
+    },
+    "DEF": {
+      "area": "campaign-defaults",
+      "milestone": "M5"
+    },
+    "CMP": {
+      "area": "campaign-copy",
+      "milestone": "M4"
+    },
+    "REF": {
+      "area": "references",
+      "milestone": "M3"
+    },
+    "CAL": {
+      "area": "calendar",
+      "milestone": "M6"
+    },
+    "DES": {
+      "area": "designers",
+      "milestone": "M6"
+    },
+    "EXE": {
+      "area": "execution",
+      "milestone": "M5"
+    },
+    "INT": {
+      "area": "competitor-library",
+      "milestone": "M3"
+    },
+    "GRO": {
+      "area": "gros",
+      "milestone": "M6"
+    },
+    "RPT": {
+      "area": "reporting",
+      "milestone": "M6"
+    },
+    "ADM": {
+      "area": "admin",
+      "milestone": "M6"
+    },
+    "OPS": {
+      "area": "support-ops",
+      "milestone": "M6"
+    },
+    "LEG": {
+      "area": "legacy-gaps",
+      "milestone": "M6"
+    },
+    "UX": {
+      "area": "operator-ux",
+      "milestone": "M1"
+    },
+    "WATCH": {
+      "area": "competitor-watch",
+      "milestone": "M3"
+    },
+    "ADS": {
+      "area": "ads-offers",
+      "milestone": "M5"
+    },
+    "REP": {
+      "area": "replication",
+      "milestone": "M4"
+    },
+    "CAN": {
+      "area": "footers-segments",
+      "milestone": "M5"
+    },
+    "MCP": {
+      "area": "mcp",
+      "milestone": "M6"
+    },
+    "LRN": {
+      "area": "learning",
+      "milestone": "M6"
+    },
+    "REL": {
+      "area": "release-gates",
+      "milestone": "M5"
+    },
+    "KLA": {
+      "area": "klaviyo-patterns",
+      "milestone": "M6"
+    }
   },
   "milestoneOverrides": {
     "UX-024": "M0",

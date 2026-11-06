@@ -64,7 +64,7 @@ Admin and designer applications are separate authorization surfaces within one w
 - Product voice: direct, operational, calm, precise, and accountable.
 - Product will be white-labelled and sold to multiple customers. Name, logos, palette, typography, domains, email identity, feature availability, and customer-facing copy must be configurable without code forks.
 - No logo, final identity assets, testimonials, customer claims, or approved marketing claims have been supplied.
-- The deployed reference remains behavioral and visual evidence, not source authority. The user selected its cool neutral, white-panel, graphite-action, system-blue theme as the default visual direction; implementation remains original and token-driven.
+- The deployed reference remains behavioral evidence, not source authority. On November 6, 2026 the owner replaced the earlier cool-neutral default with a new Grey Retention visual language (calm, editorial, warm off-white canvas, near-black ink, one electric-blue accent), specified in `docs/DESIGN.md` and applied in milestone M1. It is inspired by the feel of exa.ai only; no third-party assets or copy are used. Implementation remains original and token-driven.
 
 ## Evidence on Hand
 
