@@ -119,33 +119,33 @@ Not crawled (needs a logged-out or admin session): login, signup, onboarding, pa
 
 ### Shared components to build once
 
-- [ ] **Token plan strip** (used on Dashboard and Brand): bolt icon, "Scale plan · renews in 30 days", and a token-remaining line. On the right, two thin progress bars labelled IN and OUT, each with a %.
-- [ ] **Email preview card:**
+- [x] ~~**Token plan strip**~~ replaced by a small **AI credits** indicator (`components/ui/credits-indicator.tsx`), per OWNER_JOURNEYS.md §18.8: one number of credits left, plan and renewal, and "sample numbers" while data is fake. Was: (used on Dashboard and Brand): bolt icon, "Scale plan · renews in 30 days", and a token-remaining line. On the right, two thin progress bars labelled IN and OUT, each with a %.
+- [x] **Email preview card:** (`features/email-generation/preview-card.tsx`; sanitized on the server, links turned off, always in-page: OWNER_JOURNEYS.md §18.19)
   - title "Email preview" + mono pill with the template name
   - right side: `⛶ Fullscreen` (browser Fullscreen API on the iframe) and `⟳ Refresh` (reloads the iframe)
   - body: sandboxed iframe on an inset grey area, fixed height, scrolls inside
   - caption under it: "Rendered preview from Klaviyo's stored template. Some external assets (fonts, tracking pixels) may not load due to sandbox isolation."
-- [ ] **List/segment picker:**
+- [x] **List/segment picker:** (`components/ui/audience-picker.tsx`)
   - label `SEND TO  N SELECTED` + `Clear` link on the right
   - search box "Search lists & segments..."
   - scrolling checklist: round checkbox + name + small outline tag `LIST` or `SEGMENT` on the right
-- [ ] **Product radio picker:**
+- [x] **Product radio picker:** (`components/ui/product-picker.tsx`)
   - search box "Search products…"
   - bordered scroll box (~300px)
   - first option italic muted ("— no default (let AI pick) —" or "— let AI pick from broader product focus —")
   - each product shown as `“Name”` + muted `(vendor)`
-- [ ] **Status pill**, **type pill** (DESIGN / TEXT), and **domain pill** (uppercase domain).
-- [ ] **Chat UI:**
+- [x] **Status pill**, **type pill** (DESIGN / TEXT), and **domain pill** (uppercase domain). Status pills use the one campaign status system from `docs/OWNER_JOURNEYS.md` §18.3 (`lib/campaign-status.ts`).
+- [x] **Chat UI:** (`components/ui/chat.tsx`)
   - user bubble on the right, assistant bubble on the left
   - optional tiny caption under each bubble (YOU / GROS)
   - typing indicator (3 animated dots)
   - quick-reply chips
   - composer: `+` attach button, input, round send button
   - auto-scrolls to the newest message
-- [ ] **Confirm dialog:**
+- [x] **Confirm dialog:** (`AlertDialog`)
   - large warning "!" circle icon, bold title, body text
   - secondary + danger buttons (see the multi-day event discard dialog)
-- [ ] **Modal:**
+- [x] **Modal:** (asks "Discard your answers?" before closing with typed answers: OWNER_JOURNEYS.md §1 fix)
   - optional `STEP 1 OF 2` label + 2-segment progress bar
   - title, subtitle, ✕
   - scrolling body

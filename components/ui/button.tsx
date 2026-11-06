@@ -1,6 +1,6 @@
 import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
-import type { ButtonHTMLAttributes } from 'react'
+import type { ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
 
 /**
@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
  * For navigation-like actions use `TextLink` (text with an arrow).
  */
 export const buttonVariants = cva(
-  'inline-flex min-h-10 self-start items-center justify-center gap-2 px-4 text-sm font-medium transition-[background-color,color,box-shadow] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)] disabled:pointer-events-none disabled:opacity-45',
+  'inline-flex min-h-10 self-start items-center justify-center gap-2 px-4 text-sm font-medium transition-[background-color,color,box-shadow] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)] disabled:pointer-events-none disabled:opacity-45',
   {
     variants: {
       variant: {
@@ -46,7 +46,7 @@ export const buttonVariants = cva(
   }
 )
 
-export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> &
+export type ButtonProps = ComponentProps<'button'> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
   }

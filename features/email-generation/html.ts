@@ -345,6 +345,23 @@ export function transformHtml(html: string, options: TransformOptions) {
   return { html: serialize(document), report }
 }
 
+/** Plain words for what the safe preview could not show. */
+export function previewLimitations(report: PreviewReport) {
+  const notes: string[] = []
+  if (report.images)
+    notes.push(
+      `${report.images} image${report.images === 1 ? '' : 's'} shown as placeholders`
+    )
+  if (report.styles) notes.push('outside fonts or backgrounds not loaded')
+  if (report.links) notes.push('links turned off')
+  if (report.removed) notes.push('scripts, forms or embedded content removed')
+  if (report.truncated)
+    notes.push(
+      'very deeply nested content not shown (it is kept in the saved email)'
+    )
+  return notes
+}
+
 /** Sandboxed-preview markup; never served from an application route. */
 export function previewHtml(html: string) {
   return transformHtml(html, { links: 'remove', contentSecurityPolicy: true })
