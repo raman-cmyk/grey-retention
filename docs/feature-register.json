@@ -122,11 +122,12 @@
       "priority": "P0",
       "acceptance": "Allow an accessible existing capture, an explicit example or operator-imported reference.",
       "status": "partial",
-      "implementation_tasks": ["DRF-001"],
+      "implementation_tasks": ["DRF-001", "REF-002"],
       "verification": [
-        "DRF-001: 107 unit tests; 352 database assertions; 56 desktop/mobile journeys; 12 concurrent replay requests. See BUILD_LEDGER for scope."
+        "DRF-001: 107 unit tests; 352 database assertions; 56 desktop/mobile journeys; 12 concurrent replay requests. See BUILD_LEDGER for scope.",
+        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only."
       ],
-      "remaining": "Available captured references or an original idea can create an unapproved brief immediately. First useful generated output remains."
+      "remaining": "Captured references, an original idea or an owner-pasted email can create an unapproved brief immediately. File/EML import and first useful generated output remain."
     },
     {
       "id": "ONB-012",
@@ -135,11 +136,12 @@
       "priority": "P0",
       "acceptance": "An example remains labeled as example through its derived project and never masquerades as the watched brand.",
       "status": "partial",
-      "implementation_tasks": ["DRF-001"],
+      "implementation_tasks": ["DRF-001", "REF-002"],
       "verification": [
-        "DRF-001: 107 unit tests; 352 database assertions; 56 desktop/mobile journeys; 12 concurrent replay requests. See BUILD_LEDGER for scope."
+        "DRF-001: 107 unit tests; 352 database assertions; 56 desktop/mobile journeys; 12 concurrent replay requests. See BUILD_LEDGER for scope.",
+        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only."
       ],
-      "remaining": "Sample labels, synthetic flags and source lineage persist through structural creation. Additional import/example source classes remain."
+      "remaining": "Sample and owner-import labels persist through structural creation (origin owner_import, analysis none). An explicit example source class remains."
     },
     {
       "id": "ONB-013",
@@ -270,11 +272,12 @@
       "priority": "P0",
       "acceptance": "Repeated submissions create no duplicate merchant/watched-brand/draft objects.",
       "status": "partial",
-      "implementation_tasks": ["DRF-001"],
+      "implementation_tasks": ["DRF-001", "REF-002"],
       "verification": [
-        "DRF-001: 107 unit tests; 352 database assertions; 56 desktop/mobile journeys; 12 concurrent replay requests. See BUILD_LEDGER for scope."
+        "DRF-001: 107 unit tests; 352 database assertions; 56 desktop/mobile journeys; 12 concurrent replay requests. See BUILD_LEDGER for scope.",
+        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only."
       ],
-      "remaining": "Draft request replay is actor/tenant/payload-bound and concurrent retries are serialized. Merchant/watchlist setup replay acceptance remains."
+      "remaining": "Draft and pasted-reference requests are actor/tenant/payload-bound; replays return the same record. Merchant/watchlist setup replay acceptance remains."
     },
     {
       "id": "ONB-025",
@@ -1632,9 +1635,12 @@
       "feature": "Persist extraction provenance",
       "priority": "P1",
       "acceptance": "Record extraction type, source and time on the target draft.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["REF-002"],
+      "verification": [
+        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only."
+      ],
+      "remaining": "Imported-reference drafts record source class, source ID, outline, origin and import time in campaign lineage plus an audit event. Provenance for real image/HTML analysis remains; no analysis exists."
     },
     {
       "id": "REF-012",
@@ -1702,9 +1708,12 @@
       "feature": "Tenant-private reference upload",
       "priority": "P1",
       "acceptance": "An operator-uploaded reference remains scoped to its tenant.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["REF-002"],
+      "verification": [
+        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only."
+      ],
+      "remaining": "Owner-pasted references are tenant-private (RLS, server tenant filters, two-workspace denial tests). File upload and storage-backed references remain."
     },
     {
       "id": "CAL-001",
@@ -4292,9 +4301,12 @@
       "feature": "Import email HTML/EML",
       "priority": "P0",
       "acceptance": "Preserve original source and identify it as operator-imported rather than live collected.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["REF-002"],
+      "verification": [
+        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only."
+      ],
+      "remaining": "Pasted subject and text or HTML source is saved verbatim, labelled owner-imported and shown only as extracted plain text. HTML/EML file upload, MIME parsing, sender/date metadata and a sandboxed visual preview remain."
     },
     {
       "id": "WATCH-008",
@@ -4342,9 +4354,12 @@
       "feature": "Immutable original capture",
       "priority": "P0",
       "acceptance": "Original HTML/text/assets metadata are not overwritten by edits.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["REF-002"],
+      "verification": [
+        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only."
+      ],
+      "remaining": "Pasted originals are immutable to clients (no update/delete grants; insert only through the guarded RPC). Edit/version flows and other capture classes remain."
     },
     {
       "id": "WATCH-013",
@@ -6045,9 +6060,12 @@
       "feature": "HTML sandbox and URL validation",
       "priority": "P0",
       "acceptance": "Imported active content cannot execute privileged app actions or access internal services.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["REF-002"],
+      "verification": [
+        "REF-002: 130 unit tests; 393 database assertions; full fresh browser run 64/64 desktop/mobile journeys, then 8/8 pasted-reference journeys after a Unicode-safe preview fix (history in BUILD_LEDGER). Local fixture acceptance only."
+      ],
+      "remaining": "Pasted content is never rendered as markup; scripts, frames, images, links and tracking are stripped; source URLs are validated (http/https, no credentials) and never fetched. Sandboxed rendering and URL validation for other import paths remain."
     },
     {
       "id": "REL-015",

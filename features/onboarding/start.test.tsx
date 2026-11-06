@@ -3,13 +3,16 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GettingStarted } from './start'
 
-const { campaignWorkspace, referenceWorkspace, refresh } = vi.hoisted(() => ({
-  campaignWorkspace: vi.fn(),
-  referenceWorkspace: vi.fn(),
-  refresh: vi.fn()
-}))
+const { campaignWorkspace, referenceWorkspace, pastedReferences, refresh } =
+  vi.hoisted(() => ({
+    campaignWorkspace: vi.fn(),
+    referenceWorkspace: vi.fn(),
+    pastedReferences: vi.fn(),
+    refresh: vi.fn()
+  }))
 vi.mock('@/features/campaigns/data', () => ({ campaignWorkspace }))
 vi.mock('@/features/references/data', () => ({ referenceWorkspace }))
+vi.mock('@/features/references/pasted-data', () => ({ pastedReferences }))
 vi.mock('@/features/brand/actions', () => ({ brandAction: vi.fn() }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 
@@ -30,6 +33,7 @@ beforeEach(() => {
     error: null
   })
   referenceWorkspace.mockResolvedValue({ data: { emails: [] }, error: null })
+  pastedReferences.mockResolvedValue({ data: [], error: null })
 })
 
 describe('Getting started', () => {
@@ -73,6 +77,39 @@ describe('Getting started', () => {
       })
     ).toHaveValue('No medical claims')
     expect(document.querySelector('input[name="revision"]')).toHaveValue('3')
+  })
+  it('offers pasting an email as the one primary reference action', async () => {
+    campaignWorkspace.mockResolvedValue({
+      context,
+      data: { brand, campaigns: [] },
+      error: null
+    })
+    render(await GettingStarted({ step: 'reference' }))
+    expect(
+      screen.getByRole('link', { name: 'Paste an email' })
+    ).toHaveAttribute('href', '/import-reference')
+    expect(
+      screen.getByRole('link', { name: 'Add a sample competitor' })
+    ).toBeVisible()
+  })
+  it('counts a pasted email as reference progress and offers to reuse it', async () => {
+    const id = crypto.randomUUID()
+    campaignWorkspace.mockResolvedValue({
+      context,
+      data: { brand, campaigns: [] },
+      error: null
+    })
+    pastedReferences.mockResolvedValue({
+      data: [{ id, subject: 'Spring note' }],
+      error: null
+    })
+    render(await GettingStarted({ step: 'reference' }))
+    expect(
+      screen.getByRole('link', { name: /Find an email/ })
+    ).toHaveTextContent('Complete:')
+    expect(
+      screen.getByRole('link', { name: /Use “Spring note”/ })
+    ).toHaveAttribute('href', `/first-draft?imported=${id}`)
   })
   it('does not present owner mutation controls to members', async () => {
     campaignWorkspace.mockResolvedValue({

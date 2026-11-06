@@ -7,6 +7,7 @@ import { Field, Notice, controlClass } from '@/components/ui/workspace'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { campaignWorkspace } from '@/features/campaigns/data'
 import { referenceWorkspace } from '@/features/references/data'
+import { pastedReferences } from '@/features/references/pasted-data'
 import { brandAction } from '@/features/brand/actions'
 import { startProgress } from './start-model'
 import { RetrySetup } from './retry-setup'
@@ -33,9 +34,10 @@ export async function GettingStarted({ step }: { step?: string }) {
       </div>
     )
   const brand = data.brand
+  const imported = (await pastedReferences(context.tenantId, 1)).data
   const progress = startProgress({
     hasBrand: !!brand,
-    hasEmails: references.data.emails.length > 0,
+    hasEmails: references.data.emails.length > 0 || imported.length > 0,
     hasCampaign: data.campaigns.length > 0
   })
   const current =
@@ -168,33 +170,50 @@ export async function GettingStarted({ step }: { step?: string }) {
             Start with one email.
           </h1>
           <p className="mt-3 text-sm leading-6 text-[var(--text-muted)]">
-            Explore a competitor’s email, understand its structure, then use it
-            as a starting point for your brand.
+            Paste an email you like — your own or one you received — then use
+            its outline as a starting point for your brand.
           </p>
+          {owner ? (
+            <Button asChild className="mt-7">
+              <Link href="/import-reference">
+                Paste an email <ArrowRight className="size-4" aria-hidden />
+              </Link>
+            </Button>
+          ) : (
+            <div className="mt-7">
+              <Notice>Ask your workspace owner to add reference emails.</Notice>
+            </div>
+          )}
+          {imported.length > 0 && (
+            <Link
+              href={`/first-draft?imported=${imported[0].id}` as Route}
+              className="mt-5 block text-sm underline underline-offset-4"
+            >
+              Use “{imported[0].subject}”, the email you added last
+            </Link>
+          )}
           <div className="my-6 rounded-xl bg-[var(--surface-hover)] p-5 text-sm leading-6">
-            <p className="font-semibold">Sample capture is available</p>
+            <p className="font-semibold">Or explore a sample</p>
             <p className="mt-2 text-[var(--text-muted)]">
-              This build uses fictional .example brands. Real competitor
+              Sample capture uses fictional .example brands. Real competitor
               monitoring and exact visual reconstruction are still to be built.
             </p>
-          </div>
-          <Button asChild>
             <Link
               href={
                 references.data.emails.length
                   ? '/email-library'
                   : '/competitor-agent'
               }
+              className="mt-3 inline-block underline underline-offset-4"
             >
               {references.data.emails.length
-                ? 'Choose an email'
-                : 'Add a sample competitor'}{' '}
-              <ArrowRight className="size-4" aria-hidden />
+                ? 'Choose a sample email'
+                : 'Add a sample competitor'}
             </Link>
-          </Button>
+          </div>
           <Link
             href="/get-started?step=draft"
-            className="mt-5 block text-sm text-[var(--text-muted)] underline underline-offset-4"
+            className="block text-sm text-[var(--text-muted)] underline underline-offset-4"
           >
             Skip for now and plan an original email
           </Link>

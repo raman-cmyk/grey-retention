@@ -37,6 +37,38 @@ describe('First draft composer', () => {
       'no-referrer'
     )
   })
+  it('preselects an email the owner added and shows it as labelled plain text', async () => {
+    const imported = {
+      id: crypto.randomUUID(),
+      subject: 'Pasted spring note',
+      readable_text: 'Hello <img src=x onerror=alert(1)>\n\nShop now',
+      source_description: 'A newsletter I liked',
+      source_url: 'https://shop.example/spring',
+      structure: ['Opening', 'Closing'],
+      created_at: '2026-10-28T00:00:00Z'
+    }
+    const { container } = render(
+      <FirstDraftForm
+        {...props}
+        imported={[imported]}
+        selectedImport={imported.id}
+      />
+    )
+    expect(screen.getByLabelText('Start with')).toHaveValue(
+      `imported:${imported.id}`
+    )
+    expect(
+      screen.getByRole('option', { name: 'Pasted spring note · added by you' })
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Added by you/)).toHaveTextContent(
+      'A newsletter I liked'
+    )
+    expect(screen.getByText(/has not been analyzed by AI/)).toBeVisible()
+    await userEvent.click(screen.getByText('See the email you added'))
+    expect(screen.getByText(/Shop now/)).toBeVisible()
+    expect(container.querySelectorAll('img, iframe, script')).toHaveLength(0)
+    expect(screen.queryByRole('link', { name: /shop\.example/ })).toBeNull()
+  })
   it('opens plan details when a repeated clock time needs a decision', () => {
     render(
       <FirstDraftForm

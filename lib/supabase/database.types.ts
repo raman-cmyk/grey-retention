@@ -3625,6 +3625,63 @@ export type Database = {
         }
         Relationships: []
       }
+      reference_imports: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          origin: string
+          original_body: string
+          readable_text: string
+          source_description: string
+          source_url: string | null
+          structure: Json
+          subject: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          origin?: string
+          original_body: string
+          readable_text: string
+          source_description?: string
+          source_url?: string | null
+          structure: Json
+          subject: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          origin?: string
+          original_body?: string
+          readable_text?: string
+          source_description?: string
+          source_url?: string | null
+          structure?: Json
+          subject?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'reference_imports_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'reference_imports_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       render_reviews: {
         Row: {
           actor_id: string
@@ -4621,6 +4678,10 @@ export type Database = {
           held_micro: number
           used_micro: number
         }[]
+      }
+      import_pasted_reference: {
+        Args: { input: Json; request_key: string; t: string }
+        Returns: string
       }
       install_optimizer_fixture: { Args: { t: string }; Returns: undefined }
       invite_team: {

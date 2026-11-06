@@ -9,7 +9,11 @@ import { FirstDraftForm } from '@/features/drafts/form'
 export default async function FirstDraftPage({
   searchParams
 }: {
-  searchParams: Promise<{ reference?: string; attempt?: string }>
+  searchParams: Promise<{
+    reference?: string
+    imported?: string
+    attempt?: string
+  }>
 }) {
   const params = await searchParams
   const {
@@ -17,14 +21,18 @@ export default async function FirstDraftPage({
     data,
     error,
     references,
+    imported,
     referenceError,
+    importError,
     requestKey,
     defaultDate
-  } = await firstDraftWorkspace(params.reference)
+  } = await firstDraftWorkspace(params.reference, params.imported)
   if (!z.uuid().safeParse(params.attempt).success) {
     const query = new URLSearchParams({ attempt: requestKey })
-    if (typeof params.reference === 'string')
-      query.set('reference', params.reference.slice(0, 100))
+    for (const key of ['reference', 'imported'] as const) {
+      const value = params[key]
+      if (typeof value === 'string') query.set(key, value.slice(0, 100))
+    }
     redirect(`/first-draft?${query}` as Route)
   }
   return (
@@ -55,17 +63,29 @@ export default async function FirstDraftPage({
               </Notice>
             </div>
           )}
-          {params.reference &&
-            !references.some((item) => item.id === params.reference) && (
-              <div className="mt-5">
-                <Notice>
-                  This reference is unavailable here. Choose another, or start
-                  from scratch.
-                </Notice>
-              </div>
-            )}
+          {importError && (
+            <div className="mt-5">
+              <Notice error>
+                Emails you added could not load. You can start from scratch, or
+                reload this page to try again.
+              </Notice>
+            </div>
+          )}
+          {((params.reference &&
+            !references.some((item) => item.id === params.reference)) ||
+            (params.imported &&
+              !imported.some((item) => item.id === params.imported))) && (
+            <div className="mt-5">
+              <Notice>
+                This reference is unavailable here. Choose another, or start
+                from scratch.
+              </Notice>
+            </div>
+          )}
           <FirstDraftForm
             references={references}
+            imported={imported}
+            selectedImport={params.imported}
             audiences={data.audiences}
             timezone={context.timezone}
             brandName={data.brand?.brand_name ?? context.tenantName}
