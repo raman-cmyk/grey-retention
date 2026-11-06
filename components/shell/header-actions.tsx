@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { Search, X, ChevronDown, LogOut, CircleHelp } from 'lucide-react'
 import { signOut } from '@/features/auth/presentation/actions'
+import { controlClass } from '@/components/ui/control'
 import { NavigationList } from './navigation-list'
 import type { NavigationItem } from './nav-data'
 
@@ -172,7 +173,7 @@ export function HeaderActions({
             placeholder="Campaigns, assets, settings…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="min-h-11 w-full rounded-lg border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--focus)]"
+            className={controlClass}
           />
         </div>
         {matches.length ? (

@@ -1,7 +1,7 @@
 'use client'
 import { useActionState, type ReactNode } from 'react'
 import { useFormStatus } from 'react-dom'
-import { Button } from './button'
+import { Button, type ButtonProps } from './button'
 import { cn } from '@/lib/utils'
 export type FormResult = { error?: string; message?: string }
 export type FormAction = (
@@ -52,7 +52,7 @@ export function SubmitButton({
   disabled = false
 }: {
   children: ReactNode
-  variant?: 'primary' | 'accent' | 'secondary' | 'danger' | 'quiet'
+  variant?: ButtonProps['variant']
   pendingLabel?: string
   disabled?: boolean
 }) {

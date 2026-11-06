@@ -36,7 +36,7 @@ export function UploadEmailForm({ initialKey }: { initialKey: string }) {
             setChosen(file ? { name: file.name, size: file.size } : null)
             setRequestKey(crypto.randomUUID())
           }}
-          className="block w-full cursor-pointer rounded-lg border border-[var(--line-strong)] bg-white p-3 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-[var(--surface-hover)] file:px-3 file:py-1.5 file:text-sm file:font-medium"
+          className="block w-full cursor-pointer rounded-[var(--radius-control)] border border-[var(--line-strong)] bg-[var(--surface-raised)] p-3 text-sm file:mr-3 file:rounded-[var(--radius-control)] file:border-0 file:bg-[var(--surface-hover)] file:px-3 file:py-1.5 file:text-sm file:font-medium hover:border-[var(--text-muted)] focus-visible:border-[var(--focus)] focus-visible:ring-1 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
         />
       </Field>
       <div

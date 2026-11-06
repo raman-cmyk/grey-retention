@@ -175,6 +175,10 @@ export function hasAccessibleBrandContrast(brand: BrandPresentation) {
     // The single blue key action and its hover state.
     [theme.onSecondary, theme.secondary],
     [theme.onSecondary, theme.ink],
+    // Selected segment label, and secondary buttons at rest and on hover.
+    [theme.secondary, theme.soft],
+    [theme.text, theme.surfaceHover],
+    [theme.text, theme.line],
     [theme.onDanger, theme.danger],
     [theme.onDanger, theme.dangerStrong],
     [theme.ink, theme.soft],

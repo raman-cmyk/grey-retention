@@ -115,13 +115,13 @@ In code: `Button` from `components/ui/button.tsx` with `variant="primary" | "acc
 
 ### Segmented toggle and chips
 
-A row of joined 4px segments with hairline dividers. Labels are mono uppercase (`EXACT`, `REBRAND`, `ADAPT`; `DESKTOP`, `MOBILE`). Selected: `accent-faint` fill and `accent-text` label plus a 1px `accent` outline; unselected: `surface` with `ink-muted` label. It is a radio group for keyboard and screen readers (arrow keys move, one selected).
+A row of joined 4px segments with hairline dividers. Labels are mono uppercase (`EXACT`, `REBRAND`, `ADAPT`; `DESKTOP`, `MOBILE`). Selected: `accent-faint` fill and `accent-text` label plus a 1px `accent` outline; unselected: `surface` with `ink-muted` label. Keyboard focus is a 2px ink outline inside the segment, so it is distinct from selection. It is a radio group for keyboard and screen readers (arrow keys move, one selected). Unavailable options stay visible, disabled, with their reason written underneath.
 
 In code: `SegmentedControl` from `components/ui/segmented-control.tsx` (a native radio group with a legend; options may carry a description and a `disabledReason`).
 
 ### Form controls
 
-Inputs, selects and text areas: `surface` fill, 1px `hairline-strong` outline, 4px radius, 40px tall (text areas grow), 15px Geist text. Labels sit above in 13px Geist 500; help text below in `ink-muted`; errors in `danger` with an icon and text (never colour alone). Focus: 2px `accent` ring with 2px offset. Dates and times always use pickers in the workspace timezone and display readable local text ("Tue 12 Nov, 9:00 am"), never ISO strings.
+Inputs, selects and text areas: `surface` fill, 1px `hairline-strong` outline, 4px radius, at least 44px tall (text areas grow), 15px Geist text. Labels sit above in 13px Geist 500; help text below in `ink-muted`; errors in `danger` with an icon and text (never colour alone). Focus: the outline turns `accent` and gains a 1px `accent` ring (2px of blue in total). Dates and times always use pickers in the workspace timezone and display readable local text ("Tue 12 Nov, 9:00 am"), never ISO strings.
 
 In code: `controlClass` from `components/ui/control.ts` for every native input, select and text area, `TextField` for inputs, and `Field` from `components/ui/workspace.tsx` for the label. Checkboxes and radios use the ink colour by default.
 

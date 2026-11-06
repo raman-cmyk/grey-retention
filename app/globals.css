@@ -152,10 +152,13 @@ dialog::backdrop {
   }
 }
 
-/* Native checkboxes and radios follow the ink colour and stay 16px. */
-input[type='checkbox'],
-input[type='radio'] {
-  accent-color: var(--brand-primary);
-  inline-size: 1rem;
-  block-size: 1rem;
+/* Native checkboxes and radios follow the ink colour and stay 16px. In the
+   base layer so utilities (sr-only, size-*) can still override them. */
+@layer base {
+  input[type='checkbox'],
+  input[type='radio'] {
+    accent-color: var(--brand-primary);
+    inline-size: 1rem;
+    block-size: 1rem;
+  }
 }

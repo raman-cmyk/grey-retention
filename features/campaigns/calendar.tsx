@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Notice } from '@/components/ui/workspace'
 import { StatusMark } from '@/components/ui/status-mark'
 import { cn } from '@/lib/utils'
+import { controlClass } from '@/components/ui/control'
 import {
   buildCampaignCalendar,
   type CalendarCampaign,
@@ -434,7 +435,10 @@ export function CampaignCalendar({
             min="0001-01"
             max="9999-12"
             defaultValue={month}
-            className="min-h-9 max-w-full rounded-lg border border-[var(--line-strong)] bg-[var(--surface-raised)] px-2.5 text-xs focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
+            className={cn(
+              controlClass,
+              'min-h-9 w-auto max-w-full px-2.5 py-1 text-xs'
+            )}
           />
           <Button variant="secondary" size="sm" className="min-h-9">
             Show month

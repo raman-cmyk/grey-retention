@@ -149,3 +149,18 @@ describe('key action colours', () => {
     expect(hasAccessibleBrandContrast(brand)).toBe(false)
   })
 })
+
+describe('secondary and selected control colours', () => {
+  it.each([
+    ['selected segment label', { soft: '#3355ff' }],
+    ['secondary button fill', { surfaceHover: '#333333' }],
+    ['secondary button hover', { line: '#222222' }],
+    ['key action hover', { ink: '#9aa8ff' }]
+  ])('rejects a tenant theme with an unreadable %s', (_, override) => {
+    const brand = {
+      ...defaultBrandPresentation,
+      theme: { ...defaultBrandPresentation.theme, ...override }
+    }
+    expect(hasAccessibleBrandContrast(brand)).toBe(false)
+  })
+})

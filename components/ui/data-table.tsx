@@ -25,7 +25,7 @@ export function DataTable({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-[var(--line)] [&>tr]:transition-colors [&>tr:hover]:bg-[var(--surface-hover)]">
+        <tbody className="divide-y divide-[var(--line)] [&>tr]:transition-colors [&>tr:hover]:bg-[var(--surface)]">
           {children}
         </tbody>
       </table>
