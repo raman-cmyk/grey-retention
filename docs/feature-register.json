@@ -1148,9 +1148,10 @@
       "feature": "Searchable product picker",
       "priority": "P1",
       "acceptance": "Operators can locate the intended product without scanning the catalog.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-002"],
+      "verification": ["components/ui/pickers.test.tsx"],
+      "remaining": "Searchable ProductPicker component exists (search by name or vendor, \"let AI pick\" first, hidden choice kept). Not wired into the draft screens yet (§7)."
     },
     {
       "id": "DEF-008",
@@ -1158,9 +1159,10 @@
       "feature": "Searchable audience picker",
       "priority": "P1",
       "acceptance": "Lists/segments can be searched and distinguished by kind.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-002"],
+      "verification": ["components/ui/pickers.test.tsx"],
+      "remaining": "Searchable AudiencePicker component exists (LIST/SEGMENT tags, count, Clear, hidden choices kept). Not wired into the draft screens yet (§7)."
     },
     {
       "id": "DEF-009",
@@ -2761,9 +2763,10 @@
       "feature": "Full email preview",
       "priority": "P1",
       "acceptance": "Preview captured content without granting it authority to execute actions.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-002"],
+      "verification": ["features/email-generation/preview-card.test.tsx"],
+      "remaining": "Shared EmailPreviewCard shows sanitized HTML in an empty sandbox with links, scripts and outside loads removed. The competitor screen (§9) still has to use it."
     },
     {
       "id": "INT-023",
@@ -3241,9 +3244,10 @@
       "feature": "Monthly email revenue goal",
       "priority": "P1",
       "acceptance": "Save a target separately from measured revenue.",
-      "status": "unverified",
+      "status": "planned",
       "implementation_tasks": [],
-      "verification": []
+      "verification": [],
+      "remaining": "Not built: saving a monthly goal needs a migration. The gauge says \"No monthly goal set yet.\""
     },
     {
       "id": "RPT-010",
@@ -3251,9 +3255,10 @@
       "feature": "Attribution method switch",
       "priority": "P1",
       "acceptance": "Klaviyo versus UTM views clearly identify different definitions.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-003"],
+      "verification": ["features/dashboard/sections.test.tsx"],
+      "remaining": "Klaviyo and UTM views are links with visible, different definitions; the choice changes only the gauge. There is no UTM data source yet, so UTM says it needs Shopify or is not available yet."
     },
     {
       "id": "RPT-011",
@@ -3271,9 +3276,10 @@
       "feature": "List growth and active subscriber summaries",
       "priority": "P1",
       "acceptance": "Use available metrics with correct comparisons.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-003"],
+      "verification": ["features/dashboard/model.test.ts"],
+      "remaining": "Active subscribers and net change come from sample Klaviyo data (fake provider); no live Klaviyo metrics yet."
     },
     {
       "id": "RPT-013",
@@ -3291,9 +3297,13 @@
       "feature": "Campaign countdown/upcoming work",
       "priority": "P1",
       "acceptance": "Dashboard and calendar agree on which work is upcoming.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-003"],
+      "verification": [
+        "features/dashboard/model.test.ts",
+        "features/dashboard/sections.test.tsx"
+      ],
+      "remaining": "Countdown and mini calendar read workspace campaigns and Klaviyo scheduled sends (sample), excluding rejected, failed and blocked ones. The calendar page itself is rebuilt in §6."
     },
     {
       "id": "RPT-015",
@@ -3301,9 +3311,10 @@
       "feature": "Generate dashboard insight",
       "priority": "P1",
       "acceptance": "Requested insight uses current metrics and records usage.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-003"],
+      "verification": ["features/dashboard/model.test.ts"],
+      "remaining": "Generate shows an insight written from the numbers with no AI and no usage; an AI insight with usage records is not built."
     },
     {
       "id": "RPT-016",
@@ -3311,9 +3322,10 @@
       "feature": "Cached dashboard snapshot",
       "priority": "P1",
       "acceptance": "Cache age and refresh behavior are visible.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-003"],
+      "verification": ["features/dashboard/sections.test.tsx"],
+      "remaining": "The dashboard says plainly that the numbers are sample data and never claims a sync time; real snapshots, cache age and Refresh need the live read adapter."
     },
     {
       "id": "RPT-017",
@@ -4028,9 +4040,10 @@
       "feature": "Approval dashboard placeholder versus schedule code",
       "priority": "P2",
       "acceptance": "Reconcile dashboard messaging with actual supported approvals.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-003"],
+      "verification": ["features/dashboard/sections.test.tsx"],
+      "remaining": "The approval slot shows the campaigns really waiting for the owner, not a \"not yet built\" placeholder. The real Approve step is UIR-016."
     },
     {
       "id": "LEG-010",

@@ -6,7 +6,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import type { Route } from 'next'
 import { ArrowRight, Check, Plus, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
+import { Panel, Notice } from '@/components/ui/workspace'
 import { StatusMark } from '@/components/ui/status-mark'
 import { StatGrid, StatTile } from '@/components/ui/stat-tile'
 import {
@@ -59,27 +59,45 @@ export function CampaignStages({ campaign }: { campaign: OverviewCampaign }) {
   )
 }
 
+function defaultLink(patch: { focus?: string | null; p?: string | null }) {
+  const params = new URLSearchParams()
+  if (patch.focus) params.set('focus', patch.focus)
+  if (patch.p) params.set('p', patch.p)
+  const query = params.toString()
+  return `/dashboard${query ? `?${query}` : ''}#your-campaigns` as Route
+}
+
+/**
+ * "Your campaigns": this workspace's campaigns, reviews and composer. It sits
+ * under the old-app dashboard until the Campaigns list view (UIR-017) takes
+ * the list over.
+ */
 export function CampaignOverview({
   workspace,
   focus,
-  page
+  page,
+  linkTo = defaultLink
 }: {
   workspace: Workspace
   focus?: string
   page?: string
+  /** Builds a dashboard link that keeps the rest of the page's state. */
+  linkTo?: (patch: { focus?: string | null; p?: string | null }) => Route
 }) {
   const { context, data, error } = workspace
   if (!data || error)
     return (
-      <div className="mx-auto max-w-6xl">
-        <PageHeading
-          title="Workspace overview"
-          description="Your campaign calendar, reviews and next steps."
-        />
+      <section aria-labelledby="your-campaigns" className="mt-10">
+        <h2
+          id="your-campaigns"
+          className="tracking-display mb-4 font-serif text-2xl font-normal"
+        >
+          Your campaigns
+        </h2>
         <Notice error>
           {error ?? 'Workspace unavailable. Refresh to retry.'}
         </Notice>
-      </div>
+      </section>
     )
   const model = overviewModel(data.campaigns)
   const selection =
@@ -97,7 +115,10 @@ export function CampaignOverview({
   const currentPage = Math.max(1, Math.min(requestedPage, pageCount))
   const shown = selection.slice((currentPage - 1) * 10, currentPage * 10)
   const pageLink = (number: number) =>
-    `/dashboard?${new URLSearchParams({ ...(focus === 'review' || focus === 'scheduled' ? { focus } : {}), p: String(number) })}` as Route
+    linkTo({
+      focus: focus === 'review' || focus === 'scheduled' ? focus : null,
+      p: String(number)
+    })
   const date = new Intl.DateTimeFormat('en', {
     timeZone: context.timezone,
     weekday: 'long',
@@ -106,27 +127,34 @@ export function CampaignOverview({
   }).format(new Date())
   const owner = context.tenantRole === 'owner'
   return (
-    <div className="mx-auto max-w-6xl">
-      <PageHeading
-        title="Workspace overview"
-        description={`${date} · ${context.tenantName}. Keep the next campaign moving.`}
-        action={
-          <Button asChild>
-            <Link href="/first-draft">
-              <Plus className="size-4" aria-hidden />
-              Create campaign
-            </Link>
-          </Button>
-        }
-      />
+    <section aria-labelledby="your-campaigns" className="mt-10">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2
+            id="your-campaigns"
+            className="tracking-display font-serif text-2xl font-normal"
+          >
+            Your campaigns
+          </h2>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">
+            {date} · {context.tenantName}. Keep the next campaign moving.
+          </p>
+        </div>
+        <Button asChild variant="outline" shape="pill">
+          <Link href="/first-draft">
+            <Plus className="size-4" aria-hidden />
+            Create campaign
+          </Link>
+        </Button>
+      </div>
       {owner && (
         <section aria-labelledby="composer-title" className="mb-8">
-          <h2
+          <h3
             id="composer-title"
             className="tracking-label mb-3 font-mono text-[0.6875rem] text-[var(--text-muted)] uppercase"
           >
             Make your version of an email
-          </h2>
+          </h3>
           <Composer
             requestKey={randomUUID()}
             brandName={data.brand?.brand_name ?? null}
@@ -138,9 +166,9 @@ export function CampaignOverview({
       {data.campaigns.length === 0 && (
         <div className="mb-7 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-5">
           <div>
-            <h2 className="text-sm font-semibold">
+            <h3 className="text-sm font-semibold">
               New here? Start with one email.
-            </h2>
+            </h3>
             <p className="mt-1 text-sm text-[var(--text-muted)]">
               Add your brand, find a reference and plan your first draft.
             </p>
@@ -159,7 +187,7 @@ export function CampaignOverview({
           caption={
             owner ? 'Your next decisions' : 'Waiting for the brand owner'
           }
-          href={'/dashboard?focus=review' as Route}
+          href={linkTo({ focus: 'review', p: null })}
         />
         <StatTile
           label="In production"
@@ -171,7 +199,7 @@ export function CampaignOverview({
           label="Scheduled"
           value={model.scheduled.length}
           caption="Sample sends only — no real email goes out yet"
-          href={'/dashboard?focus=scheduled' as Route}
+          href={linkTo({ focus: 'scheduled', p: null })}
         />
       </StatGrid>
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
@@ -195,23 +223,23 @@ export function CampaignOverview({
             {[
               {
                 label: 'All campaigns',
-                href: '/dashboard',
+                href: linkTo({ focus: null, p: null }),
                 active: !['review', 'scheduled'].includes(focus ?? '')
               },
               {
                 label: 'Needs review',
-                href: '/dashboard?focus=review',
+                href: linkTo({ focus: 'review', p: null }),
                 active: focus === 'review'
               },
               {
                 label: 'Scheduled',
-                href: '/dashboard?focus=scheduled',
+                href: linkTo({ focus: 'scheduled', p: null }),
                 active: focus === 'scheduled'
               }
             ].map((tab) => (
               <Link
-                key={tab.href}
-                href={tab.href as Route}
+                key={tab.label}
+                href={tab.href}
                 aria-current={tab.active ? 'page' : undefined}
                 className="rounded-md px-3 py-2 text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--surface-hover)] aria-[current=page]:bg-[var(--surface-hover)] aria-[current=page]:text-[var(--text)]"
               >
@@ -443,6 +471,6 @@ export function CampaignOverview({
           </p>
         </div>
       </div>
-    </div>
+    </section>
   )
 }

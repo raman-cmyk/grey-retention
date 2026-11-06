@@ -98,7 +98,7 @@ export function StatTile({
             href={href}
             aria-labelledby={`${id}-label ${id}-value`}
             aria-describedby={note ? `${id}-note` : undefined}
-            className="outline-none after:absolute after:inset-0"
+            className="outline-hidden after:absolute after:inset-0"
           >
             {number}
           </Link>
