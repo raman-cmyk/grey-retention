@@ -107,7 +107,7 @@ test('core workspace surfaces render without overflow and invalid review dates r
     ['/optimizer', 'Bill optimizer'],
     ['/team', 'Team'],
     ['/support', 'Support'],
-    ['/settings', 'Workspace settings']
+    ['/settings', 'Settings']
   ]) {
     await page.goto(path)
     await expect(
