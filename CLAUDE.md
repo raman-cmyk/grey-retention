@@ -52,7 +52,7 @@ A change is done when `pnpm verify` passes. If you touched SQL, also `supabase:r
 
 ## Migration number ranges
 
-Every migration is `20260914` + two-digit domain + four-digit sequence, for example `20260914040002_delivery_policies.sql` is the third campaigns migration. Pick the next free number inside your domain's range. Never edit or renumber a migration that is already committed; add a new one instead (a hook blocks edits to existing migration files).
+Every migration is `20260914` + two-digit domain + four-digit sequence, for example `20260914040002_delivery_policies.sql` is the third campaigns migration. Pick the next free number inside your domain's range. **Exception:** the hosted project already has every migration up to `20260914090016`, and Supabase refuses versions older than the last applied one, so new migrations now take the next free `2026091409xxxx` number (see Migration allocation in `docs/BUILD_LEDGER.md`). Never edit or renumber a migration that is already committed; add a new one instead (a hook blocks edits to existing migration files).
 
 | Range            | Domain                                    |
 | ---------------- | ----------------------------------------- |
