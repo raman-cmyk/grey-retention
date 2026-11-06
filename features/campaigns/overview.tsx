@@ -6,7 +6,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import type { Route } from 'next'
 import { ArrowRight, Check, Plus, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
+import { Panel, Notice } from '@/components/ui/workspace'
 import { StatusMark } from '@/components/ui/status-mark'
 import { StatGrid, StatTile } from '@/components/ui/stat-tile'
 import {
@@ -59,6 +59,11 @@ export function CampaignStages({ campaign }: { campaign: OverviewCampaign }) {
   )
 }
 
+/**
+ * "Your campaigns": this workspace's campaigns, reviews and composer. It sits
+ * under the old-app dashboard until the Campaigns list view (UIR-017) takes
+ * the list over.
+ */
 export function CampaignOverview({
   workspace,
   focus,
@@ -71,15 +76,17 @@ export function CampaignOverview({
   const { context, data, error } = workspace
   if (!data || error)
     return (
-      <div className="mx-auto max-w-6xl">
-        <PageHeading
-          title="Workspace overview"
-          description="Your campaign calendar, reviews and next steps."
-        />
+      <section aria-labelledby="your-campaigns" className="mt-10">
+        <h2
+          id="your-campaigns"
+          className="tracking-display mb-4 font-serif text-2xl font-normal"
+        >
+          Your campaigns
+        </h2>
         <Notice error>
           {error ?? 'Workspace unavailable. Refresh to retry.'}
         </Notice>
-      </div>
+      </section>
     )
   const model = overviewModel(data.campaigns)
   const selection =
@@ -106,19 +113,26 @@ export function CampaignOverview({
   }).format(new Date())
   const owner = context.tenantRole === 'owner'
   return (
-    <div className="mx-auto max-w-6xl">
-      <PageHeading
-        title="Workspace overview"
-        description={`${date} · ${context.tenantName}. Keep the next campaign moving.`}
-        action={
-          <Button asChild>
-            <Link href="/first-draft">
-              <Plus className="size-4" aria-hidden />
-              Create campaign
-            </Link>
-          </Button>
-        }
-      />
+    <section aria-labelledby="your-campaigns" className="mt-10">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2
+            id="your-campaigns"
+            className="tracking-display font-serif text-2xl font-normal"
+          >
+            Your campaigns
+          </h2>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">
+            {date} · {context.tenantName}. Keep the next campaign moving.
+          </p>
+        </div>
+        <Button asChild variant="outline" shape="pill">
+          <Link href="/first-draft">
+            <Plus className="size-4" aria-hidden />
+            Create campaign
+          </Link>
+        </Button>
+      </div>
       {owner && (
         <section aria-labelledby="composer-title" className="mb-8">
           <h2
@@ -443,6 +457,6 @@ export function CampaignOverview({
           </p>
         </div>
       </div>
-    </div>
+    </section>
   )
 }
