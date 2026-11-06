@@ -29,4 +29,15 @@ describe('StatusMark', () => {
     expect(dot).not.toBeNull()
     expect(dot?.className).not.toContain('rounded-full')
   })
+
+  it('offers a sentence-case variant without the mono label style', () => {
+    render(
+      <StatusMark tone="active" variant="text">
+        Today
+      </StatusMark>
+    )
+    const mark = screen.getByText('Today')
+    expect(mark.className).not.toContain('uppercase')
+    expect(mark.className).not.toContain('tracking-label')
+  })
 })

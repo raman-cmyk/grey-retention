@@ -179,6 +179,10 @@ export function hasAccessibleBrandContrast(brand: BrandPresentation) {
     [theme.secondary, theme.soft],
     [theme.text, theme.surfaceHover],
     [theme.text, theme.line],
+    // Status marks have no fill; rows behind them hover to surfaceHover.
+    [theme.secondary, theme.surfaceHover],
+    [theme.warningInk, theme.surfaceHover],
+    [theme.dangerInk, theme.surfaceHover],
     [theme.onDanger, theme.danger],
     [theme.onDanger, theme.dangerStrong],
     [theme.ink, theme.soft],

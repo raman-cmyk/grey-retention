@@ -164,3 +164,17 @@ describe('secondary and selected control colours', () => {
     expect(hasAccessibleBrandContrast(brand)).toBe(false)
   })
 })
+
+describe('status text on hovered rows', () => {
+  it.each([
+    ['info status', { secondary: '#7f95ff', soft: '#ffffff', ink: '#0d2189' }],
+    ['warning status', { warningInk: '#b88a00' }],
+    ['error status', { dangerInk: '#e06050' }]
+  ])('rejects a tenant theme with unreadable %s', (_, override) => {
+    const brand = {
+      ...defaultBrandPresentation,
+      theme: { ...defaultBrandPresentation.theme, ...override }
+    }
+    expect(hasAccessibleBrandContrast(brand)).toBe(false)
+  })
+})

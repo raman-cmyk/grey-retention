@@ -132,7 +132,7 @@ export function CampaignOverview({
           </Button>
         </div>
       )}
-      <StatGrid label="Campaign progress" className="mb-7">
+      <StatGrid label="Campaign progress" className="mb-7" columns={3}>
         <StatTile
           label="Awaiting review"
           value={model.reviews.length}
@@ -150,7 +150,7 @@ export function CampaignOverview({
         <StatTile
           label="Scheduled"
           value={model.scheduled.length}
-          caption="Sends are simulated until Klaviyo is connected"
+          caption="Sample sends only — no real email goes out yet"
           href={'/dashboard?focus=scheduled' as Route}
         />
       </StatGrid>

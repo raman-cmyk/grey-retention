@@ -28,25 +28,37 @@ const tones: Record<StatusTone | 'active', { text: string; dot: string }> = {
   danger: { text: 'text-[var(--danger-ink)]', dot: 'bg-[var(--danger-ink)]' }
 }
 
+type StatusMarkProps = {
+  className?: string
+  /** "label" is mono uppercase (default); "text" keeps sentence case. */
+  variant?: 'label' | 'text'
+} & (
+  | {
+      /** Use the shared vocabulary (UX-012): sets the label, tone and meaning. */
+      status: OperatorStatus
+      tone?: keyof typeof tones
+      children?: React.ReactNode
+    }
+  | { status?: undefined; tone?: keyof typeof tones; children: React.ReactNode }
+)
+
 export function StatusMark({
   children,
   tone,
   status,
-  className
-}: {
-  children?: React.ReactNode
-  tone?: keyof typeof tones
-  /** Use the shared vocabulary (UX-012): sets the label, tone and meaning. */
-  status?: OperatorStatus
-  className?: string
-}) {
+  className,
+  variant = 'label'
+}: StatusMarkProps) {
   const entry = status ? operatorStatuses[status] : undefined
   const resolvedTone = tones[tone ?? entry?.tone ?? 'neutral']
   return (
     <span
       title={entry?.meaning}
       className={cn(
-        'tracking-label inline-flex min-h-6 items-center gap-1.5 font-mono text-[0.6875rem] leading-none font-medium uppercase',
+        'inline-flex min-h-6 items-center gap-1.5 leading-none font-medium',
+        variant === 'label'
+          ? 'tracking-label font-mono text-[0.6875rem] uppercase'
+          : 'text-xs',
         resolvedTone.text,
         className
       )}

@@ -85,11 +85,8 @@ function CampaignCard({
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <StatusMark
           tone={status.tone}
-          className={
-            compact
-              ? 'min-h-5 px-1.5 text-[0.6875rem] tracking-normal normal-case'
-              : 'tracking-normal normal-case'
-          }
+          variant="text"
+          className={compact ? 'min-h-5 text-[0.6875rem]' : undefined}
         >
           {status.label}
         </StatusMark>
@@ -217,10 +214,7 @@ function CampaignAgenda({
                 {day.label}
               </time>
               {day.today && (
-                <StatusMark
-                  tone="active"
-                  className="tracking-normal normal-case"
-                >
+                <StatusMark tone="active" variant="text">
                   Today
                 </StatusMark>
               )}
@@ -294,10 +288,7 @@ function CampaignList({
                 </p>
               </div>
               <div className="flex items-center gap-2 sm:justify-end">
-                <StatusMark
-                  tone={status.tone}
-                  className="tracking-normal normal-case"
-                >
+                <StatusMark tone={status.tone} variant="text">
                   {status.label}
                 </StatusMark>
                 <span className="text-xs text-[var(--text-muted)]">

@@ -26,16 +26,16 @@ export function SplitSection({
         className
       )}
     >
-      <div className="bg-[var(--gr-inverse)] p-6 text-[var(--gr-on-inverse)] sm:p-8">
+      <div className="bg-[var(--inverse)] p-6 text-[var(--on-inverse)] sm:p-8">
         {eyebrow && (
-          <p className="tracking-label font-mono text-[0.6875rem] text-[var(--gr-on-inverse-muted)] uppercase">
+          <p className="tracking-label font-mono text-[0.6875rem] text-[var(--on-inverse-muted)] uppercase">
             {eyebrow}
           </p>
         )}
-        <h2 className="tracking-display mt-3 font-serif text-3xl leading-tight font-normal">
+        <h2 className="tracking-display mt-3 font-serif text-2xl leading-tight font-normal sm:text-3xl">
           {title}
         </h2>
-        <p className="mt-4 text-sm leading-6 text-[var(--gr-on-inverse-muted)]">
+        <p className="mt-4 text-sm leading-6 text-[var(--on-inverse-muted)]">
           {takeaway}
         </p>
       </div>

@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { SplitSection } from './split-section'
-import { StatGrid, StatTile } from './stat-tile'
+import { StatGrid, StatTile, cappedCount } from './stat-tile'
 
 afterEach(cleanup)
 
@@ -42,13 +42,49 @@ describe('StatTile and StatGrid', () => {
     expect(value).not.toHaveTextContent('Last 30 days')
   })
 
-  it('links a tile when it has a destination', () => {
+  it('names a linked tile by its label and number', () => {
     render(
       <StatGrid>
-        <StatTile label="In production" value={2} href="/campaign-agent" />
+        <StatTile
+          label="In production"
+          value={2}
+          caption="Copy and design"
+          href="/campaign-agent"
+        />
       </StatGrid>
     )
-    expect(screen.getByRole('link')).toHaveAttribute('href', '/campaign-agent')
+    const link = screen.getByRole('link', { name: 'In production 2' })
+    expect(link).toHaveAttribute('href', '/campaign-agent')
+    expect(link).toHaveAccessibleDescription('Copy and design')
+  })
+
+  it('keeps every tile as a dt and dd pair inside the list', () => {
+    const { container } = render(
+      <StatGrid>
+        <StatTile label="A" value={1} />
+        <StatTile label="B" value={2} href="/dashboard" />
+      </StatGrid>
+    )
+    for (const tile of container.querySelectorAll('dl > div')) {
+      expect([...tile.children].map((child) => child.tagName)).toEqual([
+        'DT',
+        'DD'
+      ])
+    }
+  })
+
+  it('explains an unknown value even without a reason', () => {
+    render(
+      <StatGrid>
+        <StatTile label="Opens" value={undefined} />
+      </StatGrid>
+    )
+    expect(screen.getByRole('definition')).toHaveTextContent('—Not known yet')
+  })
+
+  it('marks counts from capped lists as minimums', () => {
+    expect(cappedCount(12, 100)).toBe(12)
+    expect(cappedCount(100, 100)).toBe('100+')
   })
 })
 
