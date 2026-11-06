@@ -13,6 +13,9 @@ async function connectKlaviyo(page: Page, key: string) {
     has: page.getByRole('heading', { name: 'Klaviyo', exact: true })
   })
   const update = card.getByRole('button', { name: 'Update API key' })
+  const fresh = card.getByLabel('Private API key', { exact: true })
+  // Wait for whichever state the page shows before deciding.
+  await expect(update.or(fresh)).toBeVisible()
   if (await update.isVisible()) await update.click()
   const field = card.getByLabel(/^(New private|Private) API key$/)
   await field.fill(key)
@@ -49,7 +52,7 @@ test('UIR-013 owner connects sample Klaviyo and Shopify accounts', async ({
     has: page.getByRole('heading', { name: 'Klaviyo', exact: true })
   })
   await expect(card.getByRole('status')).toHaveText('Klaviyo Connected')
-  await expect(card.getByText(/Pulled \d+ templates/i)).toBeVisible()
+  await expect(card.getByText(/Pulled \d+ sample templates/i)).toBeVisible()
   await expect(
     card.getByText(` · ${hint(first, 8)}`, { exact: false })
   ).toBeVisible()
@@ -88,7 +91,7 @@ test('UIR-013 owner connects sample Klaviyo and Shopify accounts', async ({
   await form.getByRole('button', { name: 'Verify & connect' }).click()
   await expect(
     form.getByText(
-      'Shopify connected with sample products. Nothing was sent to Shopify.'
+      'Shopify connected. Sample products are on their way. Nothing was sent to Shopify.'
     )
   ).toBeVisible()
   await page.reload()
@@ -140,9 +143,10 @@ test('UIR-013 Connections fits a 375px screen and works by keyboard', async ({
   })
   await open.focus()
   await page.keyboard.press('Enter')
+  // Focus moves straight into the new form.
   const domain = page.getByLabel('Shop domain')
-  await expect(domain).toBeVisible()
-  await domain.focus()
+  await expect(domain).toBeFocused()
+  await expect(open).toHaveAttribute('aria-expanded', 'true')
   await page.keyboard.type('cedar-lane')
   await page.keyboard.press('Tab')
   await expect(page.getByLabel('Admin API access token')).toBeFocused()

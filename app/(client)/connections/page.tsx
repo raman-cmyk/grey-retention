@@ -15,17 +15,12 @@ import {
   ConnectionsBoard,
   type ConnectionView
 } from '@/features/connections/board'
+import type { Database } from '@/lib/supabase/database.types'
 
-type Row = {
-  provider: string
-  status: string
-  account_label?: string | null
-  credential_hint?: string | null
-  shop_domain?: string | null
-  template_count?: number | null
-}
+type Row = Database['public']['Tables']['workspace_connections']['Row']
 // Older hosted databases may not have the display columns yet (migration
-// 20260914090017); the cards then show the status only.
+// 20260914090017); the fields are then undefined and the cards show the
+// status only.
 function view(row: Row | undefined): ConnectionView | null {
   if (!row) return null
   return {
@@ -42,7 +37,7 @@ export default async function ConnectionsPage() {
     owner = context.tenantRole === 'owner'
   if (!setup)
     return <Notice error>{error ?? 'Connection details unavailable.'}</Notice>
-  const rows = setup.connections as Row[]
+  const rows = setup.connections
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeading

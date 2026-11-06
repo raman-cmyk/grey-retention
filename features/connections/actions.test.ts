@@ -10,7 +10,7 @@ vi.mock('@/lib/supabase/server', () => supabase)
 import { connectKlaviyo, connectShopify } from './actions'
 
 const tenant = '00000000-0000-4000-8000-000000000101'
-const key = 'pk_YxS7Uab12cd34ef56gh78ij90kl12mn9de0'
+const key = 'pk_Ab3dEfg12hi34jk56lm78no90pq12rs1a2b'
 const token = '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'
 
 function form(values: Record<string, string>) {
@@ -63,7 +63,7 @@ describe('connectKlaviyo', () => {
       t: tenant,
       provider: 'klaviyo',
       account_label: 'Cedar Lane',
-      credential_hint: 'pk_YxS7U••••••••9de0',
+      credential_hint: 'pk_Ab3dE••••••••1a2b',
       template_count: 24
     })
     expect(allArgs()).not.toContain(key)
@@ -140,7 +140,7 @@ describe('connectShopify', () => {
       })
     )
     expect(result.message).toBe(
-      'Shopify connected with sample products. Nothing was sent to Shopify.'
+      'Shopify connected. Sample products are on their way. Nothing was sent to Shopify.'
     )
     expect(rpc).toHaveBeenCalledWith('connect_sample_provider', {
       t: tenant,
@@ -159,7 +159,7 @@ describe('connectShopify', () => {
   it('refuses an autofilled email address in the domain field', async () => {
     const result = await connectShopify(
       {},
-      form({ shopDomain: 'raman@greyemails.com', accessToken: token })
+      form({ shopDomain: 'owner@example.com', accessToken: token })
     )
     expect(result.error).toContain('looks like an email address')
     expect(rpc).not.toHaveBeenCalled()
@@ -175,6 +175,19 @@ describe('connectShopify', () => {
     )
     expect(result.error).toContain('API secret key')
     expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('tells the owner when the sample product import could not start', async () => {
+    rpc.mockImplementation(async (name: string) =>
+      name === 'enqueue_onboarding_job'
+        ? { data: null, error: { code: '23514' } }
+        : { data: 1, error: null }
+    )
+    const result = await connectShopify(
+      {},
+      form({ shopDomain: 'cedar-lane.myshopify.com', accessToken: token })
+    )
+    expect(result.message).toContain('sample product import did not start')
   })
 
   it('does not queue a sync when saving fails', async () => {

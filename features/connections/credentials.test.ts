@@ -6,14 +6,15 @@ import {
   maskSecret
 } from './credentials'
 
-const klaviyoKey = 'pk_YxS7Uab12cd34ef56gh78ij90kl12mn9de0'
+const klaviyoKey = 'pk_Ab3dEfg12hi34jk56lm78no90pq12rs1a2b'
 const shopifyToken = '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'
 // Same shape as the database check on workspace_connections.credential_hint.
-const storedHint = /^(pk|shpat|shpca)_[A-Za-z0-9]{1,8}•{8}[A-Za-z0-9]{4}$/
+const storedHint =
+  /^(pk_[A-Za-z0-9]{5}|shp(at|ca)_[A-Za-z0-9]{4})•{8}[A-Za-z0-9]{4}$/
 
 describe('maskSecret', () => {
   it('keeps only the start and the last four characters', () => {
-    expect(maskSecret(klaviyoKey, 8)).toBe('pk_YxS7U••••••••9de0')
+    expect(maskSecret(klaviyoKey, 8)).toBe('pk_Ab3dE••••••••1a2b')
   })
 })
 
@@ -22,7 +23,7 @@ describe('checkKlaviyoKey', () => {
     const result = checkKlaviyoKey(`  ${klaviyoKey}\n`)
     expect(result).toEqual({
       ok: true,
-      value: { hint: 'pk_YxS7U••••••••9de0' }
+      value: { hint: 'pk_Ab3dE••••••••1a2b' }
     })
     expect(JSON.stringify(result)).not.toContain('ab12cd34')
     expect(result.ok && result.value.hint).toMatch(storedHint)
@@ -34,11 +35,11 @@ describe('checkKlaviyoKey', () => {
     ['AbC123', 'That looks like your public site ID.'],
     ['pk_short', 'That is not a Klaviyo private API key.'],
     [
-      'sk_YxS7Uab12cd34ef56gh78ij90kl12mn',
+      'sk_Ab3dEfg12hi34jk56lm78no90pq12rs',
       'That is not a Klaviyo private API key.'
     ],
     [
-      'pk_YxS7U ab12cd34ef56gh78ij90kl12mn',
+      'pk_Ab3dE fg12hi34jk56lm78no90pq12rs',
       'That is not a Klaviyo private API key.'
     ]
   ])('refuses %j with a plain explanation', (input, message) => {
@@ -65,7 +66,7 @@ describe('checkShopDomain', () => {
   })
 
   it('refuses an autofilled email address (old-app bug)', () => {
-    const result = checkShopDomain('raman@greyemails.com')
+    const result = checkShopDomain('owner@example.com')
     expect(result.ok).toBe(false)
     expect(!result.ok && result.error).toContain('looks like an email address')
   })

@@ -119,16 +119,20 @@ export async function connectShopify(
   })
   if (saved.error) return { error: failed(saved.error.code) }
   // Same idempotent sample sync the setup tools queue; the worker runs it.
-  await db.rpc('enqueue_onboarding_job', {
+  const sync = await db.rpc('enqueue_onboarding_job', {
     t: context.tenantId,
     kind: 'commerce.sync'
   })
   revalidatePath('/connections')
-  revalidatePath('/store')
   revalidatePath('/brand')
+  if (sync.error)
+    return {
+      message:
+        'Shopify connected, but the sample product import did not start. Open Sample data tools below and queue it again.'
+    }
   return {
     message: verifier.live
       ? 'Shopify connected.'
-      : 'Shopify connected with sample products. Nothing was sent to Shopify.'
+      : 'Shopify connected. Sample products are on their way. Nothing was sent to Shopify.'
   }
 }

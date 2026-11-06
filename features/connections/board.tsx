@@ -1,5 +1,5 @@
 'use client'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowRight,
   Check,
@@ -12,7 +12,9 @@ import {
 } from 'lucide-react'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { Button } from '@/components/ui/button'
+import { StatusMark } from '@/components/ui/status-mark'
 import { TextField } from '@/components/ui/text-field'
+import { Field } from '@/components/ui/workspace'
 import { connectKlaviyo, connectShopify } from './actions'
 
 /** What the screen needs from one `workspace_connections` row. */
@@ -26,6 +28,16 @@ export type ConnectionView = {
 
 const sampleNote =
   'Sample mode: we check the format only. Nothing is sent to the provider, and the full key is never saved — only the masked hint.'
+const labelClass =
+  'tracking-label font-mono text-[0.6875rem] font-semibold text-[var(--text-muted)] uppercase'
+const secretProps = {
+  type: 'password',
+  autoComplete: 'off',
+  spellCheck: false,
+  required: true,
+  'data-1p-ignore': true,
+  'data-lpignore': 'true'
+} as const
 
 function Card({ children }: { children: ReactNode }) {
   return (
@@ -62,29 +74,22 @@ function Benefits({ items }: { items: string[] }) {
   )
 }
 
-function FieldLabel({
-  htmlFor,
-  children
-}: {
-  htmlFor: string
-  children: ReactNode
-}) {
-  return (
-    <label
-      htmlFor={htmlFor}
-      className="block text-[11px] font-semibold tracking-[0.08em] text-[var(--text-muted)] uppercase"
-    >
-      {children}
-    </label>
-  )
-}
-
-/** Looks like the accent button, but is a status, not an action. */
+/**
+ * Looks like the accent button, but is a status, not an action. When the card
+ * flips to connected, focus moves here so keyboard and screen-reader users
+ * land on the new state instead of the page body.
+ */
 function ConnectedBadge({ label }: { label: string }) {
+  const ref = useRef<HTMLParagraphElement>(null)
+  useEffect(() => {
+    if (document.activeElement === document.body) ref.current?.focus()
+  }, [])
   return (
     <p
+      ref={ref}
+      tabIndex={-1}
       role="status"
-      className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-control)] bg-[var(--brand-secondary)] px-4 text-sm font-medium text-[var(--on-brand-secondary)]"
+      className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-control)] bg-[var(--brand-secondary)] px-4 text-sm font-medium text-[var(--on-brand-secondary)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
     >
       <Check className="size-4" aria-hidden="true" />
       {label}
@@ -103,7 +108,7 @@ function NeedsAttention({
   if (!connection || !['expired', 'error'].includes(connection.status))
     return null
   return (
-    <p role="alert" className="flex gap-2 text-sm text-[var(--danger-ink)]">
+    <p className="flex gap-2 text-sm text-[var(--danger-ink)]">
       <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <span>
         {connection.status === 'expired'
@@ -112,6 +117,33 @@ function NeedsAttention({
         {action}
       </span>
     </p>
+  )
+}
+
+/** Text link styled toggle that reports and keeps its open state. */
+function Disclosure({
+  open,
+  controls,
+  onToggle,
+  children
+}: {
+  open: boolean
+  controls: string
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <div className="flex justify-center">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={open ? controls : undefined}
+        onClick={onToggle}
+        className="text-sm font-medium text-[var(--brand-ink)] underline-offset-4 hover:underline"
+      >
+        {children}
+      </button>
+    </div>
   )
 }
 
@@ -124,6 +156,7 @@ function KlaviyoCard({
 }) {
   const [swapping, setSwapping] = useState(false)
   const connected = connection?.status === 'connected'
+  const showKeyField = owner && (!connected || swapping)
   return (
     <Card>
       <div className="flex items-start justify-between gap-3">
@@ -131,10 +164,9 @@ function KlaviyoCard({
           <Mail className="size-5" />
         </Tile>
         {connected && connection?.templateCount != null && (
-          <span className="bg-success-faint text-success inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-[0.06em] uppercase">
-            <Check className="size-3.5" aria-hidden="true" />
-            Pulled {connection.templateCount} templates
-          </span>
+          <StatusMark tone="success">
+            Pulled {connection.templateCount} sample templates
+          </StatusMark>
         )}
       </div>
       <h2 className="text-lg font-semibold">Klaviyo</h2>
@@ -145,88 +177,91 @@ function KlaviyoCard({
           'Deliverability insights'
         ]}
       />
-      <div className="mt-auto space-y-3">
-        <NeedsAttention
-          connection={connection}
-          action={
-            owner
-              ? 'Paste a new private API key to reconnect.'
-              : 'Ask your workspace owner to reconnect it.'
-          }
-        />
-        {connected ? (
-          <>
-            <ConnectedBadge label="Klaviyo Connected" />
-            <p className="text-center text-xs text-[var(--text-muted)]">
-              {[connection?.accountLabel, connection?.credentialHint]
-                .filter(Boolean)
-                .join(' · ') || 'Sample account'}
-            </p>
-            <p className="text-center text-xs text-[var(--text-muted)]">
-              Sample data — nothing is sent to Klaviyo.
-            </p>
-            {owner && !swapping && (
-              <button
-                type="button"
-                className="mx-auto block text-sm font-medium text-[var(--brand-ink)] underline-offset-4 hover:underline"
-                onClick={() => setSwapping(true)}
+      {/* One form for connect and swap, so its result survives the switch
+          to the connected state. */}
+      <div className="mt-auto">
+        {owner ? (
+          <ActionForm action={connectKlaviyo} className="space-y-3">
+            <NeedsAttention
+              connection={connection}
+              action="Paste a new private API key to reconnect."
+            />
+            {connected && <ConnectedSummary connection={connection} />}
+            {connected && (
+              <Disclosure
+                open={swapping}
+                controls="klaviyo-key-swap"
+                onToggle={() => setSwapping((open) => !open)}
               >
                 Update API key
-              </button>
+              </Disclosure>
             )}
-            {owner && swapping && (
-              <KeyForm
-                label="New private API key"
-                submit="Validate & swap key"
-                // Spec wording says "validated against Klaviyo"; in sample mode only the
-                // format is checked, so say exactly that until live verification exists.
-                caption="The new key is checked before we save. If it fails, your existing key stays in place."
-              />
+            {showKeyField && (
+              <div id="klaviyo-key-swap" className="space-y-3">
+                <Field
+                  label={connected ? 'New private API key' : 'Private API key'}
+                >
+                  <TextField
+                    name="apiKey"
+                    placeholder="pk_…"
+                    autoFocus={connected}
+                    {...secretProps}
+                  />
+                </Field>
+                <div className="grid [&>button]:w-full">
+                  <SubmitButton pendingLabel="Checking…">
+                    {connected ? 'Validate & swap key' : 'Connect'}
+                  </SubmitButton>
+                </div>
+                {connected && (
+                  // Spec wording says "validated against Klaviyo"; in sample
+                  // mode only the format is checked, so say exactly that.
+                  <p className="text-xs text-[var(--text-muted)]">
+                    The new key is checked before we save. If it fails, your
+                    existing key stays in place.
+                  </p>
+                )}
+                <p className="text-xs text-[var(--text-muted)]">{sampleNote}</p>
+              </div>
             )}
-          </>
-        ) : owner ? (
-          <KeyForm label="Private API key" submit="Connect" />
+          </ActionForm>
+        ) : connected ? (
+          <div className="space-y-3">
+            <ConnectedSummary connection={connection} />
+          </div>
         ) : (
-          <p className="text-sm text-[var(--text-muted)]">
-            Not connected. Ask your workspace owner to connect Klaviyo.
-          </p>
+          <div className="space-y-3">
+            <NeedsAttention
+              connection={connection}
+              action="Ask your workspace owner to reconnect it."
+            />
+            <p className="text-sm text-[var(--text-muted)]">
+              Not connected. Ask your workspace owner to connect Klaviyo.
+            </p>
+          </div>
         )}
       </div>
     </Card>
   )
 }
 
-function KeyForm({
-  label,
-  submit,
-  caption
+function ConnectedSummary({
+  connection
 }: {
-  label: string
-  submit: string
-  caption?: string
+  connection: ConnectionView | null
 }) {
   return (
-    <ActionForm action={connectKlaviyo} className="space-y-3">
-      <div className="space-y-2">
-        <FieldLabel htmlFor="klaviyo-key">{label}</FieldLabel>
-        <TextField
-          id="klaviyo-key"
-          name="apiKey"
-          type="password"
-          placeholder="pk_…"
-          autoComplete="off"
-          spellCheck={false}
-          required
-          data-1p-ignore
-          data-lpignore="true"
-        />
-      </div>
-      <div className="grid [&>button]:w-full">
-        <SubmitButton variant="primary">{submit}</SubmitButton>
-      </div>
-      {caption && <p className="text-xs text-[var(--text-muted)]">{caption}</p>}
-      <p className="text-xs text-[var(--text-muted)]">{sampleNote}</p>
-    </ActionForm>
+    <>
+      <ConnectedBadge label="Klaviyo Connected" />
+      <p className="text-center text-xs text-[var(--text-muted)]">
+        {[connection?.accountLabel, connection?.credentialHint]
+          .filter(Boolean)
+          .join(' · ') || 'Sample account'}
+      </p>
+      <p className="text-center text-xs text-[var(--text-muted)]">
+        Sample data — nothing is sent to Klaviyo.
+      </p>
+    </>
   )
 }
 
@@ -234,12 +269,12 @@ function ShopifyCard({
   connection,
   owner,
   open,
-  onOpen
+  onToggle
 }: {
   connection: ConnectionView | null
   owner: boolean
   open: boolean
-  onOpen: () => void
+  onToggle: () => void
 }) {
   const connected = connection?.status === 'connected'
   return (
@@ -280,19 +315,6 @@ function ShopifyCard({
             </p>
           </>
         )}
-        {owner && !open && (
-          <Button
-            type="button"
-            variant={connected ? 'quiet' : 'primary'}
-            className={connected ? 'mx-auto' : 'w-full self-stretch'}
-            onClick={onOpen}
-            aria-expanded={false}
-            aria-controls="connect-shopify"
-          >
-            {connected ? 'Update access token' : 'Connect Shopify'}
-            {!connected && <ArrowRight className="size-4" aria-hidden="true" />}
-          </Button>
-        )}
         {!connected && (
           // Owner brief §13: say what is missing without Shopify.
           <p className="text-xs text-[var(--warning-ink)]">
@@ -300,6 +322,28 @@ function ShopifyCard({
             outdated.
           </p>
         )}
+        {owner &&
+          (connected ? (
+            <Disclosure
+              open={open}
+              controls="connect-shopify"
+              onToggle={onToggle}
+            >
+              Update access token
+            </Disclosure>
+          ) : (
+            <div className="grid [&>button]:w-full">
+              <Button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={open}
+                aria-controls={open ? 'connect-shopify' : undefined}
+              >
+                Connect Shopify
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </Button>
+            </div>
+          ))}
         {!owner && !connected && (
           <p className="text-sm text-[var(--text-muted)]">
             Not connected. Ask your workspace owner to connect Shopify.
@@ -319,6 +363,7 @@ const scopes = [
 
 function ShopifyForm({ domain }: { domain: string | null }) {
   const [shop, setShop] = useState(domain ?? '')
+  const email = shop.includes('@')
   return (
     <section
       id="connect-shopify"
@@ -345,28 +390,31 @@ function ShopifyForm({ domain }: { domain: string | null }) {
           </a>
         </p>
       </div>
-      <ActionForm action={connectShopify} className="space-y-5" preserveValues>
+      {/* The token field is uncontrolled, so it is cleared after each
+          submit; the domain is kept. */}
+      <ActionForm action={connectShopify} className="space-y-5">
         <div className="space-y-2">
-          <FieldLabel htmlFor="shop-domain">Shop domain</FieldLabel>
-          {/* Old-app bug: browsers autofilled an email address here. */}
-          <TextField
-            id="shop-domain"
-            name="shopDomain"
-            value={shop}
-            onChange={(event) => setShop(event.target.value)}
-            placeholder="your-store.myshopify.com"
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            inputMode="url"
-            required
-            data-1p-ignore
-            data-lpignore="true"
-            aria-describedby="shop-domain-help"
-            aria-invalid={shop.includes('@') ? true : undefined}
-          />
+          <Field label="Shop domain">
+            {/* Old-app bug: browsers autofilled an email address here. */}
+            <TextField
+              name="shopDomain"
+              value={shop}
+              onChange={(event) => setShop(event.target.value)}
+              placeholder="your-store.myshopify.com"
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              inputMode="url"
+              required
+              autoFocus
+              data-1p-ignore
+              data-lpignore="true"
+              aria-describedby="shop-domain-help"
+              aria-invalid={email ? true : undefined}
+            />
+          </Field>
           <p id="shop-domain-help" className="text-xs text-[var(--text-muted)]">
-            {shop.includes('@') ? (
+            {email ? (
               <span className="text-[var(--danger-ink)]">
                 That looks like an email address. Use your store’s
                 .myshopify.com address.
@@ -379,19 +427,14 @@ function ShopifyForm({ domain }: { domain: string | null }) {
           </p>
         </div>
         <div className="space-y-2">
-          <FieldLabel htmlFor="shop-token">Admin API access token</FieldLabel>
-          <TextField
-            id="shop-token"
-            name="accessToken"
-            type="password"
-            placeholder="shpat_…"
-            autoComplete="off"
-            spellCheck={false}
-            required
-            data-1p-ignore
-            data-lpignore="true"
-            aria-describedby="shop-token-help"
-          />
+          <Field label="Admin API access token">
+            <TextField
+              name="accessToken"
+              placeholder="shpat_…"
+              aria-describedby="shop-token-help"
+              {...secretProps}
+            />
+          </Field>
           <p id="shop-token-help" className="text-xs text-[var(--text-muted)]">
             Starts with <code>shpat_</code> or <code>shpca_</code>. In your
             Custom App:{' '}
@@ -428,14 +471,16 @@ function ShopifyForm({ domain }: { domain: string | null }) {
         </div>
         <p className="text-xs text-[var(--text-muted)]">{sampleNote}</p>
         <div className="flex justify-end">
-          <SubmitButton>
+          <SubmitButton pendingLabel="Checking…">
             <Link2 className="size-4" aria-hidden="true" />
             Verify & connect
           </SubmitButton>
         </div>
       </ActionForm>
       <details className="border-t border-[var(--line)] pt-4 text-sm">
-        <summary className="flex cursor-pointer items-center gap-2 text-[11px] font-semibold tracking-[0.08em] text-[var(--text-muted)] uppercase">
+        <summary
+          className={`flex cursor-pointer items-center gap-2 ${labelClass}`}
+        >
           <CircleHelp className="size-4" aria-hidden="true" />
           Common issues
         </summary>
@@ -482,7 +527,7 @@ export function ConnectionsBoard({
           connection={shopify}
           owner={owner}
           open={shopifyOpen}
-          onOpen={() => setShopifyOpen(true)}
+          onToggle={() => setShopifyOpen((open) => !open)}
         />
       </div>
       {owner && shopifyOpen && (

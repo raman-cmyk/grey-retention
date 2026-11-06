@@ -6,10 +6,15 @@
 -- checks a key's format and keeps a masked hint (first characters, bullets,
 -- last four) so the owner can recognise which key was used.
 alter table public.workspace_connections
+  -- A display name, never a secret: blank and key-shaped values are refused.
   add column account_label text
-    check (account_label is null or char_length(account_label) between 1 and 200),
+    check (account_label is null or (char_length(account_label) between 1 and 200
+      and btrim(account_label) <> ''
+      and account_label !~ '(pk|sk|shp(at|ca|ss|pa))_[A-Za-z0-9]{8,}')),
+  -- Exactly what the masking code keeps: pk_ + 5 or shpat_/shpca_ + 4
+  -- characters, eight U+2022 bullets, then the last four characters.
   add column credential_hint text
-    check (credential_hint is null or credential_hint ~ '^(pk|shpat|shpca)_[A-Za-z0-9]{1,8}•{8}[A-Za-z0-9]{4}$'),
+    check (credential_hint is null or credential_hint ~ '^(pk_[A-Za-z0-9]{5}|shp(at|ca)_[A-Za-z0-9]{4})\u2022{8}[A-Za-z0-9]{4}$'),
   add column shop_domain text
     check (shop_domain is null or shop_domain ~ '^[a-z0-9][a-z0-9-]{0,62}\.myshopify\.com$'),
   add column template_count integer
@@ -40,12 +45,14 @@ begin
     or (provider = 'shopify' and template_count is not null) then
     raise exception 'Connection details required' using errcode = '23514';
   end if;
+  -- last_sync_at is left alone: connecting is not a sync. The sample sync
+  -- job sets it when it actually finishes.
   insert into public.workspace_connections as c (
     tenant_id, provider, status, fixture_account, account_label, credential_hint,
-    shop_domain, template_count, connected_at, last_sync_at, last_error
+    shop_domain, template_count, connected_at, last_error
   ) values (
     t, provider, 'connected', 'fixture:' || t || ':' || provider, account_label,
-    credential_hint, shop_domain, template_count, now(), now(), null
+    credential_hint, shop_domain, template_count, now(), null
   )
   on conflict on constraint workspace_connections_pkey do update set
     status = 'connected',
@@ -54,7 +61,6 @@ begin
     shop_domain = excluded.shop_domain,
     template_count = excluded.template_count,
     connected_at = now(),
-    last_sync_at = now(),
     last_error = null,
     revision = c.revision + 1,
     updated_at = now()
@@ -62,5 +68,8 @@ begin
   return r;
 end $$;
 
-revoke all on function public.connect_sample_provider(uuid, text, text, text, text, integer) from public, anon;
+revoke all on function public.connect_sample_provider(uuid, text, text, text, text, integer) from public, anon, service_role;
 grant execute on function public.connect_sample_provider(uuid, text, text, text, text, integer) to authenticated;
+-- Clients only ever read connections; every write goes through a command.
+revoke all on public.workspace_connections from anon, authenticated;
+grant select on public.workspace_connections to authenticated;

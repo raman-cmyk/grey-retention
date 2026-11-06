@@ -2,10 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-vi.mock('./actions', () => ({
+const actions = vi.hoisted(() => ({
   connectKlaviyo: vi.fn(async () => ({})),
   connectShopify: vi.fn(async () => ({}))
 }))
+vi.mock('./actions', () => actions)
 
 import { ConnectionsBoard, type ConnectionView } from './board'
 
@@ -13,8 +14,8 @@ afterEach(cleanup)
 
 const klaviyo: ConnectionView = {
   status: 'connected',
-  accountLabel: 'Dreams Studio',
-  credentialHint: 'pk_YxS7U••••••••9de0',
+  accountLabel: 'Juniper Supply',
+  credentialHint: 'pk_Ab3dE••••••••1a2b',
   shopDomain: null,
   templateCount: 218
 }
@@ -78,19 +79,19 @@ describe('ConnectionsBoard', () => {
   it('shows the connected Klaviyo state and reveals the key swap', async () => {
     render(<ConnectionsBoard owner klaviyo={klaviyo} shopify={null} />)
     const k = card('Klaviyo')
-    expect(within(k).getByText('Pulled 218 templates')).toBeVisible()
+    expect(within(k).getByText('Pulled 218 sample templates')).toBeVisible()
     expect(within(k).getByRole('status')).toHaveTextContent('Klaviyo Connected')
     expect(
-      within(k).getByText('Dreams Studio · pk_YxS7U••••••••9de0')
+      within(k).getByText('Juniper Supply · pk_Ab3dE••••••••1a2b')
     ).toBeVisible()
     expect(within(k).queryByLabelText('New private API key')).toBeNull()
-    await userEvent.click(
-      within(k).getByRole('button', { name: 'Update API key' })
-    )
-    expect(within(k).getByLabelText('New private API key')).toHaveAttribute(
-      'type',
-      'password'
-    )
+    const toggle = within(k).getByRole('button', { name: 'Update API key' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    const key = within(k).getByLabelText('New private API key')
+    expect(key).toHaveAttribute('type', 'password')
+    expect(key).toHaveFocus()
     expect(
       within(k).getByRole('button', { name: 'Validate & swap key' })
     ).toBeVisible()
@@ -104,9 +105,12 @@ describe('ConnectionsBoard', () => {
     expect(
       screen.queryByRole('heading', { name: 'Connect your Shopify store' })
     ).toBeNull()
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Connect Shopify' })
-    )
+    const open = screen.getByRole('button', { name: 'Connect Shopify' })
+    expect(open).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(open)
+    expect(open).toHaveAttribute('aria-expanded', 'true')
+    expect(open).toHaveAttribute('aria-controls', 'connect-shopify')
+    expect(screen.getByLabelText('Shop domain')).toHaveFocus()
     const form = screen
       .getByRole('heading', { name: 'Connect your Shopify store' })
       .closest('section')!
@@ -165,23 +169,53 @@ describe('ConnectionsBoard', () => {
         shopify={{ ...klaviyo, status: 'error', templateCount: null }}
       />
     )
-    expect(within(card('Klaviyo')).getByRole('alert')).toHaveTextContent(
-      'This connection has expired. Paste a new private API key to reconnect.'
-    )
-    expect(within(card('Shopify')).getByRole('alert')).toHaveTextContent(
-      'This connection stopped working. Connect the store again with a new access token.'
-    )
+    expect(
+      within(card('Klaviyo')).getByText(
+        'This connection has expired. Paste a new private API key to reconnect.'
+      )
+    ).toBeVisible()
+    expect(
+      within(card('Shopify')).getByText(
+        'This connection stopped working. Connect the store again with a new access token.'
+      )
+    ).toBeVisible()
+    // Present at page load, so not announced as an alert every time.
+    expect(screen.queryByRole('alert')).toBeNull()
     expect(
       within(card('Klaviyo')).getByLabelText('Private API key')
     ).toBeVisible()
-    expect(
-      within(card('Klaviyo')).queryByText('Pulled 218 templates')
-    ).toBeNull()
+    expect(within(card('Klaviyo')).queryByText(/Pulled 218/)).toBeNull()
   })
 
   it('shows no warning for healthy or missing connections', () => {
     render(<ConnectionsBoard owner klaviyo={klaviyo} shopify={null} />)
-    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByText(/This connection/)).toBeNull()
+  })
+
+  it('keeps the success message and focus when the card switches to connected', async () => {
+    actions.connectKlaviyo.mockResolvedValueOnce({
+      message:
+        'Klaviyo connected with sample data. Nothing was sent to Klaviyo.'
+    })
+    const view = render(
+      <ConnectionsBoard owner klaviyo={null} shopify={null} />
+    )
+    await userEvent.type(
+      screen.getByLabelText('Private API key'),
+      'pk_Ab3dEfg12hi34jk56lm78no90pq12rs1a2b'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }))
+    await screen.findByText(
+      'Klaviyo connected with sample data. Nothing was sent to Klaviyo.'
+    )
+    // The server re-renders the page with the saved connection.
+    view.rerender(<ConnectionsBoard owner klaviyo={klaviyo} shopify={null} />)
+    expect(
+      screen.getByText(
+        'Klaviyo connected with sample data. Nothing was sent to Klaviyo.'
+      )
+    ).toBeVisible()
+    expect(within(card('Klaviyo')).getByRole('status')).toHaveFocus()
   })
 
   it('labels the sample mode honestly', () => {
