@@ -103,17 +103,19 @@ Not crawled (needs a logged-out or admin session): login, signup, onboarding, pa
 
 ### Detail-page pattern (all Klaviyo objects)
 
-- [ ] Narrow centred column, ~1020px wide.
-- [ ] Top row: `← Back to dashboard` (muted link) on the left, outline `⟳ Refresh` on the right.
-- [ ] **Hero card:**
+Built as shared parts in `components/ui/detail-page.tsx` and `lib/brand-time.ts`; the §4 pages use them.
+
+- [x] Narrow centred column, ~1020px wide.
+- [x] Top row: `← Back to dashboard` (muted link) on the left, outline `⟳ Refresh` on the right. Back returns to the dashboard tab the owner came from (`?from=campaigns` → `/dashboard?tab=campaigns`, OWNER_JOURNEYS.md Job 5 fix).
+- [x] **Hero card:**
   - 44px rounded-square icon tile (inverted colours)
   - tiny uppercase type label: `LIST` / `SEGMENT` / `CAMPAIGN` / `FLOW` / `METRIC`
   - large title
   - status pill underneath, where the object has one
-- [ ] Then stat cards, plain-English explainer cards, and a **Timeline** card (CREATED / LAST UPDATED).
-  - Date format: `Oct 7, 2026 · 10:49 PM`
+- [x] Then stat cards, plain-English explainer cards, and a **Timeline** card (CREATED / LAST UPDATED).
+  - Date format: `Oct 7, 2026 · 10:49 PM`, followed by the one brand timezone, e.g. `(Sydney time)` (OWNER_JOURNEYS.md §18.14)
   - Muted relative time under each date: `4 weeks ago`
-- [ ] Last card is a collapsible **Advanced details** row (tune icon, object id in mono on the right). When expanded it shows:
+- [x] Last card is a collapsible **Advanced details** row (tune icon, object id in mono on the right). When expanded it shows:
   - "All attributes from Klaviyo" as a 2-col key/value grid
   - "Linked resources" (PROFILES / TAGS / FLOW TRIGGERS, showing `none` when empty)
 
@@ -155,11 +157,11 @@ Not crawled (needs a logged-out or admin session): login, signup, onboarding, pa
 
 ## 3. Dashboard `/dashboard`
 
-- [ ] Header "Dashboard" / "Retention health at a glance." + `⟳ Refresh` (re-pulls Klaviyo).
+- [x] Header "Dashboard" / "Retention health at a glance." ~~+ `⟳ Refresh`~~: no Refresh yet. Sample data has nothing to re-pull and says so plainly; a live re-pull will be a server action with a pending state (OWNER_JOURNEYS.md §3).
 
 ### KPI strip
 
-- [ ] 8 small cards in one row (they scroll horizontally on narrow screens):
+- [x] 8 small cards in one row (they scroll horizontally on narrow screens). Built as **5 real KPIs**: the "Coming soon" tiles are removed (OWNER_JOURNEYS.md §18.7), revenue tiles name their source and period, LIST GROWTH is "Net change", and ACTIVE SUBS is no longer shown twice:
 
   | Label            | Value  | Caption            |
   | ---------------- | ------ | ------------------ |
@@ -172,97 +174,97 @@ Not crawled (needs a logged-out or admin session): login, signup, onboarding, pa
   | ACTIVE SUBS      | 16.5K  | ↑ 15% vs 30d       |
   | ABANDONED        | 419    | checkouts · 30d    |
 
-- [ ] Each card: tiny uppercase label (truncates with …), big value, small caption.
-- [ ] An up trend shows in the success colour with ↑. A down trend uses the danger colour.
-- [ ] A metric that isn't ready yet shows `—`, an ⓘ icon with a tooltip, and "Coming soon".
+- [x] Each card: tiny uppercase label (truncates with …), big value, small caption.
+- [x] An up trend shows in the success colour with ↑. A down trend uses the danger colour.
+- [ ] ~~A metric that isn't ready yet shows `—`, an ⓘ icon with a tooltip, and "Coming soon".~~ Not built: unready metrics are hidden (§18.7).
 
 ### Row 2 (3 cards)
 
-- [ ] **Email revenue this month:**
+- [x] **Email revenue this month:**
   - small label at the top
   - segmented toggle `Klaviyo | UTM`
     - Klaviyo tooltip: "Klaviyo $flow and $campaign attribution (last 30d, clamped to MTD)"
     - UTM tooltip: "Shopify orders with utm_source=klaviyo or utm_medium=email (month-to-date)"
   - **semicircle gauge** (track + fill = revenue/goal), value `$15,845.99` in the centre, "of $300,000 goal" under it
-  - disclosure `▸ Set monthly goal`, which opens a number input (placeholder "e.g. 40000") + Save
-- [ ] **Next campaign countdown:**
+  - disclosure `▸ Set monthly goal`, which opens a number input (placeholder "e.g. 40000") + Save. **Not built yet**: it needs a migration. The gauge says "No monthly goal set yet."
+- [x] **Next campaign countdown:**
   - clock icon
   - countdown to the next scheduled or planned send
   - empty state: "—" + "No scheduled or planned campaigns. Schedule one to see the countdown." + link `Schedule a campaign →` (`/campaign-drafts/new`)
-- [ ] **Campaign Calendar mini:**
+- [x] **Campaign Calendar mini:**
   - header + `View All` (`/calendar`)
   - list of upcoming campaigns
   - empty state: "No upcoming campaigns. [Create one →]"
 
 ### Row 3
 
-- [ ] **Small card:** medal icon, "—", "Campaign approval workflow not yet built". This is a placeholder slot for approvals.
-- [ ] **Wide GROS insight card:**
-  - inverted pill `✦ GROS` + green live dot
-  - `⟳ Generate` text button on the right, with tooltip "Regenerate insight (consumes tokens from your package)"
+- [x] **Small card:** medal icon. Instead of the placeholder it shows the campaigns really waiting for the owner (count + up to 3 links).
+- [x] **Wide GROS insight card:**
+  - inverted pill `✦ GROS` (no live dot: the insight is not live AI)
+  - `⟳ Generate` on the right. It writes an insight from the numbers, uses no AI and no tokens, and says so.
   - body: italic muted placeholder "Click "Generate" to get a fresh GROS insight on your retention performance — runs against your current metrics and brand context. Tokens deducted from your active Token Package."
   - after generating, the insight text replaces the placeholder
 
 ### Detailed Klaviyo data card
 
-- [ ] Header: database icon + "Detailed Klaviyo data", muted "Lists, segments, campaigns, flows, metrics" on the right.
-- [ ] Token plan strip.
-- [ ] **Revenue (Overview tab only):**
+- [x] Header: database icon + "Detailed Klaviyo data", muted "Lists, segments, campaigns, flows, metrics" on the right.
+- [x] ~~Token plan strip~~: the **AI credits** indicator, from the workspace's package allowance (owner and admin only, as on Settings), labelled sample.
+- [x] **Revenue (Overview tab only):**
   - label "REVENUE · LAST 30 DAYS"
   - huge number `A$70,178`
   - caption "attributed to Klaviyo emails & flows · 30 active days"
   - right side: two mini stat boxes, AVG / DAY and BEST DAY (+ date)
   - 30-bar daily chart; the best day's bar is highlighted in the accent colour; x labels at start / middle / end
   - **Add a hover tooltip per bar** (date + amount). The old app had none.
-- [ ] **Tabs** (underline style, icon + label + count pill; the active tab's count pill is inverted):
+- [x] **Tabs** (underline style, icon + label + count pill; the active tab's count pill is inverted):
   - Overview
   - Lists 9
   - Segments 21
   - Campaigns 41
   - Flows 7
   - Metrics 60
-- [ ] Tabs change `?tab=`. The old app reloaded the whole page; client-side switching is fine as long as the URL updates and the back button works.
+- [x] Tabs change `?tab=`. The old app reloaded the whole page; client-side switching is fine as long as the URL updates and the back button works.
 
 **Overview tab**
 
-- [ ] 6 stat cards:
+- [x] 6 stat cards:
   - LISTS — "view all"
   - SEGMENTS — "view all"
   - CAMPAIGNS — "view all"
   - FLOWS — "7 live · 0 draft"
   - METRICS — "event types"
   - INDUSTRY — value wraps
-- [ ] "view all" switches to that tab.
-- [ ] **Account card:**
+- [x] "view all" switches to that tab.
+- [x] **Account card:**
   - "Account" title + masked key on the right, in mono (`pk_YxS7U••••••••9de0`)
   - 5 columns: ORGANIZATION / INDUSTRY / TIMEZONE / CURRENCY / LOCALE
-- [ ] Info bar: "**What's next:** Switch tabs above to drill into lists, segments, campaigns, flows, or metrics. Click any row inside a tab to see full details." Each object word is a link to its tab.
+- [x] Info bar: "**What's next:** Switch tabs above to drill into lists, segments, campaigns, flows, or metrics. Click any row inside a tab to see full details." Each object word is a link to its tab.
 
 **Lists tab**
 
-- [ ] Card header: icon + "Lists" + count pill.
-- [ ] Columns: NAME / OPT-IN / UPDATED / CREATED.
-- [ ] Each row has a `›` chevron, the whole row is clickable, and it opens `/lists/:id`.
+- [x] Card header: icon + "Lists" + count pill.
+- [x] Columns: NAME / OPT-IN / UPDATED / CREATED.
+- [ ] Each row has a `›` chevron, the whole row is clickable, and it opens `/lists/:id`. Rows link once the §4 pages exist (next PR).
 
 **Segments tab**
 
-- [ ] Columns: NAME / STATE / UPDATED / CREATED.
-- [ ] Starred segments show an outline star before the name.
-- [ ] STATE shows an `active` pill in the success colour.
+- [x] Columns: NAME / STATE / UPDATED / CREATED.
+- [x] Starred segments show an outline star before the name.
+- [x] STATE shows an `active` pill in the success colour.
 
 **Campaigns tab**
 
-- [ ] Columns: NAME / STATUS / REVENUE (30D) / SEND TIME. Revenue is right-aligned and tabular (`A$372` or `—`).
-- [ ] Status pills: SENT (solid), CANCELLED (danger), DRAFT (warning).
+- [x] Columns: NAME / STATUS / REVENUE (30D) / SEND TIME. Revenue is right-aligned and tabular (`A$372` or `—`).
+- [x] Status pills: SENT (solid), CANCELLED (danger), DRAFT (warning).
 
 **Flows tab**
 
-- [ ] Header on the right: "30d revenue: **A$22,638** · ● 7 live · ● 0 draft".
-- [ ] Columns: NAME / TRIGGER (Metric, Added to List) / STATUS (LIVE) / REVENUE (30D), revenue right-aligned.
+- [x] Header on the right: "30d revenue: **A$22,638** · ● 7 live · ● 0 draft".
+- [x] Columns: NAME / TRIGGER (Metric, Added to List) / STATUS (LIVE) / REVENUE (30D), revenue right-aligned.
 
 **Metrics tab**
 
-- [ ] Columns: NAME / INTEGRATION (Klaviyo, Shopify) / CATEGORY (Internal, eCommerce) / CREATED.
+- [x] Columns: NAME / INTEGRATION (Klaviyo, Shopify) / CATEGORY (Internal, eCommerce) / CREATED.
 
 ---
 

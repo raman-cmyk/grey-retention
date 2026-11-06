@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -57,15 +57,32 @@ describe('EmailPreviewCard', () => {
     ).toBeInTheDocument()
   })
 
-  it('reloads the frame on Refresh and announces it every time', async () => {
+  it('reloads the frame on Refresh and announces it every time', () => {
     render(<EmailPreviewCard html="<p>Hi</p>" title="Preview" source="draft" />)
+    const status = screen.getByRole('status')
     const before = screen.getByTitle('Preview')
-    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-    expect(screen.getByTitle('Preview')).not.toBe(before)
-    expect(await screen.findByText('Preview reloaded.')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-    expect(screen.getByRole('status')).toHaveTextContent('')
-    expect(await screen.findByText('Preview reloaded.')).toBeInTheDocument()
+    // Capture the announcement timer instead of waiting for it.
+    const pending: (() => void)[] = []
+    const timer = vi.spyOn(window, 'setTimeout').mockImplementation(((
+      callback: () => void
+    ) => {
+      pending.push(callback)
+      return 0
+    }) as unknown as typeof window.setTimeout)
+    try {
+      const refresh = screen.getByRole('button', { name: 'Refresh' })
+      fireEvent.click(refresh)
+      expect(screen.getByTitle('Preview')).not.toBe(before)
+      act(() => pending.shift()?.())
+      expect(status).toHaveTextContent('Preview reloaded.')
+      // The same words again: cleared first, so screen readers hear it.
+      fireEvent.click(refresh)
+      expect(status).toBeEmptyDOMElement()
+      act(() => pending.shift()?.())
+      expect(status).toHaveTextContent('Preview reloaded.')
+    } finally {
+      timer.mockRestore()
+    }
   })
 
   it('offers Fullscreen only where the browser supports it', async () => {
