@@ -9,7 +9,7 @@ import {
   it,
   vi
 } from 'vitest'
-import { installDialogPolyfill } from '@/tests/unit/dialog-polyfill'
+import { installDialogPolyfill } from '@/tests/helpers/dialog-polyfill'
 import {
   adminNavigation,
   createClientNavigation,
