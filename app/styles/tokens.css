@@ -1,0 +1,101 @@
+/*
+ * Grey Retention design tokens. Specification: docs/DESIGN.md.
+ * Mirror of lib/design/tokens.ts; lib/design/tokens.test.ts fails if they differ.
+ * Not imported by the app yet: DS-001 wires these into the theme in milestone M1.
+ * Dark values apply under [data-theme="dark"].
+ */
+:root {
+  --gr-canvas: #faf9f7;
+  --gr-canvas-sunken: #f0ece8;
+  --gr-surface: #ffffff;
+  --gr-ink: #111111;
+  --gr-ink-muted: #58544e;
+  --gr-ink-subtle: #787572;
+  --gr-hairline: #e5e5e5;
+  --gr-hairline-strong: #8a8580;
+  --gr-accent: #1f40ed;
+  --gr-accent-strong: #0d2189;
+  --gr-accent-faint: #e7ebfd;
+  --gr-accent-text: #1f40ed;
+  --gr-on-accent: #ffffff;
+  --gr-on-ink: #ffffff;
+  --gr-inverse: #111111;
+  --gr-on-inverse: #f5f5f4;
+  --gr-on-inverse-muted: #a8a29e;
+  --gr-inverse-hairline: #2a2a2a;
+  --gr-success: #2f6b4f;
+  --gr-success-faint: #e8f1ec;
+  --gr-warning: #7a5300;
+  --gr-warning-faint: #f6eedb;
+  --gr-danger: #a3352b;
+  --gr-danger-faint: #f8e8e5;
+  --gr-on-danger: #ffffff;
+  --gr-font-display: var(--font-newsreader, 'Newsreader'), Georgia, serif;
+  --gr-font-ui:
+    var(--font-geist, 'Geist'), ui-sans-serif, system-ui, -apple-system,
+    sans-serif;
+  --gr-font-mono: var(--font-geist-mono, 'Geist Mono'), ui-monospace, monospace;
+  --gr-weight-display: 400;
+  --gr-weight-ui: 400;
+  --gr-weight-ui-strong: 500;
+  --gr-tracking-display: -0.03em;
+  --gr-tracking-label: 0.08em;
+  --gr-text-label: 0.6875rem;
+  --gr-text-small: 0.8125rem;
+  --gr-text-body: 0.9375rem;
+  --gr-text-lead: 1.125rem;
+  --gr-text-title: 1.75rem;
+  --gr-text-stat: clamp(2rem, 1.5rem + 2vw, 3rem);
+  --gr-text-display: clamp(2.5rem, 1.75rem + 3.5vw, 4.25rem);
+  --gr-leading-tight: 1.05;
+  --gr-leading-body: 1.55;
+  --gr-radius: 4px;
+  --gr-border-width: 1px;
+  --gr-space-1: 4px;
+  --gr-space-2: 8px;
+  --gr-space-3: 12px;
+  --gr-space-4: 16px;
+  --gr-space-6: 24px;
+  --gr-space-8: 32px;
+  --gr-space-12: 48px;
+  --gr-space-16: 64px;
+  --gr-space-24: 96px;
+  --gr-content-max: 1280px;
+  --gr-reading-max: 720px;
+  --gr-gutter-mobile: 16px;
+  --gr-gutter-desktop: 32px;
+  --gr-focus-width: 2px;
+  --gr-focus-offset: 2px;
+  --gr-duration-fast: 120ms;
+  --gr-duration-base: 180ms;
+  --gr-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --gr-canvas: #0f0f0e;
+  --gr-canvas-sunken: #0a0a09;
+  --gr-surface: #171717;
+  --gr-ink: #f5f5f4;
+  --gr-ink-muted: #a8a29e;
+  --gr-ink-subtle: #8a8580;
+  --gr-hairline: #262626;
+  --gr-hairline-strong: #6b6762;
+  --gr-accent: #4d6bff;
+  --gr-accent-strong: #8ea0ff;
+  --gr-accent-faint: #161c3d;
+  --gr-accent-text: #8ea0ff;
+  --gr-on-accent: #000000;
+  --gr-on-ink: #0f0f0e;
+  --gr-inverse: #1f1f1e;
+  --gr-on-inverse: #f5f5f4;
+  --gr-on-inverse-muted: #a8a29e;
+  --gr-inverse-hairline: #333333;
+  --gr-success: #86c4a1;
+  --gr-success-faint: #14231b;
+  --gr-warning: #d9b062;
+  --gr-warning-faint: #2a2213;
+  --gr-danger: #ec9a90;
+  --gr-danger-faint: #2c1816;
+  --gr-on-danger: #000000;
+}

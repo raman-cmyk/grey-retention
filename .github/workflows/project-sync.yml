@@ -1,0 +1,39 @@
+name: Project sync
+
+# Applies .github/project/roadmap.json: label colours and descriptions,
+# milestones with their goals, and the milestone of every roadmap issue.
+# It never creates, closes or rewrites issues.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only print the planned changes
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - .github/project/**
+      - docs/feature-register.json
+      - scripts/github/**
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: project-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/github/sync-project.mjs ${{ inputs.dry_run && '--dry-run' || '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

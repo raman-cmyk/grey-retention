@@ -91,7 +91,8 @@ Use `/new-migration <domain> <short_name>` to get the next number.
 ## Branches and pull requests
 
 - Branch from the latest integrated commit. Name branches `claude/<short-topic>`.
-- As of November 2026 there is an open stacked PR chain: #2 → #3 → #4 → #5 → #6 (simple onboarding → first-draft composer → pasted references → saved copies/OpenAI rewrite → email file import). Each PR targets the one below it, so merge bottom-up starting at #2. New feature work on that flow should branch from the top of the stack, not from `main`.
+- The earlier stacked PR chain (#2 → #6) is merged into `main`. Work now follows the milestones and issues in `docs/ROADMAP.md`: one issue per PR, branch `claude/<issue-id>-<slug>` from the latest `main`, P0 issues of the current milestone first.
+- Merging to `main` deploys the live app (Vercel). Labels and milestones come from `.github/project/roadmap.json` via the Project sync workflow; do not edit them by hand.
 - Keep PRs to one task ID. Update the task's row in `docs/BUILD_LEDGER.md` and append a handoff entry before asking for review (`/handoff`).
 
 ## Working with the owner
