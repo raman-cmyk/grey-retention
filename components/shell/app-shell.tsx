@@ -46,7 +46,7 @@ export function AppShell({
 
   return (
     <div
-      className="min-h-screen bg-[var(--surface)] text-[var(--text)]"
+      className="min-h-screen bg-[var(--surface)] font-sans text-[var(--text)]"
       style={brandStyle}
     >
       <a

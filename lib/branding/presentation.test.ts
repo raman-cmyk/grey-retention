@@ -111,3 +111,21 @@ describe('default theme follows the design language', () => {
     expect(variables['--font-data']).toContain('--font-geist-mono')
   })
 })
+
+describe('contrast gate covers the roles the design system exposes', () => {
+  it.each([
+    ['accent links', { secondary: '#ffd400' }],
+    ['error text on the page', { danger: '#ff8a80', onDanger: '#000000' }],
+    ['warning text on white', { warningInk: '#f0c000' }],
+    ['control outlines', { lineStrong: '#f2f2f2' }]
+  ])('rejects a tenant theme with unreadable %s', (_, override) => {
+    const brand = {
+      ...defaultBrandPresentation,
+      theme: { ...defaultBrandPresentation.theme, ...override }
+    }
+    expect(hasAccessibleBrandContrast(brand)).toBe(false)
+    expect(resolveAccessibleBrandPresentation(brand)).toBe(
+      defaultBrandPresentation
+    )
+  })
+})

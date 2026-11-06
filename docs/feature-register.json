@@ -4195,7 +4195,7 @@
       "verification": [
         "DS-001 (2026-11-06): pnpm verify (242 unit tests incl. token contrast/sync and default-theme tests, build); computed styles checked on /login, /signup and 404 at 1280px and 375px."
       ],
-      "remaining": "DS-001 (2026-11-06): one 4px shape, AA-checked colour tokens (text 4.5:1, control outlines 3:1) and readable Geist UI type at 15px are applied app-wide; auth and error pages checked at 1280px and 375px without horizontal scroll. Remaining: shell, editor and table layouts at agreed laptop/mobile widths and 200% zoom (DS-002 to DS-005)."
+      "remaining": "DS-001 (2026-11-06): the shared 4px radius, AA-checked colour tokens (text 4.5:1, control outlines 3:1) and Geist UI type are applied app-wide; auth and error pages checked at 1280px and 375px without horizontal scroll. Remaining: status marks are still pills, body text size is unchanged (mostly 14px), and shell, editor and table layouts still need checking at agreed laptop/mobile widths and 200% zoom (DS-002 to DS-005)."
     },
     {
       "id": "UX-019",

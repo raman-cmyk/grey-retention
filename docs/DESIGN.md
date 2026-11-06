@@ -23,7 +23,7 @@ The feel is deeply inspired by exa.ai: editorial, research-grade, generous white
 
 ## Colour
 
-Use tokens, never raw hex values. In CSS: `var(--gr-accent)`. In TypeScript: `colorThemes.light.accent` from `lib/design/tokens.ts`.
+Use tokens, never raw hex values. In components use the Tailwind names (`bg-surface`, `text-accent`, `border-hairline-strong`) or the semantic variables (`var(--brand-secondary)`); both follow a customer's white-label theme. The raw `--gr-*` variables and `colorThemes` in `lib/design/tokens.ts` are the defaults only and must not be used directly in components.
 
 ### Light theme (default)
 
@@ -195,7 +195,7 @@ Technical words may appear in admin-only screens and developer tools. DS-007 add
 
 ## White-label
 
-Grey Retention is sold white-label (`PRODUCT.md`): name, logo, palette, typography, domains and customer-facing copy must be configurable without code changes. This document is the **default** theme. A customer theme is data passed through the existing `BrandPresentation` contract (`lib/branding/presentation.ts`): it may replace any colour token and the three font roles, but it is accepted only if every pair in `contrastRules` still passes (otherwise the default is used, as the current contrast gate already does). Layout, spacing, 4px shapes, hairline structure and components are shared; they are never forked per customer.
+Grey Retention is sold white-label (`PRODUCT.md`): name, logo, palette, typography, domains and customer-facing copy must be configurable without code changes. This document is the **default** theme. A customer theme is data passed through the existing `BrandPresentation` contract (`lib/branding/presentation.ts`): it may replace the colours of its `theme` and the three font roles. `hasAccessibleBrandContrast` checks text, muted and faint text, accent links, error and warning text, button labels and control outlines against the page and white panels; a theme that fails any pair is rejected and the default is used. Success colours are not tenant-themable yet. Layout, spacing, 4px shapes, hairline structure and components are shared; they are never forked per customer.
 
 ## Implementation notes
 
@@ -204,6 +204,7 @@ Grey Retention is sold white-label (`PRODUCT.md`): name, logo, palette, typograp
 - Tailwind names (Tailwind 4 `@theme`): colours `canvas`, `canvas-sunken`, `surface`, `ink`, `ink-strong`, `ink-muted`, `hairline`, `hairline-strong`, `accent`, `accent-strong`, `accent-faint`, `danger`, `warning`, `success` (+ `-faint`); fonts `font-serif` (display), `font-sans` (UI), `font-mono` (labels/numbers); tracking `tracking-display`, `tracking-label`. Every `rounded-*` step is 4px; `rounded-full` remains for avatars. New code uses these names, for example `bg-surface border border-hairline text-ink`.
 - Fonts load with `next/font/google` in `app/layout.tsx` as `--font-newsreader`, `--font-geist` and `--font-geist-mono`; they are self-hosted at build time.
 - Dark mode is defined in tokens but not switched on: the white-label theme is applied inline on `<body>`, so dark mode needs a dark `BrandPresentation` variant first. Until then the app is light only.
+- Naming trap: Tailwind `bg-surface` is the white panel (`--surface-raised`), while the older variable `var(--surface)` is the page canvas; `text-ink` is near-black, while the older `--brand-ink` is dark blue. When replacing `bg-[var(--surface)]`, use `bg-canvas`.
 - Replace the old root `DESIGN.md` once DS-002 to DS-007 are done.
 
 ## Do and don't

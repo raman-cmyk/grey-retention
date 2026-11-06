@@ -171,10 +171,22 @@ export function hasAccessibleBrandContrast(brand: BrandPresentation) {
     [theme.onDanger, theme.dangerStrong],
     [theme.ink, theme.soft],
     [theme.dangerInk, theme.dangerSoft],
-    [theme.warningInk, theme.warningSoft]
+    [theme.warningInk, theme.warningSoft],
+    // Accent links, error text and warning text appear directly on the page
+    // and on white panels (`text-accent`, `text-danger`, `text-warning`).
+    [theme.secondary, theme.surface],
+    [theme.secondary, theme.surfaceRaised],
+    [theme.danger, theme.surface],
+    [theme.danger, theme.surfaceRaised],
+    [theme.dangerInk, theme.surfaceRaised],
+    [theme.warningInk, theme.surface],
+    [theme.warningInk, theme.surfaceRaised]
   ] as const
 
   const nonTextPairs = [
+    // Input, checkbox and toggle outlines must be visible (WCAG 1.4.11).
+    [theme.lineStrong, theme.surface],
+    [theme.lineStrong, theme.surfaceRaised],
     [theme.focus, theme.surface],
     [theme.focus, theme.surfaceRaised],
     [theme.focus, theme.surfaceHover],

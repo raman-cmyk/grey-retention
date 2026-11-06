@@ -27,7 +27,7 @@ export function BrandMark({
         />
       ) : (
         <span
-          className="relative grid size-8 place-items-center rounded-[10px] bg-[var(--brand-primary)] text-[var(--on-brand)]"
+          className="relative grid size-8 place-items-center rounded-[var(--radius-control)] bg-[var(--brand-primary)] text-[var(--on-brand)]"
           aria-hidden
         >
           <span className="absolute h-px w-4 rotate-45 bg-current" />

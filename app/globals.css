@@ -70,6 +70,7 @@
   --color-warning-faint: var(--warning-soft);
   --color-success: var(--gr-success);
   --color-success-faint: var(--gr-success-faint);
+  --radius: var(--gr-radius);
   --radius-xs: var(--gr-radius);
   --radius-sm: var(--gr-radius);
   --radius-md: var(--gr-radius);

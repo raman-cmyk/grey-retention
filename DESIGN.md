@@ -60,7 +60,7 @@ components:
 
 # Design System: Grey Retention
 
-> **Being replaced.** This describes the theme the live app uses today. The new Grey Retention design language is [`docs/DESIGN.md`](docs/DESIGN.md); milestone M1 (DS-001 to DS-007) moves every screen to it, after which this file is retired.
+> **Superseded.** This describes the previous theme. Since DS-001 the live app uses the tokens of [`docs/DESIGN.md`](docs/DESIGN.md); the rest of milestone M1 (DS-002 to DS-007) rebuilds the components, after which this file is retired.
 
 ## Overview
 
