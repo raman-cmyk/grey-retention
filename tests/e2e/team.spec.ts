@@ -92,7 +92,7 @@ test('UIR-019 owner invites, resends, cancels, changes a role and deactivates', 
   await expect(pending.getByText('No pending invites.')).toBeVisible()
 
   // Role: picking opens nothing; Change role asks first; Cancel saves nothing.
-  const role = row.getByLabel('Role for Sam Teammate')
+  const role = row.getByLabel('Role for Sam Teammate', { exact: true })
   const changeRole = row.getByRole('button', {
     name: 'Change role for Sam Teammate'
   })
@@ -107,7 +107,7 @@ test('UIR-019 owner invites, resends, cancels, changes a role and deactivates', 
   await expect(
     page
       .getByRole('region', { name: /Members/ })
-      .getByLabel('Role for Sam Teammate')
+      .getByLabel('Role for Sam Teammate', { exact: true })
   ).toHaveValue('staff')
   await role.selectOption('admin')
   await changeRole.click()
@@ -119,7 +119,7 @@ test('UIR-019 owner invites, resends, cancels, changes a role and deactivates', 
   await expect(
     page
       .getByRole('region', { name: /Members/ })
-      .getByLabel('Role for Sam Teammate')
+      .getByLabel('Role for Sam Teammate', { exact: true })
   ).toHaveValue('admin')
 
   // Deactivate after confirming; it stays after a reload; then reactivate.
