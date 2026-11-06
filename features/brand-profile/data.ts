@@ -3,14 +3,6 @@ import { createClient } from '@/lib/supabase/server'
 import { brandMismatches } from './mismatch'
 import type { SectionContent, SectionKey } from './sections'
 import type { SectionRow } from './view'
-// The display columns come from migration 20260914090017 (UIR-013) and may
-// be missing on an older hosted database.
-type Connection = {
-  provider?: string
-  status?: string
-  account_label?: string | null
-  shop_domain?: string | null
-}
 
 /**
  * Everything the Brand profile reads besides the catalogue: saved sections,
@@ -25,7 +17,10 @@ export async function brandProfileData(
   if (!db) return null
   const [sections, connections] = await Promise.all([
     db.from('brand_profile_sections').select('*').eq('tenant_id', tenantId),
-    db.from('workspace_connections').select('*').eq('tenant_id', tenantId)
+    db
+      .from('workspace_connections')
+      .select('provider,status,account_label,shop_domain')
+      .eq('tenant_id', tenantId)
   ])
   const rows: SectionRow[] = (sections.data ?? []).map((row) => ({
     section: row.section as SectionKey,
@@ -34,7 +29,8 @@ export async function brandProfileData(
     revision: row.revision,
     updatedAt: row.updated_at
   }))
-  const list = (connections.data ?? []) as Connection[]
+  const list = connections.data ?? []
+  type Connection = (typeof list)[number]
   const klaviyo = list.find((c) => c.provider === 'klaviyo')
   const shopify = list.find((c) => c.provider === 'shopify')
   const connected = (c: Connection | undefined) => c?.status === 'connected'
