@@ -129,3 +129,23 @@ describe('contrast gate covers the roles the design system exposes', () => {
     )
   })
 })
+
+describe('key action colours', () => {
+  it('publishes readable text for the blue key action', () => {
+    const { theme } = defaultBrandPresentation
+    expect(
+      contrastRatio(theme.onSecondary, theme.secondary)
+    ).toBeGreaterThanOrEqual(4.5)
+    expect(
+      brandCssVariables(defaultBrandPresentation)['--on-brand-secondary']
+    ).toBe('#ffffff')
+  })
+
+  it('rejects a tenant key action whose label is unreadable', () => {
+    const brand = {
+      ...defaultBrandPresentation,
+      theme: { ...defaultBrandPresentation.theme, onSecondary: '#3355ff' }
+    }
+    expect(hasAccessibleBrandContrast(brand)).toBe(false)
+  })
+})

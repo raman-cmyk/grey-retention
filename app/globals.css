@@ -29,6 +29,7 @@
   --brand-primary: var(--gr-ink);
   --brand-primary-strong: var(--gr-ink-strong);
   --brand-secondary: var(--gr-accent);
+  --on-brand-secondary: var(--gr-on-accent);
   --brand-soft: var(--gr-accent-faint);
   --brand-ink: var(--gr-accent-strong);
   --on-brand: var(--gr-on-ink);
@@ -149,4 +150,12 @@ dialog::backdrop {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Native checkboxes and radios follow the ink colour and stay 16px. */
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--brand-primary);
+  inline-size: 1rem;
+  block-size: 1rem;
 }

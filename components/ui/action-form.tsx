@@ -52,7 +52,7 @@ export function SubmitButton({
   disabled = false
 }: {
   children: ReactNode
-  variant?: 'primary' | 'secondary' | 'danger' | 'quiet'
+  variant?: 'primary' | 'accent' | 'secondary' | 'danger' | 'quiet'
   pendingLabel?: string
   disabled?: boolean
 }) {

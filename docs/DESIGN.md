@@ -111,13 +111,19 @@ Rules: one display title per page; never bold the serif; never set paragraphs in
 
 Disabled buttons keep their shape, drop to `ink-subtle` text and explain why nearby. Loading buttons keep their width and show a small spinner plus the label ("Saving…").
 
+In code: `Button` from `components/ui/button.tsx` with `variant="primary" | "accent" | "secondary" | "quiet" | "danger"` (`SubmitButton` takes the same variants), and `TextLink` from `components/ui/text-link.tsx` for the tertiary arrow link.
+
 ### Segmented toggle and chips
 
 A row of joined 4px segments with hairline dividers. Labels are mono uppercase (`EXACT`, `REBRAND`, `ADAPT`; `DESKTOP`, `MOBILE`). Selected: `accent-faint` fill and `accent-text` label plus a 1px `accent` outline; unselected: `surface` with `ink-muted` label. It is a radio group for keyboard and screen readers (arrow keys move, one selected).
 
+In code: `SegmentedControl` from `components/ui/segmented-control.tsx` (a native radio group with a legend; options may carry a description and a `disabledReason`).
+
 ### Form controls
 
 Inputs, selects and text areas: `surface` fill, 1px `hairline-strong` outline, 4px radius, 40px tall (text areas grow), 15px Geist text. Labels sit above in 13px Geist 500; help text below in `ink-muted`; errors in `danger` with an icon and text (never colour alone). Focus: 2px `accent` ring with 2px offset. Dates and times always use pickers in the workspace timezone and display readable local text ("Tue 12 Nov, 9:00 am"), never ISO strings.
+
+In code: `controlClass` from `components/ui/control.ts` for every native input, select and text area, `TextField` for inputs, and `Field` from `components/ui/workspace.tsx` for the label. Checkboxes and radios use the ink colour by default.
 
 ### Cards and panels
 

@@ -103,5 +103,4 @@ export function Field({
     </div>
   )
 }
-export const controlClass =
-  'min-h-11 w-full rounded-lg border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:ring-2 focus:ring-[var(--focus)]'
+export { controlClass } from './control'

@@ -4194,11 +4194,12 @@
       "priority": "P0",
       "acceptance": "Editor remains usable at agreed laptop/mobile widths and zoom.",
       "status": "partial",
-      "implementation_tasks": ["DS-001", "DS-002"],
+      "implementation_tasks": ["DS-001", "DS-002", "DS-003"],
       "verification": [
-        "DS-001 (2026-11-06): pnpm verify (242 unit tests incl. token contrast/sync and default-theme tests, build); computed styles checked on /login, /signup and 404 at 1280px and 375px."
+        "DS-001 (2026-11-06): pnpm verify (242 unit tests incl. token contrast/sync and default-theme tests, build); computed styles checked on /login, /signup and 404 at 1280px and 375px.",
+        "DS-003 (2026-11-06): unit tests for button roles, focus rings, segmented control keyboard/form behaviour and text links; /onboarding and /settings controls measured at 1280px and 375px (4px radius, #8a8580 outline, 15px text, no horizontal scroll)."
       ],
-      "remaining": "Done: shared 4px radius, AA-checked colour tokens (text 4.5:1, control outlines 3:1) and Geist UI type app-wide (DS-001); auth/error pages and the owner, admin and designer shells checked at 1280px and 375px with keyboard focus and no horizontal scroll (DS-002). Remaining: status marks are still pills, body text size is unchanged (mostly 14px), and editor and table layouts still need checking at agreed laptop/mobile widths and 200% zoom (DS-003 to DS-005)."
+      "remaining": "Done: shared 4px radius, AA-checked colour tokens (text 4.5:1, control outlines 3:1) and Geist UI type app-wide (DS-001); auth/error pages and the owner, admin and designer shells checked at 1280px and 375px with keyboard focus and no horizontal scroll (DS-002); every native input, select and text area uses one control style with 15px text, a 44px minimum height and a 3:1 outline (DS-003). Remaining: status marks are still pills, body text size is unchanged (mostly 14px), and editor and table layouts still need checking at agreed laptop/mobile widths and 200% zoom (DS-004, DS-005)."
     },
     {
       "id": "UX-019",
