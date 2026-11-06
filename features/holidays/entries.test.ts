@@ -21,6 +21,12 @@ describe('dates', () => {
     expect(nextOccurrence('2020-11-07', '2026-11-07')).toBe('2026-11-07')
     expect(nextOccurrence('2024-02-29', '2027-01-10')).toBe('2027-02-28')
     expect(nextOccurrence('2024-02-29', '2027-12-01')).toBe('2028-02-29')
+    expect(nextOccurrence('2020-01-01', '2026-12-31')).toBe('2027-01-01')
+  })
+
+  it('never shows a yearly entry before its own first date', () => {
+    expect(nextOccurrence('2027-11-20', '2026-11-07')).toBe('2027-11-20')
+    expect(nextOccurrence('2028-02-29', '2026-11-07')).toBe('2028-02-29')
   })
 
   it('uses the brand’s today and short labels', () => {
@@ -61,6 +67,15 @@ describe('readEntryForm', () => {
     }
     expect(message({ name: 'X' })).toBe('Name: at least 2 characters.')
     expect(message({ name: 'Drop\nBcc' })).toBe('Name: use one line of text.')
+    expect(message({ name: 'Drop\u0085Bcc' })).toBe(
+      'Name: use one line of text.'
+    )
+    expect(message({ name: 'x'.repeat(201) })).toBe(
+      'Name: at most 200 characters.'
+    )
+    expect(message({ date: '1899-12-31' })).toBe(
+      'Choose a date between 1900 and 2999.'
+    )
     expect(message({ date: '' })).toBe('Choose a date.')
     expect(message({ date: '2027-02-30' })).toBe('Choose a date.')
     expect(message({ kind: 'sale' })).toBe('Choose Holiday or Event.')
@@ -68,6 +83,10 @@ describe('readEntryForm', () => {
       'Notes: at most 2000 characters.'
     )
     expect(message({ revision: 'x' })).toBe('Reload the page and try again.')
+    // Counted like the database: an emoji is one character.
+    expect(message({ name: '🎉' })).toBe('Name: at least 2 characters.')
+    expect(message({ name: '🎉'.repeat(200) })).toBeNull()
+    expect(message({ notes: '🎉'.repeat(2000) })).toBeNull()
     expect(message({ id: 'not-an-id' })).toMatch(/./)
   })
 })

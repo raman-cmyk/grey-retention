@@ -48,6 +48,8 @@ describe('AddEntryCard', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Add entry' }))
     expect(await screen.findByText('Added “Summer drop”.')).toBeVisible()
     expect(screen.getByLabelText('Name')).toHaveValue('')
+    // Ready for the next one.
+    await vi.waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
   })
 
   it('keeps what was typed when the add is refused', async () => {
@@ -95,6 +97,55 @@ describe('YoursCard', () => {
       'Brand anniversary'
     )
     expect(within(editForm).getByLabelText('Date')).toHaveValue('2020-03-14')
+    await vi.waitFor(() =>
+      expect(within(editForm).getByLabelText('Name')).toHaveFocus()
+    )
+  })
+
+  it('saves an edit, says so, and returns to the Edit button', async () => {
+    actions.saveHoliday.mockResolvedValueOnce({ message: 'Saved.' } as never)
+    render(<YoursCard entries={[entry]} today="2026-11-07" owner />)
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Edit Brand anniversary' })
+    )
+    const name = screen.getByLabelText('Name')
+    await userEvent.clear(name)
+    await userEvent.type(name, 'Brand birthday')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    const sent = (actions.saveHoliday.mock.calls[0] as unknown[])[1] as FormData
+    expect(sent.get('id')).toBe(entry.id)
+    expect(sent.get('name')).toBe('Brand birthday')
+    expect(await screen.findByText('Saved.')).toBeVisible()
+    expect(screen.queryByRole('form')).toBeNull()
+    await vi.waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Edit Brand anniversary' })
+      ).toHaveFocus()
+    )
+  })
+
+  it('keeps the form open on a refused edit, and opens clean next time', async () => {
+    actions.saveHoliday.mockResolvedValueOnce({
+      error:
+        'This entry changed in another window. Reload the page to see it, then try again.'
+    } as never)
+    render(<YoursCard entries={[entry]} today="2026-11-07" owner />)
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Edit Brand anniversary' })
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText(/changed in another window/)).toBeVisible()
+    expect(screen.getByRole('form')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await vi.waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Edit Brand anniversary' })
+      ).toHaveFocus()
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Edit Brand anniversary' })
+    )
+    expect(screen.queryByText(/changed in another window/)).toBeNull()
   })
 
   it('asks before deleting, and deletes on Yes', async () => {
@@ -115,6 +166,31 @@ describe('YoursCard', () => {
     )[1] as FormData
     expect(sent.get('id')).toBe(entry.id)
     expect(sent.get('revision')).toBe('2')
+    // The message is on the card, so it stays when the row goes.
+    expect(await screen.findByText('Deleted.')).toBeVisible()
+    await vi.waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Yours' })).toHaveFocus()
+    )
+  })
+
+  it('says why a delete failed', async () => {
+    actions.deleteHoliday.mockResolvedValueOnce({
+      error: 'This entry was removed in another window. Reload the page.'
+    } as never)
+    render(<YoursCard entries={[entry]} today="2026-11-07" owner />)
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Delete Brand anniversary' })
+    )
+    await userEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', {
+        name: 'Delete'
+      })
+    )
+    expect(
+      await screen.findByText(
+        'This entry was removed in another window. Reload the page.'
+      )
+    ).toBeVisible()
   })
 
   it('is read-only for staff', () => {
@@ -150,6 +226,70 @@ describe('PlatformCard', () => {
     expect(within(chip).getByText('Nov 11')).toBeVisible()
     expect(within(chip).getByText('(Public holiday)')).toBeInTheDocument()
     expect(screen.getByLabelText('Country')).toHaveValue('US')
+    // The categories are named, not only coloured.
+    const key = screen.getByRole('list', { name: 'Key' })
+    expect(key).toHaveTextContent('Public holiday')
+    expect(key).toHaveTextContent('Celebration')
+    expect(key).toHaveTextContent('Shopping day')
+    expect(
+      within(
+        screen.getByRole('list', { name: 'Platform holidays' })
+      ).getAllByRole('listitem')
+    ).toHaveLength(2)
+    expect(screen.queryByText(/Guessed/)).toBeNull()
+  })
+
+  it('keeps the chosen country after saving', async () => {
+    const { rerender } = render(
+      <PlatformCard
+        holidays={[]}
+        today="2026-11-06"
+        managedBy="Grey Retention"
+        country="US"
+        countrySource="guess"
+        owner
+      />
+    )
+    await userEvent.selectOptions(screen.getByLabelText('Country'), 'AU')
+    await userEvent.click(screen.getByRole('button', { name: 'Save country' }))
+    expect(await screen.findByText('Country saved.')).toBeVisible()
+    expect(actions.setHolidayCountry).toHaveBeenCalled()
+    expect(screen.getByLabelText('Country')).toHaveValue('AU')
+    // The page then reloads with the saved country.
+    rerender(
+      <PlatformCard
+        holidays={[]}
+        today="2026-11-06"
+        managedBy="Grey Retention"
+        country="AU"
+        countrySource="saved"
+        owner
+      />
+    )
+    expect(screen.getByLabelText('Country')).toHaveValue('AU')
+    expect(screen.getByText('Country saved.')).toBeVisible()
+  })
+
+  it('keeps the choice and explains when saving the country fails', async () => {
+    actions.setHolidayCountry.mockResolvedValueOnce({
+      error: 'Choose a country from the list.'
+    } as never)
+    render(
+      <PlatformCard
+        holidays={[]}
+        today="2026-11-06"
+        managedBy="Grey Retention"
+        country="US"
+        countrySource="saved"
+        owner
+      />
+    )
+    await userEvent.selectOptions(screen.getByLabelText('Country'), 'NZ')
+    await userEvent.click(screen.getByRole('button', { name: 'Save country' }))
+    expect(
+      await screen.findByText('Choose a country from the list.')
+    ).toBeVisible()
+    expect(screen.getByLabelText('Country')).toHaveValue('NZ')
   })
 
   it('says when the country is a guess, and only the owner can change it', () => {
@@ -164,9 +304,27 @@ describe('PlatformCard', () => {
       />
     )
     expect(screen.queryByLabelText('Country')).toBeNull()
-    expect(screen.getByText(/Guessed from your timezone/)).toBeVisible()
+    expect(
+      screen.getByText(
+        'Guessed from your timezone: Other countries: shopping and gift days.'
+      )
+    ).toBeVisible()
     expect(
       screen.getByText('No platform holidays in the next 90 days.')
     ).toBeVisible()
+  })
+
+  it('does not call the country a guess when it could not be read', () => {
+    render(
+      <PlatformCard
+        holidays={[]}
+        today="2026-11-06"
+        managedBy="Grey Retention"
+        country="US"
+        countrySource="unknown"
+        owner
+      />
+    )
+    expect(screen.queryByText(/Guessed/)).toBeNull()
   })
 })

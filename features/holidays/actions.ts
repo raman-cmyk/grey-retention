@@ -22,7 +22,10 @@ async function ownerSession() {
   return { context, db } as const
 }
 
-function failed(error: { code?: string; message?: string }): FormResult {
+function failed(
+  error: { code?: string; message?: string },
+  invalid = 'Check the entry and try again.'
+): FormResult {
   const text = error.message ?? ''
   if (error.code === 'PT409')
     return {
@@ -32,13 +35,13 @@ function failed(error: { code?: string; message?: string }): FormResult {
     }
   if (error.code === '42501')
     return { error: 'Only the workspace owner can change holidays and events.' }
-  if (error.code === '23514') return { error: 'Check the entry and try again.' }
+  if (error.code === '23514') return { error: invalid }
   return { error: 'We could not save this. Nothing was changed. Try again.' }
 }
 
+/** Planning reads entries when it runs, so only this page needs a refresh. */
 function refresh() {
-  for (const path of ['/holidays', '/calendar', '/campaign-agent'])
-    revalidatePath(path)
+  revalidatePath('/holidays')
 }
 
 /** "Add entry" and "Save" on an existing entry. */
@@ -112,7 +115,7 @@ export async function setHolidayCountry(
     t: context.tenantId,
     country
   })
-  if (saved.error) return failed(saved.error)
+  if (saved.error) return failed(saved.error, 'Choose a country from the list.')
   refresh()
   return { message: 'Country saved.' }
 }

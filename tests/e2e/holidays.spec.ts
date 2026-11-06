@@ -41,8 +41,11 @@ test('UIR-012 owner adds, edits and deletes an entry and picks a country', async
   )
   await expect(platform.getByText(/Guessed from your timezone/)).toBeVisible()
   await platform.getByLabel('Country').selectOption('AU')
-  await platform.getByRole('button', { name: 'Show holidays' }).click()
+  await platform.getByRole('button', { name: 'Save country' }).click()
   await expect(platform.getByText('Country saved.')).toBeVisible()
+  // The dropdown keeps the new country (it used to jump back).
+  await expect(platform.getByLabel('Country')).toHaveValue('AU')
+  await expect(platform.getByText(/Guessed from your timezone/)).toHaveCount(0)
   await page.reload()
   await expect(
     page
@@ -51,7 +54,7 @@ test('UIR-012 owner adds, edits and deletes an entry and picks a country', async
   ).toHaveValue('AU')
   expect(
     await page
-      .getByRole('region', { name: /Platform holidays/ })
+      .getByRole('list', { name: 'Platform holidays' })
       .getByRole('listitem')
       .count()
   ).toBeGreaterThan(0)
@@ -81,7 +84,11 @@ test('UIR-012 owner adds, edits and deletes an entry and picks a country', async
   const renamed = `${name} sale`
   await yours.getByLabel('Name', { exact: true }).fill(renamed)
   await yours.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(yours.getByText('Saved.')).toBeVisible()
   await expect(yours.getByText(renamed, { exact: true })).toBeVisible()
+  await expect(
+    yours.getByRole('button', { name: `Edit ${renamed}` })
+  ).toBeFocused()
   await page.reload()
   await expect(
     page.getByRole('region', { name: 'Yours' }).getByText(renamed, {
@@ -99,6 +106,9 @@ test('UIR-012 owner adds, edits and deletes an entry and picks a country', async
   await dialog.getByRole('button', { name: 'Delete', exact: true }).click()
   await expect(
     page.getByText('Nothing yet — add your first on the left.')
+  ).toBeVisible()
+  await expect(
+    page.getByRole('region', { name: 'Yours' }).getByText('Deleted.')
   ).toBeVisible()
 })
 

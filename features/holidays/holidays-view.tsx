@@ -2,12 +2,19 @@
 import {
   startTransition,
   useActionState,
+  useEffect,
   useId,
-  useRef,
-  useState,
-  type ReactNode
+  useState
 } from 'react'
-import { Pencil, Repeat, Trash2 } from 'lucide-react'
+import {
+  Landmark,
+  Pencil,
+  Repeat,
+  ShoppingBag,
+  Sparkles,
+  Trash2,
+  type LucideIcon
+} from 'lucide-react'
 import { AlertDialog } from '@/components/ui/alert-dialog'
 import { SubmitButton, type FormResult } from '@/components/ui/action-form'
 import { Button } from '@/components/ui/button'
@@ -28,6 +35,15 @@ const labelClass =
   'tracking-label block font-mono text-[0.6875rem] font-semibold text-[var(--text-muted)] uppercase'
 const cardClass =
   'space-y-5 rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-6'
+
+/** Moves keyboard focus to an element once it is on the page. */
+function useFocus() {
+  const [target, setTarget] = useState<{ id: string } | null>(null)
+  useEffect(() => {
+    if (target) document.getElementById(target.id)?.focus()
+  }, [target])
+  return (id: string) => setTarget({ id })
+}
 
 function Status({ state, pending }: { state: FormResult; pending: boolean }) {
   return (
@@ -119,15 +135,21 @@ function EntryFields({ entry, idBase }: { entry?: OwnEntry; idBase: string }) {
 
 /** Left card: "Add an entry". */
 export function AddEntryCard() {
-  const [state, dispatch, pending] = useActionState(saveHoliday, {})
   // A new, empty form after each successful add; typed values stay on error.
   const [round, setRound] = useState(0)
-  const [seen, setSeen] = useState(state)
-  if (seen !== state) {
-    setSeen(state)
-    if (state.message) setRound((n) => n + 1)
-  }
   const idBase = useId()
+  const [state, dispatch, pending] = useActionState(
+    async (previous: FormResult, form: FormData) => {
+      const result = await saveHoliday(previous, form)
+      if (result.message) setRound((n) => n + 1)
+      return result
+    },
+    {}
+  )
+  // After an add, the cursor waits in the new form's Name field.
+  useEffect(() => {
+    if (round > 0) document.getElementById(`${idBase}-${round}-name`)?.focus()
+  }, [round, idBase])
   return (
     <section aria-labelledby={`${idBase}-title`} className={cardClass}>
       <h2 id={`${idBase}-title`} className="text-lg font-semibold">
@@ -151,52 +173,85 @@ export function AddEntryCard() {
   )
 }
 
+/** The inline edit form; a fresh one (no old error) each time it opens. */
+function EditForm({
+  entry,
+  onSaved,
+  onCancel
+}: {
+  entry: OwnEntry
+  onSaved: (message: string) => void
+  onCancel: () => void
+}) {
+  const idBase = useId()
+  const [state, dispatch, pending] = useActionState(
+    async (previous: FormResult, form: FormData) => {
+      const result = await saveHoliday(previous, form)
+      if (result.message) onSaved(result.message)
+      return result
+    },
+    {}
+  )
+  useEffect(() => {
+    document.getElementById(`${idBase}-name`)?.focus()
+  }, [idBase])
+  return (
+    <form
+      action={dispatch}
+      noValidate
+      onReset={(event) => event.preventDefault()}
+      className="space-y-4"
+      aria-label={`Edit ${entry.name}`}
+    >
+      <input type="hidden" name="id" value={entry.id} />
+      <input type="hidden" name="revision" value={entry.revision} />
+      <EntryFields entry={entry} idBase={idBase} />
+      <div className="flex flex-wrap gap-3">
+        <SubmitButton>Save</SubmitButton>
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+      <Status state={state} pending={pending} />
+    </form>
+  )
+}
+
 function EntryRow({
   entry,
   today,
-  owner
+  owner,
+  editId,
+  editing,
+  onEdit,
+  onSaved,
+  onCancel,
+  onDelete,
+  deleting
 }: {
   entry: OwnEntry
   today: string
   owner: boolean
+  /** The id of this row's Edit button (focus returns to it). */
+  editId: string
+  editing: number | null
+  onEdit: () => void
+  onSaved: (message: string) => void
+  onCancel: () => void
+  onDelete: () => void
+  deleting: boolean
 }) {
-  const [editing, setEditing] = useState(false)
   const [confirming, setConfirming] = useState(false)
-  const [saved, save, saving] = useActionState(saveHoliday, {})
-  const [removed, remove, removing] = useActionState(deleteHoliday, {})
-  const [seen, setSeen] = useState(saved)
-  if (seen !== saved) {
-    setSeen(saved)
-    if (saved.message) setEditing(false)
-  }
-  const idBase = useId()
-  const deleteForm = useRef<HTMLFormElement>(null)
   const past = entry.nextDate < today
   return (
     <li className="space-y-3 border-b border-[var(--line)] py-4 last:border-b-0">
-      {editing ? (
-        <form
-          action={save}
-          noValidate
-          onReset={(event) => event.preventDefault()}
-          className="space-y-4"
-          aria-label={`Edit ${entry.name}`}
-        >
-          <input type="hidden" name="id" value={entry.id} />
-          <input type="hidden" name="revision" value={entry.revision} />
-          <EntryFields entry={entry} idBase={idBase} />
-          <div className="flex flex-wrap gap-3">
-            <SubmitButton>Save</SubmitButton>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setEditing(false)}
-            >
-              Cancel
-            </Button>
-          </div>
-          <Status state={saved} pending={saving} />
-        </form>
+      {editing !== null ? (
+        <EditForm
+          key={editing}
+          entry={entry}
+          onSaved={onSaved}
+          onCancel={onCancel}
+        />
       ) : (
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 space-y-1">
@@ -229,11 +284,12 @@ function EntryRow({
           {owner && (
             <div className="flex gap-2">
               <Button
+                id={editId}
                 type="button"
                 variant="secondary"
                 size="sm"
                 aria-label={`Edit ${entry.name}`}
-                onClick={() => setEditing(true)}
+                onClick={onEdit}
               >
                 <Pencil className="size-3.5" aria-hidden="true" />
                 Edit
@@ -243,6 +299,7 @@ function EntryRow({
                 variant="secondary"
                 size="sm"
                 aria-label={`Delete ${entry.name}`}
+                disabled={deleting}
                 onClick={() => setConfirming(true)}
               >
                 <Trash2 className="size-3.5" aria-hidden="true" />
@@ -253,28 +310,19 @@ function EntryRow({
         </div>
       )}
       {owner && (
-        <>
-          <form ref={deleteForm} action={remove} hidden>
-            <input type="hidden" name="id" value={entry.id} />
-            <input type="hidden" name="revision" value={entry.revision} />
-          </form>
-          <AlertDialog
-            open={confirming}
-            title={`Delete “${entry.name}”?`}
-            confirmLabel="Delete"
-            pending={removing}
-            onCancel={() => setConfirming(false)}
-            onConfirm={() => {
-              const data = new FormData(deleteForm.current!)
-              setConfirming(false)
-              startTransition(() => remove(data))
-            }}
-          >
-            The AI strategist will no longer plan around it. This cannot be
-            undone.
-          </AlertDialog>
-          <Status state={removed} pending={removing} />
-        </>
+        <AlertDialog
+          open={confirming}
+          title={`Delete “${entry.name}”?`}
+          confirmLabel="Delete"
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => {
+            setConfirming(false)
+            onDelete()
+          }}
+        >
+          The AI strategist will no longer plan around it. This cannot be
+          undone.
+        </AlertDialog>
       )}
     </li>
   )
@@ -291,16 +339,40 @@ export function YoursCard({
   owner: boolean
 }) {
   const id = useId()
+  const focus = useFocus()
+  const editButton = (entryId: string) => `${id}-edit-${entryId}`
+  // Which entry is open for editing, and a new number for each opening.
+  const [editing, setEditing] = useState<{ id: string; n: number } | null>(null)
+  // "Saved." and "Deleted." stay here after the row's form or the row goes.
+  const [notice, setNotice] = useState<FormResult>({})
+  const [, remove, removing] = useActionState(
+    async (previous: FormResult, form: FormData) => {
+      const result = await deleteHoliday(previous, form)
+      setNotice(result)
+      if (result.message) focus(`${id}-title`)
+      return result
+    },
+    {}
+  )
+  const close = (entryId: string) => {
+    setEditing(null)
+    focus(editButton(entryId))
+  }
   return (
-    <section aria-labelledby={id} className={cardClass}>
+    <section aria-labelledby={`${id}-title`} className={cardClass}>
       <div className="flex items-baseline justify-between gap-3">
-        <h2 id={id} className="text-lg font-semibold">
+        <h2
+          id={`${id}-title`}
+          tabIndex={-1}
+          className="text-lg font-semibold outline-none"
+        >
           Yours
         </h2>
         <p className="text-sm text-[var(--text-muted)]">
           {entries.length} total
         </p>
       </div>
+      <Status state={notice} pending={removing} />
       {entries.length === 0 ? (
         <p className="text-sm text-[var(--text-muted)]">
           {owner
@@ -315,6 +387,25 @@ export function YoursCard({
               entry={entry}
               today={today}
               owner={owner}
+              editId={editButton(entry.id)}
+              editing={editing?.id === entry.id ? editing.n : null}
+              onEdit={() => {
+                setNotice({})
+                setEditing({ id: entry.id, n: (editing?.n ?? 0) + 1 })
+              }}
+              onSaved={(message) => {
+                setNotice({ message })
+                close(entry.id)
+              }}
+              onCancel={() => close(entry.id)}
+              deleting={removing}
+              onDelete={() => {
+                const data = new FormData()
+                data.set('id', entry.id)
+                data.set('revision', String(entry.revision))
+                setNotice({})
+                startTransition(() => remove(data))
+              }}
             />
           ))}
         </ul>
@@ -323,16 +414,34 @@ export function YoursCard({
   )
 }
 
-const categoryClass: Record<HolidayCategory, string> = {
-  civic: 'text-[var(--brand-ink)]',
-  cultural: 'text-accent-2',
-  commercial: 'text-[var(--danger-ink)]'
-}
-const categoryLabel: Record<HolidayCategory, string> = {
-  civic: 'Public holiday',
-  cultural: 'Celebration',
-  commercial: 'Shopping day'
-}
+const categories: {
+  key: HolidayCategory
+  label: string
+  icon: LucideIcon
+  className: string
+}[] = [
+  {
+    key: 'civic',
+    label: 'Public holiday',
+    icon: Landmark,
+    className: 'text-[var(--brand-ink)]'
+  },
+  {
+    key: 'cultural',
+    label: 'Celebration',
+    icon: Sparkles,
+    className: 'text-accent-2'
+  },
+  {
+    key: 'commercial',
+    label: 'Shopping day',
+    icon: ShoppingBag,
+    className: 'text-[var(--danger-ink)]'
+  }
+]
+const category = Object.fromEntries(
+  categories.map((c) => [c.key, c])
+) as Record<HolidayCategory, (typeof categories)[number]>
 
 /** Platform list: next 90 days, for the workspace's country. */
 export function PlatformCard({
@@ -341,16 +450,14 @@ export function PlatformCard({
   managedBy,
   country,
   countrySource,
-  owner,
-  children
+  owner
 }: {
   holidays: PlatformHoliday[]
   today: string
   managedBy: string
   country: HolidayCountry
-  countrySource: 'saved' | 'guess'
+  countrySource: 'saved' | 'guess' | 'unknown'
   owner: boolean
-  children?: ReactNode
 }) {
   const [state, dispatch, pending] = useActionState(setHolidayCountry, {})
   const id = useId()
@@ -367,7 +474,14 @@ export function PlatformCard({
           </span>
         </h2>
         {owner ? (
-          <form action={dispatch} className="flex flex-wrap items-end gap-2">
+          // A new form when the saved country changes, and no reset back to
+          // the old choice after saving (or when saving fails).
+          <form
+            key={country}
+            action={dispatch}
+            onReset={(event) => event.preventDefault()}
+            className="flex flex-wrap items-end gap-2"
+          >
             <div className="space-y-1">
               <label htmlFor={`${id}-country`} className={labelClass}>
                 Country
@@ -385,7 +499,9 @@ export function PlatformCard({
                 ))}
               </select>
             </div>
-            <SubmitButton variant="secondary">Show holidays</SubmitButton>
+            <SubmitButton variant="secondary" pendingLabel="Saving…">
+              Save country
+            </SubmitButton>
           </form>
         ) : (
           <p className="text-sm text-[var(--text-muted)]">
@@ -395,35 +511,50 @@ export function PlatformCard({
       </div>
       {countrySource === 'guess' && (
         <p className="text-xs text-[var(--text-muted)]">
-          Guessed from your timezone ({label}).
+          Guessed from your timezone: {label}.
           {owner ? ' Choose your country if this is wrong.' : ''}
         </p>
       )}
       <Status state={state} pending={pending} />
+      <ul
+        aria-label="Key"
+        className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--text-muted)]"
+      >
+        {categories.map(({ key, label, icon: Icon, className }) => (
+          <li key={key} className="inline-flex items-center gap-1">
+            <Icon className={cn('size-3.5', className)} aria-hidden="true" />
+            {label}
+          </li>
+        ))}
+      </ul>
       {holidays.length === 0 ? (
         <p className="text-sm text-[var(--text-muted)]">
           No platform holidays in the next 90 days.
         </p>
       ) : (
-        <ul className="flex flex-wrap gap-2">
-          {holidays.map((h) => (
-            <li
-              key={`${h.date}-${h.name}`}
-              title={categoryLabel[h.category]}
-              className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] px-3 py-1 text-sm"
-            >
-              <span className="font-mono text-xs text-[var(--text-muted)]">
-                {shortDate(h.date, today)}
-              </span>
-              <span className={cn('font-semibold', categoryClass[h.category])}>
-                {h.name}
-              </span>
-              <span className="sr-only">({categoryLabel[h.category]})</span>
-            </li>
-          ))}
+        <ul aria-label="Platform holidays" className="flex flex-wrap gap-2">
+          {holidays.map((h) => {
+            const { icon: Icon, label, className } = category[h.category]
+            return (
+              <li
+                key={`${h.date}-${h.name}`}
+                title={label}
+                className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] px-3 py-1 text-sm"
+              >
+                <span className="font-mono text-xs text-[var(--text-muted)]">
+                  {shortDate(h.date, today)}
+                </span>
+                <Icon
+                  className={cn('size-3.5 shrink-0', className)}
+                  aria-hidden="true"
+                />
+                <span className={cn('font-semibold', className)}>{h.name}</span>
+                <span className="sr-only">({label})</span>
+              </li>
+            )
+          })}
         </ul>
       )}
-      {children}
     </section>
   )
 }

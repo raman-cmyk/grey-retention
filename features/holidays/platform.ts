@@ -3,8 +3,9 @@
  * §18 decision 20): computed per country, never stored. Dates are plain
  * calendar dates (YYYY-MM-DD); the brand's own timezone decides "today".
  *
- * Category colours the chips: civic (public holidays), cultural
- * (celebrations and gift days), commercial (shopping days).
+ * Each chip has a category, shown by colour and by an icon: civic (public
+ * holidays), cultural (celebrations and gift days), commercial (shopping
+ * days).
  */
 export type HolidayCountry = 'US' | 'GB' | 'AU' | 'CA' | 'NZ' | 'IN' | 'INTL'
 export type HolidayCategory = 'civic' | 'cultural' | 'commercial'
@@ -16,12 +17,12 @@ export type PlatformHoliday = {
 
 export const holidayCountries: { code: HolidayCountry; label: string }[] = [
   { code: 'US', label: 'United States' },
-  { code: 'GB', label: 'United Kingdom' },
+  { code: 'GB', label: 'United Kingdom (England and Wales)' },
   { code: 'AU', label: 'Australia' },
   { code: 'CA', label: 'Canada' },
   { code: 'NZ', label: 'New Zealand' },
   { code: 'IN', label: 'India' },
-  { code: 'INTL', label: 'International (shopping days only)' }
+  { code: 'INTL', label: 'Other countries: shopping and gift days' }
 ]
 export const isHolidayCountry = (value: string): value is HolidayCountry =>
   holidayCountries.some((c) => c.code === value)
@@ -30,20 +31,23 @@ export const isHolidayCountry = (value: string): value is HolidayCountry =>
 export function countryFromTimezone(timezone: string): HolidayCountry {
   const zone = timezone.trim()
   if (
-    /^(US\/|America\/(New_York|Chicago|Denver|Los_Angeles|Phoenix|Anchorage|Detroit|Boise|Indiana|Kentucky|North_Dakota|Juneau|Sitka|Nome|Adak|Menominee|Metlakatla|Yakutat)|Pacific\/Honolulu)/.test(
+    /^(US\/|America\/(New_York|Chicago|Denver|Los_Angeles|Phoenix|Anchorage|Detroit|Boise|Indiana|Kentucky|North_Dakota|Juneau|Sitka|Nome|Adak|Menominee|Metlakatla|Yakutat|Puerto_Rico)|Pacific\/Honolulu|(EST5EDT|CST6CDT|MST7MDT|PST8PDT)$)/.test(
       zone
     )
   )
     return 'US'
   if (
-    /^(Canada\/|America\/(Toronto|Vancouver|Edmonton|Winnipeg|Halifax|St_Johns|Regina|Moncton|Whitehorse|Yellowknife|Iqaluit|Glace_Bay|Goose_Bay|Swift_Current|Dawson|Inuvik|Rankin_Inlet|Resolute|Cambridge_Bay|Creston|Fort_Nelson))/.test(
+    /^(Canada\/|America\/(Toronto|Montreal|Vancouver|Edmonton|Winnipeg|Halifax|St_Johns|Regina|Moncton|Whitehorse|Yellowknife|Iqaluit|Glace_Bay|Goose_Bay|Swift_Current|Dawson|Dawson_Creek|Inuvik|Rankin_Inlet|Resolute|Cambridge_Bay|Creston|Fort_Nelson|Atikokan|Blanc-Sablon|Nipigon|Thunder_Bay|Rainy_River|Pangnirtung)$)/.test(
       zone
     )
   )
     return 'CA'
-  if (/^(Europe\/(London|Belfast)|GB)$/.test(zone)) return 'GB'
-  if (/^Australia\//.test(zone)) return 'AU'
-  if (/^(Pacific\/(Auckland|Chatham)|NZ)$/.test(zone)) return 'NZ'
+  if (/^(Europe\/(London|Belfast)|GB|GB-Eire)$/.test(zone)) return 'GB'
+  if (/^(Australia\/|Antarctica\/Macquarie$)/.test(zone)) return 'AU'
+  if (
+    /^(Pacific\/(Auckland|Chatham)|NZ|NZ-CHAT|Antarctica\/McMurdo)$/.test(zone)
+  )
+    return 'NZ'
   if (/^Asia\/(Kolkata|Calcutta)$/.test(zone)) return 'IN'
   return 'INTL'
 }
@@ -190,7 +194,7 @@ const shopping: Rule[] = [
   afterThanksgiving('Black Friday', 1),
   afterThanksgiving('Cyber Monday', 4),
   fixed('Christmas Eve', 'cultural', 12, 24),
-  fixed('Christmas Day', 'cultural', 12, 25),
+  fixed('Christmas Day', 'civic', 12, 25),
   fixed('New Year’s Eve', 'cultural', 12, 31),
   fixed('New Year’s Day', 'civic', 1, 1)
 ]

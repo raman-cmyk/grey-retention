@@ -127,7 +127,41 @@ describe('deleteHoliday', () => {
     expect(
       (await deleteHoliday({}, form({ id: 'x', revision: '2' }))).error
     ).toBe('Reload the page and try again.')
+    expect(
+      (await deleteHoliday({}, form({ id: entry, revision: '-1' }))).error
+    ).toBe('Reload the page and try again.')
     expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('refuses staff without deleting', async () => {
+    auth.requireRequestContext.mockResolvedValueOnce({
+      tenantId: tenant,
+      tenantRole: 'staff'
+    })
+    expect(
+      (await deleteHoliday({}, form({ id: entry, revision: '2' }))).error
+    ).toMatch(/Only the workspace owner/)
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('says when the entry was already removed or changed', async () => {
+    rpc.mockResolvedValueOnce({
+      data: null,
+      error: {
+        code: 'PT409',
+        message: 'This entry was removed in another window'
+      }
+    })
+    expect(
+      (await deleteHoliday({}, form({ id: entry, revision: '2' }))).error
+    ).toBe('This entry was removed in another window. Reload the page.')
+    rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'PT409', message: 'This entry changed in another window' }
+    })
+    expect(
+      (await deleteHoliday({}, form({ id: entry, revision: '2' }))).error
+    ).toMatch(/changed in another window/)
   })
 })
 
@@ -144,5 +178,25 @@ describe('setHolidayCountry', () => {
     expect((await setHolidayCountry({}, form({ country: 'FR' }))).error).toBe(
       'Choose a country from the list.'
     )
+    expect(rpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses staff and explains database refusals', async () => {
+    auth.requireRequestContext.mockResolvedValueOnce({
+      tenantId: tenant,
+      tenantRole: 'staff'
+    })
+    expect(
+      (await setHolidayCountry({}, form({ country: 'AU' }))).error
+    ).toMatch(/Only the workspace owner/)
+    expect(rpc).not.toHaveBeenCalled()
+    rpc.mockResolvedValueOnce({ data: null, error: { code: '23514' } })
+    expect((await setHolidayCountry({}, form({ country: 'AU' }))).error).toBe(
+      'Choose a country from the list.'
+    )
+    rpc.mockResolvedValueOnce({ data: null, error: { code: '42501' } })
+    expect(
+      (await setHolidayCountry({}, form({ country: 'AU' }))).error
+    ).toMatch(/Only the workspace owner/)
   })
 })

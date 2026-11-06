@@ -1927,7 +1927,7 @@
       "status": "partial",
       "implementation_tasks": ["UIR-012"],
       "verification": [
-        "UIR-012 (2026-11-06): /holidays shows platform holidays for the next 90 days by country (US, UK, Australia, Canada, New Zealand, India, international shopping days), computed in features/holidays/platform.ts; unit and browser tests."
+        "UIR-012 (2026-11-06): /holidays shows platform holidays for the next 90 days by country (US, UK, Australia, Canada, New Zealand, India, or shopping and gift days for other countries), computed in features/holidays/platform.ts; unit and browser tests."
       ],
       "remaining": "Calendar and planner overlays (browser lane, spec §6) still need to read platformHolidays; moon-calendar dates are listed until 2030."
     },

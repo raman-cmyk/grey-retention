@@ -24,14 +24,19 @@ export function localDate(timezone: string, at: Date) {
   }).format(at)
 }
 
-/** Next date on or after `from` with the same month and day (29 Feb → 28 Feb). */
+/**
+ * Next date on or after `from` with the same month and day (29 Feb → 28 Feb
+ * in other years). Never before the saved date itself, like the database's
+ * `private.next_occurrence`.
+ */
 export function nextOccurrence(date: string, from: string) {
   const [, m, d] = date.split('-').map(Number) as [number, number, number]
-  const year = Number(from.slice(0, 4))
+  const start = date > from ? date : from
+  const year = Number(start.slice(0, 4))
   for (const y of [year, year + 1]) {
     const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
     const candidate = `${y}-${String(m).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`
-    if (candidate >= from) return candidate
+    if (candidate >= start) return candidate
   }
   return date
 }
@@ -48,8 +53,14 @@ export function shortDate(date: string, today: string) {
   return text
 }
 
+/** Control characters, as Postgres `[[:cntrl:]]` sees them (C0, DEL, C1). */
 const hasControlCharacter = (text: string) =>
-  [...text].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)
+  [...text].some((c) => {
+    const code = c.codePointAt(0)!
+    return code < 32 || (code >= 127 && code <= 159)
+  })
+/** Characters as the database counts them (an emoji is one, not two). */
+const length = (text: string) => [...text].length
 
 /** The add/edit form, with the same limits as `save_holiday`. */
 export const entrySchema = z.object({
@@ -58,13 +69,20 @@ export const entrySchema = z.object({
   name: z
     .string()
     .trim()
-    .min(2, 'Name: at least 2 characters.')
-    .max(200, 'Name: at most 200 characters.')
+    .refine((v) => length(v) >= 2, 'Name: at least 2 characters.')
+    .refine((v) => length(v) <= 200, 'Name: at most 200 characters.')
     .refine((v) => !hasControlCharacter(v), 'Name: use one line of text.'),
-  date: z.iso.date('Choose a date.'),
+  date: z.iso
+    .date('Choose a date.')
+    .refine(
+      (v) => v >= '1900-01-01' && v <= '2999-12-31',
+      'Choose a date between 1900 and 2999.'
+    ),
   kind: z.enum(['holiday', 'event'], 'Choose Holiday or Event.'),
   repeatsAnnually: z.boolean(),
-  notes: z.string().max(2000, 'Notes: at most 2000 characters.')
+  notes: z
+    .string()
+    .refine((v) => length(v) <= 2000, 'Notes: at most 2000 characters.')
 })
 
 export function readEntryForm(form: FormData) {

@@ -76,6 +76,14 @@ describe('platformHolidays', () => {
     expect(list.find((h) => h.name === 'Hanukkah begins')?.category).toBe(
       'cultural'
     )
+    const december = platformHolidays({
+      country: 'GB',
+      from: '2026-12-20',
+      days: 10
+    })
+    expect(december.find((h) => h.name === 'Christmas Day')?.category).toBe(
+      'civic'
+    )
   })
 })
 
@@ -84,6 +92,12 @@ describe('countryFromTimezone', () => {
     expect(countryFromTimezone('US/Pacific')).toBe('US')
     expect(countryFromTimezone('America/New_York')).toBe('US')
     expect(countryFromTimezone('America/Toronto')).toBe('CA')
+    expect(countryFromTimezone('America/Montreal')).toBe('CA')
+    expect(countryFromTimezone('America/Dawson_Creek')).toBe('CA')
+    expect(countryFromTimezone('America/Puerto_Rico')).toBe('US')
+    expect(countryFromTimezone('EST5EDT')).toBe('US')
+    expect(countryFromTimezone('GB-Eire')).toBe('GB')
+    expect(countryFromTimezone('NZ-CHAT')).toBe('NZ')
     expect(countryFromTimezone('Europe/London')).toBe('GB')
     expect(countryFromTimezone('Australia/Melbourne')).toBe('AU')
     expect(countryFromTimezone('Pacific/Auckland')).toBe('NZ')

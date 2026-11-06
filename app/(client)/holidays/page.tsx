@@ -31,9 +31,9 @@ export default async function HolidaysPage() {
           Holidays &amp; Events
         </h1>
         <p className="max-w-prose text-sm text-[var(--text-muted)]">
-          Your brand’s own moments — anniversaries, drops, sales windows. They
-          appear on your calendar, in the planner wizards, and the AI
-          strategists plan around them.
+          Your brand’s own moments — anniversaries, drops, sales windows. When
+          the AI strategist plans your campaigns, it plans around the ones in
+          the next 30 days. Showing them on the calendar is coming soon.
         </p>
       </header>
       <div className="space-y-6">
