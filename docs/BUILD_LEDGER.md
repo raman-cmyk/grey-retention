@@ -70,7 +70,7 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 | STAB-004 | CI on pull requests | — | review | Claude Code cloud lane | Workflow tests 11/11; pnpm verify; locally on the lean CI stack: 600/600 pgTAP, 80/80 journeys, 3 concurrency scripts. GitHub runs not yet observed: Actions is disabled by the owner | Owns `.github/workflows/ci.yml`, `database.yml`, `browser.yml`, `tests/ci/workflows.test.ts`, `docs/CI_RUNBOOK.md`. Owner must enable Actions and make `verify` a required check on `main`. |
 
-| UIR-002 | Old-app shell and shared components (spec §0, §2) | DS-006 | review | Claude Code browser lane | Part 1 tokens (#252), part 2 sidebar (#263) merged. Part 3 shared components: pnpm verify; 13 component test files; e2e not runnable here | Owns `components/shell/*`, `nav-data.ts` labels, the `outline` button and `pill` shape, `components/ui/{pill,alert-dialog,modal,audience-picker,product-picker,picker-parts,chat,credits-indicator}.tsx`, `lib/campaign-status.ts`, `features/email-generation/{preview-card,preview-card-frame,plain-text-email,safe-preview}.tsx`. Part 4 (detail-page pattern) next. Issue #238. |
+| UIR-002 | Old-app shell and shared components (spec §0, §2) | DS-006 | review | Claude Code browser lane | Parts 1–3 merged (#252, #263, #264). Part 4 detail-page pattern: pnpm verify; 13 component test files; e2e not runnable here | Owns `components/shell/*`, `nav-data.ts` labels, the `outline` button and `pill` shape, `components/ui/{pill,alert-dialog,modal,audience-picker,product-picker,picker-parts,chat,credits-indicator}.tsx`, `lib/campaign-status.ts`, `features/email-generation/{preview-card,preview-card-frame,plain-text-email,safe-preview}.tsx`. Part 4 adds `components/ui/{detail-page,card,refresh-button}.tsx` and `lib/brand-time.ts`. Issue #238. |
 
 ## Global decisions
 
@@ -92,6 +92,12 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
   - Focus styles use `outline-hidden`, so a focus outline still shows in forced-colors mode. This covers `control.ts`, `button.tsx`, `text-link.tsx`, `stat-tile.tsx` and the sidebar.
   - jsdom dialog stand-ins are in `tests/helpers/dialog-polyfill.ts` (`forceEscape` simulates Chromium's forced close).
 
+- UIR-002 part 4 (2026-11-06): owner-facing dates and times come from `lib/brand-time.ts`.
+  - Formats: `formatBrandDateTime` gives `Oct 7, 2026 · 10:49 PM`; `formatBrandDate`; `timezoneLabel` gives "Sydney time", and "UTC-5" for `Etc/` zones; `relativeTime` gives "4 weeks ago", with months only from 5 weeks and never "12 months".
+  - All of them always use one brand timezone (OWNER_JOURNEYS.md §18.14) and never throw on bad input.
+  - `components/ui/card.tsx` is the shared 20px card, named by its title.
+  - `components/ui/detail-page.tsx` holds `DetailPage` (the back link target is the caller's choice), `DetailHero`, `TimelineCard` and `AdvancedDetails`, which shows attributes as bounded text and linked resources with item counts.
+  - `RefreshButton` is the pending-aware outline Refresh for a form with a server action.
 - DS-006 (2026-11-06): the composer (`features/composer/`) saves a paste through the same `savePastedReference` helper as the paste form (extracted from `importPastedReference` into server-only `features/references/pasted-save.ts`, messages unchanged) and redirects to `/create-email/{id}?mode=copy|rewrite`. The choose page only marks that outcome ("Your choice in the composer", primary button); it never starts a copy or rewrite by itself, so owner confirmation and paid-AI gates are unchanged. EXACT→copy, REBRAND→rewrite, ADAPT disabled with a reason. Subject comes from the HTML `<title>` or first readable line; a link-only paste is refused with an honest message. Composer is owner-only on the dashboard and the setup reference step; the existing Paste/Upload links stay.
 
 - STAB-001 (2026-11-06): `GET /api/internal/jobs` is the scheduled worker. It requires `Authorization: Bearer CRON_SECRET` (existing env contract, unchanged; checked before anything else), runs only when `ADAPTER_MODE` is `fake` or unset, and visits workspaces through the existing `runFixtureJobs` path in bounded batches (≤100 workspaces, ≤4 jobs per visit, ≤3 visits, no new visit after 40 s, `maxDuration` 60). Workspaces with due or stale-leased jobs go first (the active-workspace filter is part of that query); the other active workspaces get daily housekeeping in random order. `email.rewrite` and `email.import` are never dispatched by the scheduler, so it cannot start or retry paid AI. Service-role reads of `tenants` and `job_runs` select IDs only; every claim still goes through `claim_job`/`worker_access`. The former `GET` 405 response is replaced by this handler; `POST` loopback dispatch is unchanged. Triggers: Vercel cron daily (Hobby limit) plus a GitHub Actions schedule every 10 minutes with the repository secret `CRON_SECRET`, fixed to the production HTTPS address and off until the repository variable `SCHEDULED_JOBS_ENABLED` is `true` (skipped runs use no Actions minutes; about 4,400 minutes a month when on). Shared config: `playwright.config.ts` gains a `scheduled-sweep` project that depends on the desktop and mobile projects, because the sweep drains every workspace's queue. See `docs/SCHEDULED_JOBS_RUNBOOK.md`.
@@ -679,3 +685,25 @@ Append entries using this exact shape:
   - an un-gated SENT colour.
 - Known issues: a status pill's meaning is only in its `title`; the credits indicator has no usage page yet (§18.8); the chat composer does not offer file upload itself (`onAttach` is up to the screen).
 - Next consumer: UIR-002 part 4 (detail-page pattern), then §3 Dashboard; the cloud lane can use these in §5 and §8–§14.
+
+### 2026-11-06 — UIR-002 part 4 — detail-page pattern
+
+- Status: review
+- Branch/worktree: `claude/uir-002-4-detail-page-pattern` from `main` at `93abcc0`. GitHub issue #238 (browser lane).
+- Commit(s): see the UIR-002 part 4 pull request.
+- Changed contracts: new `lib/brand-time.ts`, `components/ui/card.tsx`, `components/ui/detail-page.tsx` and `components/ui/refresh-button.tsx` (see the UIR-002 part 4 Global decision).
+- Migrations: none.
+- Verification run: `pnpm verify` (see PR for counts).
+  - Brand-time tests: format in two timezones; bad input; plain timezone names, including `Etc/GMT+5` → UTC-5; "4 weeks ago", "11 months ago", "just now", "in 3 days".
+  - Detail-page tests: back link and Refresh in a 1020px column; hero with type label, h1 and status; timeline in the brand timezone with relative time and a `datetime`; Advanced details collapsed, with a chevron, attributes as text (no markup) and linked resources with counts; `attributeText` on cycles, functions and `toJSON → undefined`.
+  - `test:e2e` not runnable here; no page uses the pattern until §4.
+- Review: `code-reviewer` found nothing blocking. Fixed:
+  - the back target now belongs to the page (the dashboard tab link with `#klaviyo-data` moves to `features/dashboard` in §3);
+  - a crash on values JSON can't encode;
+  - linked-resource counts;
+  - an open/closed chevron;
+  - Card named by `aria-labelledby`, and Card moved into its own file;
+  - `Etc/` timezone labels;
+  - "12 months ago".
+- Known issues: none beyond §4 using it.
+- Next consumer: UIR-003 §3 Dashboard, then UIR-004 §4 Klaviyo detail pages.

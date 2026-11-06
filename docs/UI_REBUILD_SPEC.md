@@ -103,17 +103,19 @@ Not crawled (needs a logged-out or admin session): login, signup, onboarding, pa
 
 ### Detail-page pattern (all Klaviyo objects)
 
-- [ ] Narrow centred column, ~1020px wide.
-- [ ] Top row: `← Back to dashboard` (muted link) on the left, outline `⟳ Refresh` on the right.
-- [ ] **Hero card:**
+Built as shared parts in `components/ui/detail-page.tsx` and `lib/brand-time.ts`; the §4 pages use them.
+
+- [x] Narrow centred column, ~1020px wide.
+- [x] Top row: `← Back to dashboard` (muted link) on the left, outline `⟳ Refresh` on the right. Back returns to the dashboard tab the owner came from (`?from=campaigns` → `/dashboard?tab=campaigns`, OWNER_JOURNEYS.md Job 5 fix).
+- [x] **Hero card:**
   - 44px rounded-square icon tile (inverted colours)
   - tiny uppercase type label: `LIST` / `SEGMENT` / `CAMPAIGN` / `FLOW` / `METRIC`
   - large title
   - status pill underneath, where the object has one
-- [ ] Then stat cards, plain-English explainer cards, and a **Timeline** card (CREATED / LAST UPDATED).
-  - Date format: `Oct 7, 2026 · 10:49 PM`
+- [x] Then stat cards, plain-English explainer cards, and a **Timeline** card (CREATED / LAST UPDATED).
+  - Date format: `Oct 7, 2026 · 10:49 PM`, followed by the one brand timezone, e.g. `(Sydney time)` (OWNER_JOURNEYS.md §18.14)
   - Muted relative time under each date: `4 weeks ago`
-- [ ] Last card is a collapsible **Advanced details** row (tune icon, object id in mono on the right). When expanded it shows:
+- [x] Last card is a collapsible **Advanced details** row (tune icon, object id in mono on the right). When expanded it shows:
   - "All attributes from Klaviyo" as a 2-col key/value grid
   - "Linked resources" (PROFILES / TAGS / FLOW TRIGGERS, showing `none` when empty)
 
