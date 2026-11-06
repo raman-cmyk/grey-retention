@@ -15,7 +15,8 @@ const ready: ReadinessInput = {
   audience_id: 'aud-1',
   calendar_revision: 1,
   copy_revision: 3,
-  design_revision: 2
+  design_revision: 2,
+  superseded_by_plan: null
 }
 
 describe('Approve, then schedule', () => {
@@ -63,9 +64,61 @@ describe('Approve, then schedule', () => {
       <ApproveStep campaign={ready} owner={false} hasCurrentPackage now={now} />
     )
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Ready. Waiting for the brand owner to schedule it.'
+      'Waiting for the brand owner to make the package and schedule it.'
     )
     expect(screen.queryByRole('link', { name: /Go to/ })).toBeNull()
+  })
+
+  it('says Sent, not "pick a new date", once a campaign was sent', () => {
+    render(
+      <ApproveStep
+        campaign={{
+          ...ready,
+          delivery_state: 'sent',
+          planned_at: '2026-11-01T09:00:00Z'
+        }}
+        owner
+        hasCurrentPackage
+        now={now}
+      />
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Sent. Nothing more to approve.'
+    )
+    expect(screen.queryByText(/pick a new date/)).toBeNull()
+  })
+
+  it('offers a new package after a cancelled send', () => {
+    render(
+      <ApproveStep
+        campaign={{ ...ready, delivery_state: 'cancelled' }}
+        owner
+        hasCurrentPackage={false}
+        now={now}
+      />
+    )
+    expect(
+      screen.getByRole('link', { name: 'Go to the delivery package' })
+    ).toHaveAttribute('href', '#package')
+  })
+
+  it('shows nothing to approve on a replaced entry', () => {
+    render(
+      <ApproveStep
+        campaign={{
+          ...ready,
+          calendar_state: 'rejected',
+          superseded_by_plan: 'p2'
+        }}
+        owner
+        hasCurrentPackage={false}
+        now={now}
+      />
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Replaced by a newer plan.'
+    )
+    expect(screen.queryByRole('list', { name: 'Approval steps' })).toBeNull()
   })
 
   it('says when scheduling has already started', () => {
@@ -94,26 +147,56 @@ describe('schedule summary', () => {
         pkg={{
           subject: 'Winter sale starts now',
           sender: { name: 'Acme', email: 'hello@acme.example' },
-          audience: { includes: ['LST1'], excludes: ['SUP1'] },
+          audience: {
+            includes: ['LST1'],
+            excludes: ['fixture-cedar-suppressed']
+          },
           scheduledAt: '2026-11-20T14:00:00Z',
           timezone: 'America/New_York'
         }}
         audiences={audiences}
+        timezone="America/New_York"
       />
     )
     const summary = screen.getByLabelText('What you are scheduling')
     expect(summary).toHaveTextContent('Winter sale starts now')
     expect(summary).toHaveTextContent('Acme · hello@acme.example')
     expect(summary).toHaveTextContent('Send toNewsletter')
-    expect(summary).toHaveTextContent("Don't send toUnsubscribed")
+    expect(summary).toHaveTextContent(
+      "Don't send toUnsubscribed, spam and bounced profiles"
+    )
+    expect(summary).not.toHaveTextContent('fixture-cedar-suppressed')
     expect(summary).toHaveTextContent(/9:00 AM \(New York time\)/)
     expect(summary).not.toHaveTextContent('LST1')
   })
 
-  it('names unknown lists instead of hiding them', () => {
-    expect(audienceNames(['LST1', 'X9'], audiences)).toEqual([
+  it('shows times in the brand timezone and says when the package differs', () => {
+    render(
+      <ScheduleSummary
+        pkg={{
+          subject: 'S',
+          sender: { name: 'A', email: 'a@b.example' },
+          audience: { includes: ['LST1'], excludes: [] },
+          scheduledAt: '2026-11-20T14:00:00Z',
+          timezone: 'Europe/London'
+        }}
+        audiences={audiences}
+        timezone="America/New_York"
+      />
+    )
+    expect(screen.getByText(/9:00 AM \(New York time\)/)).toBeVisible()
+    expect(
+      screen.getByText(/This package was made for London time/)
+    ).toBeVisible()
+  })
+
+  it('names unknown lists instead of printing ids', () => {
+    expect(audienceNames(['LST1', 'X9'], audiences, 'include')).toEqual([
       'Newsletter',
-      'Unknown list (X9)'
+      'A list no longer in this workspace'
+    ])
+    expect(audienceNames(['S1', 'S2'], audiences, 'exclude')).toEqual([
+      'Unsubscribed, spam and bounced profiles'
     ])
   })
 })

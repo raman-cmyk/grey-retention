@@ -90,7 +90,41 @@ describe('owner approval is the owner’s alone (UIR-016)', () => {
     })
     expect(
       await workflowAction({}, form({ kind: 'schedule', id, revision: '2' }))
-    ).toEqual({ error: 'Package is not ready' })
+    ).toEqual({
+      error:
+        'This package cannot be scheduled: its send time has passed or it is not ready yet. Pick a new date and make a new package.'
+    })
+    rpc.mockResolvedValueOnce({ error: { code: '42501' } })
+    expect(
+      await workflowAction({}, form({ kind: 'schedule', id, revision: '2' }))
+    ).toEqual({ error: 'Permission denied.' })
+  })
+
+  it('refuses staff the other owner actions, but lets them save copy', async () => {
+    asRole('staff')
+    for (const fields of [
+      { kind: 'generate_copy', id, revision: '1' },
+      { kind: 'cancel', id, revision: '1' },
+      { kind: 'run_jobs' }
+    ] as Record<string, string>[])
+      expect(await workflowAction({}, form(fields))).toEqual({
+        error: 'Brand owner permission required.'
+      })
+    expect(rpc).not.toHaveBeenCalled()
+    await workflowAction(
+      {},
+      form({
+        kind: 'save_copy',
+        id,
+        revision: '1',
+        subject: 'Hello',
+        preheader: '',
+        body: 'Body text',
+        cta: 'Shop now',
+        url: 'https://shop.example/'
+      })
+    )
+    expect(rpc).toHaveBeenCalledWith('save_copy', expect.anything())
   })
 
   it('refuses junk before reaching the database', async () => {

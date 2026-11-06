@@ -39,6 +39,14 @@ const schema = z.discriminatedUnion('kind', [
     feedback: z.string().trim().max(5000)
   })
 ])
+/** Database refusals in owner words (the rest are already plain). */
+function plainRefusal(message?: string) {
+  if (message === 'Package is not ready')
+    return 'This package cannot be scheduled: its send time has passed or it is not ready yet. Pick a new date and make a new package.'
+  if (message === 'Schedule is in the past')
+    return 'The send time has passed. Pick a new date.'
+  return message
+}
 export async function workflowAction(
   _state: FormResult,
   form: FormData
@@ -144,7 +152,7 @@ export async function workflowAction(
           : e.code === '42501'
             ? 'Permission denied.'
             : e.code === '23514'
-              ? e.message
+              ? plainRefusal(e.message)
               : 'Operation failed. Inspect persisted job status and retry after resolving the cause.'
     }
   }

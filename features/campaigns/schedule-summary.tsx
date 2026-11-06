@@ -14,16 +14,25 @@ export type SummaryPackage = {
   timezone: string
 }
 
-/** Audience names, never raw ids (OWNER_JOURNEYS.md §4 fix). */
+/** The required suppression segment (unsubscribed, spam, bounced). */
+export const SUPPRESSED = 'Unsubscribed, spam and bounced profiles'
+
+/**
+ * Audience names, never raw ids (OWNER_JOURNEYS.md §4 fix). Exclusions are
+ * the workspace's required suppression segment, which is not an audience
+ * row, so an unknown exclusion is named for what it is.
+ */
 export function audienceNames(
   ids: readonly string[],
-  audiences: readonly Audience[]
+  audiences: readonly Audience[],
+  kind: 'include' | 'exclude'
 ) {
-  return ids.map(
+  const names = ids.map(
     (id) =>
       audiences.find((a) => a.provider_id === id)?.label ??
-      `Unknown list (${id})`
+      (kind === 'exclude' ? SUPPRESSED : 'A list no longer in this workspace')
   )
+  return [...new Set(names)]
 }
 
 /**
@@ -32,35 +41,49 @@ export function audienceNames(
  */
 export function ScheduleSummary({
   pkg,
-  audiences
+  audiences,
+  timezone,
+  label = 'What you are scheduling'
 }: {
   pkg: SummaryPackage
   audiences: readonly Audience[]
+  /** The one brand timezone (the workspace's). */
+  timezone: string
+  label?: string
 }) {
   const rows: [string, string][] = [
     ['Subject', pkg.subject],
     ['From', `${pkg.sender.name} · ${pkg.sender.email}`],
-    ['Send to', audienceNames(pkg.audience.includes, audiences).join(', ')],
+    [
+      'Send to',
+      audienceNames(pkg.audience.includes, audiences, 'include').join(', ')
+    ],
     [
       "Don't send to",
-      audienceNames(pkg.audience.excludes, audiences).join(', ') || '—'
+      audienceNames(pkg.audience.excludes, audiences, 'exclude').join(', ') ||
+        '—'
     ],
     [
       'When',
-      `${formatBrandDateTime(pkg.scheduledAt, pkg.timezone) ?? 'Unknown time'} (${timezoneLabel(pkg.timezone)})`
+      `${formatBrandDateTime(pkg.scheduledAt, timezone) ?? 'Unknown time'} (${timezoneLabel(timezone)})`
     ]
   ]
   return (
-    <dl
-      aria-label="What you are scheduling"
-      className="my-4 grid gap-3 text-sm sm:grid-cols-2"
-    >
-      {rows.map(([term, value]) => (
-        <div key={term}>
-          <dt className="text-[var(--text-muted)]">{term}</dt>
-          <dd className="break-words">{value}</dd>
-        </div>
-      ))}
-    </dl>
+    <>
+      <dl aria-label={label} className="my-4 grid gap-3 text-sm sm:grid-cols-2">
+        {rows.map(([term, value]) => (
+          <div key={term}>
+            <dt className="text-[var(--text-muted)]">{term}</dt>
+            <dd className="break-words">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {pkg.timezone !== timezone && (
+        <p className="mb-4 text-xs text-[var(--text-muted)]">
+          This package was made for {timezoneLabel(pkg.timezone)}; times here
+          are in the brand timezone, {timezoneLabel(timezone)}.
+        </p>
+      )}
+    </>
   )
 }

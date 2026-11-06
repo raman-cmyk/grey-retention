@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   approvalSteps,
   deliveryStarted,
+  packageTimePassed,
+  readinessLine,
   scheduleBlockers,
   type ReadinessInput
 } from './schedule-readiness'
@@ -16,7 +18,8 @@ const ready: ReadinessInput = {
   audience_id: 'aud-1',
   calendar_revision: 2,
   copy_revision: 3,
-  design_revision: 4
+  design_revision: 4,
+  superseded_by_plan: null
 }
 
 describe('approve, then schedule', () => {
@@ -43,9 +46,9 @@ describe('approve, then schedule', () => {
     )
     expect(steps.filter((s) => !s.done).map((s) => [s.detail, s.href])).toEqual(
       [
-        ['Approve the date (version 2)', '#brief'],
+        ['Approve the date (version 2)', '#review-status'],
         ['Approve copy version 3', '#copy'],
-        ['Review design version 4', '#design']
+        ['Review design version 4', '#design-review']
       ]
     )
   })
@@ -72,7 +75,7 @@ describe('approve, then schedule', () => {
         .filter((s) => !s.done)
         .map((s) => s.detail)
     expect(detail({ copy_state: 'draft' })).toEqual([
-      'Write the copy, then approve it'
+      'Write the copy, then send it for approval'
     ])
     expect(detail({ design_state: 'unassigned' })).toEqual(['No design yet'])
     expect(detail({ design_state: 'assigned' })).toEqual([
@@ -83,10 +86,86 @@ describe('approve, then schedule', () => {
     ])
   })
 
-  it('knows when delivery already has it', () => {
-    expect(deliveryStarted({ delivery_state: 'ready' })).toBe(false)
-    expect(deliveryStarted({ delivery_state: 'not_ready' })).toBe(false)
-    for (const state of ['queued', 'scheduled', 'sent', 'failed', 'cancelled'])
+  it('knows when delivery already has it, and when a new package is possible', () => {
+    for (const state of [
+      'ready',
+      'not_ready',
+      'cancelled',
+      'failed',
+      'blocked'
+    ])
+      expect(deliveryStarted({ delivery_state: state })).toBe(false)
+    for (const state of ['queued', 'scheduled', 'reconciling', 'sent'])
       expect(deliveryStarted({ delivery_state: state })).toBe(true)
+  })
+
+  it('never asks to fix the time once delivery has the campaign', () => {
+    const sent = {
+      ...ready,
+      delivery_state: 'sent',
+      planned_at: '2026-11-01T09:00:00Z'
+    }
+    expect(scheduleBlockers(sent, now)).toEqual([])
+    expect(approvalSteps(sent, now).at(-1)?.detail).toBe('Handed to delivery')
+  })
+
+  it('asks staff and admins to wait for the owner instead of giving orders', () => {
+    const steps = approvalSteps(
+      { ...ready, copy_state: 'pending_approval' },
+      now,
+      false
+    )
+    expect(steps.find((s) => s.key === 'copy')?.detail).toBe(
+      'Waiting for the owner to approve copy version 3'
+    )
+  })
+
+  it('closes with the right line for every delivery state', () => {
+    const line = (
+      over: Partial<ReadinessInput>,
+      opts: Partial<Parameters<typeof readinessLine>[0]> = {}
+    ) =>
+      readinessLine({
+        campaign: { ...ready, ...over },
+        owner: true,
+        ready: true,
+        hasCurrentPackage: true,
+        standingPolicy: false,
+        ...opts
+      })
+    expect(line({})).toEqual({
+      text: 'Ready. Check the summary and confirm Schedule below.',
+      next: '#schedule'
+    })
+    expect(line({}, { hasCurrentPackage: false }).next).toBe('#package')
+    expect(line({ delivery_state: 'sent' })).toEqual({
+      text: 'Sent. Nothing more to approve.',
+      next: null
+    })
+    expect(line({ delivery_state: 'scheduled' }).next).toBeNull()
+    expect(line({ delivery_state: 'cancelled' })).toEqual({
+      text: 'Cancelled. To send it again, make a new package below.',
+      next: '#package'
+    })
+    expect(line({ delivery_state: 'failed' }).text).toMatch(/^Sending stopped/)
+    expect(line({ delivery_state: 'cancelled' }, { owner: false })).toEqual({
+      text: 'Cancelled. Waiting for the brand owner.',
+      next: null
+    })
+    expect(line({ superseded_by_plan: 'p2' })).toEqual({
+      text: 'Replaced by a newer plan. Nothing to approve here.',
+      next: null
+    })
+    expect(line({}, { standingPolicy: true }).text).toMatch(
+      /standing delivery policy schedules this/
+    )
+    expect(line({}, { ready: false }).next).toBeNull()
+  })
+
+  it('knows when a package time has passed', () => {
+    expect(packageTimePassed('2026-11-01T09:00:00Z', now)).toBe(true)
+    expect(packageTimePassed(now.toISOString(), now)).toBe(true)
+    expect(packageTimePassed('2026-11-20T09:00:00Z', now)).toBe(false)
+    expect(packageTimePassed('junk', now)).toBe(true)
   })
 })

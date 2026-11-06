@@ -12,6 +12,7 @@ import { workflowData } from './workflow-data'
 import { workflowAction } from './workflow-actions'
 import { ApproveStep } from './approve-step'
 import { ScheduleSummary } from './schedule-summary'
+import { packageTimePassed } from './schedule-readiness'
 type Row<T extends keyof Database['public']['Tables']> =
   Database['public']['Tables'][T]['Row']
 function Command({
@@ -39,7 +40,8 @@ export async function WorkflowPanel({
   content,
   owner,
   brand,
-  audiences = []
+  audiences = [],
+  timezone
 }: {
   campaign: Row<'campaigns'>
   content: Row<'campaign_content'> | null
@@ -47,6 +49,8 @@ export async function WorkflowPanel({
   brand: Row<'brand_profiles'> | null
   /** For audience names in the schedule summary (never raw ids). */
   audiences?: Pick<Row<'audiences'>, 'provider_id' | 'label'>[]
+  /** The one brand timezone (the workspace's). */
+  timezone: string
 }) {
   const data = await workflowData(c.id)
   if (!data) return null
@@ -65,6 +69,7 @@ export async function WorkflowPanel({
         campaign={c}
         owner={owner}
         hasCurrentPackage={Boolean(pkg && currentPackage)}
+        standingPolicy={data.standingPolicy}
         now={now}
       />
       <Panel id="copy" title={`Copy review · version ${c.copy_revision}`}>
@@ -188,161 +193,175 @@ export async function WorkflowPanel({
           </>
         )}
       </Panel>
-      <div id="design" className="scroll-mt-24">
-        <RenderPanel campaign={c} owner={owner} />
-      </div>
-      {(data.assignment ||
-        !['submitted', 'revisions_requested', 'owner_approved'].includes(
-          c.design_state
-        )) && (
-        <Panel title="Owner design review">
-          {data.assignment ? (
-            <div>
-              <p className="mb-4 text-sm">
-                Assignment {data.assignment.state.replaceAll('_', ' ')} · due{' '}
-                {new Intl.DateTimeFormat('en', {
-                  timeZone: c.timezone,
-                  dateStyle: 'medium',
-                  timeStyle: 'short'
-                }).format(new Date(data.assignment.due_at))}
-                {new Date(data.assignment.due_at).getTime() <
-                  new Date().getTime() && data.assignment.state !== 'approved'
-                  ? ' · SLA escalation required'
-                  : ''}
-              </p>
-              {latest ? (
-                <>
-                  <h3 className="mb-3 font-semibold">
-                    Design v{latest.revision} · copy v{latest.copy_revision}
-                  </h3>
-                  {latest.preview ? (
-                    <Image
-                      src={latest.preview}
-                      alt={`Submitted campaign design version ${latest.revision}`}
-                      width={600}
-                      height={800}
-                      unoptimized
-                      className="mb-4 h-auto max-h-[45rem] w-auto max-w-full rounded-lg border border-[var(--line)]"
-                    />
-                  ) : (
-                    <Notice error>
-                      Private preview unavailable. Refresh for a new signed URL.
-                    </Notice>
-                  )}
-                  <p className="mb-4 text-sm whitespace-pre-wrap">
-                    {latest.notes}
-                  </p>
-                  {!currentDesign && (
-                    <Notice error>
-                      This submission refers to an older copy or design
-                      revision. A new submission is required.
-                    </Notice>
-                  )}
-                  {owner && currentDesign && c.design_state === 'submitted' && (
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      <ActionForm
-                        action={workflowAction}
-                        className="grid gap-3"
-                      >
-                        <input
-                          type="hidden"
-                          name="kind"
-                          value="review_design"
-                        />
-                        <input type="hidden" name="id" value={latest.id} />
-                        <input
-                          type="hidden"
-                          name="revision"
-                          value={c.design_revision}
-                        />
-                        <input type="hidden" name="decision" value="revision" />
-                        <Field label="Design section">
-                          <TextField
-                            name="section"
-                            required
-                            placeholder="Hero, product strip, footer…"
-                          />
-                        </Field>
-                        <Field label="Requested revision">
-                          <textarea
-                            name="feedback"
-                            className={controlClass}
-                            rows={3}
-                            required
-                            minLength={5}
-                          />
-                        </Field>
-                        <div>
-                          <SubmitButton variant="secondary">
-                            Request section revision
-                          </SubmitButton>
+      <div id="design-review" className="scroll-mt-24 space-y-6">
+        <div id="design" className="scroll-mt-24">
+          <RenderPanel campaign={c} owner={owner} />
+        </div>
+        {(data.assignment ||
+          !['submitted', 'revisions_requested', 'owner_approved'].includes(
+            c.design_state
+          )) && (
+          <Panel title="Owner design review">
+            {data.assignment ? (
+              <div>
+                <p className="mb-4 text-sm">
+                  Assignment {data.assignment.state.replaceAll('_', ' ')} · due{' '}
+                  {new Intl.DateTimeFormat('en', {
+                    timeZone: c.timezone,
+                    dateStyle: 'medium',
+                    timeStyle: 'short'
+                  }).format(new Date(data.assignment.due_at))}
+                  {new Date(data.assignment.due_at).getTime() <
+                    new Date().getTime() && data.assignment.state !== 'approved'
+                    ? ' · SLA escalation required'
+                    : ''}
+                </p>
+                {latest ? (
+                  <>
+                    <h3 className="mb-3 font-semibold">
+                      Design v{latest.revision} · copy v{latest.copy_revision}
+                    </h3>
+                    {latest.preview ? (
+                      <Image
+                        src={latest.preview}
+                        alt={`Submitted campaign design version ${latest.revision}`}
+                        width={600}
+                        height={800}
+                        unoptimized
+                        className="mb-4 h-auto max-h-[45rem] w-auto max-w-full rounded-lg border border-[var(--line)]"
+                      />
+                    ) : (
+                      <Notice error>
+                        Private preview unavailable. Refresh for a new signed
+                        URL.
+                      </Notice>
+                    )}
+                    <p className="mb-4 text-sm whitespace-pre-wrap">
+                      {latest.notes}
+                    </p>
+                    {!currentDesign && (
+                      <Notice error>
+                        This submission refers to an older copy or design
+                        revision. A new submission is required.
+                      </Notice>
+                    )}
+                    {owner &&
+                      currentDesign &&
+                      c.design_state === 'submitted' && (
+                        <div className="grid gap-5 sm:grid-cols-2">
+                          <ActionForm
+                            action={workflowAction}
+                            className="grid gap-3"
+                          >
+                            <input
+                              type="hidden"
+                              name="kind"
+                              value="review_design"
+                            />
+                            <input type="hidden" name="id" value={latest.id} />
+                            <input
+                              type="hidden"
+                              name="revision"
+                              value={c.design_revision}
+                            />
+                            <input
+                              type="hidden"
+                              name="decision"
+                              value="revision"
+                            />
+                            <Field label="Design section">
+                              <TextField
+                                name="section"
+                                required
+                                placeholder="Hero, product strip, footer…"
+                              />
+                            </Field>
+                            <Field label="Requested revision">
+                              <textarea
+                                name="feedback"
+                                className={controlClass}
+                                rows={3}
+                                required
+                                minLength={5}
+                              />
+                            </Field>
+                            <div>
+                              <SubmitButton variant="secondary">
+                                Request section revision
+                              </SubmitButton>
+                            </div>
+                          </ActionForm>
+                          <Command
+                            kind="review_design"
+                            id={latest.id}
+                            revision={c.design_revision}
+                          >
+                            <input
+                              name="decision"
+                              type="hidden"
+                              value="approved"
+                            />
+                            <input
+                              name="section"
+                              type="hidden"
+                              value="whole_design"
+                            />
+                            <input
+                              name="feedback"
+                              type="hidden"
+                              value="Owner approved exact final version."
+                            />
+                            <p className="mb-4 text-sm leading-6">
+                              Confirm that this exact design implements approved
+                              copy v{c.copy_revision}. Later material changes
+                              need new approval.
+                            </p>
+                            <SubmitButton>
+                              Approve design v{c.design_revision}
+                            </SubmitButton>
+                          </Command>
                         </div>
-                      </ActionForm>
-                      <Command
-                        kind="review_design"
-                        id={latest.id}
-                        revision={c.design_revision}
-                      >
-                        <input name="decision" type="hidden" value="approved" />
-                        <input
-                          name="section"
-                          type="hidden"
-                          value="whole_design"
-                        />
-                        <input
-                          name="feedback"
-                          type="hidden"
-                          value="Owner approved exact final version."
-                        />
-                        <p className="mb-4 text-sm leading-6">
-                          Confirm that this exact design implements approved
-                          copy v{c.copy_revision}. Later material changes need
-                          new approval.
-                        </p>
-                        <SubmitButton>
-                          Approve design v{c.design_revision}
-                        </SubmitButton>
-                      </Command>
-                    </div>
-                  )}
-                  {c.design_state === 'owner_approved' && (
-                    <Notice>
-                      Brand owner approved exact design v{c.design_revision}.
-                    </Notice>
-                  )}
-                </>
-              ) : (
-                <Notice>
-                  Waiting for the assigned designer’s first submission.
-                </Notice>
-              )}
-              <details className="mt-5">
-                <summary className="cursor-pointer text-sm font-medium">
-                  Submission and section feedback history
-                </summary>
-                <div className="mt-3 space-y-3 text-sm">
-                  {data.submissions.map((s) => (
-                    <p key={s.id}>
-                      Design v{s.revision} · copy v{s.copy_revision} · {s.notes}
-                    </p>
-                  ))}
-                  {data.reviews.map((r) => (
-                    <p key={r.id}>
-                      {r.decision} · {r.section}: {r.feedback}
-                    </p>
-                  ))}
-                </div>
-              </details>
-            </div>
-          ) : (
-            <Notice>
-              {c.copy_state === 'approved'
-                ? 'Approved copy is waiting for platform assignment.'
-                : 'Approve copy before design assignment.'}
-            </Notice>
-          )}
-        </Panel>
-      )}
+                      )}
+                    {c.design_state === 'owner_approved' && (
+                      <Notice>
+                        Brand owner approved exact design v{c.design_revision}.
+                      </Notice>
+                    )}
+                  </>
+                ) : (
+                  <Notice>
+                    Waiting for the assigned designer’s first submission.
+                  </Notice>
+                )}
+                <details className="mt-5">
+                  <summary className="cursor-pointer text-sm font-medium">
+                    Submission and section feedback history
+                  </summary>
+                  <div className="mt-3 space-y-3 text-sm">
+                    {data.submissions.map((s) => (
+                      <p key={s.id}>
+                        Design v{s.revision} · copy v{s.copy_revision} ·{' '}
+                        {s.notes}
+                      </p>
+                    ))}
+                    {data.reviews.map((r) => (
+                      <p key={r.id}>
+                        {r.decision} · {r.section}: {r.feedback}
+                      </p>
+                    ))}
+                  </div>
+                </details>
+              </div>
+            ) : (
+              <Notice>
+                {c.copy_state === 'approved'
+                  ? 'Approved copy is waiting for platform assignment.'
+                  : 'Approve copy before design assignment.'}
+              </Notice>
+            )}
+          </Panel>
+        )}
+      </div>
       <div id="delivery" className="scroll-mt-24 space-y-6">
         {owner && c.design_state === 'owner_approved' && (
           <Panel id="package" title="Assemble a reviewed delivery package">
@@ -432,7 +451,16 @@ export async function WorkflowPanel({
               Simulation only. Provider acceptance, links and recipients have
               not been evaluated against a live account.
             </Notice>
-            <ScheduleSummary pkg={pkg} audiences={audiences} />
+            <ScheduleSummary
+              pkg={pkg}
+              audiences={audiences}
+              timezone={timezone}
+              label={
+                currentPackage && c.delivery_state === 'ready'
+                  ? 'What you are scheduling'
+                  : 'What this package holds'
+              }
+            />
             <iframe
               title="Final email preview"
               sandbox=""
@@ -448,22 +476,28 @@ export async function WorkflowPanel({
             />
             {currentPackage &&
               c.delivery_state === 'ready' &&
-              Date.parse(pkg.scheduledAt) <= now.getTime() && (
+              packageTimePassed(c.planned_at, now) && (
                 <Notice error>
                   The send time has passed, so this package cannot be scheduled.
-                  Pick a new date and make a new package.
+                  {owner
+                    ? ' Pick a new date and make a new package.'
+                    : ' The brand owner can pick a new date.'}
                 </Notice>
               )}
             {owner &&
               currentPackage &&
               c.delivery_state === 'ready' &&
-              Date.parse(pkg.scheduledAt) > now.getTime() && (
+              !packageTimePassed(c.planned_at, now) && (
                 <ConfirmDialog
                   label="Review scheduling confirmation"
                   title="Confirm simulated scheduling"
                   description={`Check what you are scheduling. Confirming records your approval of package v${pkg.revision} and schedules it (a sample send: nothing real goes out).`}
                 >
-                  <ScheduleSummary pkg={pkg} audiences={audiences} />
+                  <ScheduleSummary
+                    pkg={pkg}
+                    audiences={audiences}
+                    timezone={timezone}
+                  />
                   <Command kind="schedule" id={pkg.id} revision={pkg.revision}>
                     <SubmitButton>
                       Confirm package v{pkg.revision} scheduling

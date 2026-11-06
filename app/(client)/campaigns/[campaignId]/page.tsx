@@ -1,6 +1,7 @@
 import { RejectionForm } from '@/features/planning/panels'
 import { CampaignPill } from '@/features/campaigns/status-pill'
 import { stepStateWords } from '@/features/campaigns/status'
+import { validTimezone } from '@/lib/brand-time'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
 import {
@@ -61,7 +62,7 @@ export default async function CampaignPage({
           />
         </Panel>
         <div className="space-y-6">
-          <Panel title="Review status">
+          <Panel id="review-status" title="Review status">
             <p className="mb-4 flex flex-wrap items-center gap-2 text-sm">
               <span className="text-[var(--text-muted)]">Status</span>
               <CampaignPill campaign={campaign} />
@@ -128,6 +129,7 @@ export default async function CampaignPage({
         owner={context.tenantRole === 'owner'}
         brand={data!.brand}
         audiences={data!.audiences}
+        timezone={validTimezone(context.timezone)}
       />
       <div id="history" className="mt-6 grid scroll-mt-24 gap-6 lg:grid-cols-2">
         <Panel title="Workspace notes">

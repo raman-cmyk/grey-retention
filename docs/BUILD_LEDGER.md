@@ -186,10 +186,12 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
   - Still raw: the delivery panel's "Campaign delivery: …" line (e2e asserts it), the planning panel, `/copy-review` and admin designers. GROS replies use their own delivery words (`20260914090016_gros_readable_reply.sql`); integration note for the GROS domain.
   - Render-path revisions on a design email read "With designer", and a text email given to a human designer reads "Draft" once changes are asked, until active designer assignments are loaded with campaigns.
 
-- UIR-016 (2026-11-06): the campaign page opens with "Approve, then schedule" (OWNER_JOURNEYS.md Job 4, §18.4).
+- UIR-016 (2026-11-06): the campaign page shows "Approve, then schedule" above its workflow (OWNER_JOURNEYS.md Job 4, §18.4).
   - One checklist: date, copy and design approved (each tied to its version), who to send to, and a send time in the future. Each open step links to where it is done (`approvalSteps`).
-  - Only the owner gets "Go to Schedule". Staff and workspace admins see "Waiting for the brand owner". The server action refuses them before any database call, and the database checks owner, versions, past times and an empty audience again.
-  - The schedule confirmation shows a summary before the owner confirms: subject, from, Send to and Don't send to by NAME (never ids), and the time in the brand timezone with its name (`ScheduleSummary`). The final preview uses the same summary.
+  - Only the owner gets "Go to Schedule". Staff and workspace admins read "Waiting for the owner to …". The server action refuses them before any database call, and the database checks owner, versions, past times and an empty audience again.
+  - The closing line covers every delivery state (`readinessLine`): Sent, scheduling started, cancelled or stopped (make a new package), a replaced entry (nothing to approve), and the owner's standing L1 policy (it schedules ready packages on its next run).
+  - The schedule confirmation shows a summary before the owner confirms: subject, from, Send to and Don't send to by NAME (never ids; the required suppression segment reads "Unsubscribed, spam and bounced profiles"), and the time in the workspace's brand timezone with its name, noting when the package was made for another one (`ScheduleSummary`). The final preview uses the same summary.
+  - The database's "Package is not ready" and "Schedule is in the past" refusals come back in owner words.
   - A package whose time has passed shows why it can't be scheduled instead of a button.
 
 - DS-006 (2026-11-06): the composer (`features/composer/`) saves a paste through the same `savePastedReference` helper as the paste form (extracted from `importPastedReference` into server-only `features/references/pasted-save.ts`, messages unchanged) and redirects to `/create-email/{id}?mode=copy|rewrite`. The choose page only marks that outcome ("Your choice in the composer", primary button); it never starts a copy or rewrite by itself, so owner confirmation and paid-AI gates are unchanged. EXACT→copy, REBRAND→rewrite, ADAPT disabled with a reason. Subject comes from the HTML `<title>` or first readable line; a link-only paste is refused with an honest message. Composer is owner-only on the dashboard and the setup reference step; the existing Paste/Upload links stay.
@@ -1048,6 +1050,9 @@ Append entries using this exact shape:
   - Summary: subject, from, audience names, Don't send to, time with the timezone name; unknown lists named, not hidden.
   - Server action: staff and admins refused for copy approval, design approval, packaging and scheduling, with no database call; the owner calls `approve_copy` and `enqueue_delivery` with the exact version; stale versions and past times come back in words; junk is refused.
   - `test:e2e` not runnable here; `scheduling.spec.ts` still finds "Review scheduling confirmation" and the confirm button.
-- Review: see the UIR-016 pull request.
-- Known issues: audience profile counts are not stored yet, so the summary shows names without counts; the Send step lives on the old campaign page until the §7.3 editor rebuild.
+- Review: `code-reviewer` confirmed the server and database enforcement, and blocked on two things:
+  1. "Don't send to" showed the suppression segment as "Unknown list (id)".
+  2. The checklist was wrong after delivery: "pick a new date" on sent campaigns, and no new package after a cancel or failure.
+     Both are fixed and tested. Also fixed: replaced entries, "Ready" wording that ignored the package's own checks, the vague past-time refusal, the brand timezone, the standing L1 policy, orders shown to staff, anchors that missed their panel, two time sources, and more server-action tests (staff save copy, other owner actions, permission denied).
+- Known issues: no pgTAP test yet proves a workspace admin or staff gets 42501 from the approval and delivery commands (the existing test covers the platform operator); audience profile counts are not stored yet, so the summary shows names without counts; the Send step lives on the old campaign page until the §7.3 editor rebuild.
 - Next consumer: §7.3 editor (Content → Design → Send), UIR-018 "+ New" on the dashboard.
