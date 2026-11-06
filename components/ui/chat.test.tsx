@@ -167,4 +167,14 @@ describe('chat UI', () => {
     )
     expect(log.scrollTop).toBe(100)
   })
+
+  it('keeps the text when sending throws', async () => {
+    const onSend = vi.fn(async () => {
+      throw new Error('offline')
+    })
+    render(<ChatComposer label="Message" onSend={onSend} />)
+    await userEvent.type(screen.getByLabelText('Message'), 'Hello{Enter}')
+    expect(onSend).toHaveBeenCalledOnce()
+    expect(screen.getByLabelText('Message')).toHaveValue('Hello')
+  })
 })

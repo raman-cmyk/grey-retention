@@ -178,6 +178,8 @@ export function ChatComposer({
       const ok = await onSend(sent)
       if (ok !== false)
         setText((current) => (current.trim() === sent ? '' : current))
+    } catch {
+      // Sending failed: keep the text so the owner can try again.
     } finally {
       busy.current = false
       setSending(false)
