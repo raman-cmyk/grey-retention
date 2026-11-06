@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { cronAuthorized, localFixtureDispatch } from './gate'
+import {
+  cronAuthorized,
+  localFixtureDispatch,
+  scheduledDispatchAllowed
+} from './gate'
 describe('fixture transport gates', () => {
   const secret = 'original-synthetic-cron-secret-32-characters'
   it('denies missing, short, malformed and incorrect authorization', () => {
@@ -23,5 +27,11 @@ describe('fixture transport gates', () => {
     ] as const)
       expect(localFixtureDispatch(mode, url)).toBe(false)
     expect(localFixtureDispatch('fake', 'http://127.0.0.1:54321')).toBe(true)
+  })
+  it('allows the scheduled sweep only with sample providers', () => {
+    expect(scheduledDispatchAllowed('fake')).toBe(true)
+    expect(scheduledDispatchAllowed(undefined)).toBe(true)
+    for (const mode of ['real', 'Fake', '', 'live'])
+      expect(scheduledDispatchAllowed(mode)).toBe(false)
   })
 })

@@ -1,0 +1,51 @@
+name: Scheduled jobs
+
+# Runs queued background work (drafts, designs, reports, sample scheduling)
+# on the live app every 10 minutes. Vercel's Hobby plan allows only a daily
+# cron (see vercel.json), so this is the frequent trigger. Both call the same
+# endpoint, which is safe to call twice at once.
+#
+# Setup (docs/SCHEDULED_JOBS_RUNBOOK.md):
+# - repository secret CRON_SECRET: the same value as CRON_SECRET in Vercel.
+# - optional repository variable SCHEDULED_JOBS_PAUSED=true pauses it; a
+#   paused run is skipped and uses no Actions minutes.
+# - optional repository variable SCHEDULED_JOBS_URL overrides the endpoint.
+#
+# Each run uses about one Actions minute (GitHub rounds up per job).
+on:
+  schedule:
+    # Minute 3, 13, 23 ... avoids the busy top of the hour.
+    - cron: '3-59/10 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: scheduled-jobs
+  cancel-in-progress: false
+
+jobs:
+  run:
+    if: vars.SCHEDULED_JOBS_PAUSED != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Run queued jobs
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          JOBS_URL: ${{ vars.SCHEDULED_JOBS_URL || 'https://grey-retention-app.vercel.app/api/internal/jobs' }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::warning::The CRON_SECRET repository secret is not set, so no request was sent."
+            exit 0
+          fi
+          # The header goes through stdin so the secret never appears in the
+          # process list; GitHub also masks it in the log.
+          status=$(printf 'header = "Authorization: Bearer %s"\n' "$CRON_SECRET" |
+            curl --config - --silent --show-error --max-time 90 \
+              --output response.json --write-out '%{http_code}' "$JOBS_URL") || status=000
+          if [ -f response.json ]; then cat response.json; echo; fi
+          if [ "$status" != "200" ]; then
+            echo "::error::The job run returned HTTP $status."
+            exit 1
+          fi
