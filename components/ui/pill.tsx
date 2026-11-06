@@ -10,7 +10,8 @@ import { cn } from '@/lib/utils'
  * Small uppercase pills (docs/UI_REBUILD_SPEC.md §2 "Status pill, type pill,
  * domain pill"). Colour is never the only signal: the word is always there.
  */
-const tones: Record<PillTone, string> = {
+/** Colour classes per tone; also used by calendar chips so colours match. */
+export const pillToneClasses: Record<PillTone, string> = {
   neutral:
     'border-[var(--line-strong)] bg-[var(--surface-raised)] text-[var(--text-muted)]',
   success: 'border-transparent bg-success-faint text-success',
@@ -23,7 +24,7 @@ const tones: Record<PillTone, string> = {
   solid: 'border-transparent bg-[var(--brand-primary)] text-[var(--on-brand)]'
 }
 
-export const pillTones = Object.keys(tones) as PillTone[]
+export const pillTones = Object.keys(pillToneClasses) as PillTone[]
 
 export function Pill({
   tone = 'neutral',
@@ -47,7 +48,7 @@ export function Pill({
       className={cn(
         'tracking-label inline-flex min-h-5 max-w-full items-center rounded-full border px-2 py-0.5 text-[0.6875rem] leading-none font-semibold whitespace-nowrap uppercase forced-colors:border-[CanvasText]',
         mono && 'font-mono',
-        tones[tone],
+        pillToneClasses[tone],
         className
       )}
     >

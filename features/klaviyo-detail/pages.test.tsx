@@ -126,6 +126,22 @@ describe('Klaviyo detail pages (§4)', () => {
     expect(frame.getAttribute('srcdoc')).not.toContain('unsubscribe')
   })
 
+  it('campaign: opened from the planner, Back returns to that planner view', async () => {
+    render(
+      await CampaignPage({
+        params: Promise.resolve({ klaviyoId: 'CMPspr001' }) as never,
+        searchParams: Promise.resolve({
+          from: 'planner',
+          m: '2026-10',
+          view: 'table'
+        })
+      })
+    )
+    expect(
+      screen.getByRole('link', { name: /Back to Campaigns/ })
+    ).toHaveAttribute('href', '/campaign-agent?m=2026-10&view=table')
+  })
+
   it('campaign: says when it sends in local time, and has no stats before sending', async () => {
     render(await CampaignPage(props('klaviyoId', 'CMPhol007')))
     expect(

@@ -1820,9 +1820,11 @@
       "feature": "Monthly calendar navigation",
       "priority": "P1",
       "acceptance": "Previous/next month preserves the selected context.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-006"],
+      "verification": [
+        "UIR-006 (2026-11-06): features/planner/model.test.ts and planner.test.tsx: previous/next/Today and the month picker keep status, channel, view and replaced-entries filters; tests/e2e/calendar-view.spec.ts in CI."
+      ]
     },
     {
       "id": "CAL-002",
@@ -1830,9 +1832,11 @@
       "feature": "Calendar and table views",
       "priority": "P1",
       "acceptance": "Both views use the same work/status data.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-006"],
+      "verification": [
+        "UIR-006 (2026-11-06): features/planner/planner.test.tsx: the calendar and the table are built from the same filtered entries (workspace + Klaviyo); calendar-view e2e in CI."
+      ]
     },
     {
       "id": "CAL-003",
@@ -1840,9 +1844,11 @@
       "feature": "Status filters",
       "priority": "P1",
       "acceptance": "Filter all/draft/assigned/scheduled/sent without changing records.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-006"],
+      "verification": [
+        "UIR-006 (2026-11-06): features/planner/model.test.ts: status filters (one status system: Draft, With designer, Needs your approval, Scheduled, Sent, Missed) only read records; combined with channel filters."
+      ]
     },
     {
       "id": "CAL-004",
@@ -1850,9 +1856,12 @@
       "feature": "Channel filters",
       "priority": "P1",
       "acceptance": "Filter design email/text email/SMS consistently.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-006"],
+      "verification": [
+        "UIR-006 (2026-11-06): features/planner/model.test.ts: Design email / Text email filters on both views."
+      ],
+      "remaining": "SMS is not a channel in this product yet, so there is no SMS filter."
     },
     {
       "id": "CAL-005",
@@ -1860,9 +1869,11 @@
       "feature": "Merge local drafts and Klaviyo history",
       "priority": "P1",
       "acceptance": "Distinguish local work from external historical campaigns.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-006"],
+      "verification": [
+        "UIR-006 (2026-11-06): features/planner/model.test.ts: workspace campaigns and Klaviyo sends merge into one sorted list; each entry says its source (table From column, sr text on chips) and links to the right page."
+      ]
     },
     {
       "id": "CAL-006",
@@ -1870,9 +1881,12 @@
       "feature": "Lazy load external campaign month",
       "priority": "P1",
       "acceptance": "Show loading/failure state while historical sends load.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-006"],
+      "verification": [
+        "UIR-006 (2026-11-06): features/planner/load.test.ts: a plain line says whether Klaviyo sends are sample data, not connected or unavailable."
+      ],
+      "remaining": "No live Klaviyo pull yet, so there is no loading state to show; add one with the live adapter."
     },
     {
       "id": "CAL-007",
@@ -1880,9 +1894,11 @@
       "feature": "Open campaign from calendar",
       "priority": "P1",
       "acceptance": "Clicking an item opens the intended existing draft.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-006"],
+      "verification": [
+        "UIR-006 (2026-11-06): features/planner/model.test.ts, planner.test.tsx and features/klaviyo-detail/pages.test.tsx: workspace chips open /campaigns/:id; Klaviyo chips open /campaigns/klaviyo/:id (UIR-004) with from=planner, and Back returns to the same planner view (ids encoded)."
+      ]
     },
     {
       "id": "CAL-008",
@@ -1890,9 +1906,12 @@
       "feature": "Plan a selected day",
       "priority": "P1",
       "acceptance": "A day-specific brief becomes correctly dated work.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-006"],
+      "verification": [
+        "UIR-006 (2026-11-06): features/drafts/default-date.test.ts and planner.test.tsx: \"+ plan send\" on a day opens /first-draft?date=… and the form starts on that day in the brand timezone."
+      ],
+      "remaining": "The §6.7 conversational plan-send modal is UIR-006 part 2."
     },
     {
       "id": "CAL-009",
@@ -1994,11 +2013,12 @@
       "priority": "P1",
       "acceptance": "Create/delete own events without changing other tenants.",
       "status": "verified_fixture",
-      "implementation_tasks": ["UIR-012"],
+      "implementation_tasks": ["UIR-012", "UIR-006"],
       "verification": [
-        "UIR-012 (2026-11-06): /holidays adds, edits and deletes the workspace's own holidays and events (type, yearly repeat, notes for the AI strategist) through owner-only save_holiday / delete_holiday; pgTAP (roles, other workspace sees nothing, stale edits), unit and desktop/mobile browser tests."
+        "UIR-012 (2026-11-06): /holidays adds, edits and deletes the workspace's own holidays and events (type, yearly repeat, notes for the AI strategist) through owner-only save_holiday / delete_holiday; pgTAP (roles, other workspace sees nothing, stale edits), unit and desktop/mobile browser tests.",
+        "UIR-006 (2026-11-06): features/planner/load.test.ts: the Campaigns calendar shows only this tenant's holidays and events for the visible weeks."
       ],
-      "remaining": "The planner modal's \"YOURS (N)\" list reads these entries in the browser lane's planner (UIR §6)."
+      "remaining": "The planner modal's \"YOURS (N)\" list and create/delete from the calendar (UIR §6.4) are still to do; today they are added on /holidays."
     },
     {
       "id": "CAL-019",

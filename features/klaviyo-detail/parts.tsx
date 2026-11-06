@@ -1,5 +1,6 @@
 import 'server-only'
 import Link from 'next/link'
+import type { Route } from 'next'
 import type { ReactNode } from 'react'
 import { Card } from '@/components/ui/card'
 import { DetailPage } from '@/components/ui/detail-page'
@@ -26,12 +27,15 @@ export async function loadKlaviyo() {
 /** Detail-page frame: back to the dashboard tab and the sample-data note. */
 export function KlaviyoDetail({
   from,
+  back: backTo,
   children
 }: {
   from: unknown
+  /** Overrides the dashboard back link (e.g. back to the planner). */
+  back?: { href: Route; label: string } | null
   children: ReactNode
 }) {
-  const back = dashboardBack(from)
+  const back = backTo ?? dashboardBack(from)
   return (
     <DetailPage backHref={back.href} backLabel={back.label}>
       <SampleNote />
@@ -42,12 +46,14 @@ export function KlaviyoDetail({
 
 export function NotConnected({
   from,
+  back: backTo,
   data
 }: {
   from: unknown
+  back?: { href: Route; label: string } | null
   data: Exclude<KlaviyoData, { state: 'sample' }>
 }) {
-  const back = dashboardBack(from)
+  const back = backTo ?? dashboardBack(from)
   return (
     <DetailPage backHref={back.href} backLabel={back.label}>
       <h1 className="tracking-display font-serif text-[1.875rem] leading-tight font-normal">

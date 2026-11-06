@@ -1,14 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { StatusInput } from './status'
 import { CampaignPill } from './status-pill'
-
-vi.mock('next/link', () => ({
-  default: ({ children, ...props }: { children: React.ReactNode }) => (
-    <a {...props}>{children}</a>
-  )
-}))
-const { monthSummary } = await import('./calendar')
 
 afterEach(cleanup)
 const now = new Date('2026-11-06T12:00:00Z')
@@ -48,24 +41,5 @@ describe('campaign pill', () => {
       'title',
       'A newer plan replaced this entry.'
     )
-  })
-})
-
-describe('calendar month summary', () => {
-  it('counts with the same status as the pills, and never says approved', () => {
-    const entries = [
-      base,
-      { ...base, id: 'b', delivery_state: 'scheduled' },
-      { ...base, id: 'c', planned_at: '2026-11-01T09:00:00Z' },
-      { ...base, id: 'd', delivery_state: 'reconciling' },
-      { ...base, id: 'e', copy_state: 'draft', design_state: 'unassigned' },
-      { ...base, id: 'f', superseded_by_plan: 'p2' }
-    ] as never[]
-    const summary = monthSummary(entries, now)
-    expect(summary).toBe(
-      '5 campaigns · 1 needs your approval · 1 scheduled · 1 missed · 1 with a delivery problem'
-    )
-    expect(summary).not.toMatch(/approved/)
-    expect(monthSummary([], now)).toBe('0 campaigns')
   })
 })

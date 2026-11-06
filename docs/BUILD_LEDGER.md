@@ -91,6 +91,8 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 | UIR-015 | One campaign status system | UIR-002 | review | Claude Code browser lane | pnpm verify; status derivation tests for every state; calendar, list and dashboard show the one pill | Owns `features/campaigns/status.ts` (`campaignStatusOf`, `stepStateWords`) and `status-pill.tsx` and the status pills on the calendar, the Your campaigns list and the dashboard mini calendar. Issue #254. |
 
+| UIR-006 | Campaigns planner part 1 (spec §6 toolbar, grid, table) | UIR-004, UIR-015 | review | Claude Code browser lane | pnpm verify; planner model, UI, loader, + New menu and first-draft date tests; demo screenshots at 1440/390px; `calendar-view` e2e rewritten for Table, replaced entries, filters and + New | Owns `features/planner/*`, `app/(client)/campaign-agent/page.tsx`, `features/drafts/default-date.ts`; removes `features/campaigns/calendar.tsx`. Issue #242. |
+
 ## Global decisions
 
 - Ready buttons (2026-11-07): `SubmitButton` and the `ConfirmDialog` trigger stay disabled until the page is interactive (`components/ui/use-hydrated.ts`, `useSyncExternalStore`: false in the server HTML and during hydration, true in the browser). A click on a slow page before hydration used to post the form natively, so the page reloaded and its "saved" message was lost, or the dialog never opened. This was the first failure behind the mobile UC-09/12/16 browser runs. Playwright waits for a button to be enabled before it clicks, so the journeys no longer race hydration. Unit tests render on the client and are unaffected.
@@ -180,6 +182,18 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
   Replaced plan entries show "Replaced". The overview's "Next:", its tiles and filters, the dashboard's "Waiting for you" and upcoming sends, and the calendar's month line ("4 campaigns · 1 needs your approval · 1 scheduled") all come from the same status; the old "awaiting review · approved" line is gone. The campaign page shows the pill and plain words per step (`stepStateWords`). `hasDeliveryProblem` is removed (the status says it); the pill lives in `features/campaigns/status-pill.tsx`.
   - Still raw: the delivery panel's "Campaign delivery: …" line (e2e asserts it), the planning panel, `/copy-review` and admin designers. GROS replies use their own delivery words (`20260914090016_gros_readable_reply.sql`); integration note for the GROS domain.
   - Render-path revisions on a design email read "With designer", and a text email given to a human designer reads "Draft" once changes are asked, until active designer assignments are loaded with campaigns.
+
+- UIR-006 part 1 (2026-11-06): the Campaigns page is one planner card (`features/planner/`).
+  - One list of entries feeds the calendar AND the table: this workspace's campaigns plus the Klaviyo sends (sample data in fake mode). Klaviyo drafts with no send time sit in a "Not scheduled in Klaviyo" row (§15 bug 3), which follows the filters.
+  - Every chip shows its status in words on a second line that wraps, plus "Klaviyo sample" or "Synthetic demo", because pill colours repeat between statuses. Klaviyo chips also have a dashed outline in the text colour and a download icon. The legend lists every status, Cancelled and Delivery problem included. The month line counts the whole month, whatever the filters, with the same status ("4 campaigns (1 Klaviyo sample) · 1 needs your approval").
+  - Filters (status, channel), the view, the month and "show replaced entries" all live in the URL (`plannerHref`), so changing one keeps the others. The old `?view=list` and `?view=history` links open the table (history also turns on replaced entries). The replaced-entries switch is in both views.
+  - Klaviyo chips open `/campaigns/klaviyo/:id?from=planner&<planner state>`. On that page `plannerBack` turns it into "Back to Campaigns" to the exact view; `KlaviyoDetail` and `NotConnected` take an optional `back`.
+  - Weeks start on Sunday (spec §6). Every day and time uses the brand timezone, named in the legend and table header.
+  - One "+ New" menu (§18.10): "Single send" jumps to the campaign form. "Fill the month (sample plan)" (owners only) jumps to the planning panel (`#planning`); it becomes "Fill the month with AI" when the AI planner lands, so the label never promises AI that isn't used.
+  - "+ plan send" (owners, today and later; below the chips so it never covers one) opens `/first-draft?date=YYYY-MM-DD&from=planner&<planner state>`. The form starts at 10:00 that day, or the next hour today, or 10:00 the next calendar day late at night (`draftDefaultDate`), and "Back to Campaigns" returns to the same view.
+  - Holiday chips show this workspace's own holidays and events in one tone (no holiday type in the schema yet). `Holidays & Events` links to `/settings#holidays` until the §6.4 modal.
+  - `features/campaigns/calendar.tsx` and `buildCampaignCalendar` are removed; `calendar-model.ts` keeps the month and timezone helpers. `pillToneClasses` is exported from `components/ui/pill.tsx` so chips match pill colours.
+  - Not built yet: Report export, §6.4–§6.7 popups, inspiration cards (§18.11 makes them a library link).
 
 - DS-006 (2026-11-06): the composer (`features/composer/`) saves a paste through the same `savePastedReference` helper as the paste form (extracted from `importPastedReference` into server-only `features/references/pasted-save.ts`, messages unchanged) and redirects to `/create-email/{id}?mode=copy|rewrite`. The choose page only marks that outcome ("Your choice in the composer", primary button); it never starts a copy or rewrite by itself, so owner confirmation and paid-AI gates are unchanged. EXACT→copy, REBRAND→rewrite, ADAPT disabled with a reason. Subject comes from the HTML `<title>` or first readable line; a link-only paste is refused with an honest message. Composer is owner-only on the dashboard and the setup reference step; the existing Paste/Upload links stay.
 
@@ -1015,3 +1029,28 @@ Append entries using this exact shape:
 - Review: code-reviewer and rls-migration-reviewer done. Fixed: any member could set a request to Planned or Done through the old Support form (blocking; now operators only); untyped feedback from the old form; discard while sending (the modal cannot close while a request is being sent, and a late answer never closes a newer modal); loader tests (team replies, names, details vs replies, error states); messages are embedded per request with a limit and names are read only for the authors; honest empty-state copy; clearer refusal messages; the cursor returns to Subject after a refusal; more pgTAP (anon and trigger/truncate grants, operator cannot send, foreign messages, status changes refused, emoji and length boundaries, blank-looking subjects, seed-independent counts); the 375px journey opens the modal.
 - Known issues: the admin queue still shows open / in progress / closed, no request type, and only the 30 newest tickets across all workspaces (UIR-026). Owners cannot add a follow-up reply on a request yet. A reply from someone without a membership row is labelled as the platform team. Supabase's default grants give `anon` and `authenticated` write and truncate rights on most public tables; RLS blocks row writes and the API cannot truncate, but a cross-domain clean-up (revoke the defaults, grant only what each table needs) is a follow-up for the foundation owner.
 - Next consumer: UIR-010 Support (shows support tickets only) and UIR-026 admin console (request types and statuses).
+
+### 2026-11-06 — UIR-006 — Campaigns planner part 1
+
+- Status: review
+- Branch/worktree: `claude/uir-006-planner-toolbar-grid` on top of UIR-004 and UIR-015. GitHub issue #242 (browser lane).
+- Commit(s): see the UIR-006 pull request.
+- Changed contracts: new `features/planner/*` (model, loader, card, + New menu, `plannerBack`); `firstDraftWorkspace` takes an optional planned day and `/first-draft` reads `?date=`; `KlaviyoDetail`/`NotConnected` take an optional `back`; `pillToneClasses` exported from the pill; `features/campaigns/calendar.tsx`, `buildCampaignCalendar` and `calendarView` removed. See the UIR-006 Global decision.
+- Migrations: none.
+- Verification run: `pnpm verify` (see PR for counts).
+  - Model: URL state and old-view mapping, links that keep filters, workspace + Klaviyo entries with hover times, encoded ids, links back to the exact planner view, Klaviyo drafts named as drafts, synthetic labels, unreadable dates skipped, replaced entries, Missed and Delivery problem, AND filters, the month line, Sunday-first 4/5/6-week months, brand-timezone days at month edges, four-digit day keys, today and past days, calendar edges.
+  - Card: heading, 7 SUN–SAT columns, the status visible in words on every chip (not colour only), Klaviyo sample and synthetic labels, holidays, today, "+ plan send" only on today and later for owners and below the chips, filters marked and kept, Reset, Today, table rows and source, one empty message, the mobile empty month, the legend with every status, the replaced switch in both views, a tray that follows filters, + New hidden when nothing can be made.
+  - Loader: tenant-only holiday query for the visible weeks, holiday failure shown, Klaviyo sends still shown when workspace campaigns fail, plain source line. Back link: planner view restored, junk cleaned, other sources ignored; the Klaviyo campaign page shows "Back to Campaigns". First-draft date: future day, today, late today (10:00 tomorrow), timezone, junk.
+  - Demo screenshots at 1440px and 390px: no overflow, no page errors.
+  - `test:e2e` not runnable here (no Docker); `calendar-view.spec.ts` rewritten, CI runs it.
+- Review: `code-reviewer` blocked on two things:
+  1. Klaviyo chips linked to a page not yet on that branch, with a Back to the dashboard.
+  2. Chip status was colour-only, and colours repeat.
+     Both are fixed: UIR-004 is a dependency, there is a planner Back link, and chips show the status in words. Also fixed: "+ plan send" covering the last chip; the replaced switch missing in the calendar; "Fill the month with AI" shown to staff and claiming AI; lost synthetic and sample labels; the misplaced Global decision; late-today dates jumping a week; no way back from the draft page; the empty mobile month; Cancelled missing from the legend and filters; year-edge day keys; the Klaviyo draft tooltip; the month picker keeping a stale value; a double empty message; the tray ignoring filters; holiday chips unnamed for screen readers; unreadable dates crashing the page.
+- Known issues:
+  - holiday chips have one tone until holidays get a type and platform holidays arrive (§12, cloud lane, migration 090021 planned);
+  - "+ plan send" opens the draft page, not the §6.7 chat;
+  - "+ New" has no "Multi-day event" yet (it arrives with the §6.5 wizard, so the menu never offers something that does nothing);
+  - the table has no Offer, Discount code or Delete columns yet (UIR-017 merges the drafts list into it);
+  - no drag to reschedule and no Report export yet.
+- Next consumer: UIR-006 part 2 (§6.4–§6.7 popups), UIR-017 drafts list in Campaigns, UIR-016 Approve step.

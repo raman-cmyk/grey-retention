@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Notice } from '@/components/ui/workspace'
 import { firstDraftWorkspace } from '@/features/drafts/data'
 import { FirstDraftForm } from '@/features/drafts/form'
+import { plannerBack } from '@/features/planner/back'
 
 export default async function FirstDraftPage({
   searchParams
@@ -13,6 +14,13 @@ export default async function FirstDraftPage({
     reference?: string
     imported?: string
     attempt?: string
+    date?: string
+    from?: string
+    m?: string
+    view?: string
+    status?: string
+    channel?: string
+    history?: string
   }>
 }) {
   const params = await searchParams
@@ -26,23 +34,45 @@ export default async function FirstDraftPage({
     importError,
     requestKey,
     defaultDate
-  } = await firstDraftWorkspace(params.reference, params.imported)
+  } = await firstDraftWorkspace(params.reference, params.imported, params.date)
   if (!z.uuid().safeParse(params.attempt).success) {
     const query = new URLSearchParams({ attempt: requestKey })
-    for (const key of ['reference', 'imported'] as const) {
+    for (const key of [
+      'reference',
+      'imported',
+      'date',
+      // The planner view "+ plan send" came from (see plannerBack).
+      'from',
+      'm',
+      'view',
+      'status',
+      'channel',
+      'history'
+    ] as const) {
       const value = params[key]
       if (typeof value === 'string') query.set(key, value.slice(0, 100))
     }
     redirect(`/first-draft?${query}` as Route)
   }
+  // Opened from "+ plan send" on the Campaigns calendar: back to that view.
+  const back = plannerBack(params, context.timezone)
   return (
     <div>
-      <Link
-        href="/get-started?step=draft"
-        className="text-xs text-[var(--text-muted)] underline"
-      >
-        Back to setup
-      </Link>
+      {back ? (
+        <Link
+          href={back.href}
+          className="text-xs text-[var(--text-muted)] underline"
+        >
+          {back.label}
+        </Link>
+      ) : (
+        <Link
+          href="/get-started?step=draft"
+          className="text-xs text-[var(--text-muted)] underline"
+        >
+          Back to setup
+        </Link>
+      )}
       <h1 className="mt-7 text-3xl font-semibold tracking-tight">
         Your next email starts here.
       </h1>
