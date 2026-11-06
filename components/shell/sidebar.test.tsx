@@ -305,11 +305,13 @@ describe('account menu', () => {
       trigger.getAttribute('aria-controls')!
     )!
     expect(within(menu).getByText('rae@northwind.example')).toBeInTheDocument()
+    // Profile is the only link; Connections is already in Workspace
+    // (OWNER_JOURNEYS.md §18.18).
     expect(
-      within(menu).getByText('Profile Update').closest('[data-soon]')
-    ).toHaveTextContent('Profile Update — Coming soon')
-    // Connections is already in Workspace (OWNER_JOURNEYS.md §18.18).
-    expect(within(menu).queryByRole('link')).not.toBeInTheDocument()
+      within(menu)
+        .getAllByRole('link')
+        .map((link) => [link.textContent, link.getAttribute('href')])
+    ).toEqual([['Profile Update', '/profile']])
     expect(
       within(menu).getByRole('button', { name: 'Log out' })
     ).toBeInTheDocument()
@@ -326,6 +328,8 @@ describe('account menu', () => {
     trigger.focus()
     await userEvent.keyboard('{Enter}')
     expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    await userEvent.tab()
+    expect(screen.getByRole('link', { name: 'Profile Update' })).toHaveFocus()
     await userEvent.tab()
     expect(screen.getByRole('button', { name: 'Log out' })).toHaveFocus()
     await userEvent.tab()

@@ -309,23 +309,18 @@ function useDismiss(
   }, [open, close, container])
 }
 
-// Profile lives at /profile (built by the other lane, spec §14); until then
-// it is shown as coming soon. Connections is not repeated here: it is
-// already in Workspace (OWNER_JOURNEYS.md §18.18).
+// Profile lives at /profile (spec §14, UIR-014). Connections is not
+// repeated here: it is already in Workspace (OWNER_JOURNEYS.md §18.18).
 function AccountLinks() {
   return (
     <>
-      <span
-        data-soon
-        className="flex min-h-10 cursor-not-allowed items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm text-[var(--text-faint)]"
+      <Link
+        href="/profile"
+        className="flex min-h-10 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm text-[var(--text)] hover:bg-[var(--surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
       >
         <UserRound className="size-4" aria-hidden />
-        <span>
-          Profile Update
-          <ComingSoon />
-        </span>
-        <SoonPill />
-      </span>
+        Profile Update
+      </Link>
       <div className="my-1 border-t border-[var(--line)]" />
       <form action={signOut}>
         <button

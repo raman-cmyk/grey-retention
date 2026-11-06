@@ -533,9 +533,12 @@
       "feature": "Client password change",
       "priority": "P1",
       "acceptance": "Existing credential verification and new credential validation work.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-014"],
+      "verification": [
+        "UIR-014 (2026-11-06): /profile checks the current password with a separate no-session client before setting the new one; inline errors for a wrong current password, mismatch, under 8 characters and reuse; browser journey signs in with the new password (local Supabase Auth)."
+      ],
+      "remaining": "Hosted Auth settings (rate limits, secure password change) are not verified."
     },
     {
       "id": "ACC-014",

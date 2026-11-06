@@ -787,14 +787,14 @@ Right panel:
 
 ## 14. Profile `/profile`
 
-- [ ] H1 "Profile" + "Update your account information and password." Column ~670px.
-- [ ] **Card "Account information" / "Name, job title, and contact phone."**:
+- [x] H1 "Profile" + "Update your account information and password." Column ~670px.
+- [x] **Card "Account information" / "Name, job title, and contact phone."**:
   - NAME
   - EMAIL 🔒 (disabled), help "Email is locked. Contact support if you need to change it."
   - JOB TITLE
   - PHONE
   - `Save changes`
-- [ ] **Card "Change password" / "At least 8 characters. We'll verify your current password first."**:
+- [x] **Card "Change password" / "At least 8 characters. We'll verify your current password first."**:
   - CURRENT PASSWORD / NEW PASSWORD / CONFIRM NEW PASSWORD
   - `Update password`
   - inline errors for a mismatch, a password under 8 characters, or a wrong current password

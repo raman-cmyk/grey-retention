@@ -72,6 +72,8 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 | UIR-002 | Old-app shell and shared components (spec §0, §2) | DS-006 | review | Claude Code browser lane | Part 1 tokens merged (#252). Part 2 sidebar: pnpm verify; 37 shell/identity tests; demo screenshots at 1280/375px; e2e updated, not run (no Docker) | Owns `components/shell/*` (sidebar, rail, account menu, drawer, `gr_shell` cookie), `nav-data.ts` labels, the `outline` button and `pill` shape. Part 3 (shared components) still to do. Issue #238. |
 
+| UIR-014 | Old-app rebuild §14 Profile | UIR-002 | review | Claude Code cloud lane | pnpm verify; 16 unit tests in features/profile; shell tests 33/33; profile journeys desktop+mobile, 375px keyboard; workspace-ui journeys | Owns `features/profile/*`, `app/(client)/profile/page.tsx`, `tests/e2e/profile.spec.ts`; narrow shell edit: account-menu "Profile Update" is now a link (sidebar.tsx + tests, workspace-ui keyboard step). No migration. |
+
 ## Global decisions
 
 - STAB-004 (2026-11-06): CI is split into three workflows. `ci.yml` (`verify`: format, lint, typecheck, unit tests, build) runs on every pull request and push to `main` and is the only check to require on `main`. `database.yml` (pgTAP) and `browser.yml` (Playwright plus the first-draft and email concurrency scripts) run on pull requests only when their files change, skip drafts, can be run by hand, and no longer re-run on push to `main`; both start a lean local Supabase (`-x studio,logflare,vector,imgproxy,edge-runtime,realtime,postgres-meta,supavisor`). Reason: the repository is private, so every job costs Actions minutes (GitHub rounds up per job); the full browser job is about 25 minutes. Path-filtered workflows must not be required checks, or pull requests that do not touch them would wait forever. Owner decision (2026-11-06): the scheduled-jobs workflow runs every 30 minutes (`3,33 * * * *`, about 1,500 Actions minutes a month), replacing the 10-minute schedule recorded under STAB-001.
@@ -630,3 +632,15 @@ Append entries using this exact shape:
   - `aria-controls` on the toggle.
 - Known issues: the rail tooltip is not hoverable (WCAG 1.4.13); it repeats the icon's accessible name. "Request a Feature" and "Profile Update" are SOON until the cloud lane's `/feedback` and `/profile` exist. The `/competitor-agent` heading and the GROS panel still say "Competitor"; the cloud lane was told.
 - Next consumer: UIR-002 part 3 (shared components), then §3 Dashboard.
+
+### 2026-11-06 — UIR-014 — old-app rebuild §14 Profile
+
+- Status: review
+- Branch/worktree: `claude/uir-014-14-profile` (issue #250) from `main` at `53f002c`.
+- Commit(s): see the UIR-014 pull request.
+- Changed contracts: new `features/profile` (server actions with per-field errors, client forms) and `/profile`. Profile details save through the existing `profiles_update_self` RLS policy and column grants (name, job title, phone). The password change verifies the current password with a separate Supabase client that keeps no session (the signed-in cookies are untouched), then calls `auth.updateUser`. Shell: the account menu's "Profile Update" changes from a SOON item to a link (the browser lane offered this hand-over); its unit and e2e keyboard tests now expect Profile then Log out. Register: ACC-013 `verified_fixture`. Spec §14: all 3 boxes ticked; owner brief §16 fix done (email help links "support" to /support).
+- Migrations: none.
+- Verification run: `pnpm verify`; `features/profile` 16/16 (save own row only, empty optional fields cleared, inline field errors, refused save, demo refused; password: separate no-session client, wrong current password, another account's password, short, mismatch, reuse, empty current, failed update keeps the old password; forms: locked email with support link, errors linked to fields, typed values kept after an error, three password fields). `components/shell` 33/33. Fresh reset → profile journeys (fresh owner per run: menu link, save and reload details, wrong current password, mismatch, short password, real change then sign-in with the new password; 375px keyboard order) and workspace-ui journeys passed on desktop and mobile.
+- Review: pending (code-reviewer).
+- Known issues: hosted Supabase Auth settings (password rules, rate limits, secure password change with reauthentication) are not verified. Profile is only on the client (brand) surface.
+- Next consumer: none.
