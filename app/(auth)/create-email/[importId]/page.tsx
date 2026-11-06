@@ -10,13 +10,20 @@ export default async function CreateEmailPage({
   searchParams
 }: {
   params: Promise<{ importId: string }>
-  searchParams: Promise<{ attempt?: string }>
+  searchParams: Promise<{ attempt?: string; mode?: string }>
 }) {
-  const [{ importId }, { attempt }] = await Promise.all([params, searchParams])
+  const [{ importId }, { attempt, mode }] = await Promise.all([
+    params,
+    searchParams
+  ])
+  // Set by the composer: which outcome the owner picked there.
+  const preferred = mode === 'copy' || mode === 'rewrite' ? mode : undefined
   if (!z.uuid().safeParse(importId).success) notFound()
   const context = await requireRequestContext('client')
   if (!z.uuid().safeParse(attempt).success)
-    redirect(`/create-email/${importId}?attempt=${randomUUID()}` as Route)
+    redirect(
+      `/create-email/${importId}?attempt=${randomUUID()}${preferred ? `&mode=${preferred}` : ''}` as Route
+    )
   return (
     <ChooseOutcome
       tenantId={context.tenantId}
@@ -24,6 +31,7 @@ export default async function CreateEmailPage({
       attempt={attempt!}
       owner={context.tenantRole === 'owner'}
       admin={context.tenantRole === 'admin'}
+      preferred={preferred}
     />
   )
 }

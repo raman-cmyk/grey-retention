@@ -21,6 +21,8 @@ vi.mock('@/features/references/data', () => ({ referenceWorkspace }))
 vi.mock('@/features/references/pasted-data', () => ({ pastedReferences }))
 vi.mock('@/features/email-generation/data', () => ({ latestEmailResult }))
 vi.mock('@/features/brand/actions', () => ({ brandAction: vi.fn() }))
+vi.mock('@/features/composer/actions', () => ({ composeEmail: vi.fn() }))
+vi.mock('server-only', () => ({}))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 
 const context = { tenantName: 'Wellness', tenantRole: 'owner' }
@@ -64,7 +66,7 @@ describe('Getting started', () => {
   it('resumes from saved data and lets the owner revisit brand rules without losing them', async () => {
     campaignWorkspace.mockResolvedValue({
       context,
-      data: { brand, campaigns: [] },
+      data: { brand, campaigns: [], products: [] },
       error: null
     })
     const { unmount } = render(await GettingStarted({}))
@@ -87,10 +89,14 @@ describe('Getting started', () => {
   it('offers pasting an email as the one primary reference action', async () => {
     campaignWorkspace.mockResolvedValue({
       context,
-      data: { brand, campaigns: [] },
+      data: { brand, campaigns: [], products: [] },
       error: null
     })
     render(await GettingStarted({ step: 'reference' }))
+    expect(screen.getByLabelText('Paste a competitor email')).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'Create my version' })
+    ).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: 'Paste an email' })
     ).toHaveAttribute('href', '/import-reference')
@@ -102,7 +108,7 @@ describe('Getting started', () => {
     const id = crypto.randomUUID()
     campaignWorkspace.mockResolvedValue({
       context,
-      data: { brand, campaigns: [] },
+      data: { brand, campaigns: [], products: [] },
       error: null
     })
     pastedReferences.mockResolvedValue({
@@ -121,7 +127,7 @@ describe('Getting started', () => {
     const id = crypto.randomUUID()
     campaignWorkspace.mockResolvedValue({
       context,
-      data: { brand, campaigns: [] },
+      data: { brand, campaigns: [], products: [] },
       error: null
     })
     pastedReferences.mockResolvedValue({
@@ -168,6 +174,20 @@ describe('Getting started', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled()
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(refresh).toHaveBeenCalledOnce()
+  })
+  it('shows staff the reference step without the owner-only composer', async () => {
+    campaignWorkspace.mockResolvedValue({
+      context: { ...context, tenantRole: 'staff' },
+      data: { brand, campaigns: [], products: [] },
+      error: null
+    })
+    render(await GettingStarted({ step: 'reference' }))
+    expect(
+      screen.queryByLabelText('Paste a competitor email')
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText('Ask your workspace owner to add reference emails.')
+    ).toBeVisible()
   })
 })
 
