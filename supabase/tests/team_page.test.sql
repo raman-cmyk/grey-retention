@@ -1,5 +1,5 @@
 begin;
-select plan(54);
+select plan(57);
 
 -- Workspace 101: owner ...01, staff ...05, manager ...06. Workspace 102: owner ...04.
 delete from public.tenant_invites where tenant_id in ('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000102');
@@ -104,6 +104,18 @@ select throws_ok($$select * from public.team_members('00000000-0000-4000-8000-00
 select throws_ok($$select public.invite_team('00000000-0000-4000-8000-000000000101','x@example.com','staff')$$,'42501',null,'another workspace cannot invite here');
 select throws_ok($$select public.change_team_member('00000000-0000-4000-8000-000000000102',current_setting('test.staff')::uuid,now(),'admin','active')$$,'42501','Member unavailable','nor change a member from its own workspace');
 select throws_ok($$select public.resend_team_invite('00000000-0000-4000-8000-000000000102',current_setting('test.open')::uuid)$$,'42501','Invite unavailable','nor resend an invite from its own workspace');
+
+-- A cancelled invite can never be accepted.
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select set_config('test.late',public.invite_team('00000000-0000-4000-8000-000000000101','other-owner@grey-retention.test','staff')::text,true);
+select lives_ok($$select public.revoke_team_invite('00000000-0000-4000-8000-000000000101',current_setting('test.late')::uuid)$$,'the owner cancels the invite');
+reset role;
+update auth.users set email_confirmed_at = now() where id = '00000000-0000-4000-8000-000000000004';
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
+select throws_ok($$select public.accept_team_invite(current_setting('test.late')::uuid)$$,'23514','Invite revoked or expired','a cancelled invite cannot be accepted');
+reset role;
+select is((select count(*) from public.tenant_memberships where tenant_id = '00000000-0000-4000-8000-000000000101' and profile_id = '00000000-0000-4000-8000-000000000004'),0::bigint,'and grants no membership');
 
 select * from finish();
 rollback;

@@ -586,12 +586,14 @@ Behaviour seen:
 
 Checks:
 
-- [ ] Invite validates the email format and blocks duplicates.
-- [ ] Changing a member's role select asks before saving (unknown whether the old app auto-saves on change; not touched).
-- [ ] Deactivate asks for confirmation.
-- [ ] The owner row can't be changed or deactivated.
-- [ ] Pending invites are listed with Resend / Cancel (not seen, add).
-- [ ] Rename the "Admin" role to "Manager" to avoid clashing with platform admins (the value is already `manager`). **(fix)**
+- [x] Invite validates the email format and blocks duplicates.
+- [x] Changing a member's role select asks before saving (unknown whether the old app auto-saves on change; not touched).
+- [x] Deactivate asks for confirmation.
+- [x] The owner row can't be changed or deactivated.
+- [x] Pending invites are listed with Resend / Cancel (not seen, add).
+- [x] Rename the "Admin" role to "Manager" to avoid clashing with platform admins (the value is already `manager`). **(fix)**
+
+> **As built (UIR-019):** the role is called **Manager** on the page; the database keeps the value `admin`. Invites refuse a bad address, a person already on the team, and a second open invite to the same address ("Use Resend"). Email sending is not switched on yet, so the card says no email is sent and the person signs up with that address to find the invite. Pending invites show the role and "Expires in N days" (or "Expired") with **Resend** (a new link and 7 more days) and **Cancel**. A role change asks "Make Sam a Manager?" first; **Deactivate** and **Reactivate** ask first. The owner row shows an Owner pill only, and nobody can change their own access. Deactivated teammates stay listed as "Deactivated". The help text is honest: managers invite people, change access and see reports and usage; only the owner approves copy, designs and sending.
 
 ---
 
