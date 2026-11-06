@@ -564,7 +564,7 @@
       "status": "partial",
       "implementation_tasks": ["UIR-019"],
       "verification": [
-        "UIR-019 (2026-11-06): owners and managers invite an address as Staff or Manager; the address is checked and duplicates are refused (already a member, already invited); invites expire after 7 days and can be resent. pgTAP team_page and browser journey."
+        "UIR-019 (2026-11-06): owners and managers invite an address as Staff or Manager; the address is checked and duplicates are refused (already a member, already invited, deactivated: use Reactivate); invites expire after 7 days and can be renewed; accepting applies the invited role. pgTAP team_page and browser journey."
       ],
       "remaining": "Email delivery is simulated: no acceptance link is emailed yet; the invited person signs up with that address and accepts on /onboarding."
     },
@@ -599,7 +599,7 @@
       "status": "verified_fixture",
       "implementation_tasks": ["UIR-019"],
       "verification": [
-        "UIR-019 (2026-11-06): change_team_member lets an owner or manager switch a teammate between Manager and Staff after a confirmation; it never makes or changes an owner, refuses your own access and stale pages (PT409); staff and other workspaces are refused. pgTAP, unit and browser tests."
+        "UIR-019 (2026-11-06): change_team_member lets an owner or manager switch a teammate between Manager and Staff after a confirmation; it never makes or changes an owner, refuses your own access and stale pages (PT409), re-checks the caller after the workspace lock; staff, deactivated managers and other workspaces are refused; re-inviting a deactivated teammate is refused so their old role cannot come back. pgTAP, unit and browser tests."
       ]
     },
     {
