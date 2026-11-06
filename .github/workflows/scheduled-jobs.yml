@@ -1,7 +1,7 @@
 name: Scheduled jobs
 
 # Runs queued background work (drafts, designs, reports, sample scheduling)
-# on the live app every 10 minutes. Vercel's Hobby plan allows only a daily
+# on the live app every 30 minutes. Vercel's Hobby plan allows only a daily
 # cron (see vercel.json), so this is the frequent trigger. Both call the same
 # endpoint, which is safe to call twice at once.
 #
@@ -11,11 +11,12 @@ name: Scheduled jobs
 #   Without it every run is skipped and uses no Actions minutes.
 #
 # Each enabled run uses about one Actions minute (GitHub rounds up per job),
-# so every 10 minutes is about 4,400 minutes a month.
+# so every 30 minutes is about 1,500 minutes a month (owner decision, to stay
+# inside the free allowance; every 10 minutes would be about 4,400).
 on:
   schedule:
-    # Minute 3, 13, 23 ... avoids the busy top of the hour.
-    - cron: '3-59/10 * * * *'
+    # Minute 3 and 33 of every hour, avoiding the busy top of the hour.
+    - cron: '3,33 * * * *'
   workflow_dispatch:
 
 permissions: {}
