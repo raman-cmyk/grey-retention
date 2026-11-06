@@ -31,12 +31,18 @@ test('UIR-011 owner sets campaign defaults on every tab and saves once', async (
   await page.getByRole('tab', { name: 'Primary Link' }).click()
   const link = page.getByRole('textbox', { name: 'Primary link', exact: true })
   await link.fill('settings-studio.example/new')
-  // The browser checks the address first; the server says the same.
-  await link.evaluate((input: HTMLInputElement) => (input.type = 'text'))
+  // Save from another tab: the error must bring the owner back to the link.
+  await page.getByRole('tab', { name: 'Email Settings' }).click()
   await page.getByRole('button', { name: 'Save defaults' }).click()
+  await expect(page.getByRole('tab', { name: 'Primary Link' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  await expect(link).toBeFocused()
+  await expect(link).toHaveAttribute('aria-invalid', 'true')
   await expect(
     page.getByText('Primary link: use a full address that starts with https://')
-  ).toBeVisible()
+  ).toHaveCount(2)
   await link.fill('https://settings-studio.example/new')
 
   // Audiences come from Klaviyo; it is not connected in this workspace.
@@ -49,15 +55,25 @@ test('UIR-011 owner sets campaign defaults on every tab and saves once', async (
   await page.getByLabel(/Include footer/).uncheck()
   await expect(page.getByText('Applies to new campaigns only.')).toBeVisible()
   await page.getByRole('button', { name: 'Save defaults' }).click()
-  await expect(
-    page.getByText('Defaults saved. New campaigns will start with them.')
-  ).toBeVisible()
+  const saved = page.getByText(
+    'Defaults saved. The new campaign editor will use them.'
+  )
+  await expect(saved).toBeVisible()
+
+  // A second save works without reloading the page.
+  await page.getByRole('tab', { name: 'Sender Name' }).click()
+  await page
+    .getByRole('textbox', { name: 'Sender name', exact: true })
+    .fill('Settings Studio')
+  await page.getByRole('button', { name: 'Save defaults' }).click()
+  await expect(saved).toBeVisible()
+  await expect(page.getByText(/changed in another window/)).toHaveCount(0)
 
   await page.reload()
   await page.getByRole('tab', { name: 'Sender Name' }).click()
   await expect(
     page.getByRole('textbox', { name: 'Sender name', exact: true })
-  ).toHaveValue('Settings Studio Team')
+  ).toHaveValue('Settings Studio')
   await page.getByRole('tab', { name: 'Primary Link' }).click()
   await expect(
     page.getByRole('textbox', { name: 'Primary link', exact: true })

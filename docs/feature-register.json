@@ -1070,7 +1070,7 @@
       "status": "partial",
       "implementation_tasks": ["UIR-011"],
       "verification": [
-        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests."
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
       ],
       "remaining": "Saved in Settings (product picker). New drafts do not read it yet (UIR-017)."
     },
@@ -1083,7 +1083,7 @@
       "status": "partial",
       "implementation_tasks": ["UIR-011"],
       "verification": [
-        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests."
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
       ],
       "remaining": "Saved in Settings. New drafts and the Klaviyo payload do not read it yet (UIR-017, live Klaviyo)."
     },
@@ -1096,7 +1096,7 @@
       "status": "partial",
       "implementation_tasks": ["UIR-011"],
       "verification": [
-        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests."
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
       ],
       "remaining": "Saved in Settings (https only). New drafts do not read it yet (UIR-017)."
     },
@@ -1109,7 +1109,7 @@
       "status": "partial",
       "implementation_tasks": ["UIR-011"],
       "verification": [
-        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests."
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
       ],
       "remaining": "Saved in Settings from sample Klaviyo lists/segments. New drafts do not read it yet (UIR-017); real lists need live Klaviyo."
     },
@@ -1122,7 +1122,7 @@
       "status": "partial",
       "implementation_tasks": ["UIR-011"],
       "verification": [
-        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests."
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
       ],
       "remaining": "Saved in Settings from sample Klaviyo lists/segments. New drafts do not read it yet (UIR-017); real lists need live Klaviyo."
     },
@@ -1167,7 +1167,7 @@
       "status": "partial",
       "implementation_tasks": ["UIR-011"],
       "verification": [
-        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests."
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
       ],
       "remaining": "Saved in Settings (Include footer). New campaigns do not read it yet (UIR-017)."
     },
@@ -1240,7 +1240,7 @@
       "status": "partial",
       "implementation_tasks": ["UIR-011"],
       "verification": [
-        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests."
+        "UIR-011 (2026-11-06): /settings Timezone card shows the workspace timezone with its UTC offset and a live clock (UTC for a zone the runtime does not know); unit and desktop/mobile browser tests."
       ],
       "remaining": "Settings shows the workspace timezone (same as the Dashboard) with a live clock. Reading it from Klaviyo needs live Klaviyo (CON-014)."
     },

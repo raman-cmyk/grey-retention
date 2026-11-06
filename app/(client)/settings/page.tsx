@@ -12,10 +12,20 @@ import { DefaultsForm, TimezoneCard } from '@/features/settings/settings-form'
 
 export const metadata: Metadata = { title: 'Settings' }
 
+const unavailableText = {
+  ready: '',
+  demo: 'Campaign defaults are not saved in the demo.',
+  no_database: 'Campaign defaults are unavailable right now.',
+  missing_table:
+    'Campaign defaults need a database update. Your campaigns still work.',
+  load_failed:
+    'We could not load your campaign defaults. Reload the page to try again.'
+} as const
+
 export default async function SettingsPage() {
   const ctx = await requireRequestContext('client')
   const owner = ctx.tenantRole === 'owner'
-  const { now, data } = await settingsPage(ctx)
+  const { now, timezone, state, data } = await settingsPage(ctx)
   return (
     <div className="mx-auto max-w-[900px]">
       <header className="mb-6 space-y-2">
@@ -23,26 +33,24 @@ export default async function SettingsPage() {
           Settings
         </h1>
         <p className="text-sm text-[var(--text-muted)]">
-          Set defaults that apply to every campaign you generate. You can still
-          change them on any individual draft.
+          Set defaults for the campaigns you will generate. You can still change
+          them on any individual draft.
         </p>
       </header>
       <div className="space-y-6">
-        <TimezoneCard timezone={ctx.timezone} initialNow={now} />
-        {!data ? (
-          <Notice error>Please sign in again to see your defaults.</Notice>
-        ) : data.unavailable ? (
-          <Notice error>
-            Campaign defaults need a database update. Your campaigns still work.
-          </Notice>
-        ) : (
+        <TimezoneCard timezone={timezone} initialNow={now} />
+        {data ? (
           <DefaultsForm
             defaults={data.defaults}
             products={data.products}
+            productsState={data.productsState}
+            productsSample={data.productsSample}
             audiences={data.audiences}
             audienceSource={data.audienceSource}
             owner={owner}
           />
+        ) : (
+          <Notice error={state !== 'demo'}>{unavailableText[state]}</Notice>
         )}
       </div>
       <h2 className="tracking-label mt-12 mb-4 font-mono text-[0.6875rem] font-semibold text-[var(--text-muted)] uppercase">

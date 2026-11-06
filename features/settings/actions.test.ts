@@ -41,14 +41,14 @@ describe('saveCampaignDefaults', () => {
         featured_product: product,
         sender_name: 'Cedar Lane',
         primary_link: '',
-        send_to: ['list_1'],
-        dont_send_to: ['seg_9'],
+        send_to: ['LSTnews01'],
+        dont_send_to: ['SEGeng030'],
         include_footer: 'on',
         footer_source: 'auto'
       })
     )
     expect(result).toEqual({
-      message: 'Defaults saved. New campaigns will start with them.'
+      message: 'Defaults saved. The new campaign editor will use them.'
     })
     expect(rpc).toHaveBeenCalledWith('save_campaign_defaults', {
       t: tenant,
@@ -56,8 +56,8 @@ describe('saveCampaignDefaults', () => {
       featured_product_id: product,
       sender_name: 'Cedar Lane',
       primary_link: '',
-      send_to: ['list_1'],
-      dont_send_to: ['seg_9'],
+      send_to: ['LSTnews01'],
+      dont_send_to: ['SEGeng030'],
       include_footer: true,
       footer_source: 'auto'
     })
@@ -83,37 +83,72 @@ describe('saveCampaignDefaults', () => {
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('refuses bad input without saving', async () => {
+  it('refuses bad input without saving and names the field', async () => {
     expect(
-      (
-        await saveCampaignDefaults(
-          {},
-          form({ revision: '0', primary_link: 'http://x.example' })
-        )
-      ).error
-    ).toMatch(/https:/)
+      await saveCampaignDefaults(
+        {},
+        form({ revision: '0', primary_link: 'http://x.example' })
+      )
+    ).toEqual({
+      error: 'Primary link: use a full address that starts with https://',
+      field: 'primary_link'
+    })
     expect(
-      (await saveCampaignDefaults({}, form({ revision: 'x' }))).error
-    ).toBe('Reload the page and try again.')
+      await saveCampaignDefaults(
+        {},
+        form({ revision: '0', send_to: 'a', dont_send_to: 'a' })
+      )
+    ).toEqual({
+      error: 'A list or segment cannot be in both Send to and Don’t send to.',
+      field: 'dont_send_to'
+    })
+    expect(await saveCampaignDefaults({}, form({ revision: 'x' }))).toEqual({
+      error: 'Reload the page and try again.',
+      field: undefined
+    })
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('explains each refusal in plain words', async () => {
+  it('explains each refusal in plain words, at the right field', async () => {
     const cases = [
-      [{ code: 'PT409' }, /changed in another window/],
-      [{ code: '42501' }, /Only the workspace owner/],
+      [{ code: 'PT409' }, /changed in another window/, undefined],
+      [{ code: '42501' }, /Only the workspace owner/, undefined],
       [
         { code: '23514', message: 'Choose a product from your catalogue' },
-        /no longer in your catalogue/
+        /no longer in your catalogue/,
+        'featured_product'
       ],
-      [{ code: '23514', message: 'Check the audiences' }, /Check the fields/],
-      [{ code: 'XX000' }, /Nothing was changed/]
+      [
+        {
+          code: '23514',
+          message: "An audience cannot be in both Send to and Don't send to"
+        },
+        /cannot be in both/,
+        'dont_send_to'
+      ],
+      [
+        { code: '23514', message: 'Check the audiences' },
+        /Check the audiences/,
+        'send_to'
+      ],
+      [
+        { code: '23514', message: 'Primary link must start with https://' },
+        /https:/,
+        'primary_link'
+      ],
+      [
+        { code: '23514', message: 'Check the sender name' },
+        /one line/,
+        'sender_name'
+      ],
+      [{ code: '23514', message: 'other' }, /Check the fields/, undefined],
+      [{ code: 'XX000' }, /Nothing was changed/, undefined]
     ] as const
-    for (const [error, text] of cases) {
+    for (const [error, text, field] of cases) {
       rpc.mockResolvedValueOnce({ data: null, error })
-      expect(
-        (await saveCampaignDefaults({}, form({ revision: '1' }))).error
-      ).toMatch(text)
+      const result = await saveCampaignDefaults({}, form({ revision: '1' }))
+      expect(result.error).toMatch(text)
+      expect(result.field).toBe(field)
     }
   })
 })

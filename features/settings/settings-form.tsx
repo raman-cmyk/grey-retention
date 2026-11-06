@@ -15,17 +15,19 @@ import {
   ProductPicker,
   type ProductOption
 } from '@/components/ui/product-picker'
-import { SubmitButton, type FormResult } from '@/components/ui/action-form'
+import { SubmitButton } from '@/components/ui/action-form'
 import { TextField } from '@/components/ui/text-field'
 import { controlClass } from '@/components/ui/control'
 import { cn } from '@/lib/utils'
-import { saveCampaignDefaults } from './actions'
+import { saveCampaignDefaults, type SettingsResult } from './actions'
 import {
   defaultTabs,
+  fieldTab,
   localTime,
-  timezoneLabel,
+  zoneWithOffset,
   type CampaignDefaults,
-  type DefaultTab
+  type DefaultTab,
+  type SettingsField
 } from './defaults'
 
 const labelClass =
@@ -43,8 +45,19 @@ export function TimezoneCard({
 }) {
   const [now, setNow] = useState(initialNow)
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 15_000)
-    return () => clearInterval(timer)
+    // Tick on each new minute, so the clock is never a minute behind.
+    let timer: ReturnType<typeof setTimeout>
+    const schedule = () => {
+      timer = setTimeout(
+        () => {
+          setNow(Date.now())
+          schedule()
+        },
+        60_000 - (Date.now() % 60_000) + 50
+      )
+    }
+    schedule()
+    return () => clearTimeout(timer)
   }, [])
   const at = new Date(now)
   return (
@@ -66,7 +79,7 @@ export function TimezoneCard({
       <dl className="grid gap-5 sm:grid-cols-2">
         <div className="space-y-1">
           <dt className={labelClass}>Brand timezone</dt>
-          <dd className="text-[0.9375rem]">{timezoneLabel(timezone, at)}</dd>
+          <dd className="text-[0.9375rem]">{zoneWithOffset(timezone, at)}</dd>
         </div>
         <div className="space-y-1">
           <dt className={labelClass}>Current local time</dt>
@@ -88,9 +101,8 @@ function Tabs({
   onChange: (tab: DefaultTab) => void
   panelId: (tab: DefaultTab) => string
 }) {
-  const move = (from: number, step: number) => {
-    const next =
-      defaultTabs[(from + step + defaultTabs.length) % defaultTabs.length]!
+  const go = (index: number) => {
+    const next = defaultTabs[(index + defaultTabs.length) % defaultTabs.length]!
     onChange(next.key)
     requestAnimationFrame(() =>
       document.getElementById(`${panelId(next.key)}-tab`)?.focus()
@@ -113,8 +125,15 @@ function Tabs({
           tabIndex={active === tab.key ? 0 : -1}
           onClick={() => onChange(tab.key)}
           onKeyDown={(event) => {
-            if (event.key === 'ArrowRight') move(index, 1)
-            if (event.key === 'ArrowLeft') move(index, -1)
+            const keys: Record<string, number> = {
+              ArrowRight: index + 1,
+              ArrowLeft: index - 1,
+              Home: 0,
+              End: defaultTabs.length - 1
+            }
+            if (!(event.key in keys)) return
+            event.preventDefault()
+            go(keys[event.key]!)
           }}
           className={cn(
             '-mb-px shrink-0 border-b-2 py-2.5 whitespace-nowrap focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden',
@@ -134,11 +153,16 @@ function Panel({
   id,
   active,
   intro,
+  error,
+  errorId,
   children
 }: {
   id: string
   active: boolean
   intro: string
+  /** A save error that belongs to a field on this tab. */
+  error: string | null
+  errorId: string
   children: ReactNode
 }) {
   // Every panel stays in the form, so "Save defaults" saves all tabs.
@@ -148,10 +172,19 @@ function Panel({
       role="tabpanel"
       aria-labelledby={`${id}-tab`}
       hidden={!active}
-      className="space-y-4 pt-5"
+      tabIndex={0}
+      className="space-y-4 pt-5 focus-visible:outline-hidden"
     >
       <p className="text-sm text-[var(--text-muted)]">{intro}</p>
       {children}
+      {error && (
+        <p
+          id={errorId}
+          className="rounded-lg bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger-ink)]"
+        >
+          {error}
+        </p>
+      )}
     </div>
   )
 }
@@ -160,17 +193,21 @@ function Panel({
 export function DefaultsForm({
   defaults,
   products,
+  productsState = 'ready',
+  productsSample = false,
   audiences,
   audienceSource,
   owner
 }: {
   defaults: CampaignDefaults
   products: ProductOption[]
+  productsState?: 'ready' | 'error'
+  productsSample?: boolean
   audiences: AudienceOption[]
   audienceSource: 'sample' | 'not_connected' | 'unavailable'
   owner: boolean
 }) {
-  const [state, dispatch, pending] = useActionState<FormResult, FormData>(
+  const [state, dispatch, pending] = useActionState<SettingsResult, FormData>(
     saveCampaignDefaults,
     {}
   )
@@ -180,14 +217,50 @@ export function DefaultsForm({
   const [dontSendTo, setDontSendTo] = useState<string[]>(defaults.dontSendTo)
   const base = useId()
   const panelId = (key: DefaultTab) => `${base}-${key}`
-  const noAudiences =
-    audienceSource === 'sample'
-      ? 'No lists or segments in the sample data.'
-      : 'Connect Klaviyo to choose lists and segments.'
+  const inputId = (field: SettingsField) => `${base}-${field}-input`
+  const errorId = `${base}-error`
+  // A refused save opens the tab with the field and puts focus on it.
+  const [shownResult, setShownResult] = useState(state)
+  if (shownResult !== state) {
+    setShownResult(state)
+    if (state.field) setTab(fieldTab[state.field])
+  }
+  useEffect(() => {
+    const field = state.field
+    if (!field) return
+    requestAnimationFrame(() => {
+      const target =
+        document.getElementById(`${base}-${field}-input`) ??
+        document.getElementById(`${base}-${fieldTab[field]}`)
+      target?.focus()
+    })
+  }, [state, base])
+  const fieldError = (field: SettingsField) =>
+    !pending && state.field === field ? (state.error ?? null) : null
+  const tabError = (key: DefaultTab) =>
+    !pending && state.field && fieldTab[state.field] === key
+      ? (state.error ?? null)
+      : null
+  const invalid = (field: SettingsField) =>
+    fieldError(field)
+      ? { 'aria-invalid': true as const, 'aria-describedby': errorId }
+      : {}
+  // Without real lists, saved choices must survive a save of another tab.
+  const listsShown = audienceSource === 'sample'
+  const audienceState =
+    listsShown || (sendTo.length === 0 && dontSendTo.length === 0)
+      ? 'ready'
+      : 'error'
+  const noAudiences = listsShown
+    ? 'No lists or segments in the sample data.'
+    : 'Connect Klaviyo to choose lists and segments.'
   return (
     <form
       action={dispatch}
       aria-busy={pending}
+      // Our own checks run on save and open the right tab; the browser's
+      // cannot point at a field on a hidden tab.
+      noValidate
       // Keep what the owner typed if the save is refused.
       onReset={(event) => event.preventDefault()}
       className="space-y-4"
@@ -199,13 +272,13 @@ export function DefaultsForm({
             Campaign defaults
           </h2>
           <p className="text-sm text-[var(--text-muted)]">
-            These pre-fill every new campaign. Each draft shows the value and
-            lets you change it before sending. Drafts you already have keep
+            New campaigns will start with these. Each draft will show the value
+            and let you change it before sending. Drafts you already have keep
             their own values.
           </p>
           <p className="text-xs text-[var(--warning-ink)]">
-            Saved now, used soon: the new campaign editor (being built) is the
-            first screen that will read these defaults.
+            Saved now, used soon: the new campaign editor (being built) will be
+            the first screen to read these defaults.
           </p>
           {!owner && (
             <p className="text-sm font-medium">
@@ -220,7 +293,9 @@ export function DefaultsForm({
           <Panel
             id={panelId('product')}
             active={tab === 'product'}
-            intro="The single product new campaigns feature by default. The AI body writer sees its sales, quantities and recent orders."
+            error={tabError('product')}
+            errorId={errorId}
+            intro="The single product new campaigns will feature by default. The AI body writer will see its sales, quantities and recent orders."
           >
             <ProductPicker
               label="Featured product"
@@ -228,6 +303,8 @@ export function DefaultsForm({
               options={products}
               value={product}
               onChange={setProduct}
+              state={productsState}
+              sample={productsSample}
               noneLabel="No featured product"
               emptyMessage="No products yet. Connect Shopify or add products under Brand & Store."
             />
@@ -235,42 +312,56 @@ export function DefaultsForm({
           <Panel
             id={panelId('sender')}
             active={tab === 'sender'}
-            intro="The “from” name recipients see. Leave it blank to use your Klaviyo account default."
+            error={tabError('sender')}
+            errorId={errorId}
+            intro="The “from” name recipients will see. Leave it blank to use your Klaviyo account default."
           >
-            <label htmlFor={`${base}-sender-input`} className={labelClass}>
+            <label htmlFor={inputId('sender_name')} className={labelClass}>
               Sender name
             </label>
             <TextField
-              id={`${base}-sender-input`}
+              id={inputId('sender_name')}
               name="sender_name"
               defaultValue={defaults.senderName}
               maxLength={100}
               autoComplete="off"
+              {...invalid('sender_name')}
             />
           </Panel>
           <Panel
             id={panelId('link')}
             active={tab === 'link'}
+            error={tabError('link')}
+            errorId={errorId}
             intro="The address for the main button and links in the email. Leave it blank to let the AI choose."
           >
-            <label htmlFor={`${base}-link-input`} className={labelClass}>
+            <label htmlFor={inputId('primary_link')} className={labelClass}>
               Primary link
             </label>
             <TextField
-              id={`${base}-link-input`}
+              id={inputId('primary_link')}
               name="primary_link"
               type="url"
               inputMode="url"
               placeholder="https://"
               defaultValue={defaults.primaryLink}
               maxLength={2000}
+              {...invalid('primary_link')}
             />
           </Panel>
           <Panel
             id={panelId('audience')}
             active={tab === 'audience'}
+            error={tabError('audience')}
+            errorId={errorId}
             intro="Default “Send to” and “Don’t send to” audiences for new campaigns."
           >
+            {!listsShown && audienceState === 'error' && (
+              <p className="text-sm">
+                Klaviyo is not connected, so lists and segments can’t be shown
+                right now. Your saved choices are kept when you save.
+              </p>
+            )}
             <div className="grid gap-5 md:grid-cols-2">
               <AudiencePicker
                 label="Send to"
@@ -278,8 +369,8 @@ export function DefaultsForm({
                 options={audiences}
                 value={sendTo}
                 onChange={setSendTo}
-                sample={audienceSource === 'sample'}
-                state={audienceSource === 'unavailable' ? 'error' : 'ready'}
+                sample={listsShown}
+                state={audienceState}
                 emptyMessage={noAudiences}
               />
               <AudiencePicker
@@ -288,8 +379,8 @@ export function DefaultsForm({
                 options={audiences}
                 value={dontSendTo}
                 onChange={setDontSendTo}
-                sample={audienceSource === 'sample'}
-                state={audienceSource === 'unavailable' ? 'error' : 'ready'}
+                sample={listsShown}
+                state={audienceState}
                 emptyMessage={noAudiences}
               />
             </div>
@@ -297,7 +388,9 @@ export function DefaultsForm({
           <Panel
             id={panelId('email')}
             active={tab === 'email'}
-            intro="New email campaigns start with the footer checked. You can change it on each draft. The footer is built from your Klaviyo brand settings (organization, mailing address, unsubscribe link) when the campaign goes to Klaviyo."
+            error={tabError('email')}
+            errorId={errorId}
+            intro="New email campaigns will start with the footer included; you will be able to change it on each draft."
           >
             <h3 className="text-sm font-semibold">
               Email Settings (default for new campaigns)
@@ -320,7 +413,7 @@ export function DefaultsForm({
             <select
               id={`${base}-footer`}
               name="footer_source"
-              defaultValue="auto"
+              defaultValue={defaults.footerSource}
               className={controlClass}
               aria-describedby={`${base}-footer-help`}
             >
@@ -330,9 +423,9 @@ export function DefaultsForm({
               id={`${base}-footer-help`}
               className="text-xs text-[var(--text-muted)]"
             >
-              Your Klaviyo templates will be listed here once Klaviyo is
-              connected for real. Until then the footer is always built
-              automatically.
+              The automatic footer will be built from your brand settings
+              (organization, mailing address, unsubscribe link). Your Klaviyo
+              templates will be listed here once Klaviyo is connected for real.
             </p>
           </Panel>
         </fieldset>
