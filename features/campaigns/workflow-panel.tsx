@@ -10,6 +10,8 @@ import { Field, Panel, Notice, controlClass } from '@/components/ui/workspace'
 import { TextField } from '@/components/ui/text-field'
 import { workflowData } from './workflow-data'
 import { workflowAction } from './workflow-actions'
+import { ApproveStep } from './approve-step'
+import { ScheduleSummary } from './schedule-summary'
 type Row<T extends keyof Database['public']['Tables']> =
   Database['public']['Tables'][T]['Row']
 function Command({
@@ -36,12 +38,15 @@ export async function WorkflowPanel({
   campaign: c,
   content,
   owner,
-  brand
+  brand,
+  audiences = []
 }: {
   campaign: Row<'campaigns'>
   content: Row<'campaign_content'> | null
   owner: boolean
   brand: Row<'brand_profiles'> | null
+  /** For audience names in the schedule summary (never raw ids). */
+  audiences?: Pick<Row<'audiences'>, 'provider_id' | 'label'>[]
 }) {
   const data = await workflowData(c.id)
   if (!data) return null
@@ -51,9 +56,17 @@ export async function WorkflowPanel({
     latest.copy_revision === c.copy_revision
   const pkg = data.package
   const currentPackage = pkg?.revision === c.delivery_revision
+  // One clock for the checklist and the schedule button.
+  const now = new Date()
   return (
     <div className="mt-6 space-y-6">
       {data.error && <Notice error>{data.error}</Notice>}
+      <ApproveStep
+        campaign={c}
+        owner={owner}
+        hasCurrentPackage={Boolean(pkg && currentPackage)}
+        now={now}
+      />
       <Panel id="copy" title={`Copy review · version ${c.copy_revision}`}>
         {c.calendar_state !== 'approved' ? (
           <Notice>
@@ -332,7 +345,7 @@ export async function WorkflowPanel({
       )}
       <div id="delivery" className="scroll-mt-24 space-y-6">
         {owner && c.design_state === 'owner_approved' && (
-          <Panel title="Assemble a reviewed delivery package">
+          <Panel id="package" title="Assemble a reviewed delivery package">
             <p className="mb-4 text-sm leading-6 text-[var(--text-muted)]">
               The immutable package takes copy and design from current owner
               approvals. Link, stock and audience validation use local fixtures.
@@ -412,43 +425,14 @@ export async function WorkflowPanel({
         )}
         {pkg && (
           <Panel
+            id="schedule"
             title={`Final delivery preview · package v${pkg.revision}${currentPackage ? '' : ' · superseded'}`}
           >
             <Notice>
               Simulation only. Provider acceptance, links and recipients have
               not been evaluated against a live account.
             </Notice>
-            <dl className="my-4 grid gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-[var(--text-muted)]">Audience/account</dt>
-                <dd>
-                  {pkg.audience.accountId} · {pkg.audience.includes.join(', ')}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[var(--text-muted)]">
-                  Required exclusions
-                </dt>
-                <dd>{pkg.audience.excludes.join(', ')}</dd>
-              </div>
-              <div>
-                <dt className="text-[var(--text-muted)]">Sender</dt>
-                <dd>
-                  {pkg.sender.name} · {pkg.sender.email}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[var(--text-muted)]">Schedule</dt>
-                <dd>
-                  {new Intl.DateTimeFormat('en', {
-                    timeZone: pkg.timezone,
-                    dateStyle: 'full',
-                    timeStyle: 'short'
-                  }).format(new Date(pkg.scheduledAt))}{' '}
-                  · {pkg.timezone}
-                </dd>
-              </div>
-            </dl>
+            <ScheduleSummary pkg={pkg} audiences={audiences} />
             <iframe
               title="Final email preview"
               sandbox=""
@@ -462,19 +446,31 @@ export async function WorkflowPanel({
                 .replace('cid:cta', data.artifactPreviews[2] ?? '')}
               className="mb-5 h-[36rem] w-full rounded-lg border border-[var(--line)] bg-white"
             />
-            {owner && currentPackage && c.delivery_state === 'ready' && (
-              <ConfirmDialog
-                label="Review scheduling confirmation"
-                title="Confirm simulated scheduling"
-                description={`Schedule immutable package v${pkg.revision} for the displayed audience and time. This records owner confirmation and queues a fixture job.`}
-              >
-                <Command kind="schedule" id={pkg.id} revision={pkg.revision}>
-                  <SubmitButton>
-                    Confirm package v{pkg.revision} scheduling
-                  </SubmitButton>
-                </Command>
-              </ConfirmDialog>
-            )}
+            {currentPackage &&
+              c.delivery_state === 'ready' &&
+              Date.parse(pkg.scheduledAt) <= now.getTime() && (
+                <Notice error>
+                  The send time has passed, so this package cannot be scheduled.
+                  Pick a new date and make a new package.
+                </Notice>
+              )}
+            {owner &&
+              currentPackage &&
+              c.delivery_state === 'ready' &&
+              Date.parse(pkg.scheduledAt) > now.getTime() && (
+                <ConfirmDialog
+                  label="Review scheduling confirmation"
+                  title="Confirm simulated scheduling"
+                  description={`Check what you are scheduling. Confirming records your approval of package v${pkg.revision} and schedules it (a sample send: nothing real goes out).`}
+                >
+                  <ScheduleSummary pkg={pkg} audiences={audiences} />
+                  <Command kind="schedule" id={pkg.id} revision={pkg.revision}>
+                    <SubmitButton>
+                      Confirm package v{pkg.revision} scheduling
+                    </SubmitButton>
+                  </Command>
+                </ConfirmDialog>
+              )}
             {owner &&
               ['scheduled', 'queued', 'reconciling', 'failed'].includes(
                 c.delivery_state

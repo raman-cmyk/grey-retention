@@ -92,6 +92,8 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 | UIR-015 | One campaign status system | UIR-002 | review | Claude Code browser lane | pnpm verify; status derivation tests for every state; calendar, list and dashboard show the one pill | Owns `features/campaigns/status.ts` (`campaignStatusOf`, `stepStateWords`) and `status-pill.tsx` and the status pills on the calendar, the Your campaigns list and the dashboard mini calendar. Issue #254. |
 
+| UIR-016 | Owner Approve step before Schedule | UIR-015 | review | Claude Code browser lane | pnpm verify; checklist, summary and owner/admin/staff server-action tests | Owns `features/campaigns/{approve-step,schedule-readiness,schedule-summary}.*` and the schedule parts of `workflow-panel.tsx`. Issue #255. |
+
 ## Global decisions
 
 - Ready buttons (2026-11-07): `SubmitButton` and the `ConfirmDialog` trigger stay disabled until the page is interactive (`components/ui/use-hydrated.ts`, `useSyncExternalStore`: false in the server HTML and during hydration, true in the browser). A click on a slow page before hydration used to post the form natively, so the page reloaded and its "saved" message was lost, or the dialog never opened. This was the first failure behind the mobile UC-09/12/16 browser runs. Playwright waits for a button to be enabled before it clicks, so the journeys no longer race hydration. Unit tests render on the client and are unaffected.
@@ -183,6 +185,12 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
   Replaced plan entries show "Replaced". The overview's "Next:", its tiles and filters, the dashboard's "Waiting for you" and upcoming sends, and the calendar's month line ("4 campaigns · 1 needs your approval · 1 scheduled") all come from the same status; the old "awaiting review · approved" line is gone. The campaign page shows the pill and plain words per step (`stepStateWords`). `hasDeliveryProblem` is removed (the status says it); the pill lives in `features/campaigns/status-pill.tsx`.
   - Still raw: the delivery panel's "Campaign delivery: …" line (e2e asserts it), the planning panel, `/copy-review` and admin designers. GROS replies use their own delivery words (`20260914090016_gros_readable_reply.sql`); integration note for the GROS domain.
   - Render-path revisions on a design email read "With designer", and a text email given to a human designer reads "Draft" once changes are asked, until active designer assignments are loaded with campaigns.
+
+- UIR-016 (2026-11-06): the campaign page opens with "Approve, then schedule" (OWNER_JOURNEYS.md Job 4, §18.4).
+  - One checklist: date, copy and design approved (each tied to its version), who to send to, and a send time in the future. Each open step links to where it is done (`approvalSteps`).
+  - Only the owner gets "Go to Schedule". Staff and workspace admins see "Waiting for the brand owner". The server action refuses them before any database call, and the database checks owner, versions, past times and an empty audience again.
+  - The schedule confirmation shows a summary before the owner confirms: subject, from, Send to and Don't send to by NAME (never ids), and the time in the brand timezone with its name (`ScheduleSummary`). The final preview uses the same summary.
+  - A package whose time has passed shows why it can't be scheduled instead of a button.
 
 - DS-006 (2026-11-06): the composer (`features/composer/`) saves a paste through the same `savePastedReference` helper as the paste form (extracted from `importPastedReference` into server-only `features/references/pasted-save.ts`, messages unchanged) and redirects to `/create-email/{id}?mode=copy|rewrite`. The choose page only marks that outcome ("Your choice in the composer", primary button); it never starts a copy or rewrite by itself, so owner confirmation and paid-AI gates are unchanged. EXACT→copy, REBRAND→rewrite, ADAPT disabled with a reason. Subject comes from the HTML `<title>` or first readable line; a link-only paste is refused with an honest message. Composer is owner-only on the dashboard and the setup reference step; the existing Paste/Upload links stay.
 
@@ -1026,3 +1034,20 @@ Append entries using this exact shape:
 - Review: code-reviewer and rls-migration-reviewer both said "not ready" on the first version. First review fixed in 090029 and the app: direct timezone writes revoked; plan-in-flight guard; unknown Klaviyo zone = not reported; wider zone-name check that still refuses keys; unchanged save is a no-op and logs nothing; the switch names the zone the page showed; Settings sends the zone as saved; server-built picker list with one spelling per zone; honest card copy ("GROS plans new campaign send times in your brand’s timezone, and most dates and times in the app are shown in it. Campaigns already planned still send at the same moment."); messages for each refusal; focus returns to the picker after each answer; `aria-invalid` and `aria-describedby` on the picker; the Klaviyo line says "(sample connection)"; Connections retries without the timezone on a database that does not have it yet, before the status-only fallback. pgTAP `brand_timezone` 61 (adds direct-write denials for owner and manager, manager refusals, column privileges, old-signature gone, wider names and key refusals, unknown zone not reported, reconnect moves the zone or forgets it, same zone logs nothing, event from/to/source/actor, plan in flight, stale switch). Second review: rls-migration-reviewer "ready" (asked for the connect-during-plan test and more plan states, added); code-reviewer "not ready" for focus lost after the refreshed page rebuilt the form (the picker is now one controlled select, never rebuilt), "Nothing changed" skipping the stale check (now decided by the database), the plan-test gap and the ledger numbers; its tenant-lock finding does not apply (`private.require_member` locks the tenant since `20260914090011`). Also done: brand zone on the switch, source-only changes logged, US/Pacific no longer replaces America/Los_Angeles in the list.
 - Known issues: the sample Klaviyo account reports the workspace timezone, so the "Klaviyo differs" case only appears after the owner changes it. The dashboard's Klaviyo "Account" box labels the brand timezone as the account's (browser lane's file; noted to them). On the day the timezone changes, the daily AI usage and digest day can cover more or less than 24 hours. Times on the planner, list, detail pages and schedule step get the zone name when the browser lane adopts the helpers.
 - Next consumer: browser lane (planner, Campaigns list, Klaviyo detail pages, draft editor, schedule confirmation).
+
+### 2026-11-06 — UIR-016 — owner Approve step before Schedule
+
+- Status: review
+- Branch/worktree: `claude/uir-016-owner-approve-step-before-schedule` on top of UIR-015. GitHub issue #255 (browser lane).
+- Commit(s): see the UIR-016 pull request.
+- Changed contracts: `WorkflowPanel` takes `audiences`; new `features/campaigns/{schedule-readiness.ts,schedule-summary.tsx,approve-step.tsx}`; panels `#package` and `#schedule` have ids. See the UIR-016 Global decision.
+- Migrations: none. The database already requires the owner, current approvals, a future time and an audience (`create_delivery_package`, `enqueue_delivery`).
+- Verification run: `pnpm verify` (see PR for counts).
+  - Checklist: ready only when all five steps are done; each missing approval with its version and link; past time (including exactly now) and empty audience blocked; turned-down date; delivery already started.
+  - Panel: owner ready with and without a package; missing steps keep Schedule off; staff and admins never get Schedule; started delivery.
+  - Summary: subject, from, audience names, Don't send to, time with the timezone name; unknown lists named, not hidden.
+  - Server action: staff and admins refused for copy approval, design approval, packaging and scheduling, with no database call; the owner calls `approve_copy` and `enqueue_delivery` with the exact version; stale versions and past times come back in words; junk is refused.
+  - `test:e2e` not runnable here; `scheduling.spec.ts` still finds "Review scheduling confirmation" and the confirm button.
+- Review: see the UIR-016 pull request.
+- Known issues: audience profile counts are not stored yet, so the summary shows names without counts; the Send step lives on the old campaign page until the §7.3 editor rebuild.
+- Next consumer: §7.3 editor (Content → Design → Send), UIR-018 "+ New" on the dashboard.

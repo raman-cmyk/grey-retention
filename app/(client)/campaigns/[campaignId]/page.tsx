@@ -127,6 +127,7 @@ export default async function CampaignPage({
         content={detail.content}
         owner={context.tenantRole === 'owner'}
         brand={data!.brand}
+        audiences={data!.audiences}
       />
       <div id="history" className="mt-6 grid scroll-mt-24 gap-6 lg:grid-cols-2">
         <Panel title="Workspace notes">
