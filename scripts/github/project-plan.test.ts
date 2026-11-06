@@ -23,6 +23,7 @@ describe('roadmap plan from the feature register', () => {
     expect(plan.milestones.map((m) => m.title)).toEqual([
       'M0 Stabilize',
       'M1 Design system',
+      'M1.5 Old-app UI rebuild',
       'M2 Onboarding',
       'M3 Competitor watch',
       'M4 Replication engine',
@@ -78,6 +79,12 @@ describe('roadmap plan from the feature register', () => {
       ])
     )
     expect(inMilestone('M1 Design system')).toContain('DS-006')
+    expect(inMilestone('M1.5 Old-app UI rebuild')).toEqual(
+      Array.from(
+        { length: 13 },
+        (_, i) => `UIR-${String(i + 2).padStart(3, '0')}`
+      )
+    )
   })
 
   it('lists every P1/P2 item exactly once, in its own category epic', () => {
