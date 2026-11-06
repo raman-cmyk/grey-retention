@@ -1,10 +1,10 @@
 # Grey Retention design language
 
-Status: **foundation applied (DS-001).** Fonts, colours and the 4px shape are live on every screen through [`lib/design/tokens.ts`](../lib/design/tokens.ts), [`app/styles/tokens.css`](../app/styles/tokens.css) and the default white-label theme. The remaining M1 issues (DS-002 to DS-007) rebuild the shell, components and states to the patterns below.
+Status: **foundation applied (DS-001), layout facts updated for M1.5.** Fonts, colours and the §0 shapes (20px cards, 12px controls) are live on every screen through [`lib/design/tokens.ts`](../lib/design/tokens.ts), [`app/styles/tokens.css`](../app/styles/tokens.css) and the default white-label theme. The remaining M1 issues (DS-002 to DS-007) rebuild the shell, components and states to the patterns below.
 
 ## In plain words
 
-Grey Retention should feel like a calm research tool, not a busy dashboard. Think of a good printed magazine: warm off-white paper, black ink, big quiet headlines, small precise labels. One electric-blue colour is used only where it matters: the one main button on a screen, the keyboard focus ring, and highlighted data. Corners are almost square (4px). Boxes are separated by thin grey lines, not shadows. The signature element is one big **composer box** where an owner pastes a competitor email and picks **EXACT**, **REBRAND** or **ADAPT**.
+Grey Retention should feel like a calm research tool, not a busy dashboard. Think of a good printed magazine: warm off-white paper, black ink, big quiet headlines, small precise labels. One electric-blue colour is used only where it matters: the one main button on a screen, the keyboard focus ring, and highlighted data. Cards have soft 20px corners and controls 12px, as in the old app. Boxes are separated by thin grey lines, not shadows. The signature element is one big **composer box** where an owner pastes a competitor email and picks **EXACT**, **REBRAND** or **ADAPT**.
 
 Example: on the dashboard the owner sees a large serif title "Watch, learn, send.", a row of four stat tiles (`7` watched brands, `126` emails, …) in a thin-lined grid, and the composer box with one blue arrow button. Everything else is black, white and grey.
 
@@ -27,32 +27,33 @@ Use tokens, never raw hex values. In components use the Tailwind names (`bg-surf
 
 ### Light theme (default)
 
-| Token                | Value                 | Use                                                             |
-| -------------------- | --------------------- | --------------------------------------------------------------- |
-| `canvas`             | `#faf9f7`             | Page background (warm off-white)                                |
-| `canvas-sunken`      | `#f0ece8`             | Recessed areas: composer tray, code/preview wells, table header |
-| `surface`            | `#ffffff`             | Cards, panels, inputs, menus                                    |
-| `ink`                | `#111111`             | Headings, body text, primary button fill                        |
-| `ink-strong`         | `#000000`             | Hover/pressed state of the black primary button                 |
-| `ink-muted`          | `#58544e`             | Secondary text, captions, mono labels                           |
-| `ink-subtle`         | `#787572`             | Small meta text **on white only**; icons; disabled hints        |
-| `hairline`           | `#e5e5e5`             | Dividers, card borders, grid lines (decorative)                 |
-| `hairline-strong`    | `#8a8580`             | Outlines of inputs, checkboxes, toggles (must be visible)       |
-| `accent`             | `#1f40ed`             | The single key action, focus ring, data highlight               |
-| `accent-strong`      | `#0d2189`             | Hover/pressed state of the key action                           |
-| `accent-faint`       | `#e7ebfd`             | Selected row, selected chip background, info note               |
-| `accent-text`        | `#1f40ed`             | Links and accent-coloured text                                  |
-| `on-accent`          | `#ffffff`             | Text on `accent` and `accent-strong`                            |
-| `on-ink`             | `#ffffff`             | Text on the black primary button                                |
-| `inverse`            | `#111111`             | Dark panel of split report sections                             |
-| `on-inverse`         | `#f5f5f4`             | Text on the dark panel                                          |
-| `on-inverse-muted`   | `#a8a29e`             | Secondary text on the dark panel                                |
-| `inverse-hairline`   | `#2a2a2a`             | Lines inside the dark panel                                     |
-| `success` / `-faint` | `#2f6b4f` / `#e8f1ec` | Muted green status                                              |
-| `warning` / `-faint` | `#7a5300` / `#f6eedb` | Muted amber status                                              |
-| `danger` / `-faint`  | `#a3352b` / `#f8e8e5` | Muted red status and errors                                     |
-| `danger-strong`      | `#842a22`             | Hover/pressed state of a destructive button                     |
-| `on-danger`          | `#ffffff`             | Text on a destructive button                                    |
+| Token                 | Value                 | Use                                                             |
+| --------------------- | --------------------- | --------------------------------------------------------------- |
+| `canvas`              | `#faf9f7`             | Page background (warm off-white)                                |
+| `canvas-sunken`       | `#f0ece8`             | Recessed areas: composer tray, code/preview wells, table header |
+| `surface`             | `#ffffff`             | Cards, panels, inputs, menus                                    |
+| `ink`                 | `#111111`             | Headings, body text, primary button fill                        |
+| `ink-strong`          | `#000000`             | Hover/pressed state of the black primary button                 |
+| `ink-muted`           | `#58544e`             | Secondary text, captions, mono labels                           |
+| `ink-subtle`          | `#787572`             | Small meta text **on white only**; icons; disabled hints        |
+| `hairline`            | `#e5e5e5`             | Dividers, card borders, grid lines (decorative)                 |
+| `hairline-strong`     | `#8a8580`             | Outlines of inputs, checkboxes, toggles (must be visible)       |
+| `accent`              | `#1f40ed`             | The single key action, focus ring, data highlight               |
+| `accent-strong`       | `#0d2189`             | Hover/pressed state of the key action                           |
+| `accent-faint`        | `#e7ebfd`             | Selected row, selected chip background, info note               |
+| `accent-text`         | `#1f40ed`             | Links and accent-coloured text                                  |
+| `on-accent`           | `#ffffff`             | Text on `accent` and `accent-strong`                            |
+| `on-ink`              | `#ffffff`             | Text on the black primary button                                |
+| `inverse`             | `#111111`             | Dark panel of split report sections                             |
+| `on-inverse`          | `#f5f5f4`             | Text on the dark panel                                          |
+| `on-inverse-muted`    | `#a8a29e`             | Secondary text on the dark panel                                |
+| `inverse-hairline`    | `#2a2a2a`             | Lines inside the dark panel                                     |
+| `accent-2` / `-faint` | `#6b3fa0` / `#f1ebf8` | Second accent role: TEXT type pill, cultural holidays           |
+| `success` / `-faint`  | `#2f6b4f` / `#e8f1ec` | Muted green status                                              |
+| `warning` / `-faint`  | `#7a5300` / `#f6eedb` | Muted amber status                                              |
+| `danger` / `-faint`   | `#a3352b` / `#f8e8e5` | Muted red status and errors                                     |
+| `danger-strong`       | `#842a22`             | Hover/pressed state of a destructive button                     |
+| `on-danger`           | `#ffffff`             | Text on a destructive button                                    |
 
 ### Dark theme
 
@@ -85,17 +86,22 @@ The full list of allowed pairs lives in `contrastRules` in `lib/design/tokens.ts
 
 All three are free fonts loaded with `next/font` (Newsreader and Geist from Google Fonts; Geist Mono likewise), self-hosted at build time, no runtime font requests. Newsreader was chosen over Instrument Serif because it has more weights and optical sizes for long titles.
 
-Scale tokens: `text-label` 11px · `text-small` 13px · `text-body` 15px · `text-lead` 18px · `text-title` 28px · `text-stat` 32–48px fluid · `text-display` 40–68px fluid.
+Scale tokens: `text-label` 11px · `text-small` 14px · `text-body` 17px · `text-lead` 18px · `text-title` 30px · `text-stat` 32–48px fluid · `text-display` 40–68px fluid.
 
 Rules: one display title per page; never bold the serif; never set paragraphs in mono; mono labels are short (one to three words) and always uppercase; numbers that line up in tables use `font-variant-numeric: tabular-nums`.
 
 ## Shape, lines and space
 
-- **Radius 4px everywhere**: buttons, inputs, cards, chips, menus, the composer. No pills, no circles except avatars.
-- **1px hairline borders instead of shadows.** Cards are `surface` with a `hairline` border. Menus and dialogs may add a stronger border; still no shadow.
-- **Grids with visible dividers.** Groups of equal items (stat tiles, watched brands, logo walls, feature lists) sit in a grid whose cells share 1px hairline borders, like a printed table.
-- **Spacing** on a 4px base: 4, 8, 12, 16, 24, 32, 48, 64, 96. Sections are separated by 64–96px on desktop, 48px on mobile.
-- **Layout**: content max width 1280px, centred; reading text max 720px; gutters 16px on mobile, 32px on desktop. Hero areas are centred.
+> **Layout facts from the old app win (M1.5).** On Raman's instruction the app is rebuilt 1:1 from [`UI_REBUILD_SPEC.md`](UI_REBUILD_SPEC.md). Its §0 layout facts override this document where they differ; colours, fonts and icons stay from these tokens.
+
+- **Radii:** cards and modals 20px (`--gr-radius-panel`, Tailwind `rounded-xl` and up); inputs and buttons 12px (`--gr-radius-control`, `rounded-md`/`rounded-lg`); small chips 8px (`rounded`/`rounded-sm`); pills and avatars fully round.
+- **Cards:** white surface, 1px hairline border, no shadow, 24px padding.
+- **Controls:** inputs 14px text with 8px × 12px padding; buttons 14px, weight 500, 8px × 16px padding.
+- **Lines, not shadows.** Structure comes from 1px hairlines. The only shadow allowed is the floating action bar and popovers that sit over content (§7 draft editor).
+- **Grids with visible dividers** for equal items (stat tiles, logo walls).
+- **Spacing** on a 4px base: 4, 8, 12, 16, 24, 32, 48, 64, 96.
+- **Layout:** sidebar 255px expanded, 56px collapsed rail; content max width 1280px; Klaviyo detail pages use a ~1020px centred column (`--gr-detail-max`); gutters 16px on mobile, 32px on desktop.
+- **Icons:** one outlined icon set (Lucide), about 20px (`--gr-icon-size`).
 
 ## Components
 
@@ -103,7 +109,7 @@ Rules: one display title per page; never bold the serif; never set paragraphs in
 
 | Kind        | Look                                                              | When                                            |
 | ----------- | ----------------------------------------------------------------- | ----------------------------------------------- |
-| Primary     | Solid `ink` fill, `on-ink` label, 4px radius, 40px tall           | Main action of a section ("Save", "Continue")   |
+| Primary     | Solid `ink` fill, `on-ink` label, 12px radius, 40px tall          | Main action of a section ("Save", "Continue")   |
 | Key action  | Solid `accent` fill, `on-accent` label; hover `accent-strong`     | The one most important action on the screen     |
 | Secondary   | `canvas-sunken` fill, `ink` label, no border                      | Alternatives ("Cancel", "Preview")              |
 | Tertiary    | Text link in `ink` with a trailing arrow `→`, underline on hover  | Navigation-like actions ("View all captures →") |
@@ -115,19 +121,19 @@ In code: `Button` from `components/ui/button.tsx` with `variant="primary" | "acc
 
 ### Segmented toggle and chips
 
-A row of joined 4px segments with hairline dividers. Labels are mono uppercase (`EXACT`, `REBRAND`, `ADAPT`; `DESKTOP`, `MOBILE`). Selected: `accent-faint` fill and `accent-text` label plus a 1px `accent` outline; unselected: `surface` with `ink-muted` label. Keyboard focus is a 2px ink outline inside the segment, so it is distinct from selection. It is a radio group for keyboard and screen readers (arrow keys move, one selected). Unavailable options stay visible, disabled, with their reason written underneath.
+A row of joined segments (12px outer radius) with hairline dividers. Labels are mono uppercase (`EXACT`, `REBRAND`, `ADAPT`; `DESKTOP`, `MOBILE`). Selected: `accent-faint` fill and `accent-text` label plus a 1px `accent` outline; unselected: `surface` with `ink-muted` label. Keyboard focus is a 2px ink outline inside the segment, so it is distinct from selection. It is a radio group for keyboard and screen readers (arrow keys move, one selected). Unavailable options stay visible, disabled, with their reason written underneath.
 
 In code: `SegmentedControl` from `components/ui/segmented-control.tsx` (a native radio group with a legend; options may carry a description and a `disabledReason`).
 
 ### Form controls
 
-Inputs, selects and text areas: `surface` fill, 1px `hairline-strong` outline, 4px radius, at least 44px tall (text areas grow), 15px Geist text. Labels sit above in 13px Geist 500; help text below in `ink-muted`; errors in `danger` with an icon and text (never colour alone). Focus: the outline turns `accent` and gains a 1px `accent` ring (2px of blue in total). Dates and times always use pickers in the workspace timezone and display readable local text ("Tue 12 Nov, 9:00 am"), never ISO strings.
+Inputs, selects and text areas: `surface` fill, 1px `hairline-strong` outline, 12px radius, 40px tall (text areas grow), 14px Geist text with 8px × 12px padding. Labels sit above: 11px mono, weight 600, uppercase, letter-spaced, `ink-muted`; help text below in `ink-muted`; errors in `danger` with an icon and text (never colour alone). Focus: the outline turns `accent` and gains a 1px `accent` ring (2px of blue in total). Dates and times always use pickers in the workspace timezone and display readable local text ("Tue 12 Nov, 9:00 am"), never ISO strings.
 
 In code: `controlClass` from `components/ui/control.ts` for every native input, select and text area, `TextField` for inputs, and `Field` from `components/ui/workspace.tsx` for the label. Checkboxes and radios use the ink colour by default.
 
 ### Cards and panels
 
-`surface`, 1px `hairline`, 4px radius, 24px padding (16px on mobile). A card title is 18px Geist 500; an optional mono label sits above it. No shadows; hover on clickable cards changes the border to `hairline-strong`.
+`surface`, 1px `hairline`, 20px radius, 24px padding. A card title is 18px Geist 500; an optional mono label sits above it. No shadows; hover on clickable cards changes the border to `hairline-strong`.
 
 ### Stat tiles
 
@@ -170,7 +176,7 @@ The composer is to Grey Retention what a search box is to a search engine. It ap
 └──────────────────────────────────────────────────────────────┘
 ```
 
-- One large text area (`surface`, 1px `hairline-strong`, 4px radius). Placeholder in `ink-muted`.
+- One large text area (`surface`, 1px `hairline-strong`, 20px radius). Placeholder in `ink-muted`.
 - A tray below it in `canvas-sunken`: the mode toggle on the left, the **only blue button** (an arrow, labelled "Create my version" for screen readers) on the right.
 - Small mono option groups underneath: BRAND, PRODUCTS, FOOTER, each a compact menu showing the current choice.
 - Modes: **EXACT** keeps the email as it is; **REBRAND** keeps the layout and swaps in the owner's brand, products, links and footer; **ADAPT** keeps the strategy and writes new content. A one-line description of the selected mode sits under the toggle. Modes that are not built yet are shown as unavailable with a short reason, never faked.
@@ -201,13 +207,13 @@ Technical words may appear in admin-only screens and developer tools. DS-007 add
 
 ## White-label
 
-Grey Retention is sold white-label (`PRODUCT.md`): name, logo, palette, typography, domains and customer-facing copy must be configurable without code changes. This document is the **default** theme. A customer theme is data passed through the existing `BrandPresentation` contract (`lib/branding/presentation.ts`): it may replace the colours of its `theme` and the three font roles. `hasAccessibleBrandContrast` checks text, muted and faint text, accent links, error and warning text, button labels and control outlines against the page and white panels; a theme that fails any pair is rejected and the default is used. Success colours are not tenant-themable yet. Layout, spacing, 4px shapes, hairline structure and components are shared; they are never forked per customer.
+Grey Retention is sold white-label (`PRODUCT.md`): name, logo, palette, typography, domains and customer-facing copy must be configurable without code changes. This document is the **default** theme. A customer theme is data passed through the existing `BrandPresentation` contract (`lib/branding/presentation.ts`): it may replace the colours of its `theme` and the three font roles. `hasAccessibleBrandContrast` checks text, muted and faint text, accent links, error and warning text, button labels and control outlines against the page and white panels; a theme that fails any pair is rejected and the default is used. Success colours are not tenant-themable yet. Layout, spacing, the §0 shapes, hairline structure and components are shared; they are never forked per customer.
 
 ## Implementation notes
 
 - Tokens: `lib/design/tokens.ts` (source of truth) and `app/styles/tokens.css` (`--gr-*` custom properties, light on `:root`, dark on `[data-theme='dark']`). The test fails if the two differ.
 - `app/globals.css` imports `tokens.css`. The older semantic variables that components already use (`--surface`, `--text`, `--line`, `--brand-primary`, `--brand-secondary`, …) now point at the tokens, and `lib/branding/presentation.ts` builds the default white-label theme from `colorThemes.light`, so there is one source for every value.
-- Tailwind names (Tailwind 4 `@theme`): colours `canvas`, `canvas-sunken`, `surface`, `ink`, `ink-strong`, `ink-muted`, `hairline`, `hairline-strong`, `accent`, `accent-strong`, `accent-faint`, `danger`, `warning`, `success` (+ `-faint`); fonts `font-serif` (display), `font-sans` (UI), `font-mono` (labels/numbers); tracking `tracking-display`, `tracking-label`. Every `rounded-*` step is 4px; `rounded-full` remains for avatars. New code uses these names, for example `bg-surface border border-hairline text-ink`.
+- Tailwind names (Tailwind 4 `@theme`): colours `canvas`, `canvas-sunken`, `surface`, `ink`, `ink-strong`, `ink-muted`, `hairline`, `hairline-strong`, `accent`, `accent-strong`, `accent-faint`, `danger`, `warning`, `success` (+ `-faint`); fonts `font-serif` (display), `font-sans` (UI), `font-mono` (labels/numbers); tracking `tracking-display`, `tracking-label`. `rounded`/`rounded-sm` are 8px, `rounded-md`/`rounded-lg` 12px (controls), `rounded-xl` and up 20px (cards); `rounded-full` remains for avatars and pills. New colour names: `accent-2` (+ `-faint`). New code uses these names, for example `bg-surface border border-hairline text-ink`.
 - Fonts load with `next/font/google` in `app/layout.tsx` as `--font-newsreader`, `--font-geist` and `--font-geist-mono`; they are self-hosted at build time.
 - Dark mode is defined in tokens but not switched on: the white-label theme is applied inline on `<body>`, so dark mode needs a dark `BrandPresentation` variant first. Until then the app is light only.
 - Naming trap: Tailwind `bg-surface` is the white panel (`--surface-raised`), while the older variable `var(--surface)` is the page canvas; `text-ink` is near-black, while the older `--brand-ink` is dark blue. When replacing `bg-[var(--surface)]`, use `bg-canvas`.
