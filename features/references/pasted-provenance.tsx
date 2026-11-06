@@ -2,11 +2,13 @@ import { z } from 'zod'
 import { Panel, Notice } from '@/components/ui/workspace'
 import { pastedReference } from './pasted-data'
 import { PastedText } from './pasted-text'
+import { provenanceSentence } from './provenance-text'
 
 const lineageSchema = z.object({
   structureSource: z.literal('imported_reference'),
   structureId: z.uuid(),
-  structure: z.array(z.string()).catch([])
+  structure: z.array(z.string()).catch([]),
+  emailMode: z.enum(['copy', 'rewrite']).optional().catch(undefined)
 })
 
 export async function PastedSourcePanel({
@@ -38,10 +40,7 @@ export async function PastedSourcePanel({
               ` · ${source.data.source_description}`}
           </p>
           <p>
-            This draft follows its outline only:{' '}
-            {parsed.data.structure.join(' · ')}. It is not collected competitor
-            evidence. Its wording, images, links and offers were not copied, and
-            no AI analysis or visual reconstruction has run.
+            {provenanceSentence(parsed.data.emailMode, parsed.data.structure)}
           </p>
           <details>
             <summary className="cursor-pointer">
@@ -55,7 +54,7 @@ export async function PastedSourcePanel({
       ) : (
         <Notice>
           The email this draft started from is no longer available here. The
-          saved outline ({parsed.data.structure.join(' · ')}) is kept.
+          draft itself is kept.
         </Notice>
       )}
     </Panel>

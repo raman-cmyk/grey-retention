@@ -31,12 +31,10 @@ test('UC-11 creator-private/shared chats and actor-bound confirmed draft edits p
   await page.getByLabel('Campaign context').selectOption(campaign!)
   const question = `Original private question ${info.project.name}`
   await page.getByLabel('Question or reason').fill(question)
-  await page
-    .getByRole('button', { name: 'Ask fixture GROS', exact: true })
-    .click()
+  await page.getByRole('button', { name: 'Ask GROS', exact: true }).click()
   await expect(page.getByText(question, { exact: true })).toBeVisible()
   await page.reload()
-  await expect(page.getByText(/Reason and evidence:/)).toBeVisible()
+  await expect(page.getByText(/Next step:/)).toBeVisible()
   const sharedTitle = `Synthetic shared ${info.project.name}`
   await page.getByLabel('Conversation title').fill(sharedTitle)
   await page
@@ -57,9 +55,7 @@ test('UC-11 creator-private/shared chats and actor-bound confirmed draft edits p
   await page
     .getByLabel('Proposed goal', { exact: true })
     .fill(`Original synthetic GROS goal ${info.project.name}`)
-  await page
-    .getByRole('button', { name: 'Ask fixture GROS', exact: true })
-    .click()
+  await page.getByRole('button', { name: 'Ask GROS', exact: true }).click()
   await expect(
     page.getByRole('heading', { name: 'edit_goal · pending', exact: true })
   ).toBeVisible()
@@ -88,9 +84,7 @@ test('UC-11 creator-private/shared chats and actor-bound confirmed draft edits p
   await page
     .getByLabel('Proposed goal', { exact: true })
     .fill('Original pending education goal')
-  await page
-    .getByRole('button', { name: 'Ask fixture GROS', exact: true })
-    .click()
+  await page.getByRole('button', { name: 'Ask GROS', exact: true }).click()
   await expect(
     page.getByRole('heading', { name: 'edit_goal · pending', exact: true })
   ).toBeVisible()

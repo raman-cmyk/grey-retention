@@ -7,6 +7,8 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DataTable } from '@/components/ui/data-table'
 import { operationAction, acceptInvite } from './actions'
 import { z } from 'zod'
+import { rewriteAvailability } from '@/features/email-generation/config'
+import { connectionsEmptyText, rewriteStatus } from './provider-status'
 const money = (value: number) =>
   new Intl.NumberFormat('en', {
     style: 'currency',
@@ -541,6 +543,36 @@ export async function OperatorPanel() {
       </Panel>
       <Panel title="Provider health">
         <ul className="space-y-3 text-sm">
+          {data.data.tenants.map((t) => {
+            const s = rewriteStatus(
+              rewriteAvailability(t.id),
+              data.data.jobs.filter((j) => j.tenant_id === t.id)
+            )
+            return (
+              <li key={`ai-${t.id}`} className="flex flex-wrap gap-x-2">
+                <span className="font-medium">{t.name}</span>
+                <span>· {s.label} ·</span>
+                <span
+                  className={
+                    s.state === 'ok'
+                      ? 'text-[var(--text)]'
+                      : s.state === 'attention'
+                        ? 'font-medium text-[var(--danger-ink)]'
+                        : 'text-[var(--text-muted)]'
+                  }
+                >
+                  {s.detail}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+        {data.data.connections.length === 0 && (
+          <p className="mt-4 text-sm text-[var(--text-muted)]">
+            {connectionsEmptyText}
+          </p>
+        )}
+        <ul className="mt-4 space-y-3 text-sm">
           {data.data.connections.map((c) => (
             <li key={c.tenant_id + c.provider}>
               {data.data.tenants.find((t) => t.id === c.tenant_id)?.name} ·{' '}
