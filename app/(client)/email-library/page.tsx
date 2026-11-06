@@ -1,9 +1,12 @@
 import { OwnLibraryPanel } from '@/features/library/panel'
+import { EmptyState } from '@/components/ui/empty-state'
+import { TextLink } from '@/components/ui/text-link'
 import Link from 'next/link'
 import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
 import { referenceWorkspace } from '@/features/references/data'
 export default async function EmailLibrary() {
-  const { data, error } = await referenceWorkspace()
+  const { data, context, error } = await referenceWorkspace()
+  const owner = context.tenantRole === 'owner'
   if (!data) return <Notice error>{error}</Notice>
   return (
     <div className="mx-auto max-w-6xl">
@@ -33,10 +36,25 @@ export default async function EmailLibrary() {
           ))}
         </div>
         {!data.emails.length && (
-          <Notice>
-            No captured emails. Add a fictional subscription and run a capture
-            job.
-          </Notice>
+          <EmptyState
+            title="No captured emails yet."
+            description={
+              <>
+                Emails appear here after a sample capture runs for a watched
+                brand; real inboxes are not connected yet. Emails you paste or
+                upload are kept under{' '}
+                <Link href="/import-reference" className="underline">
+                  Add an email
+                </Link>
+                .
+              </>
+            }
+            action={
+              owner ? (
+                <TextLink href="/competitor-agent">Add a competitor</TextLink>
+              ) : undefined
+            }
+          />
         )}
       </Panel>
     </div>

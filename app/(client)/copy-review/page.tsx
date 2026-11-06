@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import { EmptyState } from '@/components/ui/empty-state'
+import { TextLink } from '@/components/ui/text-link'
 import type { Route } from 'next'
 import { PageHeading, Panel, Notice, Field } from '@/components/ui/workspace'
 import { SubmitButton } from '@/components/ui/action-form'
@@ -60,21 +62,15 @@ export default async function CopyReview({
           )}
           <Panel title="Approved calendar entries">
             {!entries.length && (
-              <div className="rounded-lg border border-dashed border-[var(--line-strong)] p-6 text-sm">
-                <p className="font-medium">
-                  No approved calendar entries this week.
-                </p>
-                <p className="mt-2 text-[var(--text-muted)]">
-                  Choose another week or approve entries in your campaign
-                  calendar before preparing copy.
-                </p>
-                <Link
-                  href="/campaign-agent"
-                  className="mt-4 inline-block font-medium text-[var(--brand-ink)] underline"
-                >
-                  Open campaign calendar
-                </Link>
-              </div>
+              <EmptyState
+                title="No approved calendar entries this week."
+                description="Choose another week, or approve entries in your campaign calendar before preparing copy."
+                action={
+                  <TextLink href="/campaign-agent">
+                    Open campaign calendar
+                  </TextLink>
+                }
+              />
             )}
             {entries.map((c) => {
               const v = planning.contents.find(

@@ -1,6 +1,7 @@
 import Link from 'next/link'
+import { EmptyState } from '@/components/ui/empty-state'
 import type { Route } from 'next'
-import { ArrowRight, CalendarDays, Check, Plus, Sparkles } from 'lucide-react'
+import { ArrowRight, Check, Plus, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
 import { StatusMark } from '@/components/ui/status-mark'
@@ -200,27 +201,29 @@ export function CampaignOverview({
             ))}
           </nav>
           {!selection.length ? (
-            <div className="py-10 text-center">
-              <CalendarDays
-                className="mx-auto mb-3 size-7 text-[var(--text-faint)]"
-                aria-hidden
-              />
-              <h3 className="text-sm font-semibold">
-                {focus === 'review'
-                  ? 'Your review queue is clear'
+            <EmptyState
+              title={
+                focus === 'review'
+                  ? owner
+                    ? 'Your review queue is clear.'
+                    : 'Nothing is waiting for the brand owner.'
                   : focus === 'scheduled'
-                    ? 'No campaigns scheduled yet'
-                    : 'Start your first campaign'}
-              </h3>
-              <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[var(--text-muted)]">
-                {focus === 'review'
-                  ? 'Campaigns appear here when a calendar, copy or design version needs an owner decision.'
-                  : 'Plan a campaign, review its copy and design, then prepare delivery.'}
-              </p>
-              <Button asChild variant="secondary" className="mt-5">
-                <Link href="/campaign-agent">Open calendar</Link>
-              </Button>
-            </div>
+                    ? 'No campaigns scheduled yet.'
+                    : 'Start your first campaign.'
+              }
+              description={
+                focus === 'review'
+                  ? owner
+                    ? 'Campaigns appear here when a calendar, copy or design version needs your decision.'
+                    : 'Campaigns appear here when a calendar, copy or design version needs the brand owner’s decision.'
+                  : 'Plan a campaign, review its copy and design, then prepare delivery.'
+              }
+              action={
+                <Button asChild variant="secondary">
+                  <Link href="/campaign-agent">Open calendar</Link>
+                </Button>
+              }
+            />
           ) : (
             <div className="divide-y divide-[var(--line)]">
               {shown.map((c) => {

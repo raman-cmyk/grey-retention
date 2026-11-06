@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { EmptyState } from '@/components/ui/empty-state'
 import {
   PageHeading,
   Panel,
@@ -132,10 +133,14 @@ export default async function CompetitorAgentPage() {
             ))}
           </div>
           {!data.subscriptions.length && (
-            <Notice>
-              No subscriptions. Add fictional sources to start a persisted
-              capture job.
-            </Notice>
+            <EmptyState
+              title="No competitors yet."
+              description={
+                owner
+                  ? 'Add a brand above, then queue a sample capture to collect its emails. For now, collection uses sample sources, not real inboxes.'
+                  : 'The workspace owner chooses which brands to watch. Their emails will appear here.'
+              }
+            />
           )}
         </Panel>
         <p className="text-sm">
