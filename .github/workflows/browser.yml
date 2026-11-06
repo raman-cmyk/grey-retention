@@ -3,6 +3,8 @@ name: Browser
 # Desktop and mobile Playwright journeys plus the concurrency scripts, on a
 # fresh local Supabase with fake providers. Runs only when app, test or
 # database files change (or by hand), and skips draft pull requests.
+# Do not make this a required check: with path filters it does not run on
+# every pull request, and a required check that never starts blocks merging.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -12,8 +14,9 @@ on:
       - 'features/**'
       - 'lib/**'
       - 'supabase/**'
-      - 'scripts/**'
+      - 'scripts/*.mjs'
       - 'tests/e2e/**'
+      - 'tests/helpers/**'
       - 'playwright.config.ts'
       - 'next.config.ts'
       - 'proxy.ts'
@@ -21,6 +24,7 @@ on:
       - 'tsconfig.json'
       - 'package.json'
       - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
       - '.github/workflows/browser.yml'
   workflow_dispatch:
 
@@ -46,16 +50,14 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Reuse the downloaded browser between runs; system packages still install.
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm exec playwright install --with-deps chromium
       # Only the services the journeys use: database, auth, REST, storage, mail.
       - run: pnpm exec supabase start -x studio,logflare,vector,imgproxy,edge-runtime,realtime,postgres-meta,supavisor
       - run: pnpm supabase:reset
+      # A step limit (inside the job limit) makes a slow run fail rather than be
+      # cancelled, so the report below is still uploaded.
       - run: pnpm test:e2e
+        timeout-minutes: 30
       - run: node scripts/test-first-draft.mjs
       - run: node scripts/test-email-concurrency.mjs
       - run: node scripts/test-email-import-concurrency.mjs
@@ -67,3 +69,5 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+          # Hidden folders (.audit with local passwords) are never included.
+          include-hidden-files: false

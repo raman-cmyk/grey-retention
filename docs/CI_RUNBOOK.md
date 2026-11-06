@@ -4,15 +4,15 @@ GitHub Actions checks every pull request before it is merged. Merging to `main` 
 
 ## What runs, and when
 
-| Workflow                               | Job        | Runs on                                                                        | What it checks                                                                                                      | Typical time |
-| -------------------------------------- | ---------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- | ------------ |
-| `.github/workflows/ci.yml`             | `verify`   | Every pull request, every push to `main`, or by hand                           | Formatting, lint, typecheck, unit tests, production build                                                           | ~5 min       |
-| `.github/workflows/database.yml`       | `database` | Pull requests that change `supabase/**`, or by hand                            | Fresh local Supabase → reset → all pgTAP / RLS assertions                                                           | ~5 min       |
-| `.github/workflows/browser.yml`        | `browser`  | Pull requests that change app, test, script, schema or build files, or by hand | Fresh local Supabase → reset → every desktop and mobile journey, then the first-draft and email concurrency scripts | ~20–30 min   |
-| `.github/workflows/scheduled-jobs.yml` | `run`      | Every 30 minutes, only when switched on (see `docs/SCHEDULED_JOBS_RUNBOOK.md`) | Runs queued jobs on the live app                                                                                    | ~1 min       |
-| `.github/workflows/project-sync.yml`   | `sync`     | Pushes to `main` that change the roadmap or register                           | Labels and milestones                                                                                               | ~1 min       |
+| Workflow                               | Job        | Runs on                                                                                                | What it checks                                                                                                      | Typical time |
+| -------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- | ------------ |
+| `.github/workflows/ci.yml`             | `verify`   | Every pull request, every push to `main`, or by hand                                                   | Formatting, lint, typecheck, unit tests, production build                                                           | ~5 min       |
+| `.github/workflows/database.yml`       | `database` | Pull requests (and merges to `main`) that change `supabase/**` or the Supabase CLI version, or by hand | Fresh local Supabase → reset → all pgTAP / RLS assertions                                                           | ~5 min       |
+| `.github/workflows/browser.yml`        | `browser`  | Pull requests that change app, test, script, schema or build files, or by hand                         | Fresh local Supabase → reset → every desktop and mobile journey, then the first-draft and email concurrency scripts | ~20–30 min   |
+| `.github/workflows/scheduled-jobs.yml` | `run`      | Every 30 minutes, only when switched on (see `docs/SCHEDULED_JOBS_RUNBOOK.md`)                         | Runs queued jobs on the live app                                                                                    | ~1 min       |
+| `.github/workflows/project-sync.yml`   | `sync`     | Pushes to `main` that change the roadmap or register                                                   | Labels and milestones                                                                                               | ~1 min       |
 
-Draft pull requests skip the database and browser checks until they are marked "Ready for review". A pull request that only changes documentation runs only `verify`.
+Draft pull requests skip the database and browser checks until they are marked "Ready for review". A pull request that only changes documentation runs only `verify`. `tests/ci/workflows.test.ts` fails if a new tracked file is neither covered by the browser filter nor listed as unable to affect journeys, so a new folder cannot silently skip the browser check. A newer push to a pull request cancels its older runs; runs on `main` are never cancelled.
 
 Both Supabase checks start only the services the tests use (database, auth, REST, storage, mail). On November 6, 2026 this lean stack passed 600/600 database assertions, 80/80 browser journeys and all three concurrency scripts locally. `tests/ci/workflows.test.ts` checks that the workflows keep their triggers, time limits, permissions and path filters.
 
@@ -38,6 +38,6 @@ GitHub rounds every job up to a whole minute. Rough cost per pull request update
 
 ## When a check is red
 
-- Open the pull request → "Checks" → the red job → the failing step. The browser job uploads the Playwright report and test output as an artifact named `playwright-report` (kept 7 days).
+- Open the pull request → "Checks" → the red job → the failing step. When the browser job fails it uploads the HTML Playwright report and test output (screenshots, traces of retried tests) as an artifact named `playwright-report`, kept 7 days. Traces can show the random passwords and secret of that run's throwaway local stack; they stop working when the run ends, and the hidden `.audit/` folder is never uploaded.
 - Reproduce locally with the same commands: `pnpm verify`; `pnpm supabase:start && pnpm supabase:reset && pnpm test:db`; `pnpm supabase:reset && pnpm test:e2e`.
 - Never skip, disable or quarantine a test to make a check green.

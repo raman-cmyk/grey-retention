@@ -15,9 +15,13 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # A newer push to a pull request replaces its older run; runs on main are
+  # never cancelled, so every merge gets its own result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Branch protection requires this job by name: keep the id `verify` and
+  # never give it a job-level `if:` or path filter.
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
