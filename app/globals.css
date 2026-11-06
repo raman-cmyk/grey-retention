@@ -41,6 +41,9 @@
   --danger-ink: var(--gr-danger);
   --warning-soft: var(--gr-warning-faint);
   --warning-ink: var(--gr-warning);
+  --inverse: var(--gr-inverse);
+  --on-inverse: var(--gr-on-inverse);
+  --on-inverse-muted: var(--gr-on-inverse-muted);
   --radius-control: var(--gr-radius);
   --radius-panel: var(--gr-radius);
 }

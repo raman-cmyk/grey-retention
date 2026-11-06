@@ -4133,9 +4133,12 @@
       "feature": "Plain-language statuses",
       "priority": "P0",
       "acceptance": "Collecting, Ready, Needs setup, In production, Needs review, Scheduled, Sending, Sent and Failed have exact meanings.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["DS-004"],
+      "verification": [
+        "DS-004 (2026-11-06): lib/status-vocabulary.ts defines the nine statuses with label, tone and meaning; StatusMark status=… renders them as text with a decorative dot and the meaning as a tooltip; unit tests cover the words, distinct meanings and Sent-only-when-confirmed."
+      ],
+      "remaining": "DS-004 (2026-11-06): the shared vocabulary and StatusMark exist. Remaining: campaign overview, calendar, competitor and delivery screens still compute their own status words; they must map their states onto this list, and the meanings need a visible help entry."
     },
     {
       "id": "UX-013",

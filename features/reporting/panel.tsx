@@ -3,6 +3,8 @@ import type { Route } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { Panel, Notice, Field, controlClass } from '@/components/ui/workspace'
+import { SplitSection } from '@/components/ui/split-section'
+import { StatGrid, StatTile, cappedCount } from '@/components/ui/stat-tile'
 import { TextField } from '@/components/ui/text-field'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -147,6 +149,13 @@ export async function ReportingPanel() {
         Reporting data unavailable. Retry after checking local migrations.
       </Notice>
     )
+  // Only pinned rules change generation; proposed ones wait for the owner.
+  const pinnedRules = (rules.data ?? []).filter(
+    (rule) => rule.status === 'pinned'
+  ).length
+  const proposedRules = (rules.data ?? []).filter(
+    (rule) => rule.status === 'proposed'
+  ).length
   const maxSent = deliveries.data?.[0]?.sent_at
   const clock = new Date(
     Math.max(new Date().getTime(), Date.parse(maxSent ?? '') || 0) +
@@ -154,6 +163,40 @@ export async function ReportingPanel() {
   ).toISOString()
   return (
     <div className="space-y-6">
+      <SplitSection
+        eyebrow="Results summary"
+        title="What we have learned so far"
+        takeaway="These are sample sends only — no real email goes out yet. They show how results and learning will work; they are not real sales or opens."
+      >
+        <StatGrid label="Results summary" columns={2}>
+          <StatTile
+            label="Sample sends"
+            value={cappedCount(deliveries.data?.length ?? 0, 100)}
+            caption="Simulated; no real email went out"
+          />
+          <StatTile
+            label="Result windows"
+            value={cappedCount(results.data?.length ?? 0, 100)}
+            caption="Collected 48 hours and 7 days after a send"
+          />
+          <StatTile
+            label="Pinned preferences"
+            value={
+              (rules.data?.length ?? 0) >= 50 ? `${pinnedRules}+` : pinnedRules
+            }
+            caption={
+              proposedRules
+                ? `Used in new plans · ${proposedRules} waiting for your decision`
+                : 'Used in new plans'
+            }
+          />
+          <StatTile
+            label="Real revenue"
+            value={null}
+            unknownReason="Not connected yet: needs live Klaviyo or Shopify data"
+          />
+        </StatGrid>
+      </SplitSection>
       <Panel title="Confirmed sends and result windows">
         <Notice>
           All numbers here are deterministic synthetic fixtures. Revenue is a
