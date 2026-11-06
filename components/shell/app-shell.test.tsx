@@ -65,7 +65,10 @@ describe('app shell', () => {
     renderShell()
     const current = screen.getByRole('link', { name: 'Overview' })
     expect(current).toHaveAttribute('aria-current', 'page')
-    expect(current.className).toContain('aria-[current=page]:before:w-0.5')
-    expect(current.className).toContain('aria-[current=page]:font-medium')
+    // A weight change plus a border bar (border survives forced-colors mode).
+    expect(current.className).toMatch(/aria-\[current=page\]:font-/)
+    expect(current.className).toMatch(/aria-\[current=page\]:before:border-/)
+    const other = screen.getByRole('link', { name: 'Competitor agent' })
+    expect(other).not.toHaveAttribute('aria-current')
   })
 })

@@ -165,6 +165,8 @@ export function hasAccessibleBrandContrast(brand: BrandPresentation) {
     [theme.textFaint, theme.surface],
     [theme.textFaint, theme.surfaceRaised],
     [theme.navText, theme.nav],
+    [theme.navMuted, theme.nav],
+    [theme.textMuted, theme.surfaceRaised],
     [theme.onBrand, theme.primary],
     [theme.onBrand, theme.primaryStrong],
     [theme.onDanger, theme.danger],

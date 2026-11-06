@@ -99,15 +99,17 @@ export function AppShell({
             aria-hidden
           />
           <div className="min-w-0" data-testid="shell-workspace">
-            <p className="tracking-label font-mono text-[0.625rem] leading-none text-[var(--text-muted)] uppercase sm:text-[0.6875rem]">
+            <p className="tracking-label font-mono text-[0.6875rem] leading-none text-[var(--nav-muted)] uppercase">
               {workspaceLabel}
             </p>
-            <p className="mt-1 truncate text-sm font-medium">{workspaceName}</p>
+            <p className="mt-1 truncate text-sm font-medium text-[var(--nav-text)]">
+              {workspaceName}
+            </p>
           </div>
           <HeaderActions
             navigation={navigation}
             identity={identity}
-            contextLabel={contextLabel}
+            contextLabel={workspaceLabel}
           />
         </header>
         <main id="main-content" className="px-4 py-6 sm:px-6 lg:px-8 lg:py-10">

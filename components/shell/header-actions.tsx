@@ -148,7 +148,7 @@ export function HeaderActions({
         <div className="flex items-center justify-between border-b border-[var(--line)] px-5 py-4">
           <h2
             id="workspace-search-title"
-            className="tracking-display font-[family-name:var(--font-display)] text-xl font-normal"
+            className="tracking-display font-serif text-xl font-normal"
           >
             Find a page
           </h2>

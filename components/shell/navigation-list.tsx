@@ -90,7 +90,7 @@ export function NavigationList({
                 aria-current={
                   isCurrentPath(pathname, href) ? 'page' : undefined
                 }
-                className="group relative flex min-h-10 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm text-[var(--nav-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--nav-text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none aria-[current=page]:font-medium aria-[current=page]:text-[var(--nav-text)] aria-[current=page]:before:absolute aria-[current=page]:before:inset-y-2 aria-[current=page]:before:left-0 aria-[current=page]:before:w-0.5 aria-[current=page]:before:bg-[var(--nav-text)]"
+                className="group relative flex min-h-10 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm text-[var(--nav-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--nav-text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none aria-[current=page]:font-medium aria-[current=page]:text-[var(--nav-text)] aria-[current=page]:before:absolute aria-[current=page]:before:inset-y-2 aria-[current=page]:before:left-0 aria-[current=page]:before:border-l-2 aria-[current=page]:before:border-[var(--nav-text)]"
               >
                 <Icon className="size-4 stroke-[1.6]" aria-hidden />
                 <span>{itemLabel}</span>
