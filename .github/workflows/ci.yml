@@ -49,6 +49,7 @@ jobs:
       - run: pnpm supabase:reset
       - run: pnpm test:e2e
       - run: node scripts/test-first-draft.mjs
+      - run: node scripts/test-email-concurrency.mjs
 
   database:
     runs-on: ubuntu-latest

@@ -9,6 +9,7 @@ import { campaignWorkspace } from '@/features/campaigns/data'
 import { referenceWorkspace } from '@/features/references/data'
 import { pastedReferences } from '@/features/references/pasted-data'
 import { brandAction } from '@/features/brand/actions'
+import { latestEmailResult } from '@/features/email-generation/data'
 import { startProgress } from './start-model'
 import { RetrySetup } from './retry-setup'
 
@@ -34,11 +35,14 @@ export async function GettingStarted({ step }: { step?: string }) {
       </div>
     )
   const brand = data.brand
-  const imported = (await pastedReferences(context.tenantId, 1)).data
+  const [imported, latestEmail] = await Promise.all([
+    pastedReferences(context.tenantId, 1).then((r) => r.data),
+    latestEmailResult(context.tenantId).then((r) => r.data)
+  ])
   const progress = startProgress({
     hasBrand: !!brand,
     hasEmails: references.data.emails.length > 0 || imported.length > 0,
-    hasCampaign: data.campaigns.length > 0
+    hasCampaign: data.campaigns.length > 0 || !!latestEmail
   })
   const current =
     progress.steps.find((item) => item.id === step)?.id ?? progress.current
@@ -170,8 +174,8 @@ export async function GettingStarted({ step }: { step?: string }) {
             Start with one email.
           </h1>
           <p className="mt-3 text-sm leading-6 text-[var(--text-muted)]">
-            Paste an email you like — your own or one you received — then use
-            its outline as a starting point for your brand.
+            Paste an email you like — your own or one you received. Then rewrite
+            it for your brand or keep an exact copy to edit.
           </p>
           {owner ? (
             <Button asChild className="mt-7">
@@ -186,7 +190,7 @@ export async function GettingStarted({ step }: { step?: string }) {
           )}
           {imported.length > 0 && (
             <Link
-              href={`/first-draft?imported=${imported[0].id}` as Route}
+              href={`/create-email/${imported[0].id}` as Route}
               className="mt-5 block text-sm underline underline-offset-4"
             >
               Use “{imported[0].subject}”, the email you added last
@@ -196,7 +200,7 @@ export async function GettingStarted({ step }: { step?: string }) {
             <p className="font-semibold">Or explore a sample</p>
             <p className="mt-2 text-[var(--text-muted)]">
               Sample capture uses fictional .example brands. Real competitor
-              monitoring and exact visual reconstruction are still to be built.
+              monitoring is still to be built.
             </p>
             <Link
               href={
@@ -221,26 +225,41 @@ export async function GettingStarted({ step }: { step?: string }) {
       ) : (
         <>
           <h1 className="text-3xl font-semibold tracking-tight">
-            {progress.complete ? 'You’re underway.' : 'Make your first draft.'}
+            {latestEmail ? 'Your email is saved.' : 'Make your first email.'}
           </h1>
           <p className="mt-3 text-sm leading-6 text-[var(--text-muted)]">
-            {data.campaigns.length
-              ? 'Your saved campaigns are waiting in the workspace. Keep refining your copy and design there.'
-              : 'Give your email a goal, choose an audience and pick a date. You’ll review the copy and design before delivery.'}
+            {latestEmail
+              ? 'Open it to preview, edit and send it for your approval. Nothing is sent without you.'
+              : imported.length
+                ? 'Choose whether to rewrite the email you added for your brand or keep an exact copy.'
+                : 'Start by adding an email you like. You can also plan an original email from scratch.'}
           </p>
           <Button asChild className="mt-7">
-            <Link href={data.campaigns.length ? '/dashboard' : '/first-draft'}>
-              {data.campaigns.length
-                ? 'Open my workspace'
-                : 'Plan my first email'}{' '}
+            <Link
+              href={
+                (latestEmail
+                  ? `/emails/${latestEmail.id}`
+                  : imported.length
+                    ? `/create-email/${imported[0].id}`
+                    : '/import-reference') as Route
+              }
+            >
+              {latestEmail
+                ? 'Open my email'
+                : imported.length
+                  ? 'Choose what to make'
+                  : 'Paste an email'}{' '}
               <ArrowRight className="size-4" aria-hidden />
             </Link>
           </Button>
-          <p className="mt-5 text-xs leading-5 text-[var(--text-muted)]">
-            This is a practice workflow. Generation and delivery use sample
-            providers. Brand approval and sending requirements remain in the
-            workspace.
-          </p>
+          <Link
+            href={data.campaigns.length ? '/dashboard' : '/first-draft'}
+            className="mt-5 block text-sm text-[var(--text-muted)] underline underline-offset-4"
+          >
+            {data.campaigns.length
+              ? 'Open my workspace'
+              : 'Plan an original email instead'}
+          </Link>
         </>
       )}
       <p className="mt-8 border-t border-[var(--line)] pt-5 text-xs leading-5 text-[var(--text-faint)]">

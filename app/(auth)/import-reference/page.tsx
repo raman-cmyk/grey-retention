@@ -31,8 +31,8 @@ export default async function ImportReferencePage({
         Paste an email you like.
       </h1>
       <p className="mt-3 text-sm leading-6 text-[var(--text-muted)]">
-        Use one you already have — your own or one you received. You’ll see it
-        as plain text, then start a draft from its outline.
+        Use one you already have — your own or one you received. Next you can
+        rewrite it for your brand or keep an exact copy.
       </p>
       {owner ? (
         <PastedReferenceForm requestKey={params.attempt!} />
@@ -53,7 +53,7 @@ export default async function ImportReferencePage({
             {saved.data.map((item) => (
               <li key={item.id}>
                 <Link
-                  href={`/first-draft?imported=${item.id}` as Route}
+                  href={`/create-email/${item.id}` as Route}
                   className="underline underline-offset-4"
                 >
                   {item.subject}

@@ -3,16 +3,23 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GettingStarted } from './start'
 
-const { campaignWorkspace, referenceWorkspace, pastedReferences, refresh } =
-  vi.hoisted(() => ({
-    campaignWorkspace: vi.fn(),
-    referenceWorkspace: vi.fn(),
-    pastedReferences: vi.fn(),
-    refresh: vi.fn()
-  }))
+const {
+  campaignWorkspace,
+  referenceWorkspace,
+  pastedReferences,
+  latestEmailResult,
+  refresh
+} = vi.hoisted(() => ({
+  campaignWorkspace: vi.fn(),
+  referenceWorkspace: vi.fn(),
+  pastedReferences: vi.fn(),
+  latestEmailResult: vi.fn(),
+  refresh: vi.fn()
+}))
 vi.mock('@/features/campaigns/data', () => ({ campaignWorkspace }))
 vi.mock('@/features/references/data', () => ({ referenceWorkspace }))
 vi.mock('@/features/references/pasted-data', () => ({ pastedReferences }))
+vi.mock('@/features/email-generation/data', () => ({ latestEmailResult }))
 vi.mock('@/features/brand/actions', () => ({ brandAction: vi.fn() }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 
@@ -34,6 +41,7 @@ beforeEach(() => {
   })
   referenceWorkspace.mockResolvedValue({ data: { emails: [] }, error: null })
   pastedReferences.mockResolvedValue({ data: [], error: null })
+  latestEmailResult.mockResolvedValue({ data: null, error: null })
 })
 
 describe('Getting started', () => {
@@ -64,9 +72,7 @@ describe('Getting started', () => {
       screen.getByRole('heading', { name: 'Start with one email.' })
     ).toBeVisible()
     expect(
-      screen.getByText(
-        /Real competitor monitoring and exact visual reconstruction are still to be built/
-      )
+      screen.getByText(/Real competitor monitoring is still to be built/)
     ).toBeVisible()
     unmount()
     render(await GettingStarted({ step: 'brand' }))
@@ -105,11 +111,35 @@ describe('Getting started', () => {
     })
     render(await GettingStarted({ step: 'reference' }))
     expect(
-      screen.getByRole('link', { name: /Find an email/ })
+      screen.getByRole('link', { name: /Add an email/ })
     ).toHaveTextContent('Complete:')
     expect(
       screen.getByRole('link', { name: /Use “Spring note”/ })
-    ).toHaveAttribute('href', `/first-draft?imported=${id}`)
+    ).toHaveAttribute('href', `/create-email/${id}`)
+  })
+  it('resumes at the saved email once one exists', async () => {
+    const id = crypto.randomUUID()
+    campaignWorkspace.mockResolvedValue({
+      context,
+      data: { brand, campaigns: [] },
+      error: null
+    })
+    pastedReferences.mockResolvedValue({
+      data: [{ id: crypto.randomUUID(), subject: 'Spring note' }],
+      error: null
+    })
+    latestEmailResult.mockResolvedValue({
+      data: { id, mode: 'copy' },
+      error: null
+    })
+    render(await GettingStarted({}))
+    expect(
+      screen.getByRole('heading', { name: 'Your email is saved.' })
+    ).toBeVisible()
+    expect(screen.getByRole('link', { name: /Open my email/ })).toHaveAttribute(
+      'href',
+      `/emails/${id}`
+    )
   })
   it('does not present owner mutation controls to members', async () => {
     campaignWorkspace.mockResolvedValue({

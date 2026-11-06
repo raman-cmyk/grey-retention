@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-10-28",
+  "updated": "2026-10-29",
   "scope": "Clean-room product requirements. Legacy capability inventory is not acceptance of this new implementation. Task IDs in BUILD_LEDGER are separate from feature IDs here.",
   "status_rule": "Only tested acceptance earns verified_fixture; partial implementations remain partial. Production acceptance is separate.",
   "features": [
@@ -150,11 +150,12 @@
       "priority": "P0",
       "acceptance": "Use for my brand defaults to rebrand while advanced modes remain accessible later.",
       "status": "partial",
-      "implementation_tasks": ["DRF-001"],
+      "implementation_tasks": ["DRF-001", "AI-002", "REP-001"],
       "verification": [
-        "DRF-001: 107 unit tests; 352 database assertions; 56 desktop/mobile journeys; 12 concurrent replay requests. See BUILD_LEDGER for scope."
+        "DRF-001: 107 unit tests; 352 database assertions; 56 desktop/mobile journeys; 12 concurrent replay requests. See BUILD_LEDGER for scope.",
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Paste, then choose \"Rewrite for my brand\" or \"Copy this email\", then a saved editable result."
       ],
-      "remaining": "Use for my brand opens a source-preselected structural composer. Rebranded creative and advanced reconstruction modes remain."
+      "remaining": "Advanced reconstruction modes (adapt strategy, asset handling) remain. Live OpenAI acceptance pending server key and service credential configuration; model quality unverified. Real OpenAI requests are limited to a temporary server-side workspace allowlist (EMAIL_REWRITE_TENANT_IDS, default deny); commercial entitlements and billing are not implemented."
     },
     {
       "id": "ONB-014",
@@ -162,9 +163,12 @@
       "feature": "One dominant result preview",
       "priority": "P0",
       "acceptance": "The initial result shows the email and next action without a full inspector or side-by-side comparison by default.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["AI-002", "REP-001"],
+      "verification": [
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Result page shows status and one primary review action, then a closed \"Edit email\" control, then a sandboxed preview scaled to fit (desktop and 360px); versions and the original stay closed until opened."
+      ],
+      "remaining": "Measured first-session usability not observed."
     },
     {
       "id": "ONB-015",
@@ -1235,9 +1239,12 @@
       "feature": "Generate draft from brand context",
       "priority": "P1",
       "acceptance": "Generation uses the current tenant's context and records provider/model.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["AI-002", "REP-001"],
+      "verification": [
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Rewrite uses the frozen tenant brand revision, selected product/offer and records provider, model, prompt version and usage."
+      ],
+      "remaining": "Calendar/brief-based generation paths remain fixture-only. Live OpenAI acceptance pending server key and service credential configuration; model quality unverified. Real OpenAI requests are limited to a temporary server-side workspace allowlist (EMAIL_REWRITE_TENANT_IDS, default deny); commercial entitlements and billing are not implemented."
     },
     {
       "id": "CMP-003",
@@ -1425,9 +1432,12 @@
       "feature": "Generate full body",
       "priority": "P1",
       "acceptance": "Produce the requested body and show failures without deleting prior valid work.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["AI-002", "REP-001"],
+      "verification": [
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Rewrite produces subject/preheader/body/CTA; failures, refusals and stale results never replace saved versions."
+      ],
+      "remaining": "Only the pasted-email rewrite path is real-provider capable. Live OpenAI acceptance pending server key and service credential configuration; model quality unverified. Real OpenAI requests are limited to a temporary server-side workspace allowlist (EMAIL_REWRITE_TENANT_IDS, default deny); commercial entitlements and billing are not implemented."
     },
     {
       "id": "CMP-022",
@@ -3511,9 +3521,12 @@
       "feature": "Structured AI output validation",
       "priority": "P1",
       "acceptance": "Malformed output returns a recoverable error rather than corrupting records.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["AI-002", "REP-001"],
+      "verification": [
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Strict JSON schema plus server validation; malformed output fails recoverably (one bounded repair) without saving."
+      ],
+      "remaining": "Other AI features still use fixtures. Live OpenAI acceptance pending server key and service credential configuration; model quality unverified. Real OpenAI requests are limited to a temporary server-side workspace allowlist (EMAIL_REWRITE_TENANT_IDS, default deny); commercial entitlements and billing are not implemented."
     },
     {
       "id": "ADM-020",
@@ -3521,9 +3534,12 @@
       "feature": "AI usage accounting",
       "priority": "P1",
       "acceptance": "Record input/output tokens and generation identity.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["AI-002", "REP-001"],
+      "verification": [
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Rewrite records input/output tokens, cost, response id, prompt version and generation per call; reservations settle to actual cost."
+      ],
+      "remaining": "Fixture features record synthetic usage only; admin usage reports do not yet show rewrite cost. Real OpenAI requests are limited to a temporary server-side workspace allowlist (EMAIL_REWRITE_TENANT_IDS, default deny); commercial entitlements and billing are not implemented."
     },
     {
       "id": "ADM-021",
@@ -3871,9 +3887,12 @@
       "feature": "Safe AI error messages",
       "priority": "P1",
       "acceptance": "User messages omit provider secrets and raw sensitive diagnostics.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["AI-002", "REP-001"],
+      "verification": [
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Rewrite failures show plain owner messages; diagnostics are allowlisted codes only."
+      ],
+      "remaining": "Other AI paths not audited in this task."
     },
     {
       "id": "LEG-001",
@@ -4041,9 +4060,12 @@
       "feature": "Named reconstruction modes",
       "priority": "P0",
       "acceptance": "Exact reconstruction, Rebrand and Adapt strategy describe what changes before generation.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["AI-002", "REP-001"],
+      "verification": [
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. \"Rewrite for my brand\" and \"Copy this email\" state what changes before running."
+      ],
+      "remaining": "Adapt-strategy mode not built."
     },
     {
       "id": "UX-008",
@@ -4081,9 +4103,12 @@
       "feature": "Progressive disclosure",
       "priority": "P0",
       "acceptance": "Advanced controls do not obscure the first successful reconstruction.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["AI-002", "REP-001"],
+      "verification": [
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. The result page is preview-first: the editor sits behind a closed \"Edit email\" control (raw HTML nested inside it), and versions and the original are closed disclosures. Rewrite options are collapsed on the choose step."
+      ],
+      "remaining": "Broader workspace not reviewed."
     },
     {
       "id": "UX-012",
@@ -4797,9 +4822,12 @@
       "feature": "Exact reconstruction project",
       "priority": "P0",
       "acceptance": "Choose a source and preserve selected copy/layout/assets with declared rendering target.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["AI-002", "REP-001"],
+      "verification": [
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Exact copy preserves the supplied HTML/text byte-for-byte with layout, tables and inline styles; plain text stays text."
+      ],
+      "remaining": "No declared rendering target or asset capture; remote images/fonts are not fetched; no cross-client fidelity verification."
     },
     {
       "id": "REP-002",
@@ -4897,9 +4925,12 @@
       "feature": "Editable block reconstruction",
       "priority": "P0",
       "acceptance": "Output selectable text/images/buttons/product blocks rather than only a screenshot.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["AI-002", "REP-001"],
+      "verification": [
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. HTML results edit visible text blocks, links and an explicit main button while layout is kept."
+      ],
+      "remaining": "Image/product blocks not editable; very large or deeply nested emails fall back to the HTML code editor."
     },
     {
       "id": "REP-012",
@@ -4907,9 +4938,12 @@
       "feature": "Exact original preservation option",
       "priority": "P0",
       "acceptance": "Original content can be preserved intentionally in the reconstruction workspace.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["AI-002", "REP-001"],
+      "verification": [
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Separate immutable source copy; version 1 equals the original; authenticated download is byte-identical after edits."
+      ],
+      "remaining": "Live hosting not verified."
     },
     {
       "id": "REP-013",
@@ -4987,9 +5021,12 @@
       "feature": "Destination rewriting",
       "priority": "P0",
       "acceptance": "Replace each intended CTA destination and report remaining competitor links.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["AI-002", "REP-001"],
+      "verification": [
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Rewrite constrains the button to brand links and replaces source links; copy edits change chosen links only."
+      ],
+      "remaining": "No report of remaining competitor links in copy mode."
     },
     {
       "id": "REP-021",
@@ -5087,9 +5124,12 @@
       "feature": "Export editable email HTML",
       "priority": "P0",
       "acceptance": "Reopen output with preserved block structure where supported.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["AI-002", "REP-001"],
+      "verification": [
+        "AI-002/REP-001 (2026-10-29): 515 SQL assertions (122 new), 175 unit tests (44 new), email-generation browser journeys desktop+mobile, concurrency script; OpenAI exercised only through a loopback test double. Every version exports as authenticated HTML/text attachments and reopens with its versions in the app."
+      ],
+      "remaining": "Re-import of exported HTML into structured blocks not supported."
     },
     {
       "id": "REP-031",

@@ -41,7 +41,20 @@ const nextConfig: NextConfig = {
   typedRoutes: true,
   experimental: { serverActions: { bodySizeLimit: '12mb' } },
   async headers() {
-    return [{ source: '/(.*)', headers: securityHeaders }]
+    return [
+      { source: '/(.*)', headers: securityHeaders },
+      // Email downloads are untrusted markup: later rules win, so the
+      // attachment keeps an opaque sandbox instead of the app policy.
+      {
+        source: '/api/v1/emails/:resultId/export',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: "sandbox; default-src 'none'"
+          }
+        ]
+      }
+    ]
   }
 }
 
