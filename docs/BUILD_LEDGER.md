@@ -62,7 +62,11 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 | DS-004 | Cards, stat tiles, tables, split sections and status vocabulary | DS-003 | review | Claude Code browser lane | pnpm verify; vocabulary, status-mark, stat-tile and split-section tests; preview screenshots at 1280/375px | Owns `components/ui/stat-tile.tsx`, `split-section.tsx`, `status-mark.tsx`, `data-table.tsx`, `Panel`/`Notice` styling, `lib/status-vocabulary.ts`. Issue #43. |
 
+| DS-005 | Empty, loading and error states | DS-004 | review | Claude Code browser lane | pnpm verify; empty-state, loading and error tests; preview at 1280/375px | Owns `components/ui/empty-state.tsx`, `workspace-loading.tsx`, `workspace-error.tsx`. Issue #44. |
+
 ## Global decisions
+
+- DS-005 (2026-11-06): new shared `EmptyState` (serif line, plain sentence, at most one action). `WorkspaceError` (every role's `error.tsx`) and the root `app/error.tsx` show the opaque `error.digest` as a support reference and say saved work is kept and "Try again" never repeats a save; never put data into a custom digest. Empty-state copy must be role-aware: only owners are told a decision is theirs.
 
 - DS-004 (2026-11-06): `lib/status-vocabulary.ts` is the single list of operator statuses (UX-012: Collecting, Ready, Needs setup, In production, Needs review, Scheduled, Sending, Sent, Failed) with label, tone and meaning. `StatusMark` gains `status` (vocabulary) and `info`/`success` tones; `active` stays as an alias. New `StatGrid`/`StatTile` (unknown values render “—” with a reason, never 0) and `SplitSection` (inverse panel uses the `--gr-inverse*` tokens directly; not tenant-themable yet). `Panel` gains an optional `eyebrow`.
 
@@ -519,3 +523,15 @@ Append entries using this exact shape:
 - Review: `code-reviewer` blocked on one honest-number problem, fixed: the reports tile now counts only pinned learned rules ("Pinned preferences — used in new plans", with proposed rules shown as waiting for the owner). Also fixed: counts from `.limit()` queries show "100+" at the cap (`cappedCount`); "Confirmed sends" became "Sample sends — simulated; no real email went out" and captions no longer promise Klaviyo changes it; `StatGrid` takes fixed `columns` (reports 2, dashboard 3) so no grey gap appears at 1440px; tiles are valid `dt`/`dd` pairs and linked tiles use a stretched link named "label number"; unknown values always carry a reason; `StatusMark` requires a label source and has a `text` variant (calendar no longer relies on CSS order); `SplitSection` reads semantic `--inverse*` aliases and a smaller mobile heading; contrast gate also checks info/warning/error status text on hovered rows.
 - Known issues: tables still scroll sideways on narrow screens instead of stacking into cards; other screens still compute their own status words (UX-012 remaining); the dark report panel is not tenant-themable.
 - Next consumer: DS-005 (empty, loading and error states).
+
+### 2026-11-06 — DS-005 — empty, loading and error states
+
+- Status: review
+- Branch/worktree: `claude/ds-005-empty-loading-and-error-states` from `main` at `41c3970`. GitHub issue #44 (browser lane).
+- Commit(s): see the DS-005 pull request.
+- Changed contracts: new `EmptyState` component; `WorkspaceLoading` and `WorkspaceError` (used by every role's `loading.tsx`/`error.tsx`) restyled. `WorkspaceError` now shows `error.digest` (opaque, safe) as a support reference; no other error details are shown.
+- Migrations: none.
+- Verification run: `pnpm verify` (see PR for counts). Tests: EmptyState heading/description/single action and heading level; WorkspaceLoading announces once and hides the skeleton; WorkspaceError keeps private details hidden, says what happened/what was kept/what to do, shows only the digest. Adopted on the dashboard (review/scheduled/first-campaign), competitor agent, email library and copy review. Copy no longer says "fictional subscription" or "capture job"; it says collection uses sample sources for now. Preview route (not committed) at 1280px and 375px with no horizontal scroll. `test:e2e`/`test:db` not runnable here; no e2e spec reads the changed empty-state texts.
+- Review: `code-reviewer` found nothing blocking. Fixed: dashboard review copy is role-aware (admins/staff see "Nothing is waiting for the brand owner"); competitor agent and email library copy say how emails really arrive (a sample capture for a watched brand; real inboxes not connected) and point pasted/uploaded emails to Add an email; non-owners get no dead "Add a competitor" link; error wording says Try again never repeats a save; the root error page now matches; loading test has its own file; no-digest test added. Scope: this is part of #44 — page-level tests for every owner list/detail screen are still open, so the issue stays open.
+- Known issues: many smaller panels still use plain `Notice` text for empty lists; integration and asset gaps inside campaigns/settings lack a next step (UX-013 remaining).
+- Next consumer: DS-006 (composer).
