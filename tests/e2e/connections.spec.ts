@@ -6,6 +6,8 @@ test('UC-01/02 fixture Drive and commerce jobs persist real private artifacts an
   test.setTimeout(90_000)
   await login(page, info.project.name.startsWith('mobile') ? 'other' : 'owner')
   await page.goto('/connections')
+  // The sample-data test controls sit in a collapsed section below the cards.
+  await page.getByText('Sample data tools', { exact: true }).click()
   for (const provider of ['klaviyo', 'shopify', 'drive']) {
     await page
       .getByLabel(`${provider} fixture status`)
@@ -93,7 +95,16 @@ test('UC-01/02 fixture Drive and commerce jobs persist real private artifacts an
   ).toBeVisible()
   await expect(page.getByText(/LIVE competitor evidence$/)).toBeVisible()
   await page.goto('/connections')
-  await expect(page.getByText(/Last sync: 20/)).toHaveCount(2)
+  await page.getByText('Sample data tools', { exact: true }).click()
+  // Klaviyo may also show a sync time when another journey connected it.
+  for (const provider of ['shopify', 'drive'])
+    await expect(
+      page
+        .locator('section', {
+          has: page.getByRole('heading', { name: provider, exact: true })
+        })
+        .getByText(/Last sync: 20/)
+    ).toBeVisible()
   await page.getByRole('button', { name: 'Queue drive fixture sync' }).click()
   await page.getByRole('button', { name: 'Run queued setup jobs' }).click()
   await page.goto('/assets')
