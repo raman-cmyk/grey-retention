@@ -228,6 +228,12 @@ export const contrastRules: ReadonlyArray<{
     use: 'secondary text on the dark panel'
   },
   {
+    foreground: 'accent-strong',
+    backgrounds: ['accent-faint'],
+    minimum: 4.5,
+    use: 'info pill text (Scheduled, With designer, DESIGN)'
+  },
+  {
     foreground: 'accent',
     backgrounds: ['canvas', 'surface'],
     minimum: 3,

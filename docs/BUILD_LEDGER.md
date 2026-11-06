@@ -70,7 +70,7 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 | STAB-004 | CI on pull requests | — | review | Claude Code cloud lane | Workflow tests 11/11; pnpm verify; locally on the lean CI stack: 600/600 pgTAP, 80/80 journeys, 3 concurrency scripts. GitHub runs not yet observed: Actions is disabled by the owner | Owns `.github/workflows/ci.yml`, `database.yml`, `browser.yml`, `tests/ci/workflows.test.ts`, `docs/CI_RUNBOOK.md`. Owner must enable Actions and make `verify` a required check on `main`. |
 
-| UIR-002 | Old-app shell and shared components (spec §0, §2) | DS-006 | review | Claude Code browser lane | Part 1 tokens merged (#252). Part 2 sidebar: pnpm verify; 37 shell/identity tests; demo screenshots at 1280/375px; e2e updated, not run (no Docker) | Owns `components/shell/*` (sidebar, rail, account menu, drawer, `gr_shell` cookie), `nav-data.ts` labels, the `outline` button and `pill` shape. Part 3 (shared components) still to do. Issue #238. |
+| UIR-002 | Old-app shell and shared components (spec §0, §2) | DS-006 | review | Claude Code browser lane | Part 1 tokens (#252), part 2 sidebar (#263) merged. Part 3 shared components: pnpm verify; 13 component test files; e2e not runnable here | Owns `components/shell/*`, `nav-data.ts` labels, the `outline` button and `pill` shape, `components/ui/{pill,alert-dialog,modal,audience-picker,product-picker,picker-parts,chat,credits-indicator}.tsx`, `lib/campaign-status.ts`, `features/email-generation/{preview-card,preview-card-frame,plain-text-email,safe-preview}.tsx`. Part 4 (detail-page pattern) next. Issue #238. |
 
 | UIR-013 | Old-app rebuild §13 Connections | DS-001 | review | Claude Code cloud lane | pnpm verify; 48 unit tests in features/connections; 636/636 pgTAP (36 for connections); browser: connections-cards desktop+mobile, connections and workspace-ui journeys | Owns `features/connections/*`, `app/(client)/connections/page.tsx`, migration `20260914090017`, `supabase/tests/connection_profiles.test.sql`, generated types, related e2e specs. Sample verifier only; no credential stored. Needs migration 20260914090017 on production. |
 
@@ -86,6 +86,15 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 - M1.5 additions (2026-11-06): from `docs/OWNER_JOURNEYS.md` (#253), seven more M1.5 work items: UIR-015 one campaign status system (#254), UIR-016 owner Approve step before Schedule (#255), UIR-017 drafts merged into Campaigns (#256), UIR-018 one "+ New" menu (#257), all browser lane; UIR-019 Team (#258), UIR-020 Request a Feature (#259), UIR-021 brand-mismatch guard (#260), all cloud lane. The editable Brand profile with "Redo with AI" stays inside UIR-005 (§5, cloud lane). The five owner jobs in the brief's §1 become Playwright journeys once their screens exist.
 - UIR-002 part 2 (2026-11-06): the workspace shell follows `docs/UI_REBUILD_SPEC.md` §2 for layout and `docs/OWNER_JOURNEYS.md` §2/§18 for behaviour and labels (the brief wins where they differ). The sidebar is 255px and collapses to a 56px icon rail. Collapse and group state live in the `gr_shell` cookie (`components/shell/shell-state.ts`; the server reads it, so the first paint is right). `ShellNavigation` is now `{ primary, groups }`, and groups can hold SOON items that are never links. Labels: "Campaigns" (was Campaign Agent), "Inspiration" (was Competitor Agent), Workspace = Settings, Holidays & Events, Connections, Team, Request a Feature. The account menu has Profile Update and Log out (no duplicate Connections). Child pages highlight their parent area (`isCurrentPath`). The header search ("Find a page") and the `status` / `workspaceLabel` shell props are removed. Temporary until the other lane's routes land: Holidays & Events → `/settings#holidays`, while Request a Feature and Profile Update show SOON. Agents › Bill Optimizer links to the existing fixture `/optimizer` page (the other four agents stay SOON). The M1.5 1:1 rebuild overrides UX-024 (no dead agent menus) for now. `Button` gained an `outline` variant and a `shape` variant (`control` 12px default | `pill`); the radius moved from the base class into `shape`. `AppShell` is async (it reads the cookie), and `ShellFrame` takes `demo: { label, description } | null` from the brand presentation. `ShellIdentity` has `email`, read from the session only when its `sub` matches the request's user. `/campaigns/:id` (today's local campaign review) highlights Campaigns; the §4 Klaviyo campaign detail page will need its own path.
 - OWNER_JOURNEYS (2026-11-06): `docs/OWNER_JOURNEYS.md` (#253) is the behaviour brief. Every M1.5 screen is built to both it and the spec. The 20 decisions in its §18 win over the spec. Browser lane: status system, owner Approve step, drafts merged into Campaigns, "+ New" menu. Cloud lane: Brand profile, brand-mismatch guard, Team, Request a Feature, holidays.
+- UIR-002 part 3 (2026-11-06): the shared components from spec §2.
+  - `lib/campaign-status.ts` is the one CAMPAIGN status vocabulary (Draft, With designer, Needs your approval, Scheduled, Sent, Cancelled, Missed; UIR-015 wires it to data).
+  - `lib/status-vocabulary.ts` stays for non-campaign states. Shared words use the same meaning, and `PillTone` extends `StatusTone`.
+  - `AlertDialog` is the yes/no confirm. `ConfirmDialog` stays the wrapper for a form that needs a confirming step.
+  - `Modal` asks before discarding typed answers, even when the browser forces it shut, and ignores events from nested dialogs.
+  - `ButtonProps` is now `ComponentProps<'button'>`, so a ref can pass through.
+  - Email previews go through the server-only `EmailPreviewCard`, which passes a `SafePreview` (output of `previewHtml`) to the client frame. The raw email never reaches the browser. `previewLimitations` now lives in `html.ts`.
+  - Focus styles use `outline-hidden`, so a focus outline still shows in forced-colors mode. This covers `control.ts`, `button.tsx`, `text-link.tsx`, `stat-tile.tsx` and the sidebar.
+  - jsdom dialog stand-ins are in `tests/helpers/dialog-polyfill.ts` (`forceEscape` simulates Chromium's forced close).
 
 - DS-006 (2026-11-06): the composer (`features/composer/`) saves a paste through the same `savePastedReference` helper as the paste form (extracted from `importPastedReference` into server-only `features/references/pasted-save.ts`, messages unchanged) and redirects to `/create-email/{id}?mode=copy|rewrite`. The choose page only marks that outcome ("Your choice in the composer", primary button); it never starts a copy or rewrite by itself, so owner confirmation and paid-AI gates are unchanged. EXACT→copy, REBRAND→rewrite, ADAPT disabled with a reason. Subject comes from the HTML `<title>` or first readable line; a link-only paste is refused with an honest message. Composer is owner-only on the dashboard and the setup reference step; the existing Paste/Upload links stay.
 
@@ -636,6 +645,46 @@ Append entries using this exact shape:
   - `aria-controls` on the toggle.
 - Known issues: the rail tooltip is not hoverable (WCAG 1.4.13); it repeats the icon's accessible name. "Request a Feature" and "Profile Update" are SOON until the cloud lane's `/feedback` and `/profile` exist. The `/competitor-agent` heading and the GROS panel still say "Competitor"; the cloud lane was told.
 - Next consumer: UIR-002 part 3 (shared components), then §3 Dashboard.
+
+### 2026-11-06 — UIR-002 part 3 — shared old-app components
+
+- Status: review
+- Branch/worktree: `claude/uir-002-3-shared-pills-and-dialogs` from `main` at `53f002c`. GitHub issue #238 (browser lane).
+- Commit(s): see the UIR-002 part 3 pull request.
+- Changed contracts: see the UIR-002 part 3 Global decision (campaign status vocabulary, `PillTone`, `AlertDialog`/`Modal`, `ButtonProps` ref, `EmailPreviewCard`/`SafePreview`, `previewLimitations`, `outline-hidden`).
+- Migrations: none.
+- Verification run: `pnpm verify` (see PR for counts).
+  - Pills: every tone shows a word; status words and meanings; TEXT/DESIGN roles; the domain parser (long tracked links, ports, Unicode, punycode, emails refused); SENT uses the brand-checked pair.
+  - AlertDialog: labelled alert; safe choice focused; Escape and backdrop cancel; pending lock, even against a forced close; forced close reported as Cancel; primary tone.
+  - Modal: step label and progress (bad numbers clamp); discard question on Escape, ✕, Cancel and backdrop; Escape inside the question; forced close reopens and asks; nested dialog events ignored; custom wording; no stale confirm.
+  - Pickers: count, tags, submit; hidden choices kept; Enter never submits; saved choices kept while loading or after an error; vanished choices named; duplicates removed; focus after Clear; radios submit themselves.
+  - Chat: sides, plain text, captions, typing, auto-scroll that stops while the owner reads; Enter versus Shift+Enter, blanks, IME (`isComposing` and keyCode 229); failure keeps the text; no double send; attach; quick replies.
+  - Credits: plain words, low, none left, renewal passed, rounding, unknown usage; `sample` is required.
+  - Preview card: no link, area, pixel or script survives; CSP present; Refresh reloads and announces every time; Fullscreen only where supported; plain-text caption and empty text.
+  - Info pill contrast is now in `contrastRules`.
+  - `test:e2e` not runnable here (no Docker); no screen uses these components yet, so the Escape-twice browser journey comes with the first screen that uses `Modal` (§6).
+- Review: `code-reviewer` blocked on two dialog bugs:
+  1. Escape in a nested dialog also closed the Modal.
+  2. Chromium's forced close (Escape twice) left the Modal shut with `open` still true, bypassing the discard question.
+     Both are fixed and tested. Also fixed:
+  - Safari IME Enter;
+  - Enter in a picker search submitting the form;
+  - pickers dropping saved choices while loading or after a failure, and an untrue empty text;
+  - the composer losing text on failure;
+  - unenforced sanitizing (the card is now server-only, with a typed `SafePreview`);
+  - fixed Modal wording and a stale confirm;
+  - live regions that missed announcements;
+  - focus lost after Clear;
+  - forced-colors focus;
+  - the second status vocabulary (aligned and documented);
+  - duplicated preview helpers (one notes helper, a shared plain-text block, `ScaledFrame` reuse so phones don't scroll sideways);
+  - the domain parser;
+  - credits maths and the optional `sample` flag;
+  - the junk radio field;
+  - NaN steps;
+  - an un-gated SENT colour.
+- Known issues: a status pill's meaning is only in its `title`; the credits indicator has no usage page yet (§18.8); the chat composer does not offer file upload itself (`onAttach` is up to the screen).
+- Next consumer: UIR-002 part 4 (detail-page pattern), then §3 Dashboard; the cloud lane can use these in §5 and §8–§14.
 
 ### 2026-11-06 — UIR-013 — old-app rebuild §13 Connections
 

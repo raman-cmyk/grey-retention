@@ -1145,9 +1145,10 @@
       "feature": "Searchable product picker",
       "priority": "P1",
       "acceptance": "Operators can locate the intended product without scanning the catalog.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-002"],
+      "verification": ["components/ui/pickers.test.tsx"],
+      "remaining": "Searchable ProductPicker component exists (search by name or vendor, \"let AI pick\" first, hidden choice kept). Not wired into the draft screens yet (§7)."
     },
     {
       "id": "DEF-008",
@@ -1155,9 +1156,10 @@
       "feature": "Searchable audience picker",
       "priority": "P1",
       "acceptance": "Lists/segments can be searched and distinguished by kind.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-002"],
+      "verification": ["components/ui/pickers.test.tsx"],
+      "remaining": "Searchable AudiencePicker component exists (LIST/SEGMENT tags, count, Clear, hidden choices kept). Not wired into the draft screens yet (§7)."
     },
     {
       "id": "DEF-009",
@@ -2758,9 +2760,10 @@
       "feature": "Full email preview",
       "priority": "P1",
       "acceptance": "Preview captured content without granting it authority to execute actions.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-002"],
+      "verification": ["features/email-generation/preview-card.test.tsx"],
+      "remaining": "Shared EmailPreviewCard shows sanitized HTML in an empty sandbox with links, scripts and outside loads removed. The competitor screen (§9) still has to use it."
     },
     {
       "id": "INT-023",

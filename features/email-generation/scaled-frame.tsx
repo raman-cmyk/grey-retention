@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type Ref } from 'react'
 
 /** Fixed rendering canvas: typical email width plus a margin, bounded height. */
 export const canvas = { width: 640, height: 800 }
@@ -13,10 +13,15 @@ export const canvas = { width: 640, height: 800 }
  */
 export function ScaledFrame({
   title,
-  srcDoc
+  srcDoc,
+  frameRef,
+  height = canvas.height
 }: {
   title: string
   srcDoc: string
+  frameRef?: Ref<HTMLIFrameElement>
+  /** Canvas height in px before scaling (default 800). */
+  height?: number
 }) {
   const box = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(1)
@@ -36,19 +41,20 @@ export function ScaledFrame({
       data-testid="email-canvas"
       data-scale={scale.toFixed(3)}
       className="relative w-full overflow-hidden rounded-xl border border-[var(--line)] bg-white"
-      style={{ height: canvas.height * scale }}
+      style={{ height: height * scale }}
     >
       <iframe
+        ref={frameRef}
         title={title}
         sandbox=""
         referrerPolicy="no-referrer"
         srcDoc={srcDoc}
         width={canvas.width}
-        height={canvas.height}
+        height={height}
         className="absolute top-0 left-1/2 block max-w-none origin-top border-0 bg-white"
         style={{
           width: canvas.width,
-          height: canvas.height,
+          height,
           transform: `translateX(-50%) scale(${scale})`
         }}
       />
