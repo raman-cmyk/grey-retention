@@ -1,20 +1,30 @@
 name: CI
 
+# The required check for every pull request and every push to main:
+# format, lint, typecheck, unit tests and production build.
+# Database (pgTAP) and browser journeys run in database.yml and browser.yml,
+# only when files they cover change, to keep private-repo minutes affordable.
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # A newer push to a pull request replaces its older run; runs on main are
+  # never cancelled, so every merge gets its own result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Branch protection requires this job by name: keep the id `verify` and
+  # never give it a job-level `if:` or path filter.
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -30,41 +40,3 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
-
-  browser:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.19.0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm supabase:start
-      - run: pnpm supabase:reset
-      - run: pnpm test:e2e
-      - run: node scripts/test-first-draft.mjs
-      - run: node scripts/test-email-concurrency.mjs
-      - run: node scripts/test-email-import-concurrency.mjs
-
-  database:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.19.0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm supabase:start
-      - run: pnpm supabase:reset
-      - run: pnpm test:db

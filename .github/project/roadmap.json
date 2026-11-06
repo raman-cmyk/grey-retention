@@ -70,8 +70,8 @@
     {
       "key": "M1.5",
       "title": "M1.5 Old-app UI rebuild",
-      "goal": "Rebuild every screen of the old app 1:1 in structure and behaviour from docs/UI_REBUILD_SPEC.md: the shell and shared components, dashboard, Klaviyo detail pages, brand and store, campaign planner and modals, campaign drafts and editor, Ask GROS, competitor agent, support, settings, holidays, connections and profile. Colours, fonts and icons come from the new design tokens; the §0 layout facts (20px cards, 12px controls, 255px/56px sidebar, outlined icons) win where they differ. The §15 old-app bugs are fixed, not copied. Data comes from the fake providers with honest labels; nothing live is switched on.",
-      "doneWhen": "Every checkbox in docs/UI_REBUILD_SPEC.md §2–§14 is ticked, each screen works at desktop and 375px with keyboard access, and every §15 bug is fixed."
+      "goal": "Rebuild every screen of the old app 1:1 in structure and behaviour from docs/UI_REBUILD_SPEC.md (layout) and docs/OWNER_JOURNEYS.md (behaviour, wording, edge cases; its §18 simplification decisions win): the shell and shared components, dashboard, Klaviyo detail pages, brand and store, campaign planner and modals, campaign drafts and editor, Ask GROS, competitor agent, support, settings, holidays, connections and profile. Colours, fonts and icons come from the new design tokens; the §0 layout facts (20px cards, 12px controls, 255px/56px sidebar, outlined icons) win where they differ. The §15 old-app bugs are fixed, not copied. Data comes from the fake providers with honest labels; nothing live is switched on. New from the owner walk-through: one campaign status system, a real owner Approve step, drafts merged into Campaigns, one \"+ New\" menu, Team, Request a Feature and a brand-mismatch guard.",
+      "doneWhen": "Every checkbox in docs/UI_REBUILD_SPEC.md §2–§14 is ticked; each screen works at desktop and 375px with keyboard access; every §15 bug and every (fix) in docs/OWNER_JOURNEYS.md is built corrected; and the five owner jobs in its §1 pass as Playwright journeys."
     },
     {
       "key": "M2",
@@ -669,6 +669,115 @@
         "One spec section (or sub-section) per PR; claim with the `wip` label and a lane comment first."
       ],
       "doneWhen": "Every checkbox in §14 of docs/UI_REBUILD_SPEC.md is ticked, the screens work at desktop and 375px with keyboard access, and tests cover behaviour, authorization and failure paths."
+    },
+    {
+      "id": "UIR-015",
+      "title": "One campaign status system",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "execution",
+      "problem": "Lane: **browser**. `docs/OWNER_JOURNEYS.md` §0.3 and §18.3: one draft showed up to five overlapping status vocabularies (WRITING / DRAFT pills, a Draft/Ready select, a WORKFLOW select, DRAFTS/READY/PUSHED filters, the calendar legend). Replace them with one system-driven status: Draft → With designer → Needs your approval → Scheduled → Sent (+ Cancelled, Missed). The same words appear on the calendar, the list view, the editor, the dashboard and filters.",
+      "scope": [
+        "One status vocabulary in code, used by every screen; no manual status selects.",
+        "Status moves only through real events (assign, design delivered, owner approval, schedule, Klaviyo confirms the send).",
+        "Calendar legend, list filters and pills use the same words and colour roles (§0 of the spec).",
+        "Tests for every allowed transition and for refused ones (PT409 for business conflicts)."
+      ],
+      "doneWhen": "Every campaign shows exactly one status from the new set on every screen, statuses change only through real events, and tests cover each transition and each refused jump."
+    },
+    {
+      "id": "UIR-016",
+      "title": "Owner Approve step before Schedule",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "execution",
+      "problem": "Lane: **browser**. `docs/OWNER_JOURNEYS.md` §0.2, Job 3, Job 4 and §18.4: the old app had no real owner approval. \"Pending approval\" was a dropdown value anyone could pick, and Schedule was a bare submit. Add an explicit owner Approve step (copy, then design) before Schedule, with a summary confirm: subject, from name, audience counts, and date and time with the brand timezone.",
+      "scope": [
+        "Approve copy and Approve design actions for the brand owner only; staff and admins can't approve or skip the step.",
+        "Schedule stays blocked until both approvals, a future date and time, and a non-empty Send to.",
+        "Schedule opens a summary confirm; the time is shown with the one brand timezone.",
+        "Changing copy or design after approval asks again (the version is tied to the approval)."
+      ],
+      "doneWhen": "Only the owner can approve, Schedule is impossible without approval or with a past time or empty audience, and tests cover the owner, staff and admin paths."
+    },
+    {
+      "id": "UIR-017",
+      "title": "Campaign drafts merged into Campaigns as its list view",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "calendar",
+      "problem": "Lane: **browser**. `docs/OWNER_JOURNEYS.md` §0.5, §0.6 and §18.1: the drafts list had no sidebar entry and shared its title with the planner, and the planner's table view showed only half the campaigns. Merge the drafts list into Campaigns as its list view (calendar | list): one place for every campaign, local or Klaviyo, with one set of status filters.",
+      "scope": [
+        "`/campaign-drafts` opens the Campaigns list view (redirect), keeping its status filter.",
+        "The list shows local drafts and synced Klaviyo campaigns, including Klaviyo drafts without a send time.",
+        "Filters use the UIR-015 status words; the calendar and the list always agree.",
+        "The sidebar highlights Campaigns on every campaign page."
+      ],
+      "doneWhen": "Every campaign the calendar shows also appears in the list view, the old drafts URL lands there, and tests cover the merge, the filters and the empty state."
+    },
+    {
+      "id": "UIR-018",
+      "title": "One \"+ New\" campaign menu",
+      "milestone": "M1.5",
+      "priority": "P1",
+      "type": "feature",
+      "area": "calendar",
+      "problem": "Lane: **browser**. `docs/OWNER_JOURNEYS.md` §18.10: four similar toolbar buttons led to campaigns. Replace them with one \"+ New\" menu (Single send / Multi-day event / Fill the month with AI), and keep \"+ plan send\" on calendar cells as a shortcut.",
+      "scope": [
+        "One keyboard-accessible \"+ New\" menu in the Campaigns toolbar, also on the dashboard and list view.",
+        "Each item opens the existing flow (New draft, multi-day wizard, calendar brief).",
+        "\"+ plan send\" opens the right date and never offers past days without a warning.",
+        "Rename the dashboard's \"Schedule a campaign\" link to \"Create a campaign\"."
+      ],
+      "doneWhen": "There is one \"+ New\" menu with three choices that reach the right flows, and tests cover keyboard use and each choice."
+    },
+    {
+      "id": "UIR-019",
+      "title": "Team page",
+      "milestone": "M1.5",
+      "priority": "P1",
+      "type": "feature",
+      "area": "accounts",
+      "problem": "Lane: **cloud**. `docs/OWNER_JOURNEYS.md` §14 (not in the UI spec): the Workspace group has a Team page at `/team` for members, invites and roles. Rename the Team role \"Admin\" to \"Manager\" (§18.17) so it no longer clashes with the platform admins who review designs.",
+      "scope": [
+        "Follow every check in §14 of `docs/OWNER_JOURNEYS.md`.",
+        "Invites and role changes go through server-authorized commands; no email is sent while providers are fake.",
+        "Owner-only actions are refused for other roles."
+      ],
+      "doneWhen": "Every check in OWNER_JOURNEYS.md §14 passes, the role is called Manager, and tests cover invites, role changes, deactivation and refusals."
+    },
+    {
+      "id": "UIR-020",
+      "title": "Request a Feature page",
+      "milestone": "M1.5",
+      "priority": "P1",
+      "type": "feature",
+      "area": "support-ops",
+      "problem": "Lane: **cloud**. `docs/OWNER_JOURNEYS.md` §15 (not in the UI spec): the Workspace group has Request a Feature at `/feedback`, where owners submit ideas and see what they asked for. The sidebar shows it as SOON until this page exists.",
+      "scope": [
+        "Follow every check in §15 of `docs/OWNER_JOURNEYS.md`.",
+        "Switch the sidebar item in `components/shell/nav-data.ts` from SOON to a link to `/feedback`.",
+        "Use \"New request / Send\" wording (§18.16)."
+      ],
+      "doneWhen": "Every check in OWNER_JOURNEYS.md §15 passes, the sidebar links to the page, and tests cover submit, validation and the empty state."
+    },
+    {
+      "id": "UIR-021",
+      "title": "Brand-mismatch guard",
+      "milestone": "M1.5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "brand-voice",
+      "problem": "Lane: **cloud**. `docs/OWNER_JOURNEYS.md` §0.1 and §18.6: the old workspace ran for months on another brand's profile, site URL and product catalogue, so every AI feature was fed the wrong brand. Warn the owner when the brand profile, site URL or catalogue doesn't match the connected Klaviyo organisation, and point to the editable Brand profile to fix it.",
+      "scope": [
+        "Compare brand profile, site URL and catalogue with the connected Klaviyo organisation (name, domain, currency, country) through the typed adapters.",
+        "Show a clear warning on Brand & Store and before AI generation; never block silently.",
+        "Fake-provider fixtures include a matching and a mismatching brand."
+      ],
+      "doneWhen": "A mismatching workspace shows the warning before any AI step, a matching one doesn't, and tests cover both plus a missing connection."
     }
   ]
 }
