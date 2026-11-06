@@ -109,7 +109,7 @@ test('core workspace surfaces render without overflow and invalid review dates r
     ['/competitor-agent', 'Competitor intelligence'],
     ['/reports', 'Results & learning'],
     ['/email-library', 'Subscribed email library'],
-    ['/connections', 'Fixture connections'],
+    ['/connections', 'Connections'],
     ['/optimizer', 'Bill optimizer'],
     ['/team', 'Team'],
     ['/support', 'Support'],
