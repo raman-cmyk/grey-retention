@@ -11,6 +11,9 @@ export async function shellIdentity(context: RequestContext) {
         .eq('id', context.userId)
         .maybeSingle()
     : null
+  const claims = db ? await db.auth.getClaims() : null
+  const rawEmail = claims?.data?.claims?.email
+  const email = typeof rawEmail === 'string' && rawEmail ? rawEmail : null
   const name = profile?.data?.full_name?.trim() || 'Your account'
   const initials = name
     .split(/\s+/)
@@ -24,5 +27,5 @@ export async function shellIdentity(context: RequestContext) {
       : context.kind === 'admin'
         ? 'Platform admin'
         : 'Designer'
-  return { name, initials, role }
+  return { name, initials, email, role }
 }

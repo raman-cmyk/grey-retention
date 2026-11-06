@@ -22,7 +22,7 @@ export default async function CampaignAgentPage({
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeading
-        title="Campaign calendar"
+        title="Campaigns"
         description="Shape the month, review each campaign, and keep every approval tied to the right version."
         action={
           data && (
