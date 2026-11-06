@@ -1,11 +1,13 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
+  forceEscape,
   installDialogPolyfill,
   pressEscapeOn
-} from '@/tests/unit/dialog-polyfill'
+} from '@/tests/helpers/dialog-polyfill'
+import { AlertDialog } from './alert-dialog'
 import { Button } from './button'
 import { Modal, type ModalStep } from './modal'
 
@@ -109,5 +111,129 @@ describe('Modal', () => {
     expect(
       screen.getByText('Build the brief').closest('dialog')
     ).not.toHaveAttribute('open')
+  })
+
+  it('keeps the confirm open on Escape inside it, and only Keep editing returns', async () => {
+    const onClose = vi.fn()
+    render(<Harness onClose={onClose} />)
+    await userEvent.type(screen.getByLabelText('Notes'), 'x')
+    pressEscapeOn(modal() as HTMLDialogElement)
+    const ask = screen.getByRole('alertdialog', {
+      name: 'Discard your answers?'
+    }) as HTMLDialogElement
+    pressEscapeOn(ask)
+    expect(onClose).not.toHaveBeenCalled()
+    expect(modal()).toHaveAttribute('open')
+    expect(screen.getByLabelText('Notes')).toHaveValue('x')
+  })
+
+  it('reopens and asks when the browser forces it shut with typed answers', async () => {
+    const onClose = vi.fn()
+    render(<Harness onClose={onClose} />)
+    await userEvent.type(screen.getByLabelText('Notes'), 'x')
+    pressEscapeOn(modal() as HTMLDialogElement)
+    const ask = screen.getByRole('alertdialog', {
+      name: 'Discard your answers?'
+    }) as HTMLDialogElement
+    forceEscape(ask, modal() as HTMLDialogElement)
+    expect(modal()).toHaveAttribute('open')
+    expect(
+      screen.getByRole('alertdialog', { name: 'Discard your answers?' })
+    ).toHaveAttribute('open')
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('reports a forced close as a close when nothing was typed', () => {
+    const onClose = vi.fn()
+    render(<Harness onClose={onClose} />)
+    forceEscape(modal() as HTMLDialogElement)
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('ignores Escape in a dialog nested in its body', async () => {
+    const onClose = vi.fn()
+    function Nested() {
+      const [ask, setAsk] = useState(false)
+      return (
+        <Modal open title="Plan the event" onClose={onClose}>
+          <button type="button" onClick={() => setAsk(true)}>
+            Remove day
+          </button>
+          <AlertDialog
+            open={ask}
+            title="Remove this day?"
+            confirmLabel="Remove"
+            onConfirm={() => setAsk(false)}
+            onCancel={() => setAsk(false)}
+          >
+            It goes back to the calendar.
+          </AlertDialog>
+        </Modal>
+      )
+    }
+    render(<Nested />)
+    await userEvent.click(screen.getByRole('button', { name: 'Remove day' }))
+    const inner = screen.getByRole('alertdialog', {
+      name: 'Remove this day?'
+    }) as HTMLDialogElement
+    pressEscapeOn(inner)
+    expect(inner).not.toHaveAttribute('open')
+    await userEvent.click(screen.getByRole('button', { name: 'Remove day' }))
+    await userEvent.click(
+      screen.getByRole('alertdialog', { name: 'Remove this day?' })
+    )
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('uses screen-specific discard wording and never shows a stale confirm', async () => {
+    function Custom() {
+      const [open, setOpen] = useState(true)
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Reopen
+          </button>
+          <Modal
+            open={open}
+            title="Launch a multi-day event"
+            dirty
+            discard={{
+              title: 'Discard this event plan?',
+              body: 'Heads up: the plan is lost.',
+              confirmLabel: 'Discard & close'
+            }}
+            onClose={() => setOpen(false)}
+            footer={
+              <Button type="button" onClick={() => setOpen(false)}>
+                Close from parent
+              </Button>
+            }
+          >
+            body
+          </Modal>
+        </>
+      )
+    }
+    render(<Custom />)
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(
+      screen.getByRole('alertdialog', { name: 'Discard this event plan?' })
+    ).toHaveAccessibleDescription('Heads up: the plan is lost.')
+    expect(
+      screen.getByRole('button', { name: 'Discard & close' })
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+    // The parent closes the modal while the confirm is up, then reopens it.
+    act(() =>
+      (screen.getByText('Close from parent') as HTMLButtonElement).click()
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Reopen' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  it('shows step 1 for a broken step number', () => {
+    render(<Harness step={{ current: Number.NaN, total: 3 }} />)
+    expect(screen.getByText('Step 1 of 3')).toBeInTheDocument()
   })
 })

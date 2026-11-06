@@ -7,7 +7,12 @@ import { Button } from './button'
  * The "are you sure?" dialog (docs/UI_REBUILD_SPEC.md §2 "Confirm dialog"):
  * a large "!" circle, a bold title, body text, and a secondary button next to
  * the danger (or primary) action. Focus starts on the safe choice; Escape
- * and the backdrop cancel.
+ * and the backdrop cancel. Use it for yes/no questions; `ConfirmDialog` is
+ * the older wrapper for a form that needs a confirming step.
+ *
+ * The native dialog follows `open` on every render, and a close the browser
+ * forces (for example a repeated Escape) is reported as a cancel, or undone
+ * while the action is still running, so `open` and the screen never disagree.
  */
 export function AlertDialog({
   open,
@@ -41,7 +46,7 @@ export function AlertDialog({
       dialog.showModal()
       cancel.current?.focus()
     } else if (!open && dialog.open) dialog.close()
-  }, [open])
+  })
   return (
     <dialog
       ref={ref}
@@ -49,10 +54,22 @@ export function AlertDialog({
       aria-labelledby={`${id}-title`}
       aria-describedby={`${id}-body`}
       onCancel={(event) => {
+        if (event.target !== event.currentTarget) return
+        event.stopPropagation()
+        // A cancel the browser won't let us stop ends in `close` below.
+        if (!event.cancelable) return
         event.preventDefault()
         if (!pending) onCancel()
       }}
+      onClose={(event) => {
+        if (event.target !== event.currentTarget) return
+        event.stopPropagation()
+        if (!open) return
+        if (pending) event.currentTarget.showModal()
+        else onCancel()
+      }}
       onClick={(event) => {
+        event.stopPropagation()
         if (event.target === event.currentTarget && !pending) onCancel()
       }}
       className="m-auto w-[min(28rem,calc(100%_-_2rem))] rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-0 text-[var(--text)] backdrop:bg-black/40"

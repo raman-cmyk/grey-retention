@@ -65,4 +65,22 @@ describe('pills', () => {
     expect(domainLabel('localhost')).toBeNull()
     expect(domainLabel('a'.repeat(300) + '.com')).toBeNull()
   })
+
+  it('reads real-world domains: long tracked links, ports and Unicode names', () => {
+    const tracked = `https://www.northwind.example/sale?${'utm_source=klaviyo&'.repeat(15)}x=1`
+    expect(tracked.length).toBeGreaterThan(253)
+    expect(domainLabel(tracked)).toBe('northwind.example')
+    expect(domainLabel('northwind.example:443')).toBe('northwind.example')
+    expect(domainLabel('bücher.example')).toBe('xn--bcher-kva.example')
+    expect(domainLabel('shop.xn--p1ai')).toBe('shop.xn--p1ai')
+    expect(domainLabel('owner@northwind.example')).toBeNull()
+    expect(domainLabel('two words.example')).toBeNull()
+  })
+
+  it('draws SENT with the brand pair the contrast gate checks', () => {
+    render(<Pill tone="solid">Sent</Pill>)
+    expect(screen.getByText('Sent').parentElement!.className).toContain(
+      'bg-[var(--brand-primary)]'
+    )
+  })
 })

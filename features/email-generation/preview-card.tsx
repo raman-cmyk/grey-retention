@@ -1,18 +1,7 @@
-import { previewHtml, type PreviewReport } from './html'
+import 'server-only'
+import { previewHtml, previewLimitations } from './html'
 import { PreviewCardFrame } from './preview-card-frame'
-
-export function previewNotes(report: PreviewReport) {
-  const notes: string[] = []
-  if (report.images)
-    notes.push(
-      `${report.images} image${report.images === 1 ? '' : 's'} shown as placeholders`
-    )
-  if (report.styles) notes.push('outside fonts or backgrounds not loaded')
-  if (report.links) notes.push('links turned off')
-  if (report.removed) notes.push('scripts, forms or embedded content removed')
-  if (report.truncated) notes.push('very deeply nested content not shown')
-  return notes
-}
+import type { SafePreview } from './safe-preview'
 
 const sources = {
   klaviyo: "Rendered preview from Klaviyo's stored template.",
@@ -22,9 +11,10 @@ const sources = {
 
 /**
  * The shared "Email preview" card (docs/UI_REBUILD_SPEC.md §2). Every
- * preview is sanitized on the server and shown in-page in a sandboxed frame
- * with links turned off, so an owner can never click a competitor's
- * unsubscribe link by accident (docs/OWNER_JOURNEYS.md §18.19).
+ * preview is sanitized here on the server and shown in-page in a sandboxed
+ * frame with links turned off, so an owner can never click a competitor's
+ * unsubscribe link by accident (docs/OWNER_JOURNEYS.md §18.19). The raw
+ * email never reaches the browser.
  */
 export function EmailPreviewCard({
   html,
@@ -32,7 +22,7 @@ export function EmailPreviewCard({
   title,
   templateName,
   source,
-  height = 560
+  height = 720
 }: {
   /** Stored email HTML, or null for a plain-text email. */
   html: string | null
@@ -41,17 +31,25 @@ export function EmailPreviewCard({
   title: string
   templateName?: string
   source: keyof typeof sources
+  /** Canvas height in px before scaling to the card width. */
   height?: number
 }) {
-  const preview = html === null ? null : previewHtml(html)
+  const result = html === null ? null : previewHtml(html)
+  const preview: SafePreview | null = result
+    ? { kind: 'sandboxed-preview', html: result.html }
+    : null
   return (
     <PreviewCardFrame
       title={title}
       templateName={templateName}
-      srcDoc={preview?.html ?? null}
+      preview={preview}
       text={text}
-      caption={`${sources[source]} Links are turned off, and outside fonts, images and tracking pixels don't load because the preview is isolated from the web.`}
-      notes={preview ? previewNotes(preview.report) : []}
+      caption={
+        preview
+          ? `${sources[source]} Links are turned off, and outside fonts, images and tracking pixels don't load because the preview is isolated from the web.`
+          : 'Plain-text email: there is no design to show.'
+      }
+      notes={result ? previewLimitations(result.report) : []}
       height={height}
     />
   )

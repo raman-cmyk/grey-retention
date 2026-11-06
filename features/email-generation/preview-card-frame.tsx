@@ -1,20 +1,22 @@
 'use client'
 
 import { Maximize, RefreshCw } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Pill } from '@/components/ui/pill'
+import { PlainTextEmail } from './plain-text-email'
+import type { SafePreview } from './safe-preview'
+import { ScaledFrame } from './scaled-frame'
 
 /**
  * Client half of the email preview card: the header with Fullscreen and
- * Refresh, and the sandboxed frame. `srcDoc` must come from `previewHtml`
- * (links, scripts, forms and outside loads already removed); the frame adds
- * an empty `sandbox` so nothing in it can run, navigate or reach this site.
+ * Refresh, and the sandboxed, scaled frame. It only accepts a `SafePreview`
+ * made on the server by `EmailPreviewCard`.
  */
 export function PreviewCardFrame({
   title,
   templateName,
-  srcDoc,
+  preview,
   text,
   caption,
   notes,
@@ -22,54 +24,65 @@ export function PreviewCardFrame({
 }: {
   title: string
   templateName?: string
-  srcDoc: string | null
+  preview: SafePreview | null
   text: string
   caption: string
   notes: string[]
   height: number
 }) {
+  const headingId = useId()
   const frame = useRef<HTMLIFrameElement>(null)
   const [version, setVersion] = useState(0)
   const [canFullscreen, setCanFullscreen] = useState(false)
   const [message, setMessage] = useState('')
+  const [announcement, setAnnouncement] = useState('')
   useEffect(() => {
     setCanFullscreen(
       Boolean(document.fullscreenEnabled && frame.current?.requestFullscreen)
     )
-  }, [srcDoc])
+  }, [preview, version])
+  // Clear, then set, so the same words are announced again.
+  const say = (text: string, visible = false) => {
+    setMessage(visible ? text : '')
+    setAnnouncement('')
+    window.setTimeout(() => setAnnouncement(text), 30)
+  }
   const fullscreen = async () => {
     setMessage('')
     try {
       await frame.current?.requestFullscreen()
     } catch {
-      setMessage('Fullscreen is not available here. The preview stays below.')
+      say('Fullscreen is not available here. The preview stays below.', true)
     }
   }
   return (
     <section
-      aria-label={title}
+      aria-labelledby={headingId}
       className="rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-6"
     >
       <header className="mb-4 flex flex-wrap items-center gap-3">
-        <h2 className="text-base font-semibold">Email preview</h2>
+        <h2 id={headingId} className="text-base font-semibold">
+          Email preview
+        </h2>
         {templateName && (
           <Pill mono className="max-w-[16rem]" title={templateName}>
             {templateName}
           </Pill>
         )}
-        {srcDoc !== null && (
+        {preview && (
           <div className="ml-auto flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              shape="pill"
-              size="sm"
-              disabled={!canFullscreen}
-              onClick={fullscreen}
-            >
-              <Maximize className="size-4" aria-hidden />
-              Fullscreen
-            </Button>
+            {canFullscreen && (
+              <Button
+                type="button"
+                variant="outline"
+                shape="pill"
+                size="sm"
+                onClick={fullscreen}
+              >
+                <Maximize className="size-4" aria-hidden />
+                Fullscreen
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"
@@ -77,7 +90,7 @@ export function PreviewCardFrame({
               size="sm"
               onClick={() => {
                 setVersion((value) => value + 1)
-                setMessage('Preview reloaded.')
+                say('Preview reloaded.')
               }}
             >
               <RefreshCw className="size-4" aria-hidden />
@@ -87,40 +100,27 @@ export function PreviewCardFrame({
         )}
       </header>
       <div className="rounded-[var(--radius-control)] bg-[var(--surface-hover)] p-3">
-        {srcDoc === null ? (
-          <div
-            className="overflow-y-auto rounded-sm bg-white p-5"
-            style={{ maxHeight: height }}
-          >
-            <p className="mb-2 text-xs text-[var(--text-muted)]">
-              Plain-text email
-            </p>
-            <p className="text-sm leading-6 break-words whitespace-pre-wrap text-[#1f1f1f]">
-              {text}
-            </p>
-          </div>
-        ) : (
-          <iframe
+        {preview ? (
+          <ScaledFrame
             key={version}
-            ref={frame}
+            frameRef={frame}
             title={title}
-            sandbox=""
-            referrerPolicy="no-referrer"
-            srcDoc={srcDoc}
-            className="block w-full rounded-sm border-0 bg-white"
-            style={{ height }}
+            srcDoc={preview.html}
+            height={height}
           />
+        ) : (
+          <PlainTextEmail text={text} maxHeight={height} />
         )}
       </div>
       <p className="mt-3 text-xs leading-5 text-[var(--text-muted)]">
         {caption}
         {notes.length > 0 && ` In this one: ${notes.join(', ')}.`}
       </p>
-      <p
-        role="status"
-        className="mt-1 text-xs text-[var(--text-muted)] empty:hidden"
-      >
-        {message}
+      {message && (
+        <p className="mt-1 text-xs text-[var(--text-muted)]">{message}</p>
+      )}
+      <p role="status" className="sr-only">
+        {announcement}
       </p>
     </section>
   )

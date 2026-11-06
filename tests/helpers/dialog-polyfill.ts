@@ -29,3 +29,15 @@ export function pressEscapeOn(dialog: HTMLDialogElement) {
     if (!event.defaultPrevented) dialog.close()
   })
 }
+
+/**
+ * Simulates Chromium's close-watcher when a cancel may not be stopped (for
+ * example a second Escape without a click in between): the cancel cannot be
+ * prevented, and the dialogs in the group close from the top down.
+ */
+export function forceEscape(...dialogs: HTMLDialogElement[]) {
+  act(() => {
+    dialogs[0].dispatchEvent(new Event('cancel', { cancelable: false }))
+    for (const dialog of dialogs) dialog.close()
+  })
+}

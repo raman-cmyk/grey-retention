@@ -1,21 +1,6 @@
-import { previewHtml, type PreviewReport } from './html'
+import { previewHtml, previewLimitations } from './html'
+import { PlainTextEmail } from './plain-text-email'
 import { ScaledFrame } from './scaled-frame'
-
-function limitations(report: PreviewReport) {
-  const notes: string[] = []
-  if (report.images)
-    notes.push(
-      `${report.images} image${report.images === 1 ? '' : 's'} shown as placeholders`
-    )
-  if (report.styles) notes.push('outside fonts or backgrounds not loaded')
-  if (report.links) notes.push('links turned off')
-  if (report.removed) notes.push('scripts, forms or embedded content removed')
-  if (report.truncated)
-    notes.push(
-      'very deeply nested content not shown (it is kept in the saved email)'
-    )
-  return notes
-}
 
 /**
  * Safe visual preview. HTML is re-parsed and stripped of active content, then
@@ -31,19 +16,9 @@ export function EmailPreview({
   text: string
   title: string
 }) {
-  if (html === null)
-    return (
-      <div className="rounded-xl border border-[var(--line)] bg-white p-5">
-        <p className="mb-2 text-xs text-[var(--text-muted)]">
-          Plain-text email
-        </p>
-        <p className="text-sm leading-6 break-words whitespace-pre-wrap text-[#1f1f1f]">
-          {text}
-        </p>
-      </div>
-    )
+  if (html === null) return <PlainTextEmail text={text} />
   const { html: safe, report } = previewHtml(html)
-  const notes = limitations(report)
+  const notes = previewLimitations(report)
   return (
     <figure>
       <ScaledFrame title={title} srcDoc={safe} />

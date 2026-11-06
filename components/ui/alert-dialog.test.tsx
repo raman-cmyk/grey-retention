@@ -3,9 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
+  forceEscape,
   installDialogPolyfill,
   pressEscapeOn
-} from '@/tests/unit/dialog-polyfill'
+} from '@/tests/helpers/dialog-polyfill'
 import { AlertDialog } from './alert-dialog'
 
 beforeAll(installDialogPolyfill)
@@ -86,5 +87,45 @@ describe('AlertDialog', () => {
     expect(screen.getByRole('button', { name: 'Discard' })).toBeDisabled()
     pressEscapeOn(screen.getByRole('alertdialog') as HTMLDialogElement)
     expect(screen.getByRole('alertdialog')).toHaveAttribute('open')
+  })
+
+  it('stays open, even when the browser forces a close, while the action runs', async () => {
+    render(<Harness pending />)
+    await userEvent.click(screen.getByRole('button', { name: 'Discard event' }))
+    const dialog = screen.getByRole('alertdialog') as HTMLDialogElement
+    await userEvent.click(dialog)
+    expect(dialog).toHaveAttribute('open')
+    forceEscape(dialog)
+    expect(dialog).toHaveAttribute('open')
+  })
+
+  it('reports a forced close as Cancel', async () => {
+    render(<Harness />)
+    await userEvent.click(screen.getByRole('button', { name: 'Discard event' }))
+    forceEscape(screen.getByRole('alertdialog') as HTMLDialogElement)
+    expect(
+      screen.getByRole('alertdialog', { hidden: true })
+    ).not.toHaveAttribute('open')
+    // It can open again afterwards.
+    await userEvent.click(screen.getByRole('button', { name: 'Discard event' }))
+    expect(screen.getByRole('alertdialog')).toHaveAttribute('open')
+  })
+
+  it('offers a primary tone for non-destructive questions', () => {
+    render(
+      <AlertDialog
+        open
+        title="Send a test?"
+        confirmLabel="Send test"
+        tone="primary"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      >
+        It goes to your own inbox.
+      </AlertDialog>
+    )
+    expect(
+      screen.getByRole('button', { name: 'Send test' }).className
+    ).toContain('bg-[var(--brand-primary)]')
   })
 })

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -111,5 +111,60 @@ describe('chat UI', () => {
     cleanup()
     const { container } = render(<QuickReplies replies={[]} onPick={onPick} />)
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it('never sends on the Enter that finishes an IME word', () => {
+    const onSend = vi.fn()
+    render(<ChatComposer label="Message" onSend={onSend} />)
+    const box = screen.getByLabelText('Message')
+    fireEvent.change(box, { target: { value: '春のセール' } })
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true })
+    fireEvent.keyDown(box, { key: 'Enter', keyCode: 229 })
+    expect(onSend).not.toHaveBeenCalled()
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(onSend).toHaveBeenCalledExactlyOnceWith('春のセール')
+  })
+
+  it('keeps the text when sending fails, and never sends twice', async () => {
+    let finish: (ok: boolean) => void = () => undefined
+    const onSend = vi.fn(
+      () => new Promise<boolean>((resolve) => (finish = resolve))
+    )
+    render(<ChatComposer label="Message" onSend={onSend} />)
+    const box = screen.getByLabelText('Message')
+    await userEvent.type(box, 'Hello{Enter}')
+    await userEvent.keyboard('{Enter}')
+    expect(onSend).toHaveBeenCalledOnce()
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled()
+    await act(async () => finish(false))
+    expect(box).toHaveValue('Hello')
+    await userEvent.keyboard('{Enter}')
+    await act(async () => finish(true))
+    expect(box).toHaveValue('')
+  })
+
+  it('stops following new messages while the owner reads older ones', () => {
+    const { rerender } = render(
+      <ChatThread label="Chat" assistantName="GROS" messages={messages} />
+    )
+    const log = screen.getByRole('log')
+    Object.defineProperty(log, 'scrollHeight', {
+      configurable: true,
+      value: 900
+    })
+    Object.defineProperty(log, 'clientHeight', {
+      configurable: true,
+      value: 300
+    })
+    log.scrollTop = 100
+    fireEvent.scroll(log)
+    rerender(
+      <ChatThread
+        label="Chat"
+        assistantName="GROS"
+        messages={[...messages, { id: '9', role: 'assistant', text: 'New.' }]}
+      />
+    )
+    expect(log.scrollTop).toBe(100)
   })
 })

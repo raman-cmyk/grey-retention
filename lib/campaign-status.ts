@@ -1,9 +1,15 @@
+import { operatorStatuses, type StatusTone } from './status-vocabulary'
+
 /**
- * The one campaign status system (docs/OWNER_JOURNEYS.md §18.3, issue
+ * The one CAMPAIGN status system (docs/OWNER_JOURNEYS.md §18.3, issue
  * UIR-015). It replaces the old app's overlapping pills, selects and filters
  * (WRITING, DRAFT, Ready, WORKFLOW, DRAFTS/READY/PUSHED). Each status is set
  * by a real event, never picked by hand; this file only fixes the words,
- * colour roles and plain-English meanings every screen shows.
+ * colour roles and plain-English meanings every campaign screen shows.
+ *
+ * `lib/status-vocabulary.ts` stays the vocabulary for everything that is not
+ * a campaign (sources, setup, jobs). Words both share ("Scheduled", "Sent")
+ * use the same meaning; as pills, Sent is solid (UI_REBUILD_SPEC.md §0).
  */
 export const campaignStatuses = {
   draft: {
@@ -21,18 +27,17 @@ export const campaignStatuses = {
   needs_approval: {
     label: 'Needs your approval',
     tone: 'warning',
-    meaning:
-      'Waiting for you to approve the copy and the design before it can be scheduled.'
+    meaning: 'Waiting for you to approve it before it can be scheduled.'
   },
   scheduled: {
     label: 'Scheduled',
     tone: 'info',
-    meaning: 'You approved it and it is set to send at a fixed time.'
+    meaning: operatorStatuses.scheduled.meaning
   },
   sent: {
     label: 'Sent',
     tone: 'solid',
-    meaning: 'Klaviyo confirmed the send.'
+    meaning: operatorStatuses.sent.meaning
   },
   cancelled: {
     label: 'Cancelled',
@@ -52,8 +57,7 @@ export const campaignStatuses = {
 export type CampaignStatus = keyof typeof campaignStatuses
 
 /** Colour roles from docs/UI_REBUILD_SPEC.md §0 ("Pill/status colour roles"). */
-export type PillTone =
-  'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'accent-2' | 'solid'
+export type PillTone = StatusTone | 'accent-2' | 'solid'
 
 /** The order a campaign moves through; Cancelled and Missed end it early. */
 export const campaignStatusOrder: readonly CampaignStatus[] = [

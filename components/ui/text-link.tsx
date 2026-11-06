@@ -19,7 +19,7 @@ export function TextLink<Href extends string>({
   return (
     <Link
       className={cn(
-        'group inline-flex items-center gap-1.5 rounded-[var(--radius-control)] text-sm font-medium text-[var(--text)] underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:outline-none',
+        'group inline-flex items-center gap-1.5 rounded-[var(--radius-control)] text-sm font-medium text-[var(--text)] underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:outline-hidden',
         className
       )}
       {...props}

@@ -1,12 +1,27 @@
 'use client'
 
 import { X } from 'lucide-react'
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import {
+  useEffect,
+  useId,
+  useReducer,
+  useRef,
+  useState,
+  type ReactNode
+} from 'react'
+
 import { cn } from '@/lib/utils'
 import { AlertDialog } from './alert-dialog'
 import { Button } from './button'
 
 export type ModalStep = { current: number; total: number }
+
+/** Wording of the "are you sure?" step; screens can name what is lost. */
+export type DiscardWording = {
+  title: string
+  body: ReactNode
+  confirmLabel: string
+}
 
 /**
  * The shared modal (docs/UI_REBUILD_SPEC.md §2 "Modal"): optional
@@ -16,7 +31,9 @@ export type ModalStep = { current: number; total: number }
  *
  * Fix from docs/OWNER_JOURNEYS.md §1 (Job 1): when the owner has typed
  * something (`dirty`), Escape, the backdrop, ✕ and Cancel first ask
- * "Discard your answers?" instead of silently throwing them away.
+ * "Discard your answers?" instead of silently throwing them away. Even when
+ * the browser forces the dialog shut (a repeated Escape), it reopens and
+ * asks. Events from dialogs nested inside the body are ignored.
  */
 export function Modal({
   open,
@@ -28,6 +45,7 @@ export function Modal({
   children,
   footer,
   cancelLabel = 'Cancel',
+  discard,
   onClose
 }: {
   open: boolean
@@ -41,39 +59,60 @@ export function Modal({
   /** The main action(s), shown at the right of the sticky footer. */
   footer?: ReactNode
   cancelLabel?: string
+  discard?: DiscardWording
   onClose: () => void
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   const id = useId()
   const [confirming, setConfirming] = useState(false)
+  // Re-renders after a forced reopen, so the confirm dialog syncs too.
+  const [, rerender] = useReducer((n: number) => n + 1, 0)
+  // A confirm left open when the parent closes the modal must not come back.
+  if (!open && confirming) setConfirming(false)
   useEffect(() => {
     const dialog = ref.current
     if (!dialog) return
     if (open && !dialog.open) dialog.showModal()
     else if (!open && dialog.open) dialog.close()
-  }, [open])
+  })
   const requestClose = () => {
     if (dirty) setConfirming(true)
     else onClose()
   }
+  const total = Number.isFinite(step?.total) ? Math.trunc(step!.total) : 0
   const safeStep =
-    step && step.total > 1
+    step && total > 1
       ? {
-          total: Math.min(Math.max(Math.trunc(step.total), 2), 10),
-          current: Math.min(
-            Math.max(Math.trunc(step.current), 1),
-            Math.min(Math.max(Math.trunc(step.total), 2), 10)
-          )
+          total,
+          current: Number.isFinite(step.current)
+            ? Math.min(Math.max(Math.trunc(step.current), 1), total)
+            : 1
         }
       : null
+  const wording = discard ?? {
+    title: 'Discard your answers?',
+    body: <>What you typed in “{title}” will be lost.</>,
+    confirmLabel: 'Discard'
+  }
   return (
     <dialog
       ref={ref}
       aria-labelledby={`${id}-title`}
       aria-describedby={subtitle ? `${id}-subtitle` : undefined}
       onCancel={(event) => {
+        if (event.target !== event.currentTarget) return
+        // A cancel the browser won't let us stop ends in `close` below.
+        if (!event.cancelable) return
         event.preventDefault()
         if (!confirming) requestClose()
+      }}
+      onClose={(event) => {
+        if (event.target !== event.currentTarget || !open) return
+        if (dirty) {
+          event.currentTarget.showModal()
+          setConfirming(true)
+          rerender()
+        } else onClose()
       }}
       onClick={(event) => {
         if (event.target === event.currentTarget) requestClose()
@@ -131,7 +170,7 @@ export function Modal({
             type="button"
             aria-label="Close"
             onClick={requestClose}
-            className="-mt-1 -mr-2 grid size-9 shrink-0 place-items-center rounded-[var(--radius-control)] text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
+            className="-mt-1 -mr-2 grid size-9 shrink-0 place-items-center rounded-[var(--radius-control)] text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden"
           >
             <X className="size-5" aria-hidden />
           </button>
@@ -147,9 +186,9 @@ export function Modal({
         )}
       </footer>
       <AlertDialog
-        open={confirming}
-        title="Discard your answers?"
-        confirmLabel="Discard"
+        open={open && confirming}
+        title={wording.title}
+        confirmLabel={wording.confirmLabel}
         cancelLabel="Keep editing"
         onCancel={() => setConfirming(false)}
         onConfirm={() => {
@@ -157,7 +196,7 @@ export function Modal({
           onClose()
         }}
       >
-        What you typed in “{title}” will be lost.
+        {wording.body}
       </AlertDialog>
     </dialog>
   )

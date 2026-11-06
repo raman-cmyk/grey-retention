@@ -1,17 +1,35 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { EmailPreviewCard } from './preview-card'
 
-afterEach(cleanup)
+vi.mock('server-only', () => ({}))
+// jsdom has no ResizeObserver; the scaled frame only needs the API to exist.
+vi.stubGlobal(
+  'ResizeObserver',
+  class {
+    observe() {}
+    disconnect() {}
+  }
+)
+const { EmailPreviewCard } = await import('./preview-card')
+
+afterEach(() => {
+  cleanup()
+  Object.defineProperty(document, 'fullscreenEnabled', {
+    configurable: true,
+    value: false
+  })
+})
 
 const hostile = `<!doctype html><html><head><title>x</title></head><body>
 <h1>Spring sale</h1><img src="https://tracker.example/open.gif">
 <a href="https://competitor.example/unsubscribe?u=1">Unsubscribe</a>
+<map name="m"><area shape="rect" coords="0,0,9,9" href="https://competitor.example/area"></map>
+<a href="//competitor.example/protocol-relative" ping="https://tracker.example/ping" target="_top">Go</a>
 <script>parent.alert(1)</script></body></html>`
 
 describe('EmailPreviewCard', () => {
-  it('shows a sandboxed, link-free preview with the template name', () => {
+  it('shows a sandboxed preview with no links, pixels or scripts', () => {
     render(
       <EmailPreviewCard
         html={hostile}
@@ -34,17 +52,30 @@ describe('EmailPreviewCard', () => {
     expect(screen.getByText(/Links are turned off/)).toHaveTextContent(
       'links turned off'
     )
+    expect(
+      screen.getByRole('region', { name: 'Email preview' })
+    ).toBeInTheDocument()
   })
 
-  it('reloads the frame on Refresh', async () => {
+  it('reloads the frame on Refresh and announces it every time', async () => {
     render(<EmailPreviewCard html="<p>Hi</p>" title="Preview" source="draft" />)
     const before = screen.getByTitle('Preview')
     await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
     expect(screen.getByTitle('Preview')).not.toBe(before)
-    expect(screen.getByRole('status')).toHaveTextContent('Preview reloaded.')
+    expect(await screen.findByText('Preview reloaded.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    expect(screen.getByRole('status')).toHaveTextContent('')
+    expect(await screen.findByText('Preview reloaded.')).toBeInTheDocument()
   })
 
-  it('opens the frame fullscreen when the browser allows it', async () => {
+  it('offers Fullscreen only where the browser supports it', async () => {
+    render(
+      <EmailPreviewCard html="<p>Hi</p>" title="Preview" source="klaviyo" />
+    )
+    expect(
+      screen.queryByRole('button', { name: 'Fullscreen' })
+    ).not.toBeInTheDocument()
+    cleanup()
     Object.defineProperty(document, 'fullscreenEnabled', {
       configurable: true,
       value: true
@@ -62,12 +93,12 @@ describe('EmailPreviewCard', () => {
     await act(async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Fullscreen' }))
     })
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Fullscreen is not available here.'
-    )
+    expect(
+      screen.getByText(/Fullscreen is not available here/)
+    ).toBeInTheDocument()
   })
 
-  it('shows plain-text emails without a frame', () => {
+  it('shows plain-text emails as text, with an honest caption', () => {
     render(
       <EmailPreviewCard
         html={null}
@@ -79,7 +110,15 @@ describe('EmailPreviewCard', () => {
     expect(screen.queryByTitle('Preview')).not.toBeInTheDocument()
     expect(screen.getByText('Hello there')).toBeInTheDocument()
     expect(
+      screen.getByText('Plain-text email: there is no design to show.')
+    ).toBeInTheDocument()
+    expect(
       screen.queryByRole('button', { name: 'Refresh' })
     ).not.toBeInTheDocument()
+    cleanup()
+    render(
+      <EmailPreviewCard html={null} text="  " title="Preview" source="draft" />
+    )
+    expect(screen.getByText('This email has no text.')).toBeInTheDocument()
   })
 })

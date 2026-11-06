@@ -19,7 +19,8 @@ const tones: Record<PillTone, string> = {
   danger: 'border-transparent bg-[var(--danger-soft)] text-[var(--danger-ink)]',
   info: 'border-transparent bg-[var(--brand-soft)] text-[var(--brand-ink)]',
   'accent-2': 'border-transparent bg-accent-2-faint text-accent-2',
-  solid: 'border-transparent bg-[var(--text)] text-[var(--surface-raised)]'
+  // Brand primary + on-brand: a pair the white-label contrast gate checks.
+  solid: 'border-transparent bg-[var(--brand-primary)] text-[var(--on-brand)]'
 }
 
 export const pillTones = Object.keys(tones) as PillTone[]
@@ -122,19 +123,22 @@ export function DomainPill({
 
 export function domainLabel(input: string) {
   const value = input.trim().toLowerCase()
-  if (!value || value.length > 253) return null
-  let host = value
-  if (/^[a-z][a-z0-9+.-]*:\/\//.test(value)) {
-    try {
-      host = new URL(value).hostname
-    } catch {
-      return null
-    }
+  if (!value || value.length > 2048 || /\s/.test(value)) return null
+  let host: string
+  try {
+    // Accepts full URLs, bare hosts and host:port; puny-codes Unicode names.
+    host = new URL(
+      /^[a-z][a-z0-9+.-]*:\/\//.test(value) ? value : `http://${value}`
+    ).hostname
+  } catch {
+    return null
   }
+  if (value.includes('@') && !/^[a-z][a-z0-9+.-]*:\/\//.test(value)) return null
   host = host.replace(/^www\./, '').replace(/\.$/, '')
-  return /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(
-    host
-  )
+  return host.length <= 253 &&
+    /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{1,59})$/.test(
+      host
+    )
     ? host
     : null
 }

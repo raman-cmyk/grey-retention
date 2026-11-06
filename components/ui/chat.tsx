@@ -33,10 +33,12 @@ export function ChatThread({
   className?: string
 }) {
   const box = useRef<HTMLDivElement>(null)
+  const pinned = useRef(true)
   const last = messages.at(-1)?.id
   useEffect(() => {
     const element = box.current
-    if (element) element.scrollTop = element.scrollHeight
+    // Follow new messages unless the owner scrolled up to read.
+    if (element && pinned.current) element.scrollTop = element.scrollHeight
   }, [last, typing])
   return (
     <div
@@ -44,6 +46,11 @@ export function ChatThread({
       role="log"
       aria-label={label}
       aria-live="polite"
+      onScroll={(event) => {
+        const element = event.currentTarget
+        pinned.current =
+          element.scrollHeight - element.scrollTop - element.clientHeight < 48
+      }}
       className={cn('flex flex-col gap-4 overflow-y-auto p-1', className)}
     >
       {messages.map((message) => {
@@ -119,13 +126,13 @@ export function QuickReplies({
       aria-label="Suggested replies"
       className="flex flex-wrap gap-2"
     >
-      {replies.map((reply) => (
+      {replies.map((reply, index) => (
         <button
-          key={reply}
+          key={`${index}-${reply}`}
           type="button"
           disabled={disabled}
           onClick={() => onPick(reply)}
-          className="min-h-9 rounded-full border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3.5 text-sm hover:bg-[var(--surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none disabled:opacity-45"
+          className="min-h-9 rounded-full border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3.5 text-sm hover:bg-[var(--surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden disabled:opacity-45"
         >
           {reply}
         </button>
@@ -136,8 +143,10 @@ export function QuickReplies({
 
 /**
  * Composer: optional `+` attach button, the message box, and a round send
- * button. Enter sends, Shift+Enter adds a line. Empty or whitespace-only
- * messages are never sent, and nothing is sent twice while `disabled`.
+ * button. Enter sends, Shift+Enter adds a line, and Enter that finishes an
+ * IME word (Japanese, Chinese…) never sends. Empty messages are never sent,
+ * nothing is sent twice, and the text is kept if sending fails (`onSend`
+ * returns or resolves to `false`).
  */
 export function ChatComposer({
   label,
@@ -151,17 +160,28 @@ export function ChatComposer({
   placeholder?: string
   disabled?: boolean
   maxLength?: number
-  onSend: (text: string) => void
+  onSend: (text: string) => boolean | void | Promise<boolean | void>
   onAttach?: () => void
 }) {
   const id = useId()
   const [text, setText] = useState('')
-  const ready = text.trim().length > 0 && !disabled
-  const submit = (event?: FormEvent) => {
+  const [sending, setSending] = useState(false)
+  const busy = useRef(false)
+  const ready = text.trim().length > 0 && !disabled && !sending
+  const submit = async (event?: FormEvent) => {
     event?.preventDefault()
-    if (!ready) return
-    onSend(text.trim())
-    setText('')
+    if (!ready || busy.current) return
+    busy.current = true
+    setSending(true)
+    const sent = text.trim()
+    try {
+      const ok = await onSend(sent)
+      if (ok !== false)
+        setText((current) => (current.trim() === sent ? '' : current))
+    } finally {
+      busy.current = false
+      setSending(false)
+    }
   }
   return (
     <form
@@ -174,7 +194,7 @@ export function ChatComposer({
           aria-label="Attach a file"
           disabled={disabled}
           onClick={onAttach}
-          className="grid size-9 shrink-0 place-items-center rounded-full text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none disabled:opacity-45"
+          className="grid size-9 shrink-0 place-items-center rounded-full text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden disabled:opacity-45"
         >
           <Plus className="size-5" aria-hidden />
         </button>
@@ -193,19 +213,21 @@ export function ChatComposer({
           if (
             event.key === 'Enter' &&
             !event.shiftKey &&
-            !event.nativeEvent.isComposing
+            // Safari ends composition before this keydown (keyCode 229).
+            !event.nativeEvent.isComposing &&
+            event.keyCode !== 229
           ) {
             event.preventDefault()
             submit()
           }
         }}
-        className="max-h-40 min-h-9 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm leading-6 text-[var(--text)] outline-none placeholder:text-[var(--text-faint)]"
+        className="field-sizing-content max-h-40 min-h-9 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm leading-6 text-[var(--text)] outline-hidden placeholder:text-[var(--text-faint)]"
       />
       <button
         type="submit"
         aria-label="Send message"
         disabled={!ready}
-        className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--brand-primary)] text-[var(--on-brand)] hover:bg-[var(--brand-primary-strong)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-35"
+        className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--brand-primary)] text-[var(--on-brand)] hover:bg-[var(--brand-primary-strong)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:outline-hidden disabled:opacity-35"
       >
         <ArrowUp className="size-4" aria-hidden />
       </button>

@@ -12,30 +12,37 @@ export function CreditsIndicator({
   renewsInDays,
   used,
   included,
-  sample = false,
+  sample,
   className
 }: {
   plan: string
   renewsInDays: number | null
   used: number
   included: number
-  /** True while the numbers come from the fake provider. */
-  sample?: boolean
+  /** True while the numbers come from the fake provider. Required, so fake
+   * numbers can never be shown as real by forgetting it. */
+  sample: boolean
   className?: string
 }) {
   const known =
-    Number.isFinite(used) && Number.isFinite(included) && included > 0
-  const left = known
-    ? Math.max(0, Math.round(included - Math.max(0, used)))
-    : null
-  const percent = known ? Math.round(((left ?? 0) / included) * 100) : null
-  const low = percent !== null && percent <= 10
-  const renews =
+    Number.isFinite(used) && Number.isFinite(included) && included >= 1
+  const total = known ? Math.round(included) : 0
+  const left = known ? Math.max(0, Math.round(total - Math.max(0, used))) : null
+  const percent = left === null ? null : Math.round((left / total) * 100)
+  const empty = left === 0
+  const low = percent !== null && percent <= 10 && !empty
+  const days =
     renewsInDays === null || !Number.isFinite(renewsInDays)
       ? null
-      : renewsInDays <= 0
-        ? 'renews today'
-        : `renews in ${Math.round(renewsInDays)} day${Math.round(renewsInDays) === 1 ? '' : 's'}`
+      : Math.round(renewsInDays)
+  const renews =
+    days === null
+      ? null
+      : days < 0
+        ? 'renewal date has passed'
+        : days === 0
+          ? 'renews today'
+          : `renews in ${days} day${days === 1 ? '' : 's'}`
   return (
     <section
       aria-label="AI credits"
@@ -68,11 +75,12 @@ export function CreditsIndicator({
           <p
             className={cn(
               'text-sm',
-              low && 'font-semibold text-[var(--danger-ink)]'
+              (low || empty) && 'font-semibold text-[var(--danger-ink)]'
             )}
           >
-            {left.toLocaleString('en-US')} of{' '}
-            {Math.round(included).toLocaleString('en-US')} left
+            {empty
+              ? 'No credits left'
+              : `${left.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} left`}
             {low && ' — running low'}
           </p>
           <div
@@ -87,7 +95,9 @@ export function CreditsIndicator({
             <span
               className={cn(
                 'block h-full rounded-full forced-colors:bg-[Highlight]',
-                low ? 'bg-[var(--danger)]' : 'bg-[var(--brand-primary)]'
+                low || empty
+                  ? 'bg-[var(--danger)]'
+                  : 'bg-[var(--brand-primary)]'
               )}
               style={{ width: `${percent}%` }}
             />
