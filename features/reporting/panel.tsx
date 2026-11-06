@@ -3,6 +3,8 @@ import type { Route } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { Panel, Notice, Field, controlClass } from '@/components/ui/workspace'
+import { SplitSection } from '@/components/ui/split-section'
+import { StatGrid, StatTile } from '@/components/ui/stat-tile'
 import { TextField } from '@/components/ui/text-field'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -154,6 +156,34 @@ export async function ReportingPanel() {
   ).toISOString()
   return (
     <div className="space-y-6">
+      <SplitSection
+        eyebrow="Results summary"
+        title="What we have learned so far"
+        takeaway="These numbers are simulated examples until Klaviyo is connected. They show how results and learning will work; they are not real sales or opens."
+      >
+        <StatGrid label="Results summary">
+          <StatTile
+            label="Confirmed sends"
+            value={deliveries.data?.length ?? null}
+            caption="Simulated sends with a result window"
+          />
+          <StatTile
+            label="Result windows"
+            value={results.data?.length ?? null}
+            caption="Collected after each send"
+          />
+          <StatTile
+            label="Preferences"
+            value={rules.data?.length ?? null}
+            caption="Rules learned from approved evidence"
+          />
+          <StatTile
+            label="Real revenue"
+            value={null}
+            unknownReason="Not connected yet: needs live Klaviyo or Shopify data"
+          />
+        </StatGrid>
+      </SplitSection>
       <Panel title="Confirmed sends and result windows">
         <Notice>
           All numbers here are deterministic synthetic fixtures. Revenue is a

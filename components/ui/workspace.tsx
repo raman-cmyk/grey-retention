@@ -29,7 +29,8 @@ export function Panel({
   className,
   id,
   action,
-  description
+  description,
+  eyebrow
 }: {
   title: string
   children: ReactNode
@@ -37,18 +38,25 @@ export function Panel({
   id?: string
   action?: ReactNode
   description?: string
+  /** Optional mono uppercase label above the title. */
+  eyebrow?: string
 }) {
   return (
     <section
       id={id}
       className={cn(
-        'min-w-0 scroll-mt-24 rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-5 sm:p-6',
+        'min-w-0 scroll-mt-24 rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-4 sm:p-6',
         className
       )}
     >
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold tracking-[-0.015em]">
+          {eyebrow && (
+            <p className="tracking-label mb-1.5 font-mono text-[0.6875rem] text-[var(--text-muted)] uppercase">
+              {eyebrow}
+            </p>
+          )}
+          <h2 className="text-lg leading-snug font-medium tracking-[-0.01em]">
             {title}
           </h2>
           {description && (
@@ -74,7 +82,7 @@ export function Notice({
     <p
       role={error ? 'alert' : 'status'}
       className={cn(
-        'rounded-lg border p-4 text-sm leading-6',
+        'rounded-[var(--radius-control)] border p-4 text-sm leading-6',
         error
           ? 'border-[var(--danger)] bg-[var(--danger-soft)] text-[var(--danger-ink)]'
           : 'border-[var(--line)] bg-[var(--surface-hover)] text-[var(--text-muted)]'

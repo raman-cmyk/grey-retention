@@ -1,17 +1,10 @@
 import Link from 'next/link'
 import type { Route } from 'next'
-import {
-  ArrowRight,
-  CalendarDays,
-  Check,
-  ClipboardCheck,
-  Layers,
-  Plus,
-  Sparkles
-} from 'lucide-react'
+import { ArrowRight, CalendarDays, Check, Plus, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
 import { StatusMark } from '@/components/ui/status-mark'
+import { StatGrid, StatTile } from '@/components/ui/stat-tile'
 import {
   campaignNextStep,
   campaignReview,
@@ -139,58 +132,28 @@ export function CampaignOverview({
           </Button>
         </div>
       )}
-      <dl className="mb-7 grid gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-5 sm:grid-cols-3 sm:gap-6 sm:divide-x sm:divide-[var(--line)]">
-        {[
-          {
-            label: 'Awaiting review',
-            value: model.reviews.length,
-            detail: owner
-              ? 'Your next decisions'
-              : 'Waiting for the brand owner',
-            icon: ClipboardCheck,
-            href: '/dashboard?focus=review'
-          },
-          {
-            label: 'In production',
-            value: model.inProduction.length,
-            detail: 'Copy, design and preparation',
-            icon: Layers,
-            href: '/campaign-agent'
-          },
-          {
-            label: 'Scheduled',
-            value: model.scheduled.length,
-            detail: 'Fixture delivery only',
-            icon: CalendarDays,
-            href: '/dashboard?focus=scheduled'
+      <StatGrid label="Campaign progress" className="mb-7">
+        <StatTile
+          label="Awaiting review"
+          value={model.reviews.length}
+          caption={
+            owner ? 'Your next decisions' : 'Waiting for the brand owner'
           }
-        ].map(({ label, value, detail, icon: Icon, href }) => (
-          <div key={label} className="sm:pl-6 sm:first:pl-0">
-            <Link
-              href={href as Route}
-              className="group flex items-center gap-3"
-            >
-              <Icon
-                className="size-4 shrink-0 text-[var(--text-faint)]"
-                aria-hidden
-              />
-              <div>
-                <dt className="text-xs font-medium text-[var(--text-muted)]">
-                  {label}
-                </dt>
-                <dd className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <span className="text-2xl font-semibold tracking-tight tabular-nums">
-                    {value}
-                  </span>
-                  <span className="text-xs text-[var(--text-faint)]">
-                    {detail}
-                  </span>
-                </dd>
-              </div>
-            </Link>
-          </div>
-        ))}
-      </dl>
+          href={'/dashboard?focus=review' as Route}
+        />
+        <StatTile
+          label="In production"
+          value={model.inProduction.length}
+          caption="Copy, design and preparation"
+          href={'/campaign-agent' as Route}
+        />
+        <StatTile
+          label="Scheduled"
+          value={model.scheduled.length}
+          caption="Sends are simulated until Klaviyo is connected"
+          href={'/dashboard?focus=scheduled' as Route}
+        />
+      </StatGrid>
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
         <Panel
           title="Campaign workspace"
