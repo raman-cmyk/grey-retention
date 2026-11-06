@@ -166,6 +166,8 @@ describe('dashboard cards', () => {
     expect(
       screen.getByText(/\(Sydney time\) · In this workspace/)
     ).toBeInTheDocument()
+    // The one status shows next to the name (UIR-015).
+    expect(screen.getByText('Draft')).toBeInTheDocument()
     cleanup()
     render(
       <NextCampaignCard

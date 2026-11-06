@@ -48,6 +48,12 @@ export const campaignStatuses = {
     label: 'Missed',
     tone: 'danger',
     meaning: 'Its send time passed before it was approved and scheduled.'
+  },
+  delivery_problem: {
+    label: 'Delivery problem',
+    tone: 'danger',
+    meaning:
+      'Sending failed, was blocked, or could not be confirmed. Open it to check.'
   }
 } as const satisfies Record<
   string,
@@ -59,7 +65,10 @@ export type CampaignStatus = keyof typeof campaignStatuses
 /** Colour roles from docs/UI_REBUILD_SPEC.md §0 ("Pill/status colour roles"). */
 export type PillTone = StatusTone | 'accent-2' | 'solid'
 
-/** The order a campaign moves through; Cancelled and Missed end it early. */
+/**
+ * The order a campaign moves through; Cancelled and Missed end it early,
+ * and a Delivery problem needs a look.
+ */
 export const campaignStatusOrder: readonly CampaignStatus[] = [
   'draft',
   'with_designer',
@@ -67,7 +76,8 @@ export const campaignStatusOrder: readonly CampaignStatus[] = [
   'scheduled',
   'sent',
   'cancelled',
-  'missed'
+  'missed',
+  'delivery_problem'
 ]
 
 export function isCampaignStatus(value: unknown): value is CampaignStatus {

@@ -7,8 +7,7 @@ import type { Route } from 'next'
 import { ArrowRight, Check, Plus, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Panel, Notice } from '@/components/ui/workspace'
-import { Pill, StatusPill } from '@/components/ui/pill'
-import { campaignStatusOf, hasDeliveryProblem } from './status'
+import { CampaignPill } from './status-pill'
 import { StatGrid, StatTile } from '@/components/ui/stat-tile'
 import {
   campaignNextStep,
@@ -57,19 +56,6 @@ export function CampaignStages({ campaign }: { campaign: OverviewCampaign }) {
         </li>
       ))}
     </ol>
-  )
-}
-
-/** The one campaign status (UIR-015), plus a delivery problem if any. */
-function CampaignPill({ campaign }: { campaign: OverviewCampaign }) {
-  const status = campaignStatusOf(campaign)
-  return (
-    <span className="inline-flex flex-wrap justify-end gap-1.5">
-      {status ? <StatusPill status={status} /> : <Pill>Replaced</Pill>}
-      {hasDeliveryProblem(campaign) && (
-        <Pill tone="danger">Delivery problem</Pill>
-      )}
-    </span>
   )
 }
 
@@ -196,7 +182,7 @@ export function CampaignOverview({
       )}
       <StatGrid label="Campaign progress" className="mb-7" columns={3}>
         <StatTile
-          label="Awaiting review"
+          label="Needs your approval"
           value={model.reviews.length}
           caption={
             owner ? 'Your next decisions' : 'Waiting for the brand owner'
@@ -204,9 +190,9 @@ export function CampaignOverview({
           href={linkTo({ focus: 'review', p: null })}
         />
         <StatTile
-          label="In production"
+          label="In progress"
           value={model.inProduction.length}
-          caption="Copy, design and preparation"
+          caption="Drafts and designs being made"
           href={'/campaign-agent' as Route}
         />
         <StatTile
@@ -241,7 +227,7 @@ export function CampaignOverview({
                 active: !['review', 'scheduled'].includes(focus ?? '')
               },
               {
-                label: 'Needs review',
+                label: 'Needs your approval',
                 href: linkTo({ focus: 'review', p: null }),
                 active: focus === 'review'
               },
@@ -275,8 +261,8 @@ export function CampaignOverview({
               description={
                 focus === 'review'
                   ? owner
-                    ? 'Campaigns appear here when a calendar, copy or design version needs your decision.'
-                    : 'Campaigns appear here when a calendar, copy or design version needs the brand owner’s decision.'
+                    ? 'Campaigns appear here when a date, copy or design needs your decision, or one is ready to approve and schedule.'
+                    : 'Campaigns appear here when a date, copy or design needs the brand owner’s decision, or one is ready to approve and schedule.'
                   : 'Plan a campaign, review its copy and design, then prepare delivery.'
               }
               action={
@@ -328,9 +314,11 @@ export function CampaignOverview({
                     <div className="flex items-center justify-between gap-3 sm:justify-end">
                       <span className="flex flex-col items-end gap-1 text-right">
                         <CampaignPill campaign={c} />
-                        <span className="text-xs text-[var(--text-muted)]">
-                          Next: {next}
-                        </span>
+                        {next && (
+                          <span className="text-xs text-[var(--text-muted)]">
+                            Next: {next}
+                          </span>
+                        )}
                       </span>
                       <ArrowRight
                         className="size-4 text-[var(--text-faint)]"
@@ -368,7 +356,7 @@ export function CampaignOverview({
           <Panel title={owner ? 'Your review queue' : 'Owner review queue'}>
             <p className="mb-4 text-sm leading-6 text-[var(--text-muted)]">
               {model.reviews.length
-                ? `${model.reviews.length} campaign${model.reviews.length === 1 ? '' : 's'} awaiting an exact version decision.`
+                ? `${model.reviews.length} campaign${model.reviews.length === 1 ? '' : 's'} waiting for ${owner ? 'your' : 'the owner’s'} approval.`
                 : 'All current reviews are complete. New versions will appear here.'}
             </p>
             {model.reviews.slice(0, 4).map((c) => (

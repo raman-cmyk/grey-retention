@@ -150,14 +150,16 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
   - `proxy.ts` matches the new Klaviyo detail routes (`/campaigns/klaviyo`, `/lists`, `/segments`, `/flows`, `/flow-messages`, `/metrics`), so a detail page opened in a new tab refreshes its session. An earlier version matched every signed-in page; the browser journeys on the server-action-heavy pages (campaign workflow, references) then failed twice, so those pages stay out of the proxy until that is proven safe. This is a foundation-config change, recorded here.
 
 - UIR-015 (2026-11-06): every campaign shows ONE status, derived by `features/campaigns/status.ts` from the real state machine and never picked by hand. The order of checks:
-  1. Sent or Cancelled (delivery; a rejected calendar entry is Cancelled too);
-  2. Scheduled (queued … scheduled, reconciling);
-  3. Missed (time passed before scheduling);
-  4. With designer (assigned, revisions requested);
-  5. Needs your approval (calendar entry, copy, a delivered design, or copy and design approved and waiting for the owner's approve-and-schedule);
-  6. otherwise Draft.
+  1. Sent, Cancelled and Scheduled come only from delivery, and only once the provider confirmed them.
+  2. Failed, blocked and unconfirmed (`reconciling`) deliveries are a **Delivery problem**, a new status (danger), whatever the clock says.
+  3. Missed: the time passed without a confirmed schedule. The worker refuses past times, so an in-flight delivery (queued … scheduling) will not send.
+  4. An in-flight delivery for a future time is Scheduled; "Next: Waiting for confirmation".
+  5. Needs your approval: a new or moved date first; then With designer (assigned, or revisions on a design email); then copy or a delivered design waiting; then the final approve-and-schedule step, once the date, copy AND design are approved. Text emails get a text design the owner reviews, so they pass the design step too.
+  6. Otherwise Draft, including a turned-down date (it can be revised and approved again).
 
-  Replaced plan entries show "Replaced", and failed or blocked deliveries add a "Delivery problem" pill. The calendar's old Approved / Needs review / Rejected words and the raw "Copy draft · Delivery not ready" line are gone.
+  Replaced plan entries show "Replaced". The overview's "Next:", its tiles and filters, the dashboard's "Waiting for you" and upcoming sends, and the calendar's month line ("4 campaigns · 1 needs your approval · 1 scheduled") all come from the same status; the old "awaiting review · approved" line is gone. The campaign page shows the pill and plain words per step (`stepStateWords`). `hasDeliveryProblem` is removed (the status says it); the pill lives in `features/campaigns/status-pill.tsx`.
+  - Still raw: the delivery panel's "Campaign delivery: …" line (e2e asserts it), the planning panel, `/copy-review` and admin designers. GROS replies use their own delivery words (`20260914090016_gros_readable_reply.sql`); integration note for the GROS domain.
+  - Render-path revisions on a design email read "With designer" until designer assignments are loaded with campaigns.
 
 - DS-006 (2026-11-06): the composer (`features/composer/`) saves a paste through the same `savePastedReference` helper as the paste form (extracted from `importPastedReference` into server-only `features/references/pasted-save.ts`, messages unchanged) and redirects to `/create-email/{id}?mode=copy|rewrite`. The choose page only marks that outcome ("Your choice in the composer", primary button); it never starts a copy or rewrite by itself, so owner confirmation and paid-AI gates are unchanged. EXACT→copy, REBRAND→rewrite, ADAPT disabled with a reason. Subject comes from the HTML `<title>` or first readable line; a link-only paste is refused with an honest message. Composer is owner-only on the dashboard and the setup reference step; the existing Paste/Upload links stay.
 
@@ -903,14 +905,29 @@ Append entries using this exact shape:
 ### 2026-11-06 — UIR-015 — one campaign status system
 
 - Status: review
-- Branch/worktree: `claude/uir-015-one-campaign-status-system` from `main` at `c498052`. GitHub issue #254 (browser lane).
+- Branch/worktree: `claude/uir-015-one-campaign-status-system` on top of UIR-004 (#268). GitHub issue #254 (browser lane).
 - Commit(s): see the UIR-015 pull request.
-- Changed contracts: new `features/campaigns/status.ts`; `CalendarCampaign` includes `design_state`; `UpcomingSend` has `status`; the "Needs your approval" meaning is now "Waiting for you: approve it, then schedule it." See the UIR-015 Global decision.
+- Changed contracts:
+  - new `features/campaigns/status.ts` (`campaignStatusOf`, `awaitingConfirmation`, `stepStateWords`) and `status-pill.tsx`;
+  - `lib/campaign-status.ts` gains `delivery_problem`;
+  - `campaignReview`, `campaignNextStep` (now nullable) and `overviewModel` (new `attention` bucket) derive from the status and take `now`;
+  - `buildCampaignCalendar` no longer returns review/approved/scheduled counts (`monthSummary` replaces them);
+  - `CalendarCampaign` includes `design_state`; `UpcomingSend` has `status`; `hasDeliveryProblem` is removed.
+  - See the UIR-015 Global decision.
 - Migrations: none (derived from existing columns).
 - Verification run: `pnpm verify` (see PR for counts).
-  - Status tests: Draft; every owner-approval case, including text versus design emails; With designer; every Scheduled delivery state; Sent only when confirmed; Cancelled; Missed, with scheduled and sent winning over the clock; replaced plans; delivery problems.
-  - Calendar, list, Your campaigns and dashboard mini calendar show the pill.
+  - Status tests: Draft; every owner-approval case, text emails included; With designer and text-email revisions; a moved date before designer work; a turned-down date; confirmed and in-flight Scheduled; Sent and Cancelled; failed, blocked and reconciling as Delivery problem, also after the time; Missed at and after the time, for in-flight and ready deliveries, with confirmed scheduled and sent winning; replaced plans; plain step words.
+  - Next-step tests agree with the pill (final step, confirmed and cancelled, problems, missed, drafts) and the buckets.
+  - Render tests: the pill's words, "Delivery problem" and "Replaced"; the month summary never says "approved"; the dashboard's next campaign shows its pill.
   - `test:e2e` not runnable here; no e2e asserts the old words.
-- Review: see the UIR-015 pull request.
-- Known issues: the status is shown, but its filters arrive with the §6 planner toolbar. The real owner Approve step is UIR-016.
+- Review: `code-reviewer` blocked on four things:
+  1. `reconciling` read "Scheduled".
+  2. Text emails skipped their design step.
+  3. In-flight deliveries past their time read "Scheduled".
+  4. The calendar header still said "approved".
+     All four are fixed and tested. Also fixed: failed deliveries read "Needs your approval"; a turned-down date read "Cancelled"; a moved date was hidden by "With designer"; "Next:", tiles, filters and "Waiting for you" disagreed with the pill; the campaign page showed raw states; the dashboard's next campaign had no pill.
+- Known issues:
+  - raw state words remain on the delivery and planning panels, `/copy-review` and admin designers (listed in the Global decision);
+  - render-path revisions on design emails read "With designer";
+  - the real owner Approve step is UIR-016.
 - Next consumer: UIR-006 §6 planner (filters and chips), UIR-016 Approve step.

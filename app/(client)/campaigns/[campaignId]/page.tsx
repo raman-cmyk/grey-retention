@@ -1,4 +1,6 @@
 import { RejectionForm } from '@/features/planning/panels'
+import { CampaignPill } from '@/features/campaigns/status-pill'
+import { stepStateWords } from '@/features/campaigns/status'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
 import {
@@ -60,16 +62,22 @@ export default async function CampaignPage({
         </Panel>
         <div className="space-y-6">
           <Panel title="Review status">
+            <p className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-[var(--text-muted)]">Status</span>
+              <CampaignPill campaign={campaign} />
+            </p>
             <dl className="space-y-3 text-sm">
-              {[
-                ['Calendar', campaign.calendar_state],
-                ['Copy', campaign.copy_state],
-                ['Design', campaign.design_state],
-                ['Delivery', campaign.delivery_state]
-              ].map(([k, v]) => (
-                <div className="flex justify-between gap-3" key={k}>
-                  <dt>{k}</dt>
-                  <dd>{v.replaceAll('_', ' ')}</dd>
+              {(
+                [
+                  ['Calendar', 'calendar', campaign.calendar_state],
+                  ['Copy', 'copy', campaign.copy_state],
+                  ['Design', 'design', campaign.design_state],
+                  ['Delivery', 'delivery', campaign.delivery_state]
+                ] as const
+              ).map(([label, step, state]) => (
+                <div className="flex justify-between gap-3" key={label}>
+                  <dt>{label}</dt>
+                  <dd className="text-right">{stepStateWords(step, state)}</dd>
                 </div>
               ))}
             </dl>

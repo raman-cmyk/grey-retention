@@ -4206,9 +4206,10 @@
       "implementation_tasks": ["DS-004", "UIR-015"],
       "verification": [
         "DS-004 (2026-11-06): lib/status-vocabulary.ts defines the nine statuses with label, tone and meaning; StatusMark status=… renders them as text with a decorative dot and the meaning as a tooltip; unit tests cover the words, distinct meanings and Sent-only-when-confirmed.",
-        "features/campaigns/status.test.ts"
+        "features/campaigns/status.test.ts",
+        "features/campaigns/status-pill.test.tsx, overview-model.test.ts"
       ],
-      "remaining": "Campaign screens (calendar, list, Your campaigns, dashboard) now show the one campaign status from features/campaigns/status.ts (UIR-015). Remaining: competitor and other non-campaign screens still compute their own words."
+      "remaining": "Campaign screens (calendar, Your campaigns, dashboard, campaign page) show the one campaign status from features/campaigns/status.ts, including Delivery problem (UIR-015). Remaining: raw delivery/planning panel lines, /copy-review, admin designers, GROS replies, and the non-campaign screens that compute their own words."
     },
     {
       "id": "UX-013",

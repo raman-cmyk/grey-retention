@@ -56,10 +56,10 @@ export async function dashboardView(
     shopify:
       klaviyo.state === 'sample' ? klaviyo.shopify : ('missing' as const),
     sends: upcomingSends(campaigns, snapshot, now),
-    waiting: overviewModel(campaigns).reviews.map((c) => ({
+    waiting: overviewModel(campaigns, now).reviews.map((c) => ({
       id: c.id,
       title: c.title,
-      step: campaignReview(c) ?? 'Review'
+      step: campaignReview(c, now) ?? 'Review'
     })),
     seeAllWaiting: dashboardHref(
       query,

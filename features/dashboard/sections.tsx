@@ -269,7 +269,7 @@ export function NextCampaignCard({
           <p className="text-2xl font-semibold">
             {countdown(next.at, now, timezone)}
           </p>
-          <p className="mt-2 text-sm break-words">
+          <p className="mt-2 flex flex-wrap items-center gap-2 text-sm break-words">
             {next.href ? (
               <Link
                 href={next.href}
@@ -280,6 +280,7 @@ export function NextCampaignCard({
             ) : (
               <span className="font-medium">{next.name}</span>
             )}
+            <StatusPill status={next.status} />
           </p>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
             {formatBrandDateTime(next.at, timezone)} ({timezoneLabel(timezone)}){' '}

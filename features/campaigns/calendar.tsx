@@ -4,10 +4,10 @@ import { ChevronLeft, ChevronRight, CalendarDays, List } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Notice } from '@/components/ui/workspace'
 import { StatusMark } from '@/components/ui/status-mark'
-import { Pill, StatusPill } from '@/components/ui/pill'
 import { cn } from '@/lib/utils'
 import { controlClass } from '@/components/ui/control'
-import { campaignStatusOf, hasDeliveryProblem } from './status'
+import { campaignStatusOf } from './status'
+import { CampaignPill } from './status-pill'
 import {
   buildCampaignCalendar,
   type CalendarCampaign,
@@ -29,29 +29,31 @@ function calendarHref(month: string, view: CalendarView) {
   return `/campaign-agent?m=${month}&view=${view}` as Route
 }
 
-/** The one campaign status (UIR-015), or "Replaced" for history entries. */
-function CampaignStatusPill({
-  campaign,
-  compact = false
-}: {
-  campaign: CalendarCampaign
-  compact?: boolean
-}) {
-  const status = campaignStatusOf(campaign)
-  return (
-    <span className="inline-flex flex-wrap items-center gap-1.5">
-      {status ? (
-        <StatusPill status={status} />
-      ) : (
-        <Pill title="A newer plan replaced this entry.">Replaced</Pill>
-      )}
-      {hasDeliveryProblem(campaign) && (
-        <Pill tone="danger" title="Delivery stopped with an error.">
-          {compact ? 'Problem' : 'Delivery problem'}
-        </Pill>
-      )}
-    </span>
-  )
+/**
+ * "4 campaigns · 2 need your approval · 1 scheduled", counted with the same
+ * status as the pills below (UIR-015). Replaced entries are not counted.
+ */
+export function monthSummary(entries: CalendarCampaign[], now = new Date()) {
+  const current = entries.filter((c) => !c.superseded_by_plan)
+  const count = (status: string) =>
+    current.filter((c) => campaignStatusOf(c, now) === status).length
+  const parts = [
+    `${current.length} ${current.length === 1 ? 'campaign' : 'campaigns'}`
+  ]
+  const approvals = count('needs_approval')
+  if (approvals)
+    parts.push(
+      `${approvals} ${approvals === 1 ? 'needs' : 'need'} your approval`
+    )
+  for (const [status, word] of [
+    ['scheduled', 'scheduled'],
+    ['missed', 'missed'],
+    ['delivery_problem', 'with a delivery problem']
+  ] as const) {
+    const n = count(status)
+    if (n) parts.push(`${n} ${word}`)
+  }
+  return parts.join(' · ')
 }
 
 function CampaignCard({
@@ -95,7 +97,7 @@ function CampaignCard({
         {campaign.title}
       </h3>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <CampaignStatusPill campaign={campaign} compact={compact} />
+        <CampaignPill campaign={campaign} />
         <span className="text-[0.65rem] text-[var(--text-muted)]">
           v{campaign.calendar_revision}
         </span>
@@ -290,7 +292,7 @@ function CampaignList({
                 </p>
               </div>
               <div className="flex items-center gap-2 sm:justify-end">
-                <CampaignStatusPill campaign={campaign} />
+                <CampaignPill campaign={campaign} />
                 <span className="text-xs text-[var(--text-muted)]">
                   v{campaign.calendar_revision}
                 </span>
@@ -329,14 +331,7 @@ export function CampaignCalendar({
             {calendar.label}
           </h2>
           <p className="mt-1.5 text-xs leading-5 text-[var(--text-muted)]">
-            {calendar.entries.length}{' '}
-            {calendar.entries.length === 1 ? 'campaign' : 'campaigns'}
-            {' · '}
-            {calendar.reviewCount} awaiting review
-            {' · '}
-            {calendar.approvedCount} approved
-            {calendar.scheduledCount > 0 &&
-              ` · ${calendar.scheduledCount} scheduled`}
+            {monthSummary(calendar.entries)}
           </p>
         </div>
         <div
