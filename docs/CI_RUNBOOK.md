@@ -9,7 +9,7 @@ GitHub Actions checks every pull request before it is merged. Merging to `main` 
 | `.github/workflows/ci.yml`             | `verify`   | Every pull request, every push to `main`, or by hand                           | Formatting, lint, typecheck, unit tests, production build                                                           | ~5 min       |
 | `.github/workflows/database.yml`       | `database` | Pull requests that change `supabase/**`, or by hand                            | Fresh local Supabase → reset → all pgTAP / RLS assertions                                                           | ~5 min       |
 | `.github/workflows/browser.yml`        | `browser`  | Pull requests that change app, test, script, schema or build files, or by hand | Fresh local Supabase → reset → every desktop and mobile journey, then the first-draft and email concurrency scripts | ~20–30 min   |
-| `.github/workflows/scheduled-jobs.yml` | `run`      | Every 10 minutes, only when switched on (see `docs/SCHEDULED_JOBS_RUNBOOK.md`) | Runs queued jobs on the live app                                                                                    | ~1 min       |
+| `.github/workflows/scheduled-jobs.yml` | `run`      | Every 30 minutes, only when switched on (see `docs/SCHEDULED_JOBS_RUNBOOK.md`) | Runs queued jobs on the live app                                                                                    | ~1 min       |
 | `.github/workflows/project-sync.yml`   | `sync`     | Pushes to `main` that change the roadmap or register                           | Labels and milestones                                                                                               | ~1 min       |
 
 Draft pull requests skip the database and browser checks until they are marked "Ready for review". A pull request that only changes documentation runs only `verify`.
@@ -29,7 +29,7 @@ All checks use fake providers and a throwaway local database inside the runner. 
 
 ## Minutes (private repository)
 
-GitHub rounds every job up to a whole minute. Rough cost per pull request update: `verify` ~5 minutes; plus ~5 when the schema changes; plus ~25 when app code changes. A busy day with five app pull requests, each pushed twice, is about 300 minutes. GitHub Free includes 2,000 minutes a month (Pro: 3,000), shared with the scheduled-jobs workflow (about 4,400 a month at every 10 minutes when switched on). Ways to spend less:
+GitHub rounds every job up to a whole minute. Rough cost per pull request update: `verify` ~5 minutes; plus ~5 when the schema changes; plus ~25 when app code changes. A busy day with five app pull requests, each pushed twice, is about 300 minutes. GitHub Free includes 2,000 minutes a month (Pro: 3,000), shared with the scheduled-jobs workflow (about 1,500 a month at every 30 minutes when switched on), so roughly 500 free minutes are left for CI — about 20 browser-check runs. Ways to spend less:
 
 - open work-in-progress pull requests as drafts (slow checks wait until "Ready for review");
 - push related fixes together rather than one commit at a time (each push restarts the checks; older runs are cancelled automatically);

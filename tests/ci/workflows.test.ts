@@ -93,6 +93,18 @@ describe('CI workflows', () => {
       expect(database).not.toContain(needed)
   })
 
+  it('keeps the scheduled-jobs workflow opt-in and at most twice an hour', () => {
+    const text = read('scheduled-jobs.yml')
+    expect(text).toContain("if: vars.SCHEDULED_JOBS_ENABLED == 'true'")
+    expect(text).toContain("--proto '=https'")
+    const crons = [...text.matchAll(/- cron: '([^']+)'/g)].map((m) => m[1]!)
+    expect(crons).toEqual(['3,33 * * * *'])
+    const [minute, ...rest] = crons[0]!.split(' ')
+    // Owner decision: about 1,500 Actions minutes a month at most.
+    expect(minute!.split(',')).toHaveLength(2)
+    expect(rest).toEqual(['*', '*', '*', '*'])
+  })
+
   it('skips draft pull requests for the slow checks', () => {
     for (const name of ['database.yml', 'browser.yml'])
       expect(read(name)).toContain(

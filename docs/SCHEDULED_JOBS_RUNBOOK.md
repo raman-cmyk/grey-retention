@@ -7,7 +7,7 @@ Background work — sample copy drafts, design renders, sample scheduling and ca
 | Piece                                  | What it does                                                                                                       |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `GET /api/internal/jobs`               | The worker. Needs `Authorization: Bearer <CRON_SECRET>`; anything else gets `401` and runs nothing.                |
-| `.github/workflows/scheduled-jobs.yml` | Calls the worker every 10 minutes (minute 3, 13, 23 …) once switched on. This is the frequent trigger.             |
+| `.github/workflows/scheduled-jobs.yml` | Calls the worker every 30 minutes (minute 3 and 33) once switched on. This is the frequent trigger.                |
 | `vercel.json` cron                     | Calls the worker once a day, some time between 01:00 and 02:00 UTC (Hobby crons are not minute-exact). A backstop. |
 | `features/cron/scheduler.ts`           | Visits workspaces in bounded batches: waiting work first, then daily housekeeping for the rest.                    |
 | `POST /api/internal/jobs` (unchanged)  | Loopback-only test dispatch for one workspace; refused anywhere but a local fake stack.                            |
@@ -31,13 +31,13 @@ You need one random secret and you put the **same value** in two places. Do not 
 1. **Make the secret.** Use your password manager to generate a random password of at least 40 characters, letters and numbers only (no spaces or quotes).
 2. **Vercel:** Project `grey-retention-app` → Settings → Environment Variables → add `CRON_SECRET` with that value for **Production** → Save → redeploy (Deployments → latest → Redeploy) so the app sees it.
 3. **GitHub secret:** repository → Settings → Secrets and variables → Actions → **Secrets** tab → New repository secret → name `CRON_SECRET`, same value.
-4. **Turn on GitHub Actions** if it is still off: repository → Settings → Actions → General → "Allow all actions and reusable workflows" → Save. Without this neither CI nor the 10-minute schedule runs (the daily Vercel cron still does).
-5. **Switch the 10-minute schedule on** (read the cost note first): same page as step 3 → **Variables** tab → New repository variable → name `SCHEDULED_JOBS_ENABLED`, value `true`. Until this exists every scheduled run is skipped and uses no Actions minutes.
+4. **Turn on GitHub Actions** if it is still off: repository → Settings → Actions → General → "Allow all actions and reusable workflows" → Save. Without this neither CI nor the 30-minute schedule runs (the daily Vercel cron still does).
+5. **Switch the 30-minute schedule on** (read the cost note first): same page as step 3 → **Variables** tab → New repository variable → name `SCHEDULED_JOBS_ENABLED`, value `true`. Until this exists every scheduled run is skipped and uses no Actions minutes.
 
 ### Check it works
 
 - GitHub → Actions → **Scheduled jobs** → "Run workflow". The run log ends with a line like `{"live":false,"tenants":…}`. A red run shows the reason: the secret is missing, `401` (the two secrets differ) or `503` (server setup). A yellow warning means some workspace visits stopped on an error; their jobs wait for the next run and the Vercel function logs show the error code.
-- Or queue some sample work (for example "Generate copy" on a campaign) and wait up to 10 minutes: the campaign moves on without pressing "Run fixture jobs".
+- Or queue some sample work (for example "Generate copy" on a campaign) and wait up to 30 minutes: the campaign moves on without pressing "Run fixture jobs".
 
 ### Pause or change
 
@@ -48,7 +48,7 @@ You need one random secret and you put the **same value** in two places. Do not 
 
 ### Cost note
 
-The repository is private, so GitHub Actions minutes count against the account allowance (GitHub Free: 2,000 minutes a month; Pro: 3,000). GitHub rounds every run up to one minute, so every 10 minutes is about **4,400 minutes a month** — more than the free allowance, and CI also uses minutes. When minutes run out, Actions stops (including CI) until next month unless a spending limit is set. Options: keep 10 minutes and set a spending limit (Settings → Billing), slow it to every 30 minutes (about 1,500 minutes; edit the `cron:` line), or pause it. A later option is a database-side schedule (Supabase `pg_cron`), which costs no Actions minutes.
+The repository is private, so GitHub Actions minutes count against the account allowance (GitHub Free: 2,000 minutes a month; Pro: 3,000). GitHub rounds every run up to one minute. Every 30 minutes (Raman's choice, November 6, 2026) is about **1,500 minutes a month**. That leaves about 500 free minutes for CI, which is roughly 20 runs of the browser check (see `docs/CI_RUNBOOK.md`). When minutes run out, Actions stops (including CI) until next month unless a spending limit is set. Options: set a spending limit (Settings → Billing), run hourly (`cron: '3 * * * *'`, about 750 minutes), or switch the schedule off and rely on the daily Vercel run. A later option is a database-side schedule (Supabase `pg_cron`), which costs no Actions minutes.
 
 ## Not covered yet
 
