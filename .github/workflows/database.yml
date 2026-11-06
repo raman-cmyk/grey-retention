@@ -1,0 +1,50 @@
+name: Database
+
+# pgTAP / RLS assertions on a fresh local Supabase. Runs only when the schema,
+# seeds, database tests or the Supabase CLI version change (or by hand), also
+# after such a change lands on main, and skips draft pull requests.
+# Do not make this a required check: with path filters it does not run on
+# every pull request, and a required check that never starts blocks merging.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'supabase/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/database.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/database.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  database:
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Only the services the tests use: database, auth, REST, storage, mail.
+      - run: pnpm exec supabase start -x studio,logflare,vector,imgproxy,edge-runtime,realtime,postgres-meta,supavisor
+      - run: pnpm supabase:reset
+      - run: pnpm test:db
