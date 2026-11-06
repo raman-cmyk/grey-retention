@@ -33,6 +33,7 @@ export type BrandPresentation = Readonly<{
     primary: string
     primaryStrong: string
     secondary: string
+    onSecondary: string
     soft: string
     ink: string
     onBrand: string
@@ -86,6 +87,7 @@ export const defaultBrandPresentation: BrandPresentation = {
     primary: light.ink,
     primaryStrong: light['ink-strong'],
     secondary: light.accent,
+    onSecondary: light['on-accent'],
     soft: light['accent-faint'],
     ink: light['accent-strong'],
     onBrand: light['on-ink'],
@@ -119,6 +121,7 @@ export function brandCssVariables(brand: BrandPresentation) {
     '--brand-primary': brand.theme.primary,
     '--brand-primary-strong': brand.theme.primaryStrong,
     '--brand-secondary': brand.theme.secondary,
+    '--on-brand-secondary': brand.theme.onSecondary,
     '--brand-soft': brand.theme.soft,
     '--brand-ink': brand.theme.ink,
     '--on-brand': brand.theme.onBrand,
@@ -169,6 +172,13 @@ export function hasAccessibleBrandContrast(brand: BrandPresentation) {
     [theme.textMuted, theme.surfaceRaised],
     [theme.onBrand, theme.primary],
     [theme.onBrand, theme.primaryStrong],
+    // The single blue key action and its hover state.
+    [theme.onSecondary, theme.secondary],
+    [theme.onSecondary, theme.ink],
+    // Selected segment label, and secondary buttons at rest and on hover.
+    [theme.secondary, theme.soft],
+    [theme.text, theme.surfaceHover],
+    [theme.text, theme.line],
     [theme.onDanger, theme.danger],
     [theme.onDanger, theme.dangerStrong],
     [theme.ink, theme.soft],

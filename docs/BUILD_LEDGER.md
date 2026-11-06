@@ -58,7 +58,11 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 | DS-002 | App shell and navigation in the new look | DS-001 | review | Claude Code browser lane | pnpm verify; 4 new shell tests; demo-mode screenshots and keyboard check at 1280/375px | Owns `components/shell/*` styling and the `workspaceLabel` prop. Issue #41. |
 
+| DS-003 | Buttons, links, segmented toggles and form controls | DS-002 | review | Claude Code browser lane | pnpm verify; new button, segmented-control, text-link and key-colour tests; control styles measured at 1280/375px | Owns `components/ui/button.tsx`, `control.ts`, `text-field.tsx`, `segmented-control.tsx`, `text-link.tsx`, `confirm-dialog.tsx`. Issue #42. |
+
 ## Global decisions
+
+- DS-003 (2026-11-06): `BrandPresentation.theme` gains `onSecondary` (text on the blue key action, published as `--on-brand-secondary`; checked by the contrast gate on `secondary` and its hover `ink`). `Button` gains `variant="accent"` for the one key action per screen; `secondary` is now a light grey fill without an outline. `controlClass` moved to `components/ui/control.ts` (still re-exported from `components/ui/workspace.tsx`) and `TextField` uses it, so every input shares one style. New shared components: `SegmentedControl` (native radio group) and `TextLink` (arrow link). Native checkboxes/radios use the ink colour.
 
 - DS-001 (2026-11-06): the default white-label theme (`defaultBrandPresentation`) is now built from `lib/design/tokens.ts`, and `app/globals.css` maps the existing semantic variables (`--surface`, `--text`, `--line`, `--brand-*`, `--danger*`, `--warning*`, `--radius-*`) to the `--gr-*` tokens. Variable names are unchanged, so no component contract changed. `textFaint` uses `ink-muted` (AA on the canvas). Added tokens `ink-strong` and `danger-strong` for hover states. Tailwind 4 `@theme` gains design names (`bg-canvas`, `text-ink`, `border-hairline`, `font-serif`, `font-mono`, `tracking-display`) that resolve through the white-label variables; every `rounded-*` step is 4px. Fonts: Newsreader, Geist, Geist Mono via `next/font/google` (Inter removed). The `data-design-seed` attribute was removed. Dark mode stays off until a dark `BrandPresentation` variant exists.
 
@@ -487,3 +491,15 @@ Append entries using this exact shape:
 - Review: `code-reviewer` found nothing blocking. Fixed: e2e now asserts the real client layout shows the Store label and name (`workspace-ui.spec.ts`, runs in CI); the current-page bar is a border so it survives Windows High Contrast; the header label is 11px and uses `--nav-muted`/`--nav-text`, and the contrast gate now checks `navMuted` on the nav and `textMuted` on panels; UX-002/UX-018 wording corrected (setup screens outside the shell do not show the store yet).
 - Known issues: navigation still has six primary links and "Get started" stays visible after setup; UX-004/UX-005 own that change. Account menu and search dialog keep their structure; DS-003 restyles buttons and inputs inside them.
 - Next consumer: DS-003 (buttons, links, toggles, form controls).
+
+### 2026-11-06 — DS-003 — buttons, links, segmented toggles and form controls
+
+- Status: review
+- Branch/worktree: `claude/ds-003-buttons-links-segmented-toggles-and-form-control` from `main` at `3d4168c`. GitHub issue #42 (browser lane).
+- Commit(s): see the DS-003 pull request.
+- Changed contracts: `BrandPresentation.theme.onSecondary` (new required field; only the default theme constructs it today) and `--on-brand-secondary`; `Button` variants; `controlClass` location (re-export kept). See Global decision DS-003.
+- Migrations: none.
+- Verification run: `pnpm verify` (see PR for counts). New tests: button roles map to theme colours, every variant keeps a focus ring and no shadow/pill, disabled buttons do not fire; `SegmentedControl` is a labelled radio group, arrow keys move the selection, unavailable options are disabled with an announced reason, the value submits with its form; `TextLink` keeps a clean accessible name with a decorative arrow; contrast gate rejects an unreadable key-action label. Demo-mode `next dev`: `/onboarding` and `/settings` inputs render with a 4px radius, `#8a8580` outline and 15px text, buttons in ink or light grey, no horizontal scroll at 1280px or 375px. `test:e2e`/`test:db` not runnable here (no Docker).
+- Review: `code-reviewer` found nothing blocking. Fixed: checkbox/radio sizing moved into `@layer base` so utilities still win; `SegmentedControl` exact accessible names, description only on the selected option, visible written reasons for unavailable options, fallback from disabled/unknown values, form-reset sync and a 2px ink focus outline distinct from selection (6 new tests); the mono HTML editor keeps 12px text; page search and the calendar month input use `controlClass`, the file picker uses the same outline; table rows hover to the canvas so secondary buttons stay visible; contrast gate also checks the selected segment label and secondary buttons at rest/hover.
+- Known issues: existing screens keep the variant their authors chose (some main actions are `secondary`); no screen uses `accent` yet (the composer, DS-006, is the first). Shell icon buttons stay hand-built chrome. `SegmentedControl` is not used by a screen yet.
+- Next consumer: DS-004 (cards, stat tiles, tables, split sections).
