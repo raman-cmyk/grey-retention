@@ -31,9 +31,7 @@
       "Bash(git show:*)",
       "Bash(git branch:*)",
       "Bash(git fetch:*)",
-      "Bash(ls:*)"
-    ],
-    "ask": [
+      "Bash(ls:*)",
       "Bash(pnpm supabase:reset)",
       "Bash(git push:*)",
       "Bash(gh pr create:*)",

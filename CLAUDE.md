@@ -85,7 +85,7 @@ Use `/new-migration <domain> <short_name>` to get the next number.
 - **Subagents** (`.claude/agents/`): `code-reviewer` (run before every PR), `rls-migration-reviewer` (any change under `supabase/`), `klaviyo-integration` (provider adapters, sync jobs, webhooks).
 - **Hooks**: edited files are auto-formatted with Prettier; edits to committed migrations, generated types, `.env*` and `.audit/` are blocked.
 - **Session env** forces `ADAPTER_MODE=fake` and `AI_DEFAULT_PROVIDER=fake`, so anything Claude starts stays on fake providers even if `.env.local` says otherwise.
-- **Permissions**: checks and local Supabase commands run without prompts; `supabase:reset`, `git push`, PR create/merge and dependency changes ask first; force-push, `supabase db push`/`link` and Vercel commands are denied.
+- **Permissions**: no approval prompts. Checks, local Supabase commands (including `supabase:reset`), `git push`, PR create/merge and dependency changes are allowed; force-push, `supabase db push`/`link` and Vercel commands stay denied.
 - Personal overrides go in `.claude/settings.local.json` or `CLAUDE.local.md` (both git-ignored).
 
 ## Branches and pull requests
