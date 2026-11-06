@@ -4,7 +4,7 @@ import { ResetRequestForm } from '@/components/auth/reset-request-form'
 export default function ForgotPasswordPage() {
   return (
     <div>
-      <h1 className="font-[family-name:var(--font-display)] text-4xl leading-none font-bold tracking-[-0.035em]">
+      <h1 className="tracking-display font-[family-name:var(--font-display)] text-4xl leading-none font-normal">
         Reset access.
       </h1>
       <p className="mt-4 text-sm leading-6 text-[var(--text-muted)]">

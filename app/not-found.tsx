@@ -8,7 +8,7 @@ export default function NotFound() {
         <p className="font-[family-name:var(--font-data)] text-xs text-[var(--text-faint)]">
           404 / MISFILED PROOF
         </p>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-5xl font-bold tracking-[-0.035em]">
+        <h1 className="tracking-display mt-4 font-[family-name:var(--font-display)] text-5xl font-normal">
           Nothing is pinned here.
         </h1>
         <p className="mt-4 leading-7 text-[var(--text-muted)]">

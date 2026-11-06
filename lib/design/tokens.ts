@@ -3,8 +3,9 @@
  *
  * `app/styles/tokens.css` publishes the same values as `--gr-*` CSS custom
  * properties; `tokens.test.ts` keeps both files identical and checks every
- * documented colour pairing against WCAG 2.2 AA. Components start using these
- * in M1 (DS-001); until then nothing in the running app reads them.
+ * documented colour pairing against WCAG 2.2 AA. `app/globals.css` imports the
+ * CSS file and `lib/branding/presentation.ts` builds the default white-label
+ * theme from `colorThemes.light`.
  */
 
 export const colorTokenNames = [
@@ -12,6 +13,7 @@ export const colorTokenNames = [
   'canvas-sunken',
   'surface',
   'ink',
+  'ink-strong',
   'ink-muted',
   'ink-subtle',
   'hairline',
@@ -32,6 +34,7 @@ export const colorTokenNames = [
   'warning-faint',
   'danger',
   'danger-faint',
+  'danger-strong',
   'on-danger'
 ] as const
 
@@ -45,6 +48,7 @@ export const colorThemes: Readonly<Record<ThemeName, ColorTheme>> = {
     'canvas-sunken': '#f0ece8',
     surface: '#ffffff',
     ink: '#111111',
+    'ink-strong': '#000000',
     'ink-muted': '#58544e',
     'ink-subtle': '#787572',
     hairline: '#e5e5e5',
@@ -65,6 +69,7 @@ export const colorThemes: Readonly<Record<ThemeName, ColorTheme>> = {
     'warning-faint': '#f6eedb',
     danger: '#a3352b',
     'danger-faint': '#f8e8e5',
+    'danger-strong': '#842a22',
     'on-danger': '#ffffff'
   },
   dark: {
@@ -72,6 +77,7 @@ export const colorThemes: Readonly<Record<ThemeName, ColorTheme>> = {
     'canvas-sunken': '#0a0a09',
     surface: '#171717',
     ink: '#f5f5f4',
+    'ink-strong': '#ffffff',
     'ink-muted': '#a8a29e',
     'ink-subtle': '#8a8580',
     hairline: '#262626',
@@ -92,6 +98,7 @@ export const colorThemes: Readonly<Record<ThemeName, ColorTheme>> = {
     'warning-faint': '#2a2213',
     danger: '#ec9a90',
     'danger-faint': '#2c1816',
+    'danger-strong': '#f4b4ac',
     'on-danger': '#000000'
   }
 }
@@ -191,9 +198,9 @@ export const contrastRules: ReadonlyArray<{
   },
   {
     foreground: 'on-ink',
-    backgrounds: ['ink'],
+    backgrounds: ['ink', 'ink-strong'],
     minimum: 4.5,
-    use: 'label on the solid primary button'
+    use: 'label on the solid primary button (rest and hover)'
   },
   {
     foreground: 'on-inverse',
@@ -239,9 +246,9 @@ export const contrastRules: ReadonlyArray<{
   },
   {
     foreground: 'on-danger',
-    backgrounds: ['danger'],
+    backgrounds: ['danger', 'danger-strong'],
     minimum: 4.5,
-    use: 'label on a destructive button'
+    use: 'label on a destructive button (rest and hover)'
   }
 ]
 

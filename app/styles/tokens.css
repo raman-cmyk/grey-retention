@@ -1,7 +1,7 @@
 /*
  * Grey Retention design tokens. Specification: docs/DESIGN.md.
  * Mirror of lib/design/tokens.ts; lib/design/tokens.test.ts fails if they differ.
- * Not imported by the app yet: DS-001 wires these into the theme in milestone M1.
+ * Imported by app/globals.css; the default white-label theme reads the same values.
  * Dark values apply under [data-theme="dark"].
  */
 :root {
@@ -9,6 +9,7 @@
   --gr-canvas-sunken: #f0ece8;
   --gr-surface: #ffffff;
   --gr-ink: #111111;
+  --gr-ink-strong: #000000;
   --gr-ink-muted: #58544e;
   --gr-ink-subtle: #787572;
   --gr-hairline: #e5e5e5;
@@ -29,6 +30,7 @@
   --gr-warning-faint: #f6eedb;
   --gr-danger: #a3352b;
   --gr-danger-faint: #f8e8e5;
+  --gr-danger-strong: #842a22;
   --gr-on-danger: #ffffff;
   --gr-font-display: var(--font-newsreader, 'Newsreader'), Georgia, serif;
   --gr-font-ui:
@@ -77,6 +79,7 @@
   --gr-canvas-sunken: #0a0a09;
   --gr-surface: #171717;
   --gr-ink: #f5f5f4;
+  --gr-ink-strong: #ffffff;
   --gr-ink-muted: #a8a29e;
   --gr-ink-subtle: #8a8580;
   --gr-hairline: #262626;
@@ -97,5 +100,6 @@
   --gr-warning-faint: #2a2213;
   --gr-danger: #ec9a90;
   --gr-danger-faint: #2c1816;
+  --gr-danger-strong: #f4b4ac;
   --gr-on-danger: #000000;
 }

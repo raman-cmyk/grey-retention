@@ -17,7 +17,7 @@ export default function ErrorPage({
   return (
     <main className="grid min-h-screen place-items-center px-6">
       <div className="max-w-lg text-center">
-        <h1 className="font-[family-name:var(--font-display)] text-4xl font-bold tracking-[-0.03em]">
+        <h1 className="tracking-display font-[family-name:var(--font-display)] text-4xl font-normal">
           Proof could not be opened.
         </h1>
         <p className="mt-4 text-[var(--text-muted)]">

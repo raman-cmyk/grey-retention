@@ -1,13 +1,26 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Geist, Geist_Mono, Newsreader } from 'next/font/google'
 import {
   brandCssVariables,
   defaultBrandPresentation
 } from '@/lib/branding/presentation'
 import './globals.css'
 
-const inter = Inter({
-  variable: '--font-inter',
+// Self-hosted at build time by next/font; the browser makes no font requests
+// to Google. Variable names match the --gr-font-* tokens (docs/DESIGN.md).
+const display = Newsreader({
+  variable: '--font-newsreader',
+  subsets: ['latin'],
+  axes: ['opsz'],
+  display: 'swap'
+})
+const ui = Geist({
+  variable: '--font-geist',
+  subsets: ['latin'],
+  display: 'swap'
+})
+const mono = Geist_Mono({
+  variable: '--font-geist-mono',
   subsets: ['latin'],
   display: 'swap'
 })
@@ -22,20 +35,19 @@ export const metadata: Metadata = {
 }
 
 /*
-THESIS: Campaign work becomes evidence under review; refuse generic KPI-card dashboard composition.
-OWN-WORLD: Cool neutral workspace, white navigation and panels, near-black actions, blue interaction cues.
-STORY: Operator sees what needs attention, opens one campaign proof, traces evidence, then acts.
-FIRST VIEWPORT: Compact navigation, month strip, generous active proof table, fixed review rail; primary action attached to proof.
-FORM: Quiet Operations, reference-neutral direction, seed 6f728f1c.
-FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+Design language: docs/DESIGN.md — calm, editorial, research-grade. Warm canvas,
+near-black ink, one electric-blue accent, serif titles, mono labels, 4px shapes,
+hairlines instead of shadows. Tokens: lib/design/tokens.ts.
 */
 export default function RootLayout({
   children
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html
+      lang="en"
+      className={`${display.variable} ${ui.variable} ${mono.variable}`}
+    >
       <body
-        data-design-seed="6f728f1c"
         style={
           brandCssVariables(defaultBrandPresentation) as React.CSSProperties
         }
