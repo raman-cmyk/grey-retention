@@ -103,7 +103,7 @@ export default async function BrandPage() {
             </Link>{' '}
             ·{' '}
             <Link href="/connections" className="underline">
-              Fixture connections
+              Connections
             </Link>
           </p>
           <div className="grid gap-6 lg:grid-cols-2">

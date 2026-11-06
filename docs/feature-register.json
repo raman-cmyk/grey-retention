@@ -473,9 +473,12 @@
       "feature": "Klaviyo key onboarding",
       "priority": "P1",
       "acceptance": "Validate connection and retain account identity without exposing the key.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-013"],
+      "verification": [
+        "UIR-013 (2026-11-06): /connections rebuilt per docs/UI_REBUILD_SPEC.md §13 with the sample verifier; unit, pgTAP and desktop/mobile browser tests. Key format is checked, the account label and a masked hint are kept, the full key is never saved or shown (pgTAP: no key/token column; browser: page HTML never contains it)."
+      ],
+      "remaining": "Real validation against Klaviyo and encrypted storage for live use."
     },
     {
       "id": "ACC-008",
@@ -627,9 +630,12 @@
       "feature": "Connections overview",
       "priority": "P1",
       "acceptance": "Show each integration's connected, missing and failed state.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-013"],
+      "verification": [
+        "UIR-013 (2026-11-06): /connections rebuilt per docs/UI_REBUILD_SPEC.md §13 with the sample verifier; unit, pgTAP and desktop/mobile browser tests. Each card shows Connected, not connected, or a needs-attention warning for expired/failing connections (board.test.tsx)."
+      ],
+      "remaining": "Live provider health checks are not built; states come from saved sample connections."
     },
     {
       "id": "CON-002",
@@ -637,9 +643,12 @@
       "feature": "Save Shopify domain and token",
       "priority": "P1",
       "acceptance": "Validate the correct shop before saving its connection.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-013"],
+      "verification": [
+        "UIR-013 (2026-11-06): /connections rebuilt per docs/UI_REBUILD_SPEC.md §13 with the sample verifier; unit, pgTAP and desktop/mobile browser tests. Shop domain is normalised and must be a .myshopify.com address (emails and custom domains refused); token must be shpat_/shpca_; only a masked hint is saved."
+      ],
+      "remaining": "No live check that the token belongs to that shop; needs a reviewed live Shopify verifier and encrypted credential storage."
     },
     {
       "id": "CON-003",
@@ -647,9 +656,12 @@
       "feature": "Test Shopify access",
       "priority": "P1",
       "acceptance": "Report actionable connection errors without revealing credentials.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-013"],
+      "verification": [
+        "UIR-013 (2026-11-06): /connections rebuilt per docs/UI_REBUILD_SPEC.md §13 with the sample verifier; unit, pgTAP and desktop/mobile browser tests. Format problems (email in domain, custom domain, API secret, API key) get plain fixes without echoing the pasted value (credentials.test.ts, actions.test.ts)."
+      ],
+      "remaining": "Live access errors (wrong scopes, revoked token) cannot be reported until a live verifier exists."
     },
     {
       "id": "CON-004",
@@ -657,9 +669,12 @@
       "feature": "Start Shopify sync",
       "priority": "P1",
       "acceptance": "A sync request creates trackable work rather than claiming immediate completion.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-013"],
+      "verification": [
+        "UIR-013 (2026-11-06): /connections rebuilt per docs/UI_REBUILD_SPEC.md §13 with the sample verifier; unit, pgTAP and desktop/mobile browser tests. Connecting Shopify queues the idempotent sample commerce.sync job that the scheduled worker runs (actions.test.ts)."
+      ],
+      "remaining": "Sync progress is shown only in Sample data tools; live product sync is not built."
     },
     {
       "id": "CON-005",
@@ -677,9 +692,12 @@
       "feature": "Reconnect Klaviyo atomically",
       "priority": "P1",
       "acceptance": "A failing replacement credential leaves the prior valid connection intact.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-013"],
+      "verification": [
+        "UIR-013 (2026-11-06): /connections rebuilt per docs/UI_REBUILD_SPEC.md §13 with the sample verifier; unit, pgTAP and desktop/mobile browser tests. A failing replacement key leaves the saved connection and its hint unchanged; a passing one replaces it (connections-cards.spec.ts reload check)."
+      ],
+      "remaining": "Live Klaviyo key verification is not built."
     },
     {
       "id": "CON-007",

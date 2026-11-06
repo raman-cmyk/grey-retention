@@ -76,7 +76,11 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 | UIR-004 | Klaviyo detail pages (spec §4) | UIR-003 | review | Claude Code browser lane | pnpm verify; page tests for list, segment, campaign, flow, flow email and metric, plus words and back-link tests; demo screenshots at 1280/375px | Owns `app/(client)/{lists,segments,flows,flow-messages,metrics}/**`, `app/(client)/campaigns/klaviyo/**`, `features/klaviyo-detail/*`, `features/dashboard/back.ts`, and the §4 fields of the Klaviyo read port. Issue #240. |
 
+| UIR-013 | Old-app rebuild §13 Connections | DS-001 | review | Claude Code cloud lane | pnpm verify; 48 unit tests in features/connections; 636/636 pgTAP (36 for connections); browser: connections-cards desktop+mobile, connections and workspace-ui journeys | Owns `features/connections/*`, `app/(client)/connections/page.tsx`, migration `20260914090017`, `supabase/tests/connection_profiles.test.sql`, generated types, related e2e specs. Sample verifier only; no credential stored. Needs migration 20260914090017 on production. |
+
 ## Global decisions
+
+- UIR-013 (2026-11-06): `/connections` follows `docs/UI_REBUILD_SPEC.md` §13 (two cards, Klaviyo key connect/swap, Shopify store form). Connections are still sample (fake-adapter) connections: a domain-local `ConnectionVerifier` port has only `SampleConnectionVerifier` (no network, never receives the secret); `ADAPTER_MODE` other than `fake` refuses to connect. The full key or token is never stored, logged or returned; `workspace_connections` gains display-only `account_label`, `credential_hint` (masked: prefix, eight bullets, last four; enforced by a check), `shop_domain` (`.myshopify.com` only), `template_count` and `connected_at`, written only through the owner-only `connect_sample_provider` (workspace lock first). The action falls back to `set_fixture_connection` if the hosted database lacks the migration. Spec text "validated against Klaviyo" is shown as "checked" until live verification exists. The old fixture status forms, Drive folder, readiness and setup jobs moved unchanged into a collapsed "Sample data tools" section (STAB-002 will move developer controls to admins). Migration numbered `20260914090017` in the integration range so it applies after 90016 on the hosted project.
 
 - STAB-004 (2026-11-06): CI is split into three workflows. `ci.yml` (`verify`: format, lint, typecheck, unit tests, build) runs on every pull request and push to `main` and is the only check to require on `main`. `database.yml` (pgTAP) and `browser.yml` (Playwright plus the first-draft and email concurrency scripts) run on pull requests only when their files change, skip drafts, can be run by hand, and no longer re-run on push to `main`; both start a lean local Supabase (`-x studio,logflare,vector,imgproxy,edge-runtime,realtime,postgres-meta,supavisor`). Reason: the repository is private, so every job costs Actions minutes (GitHub rounds up per job); the full browser job is about 25 minutes. Path-filtered workflows must not be required checks, or pull requests that do not touch them would wait forever. Owner decision (2026-11-06): the scheduled-jobs workflow runs every 30 minutes (`3,33 * * * *`, about 1,500 Actions minutes a month), replacing the 10-minute schedule recorded under STAB-001.
 
@@ -203,6 +207,8 @@ To reduce parallel conflicts, each workstream owns a numeric migration block. Do
 | `2026091407xxxx` | Support/feedback/notifications       |
 | `2026091408xxxx` | Packages/reporting/admin additions   |
 | `2026091409xxxx` | Integration fixes/materialized views |
+
+New migrations after the hosted project reached `20260914090016` use the next `2026091409xxxx` number so they apply in order on the hosted project: `20260914090017` (UIR-013 connection profiles), `20260914090018` (UIR-005 brand profile sections, on its own branch; must be applied after 90017).
 
 Use a valid 14-digit Supabase migration version inside the assigned UTC-hour namespace, for example `20260914010000_create_tenants.sql`, then increment seconds monotonically. The namespace is an ordering device, not a claim about wall-clock creation time.
 
@@ -812,7 +818,7 @@ Append entries using this exact shape:
   - values shown as Klaviyo's that the port didn't carry (send strategy, wait days);
   - linked resources that contradicted the page (profiles, tags);
   - segment sentences that didn't match their rules;
-  - the history-back link taking over modified clicks or leaving the app;
+  - the history-back link taking over modified clicks, leaving the app, or doing nothing in a new tab (no history);
   - new routes outside the session proxy;
   - an order-dependent sidebar match;
   - the dead `delay` field;
@@ -827,3 +833,15 @@ Append entries using this exact shape:
     New tests cover draft and cancelled wording, Advanced labels, the unavailable state, tenant-scoped connection reads, no reads when signed out, and back-link clicks. A new e2e check walks the six pages for a heading and no overflow.
 - Known issues: no "Sync templates" (flow emails as AI context), no "Open in Klaviyo", no per-email flow performance, and no "Use as reference design" on flow emails yet.
 - Next consumer: §6 Campaign planner (UIR-006) and the status system (UIR-015).
+
+### 2026-11-06 — UIR-013 — old-app rebuild §13 Connections
+
+- Status: review
+- Branch/worktree: `claude/uir-013-13-connections` (issue #249) from `main` at `f1927ba`, updated with `main` by merge. The first pushes went to `claude/uir-13-connections`; that stale branch could not be deleted from this environment.
+- Commit(s): see the UIR-013 pull request.
+- Changed contracts: see Global decision UIR-013. New `features/connections` (credential format checks, sample verifier, owner actions, client board). `workspace_connections` display columns, client writes revoked (read-only for members), owner-only `connect_sample_provider`; generated types. Register: CON-001 and CON-006 `verified_fixture`; CON-002/003/004 and ACC-007 `partial`. CLAUDE.md and `/new-migration` now say new migrations use the next `09` number.
+- Migrations: `20260914090017_connection_profiles.sql` (needs applying to production; until then connecting still works through the older command, without the masked hint and template count).
+- Verification run: `pnpm verify`; `features/connections` 48/48 (format checks incl. autofilled email, custom domain, API secret/key mix-ups and never echoing the pasted value; actions: owner-only before input is read, live mode refused, demo refused, key/token never in database arguments, older-database fallback, failed sample-sync queue reported, no sync queued after a failed save; board: both cards, connect and swap with `aria-expanded` and focus moved into the new field, success message and focus kept when the card switches to connected, full-width Shopify form with autocomplete off and focus in the domain field, instant email warning, staff view, needs-attention state without an alert role, honest sample labels). Fresh reset → `pnpm test:db` 636/636 (36 for connections: exact columns, owner connect/swap/reconnect after failure, connecting never claims a sync, every RPC branch, key-shaped and blank labels refused, exact masked-hint shape, myshopify-only domains, direct insert/update/delete refused, staff/workspace admin/other workspace/anon/service role denied). Fresh reset → `connections-cards` (owner journey on desktop and mobile, staff check, 375px keyboard journey), `connections` (exact two synced sources restored) and `workspace-ui` journeys passed.
+- Review: `code-reviewer` and `rls-migration-reviewer` found nothing blocking. Fixed from their should-fix lists: success message and focus lost on first connect; toggles that removed themselves with a hard-coded `aria-expanded`; "Pulled N templates" now says "sample templates"; connecting no longer sets `last_sync_at`; a failed sample-sync queue is reported; shared `Field`/`StatusMark` used; `account_label` refuses blank and key-shaped values; hint check tightened to the exact masked shape; table writes revoked; service role revoked; pgTAP gaps filled and made independent of earlier test data; made-up fixtures instead of old-app values; token field cleared after submit. Not changed: the verifier port still receives only the hint (a live verifier will need a reviewed port and encrypted storage first); zod is not used for these two forms (strict hand checks with tests).
+- Known issues: sample connections only (no live Klaviyo/Shopify); account label is the brand name and the template count is the sample catalogue size (24). Disconnect is not in the spec and not built (CON-005); a disconnect from the sample tools keeps the old hint and label on the row.
+- Next consumer: browser lane §3 Dashboard reads the Klaviyo connection state; UIR-005 Brand profile adds the brand-mismatch banner here.
