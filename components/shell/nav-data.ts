@@ -176,7 +176,9 @@ const parentAreas: Record<string, readonly string[]> = {
   '/dashboard': ['/lists', '/segments', '/flows', '/flow-messages', '/metrics'],
   // `/campaigns/:id` is today's local campaign review page, so it belongs to
   // Campaigns; the Klaviyo campaign detail page (§4) will need its own path.
-  '/campaign-agent': ['/campaigns', '/campaign-drafts', '/calendar']
+  '/campaign-agent': ['/campaigns', '/campaign-drafts', '/calendar'],
+  // Brand & Store keeps its Store tab under the same sidebar item.
+  '/brand': ['/store']
 }
 
 function under(pathname: string, href: string) {

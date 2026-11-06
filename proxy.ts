@@ -40,6 +40,7 @@ export const config = {
   matcher: [
     '/dashboard/:path*',
     '/brand/:path*',
+    '/store/:path*',
     '/campaign-agent/:path*',
     '/competitor-agent/:path*',
     '/connections/:path*',

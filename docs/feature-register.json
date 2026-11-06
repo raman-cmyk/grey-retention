@@ -68,9 +68,12 @@
       "feature": "Inline minimal corrections",
       "priority": "P0",
       "acceptance": "Fix wrong brand name/logo/product without opening a full settings section.",
-      "status": "planned",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-005"],
+      "verification": [
+        "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. The owner fixes a wrong brand name, positioning, website or rules inline; Identity/Tone edits update what the AI reads and ask for re-approval."
+      ],
+      "remaining": "Logo and product corrections still live in the catalogue and brand-kit panels; not yet inline in onboarding."
     },
     {
       "id": "ONB-007",
@@ -938,9 +941,12 @@
       "feature": "Product intelligence generation",
       "priority": "P1",
       "acceptance": "Extract product context or explain missing product sources.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-005"],
+      "verification": [
+        "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. Product Intelligence lists catalogue products or shows the no-products callout with working links to Connections and the Hero Product URL field."
+      ],
+      "remaining": "Real website/product extraction is not built; the sample writer only summarises saved catalogue products."
     },
     {
       "id": "BRD-003",
@@ -968,9 +974,12 @@
       "feature": "Regenerate all brand facts",
       "priority": "P1",
       "acceptance": "Refresh supported sections and show partial failures.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-005"],
+      "verification": [
+        "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. Redo all applies every section with its own revision check, stops at the first conflict and says how many were updated."
+      ],
+      "remaining": "Suggestions come from the sample writer (fills empty fields with marked sample text), not a live model. The AI reads only brand name, website, positioning, Do and Don't; the other notes are not read by any AI feature yet."
     },
     {
       "id": "BRD-006",
@@ -978,9 +987,12 @@
       "feature": "Regenerate one fact section",
       "priority": "P1",
       "acceptance": "A section refresh does not overwrite unrelated sections.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-005"],
+      "verification": [
+        "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. A section redo changes only that section (pgTAP: Identity untouched after a Tone redo) and keeps locked fields."
+      ],
+      "remaining": "Suggestions come from the sample writer (fills empty fields with marked sample text), not a live model. The AI reads only brand name, website, positioning, Do and Don't; the other notes are not read by any AI feature yet."
     },
     {
       "id": "BRD-007",
@@ -998,9 +1010,12 @@
       "feature": "Vocabulary profile",
       "priority": "P1",
       "acceptance": "Retain preferred/avoided language guidance.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-005"],
+      "verification": [
+        "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. Preferred/avoid chips, brand terms and signature phrases are saved, validated (15/30 item limits) and shown with {{ placeholders }} verbatim."
+      ],
+      "remaining": "Learning vocabulary from real campaigns is not built."
     },
     {
       "id": "BRD-009",
@@ -1028,9 +1043,12 @@
       "feature": "Regenerate all voice sections",
       "priority": "P1",
       "acceptance": "Refresh voice sections with errors and timestamps visible.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-005"],
+      "verification": [
+        "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. Redo all covers every section and reports errors in the header; each card shows its update time and its own errors."
+      ],
+      "remaining": "Suggestions come from the sample writer (fills empty fields with marked sample text), not a live model. The AI reads only brand name, website, positioning, Do and Don't; the other notes are not read by any AI feature yet."
     },
     {
       "id": "BRD-012",
@@ -1038,9 +1056,12 @@
       "feature": "Regenerate one voice section",
       "priority": "P1",
       "acceptance": "Only the requested voice section is replaced.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-005"],
+      "verification": [
+        "UIR-005 (2026-11-06): editable Brand profile at /brand (OWNER_JOURNEYS §18 decision 5) with per-field locks and a sample \"Redo with AI\" writer; pgTAP, unit and desktop/mobile browser tests. Only the requested voice section is replaced; locked fields survive (pgTAP and browser)."
+      ],
+      "remaining": "Suggestions come from the sample writer (fills empty fields with marked sample text), not a live model. The AI reads only brand name, website, positioning, Do and Don't; the other notes are not read by any AI feature yet."
     },
     {
       "id": "BRD-013",
