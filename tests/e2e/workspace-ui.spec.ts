@@ -6,7 +6,7 @@ test('workspace sidebar, account menu and mobile drawer work with keyboard and s
 }, info) => {
   await login(page)
   await expect(
-    page.getByRole('heading', { name: 'Workspace overview', exact: true })
+    page.getByRole('heading', { name: 'Dashboard', exact: true })
   ).toBeVisible()
   const mobile = info.project.name === 'mobile-chromium'
 
@@ -99,7 +99,7 @@ test('core workspace surfaces render without overflow and invalid review dates r
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   for (const [path, heading] of [
-    ['/dashboard', 'Workspace overview'],
+    ['/dashboard', 'Dashboard'],
     ['/campaign-agent', 'Campaigns'],
     ['/copy-review?week=2026-99-99', 'Weekly copy review'],
     ['/copy-review?week=2026-02-31', 'Weekly copy review'],

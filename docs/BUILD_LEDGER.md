@@ -70,7 +70,9 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 | STAB-004 | CI on pull requests | — | review | Claude Code cloud lane | Workflow tests 11/11; pnpm verify; locally on the lean CI stack: 600/600 pgTAP, 80/80 journeys, 3 concurrency scripts. GitHub runs not yet observed: Actions is disabled by the owner | Owns `.github/workflows/ci.yml`, `database.yml`, `browser.yml`, `tests/ci/workflows.test.ts`, `docs/CI_RUNBOOK.md`. Owner must enable Actions and make `verify` a required check on `main`. |
 
-| UIR-002 | Old-app shell and shared components (spec §0, §2) | DS-006 | review | Claude Code browser lane | Part 1 tokens merged (#252). Part 2 sidebar: pnpm verify; 37 shell/identity tests; demo screenshots at 1280/375px; e2e updated, not run (no Docker) | Owns `components/shell/*` (sidebar, rail, account menu, drawer, `gr_shell` cookie), `nav-data.ts` labels, the `outline` button and `pill` shape. Part 3 (shared components) still to do. Issue #238. |
+| UIR-002 | Old-app shell and shared components (spec §0, §2) | DS-006 | review | Claude Code browser lane | Parts 1–3 merged (#252, #263, #264). Part 4 detail-page pattern: pnpm verify; 13 component test files; e2e not runnable here | Owns `components/shell/*`, `nav-data.ts` labels, the `outline` button and `pill` shape, `components/ui/{pill,alert-dialog,modal,audience-picker,product-picker,picker-parts,chat,credits-indicator}.tsx`, `lib/campaign-status.ts`, `features/email-generation/{preview-card,preview-card-frame,plain-text-email,safe-preview}.tsx`. Part 4 adds `components/ui/{detail-page,card,refresh-button}.tsx` and `lib/brand-time.ts`. Issue #238. |
+
+| UIR-003 | Old-app dashboard (spec §3) | UIR-002 | review | Claude Code browser lane | pnpm verify; dashboard, Klaviyo data, reader and credits tests; demo screenshots at 1280/375px; e2e headings updated, not run (no Docker) | Owns `app/(client)/dashboard/page.tsx`, `features/dashboard/*`, `features/klaviyo-data/*`, `lib/providers/{klaviyo-read,fake-klaviyo-read}.ts`, `features/operations/credits.ts` (read-only), the "Your campaigns" wrapper in `features/campaigns/overview.tsx`. Issue #239. |
 
 | UIR-014 | Old-app rebuild §14 Profile | UIR-002 | review | Claude Code cloud lane | pnpm verify; features/profile and components/shell 58/58; profile_update pgTAP 7/7; profile journeys desktop+mobile, 375px keyboard; workspace-ui journeys | Owns `features/profile/*`, `app/(client)/profile/page.tsx`, `tests/e2e/profile.spec.ts`, `supabase/tests/profile_update.test.sql`; narrow shared edits: `ShellNavigation.profileHref` (client only) and the account menu/drawer link (sidebar.tsx + tests), `lib/supabase/stateless.ts`, `/profile` in `proxy.ts`. No migration. |
 
@@ -84,7 +86,34 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 - M1.5 additions (2026-11-06): from `docs/OWNER_JOURNEYS.md` (#253), seven more M1.5 work items: UIR-015 one campaign status system (#254), UIR-016 owner Approve step before Schedule (#255), UIR-017 drafts merged into Campaigns (#256), UIR-018 one "+ New" menu (#257), all browser lane; UIR-019 Team (#258), UIR-020 Request a Feature (#259), UIR-021 brand-mismatch guard (#260), all cloud lane. The editable Brand profile with "Redo with AI" stays inside UIR-005 (§5, cloud lane). The five owner jobs in the brief's §1 become Playwright journeys once their screens exist.
 - UIR-002 part 2 (2026-11-06): the workspace shell follows `docs/UI_REBUILD_SPEC.md` §2 for layout and `docs/OWNER_JOURNEYS.md` §2/§18 for behaviour and labels (the brief wins where they differ). The sidebar is 255px and collapses to a 56px icon rail. Collapse and group state live in the `gr_shell` cookie (`components/shell/shell-state.ts`; the server reads it, so the first paint is right). `ShellNavigation` is now `{ primary, groups }`, and groups can hold SOON items that are never links. Labels: "Campaigns" (was Campaign Agent), "Inspiration" (was Competitor Agent), Workspace = Settings, Holidays & Events, Connections, Team, Request a Feature. The account menu has Profile Update and Log out (no duplicate Connections). Child pages highlight their parent area (`isCurrentPath`). The header search ("Find a page") and the `status` / `workspaceLabel` shell props are removed. Temporary until the other lane's routes land: Holidays & Events → `/settings#holidays`, while Request a Feature and Profile Update show SOON. Agents › Bill Optimizer links to the existing fixture `/optimizer` page (the other four agents stay SOON). The M1.5 1:1 rebuild overrides UX-024 (no dead agent menus) for now. `Button` gained an `outline` variant and a `shape` variant (`control` 12px default | `pill`); the radius moved from the base class into `shape`. `AppShell` is async (it reads the cookie), and `ShellFrame` takes `demo: { label, description } | null` from the brand presentation. `ShellIdentity` has `email`, read from the session only when its `sub` matches the request's user. `/campaigns/:id` (today's local campaign review) highlights Campaigns; the §4 Klaviyo campaign detail page will need its own path.
 - OWNER_JOURNEYS (2026-11-06): `docs/OWNER_JOURNEYS.md` (#253) is the behaviour brief. Every M1.5 screen is built to both it and the spec. The 20 decisions in its §18 win over the spec. Browser lane: status system, owner Approve step, drafts merged into Campaigns, "+ New" menu. Cloud lane: Brand profile, brand-mismatch guard, Team, Request a Feature, holidays.
+- UIR-002 part 3 (2026-11-06): the shared components from spec §2.
+  - `lib/campaign-status.ts` is the one CAMPAIGN status vocabulary (Draft, With designer, Needs your approval, Scheduled, Sent, Cancelled, Missed; UIR-015 wires it to data).
+  - `lib/status-vocabulary.ts` stays for non-campaign states. Shared words use the same meaning, and `PillTone` extends `StatusTone`.
+  - `AlertDialog` is the yes/no confirm. `ConfirmDialog` stays the wrapper for a form that needs a confirming step.
+  - `Modal` asks before discarding typed answers, even when the browser forces it shut, and ignores events from nested dialogs.
+  - `ButtonProps` is now `ComponentProps<'button'>`, so a ref can pass through.
+  - Email previews go through the server-only `EmailPreviewCard`, which passes a `SafePreview` (output of `previewHtml`) to the client frame. The raw email never reaches the browser. `previewLimitations` now lives in `html.ts`.
+  - Focus styles use `outline-hidden`, so a focus outline still shows in forced-colors mode. This covers `control.ts`, `button.tsx`, `text-link.tsx`, `stat-tile.tsx` and the sidebar.
+  - jsdom dialog stand-ins are in `tests/helpers/dialog-polyfill.ts` (`forceEscape` simulates Chromium's forced close).
 
+- UIR-002 part 4 (2026-11-06): owner-facing dates and times come from `lib/brand-time.ts`.
+  - Formats: `formatBrandDateTime` gives `Oct 7, 2026 · 10:49 PM`; `formatBrandDate`; `timezoneLabel` gives "Sydney time", and "UTC-5" for `Etc/` zones; `relativeTime` gives "4 weeks ago", with months only from 5 weeks and never "12 months".
+  - All of them always use one brand timezone (OWNER_JOURNEYS.md §18.14) and never throw on bad input.
+  - `components/ui/card.tsx` is the shared 20px card, named by its title.
+  - `components/ui/detail-page.tsx` holds `DetailPage` (the back link target is the caller's choice), `DetailHero`, `TimelineCard` and `AdvancedDetails`, which shows attributes as bounded text and linked resources with item counts.
+  - `RefreshButton` is the pending-aware outline Refresh for a form with a server action.
+- UIR-003 (2026-11-06): the dashboard reads Klaviyo through a new READ port, `KlaviyoReadProvider` in `lib/providers/klaviyo-read.ts`.
+  - It returns a typed snapshot: account, lists, segments, campaigns, flows, metrics and 30 days of revenue, in minor units of one currency.
+  - The fake (`lib/providers/fake-klaviyo-read.ts`) returns SAMPLE data, labelled as sample on every screen, with totals that reconcile and `syncedAt: null`.
+  - `features/klaviyo-data/reader.ts` decides what owner screens may show:
+    - `sample` only while the workspace's Klaviyo connection (`workspace_connections`) is `connected` (or without a database in demo sign-in);
+    - `not_connected` with the reason otherwise;
+    - `unavailable` in real mode until a live adapter exists. The live adapter must read a tenant-scoped snapshot written by the sync job, not call Klaviyo during the request.
+  - One brand timezone (the workspace's) is passed to every card (§18.14).
+  - Dashboard links keep the rest of the URL state (`dashboardHref`).
+  - AI credits come from the active `package_cycles` row through `features/operations/credits.ts`, shown only to owner and admin, as on Settings.
+  - "Your campaigns" (the former overview) stays under the dashboard until UIR-017 moves the list into Campaigns.
+  - Not built: monthly goal saving (needs a migration), Refresh (nothing to re-pull), a UTM figure, and AI insight (the insight is written from the numbers, no AI).
 - DS-006 (2026-11-06): the composer (`features/composer/`) saves a paste through the same `savePastedReference` helper as the paste form (extracted from `importPastedReference` into server-only `features/references/pasted-save.ts`, messages unchanged) and redirects to `/create-email/{id}?mode=copy|rewrite`. The choose page only marks that outcome ("Your choice in the composer", primary button); it never starts a copy or rewrite by itself, so owner confirmation and paid-AI gates are unchanged. EXACT→copy, REBRAND→rewrite, ADAPT disabled with a reason. Subject comes from the HTML `<title>` or first readable line; a link-only paste is refused with an honest message. Composer is owner-only on the dashboard and the setup reference step; the existing Paste/Upload links stay.
 
 - STAB-001 (2026-11-06): `GET /api/internal/jobs` is the scheduled worker. It requires `Authorization: Bearer CRON_SECRET` (existing env contract, unchanged; checked before anything else), runs only when `ADAPTER_MODE` is `fake` or unset, and visits workspaces through the existing `runFixtureJobs` path in bounded batches (≤100 workspaces, ≤4 jobs per visit, ≤3 visits, no new visit after 40 s, `maxDuration` 60). Workspaces with due or stale-leased jobs go first (the active-workspace filter is part of that query); the other active workspaces get daily housekeeping in random order. `email.rewrite` and `email.import` are never dispatched by the scheduler, so it cannot start or retry paid AI. Service-role reads of `tenants` and `job_runs` select IDs only; every claim still goes through `claim_job`/`worker_access`. The former `GET` 405 response is replaced by this handler; `POST` loopback dispatch is unchanged. Triggers: Vercel cron daily (Hobby limit) plus a GitHub Actions schedule every 10 minutes with the repository secret `CRON_SECRET`, fixed to the production HTTPS address and off until the repository variable `SCHEDULED_JOBS_ENABLED` is `true` (skipped runs use no Actions minutes; about 4,400 minutes a month when on). Shared config: `playwright.config.ts` gains a `scheduled-sweep` project that depends on the desktop and mobile projects, because the sweep drains every workspace's queue. See `docs/SCHEDULED_JOBS_RUNBOOK.md`.
@@ -632,6 +661,113 @@ Append entries using this exact shape:
   - `aria-controls` on the toggle.
 - Known issues: the rail tooltip is not hoverable (WCAG 1.4.13); it repeats the icon's accessible name. "Request a Feature" and "Profile Update" are SOON until the cloud lane's `/feedback` and `/profile` exist. The `/competitor-agent` heading and the GROS panel still say "Competitor"; the cloud lane was told.
 - Next consumer: UIR-002 part 3 (shared components), then §3 Dashboard.
+
+### 2026-11-06 — UIR-002 part 3 — shared old-app components
+
+- Status: review
+- Branch/worktree: `claude/uir-002-3-shared-pills-and-dialogs` from `main` at `53f002c`. GitHub issue #238 (browser lane).
+- Commit(s): see the UIR-002 part 3 pull request.
+- Changed contracts: see the UIR-002 part 3 Global decision (campaign status vocabulary, `PillTone`, `AlertDialog`/`Modal`, `ButtonProps` ref, `EmailPreviewCard`/`SafePreview`, `previewLimitations`, `outline-hidden`).
+- Migrations: none.
+- Verification run: `pnpm verify` (see PR for counts).
+  - Pills: every tone shows a word; status words and meanings; TEXT/DESIGN roles; the domain parser (long tracked links, ports, Unicode, punycode, emails refused); SENT uses the brand-checked pair.
+  - AlertDialog: labelled alert; safe choice focused; Escape and backdrop cancel; pending lock, even against a forced close; forced close reported as Cancel; primary tone.
+  - Modal: step label and progress (bad numbers clamp); discard question on Escape, ✕, Cancel and backdrop; Escape inside the question; forced close reopens and asks; nested dialog events ignored; custom wording; no stale confirm.
+  - Pickers: count, tags, submit; hidden choices kept; Enter never submits; saved choices kept while loading or after an error; vanished choices named; duplicates removed; focus after Clear; radios submit themselves.
+  - Chat: sides, plain text, captions, typing, auto-scroll that stops while the owner reads; Enter versus Shift+Enter, blanks, IME (`isComposing` and keyCode 229); failure keeps the text; no double send; attach; quick replies.
+  - Credits: plain words, low, none left, renewal passed, rounding, unknown usage; `sample` is required.
+  - Preview card: no link, area, pixel or script survives; CSP present; Refresh reloads and announces every time; Fullscreen only where supported; plain-text caption and empty text.
+  - Info pill contrast is now in `contrastRules`.
+  - `test:e2e` not runnable here (no Docker); no screen uses these components yet, so the Escape-twice browser journey comes with the first screen that uses `Modal` (§6).
+- Review: `code-reviewer` blocked on two dialog bugs:
+  1. Escape in a nested dialog also closed the Modal.
+  2. Chromium's forced close (Escape twice) left the Modal shut with `open` still true, bypassing the discard question.
+     Both are fixed and tested. Also fixed:
+  - Safari IME Enter;
+  - Enter in a picker search submitting the form;
+  - pickers dropping saved choices while loading or after a failure, and an untrue empty text;
+  - the composer losing text on failure;
+  - unenforced sanitizing (the card is now server-only, with a typed `SafePreview`);
+  - fixed Modal wording and a stale confirm;
+  - live regions that missed announcements;
+  - focus lost after Clear;
+  - forced-colors focus;
+  - the second status vocabulary (aligned and documented);
+  - duplicated preview helpers (one notes helper, a shared plain-text block, `ScaledFrame` reuse so phones don't scroll sideways);
+  - the domain parser;
+  - credits maths and the optional `sample` flag;
+  - the junk radio field;
+  - NaN steps;
+  - an un-gated SENT colour.
+- Known issues: a status pill's meaning is only in its `title`; the credits indicator has no usage page yet (§18.8); the chat composer does not offer file upload itself (`onAttach` is up to the screen).
+- Next consumer: UIR-002 part 4 (detail-page pattern), then §3 Dashboard; the cloud lane can use these in §5 and §8–§14.
+
+### 2026-11-06 — UIR-002 part 4 — detail-page pattern
+
+- Status: review
+- Branch/worktree: `claude/uir-002-4-detail-page-pattern` from `main` at `93abcc0`. GitHub issue #238 (browser lane).
+- Commit(s): see the UIR-002 part 4 pull request.
+- Changed contracts: new `lib/brand-time.ts`, `components/ui/card.tsx`, `components/ui/detail-page.tsx` and `components/ui/refresh-button.tsx` (see the UIR-002 part 4 Global decision).
+- Migrations: none.
+- Verification run: `pnpm verify` (see PR for counts).
+  - Brand-time tests: format in two timezones; bad input; plain timezone names, including `Etc/GMT+5` → UTC-5; "4 weeks ago", "11 months ago", "just now", "in 3 days".
+  - Detail-page tests: back link and Refresh in a 1020px column; hero with type label, h1 and status; timeline in the brand timezone with relative time and a `datetime`; Advanced details collapsed, with a chevron, attributes as text (no markup) and linked resources with counts; `attributeText` on cycles, functions and `toJSON → undefined`.
+  - `test:e2e` not runnable here; no page uses the pattern until §4.
+- Review: `code-reviewer` found nothing blocking. Fixed:
+  - the back target now belongs to the page (the dashboard tab link with `#klaviyo-data` moves to `features/dashboard` in §3);
+  - a crash on values JSON can't encode;
+  - linked-resource counts;
+  - an open/closed chevron;
+  - Card named by `aria-labelledby`, and Card moved into its own file;
+  - `Etc/` timezone labels;
+  - "12 months ago".
+- Known issues: none beyond §4 using it.
+- Next consumer: UIR-003 §3 Dashboard, then UIR-004 §4 Klaviyo detail pages.
+
+### 2026-11-06 — UIR-003 — old-app dashboard
+
+- Status: review
+- Branch/worktree: `claude/uir-003-2-klaviyo-data-card` from `main` at `4d1cce2`. GitHub issue #239 (browser lane).
+- Commit(s): see the UIR-003 pull request.
+- Changed contracts:
+  - new Klaviyo READ port and fake (`lib/providers/klaviyo-read.ts`, `fake-klaviyo-read.ts`);
+  - `features/klaviyo-data/reader.ts` (`sample` | `not_connected` | `unavailable`);
+  - `lib/brand-time.ts` gains `validTimezone`;
+  - `CreditsIndicator` takes `format`;
+  - `CampaignOverview` renders as the "Your campaigns" section and takes `linkTo`;
+  - the dashboard H1 is "Dashboard" (e2e updated).
+  - See the UIR-003 Global decision.
+- Migrations: none.
+- Verification run: `pnpm verify` (see PR for counts).
+  - Data: totals reconcile; one currency; audience names instead of ids; `.example` hosts only; no past record in the future; 30 unique consecutive days across US, Sydney and London clock changes; month-to-date in the brand timezone, including the Sydney month edge; newest-first sorting with bad times; money by each currency's decimals (JPY, KWD).
+  - Reader: sample only when connected; not connected with the reason; demo; real mode `unavailable`.
+  - Model: links keep other state; KPIs (real only, flat and −100% cases); upcoming sends skip rejected, failed and blocked; countdown wording and dates beyond a month; insight shares add up to 100.
+  - Cards: honest header states, with no sync claim and no Refresh; attribution links keep the tab and show a visible definition; UTM never shows the Klaviyo number; the campaigns-failed states; owner-only create links; staff wording.
+  - Data card: tabs keep state; chart, account and timezone; credits on every tab when allowed; campaign times; row headers; detail links only when pages exist; the Klaviyo campaign path.
+  - Credits: the active cycle is read, hidden from staff, and says "not available" without a cycle.
+  - Demo screenshots at 1280px and 375px: no horizontal scroll, no page errors.
+  - `test:e2e` not runnable here. The `Workspace overview` heading checks are now `Dashboard`; campaign links on `/dashboard` stay real links (mini calendar, approvals and Your campaigns).
+- Review: `code-reviewer` blocked on two things:
+  1. Dashboard links wiped each other's state (UTM reset the tab), against §3.
+  2. An invented "Last synced 12 minutes ago" with a Refresh that did nothing.
+     Both are fixed. Also fixed:
+  - made-up AI credits (now from `package_cycles`, owner and admin only);
+  - tenant connection state ignored (sample only when connected; real Shopify state for UTM, which never shows the Klaviyo number);
+  - real mode telling connected owners they were disconnected;
+  - false empty states when campaigns fail to load;
+  - DST days in the sample chart;
+  - two-decimal money only;
+  - two timezone sources;
+  - KPI captions that miscounted;
+  - rejected or failed campaigns shown as next;
+  - the Klaviyo campaign path clash (`/campaigns/klaviyo/:id`);
+  - no provider port;
+  - hover-only definitions;
+  - missing timezone labels;
+  - several table and accessibility nits;
+  - ledger and spec notes.
+- Known issues: monthly goal saving (RPT-009) needs a migration. No live Klaviyo numbers, Refresh, UTM figures or AI insight yet. Dashboard rows link to detail pages once §4 lands.
+- Next consumer: UIR-004 §4 Klaviyo detail pages (turns on row links).
 
 ### 2026-11-06 — UIR-014 — old-app rebuild §14 Profile
 

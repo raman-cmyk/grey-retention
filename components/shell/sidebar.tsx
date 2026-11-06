@@ -117,7 +117,7 @@ function ComingSoon() {
 }
 
 const rowClass =
-  'group relative flex min-h-10 w-full items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm text-[var(--nav-muted)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none'
+  'group relative flex min-h-10 w-full items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm text-[var(--nav-muted)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden'
 
 function NavLink({
   item,
@@ -337,7 +337,7 @@ function AccountLinks({
       <form action={signOut}>
         <button
           type="submit"
-          className="flex min-h-10 w-full items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm font-medium text-[var(--danger-ink)] hover:bg-[var(--danger-soft)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
+          className="flex min-h-10 w-full items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm font-medium text-[var(--danger-ink)] hover:bg-[var(--danger-soft)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden"
         >
           <LogOut className="size-4" aria-hidden />
           Log out
@@ -406,7 +406,7 @@ function AccountMenu({
         aria-label={`Open account menu for ${identity.name}`}
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          'group relative flex w-full items-center gap-3 rounded-[var(--radius-control)] p-2 text-left hover:bg-[var(--surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none',
+          'group relative flex w-full items-center gap-3 rounded-[var(--radius-control)] p-2 text-left hover:bg-[var(--surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden',
           rail && 'justify-center p-1.5'
         )}
       >
@@ -547,7 +547,7 @@ function SidebarContent({
             type="button"
             aria-label="Close navigation"
             onClick={onClose}
-            className="grid size-9 place-items-center rounded-[var(--radius-control)] text-[var(--nav-muted)] hover:bg-[var(--surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
+            className="grid size-9 place-items-center rounded-[var(--radius-control)] text-[var(--nav-muted)] hover:bg-[var(--surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden"
           >
             <X className="size-5" aria-hidden />
           </button>
@@ -559,7 +559,7 @@ function SidebarContent({
             aria-expanded={!rail}
             aria-controls={navId}
             onClick={() => onState({ ...state, collapsed: !rail })}
-            className="group relative grid size-8 place-items-center rounded-[var(--radius-control)] text-[var(--nav-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--nav-text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
+            className="group relative grid size-8 place-items-center rounded-[var(--radius-control)] text-[var(--nav-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--nav-text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden"
           >
             {rail ? (
               <ChevronRight className="size-4" aria-hidden />
@@ -755,7 +755,7 @@ export function ShellFrame({
           aria-controls={drawerId}
           aria-label="Open navigation"
           onClick={() => drawer.current?.showModal()}
-          className="grid size-10 place-items-center rounded-[var(--radius-control)] text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
+          className="grid size-10 place-items-center rounded-[var(--radius-control)] text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden"
         >
           <Menu className="size-5" aria-hidden />
         </button>

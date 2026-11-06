@@ -1,0 +1,153 @@
+import { validTimezone } from '@/lib/brand-time'
+import type {
+  KlaviyoCampaign,
+  KlaviyoSnapshot,
+  Money
+} from '@/lib/providers/klaviyo-read'
+
+/** Decimal places of a currency (2 for USD, 0 for JPY, 3 for KWD). */
+export function currencyDigits(currency: string) {
+  try {
+    return (
+      new Intl.NumberFormat('en', {
+        style: 'currency',
+        currency
+      }).resolvedOptions().maximumFractionDigits ?? 2
+    )
+  } catch {
+    return 2
+  }
+}
+
+/** One money format for every card: `$22.6K` (compact) or `$22,638`. */
+export function formatMoney(
+  value: Money,
+  {
+    compact = false,
+    cents = false
+  }: { compact?: boolean; cents?: boolean } = {}
+) {
+  const amount = value.minor / 10 ** currencyDigits(value.currency)
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: value.currency,
+      notation: compact ? 'compact' : 'standard',
+      maximumFractionDigits: compact ? 1 : cents ? 2 : 0,
+      minimumFractionDigits: cents && !compact ? 2 : 0
+    }).format(amount)
+  } catch {
+    return `${Math.round(amount).toLocaleString('en-US')} ${value.currency}`
+  }
+}
+
+export function formatCount(value: number, compact = false) {
+  return new Intl.NumberFormat('en-US', {
+    notation: compact ? 'compact' : 'standard',
+    maximumFractionDigits: compact ? 1 : 0
+  }).format(value)
+}
+
+/** Adds amounts of ONE currency; amounts in another currency are left out. */
+const sum = (values: Money[], currency: string): Money => ({
+  minor: values
+    .filter((v) => v.currency === currency)
+    .reduce((total, v) => total + v.minor, 0),
+  currency
+})
+
+/**
+ * The 30-day revenue numbers every card shows. They are derived from the
+ * same rows, so flows + campaigns always equals the chart total.
+ */
+export function revenueSummary(snapshot: KlaviyoSnapshot) {
+  const currency = snapshot.account.currency
+  const flows = sum(
+    snapshot.flows.map((f) => f.revenue30d),
+    currency
+  )
+  const campaigns = sum(
+    snapshot.campaigns.flatMap((c) => (c.revenue30d ? [c.revenue30d] : [])),
+    currency
+  )
+  const total = sum(
+    snapshot.daily.map((d) => d.revenue),
+    currency
+  )
+  const activeDays = snapshot.daily.filter((d) => d.revenue.minor > 0).length
+  const best = snapshot.daily.reduce<(typeof snapshot.daily)[number] | null>(
+    (top, day) => (!top || day.revenue.minor > top.revenue.minor ? day : top),
+    null
+  )
+  return {
+    flows,
+    campaigns,
+    total,
+    activeDays,
+    averagePerDay: {
+      minor: snapshot.daily.length
+        ? Math.round(total.minor / snapshot.daily.length)
+        : 0,
+      currency
+    } satisfies Money,
+    bestDay: best,
+    liveFlows: snapshot.flows.filter((f) => f.status === 'live').length,
+    draftFlows: snapshot.flows.filter((f) => f.status === 'draft').length,
+    /** Campaigns that earned revenue in the 30-day window. */
+    earningCampaigns: snapshot.campaigns.filter(
+      (c) => c.revenue30d && c.revenue30d.minor > 0
+    ).length,
+    /** Flows that earned revenue in the 30-day window. */
+    earningFlows: snapshot.flows.filter((f) => f.revenue30d.minor > 0).length
+  }
+}
+
+/** Email revenue in the current month, in the brand timezone. */
+export function monthToDate(
+  snapshot: KlaviyoSnapshot,
+  now: Date,
+  timezone: string
+): Money {
+  const month = new Intl.DateTimeFormat('en-CA', {
+    timeZone: validTimezone(timezone),
+    year: 'numeric',
+    month: '2-digit'
+  }).format(now)
+  return sum(
+    snapshot.daily
+      .filter((d) => d.date.startsWith(month))
+      .map((d) => d.revenue),
+    snapshot.account.currency
+  )
+}
+
+/** Klaviyo campaigns that will send after `now`, soonest first. */
+export function upcomingKlaviyoCampaigns(
+  snapshot: KlaviyoSnapshot,
+  now: Date
+): KlaviyoCampaign[] {
+  return snapshot.campaigns
+    .filter(
+      (c) =>
+        c.status === 'scheduled' &&
+        c.sendTime !== null &&
+        Date.parse(c.sendTime) > now.getTime()
+    )
+    .sort((a, b) => Date.parse(a.sendTime!) - Date.parse(b.sendTime!))
+}
+
+/** Campaigns by send time, newest first; never-sent drafts last (§3 fix). */
+export function campaignsNewestFirst(campaigns: readonly KlaviyoCampaign[]) {
+  // A missing or unreadable send time sorts last.
+  const time = (c: KlaviyoCampaign) => {
+    const ms = c.sendTime === null ? NaN : Date.parse(c.sendTime)
+    return Number.isFinite(ms) ? ms : null
+  }
+  return [...campaigns].sort((a, b) => {
+    const ta = time(a)
+    const tb = time(b)
+    if (ta === null) return tb === null ? 0 : 1
+    if (tb === null) return -1
+    return tb - ta
+  })
+}

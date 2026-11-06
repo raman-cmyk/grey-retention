@@ -15,7 +15,7 @@ test('workspace overview adapts to desktop and mobile viewports', async ({
 }, testInfo) => {
   await login(page)
   await expect(
-    page.getByRole('heading', { name: 'Workspace overview' })
+    page.getByRole('heading', { name: 'Dashboard', exact: true })
   ).toBeVisible()
   await expect(
     page.getByRole('heading', { name: 'Campaign workspace' })
@@ -42,7 +42,7 @@ test('authenticated identities remain separated by role surface', async ({
   page
 }) => {
   const cases = [
-    { surface: 'client', path: '/dashboard', heading: 'Workspace overview' },
+    { surface: 'client', path: '/dashboard', heading: 'Dashboard' },
     {
       surface: 'admin',
       path: '/admin/dashboard',
