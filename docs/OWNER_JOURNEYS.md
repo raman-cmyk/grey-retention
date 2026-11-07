@@ -523,12 +523,12 @@ Simplify:
 Checks:
 
 - [x] The page opened on the **Audience** tab, so the last-used tab may be remembered. Confirm: open on Featured Product, or remember per viewer. (new)
-- [ ] The Timezone card shows the **same** timezone as the Klaviyo account card on the Dashboard. **(fix: the old app showed US/Pacific in Settings and an Australian zone on the Dashboard, and both claim to come from Klaviyo)**
+- [x] The Timezone card shows the **same** timezone as the Klaviyo account card on the Dashboard. **(fix: the old app showed US/Pacific in Settings and an Australian zone on the Dashboard, and both claim to come from Klaviyo)**
 - [x] The live clock ticks.
 - [x] Defaults show the "1 SELECTED" counts. **Save defaults** saves every tab at once. Not clicked.
 - [x] Changing a default does not change existing drafts. Say so under the Save button: "Applies to new campaigns only."
 
-> **As built (UIR-011):** the page always opens on **Featured Product** (nothing is remembered). The clock moves on each new minute. Each audience picker shows "N selected"; **Save defaults** saves all five tabs in one go and says "Applies to new campaigns only." Defaults are stored apart from drafts, so saving never changes an existing draft. Still open: the Timezone card shows the workspace timezone (the one the Dashboard uses) but does not read it from Klaviyo yet; that is UIR-023.
+> **As built (UIR-011):** the page always opens on **Featured Product** (nothing is remembered). The clock moves on each new minute. Each audience picker shows "N selected"; **Save defaults** saves all five tabs in one go and says "Applies to new campaigns only." Defaults are stored apart from drafts, so saving never changes an existing draft. UIR-023: the brand timezone now comes from the connected Klaviyo account (with today's sample connection, the account reports the workspace timezone) and the owner can change it on this card; the card says where it came from ("From your Klaviyo account", "Chosen by you" or "Set when the workspace was created"). Settings and the Dashboard both use this one brand timezone. If the owner picks another zone, the card shows Klaviyo's and offers "Use Klaviyo's timezone".
 
 Simplify:
 
