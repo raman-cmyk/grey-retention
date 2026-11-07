@@ -4457,6 +4457,7 @@ export type Database = {
       }
       support_tickets: {
         Row: {
+          category: string | null
           created_at: string
           creator_id: string
           id: string
@@ -4468,6 +4469,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          category?: string | null
           created_at?: string
           creator_id: string
           id?: string
@@ -4479,6 +4481,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          category?: string | null
           created_at?: string
           creator_id?: string
           id?: string
@@ -5535,6 +5538,10 @@ export type Database = {
           result: string
           t: string
         }
+        Returns: string
+      }
+      request_feature: {
+        Args: { category: string; details: string; subject: string; t: string }
         Returns: string
       }
       request_reschedule: {

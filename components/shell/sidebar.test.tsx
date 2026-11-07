@@ -150,8 +150,8 @@ describe('sidebar (expanded)', () => {
       '/team'
     )
     expect(
-      nav.getByText('Request a Feature').closest('[data-soon]')
-    ).toHaveTextContent('Request a Feature — Coming soon')
+      nav.getByRole('link', { name: 'Request a Feature' })
+    ).toHaveAttribute('href', '/feedback')
     await userEvent.click(nav.getByRole('button', { name: 'Workspace' }))
     expect(cookieState().groups.workspace).toBe(false)
     await userEvent.click(nav.getByRole('button', { name: 'Agents' }))
