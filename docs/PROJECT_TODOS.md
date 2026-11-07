@@ -12,6 +12,7 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - Gmail plus-addresses are the agreed initial competitor collection approach. The owner considers that choice done; ingestion health is a separate check.
 - Add strategic segmentation, a conversational segment builder and a highly capable central AI workspace.
 - Support segment-specific planning at higher brand volume: 30–35 campaigns/month and roughly 12 per customer average are illustrative, not quotas or a settled cap.
+- Visual direction selected: **calm, minimal light interface**. Layouts and interaction details still need design review.
 - Completely rethink UI/UX in Figma. Supersede current UI and old-app parity; preserve useful underlying functionality.
 - Klaviyo only, no designer workflow, client-owned content and mandatory approval remain.
 
@@ -38,10 +39,10 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - What exposure cap/window and campaign priorities should apply? An average of 12 does not answer this.
 - Which segment events/fields are reliably available in the initial Klaviyo integration?
 - What belongs in the central chat versus dedicated campaign/audience tools?
-- Which visual direction and navigation does the owner approve?
+- Which layout, component system and navigation best deliver the selected calm, minimal light direction?
 
 ## Discussion log
 
 ### 7 November 2026
 
-Owner corrected the block target to 2,000+, introduced strategic segmentation and segment-based campaign volume, requested chat-based segmentation and central advanced AI chat, required a complete Figma UI/UX reset and asked for a uniform to-do area. The owner then authorized updating GitHub and moving into design. No replacement design, exposure policy or new chat model has been approved.
+Owner corrected the block target to 2,000+, introduced strategic segmentation and segment-based campaign volume, requested chat-based segmentation and central advanced AI chat, required a complete Figma UI/UX reset and asked for a uniform to-do area. The owner then authorized updating GitHub and moving into design. The owner selected a calm, minimal light interface. No replacement layout, exposure policy or new chat model has been approved.

@@ -38,7 +38,7 @@ Work follows VISION.md §6 **steps and gates**. Don't start a step until the pre
 - **D11 — Strategic segmentation.** Add segmentation to strategy, calendar, audience allocation, QA, approval and results. Support 30–35 monthly campaigns across segments as a planning scenario, with roughly 12/customer as an illustrative average. Neither is a hard rule. Define an exposure policy; retain current collision guards until replacement checks are verified.
 - **D12 — Conversational segment builder.** Natural language → supported explicit rules → estimated membership, exclusions and overlap preview → refinement → approval.
 - **D13 — Central AI workspace.** Highly capable chat connected to brand context, strategy, campaigns, segments and results, with typed proposals, evidence and approval. Model and UI are undecided.
-- **D14 — Complete UI/UX reset.** Start from user jobs and information architecture in Figma. Stop old-app parity/polish tasks. Retain useful backend functionality. The existing theme, corners, navigation and layouts are not replacement requirements.
+- **D14 — Complete UI/UX reset.** Start from user jobs and information architecture in Figma. The owner selected a calm, minimal light interface; exact layouts and interactions still need review. Stop old-app parity/polish tasks. Retain useful backend functionality. The existing theme, corners, navigation and layouts are not replacement requirements.
 - **D15 — One to-do area.** [PROJECT_TODOS.md](PROJECT_TODOS.md) records explicit owner to-dos after discussions and links implementation issues/evidence. Discussion does not mean a feature is built.
 
 These decisions override conflicting instructions below and in historical specs. They describe requirements, not implemented capability.

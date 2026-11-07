@@ -4,6 +4,10 @@ Status: **owner-authorized reset; design proposals below need review.** Updated 
 
 The owner wants a super-clean product, rethought from scratch in Figma. Current layouts, old-app parity, sidebar, Exa theme, fonts and corner values are not target requirements. Keep useful product behavior, contracts and safeguards. This is a design brief, not a claim that a Figma file or redesigned UI exists.
 
+## Owner-selected visual direction
+
+**Calm, minimal light interface** (selected 7 November 2026). Use this direction for the first concepts. Exact layout, navigation, typography, accent palette and interaction patterns remain subject to design review; this does not restore the old Exa theme.
+
 ## Product jobs to design around
 
 1. Set up a trustworthy brand: connect Klaviyo, confirm facts/products, set offers and audience constraints.
