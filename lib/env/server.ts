@@ -13,6 +13,10 @@ const serverEnvironmentSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   GOOGLE_GENERATIVE_AI_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_LABEL_MODEL: z.string().optional(),
+  GEMINI_COPY_MODEL: z.string().optional(),
+  GEMINI_TIMEOUT_MS: z.string().optional(),
   DEEPSEEK_API_KEY: z.string().optional(),
   // Inspiration inbox (INB-001): read by features/inbox/config.ts, which
   // checks the values and never logs them. `fake` (default) or `gmail_imap`.
