@@ -52,6 +52,7 @@ export const config = {
     '/store/:path*',
     '/campaign-agent/:path*',
     '/competitor-agent/:path*',
+    '/library/:path*',
     '/connections/:path*',
     '/gros/:path*',
     '/onboarding/:path*',
