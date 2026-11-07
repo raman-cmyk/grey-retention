@@ -9,6 +9,7 @@ import {
   checkShopifyToken
 } from './credentials'
 import { connectionVerifier } from './verifier'
+import { isKnownTimezone } from '@/lib/brand-time'
 
 const notLive = 'Live connections are not switched on yet. Nothing was changed.'
 
@@ -27,9 +28,11 @@ async function ownerSession() {
 type Db = NonNullable<Awaited<ReturnType<typeof createClient>>>
 
 /**
- * Saves the connection. If the hosted database has not had the
- * connection-profile migration yet, falls back to the older status-only
- * command so connecting still works; the details appear after the update.
+ * Saves the connection. If the hosted database has not had the brand
+ * timezone update yet, saves without the account timezone; if it has not
+ * had the connection-profile update either, falls back to the older
+ * status-only command. Connecting always works; the details appear after
+ * the update.
  */
 async function save(
   db: Db,
@@ -40,9 +43,15 @@ async function save(
     credential_hint: string
     shop_domain?: string
     template_count?: number
+    account_timezone?: string
   }
 ) {
-  const saved = await db.rpc('connect_sample_provider', args)
+  let saved = await db.rpc('connect_sample_provider', args)
+  if (saved.error?.code === 'PGRST202' && args.account_timezone !== undefined) {
+    const older = { ...args }
+    delete older.account_timezone
+    saved = await db.rpc('connect_sample_provider', older)
+  }
   if (saved.error?.code === 'PGRST202')
     return db.rpc('set_fixture_connection', {
       t: args.t,
@@ -75,14 +84,19 @@ export async function connectKlaviyo(
     .maybeSingle()
   const account = await verifier.klaviyo({
     keyHint: key.value.hint,
-    workspaceLabel: brand.data?.brand_name || context.tenantName
+    workspaceLabel: brand.data?.brand_name || context.tenantName,
+    workspaceTimezone: context.timezone
   })
   const saved = await save(db, {
     t: context.tenantId,
     provider: 'klaviyo',
     account_label: account.accountLabel,
     credential_hint: key.value.hint,
-    template_count: account.templateCount
+    template_count: account.templateCount,
+    // Becomes the brand timezone unless the owner chose one (UIR-023).
+    account_timezone: isKnownTimezone(account.timezone)
+      ? account.timezone
+      : undefined
   })
   if (saved.error) return { error: failed(saved.error.code) }
   revalidatePath('/connections')

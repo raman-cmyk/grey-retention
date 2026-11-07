@@ -39,3 +39,97 @@ describe('brand time', () => {
     expect(relativeTime('2026-09-25T12:00:00Z', now)).toBe('1 month ago')
   })
 })
+
+describe('one brand timezone, named next to every time (UIR-023)', () => {
+  it('names the zone after the date and time', async () => {
+    const { formatBrandDateTimeWithZone, formatBrandTimeWithZone } =
+      await import('./brand-time')
+    const at = '2026-11-06T17:04:00Z'
+    expect(formatBrandDateTimeWithZone(at, 'Asia/Kathmandu')).toBe(
+      'Nov 6, 2026 · 10:49 PM (Kathmandu time)'
+    )
+    expect(formatBrandTimeWithZone(at, 'Asia/Kathmandu')).toBe(
+      '10:49 PM Kathmandu time'
+    )
+    expect(formatBrandDateTimeWithZone(null, 'Asia/Kathmandu')).toBeNull()
+    expect(formatBrandTimeWithZone('not a date', 'UTC')).toBeNull()
+  })
+
+  it('follows daylight saving (spring forward and fall back)', async () => {
+    const { formatBrandDateTimeWithZone, timezoneWithOffset } =
+      await import('./brand-time')
+    // New York jumps from 2:00 to 3:00 AM on 14 March 2027.
+    expect(
+      formatBrandDateTimeWithZone('2027-03-14T06:30:00Z', 'America/New_York')
+    ).toBe('Mar 14, 2027 · 1:30 AM (New York time)')
+    expect(
+      formatBrandDateTimeWithZone('2027-03-14T07:30:00Z', 'America/New_York')
+    ).toBe('Mar 14, 2027 · 3:30 AM (New York time)')
+    expect(
+      timezoneWithOffset('America/New_York', new Date('2027-01-15T12:00:00Z'))
+    ).toBe('America/New_York (UTC-05:00)')
+    expect(
+      timezoneWithOffset('America/New_York', new Date('2027-07-15T12:00:00Z'))
+    ).toBe('America/New_York (UTC-04:00)')
+    // Melbourne repeats 2:00–3:00 AM on 4 April 2027.
+    expect(
+      formatBrandDateTimeWithZone('2027-04-03T15:30:00Z', 'Australia/Melbourne')
+    ).toBe('Apr 4, 2027 · 2:30 AM (Melbourne time)')
+    expect(
+      formatBrandDateTimeWithZone('2027-04-03T16:30:00Z', 'Australia/Melbourne')
+    ).toBe('Apr 4, 2027 · 2:30 AM (Melbourne time)')
+    expect(
+      timezoneWithOffset(
+        'Australia/Melbourne',
+        new Date('2027-04-03T15:30:00Z')
+      )
+    ).toBe('Australia/Melbourne (UTC+11:00)')
+    expect(
+      timezoneWithOffset(
+        'Australia/Melbourne',
+        new Date('2027-04-03T16:30:00Z')
+      )
+    ).toBe('Australia/Melbourne (UTC+10:00)')
+  })
+
+  it('falls back to UTC for a missing or unknown timezone', async () => {
+    const {
+      formatBrandDateTimeWithZone,
+      isKnownTimezone,
+      timezoneOptions,
+      timezoneWithOffset
+    } = await import('./brand-time')
+    expect(isKnownTimezone('Asia/Kathmandu')).toBe(true)
+    expect(isKnownTimezone('Mars/Olympus')).toBe(false)
+    expect(isKnownTimezone('')).toBe(false)
+    expect(
+      formatBrandDateTimeWithZone('2026-11-06T17:04:00Z', 'Mars/Olympus')
+    ).toBe('Nov 6, 2026 · 5:04 PM (UTC)')
+    expect(timezoneWithOffset('', new Date('2026-11-06T12:00:00Z'))).toBe(
+      'UTC (UTC+00:00)'
+    )
+    const options = timezoneOptions('Asia/Kathmandu')
+    expect(options[0]).toBe('UTC')
+    // The workspace's own zone is always offered, whatever the runtime calls it.
+    expect(options).toContain('Asia/Kathmandu')
+    expect(options).toContain('Europe/London')
+    expect(options.filter((zone) => zone === 'UTC')).toHaveLength(1)
+    expect(timezoneOptions('Mars/Olympus')).not.toContain('Mars/Olympus')
+  })
+
+  it('lists a timezone once, under the name the brand saved', async () => {
+    const { sameTimezone, timezoneOptions } = await import('./brand-time')
+    expect(sameTimezone('Asia/Kathmandu', 'Asia/Katmandu')).toBe(true)
+    expect(sameTimezone('Asia/Kathmandu', 'Asia/Kathmandu')).toBe(true)
+    expect(sameTimezone('Asia/Kathmandu', 'Asia/Kolkata')).toBe(false)
+    expect(sameTimezone('Mars/Olympus', 'Mars/Olympus')).toBe(false)
+    const both = (options: string[]) =>
+      options.filter((zone) =>
+        ['Asia/Kathmandu', 'Asia/Katmandu'].includes(zone)
+      )
+    expect(both(timezoneOptions('Asia/Kathmandu'))).toEqual(['Asia/Kathmandu'])
+    expect(both(timezoneOptions('Asia/Katmandu'))).toEqual(['Asia/Katmandu'])
+    const sorted = timezoneOptions('Asia/Kathmandu').slice(1)
+    expect(sorted).toEqual([...sorted].sort())
+  })
+})
