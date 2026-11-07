@@ -94,7 +94,7 @@ Checks:
 Checks:
 
 - [ ] After assignment, Regenerate / Regenerate Copy are disabled or need a confirm, because the warning says not to change the brief. **(fix)** The old app still showed Regenerate Copy on a draft that had an uploaded final design.
-- [ ] Status pills change when the design is assigned or delivered. **(fix)** The old draft with an uploaded final design still showed WRITING · DRAFT.
+- [x] Status pills change when the design is assigned or delivered. **(fix)** The old draft with an uploaded final design still showed WRITING · DRAFT. (UIR-015: assigned → With designer, delivered → Needs your approval.)
 - [ ] The owner sees an explicit **Approve design** action next to Reject. The old app had only the reject form, and approval was left to an admin. **(fix, product rule: owner approval is required)**
 
 ### Job 4: "Approve and send to Klaviyo"
@@ -327,7 +327,7 @@ Controls and behaviour:
   - after a drag, show a toast with Undo
 - [ ] A cell that holds a local draft does not show "+ plan send" (seen on the draft's day). Allow several sends per day, or explain the limit. (new)
 - [ ] Past days still offer "+ plan send". Block it or ask "This day has passed. Plan anyway?" **(fix)**
-- [ ] A draft dated in the past that was never sent is flagged as "Missed" or "Overdue". **(fix: the old app kept it as a normal grey Draft)**
+- [x] A draft dated in the past that was never sent is flagged as "Missed" or "Overdue". **(fix: the old app kept it as a normal grey Draft)** (UIR-015: Missed; a send stuck in delivery past its time is a Delivery problem.)
 - [ ] Klaviyo campaigns with status DRAFT (no send time) appear somewhere, e.g. an "Unscheduled" tray under the calendar. **(fix: they appeared nowhere)**
 - [ ] Table view columns: **WHEN · <TZ>** / TITLE / CHANNEL / OFFER / DISCOUNT CODE / STATUS (lowercase pill, e.g. "draft") / actions **Open** · **Delete** (danger).
   - Delete must confirm.
@@ -525,12 +525,12 @@ Simplify:
 Checks:
 
 - [x] The page opened on the **Audience** tab, so the last-used tab may be remembered. Confirm: open on Featured Product, or remember per viewer. (new)
-- [ ] The Timezone card shows the **same** timezone as the Klaviyo account card on the Dashboard. **(fix: the old app showed US/Pacific in Settings and an Australian zone on the Dashboard, and both claim to come from Klaviyo)**
+- [x] The Timezone card shows the **same** timezone as the Klaviyo account card on the Dashboard. **(fix: the old app showed US/Pacific in Settings and an Australian zone on the Dashboard, and both claim to come from Klaviyo)** Dashboard label pending: after the owner picks another zone, the Dashboard's Klaviyo "Account" box still calls the brand zone the account's (browser lane).
 - [x] The live clock ticks.
 - [x] Defaults show the "1 SELECTED" counts. **Save defaults** saves every tab at once. Not clicked.
 - [x] Changing a default does not change existing drafts. Say so under the Save button: "Applies to new campaigns only."
 
-> **As built (UIR-011):** the page always opens on **Featured Product** (nothing is remembered). The clock moves on each new minute. Each audience picker shows "N selected"; **Save defaults** saves all five tabs in one go and says "Applies to new campaigns only." Defaults are stored apart from drafts, so saving never changes an existing draft. Still open: the Timezone card shows the workspace timezone (the one the Dashboard uses) but does not read it from Klaviyo yet; that is UIR-023.
+> **As built (UIR-011):** the page always opens on **Featured Product** (nothing is remembered). The clock moves on each new minute. Each audience picker shows "N selected"; **Save defaults** saves all five tabs in one go and says "Applies to new campaigns only." Defaults are stored apart from drafts, so saving never changes an existing draft. UIR-023: the brand timezone now comes from the connected Klaviyo account (with today's sample connection, the account reports the workspace timezone) and the owner can change it on this card; the card says where it came from ("From your Klaviyo account", "Chosen by you" or "Set when the workspace was created"). Settings and the Dashboard both use this one brand timezone. If the owner picks another zone, the card shows Klaviyo's and offers "Use Klaviyo's timezone". Saving the zone the brand already has changes nothing. While GROS is making a plan, the timezone cannot change (the owner is told to try again when the plan is ready). Campaigns already planned still send at the same moment. Two open windows cannot overwrite each other: the second one is told to reload.
 
 Simplify:
 
@@ -625,9 +625,11 @@ Behaviour seen:
 
 Checks:
 
-- [ ] Submit stays disabled until subject and details are filled.
-- [ ] Cancel closes with nothing saved (verified).
-- [ ] Requests show their status (Open / Planned / Done) and team replies.
+- [x] Submit stays disabled until subject and details are filled.
+- [x] Cancel closes with nothing saved (verified).
+- [x] Requests show their status (Open / Planned / Done) and team replies.
+
+> **As built (UIR-020):** wording follows §18 decision 16: the button is **New request** and the modal's button is **Send** (it stays disabled until subject and details have text). Cancel saves nothing; if something was typed it asks "Discard your answers?" first. Each request shows its type, status (Open, Planned or Done), who sent it and when, the details and replies; replies from the platform team are labelled "<product name> team" (white-label). The status comes from the admin support queue: only the platform team sets open (Open), in progress (Planned) or closed (Done); workspace members can reply but cannot change it. Any workspace member can send a request. The empty state says "Your request goes to the <product name> team" instead of promising that every request is read: the admin queue shows only the newest tickets until UIR-026.
 
 ---
 

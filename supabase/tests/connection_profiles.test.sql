@@ -8,7 +8,7 @@ delete from public.workspace_connections where tenant_id = '00000000-0000-4000-8
 select columns_are('public', 'workspace_connections', array[
   'tenant_id','provider','mode','status','fixture_account','folder_id','read_only','revision',
   'last_sync_at','last_error','updated_at','account_label','credential_hint','shop_domain',
-  'template_count','connected_at'
+  'template_count','connected_at','account_timezone'
 ], 'no column can hold a key or token beyond the checked display fields');
 
 -- Owner of workspace 101.

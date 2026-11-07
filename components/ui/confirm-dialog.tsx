@@ -1,6 +1,7 @@
 'use client'
 import { useRef, type ReactNode } from 'react'
 import { Button } from './button'
+import { useHydrated } from './use-hydrated'
 export function ConfirmDialog({
   label,
   title,
@@ -15,11 +16,14 @@ export function ConfirmDialog({
   danger?: boolean
 }) {
   const ref = useRef<HTMLDialogElement>(null)
+  // A click before the page is interactive would do nothing.
+  const hydrated = useHydrated()
   return (
     <>
       <Button
         type="button"
         variant={danger ? 'danger' : 'primary'}
+        disabled={!hydrated}
         onClick={() => ref.current?.showModal()}
       >
         {label}

@@ -26,7 +26,8 @@ beforeEach(() => {
   auth.requireRequestContext.mockResolvedValue({
     tenantId: tenant,
     tenantRole: 'owner',
-    tenantName: 'Cedar Lane workspace'
+    tenantName: 'Cedar Lane workspace',
+    timezone: 'Asia/Kathmandu'
   })
   rpc = vi.fn(async (name: string) =>
     name === 'connect_sample_provider'
@@ -64,9 +65,25 @@ describe('connectKlaviyo', () => {
       provider: 'klaviyo',
       account_label: 'Cedar Lane',
       credential_hint: 'pk_Ab3dE••••••••1a2b',
-      template_count: 24
+      template_count: 24,
+      // The sample account reports the workspace timezone (UIR-023).
+      account_timezone: 'Asia/Kathmandu'
     })
     expect(allArgs()).not.toContain(key)
+  })
+
+  it('sends no account timezone when the workspace one is unknown', async () => {
+    auth.requireRequestContext.mockResolvedValue({
+      tenantId: tenant,
+      tenantRole: 'owner',
+      tenantName: 'Cedar Lane workspace',
+      timezone: 'Mars/Olympus'
+    })
+    await connectKlaviyo({}, form({ apiKey: key }))
+    expect(rpc).toHaveBeenCalledWith(
+      'connect_sample_provider',
+      expect.objectContaining({ account_timezone: undefined })
+    )
   })
 
   it('refuses staff before looking at the key', async () => {
@@ -116,6 +133,26 @@ describe('connectKlaviyo', () => {
       provider: 'klaviyo',
       status: 'connected'
     })
+  })
+
+  it('saves without the account timezone on a database without it', async () => {
+    rpc.mockImplementation(
+      async (name: string, args: Record<string, unknown>) =>
+        name === 'connect_sample_provider' && 'account_timezone' in args
+          ? { data: null, error: { code: 'PGRST202' } }
+          : { data: 1, error: null }
+    )
+    expect((await connectKlaviyo({}, form({ apiKey: key }))).message).toContain(
+      'connected'
+    )
+    expect(rpc).toHaveBeenLastCalledWith(
+      'connect_sample_provider',
+      expect.not.objectContaining({ account_timezone: expect.anything() })
+    )
+    expect(rpc).not.toHaveBeenCalledWith(
+      'set_fixture_connection',
+      expect.anything()
+    )
   })
 
   it('reports a database refusal without details', async () => {
