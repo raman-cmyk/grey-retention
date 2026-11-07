@@ -51,6 +51,8 @@ test('UIR-021 the brand check warns before AI steps when Klaviyo is another bran
   ).toHaveCount(0)
   await page.goto('/gros')
   await expect(page.getByRole('note', { name: 'Brand check' })).toHaveCount(0)
+  await page.goto('/campaign-agent')
+  await expect(page.getByRole('note', { name: 'Brand check' })).toHaveCount(0)
 
   // Another brand's sample account: the Brand page and GROS both warn.
   await connectKlaviyo(page, key('0000'))
@@ -68,6 +70,11 @@ test('UIR-021 the brand check warns before AI steps when Klaviyo is another bran
   await expect(check).toContainText(brandName)
   await check.getByRole('link', { name: 'Open the Brand profile' }).click()
   await expect(page).toHaveURL(/\/brand$/)
+  // The planner warns too, before GROS plans or writes campaigns.
+  await page.goto('/campaign-agent')
+  await expect(page.getByRole('note', { name: 'Brand check' })).toContainText(
+    'Check your Brand profile before GROS plans or writes your campaigns.'
+  )
 
   // Trying the other brand's sample does not move the brand timezone.
   await page.goto('/settings')
