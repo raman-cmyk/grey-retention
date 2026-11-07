@@ -39,12 +39,22 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     '/dashboard/:path*',
+    // The Klaviyo detail pages (UIR-004): read-only pages that dashboard rows
+    // open, often in a new tab. Pages full of server actions stay out until
+    // the session refresh is proven safe for them in the browser journeys.
+    '/campaigns/klaviyo/:path*',
+    '/flow-messages/:path*',
+    '/flows/:path*',
+    '/lists/:path*',
+    '/metrics/:path*',
+    '/segments/:path*',
     '/brand/:path*',
     '/store/:path*',
     '/campaign-agent/:path*',
     '/competitor-agent/:path*',
     '/connections/:path*',
     '/gros/:path*',
+    '/holidays/:path*',
     '/onboarding/:path*',
     '/profile/:path*',
     '/settings/:path*',

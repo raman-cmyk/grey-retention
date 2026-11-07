@@ -140,7 +140,7 @@ describe('sidebar (expanded)', () => {
     )
     expect(
       nav.getByRole('link', { name: 'Holidays & Events' })
-    ).toHaveAttribute('href', '/settings#holidays')
+    ).toHaveAttribute('href', '/holidays')
     expect(nav.getByRole('link', { name: 'Connections' })).toHaveAttribute(
       'href',
       '/connections'
@@ -167,6 +167,7 @@ describe('sidebar (expanded)', () => {
     ['/campaign-drafts', 'Campaigns'],
     ['/campaign-drafts/new', 'Campaigns'],
     ['/campaigns/abc', 'Campaigns'],
+    ['/campaigns/klaviyo/CMPspr001', 'Dashboard'],
     ['/gros/thread-1', 'Ask GROS']
   ])('highlights the parent area on %s', (pathname, label) => {
     location.pathname = pathname

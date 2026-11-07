@@ -12,12 +12,6 @@ import { createClient } from '@/lib/supabase/server'
 // Team changes live in features/team (UIR-019).
 const schema = z.discriminatedUnion('kind', [
   z.object({
-    kind: z.literal('holiday'),
-    name: z.string().trim().min(2).max(200),
-    date: z.iso.date(),
-    notes: z.string().max(2000)
-  }),
-  z.object({
     kind: z.literal('open_ticket'),
     ticketKind: z.enum(['support', 'feedback']),
     subject: z.string().trim().min(2).max(200),
@@ -58,13 +52,6 @@ export async function operationAction(
   const t = ctx.kind === 'client' ? ctx.tenantId : 'tenant' in x ? x.tenant : ''
   try {
     let r
-    if (x.kind === 'holiday')
-      r = await db.rpc('add_holiday', {
-        t,
-        name: x.name,
-        event_date: x.date,
-        notes: x.notes
-      })
     if (x.kind === 'open_ticket')
       r = await db.rpc('open_support_ticket', {
         t,
