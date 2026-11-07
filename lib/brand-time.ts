@@ -87,9 +87,10 @@ export function sameTimezone(a: string, b: string) {
 
 /**
  * Every IANA timezone this runtime knows (for the Settings picker), with
- * UTC first. The runtime may list a zone under another spelling (for
+ * UTC first. The runtime may list a place under an older spelling (for
  * example `Asia/Katmandu` for `Asia/Kathmandu`); `current` then takes that
  * entry's place, so it is listed once, under the name the brand saved.
+ * Other names for the same zone (`US/Pacific`) are added, not swapped.
  * Falls back to a short list on runtimes without `Intl.supportedValuesOf`.
  */
 export function timezoneOptions(current?: string): string[] {
@@ -109,7 +110,16 @@ export function timezoneOptions(current?: string): string[] {
     isKnownTimezone(current) &&
     !list.includes(current)
   ) {
-    const alias = list.findIndex((zone) => sameTimezone(zone, current))
+    // Only a new spelling of the same place takes the old one's place
+    // (Asia/Katmandu → Asia/Kathmandu); a different name for the same
+    // zone (US/Pacific, America/Los_Angeles) is listed as well.
+    const region = current.split('/')[0]
+    const alias = list.findIndex(
+      (zone) =>
+        zone.includes('/') &&
+        zone.split('/')[0] === region &&
+        sameTimezone(zone, current)
+    )
     if (alias >= 0) list[alias] = current
     else list.push(current)
   }

@@ -5676,7 +5676,7 @@ export type Database = {
       }
       set_brand_timezone: {
         Args: { expected: string; t: string; timezone: string }
-        Returns: undefined
+        Returns: boolean
       }
       set_conversation_visibility: {
         Args: { chat: string; t: string; visibility: string }
@@ -5756,7 +5756,7 @@ export type Database = {
         Returns: undefined
       }
       use_klaviyo_timezone: {
-        Args: { expected_zone: string; t: string }
+        Args: { expected: string; expected_zone: string; t: string }
         Returns: undefined
       }
     }

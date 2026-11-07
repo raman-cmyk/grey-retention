@@ -48,7 +48,7 @@ export default async function SettingsPage() {
           options={zone.options}
           initialNow={now}
           source={zone.source}
-          klaviyoTimezone={zone.klaviyoTimezone}
+          klaviyoTimezone={zone.klaviyoDiffers ? zone.klaviyoTimezone : null}
           owner={owner}
         />
         {data ? (

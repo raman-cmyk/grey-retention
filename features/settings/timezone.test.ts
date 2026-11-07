@@ -49,6 +49,25 @@ describe('brandTimezone', () => {
     })
     expect(zone.options[0]).toBe('UTC')
     expect(zone.options).toContain('Asia/Kathmandu')
+    expect(zone.klaviyoDiffers).toBe(true)
+  })
+
+  it('does not call two spellings of one zone a difference', async () => {
+    supabase.createClient.mockResolvedValue(
+      database(
+        {
+          data: { timezone: 'Asia/Kathmandu', timezone_source: 'owner' },
+          error: null
+        },
+        {
+          data: { status: 'connected', account_timezone: 'Asia/Katmandu' },
+          error: null
+        }
+      )
+    )
+    const zone = await brandTimezone(context)
+    expect(zone.klaviyoTimezone).toBe('Asia/Katmandu')
+    expect(zone.klaviyoDiffers).toBe(false)
   })
 
   it('sends back the timezone exactly as saved, even one this server does not know', async () => {

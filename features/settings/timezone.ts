@@ -1,5 +1,9 @@
 import 'server-only'
-import { isKnownTimezone, timezoneOptions } from '@/lib/brand-time'
+import {
+  isKnownTimezone,
+  sameTimezone,
+  timezoneOptions
+} from '@/lib/brand-time'
 import { getServerEnvironment } from '@/lib/env/server'
 import { createClient } from '@/lib/supabase/server'
 
@@ -15,6 +19,12 @@ export type BrandTimezone = {
   source: TimezoneSource
   /** The connected Klaviyo account's timezone, when it reported one. */
   klaviyoTimezone: string | null
+  /**
+   * Klaviyo's timezone is another zone than the brand's (two spellings of
+   * one zone, such as Asia/Katmandu and Asia/Kathmandu, are the same).
+   * Compared here so the page and the browser agree.
+   */
+  klaviyoDiffers: boolean
   /**
    * The timezones the owner can pick, built here on the server so the page
    * and the browser show the same list.
@@ -37,6 +47,7 @@ export async function brandTimezone(context: {
     saved: context.timezone,
     source: 'unknown' as TimezoneSource,
     klaviyoTimezone: null,
+    klaviyoDiffers: false,
     options: timezoneOptions(context.timezone)
   }
   if (getServerEnvironment().AUTH_MODE === 'demo') return base
@@ -58,19 +69,22 @@ export async function brandTimezone(context: {
   const saved = (!tenant.error && tenant.data?.timezone) || context.timezone
   const source = tenant.data?.timezone_source
   const zone = klaviyo.data?.account_timezone
+  const klaviyoTimezone =
+    !klaviyo.error &&
+    klaviyo.data?.status === 'connected' &&
+    zone &&
+    isKnownTimezone(zone)
+      ? zone
+      : null
   return {
     saved,
     source:
       !tenant.error && sources.has(source as TimezoneSource)
         ? (source as TimezoneSource)
         : 'unknown',
-    klaviyoTimezone:
-      !klaviyo.error &&
-      klaviyo.data?.status === 'connected' &&
-      zone &&
-      isKnownTimezone(zone)
-        ? zone
-        : null,
+    klaviyoTimezone,
+    klaviyoDiffers:
+      klaviyoTimezone !== null && !sameTimezone(klaviyoTimezone, saved),
     options: timezoneOptions(saved)
   }
 }

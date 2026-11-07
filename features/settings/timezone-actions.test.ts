@@ -38,7 +38,7 @@ describe('saveBrandTimezone', () => {
       )
     ).toEqual({
       message:
-        'Saved. The brand timezone is now Europe/London. New plans use it. Campaigns already planned keep their send time.'
+        'Saved. The brand timezone is now Europe/London. New plans use it. Campaigns already planned still send at the same moment.'
     })
     expect(rpc).toHaveBeenCalledWith('set_brand_timezone', {
       t: tenant,
@@ -89,7 +89,8 @@ describe('saveBrandTimezone', () => {
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('changes nothing when the timezone is already the brand’s', async () => {
+  it('says "nothing changed" only after the database checked the page', async () => {
+    rpc.mockResolvedValueOnce({ data: false, error: null })
     expect(
       await saveBrandTimezone(
         {},
@@ -98,8 +99,22 @@ describe('saveBrandTimezone', () => {
     ).toEqual({
       message: 'Asia/Kathmandu is already the brand timezone. Nothing changed.'
     })
-    expect(rpc).not.toHaveBeenCalled()
+    // Still asked, so a page that is out of date is told so.
+    expect(rpc).toHaveBeenCalledWith('set_brand_timezone', {
+      t: tenant,
+      timezone: 'Asia/Kathmandu',
+      expected: 'Asia/Kathmandu'
+    })
     expect(revalidatePath).not.toHaveBeenCalled()
+    rpc.mockResolvedValueOnce({ data: null, error: { code: 'PT409' } })
+    expect(
+      (
+        await saveBrandTimezone(
+          {},
+          form({ timezone: 'Asia/Kathmandu', expected: 'Asia/Kathmandu' })
+        )
+      ).error
+    ).toMatch(/changed in another window/)
   })
 
   it('explains database refusals in plain words', async () => {
@@ -132,15 +147,19 @@ describe('switchToKlaviyoTimezone', () => {
     expect(
       await switchToKlaviyoTimezone(
         {},
-        form({ klaviyoTimezone: 'America/New_York' })
+        form({
+          klaviyoTimezone: 'America/New_York',
+          expected: 'Europe/London'
+        })
       )
     ).toEqual({
       message:
-        'Saved. The brand timezone is now Klaviyo’s, America/New_York. New plans use it. Campaigns already planned keep their send time.'
+        'Saved. The brand timezone is now Klaviyo’s, America/New_York. New plans use it. Campaigns already planned still send at the same moment.'
     })
     expect(rpc).toHaveBeenCalledWith('use_klaviyo_timezone', {
       t: tenant,
-      expected_zone: 'America/New_York'
+      expected_zone: 'America/New_York',
+      expected: 'Europe/London'
     })
     expect(revalidatePath).toHaveBeenCalledWith('/', 'layout')
     signedInAs('staff')
@@ -155,10 +174,18 @@ describe('switchToKlaviyoTimezone', () => {
     expect(rpc).toHaveBeenCalledTimes(1)
   })
 
-  it('needs the timezone the page showed', async () => {
+  it('needs both timezones the page showed', async () => {
     expect((await switchToKlaviyoTimezone({}, form({}))).error).toBe(
       'Reload the page and try again.'
     )
+    expect(
+      (
+        await switchToKlaviyoTimezone(
+          {},
+          form({ klaviyoTimezone: 'America/New_York' })
+        )
+      ).error
+    ).toBe('Reload the page and try again.')
     expect(rpc).not.toHaveBeenCalled()
   })
 
@@ -186,7 +213,10 @@ describe('switchToKlaviyoTimezone', () => {
         (
           await switchToKlaviyoTimezone(
             {},
-            form({ klaviyoTimezone: 'America/New_York' })
+            form({
+              klaviyoTimezone: 'America/New_York',
+              expected: 'Europe/London'
+            })
           )
         ).error
       ).toBe(text)

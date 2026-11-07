@@ -10,7 +10,7 @@ const ownerOnly = 'Only the workspace owner can change the brand timezone.'
 
 /** What changes, said the same way after every save. */
 const keepsPlanned =
-  'New plans use it. Campaigns already planned keep their send time.'
+  'New plans use it. Campaigns already planned still send at the same moment.'
 
 async function ownerSession() {
   const context = await requireRequestContext('client')
@@ -71,10 +71,6 @@ export async function saveBrandTimezone(
   if (!timezone || !isKnownTimezone(timezone))
     return { error: 'Choose a timezone from the list.' }
   if (!expected) return { error: 'Reload the page and try again.' }
-  if (timezone === expected)
-    return {
-      message: `${timezone} is already the brand timezone. Nothing changed.`
-    }
   const { context, db } = session
   const saved = await db.rpc('set_brand_timezone', {
     t: context.tenantId,
@@ -82,13 +78,22 @@ export async function saveBrandTimezone(
     expected
   })
   if (saved.error) return failed(saved.error)
+  // The database still checks for a stale page first; false means the
+  // brand already had this timezone.
+  if (saved.data === false)
+    return {
+      message: `${timezone} is already the brand timezone. Nothing changed.`
+    }
   refresh()
   return {
     message: `Saved. The brand timezone is now ${timezone}. ${keepsPlanned}`
   }
 }
 
-/** "Use Klaviyo's timezone" in Settings, naming the one the page showed. */
+/**
+ * "Use Klaviyo's timezone" in Settings, naming both timezones the page
+ * showed (Klaviyo's and the brand's).
+ */
 export async function switchToKlaviyoTimezone(
   _state: FormResult,
   form: FormData
@@ -96,11 +101,13 @@ export async function switchToKlaviyoTimezone(
   const session = await ownerSession()
   if ('error' in session) return { error: session.error }
   const zone = zoneField(form, 'klaviyoTimezone')
-  if (!zone) return { error: 'Reload the page and try again.' }
+  const expected = zoneField(form, 'expected')
+  if (!zone || !expected) return { error: 'Reload the page and try again.' }
   const { context, db } = session
   const saved = await db.rpc('use_klaviyo_timezone', {
     t: context.tenantId,
-    expected_zone: zone
+    expected_zone: zone,
+    expected
   })
   if (saved.error) return failed(saved.error)
   refresh()
