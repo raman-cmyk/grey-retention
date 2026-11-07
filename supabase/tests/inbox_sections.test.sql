@@ -40,7 +40,7 @@ set local role service_role;
 select set_config('test.poll',public.enqueue_inbox_poll('fake')::text,true);
 select set_config('test.polllease',(select lease_token::text from public.claim_platform_job(array['inbox.poll'],'fake')),true);
 select set_config('test.email',(public.record_inbox_message(current_setting('test.poll')::uuid,current_setting('test.polllease')::uuid,
-  jsonb_build_object('messageKey',pg_temp.k(1),'uid',1,'uidValidity',1,'rawBytes',900,'receivedAt','2026-11-01T10:00:00Z',
+  jsonb_build_object('messageKey',pg_temp.k(1),'uid',9201,'uidValidity',1,'rawBytes',900,'receivedAt','2026-11-01T10:00:00Z',
     'synthetic',true,'kind','message','rawPath','fake/'||pg_temp.k(1)||'.eml','rawSha256',pg_temp.k(1),
     'htmlPath','fake/'||pg_temp.k(1)||'.html','subject','Spring','text','Hello','aliasSlug','northwind'))->>'email'),true);
 select set_config('test.message',(select id::text from public.inbox_messages where message_key=pg_temp.k(1)),true);

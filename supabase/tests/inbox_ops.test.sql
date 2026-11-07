@@ -1,5 +1,5 @@
 begin;
-select plan(73);
+select plan(86);
 
 -- Owner ...01 and staff ...05 of workspace 101; platform admin ...02.
 -- Brands, aliases and UIDs of their own, so data a browser journey left
@@ -68,14 +68,14 @@ select throws_ok($$select public.flag_inbox_message(current_setting('test.poll')
   'PT409','Unknown message','only recorded messages');
 select is(pg_temp.flag(1,'opt_in','HTTPS://manage.kmail-lists.com/confirm?x=1'),'{"already": false}'::jsonb,'an opt-in confirmation from a known brand is flagged');
 select is((select confirm_url from public.inbox_messages where id=pg_temp.id(1)),'https://manage.kmail-lists.com/confirm?x=1','its link is kept in a clean form');
-select is((select count(*)::int from public.platform_jobs where kind='inbox.confirm'),1,'and the worker may open it');
+select is((select count(*)::int from public.platform_jobs where kind='inbox.confirm' and subject_key=pg_temp.id(1)::text),1,'and the worker may open it');
 select is((select count(*)::int from public.competitor_emails where inbox_message_id=pg_temp.id(1)),0,'a confirmation is not a newsletter: it leaves the library');
 select is(pg_temp.status('north')||'/'||((select pending_since from public.competitor_captures where id=current_setting('test.north')::uuid) is not null)::text,
   'pending/true','and the brand waits for its first newsletter');
 select is(pg_temp.flag(1,'opt_in','https://elsewhere.test/x'),'{"already": true}'::jsonb,'a message is flagged once');
 select pg_temp.flag(2,'unsubscribed');
 select is(pg_temp.status('cedar'),'unsubscribed','a brand that unsubscribed us says so');
-select is((select count(*)::int from public.ops_tasks where kind='inbox_unsubscribed' and state='open'),1,'and a person is asked to resubscribe');
+select is((select count(*)::int from public.ops_tasks where kind='inbox_unsubscribed' and state='open' and detail->>'brand'=current_setting('test.cedar')),1,'and a person is asked to resubscribe');
 select pg_temp.flag(3,'opt_in','https://mail.unknown.example/confirm');
 select is((select detail->>'reason' from public.ops_tasks where dedupe_key='inbox_opt_in:'||pg_temp.id(3)),'unknown_brand','an opt-in from an unknown brand is never opened: a person checks it');
 select pg_temp.flag(9,'opt_in','http://tap-quiet.example/confirm');
@@ -93,7 +93,7 @@ select is(public.begin_confirmation_click(current_setting('test.confirm')::uuid,
 select is(public.begin_confirmation_click(current_setting('test.confirm')::uuid,current_setting('test.clease')::uuid,'manage.kmail-lists.com'),false,'and never begun twice');
 select is(public.record_confirmation_click(current_setting('test.confirm')::uuid,current_setting('test.clease')::uuid,'manage.kmail-lists.com','clicked',null,'manage.kmail-lists.com'),
   '{"already": false}'::jsonb,'what happened is recorded');
-select is((select host||'/'||final_host||'/'||outcome from public.inbox_confirmation_clicks),'manage.kmail-lists.com/manage.kmail-lists.com/clicked','every click is logged, with where it ended');
+select is((select host||'/'||final_host||'/'||outcome from public.inbox_confirmation_clicks where inbox_message_id=pg_temp.id(1)),'manage.kmail-lists.com/manage.kmail-lists.com/clicked','every click is logged, with where it ended');
 select is(pg_temp.status('north'),'pending','a click proves nothing: the brand still waits for its first newsletter');
 select is(public.record_confirmation_click(current_setting('test.confirm')::uuid,current_setting('test.clease')::uuid,'manage.kmail-lists.com','failed',500),
   '{"already": true}'::jsonb,'a second record changes nothing');
@@ -107,7 +107,7 @@ select is(pg_temp.status('north'),'subscribed','the first newsletter shows the b
 select pg_temp.rec(7,'{"aliasSlug":"tapnorth","subject":"Please confirm your subscription"}');
 select is(pg_temp.flag(7,'opt_in','https://manage.kmail-lists.com/confirm?x=2'),'{"ignored": "subscribed", "already": false}'::jsonb,
   'a confirmation for a brand whose newsletters arrive is ignored');
-select is((select count(*)::int from public.platform_jobs where kind='inbox.confirm'),1,'nothing more is opened');
+select is((select count(*)::int from public.platform_jobs where kind='inbox.confirm' and subject_key=pg_temp.id(7)::text),0,'nothing more is opened');
 select public.finish_platform_job(current_setting('test.poll')::uuid,current_setting('test.lease')::uuid);
 
 -- Waiting a week: found once, never repeated, not after it is closed.
@@ -119,8 +119,8 @@ select is(public.check_pending_subscriptions(),0,'once');
 
 -- Only platform admins resolve, assign and label.
 set local role authenticated;
-select set_config('test.unsub',(select id::text from public.ops_tasks where kind='inbox_unsubscribed'),true);
-select set_config('test.pending',(select id::text from public.ops_tasks where kind='inbox_pending_subscription'),true);
+select set_config('test.unsub',(select id::text from public.ops_tasks where kind='inbox_unsubscribed' and detail->>'brand'=current_setting('test.cedar')),true);
+select set_config('test.pending',(select id::text from public.ops_tasks where kind='inbox_pending_subscription' and subject_id=current_setting('test.quiet')::uuid),true);
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',true);
 select throws_ok($$select public.resolve_ops_task(current_setting('test.unsub')::uuid,'resolved')$$,'42501',null,'an owner cannot resolve tasks');
 select throws_ok($$select public.admin_assign_sender('news.fir.example',current_setting('test.north')::uuid)$$,'42501',null,'an owner cannot assign emails');
@@ -188,6 +188,52 @@ select throws_ok($$select public.admin_label_section(gen_random_uuid(),'text')$$
 -- The directory's counts: newsletters only, and the sender domains.
 select is((select emails||'/'||array_to_string(senders,',') from public.admin_inbox_brand_counts() where capture_id=current_setting('test.north')::uuid),
   '3/news.fir.example','a brand counts its newsletters (not its confirmations) and lists its senders');
+
+-- Review fixes (090045).
+reset role;
+insert into public.competitor_captures(domain, synthetic, alias_slug, brand_name, niche, subscription_status)
+  values ('tap-pine.example', true, 'tappine', 'Tap Pine', 'home', 'subscribed'),
+         ('tap-oak.example', true, 'tapoak', 'Tap Oak', 'home', 'pending');
+select set_config('test.pine',(select id::text from public.competitor_captures where domain='tap-pine.example'),true);
+set local role service_role;
+select set_config('test.poll',public.enqueue_inbox_poll('fake')::text,true);
+select set_config('test.lease',(select lease_token::text from public.claim_platform_job(array['inbox.poll'],'fake')),true);
+select pg_temp.rec(14,'{"fromDomain":"solo.example"}');
+select pg_temp.rec(15,'{}');
+select pg_temp.rec(16,'{}');
+select pg_temp.rec(17,'{"aliasSlug":"tappine","subject":"You have been unsubscribed","receivedAt":"2026-11-01T10:00:00Z"}');
+select pg_temp.flag(17,'unsubscribed');
+select pg_temp.rec(18,'{"aliasSlug":"tappine","subject":"New mugs","receivedAt":"2026-11-02T10:00:00Z"}');
+select pg_temp.rec(19,'{"aliasSlug":"tapoak","subject":"Please confirm your subscription"}');
+select pg_temp.flag(19,'opt_in','https://elsewhere.test/confirm');
+select public.finish_platform_job(current_setting('test.poll')::uuid,current_setting('test.lease')::uuid);
+-- A confirm job for an email that asks nothing is refused (queued first).
+reset role;
+insert into public.platform_jobs(kind, subject_key, idempotency_key, available_at)
+  values ('inbox.confirm', pg_temp.id(6)::text, 'inbox.confirm:test:'||pg_temp.id(6), now() - interval '1 minute');
+set local role service_role;
+select set_config('test.c2',(select id::text from public.claim_platform_job(array['inbox.confirm'])),true);
+select set_config('test.c2lease',(select lease_token::text from public.platform_jobs where id=current_setting('test.c2')::uuid),true);
+select is((select subject_key from public.platform_jobs where id=current_setting('test.c2')::uuid),pg_temp.id(6)::text,'the first confirm job is the newsletter''s');
+select throws_ok($$select public.begin_confirmation_click(current_setting('test.c2')::uuid,current_setting('test.c2lease')::uuid,'x')$$,'PT409','Nothing to confirm',
+  'an email that is not a confirmation is never opened');
+select set_config('test.c3',(select id::text from public.claim_platform_job(array['inbox.confirm'])),true);
+select set_config('test.c3lease',(select lease_token::text from public.platform_jobs where id=current_setting('test.c3')::uuid),true);
+select is((select subject_key from public.platform_jobs where id=current_setting('test.c3')::uuid),pg_temp.id(19)::text,'then the new confirmation''s');
+select lives_ok($$select public.record_confirmation_click(current_setting('test.c3')::uuid,current_setting('test.c3lease')::uuid,'elsewhere.test','refused')$$,'a refused link is recorded');
+select is((select detail->>'reason' from public.ops_tasks where dedupe_key='inbox_opt_in:'||pg_temp.id(19)),'refused','and goes to a person');
+set local role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',true);
+select is((select state||'/'||occurrences from public.ops_tasks where dedupe_key='inbox_unknown_sender:none' and state='open'),'open/2','emails without a sender domain share one task');
+select lives_ok($$select public.admin_assign_inbox_message(pg_temp.id(15),current_setting('test.quiet')::uuid)$$,'one of them is assigned');
+select is((select (subject_id = pg_temp.id(16))::text from public.ops_tasks where dedupe_key='inbox_unknown_sender:none' and state='open'),'true',
+  'and the task moves to the other one');
+select lives_ok($$select public.admin_assign_inbox_message(pg_temp.id(14),current_setting('test.quiet')::uuid)$$,'a sender''s only email is assigned');
+select is((select state from public.ops_tasks where dedupe_key='inbox_unknown_sender:solo.example'),'resolved','and its task closes');
+select throws_ok($$select public.admin_assign_sender('nothing.example',current_setting('test.quiet')::uuid)$$,'PT409',null,'a sender nothing waits from is refused');
+select set_config('test.pineunsub',(select id::text from public.ops_tasks where kind='inbox_unsubscribed' and detail->>'brand'=current_setting('test.pine')),true);
+select lives_ok($$select public.resolve_ops_task(current_setting('test.pineunsub')::uuid,'dismissed')$$,'a misread unsubscribe notice is dismissed');
+select is(pg_temp.status('pine'),'subscribed','a newsletter came after it, so the brand is subscribed again');
 
 select * from finish();
 rollback;
