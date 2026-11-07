@@ -27,9 +27,8 @@ import {
 import { signOut } from '@/features/auth/presentation/actions'
 import { cn } from '@/lib/utils'
 import {
-  isCurrentPath,
+  currentNavigationHref,
   isSoon,
-  navigationLinks,
   type NavigationGroup,
   type NavigationItem,
   type ShellNavigation
@@ -486,10 +485,7 @@ function SidebarContent({
   const rail = mode === 'rail'
   const hideTip = useContext(RailTipContext)?.hide
   const navId = useId()
-  const currentHref =
-    navigationLinks(navigation).find((item) =>
-      isCurrentPath(pathname, item.href)
-    )?.href ?? null
+  const currentHref = currentNavigationHref(navigation, pathname)
   const currentGroup =
     navigation.groups.find((group) =>
       group.items.some((item) => !isSoon(item) && item.href === currentHref)

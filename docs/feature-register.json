@@ -552,9 +552,11 @@
       "feature": "Team roster",
       "priority": "P1",
       "acceptance": "Show users and pending invitations for this workspace.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-019"],
+      "verification": [
+        "UIR-019 (2026-11-06): /team lists members (name, sign-in email from team_members, Owner/Manager/Staff, deactivated) and open or expired invites for owners and managers; pgTAP team_page (members only, other workspace refused), unit and browser tests."
+      ]
     },
     {
       "id": "ACC-015",
@@ -562,9 +564,12 @@
       "feature": "Team invitations",
       "priority": "P1",
       "acceptance": "Invite the intended address with an expiring acceptance link.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-019"],
+      "verification": [
+        "UIR-019 (2026-11-06): owners and managers invite an address as Staff or Manager; the address is checked and duplicates are refused (already a member, already invited, deactivated: use Reactivate); invites expire after 7 days and can be renewed; accepting applies the invited role. pgTAP team_page and browser journey."
+      ],
+      "remaining": "Email delivery is simulated: no acceptance link is emailed yet; the invited person signs up with that address and accepts on /onboarding."
     },
     {
       "id": "ACC-016",
@@ -572,9 +577,11 @@
       "feature": "Revoke pending invitation",
       "priority": "P1",
       "acceptance": "A revoked invitation cannot subsequently grant membership.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-019"],
+      "verification": [
+        "UIR-019 (2026-11-06): Cancel on /team revokes an open invite (PT409 when already gone); pgTAP proves a cancelled invite cannot be accepted and grants no membership."
+      ]
     },
     {
       "id": "ACC-017",
@@ -592,9 +599,11 @@
       "feature": "Team role changes",
       "priority": "P1",
       "acceptance": "Owner-managed role changes preserve the supported manager/member model and prevent privilege escalation.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-019"],
+      "verification": [
+        "UIR-019 (2026-11-06): change_team_member lets an owner or manager switch a teammate between Manager and Staff after a confirmation; it never makes or changes an owner, refuses your own access and stale pages (PT409), re-checks the caller after the workspace lock; staff, deactivated managers and other workspaces are refused; re-inviting a deactivated teammate is refused so their old role cannot come back. pgTAP, unit and browser tests."
+      ]
     },
     {
       "id": "ACC-019",
@@ -602,9 +611,11 @@
       "feature": "Deactivate teammate",
       "priority": "P1",
       "acceptance": "A deactivated teammate loses workspace access.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-019"],
+      "verification": [
+        "UIR-019 (2026-11-06): Deactivate (after a confirmation) sets the membership inactive; the deactivated teammate is refused workspace reads (pgTAP) and stays listed as Deactivated with Reactivate."
+      ]
     },
     {
       "id": "ACC-020",
@@ -1109,9 +1120,12 @@
       "feature": "Default featured product",
       "priority": "P1",
       "acceptance": "New generated drafts inherit the chosen product and can override it.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-011"],
+      "verification": [
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
+      ],
+      "remaining": "Saved in Settings (product picker). New drafts do not read it yet (UIR-017)."
     },
     {
       "id": "DEF-002",
@@ -1119,9 +1133,12 @@
       "feature": "Default sender display name",
       "priority": "P1",
       "acceptance": "The selected sender name appears on new drafts and outbound payloads.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-011"],
+      "verification": [
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
+      ],
+      "remaining": "Saved in Settings. New drafts and the Klaviyo payload do not read it yet (UIR-017, live Klaviyo)."
     },
     {
       "id": "DEF-003",
@@ -1129,9 +1146,12 @@
       "feature": "Default primary destination URL",
       "priority": "P1",
       "acceptance": "New drafts inherit the intended main destination.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-011"],
+      "verification": [
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
+      ],
+      "remaining": "Saved in Settings (https only). New drafts do not read it yet (UIR-017)."
     },
     {
       "id": "DEF-004",
@@ -1139,9 +1159,12 @@
       "feature": "Default included audiences",
       "priority": "P1",
       "acceptance": "New drafts inherit selected send-to audience labels.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-011"],
+      "verification": [
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
+      ],
+      "remaining": "Saved in Settings from sample Klaviyo lists/segments. New drafts do not read it yet (UIR-017); real lists need live Klaviyo."
     },
     {
       "id": "DEF-005",
@@ -1149,9 +1172,12 @@
       "feature": "Default excluded audiences",
       "priority": "P1",
       "acceptance": "New drafts inherit selected do-not-send labels.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-011"],
+      "verification": [
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
+      ],
+      "remaining": "Saved in Settings from sample Klaviyo lists/segments. New drafts do not read it yet (UIR-017); real lists need live Klaviyo."
     },
     {
       "id": "DEF-006",
@@ -1191,9 +1217,12 @@
       "feature": "Footer inclusion default",
       "priority": "P1",
       "acceptance": "New campaigns inherit the chosen inclusion state.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-011"],
+      "verification": [
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
+      ],
+      "remaining": "Saved in Settings (Include footer). New campaigns do not read it yet (UIR-017)."
     },
     {
       "id": "DEF-010",
@@ -1261,9 +1290,12 @@
       "feature": "Brand timezone display",
       "priority": "P1",
       "acceptance": "Show Klaviyo-derived timezone and local current time in Settings.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-011"],
+      "verification": [
+        "UIR-011 (2026-11-06): /settings Timezone card shows the workspace timezone with its UTC offset and a live clock (UTC for a zone the runtime does not know); unit and desktop/mobile browser tests."
+      ],
+      "remaining": "Settings shows the workspace timezone (same as the Dashboard) with a live clock. Reading it from Klaviyo needs live Klaviyo (CON-014)."
     },
     {
       "id": "DEF-017",
@@ -1948,9 +1980,12 @@
       "feature": "Global holiday overlays",
       "priority": "P1",
       "acceptance": "Show relevant platform holidays without turning them into sends.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-012"],
+      "verification": [
+        "UIR-012 (2026-11-06): /holidays shows platform holidays for the next 90 days by country (US, UK, Australia, Canada, New Zealand, India, or shopping and gift days for other countries), computed in features/holidays/platform.ts; unit and browser tests."
+      ],
+      "remaining": "Calendar and planner overlays (browser lane, spec §6) still need to read platformHolidays; moon-calendar dates are listed until 2030."
     },
     {
       "id": "CAL-018",
@@ -1958,9 +1993,12 @@
       "feature": "Private tenant events",
       "priority": "P1",
       "acceptance": "Create/delete own events without changing other tenants.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-012"],
+      "verification": [
+        "UIR-012 (2026-11-06): /holidays adds, edits and deletes the workspace's own holidays and events (type, yearly repeat, notes for the AI strategist) through owner-only save_holiday / delete_holiday; pgTAP (roles, other workspace sees nothing, stale edits), unit and desktop/mobile browser tests."
+      ],
+      "remaining": "The planner modal's \"YOURS (N)\" list reads these entries in the browser lane's planner (UIR §6)."
     },
     {
       "id": "CAL-019",
