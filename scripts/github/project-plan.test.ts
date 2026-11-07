@@ -81,7 +81,7 @@ describe('roadmap plan from the feature register', () => {
     expect(inMilestone('M1 Design system')).toContain('DS-006')
     expect(inMilestone('M1.5 Old-app UI rebuild')).toEqual(
       Array.from(
-        { length: 20 },
+        { length: 27 },
         (_, i) => `UIR-${String(i + 2).padStart(3, '0')}`
       )
     )

@@ -305,11 +305,13 @@ describe('account menu', () => {
       trigger.getAttribute('aria-controls')!
     )!
     expect(within(menu).getByText('rae@northwind.example')).toBeInTheDocument()
+    // Profile is the only link; Connections is already in Workspace
+    // (OWNER_JOURNEYS.md §18.18).
     expect(
-      within(menu).getByText('Profile Update').closest('[data-soon]')
-    ).toHaveTextContent('Profile Update — Coming soon')
-    // Connections is already in Workspace (OWNER_JOURNEYS.md §18.18).
-    expect(within(menu).queryByRole('link')).not.toBeInTheDocument()
+      within(menu)
+        .getAllByRole('link')
+        .map((link) => [link.textContent, link.getAttribute('href')])
+    ).toEqual([['Profile Update', '/profile']])
     expect(
       within(menu).getByRole('button', { name: 'Log out' })
     ).toBeInTheDocument()
@@ -327,9 +329,42 @@ describe('account menu', () => {
     await userEvent.keyboard('{Enter}')
     expect(trigger).toHaveAttribute('aria-expanded', 'true')
     await userEvent.tab()
+    expect(screen.getByRole('link', { name: 'Profile Update' })).toHaveFocus()
+    await userEvent.tab()
     expect(screen.getByRole('button', { name: 'Log out' })).toHaveFocus()
     await userEvent.tab()
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('closes after following Profile Update', async () => {
+    shell()
+    const trigger = screen.getAllByRole('button', {
+      name: 'Open account menu for Rae Owner'
+    })[0]
+    await userEvent.click(trigger)
+    const profile = screen.getByRole('link', { name: 'Profile Update' })
+    profile.addEventListener('click', (event) => event.preventDefault())
+    await userEvent.click(profile)
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('has no Profile Update where the surface has no profile page', async () => {
+    for (const navigation of [adminNavigation, designerNavigation]) {
+      const { unmount } = shell(undefined, { navigation })
+      const trigger = screen.getAllByRole('button', {
+        name: 'Open account menu for Rae Owner'
+      })[0]
+      await userEvent.click(trigger)
+      const menu = document.getElementById(
+        trigger.getAttribute('aria-controls')!
+      )!
+      expect(within(menu).queryByRole('link')).toBeNull()
+      expect(
+        within(menu).getByRole('button', { name: 'Log out' })
+      ).toBeInTheDocument()
+      expect(document.querySelector('dialog a[href="/profile"]')).toBeNull()
+      unmount()
+    }
   })
 
   it('closes on an outside click', async () => {
@@ -378,6 +413,15 @@ describe('small screens', () => {
     const support = within(drawer).getByRole('link', { name: 'Support' })
     support.addEventListener('click', (event) => event.preventDefault())
     await userEvent.click(support)
+    expect(drawer).not.toHaveAttribute('open')
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Open navigation' })
+    )
+    const profile = within(drawer).getByRole('link', {
+      name: 'Profile Update'
+    })
+    profile.addEventListener('click', (event) => event.preventDefault())
+    await userEvent.click(profile)
     expect(drawer).not.toHaveAttribute('open')
   })
 })
