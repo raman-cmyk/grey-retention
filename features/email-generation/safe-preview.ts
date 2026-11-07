@@ -1,7 +1,8 @@
 /**
  * Markup that went through `previewHtml` on the server: no links, scripts,
  * forms or outside loads, and a strict Content-Security-Policy. Only
- * `features/email-generation/preview-card.tsx` (server-only) creates it.
+ * server-only code creates it: `preview-card.tsx` and `toSafePreview`
+ * (`to-safe-preview.ts`, used by the reference library).
  */
 export type SafePreview = {
   readonly kind: 'sandboxed-preview'

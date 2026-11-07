@@ -471,18 +471,20 @@ Simplify:
 
 Controls and behaviour:
 
-- [ ] "Back to Campaign Agent" → `/campaign-agent` (the planner; this one is correct).
-- [ ] Track input "brand.com" + Track (submit). Each domain chip has a `✕` "Remove" submit with **no confirm**. Add a confirm: "Stop tracking <domain>? Its emails will disappear from your library." **(fix)**
-- [ ] Counter "41 EMAILS" in the header. With a SHOW filter on, a "28 emails" count appears next to the pills. (new)
-- [ ] SHOW filter is client-side, and its active pill has the same white-on-white bug. **(fix)**
+- [x] "Back to Campaign Agent" → `/campaign-agent` (the planner; this one is correct).
+- [x] Track input "brand.com" + Track (submit). Each domain chip has a `✕` "Remove" submit with **no confirm**. Add a confirm: "Stop tracking <domain>? Its emails will disappear from your library." **(fix)**
+- [x] Counter "41 EMAILS" in the header. With a SHOW filter on, a "28 emails" count appears next to the pills. (new)
+- [x] SHOW filter is client-side, and its active pill has the same white-on-white bug. **(fix)**
 - [ ] DESIGN vs TEXT classification is unreliable: a heavily designed, image-rich email was tagged TEXT. **(fix: classify by image/HTML ratio, let the owner re-tag)**
-- [ ] Clicking a card's footer opens `/campaign-drafts/copy-source/inspiration/:id/preview` in a **new browser tab**: a raw page with live links, including the competitor's unsubscribe link.
+- [x] Clicking a card's footer opens `/campaign-drafts/copy-source/inspiration/:id/preview` in a **new browser tab**: a raw page with live links, including the competitor's unsubscribe link.
   - Campaign Agent opens the same emails in an in-page modal instead.
   - **(fix: always use the in-page preview, sandbox it, and disable links, at least unsubscribe)** (new)
 - [ ] Clicking inside a card's live render does not open the email, and one render broke to a broken-image icon after a click. **(fix: one click target per card, skeleton then fallback)**
 - [ ] The domain pill and the sender name can differ: one tracked domain showed emails from several different senders. Either the inbound mapping is wrong, or the pill should show the sender. **(fix: verify the mapping)**
-- [ ] There is no filter by competitor and no search. Add "Filter by domain" chips (reuse the tracked-domain chips as toggles). **(fix)**
-- [ ] The PENDING state has no explanation of how long it takes. Add "Usually 1–7 days after their next send".
+- [x] There is no filter by competitor and no search. Add "Filter by domain" chips (reuse the tracked-domain chips as toggles). **(fix)**
+- [x] The PENDING state has no explanation of how long it takes. Add "Usually 1–7 days after their next send".
+
+> **As built (UIR-009):** Inspiration is `/library/inspirations`; "Back to Campaigns" goes to the planner. Track takes "brand.com"-style input (with or without https:// and www.), refuses anything that is not a domain, and in this sample workspace accepts only fictional `.example` domains. Remove asks "Stop tracking <domain>? Its emails will disappear from your library." The header counts the competitor emails; with a filter or search on, "N emails" appears next to the pills. The SHOW pills are the shared segmented control (the active one is clearly marked). Every preview opens in the page, sandboxed, with links turned off. "Filter by domain" chips and a search box filter the library. PENDING says "With a real newsletter this usually takes 1–7 days after their next send." Still open: classifying DESIGN vs TEXT now uses images per word, but the owner cannot re-tag yet; each card has one click target (its footer), but no loading skeleton yet; the domain-vs-sender mapping can only be checked with real inbound email (samples carry no sender).
 
 Simplify:
 
