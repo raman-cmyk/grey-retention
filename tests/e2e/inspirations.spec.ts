@@ -27,7 +27,7 @@ test('UIR-009 owner tracks a competitor, browses its emails and stops tracking',
   await expect(page.getByText('No competitor emails yet')).toBeVisible()
 
   // A real domain is refused in this sample workspace; the text stays.
-  const field = page.getByLabel('Competitor domain')
+  const field = page.getByLabel('Competitor domain', { exact: true })
   await field.fill('brand.com')
   await page.getByRole('button', { name: 'Track' }).click()
   await expect(
@@ -122,7 +122,9 @@ test('UIR-009 staff browse the library but cannot track', async ({
   await expect(
     page.getByRole('heading', { name: 'Competitor Inspirations', level: 1 })
   ).toBeVisible()
-  await expect(page.getByLabel('Competitor domain')).toHaveCount(0)
+  await expect(
+    page.getByLabel('Competitor domain', { exact: true })
+  ).toHaveCount(0)
   await expect(page.getByRole('button', { name: /^Remove / })).toHaveCount(0)
   await expect(page.getByRole('tablist', { name: 'Library' })).toBeVisible()
 })
