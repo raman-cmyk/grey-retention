@@ -95,7 +95,11 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
       { label: 'Brand & Store', href: '/brand', icon: 'brand' },
       { label: 'Campaigns', href: '/campaign-agent', icon: 'campaigns' },
       { label: `Ask ${assistantName}`, href: '/gros', icon: 'gros' },
-      { label: 'Inspiration', href: '/competitor-agent', icon: 'inspirations' },
+      {
+        label: 'Inspiration',
+        href: '/library/inspirations',
+        icon: 'inspirations'
+      },
       { label: 'Support', href: '/support', icon: 'support' }
     ],
     groups: [
@@ -184,6 +188,8 @@ const parentAreas: Record<string, readonly string[]> = {
   '/campaign-agent': ['/campaigns', '/campaign-drafts', '/calendar'],
   // Brand & Store keeps its Store tab under the same sidebar item.
   '/brand': ['/store'],
+  // The older competitor pages are part of Inspiration (UIR-009).
+  '/library/inspirations': ['/competitor-agent'],
   // An open brief belongs to the designer's Assignments desk.
   '/designer/dashboard': ['/designer/assignments']
 }

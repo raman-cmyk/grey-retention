@@ -5831,7 +5831,7 @@ export type Database = {
       subscribe_competitor: {
         Args: {
           domain: string
-          label: string
+          label?: string
           private_rules?: string
           t: string
         }
