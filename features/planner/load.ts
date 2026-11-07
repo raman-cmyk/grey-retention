@@ -65,19 +65,23 @@ export async function plannerView(
   const query = readPlannerQuery(raw, timezone, now)
   const klaviyo = await klaviyoData(context.tenantId, timezone, now.getTime())
   const snapshot = klaviyo.state === 'sample' ? klaviyo.snapshot : null
+  const klaviyoLabel = klaviyo.state === 'sample' ? 'Klaviyo sample' : 'Klaviyo'
+  // When this workspace's campaigns could not load, the month is not
+  // "empty": the page says so instead of counting zero.
+  const campaignsFailed = Boolean(workspace.error) || !workspace.data
   const { entries, unscheduled } = plannerEntries({
     campaigns: workspace.data?.campaigns ?? [],
     snapshot,
     timezone,
     now,
     includeReplaced: query.history,
-    query
+    query,
+    klaviyoLabel
   })
   const shown = filterEntries(entries, query)
   const inMonth = entries.filter((e) =>
     localCalendarDate(new Date(e.at), timezone).startsWith(`${query.m}-`)
   )
-  const klaviyoLabel = klaviyo.state === 'sample' ? 'Klaviyo sample' : 'Klaviyo'
   // The visible weeks start and end outside the month, so ask for those
   // days' holidays too.
   const frame = plannerMonth({
@@ -112,7 +116,10 @@ export async function plannerView(
     holidaysFailed,
     klaviyoLine: klaviyoLine(klaviyo),
     klaviyoLabel,
-    summary: plannerSummary(inMonth, klaviyoLabel),
+    campaignsFailed,
+    summary: campaignsFailed
+      ? 'Your campaigns could not load, so this month is not complete.'
+      : plannerSummary(inMonth, klaviyoLabel),
     owner: context.tenantRole === 'owner'
   }
 }

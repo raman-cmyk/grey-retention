@@ -40,6 +40,7 @@ export default async function CampaignAgentPage({
         timezone={view.timezone}
         klaviyoLine={view.klaviyoLine}
         canPlan={owner && !!data}
+        campaignsFailed={view.campaignsFailed}
         klaviyoLabel={view.klaviyoLabel}
         summary={view.summary}
         newItems={[

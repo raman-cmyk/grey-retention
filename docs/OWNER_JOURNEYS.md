@@ -330,7 +330,7 @@ Controls and behaviour:
 - [ ] Table view columns: **WHEN · <TZ>** / TITLE / CHANNEL / OFFER / DISCOUNT CODE / STATUS (lowercase pill, e.g. "draft") / actions **Open** · **Delete** (danger).
   - Delete must confirm.
   - The table must include synced Klaviyo sends, like the calendar. **(fix: the old table showed only local drafts)** (new: exact columns and the Delete action)
-- [x] View toggle (Calendar / Table) is client-side and not in the URL. Save it per viewer. (minor) (UIR-006: the view lives in the URL, so links and Back keep it.)
+- [x] View toggle (Calendar / Table) is client-side and not in the URL. Save it per viewer. (minor) (UIR-006, done differently: the view lives in the URL, not per viewer, so links and Back keep it.)
 - [ ] Platform holidays are US-centric (Veterans Day, Thanksgiving…) for a brand outside the US. Pick the holiday set by the brand's country or let the owner choose. **(fix)**
 
 Modals (behaviour beyond the spec):

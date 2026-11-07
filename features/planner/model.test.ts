@@ -332,10 +332,18 @@ describe('planner month', () => {
     expect(
       month.days.find((d) => d.date === '2024-02-01')!.entries.map((e) => e.id)
     ).toEqual(['early', 'late'])
-    // 19:00 UTC on 29 Feb is 1 March in Kathmandu.
-    expect(month.days.find((d) => d.date === '2024-03-01')!.entries).toEqual([
-      expect.objectContaining({ id: 'after' })
-    ])
+    // 19:00 UTC on 29 Feb is 1 March in Kathmandu: March's grey cell
+    // shows no chip, so the grid agrees with the table and the summary.
+    expect(month.days.find((d) => d.date === '2024-03-01')!.entries).toEqual([])
+    expect(
+      plannerMonth({
+        month: '2024-03',
+        timezone: kathmandu,
+        entries,
+        holidays: [],
+        now
+      }).monthEntries.map((e) => e.id)
+    ).toEqual(['after'])
     expect(source.map((c) => c.id)).toEqual([
       'late',
       'before',
@@ -393,5 +401,31 @@ describe('planner month', () => {
         now
       }).nextMonth
     ).toBeNull()
+  })
+})
+
+describe('Klaviyo entries', () => {
+  it('names the source with the label and keeps only drafts in the tray', () => {
+    const { entries, unscheduled } = plannerEntries({
+      campaigns: [],
+      snapshot: {
+        campaigns: [
+          {
+            id: 'K1',
+            name: 'Live send',
+            status: 'scheduled',
+            sendTime: '2026-11-20T15:00:00Z'
+          },
+          { id: 'K2', name: 'Old idea', status: 'cancelled', sendTime: null },
+          { id: 'K3', name: 'Next idea', status: 'draft', sendTime: null },
+          { id: 'K4', name: 'Bad time', status: 'draft', sendTime: 'soon' }
+        ]
+      } as never,
+      timezone: 'UTC',
+      now: new Date('2026-11-06T12:00:00Z'),
+      klaviyoLabel: 'Klaviyo'
+    })
+    expect(entries[0].tooltip).toMatch(/^Live send · Klaviyo: Scheduled for/)
+    expect(unscheduled.map((c) => c.id)).toEqual(['K3', 'K4'])
   })
 })

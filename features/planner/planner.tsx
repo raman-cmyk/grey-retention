@@ -78,19 +78,24 @@ function chipLine(entry: PlannerEntry, klaviyoLabel: string) {
  */
 function Chip({
   entry,
-  klaviyoLabel
+  klaviyoLabel,
+  timezone
 }: {
   entry: PlannerEntry
   klaviyoLabel: string
+  timezone: string
 }) {
   const tone = entry.status ? campaignStatuses[entry.status].tone : 'neutral'
   const line = chipLine(entry, klaviyoLabel)
+  // The time is in the hover title too, but keyboard and screen-reader
+  // users need it in the name.
+  const time = formatBrandDateTime(entry.at, timezone)?.split(' · ')[1]
   const Icon = entry.source === 'klaviyo' ? CloudDownload : Mail
   return (
     <Link
       href={entry.href}
       title={entry.tooltip}
-      aria-label={`${entry.name} · ${line}`}
+      aria-label={`${entry.name} · ${line}${time ? ` · ${time}` : ''}`}
       className={cn(
         'block min-w-0 rounded-md border px-1.5 py-1 text-[0.6875rem] leading-4 focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden',
         pillToneClasses[tone],
@@ -121,12 +126,14 @@ function Grid({
   days,
   canPlan,
   klaviyoLabel,
+  timezone,
   backQuery
 }: {
   label: string
   days: PlannerDay[]
   canPlan: boolean
   klaviyoLabel: string
+  timezone: string
   /** `from=planner&…`, so the draft page can link back to this view. */
   backQuery: string
 }) {
@@ -204,6 +211,7 @@ function Grid({
                         key={entry.key}
                         entry={entry}
                         klaviyoLabel={klaviyoLabel}
+                        timezone={timezone}
                       />
                     ))}
                   </div>
@@ -228,34 +236,58 @@ function Grid({
   )
 }
 
-/** Small screens: the days that have campaigns, as a list. */
+/**
+ * Small screens: the days that have campaigns, as a list. Owners can plan
+ * a send on any listed future day here; any other day is one tap away via
+ * "+ New → Single send", whose form has a date field.
+ */
 function Agenda({
   days,
   timezone,
   klaviyoLabel,
-  filtered
+  filtered,
+  campaignsFailed,
+  canPlan,
+  backQuery
 }: {
   days: PlannerDay[]
   timezone: string
   klaviyoLabel: string
   filtered: boolean
+  campaignsFailed: boolean
+  canPlan: boolean
+  backQuery: string
 }) {
   const busy = days.filter(
     (d) => d.inMonth && (d.entries.length || d.holidays.length)
   )
   if (!busy.length)
-    return filtered ? null : (
-      <p className="text-sm text-[var(--text-muted)] md:hidden">
+    return filtered || campaignsFailed ? null : (
+      <p className="p-4 text-sm text-[var(--text-muted)] md:hidden">
         No campaigns, holidays or events this month.
       </p>
     )
   return (
-    <div className="space-y-4 md:hidden" aria-label="Campaign agenda">
+    <div
+      role="region"
+      aria-label="Campaign agenda"
+      className="space-y-4 p-4 md:hidden"
+    >
       {busy.map((day) => (
-        <section key={day.date} aria-label={day.label}>
-          <h3 className="text-xs font-semibold text-[var(--text-muted)]">
-            <time dateTime={day.date}>{day.label}</time>
-            {day.today && ' · Today'}
+        <div key={day.date}>
+          <h3 className="flex flex-wrap items-baseline gap-x-2 text-xs font-semibold text-[var(--text-muted)]">
+            <span>
+              <time dateTime={day.date}>{day.label}</time>
+              {day.today && ' · Today'}
+            </span>
+            {canPlan && !day.past && (
+              <Link
+                href={`/first-draft?date=${day.date}&${backQuery}` as Route}
+                className="font-medium text-[var(--text)] underline-offset-4 hover:underline"
+              >
+                + plan send <span className="sr-only">on {day.label}</span>
+              </Link>
+            )}
           </h3>
           <ul className="mt-2 space-y-1.5">
             {day.holidays.map((h) => (
@@ -291,7 +323,7 @@ function Agenda({
               </li>
             ))}
           </ul>
-        </section>
+        </div>
       ))}
     </div>
   )
@@ -301,16 +333,19 @@ function Table({
   entries,
   timezone,
   klaviyoLabel,
-  filtered
+  filtered,
+  campaignsFailed
 }: {
   entries: PlannerEntry[]
   timezone: string
   klaviyoLabel: string
   /** Filters are on: the card already says nothing matches. */
   filtered: boolean
+  /** The page already says the campaigns could not load. */
+  campaignsFailed: boolean
 }) {
   if (!entries.length)
-    return filtered ? null : (
+    return filtered || campaignsFailed ? null : (
       <p className="flex items-center justify-center gap-2 p-10 text-center text-sm text-[var(--text-muted)]">
         <Table2 className="size-4" aria-hidden />
         No campaigns this month. Plan some on the calendar view, or wait for
@@ -410,6 +445,7 @@ export function Planner({
   klaviyoLabel,
   summary,
   canPlan,
+  campaignsFailed = false,
   newItems
 }: {
   query: PlannerQuery
@@ -432,11 +468,14 @@ export function Planner({
   summary: string
   /** Owners may plan a send on a day ("+ plan send"). */
   canPlan: boolean
+  /** This workspace's campaigns did not load: no "empty month" messages. */
+  campaignsFailed?: boolean
   /** The "+ New" choices; none hides the menu. */
   newItems: NewMenuItem[]
 }) {
   const href = (patch: Partial<PlannerQuery>) => plannerHref(query, patch)
   const filtered = filtersActive(query)
+  const backQuery = `from=planner&${plannerHref(query, {}).split('?')[1]}`
   // The tray holds Klaviyo design-email drafts, so it follows the filters.
   const showTray =
     unscheduled.length > 0 &&
@@ -611,16 +650,18 @@ export function Planner({
             days={month.days}
             canPlan={canPlan}
             klaviyoLabel={klaviyoLabel}
-            backQuery={`from=planner&${plannerHref(query, {}).split('?')[1]}`}
+            timezone={timezone}
+            backQuery={backQuery}
           />
-          <div className="p-4 md:hidden">
-            <Agenda
-              days={month.days}
-              timezone={timezone}
-              klaviyoLabel={klaviyoLabel}
-              filtered={filtered}
-            />
-          </div>
+          <Agenda
+            days={month.days}
+            timezone={timezone}
+            klaviyoLabel={klaviyoLabel}
+            filtered={filtered}
+            campaignsFailed={campaignsFailed}
+            canPlan={canPlan}
+            backQuery={backQuery}
+          />
         </>
       ) : (
         <Table
@@ -628,6 +669,7 @@ export function Planner({
           timezone={timezone}
           klaviyoLabel={klaviyoLabel}
           filtered={filtered}
+          campaignsFailed={campaignsFailed}
         />
       )}
       <div className="flex flex-wrap items-center gap-3 border-t border-[var(--line)] px-4 py-3 text-xs text-[var(--text-muted)]">
@@ -635,8 +677,7 @@ export function Planner({
         {campaignStatusOrder.map((status) => (
           <StatusPill key={status} status={status} />
         ))}
-        {(unscheduled.length > 0 ||
-          month.monthEntries.some((e) => e.source === 'klaviyo')) && (
+        {month.monthEntries.some((e) => e.source === 'klaviyo') && (
           <span className="inline-flex items-center gap-1">
             <CloudDownload className="size-3.5" aria-hidden />
             Dashed outline: {klaviyoLabel}
@@ -659,8 +700,9 @@ export function Planner({
             Not scheduled in Klaviyo
           </h3>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
-            Klaviyo drafts with no send time yet. Give one a time in Klaviyo and
-            it appears on the calendar.
+            {klaviyoLabel === 'Klaviyo'
+              ? 'Klaviyo drafts with no send time yet. Give one a time in Klaviyo and it appears on the calendar.'
+              : `${klaviyoLabel} drafts with no send time. With a connected account, a draft you give a send time in Klaviyo appears on the calendar.`}
           </p>
           <ul className="mt-2 flex flex-wrap gap-2">
             {unscheduled.map((c) => (
@@ -670,7 +712,9 @@ export function Planner({
                   className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line-strong)] px-3 py-1 text-sm hover:bg-[var(--surface-hover)]"
                 >
                   {c.name}
-                  <span className="sr-only"> · {klaviyoLabel}</span>
+                  <span className="text-xs text-[var(--text-muted)]">
+                    · {klaviyoLabel}
+                  </span>
                   <StatusPill status="draft" />
                 </Link>
               </li>

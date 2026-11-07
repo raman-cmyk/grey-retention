@@ -64,7 +64,7 @@ export function NewMenu({ items }: { items: NewMenuItem[] }) {
         ref={trigger}
         type="button"
         aria-expanded={open}
-        aria-controls={`${id}-menu`}
+        aria-controls={open ? `${id}-menu` : undefined}
         onClick={() => setOpen((value) => !value)}
       >
         <Plus className="size-4" aria-hidden />

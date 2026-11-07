@@ -121,8 +121,41 @@ describe('planner loader', () => {
     expect(view.owner).toBe(false)
     expect(view.month.monthEntries.map((e) => e.source)).toEqual(['klaviyo'])
     expect(view.klaviyoLine).toContain('sample data')
+    // The month is not "1 campaign": this workspace's own are missing.
+    expect(view.campaignsFailed).toBe(true)
+    expect(view.summary).toBe(
+      'Your campaigns could not load, so this month is not complete.'
+    )
+  })
+
+  it('counts the whole month, whatever the filters', async () => {
+    campaignWorkspace.mockResolvedValue({
+      context,
+      data: { campaigns: [], products: [], offers: [], audiences: [] },
+      error: null
+    })
+    klaviyoData.mockResolvedValue({
+      state: 'sample',
+      shopify: 'missing',
+      snapshot: {
+        campaigns: [
+          {
+            id: 'K1',
+            name: 'Sample send',
+            status: 'scheduled',
+            sendTime: new Date().toISOString()
+          },
+          // A cancelled campaign without a time is not a draft to schedule.
+          { id: 'K2', name: 'Old idea', status: 'cancelled', sendTime: null },
+          { id: 'K3', name: 'Next idea', status: 'draft', sendTime: null }
+        ]
+      }
+    })
+    createClient.mockResolvedValue(null)
+    const view = await plannerView({})
+    expect(view.campaignsFailed).toBe(false)
     expect(view.summary).toBe('1 campaign (1 Klaviyo sample) · 1 scheduled')
-    // The month line counts the whole month, whatever the filters.
+    expect(view.unscheduled.map((c) => c.id)).toEqual(['K3'])
     const filtered = await plannerView({ status: 'sent' })
     expect(filtered.month.monthEntries).toEqual([])
     expect(filtered.summary).toBe('1 campaign (1 Klaviyo sample) · 1 scheduled')

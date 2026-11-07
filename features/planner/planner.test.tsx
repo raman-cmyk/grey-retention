@@ -47,7 +47,8 @@ function show({
   entries = [entry({})],
   canPlan = true,
   items = newItems,
-  unscheduled = [] as KlaviyoCampaign[]
+  unscheduled = [] as KlaviyoCampaign[],
+  campaignsFailed = false
 } = {}) {
   const month = plannerMonth({
     month: query.m,
@@ -66,6 +67,7 @@ function show({
       klaviyoLabel="Klaviyo sample"
       summary={plannerSummary(month.monthEntries)}
       canPlan={canPlan}
+      campaignsFailed={campaignsFailed}
       newItems={items}
     />
   )
@@ -98,8 +100,9 @@ describe('Campaigns planner', () => {
       'title',
       expect.stringContaining('(New York time)')
     )
+    // The send time is in the name, not only in the hover title.
     expect(chip).toHaveAccessibleName(
-      'Holiday gift guide · Needs your approval'
+      'Holiday gift guide · Needs your approval · 10:00 AM'
     )
     // The status is visible in words, not only as a colour.
     expect(within(chip).getByText('Needs your approval')).toBeVisible()
@@ -118,7 +121,10 @@ describe('Campaigns planner', () => {
 
   it('offers "+ plan send" only on today and later days in this month, for owners', () => {
     show()
-    const plan = screen.getAllByRole('link', { name: /^\+ plan send/ })
+    const grid = screen.getByRole('table', {
+      name: 'November 2026 campaign calendar'
+    })
+    const plan = within(grid).getAllByRole('link', { name: /^\+ plan send/ })
     expect(plan[0]).toHaveAccessibleName(
       '+ plan send on Friday, November 6, 2026'
     )
@@ -345,11 +351,11 @@ describe('Campaigns planner', () => {
       name: /Holiday gift guide/
     })
     expect(problem).toHaveAccessibleName(
-      'Holiday gift guide · Delivery problem'
+      'Holiday gift guide · Delivery problem · 10:00 AM'
     )
     expect(within(problem).getByText('Delivery problem')).toBeVisible()
     const old = within(grid).getByRole('link', { name: /Old plan/ })
-    expect(old).toHaveAccessibleName('Old plan · Replaced')
+    expect(old).toHaveAccessibleName('Old plan · Replaced · 10:00 AM')
     expect(within(old).getByText('Replaced')).toBeVisible()
   })
 
@@ -361,12 +367,78 @@ describe('Campaigns planner', () => {
         entry({ key: 'c', id: 'c', name: 'Three', at: '2026-11-20T17:00:00Z' })
       ]
     })
-    const plan = screen.getByRole('link', {
+    const grid = screen.getByRole('table', {
+      name: 'November 2026 campaign calendar'
+    })
+    const plan = within(grid).getByRole('link', {
       name: '+ plan send on Friday, November 20, 2026'
     })
     expect(plan.className).not.toMatch(/absolute/)
     const cell = plan.closest('td')!
     const links = within(cell).getAllByRole('link')
     expect(links.at(-1)).toBe(plan)
+  })
+  it('lets owners plan a listed future day from the phone agenda', () => {
+    show({
+      entries: [
+        entry({
+          key: 'p',
+          id: 'p',
+          name: 'Past send',
+          at: '2026-11-02T15:00:00Z',
+          status: 'sent'
+        }),
+        entry({})
+      ]
+    })
+    const agenda = screen.getByRole('region', { name: 'Campaign agenda' })
+    const plan = within(agenda).getAllByRole('link', { name: /plan send/ })
+    // Future listed days only (a send, a holiday); the past day lists its
+    // send but no plan link.
+    expect(plan.map((l) => l.textContent)).toEqual([
+      '+ plan send on Friday, November 20, 2026',
+      '+ plan send on Thursday, November 26, 2026'
+    ])
+    expect(plan[0]).toHaveAttribute(
+      'href',
+      '/first-draft?date=2026-11-20&from=planner&m=2026-11'
+    )
+    cleanup()
+    show({ canPlan: false })
+    expect(
+      within(
+        screen.getByRole('region', { name: 'Campaign agenda' })
+      ).queryAllByRole('link', { name: /plan send/ })
+    ).toHaveLength(0)
+  })
+
+  it('does not call the month empty when campaigns failed to load', () => {
+    show({ entries: [], campaignsFailed: true })
+    expect(
+      screen.queryByText('No campaigns, holidays or events this month.')
+    ).toBeNull()
+    cleanup()
+    show({
+      entries: [],
+      campaignsFailed: true,
+      query: { ...base, view: 'table' }
+    })
+    expect(screen.queryByText(/No campaigns this month/)).toBeNull()
+  })
+  it('labels the tray as sample data and promises nothing a sample cannot do', () => {
+    show({
+      unscheduled: [
+        { id: 'K3', name: 'Next idea', status: 'draft', sendTime: null }
+      ] as KlaviyoCampaign[]
+    })
+    const tray = screen.getByRole('region', {
+      name: 'Not scheduled in Klaviyo'
+    })
+    expect(within(tray).getByText('· Klaviyo sample')).toBeVisible()
+    expect(
+      within(tray).getByText(/^Klaviyo sample drafts with no send time/)
+    ).toBeVisible()
+    // The dashed-outline legend is for calendar chips, which are none here.
+    expect(screen.queryByText(/Dashed outline/)).toBeNull()
   })
 })

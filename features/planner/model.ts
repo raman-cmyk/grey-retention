@@ -46,7 +46,8 @@ export function readPlannerQuery(
   const status = one(raw.status)
   const channel = one(raw.channel)
   return {
-    m: calendarMonth(one(raw.m), timezone, now),
+    // A zone Postgres accepts but this runtime does not falls back to UTC.
+    m: calendarMonth(one(raw.m), validTimezone(timezone), now),
     // The old `list` and `history` views open the table.
     view:
       view === 'table' || view === 'list' || view === 'history'
@@ -121,8 +122,8 @@ const klaviyoVerb: Record<KlaviyoCampaign['status'], string> = {
 /**
  * Every campaign the planner shows: this workspace's own campaigns AND the
  * Klaviyo sends (sample data in fake mode), so the calendar and the table
- * always agree (§15 bug 3). Klaviyo drafts with no send time are returned
- * separately for the "Not scheduled" tray. Entries with an unreadable date
+ * always agree (§15 bug 3). Klaviyo drafts with no (readable) send time
+ * are returned separately for the "Not scheduled" tray. Entries with an unreadable date
  * are left out rather than breaking the page.
  */
 export function plannerEntries({
@@ -131,7 +132,8 @@ export function plannerEntries({
   timezone,
   now = new Date(),
   includeReplaced = false,
-  query
+  query,
+  klaviyoLabel = 'Klaviyo sample'
 }: {
   campaigns: readonly (CalendarCampaign & { design_state: string })[]
   snapshot: KlaviyoSnapshot | null
@@ -140,6 +142,8 @@ export function plannerEntries({
   includeReplaced?: boolean
   /** The planner view, so Klaviyo pages can link back to it. */
   query?: PlannerQuery
+  /** "Klaviyo sample" while the data is sample, "Klaviyo" when live. */
+  klaviyoLabel?: string
 }) {
   const tz = validTimezone(timezone)
   const when = (at: string) =>
@@ -176,9 +180,13 @@ export function plannerEntries({
       source: 'klaviyo',
       synthetic: false,
       href: klaviyoCampaignHref(c.id, query),
-      tooltip: `${c.name} · Klaviyo sample: ${klaviyoVerb[c.status]} ${when(c.sendTime!)}`
+      tooltip: `${c.name} · ${klaviyoLabel}: ${klaviyoVerb[c.status]} ${when(c.sendTime!)}`
     }))
-  const unscheduled = (snapshot?.campaigns ?? []).filter((c) => !c.sendTime)
+  // Only drafts belong in the "Not scheduled" tray; a cancelled or sent
+  // campaign without a readable time is not something to schedule.
+  const unscheduled = (snapshot?.campaigns ?? []).filter(
+    (c) => c.status === 'draft' && !validDate(c.sendTime)
+  )
   return {
     entries: [...local, ...klaviyo].sort(
       (a, b) =>
@@ -303,7 +311,9 @@ export function plannerMonth({
       inMonth: k.startsWith(`${month}-`),
       today: k === today,
       past: k < today,
-      entries: byDay.get(k) ?? [],
+      // The grey days of the next and previous months show no chips, so the
+      // grid, the table, the summary and the empty notice all agree.
+      entries: k.startsWith(`${month}-`) ? (byDay.get(k) ?? []) : [],
       holidays: holidaysByDay.get(k) ?? []
     }
   })

@@ -1047,7 +1047,17 @@ Append entries using this exact shape:
   1. Klaviyo chips linked to a page not yet on that branch, with a Back to the dashboard.
   2. Chip status was colour-only, and colours repeat.
      Both are fixed: UIR-004 is a dependency, there is a planner Back link, and chips show the status in words. Also fixed: "+ plan send" covering the last chip; the replaced switch missing in the calendar; "Fill the month with AI" shown to staff and claiming AI; lost synthetic and sample labels; the misplaced Global decision; late-today dates jumping a week; no way back from the draft page; the empty mobile month; Cancelled missing from the legend and filters; year-edge day keys; the Klaviyo draft tooltip; the month picker keeping a stale value; a double empty message; the tray ignoring filters; holiday chips unnamed for screen readers; unreadable dates crashing the page.
+- Second review (2026-11-07), nothing blocking. Fixed:
+  - The grey days of the next and previous months no longer show chips, so the grid, the table, the summary and "No campaigns match these filters" agree.
+  - The "Not scheduled in Klaviyo" tray now holds drafts only (a cancelled campaign with no time used to show as Draft). Each item shows "· Klaviyo sample" visibly, and the text no longer promises a calendar update that sample data cannot make. The dashed-outline legend shows only when there are Klaviyo chips.
+  - When this workspace's campaigns fail to load, the summary says "Your campaigns could not load, so this month is not complete." There is no "No campaigns this month" (`plannerView().campaignsFailed`).
+  - Phones: listed future days in the agenda offer "+ plan send". The agenda is one labelled region with plain day groups, and it adds no empty padding.
+  - Chip names include the send time. The Klaviyo tooltip uses the label. `readPlannerQuery` validates the timezone. The "+ New" button points `aria-controls` at the menu only while it is open.
+  - The role rules for "+ New" move into tested `features/planner/new-items.ts` with UIR-018.
 - Known issues:
+  - an owner on a phone plans an empty day through "+ New → Single send" and its date field; the agenda lists only days that have something;
+  - the "+ New" menu is right-aligned and 288px wide, and it is not checked at 375px with the menu open;
+  - a Klaviyo campaign that is not a draft and has an unreadable send time appears nowhere;
   - holiday chips have one tone until holidays get a type and platform holidays arrive (§12, cloud lane, migration 090021 planned);
   - "+ plan send" opens the draft page, not the §6.7 chat;
   - "+ New" has no "Multi-day event" yet (it arrives with the §6.5 wizard, so the menu never offers something that does nothing);
