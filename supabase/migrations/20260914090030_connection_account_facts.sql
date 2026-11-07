@@ -2,7 +2,7 @@
 --
 -- A connected Klaviyo or Shopify account reports what business it belongs
 -- to when it is connected: its website (Klaviyo), currency and country.
--- The Brand page and every AI step compare these with the Brand profile and
+-- The Brand page and Ask GROS compare these with the Brand profile and
 -- warn when they look like another brand. Display facts only: the checks
 -- below make sure no key or token can be stored in them.
 
