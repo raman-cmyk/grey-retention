@@ -552,9 +552,11 @@
       "feature": "Team roster",
       "priority": "P1",
       "acceptance": "Show users and pending invitations for this workspace.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-019"],
+      "verification": [
+        "UIR-019 (2026-11-06): /team lists members (name, sign-in email from team_members, Owner/Manager/Staff, deactivated) and open or expired invites for owners and managers; pgTAP team_page (members only, other workspace refused), unit and browser tests."
+      ]
     },
     {
       "id": "ACC-015",
@@ -562,9 +564,12 @@
       "feature": "Team invitations",
       "priority": "P1",
       "acceptance": "Invite the intended address with an expiring acceptance link.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-019"],
+      "verification": [
+        "UIR-019 (2026-11-06): owners and managers invite an address as Staff or Manager; the address is checked and duplicates are refused (already a member, already invited, deactivated: use Reactivate); invites expire after 7 days and can be renewed; accepting applies the invited role. pgTAP team_page and browser journey."
+      ],
+      "remaining": "Email delivery is simulated: no acceptance link is emailed yet; the invited person signs up with that address and accepts on /onboarding."
     },
     {
       "id": "ACC-016",
@@ -572,9 +577,11 @@
       "feature": "Revoke pending invitation",
       "priority": "P1",
       "acceptance": "A revoked invitation cannot subsequently grant membership.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-019"],
+      "verification": [
+        "UIR-019 (2026-11-06): Cancel on /team revokes an open invite (PT409 when already gone); pgTAP proves a cancelled invite cannot be accepted and grants no membership."
+      ]
     },
     {
       "id": "ACC-017",
@@ -592,9 +599,11 @@
       "feature": "Team role changes",
       "priority": "P1",
       "acceptance": "Owner-managed role changes preserve the supported manager/member model and prevent privilege escalation.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-019"],
+      "verification": [
+        "UIR-019 (2026-11-06): change_team_member lets an owner or manager switch a teammate between Manager and Staff after a confirmation; it never makes or changes an owner, refuses your own access and stale pages (PT409), re-checks the caller after the workspace lock; staff, deactivated managers and other workspaces are refused; re-inviting a deactivated teammate is refused so their old role cannot come back. pgTAP, unit and browser tests."
+      ]
     },
     {
       "id": "ACC-019",
@@ -602,9 +611,11 @@
       "feature": "Deactivate teammate",
       "priority": "P1",
       "acceptance": "A deactivated teammate loses workspace access.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-019"],
+      "verification": [
+        "UIR-019 (2026-11-06): Deactivate (after a confirmation) sets the membership inactive; the deactivated teammate is refused workspace reads (pgTAP) and stays listed as Deactivated with Reactivate."
+      ]
     },
     {
       "id": "ACC-020",
@@ -3832,9 +3843,11 @@
       "feature": "Feature request submission",
       "priority": "P1",
       "acceptance": "Client can submit feedback with clear receipt.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-020"],
+      "verification": [
+        "UIR-020 (2026-11-06): /feedback sends a feature request (type, subject, details) through the member-only request_feature command and confirms \"Thanks — your request was sent.\"; it is listed with its type and status. pgTAP feature_requests, unit and browser tests."
+      ]
     },
     {
       "id": "OPS-009",
@@ -3842,9 +3855,12 @@
       "feature": "Feature request moderation",
       "priority": "P1",
       "acceptance": "Admin can read/update request status.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-020"],
+      "verification": [
+        "UIR-020 (2026-11-06): requests appear in the admin support queue, where only the platform team sets the state (members can reply but not change it); the owner sees open as Open, in progress as Planned, closed as Done (pgTAP: an operator reply and state change is visible to the owner; member state changes are refused)."
+      ],
+      "remaining": "The admin queue still names the states open / in progress / closed, shows no request type and only the 30 newest tickets across workspaces; a dedicated admin view is UIR-026."
     },
     {
       "id": "OPS-010",

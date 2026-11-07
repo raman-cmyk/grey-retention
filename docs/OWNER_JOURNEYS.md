@@ -592,12 +592,14 @@ Behaviour seen:
 
 Checks:
 
-- [ ] Invite validates the email format and blocks duplicates.
-- [ ] Changing a member's role select asks before saving (unknown whether the old app auto-saves on change; not touched).
-- [ ] Deactivate asks for confirmation.
-- [ ] The owner row can't be changed or deactivated.
-- [ ] Pending invites are listed with Resend / Cancel (not seen, add).
-- [ ] Rename the "Admin" role to "Manager" to avoid clashing with platform admins (the value is already `manager`). **(fix)**
+- [x] Invite validates the email format and blocks duplicates.
+- [x] Changing a member's role select asks before saving (unknown whether the old app auto-saves on change; not touched).
+- [x] Deactivate asks for confirmation.
+- [x] The owner row can't be changed or deactivated.
+- [x] Pending invites are listed with Resend / Cancel (not seen, add).
+- [x] Rename the "Admin" role to "Manager" to avoid clashing with platform admins (the value is already `manager`). **(fix)**
+
+> **As built (UIR-019):** the role is called **Manager** on the page; the database keeps the value `admin`. Invites refuse a bad address, a person already on the team, and a second open invite to the same address ("Use Resend"). Email sending is not switched on yet, so the card says no email is sent and the person signs up with that address to find the invite. Pending invites show the role and "Expires in N days" (or "Expired") with **Resend** (7 more days) and **Cancel**. To change a role the owner picks it in the list and clicks **Change role**, which asks "Make Sam a Manager?" first; **Deactivate** and **Reactivate** ask first. A deactivated teammate is reactivated, never invited again. Owners and managers see **Recent team changes** (who changed what, when). The owner row shows an Owner pill only, and nobody can change their own access. Deactivated teammates stay listed as "Deactivated" for owners and managers. The help text is honest: managers invite people, change access and see reports and usage; only the owner approves copy, designs and sending.
 
 ---
 
@@ -621,9 +623,11 @@ Behaviour seen:
 
 Checks:
 
-- [ ] Submit stays disabled until subject and details are filled.
-- [ ] Cancel closes with nothing saved (verified).
-- [ ] Requests show their status (Open / Planned / Done) and team replies.
+- [x] Submit stays disabled until subject and details are filled.
+- [x] Cancel closes with nothing saved (verified).
+- [x] Requests show their status (Open / Planned / Done) and team replies.
+
+> **As built (UIR-020):** wording follows §18 decision 16: the button is **New request** and the modal's button is **Send** (it stays disabled until subject and details have text). Cancel saves nothing; if something was typed it asks "Discard your answers?" first. Each request shows its type, status (Open, Planned or Done), who sent it and when, the details and replies; replies from the platform team are labelled "<product name> team" (white-label). The status comes from the admin support queue: only the platform team sets open (Open), in progress (Planned) or closed (Done); workspace members can reply but cannot change it. Any workspace member can send a request. The empty state says "Your request goes to the <product name> team" instead of promising that every request is read: the admin queue shows only the newest tickets until UIR-026.
 
 ---
 
