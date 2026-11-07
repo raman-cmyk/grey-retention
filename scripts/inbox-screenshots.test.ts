@@ -38,6 +38,12 @@ describe('the screenshot browser', () => {
         []
       )
     ).toBe('<head><meta charset="utf-8"></head>')
+    expect(
+      prepareHtml(
+        '<link rel="prefetch" href="https://x.test/p"><link rel=stylesheet href=https://x.test/s.css><p>Hi</p>',
+        []
+      )
+    ).toBe('<p>Hi</p>')
   })
 
   it('may load only from the job’s own signed links', () => {

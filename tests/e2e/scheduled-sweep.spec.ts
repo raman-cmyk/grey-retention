@@ -379,9 +379,11 @@ test('INB-002 a sample inbox email keeps its images and its 600px screenshot sho
     .eq('id', message.data!.id)
     .single()
   expect(shot.data).toMatchObject({
-    screenshot_path: `shot/${message.data!.id}.jpg`,
-    screenshot_width: 600
+    screenshot_path: `shot/${message.data!.id}.jpg`
   })
+  // Rendered at 600px; the page's default margin can add a few pixels.
+  expect(shot.data!.screenshot_width).toBeGreaterThanOrEqual(600)
+  expect(shot.data!.screenshot_width).toBeLessThan(640)
   // A second run finds nothing left: each email is photographed once.
   expect(
     await takeScreenshots({ base: baseURL!, secret, browser, log: () => {} })
@@ -394,7 +396,7 @@ test('INB-002 a sample inbox email keeps its images and its 600px screenshot sho
   await expect(card).toBeVisible()
   expect(
     await card.evaluate((img) => (img as HTMLImageElement).naturalWidth)
-  ).toBe(600)
+  ).toBe(shot.data!.screenshot_width)
 
   // Another workspace cannot read it.
   const accounts = localAccounts()

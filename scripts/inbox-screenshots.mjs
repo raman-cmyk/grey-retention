@@ -25,13 +25,14 @@ export const perRun = 20
 
 /**
  * Puts each stored image in place of the reference the HTML uses, and
- * removes meta refresh (it would navigate away after the page loads).
+ * removes what would reach out on its own: meta refresh (it navigates
+ * after the page loads) and every <link> (prefetch, preconnect and DNS
+ * prefetch skip request interception; email apps ignore <link> anyway).
  */
 export function prepareHtml(html, images) {
-  let out = html.replace(
-    /<meta\b[^<>]*http-equiv\s*=\s*["']?refresh[^<>]*>/gi,
-    ''
-  )
+  let out = html
+    .replace(/<meta\b[^<>]*http-equiv\s*=\s*["']?refresh[^<>]*>/gi, '')
+    .replace(/<link\b[^<>]*>/gi, '')
   // Longest first, so a reference that contains another is replaced whole.
   for (const { ref, url } of [...images].sort(
     (a, b) => b.ref.length - a.ref.length
