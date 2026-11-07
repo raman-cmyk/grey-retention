@@ -71,7 +71,7 @@ export function DashboardHeader({
         )}
       >
         {sourceLine(data, now)}
-        {data.state !== 'sample' && (
+        {data.state === 'not_connected' && (
           <>
             {' '}
             <Link
