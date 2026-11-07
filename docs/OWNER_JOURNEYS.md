@@ -522,11 +522,13 @@ Simplify:
 
 Checks:
 
-- [ ] The page opened on the **Audience** tab, so the last-used tab may be remembered. Confirm: open on Featured Product, or remember per viewer. (new)
+- [x] The page opened on the **Audience** tab, so the last-used tab may be remembered. Confirm: open on Featured Product, or remember per viewer. (new)
 - [ ] The Timezone card shows the **same** timezone as the Klaviyo account card on the Dashboard. **(fix: the old app showed US/Pacific in Settings and an Australian zone on the Dashboard, and both claim to come from Klaviyo)**
-- [ ] The live clock ticks.
-- [ ] Defaults show the "1 SELECTED" counts. **Save defaults** saves every tab at once. Not clicked.
-- [ ] Changing a default does not change existing drafts. Say so under the Save button: "Applies to new campaigns only."
+- [x] The live clock ticks.
+- [x] Defaults show the "1 SELECTED" counts. **Save defaults** saves every tab at once. Not clicked.
+- [x] Changing a default does not change existing drafts. Say so under the Save button: "Applies to new campaigns only."
+
+> **As built (UIR-011):** the page always opens on **Featured Product** (nothing is remembered). The clock moves on each new minute. Each audience picker shows "N selected"; **Save defaults** saves all five tabs in one go and says "Applies to new campaigns only." Defaults are stored apart from drafts, so saving never changes an existing draft. Still open: the Timezone card shows the workspace timezone (the one the Dashboard uses) but does not read it from Klaviyo yet; that is UIR-023.
 
 Simplify:
 
