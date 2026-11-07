@@ -8,6 +8,14 @@
 
 A small store owner sets their max discount, enters their discount codes, and approves one batch of emails a week from their phone. Everything else (strategy, calendar, copy, design, scheduling) runs itself, based on what works for brands in their niche.
 
+### Owner corrections — 7 November 2026
+
+- Target **2,000+ reusable email blocks**. The first ~20 types are a seed taxonomy, not a fixed lifetime limit. Define type/variant/template counting, provenance, deduplication and quality before claiming scale.
+- Add **strategic customer segmentation**, a **chat-based segmentation builder**, and a **highly capable central AI chat workspace**.
+- Support 30–35 monthly campaigns across different segments as an illustrative planning scenario, with roughly 12 campaigns per customer on average. These are not fixed quotas, a hard exposure cap or guaranteed better results. Decide the actual frequency policy explicitly.
+- **Completely rethink UI/UX from scratch in Figma.** Old-app parity and the existing Exa-inspired theme are superseded. Preserve useful underlying functionality; follow [DESIGN_RESET.md](DESIGN_RESET.md).
+- Capture explicit owner to-dos after each discussion in [PROJECT_TODOS.md](PROJECT_TODOS.md). Distinguish confirmed decisions, proposals and verified implementation.
+
 ## 2. Customer
 
 - **Yes:** dropshipping and small-to-mid Shopify stores on Klaviyo. 2k–50k subscribers. No designer, no agency.
@@ -18,8 +26,8 @@ A small store owner sets their max discount, enters their discount codes, and ap
 
 1. **Klaviyo only. No Shopify connection.** Products, images, prices, orders, bestsellers come from the Klaviyo API.
 2. **No own sending infrastructure.** Campaigns are created in the client's Klaviyo account.
-3. **Every campaign defaults to an "Engaged 90 days" segment** that the app creates at onboarding. Never "All subscribers." Client can widen it manually.
-4. **Before scheduling anything, read the client's existing scheduled Klaviyo campaigns.** Those days are occupied. Never double-send.
+3. **Use an explicit approved audience for every campaign.** Engaged-90/180 remains the safe initial default. Strategic segments may target eligible subsets using supported Klaviyo data. Never silently expand to all subscribers. Preview segment rules, exclusions, overlap and cumulative per-customer exposure; revalidate before scheduling.
+4. **Read existing scheduled Klaviyo campaigns before scheduling.** Account for overlapping audiences and cumulative exposure across app-created and external sends. Until audience-aware collision checks are implemented and verified, retain the conservative occupied-date block. More segment campaigns do not authorize bypassing it.
 5. **Approval is mandatory and weekly.** One approval covers the week's batch. After 4 clean weeks, offer auto-approve with a 24h veto.
 6. **Max discount is enforced by QA**, by regex over every % and $ in subject, preview and body.
 7. **Discount codes come only from a list the client enters at onboarding** (code + % + expiry). The AI never invents a code.
@@ -35,7 +43,11 @@ A small store owner sets their max discount, enters their discount codes, and ap
 - **Inspiration** — competitor inbox + analysis + block library
 - **Campaigns** — brief, calendar, generated emails, approvals
 
-UI/UX: copy the old demo app 1:1 (including small functionality), not its branding. Branding inspiration: exa.ai. Onboarding is the most important screen.
+- **Audiences** — strategic segments, conversational rule building, exclusions, overlap and exposure previews.
+- **Central AI workspace** — brand-aware conversation connected to strategy, weekly planning, campaigns, audiences and results; structured proposals with evidence and approval.
+- Supporting setup: Brand, Connections and Settings. Final navigation is a design proposal, not yet approved.
+
+UI/UX: start fresh in Figma using [DESIGN_RESET.md](DESIGN_RESET.md). Old app layouts, theme and screen count are not replacement acceptance criteria.
 
 ## 5. Onboarding (what we collect, and why)
 
@@ -61,17 +73,17 @@ At onboarding the app also: creates the Engaged-90-days segment, computes bestse
 
 Do the whole flow by hand for Sundari & Co: pull 6 competitors' last 30 days, write a one-page brief, a 2-week calendar, build 3 emails, push to Klaviyo. Save all of it as the reference target. If the manual brief isn't clearly better than generic advice, the AI brief won't be either.
 
-### Step 1 — Block library (designer-defined, model-classified)
+### Step 1 — Block library (seed taxonomy, growing toward 2,000+ reusable blocks)
 
-- Designer defines ~20 block types from experience (hero, offer banner, product grid 2-col, product grid 3-col, single product feature, review strip, founder note, before/after, UGC grid, FAQ, free-shipping bar, category tiles, footer, etc.). **No countdown timer in v1.**
+- The initial owner-approved ~20 block types seed the library (hero, offer banner, product grid 2-col, product grid 3-col, single product feature, review strip, founder note, before/after, UGC grid, FAQ, free-shipping bar, category tiles, footer, etc.). **No countdown timer in v1.**
 - Code each as a brand-aware, email-safe HTML template: pulls logo/colors/fonts from brand kit, web-safe font fallback stack, mobile-first at 600px, tested at 375px.
-- Vision model's only job: given a section, pick which of the 20 types it is. Fixed list, not open categories.
+- Initially classify sections against the versioned seed taxonomy, with confidence and an unknown/unsupported path. Expand taxonomy and structural template variants deliberately toward 2,000+ useful reusable blocks; do not force future layouts into the original 20 types. Separate semantic type from template/variant; track provenance, versions and duplicates.
 
 **Gate:** 50 hand-labeled competitor sections, model agrees ≥ 85%.
 
 ### Step 2 — Inspiration inbox + extraction
 
-- **Catch-all inbox on our own domain:** `brandname@inbox.<ourdomain>`, one address per competitor. Brand assignment comes from the address. (Do not rely on one Gmail address.)
+- **Initial transport: Gmail plus-addresses**, one brand slug per competitor, through the existing inbound transport port. Assign by alias, then sender domain, otherwise ops review. A domain catch-all is a later option, not a prerequisite.
 - On arrival: store raw HTML, **download every image immediately** (tracking URLs expire), screenshot at 600px.
 - **Section boundaries from HTML structure first** (each table row / `<img>` slice is usually a section). Vision model only labels, it does not find boundaries.
 - Classify **per section** as text or design; the email gets a ratio.
@@ -102,7 +114,7 @@ QA (hard block on fail):
 - HTML < 102KB (Gmail clipping)
 - Mobile screenshot at 375px renders cleanly (this screenshot is reused for approval)
 - Copy passes facts sheet + banned words
-- Audience = Engaged-90 segment
+- Audience = approved versioned segment with eligibility, exclusions and overlap/exposure checks. Engaged-90/180 is the safe default; implement and verify advanced checks before enabling new audience behavior.
 - Send time converted from store timezone
 
 Then: upload images to Klaviyo → create template → create campaign → assign segment → create as **draft** (scheduling only after Step 5 proves approval).
@@ -120,7 +132,15 @@ Note: API-pushed HTML templates aren't editable in Klaviyo's drag-and-drop edito
 
 **Gate:** a real client (not Sundari) approves 3 weeks through it without messaging you.
 
-### Step 6 — Brief + calendar automation
+### Step 6 — Strategic segmentation, brief + calendar automation
+
+Segmentation informs strategy, the calendar and reporting. Define supported Klaviyo events/profile fields, refresh rules, exclusions and overlap handling. The chat builder turns a request into explicit rules, previews estimated membership and data freshness, supports refinement, then requires approval before saving or syncing. Never invent available data or present an estimate as an exact count.
+
+Track **brand campaign volume** separately from **per-customer exposure**. The owner's 30–35 campaigns/month across segments and roughly 12/customer average are planning examples. Define caps, windows and priorities; an average is not a cap. Include recipients in several segments and external scheduled campaigns. Show the audience/exposure assumptions in weekly approval and measure results before claiming improvement.
+
+The central AI workspace shares brand, strategy, campaign, audience and results context. Use typed tools and structured previews; preserve owner approval, tenancy, spend and QA controls. The model and final interface remain undecided.
+
+### Brief and calendar rules
 
 Only now. Rules for the brief:
 
@@ -169,14 +189,14 @@ Track one number: **% of emails approved without edits.** ≥ 70% = product. Bel
 - Pre-fill the brand facts sheet by scraping shipping / returns / FAQ / about pages. Tone = tappable chips.
 - Allow finishing onboarding with zero discount codes; calendar uses non-discount campaigns until codes exist.
 - Engaged segment: engaged-90. If < 1,000 profiles or < 20% of list → engaged-180.
-- Timezone + currency from Klaviyo account settings. Client picks send frequency (2 / 3 / 4 per week).
+- Timezone + currency from Klaviyo account settings. Separate brand campaign cadence from per-customer exposure policy. Existing 2 / 3 / 4 per week behavior remains until the new controls are implemented; do not silently turn planning examples into a campaign quota.
 - Check for a dedicated sending domain; flag, don't block.
 - Competitors: suggest by niche + similar size from brands already in our inbox. If none exist for the niche: brief runs in **cold-start mode** (niche-wide library + standard ecom calendar, stated plainly to the client) and a backend task "subscribe to these brands" is created.
 - **Week 1 is generated immediately after onboarding.** Show progress; approval email within ~10 minutes.
 
 ### Post-onboarding job pipeline
 
-cache catalog → compute bestsellers → read existing scheduled campaigns → brief v1 → 2-week calendar → generate week 1 → QA → approval email. Each job retries 3×, then goes to the ops queue.
+cache catalog → compute bestsellers → read existing scheduled campaigns → evaluate approved strategic segments and exposure policy → brief v1 → 2-week calendar with audience allocations → generate week 1 → QA (including audiences) → approval email. Use the safe engaged audience until advanced segmentation is verified. Each job retries 3×, then goes to the ops queue.
 
 ### Block templates must include Klaviyo required tags
 
