@@ -85,6 +85,21 @@ describe('EmailPreviewCard', () => {
     }
   })
 
+  it('never announces after the card is gone', () => {
+    vi.useFakeTimers()
+    try {
+      const { unmount } = render(
+        <EmailPreviewCard html="<p>Hi</p>" title="Preview" source="draft" />
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+      expect(vi.getTimerCount()).toBe(1)
+      unmount()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('offers Fullscreen only where the browser supports it', async () => {
     render(
       <EmailPreviewCard html="<p>Hi</p>" title="Preview" source="klaviyo" />
