@@ -1,6 +1,4 @@
 import { describe, expect, it, vi } from 'vitest'
-import { AiProviderError, type AiProvider } from '@/lib/providers/contracts'
-import { FakeAiProvider } from '@/lib/providers/fake'
 import { blockTypes } from './catalog'
 import {
   checkedLabel,
@@ -8,26 +6,27 @@ import {
   labelRequest,
   labelSchema,
   labelSection,
+  LabelError,
   sampleLabel,
+  type RunAi,
   sectionFacts
 } from './labeller'
 import { renderBlock } from './render'
 import { sampleBlocks, sampleBrand } from './samples'
 
-const sample = { provider: new FakeAiProvider(), model: 'sample', live: false }
+// runAi answering with the AI port's fake (no live model switched on).
+const sample: RunAi = async () => ({
+  ok: true,
+  content: { fixture: true },
+  provider: 'fake'
+})
 const live = (content: unknown) => {
-  const provider = {
-    generate: vi.fn<AiProvider['generate']>(async () => ({
-      content,
-      inputTokens: 900,
-      outputTokens: 8,
-      latencyMs: 5
-    }))
-  } satisfies AiProvider
-  return {
-    ai: { provider, model: 'gemini-flash-lite-latest', live: true },
-    provider
-  }
+  const run = vi.fn<RunAi>(async () => ({
+    ok: true,
+    content,
+    provider: 'gemini'
+  }))
+  return { ai: run, provider: { generate: run } }
 }
 
 describe('sectionFacts', () => {
@@ -90,7 +89,6 @@ describe('labelSection', () => {
     })
     const request = provider.generate.mock.calls[0][0]
     expect(request).toMatchObject({
-      model: 'gemini-flash-lite-latest',
       responseKind: 'json',
       temperature: 0
     })
@@ -127,30 +125,27 @@ describe('labelSection', () => {
   })
 
   it('passes provider failures on instead of guessing', async () => {
-    const failing = {
-      provider: {
-        generate: async () => {
-          throw new AiProviderError('rate_limited', 'none')
-        }
-      },
-      model: 'm',
-      live: true
-    }
+    const failing: RunAi = async () => ({
+      ok: false,
+      code: 'rate_limited',
+      retryAfterSeconds: 30
+    })
+    await expect(labelSection({ html: 'x' }, failing)).rejects.toBeInstanceOf(
+      LabelError
+    )
     await expect(labelSection({ html: 'x' }, failing)).rejects.toMatchObject({
-      kind: 'rate_limited'
+      code: 'rate_limited',
+      retryAfterSeconds: 30
     })
     await expect(
       labelSection({ html: 'x' }, live('just text').ai)
     ).rejects.toMatchObject({
-      kind: 'invalid_output'
+      code: 'invalid_output'
     })
   })
 
   it('sends a bounded request with the text capped', () => {
-    const request = labelRequest(
-      { html: `<p>${'word '.repeat(5000)}</p>` },
-      'm'
-    )
+    const request = labelRequest({ html: `<p>${'word '.repeat(5000)}</p>` })
     expect(request.user.length).toBeLessThan(2_400)
     expect(request).not.toHaveProperty('images')
     expect(labelSchema.definition.properties.type.enum).toEqual([

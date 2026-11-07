@@ -1,7 +1,6 @@
 import { parseFragment, type DefaultTreeAdapterTypes as T } from 'parse5'
 import { htmlToText } from '@/features/email-generation/html'
-import type { AiProvider } from '@/lib/providers/contracts'
-import { AiProviderError } from '@/lib/providers/contracts'
+import type { AiProviderRequest } from '@/lib/providers/contracts'
 import {
   blockCatalog,
   blockTypes,
@@ -14,9 +13,9 @@ import {
  * section of a competitor email, pick which of the 20 block types it is,
  * or say "unsure". It never finds section boundaries (the inbox does,
  * INB-003) and never invents a type: the answer is checked against the
- * fixed list. With a live AI provider (GEM-001: Gemini Flash-Lite) the
- * model decides; with the AI port's fake an honest rule-based sample
- * labeller answers and says so. Pictures of sections are sent once the AI
+ * fixed list. The call goes through `runAi` for labelling (GEM-001:
+ * Gemini Flash-Lite, metered); when `runAi` answers with the AI port's
+ * fake, an honest rule-based sample labeller answers and says so. Pictures of sections are sent once the AI
  * port can carry them (GEM-001); until then the model reads the text and
  * the counts.
  */
@@ -30,6 +29,28 @@ export type SectionLabel = {
   /** 0 to 1. Below `confidentFrom` the type is reported as unsure. */
   confidence: number
   source: 'model' | 'sample'
+}
+
+/**
+ * What `runAi` (features/ai/run.ts, GEM-001) answers. The caller passes
+ * `(request) => runAi({ tenantId, callerKey: \`section:<id>\`, purpose:
+ * 'label', request }, { ledger })`.
+ */
+export type AiRun =
+  | { ok: true; content: unknown; provider: string }
+  | { ok: false; code: string; retryAfterSeconds?: number }
+export type RunAi = (
+  request: Omit<AiProviderRequest, 'model' | 'timeoutMs'>
+) => Promise<AiRun>
+
+/** A labelling call that failed or answered badly; the job retries. */
+export class LabelError extends Error {
+  constructor(
+    readonly code: string,
+    readonly retryAfterSeconds?: number
+  ) {
+    super(`Labelling failed: ${code}`)
+  }
 }
 
 /** Labels below this go to the ops queue as "unsure" (VISION section 10). */
@@ -221,7 +242,7 @@ export const labelSchema = {
 }
 
 /** The AI request for one section: its text, counts and picture. */
-export function labelRequest(input: SectionInput, model: string) {
+export function labelRequest(input: SectionInput) {
   const f = sectionFacts(input.html)
   const user = [
     `Section text: ${f.text || '(no text)'}`,
@@ -230,12 +251,10 @@ export function labelRequest(input: SectionInput, model: string) {
   return {
     system,
     user,
-    model,
     maxOutputTokens: 60,
     temperature: 0,
     responseKind: 'json' as const,
-    schema: labelSchema,
-    timeoutMs: 30_000
+    schema: labelSchema
   }
 }
 
@@ -253,16 +272,18 @@ export function checkedLabel(content: unknown): {
 }
 
 /**
- * Labels one section. With a live provider the model decides; when `ai`
- * is the AI port's fake (`live: false`) the sample rules decide. Provider
- * failures are not hidden: they reach the caller, which retries or sends
- * the section to the ops queue.
+ * Labels one section through `run` (`runAi` for labelling). When it
+ * answers with the AI port's fake, the sample rules decide. Failures are
+ * not hidden: they reach the caller, which retries or sends the section to
+ * the ops queue.
  */
 export async function labelSection(
   input: SectionInput,
-  ai: { provider: AiProvider; model: string; live: boolean }
+  run: RunAi
 ): Promise<SectionLabel> {
-  if (!ai.live) {
+  const result = await run(labelRequest(input))
+  if (!result.ok) throw new LabelError(result.code, result.retryAfterSeconds)
+  if (result.provider === 'fake') {
     const label = sampleLabel(sectionFacts(input.html))
     return {
       ...(label.confidence < confidentFrom
@@ -271,14 +292,7 @@ export async function labelSection(
       source: 'sample'
     }
   }
-  const response = await ai.provider.generate(labelRequest(input, ai.model))
-  if (typeof response.content !== 'object' || response.content === null)
-    throw new AiProviderError('invalid_output', 'usage', {
-      usage: {
-        inputTokens: response.inputTokens,
-        outputTokens: response.outputTokens
-      },
-      diagnostic: 'label_not_json'
-    })
-  return { ...checkedLabel(response.content), source: 'model' }
+  if (typeof result.content !== 'object' || result.content === null)
+    throw new LabelError('invalid_output')
+  return { ...checkedLabel(result.content), source: 'model' }
 }
