@@ -69,7 +69,8 @@ test('UIR-009 owner tracks a competitor, browses its emails and stops tracking',
   await expect(cards).toHaveCount(1)
   await expect(page.getByText('1 email', { exact: true })).toBeVisible()
   await page.getByLabel('Search the library').fill('')
-  await page.getByRole('radio', { name: 'Email Text' }).check()
+  await page.getByText('Email Text', { exact: true }).click()
+  await expect(page.getByRole('radio', { name: 'Email Text' })).toBeChecked()
   await expect(cards).toHaveCount(10)
 
   // The in-page preview is sandboxed and has no links.
