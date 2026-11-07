@@ -39,6 +39,7 @@ export type CopyDraft = {
 export type QaRule =
   | 'discount_over_max'
   | 'discount_not_allowed'
+  | 'discount_no_code'
   | 'money_off'
   | 'unknown_code'
   | 'expired_code'
@@ -150,6 +151,13 @@ export function checkCopy(input: {
   const max = input.maxDiscountPercent ?? 0
   const facts = input.facts
   const known = new Map(input.codes.map((c) => [c.code.toUpperCase(), c]))
+  // A discount must be exactly what a usable code gives (rule 7).
+  const usable = input.codes.filter(
+    (c) =>
+      c.percent <= max &&
+      (!c.expiresAt || Date.parse(c.expiresAt) > Date.parse(input.sendAt))
+  )
+  const usablePercents = new Set(usable.map((c) => c.percent))
   const fields: [string, string][] = [
     ['subject', input.draft.subject],
     ['preview', input.draft.preview],
@@ -207,6 +215,17 @@ export function checkCopy(input: {
           m.index,
           m[0].length,
           `It offers ${m[0]} off, but the most this brand allows is ${max}%.`
+        )
+      else if (isDiscount && !usablePercents.has(value))
+        fail(
+          'discount_no_code',
+          field,
+          scan,
+          m.index,
+          m[0].length,
+          usable.length
+            ? `It offers ${m[0]} off, but no usable code gives that. Use exactly: ${usable.map((c) => `${c.code} (${c.percent}%)`).join(', ')}.`
+            : `It offers ${m[0]} off, but the brand has no usable discount code. Remove the discount.`
         )
       else if (!isDiscount)
         fail(
@@ -329,11 +348,35 @@ export function checkCopy(input: {
           : "The facts sheet has no confirmed delivery time, so don't promise a date or speed."
       )
 
+    // Facts sheet: delivery and dispatch times. Never state a time the sheet
+    // doesn't confirm, and never one faster than the slowest confirmed case.
+    const time = scan.match(
+      /\b(?:ships?|shipped|shipping|dispatch(?:es|ed)?|arrives?|arrival|delivered|delivery)\s+(?:with)?in\s+(?:(\d+)(?:\s*[-–]\s*(\d+))?|an?|one)\s*(?:business\s+|working\s+)?(hours?|days?|weeks?)\b|\b(?:ships?|arrives?)\s+(?:the\s+)?(?:same|next)\s+day\b/i
+    )
+    if (time) {
+      const unit = (time[3] ?? 'day').toLowerCase()
+      const stated =
+        Number(time[2] ?? time[1] ?? 1) *
+        (unit.startsWith('week') ? 7 : unit.startsWith('hour') ? 1 / 24 : 1)
+      const d = facts.deliveryDays
+      if (!d || stated < d.max)
+        fail(
+          'delivery_promise',
+          field,
+          scan,
+          time.index!,
+          time[0].length,
+          d
+            ? `Delivery takes ${d.min}–${d.max} days, so don't state a faster time. Say "order early" instead.`
+            : "The facts sheet has no confirmed delivery time, so don't state one."
+        )
+    }
+
     // Facts sheet: returns.
     for (const m of scan.matchAll(
-      /\b(free returns|easy returns|hassle[-\s]free returns|(\d+)[-\s]day returns?)\b/gi
+      /\b(free returns|easy returns|hassle[-\s]free returns|(\d+)[-\s]day returns?|returns? (?:it |them |anything |any item )?within (\d+) days|full refund)\b/gi
     )) {
-      const days = m[2] ? Number(m[2]) : null
+      const days = m[2] ? Number(m[2]) : m[3] ? Number(m[3]) : null
       const r = facts.returnDays
       if (r === null || r === 0 || (days !== null && days !== r))
         fail(
@@ -399,8 +442,34 @@ export function checkCopy(input: {
         )
     }
 
-    // Reviews and ratings need a verified source.
+    // Results within a time ("results in 7 days") are efficacy claims.
+    const results = scan.match(
+      /\b(?:results?|see (?:a |the )?(?:difference|change)|visibl[ey]|noticeabl[ey])\b[^.!?]{0,30}?\b(?:in|within|after)\s+(?:just\s+)?\d+\s+(?:days?|weeks?|hours?|uses?)\b/i
+    )
+    if (results)
+      fail(
+        'unsupported_claim',
+        field,
+        scan,
+        results.index!,
+        results[0].length,
+        `"${results[0]}" promises results by a time. Remove it, or add the exact claim to the facts sheet.`
+      )
+
+    // Reviews, ratings and customer counts need a verified source.
     if (!facts.reviewsVerified) {
+      const proof = scan.match(
+        /\b(?:loved|trusted|used|chosen|adored|backed)\s+by\s+(?:over\s+|more than\s+)?[\d,.]+k?\+?|\b[\d,.]+k?\+?\s+(?:happy\s+|satisfied\s+|loyal\s+)?(?:customers|fans|users|women|men|people)\b/i
+      )
+      if (proof)
+        fail(
+          'unverified_review',
+          field,
+          scan,
+          proof.index!,
+          proof[0].length,
+          'Customer counts need a verified source. Remove them for now.'
+        )
       const review = scan.match(
         /★{3,}|\b[45](?:\.\d)?\s*(?:\/\s*5|stars?|out of 5)\b|\brated\s+[45](?:\.\d)?\b|\b\d[\d,]*\+?\s+(?:five[-\s]star\s+)?reviews\b/i
       )
@@ -436,19 +505,34 @@ export async function withCopyQa<T extends CopyDraft>(input: {
   check: (draft: T) => QaResult
   maxAttempts?: number
 }): Promise<
-  | { status: 'passed'; draft: T; attempts: QaResult[] }
-  | { status: 'needs_human'; draft: T; attempts: QaResult[] }
+  | { status: 'passed'; draft: T; attempts: QaResult[]; errors: unknown[] }
+  | {
+      status: 'needs_human'
+      /** The last draft that was generated, or null if every try threw. */
+      draft: T | null
+      attempts: QaResult[]
+      errors: unknown[]
+    }
 > {
   const max = input.maxAttempts ?? 3
   const attempts: QaResult[] = []
+  const errors: unknown[] = []
   let feedback: QaFailure[] = []
-  let draft: T | undefined
+  let draft: T | null = null
   for (let i = 0; i < max; i++) {
-    draft = await input.generate(feedback)
+    let next: T
+    try {
+      next = await input.generate(feedback)
+    } catch (error) {
+      // A failed try counts, and keeps the last feedback for the next one.
+      errors.push(error)
+      continue
+    }
+    draft = next
     const result = input.check(draft)
     attempts.push(result)
-    if (result.pass) return { status: 'passed', draft, attempts }
+    if (result.pass) return { status: 'passed', draft, attempts, errors }
     feedback = result.failures
   }
-  return { status: 'needs_human', draft: draft!, attempts }
+  return { status: 'needs_human', draft, attempts, errors }
 }

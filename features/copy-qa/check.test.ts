@@ -101,12 +101,14 @@ describe('rule 6: max discount over every % and money amount', () => {
 describe('rule 7: codes only from the list', () => {
   it('blocks an invented code', () => {
     const result = check(draft('Use code SAVE20 at checkout for 20% off'))
-    expect(rules(result)).toEqual(['unknown_code'])
-    expect(result.failures[0].reason).toContain('SAVE20')
+    // 20% matches no usable code either.
+    expect(rules(result)).toEqual(['discount_no_code', 'unknown_code'])
+    expect(result.failures[1].reason).toContain('SAVE20')
   })
 
   it('blocks a code that expires before the send', () => {
     expect(rules(check(draft('Use code FALL10 for 10% off')))).toEqual([
+      'discount_no_code',
       'expired_code'
     ])
   })
@@ -203,7 +205,7 @@ describe('withCopyQa', () => {
     const generate = vi
       .fn()
       .mockResolvedValueOnce(draft('40% off'))
-      .mockResolvedValueOnce(draft('20% off with code WELCOME15'))
+      .mockResolvedValueOnce(draft('15% off with code WELCOME15'))
     const result = await withCopyQa({
       generate,
       check: (d) => check(d)
@@ -218,5 +220,67 @@ describe('withCopyQa', () => {
     const result = await withCopyQa({ generate, check: (d) => check(d) })
     expect(result.status).toBe('needs_human')
     expect(generate).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('gaps found by the assembly reviewer', () => {
+  const unknown: BrandFacts = {
+    ...facts,
+    deliveryDays: null,
+    returnDays: null,
+    freeShipping: null
+  }
+  it.each<[string, QaRule]>([
+    ['Orders ship in 1-2 business days', 'delivery_promise'],
+    ['Arrives within a week', 'delivery_promise'],
+    ['Orders ship within 24 hours', 'delivery_promise'],
+    ['Return it within 30 days for a full refund', 'returns_claim'],
+    ['See results in 7 days', 'unsupported_claim'],
+    ['Loved by 10,000 customers', 'unverified_review'],
+    ['Join 5k+ happy customers', 'unverified_review']
+  ])('blocks "%s" when the facts are unknown', (text, rule) => {
+    expect(rules(check(draft(text), { facts: unknown }))).toContain(rule)
+  })
+
+  it('blocks a delivery time faster than the confirmed one', () => {
+    expect(rules(check(draft('Arrives within a week')))).toEqual([
+      'delivery_promise'
+    ])
+    expect(check(draft('Delivery within 4 weeks')).pass).toBe(true)
+  })
+
+  it('allows a confirmed returns window', () => {
+    expect(
+      check(draft('Return it within 30 days for a full refund')).pass
+    ).toBe(true)
+  })
+
+  it('requires the offer to match a usable code, not just the max', () => {
+    const result = check(draft('Take 25% off with code WELCOME15'), {
+      maxDiscountPercent: 30
+    })
+    expect(rules(result)).toEqual(['discount_no_code'])
+    expect(result.failures[0].reason).toContain('WELCOME15 (15%)')
+  })
+
+  it('keeps going and keeps the feedback when a try throws', async () => {
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce(draft('40% off'))
+      .mockRejectedValueOnce(new Error('provider down'))
+      .mockResolvedValueOnce(draft('15% off with code WELCOME15'))
+    const result = await withCopyQa({ generate, check: (d) => check(d) })
+    expect(result.status).toBe('passed')
+    expect(result.errors).toHaveLength(1)
+    expect(generate.mock.calls[2][0][0].rule).toBe('discount_over_max')
+  })
+
+  it('returns needs_human with no draft when every try throws', async () => {
+    const generate = vi.fn(async () => {
+      throw new Error('down')
+    })
+    const result = await withCopyQa({ generate, check: (d) => check(d) })
+    expect(result).toMatchObject({ status: 'needs_human', draft: null })
+    expect(result.errors).toHaveLength(3)
   })
 })
