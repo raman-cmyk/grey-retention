@@ -9,7 +9,7 @@ Before changing code, read completely:
 3. `docs/ARCHITECTURE_BLUEPRINT.md` and `docs/SYSTEM_ARCHITECTURE.md` (code structure)
 4. `docs/BUILD_LEDGER.md`
 
-For screens, also read the matching sections of `docs/UI_REBUILD_SPEC.md` (layout) and `docs/OWNER_JOURNEYS.md` (behaviour). Use `GREY_RETENTION_DISCOVERY.md` for behavioral reference only. Old plans live in `docs/archive/`; don't follow them. The architecture blueprint wins when the original product exhibits a defect or contradiction.
+For screens, read `docs/DESIGN_RESET.md` first. The old-app 1:1 rebuild and current visual direction are superseded. Use `docs/UI_REBUILD_SPEC.md`, `docs/DESIGN.md` and `docs/OWNER_JOURNEYS.md` only as historical/functional references, never replacement layout requirements. Capture explicit owner to-dos in `docs/PROJECT_TODOS.md` after each discussion; distinguish proposals, approved decisions and verified implementation. Use `GREY_RETENTION_DISCOVERY.md` for behavioral reference only. Old plans live in `docs/archive/`; don't follow them. The architecture blueprint wins when the original product exhibits a defect or contradiction.
 
 ## Working rules
 
