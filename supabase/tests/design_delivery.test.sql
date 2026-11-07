@@ -13,7 +13,10 @@ select throws_ok($$select public.finish_copy_job(current_setting('test.copy_job'
 select lives_ok($$select public.approve_copy('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601',2)$$,'owner approves current copy');
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',true);
 select throws_ok($$select public.approve_copy('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601',2)$$,'42501','Access denied','operator cannot creatively approve copy');
+-- RET-001 revoked assign_campaign from signed-in users; set up as the owner role.
+reset role;
 select set_config('test.assignment',public.assign_campaign('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601','00000000-0000-4000-8000-000000000201',2)::text,true);
+set local role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000003',true);
 select is((select count(*)::integer from public.campaigns),0,'assigned designer still cannot enumerate tenant campaigns');
 select is((select count(*)::integer from public.designer_assignments),1,'designer sees assignment only');

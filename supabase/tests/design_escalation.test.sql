@@ -23,7 +23,10 @@ select throws_ok($$select public.resolve_design_escalation('00000000-0000-4000-8
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000003',true);
 select is((select count(*) from public.design_escalation_operations()),0::bigint,'designer cannot enumerate unrelated operator escalations');
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',true);
+-- RET-001 revoked assign_campaign from signed-in users; set up as the owner role.
+reset role;
 select public.assign_campaign('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601',(select id from public.assignable_designers('00000000-0000-4000-8000-000000000101') limit 1),2);
+set local role authenticated;
 select throws_ok($$select public.escalate_design('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601',3,'no_designer','Original workflow issue')$$,'23514','Active assignment already exists','active assignment cannot be mislabeled unavailable');
 select throws_ok($$select public.escalate_design('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000601',3,'sla_overdue','Original workflow issue')$$,'23514','An overdue active designer SLA is required','future SLA cannot be escalated as overdue');
 reset role;
