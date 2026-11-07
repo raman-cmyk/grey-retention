@@ -130,33 +130,44 @@ test('UC-18 team invitation audit, event and support response survive refresh', 
 }, info) => {
   await login(page)
   await page.goto('/team')
-  const email = `synthetic-${info.project.name}@grey-retention.test`
-  await page.getByLabel('Invited email').fill(email)
-  await page
-    .getByRole('button', { name: 'Save simulated invitation', exact: true })
-    .click()
-  const invitation = page.locator('li').filter({ hasText: email })
+  const email = `synthetic-${info.project.name}-${Date.now()}@grey-retention.test`
+  const invite = page.getByRole('region', { name: 'Invite a teammate' })
+  await invite.getByLabel('Email', { exact: true }).fill(email)
+  await invite.getByRole('button', { name: 'Send invite', exact: true }).click()
+  const invitation = page
+    .getByRole('region', { name: /Pending invites/ })
+    .getByRole('listitem')
+    .filter({ hasText: email })
   await expect(invitation).toBeVisible()
   await invitation
-    .getByRole('button', { name: 'Revoke invitation', exact: true })
+    .getByRole('button', { name: `Cancel invite to ${email}`, exact: true })
     .click()
-  await expect(invitation).toContainText('revoked')
+  await expect(invitation).toHaveCount(0)
   await page.reload()
-  await expect(page.getByText(/invitation_revoked/).first()).toBeVisible()
-  await page.goto('/settings')
-  await page
-    .getByLabel('Event name')
-    .fill(`Synthetic event ${info.project.name}`)
-  await page.getByLabel('Event date').fill('2027-01-01')
-  await page.getByLabel('Event notes').fill('Original fixture event.')
-  await page
-    .getByRole('button', { name: 'Save workspace event', exact: true })
-    .click()
   await expect(
-    page.getByText(
-      `2027-01-01 · Synthetic event ${info.project.name} · Original fixture event.`,
-      { exact: true }
-    )
+    page.getByRole('region', { name: /Pending invites/ }).getByText(email)
+  ).toHaveCount(0)
+  // The audit survives the refresh.
+  await expect(
+    page
+      .getByRole('region', { name: 'Recent team changes' })
+      .getByText(`Invite to ${email} cancelled`, { exact: false })
+  ).toBeVisible()
+  await page.goto('/holidays')
+  await page
+    .getByLabel('Name', { exact: true })
+    .fill(`Synthetic event ${info.project.name}`)
+  await page.getByLabel('Date', { exact: true }).fill('2027-01-01')
+  await page.getByLabel('Type', { exact: true }).selectOption('event')
+  await page
+    .getByLabel('Notes for the AI strategist (optional)')
+    .fill('Original fixture event.')
+  await page.getByRole('button', { name: 'Add entry', exact: true }).click()
+  await expect(
+    page.getByText(`Added “Synthetic event ${info.project.name}”.`)
+  ).toBeVisible()
+  await expect(
+    page.getByText(`Synthetic event ${info.project.name}`, { exact: true })
   ).toBeVisible()
   await page.goto('/support')
   const subject = `Synthetic support ${info.project.name}`

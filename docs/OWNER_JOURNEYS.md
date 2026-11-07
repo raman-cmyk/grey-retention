@@ -542,10 +542,12 @@ Simplify:
 
 Checks:
 
-- [ ] "Yours · 0 total" empty: "Nothing yet — add your first on the left."
-- [ ] Platform list shows the next 90 days only. The heading includes "managed by Grey Retention" (white-label: show the agency's brand name, not a fixed one). **(fix for white-label)**
-- [ ] The platform list matches the brand's country (see §6). **(fix)**
+- [x] "Yours · 0 total" empty: "Nothing yet — add your first on the left."
+- [x] Platform list shows the next 90 days only. The heading includes "managed by Grey Retention" (white-label: show the agency's brand name, not a fixed one). **(fix for white-label)**
+- [x] The platform list matches the brand's country (see §6). **(fix)**
 - [ ] An entry added here appears in the planner modal's "YOURS (N)" list and in the brief's holiday rows for its month.
+
+> **As built (UIR-012):** "managed by" shows the product name from the white-label brand presentation. The owner picks the country (US, UK, Australia, Canada, New Zealand, India, or shopping and gift days for other countries); until then it is guessed from the workspace timezone and the card says so. Still open (browser lane, §6): the planner modal's "YOURS (N)" list. The AI planner already plans around entries in the next 30 days.
 
 Simplify:
 
@@ -560,10 +562,12 @@ Simplify:
 Checks:
 
 - [ ] Klaviyo card badge "PULLED N TEMPLATES" is a live count.
-- [ ] "Klaviyo Connected" is a `button` but does nothing visible. Make it a status, not a button, or a menu with "Disconnect" behind a confirm. Not clicked.
-- [ ] "Update API key" is a disclosure: password input "pk_…" + "Validate & swap key" (submit). Not used.
-- [ ] Shopify "Connect Shopify →" reveals the custom-app token form (per spec). Not opened beyond the button.
-- [ ] Missing Shopify breaks UTM attribution, Store and the product catalogue. Show these consequences on the card: "Without Shopify: no Store page, no UTM revenue, product list may be outdated."
+- [x] "Klaviyo Connected" is a `button` but does nothing visible. Make it a status, not a button, or a menu with "Disconnect" behind a confirm. Not clicked.
+- [x] "Update API key" is a disclosure: password input "pk_…" + "Validate & swap key" (submit). Not used.
+- [x] Shopify "Connect Shopify →" reveals the custom-app token form (per spec). Not opened beyond the button.
+- [x] Missing Shopify breaks UTM attribution, Store and the product catalogue. Show these consequences on the card: "Without Shopify: no Store page, no UTM revenue, product list may be outdated."
+
+> **As built (UIR-013, ticked after it merged):** "Klaviyo Connected" is a status line, not a button. The template badge shows the count from the Klaviyo check made when connecting; with today's sample provider it reads "Pulled N sample templates", so the live-count check stays open until a real Klaviyo account is connected.
 
 Simplify:
 
@@ -588,12 +592,14 @@ Behaviour seen:
 
 Checks:
 
-- [ ] Invite validates the email format and blocks duplicates.
-- [ ] Changing a member's role select asks before saving (unknown whether the old app auto-saves on change; not touched).
-- [ ] Deactivate asks for confirmation.
-- [ ] The owner row can't be changed or deactivated.
-- [ ] Pending invites are listed with Resend / Cancel (not seen, add).
-- [ ] Rename the "Admin" role to "Manager" to avoid clashing with platform admins (the value is already `manager`). **(fix)**
+- [x] Invite validates the email format and blocks duplicates.
+- [x] Changing a member's role select asks before saving (unknown whether the old app auto-saves on change; not touched).
+- [x] Deactivate asks for confirmation.
+- [x] The owner row can't be changed or deactivated.
+- [x] Pending invites are listed with Resend / Cancel (not seen, add).
+- [x] Rename the "Admin" role to "Manager" to avoid clashing with platform admins (the value is already `manager`). **(fix)**
+
+> **As built (UIR-019):** the role is called **Manager** on the page; the database keeps the value `admin`. Invites refuse a bad address, a person already on the team, and a second open invite to the same address ("Use Resend"). Email sending is not switched on yet, so the card says no email is sent and the person signs up with that address to find the invite. Pending invites show the role and "Expires in N days" (or "Expired") with **Resend** (7 more days) and **Cancel**. To change a role the owner picks it in the list and clicks **Change role**, which asks "Make Sam a Manager?" first; **Deactivate** and **Reactivate** ask first. A deactivated teammate is reactivated, never invited again. Owners and managers see **Recent team changes** (who changed what, when). The owner row shows an Owner pill only, and nobody can change their own access. Deactivated teammates stay listed as "Deactivated" for owners and managers. The help text is honest: managers invite people, change access and see reports and usage; only the owner approves copy, designs and sending.
 
 ---
 
@@ -617,9 +623,11 @@ Behaviour seen:
 
 Checks:
 
-- [ ] Submit stays disabled until subject and details are filled.
-- [ ] Cancel closes with nothing saved (verified).
-- [ ] Requests show their status (Open / Planned / Done) and team replies.
+- [x] Submit stays disabled until subject and details are filled.
+- [x] Cancel closes with nothing saved (verified).
+- [x] Requests show their status (Open / Planned / Done) and team replies.
+
+> **As built (UIR-020):** wording follows §18 decision 16: the button is **New request** and the modal's button is **Send** (it stays disabled until subject and details have text). Cancel saves nothing; if something was typed it asks "Discard your answers?" first. Each request shows its type, status (Open, Planned or Done), who sent it and when, the details and replies; replies from the platform team are labelled "<product name> team" (white-label). The status comes from the admin support queue: only the platform team sets open (Open), in progress (Planned) or closed (Done); workspace members can reply but cannot change it. Any workspace member can send a request. The empty state says "Your request goes to the <product name> team" instead of promising that every request is read: the admin queue shows only the newest tickets until UIR-026.
 
 ---
 
