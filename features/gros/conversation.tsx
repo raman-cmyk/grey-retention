@@ -126,7 +126,11 @@ export function Conversation({
           )}
           {shown.map((m) => (
             <Bubble key={m.id} role={m.role}>
-              {m.role === 'assistant' ? <Markdown text={m.body} /> : m.body}
+              {m.role === 'assistant' ? (
+                <Markdown text={m.body} />
+              ) : (
+                <span>{m.body}</span>
+              )}
             </Bubble>
           ))}
           {sending && (

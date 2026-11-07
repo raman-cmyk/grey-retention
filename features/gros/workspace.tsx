@@ -59,7 +59,7 @@ export async function GrosWorkspace({
           <>
             {thread ? (
               <ThreadHeader
-                key={thread.id}
+                key={`header:${thread.id}`}
                 chat={thread.id}
                 title={thread.title}
                 visibility={thread.visibility}
@@ -78,7 +78,7 @@ export async function GrosWorkspace({
               <BrandCheck tenantId={ctx.tenantId} action="GROS answers" />
             </div>
             <Conversation
-              key={thread?.id ?? 'new'}
+              key={`chat:${thread?.id ?? 'new'}`}
               chat={thread?.id ?? null}
               greeting={greeting(view.userName)}
               messages={thread?.messages ?? []}

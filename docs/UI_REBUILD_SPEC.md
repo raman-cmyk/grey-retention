@@ -661,24 +661,26 @@ Right panel:
 
 ## 8. Ask GROS `/gros`
 
-- [ ] Two panes filling the viewport height; no page scroll.
-- [ ] **Left pane (~280px):**
+- [x] Two panes filling the viewport height; no page scroll.
+- [x] **Left pane (~280px):**
   - header "✦ Ask GROS" + round `+` (New private chat)
   - thread list: the active thread has a tinted background + a left accent bar; each row shows the title (bold) and "🔒 5 msg · 46 days ago" (the lock icon shows only on private threads)
   - muted footer "GROS knows 218 of your email templates."
-- [ ] **Right pane header:**
+- [x] **Right pane header:**
   - thread title as an inline-editable input (rename on blur or Enter)
   - on the right: pill `🔒 PRIVATE` (or SHARED) and text buttons `⟳ Refresh data` (tooltip "Force GROS to re-read your latest Klaviyo + Shopify data."), `👥 Make shared` (toggles to "Make private"), and `🗑 Delete` (danger, asks to confirm)
-- [ ] Messages:
+- [x] Messages:
   - GROS on the left: light bubble, max ~75% width, renders markdown (lists, bold, line breaks)
   - user on the right: inverted pill bubble
-- [ ] The first assistant message in a new thread is a greeting: "Hi <first name> — I'm GROS, your marketing assistant. I've got your store's data in front of me, so I can help you plan campaigns, dig into how things are performing, or just talk through an idea.\n\nWhat's on your mind?"
-- [ ] Composer:
+- [x] The first assistant message in a new thread is a greeting: "Hi <first name> — I'm GROS, your marketing assistant. I've got your store's data in front of me, so I can help you plan campaigns, dig into how things are performing, or just talk through an idea.\n\nWhat's on your mind?"
+- [x] Composer:
   - multi-line textarea with an accent focus ring, placeholder "Ask GROS anything in this thread…"
   - square send button
   - caption "⌘/Ctrl + Enter to send. Tokens deducted from your Token Package."
   - **⌘/Ctrl+Enter sends; Enter adds a new line**
-- [ ] While a reply is coming: typing indicator; streaming is preferred.
+- [x] While a reply is coming: typing indicator; streaming is preferred.
+
+> **As built (UIR-008, cloud lane):** `/gros` opens the most recent chat; `/gros/new` is a new private chat that is saved only when its first question is sent (`start_conversation`); each chat is `/gros/:id` (old `?chat=` links redirect). Left pane: "✦ Ask GROS" with a round `+` (New private chat), the chats newest first with the active one tinted and barred, "🔒 5 msg · 46 days ago" (the lock only on private chats), and "GROS knows N of your email templates." (saved layouts plus uploads, counted live). On a phone the list folds into "Your chats (n)". Right pane: the chat name is an inline field for the person who started it (rename on blur or Enter, Escape puts it back); PRIVATE / SHARED pill; `⟳ Refresh data` (with the spec's tooltip; with sample connections it re-reads the page and says there is nothing new to pull); `👥 Make shared` / `Make private` explains who will see the chat before it changes; `🗑 Delete` asks first. Only the starter may rename, share or delete. GROS replies render bold, lists and line breaks (a safe subset, no links or HTML); your messages are dark pills on the right. The greeting is shown, not stored, with each viewer's first name, and says "your workspace's campaigns … (sample data for now)" instead of "your store's data". The composer's caption says "⌘/Ctrl + Enter to send. Each answer uses AI credits (sample credits for now)." instead of the Token Package wording (§18.8). An "About" picker asks about the whole workspace or one campaign; workspace answers come from the database (last sent campaign with its real send date, next planned send, what waits for approval, the library size). While an answer is coming the question shows at once with a typing indicator; replies are not streamed (the fake provider answers whole). Proposed changes ("Propose a change to a campaign") stay explicit: nothing changes until the person who asked applies it, and Apply asks first.
 
 ---
 
