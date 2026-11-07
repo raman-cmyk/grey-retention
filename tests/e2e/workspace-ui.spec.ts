@@ -46,10 +46,16 @@ test('workspace sidebar, account menu and mobile drawer work with keyboard and s
     const account = page.getByRole('button', { name: /^Open account menu/ })
     await account.focus()
     await page.keyboard.press('Enter')
-    const logOut = page
-      .locator(`[id="${await account.getAttribute('aria-controls')}"]`)
-      .getByRole('button', { name: 'Log out', exact: true })
+    const menu = page.locator(
+      `[id="${await account.getAttribute('aria-controls')}"]`
+    )
+    const logOut = menu.getByRole('button', { name: 'Log out', exact: true })
     await expect(logOut).toBeVisible()
+    // Profile Update (UIR-014), then Log out.
+    await page.keyboard.press('Tab')
+    await expect(
+      menu.getByRole('link', { name: 'Profile Update', exact: true })
+    ).toBeFocused()
     await page.keyboard.press('Tab')
     await expect(logOut).toBeFocused()
     await page.keyboard.press('Escape')

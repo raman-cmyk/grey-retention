@@ -1,5 +1,5 @@
 'use client'
-
+import type { Route } from 'next'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -308,24 +308,31 @@ function useDismiss(
   }, [open, close, container])
 }
 
-// Profile lives at /profile (built by the other lane, spec §14); until then
-// it is shown as coming soon. Connections is not repeated here: it is
-// already in Workspace (OWNER_JOURNEYS.md §18.18).
-function AccountLinks() {
+// Profile Update links to the surface's own profile page (client: /profile,
+// spec §14) and is left out where there is none. Connections is not
+// repeated here: it is already in Workspace (OWNER_JOURNEYS.md §18.18).
+function AccountLinks({
+  profileHref,
+  onNavigate
+}: {
+  profileHref?: Route
+  onNavigate?: () => void
+}) {
   return (
     <>
-      <span
-        data-soon
-        className="flex min-h-10 cursor-not-allowed items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm text-[var(--text-faint)]"
-      >
-        <UserRound className="size-4" aria-hidden />
-        <span>
-          Profile Update
-          <ComingSoon />
-        </span>
-        <SoonPill />
-      </span>
-      <div className="my-1 border-t border-[var(--line)]" />
+      {profileHref && (
+        <>
+          <Link
+            href={profileHref}
+            onClick={onNavigate}
+            className="flex min-h-10 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm text-[var(--text)] hover:bg-[var(--surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-none"
+          >
+            <UserRound className="size-4" aria-hidden />
+            Profile Update
+          </Link>
+          <div className="my-1 border-t border-[var(--line)]" />
+        </>
+      )}
       <form action={signOut}>
         <button
           type="submit"
@@ -361,10 +368,12 @@ function Avatar({
 
 function AccountMenu({
   identity,
-  rail
+  rail,
+  profileHref
 }: {
   identity: ShellIdentity
   rail: boolean
+  profileHref?: Route
 }) {
   const [open, setOpen] = useState(false)
   const id = useId()
@@ -438,7 +447,10 @@ function AccountMenu({
             )}
           </div>
           <div className="pt-1">
-            <AccountLinks />
+            <AccountLinks
+              profileHref={profileHref}
+              onNavigate={() => close(false)}
+            />
           </div>
         </div>
       )}
@@ -629,10 +641,17 @@ function SidebarContent({
                 )}
               </div>
             </div>
-            <AccountLinks />
+            <AccountLinks
+              profileHref={navigation.profileHref}
+              onNavigate={onNavigate}
+            />
           </div>
         ) : (
-          <AccountMenu identity={identity} rail={rail} />
+          <AccountMenu
+            identity={identity}
+            rail={rail}
+            profileHref={navigation.profileHref}
+          />
         )}
       </div>
     </div>

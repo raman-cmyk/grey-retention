@@ -60,6 +60,8 @@ export type NavigationGroup = {
 export type ShellNavigation = {
   primary: NavigationItem[]
   groups: NavigationGroup[]
+  /** The account menu's "Profile Update" page; omitted where none exists. */
+  profileHref?: Route
 }
 
 export function isSoon(
@@ -87,6 +89,7 @@ export function navigationLinks(navigation: ShellNavigation) {
  */
 export function createClientNavigation(assistantName: string): ShellNavigation {
   return {
+    profileHref: '/profile',
     primary: [
       { label: 'Dashboard', href: '/dashboard', icon: 'dashboard' },
       { label: 'Brand & Store', href: '/brand', icon: 'brand' },

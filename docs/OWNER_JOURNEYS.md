@@ -624,8 +624,10 @@ Checks:
 ## 16. Profile `/profile`
 
 - Same as the spec.
-- [ ] Inline errors for a wrong current password, a mismatch, or a password under 8 characters. Not tested: it would submit.
-- [ ] The email field is locked, with "Contact support if you need to change it." Link "support" to `/support`. **(fix)**
+- [x] Inline errors for a wrong current password, a mismatch, or a password under 8 characters. Not tested: it would submit.
+- [x] The email field is locked, with "Contact support if you need to change it." Link "support" to `/support`. **(fix)**
+
+> **As built (UIR-014):** each error shows under its own field: wrong current password, "The new passwords do not match.", and a too-short password. The minimum is **12** characters, the same as the password-reset form (one rule for both forms). "Too many attempts" and "too easy to guess" have their own messages. The locked email links "support" to `/support`.
 
 ---
 
