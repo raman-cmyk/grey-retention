@@ -42,7 +42,7 @@ test('UIR-009 owner tracks a competitor, browses its emails and stops tracking',
   await page.getByRole('button', { name: 'Track' }).click()
   await expect(page.getByText(`Tracking ${domain}.`)).toBeVisible()
   const chips = page.getByRole('list', { name: 'Tracked domains' })
-  await expect(chips.getByText(domain)).toBeVisible()
+  await expect(chips.getByText(domain, { exact: true })).toBeVisible()
   await expect(chips.getByText('PENDING')).toBeVisible()
   await expect(page.getByText(/usually takes 1–7 days/)).toBeVisible()
 
