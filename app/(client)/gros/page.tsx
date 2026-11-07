@@ -1,29 +1,26 @@
-import { PageHeading } from '@/components/ui/workspace'
+import type { Metadata } from 'next'
+import { redirect } from 'next/navigation'
 import { requireRequestContext } from '@/features/auth/application/request-context'
-import { BrandCheck } from '@/features/brand-profile/brand-check'
-import {
-  GrosPanel,
-  validChatId,
-  validMessageCursor
-} from '@/features/gros/panel'
+import { latestThreadId } from '@/features/gros/data'
+import { validChatId } from '@/features/gros/model'
+import { GrosWorkspace } from '@/features/gros/workspace'
+
+export const metadata: Metadata = { title: 'Ask GROS' }
+
+/**
+ * /gros opens the most recent chat (OWNER_JOURNEYS §8); a workspace with no
+ * chats sees a new one. Old `?chat=` links still work.
+ */
 export default async function GrosPage({
   searchParams
 }: {
-  searchParams: Promise<{ chat?: string; before?: string }>
+  searchParams: Promise<{ chat?: string }>
 }) {
-  const p = await searchParams
+  const { chat } = await searchParams
+  const legacy = validChatId(chat)
+  if (legacy) redirect(`/gros/${legacy}`)
   const ctx = await requireRequestContext('client')
-  return (
-    <div className="mx-auto max-w-6xl">
-      <PageHeading
-        title="Ask GROS"
-        description="Private and shared conversations, evidence explanations and explicit version-bound proposals."
-      />
-      <BrandCheck tenantId={ctx.tenantId} action="GROS answers" />
-      <GrosPanel
-        chatId={validChatId(p.chat)}
-        before={validMessageCursor(p.before)}
-      />
-    </div>
-  )
+  const latest = await latestThreadId(ctx)
+  if (latest) redirect(`/gros/${latest}`)
+  return <GrosWorkspace ctx={ctx} />
 }
