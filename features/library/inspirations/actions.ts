@@ -122,7 +122,7 @@ export async function stopTracking(
   // Keep the owner's private rules as they are.
   const current = await db
     .from('competitor_subscriptions')
-    .select('private_rules')
+    .select('private_rules,label')
     .eq('tenant_id', context.tenantId)
     .eq('id', parsed.data.subscription)
     .maybeSingle()
@@ -146,6 +146,6 @@ export async function stopTracking(
         : { error: 'We could not stop tracking. Nothing was changed.' }
   refresh()
   return {
-    message: `Stopped tracking ${parsed.data.domain}. Its emails left your library.`
+    message: `Stopped tracking ${current.data.label}. Its emails left your library.`
   }
 }

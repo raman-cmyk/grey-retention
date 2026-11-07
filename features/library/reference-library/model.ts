@@ -10,7 +10,7 @@ export type LibraryTab = (typeof libraryTabs)[number]
 
 export const tabLabel: Record<LibraryTab, string> = {
   competitors: 'Competitors',
-  yours: 'Your uploads',
+  yours: 'Yours',
   best: 'Best picks'
 }
 

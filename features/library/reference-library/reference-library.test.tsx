@@ -26,6 +26,83 @@ const many = (count: number) =>
   Array.from({ length: count }, (_, i) => item(i + 1))
 
 describe('ReferenceLibrary', () => {
+  it('offers staff no actions they cannot take', () => {
+    render(
+      <ReferenceLibrary
+        items={[
+          item(1),
+          item(2, { tab: 'yours', source: 'import', domain: null })
+        ]}
+        timezone="UTC"
+        canUse={false}
+      />
+    )
+    expect(screen.queryByRole('link', { name: /Use this design/ })).toBeNull()
+  })
+
+  it('in a picker, marks the chosen reference and closes the preview after a pick', async () => {
+    const onPick = vi.fn()
+    render(
+      <ReferenceLibrary
+        items={many(2)}
+        timezone="UTC"
+        mode="pick"
+        onPick={onPick}
+        selectedId="e1"
+      />
+    )
+    const chosen = screen
+      .getAllByRole('listitem')
+      .find((li) => li.textContent?.includes('Fictional email 1'))!
+    expect(within(chosen).getByText('Selected')).toBeVisible()
+    expect(
+      within(chosen).getByRole('button', { name: /Use this reference/ })
+    ).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(
+      within(chosen).getByRole('button', { name: /Open the preview/ })
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Fictional email 1' })
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /Use this reference/ })
+    )
+    expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'e1' }))
+    expect(
+      screen.queryByRole('dialog', { name: 'Fictional email 1' })
+    ).toBeNull()
+  })
+
+  it('says a saved layout has no preview, instead of calling it plain text', async () => {
+    render(
+      <ReferenceLibrary
+        items={[
+          item(1, {
+            tab: 'yours',
+            source: 'template',
+            domain: null,
+            format: 'design'
+          })
+        ]}
+        timezone="UTC"
+        initialTab="yours"
+      />
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: /Open the preview/ })
+    )
+    expect(
+      screen.getAllByText(/This saved layout has no preview yet/)[0]
+    ).toBeVisible()
+  })
+
+  it('jumps to the first and last tab with Home and End', async () => {
+    render(<ReferenceLibrary items={many(1)} timezone="UTC" />)
+    screen.getByRole('tab', { name: /^Competitors/ }).focus()
+    await userEvent.keyboard('{End}')
+    expect(screen.getByRole('tab', { name: /^Best picks/ })).toHaveFocus()
+    await userEvent.keyboard('{Home}')
+    expect(screen.getByRole('tab', { name: /^Competitors/ })).toHaveFocus()
+  })
+
   it('shows the same three tabs with their counts, and empty tabs say so', async () => {
     render(
       <ReferenceLibrary
@@ -37,7 +114,7 @@ describe('ReferenceLibrary', () => {
       />
     )
     const tabs = screen.getAllByRole('tab').map((t) => t.textContent)
-    expect(tabs).toEqual(['Competitors 3', 'Your uploads 1', 'Best picks 0'])
+    expect(tabs).toEqual(['Competitors 3', 'Yours 1', 'Best picks 0'])
     await userEvent.click(screen.getByRole('tab', { name: 'Best picks 0' }))
     expect(screen.getByText('No best picks uploaded yet.')).toBeVisible()
     expect(
@@ -45,8 +122,8 @@ describe('ReferenceLibrary', () => {
     ).toBeVisible()
     // Arrow keys move between tabs.
     await userEvent.keyboard('{ArrowLeft}')
-    expect(screen.getByRole('tab', { name: 'Your uploads 1' })).toHaveFocus()
-    expect(screen.getByRole('tab', { name: 'Your uploads 1' })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: 'Yours 1' })).toHaveFocus()
+    expect(screen.getByRole('tab', { name: 'Yours 1' })).toHaveAttribute(
       'aria-selected',
       'true'
     )

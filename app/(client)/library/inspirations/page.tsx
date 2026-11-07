@@ -34,8 +34,9 @@ export default async function InspirationsPage() {
             Competitor Inspirations
           </h1>
           <p className="text-sm text-[var(--text-muted)]">
-            Real newsletters from the competitors you track — browse them here,
-            pick one as a reference design when planning a campaign.
+            Newsletters from the competitors you track — browse them here, pick
+            one as a reference design when planning a campaign. This workspace
+            shows sample emails until a real inbox is connected.
           </p>
         </div>
         <p className="text-right">
@@ -65,8 +66,10 @@ export default async function InspirationsPage() {
                 aria-hidden="true"
               />
               <span>
-                <strong>To build from one of these:</strong> choose “Use this
-                design” on a card to start a new draft with it as the reference.
+                <strong>To build from one of these:</strong>{' '}
+                {owner
+                  ? 'choose “Use this design” on a card to start a new draft with it as the reference.'
+                  : 'the workspace owner can start a new draft from any card.'}
               </span>
             </p>
             <Link
@@ -77,7 +80,11 @@ export default async function InspirationsPage() {
               <ArrowRight className="size-4" aria-hidden="true" />
             </Link>
           </div>
-          <ReferenceLibrary items={library.items} timezone={ctx.timezone} />
+          <ReferenceLibrary
+            items={library.items}
+            timezone={ctx.timezone}
+            canUse={owner}
+          />
         </>
       )}
     </div>

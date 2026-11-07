@@ -93,14 +93,14 @@ export function TrackedDomains({
             Your competitor domains ({tracked.length}/{limit})
           </h2>
           <p className="text-sm text-[var(--text-muted)]">
-            Add a brand you want to learn from. We subscribe to their newsletter
-            and show their designs once they send us emails — their latest 20
-            sends show up below and in the Competitor tab of every design
-            picker.
+            Add a brand you want to learn from. Once their newsletter emails
+            arrive, their latest 20 sends show up below and in the Competitors
+            tab of every design picker.
           </p>
           <p className="text-xs text-[var(--text-muted)]">
-            This workspace uses sample data: only sample domains that end in
-            .example can be tracked, and their emails are sample emails.
+            This workspace uses sample data: no newsletter is subscribed to yet,
+            only sample domains that end in .example can be tracked, and their
+            emails are sample emails.
           </p>
         </div>
         {owner && (

@@ -29,7 +29,10 @@ beforeEach(() => {
       ? { data: subscription, error: null }
       : { data: null, error: null }
   )
-  rules = { data: { private_rules: 'Never copy prices.' }, error: null }
+  rules = {
+    data: { private_rules: 'Never copy prices.', label: 'northwind.example' },
+    error: null
+  }
   capture = { data: null, error: null }
   tracked = { data: null, error: null }
   const from = (table: string) => {
@@ -43,7 +46,7 @@ beforeEach(() => {
     chain.maybeSingle = async () =>
       table === 'competitor_captures'
         ? capture
-        : columns === 'private_rules'
+        : columns === 'private_rules,label'
           ? rules
           : tracked
     return chain

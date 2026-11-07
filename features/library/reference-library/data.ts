@@ -1,6 +1,6 @@
 import 'server-only'
-import { emailFormat, previewHtml } from '@/features/email-generation/html'
-import type { SafePreview } from '@/features/email-generation/safe-preview'
+import { sourceFormat } from '@/features/email-generation/html'
+import { toSafePreview } from '@/features/email-generation/to-safe-preview'
 import { readPages } from '@/lib/db/read-pages'
 import { createClient } from '@/lib/supabase/server'
 import { classifyFormat, type LibraryItem } from './model'
@@ -24,14 +24,10 @@ export type ReferenceLibraryData = {
 
 /** The latest sends per competitor shown in the library (spec §9). */
 export const latestPerDomain = 20
+/** The latest pasted or uploaded references shown (newest first). */
+export const latestUploads = 40
 /** The most tracked domains at a time (the database checks it too). */
 export const domainLimit = 10
-
-/** Sanitized on the server; the raw email never reaches the browser. */
-function safe(html: string | null): SafePreview | null {
-  if (!html) return null
-  return { kind: 'sandboxed-preview', html: previewHtml(html).html }
-}
 
 /**
  * LIVE once emails have arrived (a capture with fewer than 10 is still
@@ -72,37 +68,37 @@ export async function referenceLibrary(
   )
   if (subscriptions.error || !subscriptions.data) return null
   const ids = subscriptions.data.map((s) => s.capture_id)
-  const [captures, emails, imports, templates] = await Promise.all([
+  // Only what the library shows is read: the latest 20 per domain (one
+  // small query each, at most 10 domains) and the latest uploads.
+  const [captures, perDomain, imports, templates] = await Promise.all([
     ids.length
       ? db
           .from('competitor_captures')
           .select('id,domain,status,synthetic')
           .in('id', ids)
       : Promise.resolve({ data: [], error: null }),
-    ids.length
-      ? readPages((from, to) =>
-          db
-            .from('competitor_emails')
-            .select(
-              'id,capture_id,subject,text_content,safe_html,received_at,synthetic'
-            )
-            .in('capture_id', ids)
-            .order('received_at', { ascending: false })
-            .order('id')
-            .range(from, to)
-        )
-      : Promise.resolve({ data: [], error: null }),
-    readPages((from, to) =>
-      db
-        .from('reference_imports')
-        .select(
-          'id,subject,original_body,readable_text,content_format,source_description,created_at'
-        )
-        .eq('tenant_id', tenantId)
-        .order('created_at', { ascending: false })
-        .order('id')
-        .range(from, to)
+    Promise.all(
+      ids.map((id) =>
+        db
+          .from('competitor_emails')
+          .select(
+            'id,capture_id,subject,text_content,safe_html,received_at,synthetic'
+          )
+          .eq('capture_id', id)
+          .order('received_at', { ascending: false })
+          .order('id')
+          .limit(latestPerDomain)
+      )
     ),
+    db
+      .from('reference_imports')
+      .select(
+        'id,subject,original_body,readable_text,content_format,source_description,created_at'
+      )
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .order('id')
+      .limit(latestUploads),
     readPages((from, to) =>
       db
         .from('own_templates')
@@ -113,6 +109,10 @@ export async function referenceLibrary(
         .range(from, to)
     )
   ])
+  const emails = {
+    error: perDomain.find((r) => r.error)?.error ?? null,
+    data: perDomain.flatMap((r) => r.data ?? [])
+  }
   if (captures.error || emails.error || imports.error || templates.error)
     return null
   const captureById = new Map((captures.data ?? []).map((c) => [c.id, c]))
@@ -121,10 +121,11 @@ export async function referenceLibrary(
   )
   const perCapture = new Map<string, number>()
   const items: LibraryItem[] = []
-  for (const email of emails.data ?? []) {
-    const seen = perCapture.get(email.capture_id) ?? 0
-    perCapture.set(email.capture_id, seen + 1)
-    if (seen >= latestPerDomain) continue
+  for (const email of emails.data) {
+    perCapture.set(
+      email.capture_id,
+      (perCapture.get(email.capture_id) ?? 0) + 1
+    )
     const capture = captureById.get(email.capture_id)
     items.push({
       id: email.id,
@@ -135,16 +136,13 @@ export async function referenceLibrary(
       domain: capture?.domain ?? null,
       from: labelByCapture.get(email.capture_id) ?? capture?.domain ?? '',
       at: email.received_at,
-      preview: safe(email.safe_html),
+      preview: toSafePreview(email.safe_html),
       text: email.text_content,
       sample: email.synthetic
     })
   }
   for (const row of imports.data ?? []) {
-    const html =
-      (row.content_format ?? emailFormat(row.original_body)) === 'html'
-        ? row.original_body
-        : null
+    const html = sourceFormat(row) === 'html' ? row.original_body : null
     items.push({
       id: row.id,
       tab: 'yours',
@@ -154,7 +152,7 @@ export async function referenceLibrary(
       domain: null,
       from: row.source_description || 'Your upload',
       at: row.created_at,
-      preview: safe(html),
+      preview: toSafePreview(html),
       text: row.readable_text,
       sample: false
     })
@@ -167,11 +165,12 @@ export async function referenceLibrary(
       format: 'design',
       title: row.name,
       domain: null,
-      from: 'Saved from a sent campaign',
+      from: 'Saved layout (sample send)',
       at: row.created_at,
       preview: null,
-      text: 'A layout saved from one of your sent campaigns: hero, copy and call to action.',
-      sample: false
+      text: 'A layout saved from one of your campaigns after a sample send: hero, copy and call to action.',
+      // Every saved layout comes from a sample (fixture) send in this version.
+      sample: true
     })
   }
   const tracked: TrackedDomain[] = subscriptions.data.map((s) => {

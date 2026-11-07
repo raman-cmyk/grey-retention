@@ -1,4 +1,5 @@
 'use client'
+import type { Route } from 'next'
 import Link from 'next/link'
 import { Search, Sparkles } from 'lucide-react'
 import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
@@ -30,8 +31,8 @@ const emptyText: Record<LibraryTab, { title: string; body: string }> = {
     body: 'Track a competitor’s domain on the Inspiration page. Their latest 20 sends show up here.'
   },
   yours: {
-    title: 'No uploads yet',
-    body: 'Paste or upload an email you like, and it shows up here to use as a reference.'
+    title: 'Nothing here yet',
+    body: 'Emails you paste or upload, and layouts saved from your campaigns, show up here to use as a reference.'
   },
   best: {
     title: 'No best picks uploaded yet.',
@@ -41,19 +42,34 @@ const emptyText: Record<LibraryTab, { title: string; body: string }> = {
 
 const emailsWord = (n: number) => `${n} ${n === 1 ? 'email' : 'emails'}`
 
+/** What the card and the preview say about an item without a design. */
+const noDesignText = (item: LibraryItem) =>
+  item.source === 'template'
+    ? 'This saved layout has no preview yet. Using it starts from the same sections.'
+    : 'Plain-text email: there is no design to show.'
+
 function Card({
   item,
   timezone,
   onOpen,
-  action
+  action,
+  selected
 }: {
   item: LibraryItem
   timezone: string
   onOpen: () => void
   action: React.ReactNode
+  selected: boolean
 }) {
   return (
-    <li className="group flex min-w-0 flex-col overflow-hidden rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] focus-within:border-[var(--brand-secondary)] hover:border-[var(--brand-secondary)]">
+    <li
+      className={cn(
+        'group flex min-w-0 flex-col overflow-hidden rounded-[var(--radius-panel)] border bg-[var(--surface-raised)] focus-within:border-[var(--brand-secondary)] hover:border-[var(--brand-secondary)]',
+        selected
+          ? 'border-[var(--brand-secondary)] ring-2 ring-[var(--brand-secondary)]'
+          : 'border-[var(--line)]'
+      )}
+    >
       {/* The render scrolls inside; it is not a click target (one per card). */}
       <div className="h-72 overflow-hidden border-b border-[var(--line)] bg-white">
         {item.preview ? (
@@ -77,6 +93,7 @@ function Card({
           {item.domain && <DomainPill domain={item.domain} />}
           <TypePill type={item.format} />
           {item.sample && <Pill tone="neutral">Sample</Pill>}
+          {selected && <Pill tone="info">Selected</Pill>}
           <span className="ml-auto text-xs text-[var(--text-muted)]">
             {formatBrandDate(item.at, timezone)}
           </span>
@@ -87,9 +104,12 @@ function Card({
         <span className="text-xs text-[var(--text-muted)]">{item.from}</span>
         <span className="sr-only">Open the preview</span>
       </button>
-      <div className="px-4 pb-4 opacity-100 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 sm:opacity-0">
-        {action}
-      </div>
+      {/* Shown on hover or focus where the device can hover; always on touch. */}
+      {action && (
+        <div className="px-4 pb-4 opacity-100 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:hover)]:opacity-0">
+          {action}
+        </div>
+      )}
     </li>
   )
 }
@@ -104,20 +124,40 @@ function Card({
  * - `pick` (New draft, the editor's design picker): "Use this reference"
  *   calls `onPick`; the caller decides what happens next.
  */
-export function ReferenceLibrary({
-  items,
-  timezone,
-  mode = 'browse',
-  onPick,
-  initialTab = 'competitors'
-}: {
-  items: LibraryItem[]
-  /** The brand timezone the dates are shown in. */
-  timezone: string
-  mode?: 'browse' | 'pick'
-  onPick?: (item: LibraryItem) => void
-  initialTab?: LibraryTab
-}) {
+type ModeProps =
+  | {
+      mode?: 'browse'
+      /**
+       * Whether "Use this design" is offered (it starts a new draft, which
+       * only the owner can do).
+       */
+      canUse?: boolean
+      onPick?: never
+      selectedId?: never
+    }
+  | {
+      mode: 'pick'
+      /**
+       * Called with the chosen item. Send only `item.id` and `item.source`
+       * back to the server, never its preview markup.
+       */
+      onPick: (item: LibraryItem) => void
+      /** The reference already chosen, marked "Selected". */
+      selectedId?: string | null
+      canUse?: never
+    }
+
+export function ReferenceLibrary(
+  props: {
+    items: LibraryItem[]
+    /** The brand timezone the dates are shown in. */
+    timezone: string
+    initialTab?: LibraryTab
+  } & ModeProps
+) {
+  const { items, timezone, initialTab = 'competitors' } = props
+  const canUse = props.mode === 'pick' || props.canUse !== false
+  const selectedId = props.mode === 'pick' ? props.selectedId : null
   const id = useId()
   const [tab, setTab] = useState<LibraryTab>(initialTab)
   const [show, setShow] = useState<ShowFilter>('all')
@@ -155,21 +195,33 @@ export function ReferenceLibrary({
     setDomains([])
   }
   const onTabKey = (event: KeyboardEvent, index: number) => {
-    const step =
-      event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
-    if (!step) return
+    const last = libraryTabs.length - 1
+    const next =
+      event.key === 'ArrowRight'
+        ? (index + 1) % libraryTabs.length
+        : event.key === 'ArrowLeft'
+          ? (index + last) % libraryTabs.length
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? last
+              : null
+    if (next === null) return
     event.preventDefault()
-    const next = (index + step + libraryTabs.length) % libraryTabs.length
     choose(libraryTabs[next]!)
     tabRefs.current[next]?.focus()
   }
   const action = (item: LibraryItem) =>
-    mode === 'pick' ? (
+    !canUse ? null : props.mode === 'pick' ? (
       <Button
         type="button"
         size="sm"
         variant="secondary"
-        onClick={() => onPick?.(item)}
+        aria-pressed={selectedId === item.id}
+        onClick={() => {
+          setOpen(null)
+          props.onPick(item)
+        }}
       >
         <Sparkles className="size-4" aria-hidden="true" />
         Use this reference
@@ -177,7 +229,7 @@ export function ReferenceLibrary({
       </Button>
     ) : (
       <Link
-        href={referenceHref(item) as never}
+        href={referenceHref(item) as Route}
         className="inline-flex min-h-9 items-center gap-1.5 text-sm font-medium text-[var(--brand-ink)] underline-offset-2 hover:underline"
       >
         <Sparkles className="size-4" aria-hidden="true" />
@@ -260,14 +312,16 @@ export function ReferenceLibrary({
                 setShown(pageSize)
               }}
             />
-            {filtered && (
-              <p
-                className="text-sm text-[var(--text-muted)]"
-                aria-live="polite"
-              >
-                {emailsWord(matches.length)}
-              </p>
-            )}
+            {/* Always mounted, so the first change is read out too. */}
+            <p
+              className={cn(
+                'text-sm text-[var(--text-muted)]',
+                !filtered && 'sr-only'
+              )}
+              aria-live="polite"
+            >
+              {filtered ? emailsWord(matches.length) : ''}
+            </p>
           </div>
         )}
         {tab === 'competitors' && allDomains.length > 1 && (
@@ -308,7 +362,7 @@ export function ReferenceLibrary({
             <p className="mt-1 text-sm text-[var(--text-muted)]">
               {emptyText[tab].body}
             </p>
-            {tab === 'yours' && (
+            {tab === 'yours' && canUse && (
               <Link
                 href="/import-reference"
                 className="mt-3 inline-block text-sm font-medium underline"
@@ -334,6 +388,7 @@ export function ReferenceLibrary({
                   timezone={timezone}
                   onOpen={() => setOpen(item)}
                   action={action(item)}
+                  selected={selectedId === item.id}
                 />
               ))}
             </ul>
@@ -361,7 +416,7 @@ export function ReferenceLibrary({
         }
         cancelLabel="Close"
         onClose={() => setOpen(null)}
-        footer={open ? action(open) : undefined}
+        footer={open ? (action(open) ?? undefined) : undefined}
       >
         {open && (
           <PreviewCardFrame
@@ -371,7 +426,7 @@ export function ReferenceLibrary({
             caption={
               open.preview
                 ? 'Links are turned off, and outside fonts, images and tracking pixels don’t load because the preview is isolated from the web.'
-                : 'Plain-text email: there is no design to show.'
+                : noDesignText(open)
             }
             notes={[]}
             height={900}

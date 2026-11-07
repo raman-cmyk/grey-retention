@@ -59,7 +59,7 @@ test('UIR-009 owner tracks a competitor, browses its emails and stops tracking',
   await page.goto('/library/inspirations')
   await expect(chips.getByText('LIVE')).toBeVisible()
   await expect(page.getByRole('tab', { name: 'Competitors 10' })).toBeVisible()
-  await expect(page.getByRole('tab', { name: 'Your uploads 0' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Yours 0' })).toBeVisible()
   await expect(page.getByRole('tab', { name: 'Best picks 0' })).toBeVisible()
   const cards = page
     .getByRole('region', { name: 'Reference library' })
@@ -132,6 +132,13 @@ test('UIR-009 staff browse the library but cannot track', async ({
   ).toHaveCount(0)
   await expect(page.getByRole('button', { name: /^Remove / })).toHaveCount(0)
   await expect(page.getByRole('tablist', { name: 'Library' })).toBeVisible()
+  // Starting a draft is the owner's, so staff are not offered it.
+  await expect(page.getByRole('link', { name: /Use this design/ })).toHaveCount(
+    0
+  )
+  await expect(
+    page.getByText('the workspace owner can start a new draft from any card.')
+  ).toBeVisible()
 })
 
 test('UIR-009 Inspiration fits 375px and the tabs work by keyboard', async ({
@@ -149,8 +156,9 @@ test('UIR-009 Inspiration fits 375px and the tabs work by keyboard', async ({
   ).toBe(true)
   await page.getByRole('tab', { selected: true }).focus()
   await page.keyboard.press('ArrowRight')
-  await expect(page.getByRole('tab', { name: /^Your uploads/ })).toBeFocused()
-  await expect(
-    page.getByRole('tab', { name: /^Your uploads/ })
-  ).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab', { name: /^Yours/ })).toBeFocused()
+  await expect(page.getByRole('tab', { name: /^Yours/ })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
 })
