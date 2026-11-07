@@ -28,7 +28,14 @@ describe('roadmap plan from the feature register', () => {
       'M3 Competitor watch',
       'M4 Replication engine',
       'M5 Store + delivery',
-      'M6 Intelligence'
+      'M6 Intelligence',
+      'V2 S1 Block library',
+      'V2 S2 Inspiration inbox',
+      'V2 S3 Brand kit + assembly',
+      'V2 S4 Klaviyo push + QA',
+      'V2 S5 Weekly approval',
+      'V2 S6 Brief + calendar',
+      'V2 S7 Three real clients'
     ])
   })
 
@@ -79,6 +86,16 @@ describe('roadmap plan from the feature register', () => {
       ])
     )
     expect(inMilestone('M1 Design system')).toContain('DS-006')
+    // VISION.md steps (docs/BUILD_BRIEF.md lane A).
+    expect(inMilestone('V2 S1 Block library')).toEqual(
+      expect.arrayContaining(['RET-001', 'BLK-001', 'GEM-001', 'BLK-003'])
+    )
+    expect(inMilestone('V2 S3 Brand kit + assembly')).toEqual(
+      expect.arrayContaining(['ASM-001', 'ASM-002', 'ASM-003'])
+    )
+    expect(inMilestone('V2 S5 Weekly approval')).toEqual(
+      expect.arrayContaining(['APR-001', 'APR-002'])
+    )
     expect(inMilestone('M1.5 Old-app UI rebuild')).toEqual(
       Array.from(
         { length: 27 },

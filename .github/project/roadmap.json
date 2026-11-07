@@ -102,6 +102,48 @@
       "title": "M6 Intelligence",
       "goal": "Help owners understand and outsmart competitors: observed sequences and playbooks, an MCP server so other AI agents can use Grey Retention, a learning loop that improves drafts from feedback, and the remaining admin console pages (Clients, Prompt engine, Templates).",
       "doneWhen": "Owners can see a competitor's observed sequences and playbook with evidence, an external agent can work through the MCP server with the same permissions, feedback measurably changes later drafts, and admins have working Clients, Prompt engine and Templates pages."
+    },
+    {
+      "key": "S1",
+      "title": "V2 S1 Block library",
+      "goal": "VISION.md Step 1. Twenty coded email block types (no countdown) that pull the logo, colours and font from the brand kit, render as email-safe HTML at 600px with a web-safe font stack, work at 375px, and end in a footer with Klaviyo's required tags. A model's only job is to pick which of the 20 types a competitor section is. The designer workflow is retired (decision D3).",
+      "doneWhen": "Gate: on 50 hand-labelled competitor sections the model picks the same block type at least 85% of the time, and the owner approves the list of 20 types."
+    },
+    {
+      "key": "S2",
+      "title": "V2 S2 Inspiration inbox",
+      "goal": "VISION.md Step 2 with decision D4. Competitor emails arrive at a Gmail +alias per brand, are stored once with every image downloaded and a 600px screenshot, cut into sections from the HTML structure, labelled, and summarised per email (micro) and per brand (macro).",
+      "doneWhen": "Gate: 200 emails ingested, auto-assigned to the right brand, sectioned and labelled, with a per-brand summary the owner reads and agrees with."
+    },
+    {
+      "key": "S3",
+      "title": "V2 S3 Brand kit + assembly",
+      "goal": "VISION.md Step 3. The onboarding wizard (S3a) and email assembly (S3b): from a hand-written brief the AI picks a block sequence, fills product blocks from featurable products, writes copy and renders HTML; copy QA checks the facts sheet, banned words, the discount regex and the code list. Exact, Rebrand and Adapt modes follow decision D1.",
+      "doneWhen": "Gate: 10 emails for the test brand; the owner scores at least 7 of 10 as 'would send as-is'."
+    },
+    {
+      "key": "S4",
+      "title": "V2 S4 Klaviyo push + QA",
+      "goal": "VISION.md Step 4. Full QA as a hard block (links, codes, dates, products, size, 375px screenshot, copy, audience, timezone), then images, template and campaign pushed to Klaviyo as a draft; the ops dashboard.",
+      "doneWhen": "Gate: 10 of 10 drafts land in Klaviyo with zero manual fixes."
+    },
+    {
+      "key": "S5",
+      "title": "V2 S5 Weekly approval",
+      "goal": "VISION.md Step 5. One weekly approval per client: the week's campaigns with a mobile screenshot, date, offer and segment, Approve all or Change (two AI rounds, then a person), in the app and by email with signed single-use links; approved campaigns are scheduled; '% approved without edits' is tracked.",
+      "doneWhen": "Gate: a real client (not the test brand) approves 3 weeks through it without messaging us."
+    },
+    {
+      "key": "S6",
+      "title": "V2 S6 Brief + calendar",
+      "goal": "VISION.md Step 6. An evidence-cited brief and a calendar built from competitor data, the client's own Klaviyo results and founder inputs, inside every guardrail.",
+      "doneWhen": "Gate: the AI brief for the test brand, read next to the Step 0 manual brief, is at least as useful."
+    },
+    {
+      "key": "S7",
+      "title": "V2 S7 Three real clients",
+      "goal": "VISION.md Step 7. Three real clients for one month; track one number, the share of emails approved without edits.",
+      "doneWhen": "Gate: at least 70% of emails approved without edits."
     }
   ],
   "categories": {
@@ -887,6 +929,172 @@
         "An automated check per screen in the Browser job (overflow and focus)."
       ],
       "doneWhen": "Every owner screen passes the 375px and keyboard checks in CI, and any failures found are fixed."
+    },
+    {
+      "id": "RET-001",
+      "title": "Retire the designer workflow (decision D3)",
+      "milestone": "S1",
+      "priority": "P0",
+      "type": "chore",
+      "area": "designers",
+      "problem": "Lane A. Decision D3: there is no designer; the AI builds every email from coded blocks. The designer desk, assignment page, owner design review and the 'With designer' status still show, and owners would wait for a designer who never comes.",
+      "scope": [
+        "Hide the designer routes (desk, assignment, designer login) and the admin designer pages; links to them return Not found.",
+        "Remove designer steps from the campaign page and from every status flow: no 'With designer' pill, filter or step; old rows that still carry a designer state read in plain words.",
+        "Keep the tables and data; no destructive migration.",
+        "Update the e2e journeys that walked through the designer loop."
+      ],
+      "doneWhen": "No owner, staff or admin screen shows a designer step or the 'With designer' status, the designer routes are not reachable, the designer tables are untouched, and the journeys pass."
+    },
+    {
+      "id": "BLK-001",
+      "title": "Block library: 20 coded email block types and the footer",
+      "milestone": "S1",
+      "priority": "P0",
+      "type": "feature",
+      "area": "replication",
+      "problem": "Lane A. VISION.md Step 1: every email is assembled from a fixed list of block types. Claude defines the 20 types from email-marketing practice (no countdown timer in v1) and the owner approves the list.",
+      "scope": [
+        "A typed list of 20 block types with plain names, a purpose line and the content each needs (text, products, image, link).",
+        "Each type renders brand-aware, email-safe HTML: logo, 3 colours and font from the brand kit, web-safe font fallback stack, tables and inline styles, 600px wide, readable at 375px.",
+        "The footer block carries Klaviyo's required tags: unsubscribe link, physical address, view in browser, organisation name.",
+        "Unit tests per block: brand values applied, no external scripts, no text inside images, size budget; a 375px and 600px rendering check."
+      ],
+      "doneWhen": "All 20 types render for a sample brand at 600px and 375px with brand colours and fonts, the footer carries every required Klaviyo tag, and the owner approves the list."
+    },
+    {
+      "id": "BLK-002",
+      "title": "Block gallery under Inspiration",
+      "milestone": "S1",
+      "priority": "P1",
+      "type": "feature",
+      "area": "competitor-library",
+      "problem": "Lane A. The owner needs to see and approve the 20 block types, rendered in their own brand, before the AI uses them.",
+      "scope": [
+        "A gallery page under Inspiration showing every block type in the brand's kit, at desktop and phone width, inside the sandboxed preview.",
+        "Each card shows the plain name, what it is for and what content it needs.",
+        "Works for owners and staff; sample content is labelled as sample."
+      ],
+      "doneWhen": "The owner opens Inspiration, sees all 20 blocks in their brand at desktop and 375px, and can tell what each one is for."
+    },
+    {
+      "id": "GEM-001",
+      "title": "Gemini adapter behind the AI port (decision D5)",
+      "milestone": "S1",
+      "priority": "P0",
+      "type": "feature",
+      "area": "campaign-copy",
+      "problem": "Lane A. Decision D5: the cheapest AI first. Google Gemini on the free tier, Flash-Lite for section labelling and classification, Flash for copy. The app only has the fake and the earlier providers.",
+      "scope": [
+        "A Gemini adapter behind the existing provider-neutral AI port; model names come from configuration, not code.",
+        "The fake stays the default in tests and local runs; the live adapter needs GEMINI_API_KEY on the server and never reaches the browser.",
+        "Usage is recorded per client and a per-client spend cap refuses calls over the cap (VISION section 10).",
+        "Tests for request shape, timeouts, rate-limit and error mapping, and the cap, with no network."
+      ],
+      "doneWhen": "With GEMINI_API_KEY set, a labelling call goes to Gemini Flash-Lite and its usage is recorded against the client's cap; without it, the fake answers and the app says so."
+    },
+    {
+      "id": "BLK-003",
+      "title": "Section labelling harness: the model picks one of the 20 block types",
+      "milestone": "S1",
+      "priority": "P0",
+      "type": "feature",
+      "area": "competitor-library",
+      "problem": "Lane A. VISION.md Step 1 gate: given a competitor section (image or HTML), the model's only job is to pick which of the 20 block types it is. We need a fixed-choice labeller and a way to score it against the owner's hand labels.",
+      "scope": [
+        "A labeller behind the AI port that returns exactly one of the 20 type keys, or 'unsure' with low confidence (low confidence goes to the ops queue later).",
+        "A scoring harness: 50 hand-labelled sections, kept private (not in the public repository), the agreement rate and a confusion list per type.",
+        "A small admin screen where the owner labels sections and sees the score.",
+        "Runs on the fake by default; one command or button runs it on Gemini (GEM-001)."
+      ],
+      "blockedBy": "BLK-001, GEM-001",
+      "doneWhen": "Gate: on the owner's 50 hand-labelled sections the model agrees at least 85% of the time; the owner reads the score and the misses on the admin screen."
+    },
+    {
+      "id": "ASM-001",
+      "title": "Assemble an email from a brief: blocks, products, copy, HTML",
+      "milestone": "S3",
+      "priority": "P0",
+      "type": "feature",
+      "area": "replication",
+      "problem": "Lane A, VISION.md Step 3 (S3b). Given a hand-written brief, the AI picks a block sequence, fills product blocks from featurable products only, writes copy into each block and renders the HTML.",
+      "scope": [
+        "Brief in, block sequence out (only the 20 types, no countdown), with a reason per block.",
+        "Product blocks use only featurable products with a real catalog image and price in the store currency.",
+        "Copy is written per block through the AI port; no text inside images; discount codes only from the client's list.",
+        "The rendered email is stored as a versioned campaign draft with its 375px and 600px previews.",
+        "Every step is a retryable job (three tries, then the ops queue)."
+      ],
+      "blockedBy": "BLK-001, GEM-001",
+      "doneWhen": "From a hand-written brief the app produces a complete email in the brand's blocks with real products and new copy, saved as a draft the owner can preview at phone and desktop width."
+    },
+    {
+      "id": "ASM-002",
+      "title": "Copy QA: facts sheet, banned words, discount regex and code list",
+      "milestone": "S3",
+      "priority": "P0",
+      "type": "feature",
+      "area": "campaign-copy",
+      "problem": "Lane A, VISION.md Step 3 (S3b) and hard rules 6 and 7. The AI must never invent free shipping, 'clinically proven', a bigger discount or a code that does not exist.",
+      "scope": [
+        "Checks subject, preview and body against the brand facts sheet (shipping, returns, guarantees) and the banned words and claims.",
+        "A regex over every % and money amount refuses anything above the max discount.",
+        "Every discount code must be on the client's list and not expired.",
+        "A failed check regenerates the copy, up to three times, then goes to the ops queue; each result is stored with the email."
+      ],
+      "blockedBy": "ASM-001",
+      "doneWhen": "An email that promises more than the max discount, uses an unknown or expired code, or states a banned claim is blocked with a plain reason, and a clean email passes."
+    },
+    {
+      "id": "ASM-003",
+      "title": "Exact, Rebrand and Adapt on blocks (decision D1)",
+      "milestone": "S3",
+      "priority": "P0",
+      "type": "feature",
+      "area": "replication",
+      "problem": "Lane A. Decision D1: Exact reproduces a competitor email's exact layout (same sections, order, proportions) with the client's own logo, colours, fonts, products, prices and new copy, never their words, images or branding. Rebrand and Adapt keep the strategy with more freedom.",
+      "scope": [
+        "Exact: the labelled section sequence of a competitor email becomes the block sequence 1:1.",
+        "Rebrand: same sequence and angle, the client's brand and products, copy rewritten in their voice.",
+        "Adapt: keep the strategy and offer type, the AI may change the sequence.",
+        "Rename the old 'exact copy' path and wording to match D1; never reuse competitor text or images."
+      ],
+      "blockedBy": "ASM-001, BLK-003",
+      "doneWhen": "The owner picks a competitor email and a mode, and gets an email in their own blocks and brand that follows that mode, with no competitor words or images in it."
+    },
+    {
+      "id": "APR-001",
+      "title": "Weekly approval in the app: Approve all or Change",
+      "milestone": "S5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "execution",
+      "problem": "Lane A, VISION.md Step 5. One approval covers the week's batch. The owner sees each campaign's mobile screenshot, date, offer and segment, and either approves all or asks for a change.",
+      "scope": [
+        "A weekly batch view with Approve all and a Change text field per email.",
+        "Change runs at most two AI rounds, then goes to a person (ops queue).",
+        "Approved campaigns move to scheduling; 'Send test to me' and a per-campaign audience override with a warning.",
+        "Track the share approved without edits from the first client."
+      ],
+      "blockedBy": "ASM-002",
+      "doneWhen": "The owner approves a week's batch from their phone in one tap, a Change request is redone at most twice before a person takes over, and the approved-without-edits share is recorded."
+    },
+    {
+      "id": "APR-002",
+      "title": "Weekly approval email with signed single-use links",
+      "milestone": "S5",
+      "priority": "P0",
+      "type": "feature",
+      "area": "execution",
+      "problem": "Lane A, VISION.md Step 5 and section 10. On Sunday the client gets one email with the week's campaigns and two buttons. Replies land in the app as founder inputs; there is no no-reply address.",
+      "scope": [
+        "One approval email per client per week through the email adapter (fake by default).",
+        "Approve all and Change links are signed, single-use and expire after 7 days; a used or expired link explains itself and links to the app.",
+        "Replies to the approval email are stored as founder inputs.",
+        "Tests for signing, replay, expiry, wrong tenant and the fake send."
+      ],
+      "blockedBy": "APR-001",
+      "doneWhen": "The owner gets the Sunday email, taps Approve all once, and the week is approved; tapping the same link again or after 7 days does nothing and says why."
     }
   ]
 }
