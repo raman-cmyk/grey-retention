@@ -40,10 +40,13 @@ async function connectionRows(db: Db, tenantId: string) {
   return (older.data ?? []) as ConnectionRow[]
 }
 
-/** The guard's verdict and the Shopify state, from the rows already read. */
+/**
+ * The guard's verdict, from the rows already read. v2 is Klaviyo only
+ * (BUILD_BRIEF D2): an old Shopify connection is ignored, so no owner sees
+ * a Shopify check they can no longer act on.
+ */
 function guard(brand: Brand, list: ConnectionRow[], productUrls: string[]) {
   const klaviyo = list.find((c) => c.provider === 'klaviyo')
-  const shopify = list.find((c) => c.provider === 'shopify')
   const connected = (c: ConnectionRow | undefined) => c?.status === 'connected'
   const facts = (c: ConnectionRow | undefined): AccountFacts | null =>
     connected(c)
@@ -54,16 +57,15 @@ function guard(brand: Brand, list: ConnectionRow[], productUrls: string[]) {
         }
       : null
   return {
-    shopifyConnected: connected(shopify),
     mismatches: brandMismatches({
       brandName: brand?.brand_name ?? '',
       website: brand?.domain ?? '',
       klaviyoAccount: connected(klaviyo)
         ? (klaviyo?.account_label ?? null)
         : null,
-      shopDomain: connected(shopify) ? (shopify?.shop_domain ?? null) : null,
+      shopDomain: null,
       klaviyo: facts(klaviyo),
-      shopify: facts(shopify),
+      shopify: null,
       productUrls
     })
   }

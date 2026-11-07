@@ -453,7 +453,7 @@ export function DefaultsForm({
               state={productsState}
               sample={productsSample}
               noneLabel="No featured product"
-              emptyMessage="No products yet. Connect Shopify or add products under Brand & Store."
+              emptyMessage="No products yet. Reading products from Klaviyo is not ready yet. For now, add them under Brand & Store."
             />
           </Panel>
           <Panel
