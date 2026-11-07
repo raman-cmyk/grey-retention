@@ -75,13 +75,16 @@ export async function referenceWorkspace() {
     }
   const profiles = (subscriptions.data ?? []).map((s) => {
     const capture = captures.data?.find((c) => c.id === s.capture_id),
+      // Real inbox emails (INB-001) have no sample facts yet; they are
+      // labelled later (INB-003), so only labelled rows count here.
       records = (emails.data ?? [])
         .filter((e) => e.capture_id === s.capture_id)
-        .map((e) => ({
-          id: e.id,
-          receivedAt: e.received_at,
-          micro: microSchema.parse(e.micro)
-        }))
+        .flatMap((e) => {
+          const micro = microSchema.safeParse(e.micro)
+          return micro.success
+            ? [{ id: e.id, receivedAt: e.received_at, micro: micro.data }]
+            : []
+        })
     return {
       ...s,
       capture,
