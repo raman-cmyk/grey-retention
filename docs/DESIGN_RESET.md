@@ -34,7 +34,7 @@ Test whether AI workspace deserves a primary destination or a persistent context
 
 ## First prototype
 
-Use synthetic data. A founder opens next week's plan, sees total brand campaign count separately from expected per-customer exposure, asks for a lapsed-buyer segment, inspects rules and estimated membership, assigns it to a campaign, sees overlap warnings, reviews the email on a phone and approves the exact version. Show a failure/change path too.
+Use synthetic data and start with desktop onboarding: store URL → confirm the brand preview → connect Klaviyo → confirm business facts and guardrails → choose relevant competitors → review the first proposed week. Show autosave/resume and a missing-catalog recovery path. The next desktop journey refines an audience in chat, inspects explicit rules and estimated overlap/exposure, reviews an email and approves its exact version. Dedicated mobile-layout design is deferred; the existing phone-approval capability remains in the product.
 
 The 30–35 monthly campaign and roughly 12/customer examples explain the problem; actual exposure rules are still undecided.
 
@@ -59,7 +59,7 @@ Figma implementation reference: [Structure your Figma file for better code](http
 - AI proposals state what changes and why; chat cannot silently send or widen audiences.
 - Approval is tied to the email revision and audience the owner actually reviewed.
 - The block library remains searchable/filterable at 2,000+ items; do not require browsing all items.
-- Desktop planning and phone approval work with keyboard access, visible focus and readable contrast.
+- The current desktop onboarding/planning/review prototype works with keyboard access, visible focus and readable contrast. Preserve existing phone approval; a dedicated mobile-layout design pass comes later.
 - A complete synthetic-data prototype is reviewed before broad UI implementation.
 
 ## Definition of ready for implementation
