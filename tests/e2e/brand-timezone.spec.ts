@@ -41,7 +41,7 @@ test('UIR-023 Klaviyo sets the brand timezone; the owner can change it and switc
   await card.getByRole('button', { name: 'Save timezone' }).click()
   await expect(
     card.getByText(
-      'Saved. The brand timezone is now Europe/London. New plans use it. Campaigns already planned keep their send time.'
+      'Saved. The brand timezone is now Europe/London. New plans use it. Campaigns already planned still send at the same moment.'
     )
   ).toBeVisible()
   // The cursor stays on the picker, which shows the new choice.

@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils'
 import { saveCampaignDefaults, type SettingsResult } from './actions'
 import { saveBrandTimezone, switchToKlaviyoTimezone } from './timezone-actions'
 import type { TimezoneSource } from './timezone'
-import { sameTimezone, timezoneWithOffset } from '@/lib/brand-time'
+import { timezoneWithOffset } from '@/lib/brand-time'
 import {
   defaultTabs,
   fieldTab,
@@ -65,6 +65,10 @@ export function TimezoneCard({
   options?: string[]
   initialNow: number
   source?: TimezoneSource
+  /**
+   * The Klaviyo account's timezone, only when it is another zone than the
+   * brand's (the server compares spellings).
+   */
   klaviyoTimezone?: string | null
   owner?: boolean
 }) {
@@ -107,14 +111,23 @@ export function TimezoneCard({
   useEffect(() => {
     if (answers > 0) document.getElementById(`${id}-zone`)?.focus()
   }, [answers, id])
+  // The picker follows the saved timezone when it changes (after a save,
+  // a switch or another window), without rebuilding the form, so the
+  // cursor stays on it; a refused choice stays picked.
+  const [choice, setChoice] = useState(savedZone)
+  const [shownZone, setShownZone] = useState(savedZone)
+  if (shownZone !== savedZone) {
+    setShownZone(savedZone)
+    setChoice(savedZone)
+  }
   // The latest answer, whichever button was used.
   const [last, setLast] = useState<'save' | 'klaviyo'>('save')
   const at = new Date(now)
   const state = last === 'save' ? saved : switched
   const busy = saving || switching
   const text = busy ? '' : (state.error ?? state.message ?? '')
-  const differs =
-    klaviyoTimezone !== null && !sameTimezone(klaviyoTimezone, savedZone)
+  // The server leaves Klaviyo's timezone out when it is the same zone.
+  const differs = klaviyoTimezone !== null && klaviyoTimezone !== savedZone
   return (
     <section aria-labelledby="timezone-title" className={cardClass}>
       <div className="space-y-1">
@@ -128,7 +141,7 @@ export function TimezoneCard({
         <p className="text-sm text-[var(--text-muted)]">
           GROS plans new campaign send times in your brand’s timezone, and most
           dates and times in the app are shown in it. Campaigns already planned
-          keep their send time.
+          still send at the same moment.
         </p>
       </div>
       <dl className="grid gap-5 sm:grid-cols-2">
@@ -166,6 +179,7 @@ export function TimezoneCard({
                 name="klaviyoTimezone"
                 value={klaviyoTimezone}
               />
+              <input type="hidden" name="expected" value={savedZone} />
               <SubmitButton variant="secondary" pendingLabel="Saving…">
                 Use Klaviyo’s timezone
               </SubmitButton>
@@ -174,10 +188,8 @@ export function TimezoneCard({
         </div>
       )}
       {owner && (
-        // A new form when the saved timezone changes; no reset to the old
-        // choice after saving or when saving fails.
+        // No reset to the old choice after saving or when saving fails.
         <form
-          key={savedZone}
           action={save}
           onSubmit={() => setLast('save')}
           onReset={(event) => event.preventDefault()}
@@ -191,7 +203,8 @@ export function TimezoneCard({
             <select
               id={`${id}-zone`}
               name="timezone"
-              defaultValue={savedZone}
+              value={choice}
+              onChange={(event) => setChoice(event.target.value)}
               aria-invalid={last === 'save' && !busy && !!saved.error}
               aria-describedby={`${id}-status`}
               className={cn(controlClass, 'max-w-full')}

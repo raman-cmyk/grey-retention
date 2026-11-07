@@ -205,7 +205,7 @@ describe('TimezoneCard', () => {
     // Honest about what follows it, and what does not.
     expect(
       screen.getByText(
-        /GROS plans new campaign send times in your brand’s timezone, and most dates and times in the app are shown in it\. Campaigns already planned keep their send time\./
+        /GROS plans new campaign send times in your brand’s timezone, and most dates and times in the app are shown in it\. Campaigns already planned still send at the same moment\./
       )
     ).toBeVisible()
     // Read-only without the owner.
@@ -256,6 +256,45 @@ describe('TimezoneCard', () => {
     expect(select).toHaveValue('Europe/London')
     // The cursor is back on the picker, next to the answer.
     expect(select).toHaveFocus()
+  })
+
+  it('keeps the cursor on the picker when the page refreshes with the new timezone', async () => {
+    const { rerender } = render(
+      <TimezoneCard
+        timezone="Asia/Kathmandu"
+        options={zones}
+        initialNow={0}
+        owner
+      />
+    )
+    const select = screen.getByLabelText('Change timezone')
+    await userEvent.selectOptions(select, 'Europe/London')
+    await userEvent.click(screen.getByRole('button', { name: 'Save timezone' }))
+    await screen.findByText(/^Saved\./)
+    expect(select).toHaveFocus()
+    // The refreshed page arrives later: the same picker stays (not a new
+    // one), shows the saved timezone and keeps the cursor.
+    rerender(
+      <TimezoneCard
+        timezone="Europe/London"
+        options={zones}
+        initialNow={0}
+        owner
+      />
+    )
+    expect(screen.getByLabelText('Change timezone')).toBe(select)
+    expect(select).toHaveValue('Europe/London')
+    expect(select).toHaveFocus()
+    // Another window changes it: the picker follows.
+    rerender(
+      <TimezoneCard
+        timezone="Asia/Tokyo"
+        options={zones}
+        initialNow={0}
+        owner
+      />
+    )
+    expect(select).toHaveValue('Asia/Tokyo')
   })
 
   it('sends back the timezone exactly as saved', async () => {
@@ -310,6 +349,7 @@ describe('TimezoneCard', () => {
       timezoneActions.switchToKlaviyoTimezone.mock.calls[0] as unknown[]
     )[1] as FormData
     expect(sent.get('klaviyoTimezone')).toBe('America/New_York')
+    expect(sent.get('expected')).toBe('Europe/London')
     expect(screen.getByLabelText('Change timezone')).toHaveFocus()
     rerender(
       <TimezoneCard
@@ -329,16 +369,6 @@ describe('TimezoneCard', () => {
         timezone="America/New_York"
         initialNow={0}
         klaviyoTimezone="America/New_York"
-        owner
-      />
-    )
-    expect(screen.queryByText(/Your Klaviyo account/)).toBeNull()
-    // Two spellings of one timezone are not a difference.
-    rerender(
-      <TimezoneCard
-        timezone="Asia/Kathmandu"
-        initialNow={0}
-        klaviyoTimezone="Asia/Katmandu"
         owner
       />
     )
