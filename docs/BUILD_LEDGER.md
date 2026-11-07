@@ -1126,6 +1126,7 @@ Append entries using this exact shape:
   - worker: stores, records and assigns once, cursor per message, duplicates, oversized and unreadable messages, a message bigger than the server said, a message the database refuses (kept as `parse_failed`, the cursor moves on), an HTML copy over the bucket limit (raw kept only), storage refusal, lost lease (named, and what was done is still marked read), stored copy missing, failed login, paused and busy, time budget;
   - step: not set up, never throws, stops waiting after 15 s;
   - jobs route: inbox first; inbox read but no workspace job in live mode; workspace jobs get what is left of the budget.
+  - browser: the STAB-001 sweep journeys (`tests/e2e/scheduled-sweep.spec.ts`) now expect the `inbox` result: the sample inbox, ready, and of three sweeps at once at least one polls while the others find it busy. Both pass locally.
 
   pgTAP 1184/1184 on a fresh reset incl. `inbox_capture` 79:
   - grants for anon, members and the worker; private helpers closed; no browser writes on any inbox table (incl. truncate); private bucket;
