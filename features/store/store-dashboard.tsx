@@ -47,7 +47,8 @@ function Card({
   aside?: ReactNode
 }) {
   return (
-    <section aria-label={title} className={card}>
+    // min-w-0: a wide table scrolls inside the card, never the page.
+    <section aria-label={title} className={cn(card, 'min-w-0')}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 text-base font-semibold">
           {icon}
@@ -89,9 +90,9 @@ function Kpis({ snapshot }: { snapshot: ShopifySnapshot }) {
   return (
     <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {items.map((item) => (
-        <div key={item.name} className={cn(card, 'p-4')}>
-          <dt className={label}>{item.name}</dt>
-          <dd className="mt-1 text-2xl font-semibold tabular-nums">
+        <div key={item.name} className={cn(card, 'min-w-0 p-4')}>
+          <dt className={cn(label, 'break-words')}>{item.name}</dt>
+          <dd className="mt-1 text-2xl font-semibold break-words tabular-nums">
             {item.value}
           </dd>
           {item.note && (
