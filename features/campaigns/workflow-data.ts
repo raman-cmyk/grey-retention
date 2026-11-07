@@ -35,7 +35,7 @@ export async function workflowData(campaignId: string) {
         .limit(20),
       db
         .from('delivery_policies')
-        .select('defaults')
+        .select('defaults,level,enabled')
         .eq('tenant_id', context.tenantId)
         .maybeSingle()
     ])
@@ -102,6 +102,10 @@ export async function workflowData(campaignId: string) {
   return {
     artifactPreviews,
     defaults: (policy.data?.defaults ?? {}) as Record<string, string>,
+    /** The owner's standing L1 policy schedules ready packages itself. */
+    standingPolicy: Boolean(
+      policy.data?.enabled && policy.data?.level === 'L1'
+    ),
     assignment,
     submissions,
     reviews,

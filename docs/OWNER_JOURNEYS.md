@@ -95,7 +95,7 @@ Checks:
 
 - [ ] After assignment, Regenerate / Regenerate Copy are disabled or need a confirm, because the warning says not to change the brief. **(fix)** The old app still showed Regenerate Copy on a draft that had an uploaded final design.
 - [x] Status pills change when the design is assigned or delivered. **(fix)** The old draft with an uploaded final design still showed WRITING · DRAFT. (UIR-015: assigned → With designer, delivered → Needs your approval.)
-- [ ] The owner sees an explicit **Approve design** action next to Reject. The old app had only the reject form, and approval was left to an admin. **(fix, product rule: owner approval is required)**
+- [x] The owner sees an explicit **Approve design** action next to Reject. The old app had only the reject form, and approval was left to an admin. **(fix, product rule: owner approval is required)** (Owner design review offers approve or request revision; UIR-016's checklist links to it.)
 
 ### Job 4: "Approve and send to Klaviyo"
 
@@ -105,10 +105,10 @@ Checks:
 
 Checks:
 
-- [ ] Schedule asks for confirmation and shows a summary first: subject, from name, audience counts, date/time **with timezone**. The old app's Schedule is a bare submit button.
-- [ ] Schedule is blocked when the date/time is in the past. **(fix)** The old draft dated in August showed an enabled Schedule button in November.
-- [ ] Schedule is blocked when Send to is empty. The old drafts had 0 selected in Send to.
-- [ ] "Pending approval" is a real state: only the owner can move a campaign out of it. Staff or admins can't skip it. **(fix)**
+- [x] Schedule asks for confirmation and shows a summary first: subject, from name, audience counts, date/time **with timezone**. The old app's Schedule is a bare submit button. (UIR-016: subject, from, Send to and Don't send to by name, and the time with the brand timezone; audience counts follow once list sizes are stored.)
+- [x] Schedule is blocked when the date/time is in the past. **(fix)** The old draft dated in August showed an enabled Schedule button in November. (UIR-016; the database refuses it too.)
+- [x] Schedule is blocked when Send to is empty. The old drafts had 0 selected in Send to. (UIR-016; the database refuses it too.)
+- [x] "Pending approval" is a real state: only the owner can move a campaign out of it. Staff or admins can't skip it. **(fix)** (UIR-016: owner-only server actions and database commands, tested for staff and admins.)
 
 ### Job 5: "See how my email is doing"
 
