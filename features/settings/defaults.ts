@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { validTimezone } from '@/lib/brand-time'
+import { timezoneWithOffset, validTimezone } from '@/lib/brand-time'
 
 /**
  * Settings "Campaign defaults" (docs/UI_REBUILD_SPEC.md §11). Limits mirror
@@ -145,16 +145,8 @@ export function readDefaultsForm(form: FormData) {
  * "US/Pacific (UTC-08:00)" at the given moment (offsets follow daylight
  * time). A zone this runtime does not know is shown as UTC, never thrown.
  */
-export function zoneWithOffset(timezone: string, at: Date) {
-  const zone = validTimezone(timezone)
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: zone,
-    timeZoneName: 'longOffset'
-  }).formatToParts(at)
-  const offset = parts.find((p) => p.type === 'timeZoneName')?.value ?? 'GMT'
-  const utc = offset === 'GMT' ? 'UTC+00:00' : offset.replace('GMT', 'UTC')
-  return `${zone} (${utc})`
-}
+/** Kept for existing callers; the shared helper lives in lib/brand-time. */
+export const zoneWithOffset = timezoneWithOffset
 
 /** "Fri, Nov 6 2026 · 9:07 AM" in the given timezone (UTC if unknown). */
 export function localTime(timezone: string, at: Date) {

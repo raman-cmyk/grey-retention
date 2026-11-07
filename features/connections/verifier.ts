@@ -11,7 +11,13 @@ export interface ConnectionVerifier {
   klaviyo(input: {
     keyHint: string
     workspaceLabel: string
-  }): Promise<{ accountLabel: string; templateCount: number }>
+    workspaceTimezone: string
+  }): Promise<{
+    accountLabel: string
+    templateCount: number
+    /** The account's timezone (UIR-023: it becomes the brand timezone). */
+    timezone: string
+  }>
   shopify(input: {
     shopDomain: string
     tokenHint: string
@@ -23,10 +29,18 @@ export const SAMPLE_TEMPLATE_COUNT = 24
 
 export class SampleConnectionVerifier implements ConnectionVerifier {
   readonly live = false
-  async klaviyo({ workspaceLabel }: { workspaceLabel: string }) {
+  async klaviyo({
+    workspaceLabel,
+    workspaceTimezone
+  }: {
+    workspaceLabel: string
+    workspaceTimezone: string
+  }) {
     return {
       accountLabel: workspaceLabel.slice(0, 200),
-      templateCount: SAMPLE_TEMPLATE_COUNT
+      templateCount: SAMPLE_TEMPLATE_COUNT,
+      // The sample account reports the workspace's own timezone.
+      timezone: workspaceTimezone
     }
   }
   async shopify({ shopDomain }: { shopDomain: string }) {
