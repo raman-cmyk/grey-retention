@@ -223,4 +223,22 @@ describe('CI workflows', () => {
     expect(minute!.split(',')).toHaveLength(2)
     expect(rest).toEqual(['*', '*', '*', '*'])
   })
+
+  it('keeps the inbox screenshot workflow opt-in, HTTPS-only and cheap when idle', () => {
+    const text = read('inbox-screenshots.yml')
+    expect(text).toContain("if: vars.SCHEDULED_JOBS_ENABLED == 'true'")
+    expect(text).toContain("--proto '=https'")
+    expect(text).toMatch(/\npermissions:\n {2}contents: read\n/)
+    const crons = [...text.matchAll(/- cron: '([^']+)'/g)].map((m) => m[1]!)
+    expect(crons).toEqual(['18,48 * * * *'])
+    // Nothing is checked out or installed until the app says work is waiting.
+    const steps = `\n${text.split('\n    steps:\n')[1]!}`
+      .split(/\n {6}- /)
+      .slice(1)
+    expect(steps[0]).toContain('?peek=1')
+    for (const step of steps.slice(1))
+      expect(step).toContain("if: steps.peek.outputs.waiting != '0'")
+    // The secret only reaches the steps that call the app.
+    expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(2)
+  })
 })

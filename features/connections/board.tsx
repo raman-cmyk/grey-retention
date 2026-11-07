@@ -1,35 +1,22 @@
 'use client'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import {
-  ArrowRight,
-  Check,
-  CircleHelp,
-  Link2,
-  Mail,
-  Plus,
-  ShoppingBag,
-  TriangleAlert
-} from 'lucide-react'
+import { Check, Mail, Plus, TriangleAlert } from 'lucide-react'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
-import { Button } from '@/components/ui/button'
 import { StatusMark } from '@/components/ui/status-mark'
 import { TextField } from '@/components/ui/text-field'
 import { Field } from '@/components/ui/workspace'
-import { connectKlaviyo, connectShopify } from './actions'
+import { connectKlaviyo } from './actions'
 
 /** What the screen needs from one `workspace_connections` row. */
 export type ConnectionView = {
   status: string
   accountLabel: string | null
   credentialHint: string | null
-  shopDomain: string | null
   templateCount: number | null
 }
 
 const sampleNote =
   'Sample mode: we check the format only. Nothing is sent to the provider, and the full key is never saved — only the masked hint.'
-const labelClass =
-  'tracking-label font-mono text-[0.6875rem] font-semibold text-[var(--text-muted)] uppercase'
 const secretProps = {
   type: 'password',
   autoComplete: 'off',
@@ -265,274 +252,20 @@ function ConnectedSummary({
   )
 }
 
-function ShopifyCard({
-  connection,
-  owner,
-  open,
-  onToggle
-}: {
-  connection: ConnectionView | null
-  owner: boolean
-  open: boolean
-  onToggle: () => void
-}) {
-  const connected = connection?.status === 'connected'
-  return (
-    <Card>
-      <Tile>
-        <ShoppingBag className="size-5" />
-      </Tile>
-      <h2 className="text-lg font-semibold">Shopify</h2>
-      <Benefits
-        items={[
-          'Products & inventory',
-          'Orders & customers',
-          'Discount-code creation'
-        ]}
-      />
-      <div className="mt-auto space-y-3">
-        <NeedsAttention
-          connection={connection}
-          action={
-            owner
-              ? 'Connect the store again with a new access token.'
-              : 'Ask your workspace owner to reconnect it.'
-          }
-        />
-        {connected && (
-          <>
-            <ConnectedBadge label="Shopify Connected" />
-            <p className="text-center text-xs text-[var(--text-muted)]">
-              {[
-                connection?.shopDomain ?? connection?.accountLabel,
-                connection?.credentialHint
-              ]
-                .filter(Boolean)
-                .join(' · ') || 'Sample store'}
-            </p>
-            <p className="text-center text-xs text-[var(--text-muted)]">
-              Sample products — nothing is sent to Shopify.
-            </p>
-          </>
-        )}
-        {!connected && (
-          // Owner brief §13: say what is missing without Shopify.
-          <p className="text-xs text-[var(--warning-ink)]">
-            Without Shopify: no Store page, no UTM revenue, product list may be
-            outdated.
-          </p>
-        )}
-        {owner &&
-          (connected ? (
-            <Disclosure
-              open={open}
-              controls="connect-shopify"
-              onToggle={onToggle}
-            >
-              Update access token
-            </Disclosure>
-          ) : (
-            <div className="grid [&>button]:w-full">
-              <Button
-                type="button"
-                onClick={onToggle}
-                aria-expanded={open}
-                aria-controls={open ? 'connect-shopify' : undefined}
-              >
-                Connect Shopify
-                <ArrowRight className="size-4" aria-hidden="true" />
-              </Button>
-            </div>
-          ))}
-        {!owner && !connected && (
-          <p className="text-sm text-[var(--text-muted)]">
-            Not connected. Ask your workspace owner to connect Shopify.
-          </p>
-        )}
-      </div>
-    </Card>
-  )
-}
-
-const scopes = [
-  'read_products',
-  'read_orders',
-  'read_customers',
-  'read_analytics'
-]
-
-function ShopifyForm({ domain }: { domain: string | null }) {
-  const [shop, setShop] = useState(domain ?? '')
-  const email = shop.includes('@')
-  return (
-    <section
-      id="connect-shopify"
-      aria-labelledby="connect-shopify-title"
-      className="space-y-5 rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-6"
-    >
-      <div className="space-y-2">
-        <h2 id="connect-shopify-title" className="text-lg font-semibold">
-          Connect your Shopify store
-        </h2>
-        <p className="text-sm text-[var(--text-muted)]">
-          Create a Custom App in your Shopify admin, give it read access to{' '}
-          <strong className="text-[var(--text)]">
-            products, orders, customers, and analytics
-          </strong>
-          , then paste the Admin API access token here.{' '}
-          <a
-            href="https://help.shopify.com/en/manual/apps/app-types/custom-apps"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium text-[var(--brand-ink)] underline-offset-4 hover:underline"
-          >
-            How to create a Custom App →
-          </a>
-        </p>
-      </div>
-      {/* The token field is uncontrolled, so it is cleared after each
-          submit; the domain is kept. */}
-      <ActionForm action={connectShopify} className="space-y-5">
-        <div className="space-y-2">
-          <Field label="Shop domain">
-            {/* Old-app bug: browsers autofilled an email address here. */}
-            <TextField
-              name="shopDomain"
-              value={shop}
-              onChange={(event) => setShop(event.target.value)}
-              placeholder="your-store.myshopify.com"
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              inputMode="url"
-              required
-              autoFocus
-              data-1p-ignore
-              data-lpignore="true"
-              aria-describedby="shop-domain-help"
-              aria-invalid={email ? true : undefined}
-            />
-          </Field>
-          <p id="shop-domain-help" className="text-xs text-[var(--text-muted)]">
-            {email ? (
-              <span className="text-[var(--danger-ink)]">
-                That looks like an email address. Use your store’s
-                .myshopify.com address.
-              </span>
-            ) : (
-              <>
-                The <code>.myshopify.com</code> address, not your custom domain.
-              </>
-            )}
-          </p>
-        </div>
-        <div className="space-y-2">
-          <Field label="Admin API access token">
-            <TextField
-              name="accessToken"
-              placeholder="shpat_…"
-              aria-describedby="shop-token-help"
-              {...secretProps}
-            />
-          </Field>
-          <p id="shop-token-help" className="text-xs text-[var(--text-muted)]">
-            Starts with <code>shpat_</code> or <code>shpca_</code>. In your
-            Custom App:{' '}
-            <strong className="text-[var(--text)]">
-              Configuration → Install app → API credentials tab → “Admin API
-              access token” section → Reveal token once
-            </strong>
-            .
-          </p>
-        </div>
-        <p className="flex gap-2 text-xs text-[var(--warning-ink)]">
-          <TriangleAlert
-            className="mt-0.5 size-4 shrink-0"
-            aria-hidden="true"
-          />
-          <span>
-            Not the same as the API secret key (<code>shpss_…</code>) or the API
-            key. The access token is shown only ONCE — if you missed it,
-            uninstall and reinstall the app to regenerate.
-          </span>
-        </p>
-        <div className="rounded-[var(--radius-control)] bg-[var(--surface-hover)] p-3 text-xs">
-          <p className="mb-2 font-medium">Required scopes:</p>
-          <ul className="flex flex-wrap gap-2">
-            {scopes.map((scope) => (
-              <li
-                key={scope}
-                className="rounded-full border border-[var(--line)] bg-[var(--surface-raised)] px-2 py-0.5 font-mono"
-              >
-                {scope}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <p className="text-xs text-[var(--text-muted)]">{sampleNote}</p>
-        <div className="flex justify-end">
-          <SubmitButton pendingLabel="Checking…">
-            <Link2 className="size-4" aria-hidden="true" />
-            Verify & connect
-          </SubmitButton>
-        </div>
-      </ActionForm>
-      <details className="border-t border-[var(--line)] pt-4 text-sm">
-        <summary
-          className={`flex cursor-pointer items-center gap-2 ${labelClass}`}
-        >
-          <CircleHelp className="size-4" aria-hidden="true" />
-          Common issues
-        </summary>
-        <ul className="mt-3 list-disc space-y-2 pl-5 text-[var(--text-muted)]">
-          <li>
-            “That looks like an email address”: your browser filled in your
-            email. Type the store address, for example your-store.myshopify.com.
-          </li>
-          <li>
-            “Use the .myshopify.com address”: your custom domain (like
-            yourstore.com) will not work. Find the .myshopify.com address in
-            Shopify under Settings → Domains.
-          </li>
-          <li>
-            “That is the API secret key”: copy the Admin API access token
-            (shpat_…), not the API key or the API secret key (shpss_…).
-          </li>
-          <li>
-            Lost the token: Shopify shows it only once. Uninstall and reinstall
-            the Custom App to get a new one.
-          </li>
-        </ul>
-      </details>
-    </section>
-  )
-}
-
-/** The two connection cards; the Shopify form opens full width below them. */
+/**
+ * The connection cards. v2 is Klaviyo only (BUILD_BRIEF D2): products,
+ * images, prices and orders come from Klaviyo, so there is no Shopify card.
+ */
 export function ConnectionsBoard({
   klaviyo,
-  shopify,
   owner
 }: {
   klaviyo: ConnectionView | null
-  shopify: ConnectionView | null
   owner: boolean
 }) {
-  const [shopifyOpen, setShopifyOpen] = useState(false)
   return (
-    <div className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-2">
-        <KlaviyoCard connection={klaviyo} owner={owner} />
-        <ShopifyCard
-          connection={shopify}
-          owner={owner}
-          open={shopifyOpen}
-          onToggle={() => setShopifyOpen((open) => !open)}
-        />
-      </div>
-      {owner && shopifyOpen && (
-        <ShopifyForm domain={shopify?.shopDomain ?? null} />
-      )}
+    <div className="max-w-xl">
+      <KlaviyoCard connection={klaviyo} owner={owner} />
     </div>
   )
 }

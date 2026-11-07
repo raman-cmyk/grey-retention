@@ -66,7 +66,6 @@ function failed(error: { code?: string; message?: string }) {
 function refresh() {
   for (const path of [
     '/brand',
-    '/store',
     '/connections',
     '/dashboard',
     '/get-started',
