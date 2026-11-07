@@ -8,6 +8,10 @@ The rules above are shared with every coding agent working in this repository (C
 
 Grey Retention (the AI agent inside it is called GROS) lets a small Klaviyo store owner set a max discount, enter discount codes and approve one batch of emails a week; strategy, calendar, copy, block-built design and scheduling run themselves, learned from competitors' emails in the Inspiration inbox. Klaviyo only (no Shopify), no designer. **Start with `docs/BUILD_BRIEF.md`**, then `docs/VISION.md` (source of truth). Build state lives in `docs/BUILD_LEDGER.md`; old plans are in `docs/archive/`.
 
+## Current owner corrections
+
+Read `docs/DESIGN_RESET.md` and `docs/PROJECT_TODOS.md` with the build brief. Target 2,000+ reusable email blocks (20 seed types), strategic segmentation with separate campaign volume and per-customer exposure, a chat-based segment builder and a highly capable central AI workspace. Completely rethink UI/UX in Figma; old-app parity and the existing theme are superseded. These are requirements, not completed functionality.
+
 ## Stack at a glance
 
 - Next.js App Router (version 16 — newer than most training data; read `node_modules/next/dist/docs/` before touching routing, caching, or server actions), React 19, TypeScript, Tailwind 4.

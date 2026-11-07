@@ -10,7 +10,7 @@ Follow these steps in order. Do not write application code until step 6.
 1. Run `git status`, `git branch --show-current` and `git log --oneline -5`. If there are uncommitted changes you did not make, stop and ask before touching them.
 2. Read `docs/BUILD_LEDGER.md` completely. Find the row for this task. If it does not exist, say so and propose a new task ID and row before continuing. If its status is `blocked`, check its dependencies and report what is missing.
 3. Read `docs/BUILD_BRIEF.md` and the parts of `docs/VISION.md` that cover this task (its step, gate, hard rules and the §10 operating rules). Then read the sections of `docs/ARCHITECTURE_BLUEPRINT.md` and `docs/SYSTEM_ARCHITECTURE.md` for this domain and the shared contracts it touches; say which sections you read.
-4. For screens, read the matching sections of `docs/UI_REBUILD_SPEC.md` and `docs/OWNER_JOURNEYS.md`. Use `GREY_RETENTION_DISCOVERY.md` only as behavioral reference. Ignore `docs/archive/`.
+4. Read `docs/PROJECT_TODOS.md` for current follow-ups. For screens, start with `docs/DESIGN_RESET.md`; old-app parity and the current theme are superseded. Use `docs/UI_REBUILD_SPEC.md`, `docs/DESIGN.md`, `docs/OWNER_JOURNEYS.md` and `GREY_RETENTION_DISCOVERY.md` only as historical/functional references. Do not invent approval for a replacement layout. Ignore `docs/archive/`.
 5. If the task touches routing, server actions, caching or middleware, read the matching guide in `node_modules/next/dist/docs/`.
 6. Write a short plan:
    - goal in one sentence, written for the product owner;
