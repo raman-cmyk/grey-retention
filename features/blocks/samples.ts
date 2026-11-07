@@ -20,26 +20,36 @@ export const sampleBrand: BlockBrand = {
   font: 'Playfair Display'
 }
 
-const shades = [
-  '#d9cdb8',
-  '#b9c4b1',
-  '#c7b3a3',
-  '#a9b8c2',
-  '#d6c2c8',
-  '#c2c9a4'
+// Solid-colour PNGs (1×1 square, 5×3 wide), stretched by the email's own
+// width. PNG, not SVG, so sanitized previews keep them.
+const squarePng = [
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mO4eXYHAAThAl+DZCD5AAAAAElFTkSuQmCC',
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mPYeWQjAARoAi8NmjqpAAAAAElFTkSuQmCC',
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mM4vnkxAARiAh5TkS4eAAAAAElFTkSuQmCC',
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mNYueMQAAQxAiQqiRAZAAAAAElFTkSuQmCC',
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mO4dugEAATSAmGEawv4AAAAAElFTkSuQmCC',
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mM4dHIJAASAAjAkaa3aAAAAAElFTkSuQmCC'
+]
+const widePng = [
+  'iVBORw0KGgoAAAANSUhEUgAAAAUAAAADCAIAAADUVFKvAAAAEUlEQVR42mO4eXYHMmIgwAcAVnwjg0v9T3AAAAAASUVORK5CYII=',
+  'iVBORw0KGgoAAAANSUhEUgAAAAUAAAADCAIAAADUVFKvAAAAEUlEQVR42mPYeWQjMmIgwAcAEYUgs6BkBNsAAAAASUVORK5CYII=',
+  'iVBORw0KGgoAAAANSUhEUgAAAAUAAAADCAIAAADUVFKvAAAAEUlEQVR42mM4vnkxMmIgwAcA+zIftBQasboAAAAASUVORK5CYII=',
+  'iVBORw0KGgoAAAANSUhEUgAAAAUAAAADCAIAAADUVFKvAAAAEUlEQVR42mNYueMQMmIgwAcAAB4gDjcUXC0AAAAASUVORK5CYII=',
+  'iVBORw0KGgoAAAANSUhEUgAAAAUAAAADCAIAAADUVFKvAAAAEUlEQVR42mO4dugEMmIgwAcAWC8joSvEC3gAAAAASUVORK5CYII=',
+  'iVBORw0KGgoAAAANSUhEUgAAAAUAAAADCAIAAADUVFKvAAAAEUlEQVR42mM4dHIJMmIgwAcAFDcgwrn2AMcAAAAASUVORK5CYII='
 ]
 
-/** A plain, text-free picture: a soft block of colour with one shape. */
+/** A plain, text-free picture: one soft block of colour. */
 export function samplePhoto(
   index: number,
   alt: string,
   ratio: 'square' | 'wide' = 'square'
 ): BlockImage {
-  const w = 600
-  const h = ratio === 'wide' ? 360 : 600
-  const fill = shades[index % shades.length]
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect width="${w}" height="${h}" fill="${fill}"/><circle cx="${w / 2}" cy="${h / 2}" r="${Math.min(w, h) / 4}" fill="#ffffff" fill-opacity="0.45"/></svg>`
-  return { url: `data:image/svg+xml;base64,${btoa(svg)}`, alt }
+  const list = ratio === 'wide' ? widePng : squarePng
+  return {
+    url: `data:image/png;base64,${list[index % list.length]}`,
+    alt
+  }
 }
 
 const shop = 'https://cedar-lane.example'

@@ -463,17 +463,34 @@ export function renderEmail(input: {
   mode?: RenderMode
 }) {
   const mode = input.mode ?? 'preview'
-  const ctx: Ctx = { brand: input.brand, mode, theme: themeOf(input.brand) }
   const footer =
     input.blocks.find((b) => b.type === 'footer') ??
     ({ type: 'footer', content: {} } as Block)
   const body = [...input.blocks.filter((b) => b.type !== 'footer'), footer]
     .map((b) => renderBlock(b, input.brand, mode))
     .join('')
-  const pre = input.preheader
-    ? `<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all">${escapeHtml(input.preheader)}${'&#847;&zwnj;&nbsp;'.repeat(40)}</div>`
+  return emailDocument(body, input.brand, input.subject, input.preheader)
+}
+
+/**
+ * One block alone in the email frame, for the block gallery (BLK-002). It
+ * is never sent, so it has no forced footer and always uses preview mode.
+ */
+export function blockPreviewDocument(block: Block, brand: BlockBrand) {
+  return emailDocument(renderBlock(block, brand, 'preview'), brand)
+}
+
+function emailDocument(
+  body: string,
+  brand: BlockBrand,
+  subject?: string,
+  preheader?: string
+) {
+  const theme = themeOf(brand)
+  const pre = preheader
+    ? `<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all">${escapeHtml(preheader)}${'&#847;&zwnj;&nbsp;'.repeat(40)}</div>`
     : ''
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="x-apple-disable-message-reformatting"><meta name="color-scheme" content="light"><title>${escapeHtml(input.subject ?? input.brand.name)}</title><style>${mobileCss(ctx.theme)}</style></head><body style="margin:0;padding:0;background:${ctx.theme.page}">${pre}${table(`<tr><td align="center" style="padding:0">${table(body, ` class="gr-wrap" width="${EMAIL_WIDTH}" style="width:${EMAIL_WIDTH}px;max-width:${EMAIL_WIDTH}px;background:${ctx.theme.page}"`)}</td></tr>`, ` style="background:${ctx.theme.page}"`)}</body></html>`
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="x-apple-disable-message-reformatting"><meta name="color-scheme" content="light"><title>${escapeHtml(subject ?? brand.name)}</title><style>${mobileCss(theme)}</style></head><body style="margin:0;padding:0;background:${theme.page}">${pre}${table(`<tr><td align="center" style="padding:0">${table(body, ` class="gr-wrap" width="${EMAIL_WIDTH}" style="width:${EMAIL_WIDTH}px;max-width:${EMAIL_WIDTH}px;background:${theme.page}"`)}</td></tr>`, ` style="background:${theme.page}"`)}</body></html>`
 }
 
 /** Size in bytes as Gmail counts it (UTF-8). */

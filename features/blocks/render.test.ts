@@ -3,6 +3,7 @@ import { blockTypes, parseBlock, type Block } from './catalog'
 import { klaviyoFooterTags } from './klaviyo-tags'
 import {
   GMAIL_CLIP_BYTES,
+  blockPreviewDocument,
   emailBytes,
   escapeHtml,
   renderBlock,
@@ -227,5 +228,16 @@ describe('renderEmail', () => {
       .map((m) => m[1])
       .filter((t, i, list) => t !== list[i - 1])
     expect(order).toEqual(blockTypes)
+  })
+})
+
+describe('blockPreviewDocument (gallery)', () => {
+  it('shows one block in the email frame, without a footer or Klaviyo tags', () => {
+    const html = blockPreviewDocument(sampleBlocks.hero, sampleBrand)
+    expect(html.startsWith('<!doctype html>')).toBe(true)
+    expect(html).toContain('data-block="hero"')
+    expect(html).not.toContain('data-block="footer"')
+    expect(html).not.toMatch(/\{%|\{\{/)
+    expect(html).toContain('@media only screen and (max-width:620px)')
   })
 })
