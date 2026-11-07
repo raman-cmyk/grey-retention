@@ -4457,6 +4457,7 @@ export type Database = {
       }
       support_tickets: {
         Row: {
+          category: string | null
           created_at: string
           creator_id: string
           id: string
@@ -4468,6 +4469,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          category?: string | null
           created_at?: string
           creator_id: string
           id?: string
@@ -4479,6 +4481,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          category?: string | null
           created_at?: string
           creator_id?: string
           id?: string
@@ -4630,6 +4633,7 @@ export type Database = {
           slug: string
           status: Database['public']['Enums']['tenant_status']
           timezone: string
+          timezone_source: string
           updated_at: string
         }
         Insert: {
@@ -4640,6 +4644,7 @@ export type Database = {
           slug: string
           status?: Database['public']['Enums']['tenant_status']
           timezone?: string
+          timezone_source?: string
           updated_at?: string
         }
         Update: {
@@ -4650,6 +4655,7 @@ export type Database = {
           slug?: string
           status?: Database['public']['Enums']['tenant_status']
           timezone?: string
+          timezone_source?: string
           updated_at?: string
         }
         Relationships: []
@@ -4799,7 +4805,11 @@ export type Database = {
       }
       workspace_connections: {
         Row: {
+          account_country: string | null
+          account_currency: string | null
           account_label: string | null
+          account_timezone: string | null
+          account_website: string | null
           connected_at: string | null
           credential_hint: string | null
           fixture_account: string
@@ -4817,7 +4827,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          account_country?: string | null
+          account_currency?: string | null
           account_label?: string | null
+          account_timezone?: string | null
+          account_website?: string | null
           connected_at?: string | null
           credential_hint?: string | null
           fixture_account: string
@@ -4835,7 +4849,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          account_country?: string | null
+          account_currency?: string | null
           account_label?: string | null
+          account_timezone?: string | null
+          account_website?: string | null
           connected_at?: string | null
           credential_hint?: string | null
           fixture_account?: string
@@ -5031,6 +5049,16 @@ export type Database = {
         }
         Returns: undefined
       }
+      change_team_member: {
+        Args: {
+          expected_at: string
+          membership: string
+          role: Database['public']['Enums']['tenant_role']
+          status: Database['public']['Enums']['membership_status']
+          t: string
+        }
+        Returns: undefined
+      }
       claim_email_file_import: {
         Args: { import: string; t: string }
         Returns: {
@@ -5099,7 +5127,11 @@ export type Database = {
       }
       connect_sample_provider: {
         Args: {
+          account_country?: string
+          account_currency?: string
           account_label: string
+          account_timezone?: string
+          account_website?: string
           credential_hint: string
           provider: string
           shop_domain?: string
@@ -5527,6 +5559,10 @@ export type Database = {
         }
         Returns: string
       }
+      request_feature: {
+        Args: { category: string; details: string; subject: string; t: string }
+        Returns: string
+      }
       request_reschedule: {
         Args: {
           campaign: string
@@ -5535,6 +5571,10 @@ export type Database = {
           t: string
         }
         Returns: string
+      }
+      resend_team_invite: {
+        Args: { invite: string; t: string }
+        Returns: undefined
       }
       reserve_fixture_usage: {
         Args: {
@@ -5732,6 +5772,10 @@ export type Database = {
         Args: { delivery: string; t: string }
         Returns: string
       }
+      set_brand_timezone: {
+        Args: { expected: string; t: string; timezone: string }
+        Returns: boolean
+      }
       set_conversation_visibility: {
         Args: { chat: string; t: string; visibility: string }
         Returns: undefined
@@ -5793,6 +5837,19 @@ export type Database = {
         }
         Returns: string
       }
+      team_members: {
+        Args: { t: string }
+        Returns: {
+          email: string
+          id: string
+          is_me: boolean
+          name: string
+          profile_id: string
+          role: Database['public']['Enums']['tenant_role']
+          status: Database['public']['Enums']['membership_status']
+          updated_at: string
+        }[]
+      }
       update_competitor_subscription: {
         Args: {
           active: boolean
@@ -5811,6 +5868,10 @@ export type Database = {
           status: Database['public']['Enums']['membership_status']
           t: string
         }
+        Returns: undefined
+      }
+      use_klaviyo_timezone: {
+        Args: { expected: string; expected_zone: string; t: string }
         Returns: undefined
       }
     }

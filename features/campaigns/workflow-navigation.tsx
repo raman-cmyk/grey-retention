@@ -6,19 +6,22 @@ import {
   Send
 } from 'lucide-react'
 import { campaignNextStep, type OverviewCampaign } from './overview-model'
+import { stepStateWords } from './status'
 
 export function WorkflowNavigation({
   campaign
 }: {
   campaign: OverviewCampaign
 }) {
-  const next = campaignNextStep(campaign)
+  const step = campaignNextStep(campaign)
+  const next = step ?? 'Nothing to do now'
+  const word = next.toLowerCase()
   const target =
-    next.includes('calendar') || next === 'Calendar review'
+    word.includes('calendar') || word.includes('date')
       ? '#brief'
-      : next.toLowerCase().includes('copy')
+      : word.includes('copy')
         ? '#copy'
-        : next.toLowerCase().includes('design')
+        : word.includes('design')
           ? '#design'
           : '#delivery'
   return (
@@ -30,25 +33,25 @@ export function WorkflowNavigation({
         {[
           {
             label: 'Brief',
-            status: campaign.calendar_state,
+            status: stepStateWords('calendar', campaign.calendar_state),
             icon: CalendarDays,
             href: '#brief'
           },
           {
             label: 'Copy',
-            status: campaign.copy_state,
+            status: stepStateWords('copy', campaign.copy_state),
             icon: FileText,
             href: '#copy'
           },
           {
             label: 'Design',
-            status: campaign.design_state,
+            status: stepStateWords('design', campaign.design_state),
             icon: Paintbrush,
             href: '#design'
           },
           {
             label: 'Delivery',
-            status: campaign.delivery_state,
+            status: stepStateWords('delivery', campaign.delivery_state),
             icon: Send,
             href: '#delivery'
           }
@@ -64,8 +67,8 @@ export function WorkflowNavigation({
             />
             <div>
               <p className="text-xs font-semibold">{label}</p>
-              <p className="mt-1 text-[0.6875rem] text-[var(--text-muted)] capitalize">
-                {status.replaceAll('_', ' ')}
+              <p className="mt-1 text-[0.6875rem] text-[var(--text-muted)]">
+                {status}
               </p>
             </div>
           </a>
@@ -80,13 +83,15 @@ export function WorkflowNavigation({
           <a href="#history" className="text-xs text-[var(--text-muted)]">
             History & notes
           </a>
-          <a
-            href={target}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--brand-secondary)]"
-          >
-            Go to step
-            <ArrowRight className="size-3.5" aria-hidden />
-          </a>
+          {step && (
+            <a
+              href={target}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--brand-secondary)]"
+            >
+              Go to step
+              <ArrowRight className="size-3.5" aria-hidden />
+            </a>
+          )}
         </div>
       </div>
     </div>

@@ -8,6 +8,15 @@ const actions = vi.hoisted(() => ({
   }))
 }))
 vi.mock('./actions', () => actions)
+const timezoneActions = vi.hoisted(() => ({
+  saveBrandTimezone: vi.fn(async () => ({
+    message: 'Saved. Every date and time now uses Europe/London.'
+  })),
+  switchToKlaviyoTimezone: vi.fn(async () => ({
+    message: 'Saved. The brand timezone is now Klaviyo’s, America/New_York.'
+  }))
+}))
+vi.mock('./timezone-actions', () => timezoneActions)
 
 import { DefaultsForm, TimezoneCard } from './settings-form'
 import { emptyDefaults } from './defaults'
@@ -181,6 +190,8 @@ describe('DefaultsForm', () => {
   })
 })
 
+const zones = ['UTC', 'Asia/Kathmandu', 'Asia/Tokyo', 'Europe/London']
+
 describe('TimezoneCard', () => {
   it('shows the brand timezone with its offset and the local time', () => {
     render(
@@ -191,6 +202,194 @@ describe('TimezoneCard', () => {
     )
     expect(screen.getByText('US/Pacific (UTC-08:00)')).toBeVisible()
     expect(screen.getByText('Fri, Nov 6 2026 · 9:07 AM')).toBeVisible()
-    expect(screen.getByText(/same timezone the Dashboard uses/)).toBeVisible()
+    // Honest about what follows it, and what does not.
+    expect(
+      screen.getByText(
+        /GROS plans new campaign send times in your brand’s timezone, and most dates and times in the app are shown in it\. Campaigns already planned still send at the same moment\./
+      )
+    ).toBeVisible()
+    // Read-only without the owner.
+    expect(screen.queryByLabelText('Change timezone')).toBeNull()
+  })
+
+  it('says where the timezone came from', () => {
+    const { rerender } = render(
+      <TimezoneCard timezone="UTC" initialNow={0} source="klaviyo" />
+    )
+    expect(
+      screen.getByText('From your Klaviyo account (sample connection).')
+    ).toBeVisible()
+    rerender(<TimezoneCard timezone="UTC" initialNow={0} source="owner" />)
+    expect(screen.getByText('Chosen by you.')).toBeVisible()
+    rerender(<TimezoneCard timezone="UTC" initialNow={0} source="setup" />)
+    expect(
+      screen.getByText('Set when the workspace was created.')
+    ).toBeVisible()
+  })
+
+  it('lets the owner pick a timezone and keeps the choice after saving', async () => {
+    render(
+      <TimezoneCard
+        timezone="Asia/Kathmandu"
+        options={zones}
+        initialNow={Date.parse('2026-11-06T17:07:00Z')}
+        source="setup"
+        owner
+      />
+    )
+    const select = screen.getByLabelText('Change timezone')
+    // The list comes from the server, so page and browser agree.
+    expect(
+      within(select)
+        .getAllByRole('option')
+        .map((o) => o.textContent)
+    ).toEqual(zones)
+    expect(select).toHaveValue('Asia/Kathmandu')
+    await userEvent.selectOptions(select, 'Europe/London')
+    await userEvent.click(screen.getByRole('button', { name: 'Save timezone' }))
+    expect(await screen.findByText(/^Saved\./)).toBeVisible()
+    const sent = (
+      timezoneActions.saveBrandTimezone.mock.calls[0] as unknown[]
+    )[1] as FormData
+    expect(sent.get('timezone')).toBe('Europe/London')
+    expect(sent.get('expected')).toBe('Asia/Kathmandu')
+    expect(select).toHaveValue('Europe/London')
+    // The cursor is back on the picker, next to the answer.
+    expect(select).toHaveFocus()
+  })
+
+  it('keeps the cursor on the picker when the page refreshes with the new timezone', async () => {
+    const { rerender } = render(
+      <TimezoneCard
+        timezone="Asia/Kathmandu"
+        options={zones}
+        initialNow={0}
+        owner
+      />
+    )
+    const select = screen.getByLabelText('Change timezone')
+    await userEvent.selectOptions(select, 'Europe/London')
+    await userEvent.click(screen.getByRole('button', { name: 'Save timezone' }))
+    await screen.findByText(/^Saved\./)
+    expect(select).toHaveFocus()
+    // The refreshed page arrives later: the same picker stays (not a new
+    // one), shows the saved timezone and keeps the cursor.
+    rerender(
+      <TimezoneCard
+        timezone="Europe/London"
+        options={zones}
+        initialNow={0}
+        owner
+      />
+    )
+    expect(screen.getByLabelText('Change timezone')).toBe(select)
+    expect(select).toHaveValue('Europe/London')
+    expect(select).toHaveFocus()
+    // Another window changes it: the picker follows.
+    rerender(
+      <TimezoneCard
+        timezone="Asia/Tokyo"
+        options={zones}
+        initialNow={0}
+        owner
+      />
+    )
+    expect(select).toHaveValue('Asia/Tokyo')
+  })
+
+  it('sends back the timezone exactly as saved', async () => {
+    // This server does not know the saved name, so the page shows UTC; a
+    // change must still name what is saved, or it would always be stale.
+    render(
+      <TimezoneCard
+        timezone="UTC"
+        saved="Mars/Olympus"
+        options={zones}
+        initialNow={0}
+        owner
+      />
+    )
+    await userEvent.selectOptions(
+      screen.getByLabelText('Change timezone'),
+      'Europe/London'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save timezone' }))
+    await screen.findByText(/^Saved\./)
+    const sent = (
+      timezoneActions.saveBrandTimezone.mock.calls.at(-1) as unknown[]
+    )[1] as FormData
+    expect(sent.get('expected')).toBe('Mars/Olympus')
+  })
+
+  it('offers Klaviyo’s timezone when it differs, to the owner only', async () => {
+    const { rerender } = render(
+      <TimezoneCard
+        timezone="Europe/London"
+        initialNow={Date.parse('2026-11-06T17:07:00Z')}
+        source="owner"
+        klaviyoTimezone="America/New_York"
+        options={zones}
+        owner
+      />
+    )
+    expect(screen.getByText('America/New_York (UTC-05:00)')).toBeVisible()
+    expect(
+      screen.getByText(/Klaviyo account \(sample connection\)/)
+    ).toBeVisible()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Use Klaviyo’s timezone' })
+    )
+    expect(
+      await screen.findByText(
+        'Saved. The brand timezone is now Klaviyo’s, America/New_York.'
+      )
+    ).toBeVisible()
+    // It names the Klaviyo timezone the page showed.
+    const sent = (
+      timezoneActions.switchToKlaviyoTimezone.mock.calls[0] as unknown[]
+    )[1] as FormData
+    expect(sent.get('klaviyoTimezone')).toBe('America/New_York')
+    expect(sent.get('expected')).toBe('Europe/London')
+    expect(screen.getByLabelText('Change timezone')).toHaveFocus()
+    rerender(
+      <TimezoneCard
+        timezone="Europe/London"
+        initialNow={0}
+        klaviyoTimezone="America/New_York"
+      />
+    )
+    expect(
+      screen.queryByRole('button', { name: 'Use Klaviyo’s timezone' })
+    ).toBeNull()
+    expect(
+      screen.getByText(/The workspace owner can switch to it/)
+    ).toBeVisible()
+    rerender(
+      <TimezoneCard
+        timezone="America/New_York"
+        initialNow={0}
+        klaviyoTimezone="America/New_York"
+        owner
+      />
+    )
+    expect(screen.queryByText(/Your Klaviyo account/)).toBeNull()
+  })
+
+  it('shows a refusal and keeps the picked timezone', async () => {
+    timezoneActions.saveBrandTimezone.mockResolvedValueOnce({
+      error:
+        'The timezone changed in another window. Reload the page, then try again.'
+    } as never)
+    render(<TimezoneCard timezone="UTC" options={zones} initialNow={0} owner />)
+    await userEvent.selectOptions(
+      screen.getByLabelText('Change timezone'),
+      'Asia/Tokyo'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save timezone' }))
+    expect(await screen.findByText(/changed in another window/)).toBeVisible()
+    const select = screen.getByLabelText('Change timezone')
+    expect(select).toHaveValue('Asia/Tokyo')
+    expect(select).toHaveAttribute('aria-invalid', 'true')
+    expect(select).toHaveAccessibleDescription(/changed in another window/)
   })
 })

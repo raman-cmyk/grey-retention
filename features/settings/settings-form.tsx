@@ -15,16 +15,18 @@ import {
   ProductPicker,
   type ProductOption
 } from '@/components/ui/product-picker'
-import { SubmitButton } from '@/components/ui/action-form'
+import { SubmitButton, type FormResult } from '@/components/ui/action-form'
 import { TextField } from '@/components/ui/text-field'
 import { controlClass } from '@/components/ui/control'
 import { cn } from '@/lib/utils'
 import { saveCampaignDefaults, type SettingsResult } from './actions'
+import { saveBrandTimezone, switchToKlaviyoTimezone } from './timezone-actions'
+import type { TimezoneSource } from './timezone'
+import { timezoneWithOffset } from '@/lib/brand-time'
 import {
   defaultTabs,
   fieldTab,
   localTime,
-  zoneWithOffset,
   type CampaignDefaults,
   type DefaultTab,
   type SettingsField
@@ -35,14 +37,42 @@ const labelClass =
 const cardClass =
   'space-y-5 rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-6'
 
-/** Read-only brand timezone with a live clock (spec §11). */
+const sourceText: Record<TimezoneSource, string> = {
+  klaviyo: 'From your Klaviyo account (sample connection).',
+  owner: 'Chosen by you.',
+  setup: 'Set when the workspace was created.',
+  unknown: ''
+}
+
+/**
+ * The ONE brand timezone (UIR-023) with a live clock (spec §11): where it
+ * came from, and for the owner a picker and "Use Klaviyo's timezone".
+ */
 export function TimezoneCard({
   timezone,
-  initialNow
+  saved: savedZone = timezone,
+  options = [timezone],
+  initialNow,
+  source = 'unknown',
+  klaviyoTimezone = null,
+  owner = false
 }: {
+  /** The brand timezone the page shows (UTC if this server lacks it). */
   timezone: string
+  /** The brand timezone exactly as saved, sent back with a change. */
+  saved?: string
+  /** The timezones to pick from, built on the server. */
+  options?: string[]
   initialNow: number
+  source?: TimezoneSource
+  /**
+   * The Klaviyo account's timezone, only when it is another zone than the
+   * brand's (the server compares spellings).
+   */
+  klaviyoTimezone?: string | null
+  owner?: boolean
 }) {
+  const id = useId()
   const [now, setNow] = useState(initialNow)
   useEffect(() => {
     // Tick on each new minute, so the clock is never a minute behind.
@@ -59,7 +89,45 @@ export function TimezoneCard({
     schedule()
     return () => clearTimeout(timer)
   }, [])
+  // Counts answers, so the cursor returns to the picker after each one
+  // (the button that was pressed may be gone by then).
+  const [answers, setAnswers] = useState(0)
+  const [saved, save, saving] = useActionState(
+    async (previous: FormResult, form: FormData) => {
+      const result = await saveBrandTimezone(previous, form)
+      setAnswers((n) => n + 1)
+      return result
+    },
+    {}
+  )
+  const [switched, switchToKlaviyo, switching] = useActionState(
+    async (previous: FormResult, form: FormData) => {
+      const result = await switchToKlaviyoTimezone(previous, form)
+      setAnswers((n) => n + 1)
+      return result
+    },
+    {}
+  )
+  useEffect(() => {
+    if (answers > 0) document.getElementById(`${id}-zone`)?.focus()
+  }, [answers, id])
+  // The picker follows the saved timezone when it changes (after a save,
+  // a switch or another window), without rebuilding the form, so the
+  // cursor stays on it; a refused choice stays picked.
+  const [choice, setChoice] = useState(savedZone)
+  const [shownZone, setShownZone] = useState(savedZone)
+  if (shownZone !== savedZone) {
+    setShownZone(savedZone)
+    setChoice(savedZone)
+  }
+  // The latest answer, whichever button was used.
+  const [last, setLast] = useState<'save' | 'klaviyo'>('save')
   const at = new Date(now)
+  const state = last === 'save' ? saved : switched
+  const busy = saving || switching
+  const text = busy ? '' : (state.error ?? state.message ?? '')
+  // The server leaves Klaviyo's timezone out when it is the same zone.
+  const differs = klaviyoTimezone !== null && klaviyoTimezone !== savedZone
   return (
     <section aria-labelledby="timezone-title" className={cardClass}>
       <div className="space-y-1">
@@ -71,15 +139,22 @@ export function TimezoneCard({
           Timezone
         </h2>
         <p className="text-sm text-[var(--text-muted)]">
-          Campaign send times are scheduled in your brand’s timezone. It is the
-          same timezone the Dashboard uses. It is set for your workspace; it is
-          not read from Klaviyo yet.
+          GROS plans new campaign send times in your brand’s timezone, and most
+          dates and times in the app are shown in it. Campaigns already planned
+          still send at the same moment.
         </p>
       </div>
       <dl className="grid gap-5 sm:grid-cols-2">
         <div className="space-y-1">
           <dt className={labelClass}>Brand timezone</dt>
-          <dd className="text-[0.9375rem]">{zoneWithOffset(timezone, at)}</dd>
+          <dd className="text-[0.9375rem]">
+            {timezoneWithOffset(timezone, at)}
+          </dd>
+          {sourceText[source] && (
+            <dd className="text-sm text-[var(--text-muted)]">
+              {sourceText[source]}
+            </dd>
+          )}
         </div>
         <div className="space-y-1">
           <dt className={labelClass}>Current local time</dt>
@@ -88,6 +163,78 @@ export function TimezoneCard({
           </dd>
         </div>
       </dl>
+      {differs && (
+        <div className="space-y-2 rounded-[var(--radius-control)] bg-[var(--warning-soft)] px-4 py-3 text-sm text-[var(--warning-ink)]">
+          <p>
+            Your Klaviyo account (sample connection) uses{' '}
+            <strong>{timezoneWithOffset(klaviyoTimezone, at)}</strong>.
+            {owner
+              ? ' Use it, so times here match Klaviyo.'
+              : ' The workspace owner can switch to it.'}
+          </p>
+          {owner && (
+            <form action={switchToKlaviyo} onSubmit={() => setLast('klaviyo')}>
+              <input
+                type="hidden"
+                name="klaviyoTimezone"
+                value={klaviyoTimezone}
+              />
+              <input type="hidden" name="expected" value={savedZone} />
+              <SubmitButton variant="secondary" pendingLabel="Saving…">
+                Use Klaviyo’s timezone
+              </SubmitButton>
+            </form>
+          )}
+        </div>
+      )}
+      {owner && (
+        // No reset to the old choice after saving or when saving fails.
+        <form
+          action={save}
+          onSubmit={() => setLast('save')}
+          onReset={(event) => event.preventDefault()}
+          className="flex flex-wrap items-end gap-2"
+        >
+          <input type="hidden" name="expected" value={savedZone} />
+          <div className="min-w-0 space-y-1">
+            <label htmlFor={`${id}-zone`} className={labelClass}>
+              Change timezone
+            </label>
+            <select
+              id={`${id}-zone`}
+              name="timezone"
+              value={choice}
+              onChange={(event) => setChoice(event.target.value)}
+              aria-invalid={last === 'save' && !busy && !!saved.error}
+              aria-describedby={`${id}-status`}
+              className={cn(controlClass, 'max-w-full')}
+            >
+              {options.map((zone) => (
+                <option key={zone} value={zone}>
+                  {zone}
+                </option>
+              ))}
+            </select>
+          </div>
+          <SubmitButton variant="secondary" pendingLabel="Saving…">
+            Save timezone
+          </SubmitButton>
+        </form>
+      )}
+      <p
+        id={`${id}-status`}
+        aria-live="polite"
+        className={cn(
+          'text-sm',
+          !text
+            ? 'sr-only'
+            : state.error
+              ? 'rounded-lg bg-[var(--danger-soft)] px-3 py-2 text-[var(--danger-ink)]'
+              : 'rounded-lg bg-[var(--brand-soft)] px-3 py-2 text-[var(--brand-ink)]'
+        )}
+      >
+        {text}
+      </p>
     </section>
   )
 }

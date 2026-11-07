@@ -94,7 +94,7 @@ Checks:
 Checks:
 
 - [ ] After assignment, Regenerate / Regenerate Copy are disabled or need a confirm, because the warning says not to change the brief. **(fix)** The old app still showed Regenerate Copy on a draft that had an uploaded final design.
-- [ ] Status pills change when the design is assigned or delivered. **(fix)** The old draft with an uploaded final design still showed WRITING · DRAFT.
+- [x] Status pills change when the design is assigned or delivered. **(fix)** The old draft with an uploaded final design still showed WRITING · DRAFT. (UIR-015: assigned → With designer, delivered → Needs your approval.)
 - [ ] The owner sees an explicit **Approve design** action next to Reject. The old app had only the reject form, and approval was left to an admin. **(fix, product rule: owner approval is required)**
 
 ### Job 4: "Approve and send to Klaviyo"
@@ -325,7 +325,7 @@ Controls and behaviour:
   - after a drag, show a toast with Undo
 - [ ] A cell that holds a local draft does not show "+ plan send" (seen on the draft's day). Allow several sends per day, or explain the limit. (new)
 - [ ] Past days still offer "+ plan send". Block it or ask "This day has passed. Plan anyway?" **(fix)**
-- [ ] A draft dated in the past that was never sent is flagged as "Missed" or "Overdue". **(fix: the old app kept it as a normal grey Draft)**
+- [x] A draft dated in the past that was never sent is flagged as "Missed" or "Overdue". **(fix: the old app kept it as a normal grey Draft)** (UIR-015: Missed; a send stuck in delivery past its time is a Delivery problem.)
 - [ ] Klaviyo campaigns with status DRAFT (no send time) appear somewhere, e.g. an "Unscheduled" tray under the calendar. **(fix: they appeared nowhere)**
 - [ ] Table view columns: **WHEN · <TZ>** / TITLE / CHANNEL / OFFER / DISCOUNT CODE / STATUS (lowercase pill, e.g. "draft") / actions **Open** · **Delete** (danger).
   - Delete must confirm.
@@ -525,12 +525,12 @@ Simplify:
 Checks:
 
 - [x] The page opened on the **Audience** tab, so the last-used tab may be remembered. Confirm: open on Featured Product, or remember per viewer. (new)
-- [ ] The Timezone card shows the **same** timezone as the Klaviyo account card on the Dashboard. **(fix: the old app showed US/Pacific in Settings and an Australian zone on the Dashboard, and both claim to come from Klaviyo)**
+- [x] The Timezone card shows the **same** timezone as the Klaviyo account card on the Dashboard. **(fix: the old app showed US/Pacific in Settings and an Australian zone on the Dashboard, and both claim to come from Klaviyo)** Dashboard label pending: after the owner picks another zone, the Dashboard's Klaviyo "Account" box still calls the brand zone the account's (browser lane).
 - [x] The live clock ticks.
 - [x] Defaults show the "1 SELECTED" counts. **Save defaults** saves every tab at once. Not clicked.
 - [x] Changing a default does not change existing drafts. Say so under the Save button: "Applies to new campaigns only."
 
-> **As built (UIR-011):** the page always opens on **Featured Product** (nothing is remembered). The clock moves on each new minute. Each audience picker shows "N selected"; **Save defaults** saves all five tabs in one go and says "Applies to new campaigns only." Defaults are stored apart from drafts, so saving never changes an existing draft. Still open: the Timezone card shows the workspace timezone (the one the Dashboard uses) but does not read it from Klaviyo yet; that is UIR-023.
+> **As built (UIR-011):** the page always opens on **Featured Product** (nothing is remembered). The clock moves on each new minute. Each audience picker shows "N selected"; **Save defaults** saves all five tabs in one go and says "Applies to new campaigns only." Defaults are stored apart from drafts, so saving never changes an existing draft. UIR-023: the brand timezone now comes from the connected Klaviyo account (with today's sample connection, the account reports the workspace timezone) and the owner can change it on this card; the card says where it came from ("From your Klaviyo account", "Chosen by you" or "Set when the workspace was created"). Settings and the Dashboard both use this one brand timezone. If the owner picks another zone, the card shows Klaviyo's and offers "Use Klaviyo's timezone". Saving the zone the brand already has changes nothing. While GROS is making a plan, the timezone cannot change (the owner is told to try again when the plan is ready). Campaigns already planned still send at the same moment. Two open windows cannot overwrite each other: the second one is told to reload.
 
 Simplify:
 
@@ -594,12 +594,14 @@ Behaviour seen:
 
 Checks:
 
-- [ ] Invite validates the email format and blocks duplicates.
-- [ ] Changing a member's role select asks before saving (unknown whether the old app auto-saves on change; not touched).
-- [ ] Deactivate asks for confirmation.
-- [ ] The owner row can't be changed or deactivated.
-- [ ] Pending invites are listed with Resend / Cancel (not seen, add).
-- [ ] Rename the "Admin" role to "Manager" to avoid clashing with platform admins (the value is already `manager`). **(fix)**
+- [x] Invite validates the email format and blocks duplicates.
+- [x] Changing a member's role select asks before saving (unknown whether the old app auto-saves on change; not touched).
+- [x] Deactivate asks for confirmation.
+- [x] The owner row can't be changed or deactivated.
+- [x] Pending invites are listed with Resend / Cancel (not seen, add).
+- [x] Rename the "Admin" role to "Manager" to avoid clashing with platform admins (the value is already `manager`). **(fix)**
+
+> **As built (UIR-019):** the role is called **Manager** on the page; the database keeps the value `admin`. Invites refuse a bad address, a person already on the team, and a second open invite to the same address ("Use Resend"). Email sending is not switched on yet, so the card says no email is sent and the person signs up with that address to find the invite. Pending invites show the role and "Expires in N days" (or "Expired") with **Resend** (7 more days) and **Cancel**. To change a role the owner picks it in the list and clicks **Change role**, which asks "Make Sam a Manager?" first; **Deactivate** and **Reactivate** ask first. A deactivated teammate is reactivated, never invited again. Owners and managers see **Recent team changes** (who changed what, when). The owner row shows an Owner pill only, and nobody can change their own access. Deactivated teammates stay listed as "Deactivated" for owners and managers. The help text is honest: managers invite people, change access and see reports and usage; only the owner approves copy, designs and sending.
 
 ---
 
@@ -623,9 +625,11 @@ Behaviour seen:
 
 Checks:
 
-- [ ] Submit stays disabled until subject and details are filled.
-- [ ] Cancel closes with nothing saved (verified).
-- [ ] Requests show their status (Open / Planned / Done) and team replies.
+- [x] Submit stays disabled until subject and details are filled.
+- [x] Cancel closes with nothing saved (verified).
+- [x] Requests show their status (Open / Planned / Done) and team replies.
+
+> **As built (UIR-020):** wording follows §18 decision 16: the button is **New request** and the modal's button is **Send** (it stays disabled until subject and details have text). Cancel saves nothing; if something was typed it asks "Discard your answers?" first. Each request shows its type, status (Open, Planned or Done), who sent it and when, the details and replies; replies from the platform team are labelled "<product name> team" (white-label). The status comes from the admin support queue: only the platform team sets open (Open), in progress (Planned) or closed (Done); workspace members can reply but cannot change it. Any workspace member can send a request. The empty state says "Your request goes to the <product name> team" instead of promising that every request is read: the admin queue shows only the newest tickets until UIR-026.
 
 ---
 
@@ -674,6 +678,7 @@ Checks:
 4. **Add** an explicit owner **Approve** step (copy, then design) before Schedule, with a summary confirm. Reason: product rule "owner approval is sacred". The old app had a placeholder card instead.
 5. **Make** Brand Truth and Copy & Voice **editable** and merge them into one "Brand profile" page with per-section "Redo with AI". Reason: the AI profile was wrong and the owner had no way to fix it.
 6. **Add** a brand-mismatch guard: warn when the brand profile, site URL or catalogue doesn't match the connected Klaviyo organisation. Reason: the old workspace ran on another brand's data unnoticed for months.
+   > **As built (UIR-021):** when Klaviyo or Shopify is connected, the account reports what business it belongs to (Klaviyo: name, website, currency, country; Shopify: currency and country). The Brand page then shows "This profile may belong to a different brand" with what does not match (for example the profile says juniper-field.example but Klaviyo is Northwind Outdoor (sample) at northwind-outdoor.example). Ask GROS and the Campaigns planner show a "Brand check" note before GROS answers, plans or writes, with a link to the Brand profile. When more than half of the catalogue's product links point to another website, that is flagged too (only when the profile has a website). Countries are named in words ("Germany", not "DE"). Today's connections are samples: a Klaviyo key ending in 0000 connects another brand's sample account, so the warning can be tried; it does not change the brand timezone. (A Shopify token ending in 0000 gives a store in another currency and country, which is only flagged while Klaviyo is connected too.) The matching sample account reports no website, so correcting the profile's website never raises a false warning.
 7. **Remove** "Coming soon" KPIs and the "approval workflow not yet built" card from the dashboard. Reason: half the first screen was placeholders.
 8. **Move** the token strip to a small "AI credits" indicator plus a usage page. Reason: input/output token counts mean nothing to an owner.
 9. **Keep** the Klaviyo detail pages but **add performance** (opens, clicks, revenue) and plain-English rules. Move JSON into Advanced. Reason: owners open them to judge results.

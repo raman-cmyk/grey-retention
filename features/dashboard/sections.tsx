@@ -9,6 +9,7 @@ import {
 import type { Route } from 'next'
 import Link from 'next/link'
 import { Card } from '@/components/ui/card'
+import { StatusPill } from '@/components/ui/pill'
 import {
   formatBrandDateTime,
   relativeTime,
@@ -268,7 +269,7 @@ export function NextCampaignCard({
           <p className="text-2xl font-semibold">
             {countdown(next.at, now, timezone)}
           </p>
-          <p className="mt-2 text-sm break-words">
+          <p className="mt-2 flex flex-wrap items-center gap-2 text-sm break-words">
             {next.href ? (
               <Link
                 href={next.href}
@@ -279,6 +280,7 @@ export function NextCampaignCard({
             ) : (
               <span className="font-medium">{next.name}</span>
             )}
+            <StatusPill status={next.status} />
           </p>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
             {formatBrandDateTime(next.at, timezone)} ({timezoneLabel(timezone)}){' '}
@@ -367,6 +369,7 @@ export function CalendarMiniCard({
                     {formatBrandDateTime(send.at, timezone)}
                   </p>
                 </div>
+                <StatusPill status={send.status} />
                 {send.source === 'klaviyo' && (
                   <span className="tracking-label rounded-full bg-[var(--brand-soft)] px-2 py-0.5 text-[0.6875rem] font-semibold text-[var(--brand-ink)] uppercase">
                     Klaviyo

@@ -126,8 +126,11 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
           { label: 'Holidays & Events', href: '/holidays', icon: 'holidays' },
           { label: 'Connections', href: '/connections', icon: 'connections' },
           { label: 'Team', href: '/team', icon: 'team' },
-          // /feedback is built by the other lane (OWNER_JOURNEYS.md §15).
-          { label: 'Request a Feature', icon: 'feedback', soon: true }
+          {
+            label: 'Request a Feature',
+            href: '/feedback',
+            icon: 'feedback'
+          }
         ]
       },
       {
