@@ -30,6 +30,7 @@ A calm editorial workspace for getting the next campaign right. “Editorial” 
 Use a small semantic palette, readable sans-serif typography to be selected in context, one consistent icon family and restrained interaction states. Use whitespace/alignment to group information. Preserve necessary focus and control boundaries.
 
 Originality should come from product-specific work surfaces:
+
 - A recognizable, editable brand preview during onboarding.
 - Competitor emails as visual evidence, alongside source/date and useful observations.
 - Campaign review that brings the email, audience, offer and time together.
