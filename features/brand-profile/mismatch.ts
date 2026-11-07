@@ -146,7 +146,7 @@ export function catalogueElsewhere(
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]![0]
 }
 
-/** "DE" → "Germany", in plain English; the code itself if unknown. */
+/** "DE" → "Germany", in plain English ("Unknown Region" for an unused code). */
 export function countryName(code: string) {
   try {
     return (
