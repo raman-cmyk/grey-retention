@@ -20,7 +20,8 @@ export function PreviewCardFrame({
   text,
   caption,
   notes,
-  height
+  height,
+  textHeading
 }: {
   title: string
   templateName?: string
@@ -29,6 +30,8 @@ export function PreviewCardFrame({
   caption: string
   notes: string[]
   height: number
+  /** The label above `text` when there is no design ("Plain-text email"). */
+  textHeading?: string
 }) {
   const headingId = useId()
   const frame = useRef<HTMLIFrameElement>(null)
@@ -109,7 +112,11 @@ export function PreviewCardFrame({
             height={height}
           />
         ) : (
-          <PlainTextEmail text={text} maxHeight={height} />
+          <PlainTextEmail
+            text={text}
+            maxHeight={height}
+            heading={textHeading}
+          />
         )}
       </div>
       <p className="mt-3 text-xs leading-5 text-[var(--text-muted)]">
