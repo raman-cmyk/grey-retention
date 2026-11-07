@@ -44,6 +44,8 @@ export default async function SettingsPage() {
       <div className="space-y-6">
         <TimezoneCard
           timezone={timezone}
+          saved={zone.saved}
+          options={zone.options}
           initialNow={now}
           source={zone.source}
           klaviyoTimezone={zone.klaviyoTimezone}

@@ -135,6 +135,26 @@ describe('connectKlaviyo', () => {
     })
   })
 
+  it('saves without the account timezone on a database without it', async () => {
+    rpc.mockImplementation(
+      async (name: string, args: Record<string, unknown>) =>
+        name === 'connect_sample_provider' && 'account_timezone' in args
+          ? { data: null, error: { code: 'PGRST202' } }
+          : { data: 1, error: null }
+    )
+    expect((await connectKlaviyo({}, form({ apiKey: key }))).message).toContain(
+      'connected'
+    )
+    expect(rpc).toHaveBeenLastCalledWith(
+      'connect_sample_provider',
+      expect.not.objectContaining({ account_timezone: expect.anything() })
+    )
+    expect(rpc).not.toHaveBeenCalledWith(
+      'set_fixture_connection',
+      expect.anything()
+    )
+  })
+
   it('reports a database refusal without details', async () => {
     rpc.mockResolvedValue({ data: null, error: { code: '42501' } })
     expect(await connectKlaviyo({}, form({ apiKey: key }))).toEqual({

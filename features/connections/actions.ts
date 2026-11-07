@@ -28,9 +28,11 @@ async function ownerSession() {
 type Db = NonNullable<Awaited<ReturnType<typeof createClient>>>
 
 /**
- * Saves the connection. If the hosted database has not had the
- * connection-profile migration yet, falls back to the older status-only
- * command so connecting still works; the details appear after the update.
+ * Saves the connection. If the hosted database has not had the brand
+ * timezone update yet, saves without the account timezone; if it has not
+ * had the connection-profile update either, falls back to the older
+ * status-only command. Connecting always works; the details appear after
+ * the update.
  */
 async function save(
   db: Db,
@@ -44,7 +46,12 @@ async function save(
     account_timezone?: string
   }
 ) {
-  const saved = await db.rpc('connect_sample_provider', args)
+  let saved = await db.rpc('connect_sample_provider', args)
+  if (saved.error?.code === 'PGRST202' && args.account_timezone !== undefined) {
+    const older = { ...args }
+    delete older.account_timezone
+    saved = await db.rpc('connect_sample_provider', older)
+  }
   if (saved.error?.code === 'PGRST202')
     return db.rpc('set_fixture_connection', {
       t: args.t,
