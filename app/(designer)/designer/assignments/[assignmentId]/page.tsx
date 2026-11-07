@@ -1,11 +1,9 @@
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
-import { Card } from '@/components/ui/card'
 import { DetailPage } from '@/components/ui/detail-page'
-import { Notice, Field, controlClass } from '@/components/ui/workspace'
-import { ActionForm, SubmitButton } from '@/components/ui/action-form'
+import { Notice } from '@/components/ui/workspace'
 import { assignmentDetail } from '@/features/designers/data'
-import { submitDesign } from '@/features/designers/actions'
+import { SubmitDesignCard } from '@/features/designers/submit-card'
 import {
   ApprovedCopy,
   BrandFacts,
@@ -14,12 +12,7 @@ import {
   OwnerFeedback,
   SubmissionHistory
 } from '@/features/designers/assignment-parts'
-import {
-  assignmentStatus,
-  canSubmit,
-  closedReason,
-  dueLine
-} from '@/features/designers/model'
+import { assignmentStatus, dueLine } from '@/features/designers/model'
 
 export default async function AssignmentPage({
   params
@@ -44,10 +37,10 @@ export default async function AssignmentPage({
         brand={b.brandName}
         copyRevision={b.copyRevision}
         status={status}
-        due={dueLine(data.dueAt, data.state, now)}
+        due={dueLine(data.dueAt, data.state, now, data.stale)}
       />
       {data.error && <Notice error>{data.error}</Notice>}
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-5">
           <ApprovedCopy
             subject={b.subject}
@@ -68,51 +61,12 @@ export default async function AssignmentPage({
           <InspirationPack assets={data.inspirationAssets} />
         </div>
         <div className="min-w-0 space-y-5">
-          <Card title="Submit a design">
-            {canSubmit(data.state, data.stale) ? (
-              <ActionForm action={submitDesign} className="grid gap-4">
-                <input name="assignment" type="hidden" value={assignmentId} />
-                <input
-                  name="revision"
-                  type="hidden"
-                  value={data.designRevision}
-                />
-                {data.state === 'revisions_requested' && (
-                  <p className="text-sm">
-                    Read the owner feedback below, then upload the new version.
-                  </p>
-                )}
-                <Field label="Design image">
-                  <input
-                    type="file"
-                    name="design"
-                    accept="image/png,image/jpeg,image/webp"
-                    required
-                    className={controlClass}
-                  />
-                </Field>
-                <p className="text-xs leading-5 text-[var(--text-muted)]">
-                  PNG, JPEG or WebP, up to 10 MB. It stays private: only this
-                  brand and platform admin can see it.
-                </p>
-                <Field label="Submission notes">
-                  <textarea
-                    name="notes"
-                    className={controlClass}
-                    rows={4}
-                    maxLength={5000}
-                  />
-                </Field>
-                <div>
-                  <SubmitButton>Submit design version</SubmitButton>
-                </div>
-              </ActionForm>
-            ) : (
-              <p className="text-sm leading-6 text-[var(--text-muted)]">
-                {closedReason(data.state, data.stale)}
-              </p>
-            )}
-          </Card>
+          <SubmitDesignCard
+            assignmentId={assignmentId}
+            designRevision={data.designRevision}
+            state={data.state}
+            stale={data.stale}
+          />
           <OwnerFeedback reviews={data.reviews} now={now} />
         </div>
       </div>

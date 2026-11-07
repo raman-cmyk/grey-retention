@@ -5,7 +5,13 @@ import { Card } from '@/components/ui/card'
 import { Pill } from '@/components/ui/pill'
 import { relativeTime } from '@/lib/brand-time'
 import { cn } from '@/lib/utils'
-import { reviewWords, type AssignmentStatus, type DueLine } from './model'
+import { DueText } from './due-text'
+import {
+  reviewSection,
+  reviewWords,
+  type AssignmentStatus,
+  type DueLine
+} from './model'
 
 const label =
   'tracking-label font-mono text-[0.6875rem] font-semibold text-[var(--text-muted)] uppercase'
@@ -43,20 +49,12 @@ export function BriefHeader({
             <span>
               {brand} · Approved copy v{copyRevision}
             </span>
-            {due && (
-              <span
-                title={due.exact}
-                className={cn(
-                  due.tone === 'danger' &&
-                    'font-semibold text-[var(--danger-ink)]',
-                  due.tone === 'warning' &&
-                    'font-semibold text-[var(--warning-ink)]'
-                )}
-              >
-                · {due.text}
-              </span>
-            )}
           </p>
+          {due && (
+            <p className="mt-1 text-sm">
+              <DueText due={due} />
+            </p>
+          )}
           <p className="mt-3 text-sm leading-6">{status.meaning}</p>
         </div>
       </div>
@@ -154,10 +152,10 @@ export function BrandFacts({
             kit ? (
               <span className="block space-y-2">
                 <span className="flex flex-wrap gap-2">
-                  {kit.colors.map((c) => (
+                  {kit.colors.map((c, i) => (
                     <span
-                      key={c}
-                      className="inline-flex items-center gap-1.5 font-mono text-xs"
+                      key={`${i}-${c}`}
+                      className="inline-flex max-w-full items-center gap-1.5 font-mono text-xs break-all"
                     >
                       {hex.test(c) && (
                         <span
@@ -255,7 +253,9 @@ export function OwnerFeedback({
               <li key={r.id} className="text-sm">
                 <p className="flex flex-wrap items-center gap-2">
                   <Pill tone={words.tone}>{words.label}</Pill>
-                  <span className="font-semibold break-words">{r.section}</span>
+                  <span className="font-semibold break-words">
+                    {reviewSection(r.section)}
+                  </span>
                   <span className="text-xs text-[var(--text-muted)]">
                     {relativeTime(r.created_at, now) ?? ''}
                   </span>
@@ -299,9 +299,9 @@ export function SubmissionHistory({
   return (
     <Card title="Your submissions">
       {submissions.length ? (
-        <div className="grid gap-5 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           {submissions.map((s) => (
-            <article key={s.id}>
+            <article key={s.id} className="min-w-0">
               <h3 className="font-semibold">
                 Design v{s.revision} · copy v{s.copy_revision}
               </h3>

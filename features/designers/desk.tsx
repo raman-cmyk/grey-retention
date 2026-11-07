@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Pill } from '@/components/ui/pill'
 import { relativeTime } from '@/lib/brand-time'
 import { cn } from '@/lib/utils'
+import { DueText } from './due-text'
 import {
   deskFilterLabels,
   deskFilters,
@@ -87,20 +88,7 @@ export function DeskList({
                 <Pill tone={r.status.tone} title={r.status.meaning}>
                   {r.status.label}
                 </Pill>
-                {r.due && (
-                  <span
-                    title={r.due.exact}
-                    className={cn(
-                      r.due.tone === 'danger'
-                        ? 'font-semibold text-[var(--danger-ink)]'
-                        : r.due.tone === 'warning'
-                          ? 'font-semibold text-[var(--warning-ink)]'
-                          : 'text-[var(--text-muted)]'
-                    )}
-                  >
-                    {r.due.text}
-                  </span>
-                )}
+                {r.due && <DueText due={r.due} />}
               </p>
             </div>
             <ChevronRight
@@ -136,8 +124,9 @@ export function DeskNotifications({
             <li key={n.id}>
               <p className="break-words">{n.message}</p>
               <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                {relativeTime(n.created_at, now) ?? ''} · Email delivery
-                simulated
+                {[relativeTime(n.created_at, now), 'Email delivery simulated']
+                  .filter(Boolean)
+                  .join(' · ')}
               </p>
             </li>
           ))}

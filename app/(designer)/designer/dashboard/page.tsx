@@ -25,15 +25,17 @@ export default async function DesignerDashboard({
       {error ? (
         <Notice error>{error}</Notice>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          <section aria-labelledby="desk-briefs">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <section aria-labelledby="desk-briefs" className="min-w-0">
             <h2 id="desk-briefs" className="sr-only">
               Your assigned briefs
             </h2>
             <DeskTabs filter={desk.filter} counts={desk.counts} />
             <DeskList rows={desk.rows} filter={desk.filter} />
           </section>
-          <DeskNotifications items={notifications} now={now} />
+          <div className="min-w-0">
+            <DeskNotifications items={notifications} now={now} />
+          </div>
         </div>
       )}
     </div>

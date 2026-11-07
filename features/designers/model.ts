@@ -96,31 +96,45 @@ export function closedReason(state: string, stale: boolean) {
   return 'Submitting is closed until platform admin assigns the current brief.'
 }
 
-export type DueLine = { text: string; tone: PillTone; exact: string }
+export type DueLine = {
+  /** "Due in 3 hours", "Was due 2 hours ago", or "Due" when not urgent. */
+  text: string
+  tone: PillTone
+  /** Always shown next to the text: "Nov 7, 2026 · 9:30 AM UTC". */
+  exact: string
+  /** For `<time dateTime>`. */
+  iso: string
+}
 
 /**
- * "Due in 3 hours", "Was due 2 hours ago" (danger) or "Due in 4 days".
- * Work that is waiting or approved shows the date without urgency.
+ * "Due in 3 hours", "Was due 2 hours ago" (danger) or "Due in 4 days",
+ * always next to the exact time. Only work the designer can act on now is
+ * urgent; waiting, approved or changed briefs show the time plainly.
  * Times are UTC: designers work across many brands.
  */
 export function dueLine(
   dueAt: string,
   state: string,
-  now: Date = new Date()
+  now: Date = new Date(),
+  stale = false
 ): DueLine | null {
   const exact = formatBrandDateTime(dueAt, 'UTC')
   const relative = relativeTime(dueAt, now)
   if (!exact || !relative) return null
   const at = `${exact} UTC`
-  if (assignmentStatus(state).group !== 'todo')
-    return { text: `Due ${at}`, tone: 'neutral', exact: at }
+  const iso = new Date(dueAt).toISOString()
+  if (!canSubmit(state, stale))
+    return { text: 'Due', tone: 'neutral', exact: at, iso }
   const left = new Date(dueAt).getTime() - now.getTime()
+  if (relative === 'just now')
+    return { text: 'Due now', tone: 'danger', exact: at, iso }
   if (left < 0)
-    return { text: `Was due ${relative}`, tone: 'danger', exact: at }
+    return { text: `Was due ${relative}`, tone: 'danger', exact: at, iso }
   return {
     text: `Due ${relative}`,
     tone: left <= 6 * 3600_000 ? 'warning' : 'neutral',
-    exact: at
+    exact: at,
+    iso
   }
 }
 
@@ -214,6 +228,11 @@ export const emptyDeskWords: Record<
     description:
       'Platform admin assigns you approved copy. Each brief then appears here with its due time.'
   }
+}
+
+/** The section a review names; an approval covers the whole design. */
+export function reviewSection(section: string) {
+  return section === 'whole_design' ? 'Whole design' : section
 }
 
 /** Owner review rows, newest first, in the designer's words. */

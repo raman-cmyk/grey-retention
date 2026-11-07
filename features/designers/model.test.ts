@@ -84,10 +84,24 @@ describe('dueLine', () => {
   it('shows the exact UTC time, without urgency once submitted', () => {
     const line = dueLine('2026-11-07T09:30:00Z', 'submitted', now)
     expect(line).toEqual({
-      text: 'Due Nov 7, 2026 · 9:30 AM UTC',
+      text: 'Due',
       tone: 'neutral',
-      exact: 'Nov 7, 2026 · 9:30 AM UTC'
+      exact: 'Nov 7, 2026 · 9:30 AM UTC',
+      iso: '2026-11-07T09:30:00.000Z'
     })
+  })
+
+  it('is not urgent while the brief changed and submitting is closed', () => {
+    expect(dueLine(hours(-2), 'assigned', now, true)).toMatchObject({
+      text: 'Due',
+      tone: 'neutral'
+    })
+  })
+
+  it('says "Due now" in the last minute instead of "just now"', () => {
+    expect(
+      dueLine(new Date(now.getTime() + 30_000).toISOString(), 'assigned', now)
+    ).toMatchObject({ text: 'Due now', tone: 'danger' })
   })
 
   it('returns null for a broken date', () => {

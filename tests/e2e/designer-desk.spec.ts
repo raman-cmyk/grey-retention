@@ -16,7 +16,6 @@ test('UIR-025 designer desk filters by status and fits small screens', async ({
   ).toHaveAttribute('aria-current', 'page')
   await tabs.getByRole('link', { name: /^Approved \(\d+\)$/ }).click()
   await expect(page).toHaveURL(/show=approved$/)
-  // Notification email is simulated, and an empty list says so too.
   await expect(
     page.getByRole('heading', { name: 'Notifications' })
   ).toBeVisible()
@@ -28,7 +27,7 @@ test('UIR-025 designer desk filters by status and fits small screens', async ({
   ).toBe(true)
 })
 
-test('UIR-025 a brief that is not yours is not found, and owners stay out', async ({
+test('UIR-025 an unknown or unassigned brief is not found; owners and staff stay out', async ({
   page
 }) => {
   await login(page, 'designer')
@@ -36,8 +35,10 @@ test('UIR-025 a brief that is not yours is not found, and owners stay out', asyn
   await expect(
     page.getByRole('heading', { name: 'Nothing is pinned here.' })
   ).toBeVisible()
-  await page.context().clearCookies()
-  await login(page, 'owner')
-  await page.goto('/designer/dashboard')
-  await expect(page).toHaveURL(/\/designer\/login/)
+  for (const role of ['owner', 'staff'] as const) {
+    await page.context().clearCookies()
+    await login(page, role)
+    await page.goto('/designer/dashboard')
+    await expect(page).toHaveURL(/\/designer\/login/)
+  }
 })

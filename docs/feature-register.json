@@ -2071,9 +2071,9 @@
       "status": "verified_fixture",
       "implementation_tasks": ["UIR-025"],
       "verification": [
-        "UIR-025 (2026-11-07): /designer/dashboard loads only briefs assigned to the signed-in designer (designer_id filter plus RLS), hides cancelled briefs, shows each brief's status and due time (UTC, with overdue flagged) and filters by status; another designer's brief returns 404 (fixture accounts, local Supabase)."
+        "UIR-025 (2026-11-07): /designer/dashboard loads only briefs assigned to the signed-in designer (designer_id filter in the loader, unit-tested; RLS keeps other designers' rows out, design_delivery pgTAP), hides cancelled briefs, shows each brief's status and due time (relative plus the exact UTC time, overdue flagged) and filters by status; an unknown or unassigned brief id returns 404, and owners and staff are sent to the designer login (designer-desk journeys, desktop and mobile, local Supabase in CI)."
       ],
-      "remaining": "Search and paging for designers with many clients (DES-004) are not built."
+      "remaining": "The desk shows the stored assignment state; a brief whose approved copy changed shows \"Brief changed\" only on its own page. Search and paging for designers with many clients (DES-004) are not built."
     },
     {
       "id": "DES-004",

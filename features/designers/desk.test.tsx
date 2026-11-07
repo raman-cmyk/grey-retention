@@ -65,6 +65,7 @@ describe('designer desk', () => {
     expect(row).toHaveTextContent('Cedar Lane · Approved copy v2')
     expect(row).toHaveTextContent('Redo requested')
     expect(row).toHaveTextContent('Was due 2 hours ago')
+    expect(row).toHaveTextContent('Nov 7, 2026 · 10:00 AM UTC')
     // Only the To do tab's brief is shown.
     expect(screen.queryByRole('link', { name: /Autumn restock/ })).toBeNull()
   })
@@ -109,10 +110,11 @@ describe('assignment page parts', () => {
       screen.getByRole('heading', { level: 1, name: 'Weekend edit' })
     ).toBeVisible()
     expect(screen.getByText('Redo requested')).toBeVisible()
-    expect(screen.getByText('· Due in 3 hours')).toHaveAttribute(
-      'title',
-      expect.stringMatching(/UTC$/)
-    )
+    expect(screen.getByText('Due in 3 hours')).toBeVisible()
+    // The exact time is visible text, not only a hover title.
+    const time = screen.getByText('Nov 7, 2026 · 3:00 PM UTC')
+    expect(time.tagName).toBe('TIME')
+    expect(time).toHaveAttribute('datetime', '2026-11-07T15:00:00.000Z')
     expect(screen.getByText(/Read their feedback/)).toBeVisible()
   })
 
@@ -179,7 +181,7 @@ describe('assignment page parts', () => {
           {
             id: 'r2',
             decision: 'approved',
-            section: 'Whole email',
+            section: 'whole_design',
             feedback: '',
             created_at: hours(-1)
           },
@@ -195,6 +197,8 @@ describe('assignment page parts', () => {
     )
     const items = screen.getAllByRole('listitem')
     expect(items[0]).toHaveTextContent('Approved')
+    expect(items[0]).toHaveTextContent('Whole design')
+    expect(items[0]).not.toHaveTextContent('whole_design')
     expect(items[1]).toHaveTextContent('Redo requested')
     expect(items[1]).toHaveTextContent('Hero')
     expect(screen.getByText('More breathing room.')).toBeVisible()
