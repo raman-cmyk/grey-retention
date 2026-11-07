@@ -442,12 +442,12 @@ Simplify:
 
 Controls and behaviour:
 
-- [ ] `/gros` auto-opens the most recent thread. The empty state only shows for a workspace with no threads (not seen).
-- [ ] Thread rows link to `/gros/:id` and show "🔒 N msg · N days ago".
-- [ ] `+` "New private chat" is a submit that creates a thread on the server immediately (not clicked). An empty thread should not be saved until the first message. **(fix)**
-- [ ] Thread title is an editable text field (rename on blur/Enter). Not edited.
-- [ ] "Refresh data" (tooltip "Force GROS to re-read your latest Klaviyo + Shopify data."), "Make shared" and "Delete" are all submits. Not clicked. Delete must confirm.
-- [ ] Footer "GROS knows 219 of your email templates." (live count).
+- [x] `/gros` auto-opens the most recent thread. The empty state only shows for a workspace with no threads (not seen).
+- [x] Thread rows link to `/gros/:id` and show "🔒 N msg · N days ago".
+- [x] `+` "New private chat" is a submit that creates a thread on the server immediately (not clicked). An empty thread should not be saved until the first message. **(fix)**
+- [x] Thread title is an editable text field (rename on blur/Enter). Not edited.
+- [x] "Refresh data" (tooltip "Force GROS to re-read your latest Klaviyo + Shopify data."), "Make shared" and "Delete" are all submits. Not clicked. Delete must confirm.
+- [x] Footer "GROS knows 219 of your email templates." (live count).
 
 Friction:
 
@@ -458,6 +458,8 @@ Simplify:
 
 - Keep one GROS (the page) and the same GROS in the editor drawer, with the same history.
 - Show suggested starter questions in the empty thread: "How did last week's emails do?", "Plan 4 emails for Black Friday".
+
+> **As built (UIR-008):** `/gros` opens your most recent chat; a workspace with none sees a new one. Chats link to `/gros/:id` and show "🔒 N msg · N days ago". `+` "New private chat" opens a new chat that is saved only when you send the first question, so empty chats are never saved. The chat name is an editable field (blur or Enter saves; Escape undoes). "Refresh data" (with its tooltip), "Make shared" / "Make private" and "Delete" all work; sharing explains that your whole workspace team can then read every message, and Delete asks first. The footer counts your saved layouts and uploads live. Wrong-data fix: a question without a campaign gets a workspace answer from the database with the last **sent** campaign and its real send date (not a template), the next planned send and what waits for your approval; GROS still says that open questions are coming soon. Starter questions show in a new chat, ones GROS can answer today ("What did I send last?", "What is waiting for my approval?", "When is my next planned send?"); "How did last week's emails do?" and "Plan 4 emails for Black Friday" wait until GROS answers open questions. Not yet: the same GROS in the editor drawer (UIR-007, browser lane) and streamed replies.
 
 ---
 
