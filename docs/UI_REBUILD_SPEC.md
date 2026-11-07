@@ -2,7 +2,6 @@
 
 > **Superseded design/planning direction — 7 November 2026.** The owner requires a fresh UI/UX process in Figma. The older layouts, theme, milestones and parity checkboxes below are history, not replacement acceptance criteria. Current scope includes 2,000+ blocks, strategic segmentation, per-customer exposure, conversational segmentation and central AI chat. Start with [BUILD_BRIEF.md](BUILD_BRIEF.md), [DESIGN_RESET.md](DESIGN_RESET.md) and [PROJECT_TODOS.md](PROJECT_TODOS.md).
 
-
 Source: `demo.gravtyretention.com` (old Grey Retention app), crawled screen by screen on 6 Nov 2026.
 
 **Goal:** rebuild every screen, layout, control, empty state and small interaction below in the new app — **1:1 in structure and behaviour**.
@@ -40,23 +39,23 @@ Pill/status colour roles used everywhere:
 
 ## 1. Route map
 
-| Route                                                                                                                                                                | Screen                            | In sidebar       |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ---------------- |
+| Route                                                                                                                                                                | Screen                            | In sidebar        |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ----------------- |
 | `/dashboard` (`?tab=lists\|segments\|campaigns\|flows\|metrics`, `?attr=klaviyo\|utm`, `?refresh=1`)                                                                 | Dashboard                         | ✔                |
-| `/lists/:id`, `/segments/:id`, `/campaigns/klaviyo/:id` (built; was `/campaigns/:id`, which is now this workspace's own campaign page), `/flows/:id`, `/metrics/:id` | Klaviyo object detail pages       | —                |
-| `/flow-messages/:id`                                                                                                                                                 | Flow email preview                | —                |
+| `/lists/:id`, `/segments/:id`, `/campaigns/klaviyo/:id` (built; was `/campaigns/:id`, which is now this workspace's own campaign page), `/flows/:id`, `/metrics/:id` | Klaviyo object detail pages       | —                 |
+| `/flow-messages/:id`                                                                                                                                                 | Flow email preview                | —                 |
 | `/brand` · `/brand/voice` · `/store`                                                                                                                                 | Brand & Store (3 sub-tabs)        | ✔ Brand & Store  |
 | `/campaign-agent` (`?m=YYYY-MM`) and `/calendar`                                                                                                                     | Campaign planner (calendar/table) | ✔ Campaign Agent |
-| `/campaign-drafts` (`?status=draft\|ready\|pushed`)                                                                                                                  | Drafts list                       | —                |
-| `/campaign-drafts/new`                                                                                                                                               | New campaign draft (brief form)   | —                |
-| `/campaign-drafts/:id?view=1`                                                                                                                                        | Draft editor                      | —                |
+| `/campaign-drafts` (`?status=draft\|ready\|pushed`)                                                                                                                  | Drafts list                       | —                 |
+| `/campaign-drafts/new`                                                                                                                                               | New campaign draft (brief form)   | —                 |
+| `/campaign-drafts/:id?view=1`                                                                                                                                        | Draft editor                      | —                 |
 | `/gros`, `/gros/:threadId`                                                                                                                                           | Ask GROS chat                     | ✔                |
 | `/library/inspirations`                                                                                                                                              | Competitor Agent                  | ✔                |
 | `/support` (`?t=:ticketId`)                                                                                                                                          | Support tickets                   | ✔                |
 | `/settings`                                                                                                                                                          | Settings (campaign defaults)      | ✔ Workspace      |
 | `/holidays`                                                                                                                                                          | Holidays & Events                 | ✔ Workspace      |
 | `/connections`                                                                                                                                                       | Connections                       | ✔ Workspace      |
-| `/profile`                                                                                                                                                           | Profile                           | account menu     |
+| `/profile`                                                                                                                                                           | Profile                           | account menu      |
 
 Not crawled (needs a logged-out or admin session): login, signup, onboarding, password reset, admin/designer views. Capture those separately before building them.
 
@@ -783,7 +782,7 @@ Right panel:
   - connected state:
     - full-width accent button "✓ Klaviyo Connected"
     - caption "Dreams Studio · pk_YxS7U••••••••9de0"
-    - link `Update API key`, which reveals a password input "pk_…", full-width `Validate & swap key`, and the caption "The new key is validated against Klaviyo before we save. If it fails, your existing key stays in place."
+    - link `Update API key`, which reveals a password input "pk\_…", full-width `Validate & swap key`, and the caption "The new key is validated against Klaviyo before we save. If it fails, your existing key stays in place."
   - disconnected state: key input + Connect
 - [x] **Shopify card:**
   - tinted tile with a bag icon
