@@ -55,6 +55,7 @@ export const config = {
     '/library/:path*',
     '/connections/:path*',
     '/gros/:path*',
+    '/holidays/:path*',
     '/onboarding/:path*',
     '/profile/:path*',
     '/settings/:path*',

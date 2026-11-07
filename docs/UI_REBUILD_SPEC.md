@@ -79,7 +79,7 @@ Not crawled (needs a logged-out or admin session): login, signup, onboarding, pa
   - Flow Audit
   - Deliverability
   - A/B Test Monitor
-- [x] Collapsible group **Workspace** (briefcase icon): Settings, Holidays & Events, Connections, plus Team and Request a Feature (OWNER_JOURNEYS.md §2). Holidays & Events opens `/settings#holidays` until §12 builds `/holidays`. Request a Feature is SOON until `/feedback` exists.
+- [x] Collapsible group **Workspace** (briefcase icon): Settings, Holidays & Events, Connections, plus Team and Request a Feature (OWNER_JOURNEYS.md §2). Holidays & Events opens `/holidays` (§12, UIR-012). Request a Feature is SOON until `/feedback` exists.
 - [x] Each group's open/closed state persists across page loads.
 - [x] Bottom account button: round avatar letter, name (bold), email (muted), up/down chevron. Clicking it opens the account menu.
 - [x] Account menu is a popover that opens upward:
@@ -753,17 +753,19 @@ Right panel:
 
 ## 12. Holidays & Events `/holidays`
 
-- [ ] H1 + "Your brand's own moments — anniversaries, drops, sales windows. They appear on your calendar, in the planner wizards, and the AI strategists plan around them."
-- [ ] **Left card "Add an entry"** (~360px):
+- [x] H1 + "Your brand's own moments — anniversaries, drops, sales windows. They appear on your calendar, in the planner wizards, and the AI strategists plan around them."
+- [x] **Left card "Add an entry"** (~360px):
   - NAME ("e.g. Brand anniversary, Summer drop")
   - DATE + TYPE (Holiday / Event)
   - checkbox "Repeats annually (same date)"
   - NOTES FOR THE AI STRATEGIST (optional) textarea ("e.g. Our biggest drop of the year — tease it early.")
   - full-width primary `Add entry`
-- [ ] **Right card "Yours"** + "N total": list with edit/delete on each row. Empty: "Nothing yet — add your first on the left."
-- [ ] **Card "Platform holidays & events · next 90 days · managed by Grey Retention":**
+- [x] **Right card "Yours"** + "N total": list with edit/delete on each row. Empty: "Nothing yet — add your first on the left."
+- [x] **Card "Platform holidays & events · next 90 days · managed by Grey Retention":**
   - wrap of chips, each with the date (mono, muted) and the name (bold, coloured by category)
   - order: Nov 11 Veterans Day, Nov 26 Thanksgiving, Nov 27 Black Friday, Nov 30 Cyber Monday, Dec 1 Giving Tuesday, Dec 4 Hanukkah begins, Dec 14 Free Shipping Day, Dec 24 Christmas Eve, Dec 25 Christmas Day, Dec 26 Boxing Day, Dec 31 New Year's Eve
+
+> **As built (UIR-012, cloud lane):** layout as above. The intro says only what is true today: "When the AI strategist plans your campaigns, it plans around the ones in the next 30 days. Showing them on the calendar is coming soon." (the calendar and planner overlays are the browser lane's §6). Each entry in Yours shows its next date (a yearly entry shows this year's or next year's date, never one before its own first date), Holiday or Event, "Every year" and the notes; Edit opens the same fields inline (cursor in Name; back on the Edit button after Save or Cancel) and Delete asks first. "Saved." and "Deleted." show on the Yours card, and after a delete the cursor goes to the "Yours" heading. The platform card follows the brand's country (OWNER_JOURNEYS §18 decision 20): the owner picks United States, United Kingdom (England and Wales), Australia, Canada, New Zealand, India or "Other countries: shopping and gift days" and clicks `Save country`; before that the country is guessed from the workspace timezone and the card says so. "managed by" shows the product's name from the white-label brand presentation. Categories show by colour and by icon, with a key above the chips: public holidays (landmark, brand colour), celebrations (sparkles, accent-2), shopping days (bag, danger colour). Dates are computed, not stored; moon-calendar dates (Hanukkah, Diwali, Holi, Lunar New Year, Matariki) are listed until 2030.
 
 ---
 

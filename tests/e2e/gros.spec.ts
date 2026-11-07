@@ -143,20 +143,21 @@ test('UC-18 team invitation audit, event and support response survive refresh', 
   await expect(invitation).toContainText('revoked')
   await page.reload()
   await expect(page.getByText(/invitation_revoked/).first()).toBeVisible()
-  await page.goto('/settings')
+  await page.goto('/holidays')
   await page
-    .getByLabel('Event name')
+    .getByLabel('Name', { exact: true })
     .fill(`Synthetic event ${info.project.name}`)
-  await page.getByLabel('Event date').fill('2027-01-01')
-  await page.getByLabel('Event notes').fill('Original fixture event.')
+  await page.getByLabel('Date', { exact: true }).fill('2027-01-01')
+  await page.getByLabel('Type', { exact: true }).selectOption('event')
   await page
-    .getByRole('button', { name: 'Save workspace event', exact: true })
-    .click()
+    .getByLabel('Notes for the AI strategist (optional)')
+    .fill('Original fixture event.')
+  await page.getByRole('button', { name: 'Add entry', exact: true }).click()
   await expect(
-    page.getByText(
-      `2027-01-01 · Synthetic event ${info.project.name} · Original fixture event.`,
-      { exact: true }
-    )
+    page.getByText(`Added “Synthetic event ${info.project.name}”.`)
+  ).toBeVisible()
+  await expect(
+    page.getByText(`Synthetic event ${info.project.name}`, { exact: true })
   ).toBeVisible()
   await page.goto('/support')
   const subject = `Synthetic support ${info.project.name}`
