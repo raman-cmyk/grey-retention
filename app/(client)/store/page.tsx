@@ -2,17 +2,16 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Link2, ShoppingBag } from 'lucide-react'
 import { Notice } from '@/components/ui/workspace'
-import { campaignWorkspace } from '@/features/campaigns/data'
-import { brandProfileData } from '@/features/brand-profile/data'
+import { requireRequestContext } from '@/features/auth/application/request-context'
 import { BrandHeader } from '@/features/brand-profile/header'
+import { storeView } from '@/features/store-data/reader'
+import { StoreDashboard } from '@/features/store/store-dashboard'
 
 export const metadata: Metadata = { title: 'Store Intelligence' }
 
 export default async function StorePage() {
-  const { context, data, error } = await campaignWorkspace()
-  if (error || !data)
-    return <Notice error>{error ?? 'Store details unavailable.'}</Notice>
-  const profile = await brandProfileData(context.tenantId, data.brand)
+  const context = await requireRequestContext('client')
+  const { now, data } = await storeView(context)
   return (
     <div className="mx-auto max-w-[920px]">
       <BrandHeader
@@ -20,22 +19,11 @@ export default async function StorePage() {
         owner={context.tenantRole === 'owner'}
         lastUpdated={null}
       />
-      {profile?.shopifyConnected ? (
-        <section className="space-y-4 rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-6">
-          <h2 className="text-lg font-semibold">Store Intelligence</h2>
-          <p className="text-sm text-[var(--text-muted)]">
-            Shopify is connected with sample products ({data.products.length} in
-            your catalogue). Revenue trends, top customers and out-of-stock
-            alerts arrive with the store dashboard in the next update.
-          </p>
-          <Link
-            href="/brand#products"
-            className="text-sm font-medium underline"
-          >
-            See your products
-          </Link>
-        </section>
-      ) : (
+      {data.state === 'load_failed' ? (
+        <Notice error>
+          We could not load your store. Reload the page to try again.
+        </Notice>
+      ) : data.state === 'not_connected' ? (
         <section className="mx-auto max-w-xl space-y-4 rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface-raised)] p-8 text-center">
           <span
             aria-hidden="true"
@@ -59,6 +47,8 @@ export default async function StorePage() {
             Go to Connections
           </Link>
         </section>
+      ) : (
+        <StoreDashboard data={data} timezone={context.timezone} now={now} />
       )}
     </div>
   )
