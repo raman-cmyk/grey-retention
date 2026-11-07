@@ -94,8 +94,7 @@ function database(
           ].map((r) => ({
             id: `section-${r.ordinal}`,
             image_path: null,
-            block_type: null,
-            label_source: null,
+            owner_block_type: null,
             ...r,
             ...options.rows?.[r.ordinal]
           })),
@@ -126,10 +125,23 @@ describe('labelInboxEmails', () => {
         ordinal: 1,
         type: 'announcement_bar',
         confidence: 0.7,
-        source: 'sample'
+        source: 'sample',
+        model: null
       },
-      { ordinal: 2, type: 'hero_image', confidence: 0.6, source: 'sample' },
-      { ordinal: 3, type: 'cta', confidence: 0.7, source: 'sample' }
+      {
+        ordinal: 2,
+        type: 'hero_image',
+        confidence: 0.6,
+        source: 'sample',
+        model: null
+      },
+      {
+        ordinal: 3,
+        type: 'cta',
+        confidence: 0.7,
+        source: 'sample',
+        model: null
+      }
     ])
     expect(recorded).toMatchObject({
       version: 1,
@@ -187,7 +199,8 @@ describe('labelInboxEmails', () => {
         ordinal,
         type: 'cta',
         confidence: 0.9,
-        source: 'gemini'
+        source: 'gemini',
+        model: 'flash-lite'
       }))
     )
     // With the AI port's fake, Lane A's own sample rules answer.
@@ -206,8 +219,8 @@ describe('labelInboxEmails', () => {
 
   it('stores only safe labels: an unknown type is unsure, the confidence 0..1, never "owner"', async () => {
     const answers = [
-      { type: 'carousel', confidence: 0.9, source: 'gemini' },
-      { type: 'hero_image', confidence: 7.123, source: 'owner' },
+      { type: 'carousel', confidence: 0.9, source: 'gemini', model: 'lite' },
+      { type: 'hero_image', confidence: 7.123, source: 'owner', model: 7 },
       { type: 'cta', confidence: Number.NaN, source: 'gemini' }
     ]
     const labeller: SectionLabeller = {
@@ -218,26 +231,39 @@ describe('labelInboxEmails', () => {
     expect(
       db.calls.find((c) => c.name === 'record_inbox_labels')!.args.labels
     ).toEqual([
-      { ordinal: 1, type: 'unsure', confidence: 0, source: 'gemini' },
-      { ordinal: 2, type: 'hero_image', confidence: 1, source: 'sample' },
-      { ordinal: 3, type: 'cta', confidence: 0, source: 'gemini' }
+      {
+        ordinal: 1,
+        type: 'unsure',
+        confidence: 0,
+        source: 'gemini',
+        model: 'lite'
+      },
+      {
+        ordinal: 2,
+        type: 'hero_image',
+        confidence: 1,
+        source: 'sample',
+        model: null
+      },
+      { ordinal: 3, type: 'cta', confidence: 0, source: 'gemini', model: null }
     ])
   })
 
-  it("keeps the owner's own label and uses it in the block sequence", async () => {
+  it("labels every section, and a person's own label wins in the block sequence", async () => {
     const labeller = { label: vi.fn(sampleLabeller.label) }
     const db = database({
       jobs: ['m1'],
-      rows: { 2: { block_type: 'hero_product', label_source: 'owner' } }
+      rows: { 2: { owner_block_type: 'hero_product' } }
     })
     await labelInboxEmails(db as unknown as Db, labeller, later())
-    expect(labeller.label).toHaveBeenCalledTimes(2)
+    // The machine label is still stored (the Step 1 gate compares both).
+    expect(labeller.label).toHaveBeenCalledTimes(3)
     const recorded = db.calls.find(
       (c) => c.name === 'record_inbox_labels'
     )!.args
     expect(
       (recorded.labels as { ordinal: number }[]).map((l) => l.ordinal)
-    ).toEqual([1, 3])
+    ).toEqual([1, 2, 3])
     expect(recorded.facts).toMatchObject({
       blockSequence: ['announcement_bar', 'hero_product', 'cta']
     })

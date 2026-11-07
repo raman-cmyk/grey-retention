@@ -7,8 +7,10 @@ export { blockTypes, type BlockType }
 export type SectionLabel = {
   type: BlockType | 'unsure'
   confidence: number
-  /** Who labelled it. Only the owner's own edit is 'owner', never a labeller. */
+  /** Who labelled it (a person's own label is kept apart). */
   source: 'sample' | 'gemini'
+  /** The model that answered; null for the sample rules. */
+  model?: string | null
 }
 
 /**
@@ -124,7 +126,8 @@ export function blockLabeller(
       return {
         type: label.type,
         confidence: label.confidence,
-        source: label.source
+        source: label.source,
+        model: label.model
       }
     }
   }

@@ -88,7 +88,8 @@ function hop(
   url: URL,
   maxBytes: number,
   deadline: number,
-  lookup: Lookup
+  lookup: Lookup,
+  headers: { accept: string; userAgent: string }
 ): Promise<Hop> {
   return new Promise((resolve) => {
     const client = url.protocol === 'https:' ? https : http
@@ -108,8 +109,8 @@ function hop(
         lookup,
         agent: false,
         headers: {
-          accept: 'image/avif,image/webp,image/png,image/*;q=0.8',
-          'user-agent': 'GreyRetention-Inspiration/1.0'
+          accept: headers.accept,
+          'user-agent': headers.userAgent
         }
       },
       (response) => {
@@ -142,7 +143,11 @@ function hop(
           finish({
             kind: 'done',
             result: size
-              ? { ok: true, bytes: new Uint8Array(Buffer.concat(chunks)) }
+              ? {
+                  ok: true,
+                  bytes: new Uint8Array(Buffer.concat(chunks)),
+                  url: url.toString()
+                }
               : { ok: false, failure: 'broken' }
           })
         )
@@ -169,6 +174,15 @@ type FetcherOptions = {
   isReserved?: (address: string) => boolean
   /** Ports allowed (80 and 443 by default). */
   ports?: string[]
+  /** What the request asks for (images by default). */
+  accept?: string
+  /** Who asks (a neutral name by default). */
+  userAgent?: string
+  /**
+   * Hosts the link and every redirect may reach (any public host by
+   * default): a hop elsewhere is blocked, never opened.
+   */
+  allowHost?: (host: string) => boolean
 }
 
 /**
@@ -180,6 +194,11 @@ type FetcherOptions = {
 export function createImageFetcher(options: FetcherOptions = {}): ImageFetcher {
   const isReserved = options.isReserved ?? reservedAddress
   const ports = options.ports ?? ['80', '443']
+  const headers = {
+    accept: options.accept ?? 'image/avif,image/webp,image/png,image/*;q=0.8',
+    userAgent: options.userAgent ?? 'Mozilla/5.0 (compatible; ImageFetch/1.0)'
+  }
+  const allowHost = options.allowHost ?? (() => true)
   const lookup = safeLookup(options.resolve ?? systemResolve, isReserved)
   const allowed = (url: URL) => {
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return false
@@ -187,6 +206,7 @@ export function createImageFetcher(options: FetcherOptions = {}): ImageFetcher {
     const port = url.port || (url.protocol === 'https:' ? '443' : '80')
     if (!ports.includes(port)) return false
     const host = url.hostname.replace(/^\[|\]$/g, '')
+    if (!allowHost(host.toLowerCase())) return false
     if (isIP(host)) return !isReserved(host)
     return host.includes('.') && !/\.(local|internal|localhost)$/i.test(host)
   }
@@ -201,7 +221,7 @@ export function createImageFetcher(options: FetcherOptions = {}): ImageFetcher {
       }
       for (let redirects = 0; ; redirects++) {
         if (!allowed(url)) return { ok: false, failure: 'blocked' }
-        const next = await hop(url, maxBytes, deadline, lookup)
+        const next = await hop(url, maxBytes, deadline, lookup, headers)
         if (next.kind === 'done') return next.result
         if (redirects === 3) return { ok: false, failure: 'broken' }
         url = new URL(next.to)

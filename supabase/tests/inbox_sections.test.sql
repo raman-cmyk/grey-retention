@@ -94,7 +94,8 @@ select public.finish_platform_job(current_setting('test.shot')::uuid,current_set
 select set_config('test.label',(select id::text from public.claim_platform_job(array['inbox.label'])),true);
 select set_config('test.labellease',(select lease_token::text from public.platform_jobs where id=current_setting('test.label')::uuid),true);
 reset role;
-update public.email_sections set block_type='hero_image', label_source='owner', confidence=1, labelled_at=now()
+-- A person's own label (INB-004 keeps it apart from the machine's).
+update public.email_sections set owner_block_type='hero_image', owner_labelled_at=now()
   where inbox_message_id=current_setting('test.message')::uuid and ordinal=2;
 set local role service_role;
 select throws_ok($$select public.record_inbox_labels(current_setting('test.label')::uuid,current_setting('test.labellease')::uuid,'[]','{}',0)$$,'23514',null,'a version is required');
@@ -110,19 +111,19 @@ select throws_ok($$select public.record_inbox_labels(current_setting('test.label
   '[{"ordinal":1,"type":"not_a_block","source":"sample","confidence":0.5}]','{"version":1}',1)$$,'23514',null,'only the 20 block types or unsure');
 select is(public.record_inbox_labels(current_setting('test.label')::uuid,current_setting('test.labellease')::uuid,
   '[{"ordinal":1,"type":"announcement_bar","source":"sample","confidence":0.7},{"ordinal":2,"type":"unsure","source":"sample","confidence":0.2},{"ordinal":3,"type":"text","source":"sample","confidence":0.7}]',
-  '{"version":1,"angle":"launch"}',1),'{"already": false, "sections": 2}'::jsonb,'labels and facts are recorded (the owner''s section is not counted)');
-select is((select string_agg(ordinal||':'||block_type||'/'||label_source,',' order by ordinal) from public.email_sections where inbox_message_id=current_setting('test.message')::uuid),
-  '1:announcement_bar/sample,2:hero_image/owner,3:text/sample','a label the owner gave is never overwritten');
+  '{"version":1,"angle":"launch"}',1),'{"already": false, "sections": 3}'::jsonb,'labels and facts are recorded');
+select is((select string_agg(ordinal||':'||block_type||'/'||label_source||'/'||coalesce(owner_block_type,'-'),',' order by ordinal) from public.email_sections where inbox_message_id=current_setting('test.message')::uuid),
+  '1:announcement_bar/sample/-,2:unsure/sample/hero_image,3:text/sample/-','the machine label is stored next to a person''s own, which stays');
 select is((select facts->>'angle' from public.competitor_emails where id=current_setting('test.email')::uuid),'launch','the competitor email gets its facts');
 select is(public.record_inbox_labels(current_setting('test.label')::uuid,current_setting('test.labellease')::uuid,'[]','{"version":1,"angle":"sale"}',1),
   '{"already": true}'::jsonb,'an email is labelled once per version');
 select is((select facts->>'angle' from public.inbox_messages where id=current_setting('test.message')::uuid),'launch','the first facts stay');
 select is(public.record_inbox_labels(current_setting('test.label')::uuid,current_setting('test.labellease')::uuid,
   '[{"ordinal":1,"type":"offer_banner","source":"gemini","confidence":0.8},{"ordinal":2,"type":"text","source":"gemini","confidence":0.9},{"ordinal":3,"type":"cta","source":"gemini","confidence":0.9}]',
-  '{"version":2,"angle":"sale"}',2),'{"already": false, "sections": 2}'::jsonb,'a new version labels the email again');
-select is((select string_agg(ordinal||':'||block_type||'/'||label_source,',' order by ordinal) from public.email_sections where inbox_message_id=current_setting('test.message')::uuid)
+  '{"version":2,"angle":"sale"}',2),'{"already": false, "sections": 3}'::jsonb,'a new version labels the email again');
+select is((select string_agg(ordinal||':'||block_type||'/'||label_source||'/'||coalesce(owner_block_type,'-'),',' order by ordinal) from public.email_sections where inbox_message_id=current_setting('test.message')::uuid)
   ||' '||(select facts->>'angle'||'/'||extraction_version from public.competitor_emails where id=current_setting('test.email')::uuid),
-  '1:offer_banner/gemini,2:hero_image/owner,3:cta/gemini sale/2','it replaces the labels and facts, never the owner''s label');
+  '1:offer_banner/gemini/-,2:text/gemini/hero_image,3:cta/gemini/- sale/2','it replaces the machine labels and facts, never a person''s label');
 select is(public.record_inbox_labels(current_setting('test.label')::uuid,current_setting('test.labellease')::uuid,'[]','{"version":1,"angle":"story"}',1),
   '{"already": true}'::jsonb,'an older version changes nothing');
 

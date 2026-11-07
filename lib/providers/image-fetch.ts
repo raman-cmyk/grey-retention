@@ -18,7 +18,13 @@ export type ImageFailure =
   | 'limit'
 
 export type FetchedImage =
-  { ok: true; bytes: Uint8Array } | { ok: false; failure: ImageFailure }
+  | {
+      ok: true
+      bytes: Uint8Array
+      /** Where the link ended after redirects, when the fetcher knows. */
+      url?: string
+    }
+  | { ok: false; failure: ImageFailure }
 
 export interface ImageFetcher {
   fetch(
