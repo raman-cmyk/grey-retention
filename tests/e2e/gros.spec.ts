@@ -17,7 +17,11 @@ async function ask(page: Page, text: string) {
   const box = page.getByLabel('Message GROS', { exact: true })
   await box.fill(text)
   await box.press('Control+Enter')
-  await expect(box).toHaveValue('', { timeout: 15_000 })
+  // Wait until GROS has answered and the box is empty again.
+  await expect(page.getByText('GROS is typing')).toHaveCount(0, {
+    timeout: 15_000
+  })
+  await expect(box).toHaveValue('')
 }
 
 test('UC-11 Ask GROS: private and shared chats, rename, a confirmed goal change, delete', async ({
@@ -129,6 +133,7 @@ test('UC-11 Ask GROS: private and shared chats, rename, a confirmed goal change,
   ).toBeVisible()
   await expect(proposal).toContainText('Applied')
   // A second proposal stays the owner's to decide.
+  await page.getByLabel('Campaign', { exact: true }).selectOption(campaign!)
   await page
     .getByLabel('New goal', { exact: true })
     .fill('Original pending education goal')
@@ -144,7 +149,8 @@ test('UC-11 Ask GROS: private and shared chats, rename, a confirmed goal change,
       .filter({ hasText: 'Original pending education goal' })
   ).toContainText('Waiting for you')
 
-  // Staff: the private chat is closed to them; the shared one is read-only.
+  // Staff: the private chat is closed to them; in the shared one they cannot
+  // rename, share, delete or apply the owner's proposal.
   await page.context().clearCookies()
   await login(page, 'staff')
   await page.goto(privateUrl)

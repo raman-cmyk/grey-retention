@@ -1,5 +1,5 @@
 begin;
-select plan(37);
+select plan(48);
 
 -- Workspace 101: owner ...01, staff ...05. Workspace 102: owner ...04.
 -- Campaign ...601 belongs to workspace 101.
@@ -9,6 +9,8 @@ select ok(not has_function_privilege('anon','public.start_conversation(uuid,text
 select ok(not has_function_privilege('anon','public.rename_conversation(uuid,uuid,text)','execute'),'anon cannot rename a chat');
 select ok(not has_function_privilege('anon','public.delete_conversation(uuid,uuid)','execute'),'anon cannot delete a chat');
 select ok(has_function_privilege('authenticated','public.start_conversation(uuid,text,uuid,text)','execute'),'members can start a chat');
+select ok(has_function_privilege('authenticated','public.rename_conversation(uuid,uuid,text)','execute'),'members can rename a chat');
+select ok(has_function_privilege('authenticated','public.delete_conversation(uuid,uuid)','execute'),'members can delete a chat');
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',true);
@@ -25,10 +27,20 @@ select is((select message_count from public.conversations where id=current_setti
 select ok((select body like '%**Last sent:**%' and body like '%Next step:%' and body like '%Your library:%' and body not like '%{%'
   from public.chat_messages where conversation_id=current_setting('test.chat')::uuid and role='assistant'),'a question without a campaign gets a plain workspace answer');
 select is((select evidence->>'scope' from public.chat_messages where conversation_id=current_setting('test.chat')::uuid and role='assistant'),'workspace','the answer records that it was about the whole workspace');
+reset role;
+select is((select (evidence->>'library')::int from public.chat_messages where conversation_id=current_setting('test.chat')::uuid and role='assistant'),
+  (select count(*)::int from public.own_templates where tenant_id='00000000-0000-4000-8000-000000000101')
+  +(select count(*)::int from public.reference_imports where tenant_id='00000000-0000-4000-8000-000000000101'),
+  'the library count is this workspace''s own');
+select ok(exists(select 1 from public.usage_reservations where tenant_id='00000000-0000-4000-8000-000000000101' and feature='gros' and state='reconciled'),
+  'a workspace answer still spends and settles AI credits');
+set local role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',true);
 
 -- A refused question saves nothing.
 select set_config('test.before',(select count(*) from public.conversations)::text,true);
 select throws_ok($$select public.start_conversation('00000000-0000-4000-8000-000000000101','   ')$$,'23514','Type a question first','an empty first question is refused');
+select throws_ok($$select public.start_conversation('00000000-0000-4000-8000-000000000101',E'\n\t \n')$$,'23514','Type a question first','a first question of only tabs and new lines is refused');
 select throws_ok($$select public.start_conversation('00000000-0000-4000-8000-000000000101','Hello','00000000-0000-4000-8000-000000000601','public')$$,'23514',null,'visibility is private or shared');
 select throws_ok($$select public.start_conversation('00000000-0000-4000-8000-000000000101','About a missing campaign','00000000-0000-4000-8000-000000009999')$$,'42501',null,'a campaign from nowhere is refused');
 select is((select count(*) from public.conversations)::text,current_setting('test.before'),'no empty chat is left behind');
@@ -48,6 +60,9 @@ select ok(public.rename_conversation('00000000-0000-4000-8000-000000000101',curr
 select is((select title from public.conversations where id=current_setting('test.chat')::uuid),'Last email','the new name is trimmed');
 select ok(not public.rename_conversation('00000000-0000-4000-8000-000000000101',current_setting('test.chat')::uuid,'Last email'),'the same name changes nothing');
 select throws_ok($$select public.rename_conversation('00000000-0000-4000-8000-000000000101',current_setting('test.chat')::uuid,'   ')$$,'23514',null,'an empty name is refused');
+select throws_ok($$select public.rename_conversation('00000000-0000-4000-8000-000000000101',current_setting('test.chat')::uuid,E'\t\n')$$,'23514',null,'a name of only tabs and new lines is refused');
+select ok(public.rename_conversation('00000000-0000-4000-8000-000000000101',current_setting('test.chat')::uuid,E'Last\temail\nnow'),'a name with tabs is saved');
+select is((select title from public.conversations where id=current_setting('test.chat')::uuid),'Last email now','white space in a name becomes one space');
 select throws_ok($$select public.rename_conversation('00000000-0000-4000-8000-000000000101',current_setting('test.chat')::uuid,repeat('x',201))$$,'23514',null,'a name over 200 characters is refused');
 
 -- Staff see the shared chat but cannot rename or delete it, and never see
@@ -64,6 +79,8 @@ select is((select creator_id::text from public.conversations where id=current_se
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000004',true);
 select throws_ok($$select public.rename_conversation('00000000-0000-4000-8000-000000000101',current_setting('test.shared')::uuid,'Taken')$$,'42501',null,'another workspace cannot rename');
 select throws_ok($$select public.delete_conversation('00000000-0000-4000-8000-000000000101',current_setting('test.shared')::uuid)$$,'42501',null,'another workspace cannot delete');
+select throws_ok($$select public.start_conversation('00000000-0000-4000-8000-000000000101','Let me in')$$,'42501',null,'another workspace cannot start a chat here');
+select throws_ok($$select public.ask_fixture_gros('00000000-0000-4000-8000-000000000101',current_setting('test.shared')::uuid,null,'Read it','explain','')$$,'42501',null,'another workspace cannot ask in a chat here');
 
 -- The owner cannot see or delete the staff member's private chat.
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',true);
@@ -80,6 +97,7 @@ select is((select detail from public.workspace_events where kind='chat_deleted' 
 set local role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',true);
 select throws_ok($$select public.delete_conversation('00000000-0000-4000-8000-000000000101',current_setting('test.shared')::uuid)$$,'PT409','This chat was already deleted.','deleting twice says it is already gone');
+select throws_ok($$select public.rename_conversation('00000000-0000-4000-8000-000000000101',current_setting('test.shared')::uuid,'Too late')$$,'PT409','This chat was deleted.','renaming a deleted chat says it is gone');
 
 select * from finish();
 rollback;

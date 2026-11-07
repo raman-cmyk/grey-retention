@@ -11,7 +11,10 @@ test('UC-11 paged GROS history keeps old and newest messages after refresh', asy
   const say = async (text: string) => {
     await box.fill(text)
     await box.press('Control+Enter')
-    await expect(box).toHaveValue('', { timeout: 15_000 })
+    await expect(page.getByText('GROS is typing')).toHaveCount(0, {
+      timeout: 15_000
+    })
+    await expect(box).toHaveValue('')
   }
   const q = (n: number) => `Original history question ${info.project.name} ${n}`
   await say(q(0))

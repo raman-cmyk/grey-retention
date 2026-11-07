@@ -52,6 +52,7 @@ function Bubble({
 export function Conversation({
   chat,
   greeting,
+  assistant = 'GROS',
   messages,
   earlierBefore,
   paged,
@@ -61,6 +62,8 @@ export function Conversation({
   /** Null on the new-chat screen: the first question creates the chat. */
   chat: string | null
   greeting: string
+  /** The assistant's name (white-label), e.g. "GROS". */
+  assistant?: string
   messages: GrosMessage[]
   earlierBefore: number | null
   paged: boolean
@@ -79,7 +82,7 @@ export function Conversation({
     (list, question: string) => [
       ...list,
       {
-        id: 'pending',
+        id: `pending-${list.length}`,
         role: 'user' as const,
         body: question,
         index: Number.MAX_SAFE_INTEGER,
@@ -89,9 +92,12 @@ export function Conversation({
   )
   const [state, send, sending] = useActionState(
     async (previous: FormResult, data: FormData) => {
-      addPending(String(data.get('question') ?? ''))
+      const question = String(data.get('question') ?? '')
+      addPending(question)
       const result = await (chat ? sendMessage : startChat)(previous, data)
-      if (!result.error) setText('')
+      // Clear only what was sent; keep anything typed while waiting.
+      if (!result.error)
+        setText((current) => (current === question ? '' : current))
       return result
     },
     {}
@@ -103,11 +109,20 @@ export function Conversation({
   useEffect(() => {
     if (state.error) box.current?.focus()
   }, [state])
-  const ready = hydrated && !sending && text.trim().length > 0
+  // In a chat, questions queue while GROS answers (they are sent in order).
+  // A new chat waits for its first answer, which creates it.
+  const ready =
+    hydrated && (chat !== null || !sending) && text.trim().length > 0
+  const lastAnswer = [...messages].reverse().find((m) => m.role === 'assistant')
   const empty = messages.length === 0
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4" tabIndex={-1}>
+      <div
+        role="region"
+        aria-label="Conversation"
+        tabIndex={0}
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-4 focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden focus-visible:ring-inset"
+      >
         {earlierBefore !== null && (
           <p className="mb-3 text-center">
             <Link
@@ -134,11 +149,18 @@ export function Conversation({
             </Bubble>
           ))}
           {sending && (
-            <li className="flex">
-              <TypingIndicator assistantName="GROS" />
+            <li className="flex" role="status">
+              <TypingIndicator assistantName={assistant} />
             </li>
           )}
         </ol>
+        <div ref={end} />
+        {/* Read out each new answer; the first line is enough. */}
+        <p className="sr-only" aria-live="polite">
+          {lastAnswer
+            ? `${assistant} answered: ${lastAnswer.body.split('\n')[0]}`
+            : ''}
+        </p>
         {paged && (
           <p className="mt-3 text-center">
             <Link
@@ -172,88 +194,101 @@ export function Conversation({
           </div>
         )}
         {children}
-        <div ref={end} />
       </div>
-      <form
-        action={send}
-        className="space-y-2 border-t border-[var(--line)] px-4 py-3"
-      >
-        {chat && <input type="hidden" name="chat" value={chat} />}
-        <input type="hidden" name="campaign" value={campaign} />
-        {state.error && (
-          <p
-            role="alert"
-            className="rounded-lg bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger-ink)]"
+      {paged ? (
+        <p className="border-t border-[var(--line)] px-4 py-3 text-sm text-[var(--text-muted)]">
+          You are reading older messages.{' '}
+          <Link
+            href={`/gros/${chat}` as Route}
+            className="font-medium text-[var(--brand-secondary)] underline-offset-2 hover:underline"
           >
-            {state.error}
-          </p>
-        )}
-        <div className="flex items-end gap-2">
-          <label htmlFor={`${id}-question`} className="sr-only">
-            Message GROS
-          </label>
-          <textarea
-            ref={box}
-            id={`${id}-question`}
-            name="question"
-            rows={2}
-            maxLength={5000}
-            value={text}
-            placeholder="Ask GROS anything in this thread…"
-            aria-invalid={Boolean(state.error)}
-            aria-describedby={`${id}-hint`}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={(event) => {
-              if (
-                isSendKey({
-                  key: event.key,
-                  metaKey: event.metaKey,
-                  ctrlKey: event.ctrlKey,
-                  isComposing: event.nativeEvent.isComposing,
-                  keyCode: event.keyCode
-                })
-              ) {
-                event.preventDefault()
-                if (ready) event.currentTarget.form?.requestSubmit()
-              }
-            }}
-            className="field-sizing-content max-h-48 min-h-14 flex-1 resize-none rounded-[var(--radius-control)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-sm leading-6 text-[var(--text)] placeholder:text-[var(--text-faint)] focus:border-[var(--brand-secondary)] focus:ring-2 focus:ring-[var(--brand-secondary)] focus:outline-hidden"
-          />
-          <button
-            type="submit"
-            aria-label="Send"
-            disabled={!ready}
-            className="grid size-11 shrink-0 place-items-center rounded-[var(--radius-control)] bg-[var(--brand-primary)] text-[var(--on-brand)] hover:bg-[var(--brand-primary-strong)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:outline-hidden disabled:opacity-35"
-          >
-            <ArrowUp className="size-5" aria-hidden="true" />
-          </button>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p id={`${id}-hint`} className="text-xs text-[var(--text-muted)]">
-            ⌘/Ctrl + Enter to send. Each answer uses AI credits (sample credits
-            for now).
-          </p>
-          {campaigns.length > 0 && (
-            <label className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
-              About
-              <select
-                value={campaign}
-                onChange={(event) => setCampaign(event.target.value)}
-                className={cn(
-                  'max-w-[14rem] truncate rounded-[var(--radius-control)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-2 py-1 text-xs text-[var(--text)]'
-                )}
-              >
-                <option value="">Your whole workspace</option>
-                {campaigns.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title}
-                  </option>
-                ))}
-              </select>
-            </label>
+            Go to the latest messages
+          </Link>{' '}
+          to reply.
+        </p>
+      ) : (
+        <form
+          action={send}
+          className="space-y-2 border-t border-[var(--line)] px-4 py-3"
+        >
+          {chat && <input type="hidden" name="chat" value={chat} />}
+          <input type="hidden" name="campaign" value={campaign} />
+          {state.error && (
+            <p
+              role="alert"
+              className="rounded-lg bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger-ink)]"
+            >
+              {state.error}
+            </p>
           )}
-        </div>
-      </form>
+          <div className="flex items-end gap-2">
+            <label htmlFor={`${id}-question`} className="sr-only">
+              Message {assistant}
+            </label>
+            <textarea
+              ref={box}
+              id={`${id}-question`}
+              name="question"
+              rows={2}
+              maxLength={5000}
+              value={text}
+              placeholder={`Ask ${assistant} anything in this thread…`}
+              aria-invalid={Boolean(state.error)}
+              aria-describedby={`${id}-hint`}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => {
+                if (
+                  isSendKey({
+                    key: event.key,
+                    metaKey: event.metaKey,
+                    ctrlKey: event.ctrlKey,
+                    isComposing: event.nativeEvent.isComposing,
+                    keyCode: event.keyCode
+                  })
+                ) {
+                  event.preventDefault()
+                  if (ready) event.currentTarget.form?.requestSubmit()
+                }
+              }}
+              className="field-sizing-content max-h-48 min-h-14 flex-1 resize-none rounded-[var(--radius-control)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-sm leading-6 text-[var(--text)] placeholder:text-[var(--text-faint)] focus:border-[var(--brand-secondary)] focus:ring-2 focus:ring-[var(--brand-secondary)] focus:outline-hidden"
+            />
+            <button
+              type="submit"
+              aria-label="Send"
+              disabled={!ready}
+              className="grid size-11 shrink-0 place-items-center rounded-[var(--radius-control)] bg-[var(--brand-primary)] text-[var(--on-brand)] hover:bg-[var(--brand-primary-strong)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:outline-hidden disabled:opacity-35"
+            >
+              <ArrowUp className="size-5" aria-hidden="true" />
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p id={`${id}-hint`} className="text-xs text-[var(--text-muted)]">
+              ⌘/Ctrl + Enter to send. Each answer uses AI credits (sample
+              credits for now).
+            </p>
+            {campaigns.length > 0 && (
+              <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                <label htmlFor={`${id}-about`}>About</label>
+                <select
+                  id={`${id}-about`}
+                  value={campaign}
+                  onChange={(event) => setCampaign(event.target.value)}
+                  className={cn(
+                    'max-w-[14rem] truncate rounded-[var(--radius-control)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-2 py-1 text-xs text-[var(--text)]'
+                  )}
+                >
+                  <option value="">Your whole workspace</option>
+                  {campaigns.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        </form>
+      )}
     </div>
   )
 }

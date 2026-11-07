@@ -135,7 +135,7 @@ export function ThreadHeader({
         )}
         <Pill
           tone={visibility === 'private' ? 'neutral' : 'info'}
-          title={visibilityText[visibility]}
+          title={visibilityText(visibility, mine)}
         >
           {visibility === 'private' ? (
             <Lock className="mr-1 inline size-3" aria-hidden="true" />
@@ -149,7 +149,7 @@ export function ThreadHeader({
             type="button"
             className={textButton}
             disabled={!hydrated || busy}
-            title="Force GROS to re-read your latest Klaviyo + Shopify data."
+            title="Re-read your latest Klaviyo + Shopify data. They are sample connections for now, so nothing new comes in."
             onClick={() => {
               setLast('refresh')
               startTransition(() => refresh(form({ chat })))
@@ -196,9 +196,7 @@ export function ThreadHeader({
         </div>
       </div>
       <p className="text-xs text-[var(--text-muted)]">
-        {mine
-          ? visibilityText[visibility]
-          : 'Shared with your workspace team by the person who started it.'}
+        {visibilityText(visibility, mine)}
       </p>
       <p
         aria-live="polite"

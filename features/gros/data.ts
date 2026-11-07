@@ -25,9 +25,14 @@ export type GrosMessage = {
 export type GrosProposal = {
   id: string
   kind: string
+  /** "expired" also once a pending proposal is past its 15 minutes. */
   status: string
   campaignTitle: string
   goal: string | null
+  /** The reference email's subject, for "Use … as the reference". */
+  referenceSubject: string | null
+  /** When the campaign is planned to send, for "Schedule …". */
+  plannedAt: string | null
   hash: string
   expiresAt: string
   mine: boolean
@@ -162,7 +167,7 @@ export async function grosView(
     db
       .from('chat_proposals')
       .select(
-        'id,kind,status,payload,payload_hash,expires_at,actor_id,campaign_id,campaigns(title)'
+        'id,kind,status,payload,payload_hash,expires_at,actor_id,campaign_id,campaigns(title,planned_at)'
       )
       .eq('tenant_id', ctx.tenantId)
       .eq('conversation_id', open.id)
@@ -189,17 +194,26 @@ export async function grosView(
       paged: options.before !== undefined,
       proposals: (proposals.data ?? []).map((p) => {
         const payload = p.payload as Record<string, unknown> | null
-        const campaign = p.campaigns as
-          { title?: string } | { title?: string }[] | null
-        const title = Array.isArray(campaign)
-          ? campaign[0]?.title
-          : campaign?.title
+        const joined = p.campaigns as
+          | { title?: string; planned_at?: string }
+          | { title?: string; planned_at?: string }[]
+          | null
+        const campaign = Array.isArray(joined) ? joined[0] : joined
+        const emailId =
+          typeof payload?.emailId === 'string' ? payload.emailId : null
         return {
           id: p.id,
           kind: p.kind,
-          status: p.status,
-          campaignTitle: title ?? 'a campaign',
+          status:
+            p.status === 'pending' && Date.parse(p.expires_at) <= base.now
+              ? 'expired'
+              : p.status,
+          campaignTitle: campaign?.title ?? 'a campaign',
           goal: typeof payload?.goal === 'string' ? payload.goal : null,
+          referenceSubject: emailId
+            ? (base.references.find((r) => r.id === emailId)?.subject ?? null)
+            : null,
+          plannedAt: campaign?.planned_at ?? null,
           hash: p.payload_hash ?? '',
           expiresAt: p.expires_at,
           mine: p.actor_id === ctx.userId

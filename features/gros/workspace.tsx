@@ -1,6 +1,7 @@
 import { Notice } from '@/components/ui/workspace'
 import type { ClientRequestContext } from '@/features/auth/domain/types'
 import { BrandCheck } from '@/features/brand-profile/brand-check'
+import { defaultBrandPresentation } from '@/lib/branding/presentation'
 import { Conversation } from './conversation'
 import { grosView } from './data'
 import { greeting } from './model'
@@ -36,6 +37,7 @@ export async function GrosWorkspace({
       </Notice>
     )
   const thread = view.thread
+  const assistant = defaultBrandPresentation.assistantName
   return (
     <div className="grid h-[calc(100dvh-6.5rem)] min-h-[32rem] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[var(--radius-panel)] border border-[var(--line)] bg-[var(--surface)] lg:h-[calc(100dvh-5rem)] lg:grid-cols-[280px_minmax(0,1fr)] lg:grid-rows-1">
       <ThreadList
@@ -43,6 +45,7 @@ export async function GrosWorkspace({
         activeId={thread?.id ?? null}
         templates={view.templates}
         nowMs={view.now}
+        assistant={assistant}
       />
       <section
         aria-label={thread ? `Chat: ${thread.title}` : 'New chat'}
@@ -75,12 +78,16 @@ export async function GrosWorkspace({
               </header>
             )}
             <div className="px-4 pt-3 empty:hidden">
-              <BrandCheck tenantId={ctx.tenantId} action="GROS answers" />
+              <BrandCheck
+                tenantId={ctx.tenantId}
+                action={`${assistant} answers`}
+              />
             </div>
             <Conversation
               key={`chat:${thread?.id ?? 'new'}`}
               chat={thread?.id ?? null}
-              greeting={greeting(view.userName)}
+              greeting={greeting(view.userName, assistant)}
+              assistant={assistant}
               messages={thread?.messages ?? []}
               earlierBefore={thread?.earlierBefore ?? null}
               paged={thread?.paged ?? false}
@@ -93,14 +100,12 @@ export async function GrosWorkspace({
                     proposals={thread.proposals}
                     timezone={ctx.timezone}
                   />
-                  {thread.mine || thread.visibility === 'shared' ? (
-                    <ProposeChange
-                      chat={thread.id}
-                      campaigns={view.campaigns}
-                      references={view.references}
-                      owner={ctx.tenantRole === 'owner'}
-                    />
-                  ) : null}
+                  <ProposeChange
+                    chat={thread.id}
+                    campaigns={view.campaigns}
+                    references={view.references}
+                    owner={ctx.tenantRole === 'owner'}
+                  />
                 </div>
               )}
             </Conversation>

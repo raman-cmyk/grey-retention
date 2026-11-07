@@ -169,7 +169,7 @@ describe('proposeChange and decideProposal', () => {
     ).toBe('Choose a reference email.')
   })
 
-  it('only the person who asked applies a change', async () => {
+  it('only the person who asked applies a change, and refusals say why', async () => {
     const decide = form({
       chat,
       proposal: campaign,
@@ -179,12 +179,34 @@ describe('proposeChange and decideProposal', () => {
     expect(await decideProposal({}, decide)).toEqual({
       message: 'Applied to the campaign.'
     })
-    refuse('42501')
-    expect((await decideProposal({}, decide)).error).toBe(
-      'Only the person who asked for this change can apply or dismiss it.'
-    )
-    refuse('PT409', 'Proposal expired')
-    expect((await decideProposal({}, decide)).error).toBe('Proposal expired')
+    const refusals: [string, string, RegExp][] = [
+      [
+        '42501',
+        'Only proposing actor may confirm or reject',
+        /Only the person who asked/
+      ],
+      ['42501', 'Reference visibility changed', /no longer in your library/],
+      [
+        'PT409',
+        'Proposal expired; ask again for current confirmation',
+        /expired \(they stay open for 15 minutes\)/
+      ],
+      [
+        'PT409',
+        'Target changed; request a new proposal',
+        /campaign changed after GROS proposed this/
+      ],
+      ['PT409', 'Unseen proposal payload', /Reload the page/],
+      [
+        '23514',
+        'Approved copy required for assignment request',
+        /not ready for this change/
+      ]
+    ]
+    for (const [code, message, words] of refusals) {
+      refuse(code, message)
+      expect((await decideProposal({}, decide)).error).toMatch(words)
+    }
   })
 })
 

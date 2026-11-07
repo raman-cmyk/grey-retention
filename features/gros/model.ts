@@ -12,14 +12,17 @@ export function firstName(fullName: string | null | undefined) {
  * data, so it says so instead of "your store's data".
  */
 export function greeting(name: string, assistant = 'GROS') {
-  return `Hi ${name} — I'm ${assistant}, your marketing assistant. I've got your workspace's campaigns in front of me (sample data for now), so I can help you plan campaigns, check where they stand, or just talk through an idea.\n\nWhat's on your mind?`
+  return `Hi ${name} — I'm ${assistant}, your marketing assistant. I've got your workspace's campaigns in front of me (sample data for now), so I can tell you where they stand, what was sent last and what is waiting for approval. Answers to other questions are coming soon.\n\nWhat's on your mind?`
 }
 
-/** Suggested first questions in a new chat (OWNER_JOURNEYS §8). */
+/**
+ * Suggested first questions in a new chat (OWNER_JOURNEYS §8): ones GROS
+ * can answer today from the workspace's own campaigns.
+ */
 export const starterQuestions = [
-  'How did last week’s emails do?',
+  'What did I send last?',
   'What is waiting for my approval?',
-  'Plan 4 emails for Black Friday'
+  'When is my next planned send?'
 ] as const
 
 const day = 86_400_000
@@ -47,12 +50,16 @@ export function threadMeta(
   return `${thread.message_count} msg · ${agoText(thread.last_message_at ?? thread.created_at, nowMs)}`
 }
 
-/** Who can read a chat, in plain words. */
-export const visibilityText = {
-  private: 'Only you can see this chat.',
-  shared:
-    'Everyone in your workspace team can read this chat. Only you can rename, delete or make it private again.'
-} as const
+/** Who can read a chat, in plain words, for its creator or a teammate. */
+export function visibilityText(
+  visibility: 'private' | 'shared',
+  mine: boolean
+) {
+  if (visibility === 'private') return 'Only you can see this chat.'
+  return mine
+    ? 'Everyone in your workspace team can read this chat. Only you can rename, delete or make it private again.'
+    : 'Everyone in your workspace team can read this chat. Only the person who started it can rename, delete or make it private.'
+}
 
 /**
  * ⌘+Enter (Mac) or Ctrl+Enter sends; plain Enter adds a line. Never while

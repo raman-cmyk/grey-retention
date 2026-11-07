@@ -118,11 +118,11 @@ describe('Conversation', () => {
     const starters = screen.getByRole('group', { name: 'Suggested questions' })
     await userEvent.click(
       within(starters).getByRole('button', {
-        name: 'Plan 4 emails for Black Friday'
+        name: 'When is my next planned send?'
       })
     )
     expect(screen.getByLabelText('Message GROS')).toHaveValue(
-      'Plan 4 emails for Black Friday'
+      'When is my next planned send?'
     )
     await userEvent.selectOptions(
       screen.getByLabelText('About'),
@@ -209,7 +209,7 @@ describe('ThreadHeader', () => {
       screen.getByRole('button', { name: 'Refresh data' })
     ).toHaveAttribute(
       'title',
-      'Force GROS to re-read your latest Klaviyo + Shopify data.'
+      'Re-read your latest Klaviyo + Shopify data. They are sample connections for now, so nothing new comes in.'
     )
   })
 })

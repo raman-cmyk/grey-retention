@@ -23,7 +23,11 @@ function grosError(e: unknown, fallback: string): FormResult {
     return {
       error: x.message?.startsWith('Only the person')
         ? `${x.message}.`
-        : 'You can’t open or change this chat.'
+        : x.message === 'Campaign unavailable'
+          ? 'That campaign is not available any more. Reload the page.'
+          : x.message === 'Subscribed reference required'
+            ? 'That competitor email is not in your library. Choose another one.'
+            : 'You can’t open or change this chat.'
     }
   if (x.code === '23514')
     return {
@@ -36,6 +40,26 @@ function grosError(e: unknown, fallback: string): FormResult {
           : 'GROS can’t do that for this campaign right now. Nothing was saved.'
     }
   return { error: fallback }
+}
+
+/** Why a proposal could not be applied or dismissed, in plain words. */
+function decideError(e: { code?: string; message?: string }) {
+  const m = e.message ?? ''
+  if (e.code === 'PT409')
+    return m.startsWith('Proposal expired')
+      ? 'This proposal expired (they stay open for 15 minutes). Ask GROS again for a fresh one.'
+      : m.startsWith('Target changed')
+        ? 'The campaign changed after GROS proposed this. Ask again for a new proposal.'
+        : 'This proposal changed. Reload the page and look again.'
+  if (e.code === '42501')
+    return m.startsWith('Only proposing actor')
+      ? 'Only the person who asked for this change can apply or dismiss it.'
+      : m === 'Reference visibility changed'
+        ? 'That competitor email is no longer in your library, so this change can’t be applied.'
+        : 'You can’t apply this change.'
+  if (e.code === '23514')
+    return 'The campaign is not ready for this change any more. Nothing changed.'
+  return 'The change could not be saved. Try again.'
 }
 
 async function session() {
@@ -94,6 +118,8 @@ export async function sendMessage(
   const { error } = await s.db.rpc('ask_fixture_gros', {
     t: s.ctx.tenantId,
     chat: parsed.data.chat,
+    // Null asks about the whole workspace; the database accepts it for
+    // plain questions (20260914090035), the generated type does not say so.
     campaign: parsed.data.campaign as string,
     question: parsed.data.question,
     intent: 'explain',
@@ -180,13 +206,7 @@ export async function decideProposal(
     expected_hash: parsed.data.hash,
     decision: parsed.data.decision
   })
-  if (error)
-    return error.code === '42501'
-      ? {
-          error:
-            'Only the person who asked for this change can apply or dismiss it.'
-        }
-      : grosError(error, 'The change could not be saved. Try again.')
+  if (error) return { error: decideError(error) }
   done(parsed.data.chat)
   revalidatePath('/campaigns', 'layout')
   revalidatePath('/campaign-agent')

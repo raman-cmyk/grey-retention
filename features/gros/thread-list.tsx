@@ -16,7 +16,7 @@ function Threads({
   if (!threads.length)
     return (
       <p className="px-4 py-3 text-sm text-[var(--text-muted)]">
-        No chats yet. Ask GROS something to start one.
+        No chats yet. Ask a question to start one.
       </p>
     )
   return (
@@ -67,16 +67,19 @@ export function ThreadList({
   threads,
   activeId,
   templates,
-  nowMs
+  nowMs,
+  assistant = 'GROS'
 }: {
   threads: GrosThreadRow[]
   activeId: string | null
   templates: number
   nowMs: number
+  /** The assistant's name (white-label). */
+  assistant?: string
 }) {
   const footer = (
     <p className="border-t border-[var(--line)] px-4 py-3 text-xs text-[var(--text-muted)]">
-      GROS knows {templates} of your email{' '}
+      {assistant} knows {templates} of your email{' '}
       {templates === 1 ? 'template' : 'templates'}.
     </p>
   )
@@ -91,7 +94,7 @@ export function ThreadList({
             className="size-4 text-[var(--brand-secondary)]"
             aria-hidden="true"
           />
-          Ask GROS
+          Ask {assistant}
         </h1>
         <Link
           href="/gros/new"

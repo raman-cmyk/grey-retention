@@ -25,18 +25,26 @@ const intentLabel: Record<Intent, string> = {
   request_assignment: 'Ask for a designer'
 }
 
-/** What a proposal would do, in words. */
+/** What a proposal would do, in words, with the exact details. */
 export function proposalText(
-  p: Pick<GrosProposal, 'kind' | 'campaignTitle' | 'goal'>
+  p: Pick<
+    GrosProposal,
+    'kind' | 'campaignTitle' | 'goal' | 'referenceSubject' | 'plannedAt'
+  >,
+  timezone: string
 ) {
   const name = `“${p.campaignTitle}”`
   switch (p.kind) {
     case 'edit_goal':
       return `Set the goal of ${name} to “${p.goal ?? ''}”.`
     case 'select_reference':
-      return `Use the chosen reference email for ${name}.`
+      return p.referenceSubject
+        ? `Use the competitor email “${p.referenceSubject}” as the reference for ${name}.`
+        : `Use the chosen competitor email as the reference for ${name}.`
     case 'schedule':
-      return `Schedule ${name} to send.`
+      return p.plannedAt
+        ? `Schedule ${name} to send on ${formatBrandDateTimeWithZone(p.plannedAt, timezone)}.`
+        : `Schedule ${name} to send at its planned time.`
     case 'cancel':
       return `Cancel the scheduled send of ${name}.`
     case 'request_assignment':
@@ -46,14 +54,19 @@ export function proposalText(
   }
 }
 
-const statusPill: Record<
-  string,
-  { tone: 'warning' | 'success' | 'neutral'; label: string }
-> = {
-  pending: { tone: 'warning', label: 'Waiting for you' },
-  confirmed: { tone: 'success', label: 'Applied' },
-  rejected: { tone: 'neutral', label: 'Dismissed' },
-  expired: { tone: 'neutral', label: 'Expired' }
+/** Who a waiting proposal waits for, in plain words. */
+function statusPill(
+  status: string,
+  mine: boolean
+): { tone: 'warning' | 'success' | 'neutral'; label: string } {
+  if (status === 'pending')
+    return {
+      tone: 'warning',
+      label: mine ? 'Waiting for you' : 'Waiting for the person who asked'
+    }
+  if (status === 'confirmed') return { tone: 'success', label: 'Applied' }
+  if (status === 'rejected') return { tone: 'neutral', label: 'Dismissed' }
+  return { tone: 'neutral', label: 'Expired' }
 }
 
 function Status({ state }: { state: FormResult }) {
@@ -100,7 +113,7 @@ export function ProposalList({
       <h3 className="text-sm font-semibold">Proposed changes</h3>
       <ul className="space-y-2">
         {proposals.map((p) => {
-          const pill = statusPill[p.status] ?? statusPill.expired!
+          const pill = statusPill(p.status, p.mine)
           return (
             <li
               key={p.id}
@@ -109,9 +122,14 @@ export function ProposalList({
               <div className="flex flex-wrap items-center gap-2">
                 <Pill tone={pill.tone}>{pill.label}</Pill>
                 <span className="min-w-0 flex-1 break-words">
-                  {proposalText(p)}
+                  {proposalText(p, timezone)}
                 </span>
               </div>
+              {p.status === 'expired' && (
+                <p className="text-xs text-[var(--text-muted)]">
+                  Proposals stay open for 15 minutes. Ask again for a fresh one.
+                </p>
+              )}
               {p.status === 'pending' && (
                 <p className="text-xs text-[var(--text-muted)]">
                   Open until{' '}
@@ -173,11 +191,11 @@ export function ProposalList({
           })
         }}
       >
-        {confirm && <p>{proposalText(confirm.p)}</p>}
+        {confirm && <p>{proposalText(confirm.p, timezone)}</p>}
         {confirm?.decision === 'confirmed' && (
           <p className="mt-2">
             GROS checks the campaign again first. Changing the goal or the
-            reference resets the copy and design approvals, so you approve them
+            reference resets the copy and design approvals, so they are approved
             again. A scheduled send is only a request until Klaviyo confirms it.
           </p>
         )}
@@ -223,8 +241,10 @@ export function ProposeChange({
       <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-[var(--brand-secondary)]">
         Propose a change to a campaign
       </summary>
+      {/* A refused proposal keeps what was typed (React resets a form after its action). */}
       <form
         action={propose}
+        onReset={(event) => event.preventDefault()}
         className="grid gap-3 border-t border-[var(--line)] p-3 sm:grid-cols-2"
       >
         <input type="hidden" name="chat" value={chat} />
