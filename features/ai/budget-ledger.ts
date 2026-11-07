@@ -113,13 +113,13 @@ type LiveUsageRpc = {
 
 /**
  * Backed by the package allowance through public.reserve_ai_usage and
- * public.settle_ai_usage (migration 20260914090041, service role only). They
+ * public.settle_ai_usage (migration 20260914090060, service role only). They
  * wrap private.reserve_budget / reconcile_budget, which enforce the cycle and
  * daily caps and alert owners at 80% with live wording. An `ai:` operation can
  * be reserved only once and is never auto-released, and owners can't reach
  * it through the fixture commands. Platform work (`tenantId: null`) goes to
  * public.reserve_platform_ai_usage / settle_platform_ai_usage (migration
- * 20260914090042), the platform's own daily cap. Pass a service-role client.
+ * 20260914090061), the platform's own daily cap. Pass a service-role client.
  */
 export class SupabaseBudgetLedger implements BudgetLedger {
   // The generated types gain these RPCs at the next `pnpm supabase:types`;
