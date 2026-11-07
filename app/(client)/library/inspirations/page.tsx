@@ -4,6 +4,8 @@ import { ArrowLeft, ArrowRight, Lightbulb } from 'lucide-react'
 import { Notice } from '@/components/ui/workspace'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { TrackedDomains } from '@/features/library/inspirations/tracked-domains'
+import { BrandSummaries } from '@/features/library/inspirations/brand-summaries'
+import { trackedSummaries } from '@/features/inbox/brand-summary'
 import {
   domainLimit,
   referenceLibrary
@@ -19,6 +21,11 @@ export default async function InspirationsPage() {
   const library = await referenceLibrary(ctx.tenantId)
   const owner = ctx.tenantRole === 'owner'
   const competitorEmails = library ? tabCounts(library.items).competitors : 0
+  const summaries = library
+    ? trackedSummaries(library.tracked, library.factsByDomain, {
+        timezone: ctx.timezone
+      })
+    : []
   return (
     <div className="mx-auto max-w-[1400px] space-y-6">
       <Link
@@ -59,6 +66,7 @@ export default async function InspirationsPage() {
             limit={domainLimit}
             owner={owner}
           />
+          <BrandSummaries brands={summaries} />
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-panel)] bg-[var(--brand-soft)] px-5 py-3 text-sm text-[var(--brand-ink)]">
             <p className="flex items-start gap-2">
               <Lightbulb

@@ -30,6 +30,8 @@ export type ScreenshotJob = {
   html: string
   images: { ref: string; url: string }[]
   upload: string
+  /** INB-003: one crop per section (the HTML marks them data-gr-section). */
+  sections: { ordinal: number; upload: string }[]
 }
 
 type Lease = { id: string; lease_token: string; subject_key: string }
@@ -72,7 +74,7 @@ export async function screenshotJobs(db: Db): Promise<ScreenshotJob[]> {
     if (!job) break
     const message = await db
       .from('inbox_messages')
-      .select('id,html_path')
+      .select('id,html_path,marked_html_path')
       .eq('id', job.subject_key)
       .single()
     const images = await db
@@ -81,14 +83,27 @@ export async function screenshotJobs(db: Db): Promise<ScreenshotJob[]> {
       .eq('inbox_message_id', job.subject_key)
       .eq('state', 'stored')
       .in('source', ['remote', 'cid'])
-    if (message.error || !message.data?.html_path || images.error) {
+    const sections = await db
+      .from('email_sections')
+      .select('ordinal')
+      .eq('inbox_message_id', job.subject_key)
+      .order('ordinal')
+    if (
+      message.error ||
+      !message.data?.html_path ||
+      images.error ||
+      sections.error
+    ) {
       await fail(db, job.id, job.lease_token, 'inbox_message_missing')
       continue
     }
     const raw = db.storage.from('inbox-raw')
     const assets = db.storage.from('inbox-assets')
     const [html, signed, upload] = await Promise.all([
-      raw.createSignedUrl(message.data.html_path, screenshotLimits.linkSeconds),
+      raw.createSignedUrl(
+        message.data.marked_html_path ?? message.data.html_path,
+        screenshotLimits.linkSeconds
+      ),
       images.data.length
         ? assets.createSignedUrls(
             [...new Set(images.data.map((r) => r.path!))],
@@ -109,6 +124,21 @@ export async function screenshotJobs(db: Db): Promise<ScreenshotJob[]> {
       await fail(db, job.id, job.lease_token, 'screenshot_links_failed')
       continue
     }
+    const crops = message.data.marked_html_path
+      ? await Promise.all(
+          sections.data.map(async ({ ordinal }) => {
+            const link = await assets.createSignedUploadUrl(
+              `sect/${job.subject_key}/${ordinal}.jpg`,
+              { upsert: true }
+            )
+            return link.data ? { ordinal, upload: link.data.signedUrl } : null
+          })
+        )
+      : []
+    if (crops.some((c) => c === null)) {
+      await fail(db, job.id, job.lease_token, 'screenshot_links_failed')
+      continue
+    }
     const urlByPath = new Map(
       (signed.data ?? []).map((s) => [s.path ?? '', s.signedUrl])
     )
@@ -120,7 +150,8 @@ export async function screenshotJobs(db: Db): Promise<ScreenshotJob[]> {
         const url = urlByPath.get(r.path ?? '')
         return url ? [{ ref: r.source_ref, url }] : []
       }),
-      upload: upload.data.signedUrl
+      upload: upload.data.signedUrl,
+      sections: crops.filter((c) => c !== null)
     })
   }
   return jobs
@@ -131,7 +162,18 @@ export const screenshotResult = z.union([
     job: z.uuid(),
     lease: z.uuid(),
     width: z.number().int().min(1).max(screenshotLimits.maxWidth),
-    height: z.number().int().min(1).max(screenshotLimits.maxHeight)
+    height: z.number().int().min(1).max(screenshotLimits.maxHeight),
+    // Where each section sits in the picture (its crop is uploaded).
+    boxes: z
+      .array(
+        z.object({
+          ordinal: z.number().int().min(1).max(40),
+          top: z.number().int().min(0).max(screenshotLimits.maxHeight),
+          height: z.number().int().min(1).max(screenshotLimits.maxHeight)
+        })
+      )
+      .max(40)
+      .default([])
   }),
   z.object({
     job: z.uuid(),
@@ -146,7 +188,7 @@ export const screenshotResult = z.union([
  */
 export async function finishScreenshot(
   db: Db,
-  result: z.infer<typeof screenshotResult>
+  result: z.input<typeof screenshotResult>
 ): Promise<{ ok: true } | { ok: false; code: string }> {
   const lease = { job: result.job, lease: result.lease }
   if ('failure' in result) {
@@ -156,7 +198,8 @@ export async function finishScreenshot(
   const recorded = await db.rpc('record_inbox_screenshot', {
     ...lease,
     width: result.width,
-    height: result.height
+    height: result.height,
+    boxes: result.boxes ?? []
   })
   if (recorded.error) return { ok: false, code: recorded.error.code ?? 'error' }
   const finished = await db.rpc('finish_platform_job', {
