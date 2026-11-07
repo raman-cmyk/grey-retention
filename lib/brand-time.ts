@@ -62,6 +62,83 @@ export function formatBrandDate(
   }).format(date)
 }
 
+/** True when this runtime knows the IANA timezone name. */
+export function isKnownTimezone(timezone: string) {
+  return typeof timezone === 'string' && timezone !== '' && validZone(timezone)
+}
+
+/**
+ * Every IANA timezone this runtime knows (for the Settings picker), with
+ * UTC first. The runtime may list a zone under another name (for example
+ * `Asia/Katmandu` for `Asia/Kathmandu`), so `current` is always included.
+ * Falls back to a short list on runtimes without `Intl.supportedValuesOf`.
+ */
+export function timezoneOptions(current?: string): string[] {
+  const all =
+    typeof Intl.supportedValuesOf === 'function'
+      ? Intl.supportedValuesOf('timeZone')
+      : [
+          'America/New_York',
+          'Europe/London',
+          'Asia/Kathmandu',
+          'Australia/Sydney'
+        ]
+  const list = all.filter((zone) => zone !== 'UTC')
+  if (
+    current &&
+    current !== 'UTC' &&
+    isKnownTimezone(current) &&
+    !list.includes(current)
+  )
+    list.push(current)
+  return ['UTC', ...list.sort()]
+}
+
+/**
+ * `Asia/Kathmandu (UTC+05:45)`: the zone with its offset at `at` (so a
+ * daylight-saving zone shows its summer or winter offset). UTC if unknown.
+ */
+export function timezoneWithOffset(timezone: string, at: Date = new Date()) {
+  const zone = validZone(timezone) ? timezone : 'UTC'
+  const offset =
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: zone,
+      timeZoneName: 'longOffset'
+    })
+      .formatToParts(at)
+      .find((part) => part.type === 'timeZoneName')?.value ?? 'GMT'
+  return `${zone} (${offset === 'GMT' ? 'UTC+00:00' : offset.replace('GMT', 'UTC')})`
+}
+
+/**
+ * `Oct 7, 2026 · 10:49 PM (Kathmandu time)`: a date and time with the brand
+ * timezone named next to it (docs/OWNER_JOURNEYS.md §18.14). Null for a
+ * missing or invalid date.
+ */
+export function formatBrandDateTimeWithZone(
+  value: Date | string | number | null | undefined,
+  timezone: string
+) {
+  const text = formatBrandDateTime(value, timezone)
+  return text && `${text} (${timezoneLabel(timezone)})`
+}
+
+/** `10:49 PM Kathmandu time`, or null for a missing or invalid date. */
+export function formatBrandTimeWithZone(
+  value: Date | string | number | null | undefined,
+  timezone: string
+) {
+  const date = toDate(value)
+  if (!date) return null
+  const time = new Intl.DateTimeFormat('en-US', {
+    timeZone: validZone(timezone) ? timezone : 'UTC',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  }).format(date)
+  return `${time} ${timezoneLabel(timezone)}`
+}
+
 /** "Sydney time" for `Australia/Sydney`; "UTC" for UTC or an invalid zone. */
 export function timezoneLabel(timezone: string) {
   if (!validZone(timezone) || /^(etc\/)?(utc|gmt)$/i.test(timezone))

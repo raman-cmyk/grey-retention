@@ -8,6 +8,7 @@ import {
 } from '@/features/operations/panels'
 import { PolicyPanel } from '@/features/delivery/panels'
 import { settingsPage } from '@/features/settings/data'
+import { brandTimezone } from '@/features/settings/timezone'
 import { DefaultsForm, TimezoneCard } from '@/features/settings/settings-form'
 
 export const metadata: Metadata = { title: 'Settings' }
@@ -25,7 +26,10 @@ const unavailableText = {
 export default async function SettingsPage() {
   const ctx = await requireRequestContext('client')
   const owner = ctx.tenantRole === 'owner'
-  const { now, timezone, state, data } = await settingsPage(ctx)
+  const [{ now, timezone, state, data }, zone] = await Promise.all([
+    settingsPage(ctx),
+    brandTimezone(ctx)
+  ])
   return (
     <div className="mx-auto max-w-[900px]">
       <header className="mb-6 space-y-2">
@@ -38,7 +42,13 @@ export default async function SettingsPage() {
         </p>
       </header>
       <div className="space-y-6">
-        <TimezoneCard timezone={timezone} initialNow={now} />
+        <TimezoneCard
+          timezone={timezone}
+          initialNow={now}
+          source={zone.source}
+          klaviyoTimezone={zone.klaviyoTimezone}
+          owner={owner}
+        />
         {data ? (
           <DefaultsForm
             defaults={data.defaults}

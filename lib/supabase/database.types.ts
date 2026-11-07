@@ -4582,6 +4582,7 @@ export type Database = {
           slug: string
           status: Database['public']['Enums']['tenant_status']
           timezone: string
+          timezone_source: string
           updated_at: string
         }
         Insert: {
@@ -4592,6 +4593,7 @@ export type Database = {
           slug: string
           status?: Database['public']['Enums']['tenant_status']
           timezone?: string
+          timezone_source?: string
           updated_at?: string
         }
         Update: {
@@ -4602,6 +4604,7 @@ export type Database = {
           slug?: string
           status?: Database['public']['Enums']['tenant_status']
           timezone?: string
+          timezone_source?: string
           updated_at?: string
         }
         Relationships: []
@@ -4752,6 +4755,7 @@ export type Database = {
       workspace_connections: {
         Row: {
           account_label: string | null
+          account_timezone: string | null
           connected_at: string | null
           credential_hint: string | null
           fixture_account: string
@@ -4770,6 +4774,7 @@ export type Database = {
         }
         Insert: {
           account_label?: string | null
+          account_timezone?: string | null
           connected_at?: string | null
           credential_hint?: string | null
           fixture_account: string
@@ -4788,6 +4793,7 @@ export type Database = {
         }
         Update: {
           account_label?: string | null
+          account_timezone?: string | null
           connected_at?: string | null
           credential_hint?: string | null
           fixture_account?: string
@@ -5052,6 +5058,7 @@ export type Database = {
       connect_sample_provider: {
         Args: {
           account_label: string
+          account_timezone?: string
           credential_hint: string
           provider: string
           shop_domain?: string
@@ -5667,6 +5674,10 @@ export type Database = {
         Args: { delivery: string; t: string }
         Returns: string
       }
+      set_brand_timezone: {
+        Args: { expected: string; t: string; timezone: string }
+        Returns: undefined
+      }
       set_conversation_visibility: {
         Args: { chat: string; t: string; visibility: string }
         Returns: undefined
@@ -5744,6 +5755,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      use_klaviyo_timezone: { Args: { t: string }; Returns: undefined }
     }
     Enums: {
       designer_status: 'invited' | 'active' | 'inactive'

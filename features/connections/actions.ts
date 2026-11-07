@@ -9,6 +9,7 @@ import {
   checkShopifyToken
 } from './credentials'
 import { connectionVerifier } from './verifier'
+import { isKnownTimezone } from '@/lib/brand-time'
 
 const notLive = 'Live connections are not switched on yet. Nothing was changed.'
 
@@ -40,6 +41,7 @@ async function save(
     credential_hint: string
     shop_domain?: string
     template_count?: number
+    account_timezone?: string
   }
 ) {
   const saved = await db.rpc('connect_sample_provider', args)
@@ -75,14 +77,19 @@ export async function connectKlaviyo(
     .maybeSingle()
   const account = await verifier.klaviyo({
     keyHint: key.value.hint,
-    workspaceLabel: brand.data?.brand_name || context.tenantName
+    workspaceLabel: brand.data?.brand_name || context.tenantName,
+    workspaceTimezone: context.timezone
   })
   const saved = await save(db, {
     t: context.tenantId,
     provider: 'klaviyo',
     account_label: account.accountLabel,
     credential_hint: key.value.hint,
-    template_count: account.templateCount
+    template_count: account.templateCount,
+    // Becomes the brand timezone unless the owner chose one (UIR-023).
+    account_timezone: isKnownTimezone(account.timezone)
+      ? account.timezone
+      : undefined
   })
   if (saved.error) return { error: failed(saved.error.code) }
   revalidatePath('/connections')
