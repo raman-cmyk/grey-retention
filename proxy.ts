@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { refreshAuthSession } from '@/lib/supabase/proxy'
+import { isRetiredDesignerPath } from '@/features/designers/retired-paths'
 
 const publicAuthRoutes = new Set([
   '/login',
@@ -17,6 +18,10 @@ function loginPath(pathname: string) {
 }
 
 export async function proxy(request: NextRequest) {
+  // Decision D3: the designer workflow is retired. Rewriting to a path no
+  // route serves renders the app's Not found page with a 404 status.
+  if (isRetiredDesignerPath(request.nextUrl.pathname))
+    return NextResponse.rewrite(new URL('/retired-designer-route', request.url))
   if (
     process.env.AUTH_MODE === 'demo' &&
     process.env.NODE_ENV !== 'production'
