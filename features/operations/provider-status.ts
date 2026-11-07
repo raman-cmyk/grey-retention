@@ -67,4 +67,4 @@ export function rewriteStatus(
 }
 
 export const connectionsEmptyText =
-  'No workspace has a Klaviyo, Shopify or Google Drive connection. Live connections to these services are not built yet.'
+  'No workspace has a Klaviyo or Google Drive connection. Live connections to these services are not built yet.'

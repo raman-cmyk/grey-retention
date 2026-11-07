@@ -36,6 +36,11 @@ export type LibraryItem = {
   text: string
   /** Sample (fixture) content, labelled as such. */
   sample: boolean
+  /**
+   * A picture of the whole email at 600px, taken when it arrived (INB-002):
+   * a signed link that works for an hour, and the picture's height.
+   */
+  screenshot?: { url: string; width: number; height: number } | null
 }
 
 export type ShowFilter = 'all' | ReferenceFormat

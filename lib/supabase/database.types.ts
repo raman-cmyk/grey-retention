@@ -1631,6 +1631,9 @@ export type Database = {
           raw_path: string | null
           received_at: string
           safe_html: string
+          screenshot_height: number | null
+          screenshot_path: string | null
+          screenshot_width: number | null
           subject: string
           synthetic: boolean
           text_content: string
@@ -1649,6 +1652,9 @@ export type Database = {
           raw_path?: string | null
           received_at: string
           safe_html: string
+          screenshot_height?: number | null
+          screenshot_path?: string | null
+          screenshot_width?: number | null
           subject: string
           synthetic?: boolean
           text_content: string
@@ -1667,6 +1673,9 @@ export type Database = {
           raw_path?: string | null
           received_at?: string
           safe_html?: string
+          screenshot_height?: number | null
+          screenshot_path?: string | null
+          screenshot_width?: number | null
           subject?: string
           synthetic?: boolean
           text_content?: string
@@ -3122,15 +3131,71 @@ export type Database = {
         }
         Relationships: []
       }
+      inbox_message_images: {
+        Row: {
+          bytes: number | null
+          content_type: string | null
+          created_at: string
+          failure: string | null
+          id: string
+          inbox_message_id: string
+          ordinal: number
+          path: string | null
+          sha256: string | null
+          source: string
+          source_ref: string
+          state: string
+        }
+        Insert: {
+          bytes?: number | null
+          content_type?: string | null
+          created_at?: string
+          failure?: string | null
+          id?: string
+          inbox_message_id: string
+          ordinal: number
+          path?: string | null
+          sha256?: string | null
+          source: string
+          source_ref: string
+          state: string
+        }
+        Update: {
+          bytes?: number | null
+          content_type?: string | null
+          created_at?: string
+          failure?: string | null
+          id?: string
+          inbox_message_id?: string
+          ordinal?: number
+          path?: string | null
+          sha256?: string | null
+          source?: string
+          source_ref?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'inbox_message_images_inbox_message_id_fkey'
+            columns: ['inbox_message_id']
+            isOneToOne: false
+            referencedRelation: 'inbox_messages'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       inbox_messages: {
         Row: {
           alias_slug: string | null
+          assets_state: string
           capture_id: string | null
           created_at: string
           from_address: string | null
           from_domain: string | null
           html_path: string | null
           id: string
+          images_failed: number
+          images_stored: number
           mailbox_id: string
           message_key: string
           method: string | null
@@ -3138,6 +3203,10 @@ export type Database = {
           raw_path: string | null
           raw_sha256: string | null
           received_at: string
+          screenshot_at: string | null
+          screenshot_height: number | null
+          screenshot_path: string | null
+          screenshot_width: number | null
           state: string
           subject: string
           synthetic: boolean
@@ -3147,12 +3216,15 @@ export type Database = {
         }
         Insert: {
           alias_slug?: string | null
+          assets_state?: string
           capture_id?: string | null
           created_at?: string
           from_address?: string | null
           from_domain?: string | null
           html_path?: string | null
           id?: string
+          images_failed?: number
+          images_stored?: number
           mailbox_id: string
           message_key: string
           method?: string | null
@@ -3160,6 +3232,10 @@ export type Database = {
           raw_path?: string | null
           raw_sha256?: string | null
           received_at: string
+          screenshot_at?: string | null
+          screenshot_height?: number | null
+          screenshot_path?: string | null
+          screenshot_width?: number | null
           state: string
           subject?: string
           synthetic: boolean
@@ -3169,12 +3245,15 @@ export type Database = {
         }
         Update: {
           alias_slug?: string | null
+          assets_state?: string
           capture_id?: string | null
           created_at?: string
           from_address?: string | null
           from_domain?: string | null
           html_path?: string | null
           id?: string
+          images_failed?: number
+          images_stored?: number
           mailbox_id?: string
           message_key?: string
           method?: string | null
@@ -3182,6 +3261,10 @@ export type Database = {
           raw_path?: string | null
           raw_sha256?: string | null
           received_at?: string
+          screenshot_at?: string | null
+          screenshot_height?: number | null
+          screenshot_path?: string | null
+          screenshot_width?: number | null
           state?: string
           subject?: string
           synthetic?: boolean
@@ -5842,9 +5925,17 @@ export type Database = {
         }
         Returns: undefined
       }
+      record_inbox_images: {
+        Args: { images: Json; job: string; lease: string }
+        Returns: Json
+      }
       record_inbox_message: {
         Args: { job: string; lease: string; msg: Json }
         Returns: Json
+      }
+      record_inbox_screenshot: {
+        Args: { height: number; job: string; lease: string; width: number }
+        Returns: undefined
       }
       record_render_upload: {
         Args: {

@@ -1,0 +1,76 @@
+name: Inbox screenshots
+
+# Takes the 600px screenshot of every new Inspiration inbox email (INB-002).
+# A server function cannot run a browser, so this job does: it asks the live
+# app for emails to photograph (with CRON_SECRET), renders each one in
+# Chromium with JavaScript off and only that email's own stored files
+# allowed, and uploads the picture through its signed upload link. It prints counts
+# only, never a link or the secret.
+#
+# Off until turned on, exactly like the scheduled jobs
+# (docs/SCHEDULED_JOBS_RUNBOOK.md): the same CRON_SECRET repository secret
+# and the same SCHEDULED_JOBS_ENABLED=true repository variable. When nothing
+# is waiting, a run stops after one small request.
+on:
+  schedule:
+    # 15 minutes after each sweep (minutes 3 and 33), so the images are kept first.
+    - cron: '18,48 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inbox-screenshots
+  cancel-in-progress: false
+
+jobs:
+  screenshots:
+    if: vars.SCHEDULED_JOBS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      APP_URL: https://grey-retention-app.vercel.app
+    steps:
+      - name: Anything to photograph?
+        id: peek
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::Add the CRON_SECRET repository secret (see docs/SCHEDULED_JOBS_RUNBOOK.md)."
+            exit 1
+          fi
+          # The header goes through stdin so the secret never appears in the
+          # process list; GitHub also masks it in the log. HTTPS only.
+          status=$(printf 'header = "Authorization: Bearer %s"\n' "$CRON_SECRET" |
+            curl --config - --proto '=https' --silent --show-error --max-time 30 \
+              --output peek.json --write-out '%{http_code}' \
+              "$APP_URL/api/internal/inbox/screenshots?peek=1") || status=000
+          if [ "$status" != "200" ]; then
+            echo "::error::The app returned HTTP $status."
+            exit 1
+          fi
+          waiting=$(jq -r '.waiting // 0' peek.json)
+          echo "Screenshots waiting: $waiting"
+          echo "waiting=$waiting" >> "$GITHUB_OUTPUT"
+      - if: steps.peek.outputs.waiting != '0'
+        uses: actions/checkout@v4
+      - if: steps.peek.outputs.waiting != '0'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - if: steps.peek.outputs.waiting != '0'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: steps.peek.outputs.waiting != '0'
+        run: pnpm install --frozen-lockfile
+      - if: steps.peek.outputs.waiting != '0'
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Take the screenshots
+        if: steps.peek.outputs.waiting != '0'
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: node scripts/inbox-screenshots.mjs

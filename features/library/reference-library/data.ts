@@ -82,7 +82,7 @@ export async function referenceLibrary(
         db
           .from('competitor_emails')
           .select(
-            'id,capture_id,subject,text_content,safe_html,received_at,synthetic'
+            'id,capture_id,subject,text_content,safe_html,received_at,synthetic,screenshot_path,screenshot_width,screenshot_height'
           )
           .eq('capture_id', id)
           .order('received_at', { ascending: false })
@@ -119,6 +119,21 @@ export async function referenceLibrary(
   const labelByCapture = new Map(
     subscriptions.data.map((s) => [s.capture_id, s.label])
   )
+  // Screenshots are signed with the member's own session: storage lets it
+  // read only those of emails from domains this workspace follows.
+  const shots = [
+    ...new Set(
+      emails.data.flatMap((e) => (e.screenshot_path ? [e.screenshot_path] : []))
+    )
+  ]
+  const signed = shots.length
+    ? await db.storage.from('inbox-assets').createSignedUrls(shots, 3600)
+    : { data: [], error: null }
+  const shotUrl = new Map(
+    (signed.data ?? []).flatMap((s) =>
+      s.path && s.signedUrl && !s.error ? [[s.path, s.signedUrl] as const] : []
+    )
+  )
   const perCapture = new Map<string, number>()
   const items: LibraryItem[] = []
   for (const email of emails.data) {
@@ -138,7 +153,15 @@ export async function referenceLibrary(
       at: email.received_at,
       preview: toSafePreview(email.safe_html),
       text: email.text_content,
-      sample: email.synthetic
+      sample: email.synthetic,
+      screenshot:
+        email.screenshot_path && shotUrl.has(email.screenshot_path)
+          ? {
+              url: shotUrl.get(email.screenshot_path)!,
+              width: email.screenshot_width ?? 600,
+              height: email.screenshot_height ?? 900
+            }
+          : null
     })
   }
   for (const row of imports.data ?? []) {
