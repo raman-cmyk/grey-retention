@@ -2,6 +2,7 @@ import type { Route } from 'next'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
+import { BrandCheck } from '@/features/brand-profile/brand-check'
 import { CampaignEditor } from '@/features/campaigns/editor'
 import { plannerView } from '@/features/planner/load'
 import { Planner } from '@/features/planner/planner'
@@ -68,6 +69,11 @@ export default async function CampaignAgentPage({
       />
       {data && (
         <>
+          {/* UIR-021: before GROS plans the month or writes a campaign. */}
+          <BrandCheck
+            tenantId={context.tenantId}
+            action="GROS plans or writes your campaigns"
+          />
           {owner && (
             <Link
               href="/copy-review"
