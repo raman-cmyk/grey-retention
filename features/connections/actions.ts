@@ -27,10 +27,18 @@ async function ownerSession() {
 
 type Db = NonNullable<Awaited<ReturnType<typeof createClient>>>
 
+/** Arguments an older hosted database does not know yet, newest first. */
+const olderDatabases = [
+  ['account_website', 'account_currency', 'account_country'],
+  ['account_timezone']
+] as const
+
 /**
- * Saves the connection. If the hosted database has not had the
- * connection-profile migration yet, falls back to the older status-only
- * command so connecting still works; the details appear after the update.
+ * Saves the connection. If the hosted database has not had the latest
+ * updates yet, saves without the arguments it does not know (account facts,
+ * then the account timezone); if it has not had the connection-profile
+ * update either, falls back to the older status-only command. Connecting always works; the details appear after
+ * the update.
  */
 async function save(
   db: Db,
@@ -47,7 +55,17 @@ async function save(
     account_country?: string
   }
 ) {
-  const saved = await db.rpc('connect_sample_provider', args)
+  let sent = args
+  let saved = await db.rpc('connect_sample_provider', sent)
+  // Newest first: the account facts (UIR-021), then the timezone (UIR-023).
+  for (const newer of olderDatabases) {
+    if (saved.error?.code !== 'PGRST202') break
+    if (!newer.some((key) => sent[key] !== undefined)) continue
+    const older = { ...sent }
+    for (const key of newer) delete older[key]
+    sent = older
+    saved = await db.rpc('connect_sample_provider', sent)
+  }
   if (saved.error?.code === 'PGRST202')
     return db.rpc('set_fixture_connection', {
       t: args.t,

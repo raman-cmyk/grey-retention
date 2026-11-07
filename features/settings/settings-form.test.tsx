@@ -13,7 +13,7 @@ const timezoneActions = vi.hoisted(() => ({
     message: 'Saved. Every date and time now uses Europe/London.'
   })),
   switchToKlaviyoTimezone: vi.fn(async () => ({
-    message: 'Saved. The brand timezone now follows Klaviyo.'
+    message: 'Saved. The brand timezone is now Klaviyo’s, America/New_York.'
   }))
 }))
 vi.mock('./timezone-actions', () => timezoneActions)
@@ -190,6 +190,8 @@ describe('DefaultsForm', () => {
   })
 })
 
+const zones = ['UTC', 'Asia/Kathmandu', 'Asia/Tokyo', 'Europe/London']
+
 describe('TimezoneCard', () => {
   it('shows the brand timezone with its offset and the local time', () => {
     render(
@@ -200,9 +202,10 @@ describe('TimezoneCard', () => {
     )
     expect(screen.getByText('US/Pacific (UTC-08:00)')).toBeVisible()
     expect(screen.getByText('Fri, Nov 6 2026 · 9:07 AM')).toBeVisible()
+    // Honest about what follows it, and what does not.
     expect(
       screen.getByText(
-        /Every date and time in the app uses your brand’s timezone/
+        /GROS plans new campaign send times in your brand’s timezone, and most dates and times in the app are shown in it\. Campaigns already planned keep their send time\./
       )
     ).toBeVisible()
     // Read-only without the owner.
@@ -228,27 +231,55 @@ describe('TimezoneCard', () => {
     render(
       <TimezoneCard
         timezone="Asia/Kathmandu"
+        options={zones}
         initialNow={Date.parse('2026-11-06T17:07:00Z')}
         source="setup"
         owner
       />
     )
     const select = screen.getByLabelText('Change timezone')
-    // The workspace's own zone is offered even if the runtime names it otherwise.
+    // The list comes from the server, so page and browser agree.
+    expect(
+      within(select)
+        .getAllByRole('option')
+        .map((o) => o.textContent)
+    ).toEqual(zones)
     expect(select).toHaveValue('Asia/Kathmandu')
     await userEvent.selectOptions(select, 'Europe/London')
     await userEvent.click(screen.getByRole('button', { name: 'Save timezone' }))
-    expect(
-      await screen.findByText(
-        'Saved. Every date and time now uses Europe/London.'
-      )
-    ).toBeVisible()
+    expect(await screen.findByText(/^Saved\./)).toBeVisible()
     const sent = (
       timezoneActions.saveBrandTimezone.mock.calls[0] as unknown[]
     )[1] as FormData
     expect(sent.get('timezone')).toBe('Europe/London')
     expect(sent.get('expected')).toBe('Asia/Kathmandu')
     expect(select).toHaveValue('Europe/London')
+    // The cursor is back on the picker, next to the answer.
+    expect(select).toHaveFocus()
+  })
+
+  it('sends back the timezone exactly as saved', async () => {
+    // This server does not know the saved name, so the page shows UTC; a
+    // change must still name what is saved, or it would always be stale.
+    render(
+      <TimezoneCard
+        timezone="UTC"
+        saved="Mars/Olympus"
+        options={zones}
+        initialNow={0}
+        owner
+      />
+    )
+    await userEvent.selectOptions(
+      screen.getByLabelText('Change timezone'),
+      'Europe/London'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save timezone' }))
+    await screen.findByText(/^Saved\./)
+    const sent = (
+      timezoneActions.saveBrandTimezone.mock.calls.at(-1) as unknown[]
+    )[1] as FormData
+    expect(sent.get('expected')).toBe('Mars/Olympus')
   })
 
   it('offers Klaviyo’s timezone when it differs, to the owner only', async () => {
@@ -258,16 +289,28 @@ describe('TimezoneCard', () => {
         initialNow={Date.parse('2026-11-06T17:07:00Z')}
         source="owner"
         klaviyoTimezone="America/New_York"
+        options={zones}
         owner
       />
     )
     expect(screen.getByText('America/New_York (UTC-05:00)')).toBeVisible()
+    expect(
+      screen.getByText(/Klaviyo account \(sample connection\)/)
+    ).toBeVisible()
     await userEvent.click(
       screen.getByRole('button', { name: 'Use Klaviyo’s timezone' })
     )
     expect(
-      await screen.findByText('Saved. The brand timezone now follows Klaviyo.')
+      await screen.findByText(
+        'Saved. The brand timezone is now Klaviyo’s, America/New_York.'
+      )
     ).toBeVisible()
+    // It names the Klaviyo timezone the page showed.
+    const sent = (
+      timezoneActions.switchToKlaviyoTimezone.mock.calls[0] as unknown[]
+    )[1] as FormData
+    expect(sent.get('klaviyoTimezone')).toBe('America/New_York')
+    expect(screen.getByLabelText('Change timezone')).toHaveFocus()
     rerender(
       <TimezoneCard
         timezone="Europe/London"
@@ -289,7 +332,17 @@ describe('TimezoneCard', () => {
         owner
       />
     )
-    expect(screen.queryByText(/Your Klaviyo account uses/)).toBeNull()
+    expect(screen.queryByText(/Your Klaviyo account/)).toBeNull()
+    // Two spellings of one timezone are not a difference.
+    rerender(
+      <TimezoneCard
+        timezone="Asia/Kathmandu"
+        initialNow={0}
+        klaviyoTimezone="Asia/Katmandu"
+        owner
+      />
+    )
+    expect(screen.queryByText(/Your Klaviyo account/)).toBeNull()
   })
 
   it('shows a refusal and keeps the picked timezone', async () => {
@@ -297,13 +350,16 @@ describe('TimezoneCard', () => {
       error:
         'The timezone changed in another window. Reload the page, then try again.'
     } as never)
-    render(<TimezoneCard timezone="UTC" initialNow={0} owner />)
+    render(<TimezoneCard timezone="UTC" options={zones} initialNow={0} owner />)
     await userEvent.selectOptions(
       screen.getByLabelText('Change timezone'),
       'Asia/Tokyo'
     )
     await userEvent.click(screen.getByRole('button', { name: 'Save timezone' }))
     expect(await screen.findByText(/changed in another window/)).toBeVisible()
-    expect(screen.getByLabelText('Change timezone')).toHaveValue('Asia/Tokyo')
+    const select = screen.getByLabelText('Change timezone')
+    expect(select).toHaveValue('Asia/Tokyo')
+    expect(select).toHaveAttribute('aria-invalid', 'true')
+    expect(select).toHaveAccessibleDescription(/changed in another window/)
   })
 })

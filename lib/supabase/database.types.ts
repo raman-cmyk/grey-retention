@@ -5755,7 +5755,10 @@ export type Database = {
         }
         Returns: undefined
       }
-      use_klaviyo_timezone: { Args: { t: string }; Returns: undefined }
+      use_klaviyo_timezone: {
+        Args: { expected_zone: string; t: string }
+        Returns: undefined
+      }
     }
     Enums: {
       designer_status: 'invited' | 'active' | 'inactive'

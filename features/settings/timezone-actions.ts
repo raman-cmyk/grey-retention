@@ -8,6 +8,10 @@ import { createClient } from '@/lib/supabase/server'
 
 const ownerOnly = 'Only the workspace owner can change the brand timezone.'
 
+/** What changes, said the same way after every save. */
+const keepsPlanned =
+  'New plans use it. Campaigns already planned keep their send time.'
+
 async function ownerSession() {
   const context = await requireRequestContext('client')
   if (context.tenantRole !== 'owner') return { error: ownerOnly } as const
@@ -17,12 +21,35 @@ async function ownerSession() {
   return { context, db } as const
 }
 
-function failed(error: { code?: string }): FormResult {
-  if (error.code === 'PT409')
+/** A timezone name from the form (never longer than any real one). */
+function zoneField(form: FormData, name: string) {
+  const value = form.get(name)
+  return typeof value === 'string' && value !== '' && value.length <= 64
+    ? value
+    : null
+}
+
+function failed(error: { code?: string; message?: string }): FormResult {
+  if (error.code === 'PT409') {
+    if (error.message === 'GROS is making a plan')
+      return {
+        error:
+          'GROS is making a plan right now. Try again when the plan is ready. Nothing was changed.'
+      }
+    if (error.message === 'Klaviyo reported another timezone')
+      return {
+        error:
+          'Klaviyo reported another timezone since this page opened. Reload the page to see it.'
+      }
+    if (error.message === 'Klaviyo has not reported a timezone')
+      return {
+        error: 'Klaviyo has not reported a timezone. Reconnect Klaviyo.'
+      }
     return {
       error:
         'The timezone changed in another window. Reload the page, then try again.'
     }
+  }
   if (error.code === '42501') return { error: ownerOnly }
   if (error.code === '23514')
     return { error: 'Choose a timezone from the list.' }
@@ -39,12 +66,15 @@ export async function saveBrandTimezone(
 ): Promise<FormResult> {
   const session = await ownerSession()
   if ('error' in session) return { error: session.error }
-  const timezone = form.get('timezone')
-  const expected = form.get('expected')
-  if (typeof timezone !== 'string' || !isKnownTimezone(timezone))
+  const timezone = zoneField(form, 'timezone')
+  const expected = zoneField(form, 'expected')
+  if (!timezone || !isKnownTimezone(timezone))
     return { error: 'Choose a timezone from the list.' }
-  if (typeof expected !== 'string' || !expected)
-    return { error: 'Reload the page and try again.' }
+  if (!expected) return { error: 'Reload the page and try again.' }
+  if (timezone === expected)
+    return {
+      message: `${timezone} is already the brand timezone. Nothing changed.`
+    }
   const { context, db } = session
   const saved = await db.rpc('set_brand_timezone', {
     t: context.tenantId,
@@ -54,20 +84,27 @@ export async function saveBrandTimezone(
   if (saved.error) return failed(saved.error)
   refresh()
   return {
-    message: `Saved. Every date and time now uses ${timezone}.`
+    message: `Saved. The brand timezone is now ${timezone}. ${keepsPlanned}`
   }
 }
 
-/** "Use Klaviyo's timezone" in Settings. */
-export async function switchToKlaviyoTimezone(): Promise<FormResult> {
+/** "Use Klaviyo's timezone" in Settings, naming the one the page showed. */
+export async function switchToKlaviyoTimezone(
+  _state: FormResult,
+  form: FormData
+): Promise<FormResult> {
   const session = await ownerSession()
   if ('error' in session) return { error: session.error }
+  const zone = zoneField(form, 'klaviyoTimezone')
+  if (!zone) return { error: 'Reload the page and try again.' }
   const { context, db } = session
-  const saved = await db.rpc('use_klaviyo_timezone', { t: context.tenantId })
-  if (saved.error)
-    return saved.error.code === 'PT409'
-      ? { error: 'Klaviyo has not reported a timezone. Reconnect Klaviyo.' }
-      : failed(saved.error)
+  const saved = await db.rpc('use_klaviyo_timezone', {
+    t: context.tenantId,
+    expected_zone: zone
+  })
+  if (saved.error) return failed(saved.error)
   refresh()
-  return { message: 'Saved. The brand timezone now follows Klaviyo.' }
+  return {
+    message: `Saved. The brand timezone is now Klaviyo’s, ${zone}. ${keepsPlanned}`
+  }
 }

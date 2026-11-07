@@ -116,4 +116,20 @@ describe('one brand timezone, named next to every time (UIR-023)', () => {
     expect(options.filter((zone) => zone === 'UTC')).toHaveLength(1)
     expect(timezoneOptions('Mars/Olympus')).not.toContain('Mars/Olympus')
   })
+
+  it('lists a timezone once, under the name the brand saved', async () => {
+    const { sameTimezone, timezoneOptions } = await import('./brand-time')
+    expect(sameTimezone('Asia/Kathmandu', 'Asia/Katmandu')).toBe(true)
+    expect(sameTimezone('Asia/Kathmandu', 'Asia/Kathmandu')).toBe(true)
+    expect(sameTimezone('Asia/Kathmandu', 'Asia/Kolkata')).toBe(false)
+    expect(sameTimezone('Mars/Olympus', 'Mars/Olympus')).toBe(false)
+    const both = (options: string[]) =>
+      options.filter((zone) =>
+        ['Asia/Kathmandu', 'Asia/Katmandu'].includes(zone)
+      )
+    expect(both(timezoneOptions('Asia/Kathmandu'))).toEqual(['Asia/Kathmandu'])
+    expect(both(timezoneOptions('Asia/Katmandu'))).toEqual(['Asia/Katmandu'])
+    const sorted = timezoneOptions('Asia/Kathmandu').slice(1)
+    expect(sorted).toEqual([...sorted].sort())
+  })
 })

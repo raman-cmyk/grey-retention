@@ -16,7 +16,10 @@ alter table public.workspace_connections
     check (account_country is null or account_country ~ '^[A-Z]{2}$');
 
 -- The same command, plus the account facts (all optional). The seven-
--- argument form is replaced; named calls without the new arguments work.
+-- argument form (20260914090029) is replaced; named calls without the new
+-- arguments still work. Like the timezone, a fact in an unexpected shape
+-- counts as "not reported": it is stored as nothing and the connection
+-- still works.
 drop function public.connect_sample_provider(uuid, text, text, text, text, integer, text);
 create function public.connect_sample_provider(
   t uuid,
@@ -31,7 +34,12 @@ create function public.connect_sample_provider(
   account_country text default null
 ) returns integer
 language plpgsql security definer set search_path = '' as $$
-declare r integer;
+declare
+  r integer;
+  zone text;
+  website text;
+  currency text;
+  country text;
 begin
   perform private.require_member(t, true);
   if provider is null or provider not in ('klaviyo', 'shopify') then
@@ -42,10 +50,22 @@ begin
     or (provider = 'klaviyo' and credential_hint !~ '^pk_')
     or (provider = 'shopify' and credential_hint !~ '^shp(at|ca)_')
     or (provider = 'shopify' and template_count is not null)
-    or (account_timezone is not null
-      and (provider <> 'klaviyo' or not private.known_timezone(account_timezone)))
-    or (account_website is not null and provider <> 'klaviyo') then
+    or (provider = 'shopify' and account_timezone is not null)
+    or (provider = 'shopify' and account_website is not null) then
     raise exception 'Connection details required' using errcode = '23514';
+  end if;
+  if private.known_timezone(account_timezone) then
+    zone := account_timezone;
+  end if;
+  if char_length(account_website) <= 300
+    and account_website ~ '^https://[a-z0-9.-]+\.[a-z]{2,}(/[^[:space:]]*)?$' then
+    website := account_website;
+  end if;
+  if account_currency ~ '^[A-Z]{3}$' then
+    currency := account_currency;
+  end if;
+  if account_country ~ '^[A-Z]{2}$' then
+    country := account_country;
   end if;
   insert into public.workspace_connections as c (
     tenant_id, provider, status, fixture_account, account_label, credential_hint,
@@ -53,8 +73,8 @@ begin
     account_currency, account_country, connected_at, last_error
   ) values (
     t, provider, 'connected', 'fixture:' || t || ':' || provider, account_label,
-    credential_hint, shop_domain, template_count, account_timezone, account_website,
-    account_currency, account_country, now(), null
+    credential_hint, shop_domain, template_count, zone, website,
+    currency, country, now(), null
   )
   on conflict on constraint workspace_connections_pkey do update set
     status = 'connected',
@@ -71,9 +91,12 @@ begin
     revision = c.revision + 1,
     updated_at = now()
   returning c.revision into r;
-  if provider = 'klaviyo' and account_timezone is not null
-    and (select timezone_source from public.tenants where id = t) <> 'owner' then
-    perform private.set_tenant_timezone(t, account_timezone, 'klaviyo');
+  -- Klaviyo decides the brand timezone unless the owner chose one or GROS
+  -- is making a plan (20260914090029).
+  if provider = 'klaviyo' and zone is not null
+    and (select timezone_source from public.tenants where id = t) <> 'owner'
+    and not private.plan_in_flight(t) then
+    perform private.set_tenant_timezone(t, zone, 'klaviyo');
   end if;
   return r;
 end $$;

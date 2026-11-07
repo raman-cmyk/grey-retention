@@ -67,10 +67,29 @@ export function isKnownTimezone(timezone: string) {
   return typeof timezone === 'string' && timezone !== '' && validZone(timezone)
 }
 
+/** The runtime's own name for a timezone, or null if it does not know it. */
+function runtimeName(timezone: string) {
+  return isKnownTimezone(timezone)
+    ? new Intl.DateTimeFormat('en-US', { timeZone: timezone }).resolvedOptions()
+        .timeZone
+    : null
+}
+
+/**
+ * True when two names are the same timezone, including old and new
+ * spellings (`Asia/Katmandu` and `Asia/Kathmandu`).
+ */
+export function sameTimezone(a: string, b: string) {
+  if (a === b) return isKnownTimezone(a)
+  const name = runtimeName(a)
+  return name !== null && name === runtimeName(b)
+}
+
 /**
  * Every IANA timezone this runtime knows (for the Settings picker), with
- * UTC first. The runtime may list a zone under another name (for example
- * `Asia/Katmandu` for `Asia/Kathmandu`), so `current` is always included.
+ * UTC first. The runtime may list a zone under another spelling (for
+ * example `Asia/Katmandu` for `Asia/Kathmandu`); `current` then takes that
+ * entry's place, so it is listed once, under the name the brand saved.
  * Falls back to a short list on runtimes without `Intl.supportedValuesOf`.
  */
 export function timezoneOptions(current?: string): string[] {
@@ -89,8 +108,11 @@ export function timezoneOptions(current?: string): string[] {
     current !== 'UTC' &&
     isKnownTimezone(current) &&
     !list.includes(current)
-  )
-    list.push(current)
+  ) {
+    const alias = list.findIndex((zone) => sameTimezone(zone, current))
+    if (alias >= 0) list[alias] = current
+    else list.push(current)
+  }
   return ['UTC', ...list.sort()]
 }
 

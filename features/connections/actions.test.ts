@@ -156,6 +156,56 @@ describe('connectKlaviyo', () => {
     })
   })
 
+  it('saves without the account timezone on a database without it', async () => {
+    rpc.mockImplementation(
+      async (name: string, args: Record<string, unknown>) =>
+        name === 'connect_sample_provider' && 'account_timezone' in args
+          ? { data: null, error: { code: 'PGRST202' } }
+          : { data: 1, error: null }
+    )
+    expect((await connectKlaviyo({}, form({ apiKey: key }))).message).toContain(
+      'connected'
+    )
+    expect(rpc).toHaveBeenLastCalledWith(
+      'connect_sample_provider',
+      expect.not.objectContaining({ account_timezone: expect.anything() })
+    )
+    expect(rpc).not.toHaveBeenCalledWith(
+      'set_fixture_connection',
+      expect.anything()
+    )
+  })
+
+  it('drops the newest arguments first on an older database', async () => {
+    const known = ['t', 'provider', 'account_label', 'credential_hint']
+    // A database with the timezone update but not the account facts.
+    rpc.mockImplementation(
+      async (name: string, args: Record<string, unknown>) =>
+        name === 'connect_sample_provider' &&
+        Object.keys(args).some(
+          (key) =>
+            ![
+              ...known,
+              'shop_domain',
+              'template_count',
+              'account_timezone'
+            ].includes(key)
+        )
+          ? { data: null, error: { code: 'PGRST202' } }
+          : { data: 1, error: null }
+    )
+    expect((await connectKlaviyo({}, form({ apiKey: key }))).message).toContain(
+      'connected'
+    )
+    const calls = rpc.mock.calls.filter(
+      ([name]) => name === 'connect_sample_provider'
+    )
+    expect(calls).toHaveLength(2)
+    expect(calls[1][1]).toHaveProperty('account_timezone')
+    expect(calls[1][1]).not.toHaveProperty('account_website')
+    expect(calls[1][1]).not.toHaveProperty('account_currency')
+  })
+
   it('reports a database refusal without details', async () => {
     rpc.mockResolvedValue({ data: null, error: { code: '42501' } })
     expect(await connectKlaviyo({}, form({ apiKey: key }))).toEqual({

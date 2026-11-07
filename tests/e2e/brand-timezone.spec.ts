@@ -40,24 +40,41 @@ test('UIR-023 Klaviyo sets the brand timezone; the owner can change it and switc
   await card.getByLabel('Change timezone').selectOption('Europe/London')
   await card.getByRole('button', { name: 'Save timezone' }).click()
   await expect(
-    card.getByText('Saved. Every date and time now uses Europe/London.')
+    card.getByText(
+      'Saved. The brand timezone is now Europe/London. New plans use it. Campaigns already planned keep their send time.'
+    )
   ).toBeVisible()
+  // The cursor stays on the picker, which shows the new choice.
   await expect(card.getByLabel('Change timezone')).toHaveValue('Europe/London')
+  await expect(card.getByLabel('Change timezone')).toBeFocused()
   await page.reload()
   await expect(card.getByText(/^Europe\/London \(UTC/)).toBeVisible()
   await expect(card.getByText('Chosen by you.')).toBeVisible()
 
   // Klaviyo now differs, so the owner is offered its timezone.
-  await expect(card.getByText(/Your Klaviyo account uses/)).toContainText(
-    'Asia/Kathmandu'
-  )
+  await expect(
+    card.getByText(/Your Klaviyo account \(sample connection\) uses/)
+  ).toContainText('Asia/Kathmandu')
   await card.getByRole('button', { name: 'Use Klaviyo’s timezone' }).click()
   await expect(
-    card.getByText('Saved. The brand timezone now follows Klaviyo.')
+    card.getByText(
+      /^Saved\. The brand timezone is now Klaviyo’s, Asia\/Kathmandu\./
+    )
   ).toBeVisible()
   await page.reload()
   await expect(card.getByText('Asia/Kathmandu (UTC+05:45)')).toBeVisible()
-  await expect(card.getByText(/Your Klaviyo account uses/)).toHaveCount(0)
+  await expect(card.getByText(/Your Klaviyo account/)).toHaveCount(0)
+
+  // Saving the timezone it already has changes nothing.
+  await card.getByRole('button', { name: 'Save timezone' }).click()
+  await expect(
+    card.getByText(
+      'Asia/Kathmandu is already the brand timezone. Nothing changed.'
+    )
+  ).toBeVisible()
+  await expect(
+    card.getByText('From your Klaviyo account (sample connection).')
+  ).toBeVisible()
 })
 
 test('UIR-023 staff see the brand timezone but cannot change it', async ({
