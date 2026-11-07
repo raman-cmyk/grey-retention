@@ -35,7 +35,6 @@ export default async function DashboardPage({
             utmValue={null}
             goal={view.revenue.goal}
             fraction={view.revenue.fraction}
-            shopify={view.shopify}
           />
         )}
         <NextCampaignCard

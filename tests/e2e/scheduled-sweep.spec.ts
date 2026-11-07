@@ -2,6 +2,8 @@ import { randomInt, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { test, expect, type APIRequestContext } from '@playwright/test'
+import { login } from './accounts'
+import { run as takeScreenshots } from '../../scripts/inbox-screenshots.mjs'
 
 // Own Playwright project that depends on the desktop and mobile journeys:
 // the sweep is global, so it must not drain jobs that other journeys leave
@@ -87,6 +89,42 @@ const localAccounts = () =>
   >
 const serviceClient = () =>
   createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, options)
+
+// INB-002: before the first sweep ever reads the sample inbox, a platform
+// admin registers the sample brand northwind.example (+alias "northwind")
+// and the owner follows it, so its sample newsletter lands in Inspiration.
+test.beforeAll(async () => {
+  requireLocal()
+  const accounts = localAccounts()
+  const admin = createClient(url, anon, options)
+  expect(
+    (
+      await admin.auth.signInWithPassword({
+        email: accounts.admin!.email,
+        password: accounts.admin!.password
+      })
+    ).error
+  ).toBeNull()
+  const owner = await signIn(accounts.owner!.email, accounts.owner!.password)
+  expect(
+    (
+      await owner.db.rpc('subscribe_competitor', {
+        t: owner.tenant,
+        domain: 'northwind.example'
+      })
+    ).error
+  ).toBeNull()
+  expect(
+    (
+      await admin.rpc('admin_save_inbox_brand', {
+        brand_domain: 'northwind.example',
+        alias: 'northwind',
+        name: 'Northwind Outdoor',
+        brand_niche: 'apparel'
+      })
+    ).error
+  ).toBeNull()
+})
 
 /** Finishes work left by earlier journeys so this test's jobs are next in line. */
 async function drain(request: APIRequestContext, secret: string) {
@@ -299,4 +337,72 @@ test('STAB-001 scheduled sweep retries failed jobs and recovers crashed workers'
     error_code: 'stale_lease',
     versions: 0
   })
+})
+
+test('INB-002 a sample inbox email keeps its images and its 600px screenshot shows in Inspiration', async ({
+  request,
+  browser,
+  page,
+  baseURL
+}) => {
+  requireLocal()
+  const secret = localSecret()
+  const admin = serviceClient()
+  // The sweeps above read the sample inbox and kept the images; one more
+  // sweep finishes anything still waiting.
+  expect((await sweep(request, `Bearer ${secret}`)).status()).toBe(200)
+  const message = await admin
+    .from('inbox_messages')
+    .select('id,state,assets_state,images_stored,images_failed')
+    .eq('alias_slug', 'northwind')
+    .single()
+  expect(message.error).toBeNull()
+  expect(message.data).toMatchObject({
+    state: 'assigned',
+    assets_state: 'done',
+    images_stored: 1,
+    images_failed: 0
+  })
+
+  // The screenshot browser (the scheduled GitHub Actions job) photographs it.
+  const counts = await takeScreenshots({
+    base: baseURL!,
+    secret,
+    browser,
+    log: () => {}
+  })
+  expect(counts.taken).toBeGreaterThanOrEqual(1)
+  expect(counts.failed).toBe(0)
+  const shot = await admin
+    .from('inbox_messages')
+    .select('screenshot_path,screenshot_width,screenshot_height')
+    .eq('id', message.data!.id)
+    .single()
+  expect(shot.data).toMatchObject({
+    screenshot_path: `shot/${message.data!.id}.jpg`
+  })
+  // Rendered at 600px; the page's default margin can add a few pixels.
+  expect(shot.data!.screenshot_width).toBeGreaterThanOrEqual(600)
+  expect(shot.data!.screenshot_width).toBeLessThan(640)
+  // A second run finds nothing left: each email is photographed once.
+  expect(
+    await takeScreenshots({ base: baseURL!, secret, browser, log: () => {} })
+  ).toEqual({ taken: 0, failed: 0 })
+
+  // The owner, who follows northwind.example, sees the picture in Inspiration.
+  await login(page, 'owner')
+  await page.goto('/library/inspirations')
+  const card = page.getByAltText('Screenshot of Spring layers are here')
+  await expect(card).toBeVisible()
+  expect(
+    await card.evaluate((img) => (img as HTMLImageElement).naturalWidth)
+  ).toBe(shot.data!.screenshot_width)
+
+  // Another workspace cannot read it.
+  const accounts = localAccounts()
+  const other = await signIn(accounts.other!.email, accounts.other!.password)
+  const denied = await other.db.storage
+    .from('inbox-assets')
+    .createSignedUrl(shot.data!.screenshot_path!, 60)
+  expect(denied.data).toBeNull()
 })
