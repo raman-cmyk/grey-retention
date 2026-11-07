@@ -337,4 +337,67 @@ describe('SupabaseBudgetLedger', () => {
       actual: 58
     })
   })
+
+  it('routes platform work to the platform budget', async () => {
+    const rpc = vi.fn(async (fn: string) => ({
+      data: fn.startsWith('reserve') ? 'p1' : null,
+      error: null
+    }))
+    const ledger = new SupabaseBudgetLedger({ rpc } as never)
+    expect(
+      await ledger.reserve({
+        tenantId: null,
+        operationId: 'ai:label:section-1:x',
+        feature: 'learning',
+        estimateMicro: 100
+      })
+    ).toEqual({ ok: true, reservationId: 'p1' })
+    await ledger.settle({
+      tenantId: null,
+      reservationId: 'p1',
+      actualMicro: 9.5
+    })
+    expect(rpc.mock.calls).toEqual([
+      [
+        'reserve_platform_ai_usage',
+        {
+          operation: 'ai:label:section-1:x',
+          feature: 'learning',
+          estimate: 100
+        }
+      ],
+      ['settle_platform_ai_usage', { reservation: 'p1', actual: 10 }]
+    ])
+  })
+
+  it('maps the platform cap message to cap_reached', async () => {
+    const rpc = vi.fn(async () => ({
+      data: null,
+      error: {
+        code: '23514',
+        message: 'Platform AI allowance reached; no AI request was sent'
+      }
+    }))
+    expect(
+      await new SupabaseBudgetLedger({ rpc } as never).reserve({
+        tenantId: null,
+        operationId: 'ai:label:s:y',
+        feature: 'learning',
+        estimateMicro: 100
+      })
+    ).toEqual({ ok: false, code: 'cap_reached' })
+  })
+})
+
+describe('runAi platform work', () => {
+  it('meters a competitor-section label against the platform, not a client', async () => {
+    const ledger = new InMemoryBudgetLedger(1_000_000)
+    const result = await runAi(
+      { tenantId: null, callerKey: 'section:abc', purpose: 'label', request },
+      { ledger, env: live, fetch: vi.fn(async () => geminiOk()) }
+    )
+    expect(result).toMatchObject({ ok: true, costMicro: 58 })
+    expect(ledger.spentMicro(null)).toBe(58)
+    expect(ledger.spentMicro(tenantId)).toBe(0)
+  })
 })
