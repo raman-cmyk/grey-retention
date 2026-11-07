@@ -1,9 +1,12 @@
 import 'server-only'
+import { randomUUID } from 'node:crypto'
+import { z } from 'zod'
 import {
   AiProviderError,
   type AiFailureKind,
   type AiProvider,
-  type AiProviderRequest
+  type AiProviderRequest,
+  type AiProviderResponse
 } from '@/lib/providers/contracts'
 import { FakeAiProvider } from '@/lib/providers/fake'
 import { GeminiProvider, geminiRequestBody } from '@/lib/providers/gemini'
@@ -29,6 +32,7 @@ export type AiRunResult =
       costMicro: number
       inputTokens: number
       outputTokens: number
+      settled: boolean
     }
   | {
       ok: false
@@ -41,17 +45,29 @@ export type AiRunResult =
       diagnostic?: string
     }
 
+const runInput = z.object({
+  tenantId: z.uuid(),
+  callerKey: z.string().trim().min(1).max(120),
+  purpose: z.enum(['label', 'copy']),
+  maxOutputTokens: z.number().int().min(1).max(65_536)
+})
+
 /**
  * The one entry point for v2 AI calls (labelling and copy). It picks the
  * provider from server settings, reserves the request's upper-bound cost
  * against the client's allowance before anything is sent, and settles the
- * real cost afterwards. Over the cap, nothing is sent.
+ * real cost afterwards, exactly once. Over the cap, nothing is sent.
+ *
+ * Every call is its own metered reservation (`ai:<purpose>:<callerKey>:<uuid>`),
+ * so a retry is always charged and can never reuse a settled reservation.
+ * Callers make their work idempotent by storing the result before marking
+ * their job done. The caller must already have authorised the tenant.
  */
 export async function runAi(
   input: {
     tenantId: string
-    /** Stable per logical attempt, so a retry reuses its reservation. */
-    operationId: string
+    /** What the call is for, e.g. `section:<id>`; never a raw job id. */
+    callerKey: string
     purpose: AiPurpose
     request: Omit<AiProviderRequest, 'model' | 'timeoutMs'>
   },
@@ -62,6 +78,13 @@ export async function runAi(
     fake?: AiProvider
   }
 ): Promise<AiRunResult> {
+  const valid = runInput.safeParse({
+    tenantId: input.tenantId,
+    callerKey: input.callerKey,
+    purpose: input.purpose,
+    maxOutputTokens: input.request.maxOutputTokens
+  })
+  if (!valid.success) return { ok: false, code: 'rejected_request' }
   const setup = aiSetup(input.purpose, deps.env)
   if (!setup.ready) return { ok: false, code: setup.reason }
   const request: AiProviderRequest = {
@@ -78,7 +101,8 @@ export async function runAi(
       model: 'fake',
       costMicro: 0,
       inputTokens: response.inputTokens,
-      outputTokens: response.outputTokens
+      outputTokens: response.outputTokens,
+      settled: true
     }
   }
   let body: string
@@ -100,53 +124,77 @@ export async function runAi(
   )
   const reservation = await deps.ledger.reserve({
     tenantId: input.tenantId,
-    operationId: input.operationId,
+    operationId: `ai:${input.purpose}:${valid.data.callerKey}:${randomUUID()}`,
     feature: purposeFeature[input.purpose],
     estimateMicro: estimate
   })
   if (!reservation.ok) return { ok: false, code: reservation.code }
-  const settle = (actualMicro: number) =>
-    deps.ledger.settle({
-      tenantId: input.tenantId,
-      reservationId: reservation.reservationId,
-      actualMicro
-    })
   const provider = new GeminiProvider({
     apiKey: setup.apiKey,
     fetch: deps.fetch
   })
+  let outcome:
+    | { ok: true; response: AiProviderResponse; cost: number }
+    | { ok: false; error: AiProviderError; cost: number }
   try {
     const response = await provider.generate(request)
-    const cost = geminiCostMicro(setup.model, response)
-    await settle(cost)
-    return {
+    outcome = {
       ok: true,
-      content: response.content,
-      provider: 'gemini',
-      model: setup.model,
-      costMicro: cost,
-      inputTokens: response.inputTokens,
-      outputTokens: response.outputTokens
+      response,
+      cost: geminiCostMicro(setup.model, response)
     }
   } catch (error) {
-    if (!(error instanceof AiProviderError)) {
-      await settle(estimate)
-      throw error
-    }
-    // none: provably unbilled. usage: bill what was used. unknown: assume
-    // the whole reservation was spent.
-    await settle(
-      error.billing === 'none'
-        ? 0
-        : error.billing === 'usage' && error.details.usage
-          ? geminiCostMicro(setup.model, error.details.usage)
-          : estimate
-    )
+    // none: provably unbilled. usage: bill what was used. unknown (or an
+    // unexpected crash): assume the whole reservation was spent.
+    outcome =
+      error instanceof AiProviderError
+        ? {
+            ok: false,
+            error,
+            cost:
+              error.billing === 'none'
+                ? 0
+                : error.billing === 'usage' && error.details.usage
+                  ? geminiCostMicro(setup.model, error.details.usage)
+                  : estimate
+          }
+        : {
+            ok: false,
+            error: new AiProviderError('unavailable', 'unknown', {
+              diagnostic: 'unexpected_error'
+            }),
+            cost: estimate
+          }
+  }
+  // Settle exactly once. The estimate is a proven upper bound, so the
+  // settled amount never exceeds the reservation.
+  let settled = true
+  try {
+    await deps.ledger.settle({
+      tenantId: input.tenantId,
+      reservationId: reservation.reservationId,
+      actualMicro: Math.min(outcome.cost, estimate)
+    })
+  } catch {
+    settled = false
+  }
+  if (!outcome.ok)
     return {
       ok: false,
-      code: error.kind,
-      retryAfterSeconds: error.details.retryAfterSeconds,
-      diagnostic: error.details.diagnostic
+      code: outcome.error.kind,
+      retryAfterSeconds: outcome.error.details.retryAfterSeconds,
+      diagnostic: outcome.error.details.diagnostic
     }
+  return {
+    ok: true,
+    content: outcome.response.content,
+    provider: 'gemini',
+    model: setup.model,
+    costMicro: outcome.cost,
+    inputTokens: outcome.response.inputTokens,
+    outputTokens: outcome.response.outputTokens,
+    // false: the call was paid but not recorded; the reservation (at the
+    // estimate) still counts against the cap until ops reconciles it.
+    settled
   }
 }

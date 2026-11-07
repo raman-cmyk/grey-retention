@@ -27,7 +27,6 @@ export type AiSetup =
 const settings = z.object({
   AI_DEFAULT_PROVIDER: z.string().trim().optional(),
   GEMINI_API_KEY: z.string().trim().optional(),
-  GOOGLE_GENERATIVE_AI_KEY: z.string().trim().optional(),
   GEMINI_LABEL_MODEL: z.string().trim().optional(),
   GEMINI_COPY_MODEL: z.string().trim().optional(),
   GEMINI_TIMEOUT_MS: z.coerce
@@ -41,7 +40,8 @@ const settings = z.object({
 /**
  * Decision D5. Reads server-only settings on every call and never exposes the
  * key. An explicit AI_DEFAULT_PROVIDER=fake always wins (tests and Claude
- * sessions force it). Otherwise a Gemini key turns the live adapter on, and
+ * sessions force it). Otherwise GEMINI_API_KEY, which the owner added for
+ * decision D5, turns the live adapter on, and
  * without one the fake answers and callers say so. A configured model that
  * isn't in the price table fails closed instead of falling back to the fake.
  */
@@ -52,12 +52,11 @@ export function aiSetup(
   const s = settings.parse({
     AI_DEFAULT_PROVIDER: env.AI_DEFAULT_PROVIDER,
     GEMINI_API_KEY: env.GEMINI_API_KEY,
-    GOOGLE_GENERATIVE_AI_KEY: env.GOOGLE_GENERATIVE_AI_KEY,
     GEMINI_LABEL_MODEL: env.GEMINI_LABEL_MODEL,
     GEMINI_COPY_MODEL: env.GEMINI_COPY_MODEL,
     GEMINI_TIMEOUT_MS: env.GEMINI_TIMEOUT_MS
   })
-  if (s.AI_DEFAULT_PROVIDER === 'fake')
+  if (s.AI_DEFAULT_PROVIDER?.toLowerCase() === 'fake')
     return {
       ready: true,
       provider: 'fake',
@@ -65,7 +64,9 @@ export function aiSetup(
       reason: 'fake_selected',
       timeoutMs: s.GEMINI_TIMEOUT_MS
     }
-  const apiKey = s.GEMINI_API_KEY || s.GOOGLE_GENERATIVE_AI_KEY
+  // Only the dedicated key turns Gemini on (the older GOOGLE_GENERATIVE_AI_KEY
+  // may be left over from earlier work and must not start spending).
+  const apiKey = s.GEMINI_API_KEY
   if (!apiKey)
     return {
       ready: true,

@@ -77,10 +77,16 @@ describe('aiSetup', () => {
     ).toEqual({ ready: false, provider: 'gemini', reason: 'unsupported_model' })
   })
 
-  it('accepts the older Google key name', () => {
+  it('ignores the older Google key name, so a leftover key never starts spending', () => {
     expect(
       aiSetup('label', env({ GOOGLE_GENERATIVE_AI_KEY: 'old-key' }))
-    ).toMatchObject({ provider: 'gemini', apiKey: 'old-key' })
+    ).toMatchObject({ provider: 'fake', reason: 'missing_key' })
+    expect(
+      aiSetup(
+        'label',
+        env({ AI_DEFAULT_PROVIDER: 'FAKE', GEMINI_API_KEY: 'k' })
+      )
+    ).toMatchObject({ provider: 'fake' })
   })
 
   it('never exposes the key in availability', () => {
@@ -104,7 +110,7 @@ describe('runAi', () => {
   it('answers from the fake at no cost and reserves nothing', async () => {
     const ledger = new InMemoryBudgetLedger(1)
     const result = await runAi(
-      { tenantId, operationId: 'label:1', purpose: 'label', request },
+      { tenantId, callerKey: 'label:1', purpose: 'label', request },
       { ledger, env: env({}) }
     )
     expect(result).toMatchObject({ ok: true, provider: 'fake', costMicro: 0 })
@@ -115,7 +121,7 @@ describe('runAi', () => {
     const ledger = new InMemoryBudgetLedger(1_000_000)
     const fetch = vi.fn(async () => geminiOk())
     const result = await runAi(
-      { tenantId, operationId: 'label:2', purpose: 'label', request },
+      { tenantId, callerKey: 'label:2', purpose: 'label', request },
       { ledger, env: live, fetch }
     )
     expect(String((fetch.mock.calls as unknown[][])[0][0])).toContain(
@@ -136,7 +142,7 @@ describe('runAi', () => {
     const ledger = new InMemoryBudgetLedger(10)
     const fetch = vi.fn()
     const result = await runAi(
-      { tenantId, operationId: 'label:3', purpose: 'label', request },
+      { tenantId, callerKey: 'label:3', purpose: 'label', request },
       { ledger, env: live, fetch }
     )
     expect(result).toEqual({ ok: false, code: 'cap_reached' })
@@ -153,7 +159,7 @@ describe('runAi', () => {
       estimateMicro: 1_000
     })
     const result = await runAi(
-      { tenantId, operationId: 'label:4', purpose: 'label', request },
+      { tenantId, callerKey: 'label:4', purpose: 'label', request },
       { ledger, env: live, fetch: vi.fn(async () => geminiOk()) }
     )
     expect(result.ok).toBe(true)
@@ -162,7 +168,7 @@ describe('runAi', () => {
   it('settles zero for a provably unbilled failure, and the estimate when unknown', async () => {
     const ledger = new InMemoryBudgetLedger(1_000_000)
     const rateLimited = await runAi(
-      { tenantId, operationId: 'label:5', purpose: 'label', request },
+      { tenantId, callerKey: 'label:5', purpose: 'label', request },
       {
         ledger,
         env: live,
@@ -178,7 +184,7 @@ describe('runAi', () => {
     expect(rateLimited).toMatchObject({ ok: false, code: 'rate_limited' })
     expect(ledger.spentMicro(tenantId)).toBe(0)
     const down = await runAi(
-      { tenantId, operationId: 'label:6', purpose: 'label', request },
+      { tenantId, callerKey: 'label:6', purpose: 'label', request },
       {
         ledger,
         env: live,
@@ -186,28 +192,73 @@ describe('runAi', () => {
       }
     )
     expect(down).toMatchObject({ ok: false, code: 'unavailable' })
-    const reserved = ledger.reservations.get(`${tenantId}:label:6`)!
+    const reserved = [...ledger.reservations.values()].at(-1)!
     expect(reserved.actualMicro).toBe(reserved.estimateMicro)
   })
 
-  it('reuses the reservation when the same operation is retried', async () => {
+  it('meters every call separately, so a retry is never free', async () => {
     const ledger = new InMemoryBudgetLedger(1_000_000)
-    const deps = { ledger, env: live, fetch: vi.fn(async () => geminiOk()) }
+    const fetch = vi.fn(async () => geminiOk())
+    const deps = { ledger, env: live, fetch }
     const input = {
       tenantId,
-      operationId: 'label:7',
+      callerKey: 'label:7',
       purpose: 'label' as const,
       request
     }
     await runAi(input, deps)
     await runAi(input, deps)
-    expect(ledger.reservations.size).toBe(1)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(ledger.reservations.size).toBe(2)
+    expect(ledger.spentMicro(tenantId)).toBe(116)
+    for (const r of ledger.reservations.values())
+      expect(r.operationId).toMatch(/^ai:label:label:7:[0-9a-f-]{36}$/)
+  })
+
+  it('settles exactly once and reports a failed settle without retrying it', async () => {
+    const settle = vi.fn(async () => {
+      throw new Error('lost response')
+    })
+    const ledger = {
+      reserve: vi.fn(async () => ({ ok: true as const, reservationId: 'r1' })),
+      settle
+    }
+    const result = await runAi(
+      { tenantId, callerKey: 'label:10', purpose: 'label', request },
+      { ledger, env: live, fetch: vi.fn(async () => geminiOk()) }
+    )
+    expect(result).toMatchObject({ ok: true, settled: false })
+    expect(settle).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses bad input before reserving or sending', async () => {
+    const ledger = new InMemoryBudgetLedger(1_000_000)
+    const fetch = vi.fn()
+    for (const bad of [
+      { tenantId: 'not-a-uuid', callerKey: 'x', maxOutputTokens: 10 },
+      { tenantId, callerKey: '', maxOutputTokens: 10 },
+      { tenantId, callerKey: 'x', maxOutputTokens: Number.NaN },
+      { tenantId, callerKey: 'x', maxOutputTokens: 10_000_000 }
+    ])
+      expect(
+        await runAi(
+          {
+            tenantId: bad.tenantId,
+            callerKey: bad.callerKey,
+            purpose: 'label',
+            request: { ...request, maxOutputTokens: bad.maxOutputTokens }
+          },
+          { ledger, env: live, fetch }
+        )
+      ).toEqual({ ok: false, code: 'rejected_request' })
+    expect(fetch).not.toHaveBeenCalled()
+    expect(ledger.reservations.size).toBe(0)
   })
 
   it('reports an unsupported configured model without calling anything', async () => {
     const fetch = vi.fn()
     const result = await runAi(
-      { tenantId, operationId: 'copy:1', purpose: 'copy', request },
+      { tenantId, callerKey: 'copy:1', purpose: 'copy', request },
       {
         ledger: new InMemoryBudgetLedger(1_000_000),
         env: env({ GEMINI_API_KEY: 'test-key', GEMINI_COPY_MODEL: 'nope' }),
@@ -240,6 +291,21 @@ describe('SupabaseBudgetLedger', () => {
       feature: 'learning',
       estimate: 100
     })
+  })
+
+  it('does not call other check violations "cap reached"', async () => {
+    const rpc = vi.fn(async () => ({
+      data: null,
+      error: { code: '23514', message: 'Active package required' }
+    }))
+    expect(
+      await new SupabaseBudgetLedger({ rpc } as never).reserve({
+        tenantId,
+        operationId: 'label:11',
+        feature: 'learning',
+        estimateMicro: 100
+      })
+    ).toEqual({ ok: false, code: 'ledger_unavailable' })
   })
 
   it('treats any other database error as the ledger being unavailable', async () => {

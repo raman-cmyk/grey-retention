@@ -311,6 +311,11 @@ describe('Gemini pricing', () => {
     expect(geminiUsage({ usageMetadata: { promptTokenCount: -1 } })).toBe(
       undefined
     )
+    // Missing counts mean an unknown bill, not a free call.
+    expect(geminiUsage({ usageMetadata: {} })).toBe(undefined)
+    expect(geminiUsage({ usageMetadata: { promptTokenCount: 5 } })).toBe(
+      undefined
+    )
   })
 
   it('prices Flash-Lite and keeps the estimate above the real cost', () => {

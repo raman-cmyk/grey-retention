@@ -76,6 +76,13 @@ export function geminiUsage(body: unknown): Usage | undefined {
   const meta = (body as { usageMetadata?: Record<string, unknown> } | null)
     ?.usageMetadata
   if (!meta || typeof meta !== 'object') return undefined
+  // Missing counts mean the bill is unknown, not zero.
+  if (meta.promptTokenCount === undefined) return undefined
+  if (
+    meta.candidatesTokenCount === undefined &&
+    meta.thoughtsTokenCount === undefined
+  )
+    return undefined
   const input = count(meta.promptTokenCount)
   const candidates = count(meta.candidatesTokenCount)
   const thoughts = count(meta.thoughtsTokenCount)

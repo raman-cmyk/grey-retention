@@ -12,8 +12,8 @@ export type Reservation =
 
 /**
  * Per-client spend cap (VISION section 10). A request reserves its upper-bound
- * cost before dispatch and settles the real cost afterwards. Reserving the
- * same operation id twice returns the same reservation, so retries are safe.
+ * cost before dispatch and settles the real cost afterwards. Operation ids
+ * are unique per call (see runAi), so a reservation is settled once.
  */
 export interface BudgetLedger {
   reserve(input: {
@@ -52,8 +52,12 @@ export class InMemoryBudgetLedger implements BudgetLedger {
   async reserve(input: Parameters<BudgetLedger['reserve']>[0]) {
     const id = `${input.tenantId}:${input.operationId}`
     if (this.reservations.has(id))
-      return { ok: true as const, reservationId: id }
-    if (this.spentMicro(input.tenantId) + input.estimateMicro > this.capMicro)
+      return { ok: false as const, code: 'ledger_unavailable' as const }
+    if (
+      !Number.isSafeInteger(input.estimateMicro) ||
+      input.estimateMicro < 1 ||
+      this.spentMicro(input.tenantId) + input.estimateMicro > this.capMicro
+    )
       return { ok: false as const, code: 'cap_reached' as const }
     this.reservations.set(id, {
       tenantId: input.tenantId,
@@ -66,17 +70,24 @@ export class InMemoryBudgetLedger implements BudgetLedger {
 
   async settle(input: Parameters<BudgetLedger['settle']>[0]) {
     const r = this.reservations.get(input.reservationId)
-    if (r && r.tenantId === input.tenantId)
-      r.actualMicro = Math.max(0, input.actualMicro)
+    if (!r || r.tenantId !== input.tenantId || r.actualMicro !== null)
+      throw new Error('Usage reservation already closed')
+    if (input.actualMicro > r.estimateMicro)
+      throw new Error('Actual usage exceeds reservation')
+    r.actualMicro = Math.max(0, input.actualMicro)
   }
 }
 
 /**
  * Backed by the package allowance: public.reserve_fixture_usage and
- * public.reconcile_fixture_usage (service role only) wrap
+ * public.reconcile_fixture_usage wrap
  * private.reserve_budget / reconcile_budget, which enforce the cycle and
  * daily caps and alert owners at 80%. The names predate live providers; they
  * meter the client's real allowance.
+ *
+ * Known gap (GEM-002, needs a migration): these RPCs are also granted to
+ * authenticated owners, and their alert text calls all usage "fixture". Live
+ * consumers must not ship to production before GEM-002 merges.
  */
 export class SupabaseBudgetLedger implements BudgetLedger {
   constructor(private readonly db: SupabaseClient<Database>) {}
@@ -91,8 +102,11 @@ export class SupabaseBudgetLedger implements BudgetLedger {
     if (error)
       return {
         ok: false as const,
+        // Only the allowance check means "cap reached"; other check
+        // violations (no active package, bad request) are setup problems.
         code:
-          error.code === '23514'
+          error.code === '23514' &&
+          /allowance reached|budget exhausted/i.test(error.message ?? '')
             ? ('cap_reached' as const)
             : ('ledger_unavailable' as const)
       }
