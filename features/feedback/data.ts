@@ -21,6 +21,8 @@ export type FeedbackPage = {
 const missing = new Set(['PGRST204', 'PGRST205', '42703', '42P01'])
 /** More than any workspace sends; the page never loads an unbounded list. */
 export const requestLimit = 200
+/** Messages per request (the details plus replies), oldest first. */
+export const messageLimit = 100
 const isCategory = (value: unknown): value is Category =>
   categories.some((c) => c.value === value)
 
@@ -37,10 +39,14 @@ export async function feedbackPage(
   if (!db) return { ...empty, state: 'no_database' }
   const tickets = await db
     .from('support_tickets')
-    .select('id,subject,category,state,created_at,creator_id')
+    .select(
+      'id,subject,category,state,created_at,creator_id,support_messages(id,actor_id,body,created_at)'
+    )
     .eq('tenant_id', context.tenantId)
     .eq('kind', 'feedback')
     .order('created_at', { ascending: false })
+    .order('created_at', { referencedTable: 'support_messages' })
+    .limit(messageLimit, { referencedTable: 'support_messages' })
     .limit(requestLimit)
   if (tickets.error)
     return {
@@ -49,23 +55,23 @@ export async function feedbackPage(
     }
   const rows = tickets.data ?? []
   if (rows.length === 0) return { ...empty, state: 'ready' }
-  const [messages, members, profiles] = await Promise.all([
-    db
-      .from('support_messages')
-      .select('id,ticket_id,actor_id,body,created_at')
-      .eq('tenant_id', context.tenantId)
-      .in(
-        'ticket_id',
-        rows.map((r) => r.id)
-      )
-      .order('created_at'),
+  const actors = [
+    ...new Set(
+      rows.flatMap((r) => [
+        r.creator_id,
+        ...r.support_messages.map((m) => m.actor_id)
+      ])
+    )
+  ]
+  const [members, profiles] = await Promise.all([
     db
       .from('tenant_memberships')
       .select('profile_id')
-      .eq('tenant_id', context.tenantId),
-    db.from('profiles').select('id,full_name')
+      .eq('tenant_id', context.tenantId)
+      .in('profile_id', actors),
+    db.from('profiles').select('id,full_name').in('id', actors)
   ])
-  if (messages.error || members.error) return { ...empty, state: 'load_failed' }
+  if (members.error) return { ...empty, state: 'load_failed' }
   // Someone who is not (or no longer) in the workspace is the platform team.
   const inWorkspace = new Set((members.data ?? []).map((m) => m.profile_id))
   const names = new Map(
@@ -78,8 +84,7 @@ export async function feedbackPage(
     now,
     state: 'ready',
     requests: rows.map((row) => {
-      const thread = (messages.data ?? []).filter((m) => m.ticket_id === row.id)
-      const [first, ...rest] = thread
+      const [first, ...rest] = row.support_messages
       return {
         id: row.id,
         subject: row.subject,
@@ -87,7 +92,6 @@ export async function feedbackPage(
         status: statusOf(row.state),
         createdAt: row.created_at,
         by: nameOf(row.creator_id),
-        mine: row.creator_id === context.userId,
         details: first?.body ?? '',
         replies: rest.map((m) => {
           const fromTeam = !inWorkspace.has(m.actor_id)

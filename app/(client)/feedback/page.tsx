@@ -33,6 +33,7 @@ export default async function FeedbackPage() {
           requests={page.requests}
           timezone={validTimezone(ctx.timezone)}
           now={page.now}
+          team={page.team}
         />
       ) : (
         <Notice error={page.state !== 'demo'}>

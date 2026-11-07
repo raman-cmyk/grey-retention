@@ -1,5 +1,5 @@
 'use client'
-import { useActionState, useEffect, useId, useState } from 'react'
+import { useActionState, useEffect, useId, useRef, useState } from 'react'
 import { Lightbulb, Plus, Search } from 'lucide-react'
 import type { FormResult } from '@/components/ui/action-form'
 import { Button } from '@/components/ui/button'
@@ -80,6 +80,7 @@ function RequestModal({
 }: {
   open: boolean
   onClose: () => void
+  /** Called once the request is saved (by this modal, not a newer one). */
   onSent: (message: string) => void
 }) {
   const id = useId()
@@ -95,14 +96,22 @@ function RequestModal({
     {}
   )
   const ready = readyToSend(subject, details)
+  // After a refusal the cursor goes back to the subject, next to the reason.
+  useEffect(() => {
+    if (state.error) document.getElementById(`${id}-subject`)?.focus()
+  }, [state, id])
   return (
     <Modal
       open={open}
       size="sm"
       title="Request a Feature"
       subtitle="Tell us what you’d love to see, what’s broken, or what would make your day."
-      dirty={subject.trim() !== '' || details.trim() !== ''}
-      onClose={onClose}
+      // While it is sending, it cannot be closed: the request may already
+      // be saved, so "Discard" would not be true.
+      dirty={!pending && (subject.trim() !== '' || details.trim() !== '')}
+      onClose={() => {
+        if (!pending) onClose()
+      }}
       footer={
         <Button
           type="submit"
@@ -256,11 +265,14 @@ type Filter = 'all' | RequestStatus
 export function FeedbackBoard({
   requests,
   timezone,
-  now
+  now,
+  team
 }: {
   requests: FeatureRequest[]
   timezone: string
   now: number
+  /** Who reads and answers requests (white-label). */
+  team: string
 }) {
   const id = useId()
   const [open, setOpen] = useState(false)
@@ -284,8 +296,11 @@ export function FeedbackBoard({
   const shown = requests.filter(
     (r) => (filter === 'all' || r.status === filter) && matches(r, query)
   )
+  // Which modal is current, so a late answer from an older one is ignored.
+  const sentFrom = useRef(0)
   const start = () => {
     setNotice({})
+    sentFrom.current = round + 1
     setRound((n) => n + 1)
     setOpen(true)
   }
@@ -337,7 +352,7 @@ export function FeedbackBoard({
             />
             <EmptyState
               title="Nothing here yet"
-              description="Ask for what would make your day — we read every request."
+              description={`Ask for what would make your day. Your request goes to the ${team}.`}
               action={
                 <Button type="button" variant="secondary" onClick={start}>
                   New request
@@ -377,6 +392,8 @@ export function FeedbackBoard({
         open={open}
         onClose={() => setOpen(false)}
         onSent={(message) => {
+          // A request sent from a modal that was replaced since then.
+          if (sentFrom.current !== round) return
           setOpen(false)
           setNotice({ message })
           setFilter('all')

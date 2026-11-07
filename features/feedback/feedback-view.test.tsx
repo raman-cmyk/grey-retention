@@ -27,7 +27,6 @@ const request = (over: Partial<FeatureRequest>): FeatureRequest => ({
   status: 'open',
   createdAt: '2026-11-05T10:00:00Z',
   by: 'You',
-  mine: true,
   details: 'So I can reuse last week’s email.',
   replies: [],
   ...over
@@ -49,14 +48,18 @@ const list = [
     subject: 'Preview is blank',
     category: 'bug',
     status: 'planned',
-    by: 'Sam',
-    mine: false
+    by: 'Sam'
   }),
   request({ id: 'r3', subject: 'Dark mode', status: 'done' })
 ]
 const board = (requests: FeatureRequest[] = list) =>
   render(
-    <FeedbackBoard requests={requests} timezone="Asia/Kathmandu" now={now} />
+    <FeedbackBoard
+      requests={requests}
+      timezone="Asia/Kathmandu"
+      now={now}
+      team="Grey Retention team"
+    />
   )
 
 describe('FeedbackBoard', () => {
@@ -65,7 +68,7 @@ describe('FeedbackBoard', () => {
     expect(screen.getByText('Nothing here yet')).toBeVisible()
     expect(
       screen.getByText(
-        'Ask for what would make your day — we read every request.'
+        'Ask for what would make your day. Your request goes to the Grey Retention team.'
       )
     ).toBeVisible()
     expect(screen.getByRole('radio', { name: 'All 0' })).toBeChecked()

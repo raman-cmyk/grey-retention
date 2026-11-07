@@ -619,7 +619,7 @@ Checks:
 - [x] Cancel closes with nothing saved (verified).
 - [x] Requests show their status (Open / Planned / Done) and team replies.
 
-> **As built (UIR-020):** wording follows §18 decision 16: the button is **New request** and the modal's button is **Send** (it stays disabled until subject and details have text). Cancel saves nothing; if something was typed it asks "Discard your answers?" first. Each request shows its type, status (Open, Planned or Done), who sent it and when, the details and replies; replies from the platform team are labelled "<product name> team" (white-label). The status comes from the admin support queue, where the team replies and sets open (Open), in progress (Planned) or closed (Done). Any workspace member can send a request.
+> **As built (UIR-020):** wording follows §18 decision 16: the button is **New request** and the modal's button is **Send** (it stays disabled until subject and details have text). Cancel saves nothing; if something was typed it asks "Discard your answers?" first. Each request shows its type, status (Open, Planned or Done), who sent it and when, the details and replies; replies from the platform team are labelled "<product name> team" (white-label). The status comes from the admin support queue: only the platform team sets open (Open), in progress (Planned) or closed (Done); workspace members can reply but cannot change it. Any workspace member can send a request. The empty state says "Your request goes to the <product name> team" instead of promising that every request is read: the admin queue shows only the newest tickets until UIR-026.
 
 ---
 

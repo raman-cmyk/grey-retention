@@ -51,7 +51,6 @@ export type FeatureRequest = {
   status: RequestStatus
   createdAt: string
   by: string
-  mine: boolean
   details: string
   replies: Reply[]
 }

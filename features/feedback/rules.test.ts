@@ -77,7 +77,6 @@ describe('feature request rules', () => {
       status: 'open',
       createdAt: '2026-11-06T10:00:00Z',
       by: 'You',
-      mine: true,
       details: 'Reuse last week',
       replies: [
         {

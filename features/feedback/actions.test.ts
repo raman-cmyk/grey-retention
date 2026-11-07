@@ -59,14 +59,14 @@ describe('sendFeatureRequest', () => {
     ).toBe('Choose a type.')
     env.values = { AUTH_MODE: 'demo' }
     expect((await sendFeatureRequest({}, form(good))).error).toMatch(
-      /sign in again/
+      /unavailable right now/
     )
     expect(rpc).not.toHaveBeenCalled()
   })
 
   it('explains database refusals in plain words', async () => {
     const cases = [
-      [{ code: '42501' }, /sign in again/],
+      [{ code: '42501' }, /can no longer send requests/],
       [{ code: '23514' }, /Check the subject and details/],
       [{ code: 'XX000' }, /Nothing was saved/]
     ] as const

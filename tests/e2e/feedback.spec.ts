@@ -93,4 +93,15 @@ test('UIR-020 Feature Requests fits 375px', async ({ page }, info) => {
       () => document.documentElement.scrollWidth <= innerWidth
     )
   ).toBe(true)
+  // The modal fits too, and closes with Escape when nothing was typed.
+  await page.getByRole('button', { name: 'New request' }).first().click()
+  const dialog = page.getByRole('dialog', { name: 'Request a Feature' })
+  await expect(dialog.getByRole('button', { name: 'Send' })).toBeVisible()
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth
+    )
+  ).toBe(true)
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
 })

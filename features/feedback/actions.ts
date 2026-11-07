@@ -19,7 +19,10 @@ export async function sendFeatureRequest(
   const context = await requireRequestContext('client')
   const db = await createClient()
   if (!db || getServerEnvironment().AUTH_MODE === 'demo')
-    return { error: 'Please sign in again. Your text is still here.' }
+    return {
+      error:
+        'Feature requests are unavailable right now. Your text is still here.'
+    }
   const parsed = requestSchema.safeParse({
     category: text(form, 'category'),
     subject: text(form, 'subject'),
@@ -35,7 +38,10 @@ export async function sendFeatureRequest(
   })
   if (saved.error) {
     if (saved.error.code === '42501')
-      return { error: 'Please sign in again. Your text is still here.' }
+      return {
+        error:
+          'You can no longer send requests for this workspace. Reload the page.'
+      }
     if (saved.error.code === '23514')
       return { error: 'Check the subject and details, then try again.' }
     return { error: 'We could not send this. Nothing was saved. Try again.' }
