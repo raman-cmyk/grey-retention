@@ -32,6 +32,8 @@ This file is the durable cross-task memory. Every implementation task must updat
 | V2-010  | Optimizer fixtures and libraries       | V2-009           | complete    | root v2 implementation | —                                                                                                                                  | Protected-profile sweep simulation and own-template reuse; public archive separate.                                               |
 | V2-011  | Integrated acceptance and handoff      | V2-010           | complete    | root v2 integration    | `20260914090011`                                                                                                                   | Full checks, reproducibility, honest capability report, progress/handoff, process cleanup.                                        |
 
+| DOC-OWNER-001 | Owner direction and design reset documentation | — | review | Codex owner-direction update | Documentation consistency/link checks; no application, provider or schema changes | 2,000+ blocks, segmentation, chat, Figma reset and canonical to-dos; see BUILD_BRIEF D10–D15. |
+
 Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 
 ## Product review and UI follow-up
@@ -1545,3 +1547,14 @@ Append entries using this exact shape:
 - Verification run: `vitest run features/release-qa` 22/22; eslint and tsc clean for the new files.
 - Known issues: the 375px render itself is produced by the caller (the screenshot service from INB-002); QA only checks it exists and succeeded.
 - Next consumer: lane B, PSH-001: build a `ReleaseCandidate` from the approved campaign, pass `createLinkChecker({ allowedHosts: [storeHost] })`, block the push unless `pass`, and store the checks.
+
+### 2026-11-07 — DOC-OWNER-001 — owner direction and design reset
+
+- Status: review (documentation only).
+- Owner/task: Codex owner-direction update; branch `codex/owner-direction-design-reset`.
+- Scope: VISION, BUILD_BRIEF, AGENTS, CLAUDE, start-task, historical design/roadmap notices, PROJECT_TODOS and DESIGN_RESET.
+- Decisions: 2,000+ blocks beyond the 20 seed types; strategic segmentation; separate brand campaign volume and per-customer exposure; conversational segment builder; central AI workspace; complete Figma UI/UX reset.
+- Proposals remain proposals: navigation, visual direction, exposure policy and central-chat model are not yet approved.
+- Contracts/migrations: none. Existing audience/date guards remain until replacement checks are implemented and verified.
+- Verification: Markdown formatting and local documentation-link/consistency checks recorded in the PR. No application tests claimed; no code, schema or provider settings changed.
+- Next: owner review of DESIGN_RESET prototype story, followed by Figma visual exploration. Track explicit owner follow-ups in PROJECT_TODOS.

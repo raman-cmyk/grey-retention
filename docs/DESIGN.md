@@ -1,5 +1,8 @@
 # Grey Retention design language
 
+> **Superseded design/planning direction — 7 November 2026.** The owner requires a fresh UI/UX process in Figma. The older layouts, theme, milestones and parity checkboxes below are history, not replacement acceptance criteria. Current scope includes 2,000+ blocks, strategic segmentation, per-customer exposure, conversational segmentation and central AI chat. Start with [BUILD_BRIEF.md](BUILD_BRIEF.md), [DESIGN_RESET.md](DESIGN_RESET.md) and [PROJECT_TODOS.md](PROJECT_TODOS.md).
+
+
 Status: **foundation applied (DS-001), layout facts updated for M1.5.** Fonts, colours and the §0 shapes (20px cards, 12px controls) are live on every screen through [`lib/design/tokens.ts`](../lib/design/tokens.ts), [`app/styles/tokens.css`](../app/styles/tokens.css) and the default white-label theme. The remaining M1 issues (DS-002 to DS-007) rebuild the shell, components and states to the patterns below.
 
 ## In plain words

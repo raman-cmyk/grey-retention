@@ -1,5 +1,8 @@
 # Grey Retention roadmap
 
+> **Superseded design/planning direction — 7 November 2026.** The owner requires a fresh UI/UX process in Figma. The older layouts, theme, milestones and parity checkboxes below are history, not replacement acceptance criteria. Current scope includes 2,000+ blocks, strategic segmentation, per-customer exposure, conversational segmentation and central AI chat. Start with [BUILD_BRIEF.md](BUILD_BRIEF.md), [DESIGN_RESET.md](DESIGN_RESET.md) and [PROJECT_TODOS.md](PROJECT_TODOS.md).
+
+
 > **Superseded on 7 Nov 2026 by [`BUILD_BRIEF.md`](BUILD_BRIEF.md) and [`VISION.md`](VISION.md).** The milestones below are history; the v2 steps and lanes are in the brief.
 
 Grey Retention helps DTC and dropship brands watch 5–10 competitor brands' emails, understand their playbook, and replicate any email or sequence for their own store (**Exact**, **Rebrand** or **Adapt**), then push it to Klaviyo.

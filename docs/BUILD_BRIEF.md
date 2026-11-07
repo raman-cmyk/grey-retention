@@ -12,8 +12,8 @@ Work follows VISION.md §6 **steps and gates**. Don't start a step until the pre
 
 1. **Owner instructions in chat**, recorded in §3 below.
 2. **[`VISION.md`](VISION.md)**: product, rules, steps, gates, operating behaviour (§10), data model (§9).
-3. **[`UI_REBUILD_SPEC.md`](UI_REBUILD_SPEC.md)**: layout of the screens we keep (the old app 1:1 in structure; Exa-style branding from [`DESIGN.md`](DESIGN.md)).
-4. **[`OWNER_JOURNEYS.md`](OWNER_JOURNEYS.md)**: screen behaviour, wording and the §18 simplifications (one status system, sandboxed previews, one brand timezone).
+3. **[`DESIGN_RESET.md`](DESIGN_RESET.md)**: new UI/UX discovery and Figma design brief. Old-app parity and the current visual direction are superseded. The replacement design is not yet approved.
+4. **[`OWNER_JOURNEYS.md`](OWNER_JOURNEYS.md)**: useful functional reference, subject to the new design. `UI_REBUILD_SPEC.md` and the previous `DESIGN.md` are historical, not target layout requirements.
 5. **[`ARCHITECTURE_BLUEPRINT.md`](ARCHITECTURE_BLUEPRINT.md)** and [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md): how code is structured (tenancy, RLS, jobs, adapters). Still valid.
 6. [`feature-register.json`](feature-register.json) and [`ROADMAP.md`](ROADMAP.md): the earlier 620-item plan. **History only.** Use it for detail when VISION.md is silent, never to override it.
 7. [`archive/`](archive/): old plans (MVP plan, overnight plan, parallel tasks, earlier reviews). Don't follow them.
@@ -24,7 +24,7 @@ Work follows VISION.md §6 **steps and gates**. Don't start a step until the pre
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | D1  | **Keep an "Exact" mode.** It means: reproduce a competitor email's **exact layout** (same sections, order, proportions) with **the client's own** logo, colours, fonts, products, prices and newly written copy. Never their words, images or branding (VISION rule 8). | Composer modes: **Exact** (layout 1:1), **Rebrand**, **Adapt**. Rename the old "exact copy" path accordingly.                                                                                                                                                                                                                           |
 | D2  | **No Shopify.** Klaviyo only (VISION rule 1).                                                                                                                                                                                                                           | Hide Shopify on Connections and everywhere else. No new Shopify code.                                                                                                                                                                                                                                                                   |
-| D3  | **No designer.** The AI builds every email from coded blocks.                                                                                                                                                                                                           | Retire the designer workflow (desk, assignment, design review, "With designer" status). Hide the routes and drop them from status flows. Keep the tables (no destructive migrations). The 20 block types (VISION Step 1) are defined by Claude from email-marketing practice; the owner approves the list. The owner scores every gate. |
+| D3  | **No designer.** The AI builds every email from coded blocks.                                                                                                                                                                                                           | Retire the designer workflow (desk, assignment, design review, "With designer" status). Hide the routes and drop them from status flows. Keep the tables (no destructive migrations). The initial 20 types seed the 2,000+ block library (D10); the owner approves taxonomy changes. The owner scores every gate. |
 | D4  | **Inbox = Gmail +aliases for now:** `ramangreyofficial+<brand-slug>@gmail.com`, read over IMAP by the scheduled worker. This overrides VISION Step 2 ("own domain") _for now_.                                                                                          | Build ingestion behind the `InboundCaptureTransport` port, so a catch-all domain can replace Gmail later with no other changes. The alias slug decides the brand; sender domain is the fallback; otherwise the ops queue.                                                                                                               |
 | D5  | **Cheapest AI: Google Gemini, free tier first.** Flash-Lite for section labelling and classification; Flash for copy.                                                                                                                                                   | Add a Gemini adapter behind the existing provider-neutral AI port (keep the fake as default in tests). Model names are config, not code. Per-client spend cap from day one (VISION §10).                                                                                                                                                |
 | D6  | **Step 0 (manual proof for Sundari & Co)** is done by the supervising Claude with the owner reviewing.                                                                                                                                                                  | Coding sessions don't wait for it. Its output (brief, 2-week calendar, 3 emails) is saved to `docs/step0/` as the reference target for later gates.                                                                                                                                                                                     |
@@ -32,11 +32,22 @@ Work follows VISION.md §6 **steps and gates**. Don't start a step until the pre
 | D8  | **Repository is public** (for free CI minutes).                                                                                                                                                                                                                         | Never commit secrets, real customer data or client names. Use neutral sample names in fixtures and docs.                                                                                                                                                                                                                                |
 | D9  | **Database changes deploy automatically:** the Supabase GitHub integration applies migrations merged to `main`.                                                                                                                                                         | Every new migration number must sort after the newest on `main` (`2026091409xxxx`, next free). Both lanes share this sequence; check `main` right before merging.                                                                                                                                                                       |
 
+### Further owner decisions — 7 November 2026
+
+- **D10 — 2,000+ blocks.** The first 20 types are a seed. Define type/variant/template counting, provenance, deduplication and quality before reporting scale.
+- **D11 — Strategic segmentation.** Add segmentation to strategy, calendar, audience allocation, QA, approval and results. Support 30–35 monthly campaigns across segments as a planning scenario, with roughly 12/customer as an illustrative average. Neither is a hard rule. Define an exposure policy; retain current collision guards until replacement checks are verified.
+- **D12 — Conversational segment builder.** Natural language → supported explicit rules → estimated membership, exclusions and overlap preview → refinement → approval.
+- **D13 — Central AI workspace.** Highly capable chat connected to brand context, strategy, campaigns, segments and results, with typed proposals, evidence and approval. Model and UI are undecided.
+- **D14 — Complete UI/UX reset.** Start from user jobs and information architecture in Figma. Stop old-app parity/polish tasks. Retain useful backend functionality. The existing theme, corners, navigation and layouts are not replacement requirements.
+- **D15 — One to-do area.** [PROJECT_TODOS.md](PROJECT_TODOS.md) records explicit owner to-dos after discussions and links implementation issues/evidence. Discussion does not mean a feature is built.
+
+These decisions override conflicting instructions below and in historical specs. They describe requirements, not implemented capability.
+
 ## 4. What already exists, and how v2 reuses it
 
 | v2 need                                  | Already on `main`                                                   | v2 change                                                                                                           |
 | ---------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Shell, Inspiration/Campaigns names, look | UIR-002, DS-001..006                                                | Keep                                                                                                                |
+| Shell, Inspiration/Campaigns names, look | UIR-002, DS-001..006                                                | Functional foundation only; replace the UI through D14 |
 | Onboarding                               | ONB-001, composer (DS-006)                                          | Rebuild as the VISION §5 wizard (most important screen)                                                             |
 | Klaviyo key                              | Connections UIR-013 (format check, masked hint)                     | Live key and scope check, catalog-empty block, timezone/currency read                                               |
 | Klaviyo data                             | `klaviyo-read` port + fake; Dashboard UIR-003; detail pages UIR-004 | Live adapter and sync job: catalog, Placed Order → bestsellers (weekly), scheduled campaigns, reports               |
@@ -61,12 +72,14 @@ Work follows VISION.md §6 **steps and gates**. Don't start a step until the pre
 
 ## 5. Build plan and lanes
 
+**Current planning overlay:** Stop new old-app UI polish. Design the replacement via [DESIGN_RESET.md](DESIGN_RESET.md); useful backend work may continue under existing gates. Plan D10–D13 explicitly in [PROJECT_TODOS.md](PROJECT_TODOS.md). The older lane allocation below records ownership guidance, not proof of active sessions or permission to launch additional agents.
+
 Two Claude Code sessions build in parallel. Each claims GitHub issues (label `wip` plus a claim comment), works one issue per PR, runs `/verify`, uses the code-reviewer (and rls-migration-reviewer for SQL), and merges when green.
 
 **Lane A: "Grey Retention project setup" session**
 
 1. Finish in-flight PRs (status system, planner, drafts, approve step), then stop the old-app UI work.
-2. **V2-S1 Block library:** 20 block types (no countdown); brand-aware email-safe HTML (600px, web-safe font stack, tested at 375px); footer with Klaviyo-required tags (unsubscribe, address, view in browser, organisation); block gallery in Inspiration. Then the labelling harness: given a section image or HTML, the model picks one of the 20 types. Gate: ≥85% agreement on 50 hand-labelled sections.
+2. **V2-S1 Block library:** initial 20 seed types on a defined path to 2,000+ reusable blocks (no countdown); brand-aware email-safe HTML (600px, web-safe font stack, tested at 375px); footer with Klaviyo-required tags (unsubscribe, address, view in browser, organisation); block gallery in Inspiration. Then the labelling harness: given a section image or HTML, the model picks one of the 20 types. Gate: ≥85% agreement on 50 hand-labelled sections.
 3. **V2-S3b Assembly:** brief → block sequence → featurable products → copy → HTML; copy QA (facts sheet, banned words, discount regex, code list); Exact/Rebrand/Adapt modes (D1). Gate: 10 Sundari emails, ≥7 "would send as-is".
 4. **V2-S5 Weekly approval** UI and emails.
 
@@ -77,7 +90,7 @@ Two Claude Code sessions build in parallel. Each claims GitHub issues (label `wi
 3. **V2-S3a Onboarding wizard** (VISION §5 + §10 onboarding behaviour) and the **live Klaviyo adapter**: key scopes, catalog cache and cleaning, bestsellers, scheduled campaigns, Engaged-90/180 segment.
 4. **V2-S4 Klaviyo push + full QA** (VISION Step 4 list) and the **ops dashboard**.
 
-Then together: **V2-S6** brief and calendar automation, and **V2-S7** three real clients.
+Then: **V2-S6** strategic segmentation, per-customer exposure controls, brief/calendar automation, conversational segment building and central AI workspace; **V2-S7** three real clients. Design these journeys now, but enable behavior only after its quality and authorization gates pass.
 
 ## 6. Definition of done (every PR)
 
