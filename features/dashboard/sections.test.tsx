@@ -93,7 +93,6 @@ describe('dashboard cards', () => {
         utmValue={null}
         goal={null}
         fraction={0}
-        shopify="missing"
       />
     )
     expect(screen.getByRole('link', { name: 'UTM' })).toHaveAttribute(
@@ -115,33 +114,15 @@ describe('dashboard cards', () => {
         utmValue={null}
         goal={null}
         fraction={0}
-        shopify="missing"
       />
     )
     expect(screen.queryByText('$1.00')).not.toBeInTheDocument()
-    expect(
-      screen.getByText('UTM attribution needs Shopify.')
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('link', { name: 'Connect Shopify →' })
-    ).toBeInTheDocument()
-    cleanup()
-    render(
-      <RevenueCard
-        attribution="utm"
-        hrefs={hrefs}
-        value="$1.00"
-        utmValue={null}
-        goal={null}
-        fraction={0}
-        shopify="connected"
-      />
-    )
+    // v2 is Klaviyo only: no Shopify prompt.
     expect(
       screen.getByText("UTM attribution isn't available yet.")
     ).toBeInTheDocument()
     expect(
-      screen.queryByRole('link', { name: /Connect Shopify/ })
+      screen.queryByRole('link', { name: /Shopify/ })
     ).not.toBeInTheDocument()
   })
 

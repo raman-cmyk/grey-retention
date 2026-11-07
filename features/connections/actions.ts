@@ -3,11 +3,7 @@ import { revalidatePath } from 'next/cache'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import type { FormResult } from '@/components/ui/action-form'
 import { createClient } from '@/lib/supabase/server'
-import {
-  checkKlaviyoKey,
-  checkShopDomain,
-  checkShopifyToken
-} from './credentials'
+import { checkKlaviyoKey } from './credentials'
 import { connectionVerifier, type AccountReport } from './verifier'
 import { isKnownTimezone } from '@/lib/brand-time'
 
@@ -142,49 +138,5 @@ export async function connectKlaviyo(
     message: verifier.live
       ? 'Klaviyo connected.'
       : 'Klaviyo connected with sample data. Nothing was sent to Klaviyo.'
-  }
-}
-
-/** Connect Shopify; then queue a sample product sync for the scheduler. */
-export async function connectShopify(
-  _state: FormResult,
-  form: FormData
-): Promise<FormResult> {
-  const session = await ownerSession()
-  if ('error' in session) return { error: session.error }
-  const domain = checkShopDomain(form.get('shopDomain'))
-  if (!domain.ok) return { error: domain.error }
-  const token = checkShopifyToken(form.get('accessToken'))
-  if (!token.ok) return { error: token.error }
-  const { context, db, verifier } = session
-  const account = await verifier.shopify({
-    shopDomain: domain.value,
-    tokenHint: token.value.hint
-  })
-  const saved = await save(db, {
-    t: context.tenantId,
-    provider: 'shopify',
-    account_label: account.accountLabel,
-    credential_hint: token.value.hint,
-    shop_domain: domain.value,
-    ...accountFacts({ ...account, website: null })
-  })
-  if (saved.error) return { error: failed(saved.error.code) }
-  // Same idempotent sample sync the setup tools queue; the worker runs it.
-  const sync = await db.rpc('enqueue_onboarding_job', {
-    t: context.tenantId,
-    kind: 'commerce.sync'
-  })
-  revalidatePath('/connections')
-  revalidatePath('/brand')
-  if (sync.error)
-    return {
-      message:
-        'Shopify connected, but the sample product import did not start. Open Sample data tools below and queue it again.'
-    }
-  return {
-    message: verifier.live
-      ? 'Shopify connected.'
-      : 'Shopify connected. Sample products are on their way. Nothing was sent to Shopify.'
   }
 }

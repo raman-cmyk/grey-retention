@@ -7,11 +7,11 @@ const supabase = vi.hoisted(() => ({ createClient: vi.fn() }))
 vi.mock('@/features/auth/application/request-context', () => auth)
 vi.mock('@/lib/supabase/server', () => supabase)
 
-import { connectKlaviyo, connectShopify } from './actions'
+import * as actions from './actions'
+import { connectKlaviyo } from './actions'
 
 const tenant = '00000000-0000-4000-8000-000000000101'
 const key = 'pk_Ab3dEfg12hi34jk56lm78no90pq12rs1a2b'
-const token = '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'
 
 function form(values: Record<string, string>) {
   const data = new FormData()
@@ -50,7 +50,6 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-const calls = () => rpc.mock.calls.map(([name]) => name)
 const allArgs = () => JSON.stringify(rpc.mock.calls)
 
 describe('connectKlaviyo', () => {
@@ -90,24 +89,6 @@ describe('connectKlaviyo', () => {
         account_country: 'DE',
         // Trying the other brand's sample never moves the brand timezone.
         account_timezone: 'Asia/Kathmandu'
-      })
-    )
-  })
-
-  it('connects ANOTHER brand’s sample store for Shopify tokens ending in 0000', async () => {
-    await connectShopify(
-      {},
-      form({
-        shopDomain: 'cedar.myshopify.com',
-        accessToken: 'shpat_ab12cd34ef56ab12cd34ef560000'
-      })
-    )
-    expect(rpc).toHaveBeenCalledWith(
-      'connect_sample_provider',
-      expect.objectContaining({
-        provider: 'shopify',
-        account_currency: 'EUR',
-        account_country: 'DE'
       })
     )
   })
@@ -237,75 +218,8 @@ describe('connectKlaviyo', () => {
   })
 })
 
-describe('connectShopify', () => {
-  it('saves the store with a masked hint, then queues a sample product sync', async () => {
-    const result = await connectShopify(
-      {},
-      form({
-        shopDomain: 'https://Cedar-Lane.myshopify.com/',
-        accessToken: token
-      })
-    )
-    expect(result.message).toBe(
-      'Shopify connected. Sample products are on their way. Nothing was sent to Shopify.'
-    )
-    expect(rpc).toHaveBeenCalledWith('connect_sample_provider', {
-      t: tenant,
-      provider: 'shopify',
-      account_label: 'cedar-lane.myshopify.com',
-      credential_hint: 'shpat_ab12••••••••ff00',
-      shop_domain: 'cedar-lane.myshopify.com',
-      account_website: undefined,
-      account_currency: 'USD',
-      account_country: 'US'
-    })
-    expect(calls()).toEqual([
-      'connect_sample_provider',
-      'enqueue_onboarding_job'
-    ])
-    expect(allArgs()).not.toContain(token)
-  })
-
-  it('refuses an autofilled email address in the domain field', async () => {
-    const result = await connectShopify(
-      {},
-      form({ shopDomain: 'owner@example.com', accessToken: token })
-    )
-    expect(result.error).toContain('looks like an email address')
-    expect(rpc).not.toHaveBeenCalled()
-  })
-
-  it('explains a pasted API secret instead of saving it', async () => {
-    const result = await connectShopify(
-      {},
-      form({
-        shopDomain: 'cedar-lane.myshopify.com',
-        accessToken: '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'
-      })
-    )
-    expect(result.error).toContain('API secret key')
-    expect(rpc).not.toHaveBeenCalled()
-  })
-
-  it('tells the owner when the sample product import could not start', async () => {
-    rpc.mockImplementation(async (name: string) =>
-      name === 'enqueue_onboarding_job'
-        ? { data: null, error: { code: '23514' } }
-        : { data: 1, error: null }
-    )
-    const result = await connectShopify(
-      {},
-      form({ shopDomain: 'cedar-lane.myshopify.com', accessToken: token })
-    )
-    expect(result.message).toContain('sample product import did not start')
-  })
-
-  it('does not queue a sync when saving fails', async () => {
-    rpc.mockResolvedValue({ data: null, error: { code: '23514' } })
-    await connectShopify(
-      {},
-      form({ shopDomain: 'cedar-lane.myshopify.com', accessToken: token })
-    )
-    expect(calls()).toEqual(['connect_sample_provider'])
+describe('Shopify (v2 is Klaviyo only)', () => {
+  it('has no Shopify connect action any more', () => {
+    expect('connectShopify' in actions).toBe(false)
   })
 })

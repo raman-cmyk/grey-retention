@@ -7,7 +7,6 @@ import {
   useState,
   type ReactNode
 } from 'react'
-import Link from 'next/link'
 import { Check, Info, Lock, Pencil, RotateCw, X } from 'lucide-react'
 import { SubmitButton, type FormResult } from '@/components/ui/action-form'
 import { Button } from '@/components/ui/button'
@@ -534,17 +533,13 @@ function ProductsBlock({ products }: { products: { title: string }[] }) {
       />
       <div className="space-y-1.5">
         <p className="font-semibold">No products yet</p>
-        <p>Shopify isn’t connected or synced yet, or the catalogue is empty.</p>
+        <p>Your catalogue is empty.</p>
         <p>
-          Fixes:{' '}
-          <Link href="/connections" className="font-medium underline">
-            connect Shopify
-          </Link>{' '}
-          (we’ll use your synced catalogue), or{' '}
+          Reading products from Klaviyo is not ready yet. For now,{' '}
           <a href="#catalogue" className="font-medium underline">
             add products to the catalogue
           </a>{' '}
-          further down this page.
+          below.
         </p>
       </div>
     </div>
