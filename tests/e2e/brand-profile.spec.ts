@@ -18,11 +18,10 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
     page.getByRole('heading', { name: 'Brand & Store', level: 1 })
   ).toBeVisible()
   await expect(page).toHaveTitle(/Brand Intelligence/)
+  // One tab left (no Store tab in v2), so no tab row.
   await expect(
-    page
-      .getByRole('navigation', { name: 'Brand & Store' })
-      .getByRole('link', { name: 'Brand profile', exact: true })
-  ).toHaveAttribute('aria-current', 'page')
+    page.getByRole('navigation', { name: 'Brand & Store' })
+  ).toHaveCount(0)
 
   // First Identity save creates the brand the AI reads.
   const brandName = `Juniper Field ${randomUUID().slice(0, 6)}`
