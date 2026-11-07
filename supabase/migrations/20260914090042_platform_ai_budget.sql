@@ -25,7 +25,7 @@ create table private.platform_ai_usage (
 create index platform_ai_usage_date_idx on private.platform_ai_usage (usage_date, state);
 alter table private.platform_ai_budget enable row level security;
 alter table private.platform_ai_usage enable row level security;
-revoke all on private.platform_ai_budget, private.platform_ai_usage from public, anon, authenticated;
+revoke all on private.platform_ai_budget, private.platform_ai_usage from public, anon, authenticated, service_role;
 
 -- The budget row is the single lock: reserve and settle both take it first,
 -- so concurrent reservations can't overshoot the daily cap.
@@ -60,7 +60,7 @@ begin
  if r.id is null or actual is null or actual < 0 or actual > r.estimate_micro then
   raise exception 'Actual usage must fit reservation' using errcode='23514';
  end if;
- if r.state = 'reconciled' and r.actual_micro = actual then return; end if;
+ if r.state in ('reconciled', 'released') and r.actual_micro = actual then return; end if;
  if r.state <> 'reserved' then raise exception 'Usage reservation already closed' using errcode='PT409'; end if;
  update private.platform_ai_usage u
    set state = case when actual = 0 then 'released' else 'reconciled' end, actual_micro = actual
@@ -79,15 +79,22 @@ declare r private.platform_ai_usage; n integer := 0;
 begin
  if not (coalesce(auth.role(), '') = 'service_role' or private.is_operator()) then raise exception 'Access denied' using errcode='42501'; end if;
  if older_than is null or older_than < interval '10 minutes' then raise exception 'Stale window too short' using errcode='23514'; end if;
+ -- Lock first, so a worker settling the same row can't race the sweep.
+ perform 1 from private.platform_ai_budget b where b.id = 1 for update;
  for r in select * from private.platform_ai_usage u where u.state = 'reserved' and u.created_at < now() - older_than order by u.created_at loop
   perform private.settle_platform_usage(r.id, r.estimate_micro); n := n + 1;
  end loop;
  return n;
 end $$;
 
+-- Raising a paid spend ceiling is super-admin only, like package limits.
 create or replace function public.set_platform_ai_daily_cap(cap bigint) returns void language plpgsql security definer set search_path='' as $$
 begin
- if not (coalesce(auth.role(), '') = 'service_role' or private.is_operator()) then raise exception 'Access denied' using errcode='42501'; end if;
+ if not (coalesce(auth.role(), '') = 'service_role' or exists (
+   select 1 from public.platform_admins a join public.profiles p on p.id = a.profile_id
+   where a.profile_id = auth.uid() and a.active and a.role = 'super_admin' and p.status = 'active')) then
+  raise exception 'Access denied' using errcode='42501';
+ end if;
  if cap is null or cap < 1000 or cap > 1000000000 then raise exception 'Invalid cap' using errcode='23514'; end if;
  update private.platform_ai_budget b set daily_cap_micro = cap, updated_at = now() where b.id = 1;
 end $$;
@@ -106,6 +113,7 @@ end $$;
 revoke all on function public.reserve_platform_ai_usage(text,text,bigint), public.settle_platform_ai_usage(uuid,bigint),
   public.settle_stale_platform_ai_usage(interval), public.set_platform_ai_daily_cap(bigint), public.platform_ai_usage_today(),
   private.settle_platform_usage(uuid,bigint) from public, anon, authenticated;
+revoke all on function private.settle_platform_usage(uuid,bigint) from service_role;
 grant execute on function public.reserve_platform_ai_usage(text,text,bigint), public.settle_platform_ai_usage(uuid,bigint),
   public.settle_stale_platform_ai_usage(interval), public.set_platform_ai_daily_cap(bigint), public.platform_ai_usage_today() to service_role;
 -- Operators use their authenticated session; each body checks private.is_operator().
