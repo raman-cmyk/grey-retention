@@ -86,7 +86,8 @@ export function sampleShopifySnapshot({
   const returning = Math.round(total * (0.25 + 0.2 * unit(seed, 'returning')))
   const topCustomers: StoreCustomer[] = Array.from({ length: 5 }, (_, i) => {
     const orders = 9 - i - Math.round(unit(seed, `c-orders:${i}`) * 2)
-    const name = `${firstNames[(hash(`${seed}:name:${i}`) + i) % firstNames.length]} ${
+    // Five different first names (5 and 12 share no factor).
+    const name = `${firstNames[(hash(`${seed}:names`) + i * 5) % firstNames.length]} ${
       initials[hash(`${seed}:initial:${i}`) % initials.length]
     }.`
     const daysAgo = 1 + Math.round(unit(seed, `c-last:${i}`) * 20)

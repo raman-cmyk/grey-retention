@@ -50,9 +50,10 @@ export function storeSummary(snapshot: ShopifySnapshot): StoreSummary {
   }
 }
 
-/** "+12% vs the 30 days before", "−4% …", "same as …", or null. */
+/** "+12% vs the 30 days before", "−4% …", "About the same as …", or null. */
 export function changeText(percent: number | null) {
   if (percent === null) return null
-  if (percent === 0) return 'Same as the 30 days before'
+  // A change under half a percent rounds to 0: "about", not "the same".
+  if (percent === 0) return 'About the same as the 30 days before'
   return `${percent > 0 ? '+' : '−'}${Math.abs(percent)}% vs the 30 days before`
 }

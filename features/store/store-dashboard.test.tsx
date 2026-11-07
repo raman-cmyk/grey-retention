@@ -117,7 +117,7 @@ describe('StoreDashboard', () => {
         now={now}
       />
     )
-    expect(screen.getByText(/All 1 products are in stock/)).toBeVisible()
+    expect(screen.getByText(/Your 1 product is in stock/)).toBeVisible()
     rerender(
       <StoreDashboard
         data={{
@@ -138,6 +138,52 @@ describe('StoreDashboard', () => {
       />
     )
     expect(screen.getByText(/We could not load your products/)).toBeVisible()
+  })
+
+  it('says when the Shopify connection is broken, and still shows stock alerts', () => {
+    render(
+      <StoreDashboard
+        data={{
+          state: 'broken',
+          reason: 'expired',
+          stock: stockReport([product('a', 0)], new Date(now))
+        }}
+        timezone="UTC"
+        now={now}
+      />
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'The Shopify connection has expired. No orders or customers are shown.'
+    )
+    expect(
+      screen.getByRole('link', { name: 'Open Connections' })
+    ).toHaveAttribute('href', '/connections')
+    expect(screen.queryByText('Revenue · 30 days')).toBeNull()
+    expect(
+      screen.getByRole('region', { name: 'Stock alerts' })
+    ).toHaveTextContent('Out of stock: 1')
+  })
+
+  it('lets keyboard users reach the customer table and jump between alert groups', () => {
+    render(
+      <StoreDashboard
+        data={{
+          state: 'sample',
+          snapshot,
+          stock: stockReport([product('a', 0), product('b', 2)], new Date(now))
+        }}
+        timezone="UTC"
+        now={now}
+      />
+    )
+    expect(
+      screen.getByRole('region', { name: 'Top customers table' })
+    ).toHaveAttribute('tabindex', '0')
+    expect(
+      within(screen.getByRole('region', { name: 'Stock alerts' }))
+        .getAllByRole('heading', { level: 4 })
+        .map((h) => h.textContent)
+    ).toEqual(['Out of stock: 1', 'Low stock (5 or fewer left): 1'])
   })
 
   it('shows no invented numbers when orders are unavailable', () => {

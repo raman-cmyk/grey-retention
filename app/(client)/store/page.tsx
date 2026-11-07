@@ -39,13 +39,19 @@ export default async function StorePage() {
             customers, then render a live dashboard with revenue trends, top
             customers, and out-of-stock alerts.
           </p>
-          <Link
-            href="/connections"
-            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-[var(--radius-control)] bg-[var(--brand-primary)] px-4 text-sm font-medium text-[var(--on-brand)] hover:bg-[var(--brand-primary-strong)]"
-          >
-            <Link2 className="size-4" aria-hidden="true" />
-            Go to Connections
-          </Link>
+          {context.tenantRole === 'owner' ? (
+            <Link
+              href="/connections"
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-[var(--radius-control)] bg-[var(--brand-primary)] px-4 text-sm font-medium text-[var(--on-brand)] hover:bg-[var(--brand-primary-strong)]"
+            >
+              <Link2 className="size-4" aria-hidden="true" />
+              Go to Connections
+            </Link>
+          ) : (
+            <p className="text-sm text-[var(--text-muted)]">
+              Ask your workspace owner to connect Shopify.
+            </p>
+          )}
         </section>
       ) : (
         <StoreDashboard data={data} timezone={context.timezone} now={now} />

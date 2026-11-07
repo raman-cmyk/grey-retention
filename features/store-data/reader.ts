@@ -3,6 +3,7 @@ import { cache } from 'react'
 import { getServerEnvironment } from '@/lib/env/server'
 import { FakeShopifyReadProvider } from '@/lib/providers/fake-shopify-read'
 import type { ShopifySnapshot } from '@/lib/providers/shopify-read'
+import { readPages } from '@/lib/db/read-pages'
 import { createClient } from '@/lib/supabase/server'
 import { stockReport, type CatalogueProduct, type StockReport } from './stock'
 
@@ -19,26 +20,37 @@ export type StoreData =
       state: 'unavailable'
       stock: StockReport | null
     }
+  /** Shopify was never connected. */
   | { state: 'not_connected' }
+  /**
+   * Shopify was connected but is not now (disconnected, expired or in
+   * error). No orders are shown; stock alerts still come from the catalogue.
+   */
+  | {
+      state: 'broken'
+      reason: 'disconnected' | 'expired' | 'error'
+      stock: StockReport | null
+    }
   /** The connection could not be read; nothing is claimed either way. */
   | { state: 'load_failed' }
 
-/** Enough for every alert; the Brand page lists the whole catalogue. */
-const productLimit = 500
-
 type Db = NonNullable<Awaited<ReturnType<typeof createClient>>>
 
+/** The whole catalogue, page by page, so no alert is missed and totals are true. */
 async function catalogue(
   db: Db,
   tenantId: string
 ): Promise<CatalogueProduct[] | null> {
-  const { data, error } = await db
-    .from('products')
-    .select('id,title,url,stock,stock_observed_at,synthetic')
-    .eq('tenant_id', tenantId)
-    .order('title')
-    .limit(productLimit)
-  if (error) return null
+  const { data, error } = await readPages((from, to) =>
+    db
+      .from('products')
+      .select('id,title,url,stock,stock_observed_at,synthetic')
+      .eq('tenant_id', tenantId)
+      .order('title')
+      .order('id')
+      .range(from, to)
+  )
+  if (error || !data) return null
   return data.map((row) => ({
     id: row.id,
     title: row.title,
@@ -74,11 +86,18 @@ export const storeData = cache(
       .eq('provider', 'shopify')
       .maybeSingle()
     if (connection.error) return { state: 'load_failed' }
-    if (connection.data?.status !== 'connected')
-      return { state: 'not_connected' }
-    const shopDomain = connection.data.shop_domain
+    if (!connection.data) return { state: 'not_connected' }
     const products = await catalogue(db, tenantId)
     const stock = products ? stockReport(products, new Date(nowMs)) : null
+    const status = connection.data.status
+    if (status !== 'connected')
+      return {
+        state: 'broken',
+        reason:
+          status === 'disconnected' || status === 'expired' ? status : 'error',
+        stock
+      }
+    const shopDomain = connection.data.shop_domain
     if (getServerEnvironment().ADAPTER_MODE === 'real')
       return { state: 'unavailable', stock }
     const snapshot = await new FakeShopifyReadProvider().snapshot({

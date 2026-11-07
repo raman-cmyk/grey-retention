@@ -60,6 +60,8 @@ describe('sample Shopify store', () => {
     expect(snapshot.topCustomers).toHaveLength(5)
     const spent = snapshot.topCustomers.map((c) => c.spent.minor)
     expect(spent).toEqual([...spent].sort((a, b) => b - a))
+    const firsts = snapshot.topCustomers.map((c) => c.name.split(' ')[0])
+    expect(new Set(firsts).size).toBe(5)
     for (const c of snapshot.topCustomers) {
       expect(c.name).toMatch(/^[A-Z][a-z]+ [A-Z]\.$/)
       expect(c.id).toMatch(/^sample-customer-/)
@@ -141,7 +143,7 @@ describe('storeSummary', () => {
   it('says the change in plain words', () => {
     expect(changeText(12)).toBe('+12% vs the 30 days before')
     expect(changeText(-4)).toBe('−4% vs the 30 days before')
-    expect(changeText(0)).toBe('Same as the 30 days before')
+    expect(changeText(0)).toBe('About the same as the 30 days before')
     expect(changeText(null)).toBeNull()
   })
 })

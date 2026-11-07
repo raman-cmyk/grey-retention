@@ -26,7 +26,7 @@ vi.mock('@/lib/supabase/server', () => ({
               return chain
             }
             chain.order = () => chain
-            chain.limit = async () => db.products
+            chain.range = async () => db.products
             chain.maybeSingle = async () => db.connection
             return chain
           }
@@ -81,18 +81,25 @@ describe('Store reader', () => {
     expect(db.filters).toContainEqual(['products', 'tenant_id', 't1'])
   })
 
-  it('shows nothing about orders when Shopify is not connected', async () => {
-    db.connection = {
-      data: { status: 'disconnected', shop_domain: null },
-      error: null
-    }
-    expect(await storeData('t2', 'UTC', now)).toEqual({
-      state: 'not_connected'
-    })
+  it('says "not connected" only when Shopify was never connected', async () => {
     db.connection = { data: null, error: null }
     expect(await storeData('t3', 'UTC', now)).toEqual({
       state: 'not_connected'
     })
+  })
+
+  it('names a broken connection and keeps the stock alerts', async () => {
+    db.products = { data: [product], error: null }
+    for (const status of ['disconnected', 'expired', 'error', 'odd']) {
+      db.connection = { data: { status, shop_domain: null }, error: null }
+      const data = await storeData(`t-${status}`, 'UTC', now)
+      expect(data).toMatchObject({
+        state: 'broken',
+        reason: status === 'odd' ? 'error' : status
+      })
+      if (data.state === 'broken')
+        expect(data.stock?.outOfStock.map((p) => p.id)).toEqual(['p1'])
+    }
   })
 
   it('claims nothing when the connection cannot be read', async () => {

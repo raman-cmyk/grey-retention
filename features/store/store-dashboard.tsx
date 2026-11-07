@@ -84,7 +84,10 @@ function Kpis({ snapshot }: { snapshot: ShopifySnapshot }) {
     {
       name: 'Returning customers',
       value: s.returningPercent === null ? '—' : `${s.returningPercent}%`,
-      note: `${formatCount(snapshot.customers30d.returning)} of ${formatCount(snapshot.customers30d.total)} who ordered had ordered before`
+      note:
+        snapshot.customers30d.total > 0
+          ? `${formatCount(snapshot.customers30d.returning)} of ${formatCount(snapshot.customers30d.total)} who ordered had ordered before`
+          : 'No customers ordered yet'
     }
   ]
   return (
@@ -116,7 +119,9 @@ function RevenueTrend({
   const { bestDay } = storeSummary(snapshot)
   const max = Math.max(1, ...snapshot.daily.map((d) => d.revenue.minor))
   const days = snapshot.daily
-  const ticks = [0, Math.floor(days.length / 2), days.length - 1]
+  const ticks = [
+    ...new Set([0, Math.floor(days.length / 2), days.length - 1])
+  ].filter((index) => index >= 0)
   return (
     <Card
       title="Revenue trend"
@@ -129,7 +134,7 @@ function RevenueTrend({
     >
       <div
         role="img"
-        aria-label={`Store revenue per day for the last 30 days. Best day ${bestDay ? `${dayLabel(bestDay.date)}, ${formatMoney(bestDay.revenue)}` : 'none'}. The table below lists every day.`}
+        aria-label={`Store revenue per day for the last 30 days (${timezoneLabel(timezone)}). Best day ${bestDay ? `${dayLabel(bestDay.date)}, ${formatMoney(bestDay.revenue)}` : 'none'}. The table below lists every day.`}
         className="flex h-32 items-end gap-[3px]"
       >
         {days.map((day, index) => {
@@ -229,7 +234,13 @@ function TopCustomers({
       {snapshot.topCustomers.length === 0 ? (
         <p className="text-sm text-[var(--text-muted)]">No orders yet.</p>
       ) : (
-        <div className="overflow-x-auto">
+        // Focusable, so keyboard users can scroll it on a narrow screen.
+        <div
+          tabIndex={0}
+          role="region"
+          aria-label="Top customers table"
+          className="overflow-x-auto"
+        >
           <table className="w-full min-w-[22rem] text-left text-sm tabular-nums">
             <caption className="sr-only">
               Top customers by total spent, last 12 months
@@ -355,17 +366,19 @@ function StockAlerts({
       ) : clear ? (
         <p className="flex items-center gap-2 text-sm">
           <CheckCircle2 className="text-success size-4" aria-hidden="true" />
-          All {formatCount(stock.total)} products are in stock, and stock was
-          checked in the last 24 hours.
+          {stock.total === 1
+            ? 'Your 1 product is in stock'
+            : `All ${formatCount(stock.total)} products are in stock`}
+          , and stock was checked in the last 24 hours.
         </p>
       ) : (
         <div className="space-y-4">
           {stock.outOfStock.length > 0 && (
             <div>
-              <p className="flex items-center gap-2 text-sm font-semibold text-[var(--danger-ink)]">
+              <h4 className="flex items-center gap-2 text-sm font-semibold text-[var(--danger-ink)]">
                 <PackageX className="size-4" aria-hidden="true" />
                 Out of stock: {stock.outOfStock.length}
-              </p>
+              </h4>
               <ProductList
                 products={stock.outOfStock}
                 detail={() => '0 left'}
@@ -374,10 +387,10 @@ function StockAlerts({
           )}
           {stock.low.length > 0 && (
             <div>
-              <p className="flex items-center gap-2 text-sm font-semibold text-[var(--warning-ink)]">
+              <h4 className="flex items-center gap-2 text-sm font-semibold text-[var(--warning-ink)]">
                 <AlertTriangle className="size-4" aria-hidden="true" />
                 Low stock ({lowStockAt} or fewer left): {stock.low.length}
-              </p>
+              </h4>
               <ProductList
                 products={stock.low}
                 detail={(p) => `${p.stock} left`}
@@ -386,10 +399,10 @@ function StockAlerts({
           )}
           {stock.stale.length > 0 && (
             <div>
-              <p className="flex items-center gap-2 text-sm font-semibold">
+              <h4 className="flex items-center gap-2 text-sm font-semibold">
                 <Clock className="size-4" aria-hidden="true" />
                 Stock not checked in the last 24 hours: {stock.stale.length}
-              </p>
+              </h4>
               <p className="mt-1 text-xs text-[var(--text-muted)]">
                 A campaign that features one of these products can’t be
                 scheduled until its stock is checked again.
@@ -411,6 +424,12 @@ function StockAlerts({
   )
 }
 
+const brokenWords = {
+  disconnected: 'Shopify is disconnected.',
+  expired: 'The Shopify connection has expired.',
+  error: 'The Shopify connection has an error.'
+} as const
+
 /**
  * The Store dashboard (UI_REBUILD_SPEC §5): revenue trend, top customers
  * and stock alerts, in the same card language as the Dashboard. Orders and
@@ -422,7 +441,7 @@ export function StoreDashboard({
   timezone,
   now
 }: {
-  data: Extract<StoreData, { state: 'sample' | 'unavailable' }>
+  data: Extract<StoreData, { state: 'sample' | 'unavailable' | 'broken' }>
   timezone: string
   now: number
 }) {
@@ -452,6 +471,20 @@ export function StoreDashboard({
             />
             <StockAlerts stock={data.stock} timezone={timezone} now={at} />
           </div>
+        </>
+      ) : data.state === 'broken' ? (
+        <>
+          <p
+            role="status"
+            className="rounded-[var(--radius-control)] bg-[var(--warning-soft)] px-4 py-3 text-sm text-[var(--warning-ink)]"
+          >
+            {brokenWords[data.reason]} No orders or customers are shown. Stock
+            alerts below come from your catalogue.{' '}
+            <Link href="/connections" className="font-medium underline">
+              Open Connections
+            </Link>
+          </p>
+          <StockAlerts stock={data.stock} timezone={timezone} now={at} />
         </>
       ) : (
         <>

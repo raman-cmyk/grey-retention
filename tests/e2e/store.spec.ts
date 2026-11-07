@@ -92,20 +92,36 @@ test('UIR-005 the Store tab shows a store dashboard once Shopify is connected', 
   ).toHaveText(revenue ?? '')
 })
 
-test('UIR-005 staff see the store dashboard too', async ({ page }, info) => {
+test('UIR-005 staff see the Store tab but are not asked to connect', async ({
+  page
+}, info) => {
   test.skip(
     info.project.name.startsWith('mobile'),
     'Role check; one layout is enough'
   )
   await login(page, 'staff')
   await page.goto('/store')
-  await expect(
-    page
-      .getByRole('heading', {
-        name: 'Connect Shopify to see Store Intelligence'
-      })
-      .or(page.getByRole('heading', { name: 'Store Intelligence', level: 2 }))
-  ).toBeVisible()
+  const empty = page.getByRole('heading', {
+    name: 'Connect Shopify to see Store Intelligence'
+  })
+  const dashboard = page.getByRole('heading', {
+    name: 'Store Intelligence',
+    level: 2
+  })
+  // The seed workspace may or may not have Shopify connected by now.
+  await expect(empty.or(dashboard)).toBeVisible()
+  if (await empty.isVisible()) {
+    await expect(
+      page.getByText('Ask your workspace owner to connect Shopify.')
+    ).toBeVisible()
+    await expect(
+      page.getByRole('link', { name: 'Go to Connections' })
+    ).toHaveCount(0)
+  } else {
+    await expect(
+      page.getByRole('region', { name: 'Stock alerts' })
+    ).toBeVisible()
+  }
 })
 
 test('UIR-005 the Store dashboard fits 375px', async ({ page }, info) => {
