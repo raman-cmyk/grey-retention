@@ -9,6 +9,7 @@ import {
 } from '@/lib/providers/inbound-capture'
 import { aliasSlug, messageKey, senderDomain, sha256 } from './addresses'
 import { maxMessageBytes, readInboxMessage } from './mime'
+import { inboxSignal, type InboxSignal } from './signals'
 
 type Db = SupabaseClient<Database>
 
@@ -130,6 +131,7 @@ export async function pollInbox(
         rawBytes: Math.max(1, Math.min(item.size, 52_428_800))
       }
       let raw: Uint8Array | null = null
+      let signal: InboxSignal | null = null
       if (item.size <= maxMessageBytes) {
         try {
           raw = await session.fetchRaw(item.uid, maxMessageBytes)
@@ -164,6 +166,13 @@ export async function pollInbox(
           htmlPath = `${transport.mailbox}/${sha256(parsed.html)}.html`
           await store(db, htmlPath, parsed.html, 'text/html')
         }
+        signal = parsed
+          ? inboxSignal({
+              subject: parsed.subject,
+              text: parsed.text,
+              html: parsed.html
+            })
+          : null
         msg = parsed
           ? {
               ...stored,
@@ -179,6 +188,7 @@ export async function pollInbox(
           : { ...stored, kind: 'parse_failed', reason: 'unreadable' }
       }
       let recorded = await record(item, msg)
+      const refusedFirst = Boolean(recorded.error)
       // One message the database refuses (odd text, odd sender) is kept for
       // a person, so it never blocks the messages after it.
       if (
@@ -197,6 +207,31 @@ export async function pollInbox(
         duplicate?: boolean
         state?: string
       } | null
+      // INB-004: every kept email is noted, also when a retry finds it
+      // already recorded (so nothing is lost between the two calls): the
+      // text of an email waiting for a brand, and a confirmation or "you
+      // are unsubscribed" notice for the confirm worker or a person. The
+      // database acts on a signal once.
+      if (
+        !refusedFirst &&
+        msg.kind === 'message' &&
+        (signal || result?.state === 'unassigned' || result?.duplicate)
+      ) {
+        const flagged = await db.rpc('flag_inbox_message', {
+          ...lease,
+          message_key: String(msg.messageKey),
+          signal: signal?.signal,
+          confirm_url:
+            signal?.signal === 'opt_in'
+              ? (signal.confirmUrl ?? undefined)
+              : undefined,
+          text_part:
+            typeof msg.text === 'string' && msg.text
+              ? msg.text.slice(0, 10_000)
+              : undefined
+        })
+        if (flagged.error) throw flagged.error
+      }
       if (result?.duplicate) counts.duplicates++
       else if (result?.state === 'assigned') counts.recorded++
       else if (result?.state === 'unassigned') counts.unassigned++

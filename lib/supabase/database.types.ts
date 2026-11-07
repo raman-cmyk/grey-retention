@@ -1582,6 +1582,7 @@ export type Database = {
           last_error: string | null
           last_received_at: string | null
           niche: string | null
+          pending_since: string | null
           status: string
           subscription_status: string
           synthetic: boolean
@@ -1596,6 +1597,7 @@ export type Database = {
           last_error?: string | null
           last_received_at?: string | null
           niche?: string | null
+          pending_since?: string | null
           status?: string
           subscription_status?: string
           synthetic?: boolean
@@ -1610,6 +1612,7 @@ export type Database = {
           last_error?: string | null
           last_received_at?: string | null
           niche?: string | null
+          pending_since?: string | null
           status?: string
           subscription_status?: string
           synthetic?: boolean
@@ -2762,10 +2765,14 @@ export type Database = {
           images: number
           inbox_message_id: string
           kind: string
+          label_model: string | null
           label_source: string | null
           labelled_at: string | null
           links: Json
           ordinal: number
+          owner_block_type: string | null
+          owner_labelled_at: string | null
+          owner_labelled_by: string | null
           text: string
           top: number | null
           wide_images: number
@@ -2782,10 +2789,14 @@ export type Database = {
           images: number
           inbox_message_id: string
           kind: string
+          label_model?: string | null
           label_source?: string | null
           labelled_at?: string | null
           links?: Json
           ordinal: number
+          owner_block_type?: string | null
+          owner_labelled_at?: string | null
+          owner_labelled_by?: string | null
           text?: string
           top?: number | null
           wide_images?: number
@@ -2802,10 +2813,14 @@ export type Database = {
           images?: number
           inbox_message_id?: string
           kind?: string
+          label_model?: string | null
           label_source?: string | null
           labelled_at?: string | null
           links?: Json
           ordinal?: number
+          owner_block_type?: string | null
+          owner_labelled_at?: string | null
+          owner_labelled_by?: string | null
           text?: string
           top?: number | null
           wide_images?: number
@@ -2817,6 +2832,13 @@ export type Database = {
             columns: ['inbox_message_id']
             isOneToOne: false
             referencedRelation: 'inbox_messages'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_sections_owner_labelled_by_fkey'
+            columns: ['owner_labelled_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
             referencedColumns: ['id']
           }
         ]
@@ -3169,6 +3191,57 @@ export type Database = {
           }
         ]
       }
+      inbox_confirmation_clicks: {
+        Row: {
+          capture_id: string
+          created_at: string
+          final_host: string | null
+          host: string
+          http_status: number | null
+          id: string
+          inbox_message_id: string
+          outcome: string
+          updated_at: string
+        }
+        Insert: {
+          capture_id: string
+          created_at?: string
+          final_host?: string | null
+          host: string
+          http_status?: number | null
+          id?: string
+          inbox_message_id: string
+          outcome: string
+          updated_at?: string
+        }
+        Update: {
+          capture_id?: string
+          created_at?: string
+          final_host?: string | null
+          host?: string
+          http_status?: number | null
+          id?: string
+          inbox_message_id?: string
+          outcome?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'inbox_confirmation_clicks_capture_id_fkey'
+            columns: ['capture_id']
+            isOneToOne: false
+            referencedRelation: 'competitor_captures'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'inbox_confirmation_clicks_inbox_message_id_fkey'
+            columns: ['inbox_message_id']
+            isOneToOne: true
+            referencedRelation: 'inbox_messages'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       inbox_mailboxes: {
         Row: {
           created_at: string
@@ -3263,6 +3336,7 @@ export type Database = {
           alias_slug: string | null
           assets_state: string
           capture_id: string | null
+          confirm_url: string | null
           created_at: string
           extraction_version: number | null
           facts: Json | null
@@ -3286,9 +3360,11 @@ export type Database = {
           screenshot_height: number | null
           screenshot_path: string | null
           screenshot_width: number | null
+          signal: string | null
           state: string
           subject: string
           synthetic: boolean
+          text_part: string | null
           text_ratio: number | null
           transport_id: string | null
           uid: number
@@ -3298,6 +3374,7 @@ export type Database = {
           alias_slug?: string | null
           assets_state?: string
           capture_id?: string | null
+          confirm_url?: string | null
           created_at?: string
           extraction_version?: number | null
           facts?: Json | null
@@ -3321,9 +3398,11 @@ export type Database = {
           screenshot_height?: number | null
           screenshot_path?: string | null
           screenshot_width?: number | null
+          signal?: string | null
           state: string
           subject?: string
           synthetic: boolean
+          text_part?: string | null
           text_ratio?: number | null
           transport_id?: string | null
           uid: number
@@ -3333,6 +3412,7 @@ export type Database = {
           alias_slug?: string | null
           assets_state?: string
           capture_id?: string | null
+          confirm_url?: string | null
           created_at?: string
           extraction_version?: number | null
           facts?: Json | null
@@ -3356,9 +3436,11 @@ export type Database = {
           screenshot_height?: number | null
           screenshot_path?: string | null
           screenshot_width?: number | null
+          signal?: string | null
           state?: string
           subject?: string
           synthetic?: boolean
+          text_part?: string | null
           text_ratio?: number | null
           transport_id?: string | null
           uid?: number
@@ -5401,6 +5483,26 @@ export type Database = {
         Args: { event_date: string; name: string; notes: string; t: string }
         Returns: string
       }
+      admin_assign_inbox_message: {
+        Args: { brand: string; message: string }
+        Returns: string
+      }
+      admin_assign_sender: {
+        Args: { brand: string; sender: string }
+        Returns: number
+      }
+      admin_inbox_brand_counts: {
+        Args: never
+        Returns: {
+          capture_id: string
+          emails: number
+          senders: string[]
+        }[]
+      }
+      admin_label_section: {
+        Args: { block_type: string; section: string }
+        Returns: undefined
+      }
       admin_save_inbox_brand: {
         Args: {
           alias: string
@@ -5507,6 +5609,10 @@ export type Database = {
         Args: { key: string; source: string; t: string }
         Returns: string
       }
+      begin_confirmation_click: {
+        Args: { host: string; job: string; lease: string }
+        Returns: boolean
+      }
       begin_email_dispatch: {
         Args: {
           estimate: number
@@ -5540,6 +5646,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      check_pending_subscriptions: { Args: never; Returns: number }
       claim_email_file_import: {
         Args: { import: string; t: string }
         Returns: {
@@ -5938,6 +6045,17 @@ export type Database = {
           used_micro: number
         }[]
       }
+      flag_inbox_message: {
+        Args: {
+          confirm_url?: string
+          job: string
+          lease: string
+          message_key: string
+          signal?: string
+          text_part?: string
+        }
+        Returns: Json
+      }
       import_pasted_reference: {
         Args: { input: Json; request_key: string; t: string }
         Returns: string
@@ -5994,6 +6112,17 @@ export type Database = {
           t: string
         }
         Returns: string
+      }
+      record_confirmation_click: {
+        Args: {
+          final_host?: string
+          host: string
+          http_status?: number
+          job: string
+          lease: string
+          outcome: string
+        }
+        Returns: Json
       }
       record_design_upload: {
         Args: {
@@ -6158,6 +6287,10 @@ export type Database = {
       }
       resolve_fixture_outcome: {
         Args: { job: string; t: string }
+        Returns: undefined
+      }
+      resolve_ops_task: {
+        Args: { note?: string; outcome: string; task: string }
         Returns: undefined
       }
       restore_email_revision: {

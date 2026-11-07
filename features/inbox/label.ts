@@ -19,7 +19,8 @@ const maxCropBytes = 1_500_000
 /**
  * What a labeller answered, made safe to store: an unknown block type is
  * 'unsure' (with no confidence), the confidence is 0..1 with two decimals,
- * and the source is the labeller's, never 'owner'.
+ * the source is 'sample' or 'gemini' (a person's label is kept apart), and
+ * the model is a short name or nothing.
  */
 export function checkedLabel(answer: unknown): SectionLabel {
   const a = (answer ?? {}) as Partial<Record<keyof SectionLabel, unknown>>
@@ -31,7 +32,11 @@ export function checkedLabel(answer: unknown): SectionLabel {
       known && Number.isFinite(c)
         ? Math.round(Math.min(1, Math.max(0, c)) * 100) / 100
         : 0,
-    source: a.source === 'gemini' ? 'gemini' : 'sample'
+    source: a.source === 'gemini' ? 'gemini' : 'sample',
+    model:
+      typeof a.model === 'string' && a.model.trim()
+        ? a.model.trim().slice(0, 100)
+        : null
   }
 }
 
@@ -76,7 +81,7 @@ export async function labelInboxEmails(
         db
           .from('email_sections')
           .select(
-            'id,ordinal,html,text,kind,words,images,wide_images,links,image_path,block_type,label_source'
+            'id,ordinal,html,text,kind,words,images,wide_images,links,image_path,owner_block_type'
           )
           .eq('inbox_message_id', job.subject_key)
           .order('ordinal')
@@ -93,16 +98,12 @@ export async function labelInboxEmails(
         wideImages: r.wide_images,
         links: (r.links ?? []) as EmailSection['links']
       }))
-      // The owner's own label stays as it is (the database keeps it too);
-      // every other section is labelled again.
+      // Every section gets a machine label; a person's own label (kept
+      // apart in the database) wins in the email's block sequence.
       const labels: (SectionLabel & { ordinal: number })[] = []
       const sequence: string[] = []
       for (const [i, section] of sections.entries()) {
         const row = rows.data[i]!
-        if (row.label_source === 'owner' && row.block_type) {
-          sequence.push(row.block_type)
-          continue
-        }
         const label = checkedLabel(
           await labeller.label({
             sectionId: row.id,
@@ -114,7 +115,7 @@ export async function labelInboxEmails(
           })
         )
         labels.push({ ordinal: section.ordinal, ...label })
-        sequence.push(label.type)
+        sequence.push(row.owner_block_type ?? label.type)
       }
       const facts = emailFacts({
         subject: message.data.subject,
