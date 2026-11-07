@@ -408,9 +408,9 @@ The whole page is one wide card (toolbar + grid), followed by two library cards.
 
 ### Toolbar row 1
 
-- [ ] Left: round `<`, month label "November 2026" (bold), round `>`. These change `?m=`.
-- [ ] While pulling Klaviyo, show a muted italic "Syncing" next to the month label.
-- [ ] Right side, in order:
+- [x] Left: round `<`, month label "November 2026" (bold), round `>`. These change `?m=`. A `Today` link shows when another month is open, and a month picker jumps straight to a month (UIR-006).
+- [ ] While pulling Klaviyo, show a muted italic "Syncing" next to the month label. (UIR-006: nothing is pulled live yet, so the same spot says plainly where Klaviyo sends come from, e.g. "sample data, not from a real account".)
+- [ ] Right side, in order: (UIR-006 part 1: `Holidays & Events` links to `/settings#holidays` until the §6.4 modal; items 3 and 4 live in the one `+ New` menu per OWNER_JOURNEYS.md §18.10 — "Single send" and "Fill the month (sample plan)", renamed "Fill the month with AI" once the AI planner exists; the Report export is still to do.)
   1. `⬇ Report ▾` dropdown: **Excel (.xls)**, **CSV**, **Word (.doc)**, each with a file-type icon. It exports the month's plan.
   2. `🎉 Holidays & Events` (outline): opens the holidays modal (§6.4).
   3. `📅 Launch a multi-day event ✦` (outline, sparkle in the accent colour): opens the multi-day wizard (§6.5).
@@ -418,33 +418,33 @@ The whole page is one wide card (toolbar + grid), followed by two library cards.
 
 ### Toolbar row 2
 
-- [ ] Status pill group: **All status** / Draft / Assigned / Scheduled / Sent. Single select; the active pill is inverted.
-- [ ] Vertical divider.
-- [ ] Channel pill group: **All channels** / ✉ Design Email / 📄 Text Email / 💬 SMS.
-- [ ] Right: segmented `📅 Calendar | ☰ Table`.
-- [ ] Filters apply to both the calendar and table views.
+- [x] Status pill group: **All statuses** / Draft / With designer / Needs your approval / Scheduled / Sent / Missed — the one status system (§18.1, UIR-015). Single select; the active pill is inverted.
+- [x] Vertical divider.
+- [x] Channel pill group: **All channels** / ✉ Design Email / 📄 Text Email. (SMS is not a channel in this product yet, so it is not offered.)
+- [x] Right: segmented `📅 Calendar | ☰ Table`.
+- [x] Filters apply to both the calendar and table views, and live in the URL so month changes keep them.
 
 ### Calendar grid
 
-- [ ] SUN–SAT header (tiny caps), 7 columns, ~110px-tall cells, thin grid lines.
-- [ ] Day number at the top-left of each cell:
+- [x] SUN–SAT header (tiny caps), 7 columns, ~110px-tall cells, thin grid lines.
+- [x] Day number at the top-left of each cell:
   - past days: muted number + slightly tinted cell background
   - **today**: filled accent circle with the number in contrasting text
-- [ ] **Holiday chips** sit to the right of the day number: small tinted pills (civic = info, cultural/religious = accent-2, commercial = danger).
-- [ ] **Campaign chip:**
+- [ ] **Holiday chips** sit to the right of the day number: small tinted pills (civic = info, cultural/religious = accent-2, commercial = danger). (UIR-006: the workspace's own holidays and events show as chips in one tone; holidays have no type yet, and platform holidays come with §12.)
+- [x] **Campaign chip:** (colours follow the one status system, and the status is also written on the chip because colours repeat; Klaviyo chips are dashed, say "Klaviyo sample", and open the §4 Klaviyo detail page with Back to the same planner view)
   - full-width rounded pill with a channel/send icon + name
   - colour = status: Sent solid, Scheduled info-tint, Assigned to Designer warning-tint, Draft neutral
   - hover tooltip: "G | Quick eye test · Klaviyo: Sent at 17:11"
   - click opens the campaign: `/campaigns/:id` for synced ones, the draft editor for drafts
-- [ ] **Hover any cell** → muted "+ plan send" appears bottom-centre. Clicking it opens the plan-send modal for that date (§6.7).
+- [x] **Hover any cell** → muted "+ plan send" appears bottom-centre. Clicking it opens the plan-send modal for that date (§6.7). (UIR-006 part 1: owners only, today and later; it opens the first-draft page already set to that date until the §6.7 modal exists. Keyboard focus shows it too.)
   - Fix: the old app opened the wrong date when clicked.
-- [ ] Legend under the grid: ■ Sent ■ Scheduled ■ Assigned to Designer ■ Draft.
+- [x] Legend under the grid, one pill per status, plus the timezone every time is shown in.
 
 ### Table view
 
-- [ ] Same toolbar. Table of the month's campaigns, same data as the calendar.
-- [ ] Empty state (centred, muted): "☰ No campaigns this month. Plan some on the calendar view, or wait for past Klaviyo sends to surface."
-- [ ] Fix: the old app's table missed campaigns that the calendar showed, and its active Table button rendered blank.
+- [x] Same toolbar. Table of the month's campaigns, same data as the calendar (this workspace AND Klaviyo, with a From column).
+- [x] Empty state (centred, muted): "☰ No campaigns this month. Plan some on the calendar view, or wait for Klaviyo sends to appear."
+- [x] Fix: the old app's table missed campaigns that the calendar showed, and its active Table button rendered blank. (One list feeds both views; the active button is inverted and readable. Klaviyo drafts with no send time get their own "Not scheduled in Klaviyo" row.)
 
 ### 6.4 Modal "Your holidays & events" (small, ~520px)
 

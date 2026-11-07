@@ -1,7 +1,6 @@
 import 'server-only'
 import { randomUUID } from 'node:crypto'
-import { futureIso } from '@/lib/time'
-import { localDateTime } from '@/lib/local-time'
+import { draftDefaultDate } from './default-date'
 import { campaignWorkspace } from '@/features/campaigns/data'
 import { referenceWorkspace } from '@/features/references/data'
 import {
@@ -11,7 +10,9 @@ import {
 
 export async function firstDraftWorkspace(
   selectedReference?: string,
-  selectedImport?: string
+  selectedImport?: string,
+  /** A day picked on the Campaigns calendar (`?date=YYYY-MM-DD`). */
+  plannedDay?: string
 ) {
   const [workspace, references] = await Promise.all([
     campaignWorkspace(),
@@ -28,7 +29,7 @@ export async function firstDraftWorkspace(
   return {
     ...workspace,
     requestKey: randomUUID(),
-    defaultDate: localDateTime(futureIso(7), workspace.context.timezone),
+    defaultDate: draftDefaultDate(plannedDay, workspace.context.timezone),
     references: selected
       ? [
           selected,
