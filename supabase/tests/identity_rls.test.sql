@@ -1,6 +1,6 @@
 begin;
 
-select plan(18);
+select plan(19);
 
 insert into auth.users (id, email, raw_user_meta_data)
 values
@@ -59,12 +59,23 @@ select results_eq(
   'tenant owner sees only memberships in their tenant'
 );
 
+-- Members never write memberships directly (UIR-019); the Team commands do.
+select throws_ok(
+  $$ delete from public.tenant_memberships where profile_id = '10000000-0000-0000-0000-000000000001' $$,
+  '42501',
+  null,
+  'members cannot delete memberships directly'
+);
+
+-- The last-owner guard still holds for any writer, commands included.
+reset role;
 select throws_ok(
   $$ delete from public.tenant_memberships where profile_id = '10000000-0000-0000-0000-000000000001' $$,
   '23514',
   'tenant requires at least one active owner',
   'the last active owner cannot be removed'
 );
+set local role authenticated;
 
 select results_eq(
   $$ select count(*)::bigint from public.profiles $$,

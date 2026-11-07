@@ -140,7 +140,7 @@ describe('sidebar (expanded)', () => {
     )
     expect(
       nav.getByRole('link', { name: 'Holidays & Events' })
-    ).toHaveAttribute('href', '/settings#holidays')
+    ).toHaveAttribute('href', '/holidays')
     expect(nav.getByRole('link', { name: 'Connections' })).toHaveAttribute(
       'href',
       '/connections'
@@ -150,8 +150,8 @@ describe('sidebar (expanded)', () => {
       '/team'
     )
     expect(
-      nav.getByText('Request a Feature').closest('[data-soon]')
-    ).toHaveTextContent('Request a Feature — Coming soon')
+      nav.getByRole('link', { name: 'Request a Feature' })
+    ).toHaveAttribute('href', '/feedback')
     await userEvent.click(nav.getByRole('button', { name: 'Workspace' }))
     expect(cookieState().groups.workspace).toBe(false)
     await userEvent.click(nav.getByRole('button', { name: 'Agents' }))
@@ -176,6 +176,22 @@ describe('sidebar (expanded)', () => {
       .getAllByRole('link')
       .filter((link) => link.getAttribute('aria-current') === 'page')
     expect(current.map((link) => link.textContent)).toEqual([label])
+  })
+
+  it('keeps Assignments current on an open designer brief', () => {
+    location.pathname = '/designer/assignments/abc'
+    shell(undefined, {
+      navigation: designerNavigation,
+      contextLabel: 'Designer workspace'
+    })
+    const current = within(
+      screen.getByRole('navigation', {
+        name: 'Designer workspace navigation'
+      })
+    )
+      .getAllByRole('link')
+      .filter((link) => link.getAttribute('aria-current') === 'page')
+    expect(current.map((link) => link.textContent)).toEqual(['Assignments'])
   })
 
   it('opens a closed group that holds the current page, without saving it', async () => {

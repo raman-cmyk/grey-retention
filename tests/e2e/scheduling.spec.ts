@@ -3,7 +3,11 @@ import { login } from './accounts'
 test('UC-09 persisted timeout reconciliation, reschedule, cancellation and L1 send confirmation', async ({
   page
 }, info) => {
-  test.setTimeout(150_000)
+  // About 40 server actions in a row. On CI this runs 20+ minutes into the
+  // suite on one dev server, where 150s was not always enough (it ran out
+  // at the last reload). Its retries cannot pass: the first attempt has
+  // already used Synthetic 1.
+  test.setTimeout(process.env.CI ? 300_000 : 150_000)
   await login(page, info.project.name.startsWith('mobile') ? 'other' : 'owner')
   await page.goto('/campaign-agent')
   const planner = page.locator('section').filter({

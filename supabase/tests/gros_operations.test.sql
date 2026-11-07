@@ -42,7 +42,8 @@ set local role authenticated;
 select throws_ok($$select public.decide_chat_proposal('00000000-0000-4000-8000-000000000101',current_setting('test.stale')::uuid,current_setting('test.stalehash'),'confirmed')$$,'PT409',null,'any changed target revision invalidates unseen proposal');
 select public.add_holiday('00000000-0000-4000-8000-000000000101','Original fixture event','2027-01-01','Manual workspace event');
 select is((select count(*) from public.holidays),1::bigint,'custom event persists');
-select set_config('test.ticket',public.open_support_ticket('00000000-0000-4000-8000-000000000101','feedback','Original fixture feedback','Please inspect the synthetic workflow.')::text,true);
+-- A support ticket: members may set its state (feedback states are the platform team's, UIR-020).
+select set_config('test.ticket',public.open_support_ticket('00000000-0000-4000-8000-000000000101','support','Original fixture question','Please inspect the synthetic workflow.')::text,true);
 select public.reply_support('00000000-0000-4000-8000-000000000101',current_setting('test.ticket')::uuid,1,'Original fixture follow-up','in_progress');
 select is((select count(*) from public.support_messages),2::bigint,'support history persists both messages');
 select throws_ok($$select public.reply_support('00000000-0000-4000-8000-000000000101',current_setting('test.ticket')::uuid,1,'Stale','closed')$$,'PT409',null,'support thread has optimistic revisions');

@@ -119,16 +119,14 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
         defaultOpen: true,
         items: [
           { label: 'Settings', href: '/settings', icon: 'settings' },
-          // Holidays live on Settings until /holidays is built (§12).
-          {
-            label: 'Holidays & Events',
-            href: '/settings#holidays',
-            icon: 'holidays'
-          },
+          { label: 'Holidays & Events', href: '/holidays', icon: 'holidays' },
           { label: 'Connections', href: '/connections', icon: 'connections' },
           { label: 'Team', href: '/team', icon: 'team' },
-          // /feedback is built by the other lane (OWNER_JOURNEYS.md §15).
-          { label: 'Request a Feature', icon: 'feedback', soon: true }
+          {
+            label: 'Request a Feature',
+            href: '/feedback',
+            icon: 'feedback'
+          }
         ]
       },
       {
@@ -186,7 +184,9 @@ const parentAreas: Record<string, readonly string[]> = {
   // Campaigns; Klaviyo campaigns live under `/campaigns/klaviyo/:id`.
   '/campaign-agent': ['/campaigns', '/campaign-drafts', '/calendar'],
   // Brand & Store keeps its Store tab under the same sidebar item.
-  '/brand': ['/store']
+  '/brand': ['/store'],
+  // An open brief belongs to the designer's Assignments desk.
+  '/designer/dashboard': ['/designer/assignments']
 }
 
 function under(pathname: string, href: string) {
