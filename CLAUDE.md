@@ -6,7 +6,7 @@ The rules above are shared with every coding agent working in this repository (C
 
 ## What this product is
 
-Grey Retention (the AI agent inside it is called GROS) is a white-label retention-campaign operating system: Klaviyo + Shopify data, brand truth, campaign calendar, AI copy, designer handoff, owner approvals, and delivery to Klaviyo. Read `PRODUCT.md` for product truth. Current build state lives in `docs/BUILD_LEDGER.md`, `docs/BUILD_HANDOFF.md`, and `docs/PRODUCT_REVIEW.md`.
+Grey Retention (the AI agent inside it is called GROS) lets a small Klaviyo store owner set a max discount, enter discount codes and approve one batch of emails a week; strategy, calendar, copy, block-built design and scheduling run themselves, learned from competitors' emails in the Inspiration inbox. Klaviyo only (no Shopify), no designer. **Start with `docs/BUILD_BRIEF.md`**, then `docs/VISION.md` (source of truth). Build state lives in `docs/BUILD_LEDGER.md`; old plans are in `docs/archive/`.
 
 ## Stack at a glance
 
@@ -91,7 +91,9 @@ Use `/new-migration <domain> <short_name>` to get the next number.
 ## Branches and pull requests
 
 - Branch from the latest integrated commit. Name branches `claude/<short-topic>`.
-- The earlier stacked PR chain (#2 → #6) is merged into `main`. Work now follows the milestones and issues in `docs/ROADMAP.md`: one issue per PR, branch `claude/<issue-id>-<slug>` from the latest `main`, P0 issues of the current milestone first.
+- Work follows the v2 steps and lanes in `docs/BUILD_BRIEF.md` §5: one issue per PR, branch `claude/<issue-id>-<slug>` from the latest `main`. Don't start a step before the previous step's gate has passed.
+- The repo is public: never commit secrets, client names or customer data.
+- Migrations merged to `main` are applied to production automatically by the Supabase GitHub integration. Numbers must sort after the newest on `main`.
 - Merging to `main` deploys the live app (Vercel). Labels and milestones come from `.github/project/roadmap.json` via the Project sync workflow; do not edit them by hand.
 - Keep PRs to one task ID. Update the task's row in `docs/BUILD_LEDGER.md` and append a handoff entry before asking for review (`/handoff`).
 

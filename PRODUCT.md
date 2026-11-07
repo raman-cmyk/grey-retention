@@ -69,9 +69,9 @@ Admin and designer applications are separate authorization surfaces within one w
 ## Evidence on Hand
 
 - `GREY_RETENTION_DISCOVERY.md`: read-only audit of client, super-admin, public-auth, integrations, data contracts, prompts, jobs, and defects.
-- `docs/MVP_PLAN.md`: staged delivery scope and gates.
+- `docs/BUILD_BRIEF.md` and `docs/VISION.md`: the current v2 plan and product rules (supersede this file where they differ).
 - `docs/ARCHITECTURE_BLUEPRINT.md`: shared technical contracts.
-- `docs/PARALLEL_TASKS.md`: dependency-aware autonomous task prompts.
+- `docs/archive/`: earlier plans, kept as history.
 - `docs/BUILD_LEDGER.md`: durable task and integration state.
 
 No source code, official brand assets, customer testimonials, approved benchmarks, or proprietary prompt bodies are available. Future work must not fabricate them.
