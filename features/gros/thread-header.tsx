@@ -46,6 +46,8 @@ export function ThreadHeader({
   const hydrated = useHydrated()
   const [name, setName] = useState(title)
   const saved = useRef(title)
+  // Escape leaves the field without saving.
+  const cancelled = useRef(false)
   // A refused name goes back to the saved one.
   const [renamed, rename, renaming] = useActionState(
     async (previous: FormResult, data: FormData) => {
@@ -79,6 +81,10 @@ export function ThreadHeader({
           : refreshed
   const busy = renaming || sharing || removing || refreshing
   const commit = () => {
+    if (cancelled.current) {
+      cancelled.current = false
+      return
+    }
     const clean = name.trim()
     if (!clean || clean.length > 200) {
       setName(saved.current)
@@ -118,11 +124,9 @@ export function ThreadHeader({
                   event.currentTarget.blur()
                 }
                 if (event.key === 'Escape') {
+                  cancelled.current = true
                   setName(saved.current)
-                  // Blur after the name is back, so nothing is saved.
-                  requestAnimationFrame(() =>
-                    (event.target as HTMLInputElement).blur()
-                  )
+                  event.currentTarget.blur()
                 }
               }}
               className="min-w-0 flex-1 truncate rounded-[var(--radius-control)] border border-transparent bg-transparent px-2 py-1 text-base font-semibold hover:border-[var(--line)] focus:border-[var(--focus)] focus:outline-hidden"

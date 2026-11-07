@@ -1,5 +1,5 @@
 import { Notice } from '@/components/ui/workspace'
-import type { RequestContext } from '@/features/auth/domain/types'
+import type { ClientRequestContext } from '@/features/auth/domain/types'
 import { BrandCheck } from '@/features/brand-profile/brand-check'
 import { Conversation } from './conversation'
 import { grosView } from './data'
@@ -9,7 +9,7 @@ import { ThreadHeader } from './thread-header'
 import { ThreadList } from './thread-list'
 
 type Context = Pick<
-  RequestContext,
+  ClientRequestContext,
   'tenantId' | 'userId' | 'tenantRole' | 'timezone'
 >
 

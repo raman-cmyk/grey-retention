@@ -1752,6 +1752,8 @@ export type Database = {
           created_at: string
           creator_id: string
           id: string
+          last_message_at: string | null
+          message_count: number
           status: string
           tenant_id: string
           title: string
@@ -1761,6 +1763,8 @@ export type Database = {
           created_at?: string
           creator_id: string
           id?: string
+          last_message_at?: string | null
+          message_count?: number
           status?: string
           tenant_id: string
           title: string
@@ -1770,6 +1774,8 @@ export type Database = {
           created_at?: string
           creator_id?: string
           id?: string
+          last_message_at?: string | null
+          message_count?: number
           status?: string
           tenant_id?: string
           title?: string
@@ -5227,6 +5233,10 @@ export type Database = {
         Args: { allocation: number; daily: number; name: string }
         Returns: string
       }
+      delete_conversation: {
+        Args: { chat: string; t: string }
+        Returns: undefined
+      }
       delete_holiday: {
         Args: { expected_revision: number; holiday_id: string; t: string }
         Returns: undefined
@@ -5539,6 +5549,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      rename_conversation: {
+        Args: { chat: string; t: string; title: string }
+        Returns: boolean
+      }
       reply_support: {
         Args: {
           body: string
@@ -5818,6 +5832,15 @@ export type Database = {
       simulate_l2_silence: {
         Args: { candidate: string; observed_at: string; t: string }
         Returns: undefined
+      }
+      start_conversation: {
+        Args: {
+          campaign?: string
+          question: string
+          t: string
+          visibility?: string
+        }
+        Returns: string
       }
       submit_design: {
         Args: {

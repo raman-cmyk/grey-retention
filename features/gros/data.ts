@@ -1,5 +1,5 @@
 import 'server-only'
-import type { RequestContext } from '@/features/auth/domain/types'
+import type { ClientRequestContext } from '@/features/auth/domain/types'
 import { createClient } from '@/lib/supabase/server'
 import { firstName, messagePage } from './model'
 import { conversationReferenceChoices } from './reference-choices'
@@ -55,7 +55,7 @@ export type GrosView = {
   templates: number
 }
 
-type Context = Pick<RequestContext, 'tenantId' | 'userId'>
+type Context = Pick<ClientRequestContext, 'tenantId' | 'userId'>
 
 /**
  * Everything the Ask GROS screen shows, read with the member's own session
@@ -185,7 +185,7 @@ export async function grosView(
         at: m.created_at
       })),
       earlierBefore:
-        page.length > messagePage ? (shown[0]?.index ?? null) : null,
+        page.length > messagePage ? (shown[0]?.message_index ?? null) : null,
       paged: options.before !== undefined,
       proposals: (proposals.data ?? []).map((p) => {
         const payload = p.payload as Record<string, unknown> | null
