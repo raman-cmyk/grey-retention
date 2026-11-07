@@ -1,11 +1,7 @@
 import type { Metadata } from 'next'
 import { Notice } from '@/components/ui/workspace'
 import { requireRequestContext } from '@/features/auth/application/request-context'
-import {
-  NotificationPanel,
-  BudgetPanel,
-  HolidayPanel
-} from '@/features/operations/panels'
+import { NotificationPanel, BudgetPanel } from '@/features/operations/panels'
 import { PolicyPanel } from '@/features/delivery/panels'
 import { settingsPage } from '@/features/settings/data'
 import { DefaultsForm, TimezoneCard } from '@/features/settings/settings-form'
@@ -61,10 +57,6 @@ export default async function SettingsPage() {
           <BudgetPanel tenantId={ctx.tenantId} />
         )}
         <NotificationPanel />
-        {/* Sidebar "Holidays & Events" links here until /holidays exists. */}
-        <div id="holidays" className="scroll-mt-6">
-          <HolidayPanel tenantId={ctx.tenantId} owner={owner} />
-        </div>
         <PolicyPanel tenantId={ctx.tenantId} owner={owner} />
       </div>
     </div>
