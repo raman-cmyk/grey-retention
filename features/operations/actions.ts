@@ -9,20 +9,8 @@ import {
   activeTenantCookieName
 } from '@/features/auth/application/request-context'
 import { createClient } from '@/lib/supabase/server'
+// Team changes live in features/team (UIR-019).
 const schema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('membership'),
-    id: z.uuid(),
-    updated: z.iso.datetime({ offset: true }),
-    role: z.enum(['owner', 'admin', 'staff']),
-    status: z.enum(['active', 'inactive', 'invited'])
-  }),
-  z.object({
-    kind: z.literal('invite'),
-    email: z.email(),
-    role: z.enum(['admin', 'staff'])
-  }),
-  z.object({ kind: z.literal('revoke_invite'), id: z.uuid() }),
   z.object({
     kind: z.literal('open_ticket'),
     ticketKind: z.enum(['support', 'feedback']),
@@ -64,18 +52,6 @@ export async function operationAction(
   const t = ctx.kind === 'client' ? ctx.tenantId : 'tenant' in x ? x.tenant : ''
   try {
     let r
-    if (x.kind === 'membership')
-      r = await db.rpc('update_team_access', {
-        t,
-        membership: x.id,
-        expected_at: x.updated,
-        role: x.role,
-        status: x.status
-      })
-    if (x.kind === 'invite')
-      r = await db.rpc('invite_team', { t, email: x.email, role: x.role })
-    if (x.kind === 'revoke_invite')
-      r = await db.rpc('revoke_team_invite', { t, invite: x.id })
     if (x.kind === 'open_ticket')
       r = await db.rpc('open_support_ticket', {
         t,
