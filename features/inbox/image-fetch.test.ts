@@ -32,6 +32,10 @@ beforeAll(async () => {
         .writeHead(302, { location: n ? `/hop/${n - 1}` : '/a.png' })
         .end()
     }
+    if (path === '/to-other')
+      return res
+        .writeHead(302, { location: `http://other.test:${port}/a.png` })
+        .end()
     if (path === '/to-private')
       return res
         .writeHead(302, { location: `http://inside.test:${port}/a.png` })
@@ -115,6 +119,31 @@ describe('the live image fetcher', () => {
       ok: false,
       failure: 'broken'
     })
+  })
+
+  it('keeps every redirect on the allowed hosts, and says where the link ended', async () => {
+    const allowed = createImageFetcher({
+      ports: [port],
+      isReserved: () => false,
+      resolve: (_host, done) =>
+        done(null, [{ address: '127.0.0.1', family: 4 }]),
+      allowHost: (host) => host === 'shop.test',
+      userAgent: 'Mozilla/5.0 (compatible; MailConfirm/1.0)'
+    })
+    expect(
+      await allowed.fetch(`http://shop.test:${port}/hop/1`, {
+        maxBytes: 1024,
+        timeoutMs: 2_000
+      })
+    ).toMatchObject({ ok: true, url: `http://shop.test:${port}/a.png` })
+    for (const link of [
+      `http://shop.test:${port}/to-other`,
+      `http://other.test:${port}/a.png`
+    ])
+      expect(
+        await allowed.fetch(link, { maxBytes: 1024, timeoutMs: 2_000 }),
+        link
+      ).toEqual({ ok: false, failure: 'blocked' })
   })
 
   it('never reaches a private address, also not through a redirect', async () => {

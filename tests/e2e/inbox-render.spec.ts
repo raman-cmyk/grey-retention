@@ -103,3 +103,28 @@ test('INB-002 a page that tries to leave is refused rather than photographed', a
   await render(browser, job(), html).catch(() => null)
   expect(outsideHits).toEqual([])
 })
+
+test('INB-003 each marked section gets its own picture, cut where it sits', async ({
+  browser
+}) => {
+  const html = `<html><body style="margin:0"><table width="600" cellpadding="0" cellspacing="0">
+    <tr data-gr-section="1"><td style="height:120px">Header</td></tr>
+    <tr data-gr-section="2"><td style="height:400px">Hero</td></tr>
+    <tr data-gr-section="3"><td style="height:80px">Footer</td></tr>
+  </table></body></html>`
+  const shot = await render(
+    browser,
+    {
+      ...job(),
+      sections: [1, 2, 3].map((ordinal) => ({ ordinal, upload: 'unused' }))
+    },
+    html
+  )
+  expect(shot.sections.map((s) => [s.ordinal, s.top, s.height])).toEqual([
+    [1, 0, 120],
+    [2, 120, 400],
+    [3, 520, 80]
+  ])
+  for (const s of shot.sections)
+    expect(s.image.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]))
+})

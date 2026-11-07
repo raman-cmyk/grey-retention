@@ -364,14 +364,22 @@ test('INB-002 a sample inbox email keeps its images and its 600px screenshot sho
     images_failed: 0
   })
 
-  // The screenshot browser (the scheduled GitHub Actions job) photographs it.
+  // The screenshot browser (the scheduled GitHub Actions job) photographs it
+  // (on a retry, the first attempt already did).
+  const before = await admin
+    .from('inbox_messages')
+    .select('screenshot_path')
+    .eq('id', message.data!.id)
+    .single()
   const counts = await takeScreenshots({
     base: baseURL!,
     secret,
     browser,
     log: () => {}
   })
-  expect(counts.taken).toBeGreaterThanOrEqual(1)
+  expect(counts.taken).toBeGreaterThanOrEqual(
+    before.data?.screenshot_path ? 0 : 1
+  )
   expect(counts.failed).toBe(0)
   const shot = await admin
     .from('inbox_messages')
@@ -394,9 +402,48 @@ test('INB-002 a sample inbox email keeps its images and its 600px screenshot sho
   await page.goto('/library/inspirations')
   const card = page.getByAltText('Screenshot of Spring layers are here')
   await expect(card).toBeVisible()
-  expect(
-    await card.evaluate((img) => (img as HTMLImageElement).naturalWidth)
-  ).toBe(shot.data!.screenshot_width)
+  // The picture loads lazily, once on screen; its real size is the stored one.
+  await card.scrollIntoViewIfNeeded()
+  await expect
+    .poll(() =>
+      card.evaluate((img) => {
+        const picture = img as HTMLImageElement
+        return picture.complete ? picture.naturalWidth : 0
+      })
+    )
+    .toBe(shot.data!.screenshot_width)
+
+  // INB-003: the next sweep labels the email once: sections with block
+  // types, and its facts on the competitor email.
+  expect((await sweep(request, `Bearer ${secret}`)).status()).toBe(200)
+  const labelled = await admin
+    .from('inbox_messages')
+    .select('labelled_at,extraction_version,facts')
+    .eq('id', message.data!.id)
+    .single()
+  expect(labelled.data).toMatchObject({
+    extraction_version: 1,
+    facts: { subject: 'Spring layers are here', version: 1 }
+  })
+  const sections = await admin
+    .from('email_sections')
+    .select('ordinal,block_type,label_source,image_path')
+    .eq('inbox_message_id', message.data!.id)
+    .order('ordinal')
+  expect(sections.data!.length).toBeGreaterThan(0)
+  for (const s of sections.data!) {
+    expect(s.label_source).toBe('sample')
+    expect(s.image_path).toBe(`sect/${message.data!.id}/${s.ordinal}.jpg`)
+  }
+  // The sample newsletter was sent a few days ago, so its brand summary
+  // (the last 90 days) shows it.
+  await page.reload()
+  const summary = page.getByRole('list', { name: 'Brand summaries' })
+  await expect(
+    summary.getByRole('heading', { name: 'northwind.example' })
+  ).toBeVisible()
+  await expect(summary.getByText(/in the last 90 days/)).toBeVisible()
+  await expect(summary.getByText('Sample')).toBeVisible()
 
   // Another workspace cannot read it.
   const accounts = localAccounts()
@@ -405,4 +452,79 @@ test('INB-002 a sample inbox email keeps its images and its 600px screenshot sho
     .from('inbox-assets')
     .createSignedUrl(shot.data!.screenshot_path!, 60)
   expect(denied.data).toBeNull()
+})
+
+test('INB-004 an admin works the inbox queue and keeps the brand directory', async ({
+  request,
+  browser,
+  page
+}) => {
+  requireLocal()
+  // The sweeps above read the sample inbox: Cedar Lane's newsletter came
+  // without a +alias, from a sender nobody registered.
+  expect((await sweep(request, `Bearer ${localSecret()}`)).status()).toBe(200)
+
+  // A workspace owner never reaches the admin page.
+  await login(page, 'owner')
+  await page.goto('/admin/inbox')
+  await expect(page).toHaveURL(/\/admin\/login/)
+
+  const adminPage = await browser.newPage()
+  await login(adminPage, 'admin')
+  await adminPage.goto('/admin/inbox')
+  await expect(
+    adminPage.getByRole('heading', { name: 'Inspiration inbox' })
+  ).toBeVisible()
+  const queue = adminPage.getByRole('list', { name: 'Inbox tasks' })
+  const unknown = queue.getByRole('listitem').filter({
+    hasText: 'Email from an unknown sender: news.cedar-lane.example'
+  })
+  // A retry finds what an earlier attempt already did.
+  const db = serviceClient()
+  const added = await db
+    .from('competitor_captures')
+    .select('id')
+    .eq('alias_slug', 'cedar')
+    .maybeSingle()
+  const assigned = await db
+    .from('competitor_sender_domains')
+    .select('capture_id')
+    .eq('domain', 'news.cedar-lane.example')
+    .maybeSingle()
+  expect(added.error ?? assigned.error).toBeNull()
+  if (!assigned.data) await expect(unknown).toBeVisible()
+
+  // The directory gives each brand the address to subscribe with.
+  const directory = adminPage.getByRole('table', { name: 'Competitor brands' })
+  const northwind = directory
+    .getByRole('row')
+    .filter({ hasText: 'northwind.example' })
+  await expect(northwind).toContainText('capture+northwind@inbox.example')
+  await expect(northwind).toContainText('Sample')
+
+  // Add the brand, then give it the unknown sender.
+  if (!added.data) {
+    await adminPage.getByLabel('Brand name').fill('Cedar Lane')
+    await adminPage.getByLabel('Website domain').fill('cedar-lane.example')
+    await adminPage.getByLabel("+alias (the brand's short name)").fill('cedar')
+    await adminPage.getByLabel('Niche').fill('home')
+    await adminPage.getByRole('button', { name: 'Save brand' }).click()
+    await expect(adminPage.getByText('Saved Cedar Lane.')).toBeVisible()
+    await adminPage.reload()
+  }
+  if (!assigned.data) {
+    await unknown
+      .getByLabel('Brand for news.cedar-lane.example')
+      .selectOption({ label: 'Cedar Lane (cedar-lane.example)' })
+    await unknown.getByRole('button', { name: 'Assign to this brand' }).click()
+  }
+  // The task is done, so it leaves the queue; the brand now has the email
+  // and remembers the sender.
+  await expect(unknown).toHaveCount(0)
+  const cedar = directory
+    .getByRole('row')
+    .filter({ hasText: 'cedar-lane.example' })
+  await expect(cedar).toContainText('capture+cedar@inbox.example')
+  await expect(cedar).toContainText('news.cedar-lane.example')
+  await adminPage.close()
 })

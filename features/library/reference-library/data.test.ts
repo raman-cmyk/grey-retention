@@ -57,6 +57,8 @@ vi.mock('@/lib/supabase/server', () => ({
               return Object.assign(Promise.resolve(answer()), chain)
             }
             chain.order = () => chain
+            chain.not = () => chain
+            chain.gte = () => chain
             chain.limit = async (n: number) => {
               call.limit = n
               return answer()
