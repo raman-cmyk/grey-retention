@@ -157,7 +157,11 @@ test('UIR-014 Profile fits 375px and works by keyboard', async ({
       () => document.documentElement.scrollWidth <= innerWidth
     )
   ).toBe(true)
-  await page.getByLabel('Name', { exact: true }).focus()
+  // Wait until the page is interactive, so hydration cannot move the focus.
+  await page.waitForLoadState('networkidle')
+  const name = page.getByLabel('Name', { exact: true })
+  await name.click()
+  await expect(name).toBeFocused()
   // The locked email is skipped; its help links to support.
   await page.keyboard.press('Tab')
   await expect(
