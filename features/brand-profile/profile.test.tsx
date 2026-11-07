@@ -139,8 +139,9 @@ describe('BrandProfile', () => {
     expect(within(products).getByText('No products yet')).toBeVisible()
     expect(within(products).queryByText(/scrape/)).toBeNull()
     expect(
-      within(products).getByRole('link', { name: 'connect Shopify' })
+      within(products).getByRole('link', { name: 'Klaviyo connection' })
     ).toHaveAttribute('href', '/connections')
+    expect(within(products).queryByText(/Shopify/)).toBeNull()
     expect(
       within(products).getByRole('link', {
         name: 'add products to the catalogue'
@@ -252,15 +253,10 @@ describe('BrandProfile', () => {
 })
 
 describe('header pieces', () => {
-  it('marks the active tab', () => {
-    render(<BrandTabs active="store" />)
-    expect(screen.getByRole('link', { name: 'Store' })).toHaveAttribute(
-      'aria-current',
-      'page'
-    )
-    expect(
-      screen.getByRole('link', { name: 'Brand profile' })
-    ).not.toHaveAttribute('aria-current')
+  it('shows no Store tab (v2 is Klaviyo only)', () => {
+    const { container } = render(<BrandTabs active="profile" />)
+    expect(container).toBeEmptyDOMElement()
+    expect(screen.queryByRole('link', { name: 'Store' })).toBeNull()
   })
 
   it('shows the mismatch banner only when something does not match', () => {

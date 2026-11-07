@@ -184,7 +184,6 @@ const parentAreas: Record<string, readonly string[]> = {
   // Campaigns; Klaviyo campaigns live under `/campaigns/klaviyo/:id`.
   '/campaign-agent': ['/campaigns', '/campaign-drafts', '/calendar'],
   // Brand & Store keeps its Store tab under the same sidebar item.
-  '/brand': ['/store'],
   // An open brief belongs to the designer's Assignments desk.
   '/designer/dashboard': ['/designer/assignments']
 }

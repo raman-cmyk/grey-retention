@@ -32,6 +32,17 @@ function view(row: Row | undefined): ConnectionView | null {
   }
 }
 
+/**
+ * Names in the sample tools. The product fixture still uses the old
+ * `shopify` provider row internally (its job needs it), but v2 is Klaviyo
+ * only (BUILD_BRIEF D2), so the screen calls it the sample catalog.
+ */
+const fixtureName = {
+  klaviyo: 'klaviyo',
+  shopify: 'sample catalog',
+  drive: 'drive'
+} as const
+
 export default async function ConnectionsPage() {
   const { setup, context, error } = await onboardingWorkspace(),
     owner = context.tenantRole === 'owner'
@@ -47,7 +58,6 @@ export default async function ConnectionsPage() {
       <ConnectionsBoard
         owner={owner}
         klaviyo={view(rows.find((c) => c.provider === 'klaviyo'))}
-        shopify={view(rows.find((c) => c.provider === 'shopify'))}
       />
       <details className="mt-10 rounded-[var(--radius-panel)] border border-[var(--line)] p-4">
         <summary className="cursor-pointer text-sm font-medium">
@@ -55,7 +65,9 @@ export default async function ConnectionsPage() {
         </summary>
         <p className="mt-2 text-xs text-[var(--text-muted)]">
           Test controls for the sample data used before live connections are
-          switched on. They never contact Klaviyo, Shopify or Google Drive.
+          switched on. They never contact Klaviyo or Google Drive. “Sample
+          catalog” fills the product list until the live Klaviyo catalog is
+          connected.
         </p>
         <div className="mt-6 space-y-6">
           <ReadinessPanel setup={setup} />
@@ -63,7 +75,7 @@ export default async function ConnectionsPage() {
             {(['klaviyo', 'shopify', 'drive'] as const).map((provider) => {
               const c = setup.connections.find((c) => c.provider === provider)
               return (
-                <Panel key={provider} title={provider}>
+                <Panel key={provider} title={fixtureName[provider]}>
                   <p className="mb-3 text-sm">
                     {c?.status ?? 'disconnected'} · Fixture only
                   </p>
@@ -80,7 +92,9 @@ export default async function ConnectionsPage() {
                       >
                         <input type="hidden" name="kind" value="connection" />
                         <input type="hidden" name="provider" value={provider} />
-                        <Field label={`${provider} fixture status`}>
+                        <Field
+                          label={`${fixtureName[provider]} fixture status`}
+                        >
                           <select
                             name="status"
                             className={controlClass}
@@ -110,7 +124,7 @@ export default async function ConnectionsPage() {
                           <input type="hidden" name="folder" value="" />
                         )}
                         <SubmitButton variant="secondary">
-                          Save {provider} fixture
+                          Save {fixtureName[provider]} fixture
                         </SubmitButton>
                       </ActionForm>
                       {provider !== 'klaviyo' && c?.status === 'connected' && (
@@ -127,7 +141,7 @@ export default async function ConnectionsPage() {
                           />
                           <input type="hidden" name="sourceText" value="" />
                           <SubmitButton>
-                            Queue {provider} fixture sync
+                            Queue {fixtureName[provider]} fixture sync
                           </SubmitButton>
                         </ActionForm>
                       )}

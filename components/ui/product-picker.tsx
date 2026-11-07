@@ -25,7 +25,7 @@ export function ProductPicker({
   state = 'ready',
   sample = false,
   noneLabel = '— no default (let AI pick) —',
-  emptyMessage = 'No products yet. Connect Shopify to choose one.',
+  emptyMessage = 'No products yet. They will come from your Klaviyo catalog.',
   maxHeight = 300
 }: {
   label: string
