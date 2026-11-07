@@ -95,7 +95,11 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
       { label: 'Brand & Store', href: '/brand', icon: 'brand' },
       { label: 'Campaigns', href: '/campaign-agent', icon: 'campaigns' },
       { label: `Ask ${assistantName}`, href: '/gros', icon: 'gros' },
-      { label: 'Inspiration', href: '/competitor-agent', icon: 'inspirations' },
+      {
+        label: 'Inspiration',
+        href: '/library/inspirations',
+        icon: 'inspirations'
+      },
       { label: 'Support', href: '/support', icon: 'support' }
     ],
     groups: [
@@ -153,7 +157,6 @@ export const adminNavigation: ShellNavigation = {
   primary: [
     { label: 'Overview', href: '/admin/dashboard', icon: 'admin-overview' },
     { label: 'Clients', href: '/admin/clients', icon: 'clients' },
-    { label: 'Designers', href: '/admin/designers', icon: 'designers' },
     { label: 'Prompt engine', href: '/admin/prompts', icon: 'prompts' },
     { label: 'Templates', href: '/admin/templates', icon: 'templates' },
     { label: 'Operations', href: '/admin/operations', icon: 'operations' }
@@ -185,6 +188,8 @@ const parentAreas: Record<string, readonly string[]> = {
   '/campaign-agent': ['/campaigns', '/campaign-drafts', '/calendar'],
   // Brand & Store keeps its Store tab under the same sidebar item.
   '/brand': ['/store'],
+  // The older competitor pages are part of Inspiration (UIR-009).
+  '/library/inspirations': ['/competitor-agent'],
   // An open brief belongs to the designer's Assignments desk.
   '/designer/dashboard': ['/designer/assignments']
 }

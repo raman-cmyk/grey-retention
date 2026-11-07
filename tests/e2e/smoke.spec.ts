@@ -47,11 +47,6 @@ test('authenticated identities remain separated by role surface', async ({
       surface: 'admin',
       path: '/admin/dashboard',
       heading: 'Platform operations'
-    },
-    {
-      surface: 'designer',
-      path: '/designer/dashboard',
-      heading: 'Assignment desk'
     }
   ] as const
 
@@ -70,4 +65,19 @@ test('authenticated identities remain separated by role surface', async ({
 
   const invalid = await page.request.get('/api/v1/me?surface=unknown')
   expect(invalid.status()).toBe(400)
+})
+
+test('RET-001 the designer workflow is retired (decision D3)', async ({
+  page
+}) => {
+  for (const path of [
+    '/designer/login',
+    '/designer/dashboard',
+    '/designer/help',
+    '/designer/assignments/33333333-3333-4333-8333-333333333333'
+  ])
+    expect((await page.request.get(path)).status(), path).toBe(404)
+  await login(page, 'admin')
+  expect((await page.request.get('/admin/designers')).status()).toBe(404)
+  await expect(page.getByRole('link', { name: 'Designers' })).toHaveCount(0)
 })

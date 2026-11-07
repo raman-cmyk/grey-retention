@@ -684,22 +684,24 @@ Right panel:
 
 ## 9. Competitor Agent `/library/inspirations`
 
-- [ ] `← Back to Campaign Agent`.
-- [ ] H1 "Competitor Inspirations" + "Real newsletters from the competitors you track — browse them here, pick one as a reference design when planning a campaign."
-- [ ] Big counter on the right: `41` / tiny "EMAILS".
-- [ ] **Card "🔍 Your competitor domains (6/10)":**
+- [x] `← Back to Campaign Agent`.
+- [x] H1 "Competitor Inspirations" + "Real newsletters from the competitors you track — browse them here, pick one as a reference design when planning a campaign."
+- [x] Big counter on the right: `41` / tiny "EMAILS".
+- [x] **Card "🔍 Your competitor domains (6/10)":**
   - explainer "Add a brand you want to learn from. Our system auto subscribes to their newsletter and starts showing you designs once the competitor begins sending us emails — their latest 20 sends show up below and in the Competitor tab of every design picker."
   - on the right: input placeholder "brand.com" + primary `+ Track`
   - domain chips: domain (bold) + status pill (**LIVE** success / **PENDING** warning) + `✕` remove
   - limit 10: disable Track at 10/10
   - validate that the input is a domain
-- [ ] **Info tip bar:** 💡 "**To build from one of these:** open a draft or the calendar planner and pick it from the _Competitor_ tab — the agent extracts its copy strategy and layout for you." + `Open calendar →` on the right.
-- [ ] SHOW pills: All / Email Design / Email Text.
-- [ ] 5-column grid of cards:
+- [x] **Info tip bar:** 💡 "**To build from one of these:** open a draft or the calendar planner and pick it from the _Competitor_ tab — the agent extracts its copy strategy and layout for you." + `Open calendar →` on the right.
+- [x] SHOW pills: All / Email Design / Email Text.
+- [x] 5-column grid of cards:
   - live render (scrollable inside, ~500px)
   - footer: domain pill (`FITMINT.US`), type pill, date on the right, subject (bold, 2 lines), sender brand name (muted)
   - hover: accent border + "✦ Use this design", which opens the "Send on which day?" dialog (§6.8)
-- [ ] `Load more (26 more)`.
+- [x] `Load more (26 more)`.
+
+> **As built (UIR-009 + UIR-022, cloud lane):** `/library/inspirations` is the sidebar's **Inspiration** (the older `/competitor-agent` stays as its advanced page). The back link says "Back to Campaigns" (the planner's new name). The domains card tracks up to 10 domains (the database refuses an 11th), validates the domain, shows LIVE / PENDING / ERROR with "Usually 1–7 days after their next send" for PENDING, and asks "Stop tracking <domain>? Its emails will disappear from your library." before removing one. **Sample mode:** only fictional `.example` domains can be tracked, and their emails are sample emails; the card says so. The library below is the shared **reference library** (UIR-022): tabs **Competitors / Yours / Best picks** with the same counts everywhere, search, SHOW (All / Email Design / Email Text, classified by images per word), "Filter by domain" chips, a responsive grid (1–5 columns) of sandboxed previews with links off, 20 cards per "Load more", and an in-page preview. The render is not a click target; the card footer opens the preview. "✦ Use this design" starts a new draft with the reference chosen (`/first-draft?reference=…`); the planner's "Send on which day?" dialog (§6.8) is the browser lane's and will reuse the same component in pick mode. Best picks are empty until the platform team curates them ("No best picks uploaded yet.").
 
 ---
 
