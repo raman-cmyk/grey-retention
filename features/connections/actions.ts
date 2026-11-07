@@ -5,6 +5,7 @@ import type { FormResult } from '@/components/ui/action-form'
 import { createClient } from '@/lib/supabase/server'
 import { checkKlaviyoKey } from './credentials'
 import { connectionVerifier, type AccountReport } from './verifier'
+import { connectLiveKlaviyo, klaviyoMode } from './live-klaviyo'
 import { isKnownTimezone } from '@/lib/brand-time'
 
 const notLive = 'Live connections are not switched on yet. Nothing was changed.'
@@ -104,6 +105,9 @@ export async function connectKlaviyo(
   _state: FormResult,
   form: FormData
 ): Promise<FormResult> {
+  // KLV-001: a hosted app checks the key with Klaviyo itself and keeps it,
+  // encrypted; a local one keeps the sample connection below.
+  if (klaviyoMode() === 'live') return connectLive(form)
   const session = await ownerSession()
   if ('error' in session) return { error: session.error }
   const key = checkKlaviyoKey(form.get('apiKey'))
@@ -139,4 +143,31 @@ export async function connectKlaviyo(
       ? 'Klaviyo connected.'
       : 'Klaviyo connected with sample data. Nothing was sent to Klaviyo.'
   }
+}
+
+async function connectLive(form: FormData): Promise<FormResult> {
+  const context = await requireRequestContext('client')
+  if (context.tenantRole !== 'owner')
+    return { error: 'Ask your workspace owner to connect accounts.' }
+  const db = await createClient()
+  if (!db || process.env.AUTH_MODE === 'demo')
+    return { error: 'Please sign in again to connect accounts.' }
+  const key = checkKlaviyoKey(form.get('apiKey'))
+  if (!key.ok) return { error: key.error }
+  const brand = await db
+    .from('brand_profiles')
+    .select('brand_name')
+    .eq('tenant_id', context.tenantId)
+    .maybeSingle()
+  const result = await connectLiveKlaviyo(db, {
+    tenantId: context.tenantId,
+    apiKey: String(form.get('apiKey')).trim(),
+    hint: key.value.hint,
+    brandName: brand.data?.brand_name || context.tenantName
+  })
+  if (result.message) {
+    revalidatePath('/connections')
+    revalidatePath('/dashboard')
+  }
+  return result
 }

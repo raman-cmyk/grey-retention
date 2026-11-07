@@ -223,3 +223,45 @@ describe('Shopify (v2 is Klaviyo only)', () => {
     expect('connectShopify' in actions).toBe(false)
   })
 })
+
+describe('connectKlaviyo with live Klaviyo (KLV-001)', () => {
+  it('never calls Klaviyo in sample mode, even on a hosted database', async () => {
+    vi.stubEnv(
+      'NEXT_PUBLIC_SUPABASE_URL',
+      'https://example-project.supabase.co'
+    )
+    vi.stubEnv('KLAVIYO_MODE', '')
+    const network = vi.fn()
+    vi.stubGlobal('fetch', network)
+    expect((await connectKlaviyo({}, form({ apiKey: key }))).message).toMatch(
+      /sample data/
+    )
+    expect(network).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it('in live mode, refuses staff, demo sign-in and a bad key before any call', async () => {
+    vi.stubEnv('KLAVIYO_MODE', 'live')
+    const network = vi.fn()
+    vi.stubGlobal('fetch', network)
+    expect(
+      (await connectKlaviyo({}, form({ apiKey: 'AbC123' }))).error
+    ).toContain('public site ID')
+    vi.stubEnv('AUTH_MODE', 'demo')
+    expect((await connectKlaviyo({}, form({ apiKey: key }))).error).toMatch(
+      /sign in again/
+    )
+    vi.stubEnv('AUTH_MODE', 'supabase')
+    auth.requireRequestContext.mockResolvedValue({
+      tenantId: tenant,
+      tenantRole: 'staff',
+      tenantName: 'x'
+    })
+    expect(await connectKlaviyo({}, form({ apiKey: key }))).toEqual({
+      error: 'Ask your workspace owner to connect accounts.'
+    })
+    expect(network).not.toHaveBeenCalled()
+    expect(rpc).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+})

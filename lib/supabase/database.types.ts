@@ -3374,6 +3374,79 @@ export type Database = {
           }
         ]
       }
+      klaviyo_credentials: {
+        Row: {
+          api_revision: string
+          checked_at: string
+          created_at: string
+          key_hint: string
+          klaviyo_account_id: string
+          later_missing: string[]
+          secret_id: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          api_revision: string
+          checked_at?: string
+          created_at?: string
+          key_hint: string
+          klaviyo_account_id: string
+          later_missing?: string[]
+          secret_id: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          api_revision?: string
+          checked_at?: string
+          created_at?: string
+          key_hint?: string
+          klaviyo_account_id?: string
+          later_missing?: string[]
+          secret_id?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'klaviyo_credentials_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      klaviyo_key_checks: {
+        Row: {
+          checked_at: string
+          id: number
+          tenant_id: string
+        }
+        Insert: {
+          checked_at?: string
+          id?: never
+          tenant_id: string
+        }
+        Update: {
+          checked_at?: string
+          id?: never
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'klaviyo_key_checks_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       l2_silence_candidates: {
         Row: {
           brand_revision: number
@@ -5426,6 +5499,7 @@ export type Database = {
         }
         Returns: string
       }
+      begin_klaviyo_key_check: { Args: { t: string }; Returns: undefined }
       change_fixture_profile_evidence: {
         Args: {
           bounce: boolean
@@ -5524,6 +5598,22 @@ export type Database = {
       confirm_fixture_sent: {
         Args: { delivery: string; observed_at: string; t: string }
         Returns: undefined
+      }
+      connect_klaviyo_live: {
+        Args: {
+          account_country?: string
+          account_currency?: string
+          account_label: string
+          account_timezone?: string
+          account_website?: string
+          api_key: string
+          api_revision: string
+          credential_hint: string
+          klaviyo_account_id: string
+          later_missing?: string[]
+          t: string
+        }
+        Returns: number
       }
       connect_sample_provider: {
         Args: {
@@ -5859,6 +5949,7 @@ export type Database = {
         }
         Returns: string
       }
+      klaviyo_api_key: { Args: { t: string }; Returns: string }
       my_pending_invites: {
         Args: never
         Returns: {

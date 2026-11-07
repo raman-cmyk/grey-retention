@@ -9,6 +9,7 @@ import {
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { TextField } from '@/components/ui/text-field'
 import { onboardingWorkspace } from '@/features/onboarding/data'
+import { klaviyoMode } from '@/features/connections/live-klaviyo'
 import { onboardingAction } from '@/features/onboarding/actions'
 import { ReadinessPanel, SetupJobs } from '@/features/onboarding/panels'
 import {
@@ -27,7 +28,8 @@ function view(row: Row | undefined): ConnectionView | null {
     status: row.status,
     accountLabel: row.account_label ?? null,
     credentialHint: row.credential_hint ?? null,
-    templateCount: row.template_count ?? null
+    templateCount: row.template_count ?? null,
+    mode: row.mode === 'live' ? 'live' : 'fixture'
   }
 }
 
@@ -48,6 +50,11 @@ export default async function ConnectionsPage() {
   if (!setup)
     return <Notice error>{error ?? 'Connection details unavailable.'}</Notice>
   const rows = setup.connections
+  const live = klaviyoMode() === 'live'
+  // With live Klaviyo on, the sample tools never touch the Klaviyo connection.
+  const tools = live
+    ? (['shopify', 'drive'] as const)
+    : (['klaviyo', 'shopify', 'drive'] as const)
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeading
@@ -56,6 +63,7 @@ export default async function ConnectionsPage() {
       />
       <ConnectionsBoard
         owner={owner}
+        live={live}
         klaviyo={view(rows.find((c) => c.provider === 'klaviyo'))}
       />
       <details className="mt-10 rounded-[var(--radius-panel)] border border-[var(--line)] p-4">
@@ -71,7 +79,7 @@ export default async function ConnectionsPage() {
         <div className="mt-6 space-y-6">
           <ReadinessPanel setup={setup} />
           <div className="grid gap-5 lg:grid-cols-3">
-            {(['klaviyo', 'shopify', 'drive'] as const).map((provider) => {
+            {tools.map((provider) => {
               const c = setup.connections.find((c) => c.provider === provider)
               return (
                 <Panel key={provider} title={fixtureName[provider]}>

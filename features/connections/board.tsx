@@ -13,10 +13,14 @@ export type ConnectionView = {
   accountLabel: string | null
   credentialHint: string | null
   templateCount: number | null
+  /** 'live' once a real key was checked with Klaviyo (KLV-001). */
+  mode?: 'fixture' | 'live'
 }
 
 const sampleNote =
   'Sample mode: we check the format only. Nothing is sent to the provider, and the full key is never saved — only the masked hint.'
+const liveNote =
+  'We check this key with Klaviyo. We only read your Klaviyo data. The key is stored encrypted.'
 const secretProps = {
   type: 'password',
   autoComplete: 'off',
@@ -136,21 +140,25 @@ function Disclosure({
 
 function KlaviyoCard({
   connection,
-  owner
+  owner,
+  live
 }: {
   connection: ConnectionView | null
   owner: boolean
+  live: boolean
 }) {
   const [swapping, setSwapping] = useState(false)
   const connected = connection?.status === 'connected'
-  const showKeyField = owner && (!connected || swapping)
+  // With live Klaviyo on, a sample connection still waits for a real key.
+  const sampleOnly = live && connected && connection?.mode !== 'live'
+  const showKeyField = owner && (!connected || swapping || sampleOnly)
   return (
     <Card>
       <div className="flex items-start justify-between gap-3">
         <Tile>
           <Mail className="size-5" />
         </Tile>
-        {connected && connection?.templateCount != null && (
+        {connected && !live && connection?.templateCount != null && (
           <StatusMark tone="success">
             Pulled {connection.templateCount} sample templates
           </StatusMark>
@@ -173,8 +181,15 @@ function KlaviyoCard({
               connection={connection}
               action="Paste a new private API key to reconnect."
             />
-            {connected && <ConnectedSummary connection={connection} />}
-            {connected && (
+            {connected && !sampleOnly && (
+              <ConnectedSummary connection={connection} />
+            )}
+            {sampleOnly && (
+              <p className="text-sm">
+                Sample connection. Paste your real key to connect your Klaviyo.
+              </p>
+            )}
+            {connected && !sampleOnly && (
               <Disclosure
                 open={swapping}
                 controls="klaviyo-key-swap"
@@ -208,7 +223,9 @@ function KlaviyoCard({
                     existing key stays in place.
                   </p>
                 )}
-                <p className="text-xs text-[var(--text-muted)]">{sampleNote}</p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  {live ? liveNote : sampleNote}
+                </p>
               </div>
             )}
           </ActionForm>
@@ -246,7 +263,9 @@ function ConnectedSummary({
           .join(' · ') || 'Sample account'}
       </p>
       <p className="text-center text-xs text-[var(--text-muted)]">
-        Sample data — nothing is sent to Klaviyo.
+        {connection?.mode === 'live'
+          ? 'Live: we only read your Klaviyo data. Nothing is sent to Klaviyo yet.'
+          : 'Sample data — nothing is sent to Klaviyo.'}
       </p>
     </>
   )
@@ -258,14 +277,17 @@ function ConnectedSummary({
  */
 export function ConnectionsBoard({
   klaviyo,
-  owner
+  owner,
+  live = false
 }: {
   klaviyo: ConnectionView | null
   owner: boolean
+  /** Klaviyo keys are checked with Klaviyo (KLAVIYO_MODE=live). */
+  live?: boolean
 }) {
   return (
     <div className="max-w-xl">
-      <KlaviyoCard connection={klaviyo} owner={owner} />
+      <KlaviyoCard connection={klaviyo} owner={owner} live={live} />
     </div>
   )
 }
