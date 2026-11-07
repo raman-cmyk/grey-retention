@@ -17,6 +17,7 @@ Do not use:
 - Decorative gradients, glow or gradient backgrounds.
 - Emoji in place of real interface icons. Use one consistent icon family and accessible labels.
 - Meaningless badges, decorative pills or labels, or redundant status tags.
+- **Instrument Serif** (explicitly banned by the owner). Do not use it in the app, prototypes or proposed brand typography.
 - Excessive italic emphasis, decorative serif styling, negative kerning, excessive monospace or all-caps subtitles.
 - Overly detailed interfaces or diagrams; decorative section numbering, eyebrow labels, code breadcrumbs, dithering, ASCII art or squiggles.
 - Excessive dividers, bordered content containers, card-inside-card layouts, or a proliferation of near-identical colors/opacities.
@@ -26,7 +27,7 @@ Do not use:
 
 Use borders only where needed to make controls, focus or genuine information boundaries understandable; no decorative boxes around every section. Preserve contrast, visible keyboard focus, labels and error clarity.
 
-Two dictated terms are unclear: “HPicker AI” and “interman serif”; “Fallible one” is also unclear. Preserve these as unresolved references rather than inventing a named component/font ban. The unambiguous restrictions above apply now.
+The owner clarified that “interman serif” meant **Instrument Serif**, which is banned. “HPicker AI” remains unidentified (the owner does not know the intended reference); “Fallible one” is also unclear. Do not invent a specific component ban from those unidentified phrases.
 
 ## Hard motion rules
 
