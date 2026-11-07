@@ -364,14 +364,22 @@ test('INB-002 a sample inbox email keeps its images and its 600px screenshot sho
     images_failed: 0
   })
 
-  // The screenshot browser (the scheduled GitHub Actions job) photographs it.
+  // The screenshot browser (the scheduled GitHub Actions job) photographs it
+  // (on a retry, the first attempt already did).
+  const before = await admin
+    .from('inbox_messages')
+    .select('screenshot_path')
+    .eq('id', message.data!.id)
+    .single()
   const counts = await takeScreenshots({
     base: baseURL!,
     secret,
     browser,
     log: () => {}
   })
-  expect(counts.taken).toBeGreaterThanOrEqual(1)
+  expect(counts.taken).toBeGreaterThanOrEqual(
+    before.data?.screenshot_path ? 0 : 1
+  )
   expect(counts.failed).toBe(0)
   const shot = await admin
     .from('inbox_messages')
@@ -394,9 +402,48 @@ test('INB-002 a sample inbox email keeps its images and its 600px screenshot sho
   await page.goto('/library/inspirations')
   const card = page.getByAltText('Screenshot of Spring layers are here')
   await expect(card).toBeVisible()
-  expect(
-    await card.evaluate((img) => (img as HTMLImageElement).naturalWidth)
-  ).toBe(shot.data!.screenshot_width)
+  // The picture loads lazily, once on screen; its real size is the stored one.
+  await card.scrollIntoViewIfNeeded()
+  await expect
+    .poll(() =>
+      card.evaluate((img) => {
+        const picture = img as HTMLImageElement
+        return picture.complete ? picture.naturalWidth : 0
+      })
+    )
+    .toBe(shot.data!.screenshot_width)
+
+  // INB-003: the next sweep labels the email once: sections with block
+  // types, and its facts on the competitor email.
+  expect((await sweep(request, `Bearer ${secret}`)).status()).toBe(200)
+  const labelled = await admin
+    .from('inbox_messages')
+    .select('labelled_at,extraction_version,facts')
+    .eq('id', message.data!.id)
+    .single()
+  expect(labelled.data).toMatchObject({
+    extraction_version: 1,
+    facts: { subject: 'Spring layers are here', version: 1 }
+  })
+  const sections = await admin
+    .from('email_sections')
+    .select('ordinal,block_type,label_source,image_path')
+    .eq('inbox_message_id', message.data!.id)
+    .order('ordinal')
+  expect(sections.data!.length).toBeGreaterThan(0)
+  for (const s of sections.data!) {
+    expect(s.label_source).toBe('sample')
+    expect(s.image_path).toBe(`sect/${message.data!.id}/${s.ordinal}.jpg`)
+  }
+  // The sample newsletter was sent a few days ago, so its brand summary
+  // (the last 90 days) shows it.
+  await page.reload()
+  const summary = page.getByRole('list', { name: 'Brand summaries' })
+  await expect(
+    summary.getByRole('heading', { name: 'northwind.example' })
+  ).toBeVisible()
+  await expect(summary.getByText(/in the last 90 days/)).toBeVisible()
+  await expect(summary.getByText('Sample')).toBeVisible()
 
   // Another workspace cannot read it.
   const accounts = localAccounts()

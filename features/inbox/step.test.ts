@@ -11,6 +11,8 @@ const db = {} as Db
 const ready = { ready: true as const, transport: fakeInboundTransport() }
 const none = { emails: 0, stored: 0, failed: 0, retried: 0 }
 const assets = vi.fn(async () => none)
+const nothingLabelled = { emails: 0, sections: 0, retried: 0 }
+const label = vi.fn(async () => nothingLabelled)
 
 describe('runInboxStep', () => {
   afterEach(() => vi.restoreAllMocks())
@@ -34,12 +36,13 @@ describe('runInboxStep', () => {
 
   it('returns the poll and says whether the mail is sample mail', async () => {
     const poll = vi.fn(async () => ({ state: 'busy' as const }))
-    expect(await runInboxStep(db, ready, { poll, assets })).toEqual({
+    expect(await runInboxStep(db, ready, { poll, assets, label })).toEqual({
       transport: 'fake',
       ready: true,
       synthetic: true,
       run: { state: 'busy' },
-      assets: none
+      assets: none,
+      labels: nothingLabelled
     })
   })
 
@@ -48,7 +51,7 @@ describe('runInboxStep', () => {
     const poll = vi.fn(async () => {
       throw Object.assign(new Error('secret detail'), { code: 'PGRST301' })
     }) as unknown as typeof pollInbox
-    const step = await runInboxStep(db, ready, { poll, assets })
+    const step = await runInboxStep(db, ready, { poll, assets, label })
     expect(step).toMatchObject({ run: { state: 'failed', code: 'PGRST301' } })
     expect(JSON.stringify(warn.mock.calls)).not.toContain('secret detail')
   })
@@ -58,7 +61,12 @@ describe('runInboxStep', () => {
     const poll = vi.fn(
       () => new Promise<never>(() => {})
     ) as unknown as typeof pollInbox
-    const step = await runInboxStep(db, ready, { poll, assets, timeoutMs: 20 })
+    const step = await runInboxStep(db, ready, {
+      poll,
+      assets,
+      label,
+      timeoutMs: 20
+    })
     expect(step).toMatchObject({
       run: { state: 'failed', code: 'inbox_step_timeout' }
     })
@@ -89,11 +97,11 @@ describe('runInboxStep', () => {
     const keep = vi.fn(async () => {
       throw Object.assign(new Error('x'), { code: 'PGRST000' })
     })
-    expect(await runInboxStep(db, ready, { poll, assets: keep })).toMatchObject(
-      {
-        run: { state: 'busy' },
-        assets: { state: 'failed', code: 'PGRST000' }
-      }
-    )
+    expect(
+      await runInboxStep(db, ready, { poll, assets: keep, label })
+    ).toMatchObject({
+      run: { state: 'busy' },
+      assets: { state: 'failed', code: 'PGRST000' }
+    })
   })
 })

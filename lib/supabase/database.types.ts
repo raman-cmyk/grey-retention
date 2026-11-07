@@ -1622,6 +1622,7 @@ export type Database = {
           created_at: string
           external_id: string
           extraction_version: number | null
+          facts: Json | null
           html_path: string | null
           id: string
           inbox_message_id: string | null
@@ -1643,6 +1644,7 @@ export type Database = {
           created_at?: string
           external_id: string
           extraction_version?: number | null
+          facts?: Json | null
           html_path?: string | null
           id?: string
           inbox_message_id?: string | null
@@ -1664,6 +1666,7 @@ export type Database = {
           created_at?: string
           external_id?: string
           extraction_version?: number | null
+          facts?: Json | null
           html_path?: string | null
           id?: string
           inbox_message_id?: string | null
@@ -2747,6 +2750,77 @@ export type Database = {
           }
         ]
       }
+      email_sections: {
+        Row: {
+          block_type: string | null
+          confidence: number | null
+          created_at: string
+          height: number | null
+          html: string
+          id: string
+          image_path: string | null
+          images: number
+          inbox_message_id: string
+          kind: string
+          label_source: string | null
+          labelled_at: string | null
+          links: Json
+          ordinal: number
+          text: string
+          top: number | null
+          wide_images: number
+          words: number
+        }
+        Insert: {
+          block_type?: string | null
+          confidence?: number | null
+          created_at?: string
+          height?: number | null
+          html: string
+          id?: string
+          image_path?: string | null
+          images: number
+          inbox_message_id: string
+          kind: string
+          label_source?: string | null
+          labelled_at?: string | null
+          links?: Json
+          ordinal: number
+          text?: string
+          top?: number | null
+          wide_images?: number
+          words: number
+        }
+        Update: {
+          block_type?: string | null
+          confidence?: number | null
+          created_at?: string
+          height?: number | null
+          html?: string
+          id?: string
+          image_path?: string | null
+          images?: number
+          inbox_message_id?: string
+          kind?: string
+          label_source?: string | null
+          labelled_at?: string | null
+          links?: Json
+          ordinal?: number
+          text?: string
+          top?: number | null
+          wide_images?: number
+          words?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'email_sections_inbox_message_id_fkey'
+            columns: ['inbox_message_id']
+            isOneToOne: false
+            referencedRelation: 'inbox_messages'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       email_sources: {
         Row: {
           created_at: string
@@ -3190,15 +3264,20 @@ export type Database = {
           assets_state: string
           capture_id: string | null
           created_at: string
+          extraction_version: number | null
+          facts: Json | null
           from_address: string | null
           from_domain: string | null
           html_path: string | null
           id: string
           images_failed: number
           images_stored: number
+          labelled_at: string | null
           mailbox_id: string
+          marked_html_path: string | null
           message_key: string
           method: string | null
+          preheader: string | null
           raw_bytes: number
           raw_path: string | null
           raw_sha256: string | null
@@ -3210,6 +3289,7 @@ export type Database = {
           state: string
           subject: string
           synthetic: boolean
+          text_ratio: number | null
           transport_id: string | null
           uid: number
           uidvalidity: number
@@ -3219,15 +3299,20 @@ export type Database = {
           assets_state?: string
           capture_id?: string | null
           created_at?: string
+          extraction_version?: number | null
+          facts?: Json | null
           from_address?: string | null
           from_domain?: string | null
           html_path?: string | null
           id?: string
           images_failed?: number
           images_stored?: number
+          labelled_at?: string | null
           mailbox_id: string
+          marked_html_path?: string | null
           message_key: string
           method?: string | null
+          preheader?: string | null
           raw_bytes: number
           raw_path?: string | null
           raw_sha256?: string | null
@@ -3239,6 +3324,7 @@ export type Database = {
           state: string
           subject?: string
           synthetic: boolean
+          text_ratio?: number | null
           transport_id?: string | null
           uid: number
           uidvalidity: number
@@ -3248,15 +3334,20 @@ export type Database = {
           assets_state?: string
           capture_id?: string | null
           created_at?: string
+          extraction_version?: number | null
+          facts?: Json | null
           from_address?: string | null
           from_domain?: string | null
           html_path?: string | null
           id?: string
           images_failed?: number
           images_stored?: number
+          labelled_at?: string | null
           mailbox_id?: string
+          marked_html_path?: string | null
           message_key?: string
           method?: string | null
+          preheader?: string | null
           raw_bytes?: number
           raw_path?: string | null
           raw_sha256?: string | null
@@ -3268,6 +3359,7 @@ export type Database = {
           state?: string
           subject?: string
           synthetic?: boolean
+          text_ratio?: number | null
           transport_id?: string | null
           uid?: number
           uidvalidity?: number
@@ -5929,13 +6021,40 @@ export type Database = {
         Args: { images: Json; job: string; lease: string }
         Returns: Json
       }
+      record_inbox_labels: {
+        Args: {
+          facts: Json
+          job: string
+          labels: Json
+          lease: string
+          version: number
+        }
+        Returns: Json
+      }
       record_inbox_message: {
         Args: { job: string; lease: string; msg: Json }
         Returns: Json
       }
       record_inbox_screenshot: {
-        Args: { height: number; job: string; lease: string; width: number }
+        Args: {
+          boxes?: Json
+          height: number
+          job: string
+          lease: string
+          width: number
+        }
         Returns: undefined
+      }
+      record_inbox_sections: {
+        Args: {
+          job: string
+          lease: string
+          marked_path: string
+          preheader?: string
+          sections: Json
+          text_ratio?: number
+        }
+        Returns: number
       }
       record_render_upload: {
         Args: {

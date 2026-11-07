@@ -16,9 +16,9 @@ $$;
 -- Grants.
 select ok(not bool_or(has_function_privilege(r, f, 'execute')),'browser roles cannot record images or screenshots')
   from unnest(array['anon','authenticated']) r,
-       unnest(array['public.record_inbox_images(uuid,uuid,jsonb)','public.record_inbox_screenshot(uuid,uuid,integer,integer)']) f;
+       unnest(array['public.record_inbox_images(uuid,uuid,jsonb)','public.record_inbox_screenshot(uuid,uuid,integer,integer,jsonb)']) f;
 select ok(bool_and(has_function_privilege('service_role', f, 'execute')),'the worker records images and screenshots')
-  from unnest(array['public.record_inbox_images(uuid,uuid,jsonb)','public.record_inbox_screenshot(uuid,uuid,integer,integer)']) f;
+  from unnest(array['public.record_inbox_images(uuid,uuid,jsonb)','public.record_inbox_screenshot(uuid,uuid,integer,integer,jsonb)']) f;
 select ok(not bool_or(has_function_privilege(r, f, 'execute')),'the trigger helpers are not callable')
   from unnest(array['anon','authenticated','service_role']) r,
        unnest(array['private.inbox_assets_pending()','private.queue_inbox_assets()']) f;

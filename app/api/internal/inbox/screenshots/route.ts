@@ -61,10 +61,10 @@ export async function POST(request: NextRequest) {
     return refuse('Unauthorized', 401)
   const db = createServiceClient()
   if (!db) return refuse('Server configuration unavailable', 503)
-  if (Number(request.headers.get('content-length') ?? 0) > 2_000)
+  if (Number(request.headers.get('content-length') ?? 0) > 8_000)
     return refuse('Invalid screenshot result', 400)
   const body = await request.text()
-  if (body.length > 2_000) return refuse('Invalid screenshot result', 400)
+  if (body.length > 8_000) return refuse('Invalid screenshot result', 400)
   let parsed: ReturnType<typeof screenshotResult.safeParse>
   try {
     parsed = screenshotResult.safeParse(JSON.parse(body))
