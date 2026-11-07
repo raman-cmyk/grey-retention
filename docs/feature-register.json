@@ -4249,11 +4249,13 @@
       "priority": "P0",
       "acceptance": "Collecting, Ready, Needs setup, In production, Needs review, Scheduled, Sending, Sent and Failed have exact meanings.",
       "status": "partial",
-      "implementation_tasks": ["DS-004"],
+      "implementation_tasks": ["DS-004", "UIR-015"],
       "verification": [
-        "DS-004 (2026-11-06): lib/status-vocabulary.ts defines the nine statuses with label, tone and meaning; StatusMark status=… renders them as text with a decorative dot and the meaning as a tooltip; unit tests cover the words, distinct meanings and Sent-only-when-confirmed."
+        "DS-004 (2026-11-06): lib/status-vocabulary.ts defines the nine statuses with label, tone and meaning; StatusMark status=… renders them as text with a decorative dot and the meaning as a tooltip; unit tests cover the words, distinct meanings and Sent-only-when-confirmed.",
+        "features/campaigns/status.test.ts",
+        "features/campaigns/status-pill.test.tsx, overview-model.test.ts"
       ],
-      "remaining": "DS-004 (2026-11-06): the shared vocabulary and StatusMark exist. Remaining: campaign overview, calendar, competitor and delivery screens still compute their own status words; they must map their states onto this list, and the meanings need a visible help entry."
+      "remaining": "Campaign screens (calendar, Your campaigns, dashboard, campaign page) show the one campaign status from features/campaigns/status.ts, including Delivery problem (UIR-015). Remaining: raw delivery/planning panel lines, /copy-review, admin designers, GROS replies, and the non-campaign screens that compute their own words."
     },
     {
       "id": "UX-013",

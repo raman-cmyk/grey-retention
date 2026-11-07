@@ -94,7 +94,7 @@ Checks:
 Checks:
 
 - [ ] After assignment, Regenerate / Regenerate Copy are disabled or need a confirm, because the warning says not to change the brief. **(fix)** The old app still showed Regenerate Copy on a draft that had an uploaded final design.
-- [ ] Status pills change when the design is assigned or delivered. **(fix)** The old draft with an uploaded final design still showed WRITING · DRAFT.
+- [x] Status pills change when the design is assigned or delivered. **(fix)** The old draft with an uploaded final design still showed WRITING · DRAFT. (UIR-015: assigned → With designer, delivered → Needs your approval.)
 - [ ] The owner sees an explicit **Approve design** action next to Reject. The old app had only the reject form, and approval was left to an admin. **(fix, product rule: owner approval is required)**
 
 ### Job 4: "Approve and send to Klaviyo"
@@ -325,7 +325,7 @@ Controls and behaviour:
   - after a drag, show a toast with Undo
 - [ ] A cell that holds a local draft does not show "+ plan send" (seen on the draft's day). Allow several sends per day, or explain the limit. (new)
 - [ ] Past days still offer "+ plan send". Block it or ask "This day has passed. Plan anyway?" **(fix)**
-- [ ] A draft dated in the past that was never sent is flagged as "Missed" or "Overdue". **(fix: the old app kept it as a normal grey Draft)**
+- [x] A draft dated in the past that was never sent is flagged as "Missed" or "Overdue". **(fix: the old app kept it as a normal grey Draft)** (UIR-015: Missed; a send stuck in delivery past its time is a Delivery problem.)
 - [ ] Klaviyo campaigns with status DRAFT (no send time) appear somewhere, e.g. an "Unscheduled" tray under the calendar. **(fix: they appeared nowhere)**
 - [ ] Table view columns: **WHEN · <TZ>** / TITLE / CHANNEL / OFFER / DISCOUNT CODE / STATUS (lowercase pill, e.g. "draft") / actions **Open** · **Delete** (danger).
   - Delete must confirm.

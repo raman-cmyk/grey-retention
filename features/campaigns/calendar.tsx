@@ -6,6 +6,8 @@ import { Notice } from '@/components/ui/workspace'
 import { StatusMark } from '@/components/ui/status-mark'
 import { cn } from '@/lib/utils'
 import { controlClass } from '@/components/ui/control'
+import { campaignStatusOf } from './status'
+import { CampaignPill } from './status-pill'
 import {
   buildCampaignCalendar,
   type CalendarCampaign,
@@ -27,18 +29,31 @@ function calendarHref(month: string, view: CalendarView) {
   return `/campaign-agent?m=${month}&view=${view}` as Route
 }
 
-function calendarStatus(campaign: CalendarCampaign) {
-  if (campaign.superseded_by_plan)
-    return { label: 'Superseded', tone: 'neutral' } as const
-  if (campaign.calendar_state === 'approved')
-    return { label: 'Approved', tone: 'active' } as const
-  if (campaign.calendar_state === 'rejected')
-    return { label: 'Rejected', tone: 'danger' } as const
-  return { label: 'Needs review', tone: 'warning' } as const
-}
-
-function displayState(state: string) {
-  return state.replaceAll('_', ' ')
+/**
+ * "4 campaigns · 2 need your approval · 1 scheduled", counted with the same
+ * status as the pills below (UIR-015). Replaced entries are not counted.
+ */
+export function monthSummary(entries: CalendarCampaign[], now = new Date()) {
+  const current = entries.filter((c) => !c.superseded_by_plan)
+  const count = (status: string) =>
+    current.filter((c) => campaignStatusOf(c, now) === status).length
+  const parts = [
+    `${current.length} ${current.length === 1 ? 'campaign' : 'campaigns'}`
+  ]
+  const approvals = count('needs_approval')
+  if (approvals)
+    parts.push(
+      `${approvals} ${approvals === 1 ? 'needs' : 'need'} your approval`
+    )
+  for (const [status, word] of [
+    ['scheduled', 'scheduled'],
+    ['missed', 'missed'],
+    ['delivery_problem', 'with a delivery problem']
+  ] as const) {
+    const n = count(status)
+    if (n) parts.push(`${n} ${word}`)
+  }
+  return parts.join(' · ')
 }
 
 function CampaignCard({
@@ -50,7 +65,6 @@ function CampaignCard({
   timezone: string
   compact?: boolean
 }) {
-  const status = calendarStatus(campaign)
   return (
     <Link
       href={`/campaigns/${campaign.id}` as Route}
@@ -83,21 +97,14 @@ function CampaignCard({
         {campaign.title}
       </h3>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <StatusMark
-          tone={status.tone}
-          variant="text"
-          className={compact ? 'min-h-5 text-[0.6875rem]' : undefined}
-        >
-          {status.label}
-        </StatusMark>
+        <CampaignPill campaign={campaign} />
         <span className="text-[0.65rem] text-[var(--text-muted)]">
           v{campaign.calendar_revision}
         </span>
       </div>
       {!compact && (
         <p className="mt-2 text-xs leading-5 text-[var(--text-muted)]">
-          Copy {displayState(campaign.copy_state)} · Delivery{' '}
-          {displayState(campaign.delivery_state)}
+          {campaign.channel === 'email_design' ? 'Design email' : 'Text email'}
           {campaign.synthetic && ' · Synthetic demo'}
         </p>
       )}
@@ -247,7 +254,6 @@ function CampaignList({
       aria-label="Campaign list"
     >
       {campaigns.map((campaign) => {
-        const status = calendarStatus(campaign)
         return (
           <li key={campaign.id}>
             <Link
@@ -281,16 +287,12 @@ function CampaignList({
                 <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
                   {campaign.channel === 'email_design'
                     ? 'Design email'
-                    : 'Text email'}{' '}
-                  · Copy {displayState(campaign.copy_state)} · Delivery{' '}
-                  {displayState(campaign.delivery_state)}
+                    : 'Text email'}
                   {campaign.synthetic && ' · Synthetic demo'}
                 </p>
               </div>
               <div className="flex items-center gap-2 sm:justify-end">
-                <StatusMark tone={status.tone} variant="text">
-                  {status.label}
-                </StatusMark>
+                <CampaignPill campaign={campaign} />
                 <span className="text-xs text-[var(--text-muted)]">
                   v{campaign.calendar_revision}
                 </span>
@@ -329,14 +331,7 @@ export function CampaignCalendar({
             {calendar.label}
           </h2>
           <p className="mt-1.5 text-xs leading-5 text-[var(--text-muted)]">
-            {calendar.entries.length}{' '}
-            {calendar.entries.length === 1 ? 'campaign' : 'campaigns'}
-            {' · '}
-            {calendar.reviewCount} awaiting review
-            {' · '}
-            {calendar.approvedCount} approved
-            {calendar.scheduledCount > 0 &&
-              ` · ${calendar.scheduledCount} scheduled`}
+            {monthSummary(calendar.entries)}
           </p>
         </div>
         <div

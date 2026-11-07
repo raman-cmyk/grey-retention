@@ -1,6 +1,7 @@
 import 'server-only'
 import { campaignWorkspace } from '@/features/campaigns/data'
 import {
+  campaignNextStep,
   campaignReview,
   overviewModel
 } from '@/features/campaigns/overview-model'
@@ -56,11 +57,23 @@ export async function dashboardView(
     shopify:
       klaviyo.state === 'sample' ? klaviyo.shopify : ('missing' as const),
     sends: upcomingSends(campaigns, snapshot, now),
-    waiting: overviewModel(campaigns).reviews.map((c) => ({
-      id: c.id,
-      title: c.title,
-      step: campaignReview(c) ?? 'Review'
-    })),
+    // What the owner must act on: problems and missed sends first, then
+    // approvals (UIR-015).
+    waiting: (() => {
+      const model = overviewModel(campaigns, now)
+      return [
+        ...model.attention.map((c) => ({
+          id: c.id,
+          title: c.title,
+          step: campaignNextStep(c, now) ?? 'Check it'
+        })),
+        ...model.reviews.map((c) => ({
+          id: c.id,
+          title: c.title,
+          step: campaignReview(c, now) ?? 'Review'
+        }))
+      ]
+    })(),
     seeAllWaiting: dashboardHref(
       query,
       { focus: 'review', p: null },

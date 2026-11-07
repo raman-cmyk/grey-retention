@@ -237,11 +237,11 @@ test('UC-06/07/09/10 owner-designer revision loop, exact approvals, simulated sc
   await cancel.getByRole('button', { name: 'Close', exact: true }).click()
   await page.getByRole('button', { name: 'Run queued fixture jobs' }).click()
   await expect(
-    page.getByRole('definition').filter({ hasText: /^cancelled$/ })
+    page.getByRole('definition').filter({ hasText: /^Cancelled$/ })
   ).toBeVisible()
   await page.reload()
   await expect(
-    page.getByRole('definition').filter({ hasText: /^cancelled$/ })
+    page.getByRole('definition').filter({ hasText: /^Cancelled$/ })
   ).toBeVisible()
   await expect(
     page.getByRole('button', { name: 'Review cancellation' })
