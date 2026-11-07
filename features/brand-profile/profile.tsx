@@ -7,7 +7,6 @@ import {
   useState,
   type ReactNode
 } from 'react'
-import Link from 'next/link'
 import { Check, Info, Lock, Pencil, RotateCw, X } from 'lucide-react'
 import { SubmitButton, type FormResult } from '@/components/ui/action-form'
 import { Button } from '@/components/ui/button'
@@ -536,15 +535,11 @@ function ProductsBlock({ products }: { products: { title: string }[] }) {
         <p className="font-semibold">No products yet</p>
         <p>Your catalogue is empty.</p>
         <p>
-          Fixes: products will come from your Klaviyo catalog once the live{' '}
-          <Link href="/connections" className="font-medium underline">
-            Klaviyo connection
-          </Link>{' '}
-          is ready, or{' '}
+          Reading products from Klaviyo is not ready yet. For now,{' '}
           <a href="#catalogue" className="font-medium underline">
             add products to the catalogue
           </a>{' '}
-          further down this page.
+          below.
         </p>
       </div>
     </div>

@@ -155,7 +155,7 @@ function Gauge({ fraction }: { fraction: number }) {
 const attributionHelp = {
   klaviyo:
     'Klaviyo $flow and $campaign attribution (last 30 days, clamped to this month).',
-  utm: 'Orders with utm_source=klaviyo or utm_medium=email (this month).'
+  utm: 'UTM revenue is not part of this version: it needs order data, and Grey Retention reads Klaviyo only.'
 }
 
 export function RevenueCard({

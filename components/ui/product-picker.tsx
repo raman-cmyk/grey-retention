@@ -25,7 +25,7 @@ export function ProductPicker({
   state = 'ready',
   sample = false,
   noneLabel = '— no default (let AI pick) —',
-  emptyMessage = 'No products yet. They will come from your Klaviyo catalog.',
+  emptyMessage = 'No products yet. Reading products from Klaviyo is not ready yet. For now, add them under Brand & Store.',
   maxHeight = 300
 }: {
   label: string

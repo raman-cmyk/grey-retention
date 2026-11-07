@@ -6,15 +6,6 @@ import { redoAllBrandSections } from './actions'
 import type { Mismatch } from './mismatch'
 import { sectionKeys } from './sections'
 
-/**
- * Brand & Store sub-tabs. The Store tab is hidden in v2 (Klaviyo only,
- * BUILD_BRIEF D2), which leaves one tab, so no tab row is shown.
- */
-export function BrandTabs({ active }: { active: 'profile' | 'store' }) {
-  void active
-  return null
-}
-
 export function BrandHeader({
   active,
   lastUpdated,
@@ -67,7 +58,6 @@ export function BrandHeader({
           </div>
         )}
       </div>
-      <BrandTabs active={active} />
     </header>
   )
 }

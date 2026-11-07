@@ -15,7 +15,6 @@ const klaviyo: ConnectionView = {
   status: 'connected',
   accountLabel: 'Juniper Supply',
   credentialHint: 'pk_Ab3dE••••••••1a2b',
-  shopDomain: null,
   templateCount: 218
 }
 const card = (name: string) =>
