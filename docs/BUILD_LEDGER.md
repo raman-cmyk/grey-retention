@@ -89,6 +89,8 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 | UIR-014 | Old-app rebuild §14 Profile | UIR-002 | review | Claude Code cloud lane | pnpm verify; features/profile and components/shell 58/58; profile_update pgTAP 7/7; profile journeys desktop+mobile, 375px keyboard; workspace-ui journeys | Owns `features/profile/*`, `app/(client)/profile/page.tsx`, `tests/e2e/profile.spec.ts`, `supabase/tests/profile_update.test.sql`; narrow shared edits: `ShellNavigation.profileHref` (client only) and the account menu/drawer link (sidebar.tsx + tests), `lib/supabase/stateless.ts`, `/profile` in `proxy.ts`. No migration. |
 | UIR-025 | Designer workspace in the new layout (part 1: desk and brief page) | UIR-002 | review | Claude Code browser lane | pnpm verify; features/designers 38/38 and components/shell sidebar; designer-desk journeys desktop+mobile in CI (status tabs, 375px, unknown brief 404, owner and staff kept out); design-loop journey unchanged | Owns `features/designers/{model,desk,due-text,submit-card,assignment-parts}.ts(x)` and tests, `app/(designer)/designer/{dashboard,assignments/[assignmentId]}/page.tsx`, `tests/e2e/designer-desk.spec.ts`; narrow shared edit: `/designer/assignments` highlights Assignments in `components/shell/nav-data.ts`. No migration. Part 2 (owner design review on the campaign) follows UIR-016. |
 
+| UIR-015 | One campaign status system | UIR-002 | review | Claude Code browser lane | pnpm verify; status derivation tests for every state; calendar, list and dashboard show the one pill | Owns `features/campaigns/status.ts` (`campaignStatusOf`, `stepStateWords`) and `status-pill.tsx` and the status pills on the calendar, the Your campaigns list and the dashboard mini calendar. Issue #254. |
+
 ## Global decisions
 
 - Ready buttons (2026-11-07): `SubmitButton` and the `ConfirmDialog` trigger stay disabled until the page is interactive (`components/ui/use-hydrated.ts`, `useSyncExternalStore`: false in the server HTML and during hydration, true in the browser). A click on a slow page before hydration used to post the form natively, so the page reloaded and its "saved" message was lost, or the dialog never opened. This was the first failure behind the mobile UC-09/12/16 browser runs. Playwright waits for a button to be enabled before it clicks, so the journeys no longer race hydration. Unit tests render on the client and are unaffected.
@@ -164,6 +166,21 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
   - The port also carries `sendStrategy` and flow-wait `daysOfWeek`, so nothing claims "Static" or "any day" without data. `FlowMessage.delay` is removed.
   - The sidebar picks the most specific match (`currentNavigationHref`), whatever the nav order.
   - `proxy.ts` matches the new Klaviyo detail routes (`/campaigns/klaviyo`, `/lists`, `/segments`, `/flows`, `/flow-messages`, `/metrics`), so a detail page opened in a new tab refreshes its session. An earlier version matched every signed-in page; the browser journeys on the server-action-heavy pages (campaign workflow, references) then failed twice, so those pages stay out of the proxy until that is proven safe. This is a foundation-config change, recorded here.
+
+- UIR-015 (2026-11-06): every campaign shows ONE status, derived by `features/campaigns/status.ts` from the real state machine and never picked by hand. The order of checks:
+  1. Sent, Cancelled and Scheduled come only from delivery, and only once the provider confirmed them.
+  2. Failed, blocked and unconfirmed (`reconciling`) deliveries are a **Delivery problem**, a new status (danger), whatever the clock says.
+  3. An in-flight delivery (queued … scheduling) is Scheduled for a future time ("Next: Waiting for confirmation"), and a Delivery problem once its time passed: the worker refuses past times, and the date can't be edited while delivery is active.
+  4. Anything else whose time passed is Missed ("Next: Pick a new date").
+  5. Needs your approval: a new or moved date first; then With designer (assigned, or revisions on a design email); then copy or a delivered design waiting; then the final approve-and-schedule step, once the date, copy AND design are approved. Text emails get a text design the owner reviews, so they pass the design step too.
+  6. Otherwise Draft, including a turned-down date (it can be revised and approved again; copy and design approvals wait for it).
+
+  Missed and Delivery problem campaigns have their own "Needs a look" tile and filter, and come first in the dashboard's "Waiting for you".
+
+  Replaced plan entries show "Replaced". The overview's "Next:", its tiles and filters, the dashboard's "Waiting for you" and upcoming sends, and the calendar's month line ("4 campaigns · 1 needs your approval · 1 scheduled") all come from the same status; the old "awaiting review · approved" line is gone. The campaign page shows the pill and plain words per step (`stepStateWords`). `hasDeliveryProblem` is removed (the status says it); the pill lives in `features/campaigns/status-pill.tsx`.
+  - Still raw: the delivery panel's "Campaign delivery: …" line (e2e asserts it), the planning panel, `/copy-review` and admin designers. GROS replies use their own delivery words (`20260914090016_gros_readable_reply.sql`); integration note for the GROS domain.
+  - Render-path revisions on a design email read "With designer", and a text email given to a human designer reads "Draft" once changes are asked, until active designer assignments are loaded with campaigns.
+
 - DS-006 (2026-11-06): the composer (`features/composer/`) saves a paste through the same `savePastedReference` helper as the paste form (extracted from `importPastedReference` into server-only `features/references/pasted-save.ts`, messages unchanged) and redirects to `/create-email/{id}?mode=copy|rewrite`. The choose page only marks that outcome ("Your choice in the composer", primary button); it never starts a copy or rewrite by itself, so owner confirmation and paid-AI gates are unchanged. EXACT→copy, REBRAND→rewrite, ADAPT disabled with a reason. Subject comes from the HTML `<title>` or first readable line; a link-only paste is refused with an honest message. Composer is owner-only on the dashboard and the setup reference step; the existing Paste/Upload links stay.
 
 - STAB-001 (2026-11-06): `GET /api/internal/jobs` is the scheduled worker. It requires `Authorization: Bearer CRON_SECRET` (existing env contract, unchanged; checked before anything else), runs only when `ADAPTER_MODE` is `fake` or unset, and visits workspaces through the existing `runFixtureJobs` path in bounded batches (≤100 workspaces, ≤4 jobs per visit, ≤3 visits, no new visit after 40 s, `maxDuration` 60). Workspaces with due or stale-leased jobs go first (the active-workspace filter is part of that query); the other active workspaces get daily housekeeping in random order. `email.rewrite` and `email.import` are never dispatched by the scheduler, so it cannot start or retry paid AI. Service-role reads of `tenants` and `job_runs` select IDs only; every claim still goes through `claim_job`/`worker_access`. The former `GET` 405 response is replaced by this handler; `POST` loopback dispatch is unchanged. Triggers: Vercel cron daily (Hobby limit) plus a GitHub Actions schedule every 10 minutes with the repository secret `CRON_SECRET`, fixed to the production HTTPS address and off until the repository variable `SCHEDULED_JOBS_ENABLED` is `true` (skipped runs use no Actions minutes; about 4,400 minutes a month when on). Shared config: `playwright.config.ts` gains a `scheduled-sweep` project that depends on the desktop and mobile projects, because the sweep drains every workspace's queue. See `docs/SCHEDULED_JOBS_RUNBOOK.md`.
@@ -908,6 +925,36 @@ Append entries using this exact shape:
 - Review: code-reviewer found admin/designer links to a client-only page and menus left open (blocking), plus proxy matcher, byte limit, error mapping, thin route and test gaps; all fixed as above.
 - Known issues: the current-password check guards the form but is not a security boundary while Supabase "secure password change" is off (`supabase/config.toml`; hosted setting not verified): a holder of the session could call Auth directly. Turning it on needs reauthentication handling (follow-up). Phone numbers are visible to teammates (existing RLS). Length limits are app-side only (no database checks; IAM follow-up). Admin and designer surfaces have no profile page yet.
 - Next consumer: none.
+
+### 2026-11-06 — UIR-015 — one campaign status system
+
+- Status: review
+- Branch/worktree: `claude/uir-015-one-campaign-status-system` on top of UIR-004 (#268). GitHub issue #254 (browser lane).
+- Commit(s): see the UIR-015 pull request.
+- Changed contracts:
+  - new `features/campaigns/status.ts` (`campaignStatusOf`, `awaitingConfirmation`, `stepStateWords`) and `status-pill.tsx`;
+  - `lib/campaign-status.ts` gains `delivery_problem`;
+  - `campaignReview`, `campaignNextStep` (now nullable) and `overviewModel` (new `attention` bucket) derive from the status and take `now`;
+  - `buildCampaignCalendar` no longer returns review/approved/scheduled counts (`monthSummary` replaces them);
+  - `CalendarCampaign` includes `design_state`; `UpcomingSend` has `status`; `hasDeliveryProblem` is removed.
+  - See the UIR-015 Global decision.
+- Migrations: none (derived from existing columns).
+- Verification run: `pnpm verify` (see PR for counts).
+  - Status tests: Draft; every owner-approval case, text emails included; With designer and text-email revisions; a moved date before designer work; a turned-down date; confirmed and in-flight Scheduled; Sent and Cancelled; failed, blocked and reconciling as Delivery problem, also after the time; Missed at and after the time, for in-flight and ready deliveries, with confirmed scheduled and sent winning; replaced plans; plain step words.
+  - Next-step tests agree with the pill (final step, confirmed and cancelled, problems, missed, drafts) and the buckets.
+  - Render tests: the pill's words, "Delivery problem" and "Replaced"; the month summary never says "approved"; the dashboard's next campaign shows its pill.
+  - `test:e2e` not runnable here; no e2e asserts the old words.
+- Review: `code-reviewer` blocked on four things:
+  1. `reconciling` read "Scheduled".
+  2. Text emails skipped their design step.
+  3. In-flight deliveries past their time read "Scheduled".
+  4. The calendar header still said "approved".
+     All four are fixed and tested. Also fixed: failed deliveries read "Needs your approval"; a turned-down date read "Cancelled"; a moved date was hidden by "With designer"; "Next:", tiles, filters and "Waiting for you" disagreed with the pill; the campaign page showed raw states; the dashboard's next campaign had no pill.
+- Known issues:
+  - raw state words remain on the delivery and planning panels, `/copy-review` and admin designers (listed in the Global decision);
+  - render-path revisions on design emails read "With designer", and revisions on a text email given to a human designer read "Draft" (both need designer assignments loaded with campaigns);
+  - the real owner Approve step is UIR-016.
+- Next consumer: UIR-006 §6 planner (filters and chips), UIR-016 Approve step.
 
 ### 2026-11-07 — UIR-025 part 1 — designer desk and brief page in the new layout
 

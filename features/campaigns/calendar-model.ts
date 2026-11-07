@@ -10,6 +10,7 @@ export type CalendarCampaign = Pick<
   | 'calendar_revision'
   | 'calendar_state'
   | 'copy_state'
+  | 'design_state'
   | 'delivery_state'
   | 'synthetic'
   | 'superseded_by_plan'
@@ -143,18 +144,6 @@ export function buildCampaignCalendar({
     previousMonth: adjacentCalendarMonth(month, -1),
     nextMonth: adjacentCalendarMonth(month, 1),
     entries,
-    days,
-    reviewCount: entries.filter(
-      (campaign) =>
-        !campaign.superseded_by_plan && campaign.calendar_state === 'proposed'
-    ).length,
-    approvedCount: entries.filter(
-      (campaign) =>
-        !campaign.superseded_by_plan && campaign.calendar_state === 'approved'
-    ).length,
-    scheduledCount: entries.filter(
-      (campaign) =>
-        !campaign.superseded_by_plan && campaign.delivery_state === 'scheduled'
-    ).length
+    days
   }
 }

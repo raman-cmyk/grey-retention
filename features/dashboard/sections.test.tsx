@@ -153,7 +153,8 @@ describe('dashboard cards', () => {
           name: 'Soon local',
           at: '2026-11-08T16:00:00Z',
           source: 'workspace',
-          href: '/campaigns/b'
+          href: '/campaigns/b',
+          status: 'draft'
         }}
         timezone="Australia/Sydney"
         now={now}
@@ -165,6 +166,8 @@ describe('dashboard cards', () => {
     expect(
       screen.getByText(/\(Sydney time\) · In this workspace/)
     ).toBeInTheDocument()
+    // The one status shows next to the name (UIR-015).
+    expect(screen.getByText('Draft')).toBeInTheDocument()
     cleanup()
     render(
       <NextCampaignCard
@@ -229,14 +232,16 @@ describe('dashboard cards', () => {
             name: 'Soon local',
             at: '2026-11-08T16:00:00Z',
             source: 'workspace',
-            href: '/campaigns/b'
+            href: '/campaigns/b',
+            status: 'draft'
           },
           {
             id: 'k',
             name: 'Holiday gift guide',
             at: '2026-11-11T22:15:00Z',
             source: 'klaviyo',
-            href: null
+            href: null,
+            status: 'scheduled'
           }
         ]}
       />
