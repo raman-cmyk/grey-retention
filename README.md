@@ -43,7 +43,7 @@ pnpm supabase:types
 - `docs/SYSTEM_ARCHITECTURE.md` — architecture, NFRs, failure modes, and growth path
 - `docs/ARCHITECTURE_BLUEPRINT.md` — technical source of truth
 - `docs/adr/` — architecture decision records
-- `docs/MVP_PLAN.md` — original MVP milestones and acceptance gates
+- `docs/BUILD_BRIEF.md` — start here (v2 plan, decisions, lanes) and `docs/VISION.md` — the owner's v2 product brief
 - `docs/feature-register.json` — all 620 requirements with status
-- `docs/PARALLEL_TASKS.md` — autonomous workstream prompts
+- `docs/archive/` — earlier plans (history only)
 - `docs/BUILD_LEDGER.md` — durable cross-task state

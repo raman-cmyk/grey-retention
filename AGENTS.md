@@ -4,13 +4,12 @@ This repository is a clean-room implementation derived from observed product beh
 
 Before changing code, read completely:
 
-1. `docs/MVP_PLAN.md`
-2. `docs/SYSTEM_ARCHITECTURE.md`
-3. `docs/ARCHITECTURE_BLUEPRINT.md`
-4. `docs/PARALLEL_TASKS.md`
-5. `docs/BUILD_LEDGER.md`
+1. `docs/BUILD_BRIEF.md` (start here: what we build now, which document wins, owner decisions, lanes)
+2. `docs/VISION.md` (the owner's v2 product brief: the source of truth for product rules, steps and gates)
+3. `docs/ARCHITECTURE_BLUEPRINT.md` and `docs/SYSTEM_ARCHITECTURE.md` (code structure)
+4. `docs/BUILD_LEDGER.md`
 
-Use `GREY_RETENTION_DISCOVERY.md` for behavioral reference. The architecture blueprint wins when the original product exhibits a defect or contradiction.
+For screens, also read the matching sections of `docs/UI_REBUILD_SPEC.md` (layout) and `docs/OWNER_JOURNEYS.md` (behaviour). Use `GREY_RETENTION_DISCOVERY.md` for behavioral reference only. Old plans live in `docs/archive/`; don't follow them. The architecture blueprint wins when the original product exhibits a defect or contradiction.
 
 ## Working rules
 
