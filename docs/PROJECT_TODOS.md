@@ -16,6 +16,10 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - Completely rethink UI/UX in Figma. Supersede current UI and old-app parity; preserve useful underlying functionality.
 - Klaviyo only, no designer workflow, client-owned content and mandatory approval remain.
 
+## Hard design rules and current scope
+
+[DESIGN_RULES.md](DESIGN_RULES.md) is mandatory. Desktop/laptop first; defer dedicated mobile-layout design. Minimal motion: the owner confirmed the listed animation recipes/effects are unwanted. No decorative gradients/glow, meaningless badges/pills, nested cards, excessive typography/dividers/borders or redundant copy. See the rulebook for the full list.
+
 ## To-dos
 
 | ID               | Task                                                                                                          | Status / evidence                                                 |
@@ -32,6 +36,14 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 | CHAT-CORE-001    | Define central AI workspace context, tools, evidence, permissions and quality evaluation                      | Not started; no model chosen                                      |
 | PLAN-SEG-001     | Carry approved audiences and exposure constraints through strategy, calendar, QA, weekly approval and results | Not started                                                       |
 | VERIFY-BASE-001  | Reconcile merged code, applied migrations, deployment and live-provider readiness before feature claims       | Not independently verified in this documentation task             |
+
+## Research follow-ups
+
+- [ ] Audit authenticated desktop onboarding and campaign flows in Loops and Omnisend; capture entry, setup, readiness, first draft and review states.
+- [ ] Audit Klaviyo campaign/audience flow and text-to-segment review using an existing account and unsent drafts.
+- [ ] Audit Milled brand search, brand archive, email detail and saved inspiration; label observed facts separately from interpretations.
+- [ ] Compare friction, required fields, defaults, recovery and time to first useful result; turn findings into original journey proposals.
+- [ ] Clarify dictated terms “HPicker AI”, “interman serif” and “Fallible one” before assigning a specific component/font meaning.
 
 ## Open decisions
 
