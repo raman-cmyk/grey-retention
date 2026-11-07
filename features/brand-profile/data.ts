@@ -1,6 +1,6 @@
 import 'server-only'
 import { createClient } from '@/lib/supabase/server'
-import { brandMismatches } from './mismatch'
+import { brandMismatches, type AccountFacts } from './mismatch'
 import type { SectionContent, SectionKey } from './sections'
 import type { SectionRow } from './view'
 
@@ -15,12 +15,19 @@ export async function brandProfileData(
 ) {
   const db = await createClient()
   if (!db) return null
-  const [sections, connections] = await Promise.all([
+  const [sections, connections, products] = await Promise.all([
     db.from('brand_profile_sections').select('*').eq('tenant_id', tenantId),
     db
       .from('workspace_connections')
-      .select('provider,status,account_label,shop_domain')
+      .select(
+        'provider,status,account_label,shop_domain,account_website,account_currency,account_country'
+      )
+      .eq('tenant_id', tenantId),
+    db
+      .from('products')
+      .select('url')
       .eq('tenant_id', tenantId)
+      .limit(productLimit)
   ])
   const rows: SectionRow[] = (sections.data ?? []).map((row) => ({
     section: row.section as SectionKey,
@@ -34,6 +41,14 @@ export async function brandProfileData(
   const klaviyo = list.find((c) => c.provider === 'klaviyo')
   const shopify = list.find((c) => c.provider === 'shopify')
   const connected = (c: Connection | undefined) => c?.status === 'connected'
+  const facts = (c: Connection | undefined): AccountFacts | null =>
+    connected(c)
+      ? {
+          website: c?.account_website ?? null,
+          currency: c?.account_currency ?? null,
+          country: c?.account_country ?? null
+        }
+      : null
   return {
     sections: rows,
     unavailable: Boolean(sections.error),
@@ -44,7 +59,31 @@ export async function brandProfileData(
       klaviyoAccount: connected(klaviyo)
         ? (klaviyo?.account_label ?? null)
         : null,
-      shopDomain: connected(shopify) ? (shopify?.shop_domain ?? null) : null
+      shopDomain: connected(shopify) ? (shopify?.shop_domain ?? null) : null,
+      klaviyo: facts(klaviyo),
+      shopify: facts(shopify),
+      productUrls: (products.data ?? []).map((p) => p.url)
     })
   }
+}
+
+/** Enough product links to see where the catalogue points. */
+export const productLimit = 200
+
+/**
+ * The brand-mismatch guard for one workspace (UIR-021), for any screen that
+ * is about to let the AI write: the Brand profile compared with the
+ * connected accounts and the catalogue. Empty when nothing looks wrong or
+ * nothing can be read.
+ */
+export async function brandGuard(tenantId: string) {
+  const db = await createClient()
+  if (!db) return []
+  const brand = await db
+    .from('brand_profiles')
+    .select('brand_name,domain')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  const data = await brandProfileData(tenantId, brand.data ?? null)
+  return data?.mismatches ?? []
 }

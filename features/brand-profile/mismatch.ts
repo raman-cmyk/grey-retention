@@ -5,13 +5,28 @@
  * It is a warning only: the owner decides, and can ignore it when both are
  * right.
  */
+/** What a connected account reported when it was connected (UIR-021). */
+export type AccountFacts = {
+  website: string | null
+  currency: string | null
+  country: string | null
+}
 export type MismatchInput = {
   brandName: string
   website: string
   klaviyoAccount: string | null
   shopDomain: string | null
+  /** The Klaviyo organisation's website, currency and country. */
+  klaviyo?: AccountFacts | null
+  /** The Shopify store's currency and country. */
+  shopify?: AccountFacts | null
+  /** Product page links in the catalogue. */
+  productUrls?: string[]
 }
-export type Mismatch = { source: 'klaviyo' | 'shopify'; message: string }
+export type Mismatch = {
+  source: 'klaviyo' | 'shopify' | 'catalogue'
+  message: string
+}
 
 const filler = new Set([
   'the',
@@ -92,6 +107,43 @@ export function sameName(a: Set<string>, b: Set<string>) {
   return false
 }
 
+/** "www.cedar-lane.example" → "cedar-lane.example"; null when not a web address. */
+export function hostOf(url: string | null | undefined) {
+  if (!url) return null
+  try {
+    const parsed = new URL(/^[a-z]+:\/\//i.test(url) ? url : `https://${url}`)
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, '')
+    return host.includes('.') ? host : null
+  } catch {
+    return null
+  }
+}
+
+/** Two web addresses belong to the same site (subdomains included). */
+const sameSite = (a: string, b: string) =>
+  a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`)
+
+/**
+ * The site most catalogue links point to, when it is not the brand's own
+ * website (or its Shopify store) and at least half the links go there.
+ */
+export function catalogueElsewhere(
+  productUrls: string[],
+  website: string | null,
+  shopDomain: string | null
+) {
+  const own = [hostOf(website), hostOf(shopDomain)].filter((h): h is string =>
+    Boolean(h)
+  )
+  const hosts = productUrls.map(hostOf).filter((h): h is string => Boolean(h))
+  if (!own.length || hosts.length < 2) return null
+  const elsewhere = hosts.filter((h) => !own.some((o) => sameSite(h, o)))
+  if (elsewhere.length * 2 < hosts.length) return null
+  const counts = new Map<string, number>()
+  for (const h of elsewhere) counts.set(h, (counts.get(h) ?? 0) + 1)
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]![0]
+}
+
 export function brandMismatches(input: MismatchInput): Mismatch[] {
   const name = nameWords(input.brandName)
   const site = nameWords(siteName(input.website))
@@ -118,5 +170,38 @@ export function brandMismatches(input: MismatchInput): Mismatch[] {
         message: `Your Brand profile says “${label}”, but the connected Shopify store is ${input.shopDomain}. Check that the profile and product catalogue belong to this store.`
       })
   }
+  // The website the Klaviyo organisation reported.
+  const brandHost = hostOf(input.website)
+  const klaviyoHost = hostOf(input.klaviyo?.website)
+  if (brandHost && klaviyoHost && !sameSite(brandHost, klaviyoHost))
+    found.push({
+      source: 'klaviyo',
+      message: `Your Brand profile’s website is ${brandHost}, but the connected Klaviyo account’s website is ${klaviyoHost}.`
+    })
+  // Klaviyo and Shopify should be the same business.
+  const k = input.klaviyo
+  const s = input.shopify
+  if (k && s) {
+    if (k.currency && s.currency && k.currency !== s.currency)
+      found.push({
+        source: 'shopify',
+        message: `Klaviyo reports amounts in ${k.currency}, but the Shopify store sells in ${s.currency}. Check that both accounts belong to this brand.`
+      })
+    if (k.country && s.country && k.country !== s.country)
+      found.push({
+        source: 'shopify',
+        message: `The Klaviyo account is in ${k.country}, but the Shopify store is in ${s.country}. Check that both accounts belong to this brand.`
+      })
+  }
+  const other = catalogueElsewhere(
+    input.productUrls ?? [],
+    input.website,
+    input.shopDomain
+  )
+  if (other)
+    found.push({
+      source: 'catalogue',
+      message: `Most products in your catalogue link to ${other}, not to ${brandHost ?? 'your website'}. Check that the catalogue belongs to this brand before the AI uses it.`
+    })
   return found
 }

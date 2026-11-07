@@ -67,9 +67,30 @@ describe('connectKlaviyo', () => {
       credential_hint: 'pk_Ab3dE••••••••1a2b',
       template_count: 24,
       // The sample account reports the workspace timezone (UIR-023).
-      account_timezone: 'Asia/Kathmandu'
+      account_timezone: 'Asia/Kathmandu',
+      // ...and what business it belongs to (UIR-021).
+      account_website: undefined,
+      account_currency: 'USD',
+      account_country: 'US'
     })
     expect(allArgs()).not.toContain(key)
+  })
+
+  it('connects ANOTHER brand’s sample account for keys ending in 0000', async () => {
+    await connectKlaviyo(
+      {},
+      form({ apiKey: 'pk_Ab3dEfg12hi34jk56lm78no90pq12rs0000' })
+    )
+    expect(rpc).toHaveBeenCalledWith(
+      'connect_sample_provider',
+      expect.objectContaining({
+        account_label: 'Northwind Outdoor (sample)',
+        account_website: 'https://northwind-outdoor.example',
+        account_currency: 'EUR',
+        account_country: 'DE',
+        account_timezone: 'Europe/Berlin'
+      })
+    )
   })
 
   it('sends no account timezone when the workspace one is unknown', async () => {
@@ -164,7 +185,10 @@ describe('connectShopify', () => {
       provider: 'shopify',
       account_label: 'cedar-lane.myshopify.com',
       credential_hint: 'shpat_ab12••••••••ff00',
-      shop_domain: 'cedar-lane.myshopify.com'
+      shop_domain: 'cedar-lane.myshopify.com',
+      account_website: undefined,
+      account_currency: 'USD',
+      account_country: 'US'
     })
     expect(calls()).toEqual([
       'connect_sample_provider',

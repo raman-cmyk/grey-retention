@@ -8,7 +8,7 @@ import {
   checkShopDomain,
   checkShopifyToken
 } from './credentials'
-import { connectionVerifier } from './verifier'
+import { connectionVerifier, type AccountReport } from './verifier'
 import { isKnownTimezone } from '@/lib/brand-time'
 
 const notLive = 'Live connections are not switched on yet. Nothing was changed.'
@@ -42,6 +42,9 @@ async function save(
     shop_domain?: string
     template_count?: number
     account_timezone?: string
+    account_website?: string
+    account_currency?: string
+    account_country?: string
   }
 ) {
   const saved = await db.rpc('connect_sample_provider', args)
@@ -52,6 +55,31 @@ async function save(
       status: 'connected'
     })
   return saved
+}
+
+/** "cedar-lane.example" → "https://cedar-lane.example"; null when unusable. */
+function websiteOf(domain: string | null | undefined) {
+  const host = (domain ?? '').trim().toLowerCase()
+  return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(host) ? `https://${host}` : null
+}
+
+/** Only well-formed facts are saved (the database checks them again). */
+function accountFacts(account: AccountReport) {
+  return {
+    account_website:
+      account.website &&
+      /^https:\/\/[a-z0-9.-]+\.[a-z]{2,}(\/\S*)?$/.test(account.website)
+        ? account.website
+        : undefined,
+    account_currency:
+      account.currency && /^[A-Z]{3}$/.test(account.currency)
+        ? account.currency
+        : undefined,
+    account_country:
+      account.country && /^[A-Z]{2}$/.test(account.country)
+        ? account.country
+        : undefined
+  }
 }
 
 function failed(code: string | undefined) {
@@ -72,13 +100,14 @@ export async function connectKlaviyo(
   const { context, db, verifier } = session
   const brand = await db
     .from('brand_profiles')
-    .select('brand_name')
+    .select('brand_name,domain')
     .eq('tenant_id', context.tenantId)
     .maybeSingle()
   const account = await verifier.klaviyo({
     keyHint: key.value.hint,
     workspaceLabel: brand.data?.brand_name || context.tenantName,
-    workspaceTimezone: context.timezone
+    workspaceTimezone: context.timezone,
+    workspaceWebsite: websiteOf(brand.data?.domain)
   })
   const saved = await save(db, {
     t: context.tenantId,
@@ -89,7 +118,8 @@ export async function connectKlaviyo(
     // Becomes the brand timezone unless the owner chose one (UIR-023).
     account_timezone: isKnownTimezone(account.timezone)
       ? account.timezone
-      : undefined
+      : undefined,
+    ...accountFacts(account)
   })
   if (saved.error) return { error: failed(saved.error.code) }
   revalidatePath('/connections')
@@ -122,7 +152,8 @@ export async function connectShopify(
     provider: 'shopify',
     account_label: account.accountLabel,
     credential_hint: token.value.hint,
-    shop_domain: domain.value
+    shop_domain: domain.value,
+    ...accountFacts({ ...account, website: null })
   })
   if (saved.error) return { error: failed(saved.error.code) }
   // Same idempotent sample sync the setup tools queue; the worker runs it.
