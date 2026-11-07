@@ -26,7 +26,7 @@ vi.mock('next/link', () => ({
 }))
 
 import { BrandProfile, type SectionView } from './profile'
-import { ApprovalBar, BrandTabs, MismatchBanner } from './header'
+import { ApprovalBar, BrandHeader, MismatchBanner } from './header'
 import { profileViews } from './view'
 import { saveBrandSection } from './actions'
 
@@ -139,8 +139,11 @@ describe('BrandProfile', () => {
     expect(within(products).getByText('No products yet')).toBeVisible()
     expect(within(products).queryByText(/scrape/)).toBeNull()
     expect(
-      within(products).getByRole('link', { name: 'connect Shopify' })
-    ).toHaveAttribute('href', '/connections')
+      within(products).getByText(
+        /Reading products from Klaviyo is not ready yet/
+      )
+    ).toBeVisible()
+    expect(within(products).queryByText(/Shopify/)).toBeNull()
     expect(
       within(products).getByRole('link', {
         name: 'add products to the catalogue'
@@ -252,15 +255,12 @@ describe('BrandProfile', () => {
 })
 
 describe('header pieces', () => {
-  it('marks the active tab', () => {
-    render(<BrandTabs active="store" />)
-    expect(screen.getByRole('link', { name: 'Store' })).toHaveAttribute(
-      'aria-current',
-      'page'
-    )
+  it('shows no Store tab (v2 is Klaviyo only)', () => {
+    render(<BrandHeader active="profile" owner={false} lastUpdated={null} />)
     expect(
-      screen.getByRole('link', { name: 'Brand profile' })
-    ).not.toHaveAttribute('aria-current')
+      screen.queryByRole('navigation', { name: 'Brand & Store' })
+    ).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Store' })).toBeNull()
   })
 
   it('shows the mismatch banner only when something does not match', () => {

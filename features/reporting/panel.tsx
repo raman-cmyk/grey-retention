@@ -193,7 +193,7 @@ export async function ReportingPanel() {
           <StatTile
             label="Real revenue"
             value={null}
-            unknownReason="Not connected yet: needs live Klaviyo or Shopify data"
+            unknownReason="Not connected yet: needs live Klaviyo data"
           />
         </StatGrid>
       </SplitSection>
