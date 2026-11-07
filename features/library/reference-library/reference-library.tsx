@@ -1,4 +1,5 @@
 'use client'
+import Image from 'next/image'
 import type { Route } from 'next'
 import Link from 'next/link'
 import { Search, Sparkles } from 'lucide-react'
@@ -77,7 +78,16 @@ function Card({
     >
       {/* The render scrolls inside; it is not a click target (one per card). */}
       <div className="h-72 overflow-hidden border-b border-[var(--line)] bg-white">
-        {item.preview ? (
+        {item.screenshot ? (
+          <Image
+            src={item.screenshot.url}
+            width={item.screenshot.width}
+            height={item.screenshot.height}
+            unoptimized
+            alt={`Screenshot of ${item.title}`}
+            className="h-auto w-full"
+          />
+        ) : item.preview ? (
           <ScaledFrame
             title={`Preview of ${item.title}`}
             srcDoc={item.preview.html}
@@ -442,20 +452,39 @@ export function ReferenceLibrary(
         onClose={() => setOpen(null)}
         footer={open ? (action(open) ?? undefined) : undefined}
       >
-        {open && (
-          <PreviewCardFrame
-            title={`Preview of ${open.title}`}
-            preview={open.preview}
-            text={open.text}
-            caption={
-              open.preview
-                ? 'Links are turned off, and outside fonts, images and tracking pixels don’t load because the preview is isolated from the web.'
-                : noDesignText(open)
-            }
-            notes={[]}
-            height={900}
-            textHeading={textHeadingOf(open)}
-          />
+        {open?.screenshot ? (
+          <figure className="space-y-2">
+            <div className="max-h-[70vh] overflow-auto rounded-[var(--radius-control)] border border-[var(--line)] bg-white">
+              <Image
+                src={open.screenshot.url}
+                width={open.screenshot.width}
+                height={open.screenshot.height}
+                unoptimized
+                alt={`Screenshot of the whole email: ${open.title}`}
+                className="mx-auto h-auto w-full max-w-[600px]"
+              />
+            </div>
+            <figcaption className="text-xs text-[var(--text-muted)]">
+              The whole email at 600px wide, taken when it arrived, with its
+              images kept.
+            </figcaption>
+          </figure>
+        ) : (
+          open && (
+            <PreviewCardFrame
+              title={`Preview of ${open.title}`}
+              preview={open.preview}
+              text={open.text}
+              caption={
+                open.preview
+                  ? 'Links are turned off, and outside fonts, images and tracking pixels don’t load because the preview is isolated from the web.'
+                  : noDesignText(open)
+              }
+              notes={[]}
+              height={900}
+              textHeading={textHeadingOf(open)}
+            />
+          )
         )}
       </Modal>
     </section>

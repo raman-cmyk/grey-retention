@@ -50,6 +50,18 @@ You need one random secret and you put the **same value** in two places. Do not 
 
 The repository is private, so GitHub Actions minutes count against the account allowance (GitHub Free: 2,000 minutes a month; Pro: 3,000). GitHub rounds every run up to one minute. Every 30 minutes (Raman's choice, November 6, 2026) is about **1,500 minutes a month**. That leaves about 500 free minutes for CI, which is roughly 20 runs of the browser check (see `docs/CI_RUNBOOK.md`). When minutes run out, Actions stops (including CI) until next month unless a spending limit is set. Options: set a spending limit (Settings → Billing), run hourly (`cron: '3 * * * *'`, about 750 minutes), or switch the schedule off and rely on the daily Vercel run. A later option is a database-side schedule (Supabase `pg_cron`), which costs no Actions minutes.
 
+## The Inspiration inbox (INB-001, INB-002)
+
+Each sweep first reads the Inspiration inbox, for at most 18 seconds. It reads Gmail when `INBOX_IMAP_USER` and `INBOX_IMAP_APP_PASSWORD` are set in Vercel, and the sample inbox otherwise. It records new newsletters and keeps every image they use. Then the workspace jobs run in what is left of the time.
+
+A server function cannot run a browser, so the **600px screenshot** of each new email is taken by a second workflow, **Inbox screenshots** (`.github/workflows/inbox-screenshots.yml`). It runs at minutes 18 and 48, 15 minutes after each sweep, and needs nothing new: the same `CRON_SECRET` secret and the same `SCHEDULED_JOBS_ENABLED=true` variable switch it on and off.
+
+- **When nothing is waiting**, a run makes one small request and stops, in a few seconds.
+- **When emails are waiting**, it installs Chromium (about two minutes) and photographs up to 20 emails per run. It opens each one with JavaScript off and only that email's own stored files allowed.
+- **Its log shows counts only**, for example `Screenshots taken: 3. Failed: 0.`
+- **Check it:** GitHub → Actions → **Inbox screenshots** → "Run workflow".
+- **Stop reading the real inbox without a code change:** set `INBOX_TRANSPORT=fake` in Vercel, then redeploy (Deployments → latest → Redeploy) so the app sees it.
+
 ## Not covered yet
 
 - The "Run fixture jobs" buttons still exist; hiding them from brand owners is STAB-002.
