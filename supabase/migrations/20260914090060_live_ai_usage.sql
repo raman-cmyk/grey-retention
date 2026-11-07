@@ -37,7 +37,7 @@ begin
  if alert is not null then
  insert into public.budget_alerts(cycle_id,tenant_id,window_key) values(c.id,t,alert) on conflict do nothing;
  if found then perform private.notify_owners(t,'budget_soft_alert',c.id,case when live
-   then 'AI usage reached 80% of the '||alert||' allowance, including real AI requests.'
+   then 'AI usage reached 80% of the '||alert||' allowance, including '||case when operation like 'ai:%' then 'real AI requests.' else 'real AI rewriting requests.' end
    else 'Synthetic fixture usage reached 80% of '||alert||' allowance. No paid provider was called.' end);end if;
  end if;end loop;return r.id;
 end $function$;

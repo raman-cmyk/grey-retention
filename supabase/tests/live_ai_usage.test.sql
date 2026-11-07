@@ -72,6 +72,14 @@ set local role service_role;
 select is(public.settle_stale_ai_usage('00000000-0000-4000-8000-000000000101'),1,'the sweep settles the stale live reservation');
 select ok((select u.state='reconciled' and u.actual_micro=700 from public.usage_reservations u where u.id=current_setting('test.stale')::uuid),'stale live usage is charged at its full estimate');
 
+-- Crossing 80% of the daily allowance with live usage alerts owners truthfully.
+select set_config('test.big',public.reserve_ai_usage('00000000-0000-4000-8000-000000000101','ai:copy:email-2:'||gen_random_uuid(),'copy',1700000)::text,true);
+reset role;
+select ok(exists(select 1 from public.notifications where tenant_id='00000000-0000-4000-8000-000000000101' and kind='budget_soft_alert' and message like 'AI usage reached 80%real AI requests.')
+  and not exists(select 1 from public.notifications where tenant_id='00000000-0000-4000-8000-000000000101' and kind='budget_soft_alert' and message like '%No paid provider%'),'live AI usage alert says real AI requests, never "no paid provider"');
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+set local role service_role;
+
 -- Function privileges: live commands belong to the service role only.
 reset role;
 select ok(not has_function_privilege('authenticated','public.reserve_ai_usage(uuid,text,text,bigint)','execute'),'authenticated has no execute on reserve_ai_usage');
