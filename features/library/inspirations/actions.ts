@@ -21,6 +21,21 @@ async function ownerSession() {
 
 const refresh = () => revalidatePath('/library/inspirations')
 
+type Db = NonNullable<Awaited<ReturnType<typeof createClient>>>
+
+/** Queues the sample capture for a tracked domain; false when it failed. */
+async function requestEmails(db: Db, tenantId: string, subscription: string) {
+  const queued = await db.rpc('enqueue_reference_job', {
+    t: tenantId,
+    kind: 'competitors.capture',
+    subscription
+  })
+  return !queued.error
+}
+
+const retryText = (domain: string) =>
+  `Tracking ${domain}, but we could not ask for their emails yet. Click Track again to retry.`
+
 /** "+ Track": follow a competitor's emails, then ask for their emails. */
 export async function trackDomain(
   _state: FormResult,
@@ -32,16 +47,43 @@ export async function trackDomain(
   if (typeof raw !== 'string' || !raw.trim())
     return { error: 'Enter a domain, for example brand.com.' }
   const domain = trackedDomainOf(raw)
-  if (raw.length > 300 || domain.length > 200 || !domainShape.test(domain))
+  if (raw.length > 300 || !domainShape.test(domain))
     return {
       error: 'That is not a domain. Enter one like brand.com, without spaces.'
     }
+  // The domain is also its label, which holds up to 120 characters.
+  if (domain.length > 120)
+    return { error: 'That domain is too long. Use one under 120 characters.' }
   if (!isSampleDomain(domain)) return { error: sampleOnly }
   const { context, db } = session
+  // Already tracked: say so, and change nothing (its label, rules and any
+  // playbook built on it stay as they are).
+  const capture = await db
+    .from('competitor_captures')
+    .select('id')
+    .eq('domain', domain)
+    .maybeSingle()
+  if (capture.data) {
+    const tracked = await db
+      .from('competitor_subscriptions')
+      .select('id')
+      .eq('tenant_id', context.tenantId)
+      .eq('capture_id', capture.data.id)
+      .eq('active', true)
+      .maybeSingle()
+    if (tracked.data) {
+      // Ask for their emails again (the same request is never queued twice).
+      const queued = await requestEmails(db, context.tenantId, tracked.data.id)
+      return queued
+        ? { message: `You already track ${domain}.` }
+        : { error: retryText(domain) }
+    }
+  }
+  // No label or rules: a new domain is labelled with itself, and one that
+  // was stopped keeps its label and private rules.
   const saved = await db.rpc('subscribe_competitor', {
     t: context.tenantId,
-    domain,
-    label: domain
+    domain
   })
   if (saved.error) {
     if (saved.error.code === 'PT409')
@@ -53,12 +95,9 @@ export async function trackDomain(
     return { error: 'We could not track this domain. Nothing was changed.' }
   }
   // Ask for their emails now; the scheduled worker brings them in.
-  await db.rpc('enqueue_reference_job', {
-    t: context.tenantId,
-    kind: 'competitors.capture',
-    subscription: saved.data
-  })
+  const queued = await requestEmails(db, context.tenantId, saved.data)
   refresh()
+  if (!queued) return { error: retryText(domain) }
   return {
     message: `Tracking ${domain}. It shows PENDING until their emails arrive.`
   }

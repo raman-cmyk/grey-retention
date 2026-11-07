@@ -18,6 +18,8 @@ const form = (values: Record<string, string>) => {
 }
 let rpc: ReturnType<typeof vi.fn>
 let rules: { data: unknown; error: unknown }
+let capture: { data: unknown; error: unknown }
+let tracked: { data: unknown; error: unknown }
 const signedInAs = (tenantRole: string) =>
   auth.requireRequestContext.mockResolvedValue({ tenantId: tenant, tenantRole })
 beforeEach(() => {
@@ -28,11 +30,25 @@ beforeEach(() => {
       : { data: null, error: null }
   )
   rules = { data: { private_rules: 'Never copy prices.' }, error: null }
-  const chain: Record<string, unknown> = {}
-  chain.select = () => chain
-  chain.eq = () => chain
-  chain.maybeSingle = async () => rules
-  supabase.createClient.mockResolvedValue({ rpc, from: () => chain })
+  capture = { data: null, error: null }
+  tracked = { data: null, error: null }
+  const from = (table: string) => {
+    const chain: Record<string, unknown> = {}
+    let columns = ''
+    chain.select = (c: string) => {
+      columns = c
+      return chain
+    }
+    chain.eq = () => chain
+    chain.maybeSingle = async () =>
+      table === 'competitor_captures'
+        ? capture
+        : columns === 'private_rules'
+          ? rules
+          : tracked
+    return chain
+  }
+  supabase.createClient.mockResolvedValue({ rpc, from })
 })
 afterEach(() => vi.clearAllMocks())
 
@@ -47,10 +63,10 @@ describe('trackDomain', () => {
       message:
         'Tracking northwind.example. It shows PENDING until their emails arrive.'
     })
+    // No label or rules: a stopped domain keeps its own.
     expect(rpc).toHaveBeenNthCalledWith(1, 'subscribe_competitor', {
       t: tenant,
-      domain: 'northwind.example',
-      label: 'northwind.example'
+      domain: 'northwind.example'
     })
     expect(rpc).toHaveBeenNthCalledWith(2, 'enqueue_reference_job', {
       t: tenant,
@@ -68,6 +84,44 @@ describe('trackDomain', () => {
     expect(
       (await trackDomain({}, form({ domain: 'brand.com' }))).error
     ).toMatch(/only sample domains that end in \.example/)
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('changes nothing for a domain that is already tracked, but asks for its emails again', async () => {
+    capture = { data: { id: 'cap-1' }, error: null }
+    tracked = { data: { id: subscription }, error: null }
+    expect(
+      await trackDomain({}, form({ domain: 'northwind.example' }))
+    ).toEqual({ message: 'You already track northwind.example.' })
+    expect(rpc).not.toHaveBeenCalledWith(
+      'subscribe_competitor',
+      expect.anything()
+    )
+    expect(rpc).toHaveBeenCalledWith('enqueue_reference_job', {
+      t: tenant,
+      kind: 'competitors.capture',
+      subscription
+    })
+  })
+
+  it('says when their emails could not be requested', async () => {
+    rpc.mockImplementation(async (name: string) =>
+      name === 'subscribe_competitor'
+        ? { data: subscription, error: null }
+        : { data: null, error: { code: 'XX000' } }
+    )
+    expect(
+      (await trackDomain({}, form({ domain: 'northwind.example' }))).error
+    ).toBe(
+      'Tracking northwind.example, but we could not ask for their emails yet. Click Track again to retry.'
+    )
+  })
+
+  it('refuses a domain too long to be its own label', async () => {
+    expect(
+      (await trackDomain({}, form({ domain: `${'a'.repeat(120)}.example` })))
+        .error
+    ).toBe('That domain is too long. Use one under 120 characters.')
     expect(rpc).not.toHaveBeenCalled()
   })
 
