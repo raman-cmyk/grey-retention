@@ -479,7 +479,20 @@ test('INB-004 an admin works the inbox queue and keeps the brand directory', asy
   const unknown = queue.getByRole('listitem').filter({
     hasText: 'Email from an unknown sender: news.cedar-lane.example'
   })
-  await expect(unknown).toBeVisible()
+  // A retry finds what an earlier attempt already did.
+  const db = serviceClient()
+  const added = await db
+    .from('competitor_captures')
+    .select('id')
+    .eq('alias_slug', 'cedar')
+    .maybeSingle()
+  const assigned = await db
+    .from('competitor_sender_domains')
+    .select('capture_id')
+    .eq('domain', 'news.cedar-lane.example')
+    .maybeSingle()
+  expect(added.error ?? assigned.error).toBeNull()
+  if (!assigned.data) await expect(unknown).toBeVisible()
 
   // The directory gives each brand the address to subscribe with.
   const directory = adminPage.getByRole('table', { name: 'Competitor brands' })
@@ -490,17 +503,21 @@ test('INB-004 an admin works the inbox queue and keeps the brand directory', asy
   await expect(northwind).toContainText('Sample')
 
   // Add the brand, then give it the unknown sender.
-  await adminPage.getByLabel('Brand name').fill('Cedar Lane')
-  await adminPage.getByLabel('Website domain').fill('cedar-lane.example')
-  await adminPage.getByLabel("+alias (the brand's short name)").fill('cedar')
-  await adminPage.getByLabel('Niche').fill('home')
-  await adminPage.getByRole('button', { name: 'Save brand' }).click()
-  await expect(adminPage.getByText('Saved Cedar Lane.')).toBeVisible()
-  await adminPage.reload()
-  await unknown
-    .getByLabel('Brand for news.cedar-lane.example')
-    .selectOption({ label: 'Cedar Lane (cedar-lane.example)' })
-  await unknown.getByRole('button', { name: 'Assign to this brand' }).click()
+  if (!added.data) {
+    await adminPage.getByLabel('Brand name').fill('Cedar Lane')
+    await adminPage.getByLabel('Website domain').fill('cedar-lane.example')
+    await adminPage.getByLabel("+alias (the brand's short name)").fill('cedar')
+    await adminPage.getByLabel('Niche').fill('home')
+    await adminPage.getByRole('button', { name: 'Save brand' }).click()
+    await expect(adminPage.getByText('Saved Cedar Lane.')).toBeVisible()
+    await adminPage.reload()
+  }
+  if (!assigned.data) {
+    await unknown
+      .getByLabel('Brand for news.cedar-lane.example')
+      .selectOption({ label: 'Cedar Lane (cedar-lane.example)' })
+    await unknown.getByRole('button', { name: 'Assign to this brand' }).click()
+  }
   // The task is done, so it leaves the queue; the brand now has the email
   // and remembers the sender.
   await expect(unknown).toHaveCount(0)
