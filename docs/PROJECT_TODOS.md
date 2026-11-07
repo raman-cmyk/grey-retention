@@ -43,7 +43,10 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - [ ] Audit Klaviyo campaign/audience flow and text-to-segment review using an existing account and unsent drafts.
 - [ ] Audit Milled brand search, brand archive, email detail and saved inspiration; label observed facts separately from interpretations.
 - [ ] Compare friction, required fields, defaults, recovery and time to first useful result; turn findings into original journey proposals.
-- [ ] Clarify dictated terms “HPicker AI”, “interman serif” and “Fallible one” before assigning a specific component/font meaning.
+- [x] Clarify the font reference: Instrument Serif is explicitly banned in DESIGN_RULES.
+- “HPicker AI” is unidentified; the owner does not know the intended reference. Do not invent a component ban. “Fallible one” remains unclear.
+- [x] Research Reddit complaints about generic AI-looking interfaces; findings and proposals are in [CLEAN_APP_DESIGN_RESEARCH.md](CLEAN_APP_DESIGN_RESEARCH.md).
+- [ ] Compare desktop onboarding layouts using actual copy and complete states; validate with brand-owner tasks, as proposed in the research.
 
 ## Open decisions
 
