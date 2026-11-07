@@ -558,7 +558,7 @@ export function Planner({
             </button>
           </form>
           <Link
-            href="/settings#holidays"
+            href="/holidays"
             className="inline-flex min-h-9 items-center gap-1.5 rounded-[var(--radius-control)] px-2 text-sm text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
           >
             <PartyPopper className="size-4" aria-hidden />

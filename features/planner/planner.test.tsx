@@ -112,6 +112,10 @@ describe('Campaigns planner', () => {
       '2026-11-06'
     )
     expect(screen.getByText('Times: New York time')).toBeVisible()
+    // Holidays and events have their own page (UIR-012).
+    expect(
+      screen.getByRole('link', { name: 'Holidays & Events' })
+    ).toHaveAttribute('href', '/holidays')
     expect(screen.getByText('1 campaign · 1 needs your approval')).toBeVisible()
     // Sample data is labelled.
     expect(
