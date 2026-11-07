@@ -66,7 +66,10 @@ test('UIR-005 the Store tab shows a store dashboard once Shopify is connected', 
   await expect(trend.getByRole('table')).toBeVisible()
   await expect(trend.getByRole('row')).toHaveCount(31)
 
-  const customers = page.getByRole('region', { name: 'Top customers' })
+  const customers = page.getByRole('region', {
+    name: 'Top customers',
+    exact: true
+  })
   await expect(customers.getByRole('row')).toHaveCount(6)
 
   // Stock alerts come from the workspace's own catalogue.
@@ -131,7 +134,7 @@ test('UIR-005 the Store dashboard fits 375px', async ({ page }, info) => {
   await connectShopify(page)
   await page.goto('/store')
   await expect(
-    page.getByRole('region', { name: 'Top customers' })
+    page.getByRole('region', { name: 'Top customers', exact: true })
   ).toBeVisible()
   expect(
     await page.evaluate(
