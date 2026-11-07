@@ -9,7 +9,7 @@ const card = (page: Page, title: string) =>
 
 test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async ({
   page
-}, info) => {
+}) => {
   // A fresh workspace: brand changes reset campaigns, so never touch the
   // shared accounts here.
   await newOwner(page, { prefix: 'brand', name: 'Brand profile studio' })
@@ -18,11 +18,10 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
     page.getByRole('heading', { name: 'Brand & Store', level: 1 })
   ).toBeVisible()
   await expect(page).toHaveTitle(/Brand Intelligence/)
+  // One tab left (no Store tab in v2), so no tab row.
   await expect(
-    page
-      .getByRole('navigation', { name: 'Brand & Store' })
-      .getByRole('link', { name: 'Brand profile', exact: true })
-  ).toHaveAttribute('aria-current', 'page')
+    page.getByRole('navigation', { name: 'Brand & Store' })
+  ).toHaveCount(0)
 
   // First Identity save creates the brand the AI reads.
   const brandName = `Juniper Field ${randomUUID().slice(0, 6)}`
@@ -107,26 +106,12 @@ test('UIR-005 owner edits, approves, locks and redoes the Brand profile', async 
   await expect(page).toHaveURL(/\/brand#voice$/)
   await expect(card(page, 'Tone of Voice')).toBeVisible()
 
-  // Store keeps the sub-tabs, and the sidebar still marks Brand & Store.
-  const tabs = page.getByRole('navigation', { name: 'Brand & Store' })
-  await tabs.getByRole('link', { name: 'Store', exact: true }).click()
-  await expect(page).toHaveURL(/\/store$/)
-  await expect(page).toHaveTitle(/Store Intelligence/)
+  // v2 is Klaviyo only: no Store tab, and an old /store link opens Brand.
   await expect(
-    tabs.getByRole('link', { name: 'Brand profile', exact: true })
-  ).toBeVisible()
-  await expect(
-    page
-      .getByRole('heading', {
-        name: 'Connect Shopify to see Store Intelligence'
-      })
-      .or(page.getByRole('heading', { name: 'Store Intelligence' }))
-  ).toBeVisible()
-  if (!info.project.name.startsWith('mobile'))
-    // The sidebar (not the tabs) marks Brand & Store as the current area.
-    await expect(
-      page.locator('nav a[href="/brand"][aria-current="page"]').first()
-    ).toBeVisible()
+    page.getByRole('navigation', { name: 'Brand & Store' })
+  ).toHaveCount(0)
+  await page.goto('/store')
+  await expect(page).toHaveURL(/\/brand$/)
 })
 
 test('UIR-005 staff read the Brand profile without edit controls', async ({

@@ -222,4 +222,35 @@ describe('ReferenceLibrary', () => {
     )
     expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'e2' }))
   })
+
+  it('shows the kept screenshot on the card and the whole picture in the preview', async () => {
+    const user = userEvent.setup()
+    render(
+      <ReferenceLibrary
+        items={[
+          item(1, {
+            screenshot: {
+              url: 'https://db.test/shot/1.jpg?token=t',
+              width: 600,
+              height: 2400
+            }
+          })
+        ]}
+        timezone="UTC"
+        canUse
+      />
+    )
+    const card = screen.getByAltText('Screenshot of Fictional email 1')
+    expect(card.getAttribute('src')).toBe('https://db.test/shot/1.jpg?token=t')
+    await user.click(screen.getByRole('button', { name: /Open the preview/ }))
+    const dialog = screen.getByRole('dialog')
+    expect(
+      within(dialog).getByAltText(
+        /Screenshot of the whole email: Fictional email 1/
+      )
+    ).toBeTruthy()
+    expect(
+      within(dialog).getByText(/taken when it arrived, with its images kept/)
+    ).toBeTruthy()
+  })
 })

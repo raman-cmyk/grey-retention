@@ -2,11 +2,15 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
+import { keepInboxImages, type AssetsRun } from './assets'
 import { inboxConfig, type InboxConfig } from './config'
+import { liveImageFetcher, sampleImageFetcher } from './image-fetch'
 import { pollInbox, type InboxRun } from './worker'
 
 /** The longest the sweep waits for the inbox before the workspace jobs. */
-export const inboxStepMs = 15_000
+export const inboxStepMs = 18_000
+/** No new email's images are started after this long into the step. */
+export const assetsUntilMs = 15_000
 
 export type InboxStep =
   | {
@@ -15,57 +19,86 @@ export type InboxStep =
       /** Real newsletters (Gmail) or sample ones (the fake inbox). */
       synthetic: boolean
       run: InboxRun
+      /** Images kept for emails recorded now or earlier (INB-002). */
+      assets: AssetsRun | { state: 'failed'; code: string } | null
     }
   | { transport: 'gmail_imap'; ready: false; reason: string }
 
+type Steps = {
+  poll?: typeof pollInbox
+  assets?: (
+    db: SupabaseClient<Database>,
+    deadline: number
+  ) => Promise<AssetsRun>
+}
+
 /**
  * The inbox part of the scheduled sweep: one poll of the configured
- * mailbox. It never throws and never takes longer than `inboxStepMs`: a
- * poll still running then finishes on its own, and its lease keeps a second
- * one from starting. A failure here never stops the workspace jobs.
+ * mailbox, then the images of new emails. It never throws and never takes
+ * longer than `inboxStepMs`: work still running then finishes on its own,
+ * and its lease keeps a second one from starting. A failure here never
+ * stops the workspace jobs.
  */
 export async function runInboxStep(
   db: SupabaseClient<Database>,
   config: InboxConfig = inboxConfig(),
-  options: { timeoutMs?: number; poll?: typeof pollInbox } = {}
+  options: { timeoutMs?: number; assetsUntilMs?: number } & Steps = {}
 ): Promise<InboxStep> {
   if (!config.ready) {
     logger.warn('Inbox not configured', { transport: config.kind })
     return { transport: config.kind, ready: false, reason: config.reason }
   }
   const transport = config.transport
+  const started = Date.now()
   const poll = options.poll ?? pollInbox
-  const done = (run: InboxRun): InboxStep => ({
+  const assets =
+    options.assets ??
+    ((d: SupabaseClient<Database>, deadline: number) =>
+      keepInboxImages(
+        d,
+        { real: liveImageFetcher, sample: sampleImageFetcher },
+        deadline
+      ))
+  const result: Extract<InboxStep, { ready: true }> = {
     transport: transport.kind,
     ready: true,
     synthetic: transport.synthetic,
-    run
-  })
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    const run = await Promise.race([
-      poll(db, transport),
-      new Promise<InboxRun>((resolve) => {
-        timer = setTimeout(
-          () => resolve({ state: 'failed', code: 'inbox_step_timeout' }),
-          options.timeoutMs ?? inboxStepMs
-        )
-      })
-    ])
-    if (run.state === 'failed')
-      logger.warn('Inbox poll failed', {
-        transport: transport.kind,
-        code: run.code
-      })
-    return done(run)
-  } catch (error) {
-    const code = (error as { code?: string }).code ?? 'inbox_step_error'
-    logger.warn('Inbox poll could not start', {
-      transport: transport.kind,
-      code
-    })
-    return done({ state: 'failed', code })
-  } finally {
-    clearTimeout(timer)
+    run: { state: 'failed', code: 'inbox_step_timeout' },
+    assets: null
   }
+  const work = async () => {
+    try {
+      result.run = await poll(db, transport)
+    } catch (error) {
+      const code = (error as { code?: string }).code ?? 'inbox_step_error'
+      result.run = { state: 'failed', code }
+    }
+    try {
+      result.assets = await assets(
+        db,
+        started + (options.assetsUntilMs ?? assetsUntilMs)
+      )
+    } catch (error) {
+      const code = (error as { code?: string }).code ?? 'assets_step_error'
+      result.assets = { state: 'failed', code }
+    }
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  await Promise.race([
+    work(),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, options.timeoutMs ?? inboxStepMs)
+    })
+  ])
+  clearTimeout(timer)
+  // A snapshot: work that is still running cannot change the answer.
+  const step = { ...result }
+  if (step.run.state === 'failed')
+    logger.warn('Inbox poll failed', {
+      transport: transport.kind,
+      code: step.run.code
+    })
+  if (step.assets && 'state' in step.assets)
+    logger.warn('Inbox images failed', { code: step.assets.code })
+  return step
 }

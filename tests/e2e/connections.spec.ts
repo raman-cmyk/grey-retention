@@ -8,7 +8,8 @@ test('UC-01/02 fixture Drive and commerce jobs persist real private artifacts an
   await page.goto('/connections')
   // The sample-data test controls sit in a collapsed section below the cards.
   await page.getByText('Sample data tools', { exact: true }).click()
-  for (const provider of ['klaviyo', 'shopify', 'drive']) {
+  // The product fixture is called "sample catalog" (v2 is Klaviyo only).
+  for (const provider of ['klaviyo', 'sample catalog', 'drive']) {
     await page
       .getByLabel(`${provider} fixture status`)
       .selectOption('connected')

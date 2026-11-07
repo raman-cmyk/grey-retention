@@ -54,8 +54,6 @@ export async function dashboardView(
       klaviyo: dashboardHref(query, { attr: null }),
       utm: dashboardHref(query, { attr: 'utm' })
     },
-    shopify:
-      klaviyo.state === 'sample' ? klaviyo.shopify : ('missing' as const),
     sends: upcomingSends(campaigns, snapshot, now),
     // What the owner must act on: problems and missed sends first, then
     // approvals (UIR-015).

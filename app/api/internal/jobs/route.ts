@@ -19,7 +19,8 @@ const noStore = { 'cache-control': 'no-store' }
  * Scheduled sweep: Vercel cron and the GitHub Actions schedule call this with
  * `Authorization: Bearer <CRON_SECRET>`. It first reads the Inspiration inbox
  * once (INB-001: Gmail when `INBOX_IMAP_USER` and `INBOX_IMAP_APP_PASSWORD`
- * are set, otherwise the sample inbox; at most 15 seconds), then runs due
+ * are set, otherwise the sample inbox), keeps the images of new emails
+ * (INB-002), at most 18 seconds together, then runs due
  * jobs for every active workspace in bounded batches through the fixture
  * adapters only, in what is left of the 40-second budget. The inbox does
  * not depend on `ADAPTER_MODE`; the workspace jobs do.
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
       { status: 503, headers: noStore }
     )
   const started = Date.now()
-  // Never throws and never waits more than 15 s: an inbox problem is
+  // Never throws and never waits more than 18 s: an inbox problem is
   // reported and the sweep goes on.
   const inbox = await runInboxStep(db)
   if (!scheduledDispatchAllowed(process.env.ADAPTER_MODE))

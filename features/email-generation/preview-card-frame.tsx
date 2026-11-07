@@ -44,11 +44,15 @@ export function PreviewCardFrame({
       Boolean(document.fullscreenEnabled && frame.current?.requestFullscreen)
     )
   }, [preview, version])
+  // The pending announcement; cleared on unmount so it never fires late.
+  const announceTimer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(announceTimer.current), [])
   // Clear, then set, so the same words are announced again.
   const say = (text: string, visible = false) => {
     setMessage(visible ? text : '')
     setAnnouncement('')
-    window.setTimeout(() => setAnnouncement(text), 30)
+    window.clearTimeout(announceTimer.current)
+    announceTimer.current = window.setTimeout(() => setAnnouncement(text), 30)
   }
   const fullscreen = async () => {
     setMessage('')
