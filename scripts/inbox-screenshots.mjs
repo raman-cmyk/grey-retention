@@ -65,6 +65,10 @@ export async function render(browser, job, html) {
   const context = await browser.newContext({
     viewport: { width, height: 800 },
     deviceScaleFactor: 1,
+    // A desktop page at 600px. Mobile mode would lay out a page without a
+    // viewport tag at 980px.
+    isMobile: false,
+    hasTouch: false,
     javaScriptEnabled: false,
     serviceWorkers: 'block'
   })
