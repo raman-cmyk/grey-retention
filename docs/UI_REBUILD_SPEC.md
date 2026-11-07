@@ -728,11 +728,11 @@ Right panel:
 
 ## 11. Settings `/settings`
 
-- [ ] H1 "Settings" + "Set defaults that apply to every campaign you generate. You can still change them on any individual draft." Column ~900px.
-- [ ] **🕘 Timezone (read-only):**
+- [x] H1 "Settings" + "Set defaults that apply to every campaign you generate. You can still change them on any individual draft." Column ~900px.
+- [x] **🕘 Timezone (read-only):**
   - "Campaign send times are scheduled in your brand's timezone, synced from your Klaviyo account. Update it in Klaviyo if it's wrong."
   - BRAND TIMEZONE "US/Pacific (UTC-08:00)" and CURRENT LOCAL TIME "Fri, Nov 6 2026 · 9:07 AM" (live clock)
-- [ ] **Campaign defaults:** "These pre-fill on every new campaign. Each draft shows the value and lets you override it before sending, and the chosen values are pushed to Klaviyo."
+- [x] **Campaign defaults:** "These pre-fill on every new campaign. Each draft shows the value and lets you override it before sending, and the chosen values are pushed to Klaviyo."
   - underline tabs, switched on the client: Featured Product / Sender Name / Primary Link / Audience / Email Settings
   - **Featured Product:** "The single product new campaigns feature by default. The AI body generator sees its Shopify sales, quantities, and recent orders." + product radio picker
   - **Sender Name:** "The "from" name recipients see. Leave blank to use your Klaviyo account default." + input
@@ -744,7 +744,9 @@ Right panel:
     - divider
     - FOOTER SOURCE select ("Auto — built from my brand settings" + every Klaviyo template), help "We pull the bottom block (unsubscribe + address) from the chosen email."
     - small muted "Heads up: a Klaviyo template is a whole email, so we extract the footer automatically — give the next test send a quick look to confirm it came through cleanly. If extraction misses, we fall back to the auto-built block."
-- [ ] One right-aligned primary `Save defaults` under the card. It saves all tabs; show a success toast.
+- [x] One right-aligned primary `Save defaults` under the card. It saves all tabs; show a success toast.
+
+> **As built (UIR-011, cloud lane):** layout as above. The Timezone card shows the workspace timezone, the same one the Dashboard uses (OWNER_JOURNEYS §11 fix), and says it is not read from Klaviyo yet, instead of "synced from your Klaviyo account". The live clock ticks. Defaults are saved for the workspace and the card says plainly that the new campaign editor will be the first screen to read them. Audience pickers show the sample Klaviyo lists and segments (labelled sample); FOOTER SOURCE offers only "Auto" until real Klaviyo templates exist. "Save defaults" saves all tabs and says "Applies to new campaigns only." The success message appears next to the button (no toast component exists yet). Older settings (budget, notifications, holidays, delivery policy) sit below under "More settings".
 
 ---
 
