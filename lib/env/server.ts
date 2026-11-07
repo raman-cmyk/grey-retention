@@ -13,6 +13,7 @@ const serverEnvironmentSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   GOOGLE_GENERATIVE_AI_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
   DEEPSEEK_API_KEY: z.string().optional()
 })
 
