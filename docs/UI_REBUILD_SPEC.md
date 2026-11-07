@@ -39,23 +39,23 @@ Pill/status colour roles used everywhere:
 
 ## 1. Route map
 
-| Route                                                                                                                                                                | Screen                            | In sidebar        |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ----------------- |
+| Route                                                                                                                                                                | Screen                            | In sidebar       |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ---------------- |
 | `/dashboard` (`?tab=lists\|segments\|campaigns\|flows\|metrics`, `?attr=klaviyo\|utm`, `?refresh=1`)                                                                 | Dashboard                         | ✔                |
-| `/lists/:id`, `/segments/:id`, `/campaigns/klaviyo/:id` (built; was `/campaigns/:id`, which is now this workspace's own campaign page), `/flows/:id`, `/metrics/:id` | Klaviyo object detail pages       | —                 |
-| `/flow-messages/:id`                                                                                                                                                 | Flow email preview                | —                 |
+| `/lists/:id`, `/segments/:id`, `/campaigns/klaviyo/:id` (built; was `/campaigns/:id`, which is now this workspace's own campaign page), `/flows/:id`, `/metrics/:id` | Klaviyo object detail pages       | —                |
+| `/flow-messages/:id`                                                                                                                                                 | Flow email preview                | —                |
 | `/brand` · `/brand/voice` · `/store`                                                                                                                                 | Brand & Store (3 sub-tabs)        | ✔ Brand & Store  |
 | `/campaign-agent` (`?m=YYYY-MM`) and `/calendar`                                                                                                                     | Campaign planner (calendar/table) | ✔ Campaign Agent |
-| `/campaign-drafts` (`?status=draft\|ready\|pushed`)                                                                                                                  | Drafts list                       | —                 |
-| `/campaign-drafts/new`                                                                                                                                               | New campaign draft (brief form)   | —                 |
-| `/campaign-drafts/:id?view=1`                                                                                                                                        | Draft editor                      | —                 |
+| `/campaign-drafts` (`?status=draft\|ready\|pushed`)                                                                                                                  | Drafts list                       | —                |
+| `/campaign-drafts/new`                                                                                                                                               | New campaign draft (brief form)   | —                |
+| `/campaign-drafts/:id?view=1`                                                                                                                                        | Draft editor                      | —                |
 | `/gros`, `/gros/:threadId`                                                                                                                                           | Ask GROS chat                     | ✔                |
 | `/library/inspirations`                                                                                                                                              | Competitor Agent                  | ✔                |
 | `/support` (`?t=:ticketId`)                                                                                                                                          | Support tickets                   | ✔                |
 | `/settings`                                                                                                                                                          | Settings (campaign defaults)      | ✔ Workspace      |
 | `/holidays`                                                                                                                                                          | Holidays & Events                 | ✔ Workspace      |
 | `/connections`                                                                                                                                                       | Connections                       | ✔ Workspace      |
-| `/profile`                                                                                                                                                           | Profile                           | account menu      |
+| `/profile`                                                                                                                                                           | Profile                           | account menu     |
 
 Not crawled (needs a logged-out or admin session): login, signup, onboarding, password reset, admin/designer views. Capture those separately before building them.
 
