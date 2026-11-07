@@ -261,15 +261,17 @@ Shared behaviour:
 
 Controls:
 
-- [ ] `Regenerate All` (submit, spends tokens) and a per-section round `⟳` "Regenerate this section" (submit, spends tokens). Not clicked.
-- [ ] Sub-tab links: Brand Truth `/brand`, Copy & Voice `/brand/voice`, Store `/store`. Page `<title>`s: "Brand Intelligence" (both brand tabs) and "Store Intelligence".
+- [x] `Regenerate All` (submit, spends tokens) and a per-section round `⟳` "Regenerate this section" (submit, spends tokens). Not clicked.
+- [x] Sub-tab links: Brand Truth `/brand`, Copy & Voice `/brand/voice`, Store `/store`. Page `<title>`s: "Brand Intelligence" (both brand tabs) and "Store Intelligence".
 - [ ] The token strip here uses a longer format: "Input: N left of M · Output: N left of M". The dashboard version says "N input · N output tokens remaining". Use one format. **(fix)**
-- [ ] **Every field is editable by the owner** (inline edit + Save), and the AI regenerate never overwrites a field the owner has locked. **(fix: the old app had no edit at all)**
-- [ ] Brand Truth's "No products extracted" callout has real links:
+- [x] **Every field is editable by the owner** (inline edit + Save), and the AI regenerate never overwrites a field the owner has locked. **(fix: the old app had no edit at all)**
+- [x] Brand Truth's "No products extracted" callout has real links:
   - "connect Shopify" → `/connections`
   - "Hero Product URL in Brand settings" → a real field
   - **(fix)** In the old app both were plain text, and no "Brand settings" page with a Hero Product URL exists.
-- [ ] Store tab without Shopify hides the header and sub-tabs, so the owner can't click back to Brand Truth except via the sidebar. Keep the sub-tabs visible. **(fix)**
+- [x] Store tab without Shopify hides the header and sub-tabs, so the owner can't click back to Brand Truth except via the sidebar. Keep the sub-tabs visible. **(fix)**
+
+> **As built (UIR-005):** Brand Truth and Copy & Voice are one editable **Brand profile** at `/brand` (decision 5); `/brand/voice` opens its Copy & Voice part, and the sub-tabs are Brand profile · Store. Titles: "Brand Intelligence" and "Store Intelligence". "Regenerate" is **Redo with AI** (all sections, or one section): today a sample writer that only fills empty, unlocked fields with text marked "Sample:" and never changes the owner's words (no tokens spent). Every field has inline edit and Save; locked fields are never redone. The "No products yet" callout links to Connections ("connect Shopify") and to the catalogue further down the page, and the profile has a real **Hero product URL** field. The Store tab keeps the header and sub-tabs without Shopify. With Shopify connected, the Store tab is a dashboard: revenue and orders for 30 days (each compared with the 30 days before), average order and returning customers, a revenue chart with a table, the top five customers, and stock alerts (out of stock, 5 or fewer left, stock not checked in 24 hours, which blocks scheduling a campaign that features the product). Orders and customers are **sample data** until the live Shopify sync exists, and say so; products and stock are the workspace's own catalogue (all of it). A broken Shopify connection (disconnected, expired, error) is named, with a link to Connections, and the stock alerts stay. The token strip waits for UIR-024 (AI credits).
 
 States seen:
 
