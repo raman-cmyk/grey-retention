@@ -1,5 +1,5 @@
 begin;
-select plan(24);
+select plan(26);
 set local role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000004',true);
 select public.approve_calendar('00000000-0000-4000-8000-000000000102','00000000-0000-4000-8000-000000000602',1);
