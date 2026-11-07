@@ -39,29 +39,20 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     '/dashboard/:path*',
-    // Every workspace page, so a page opened in a new tab can refresh its
-    // session (UIR-004: rows are real links now).
-    '/assets/:path*',
-    '/campaigns/:path*',
-    '/copy-review/:path*',
-    '/email-library/:path*',
-    '/emails/:path*',
+    // The Klaviyo detail pages (UIR-004): read-only pages that dashboard rows
+    // open, often in a new tab. Pages full of server actions stay out until
+    // the session refresh is proven safe for them in the browser journeys.
+    '/campaigns/klaviyo/:path*',
     '/flow-messages/:path*',
     '/flows/:path*',
     '/lists/:path*',
     '/metrics/:path*',
-    '/optimizer/:path*',
-    '/reports/:path*',
     '/segments/:path*',
     '/brand/:path*',
     '/store/:path*',
     '/campaign-agent/:path*',
     '/competitor-agent/:path*',
     '/connections/:path*',
-    '/create-email/:path*',
-    '/first-draft/:path*',
-    '/get-started/:path*',
-    '/import-reference/:path*',
     '/gros/:path*',
     '/onboarding/:path*',
     '/profile/:path*',
