@@ -99,6 +99,39 @@ describe('brandGuard', () => {
     )
   })
 
+  it('ignores an old connected Shopify store (v2 is Klaviyo only)', async () => {
+    db.brand = {
+      data: { brand_name: 'Cedar Lane', domain: 'cedar-lane.example' },
+      error: null
+    }
+    db.connections = () => ({
+      data: [
+        {
+          provider: 'shopify',
+          status: 'connected',
+          account_label: 'other.myshopify.com',
+          shop_domain: 'other.myshopify.com',
+          account_website: null,
+          account_currency: 'EUR',
+          account_country: 'DE'
+        },
+        {
+          provider: 'klaviyo',
+          status: 'connected',
+          account_label: 'Cedar Lane',
+          shop_domain: null,
+          account_website: 'https://cedar-lane.example',
+          account_currency: 'USD',
+          account_country: 'US'
+        }
+      ],
+      error: null
+    })
+    const found = await brandGuard(tenant)
+    expect(found.some((m) => m.source === 'shopify')).toBe(false)
+    expect(found.some((m) => /Shopify/.test(m.message))).toBe(false)
+  })
+
   it('keeps the name and store checks on a database without the account facts', async () => {
     db.brand = {
       data: { brand_name: 'Cedar Lane', domain: 'cedar-lane.example' },

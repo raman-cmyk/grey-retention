@@ -27,7 +27,6 @@ function view(row: Row | undefined): ConnectionView | null {
     status: row.status,
     accountLabel: row.account_label ?? null,
     credentialHint: row.credential_hint ?? null,
-    shopDomain: row.shop_domain ?? null,
     templateCount: row.template_count ?? null
   }
 }

@@ -91,8 +91,12 @@ test('UIR-013 staff see connection state without connect controls', async ({
     page.getByRole('heading', { name: 'Connections', level: 1 })
   ).toBeVisible()
   await expect(page.getByLabel(/Private API key/)).toHaveCount(0)
+  // Staff see the Klaviyo card's state, and no Shopify card at all.
   await expect(
-    page.getByRole('button', { name: 'Connect Shopify' })
+    page.getByRole('heading', { name: 'Klaviyo', exact: true })
+  ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Shopify', exact: true })
   ).toHaveCount(0)
 })
 

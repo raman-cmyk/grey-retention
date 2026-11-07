@@ -12,7 +12,6 @@ export type ConnectionView = {
   status: string
   accountLabel: string | null
   credentialHint: string | null
-  shopDomain: string | null
   templateCount: number | null
 }
 
@@ -265,7 +264,7 @@ export function ConnectionsBoard({
   owner: boolean
 }) {
   return (
-    <div className="grid gap-6 md:grid-cols-2">
+    <div className="max-w-xl">
       <KlaviyoCard connection={klaviyo} owner={owner} />
     </div>
   )
