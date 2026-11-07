@@ -248,8 +248,8 @@ export function ProposeChange({
         className="grid gap-3 border-t border-[var(--line)] p-3 sm:grid-cols-2"
       >
         <input type="hidden" name="chat" value={chat} />
-        <label className="grid gap-1 text-sm" htmlFor={`${id}-campaign`}>
-          Campaign
+        <div className="grid gap-1 text-sm">
+          <label htmlFor={`${id}-campaign`}>Campaign</label>
           <select
             id={`${id}-campaign`}
             name="campaign"
@@ -266,9 +266,9 @@ export function ProposeChange({
               </option>
             ))}
           </select>
-        </label>
-        <label className="grid gap-1 text-sm" htmlFor={`${id}-intent`}>
-          Change
+        </div>
+        <div className="grid gap-1 text-sm">
+          <label htmlFor={`${id}-intent`}>Change</label>
           <select
             id={`${id}-intent`}
             name="intent"
@@ -282,13 +282,10 @@ export function ProposeChange({
               </option>
             ))}
           </select>
-        </label>
+        </div>
         {intent === 'edit_goal' && (
-          <label
-            className="grid gap-1 text-sm sm:col-span-2"
-            htmlFor={`${id}-goal`}
-          >
-            New goal
+          <div className="grid gap-1 text-sm sm:col-span-2">
+            <label htmlFor={`${id}-goal`}>New goal</label>
             <textarea
               id={`${id}-goal`}
               name="value"
@@ -297,15 +294,12 @@ export function ProposeChange({
               required
               className={field}
             />
-          </label>
+          </div>
         )}
         {intent === 'select_reference' &&
           (references.length ? (
-            <label
-              className="grid gap-1 text-sm sm:col-span-2"
-              htmlFor={`${id}-reference`}
-            >
-              Reference email
+            <div className="grid gap-1 text-sm sm:col-span-2">
+              <label htmlFor={`${id}-reference`}>Reference email</label>
               <select
                 id={`${id}-reference`}
                 name="value"
@@ -322,17 +316,14 @@ export function ProposeChange({
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
           ) : (
             <p className="text-sm text-[var(--text-muted)] sm:col-span-2">
               No competitor emails yet. Track a competitor in Inspiration first.
             </p>
           ))}
-        <label
-          className="grid gap-1 text-sm sm:col-span-2"
-          htmlFor={`${id}-reason`}
-        >
-          Why
+        <div className="grid gap-1 text-sm sm:col-span-2">
+          <label htmlFor={`${id}-reason`}>Why</label>
           <textarea
             id={`${id}-reason`}
             name="question"
@@ -341,7 +332,7 @@ export function ProposeChange({
             required
             className={field}
           />
-        </label>
+        </div>
         <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
           <Button
             type="submit"

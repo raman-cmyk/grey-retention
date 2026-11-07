@@ -43,11 +43,18 @@ test('UC-11 paged GROS history keeps old and newest messages after refresh', asy
   await page
     .getByRole('link', { name: 'Earlier messages', exact: true })
     .click()
-  await expect(messages.getByText(q(0), { exact: true })).toBeVisible()
+  // A soft navigation; the dev server may compile it on first use.
+  await expect(page).toHaveURL(/\?before=\d+$/)
+  await expect(messages.getByText(q(0), { exact: true })).toBeVisible({
+    timeout: 15_000
+  })
   await expect(messages.getByText(q(25), { exact: true })).toHaveCount(0)
   await expect(page.getByText(/^Hi .+ — I'm GROS/)).toBeVisible()
   await page.getByRole('link', { name: 'Latest messages', exact: true }).click()
-  await expect(messages.getByText(q(25), { exact: true })).toBeVisible()
+  await expect(page).not.toHaveURL(/before=/)
+  await expect(messages.getByText(q(25), { exact: true })).toBeVisible({
+    timeout: 15_000
+  })
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth
