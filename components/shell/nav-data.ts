@@ -178,7 +178,9 @@ const parentAreas: Record<string, readonly string[]> = {
   // Campaigns; the Klaviyo campaign detail page (§4) will need its own path.
   '/campaign-agent': ['/campaigns', '/campaign-drafts', '/calendar'],
   // Brand & Store keeps its Store tab under the same sidebar item.
-  '/brand': ['/store']
+  '/brand': ['/store'],
+  // An open brief belongs to the designer's Assignments desk.
+  '/designer/dashboard': ['/designer/assignments']
 }
 
 function under(pathname: string, href: string) {

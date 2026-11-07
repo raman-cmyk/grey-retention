@@ -1,16 +1,26 @@
-import Image from 'next/image'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
-import {
-  PageHeading,
-  Panel,
-  Notice,
-  Field,
-  controlClass
-} from '@/components/ui/workspace'
+import { Card } from '@/components/ui/card'
+import { DetailPage } from '@/components/ui/detail-page'
+import { Notice, Field, controlClass } from '@/components/ui/workspace'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { assignmentDetail } from '@/features/designers/data'
 import { submitDesign } from '@/features/designers/actions'
+import {
+  ApprovedCopy,
+  BrandFacts,
+  BriefHeader,
+  InspirationPack,
+  OwnerFeedback,
+  SubmissionHistory
+} from '@/features/designers/assignment-parts'
+import {
+  assignmentStatus,
+  canSubmit,
+  closedReason,
+  dueLine
+} from '@/features/designers/model'
+
 export default async function AssignmentPage({
   params
 }: {
@@ -18,76 +28,48 @@ export default async function AssignmentPage({
 }) {
   const { assignmentId } = await params
   if (!z.uuid().safeParse(assignmentId).success) notFound()
+  // Only the assigned designer can read the brief; anyone else gets 404.
   const data = await assignmentDetail(assignmentId)
   if (!data) notFound()
   const b = data.brief
+  const now = new Date()
+  const status = assignmentStatus(data.state, data.stale)
   return (
-    <div className="mx-auto max-w-5xl">
-      <PageHeading
+    <DetailPage
+      backHref="/designer/dashboard"
+      backLabel="Back to assignment desk"
+    >
+      <BriefHeader
         title={b.title}
-        description={`Approved copy v${b.copyRevision} · due ${data.dueAt} UTC · ${data.state.replaceAll('_', ' ')}`}
+        brand={b.brandName}
+        copyRevision={b.copyRevision}
+        status={status}
+        due={dueLine(data.dueAt, data.state, now)}
       />
-      {data.stale && (
-        <Notice error>
-          The approved brief changed. Platform admin must assign the current
-          version before submission.
-        </Notice>
-      )}
       {data.error && <Notice error>{data.error}</Notice>}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Panel title="Inspiration pack and approved brief">
-          <dl className="space-y-4 text-sm">
-            {[
-              ['Brand', b.brandName],
-              ['Brand revision', String(b.brandRevision ?? 'Snapshot')],
-              ['Sequence brief', b.sequenceBrief ?? 'Standalone entry'],
-              [
-                'Brand kit',
-                b.kit
-                  ? `${b.kit.colors.join(', ')} · ${b.kit.fonts.join(', ')} · ${b.kit.approved ? 'owner approved' : 'awaiting approval'}`
-                  : 'No kit in the assigned snapshot'
-              ],
-              ['Subject', b.subject],
-              ['Preview', b.preheader],
-              ['Body', b.body],
-              ['CTA', b.cta],
-              ['Destination', b.url],
-              ['Voice', b.voice],
-              ['Prohibitions', b.prohibitions],
-              [
-                'Reference structure',
-                b.referenceStructure || 'No external structure selected.'
-              ]
-            ].map(([k, v]) => (
-              <div key={k}>
-                <dt className="mb-1 font-semibold">{k}</dt>
-                <dd className="leading-6 break-words whitespace-pre-wrap">
-                  {v}
-                </dd>
-              </div>
-            ))}
-          </dl>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            {data.inspirationAssets.map(
-              (a) =>
-                a.preview && (
-                  <Image
-                    key={a.path}
-                    src={a.preview}
-                    width={200}
-                    height={200}
-                    unoptimized
-                    alt="Private asset included in this assigned inspiration pack"
-                    className="h-auto w-full rounded border border-[var(--line)]"
-                  />
-                )
-            )}
-          </div>
-        </Panel>
-        <div className="space-y-6">
-          <Panel title="Submit a design revision">
-            {!data.stale &&
-            ['assigned', 'revisions_requested'].includes(data.state) ? (
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="min-w-0 space-y-5">
+          <ApprovedCopy
+            subject={b.subject}
+            preheader={b.preheader}
+            body={b.body}
+            cta={b.cta}
+            url={b.url}
+          />
+          <BrandFacts
+            brandName={b.brandName}
+            brandRevision={b.brandRevision}
+            voice={b.voice}
+            prohibitions={b.prohibitions}
+            sequenceBrief={b.sequenceBrief}
+            referenceStructure={b.referenceStructure}
+            kit={b.kit}
+          />
+          <InspirationPack assets={data.inspirationAssets} />
+        </div>
+        <div className="min-w-0 space-y-5">
+          <Card title="Submit a design">
+            {canSubmit(data.state, data.stale) ? (
               <ActionForm action={submitDesign} className="grid gap-4">
                 <input name="assignment" type="hidden" value={assignmentId} />
                 <input
@@ -95,6 +77,11 @@ export default async function AssignmentPage({
                   type="hidden"
                   value={data.designRevision}
                 />
+                {data.state === 'revisions_requested' && (
+                  <p className="text-sm">
+                    Read the owner feedback below, then upload the new version.
+                  </p>
+                )}
                 <Field label="Design image">
                   <input
                     type="file"
@@ -104,9 +91,9 @@ export default async function AssignmentPage({
                     className={controlClass}
                   />
                 </Field>
-                <p className="text-xs text-[var(--text-muted)]">
-                  Private PNG, JPEG or WebP, maximum 10 MiB. The server checks
-                  file signatures and assignment access.
+                <p className="text-xs leading-5 text-[var(--text-muted)]">
+                  PNG, JPEG or WebP, up to 10 MB. It stays private: only this
+                  brand and platform admin can see it.
                 </p>
                 <Field label="Submission notes">
                   <textarea
@@ -121,49 +108,15 @@ export default async function AssignmentPage({
                 </div>
               </ActionForm>
             ) : (
-              <Notice>
-                Waiting for owner review or a renewed approved brief.
-              </Notice>
+              <p className="text-sm leading-6 text-[var(--text-muted)]">
+                {closedReason(data.state, data.stale)}
+              </p>
             )}
-          </Panel>
-          <Panel title="Owner section feedback">
-            {data.reviews.length ? (
-              data.reviews.map((r) => (
-                <article className="mb-4 text-sm" key={r.id}>
-                  <h3 className="font-semibold">
-                    {r.decision} · {r.section}
-                  </h3>
-                  <p className="mt-2 whitespace-pre-wrap">{r.feedback}</p>
-                </article>
-              ))
-            ) : (
-              <Notice>No owner feedback yet.</Notice>
-            )}
-          </Panel>
+          </Card>
+          <OwnerFeedback reviews={data.reviews} now={now} />
         </div>
       </div>
-      <Panel title="Submission history" className="mt-6">
-        <div className="grid gap-5 sm:grid-cols-2">
-          {data.submissions.map((s) => (
-            <article key={s.id}>
-              <h3 className="mb-3 font-semibold">
-                Design v{s.revision} · copy v{s.copy_revision}
-              </h3>
-              {s.preview && (
-                <Image
-                  src={s.preview}
-                  alt={`Your submitted design version ${s.revision}`}
-                  width={600}
-                  height={800}
-                  unoptimized
-                  className="h-auto max-h-[40rem] w-auto max-w-full rounded-lg border border-[var(--line)]"
-                />
-              )}
-              <p className="mt-3 text-sm">{s.notes}</p>
-            </article>
-          ))}
-        </div>
-      </Panel>
-    </div>
+      <SubmissionHistory submissions={data.submissions} now={now} />
+    </DetailPage>
   )
 }
