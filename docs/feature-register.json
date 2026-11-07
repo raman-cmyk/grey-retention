@@ -539,9 +539,12 @@
       "feature": "Client password change",
       "priority": "P1",
       "acceptance": "Existing credential verification and new credential validation work.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "verified_fixture",
+      "implementation_tasks": ["UIR-014"],
+      "verification": [
+        "UIR-014 (2026-11-06): /profile checks the current password with a separate no-session client before setting the new one; inline errors for a wrong current password, mismatch, under 8 characters and reuse; browser journey signs in with the new password (local Supabase Auth)."
+      ],
+      "remaining": "The current-password check guards the form only: with Supabase secure password change off, a holder of the session could change the password through Auth directly. Turning it on (with reauthentication) and the hosted Auth rate limits are not verified."
     },
     {
       "id": "ACC-014",
@@ -1106,9 +1109,12 @@
       "feature": "Default featured product",
       "priority": "P1",
       "acceptance": "New generated drafts inherit the chosen product and can override it.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-011"],
+      "verification": [
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
+      ],
+      "remaining": "Saved in Settings (product picker). New drafts do not read it yet (UIR-017)."
     },
     {
       "id": "DEF-002",
@@ -1116,9 +1122,12 @@
       "feature": "Default sender display name",
       "priority": "P1",
       "acceptance": "The selected sender name appears on new drafts and outbound payloads.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-011"],
+      "verification": [
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
+      ],
+      "remaining": "Saved in Settings. New drafts and the Klaviyo payload do not read it yet (UIR-017, live Klaviyo)."
     },
     {
       "id": "DEF-003",
@@ -1126,9 +1135,12 @@
       "feature": "Default primary destination URL",
       "priority": "P1",
       "acceptance": "New drafts inherit the intended main destination.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-011"],
+      "verification": [
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
+      ],
+      "remaining": "Saved in Settings (https only). New drafts do not read it yet (UIR-017)."
     },
     {
       "id": "DEF-004",
@@ -1136,9 +1148,12 @@
       "feature": "Default included audiences",
       "priority": "P1",
       "acceptance": "New drafts inherit selected send-to audience labels.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-011"],
+      "verification": [
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
+      ],
+      "remaining": "Saved in Settings from sample Klaviyo lists/segments. New drafts do not read it yet (UIR-017); real lists need live Klaviyo."
     },
     {
       "id": "DEF-005",
@@ -1146,9 +1161,12 @@
       "feature": "Default excluded audiences",
       "priority": "P1",
       "acceptance": "New drafts inherit selected do-not-send labels.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-011"],
+      "verification": [
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
+      ],
+      "remaining": "Saved in Settings from sample Klaviyo lists/segments. New drafts do not read it yet (UIR-017); real lists need live Klaviyo."
     },
     {
       "id": "DEF-006",
@@ -1188,9 +1206,12 @@
       "feature": "Footer inclusion default",
       "priority": "P1",
       "acceptance": "New campaigns inherit the chosen inclusion state.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-011"],
+      "verification": [
+        "UIR-011 (2026-11-06): /settings Campaign defaults saved through owner-only save_campaign_defaults; pgTAP, unit and desktop/mobile browser tests (settings journeys)."
+      ],
+      "remaining": "Saved in Settings (Include footer). New campaigns do not read it yet (UIR-017)."
     },
     {
       "id": "DEF-010",
@@ -1258,9 +1279,12 @@
       "feature": "Brand timezone display",
       "priority": "P1",
       "acceptance": "Show Klaviyo-derived timezone and local current time in Settings.",
-      "status": "unverified",
-      "implementation_tasks": [],
-      "verification": []
+      "status": "partial",
+      "implementation_tasks": ["UIR-011"],
+      "verification": [
+        "UIR-011 (2026-11-06): /settings Timezone card shows the workspace timezone with its UTC offset and a live clock (UTC for a zone the runtime does not know); unit and desktop/mobile browser tests."
+      ],
+      "remaining": "Settings shows the workspace timezone (same as the Dashboard) with a live clock. Reading it from Klaviyo needs live Klaviyo (CON-014)."
     },
     {
       "id": "DEF-017",

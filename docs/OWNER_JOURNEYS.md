@@ -210,46 +210,46 @@ Simplify:
 
 Shared behaviour:
 
-- [ ] Each page has `Refresh` → `?refresh=1` (re-pulls this object) and "Back to dashboard" → `/dashboard`. **(fix: back to the originating tab)**
-- [ ] "Advanced details" is a `<details>` disclosure. Linked resources list item counts ("FLOW ACTIONS 3 items", "TAGS 0 items").
-- [ ] Relative times are grammatical: "1 month ago", not "1 months ago". **(fix)**
+- [x] Each page has `Refresh` → `?refresh=1` (re-pulls this object) and "Back to dashboard" → `/dashboard`. **(fix: back to the originating tab)** (UIR-004: Back returns to the dashboard tab, or to the exact Campaigns view; no Refresh while the data is sample.)
+- [x] "Advanced details" is a `<details>` disclosure. Linked resources list item counts ("FLOW ACTIONS 3 items", "TAGS 0 items").
+- [x] Relative times are grammatical: "1 month ago", not "1 months ago". **(fix)**
 
 ### Campaign `/campaigns/:id`
 
 - **Purpose:** "What exactly did we send, to whom, and when?"
-- [ ] "Who received this" shows list and segment **names**. **(fix: the old page showed 6-character ids)**
+- [x] "Who received this" shows list and segment **names**. **(fix: the old page showed 6-character ids)**
 - [ ] A cancelled campaign's calendar tooltip says "(click to edit in Klaviyo)". The detail page should offer the same "Open in Klaviyo" link. (new)
-- [ ] The send time shown on the detail page matches the calendar tooltip. **(fix: see 0.4)**
-- [ ] Add a performance block (Job 5). **(fix)**
-- [ ] "How it was sent" also states the timezone used for "Scheduled for".
+- [x] The send time shown on the detail page matches the calendar tooltip. **(fix: see 0.4)** (Both use the one brand timezone and name it.)
+- [x] Add a performance block (Job 5). **(fix)** ("How it did", for sent campaigns.)
+- [x] "How it was sent" also states the timezone used for "Scheduled for".
 
 ### Flow `/flows/:id`
 
 - **Purpose:** "Is this automation live, and what does it send?"
-- [ ] The flow shows LIVE while one of its email steps shows DRAFT. Explain this in a line ("1 of 2 emails is not live"), because the owner reads LIVE as "everything is on". **(fix)**
-- [ ] The Wait step's Settings disclosure shows JSON (`delay_seconds`, `days_of_week`). Show "Waits 45 minutes · any day" as the main text and keep the JSON in Advanced. **(fix)**
+- [x] The flow shows LIVE while one of its email steps shows DRAFT. Explain this in a line ("1 of 2 emails is not live"), because the owner reads LIVE as "everything is on". **(fix)**
+- [x] The Wait step's Settings disclosure shows JSON (`delay_seconds`, `days_of_week`). Show "Waits 45 minutes · any day" as the main text and keep the JSON in Advanced. **(fix)**
 - [ ] The "Sync templates" button (submit) re-ingests this flow's templates for AI. Not clicked.
 - [ ] Each send-email step links to `/flow-messages/:id`. No per-step performance is shown. **(fix: add opens, clicks and revenue per email if Klaviyo provides them)**
 
 ### Flow message `/flow-messages/:id`
 
-- [ ] "Back" is history back (keep).
-- [ ] An empty REPLY TO shows "—". **(fix: the old page left it blank)**
+- [x] "Back" is history back (keep). (With a fallback link when the page was opened in a new tab.)
+- [x] An empty REPLY TO shows "—". **(fix: the old page left it blank)**
 - [ ] Add "Use as reference design" here. The owner's own best flow emails are natural references. (simplification)
 
 ### List `/lists/:id`
 
-- [ ] Opt-in shows the raw value `single_opt_in` plus a plain line. Show only "Single opt-in" plus the line. **(fix)**
+- [x] Opt-in shows the raw value `single_opt_in` plus a plain line. Show only "Single opt-in" plus the line. **(fix)**
 
 ### Segment `/segments/:id`
 
-- [ ] A "⭐ Starred" pill shows for starred segments. (new)
-- [ ] The rules are raw JSON that refers to metrics by id. Translate them to a sentence, e.g. "Can receive email AND did <metric name> more than 3 times, all time." Keep the JSON in Advanced. **(fix)**
+- [x] A "⭐ Starred" pill shows for starred segments. (new)
+- [x] The rules are raw JSON that refers to metrics by id. Translate them to a sentence, e.g. "Can receive email AND did <metric name> more than 3 times, all time." Keep the JSON in Advanced. **(fix)**
 
 ### Metric `/metrics/:id`
 
-- [ ] The "What this measures" line is plain English (e.g. "Someone completed a purchase").
-- [ ] No event counts or trend are shown. Low owner value. Add "events last 30 days" or drop the page from the owner view. (simplification)
+- [x] The "What this measures" line is plain English (e.g. "Someone completed a purchase").
+- [x] No event counts or trend are shown. Low owner value. Add "events last 30 days" or drop the page from the owner view. (simplification) (Events in the last 30 days are shown.)
 
 ---
 
@@ -522,11 +522,13 @@ Simplify:
 
 Checks:
 
-- [ ] The page opened on the **Audience** tab, so the last-used tab may be remembered. Confirm: open on Featured Product, or remember per viewer. (new)
+- [x] The page opened on the **Audience** tab, so the last-used tab may be remembered. Confirm: open on Featured Product, or remember per viewer. (new)
 - [ ] The Timezone card shows the **same** timezone as the Klaviyo account card on the Dashboard. **(fix: the old app showed US/Pacific in Settings and an Australian zone on the Dashboard, and both claim to come from Klaviyo)**
-- [ ] The live clock ticks.
-- [ ] Defaults show the "1 SELECTED" counts. **Save defaults** saves every tab at once. Not clicked.
-- [ ] Changing a default does not change existing drafts. Say so under the Save button: "Applies to new campaigns only."
+- [x] The live clock ticks.
+- [x] Defaults show the "1 SELECTED" counts. **Save defaults** saves every tab at once. Not clicked.
+- [x] Changing a default does not change existing drafts. Say so under the Save button: "Applies to new campaigns only."
+
+> **As built (UIR-011):** the page always opens on **Featured Product** (nothing is remembered). The clock moves on each new minute. Each audience picker shows "N selected"; **Save defaults** saves all five tabs in one go and says "Applies to new campaigns only." Defaults are stored apart from drafts, so saving never changes an existing draft. Still open: the Timezone card shows the workspace timezone (the one the Dashboard uses) but does not read it from Klaviyo yet; that is UIR-023.
 
 Simplify:
 
@@ -628,8 +630,10 @@ Checks:
 ## 16. Profile `/profile`
 
 - Same as the spec.
-- [ ] Inline errors for a wrong current password, a mismatch, or a password under 8 characters. Not tested: it would submit.
-- [ ] The email field is locked, with "Contact support if you need to change it." Link "support" to `/support`. **(fix)**
+- [x] Inline errors for a wrong current password, a mismatch, or a password under 8 characters. Not tested: it would submit.
+- [x] The email field is locked, with "Contact support if you need to change it." Link "support" to `/support`. **(fix)**
+
+> **As built (UIR-014):** each error shows under its own field: wrong current password, "The new passwords do not match.", and a too-short password. The minimum is **12** characters, the same as the password-reset form (one rule for both forms). "Too many attempts" and "too easy to guess" have their own messages. The locked email links "support" to `/support`.
 
 ---
 

@@ -57,6 +57,10 @@ describe('dashboard header', () => {
     expect(
       screen.getByText(/aren't available in this version yet/)
     ).toBeInTheDocument()
+    // A connected owner must not be sent to reconnect.
+    expect(
+      screen.queryByRole('link', { name: 'Go to Connections' })
+    ).not.toBeInTheDocument()
   })
 })
 

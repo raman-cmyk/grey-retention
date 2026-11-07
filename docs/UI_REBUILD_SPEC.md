@@ -37,23 +37,23 @@ Pill/status colour roles used everywhere:
 
 ## 1. Route map
 
-| Route                                                                                                | Screen                            | In sidebar       |
-| ---------------------------------------------------------------------------------------------------- | --------------------------------- | ---------------- |
-| `/dashboard` (`?tab=lists\|segments\|campaigns\|flows\|metrics`, `?attr=klaviyo\|utm`, `?refresh=1`) | Dashboard                         | ✔                |
-| `/lists/:id`, `/segments/:id`, `/campaigns/:id`, `/flows/:id`, `/metrics/:id`                        | Klaviyo object detail pages       | —                |
-| `/flow-messages/:id`                                                                                 | Flow email preview                | —                |
-| `/brand` · `/brand/voice` · `/store`                                                                 | Brand & Store (3 sub-tabs)        | ✔ Brand & Store  |
-| `/campaign-agent` (`?m=YYYY-MM`) and `/calendar`                                                     | Campaign planner (calendar/table) | ✔ Campaign Agent |
-| `/campaign-drafts` (`?status=draft\|ready\|pushed`)                                                  | Drafts list                       | —                |
-| `/campaign-drafts/new`                                                                               | New campaign draft (brief form)   | —                |
-| `/campaign-drafts/:id?view=1`                                                                        | Draft editor                      | —                |
-| `/gros`, `/gros/:threadId`                                                                           | Ask GROS chat                     | ✔                |
-| `/library/inspirations`                                                                              | Competitor Agent                  | ✔                |
-| `/support` (`?t=:ticketId`)                                                                          | Support tickets                   | ✔                |
-| `/settings`                                                                                          | Settings (campaign defaults)      | ✔ Workspace      |
-| `/holidays`                                                                                          | Holidays & Events                 | ✔ Workspace      |
-| `/connections`                                                                                       | Connections                       | ✔ Workspace      |
-| `/profile`                                                                                           | Profile                           | account menu     |
+| Route                                                                                                                                                                | Screen                            | In sidebar       |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ---------------- |
+| `/dashboard` (`?tab=lists\|segments\|campaigns\|flows\|metrics`, `?attr=klaviyo\|utm`, `?refresh=1`)                                                                 | Dashboard                         | ✔                |
+| `/lists/:id`, `/segments/:id`, `/campaigns/klaviyo/:id` (built; was `/campaigns/:id`, which is now this workspace's own campaign page), `/flows/:id`, `/metrics/:id` | Klaviyo object detail pages       | —                |
+| `/flow-messages/:id`                                                                                                                                                 | Flow email preview                | —                |
+| `/brand` · `/brand/voice` · `/store`                                                                                                                                 | Brand & Store (3 sub-tabs)        | ✔ Brand & Store  |
+| `/campaign-agent` (`?m=YYYY-MM`) and `/calendar`                                                                                                                     | Campaign planner (calendar/table) | ✔ Campaign Agent |
+| `/campaign-drafts` (`?status=draft\|ready\|pushed`)                                                                                                                  | Drafts list                       | —                |
+| `/campaign-drafts/new`                                                                                                                                               | New campaign draft (brief form)   | —                |
+| `/campaign-drafts/:id?view=1`                                                                                                                                        | Draft editor                      | —                |
+| `/gros`, `/gros/:threadId`                                                                                                                                           | Ask GROS chat                     | ✔                |
+| `/library/inspirations`                                                                                                                                              | Competitor Agent                  | ✔                |
+| `/support` (`?t=:ticketId`)                                                                                                                                          | Support tickets                   | ✔                |
+| `/settings`                                                                                                                                                          | Settings (campaign defaults)      | ✔ Workspace      |
+| `/holidays`                                                                                                                                                          | Holidays & Events                 | ✔ Workspace      |
+| `/connections`                                                                                                                                                       | Connections                       | ✔ Workspace      |
+| `/profile`                                                                                                                                                           | Profile                           | account menu     |
 
 Not crawled (needs a logged-out or admin session): login, signup, onboarding, password reset, admin/designer views. Capture those separately before building them.
 
@@ -244,7 +244,7 @@ Built as shared parts in `components/ui/detail-page.tsx` and `lib/brand-time.ts`
 
 - [x] Card header: icon + "Lists" + count pill.
 - [x] Columns: NAME / OPT-IN / UPDATED / CREATED.
-- [ ] Each row has a `›` chevron, the whole row is clickable, and it opens `/lists/:id`. Rows link once the §4 pages exist (next PR).
+- [x] Each row has a `›` chevron, the whole row is clickable, and it opens `/lists/:id` (real links, so middle-click works: OWNER_JOURNEYS.md §3 fix). Klaviyo campaigns open `/campaigns/klaviyo/:id`, because `/campaigns/:id` is this workspace's own campaign page.
 
 **Segments tab**
 
@@ -270,77 +270,79 @@ Built as shared parts in `components/ui/detail-page.tsx` and `lib/brand-time.ts`
 
 ## 4. Klaviyo detail pages
 
+Built from sample Klaviyo data (fake provider), labelled on every page. Words follow the real status: a draft or cancelled campaign never reads "was sent". Not built yet (OWNER_JOURNEYS.md §4 extras): "Open in Klaviyo", opens/clicks/revenue per flow email, and "Use as reference design" on a flow email. Klaviyo campaigns live at `/campaigns/klaviyo/:id` (`/campaigns/:id` is this workspace's own campaign page). "Back to dashboard" returns to the tab the owner came from. There is no Refresh yet: sample data has nothing to re-pull.
+
 ### List `/lists/:id`
 
-- [ ] Hero (LIST).
-- [ ] Two cards:
+- [x] Hero (LIST).
+- [x] Two cards:
   - **SUBSCRIBERS:** big number + "people on this list"
-  - **SIGN-UP METHOD:** `single_opt_in` + a plain-English line. Single opt-in: "Single opt-in — subscribers are added immediately after signing up. Faster growth, but riskier." Double opt-in needs its own line.
-- [ ] Timeline card.
-- [ ] Advanced details (NAME, CREATED, UPDATED, OPT IN PROCESS, PROFILE COUNT + Linked resources).
+  - **SIGN-UP METHOD:** "Single opt-in" (not the raw `single_opt_in`: OWNER_JOURNEYS.md §4 fix) + a plain-English line. Single opt-in: "Single opt-in — subscribers are added immediately after signing up. Faster growth, but riskier." Double opt-in needs its own line.
+- [x] Timeline card.
+- [x] Advanced details (NAME, CREATED, UPDATED, OPT IN PROCESS, PROFILE COUNT + Linked resources).
 
 ### Segment `/segments/:id`
 
-- [ ] Hero (SEGMENT) + ACTIVE pill.
-- [ ] Two cards:
+- [x] Hero (SEGMENT) + ACTIVE pill.
+- [x] Two cards:
   - PROFILES IN SEGMENT: `1,476` "people match"
   - WHAT THIS IS: "A **segment** is a dynamic group — profiles enter and exit automatically based on rules you set up in Klaviyo. Unlike lists (which are static and require explicit sign-up), segments recalculate as your data changes." + Active pill
-- [ ] "How this segment is defined" / "The rules below determine who's in this segment." + mono code block with the raw JSON definition.
-- [ ] Timeline, Advanced details.
+- [x] "How this segment is defined": the rules as a sentence. The raw JSON moved to Advanced details (OWNER_JOURNEYS.md §4 and §18.9 fix).
+- [x] Timeline, Advanced details.
 
-### Campaign `/campaigns/:id`
+### Campaign `/campaigns/klaviyo/:id`
 
-- [ ] Hero (CAMPAIGN) + status pill (DRAFT / SENT …).
-- [ ] 3 small cards:
+- [x] Hero (CAMPAIGN) + status pill (DRAFT / SENT …).
+- [x] 3 small cards:
   - CHANNEL: ✉ Email
   - SEND TIME: "Not scheduled" or the date
   - CREATED
-- [ ] **What was sent:**
+- [x] **What was sent:**
   - MESSAGE LABEL (INTERNAL)
   - inset email-header box: FROM (name bold + `<email>` muted), SUBJECT, PREVIEW TEXT (italic, in quotes)
-- [ ] Email preview card (shared component).
-- [ ] **Who received this** / "The lists and segments this campaign was sent to." INCLUDED chips and EXCLUDED chips. Show names; the old app showed raw ids, which is a fix.
-- [ ] **How it was sent:**
+- [x] Email preview card (shared component).
+- [x] **Who received this** / "The lists and segments this campaign was sent to." INCLUDED chips and EXCLUDED chips, with names (§15 bug 6 fixed). Also new: a **How it did** card for sent campaigns (recipients, open rate, click rate, revenue, orders: OWNER_JOURNEYS.md Job 5 fix).
+- [x] **How it was sent:**
   - "Static" + "Sent at a fixed date and time you scheduled."
   - "Scheduled for: Nov 6, 2026 · 4:52 AM"
   - "Sent in each recipient's local timezone" (only when that's on)
-- [ ] Advanced details.
+- [x] Advanced details.
 
 ### Flow `/flows/:id`
 
-- [ ] Hero (FLOW) + LIVE pill.
-- [ ] 3 cards:
+- [x] Hero (FLOW) + LIVE pill.
+- [x] 3 cards:
   - **REVENUE · 30 DAYS** (highlighted card with an info-tint background): `A$503`, "attributed to this flow"
   - **WHAT TRIGGERS THIS FLOW:** "Metric" + "Triggered when someone performs a specific event (like placing an order)"
   - **STEPS IN THIS FLOW:** `3`, "actions in the sequence"
-- [ ] **Action sequence** / "The steps Klaviyo runs when this flow triggers." A vertical list where each step has:
+- [x] **Action sequence** / "The steps Klaviyo runs when this flow triggers." A vertical list where each step has:
   - a numbered filled circle
   - a step card: icon + name (Wait / Send email) + status pill
-- [ ] Wait step: `▸ Settings` disclosure that opens a raw JSON block (days_of_week, delay_seconds).
+- [x] Wait step: shown as "Waits 45 minutes · any day". The raw JSON (delay_seconds, days_of_week) is in Advanced details (OWNER_JOURNEYS.md §4 fix).
   - Nice-to-have: also show plain English, e.g. "Waits 45 min, any day".
-- [ ] Send-email step: inner row with eye icon, subject (bold), "From: Dreams Studio", and `→`. Clicking it opens `/flow-messages/:id`.
-- [ ] Card footer: robot icon + "**2** email templates from this flow have been ingested for AI use. They're now part of the context your [Copy & Voice] profile reads from." + outline `⟳ Sync templates`.
-- [ ] Timeline, Advanced details.
+- [x] Send-email step: inner row with eye icon, subject (bold), "From: Dreams Studio", and `→`. Clicking it opens `/flow-messages/:id`.
+- [ ] ~~Card footer: robot icon + "**2** email templates from this flow have been ingested for AI use…" + outline `⟳ Sync templates`.~~ Not built: using flow emails as AI context isn't connected yet, and the page says so.
+- [x] Timeline, Advanced details.
 
 ### Flow message `/flow-messages/:id`
 
-- [ ] `← Back` (history back).
-- [ ] Header card:
+- [x] `← Back` (history back).
+- [x] Header card:
   - `✉ FLOW MESSAGE` label + mono template pill on the right
   - title = subject
   - italic preview text
   - 3 columns: FROM (name + `<email>`) / REPLY TO / TEMPLATE UPDATED
-- [ ] Email preview card.
+- [x] Email preview card.
 
 ### Metric `/metrics/:id`
 
-- [ ] Hero (METRIC).
-- [ ] "What this measures" card with one line (e.g. "A custom event tracked in your Klaviyo account.").
-- [ ] 3 cards:
+- [x] Hero (METRIC).
+- [x] "What this measures" card with one line (e.g. "A custom event tracked in your Klaviyo account.").
+- [x] 3 cards:
   - SOURCE: "Where the events come from"
   - CATEGORY: "Type of integration"
   - TRACKING SINCE: "First event date"
-- [ ] Advanced details.
+- [x] Advanced details.
 
 ---
 
@@ -725,11 +727,11 @@ Right panel:
 
 ## 11. Settings `/settings`
 
-- [ ] H1 "Settings" + "Set defaults that apply to every campaign you generate. You can still change them on any individual draft." Column ~900px.
-- [ ] **🕘 Timezone (read-only):**
+- [x] H1 "Settings" + "Set defaults that apply to every campaign you generate. You can still change them on any individual draft." Column ~900px.
+- [x] **🕘 Timezone (read-only):**
   - "Campaign send times are scheduled in your brand's timezone, synced from your Klaviyo account. Update it in Klaviyo if it's wrong."
   - BRAND TIMEZONE "US/Pacific (UTC-08:00)" and CURRENT LOCAL TIME "Fri, Nov 6 2026 · 9:07 AM" (live clock)
-- [ ] **Campaign defaults:** "These pre-fill on every new campaign. Each draft shows the value and lets you override it before sending, and the chosen values are pushed to Klaviyo."
+- [x] **Campaign defaults:** "These pre-fill on every new campaign. Each draft shows the value and lets you override it before sending, and the chosen values are pushed to Klaviyo."
   - underline tabs, switched on the client: Featured Product / Sender Name / Primary Link / Audience / Email Settings
   - **Featured Product:** "The single product new campaigns feature by default. The AI body generator sees its Shopify sales, quantities, and recent orders." + product radio picker
   - **Sender Name:** "The "from" name recipients see. Leave blank to use your Klaviyo account default." + input
@@ -741,7 +743,9 @@ Right panel:
     - divider
     - FOOTER SOURCE select ("Auto — built from my brand settings" + every Klaviyo template), help "We pull the bottom block (unsubscribe + address) from the chosen email."
     - small muted "Heads up: a Klaviyo template is a whole email, so we extract the footer automatically — give the next test send a quick look to confirm it came through cleanly. If extraction misses, we fall back to the auto-built block."
-- [ ] One right-aligned primary `Save defaults` under the card. It saves all tabs; show a success toast.
+- [x] One right-aligned primary `Save defaults` under the card. It saves all tabs; show a success toast.
+
+> **As built (UIR-011, cloud lane):** layout as above. The Timezone card shows the workspace timezone, the same one the Dashboard uses (OWNER_JOURNEYS §11 fix), and says it is not read from Klaviyo yet, instead of "synced from your Klaviyo account". The live clock ticks. Defaults are saved for the workspace and the card says plainly that the new campaign editor will be the first screen to read them. Audience pickers show the sample Klaviyo lists and segments (labelled sample); FOOTER SOURCE offers only "Auto" until real Klaviyo templates exist. "Save defaults" saves all tabs and says "Applies to new campaigns only." The success message appears next to the button (no toast component exists yet). Older settings (budget, notifications, holidays, delivery policy) sit below under "More settings".
 
 ---
 
@@ -793,14 +797,14 @@ Right panel:
 
 ## 14. Profile `/profile`
 
-- [ ] H1 "Profile" + "Update your account information and password." Column ~670px.
-- [ ] **Card "Account information" / "Name, job title, and contact phone."**:
+- [x] H1 "Profile" + "Update your account information and password." Column ~670px.
+- [x] **Card "Account information" / "Name, job title, and contact phone."**:
   - NAME
   - EMAIL 🔒 (disabled), help "Email is locked. Contact support if you need to change it."
   - JOB TITLE
   - PHONE
   - `Save changes`
-- [ ] **Card "Change password" / "At least 8 characters. We'll verify your current password first."**:
+- [x] **Card "Change password" / "At least 8 characters. We'll verify your current password first."**:
   - CURRENT PASSWORD / NEW PASSWORD / CONFIRM NEW PASSWORD
   - `Update password`
   - inline errors for a mismatch, a password under 8 characters, or a wrong current password

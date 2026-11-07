@@ -46,10 +46,16 @@ test('workspace sidebar, account menu and mobile drawer work with keyboard and s
     const account = page.getByRole('button', { name: /^Open account menu/ })
     await account.focus()
     await page.keyboard.press('Enter')
-    const logOut = page
-      .locator(`[id="${await account.getAttribute('aria-controls')}"]`)
-      .getByRole('button', { name: 'Log out', exact: true })
+    const menu = page.locator(
+      `[id="${await account.getAttribute('aria-controls')}"]`
+    )
+    const logOut = menu.getByRole('button', { name: 'Log out', exact: true })
     await expect(logOut).toBeVisible()
+    // Profile Update (UIR-014), then Log out.
+    await page.keyboard.press('Tab')
+    await expect(
+      menu.getByRole('link', { name: 'Profile Update', exact: true })
+    ).toBeFocused()
     await page.keyboard.press('Tab')
     await expect(logOut).toBeFocused()
     await page.keyboard.press('Escape')
@@ -86,6 +92,34 @@ test('workspace sidebar, account menu and mobile drawer work with keyboard and s
   }
 })
 
+test('Klaviyo detail pages render with a heading and no overflow', async ({
+  page
+}) => {
+  await login(page)
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  for (const path of [
+    '/lists/LSTnews01?from=lists',
+    '/segments/SEGeng030?from=segments',
+    '/campaigns/klaviyo/CMPspr001?from=campaigns',
+    '/flows/FLWpst004?from=flows',
+    '/flow-messages/FLWpst004M2',
+    '/metrics/METord005?from=metrics'
+  ]) {
+    await page.goto(path)
+    // Sample data when the workspace's Klaviyo is connected, otherwise the
+    // "Klaviyo details" notice; both have one page heading.
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth
+      ),
+      path
+    ).toBe(true)
+  }
+  expect(errors).toEqual([])
+})
+
 test('core workspace surfaces render without overflow and invalid review dates recover', async ({
   page
 }, info) => {
@@ -107,7 +141,7 @@ test('core workspace surfaces render without overflow and invalid review dates r
     ['/optimizer', 'Bill optimizer'],
     ['/team', 'Team'],
     ['/support', 'Support'],
-    ['/settings', 'Workspace settings']
+    ['/settings', 'Settings']
   ]) {
     await page.goto(path)
     await expect(

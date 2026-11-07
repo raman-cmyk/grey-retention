@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomInt, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { test, expect, type APIRequestContext } from '@playwright/test'
@@ -47,7 +47,11 @@ async function queueCopy({
     input: {
       title: `Scheduled sweep proof ${randomUUID()}`,
       goal: 'Original synthetic scheduler evidence. No offer or factual claim.',
-      planned_at: new Date(Date.now() + 400 * 86400000).toISOString(),
+      // Each proof campaign in its own far-future week, so retries never
+      // hit the workspace's weekly send cap (5 per audience).
+      planned_at: new Date(
+        Date.now() + (400 + 7 * randomInt(0, 300)) * 86400000
+      ).toISOString(),
       channel: 'email_text',
       audience_id: audience.data!.id,
       reference_notes: ''

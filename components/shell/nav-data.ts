@@ -60,6 +60,8 @@ export type NavigationGroup = {
 export type ShellNavigation = {
   primary: NavigationItem[]
   groups: NavigationGroup[]
+  /** The account menu's "Profile Update" page; omitted where none exists. */
+  profileHref?: Route
 }
 
 export function isSoon(
@@ -87,6 +89,7 @@ export function navigationLinks(navigation: ShellNavigation) {
  */
 export function createClientNavigation(assistantName: string): ShellNavigation {
   return {
+    profileHref: '/profile',
     primary: [
       { label: 'Dashboard', href: '/dashboard', icon: 'dashboard' },
       { label: 'Brand & Store', href: '/brand', icon: 'brand' },
@@ -165,9 +168,17 @@ export const designerNavigation: ShellNavigation = {
 
 // Child pages highlight their parent area (OWNER_JOURNEYS.md §2 fix).
 const parentAreas: Record<string, readonly string[]> = {
-  '/dashboard': ['/lists', '/segments', '/flows', '/flow-messages', '/metrics'],
-  // `/campaigns/:id` is today's local campaign review page, so it belongs to
-  // Campaigns; the Klaviyo campaign detail page (§4) will need its own path.
+  // Klaviyo detail pages belong to the dashboard.
+  '/dashboard': [
+    '/campaigns/klaviyo',
+    '/lists',
+    '/segments',
+    '/flows',
+    '/flow-messages',
+    '/metrics'
+  ],
+  // `/campaigns/:id` is this workspace's own campaign page, so it belongs to
+  // Campaigns; Klaviyo campaigns live under `/campaigns/klaviyo/:id`.
   '/campaign-agent': ['/campaigns', '/campaign-drafts', '/calendar'],
   // Brand & Store keeps its Store tab under the same sidebar item.
   '/brand': ['/store']
@@ -182,4 +193,26 @@ export function isCurrentPath(pathname: string, href: string) {
     under(pathname, href) ||
     (parentAreas[href] ?? []).some((child) => under(pathname, child))
   )
+}
+
+/**
+ * The nav item for `pathname`: the most specific match wins, whatever the
+ * nav order (so /campaigns/klaviyo/… is Dashboard, /campaigns/… Campaigns).
+ */
+export function currentNavigationHref(
+  navigation: ShellNavigation,
+  pathname: string
+) {
+  let best: { href: string; length: number } | null = null
+  for (const item of navigationLinks(navigation)) {
+    const base = item.href.split(/[?#]/)[0]
+    const candidates = [base, ...(parentAreas[base] ?? [])]
+    for (const candidate of candidates)
+      if (
+        under(pathname, candidate) &&
+        (!best || candidate.length > best.length)
+      )
+        best = { href: item.href, length: candidate.length }
+  }
+  return best?.href ?? null
 }

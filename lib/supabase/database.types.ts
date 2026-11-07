@@ -955,6 +955,70 @@ export type Database = {
           }
         ]
       }
+      campaign_defaults: {
+        Row: {
+          dont_send_to: string[]
+          featured_product_id: string | null
+          footer_source: string
+          include_footer: boolean
+          primary_link: string
+          revision: number
+          send_to: string[]
+          sender_name: string
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          dont_send_to?: string[]
+          featured_product_id?: string | null
+          footer_source?: string
+          include_footer?: boolean
+          primary_link?: string
+          revision?: number
+          send_to?: string[]
+          sender_name?: string
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          dont_send_to?: string[]
+          featured_product_id?: string | null
+          footer_source?: string
+          include_footer?: boolean
+          primary_link?: string
+          revision?: number
+          send_to?: string[]
+          sender_name?: string
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'campaign_defaults_tenant_id_featured_product_id_fkey'
+            columns: ['tenant_id', 'featured_product_id']
+            isOneToOne: false
+            referencedRelation: 'products'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'campaign_defaults_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'campaign_defaults_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       campaign_events: {
         Row: {
           action: string
@@ -5599,6 +5663,20 @@ export type Database = {
           target_id?: string
         }
         Returns: string
+      }
+      save_campaign_defaults: {
+        Args: {
+          dont_send_to: string[]
+          expected_revision: number
+          featured_product_id: string
+          footer_source?: string
+          include_footer: boolean
+          primary_link: string
+          send_to: string[]
+          sender_name: string
+          t: string
+        }
+        Returns: number
       }
       save_copy: {
         Args: {
