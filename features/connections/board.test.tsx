@@ -142,9 +142,14 @@ describe('ConnectionsBoard', () => {
         'Sample connection. Paste your real key to connect your Klaviyo.'
       )
     ).toBeVisible()
+    // There is no real key yet: a first connect, not a swap.
     expect(
-      within(card('Klaviyo')).getByLabelText('New private API key')
+      within(card('Klaviyo')).getByLabelText('Private API key')
     ).toBeVisible()
+    expect(
+      within(card('Klaviyo')).getByRole('button', { name: 'Connect' })
+    ).toBeVisible()
+    expect(within(card('Klaviyo')).queryByText(/existing key stays/)).toBeNull()
     view.rerender(<ConnectionsBoard owner klaviyo={klaviyo} />)
     expect(
       within(card('Klaviyo')).getByText(

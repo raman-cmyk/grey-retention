@@ -90,14 +90,34 @@ export const fetchTransport: KlaviyoTransport = async (request) => {
   response.headers.forEach((value, name) => {
     headers[name.toLowerCase()] = value
   })
-  if (Number(headers['content-length'] ?? 0) > maxBodyBytes)
-    return { status: 502, headers, body: '' }
-  const body = await response.text()
-  return {
-    status: body.length > maxBodyBytes ? 502 : response.status,
-    headers,
-    body: body.length > maxBodyBytes ? '' : body
+  const body = await capped(response, maxBodyBytes)
+  // Too big to be a Klaviyo page: treated as Klaviyo being unwell.
+  return body === null
+    ? { status: 502, headers, body: '' }
+    : { status: response.status, headers, body }
+}
+
+/** The body as text, or null once it passes `limit` bytes (then not read further). */
+async function capped(response: Response, limit: number) {
+  if (Number(response.headers.get('content-length') ?? 0) > limit) {
+    await response.body?.cancel()
+    return null
   }
+  if (!response.body) return ''
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > limit) {
+      await reader.cancel()
+      return null
+    }
+    chunks.push(value)
+  }
+  return Buffer.concat(chunks).toString('utf8')
 }
 
 /** Waits at most this long inside one call for a short rate limit. */

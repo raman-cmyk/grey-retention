@@ -51,7 +51,8 @@ export default async function ConnectionsPage() {
     return <Notice error>{error ?? 'Connection details unavailable.'}</Notice>
   const rows = setup.connections
   const live = klaviyoMode() === 'live'
-  // With live Klaviyo on, the sample tools never touch the Klaviyo connection.
+  // With live Klaviyo on, the sample tools offer no Klaviyo panel, and the
+  // onboarding action refuses a Klaviyo fixture status (KLV-001).
   const tools = live
     ? (['shopify', 'drive'] as const)
     : (['klaviyo', 'shopify', 'drive'] as const)

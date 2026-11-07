@@ -1,5 +1,5 @@
 begin;
-select plan(38);
+select plan(39);
 
 -- Owner ...01 and staff ...05 of workspace 101; owner ...04 of workspace 102.
 create function pg_temp.connect(k text, hint text, rev text default '2026-10-15', later text[] default '{}', account text default 'CdrG01') returns integer language sql as $$
@@ -88,6 +88,20 @@ set local role service_role;
 select is(public.klaviyo_api_key('00000000-0000-4000-8000-000000000101'),null,'not while the connection needs attention');
 reset role;
 update public.workspace_connections set status='connected' where tenant_id='00000000-0000-4000-8000-000000000101' and provider='klaviyo';
+
+-- The same hint again (a new check of a key that ends alike) keeps the same
+-- Vault secret and replaces its value.
+create temp table klv_before on commit drop as
+  select secret_id from public.klaviyo_credentials where tenant_id='00000000-0000-4000-8000-000000000101';
+grant select on klv_before to authenticated;
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-4000-8000-000000000001');
+select pg_temp.connect('pk_NEWKEsamehint0000000tsrq','pk_NEWKE••••••••tsrq');
+reset role;
+select is((select c.secret_id = b.secret_id from public.klaviyo_credentials c, klv_before b
+  where c.tenant_id='00000000-0000-4000-8000-000000000101')
+  and pg_temp.stored()||'/'||pg_temp.secrets() = 'pk_NEWKEsamehint0000000tsrq/1', true,
+  'the same hint updates the same secret, with the new value');
 
 -- A sample connection replacing the live one forgets the key.
 set local role authenticated;

@@ -78,7 +78,7 @@ describe('refusalWords', () => {
     expect(missing).toMatch(/^This key cannot read Catalogs and Events\. /)
     // A new key needs every area, not only the missing ones.
     expect(missing).toContain(
-      'Choose Read Access for Accounts, Catalogs, Campaigns, Events, Lists, Metrics and Segments.'
+      'Choose Read Access for Accounts, Catalogs, Events, Lists and Metrics. Choose Read/Write Access for Campaigns, Segments, Templates and Images, so GROS can send emails later.'
     )
     expect(missing).toContain('Klaviyo cannot change an existing key')
   })
@@ -141,14 +141,29 @@ describe('connectLiveKlaviyo', () => {
     )
     expect(result.error).toMatch(/wait 15 minutes/)
     expect(check).not.toHaveBeenCalled()
+    for (const [code, words] of [
+      ['42501', 'Ask your workspace owner to connect accounts.'],
+      [
+        'XX000',
+        'We could not check this key just now. Try again. Nothing was saved.'
+      ]
+    ])
+      expect(
+        await connectLiveKlaviyo(
+          database({ begin_klaviyo_key_check: { code: code! } }),
+          input,
+          check
+        )
+      ).toEqual({ error: words })
+    expect(check).not.toHaveBeenCalled()
   })
 
   it('refuses to check when the settings name another Klaviyo revision', async () => {
     vi.stubEnv('KLAVIYO_API_REVISION', '2026-07-15')
     const check = vi.fn(recordedCheck())
     const db = database()
-    expect((await connectLiveKlaviyo(db, input, check)).error).toMatch(
-      /told the developers/
+    expect((await connectLiveKlaviyo(db, input, check)).error).toBe(
+      'Live Klaviyo is not set up correctly yet. We told the developers. Nothing was saved.'
     )
     expect(check).not.toHaveBeenCalled()
     expect(db.rpc).not.toHaveBeenCalled()

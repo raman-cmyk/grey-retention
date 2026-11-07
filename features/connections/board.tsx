@@ -152,6 +152,9 @@ function KlaviyoCard({
   // With live Klaviyo on, a sample connection still waits for a real key.
   const sampleOnly = live && connected && connection?.mode !== 'live'
   const showKeyField = owner && (!connected || swapping || sampleOnly)
+  // Swapping replaces a key the owner already has; a sample connection
+  // waiting for its real key is a first connect.
+  const swap = connected && !sampleOnly
   return (
     <Card>
       <div className="flex items-start justify-between gap-3">
@@ -200,22 +203,20 @@ function KlaviyoCard({
             )}
             {showKeyField && (
               <div id="klaviyo-key-swap" className="space-y-3">
-                <Field
-                  label={connected ? 'New private API key' : 'Private API key'}
-                >
+                <Field label={swap ? 'New private API key' : 'Private API key'}>
                   <TextField
                     name="apiKey"
                     placeholder="pk_…"
-                    autoFocus={connected}
+                    autoFocus={swapping}
                     {...secretProps}
                   />
                 </Field>
                 <div className="grid [&>button]:w-full">
                   <SubmitButton pendingLabel="Checking…">
-                    {connected ? 'Validate & swap key' : 'Connect'}
+                    {swap ? 'Validate & swap key' : 'Connect'}
                   </SubmitButton>
                 </div>
-                {connected && (
+                {swap && (
                   // Spec wording says "validated against Klaviyo"; in sample
                   // mode only the format is checked, so say exactly that.
                   <p className="text-xs text-[var(--text-muted)]">

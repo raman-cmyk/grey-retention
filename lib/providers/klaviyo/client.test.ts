@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 import {
+  fetchTransport,
   KlaviyoError,
   klaviyoClient,
   klaviyoRevision,
@@ -183,5 +184,49 @@ describe('klaviyoClient', () => {
         key
       )
     }
+  })
+
+  describe('fetchTransport', () => {
+    const request = {
+      method: 'GET' as const,
+      url: 'https://a.klaviyo.com/api/accounts',
+      headers: {},
+      timeoutMs: 1_000
+    }
+    const answer = (body: BodyInit, headers: Record<string, string> = {}) =>
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(body, { status: 200, headers }))
+      )
+
+    it('reads an answer whole, also with letters of more than one byte', async () => {
+      answer('{"name":"Café Ünïcode"}', { 'X-Test': 'yes' })
+      expect(await fetchTransport(request)).toEqual({
+        status: 200,
+        headers: expect.objectContaining({ 'x-test': 'yes' }),
+        body: '{"name":"Café Ünïcode"}'
+      })
+      vi.unstubAllGlobals()
+    })
+
+    it('stops reading past 8 MB, counted in bytes, and calls it Klaviyo being unwell', async () => {
+      // 3 bytes per letter: under 8 million letters, over 8 MB.
+      const big = '€'.repeat(3 * 1024 * 1024)
+      answer(
+        new ReadableStream({
+          start(stream) {
+            stream.enqueue(new TextEncoder().encode(big))
+            stream.close()
+          }
+        })
+      )
+      expect(await fetchTransport(request)).toMatchObject({
+        status: 502,
+        body: ''
+      })
+      answer('{}', { 'content-length': String(9 * 1024 * 1024) })
+      expect((await fetchTransport(request)).status).toBe(502)
+      vi.unstubAllGlobals()
+    })
   })
 })

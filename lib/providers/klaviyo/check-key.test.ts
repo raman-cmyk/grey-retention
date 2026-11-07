@@ -2,6 +2,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
+const log = vi.hoisted(() => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }))
+vi.mock('@/lib/logger', () => ({ logger: log }))
 import {
   accountFacts,
   accountZone,
@@ -90,12 +92,66 @@ describe('probeKlaviyoKey', () => {
     ).toEqual({ ok: false, reason: 'klaviyo_changed' })
   })
 
-  it('asks only for values revision 2026-10-15 accepts', () => {
-    // Page sizes within each endpoint's limits, one field each.
-    expect(probes['lists:read']).toContain('page[size]=1')
-    expect(probes['metrics:read']).not.toContain('page[size]')
-    for (const path of Object.values(probes))
-      expect(path).toMatch(/^\/api\/[a-z-]+\?.*fields\[[a-z-]+\]=/)
+  it('asks only for addresses and values revision 2026-10-15 publishes', () => {
+    // From Klaviyo's published OpenAPI spec for 2026-10-15: each list
+    // endpoint, its page size limit (none: no page[size]) and the fields
+    // its sparse fieldset accepts.
+    const spec: Record<string, { maxPage: number | null; fields: string[] }> = {
+      '/api/accounts': {
+        maxPage: null,
+        fields: [
+          'contact_information',
+          'timezone',
+          'preferred_currency',
+          'locale',
+          'industry',
+          'test_account'
+        ]
+      },
+      '/api/catalog-items': { maxPage: 100, fields: ['title', 'price', 'url'] },
+      '/api/campaign-messages': { maxPage: 100, fields: ['definition'] },
+      '/api/events': { maxPage: 1000, fields: ['datetime'] },
+      '/api/lists': { maxPage: 10, fields: ['name'] },
+      '/api/metrics': { maxPage: null, fields: ['name'] },
+      '/api/segments': { maxPage: 10, fields: ['name'] },
+      '/api/templates': { maxPage: 10, fields: ['name'] },
+      '/api/images': { maxPage: 100, fields: ['name'] }
+    }
+    for (const probe of Object.values(probes)) {
+      const url = new URL(probe, 'https://a.klaviyo.com')
+      const endpoint = spec[url.pathname]!
+      expect(endpoint, probe).toBeDefined()
+      const size = url.searchParams.get('page[size]')
+      if (endpoint.maxPage === null) expect(size, probe).toBeNull()
+      else expect(Number(size), probe).toBeLessThanOrEqual(endpoint.maxPage)
+      const fields = [...url.searchParams].filter(([k]) =>
+        k.startsWith('fields[')
+      )
+      expect(fields, probe).toHaveLength(1)
+      for (const f of fields[0]![1].split(','))
+        expect(endpoint.fields, probe).toContain(f)
+    }
+  })
+
+  it('says Klaviyo changed, and logs it without the key, when a probe is not found', async () => {
+    log.warn.mockClear()
+    const changed = recordedTransport()
+    const client = klaviyoClient(key, {
+      wait: async () => {},
+      transport: (request) =>
+        changed({
+          ...request,
+          // A probe Klaviyo would not know any more.
+          url: request.url.replace('/api/lists', '/api/list')
+        })
+    })
+    expect(await probeKlaviyoKey(client)).toEqual({
+      ok: false,
+      reason: 'klaviyo_changed'
+    })
+    expect(log.warn).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(log.warn.mock.calls)).toContain('rejected')
+    expect(JSON.stringify(log.warn.mock.calls)).not.toContain(key)
   })
 })
 

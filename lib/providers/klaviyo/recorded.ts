@@ -1,3 +1,4 @@
+import { probes } from './check-key'
 import type { KlaviyoResponse, KlaviyoScope, KlaviyoTransport } from './client'
 
 /**
@@ -101,22 +102,19 @@ export const recorded = {
   down: json(503, { errors: [{ status: 503, code: 'service_unavailable' }] })
 }
 
-/** The scope each probe path proves. */
-const scopeOfPath: [RegExp, KlaviyoScope][] = [
-  [/^\/api\/accounts/, 'accounts:read'],
-  [/^\/api\/catalog-items/, 'catalogs:read'],
-  [/^\/api\/campaign-messages/, 'campaigns:read'],
-  [/^\/api\/events/, 'events:read'],
-  [/^\/api\/lists/, 'lists:read'],
-  [/^\/api\/metrics/, 'metrics:read'],
-  [/^\/api\/segments/, 'segments:read'],
-  [/^\/api\/templates/, 'templates:read'],
-  [/^\/api\/images/, 'images:read']
-]
+/**
+ * The scope each probe proves, by its exact path and query. Every probe is
+ * an address revision 2026-10-15 publishes, with values it accepts.
+ */
+const probeScope = new Map(
+  Object.entries(probes).map(([scope, path]) => [path, scope as KlaviyoScope])
+)
+const notFound = json(404, { errors: [{ status: 404, code: 'not_found' }] })
 
 /**
  * A transport that answers from the recordings: every probe succeeds,
- * except the scopes in `missing` (403), or every call answers `all`.
+ * except the scopes in `missing` (403), or every call answers `all`;
+ * anything that is not a probe is not found (404).
  */
 export function recordedTransport(
   scenario: { missing?: KlaviyoScope[]; all?: KlaviyoResponse } = {}
@@ -126,8 +124,10 @@ export function recordedTransport(
     const url = new URL(request.url)
     calls.push(`${request.method} ${url.pathname}${url.search}`)
     if (scenario.all) return scenario.all
-    const scope = scopeOfPath.find(([path]) => path.test(url.pathname))?.[1]
-    if (scope && scenario.missing?.includes(scope)) return recorded.noScope
+    // Like Klaviyo, any other address is not found: a changed probe fails.
+    const scope = probeScope.get(decodeURIComponent(url.pathname + url.search))
+    if (!scope) return notFound
+    if (scenario.missing?.includes(scope)) return recorded.noScope
     if (scope === 'accounts:read') return recorded.account
     return recorded.page(
       url.pathname.split('/')[2]?.replace(/s$/, '') ?? 'item'

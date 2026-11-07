@@ -61,8 +61,20 @@ function areas(scopes: readonly KlaviyoScope[]) {
     : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
 }
 
-/** How to make a key that works: Klaviyo cannot change an existing key. */
-const newKeySteps = `Klaviyo cannot change an existing key, so please make a new one. In Klaviyo, open Settings, then API keys, then Create Private API Key. Choose Read Access for ${areas(requiredScopes)}. So GROS can send emails later, choose Read/Write Access for Campaigns, Segments, Templates and Images. Then paste the new key here.`
+/** Areas later steps write to (drafts, the Engaged segment). */
+const writeLater: KlaviyoScope[] = [
+  'campaigns:write',
+  'segments:write',
+  'templates:write',
+  'images:write'
+]
+const writeAreas = new Set(writeLater.map((s) => areaOf[s]))
+
+/**
+ * How to make a key that works: Klaviyo cannot change an existing key. Each
+ * area is named once, with the access it needs now and later.
+ */
+const newKeySteps = `Klaviyo cannot change an existing key, so please make a new one. In Klaviyo, open Settings, then API keys, then Create Private API Key. Choose Read Access for ${areas(requiredScopes.filter((s) => !writeAreas.has(areaOf[s])))}. Choose Read/Write Access for ${areas(writeLater)}, so GROS can send emails later. Then paste the new key here.`
 
 /** What the owner reads when a key cannot be used, in plain words. */
 export function refusalWords(check: KeyCheck): string | null {
@@ -98,7 +110,10 @@ export async function connectLiveKlaviyo(
     logger.warn('Klaviyo key check refused: KLAVIYO_API_REVISION differs', {
       supported: klaviyoRevision
     })
-    return { error: refusalWords({ ok: false, reason: 'klaviyo_changed' })! }
+    return {
+      error:
+        'Live Klaviyo is not set up correctly yet. We told the developers. Nothing was saved.'
+    }
   }
   // At most 5 checks per workspace in 15 minutes (the store's Klaviyo
   // quota is shared with its other apps).
