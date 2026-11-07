@@ -78,34 +78,54 @@ export class InMemoryBudgetLedger implements BudgetLedger {
   }
 }
 
+/** Live usage commands added by GEM-002 (service role only). */
+type LiveUsageRpc = {
+  (
+    fn: 'reserve_ai_usage',
+    args: { t: string; operation: string; feature: string; estimate: number }
+  ): PromiseLike<{
+    data: string | null
+    error: { code?: string; message?: string } | null
+  }>
+  (
+    fn: 'settle_ai_usage',
+    args: { t: string; reservation: string; actual: number }
+  ): PromiseLike<{
+    data: null
+    error: { code?: string; message?: string } | null
+  }>
+}
+
 /**
- * Backed by the package allowance: public.reserve_fixture_usage and
- * public.reconcile_fixture_usage wrap
- * private.reserve_budget / reconcile_budget, which enforce the cycle and
- * daily caps and alert owners at 80%. The names predate live providers; they
- * meter the client's real allowance.
- *
- * Known gap (GEM-002, needs a migration): these RPCs are also granted to
- * authenticated owners, and their alert text calls all usage "fixture". Live
- * consumers must not ship to production before GEM-002 merges.
+ * Backed by the package allowance through public.reserve_ai_usage and
+ * public.settle_ai_usage (migration 20260914090041, service role only). They
+ * wrap private.reserve_budget / reconcile_budget, which enforce the cycle and
+ * daily caps and alert owners at 80% with live wording. An `ai:` operation can
+ * be reserved only once and is never auto-released, and owners can't reach
+ * it through the fixture commands. Pass a service-role client.
  */
 export class SupabaseBudgetLedger implements BudgetLedger {
-  constructor(private readonly db: SupabaseClient<Database>) {}
+  // The generated types gain these RPCs at the next `pnpm supabase:types`;
+  // until then the signatures above describe them exactly.
+  private readonly rpc: LiveUsageRpc
+  constructor(db: SupabaseClient<Database>) {
+    this.rpc = db.rpc.bind(db) as unknown as LiveUsageRpc
+  }
 
   async reserve(input: Parameters<BudgetLedger['reserve']>[0]) {
-    const { data, error } = await this.db.rpc('reserve_fixture_usage', {
+    const { data, error } = await this.rpc('reserve_ai_usage', {
       t: input.tenantId,
       operation: input.operationId,
       feature: input.feature,
       estimate: input.estimateMicro
     })
-    if (error)
+    if (error || !data)
       return {
         ok: false as const,
         // Only the allowance check means "cap reached"; other check
         // violations (no active package, bad request) are setup problems.
         code:
-          error.code === '23514' &&
+          error?.code === '23514' &&
           /allowance reached|budget exhausted/i.test(error.message ?? '')
             ? ('cap_reached' as const)
             : ('ledger_unavailable' as const)
@@ -114,7 +134,7 @@ export class SupabaseBudgetLedger implements BudgetLedger {
   }
 
   async settle(input: Parameters<BudgetLedger['settle']>[0]) {
-    const { error } = await this.db.rpc('reconcile_fixture_usage', {
+    const { error } = await this.rpc('settle_ai_usage', {
       t: input.tenantId,
       reservation: input.reservationId,
       actual: Math.max(0, Math.ceil(input.actualMicro))
