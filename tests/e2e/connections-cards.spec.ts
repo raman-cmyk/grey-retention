@@ -13,11 +13,15 @@ async function connectKlaviyo(page: Page, key: string) {
     has: page.getByRole('heading', { name: 'Klaviyo', exact: true })
   })
   const update = card.getByRole('button', { name: 'Update API key' })
-  const fresh = card.getByLabel('Private API key', { exact: true })
-  // Wait for whichever state the page shows before deciding.
-  await expect(update.or(fresh)).toBeVisible()
-  if (await update.isVisible()) await update.click()
   const field = card.getByLabel(/^(New private|Private) API key$/)
+  // Wait for whichever state the page shows before deciding.
+  await expect(update.or(field).first()).toBeVisible()
+  // The swap form stays open after a refused key, and the toggle would close
+  // it again; a click before the page is interactive is retried.
+  await expect(async () => {
+    if (!(await field.isVisible())) await update.click()
+    await expect(field).toBeVisible({ timeout: 2_000 })
+  }).toPass()
   await field.fill(key)
   await card
     .getByRole('button', { name: /^(Connect|Validate & swap key)$/ })
@@ -44,6 +48,8 @@ test('UIR-013 owner connects a sample Klaviyo account; there is no Shopify (v2)'
   const first = sample('pk_')
   card = await connectKlaviyo(page, first)
   await expect(card.getByRole('status')).toHaveText('Klaviyo Connected')
+  // The card shows the saved key before the page is reloaded.
+  await expect(card.getByText(hint(first, 8), { exact: false })).toBeVisible()
   await expect(
     card.getByText('Sample data — nothing is sent to Klaviyo.')
   ).toBeVisible()
@@ -63,7 +69,8 @@ test('UIR-013 owner connects a sample Klaviyo account; there is no Shopify (v2)'
   await page.reload()
   await expect(page.getByText(hint(first, 8), { exact: false })).toBeVisible()
   const second = sample('pk_')
-  await connectKlaviyo(page, second)
+  card = await connectKlaviyo(page, second)
+  await expect(card.getByText(hint(second, 8), { exact: false })).toBeVisible()
   await page.reload()
   await expect(page.getByText(hint(second, 8), { exact: false })).toBeVisible()
 
