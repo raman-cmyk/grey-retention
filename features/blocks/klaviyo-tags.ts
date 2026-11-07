@@ -1,34 +1,37 @@
 import type { RenderMode } from './render'
 
 /**
- * Klaviyo's required footer pieces (VISION.md section 10: unsubscribe
- * link, physical address, view in browser, organisation name), as Klaviyo
- * template tags. Klaviyo fills them per recipient from the account's
- * settings when it sends. Our own previews never show raw tags: they get
- * labelled placeholders and dead links instead.
- *
- * The tag names follow Klaviyo's message-design documentation; the first
- * live draft pushed in VISION Step 4 confirms them in Klaviyo's preview.
+ * Klaviyo's required footer pieces (VISION.md section 10: organisation
+ * name, physical address, unsubscribe, preferences, view in browser), as
+ * Klaviyo template tags. These are the exact tags the Step 0 drafts used,
+ * and Klaviyo rendered them in its own preview (docs/step0/README.md,
+ * "Klaviyo push recipe that worked"). Klaviyo fills them per recipient
+ * when it sends. Our own previews never show raw tags: they get labelled
+ * placeholders and dead links instead.
  */
 export const klaviyoFooterTags = {
-  unsubscribe: '{% unsubscribe_link %}',
-  preferences: '{% manage_preferences_link %}',
-  webView: '{% web_view_link %}',
   organization: '{{ organization.name }}',
-  address: '{{ organization.full_address }}'
+  address: '{{ organization.full_address }}',
+  unsubscribe: '{% unsubscribe "Unsubscribe" %}',
+  preferences: '{% manage_preferences "Preferences" %}',
+  webView: '{% web_view "View in browser" %}'
 } as const
 
-export function footerLinks(mode: RenderMode, brandName: string) {
-  if (mode === 'klaviyo') return klaviyoFooterTags
-  const name = brandName
-    .replace(/[<>&"'{}]/g, '')
-    .trim()
-    .slice(0, 80)
-  return {
-    unsubscribe: '#',
-    preferences: '#',
-    webView: '#',
-    organization: name || 'Your brand',
-    address: 'Your store address (Klaviyo adds it when it sends)'
-  }
+/** The footer's inner HTML, as Step 0's reference footer lays it out. */
+export function footerHtml(mode: RenderMode, brandName: string) {
+  const t =
+    mode === 'klaviyo'
+      ? klaviyoFooterTags
+      : {
+          organization:
+            brandName
+              .replace(/[<>&"'{}]/g, '')
+              .trim()
+              .slice(0, 80) || 'Your brand',
+          address: 'Your store address (Klaviyo adds it when it sends)',
+          unsubscribe: '<a href="#" style="color:#555555">Unsubscribe</a>',
+          preferences: '<a href="#" style="color:#555555">Preferences</a>',
+          webView: '<a href="#" style="color:#555555">View in browser</a>'
+        }
+  return `${t.organization}<br>${t.address}<br><br>No longer want these emails? ${t.unsubscribe} &middot; ${t.preferences}<br>Trouble viewing? ${t.webView}`
 }

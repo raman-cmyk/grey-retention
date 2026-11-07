@@ -4,56 +4,133 @@ import { z } from 'zod'
  * The block library (VISION.md Step 1, issue BLK-001). Every email the AI
  * builds is a sequence of these 20 block types, and the section labeller
  * (BLK-003) may only answer one of these keys. There is no countdown timer
- * in v1. Claude chose the list from email-marketing practice; the owner
- * approves it (decision D3).
+ * in v1. The owner approves the list (decision D3).
  *
- * Each type says in plain words what it is for and what content it needs.
- * The content schemas are what the assembly step (ASM-001) must fill: text
- * is plain text (never HTML), prices arrive already formatted in the store
- * currency, and every image is a real photo with alt text (no text inside
- * images, VISION hard rules 9 and 10).
+ * The reference set is the Step 0 renderer (docs/step0/render.py): its 10
+ * types keep their keys and their input fields exactly, so a Step 0 spec
+ * (docs/step0/example_spec.json) is valid input here. The other 10 follow
+ * the same conventions: a picture is `image` (https URL) plus `alt`, a
+ * button is `cta` (its words) plus `url`, a section title is `heading`.
+ *
+ * Text is plain text (never HTML), prices arrive already formatted in the
+ * store currency, and every image is a real photo (no text inside images,
+ * VISION hard rules 9 and 10). The renderer checks every block against
+ * these schemas again, so content stored and re-rendered later can never
+ * skip them.
  */
 
 const text = (max: number) => z.string().trim().min(1).max(max)
 const optionalText = (max: number) => z.string().trim().max(max).optional()
 
-export const linkSchema = z.object({
-  label: text(40),
-  url: z.string().trim().min(1).max(2000)
-})
-export const imageSchema = z.object({
-  url: z.string().trim().min(1).max(200_000),
-  alt: text(160)
-})
+const safeLink = (value: string) => {
+  try {
+    const u = new URL(value)
+    return (
+      ['https:', 'http:', 'mailto:'].includes(u.protocol) &&
+      !u.username &&
+      !u.password
+    )
+  } catch {
+    return false
+  }
+}
+/** A link: https, http or mailto, without credentials in it. */
+export const urlSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2000)
+  .refine(safeLink, { message: 'Use a full https link' })
+
+const inlineImage =
+  /^data:image\/(?:png|jpeg|gif|webp);base64,[a-z0-9+/]+={0,2}$/i
+const safeImage = (value: string) => {
+  if (inlineImage.test(value)) return true
+  try {
+    const u = new URL(value)
+    return u.protocol === 'https:' && !u.username && !u.password
+  } catch {
+    return false
+  }
+}
+/**
+ * A picture: an https URL (Klaviyo-hosted when sent, VISION rule 11), or
+ * an inline PNG/JPEG/GIF/WebP for our own previews. Klaviyo mode refuses
+ * inline pictures at render time.
+ */
+export const imageUrlSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2000)
+  .refine(safeImage, { message: 'Use an https picture' })
+
+const hexSchema = z
+  .string()
+  .trim()
+  .regex(/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i, 'Use a hex colour')
+
 export const productSchema = z.object({
   title: text(90),
   price: text(24),
+  /**
+   * The old price, struck through. Leave it out when the catalog's
+   * compare-at price is permanent (Step 0 finding 2).
+   */
   compareAt: optionalText(24),
-  image: imageSchema,
-  url: z.string().trim().min(1).max(2000)
+  image: imageUrlSchema,
+  alt: optionalText(160),
+  url: urlSchema
 })
+const photoSchema = z.object({ image: imageUrlSchema, alt: text(160) })
+const pair = (a: number, b: number) => z.tuple([text(a), text(b)])
 
-export type BlockLink = z.infer<typeof linkSchema>
-export type BlockImage = z.infer<typeof imageSchema>
 export type BlockProduct = z.infer<typeof productSchema>
+export type BlockPhoto = z.infer<typeof photoSchema>
 
 const definitions = {
-  header: {
-    name: 'Logo header',
-    purpose: 'Opens the email with the brand logo and up to three links.',
-    needs: 'Logo (or the brand name), up to 3 short links',
-    content: z.object({ links: z.array(linkSchema).max(3).default([]) })
-  },
-  hero: {
-    name: 'Hero',
+  announcement_bar: {
+    name: 'Announcement bar',
     purpose:
-      'The big first impression: one photo, the main message and one button.',
-    needs: 'Photo, headline, short line, button',
+      'A thin strip with one short line: a launch, free shipping, a deadline.',
+    needs:
+      'One short line (free-shipping and delivery facts come from the facts sheet)',
+    content: z.object({ text: text(90) })
+  },
+  header_logo: {
+    name: 'Logo header',
+    purpose: 'Opens the email with the brand logo, linked to the store.',
+    needs: 'Nothing to write: the logo and store link come from the brand kit',
+    content: z.object({})
+  },
+  hero_product: {
+    name: 'Product hero',
+    purpose:
+      'The product on a brand-colour panel, with a short headline and one button.',
+    needs: 'Product photo, small eyebrow line, headline, short line, button',
     content: z.object({
-      image: imageSchema,
+      eyebrow: optionalText(40),
       headline: text(80),
-      subline: optionalText(160),
-      cta: linkSchema
+      sub: optionalText(160),
+      image: imageUrlSchema,
+      alt: optionalText(160),
+      url: urlSchema,
+      cta: text(40),
+      panel: hexSchema.optional()
+    })
+  },
+  hero_image: {
+    name: 'Photo hero',
+    purpose:
+      'A full-width lifestyle photo, then the main message and one button.',
+    needs: 'Wide photo, headline, short line, button',
+    content: z.object({
+      image: imageUrlSchema,
+      alt: text(160),
+      headline: text(80),
+      sub: optionalText(160),
+      url: urlSchema,
+      cta: text(40)
     })
   },
   offer_banner: {
@@ -65,14 +142,29 @@ const definitions = {
       detail: optionalText(140),
       code: optionalText(40),
       expiry: optionalText(60),
-      cta: linkSchema
+      url: urlSchema,
+      cta: text(40)
     })
   },
-  free_shipping_bar: {
-    name: 'Free-shipping bar',
-    purpose: 'A thin strip with one fact the shopper cares about.',
-    needs: 'One short line from the facts sheet',
-    content: z.object({ text: text(90) })
+  text: {
+    name: 'Text section',
+    purpose: 'Plain paragraphs, like a letter. Good for text-first emails.',
+    needs: 'Optional heading, 1 to 4 paragraphs',
+    content: z.object({
+      heading: optionalText(80),
+      paras: z.array(text(600)).min(1).max(4),
+      align: z.enum(['center', 'left']).default('center')
+    })
+  },
+  steps: {
+    name: 'Numbered steps',
+    purpose:
+      'A numbered list: how to use it, how ordering works, or reasons to buy.',
+    needs: '2 to 5 steps, each a short title and one line',
+    content: z.object({
+      heading: optionalText(80),
+      items: z.array(pair(40, 200)).min(2).max(5)
+    })
   },
   product_feature: {
     name: 'Single product feature',
@@ -80,17 +172,17 @@ const definitions = {
     needs: '1 featurable product, short copy, button',
     content: z.object({
       product: productSchema,
-      headline: optionalText(80),
+      heading: optionalText(80),
       body: optionalText(400),
-      cta: linkSchema
+      cta: text(40)
     })
   },
-  product_grid_2: {
+  product_grid_2col: {
     name: 'Product grid, 2 columns',
     purpose: 'Two or four products side by side, each with price and link.',
     needs: '2 or 4 featurable products',
     content: z.object({
-      headline: optionalText(80),
+      heading: optionalText(80),
       products: z
         .array(productSchema)
         .refine((list) => list.length === 2 || list.length === 4, {
@@ -98,12 +190,12 @@ const definitions = {
         })
     })
   },
-  product_grid_3: {
+  product_grid_3col: {
     name: 'Product grid, 3 columns',
     purpose: 'Three or six smaller products, for a range or a collection.',
     needs: '3 or 6 featurable products',
     content: z.object({
-      headline: optionalText(80),
+      heading: optionalText(80),
       products: z
         .array(productSchema)
         .refine((list) => list.length === 3 || list.length === 6, {
@@ -116,15 +208,9 @@ const definitions = {
     purpose: 'Photo tiles that send shoppers to collections.',
     needs: '2 or 4 collection photos with a label and link',
     content: z.object({
-      headline: optionalText(80),
+      heading: optionalText(80),
       tiles: z
-        .array(
-          z.object({
-            image: imageSchema,
-            label: text(40),
-            url: z.string().trim().min(1).max(2000)
-          })
-        )
+        .array(photoSchema.extend({ label: text(40), url: urlSchema }))
         .refine((list) => list.length === 2 || list.length === 4, {
           message: 'Use 2 or 4 tiles'
         })
@@ -132,30 +218,26 @@ const definitions = {
   },
   image_text: {
     name: 'Image and text',
-    purpose: 'A photo beside a short story; stacks on a phone.',
-    needs: 'Photo, headline, a few lines, optional button',
+    purpose: 'A photo beside a short story; the photo comes first on a phone.',
+    needs: 'Photo, heading, a few lines, optional button',
     content: z.object({
-      image: imageSchema,
-      headline: text(80),
-      body: text(600),
-      cta: linkSchema.optional(),
+      image: imageUrlSchema,
+      alt: text(160),
+      heading: text(80),
+      paras: z.array(text(500)).min(1).max(3),
+      cta: optionalText(40),
+      url: urlSchema.optional(),
       imageSide: z.enum(['left', 'right']).default('left')
     })
-  },
-  text: {
-    name: 'Text section',
-    purpose: 'Plain paragraphs, like a letter. Good for text-first emails.',
-    needs: 'Optional headline, 1 to 4 paragraphs',
-    content: z.object({ headline: optionalText(80), body: text(1500) })
   },
   founder_note: {
     name: 'Founder note',
     purpose: 'A short personal note signed by the founder.',
     needs: 'Optional photo, note, name and role',
     content: z.object({
-      photo: imageSchema.optional(),
+      photo: photoSchema.optional(),
       greeting: optionalText(60),
-      body: text(1000),
+      paras: z.array(text(600)).min(1).max(4),
       signoff: text(60),
       role: optionalText(60)
     })
@@ -163,9 +245,9 @@ const definitions = {
   review_strip: {
     name: 'Review strip',
     purpose: 'One to three real customer reviews with star ratings.',
-    needs: '1 to 3 reviews (quote, name, stars)',
+    needs: '1 to 3 confirmed reviews (quote, name, stars)',
     content: z.object({
-      headline: optionalText(80),
+      heading: optionalText(80),
       reviews: z
         .array(
           z.object({
@@ -183,14 +265,15 @@ const definitions = {
     purpose: 'Photos customers shared, in a grid, to show the product in use.',
     needs: '3 or 6 customer photos, optional caption and button',
     content: z.object({
-      headline: optionalText(80),
+      heading: optionalText(80),
       photos: z
-        .array(imageSchema)
+        .array(photoSchema)
         .refine((list) => list.length === 3 || list.length === 6, {
           message: 'Use 3 or 6 photos'
         }),
       caption: optionalText(160),
-      cta: linkSchema.optional()
+      cta: optionalText(40),
+      url: urlSchema.optional()
     })
   },
   before_after: {
@@ -198,78 +281,60 @@ const definitions = {
     purpose: 'Two real photos that show the change the product makes.',
     needs: 'Before photo, after photo, short caption',
     content: z.object({
-      before: imageSchema,
-      after: imageSchema,
+      before: photoSchema,
+      after: photoSchema,
       beforeLabel: text(24).default('Before'),
       afterLabel: text(24).default('After'),
       caption: optionalText(200)
     })
   },
-  benefits: {
-    name: 'Benefits',
-    purpose: 'Three reasons to buy, each a short title and one line.',
-    needs: '3 benefits from the facts sheet',
-    content: z.object({
-      headline: optionalText(80),
-      items: z.array(z.object({ title: text(40), body: text(160) })).length(3)
-    })
-  },
-  how_it_works: {
-    name: 'How it works',
-    purpose: 'Three numbered steps: how to use it or how ordering works.',
-    needs: '3 steps (title and one line)',
-    content: z.object({
-      headline: optionalText(80),
-      steps: z.array(z.object({ title: text(40), body: text(160) })).length(3)
-    })
-  },
-  comparison: {
-    name: 'Comparison table',
-    purpose: 'Us against the usual alternative, row by row.',
-    needs: '2 column labels, 3 to 5 rows',
-    content: z.object({
-      headline: optionalText(80),
-      usLabel: text(30),
-      themLabel: text(30),
-      rows: z
-        .array(z.object({ feature: text(50), us: text(40), them: text(40) }))
-        .min(3)
-        .max(5)
-    })
-  },
   faq: {
     name: 'FAQ',
     purpose: 'Answers to the questions that stop people buying.',
-    needs: '2 to 5 questions with short answers from the facts sheet',
+    needs: '1 to 5 questions with short answers from the facts sheet',
     content: z.object({
-      headline: optionalText(80),
-      items: z
-        .array(z.object({ question: text(120), answer: text(400) }))
-        .min(2)
-        .max(5)
+      heading: optionalText(80),
+      items: z.array(pair(120, 400)).min(1).max(5)
     })
   },
   cta: {
-    name: 'Button section',
-    purpose: 'A last push: one line and one clear button.',
-    needs: 'Optional headline and line, button',
-    content: z.object({
-      headline: optionalText(80),
-      body: optionalText(200),
-      cta: linkSchema
-    })
+    name: 'Button',
+    purpose: 'One clear button on its own.',
+    needs: 'Button words and link',
+    content: z.object({ label: text(40), url: urlSchema })
+  },
+  signoff: {
+    name: 'Sign-off',
+    purpose: 'A short closing line from the brand, like "With love, the team".',
+    needs: 'One short line',
+    content: z.object({ text: text(120) })
   },
   footer: {
     name: 'Footer',
     purpose:
       "Closes every email with Klaviyo's required links and the address.",
-    needs: 'Nothing to write: brand, unsubscribe, address, view in browser',
+    needs:
+      'Nothing to write: brand, address, unsubscribe, preferences, view in browser',
     content: z.object({ note: optionalText(200) })
   }
 } as const
 
 export type BlockType = keyof typeof definitions
 export const blockTypes = Object.keys(definitions) as BlockType[]
+
+/** The Step 0 reference renderer's types (docs/step0/render.py). */
+export const referenceBlockTypes = [
+  'announcement_bar',
+  'header_logo',
+  'hero_product',
+  'text',
+  'steps',
+  'product_grid_2col',
+  'faq',
+  'cta',
+  'signoff',
+  'footer'
+] as const satisfies readonly BlockType[]
 
 export type BlockContent<T extends BlockType> = z.infer<
   (typeof definitions)[T]['content']
@@ -309,7 +374,8 @@ export function parseBlock(
   type: BlockType,
   content: unknown
 ): { ok: true; block: Block } | { ok: false; error: string } {
-  const result = definitions[type].content.safeParse(content)
+  if (!isBlockType(type)) return { ok: false, error: `Unknown block ${type}` }
+  const result = definitions[type].content.strict().safeParse(content)
   if (!result.success)
     return {
       ok: false,
@@ -318,4 +384,19 @@ export function parseBlock(
         .join('; ')
     }
   return { ok: true, block: { type, content: result.data } as Block }
+}
+
+/**
+ * A Step 0 style block (`{ type, ...fields }`, docs/step0/example_spec.json)
+ * as a checked block.
+ */
+export function parseSpecBlock(
+  input: unknown
+): { ok: true; block: Block } | { ok: false; error: string } {
+  if (!input || typeof input !== 'object')
+    return { ok: false, error: 'A block must be an object' }
+  const { type, ...content } = input as { type?: unknown }
+  if (!isBlockType(type))
+    return { ok: false, error: `Unknown block ${String(type)}` }
+  return parseBlock(type, content)
 }

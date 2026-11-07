@@ -1,7 +1,7 @@
 import {
   type Block,
   type BlockContentInput,
-  type BlockImage,
+  type BlockPhoto,
   type BlockType,
   blockTypes,
   parseBlock
@@ -11,13 +11,18 @@ import type { BlockBrand } from './brand'
 /**
  * Sample content for every block type, for the block gallery (BLK-002)
  * and the tests. The brand is fictional and every picture is a plain
- * shape with no text in it (VISION rule 10). Screens that show these must
- * say they are samples.
+ * block of colour with no text in it (VISION rule 10). Screens that show
+ * these must say they are samples.
  */
 export const sampleBrand: BlockBrand = {
   name: 'Cedar Lane',
-  colors: { primary: '#2f4a3a', accent: '#c9a96e', background: '#fbf8f2' },
-  font: 'Playfair Display'
+  site: 'https://cedar-lane.example',
+  font: 'Playfair Display',
+  ink: '#1f2a24',
+  background: '#fbf8f2',
+  accent: '#2f4a3a',
+  dark: '#1f3328',
+  radius: '8px'
 }
 
 // Solid-colour PNGs (1×1 square, 5×3 wide), stretched by the email's own
@@ -44,10 +49,10 @@ export function samplePhoto(
   index: number,
   alt: string,
   ratio: 'square' | 'wide' = 'square'
-): BlockImage {
+): BlockPhoto {
   const list = ratio === 'wide' ? widePng : squarePng
   return {
-    url: `data:image/png;base64,${list[index % list.length]}`,
+    image: `data:image/png;base64,${list[index % list.length]}`,
     alt
   }
 }
@@ -56,43 +61,61 @@ const shop = 'https://cedar-lane.example'
 const product = (i: number, title: string, price: string) => ({
   title,
   price,
-  image: samplePhoto(i, `${title} (sample photo)`),
+  image: samplePhoto(i, title).image,
+  alt: `${title} (sample photo)`,
   url: `${shop}/products/${i}`
 })
 
 const content: { [T in BlockType]: BlockContentInput<T> } = {
-  header: {
-    links: [
-      { label: 'New', url: `${shop}/new` },
-      { label: 'Best sellers', url: `${shop}/best` },
-      { label: 'Gifts', url: `${shop}/gifts` }
-    ]
+  announcement_bar: { text: 'Free shipping on orders over $60' },
+  header_logo: {},
+  hero_product: {
+    eyebrow: 'Just in',
+    headline: 'Meet the Washed Linen Throw',
+    sub: 'Stone-washed for a soft hand from the first night.',
+    ...samplePhoto(1, 'The linen throw (sample)'),
+    url: `${shop}/products/1`,
+    cta: 'Shop the throw',
+    panel: '#eef2ec'
   },
-  hero: {
-    image: samplePhoto(0, 'A linen throw on a reading chair (sample)', 'wide'),
+  hero_image: {
+    ...samplePhoto(0, 'A linen throw on a reading chair (sample)', 'wide'),
     headline: 'Slow mornings, made softer',
-    subline: 'The new linen collection is here, washed for a lived-in feel.',
-    cta: { label: 'Shop the collection', url: `${shop}/linen` }
+    sub: 'The new linen collection is here, washed for a lived-in feel.',
+    url: `${shop}/linen`,
+    cta: 'Shop the collection'
   },
   offer_banner: {
     headline: '15% off your first order',
     detail: 'On everything in the linen collection.',
     code: 'WELCOME15',
     expiry: 'Ends Sunday at midnight',
-    cta: { label: 'Use my code', url: `${shop}/linen` }
+    url: `${shop}/linen`,
+    cta: 'Use my code'
   },
-  free_shipping_bar: { text: 'Free shipping on orders over $60' },
+  text: {
+    heading: 'A note on our autumn colours',
+    paras: [
+      'This season we went back to the hills behind our studio for the palette: moss, oat and a deep clay.',
+      'Each colour is dyed in small batches, so no two throws are quite the same.'
+    ]
+  },
+  steps: {
+    heading: 'How to care for linen',
+    items: [
+      ['Wash cool.', 'A gentle cycle keeps the fibres soft.'],
+      ['Dry low.', 'Tumble low or line dry in the shade.'],
+      ['Skip the iron.', 'The rumpled look is part of the charm.']
+    ]
+  },
   product_feature: {
-    product: {
-      ...product(1, 'Washed Linen Throw', '$89'),
-      compareAt: '$110'
-    },
-    headline: 'Our most-loved throw',
-    body: 'Stone-washed for a soft hand from day one. Light enough for summer, warm enough for autumn evenings.',
-    cta: { label: 'Shop the throw', url: `${shop}/products/1` }
+    product: { ...product(1, 'Washed Linen Throw', '$89'), compareAt: '$110' },
+    heading: 'Our most-loved throw',
+    body: 'Light enough for summer, warm enough for autumn evenings.',
+    cta: 'Shop the throw'
   },
-  product_grid_2: {
-    headline: 'Best sellers',
+  product_grid_2col: {
+    heading: 'Best sellers',
     products: [
       product(2, 'Linen Pillow Cover', '$34'),
       product(3, 'Waffle Bath Towel', '$42'),
@@ -100,8 +123,8 @@ const content: { [T in BlockType]: BlockContentInput<T> } = {
       product(5, 'Stoneware Mug', '$18')
     ]
   },
-  product_grid_3: {
-    headline: 'Just in',
+  product_grid_3col: {
+    heading: 'Just in',
     products: [
       product(0, 'Oak Serving Board', '$48'),
       product(1, 'Beeswax Candle', '$22'),
@@ -109,61 +132,59 @@ const content: { [T in BlockType]: BlockContentInput<T> } = {
     ]
   },
   category_tiles: {
-    headline: 'Shop by room',
+    heading: 'Shop by room',
     tiles: [
       {
-        image: samplePhoto(3, 'Bedroom (sample)'),
+        ...samplePhoto(3, 'Bedroom (sample)'),
         label: 'Bedroom',
         url: `${shop}/bedroom`
       },
       {
-        image: samplePhoto(4, 'Kitchen (sample)'),
+        ...samplePhoto(4, 'Kitchen (sample)'),
         label: 'Kitchen',
         url: `${shop}/kitchen`
       },
       {
-        image: samplePhoto(5, 'Bath (sample)'),
+        ...samplePhoto(5, 'Bath (sample)'),
         label: 'Bath',
         url: `${shop}/bath`
       },
       {
-        image: samplePhoto(0, 'Living room (sample)'),
+        ...samplePhoto(0, 'Living room (sample)'),
         label: 'Living',
         url: `${shop}/living`
       }
     ]
   },
   image_text: {
-    image: samplePhoto(2, 'Folded linen on a shelf (sample)'),
-    headline: 'Made to soften with time',
-    body: 'Every piece is woven from European flax and washed twice, so it feels broken-in from the first night.',
-    cta: { label: 'Read our story', url: `${shop}/story` },
+    ...samplePhoto(2, 'Folded linen on a shelf (sample)'),
+    heading: 'Made to soften with time',
+    paras: [
+      'Every piece is woven from European flax and washed twice, so it feels broken-in from the first night.'
+    ],
+    cta: 'Read our story',
+    url: `${shop}/story`,
     imageSide: 'left'
-  },
-  text: {
-    headline: 'A note on our autumn colours',
-    body: 'This season we went back to the hills behind our studio for the palette: moss, oat and a deep clay.\n\nEach colour is dyed in small batches, so no two throws are quite the same.'
   },
   founder_note: {
     photo: samplePhoto(1, 'The founder (sample)'),
     greeting: 'Hi there,',
-    body: 'I started Cedar Lane because I could not find bedding that felt as good in year three as in week one.\n\nThank you for being here. Hit reply and tell me what you would like us to make next.',
+    paras: [
+      'I started Cedar Lane because I could not find bedding that felt as good in year three as in week one.',
+      'Thank you for being here. Hit reply and tell me what you would like us to make next.'
+    ],
     signoff: 'Maya',
     role: 'Founder, Cedar Lane'
   },
   review_strip: {
-    headline: 'What customers say',
+    heading: 'What customers say',
     reviews: [
       {
         quote: 'Softest throw I have owned. Gets better every wash.',
         author: 'Priya S.',
         rating: 5
       },
-      {
-        quote: 'Lovely colour, arrived in two days.',
-        author: 'Tom R.',
-        rating: 5
-      },
+      { quote: 'Lovely colour, arrived quickly.', author: 'Tom R.', rating: 5 },
       {
         quote: 'Great quality, slightly smaller than expected.',
         author: 'Ana L.',
@@ -172,14 +193,15 @@ const content: { [T in BlockType]: BlockContentInput<T> } = {
     ]
   },
   ugc_grid: {
-    headline: 'In your homes',
+    heading: 'In your homes',
     photos: [
       samplePhoto(0, 'Customer photo of a bedroom (sample)'),
       samplePhoto(2, 'Customer photo of a sofa (sample)'),
       samplePhoto(4, 'Customer photo of a table (sample)')
     ],
     caption: 'Tag us to be featured.',
-    cta: { label: 'See more', url: `${shop}/community` }
+    cta: 'See more',
+    url: `${shop}/community`
   },
   before_after: {
     before: samplePhoto(3, 'A plain bed before (sample)'),
@@ -188,54 +210,25 @@ const content: { [T in BlockType]: BlockContentInput<T> } = {
     afterLabel: 'After',
     caption: 'One bed, one linen set, ten minutes.'
   },
-  benefits: {
-    headline: 'Why Cedar Lane',
-    items: [
-      { title: 'Washed twice', body: 'Soft from the first night.' },
-      { title: '100-night trial', body: 'Sleep on it before you decide.' },
-      { title: 'Made to last', body: 'Flax that gets better with time.' }
-    ]
-  },
-  how_it_works: {
-    headline: 'How the trial works',
-    steps: [
-      { title: 'Order', body: 'Pick your set and colour.' },
-      { title: 'Sleep on it', body: 'Use it for up to 100 nights.' },
-      { title: 'Decide', body: 'Keep it or send it back for free.' }
-    ]
-  },
-  comparison: {
-    headline: 'Cedar Lane against the usual',
-    usLabel: 'Cedar Lane',
-    themLabel: 'Typical linen',
-    rows: [
-      { feature: 'Pre-washed', us: 'Twice', them: 'No' },
-      { feature: 'Trial', us: '100 nights', them: '30 days' },
-      { feature: 'Flax origin', us: 'Europe', them: 'Mixed' }
-    ]
-  },
   faq: {
-    headline: 'Questions',
+    heading: 'Questions',
     items: [
-      {
-        question: 'How do I wash linen?',
-        answer: 'Cold or warm, gentle cycle, then tumble low or line dry.'
-      },
-      {
-        question: 'What if it does not suit me?',
-        answer: 'Send it back within 100 nights for a full refund.'
-      },
-      {
-        question: 'How long does shipping take?',
-        answer: 'Most orders arrive in 2 to 4 working days.'
-      }
+      [
+        'How do I wash linen?',
+        'Cold or warm, gentle cycle, then tumble low or line dry.'
+      ],
+      [
+        'What if it does not suit me?',
+        'Send it back within 30 days for a full refund.'
+      ],
+      [
+        'How long does shipping take?',
+        'Most orders arrive in 3 to 5 working days.'
+      ]
     ]
   },
-  cta: {
-    headline: 'Ready for softer evenings?',
-    body: 'The autumn colours are in stock now.',
-    cta: { label: 'Shop now', url: `${shop}/autumn` }
-  },
+  cta: { label: 'Shop the collection', url: `${shop}/autumn` },
+  signoff: { text: 'With love, the Cedar Lane team' },
   footer: {
     note: 'You get this email because you signed up at cedar-lane.example.'
   }

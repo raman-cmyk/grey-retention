@@ -1,13 +1,21 @@
 import { expect, test } from '@playwright/test'
-import { blockTypes } from '../../features/blocks/catalog'
+import { blockTypes, parseBlock } from '../../features/blocks/catalog'
 import { renderEmail } from '../../features/blocks/render'
 import { sampleBlocks, sampleBrand } from '../../features/blocks/samples'
 
 // BLK-001: every block, rendered as a real email, at desktop email width and
 // on a 375px phone. No server or sign-in is needed: the HTML is loaded
 // straight into the browser, the way an email client shows it.
+// The worst case for width: the longest code the schema allows.
+const longCode = parseBlock('offer_banner', {
+  headline: '20% off everything',
+  code: 'BLACKFRIDAY2026VIPEXTRA20PERCENTOFFNOW1',
+  url: 'https://cedar-lane.example/sale',
+  cta: 'Shop the sale'
+})
+if (!longCode.ok) throw new Error(longCode.error)
 const html = renderEmail({
-  blocks: blockTypes.map((t) => sampleBlocks[t]),
+  blocks: [...blockTypes.map((t) => sampleBlocks[t]), longCode.block],
   brand: sampleBrand,
   subject: 'Block library check',
   mode: 'preview'
