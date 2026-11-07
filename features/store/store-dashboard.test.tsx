@@ -102,7 +102,7 @@ describe('StoreDashboard', () => {
     expect(within(alerts).getByText('Sample products')).toBeVisible()
     expect(
       within(alerts).getByRole('link', { name: 'See your products' })
-    ).toHaveAttribute('href', '/brand#products')
+    ).toHaveAttribute('href', '/brand#catalogue')
   })
 
   it('says when every product is fine, when there are none, or when they did not load', () => {

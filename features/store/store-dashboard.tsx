@@ -321,7 +321,7 @@ function StockAlerts({
   now: Date
 }) {
   const productsLink = (
-    <Link href="/brand#products" className="text-sm font-medium underline">
+    <Link href="/brand#catalogue" className="text-sm font-medium underline">
       See your products
     </Link>
   )
