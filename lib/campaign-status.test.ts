@@ -14,7 +14,8 @@ describe('campaign status system', () => {
       'Scheduled',
       'Sent',
       'Cancelled',
-      'Missed'
+      'Missed',
+      'Delivery problem'
     ])
     expect(new Set(campaignStatusOrder).size).toBe(
       Object.keys(campaignStatuses).length
@@ -26,6 +27,7 @@ describe('campaign status system', () => {
     expect(campaignStatuses.scheduled.tone).toBe('info')
     expect(campaignStatuses.sent.tone).toBe('solid')
     expect(campaignStatuses.cancelled.tone).toBe('danger')
+    expect(campaignStatuses.delivery_problem.tone).toBe('danger')
   })
 
   it('explains every status in plain words', () => {

@@ -102,7 +102,15 @@ describe('dashboard model', () => {
         local({ id: 'e', title: 'Old plan', superseded_by_plan: 'p1' }),
         local({ id: 'f', title: 'Rejected', calendar_state: 'rejected' }),
         local({ id: 'g', title: 'Failed', delivery_state: 'failed' }),
-        local({ id: 'h', title: 'Blocked', delivery_state: 'blocked' })
+        local({ id: 'h', title: 'Blocked', delivery_state: 'blocked' }),
+        local({ id: 'i', title: 'Unconfirmed', delivery_state: 'reconciling' }),
+        local({ id: 'j', title: 'Cancelled', delivery_state: 'cancelled' }),
+        local({
+          id: 'k',
+          title: 'Late in delivery',
+          delivery_state: 'queued',
+          planned_at: '2026-11-01T00:00:00Z'
+        })
       ],
       snapshot,
       now
@@ -113,7 +121,30 @@ describe('dashboard model', () => {
       'Later local'
     ])
     expect(sends[0].href).toBe('/campaigns/b')
-    expect(sends[1]).toMatchObject({ source: 'klaviyo', href: null })
+    expect(sends[1]).toMatchObject({
+      source: 'klaviyo',
+      href: null,
+      status: 'scheduled'
+    })
+    expect(sends[0].status).toBe('draft')
+  })
+
+  it('shows a future send that delivery is setting up as Scheduled', () => {
+    const [send] = upcomingSends(
+      [
+        local({
+          id: 'q',
+          title: 'Queued',
+          copy_state: 'approved',
+          design_state: 'owner_approved',
+          delivery_state: 'queued',
+          planned_at: '2026-11-20T00:00:00Z'
+        })
+      ],
+      null,
+      now
+    )
+    expect(send).toMatchObject({ id: 'q', status: 'scheduled' })
   })
 
   it('words the countdown plainly, with a date beyond a month', () => {

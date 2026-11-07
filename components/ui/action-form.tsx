@@ -2,6 +2,7 @@
 import { useActionState, type ReactNode } from 'react'
 import { useFormStatus } from 'react-dom'
 import { Button, type ButtonProps } from './button'
+import { useHydrated } from './use-hydrated'
 import { cn } from '@/lib/utils'
 export type FormResult = { error?: string; message?: string }
 export type FormAction = (
@@ -57,8 +58,15 @@ export function SubmitButton({
   disabled?: boolean
 }) {
   const { pending } = useFormStatus()
+  // Disabled until the page is interactive: a click before that would post
+  // the form natively and lose its result message.
+  const hydrated = useHydrated()
   return (
-    <Button type="submit" disabled={pending || disabled} variant={variant}>
+    <Button
+      type="submit"
+      disabled={!hydrated || pending || disabled}
+      variant={variant}
+    >
       {pending ? pendingLabel : children}
     </Button>
   )

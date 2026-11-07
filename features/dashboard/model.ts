@@ -1,5 +1,7 @@
 import type { Route } from 'next'
 import type { OverviewCampaign } from '@/features/campaigns/overview-model'
+import { campaignStatusOf } from '@/features/campaigns/status'
+import type { CampaignStatus } from '@/lib/campaign-status'
 import {
   formatCount,
   formatMoney,
@@ -124,42 +126,51 @@ export type UpcomingSend = {
   at: string
   source: 'workspace' | 'klaviyo'
   href: `/campaigns/${string}` | null
+  /** The one campaign status (UIR-015). */
+  status: CampaignStatus
 }
 
 /**
  * Next sends from BOTH this workspace and Klaviyo (docs/OWNER_JOURNEYS.md §3
  * fix: the old app said "No upcoming campaigns" while drafts existed). Only
- * campaigns that can still send count: not rejected, failed or blocked.
+ * campaigns that can still send count: not rejected, missed or with a
+ * delivery problem.
  */
 export function upcomingSends(
   campaigns: readonly OverviewCampaign[],
   snapshot: KlaviyoSnapshot | null,
   now: Date
 ): UpcomingSend[] {
-  const local: UpcomingSend[] = campaigns
-    .filter(
-      (c) =>
-        !c.superseded_by_plan &&
-        c.calendar_state !== 'rejected' &&
-        !['sent', 'cancelled', 'failed', 'blocked'].includes(
-          c.delivery_state
-        ) &&
-        Date.parse(c.planned_at) > now.getTime()
-    )
-    .map((c) => ({
-      id: c.id,
-      name: c.title,
-      at: c.planned_at,
-      source: 'workspace',
-      href: `/campaigns/${c.id}` as const
-    }))
+  const local: UpcomingSend[] = campaigns.flatMap((c) => {
+    const status = campaignStatusOf(c, now)
+    // Only what can still send on its date: not history, sent, cancelled,
+    // missed, a delivery problem or a date the owner turned down.
+    return status &&
+      ['draft', 'with_designer', 'needs_approval', 'scheduled'].includes(
+        status
+      ) &&
+      c.calendar_state !== 'rejected' &&
+      Date.parse(c.planned_at) > now.getTime()
+      ? [
+          {
+            id: c.id,
+            name: c.title,
+            at: c.planned_at,
+            source: 'workspace' as const,
+            href: `/campaigns/${c.id}` as const,
+            status
+          }
+        ]
+      : []
+  })
   const klaviyo: UpcomingSend[] = snapshot
     ? upcomingKlaviyoCampaigns(snapshot, now).map((c) => ({
         id: c.id,
         name: c.name,
         at: c.sendTime!,
         source: 'klaviyo',
-        href: null
+        href: null,
+        status: 'scheduled' as const
       }))
     : []
   return [...local, ...klaviyo].sort(
