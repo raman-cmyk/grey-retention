@@ -364,14 +364,22 @@ test('INB-002 a sample inbox email keeps its images and its 600px screenshot sho
     images_failed: 0
   })
 
-  // The screenshot browser (the scheduled GitHub Actions job) photographs it.
+  // The screenshot browser (the scheduled GitHub Actions job) photographs it
+  // (on a retry, the first attempt already did).
+  const before = await admin
+    .from('inbox_messages')
+    .select('screenshot_path')
+    .eq('id', message.data!.id)
+    .single()
   const counts = await takeScreenshots({
     base: baseURL!,
     secret,
     browser,
     log: () => {}
   })
-  expect(counts.taken).toBeGreaterThanOrEqual(1)
+  expect(counts.taken).toBeGreaterThanOrEqual(
+    before.data?.screenshot_path ? 0 : 1
+  )
   expect(counts.failed).toBe(0)
   const shot = await admin
     .from('inbox_messages')
@@ -394,9 +402,16 @@ test('INB-002 a sample inbox email keeps its images and its 600px screenshot sho
   await page.goto('/library/inspirations')
   const card = page.getByAltText('Screenshot of Spring layers are here')
   await expect(card).toBeVisible()
-  expect(
-    await card.evaluate((img) => (img as HTMLImageElement).naturalWidth)
-  ).toBe(shot.data!.screenshot_width)
+  // The picture loads lazily, once on screen; its real size is the stored one.
+  await card.scrollIntoViewIfNeeded()
+  await expect
+    .poll(() =>
+      card.evaluate((img) => {
+        const picture = img as HTMLImageElement
+        return picture.complete ? picture.naturalWidth : 0
+      })
+    )
+    .toBe(shot.data!.screenshot_width)
 
   // INB-003: the next sweep labels the email once: sections with block
   // types, and its facts on the competitor email.
