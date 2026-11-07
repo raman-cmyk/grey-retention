@@ -544,10 +544,12 @@ Simplify:
 
 Checks:
 
-- [ ] "Yours · 0 total" empty: "Nothing yet — add your first on the left."
-- [ ] Platform list shows the next 90 days only. The heading includes "managed by Grey Retention" (white-label: show the agency's brand name, not a fixed one). **(fix for white-label)**
-- [ ] The platform list matches the brand's country (see §6). **(fix)**
+- [x] "Yours · 0 total" empty: "Nothing yet — add your first on the left."
+- [x] Platform list shows the next 90 days only. The heading includes "managed by Grey Retention" (white-label: show the agency's brand name, not a fixed one). **(fix for white-label)**
+- [x] The platform list matches the brand's country (see §6). **(fix)**
 - [ ] An entry added here appears in the planner modal's "YOURS (N)" list and in the brief's holiday rows for its month.
+
+> **As built (UIR-012):** "managed by" shows the product name from the white-label brand presentation. The owner picks the country (US, UK, Australia, Canada, New Zealand, India, or shopping and gift days for other countries); until then it is guessed from the workspace timezone and the card says so. Still open (browser lane, §6): the planner modal's "YOURS (N)" list. The AI planner already plans around entries in the next 30 days.
 
 Simplify:
 
@@ -562,10 +564,12 @@ Simplify:
 Checks:
 
 - [ ] Klaviyo card badge "PULLED N TEMPLATES" is a live count.
-- [ ] "Klaviyo Connected" is a `button` but does nothing visible. Make it a status, not a button, or a menu with "Disconnect" behind a confirm. Not clicked.
-- [ ] "Update API key" is a disclosure: password input "pk_…" + "Validate & swap key" (submit). Not used.
-- [ ] Shopify "Connect Shopify →" reveals the custom-app token form (per spec). Not opened beyond the button.
-- [ ] Missing Shopify breaks UTM attribution, Store and the product catalogue. Show these consequences on the card: "Without Shopify: no Store page, no UTM revenue, product list may be outdated."
+- [x] "Klaviyo Connected" is a `button` but does nothing visible. Make it a status, not a button, or a menu with "Disconnect" behind a confirm. Not clicked.
+- [x] "Update API key" is a disclosure: password input "pk_…" + "Validate & swap key" (submit). Not used.
+- [x] Shopify "Connect Shopify →" reveals the custom-app token form (per spec). Not opened beyond the button.
+- [x] Missing Shopify breaks UTM attribution, Store and the product catalogue. Show these consequences on the card: "Without Shopify: no Store page, no UTM revenue, product list may be outdated."
+
+> **As built (UIR-013, ticked after it merged):** "Klaviyo Connected" is a status line, not a button. The template badge shows the count from the Klaviyo check made when connecting; with today's sample provider it reads "Pulled N sample templates", so the live-count check stays open until a real Klaviyo account is connected.
 
 Simplify:
 

@@ -2930,33 +2930,81 @@ export type Database = {
           }
         ]
       }
+      holiday_preferences: {
+        Row: {
+          country: string
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          country: string
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          country?: string
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'holiday_preferences_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'holiday_preferences_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       holidays: {
         Row: {
           created_at: string
           created_by: string
           event_date: string
           id: string
+          kind: string
           name: string
           notes: string
+          repeats_annually: boolean
+          revision: number
           tenant_id: string
+          updated_at: string
         }
         Insert: {
           created_at?: string
           created_by: string
           event_date: string
           id?: string
+          kind?: string
           name: string
           notes?: string
+          repeats_annually?: boolean
+          revision?: number
           tenant_id: string
+          updated_at?: string
         }
         Update: {
           created_at?: string
           created_by?: string
           event_date?: string
           id?: string
+          kind?: string
           name?: string
           notes?: string
+          repeats_annually?: boolean
+          revision?: number
           tenant_id?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -5147,6 +5195,10 @@ export type Database = {
         Args: { allocation: number; daily: number; name: string }
         Returns: string
       }
+      delete_holiday: {
+        Args: { expected_revision: number; holiday_id: string; t: string }
+        Returns: undefined
+      }
       design_escalation_operations: {
         Args: never
         Returns: {
@@ -5654,6 +5706,19 @@ export type Database = {
         }
         Returns: number
       }
+      save_holiday: {
+        Args: {
+          event_date: string
+          expected_revision: number
+          holiday_id: string
+          kind: string
+          name: string
+          notes?: string
+          repeats_annually: boolean
+          t: string
+        }
+        Returns: Json
+      }
       save_l2_simulation_policy: {
         Args: {
           enabled: boolean
@@ -5681,6 +5746,10 @@ export type Database = {
       }
       set_fixture_metrics: {
         Args: { delivery: string; scenario: string; t: string }
+        Returns: undefined
+      }
+      set_holiday_country: {
+        Args: { country: string; t: string }
         Returns: undefined
       }
       set_planning_preferences: {
