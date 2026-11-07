@@ -3814,9 +3814,9 @@
       "status": "partial",
       "implementation_tasks": ["UIR-020"],
       "verification": [
-        "UIR-020 (2026-11-06): requests appear in the admin support queue, where the platform team replies and sets the state; the owner sees open as Open, in progress as Planned, closed as Done (pgTAP: an operator reply and state change is visible to the owner)."
+        "UIR-020 (2026-11-06): requests appear in the admin support queue, where only the platform team sets the state (members can reply but not change it); the owner sees open as Open, in progress as Planned, closed as Done (pgTAP: an operator reply and state change is visible to the owner; member state changes are refused)."
       ],
-      "remaining": "The admin queue still names the states open / in progress / closed and shows no request type; a dedicated admin view is UIR-026."
+      "remaining": "The admin queue still names the states open / in progress / closed, shows no request type and only the 30 newest tickets across workspaces; a dedicated admin view is UIR-026."
     },
     {
       "id": "OPS-010",
