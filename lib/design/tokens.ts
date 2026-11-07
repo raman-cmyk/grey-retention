@@ -231,7 +231,7 @@ export const contrastRules: ReadonlyArray<{
     foreground: 'accent-strong',
     backgrounds: ['accent-faint'],
     minimum: 4.5,
-    use: 'info pill text (Scheduled, With designer, DESIGN)'
+    use: 'info pill text (Scheduled, DESIGN)'
   },
   {
     foreground: 'accent',

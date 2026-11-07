@@ -379,9 +379,10 @@ export async function OperatorPanel() {
         <ul className="mt-5 space-y-2 text-sm">
           {data.data.assignmentRequests.map((a) => (
             <li key={a.id}>
-              Pending assignment · campaign {a.campaign_id} ·{' '}
-              {data.data.tenants.find((t) => t.id === a.tenant_id)?.name}. Use
-              the designer assignment workspace.
+              Old designer request · campaign {a.campaign_id} ·{' '}
+              {data.data.tenants.find((t) => t.id === a.tenant_id)?.name}.
+              Designers are retired; the owner makes the design on the campaign
+              page.
             </li>
           ))}
         </ul>

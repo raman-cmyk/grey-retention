@@ -153,7 +153,6 @@ export const adminNavigation: ShellNavigation = {
   primary: [
     { label: 'Overview', href: '/admin/dashboard', icon: 'admin-overview' },
     { label: 'Clients', href: '/admin/clients', icon: 'clients' },
-    { label: 'Designers', href: '/admin/designers', icon: 'designers' },
     { label: 'Prompt engine', href: '/admin/prompts', icon: 'prompts' },
     { label: 'Templates', href: '/admin/templates', icon: 'templates' },
     { label: 'Operations', href: '/admin/operations', icon: 'operations' }

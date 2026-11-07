@@ -41,10 +41,6 @@ export function campaignNextStep(
       return 'Pick a new date'
     case 'needs_approval':
       return campaignReview(c, now)
-    case 'with_designer':
-      return c.design_state === 'revisions_requested'
-        ? 'Revise design'
-        : 'Design in progress'
     default:
       if (c.calendar_state === 'rejected') return 'Revise calendar'
       if (c.copy_state !== 'approved') return 'Prepare copy'
@@ -62,9 +58,7 @@ export function overviewModel(campaigns: OverviewCampaign[], now = new Date()) {
   )
   const reviews = current.filter((c) => status(c) === 'needs_approval')
   const scheduled = current.filter((c) => status(c) === 'scheduled')
-  const inProduction = current.filter((c) =>
-    ['draft', 'with_designer'].includes(status(c) ?? '')
-  )
+  const inProduction = current.filter((c) => status(c) === 'draft')
   const attention = current.filter((c) =>
     ['missed', 'delivery_problem'].includes(status(c) ?? '')
   )

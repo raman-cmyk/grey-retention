@@ -32,11 +32,11 @@ const problems = new Set(['failed', 'blocked', 'reconciling'])
  *    time, and a Delivery problem once its time passed (the worker refuses
  *    past times, and the date can't be edited while delivery is active).
  * 4. Anything else whose time passed is Missed.
- * 5. Needs your approval: a moved or new calendar entry first, then a
- *    designer at work is With designer, then copy or a delivered design
- *    waiting, then — copy AND design approved, for every channel (text
- *    emails get a text design the owner reviews) — the final
- *    approve-and-schedule step.
+ * 5. Needs your approval: a moved or new calendar entry first, then copy
+ *    or a made design waiting, then — copy AND design approved, for every
+ *    channel (text emails get a text design the owner reviews) — the final
+ *    approve-and-schedule step. A design being made or redone is Draft
+ *    (decision D3 retired the human designer and "With designer").
  * 6. Everything else is Draft, including a rejected calendar entry (it can
  *    be revised and approved again; nothing else can be approved until
  *    then).
@@ -62,14 +62,6 @@ export function campaignStatusOf(
   if (c.calendar_state === 'proposed') return 'needs_approval'
   // A turned-down date blocks the copy and design approvals too.
   if (c.calendar_state === 'rejected') return 'draft'
-  // The render path (no human designer) also asks for revisions. Text
-  // emails usually use it, so their revisions are taken as the owner's
-  // (a text email given to a human designer reads Draft: known issue).
-  if (
-    c.design_state === 'assigned' ||
-    (c.design_state === 'revisions_requested' && c.channel !== 'email_text')
-  )
-    return 'with_designer'
   if (c.copy_state === 'pending_approval' || c.design_state === 'submitted')
     return 'needs_approval'
   // The final approve-and-schedule step needs an approved date too.
@@ -103,7 +95,8 @@ const stepWords: Record<Step, Record<string, string>> = {
   },
   design: {
     unassigned: 'Not started',
-    assigned: 'With a designer',
+    // Only an old human assignment (retired by D3) sets this.
+    assigned: 'Not started',
     submitted: 'Waiting for your approval',
     revisions_requested: 'Changes asked',
     owner_approved: 'Approved'

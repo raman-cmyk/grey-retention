@@ -9,7 +9,6 @@ describe('campaign status system', () => {
   it('uses the owner brief words, in order, once each', () => {
     expect(campaignStatusOrder.map((s) => campaignStatuses[s].label)).toEqual([
       'Draft',
-      'With designer',
       'Needs your approval',
       'Scheduled',
       'Sent',

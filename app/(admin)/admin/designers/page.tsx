@@ -10,7 +10,10 @@ import { DataTable } from '@/components/ui/data-table'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { createClient } from '@/lib/supabase/server'
 import { assignDesigner, designEscalation } from '@/features/designers/actions'
+import { retiredDesignerRoute } from '@/features/designers/retired'
 export default async function AdminDesigners() {
+  // Decision D3: admins no longer assign designers.
+  retiredDesignerRoute()
   await requireRequestContext('admin')
   const db = await createClient()
   if (!db || process.env.AUTH_MODE === 'demo')

@@ -146,9 +146,7 @@ export function upcomingSends(
     // Only what can still send on its date: not history, sent, cancelled,
     // missed, a delivery problem or a date the owner turned down.
     return status &&
-      ['draft', 'with_designer', 'needs_approval', 'scheduled'].includes(
-        status
-      ) &&
+      ['draft', 'needs_approval', 'scheduled'].includes(status) &&
       c.calendar_state !== 'rejected' &&
       Date.parse(c.planned_at) > now.getTime()
       ? [

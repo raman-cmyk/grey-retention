@@ -52,18 +52,15 @@ describe('one campaign status', () => {
     expect(status({ ...text, ...approved })).toBe('needs_approval')
   })
 
-  it('is With designer while a designer works on it', () => {
-    expect(status({ design_state: 'assigned' })).toBe('with_designer')
-    expect(status({ design_state: 'revisions_requested' })).toBe(
-      'with_designer'
-    )
-    // Text emails never go to a designer: their revisions are the owner's.
+  it('is Draft while the design is made or redone (no designer, D3)', () => {
+    expect(status({ design_state: 'assigned' })).toBe('draft')
+    expect(status({ design_state: 'revisions_requested' })).toBe('draft')
     expect(
       status({ channel: 'email_text', design_state: 'revisions_requested' })
     ).toBe('draft')
   })
 
-  it('shows a moved date before the designer work', () => {
+  it('shows a moved date before the design work', () => {
     expect(
       status({ calendar_state: 'proposed', design_state: 'assigned' })
     ).toBe('needs_approval')

@@ -7,6 +7,9 @@ import { operatorStatuses, type StatusTone } from './status-vocabulary'
  * by a real event, never picked by hand; this file only fixes the words,
  * colour roles and plain-English meanings every campaign screen shows.
  *
+ * There is no "With designer" status: decision D3 (docs/BUILD_BRIEF.md)
+ * retired the human designer, and the design is made automatically.
+ *
  * `lib/status-vocabulary.ts` stays the vocabulary for everything that is not
  * a campaign (sources, setup, jobs). Words both share ("Scheduled", "Sent")
  * use the same meaning; as pills, Sent is solid (UI_REBUILD_SPEC.md §0).
@@ -16,13 +19,7 @@ export const campaignStatuses = {
     label: 'Draft',
     tone: 'warning',
     meaning:
-      'Copy is being written or edited. Nothing has gone to a designer yet.'
-  },
-  with_designer: {
-    label: 'With designer',
-    tone: 'info',
-    meaning:
-      'A designer is making the design. Changing the copy now may waste their work.'
+      'The copy or the design is being made or changed. Nothing waits for you yet.'
   },
   needs_approval: {
     label: 'Needs your approval',
@@ -71,7 +68,6 @@ export type PillTone = StatusTone | 'accent-2' | 'solid'
  */
 export const campaignStatusOrder: readonly CampaignStatus[] = [
   'draft',
-  'with_designer',
   'needs_approval',
   'scheduled',
   'sent',

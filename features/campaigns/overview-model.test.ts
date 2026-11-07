@@ -114,7 +114,8 @@ describe('next step agrees with the status pill', () => {
     )
     expect(next({ design_state: 'unassigned' })).toBe('Prepare design')
     expect(next({ calendar_state: 'rejected' })).toBe('Revise calendar')
-    expect(next({ design_state: 'assigned' })).toBe('Design in progress')
+    // An old human assignment (retired by D3) waits on the automatic design.
+    expect(next({ design_state: 'assigned' })).toBe('Prepare design')
     expect(
       next({ channel: 'email_text', design_state: 'revisions_requested' })
     ).toBe('Revise design')

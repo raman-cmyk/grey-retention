@@ -2,10 +2,10 @@ import type { PillTone } from '@/lib/campaign-status'
 import { formatBrandDateTime, relativeTime } from '@/lib/brand-time'
 
 /**
- * Plain words for the designer desk (UIR-025). The owner sees the campaign
- * as "With designer" or "Needs your approval" (UIR-015); the designer sees
- * the same assignment from their side: what is theirs to do and what waits
- * for the owner.
+ * Plain words for the designer desk (UIR-025), retired by decision D3
+ * (RET-001): the routes answer Not found and this code is kept unused. The
+ * designer saw an assignment from their side: what was theirs to do and
+ * what waited for the owner.
  */
 export const deskFilters = ['todo', 'waiting', 'approved', 'all'] as const
 export type DeskFilter = (typeof deskFilters)[number]
