@@ -42,50 +42,52 @@ begin
  end if;end loop;return r.id;
 end $function$;
 
-CREATE OR REPLACE FUNCTION private.settle_email_dispatch (
-
--- 2. A closed reservation is a business conflict (PT409), not a
---    serialization failure: custom 40001 makes PostgREST retry forever.
-create or replace function private.reconcile_budget(t uuid,reservation uuid,actual bigint) returns void language plpgsql security definer set search_path='' as $$
-declare r public.usage_reservations;
-begin
- perform 1 from public.tenants where id=t for update;
- select * into r from public.usage_reservations where id=reservation and tenant_id=t for update;
- if r.id is null or actual is null or actual<0 or actual>r.estimate_micro then raise exception 'Actual usage must fit reservation' using errcode='23514';end if;
- if r.state='reconciled' and r.actual_micro=actual then return;end if;
- if r.state<>'reserved' then raise exception 'Usage reservation already closed' using errcode='PT409';end if;
- update public.package_cycles set reserved_micro=reserved_micro-r.estimate_micro,used_micro=used_micro+actual where id=r.cycle_id;
- update public.usage_reservations set state=case when actual=0 then 'released' else 'reconciled' end,actual_micro=actual where id=r.id;
-end $$;
-
--- 3. Live AI usage: service role only, `ai:` operations only, one
+-- 2. Live AI usage: service role only, `ai:` operations only, one
 --    reservation per operation (a retry must reserve again), and never
 --    auto-released by expiry (an unsettled live call keeps counting at its
 --    estimate until ops settles it).
 create or replace function public.reserve_ai_usage(t uuid,operation text,feature text,estimate bigint) returns uuid language plpgsql security definer set search_path='' as $$
-declare id uuid;
+declare rid uuid;
 begin
- if coalesce(auth.role(),'') <> 'service_role' then raise exception 'Access denied' using errcode='42501';end if;
- if not exists(select 1 from public.tenants where tenants.id=t and status='active') then raise exception 'Active workspace required' using errcode='42501';end if;
+ perform private.require_service();
  if operation is null or operation not like 'ai:%' then raise exception 'Live AI operation required' using errcode='23514';end if;
+ -- Tenant first, then check under the lock, so two concurrent calls with the
+ -- same operation can't both pass the duplicate check.
+ perform 1 from public.tenants where tenants.id=t and status='active' for update;
+ if not found then raise exception 'Active workspace required' using errcode='42501';end if;
  if exists(select 1 from public.usage_reservations u where u.tenant_id=t and u.operation_id=operation) then
   raise exception 'AI operation already reserved' using errcode='PT409';
  end if;
- id:=private.reserve_budget(t,operation,feature,estimate);
- update public.usage_reservations set expires_at='infinity' where usage_reservations.id=id;
- return id;
+ rid:=private.reserve_budget(t,operation,feature,estimate);
+ update public.usage_reservations u set expires_at='infinity' where u.id=rid;
+ return rid;
 end $$;
 
 create or replace function public.settle_ai_usage(t uuid,reservation uuid,actual bigint) returns void language plpgsql security definer set search_path='' as $$
 begin
- if coalesce(auth.role(),'') <> 'service_role' then raise exception 'Access denied' using errcode='42501';end if;
+ perform private.require_service();
  if not exists(select 1 from public.usage_reservations u where u.id=reservation and u.tenant_id=t and u.operation_id like 'ai:%') then
   raise exception 'Live AI reservation required' using errcode='42501';
  end if;
  perform private.reconcile_budget(t,reservation,actual);
 end $$;
 
--- 4. The owner-callable fixture commands refuse live AI operations, as they
+-- A live reservation left unsettled (worker crashed, or its settle failed)
+-- would block the tenant at cycle renewal. The worker or an operator charges
+-- it at its full estimate, the safe assumption for a call that may have run.
+create or replace function public.settle_stale_ai_usage(t uuid,older_than interval default interval '1 hour') returns integer language plpgsql security definer set search_path='' as $$
+declare r public.usage_reservations;n integer:=0;
+begin
+ if not (coalesce(auth.role(),'')='service_role' or private.is_operator()) then raise exception 'Access denied' using errcode='42501';end if;
+ if older_than is null or older_than < interval '10 minutes' then raise exception 'Stale window too short' using errcode='23514';end if;
+ perform 1 from public.tenants where id=t for update;
+ for r in select * from public.usage_reservations u where u.tenant_id=t and u.state='reserved' and u.operation_id like 'ai:%' and u.created_at < now()-older_than order by u.created_at loop
+  perform private.reconcile_budget(t,r.id,r.estimate_micro);n:=n+1;
+ end loop;
+ return n;
+end $$;
+
+-- 3. The owner-callable fixture commands refuse live AI operations, as they
 --    already refuse email-rewrite ones.
 create or replace function public.reserve_fixture_usage(t uuid,operation text,feature text,estimate bigint) returns uuid language plpgsql security definer set search_path='' as $$
 begin
@@ -104,5 +106,8 @@ begin
  perform private.reconcile_budget(t,reservation,actual);
 end $$;
 
-revoke all on function public.reserve_ai_usage(uuid,text,text,bigint),public.settle_ai_usage(uuid,uuid,bigint) from public,anon,authenticated;
-grant execute on function public.reserve_ai_usage(uuid,text,text,bigint),public.settle_ai_usage(uuid,uuid,bigint) to service_role;
+revoke all on function public.reserve_ai_usage(uuid,text,text,bigint),public.settle_ai_usage(uuid,uuid,bigint),public.settle_stale_ai_usage(uuid,interval) from public,anon,authenticated;
+grant execute on function public.reserve_ai_usage(uuid,text,text,bigint),public.settle_ai_usage(uuid,uuid,bigint),public.settle_stale_ai_usage(uuid,interval) to service_role;
+-- Operators reach the sweep through their authenticated session; the body
+-- checks private.is_operator().
+grant execute on function public.settle_stale_ai_usage(uuid,interval) to authenticated;

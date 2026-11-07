@@ -27,9 +27,25 @@ select throws_ok($$select public.reconcile_fixture_usage('00000000-0000-4000-800
   '42501',null,'owner cannot release a live AI reservation through the fixture command');
 select throws_ok($$select public.reserve_fixture_usage('00000000-0000-4000-8000-000000000101','ai:label:x:3','learning',100)$$,
   '42501',null,'owner cannot pre-seed a live AI operation');
+select lives_ok($$select public.recover_expired_usage('00000000-0000-4000-8000-000000000101')$$,'owner can run the expiry sweep');
+select ok((select u.state='reserved' from public.usage_reservations u where u.id=current_setting('test.live')::uuid),'the expiry sweep never releases a live reservation');
+select throws_ok($$select public.settle_stale_ai_usage('00000000-0000-4000-8000-000000000101')$$,
+  '42501',null,'an owner cannot run the stale live sweep');
 select set_config('test.fixture',public.reserve_fixture_usage('00000000-0000-4000-8000-000000000101','fixture-only-gem002','copy',1000)::text,true);
 select lives_ok($$select public.reconcile_fixture_usage('00000000-0000-4000-8000-000000000101',current_setting('test.fixture')::uuid,0)$$,
   'legitimate fixture usage still reserves and reconciles');
+
+-- An owner of another workspace can't touch it either.
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
+set local role authenticated;
+select throws_ok($$select public.reconcile_fixture_usage('00000000-0000-4000-8000-000000000101',current_setting('test.live')::uuid,0)$$,
+  '42501',null,'a foreign owner cannot release the live reservation');
+
+-- No JWT role at all is denied.
+select set_config('request.jwt.claims','{}',true);
+set local role anon;
+select throws_ok($$select public.reserve_ai_usage('00000000-0000-4000-8000-000000000101','ai:label:x:4','learning',100)$$,
+  '42501',null,'a caller with no role cannot reserve live usage');
 
 -- The worker settles once; a second, different settle is a business conflict.
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
@@ -44,11 +60,24 @@ select lives_ok($$select public.settle_ai_usage('00000000-0000-4000-8000-0000000
 select throws_ok($$select public.settle_ai_usage('00000000-0000-4000-8000-000000000101',current_setting('test.live')::uuid,60)$$,
   'PT409',null,'a different second settle is PT409, never a 40001 retry loop');
 
+-- A live reservation left unsettled is charged at its estimate by the sweep.
+select set_config('test.stale',public.reserve_ai_usage('00000000-0000-4000-8000-000000000101','ai:copy:email-1:'||gen_random_uuid(),'copy',700)::text,true);
+select is(public.settle_stale_ai_usage('00000000-0000-4000-8000-000000000101'),0,'a fresh live reservation is not stale yet');
+select throws_ok($$select public.settle_stale_ai_usage('00000000-0000-4000-8000-000000000101',interval '1 minute')$$,
+  '23514',null,'the stale window cannot be shorter than ten minutes');
+reset role;
+update public.usage_reservations set created_at=now()-interval '2 hours' where id=current_setting('test.stale')::uuid;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+set local role service_role;
+select is(public.settle_stale_ai_usage('00000000-0000-4000-8000-000000000101'),1,'the sweep settles the stale live reservation');
+select ok((select u.state='reconciled' and u.actual_micro=700 from public.usage_reservations u where u.id=current_setting('test.stale')::uuid),'stale live usage is charged at its full estimate');
+
 -- Function privileges: live commands belong to the service role only.
 reset role;
 select ok(not has_function_privilege('authenticated','public.reserve_ai_usage(uuid,text,text,bigint)','execute'),'authenticated has no execute on reserve_ai_usage');
 select ok(not has_function_privilege('anon','public.settle_ai_usage(uuid,uuid,bigint)','execute'),'anon has no execute on settle_ai_usage');
 select ok(has_function_privilege('service_role','public.reserve_ai_usage(uuid,text,text,bigint)','execute'),'service role can reserve live usage');
+select ok(not has_function_privilege('anon','public.settle_stale_ai_usage(uuid,interval)','execute'),'anon has no execute on the stale sweep');
 
 select * from finish();
 rollback;
