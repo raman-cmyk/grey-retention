@@ -155,7 +155,7 @@ function Gauge({ fraction }: { fraction: number }) {
 const attributionHelp = {
   klaviyo:
     'Klaviyo $flow and $campaign attribution (last 30 days, clamped to this month).',
-  utm: 'Shopify orders with utm_source=klaviyo or utm_medium=email (this month).'
+  utm: 'Orders with utm_source=klaviyo or utm_medium=email (this month).'
 }
 
 export function RevenueCard({
@@ -164,8 +164,7 @@ export function RevenueCard({
   value,
   utmValue,
   goal,
-  fraction,
-  shopify
+  fraction
 }: {
   attribution: 'klaviyo' | 'utm'
   hrefs: Record<'klaviyo' | 'utm', Route>
@@ -174,7 +173,6 @@ export function RevenueCard({
   utmValue: string | null
   goal: string | null
   fraction: number
-  shopify: ConnectionState
 }) {
   const option = (key: 'klaviyo' | 'utm', text: string) => (
     <Link
@@ -211,23 +209,11 @@ export function RevenueCard({
       </div>
       <p className="mt-2 text-center text-xs text-[var(--text-muted)]">
         {shown === null
-          ? shopify === 'connected'
-            ? "UTM attribution isn't available yet."
-            : 'UTM attribution needs Shopify.'
+          ? "UTM attribution isn't available yet."
           : goal
             ? `of ${goal} goal`
             : 'No monthly goal set yet.'}
       </p>
-      {shown === null && shopify !== 'connected' && (
-        <p className="mt-2 text-center text-sm">
-          <Link
-            href="/connections"
-            className="font-medium underline underline-offset-4"
-          >
-            Connect Shopify →
-          </Link>
-        </p>
-      )}
     </Card>
   )
 }

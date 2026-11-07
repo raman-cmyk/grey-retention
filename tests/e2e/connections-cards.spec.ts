@@ -25,7 +25,7 @@ async function connectKlaviyo(page: Page, key: string) {
   return card
 }
 
-test('UIR-013 owner connects sample Klaviyo and Shopify accounts', async ({
+test('UIR-013 owner connects a sample Klaviyo account; there is no Shopify (v2)', async ({
   page
 }, info) => {
   await login(page, info.project.name.startsWith('mobile') ? 'other' : 'owner')
@@ -67,46 +67,15 @@ test('UIR-013 owner connects sample Klaviyo and Shopify accounts', async ({
   await page.reload()
   await expect(page.getByText(hint(second, 8), { exact: false })).toBeVisible()
 
-  // Shopify: the form opens full width; an autofilled email is refused.
-  const open = page.getByRole('button', {
-    name: /^(Connect Shopify|Update access token)$/
-  })
-  await open.click()
-  const form = page.locator('section', {
-    has: page.getByRole('heading', { name: 'Connect your Shopify store' })
-  })
-  const domain = form.getByLabel('Shop domain')
-  await expect(domain).toHaveAttribute('autocomplete', 'off')
-  await domain.fill('owner@example.com')
-  await expect(domain).toHaveAttribute('aria-invalid', 'true')
-  const token = sample('shpat_')
-  await form.getByLabel('Admin API access token').fill(token)
-  await form.getByRole('button', { name: 'Verify & connect' }).click()
+  // v2 is Klaviyo only (BUILD_BRIEF D2): no Shopify card or form.
   await expect(
-    form.getByText(/looks like an email address\. Enter your store/)
-  ).toBeVisible()
-  const shop = `sample-${randomBytes(3).toString('hex')}`
-  await domain.fill(`https://${shop}.myshopify.com/admin`)
-  await form.getByLabel('Admin API access token').fill(token)
-  await form.getByRole('button', { name: 'Verify & connect' }).click()
-  await expect(
-    form.getByText(
-      'Shopify connected. Sample products are on their way. Nothing was sent to Shopify.'
-    )
-  ).toBeVisible()
-  await page.reload()
-  const shopify = page.locator('section', {
-    has: page.getByRole('heading', { name: 'Shopify', exact: true })
-  })
-  await expect(shopify.getByRole('status')).toHaveText('Shopify Connected')
-  await expect(
-    shopify.getByText(`${shop}.myshopify.com · ${hint(token, 10)}`)
-  ).toBeVisible()
+    page.getByRole('heading', { name: 'Shopify', exact: true })
+  ).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Shopify/ })).toHaveCount(0)
 
   // The full keys never reach the page.
   const html = await page.content()
-  for (const secret of [first, second, token])
-    expect(html).not.toContain(secret)
+  for (const secret of [first, second]) expect(html).not.toContain(secret)
 })
 
 test('UIR-013 staff see connection state without connect controls', async ({
@@ -137,18 +106,17 @@ test('UIR-013 Connections fits a 375px screen and works by keyboard', async ({
   const fits = () =>
     page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)
   expect(await fits()).toBe(true)
-  // Open the Shopify form with Enter and move between its fields with Tab.
-  const open = page.getByRole('button', {
-    name: /^(Connect Shopify|Update access token)$/
-  })
-  await open.focus()
-  await page.keyboard.press('Enter')
-  // Focus moves straight into the new form.
-  const domain = page.getByLabel('Shop domain')
-  await expect(domain).toBeFocused()
-  await expect(open).toHaveAttribute('aria-expanded', 'true')
-  await page.keyboard.type('cedar-lane')
-  await page.keyboard.press('Tab')
-  await expect(page.getByLabel('Admin API access token')).toBeFocused()
+  // The Klaviyo key field is reachable and usable by keyboard.
+  const update = page.getByRole('button', { name: 'Update API key' })
+  const fresh = page.getByLabel('Private API key', { exact: true })
+  await expect(update.or(fresh)).toBeVisible()
+  if (await update.isVisible()) {
+    await update.focus()
+    await page.keyboard.press('Enter')
+  }
+  const key = page.getByLabel(/^(New private|Private) API key$/)
+  await key.focus()
+  await page.keyboard.type('pk_')
+  await expect(key).toHaveValue('pk_')
   expect(await fits()).toBe(true)
 })

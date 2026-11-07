@@ -6,29 +6,13 @@ import { redoAllBrandSections } from './actions'
 import type { Mismatch } from './mismatch'
 import { sectionKeys } from './sections'
 
-/** Brand & Store sub-tabs; kept visible on every tab (owner brief §5 fix). */
+/**
+ * Brand & Store sub-tabs. The Store tab is hidden in v2 (Klaviyo only,
+ * BUILD_BRIEF D2), which leaves one tab, so no tab row is shown.
+ */
 export function BrandTabs({ active }: { active: 'profile' | 'store' }) {
-  const tabs = [
-    { key: 'profile', label: 'Brand profile', href: '/brand' },
-    { key: 'store', label: 'Store', href: '/store' }
-  ] as const
-  return (
-    <nav aria-label="Brand & Store" className="border-b border-[var(--line)]">
-      <ul className="flex gap-6 text-sm">
-        {tabs.map((tab) => (
-          <li key={tab.key}>
-            <Link
-              href={tab.href}
-              aria-current={active === tab.key ? 'page' : undefined}
-              className={`-mb-px inline-block border-b-2 py-2.5 ${active === tab.key ? 'border-[var(--text)] font-medium text-[var(--text)]' : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text)]'}`}
-            >
-              {tab.label}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </nav>
-  )
+  void active
+  return null
 }
 
 export function BrandHeader({

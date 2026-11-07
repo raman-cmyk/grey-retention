@@ -534,13 +534,13 @@ function ProductsBlock({ products }: { products: { title: string }[] }) {
       />
       <div className="space-y-1.5">
         <p className="font-semibold">No products yet</p>
-        <p>Shopify isn’t connected or synced yet, or the catalogue is empty.</p>
+        <p>Your catalogue is empty.</p>
         <p>
-          Fixes:{' '}
+          Fixes: products will come from your Klaviyo catalog once the live{' '}
           <Link href="/connections" className="font-medium underline">
-            connect Shopify
+            Klaviyo connection
           </Link>{' '}
-          (we’ll use your synced catalogue), or{' '}
+          is ready, or{' '}
           <a href="#catalogue" className="font-medium underline">
             add products to the catalogue
           </a>{' '}
