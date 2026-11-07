@@ -21,8 +21,10 @@ const html = renderEmail({
   mode: 'preview'
 })
 
-for (const width of [600, 375])
-  test(`BLK-001 all 20 blocks fit a ${width}px screen`, async ({
+// A desktop client shows the 600px email in a wider window; under 620px
+// the phone layout takes over.
+for (const width of [700, 375])
+  test(`BLK-001 all 20 blocks fit a ${width}px window`, async ({
     page
   }, info) => {
     test.skip(info.project.name.startsWith('mobile'), 'Sets its own width')
