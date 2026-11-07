@@ -1,5 +1,7 @@
 # Grey Retention roadmap
 
+> **Superseded on 7 Nov 2026 by [`BUILD_BRIEF.md`](BUILD_BRIEF.md) and [`VISION.md`](VISION.md).** The milestones below are history; the v2 steps and lanes are in the brief.
+
 Grey Retention helps DTC and dropship brands watch 5–10 competitor brands' emails, understand their playbook, and replicate any email or sequence for their own store (**Exact**, **Rebrand** or **Adapt**), then push it to Klaviyo.
 
 This page explains the plan in seven milestones, the order we work in, and how one piece of work goes from an issue to the live app. The detailed requirements are the 620 items in [`feature-register.json`](feature-register.json); the visual direction is [`DESIGN.md`](DESIGN.md).
@@ -12,7 +14,7 @@ This page explains the plan in seven milestones, the order we work in, and how o
 | Milestones, labels, issue mapping   | [`.github/project/roadmap.json`](../.github/project/roadmap.json) — edit here, not in the GitHub UI          |
 | Work to do                          | [GitHub issues](https://github.com/raman-cmyk/grey-retention/issues): one per P0 item, one epic per category |
 | What was built, how it was verified | [`docs/BUILD_LEDGER.md`](BUILD_LEDGER.md)                                                                    |
-| Earlier delivery history            | [`docs/FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md)                                                              |
+| Earlier delivery history            | [`docs/archive/FEATURE_ROADMAP.md`](archive/FEATURE_ROADMAP.md)                                              |
 
 ## Milestones
 
