@@ -10,6 +10,11 @@ export default defineConfig({
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
+  // CI runs every journey one after another on a dev server, and the last
+  // mobile journeys run 20+ minutes in, where a server action can take
+  // longer than the default 5s. Checks still have to come true; they just
+  // get more time on CI. Locally the default stays.
+  expect: { timeout: process.env.CI ? 15_000 : 5_000 },
   // CI adds an HTML report, uploaded by the Browser workflow when it fails.
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: {

@@ -75,6 +75,8 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 | UIR-003 | Old-app dashboard (spec §3) | UIR-002 | review | Claude Code browser lane | pnpm verify; dashboard, Klaviyo data, reader and credits tests; demo screenshots at 1280/375px; e2e headings updated, not run (no Docker) | Owns `app/(client)/dashboard/page.tsx`, `features/dashboard/*`, `features/klaviyo-data/*`, `lib/providers/{klaviyo-read,fake-klaviyo-read}.ts`, `features/operations/credits.ts` (read-only), the "Your campaigns" wrapper in `features/campaigns/overview.tsx`. Issue #239. |
 | UIR-011 | Old-app rebuild §11 Settings | UIR-002 | review | Claude Code cloud lane | pnpm verify; features/settings 30/30; campaign_defaults pgTAP 51/51; settings journeys desktop+mobile, staff read-only, 375px keyboard; workspace-ui journeys | Owns `features/settings/*`, `app/(client)/settings/page.tsx`, migrations `20260914090020` and `20260914090021`, its pgTAP file, generated types, `tests/e2e/settings.spec.ts`. Needs migrations 20260914090020 then 20260914090021 on production, after 20260914090019 (apply in number order). Drafts reading the defaults waits for UIR-017. |
 
+| UIR-004 | Klaviyo detail pages (spec §4) | UIR-003 | review | Claude Code browser lane | pnpm verify; page tests for list, segment, campaign, flow, flow email and metric, plus words and back-link tests; demo screenshots at 1280/375px | Owns `app/(client)/{lists,segments,flows,flow-messages,metrics}/**`, `app/(client)/campaigns/klaviyo/**`, `features/klaviyo-detail/*`, `features/dashboard/back.ts`, and the §4 fields of the Klaviyo read port. Issue #240. |
+
 | UIR-013 | Old-app rebuild §13 Connections | DS-001 | review | Claude Code cloud lane | pnpm verify; 48 unit tests in features/connections; 636/636 pgTAP (36 for connections); browser: connections-cards desktop+mobile, connections and workspace-ui journeys | Owns `features/connections/*`, `app/(client)/connections/page.tsx`, migration `20260914090017`, `supabase/tests/connection_profiles.test.sql`, generated types, related e2e specs. Sample verifier only; no credential stored. Needs migration 20260914090017 on production. |
 
 | UIR-005 | Old-app rebuild §5 Brand & Store (part 1: Brand profile, Store empty state) | UIR-013 | review | Claude Code cloud lane | pnpm verify; 50 unit tests in features/brand-profile; 67 pgTAP for brand sections; brand-profile journeys desktop+mobile, staff, 375px keyboard | Owns `features/brand-profile/*`, `features/brand/catalogue-panels.tsx`, `app/(client)/brand/page.tsx`, `/brand/voice`, `/store`, migrations `20260914090018` and `20260914090019`, their pgTAP file and generated types. Needs migrations 20260914090018 then 20260914090019 on production, after 20260914090017. Store dashboard and AI-credits indicator still open. |
@@ -82,6 +84,8 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
 | UIR-014 | Old-app rebuild §14 Profile | UIR-002 | review | Claude Code cloud lane | pnpm verify; features/profile and components/shell 58/58; profile_update pgTAP 7/7; profile journeys desktop+mobile, 375px keyboard; workspace-ui journeys | Owns `features/profile/*`, `app/(client)/profile/page.tsx`, `tests/e2e/profile.spec.ts`, `supabase/tests/profile_update.test.sql`; narrow shared edits: `ShellNavigation.profileHref` (client only) and the account menu/drawer link (sidebar.tsx + tests), `lib/supabase/stateless.ts`, `/profile` in `proxy.ts`. No migration. |
 
 ## Global decisions
+
+- CI browser timeout (2026-11-07): on CI, Playwright `expect()` checks wait up to 15s instead of 5s (`playwright.config.ts`; locally still 5s). Since the Connections, Brand, Profile and Dashboard journeys landed, a Browser run takes 20–30 minutes on one dev server, and the last mobile journeys (UC-09, UC-12, UC-16) timed out at whichever server action was slowest, on every pull request. Checks must still come true; they only get more time. Side finding for a follow-up: `finish_onboarding_job` and `private.onboarding_lease` raise SQLSTATE 40001 ('Connection changed', 'Lease unavailable'), the PT409 trap in CLAUDE.md; a stale `commerce.sync` (queued, then the Shopify revision bumped) hits it. That needs a new migration.
 
 - UIR-005 (2026-11-06): Brand Truth and Copy & Voice are one editable **Brand profile** (OWNER_JOURNEYS §18 decision 5). Brand facts live in one place: brand name, website (`domain`), positioning, Do (`voice`) and Don’t (`prohibitions`) stay only in `brand_profiles`, which every AI feature reads after the owner approves; the Identity and Tone cards show them from there and save them with a brand-revision check (`PT409` "Brand details changed in another window" if Get started or another tab changed them), so no copy can drift or overwrite newer facts. Section notes (niche, market, story, audience, tone tiles, products, vocabulary, sample copy, audience persona) live in `brand_profile_sections` (members read via RLS; field keys and limits defined in SQL `private.brand_section_fields`, mirrored by `features/brand-profile/sections.ts`, checked by a test against the newest migration). The AI does not read these notes yet, and the cards say so; they have no approval binding. Owner-only `save_brand_section(t, section, expected_revision, content, locked, facts, expected_brand_revision)` returns `{revision, brand_changed}`; a real fact change bumps the brand revision, clears the approval and (existing `brand_guard`) resets unsent campaigns or refuses during delivery; unchanged facts (outer spaces, blank lines, CRLF ignored) change nothing. `apply_brand_suggestion` ("Redo with AI") merges onto the current content: suggested unlocked fields only, omitted and locked fields kept, brand facts impossible. The domain-local `BrandProfileWriter` port has only `SampleBrandProfileWriter`: it fills empty fields with text marked "Sample: …" and never replaces owner text or guesses tone tiles or a hero product; any `AI_DEFAULT_PROVIDER` other than `fake` refuses. Brand-mismatch guard: `brandMismatches` compares the brand name (website only when the name has nothing distinctive) with the Klaviyo account label and the Shopify handle (whole-word subset, run-together names, initials) and shows a warning banner (the owner can ignore it when both are right). Catalogue, offers and brand kit moved unchanged into `CataloguePanels`. `/brand/voice` redirects to `/brand#voice`; `/store` keeps the sub-tabs and highlights Brand & Store in the sidebar (`parentAreas`, one line in the shell's `nav-data.ts`); `proxy.ts` now refreshes sessions on `/store`.
 
@@ -134,6 +138,17 @@ Allowed statuses: `ready`, `in_progress`, `blocked`, `review`, `complete`.
   - AI credits come from the active `package_cycles` row through `features/operations/credits.ts`, shown only to owner and admin, as on Settings.
   - "Your campaigns" (the former overview) stays under the dashboard until UIR-017 moves the list into Campaigns.
   - Not built: monthly goal saving (needs a migration), Refresh (nothing to re-pull), a UTM figure, and AI insight (the insight is written from the numbers, no AI).
+- UIR-004 (2026-11-06): Klaviyo detail pages.
+  - Klaviyo campaigns use `/campaigns/klaviyo/:id`, a static folder next to `[campaignId]`, so it wins. `/campaigns/:id` stays this workspace's campaign page.
+  - The sidebar highlights Dashboard for every Klaviyo page.
+  - The read port gains the §4 fields: campaign `localTime` and `fromEmail`; flow-message `status`, from, reply-to, preview text, template date and `delaySeconds`; metric `measures` and `events30d`.
+  - "Back to dashboard" uses `features/dashboard/back.ts`, which returns to the tab the owner came from, scrolled to the card.
+  - Raw rules and delays live only in Advanced details.
+  - There is no Refresh and no "Open in Klaviyo" while the data is sample.
+  - Campaign wording follows the real status, from `campaignWords`.
+  - The port also carries `sendStrategy` and flow-wait `daysOfWeek`, so nothing claims "Static" or "any day" without data. `FlowMessage.delay` is removed.
+  - The sidebar picks the most specific match (`currentNavigationHref`), whatever the nav order.
+  - `proxy.ts` matches the new Klaviyo detail routes (`/campaigns/klaviyo`, `/lists`, `/segments`, `/flows`, `/flow-messages`, `/metrics`), so a detail page opened in a new tab refreshes its session. An earlier version matched every signed-in page; the browser journeys on the server-action-heavy pages (campaign workflow, references) then failed twice, so those pages stay out of the proxy until that is proven safe. This is a foundation-config change, recorded here.
 - DS-006 (2026-11-06): the composer (`features/composer/`) saves a paste through the same `savePastedReference` helper as the paste form (extracted from `importPastedReference` into server-only `features/references/pasted-save.ts`, messages unchanged) and redirects to `/create-email/{id}?mode=copy|rewrite`. The choose page only marks that outcome ("Your choice in the composer", primary button); it never starts a copy or rewrite by itself, so owner confirmation and paid-AI gates are unchanged. EXACT→copy, REBRAND→rewrite, ADAPT disabled with a reason. Subject comes from the HTML `<title>` or first readable line; a link-only paste is refused with an honest message. Composer is owner-only on the dashboard and the setup reference step; the existing Paste/Upload links stay.
 
 - STAB-001 (2026-11-06): `GET /api/internal/jobs` is the scheduled worker. It requires `Authorization: Bearer CRON_SECRET` (existing env contract, unchanged; checked before anything else), runs only when `ADAPTER_MODE` is `fake` or unset, and visits workspaces through the existing `runFixtureJobs` path in bounded batches (≤100 workspaces, ≤4 jobs per visit, ≤3 visits, no new visit after 40 s, `maxDuration` 60). Workspaces with due or stale-leased jobs go first (the active-workspace filter is part of that query); the other active workspaces get daily housekeeping in random order. `email.rewrite` and `email.import` are never dispatched by the scheduler, so it cannot start or retry paid AI. Service-role reads of `tenants` and `job_runs` select IDs only; every claim still goes through `claim_job`/`worker_access`. The former `GET` 405 response is replaced by this handler; `POST` loopback dispatch is unchanged. Triggers: Vercel cron daily (Hobby limit) plus a GitHub Actions schedule every 10 minutes with the repository secret `CRON_SECRET`, fixed to the production HTTPS address and off until the repository variable `SCHEDULED_JOBS_ENABLED` is `true` (skipped runs use no Actions minutes; about 4,400 minutes a month when on). Shared config: `playwright.config.ts` gains a `scheduled-sweep` project that depends on the desktop and mobile projects, because the sweep drains every workspace's queue. See `docs/SCHEDULED_JOBS_RUNBOOK.md`.
@@ -790,6 +805,54 @@ Append entries using this exact shape:
   - ledger and spec notes.
 - Known issues: monthly goal saving (RPT-009) needs a migration. No live Klaviyo numbers, Refresh, UTM figures or AI insight yet. Dashboard rows link to detail pages once §4 lands.
 - Next consumer: UIR-004 §4 Klaviyo detail pages (turns on row links).
+
+### 2026-11-06 — UIR-004 — Klaviyo detail pages
+
+- Status: review
+- Branch/worktree: `claude/uir-004-klaviyo-detail-pages` from `main` at `c498052`. GitHub issue #240 (browser lane).
+- Commit(s): see the UIR-004 pull request.
+- Changed contracts:
+  - new routes `/lists/:id`, `/segments/:id`, `/campaigns/klaviyo/:id`, `/flows/:id`, `/flow-messages/:id`, `/metrics/:id`;
+  - the §4 fields on `lib/providers/klaviyo-read.ts`;
+  - `dashboardBack` in `features/dashboard/back.ts`;
+  - dashboard rows now link;
+  - the sidebar parent area for `/campaigns/klaviyo`.
+  - See the UIR-004 Global decision.
+- Migrations: none.
+- Verification run: `pnpm verify` (see PR for counts).
+  - Page tests:
+    - list: plain sign-up method, back to the Lists tab, the sample note, linked counts;
+    - segment: Active and Starred pills, rules as a sentence, JSON only in Advanced;
+    - campaign: audience names not ids, How it did, Scheduled for with the timezone, a sandboxed link-free preview; local time; no stats before sending;
+    - flow: "1 of 2 emails is not live", waits in words, email links;
+    - flow message: "—" for an empty reply-to, a history-back fallback, the preview;
+    - metric: plain meaning and events in 30 days;
+    - unknown ids are not found;
+    - a disconnected workspace sees the not-connected notice instead of sample numbers.
+  - Words tests (opt-in, waits, steps, live line, trigger, rates) and back-link tests.
+  - `test:e2e` not runnable here.
+- Review: `code-reviewer` blocked on two things:
+  1. Draft, scheduled and cancelled Klaviyo campaigns read "was sent".
+  2. Flow Advanced details printed counts twice.
+     Both are fixed and tested. Also fixed:
+  - values shown as Klaviyo's that the port didn't carry (send strategy, wait days);
+  - linked resources that contradicted the page (profiles, tags);
+  - segment sentences that didn't match their rules;
+  - the history-back link taking over modified clicks, leaving the app, or doing nothing in a new tab (no history);
+  - new routes outside the session proxy (now only the Klaviyo detail routes are added);
+  - an order-dependent sidebar match;
+  - the dead `delay` field;
+  - wait rounding;
+  - "Wait Waits";
+  - the trigger example;
+  - a muted warning;
+  - empty dates;
+  - duplicate status maps and tab checks;
+  - unencoded ids;
+  - spec paths.
+    New tests cover draft and cancelled wording, Advanced labels, the unavailable state, tenant-scoped connection reads, no reads when signed out, and back-link clicks. A new e2e check walks the six pages for a heading and no overflow.
+- Known issues: no "Sync templates" (flow emails as AI context), no "Open in Klaviyo", no per-email flow performance, and no "Use as reference design" on flow emails yet.
+- Next consumer: §6 Campaign planner (UIR-006) and the status system (UIR-015).
 
 ### 2026-11-06 — UIR-013 — old-app rebuild §13 Connections
 

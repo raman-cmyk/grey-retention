@@ -210,46 +210,46 @@ Simplify:
 
 Shared behaviour:
 
-- [ ] Each page has `Refresh` → `?refresh=1` (re-pulls this object) and "Back to dashboard" → `/dashboard`. **(fix: back to the originating tab)**
-- [ ] "Advanced details" is a `<details>` disclosure. Linked resources list item counts ("FLOW ACTIONS 3 items", "TAGS 0 items").
-- [ ] Relative times are grammatical: "1 month ago", not "1 months ago". **(fix)**
+- [x] Each page has `Refresh` → `?refresh=1` (re-pulls this object) and "Back to dashboard" → `/dashboard`. **(fix: back to the originating tab)** (UIR-004: Back returns to the dashboard tab, or to the exact Campaigns view; no Refresh while the data is sample.)
+- [x] "Advanced details" is a `<details>` disclosure. Linked resources list item counts ("FLOW ACTIONS 3 items", "TAGS 0 items").
+- [x] Relative times are grammatical: "1 month ago", not "1 months ago". **(fix)**
 
 ### Campaign `/campaigns/:id`
 
 - **Purpose:** "What exactly did we send, to whom, and when?"
-- [ ] "Who received this" shows list and segment **names**. **(fix: the old page showed 6-character ids)**
+- [x] "Who received this" shows list and segment **names**. **(fix: the old page showed 6-character ids)**
 - [ ] A cancelled campaign's calendar tooltip says "(click to edit in Klaviyo)". The detail page should offer the same "Open in Klaviyo" link. (new)
-- [ ] The send time shown on the detail page matches the calendar tooltip. **(fix: see 0.4)**
-- [ ] Add a performance block (Job 5). **(fix)**
-- [ ] "How it was sent" also states the timezone used for "Scheduled for".
+- [x] The send time shown on the detail page matches the calendar tooltip. **(fix: see 0.4)** (Both use the one brand timezone and name it.)
+- [x] Add a performance block (Job 5). **(fix)** ("How it did", for sent campaigns.)
+- [x] "How it was sent" also states the timezone used for "Scheduled for".
 
 ### Flow `/flows/:id`
 
 - **Purpose:** "Is this automation live, and what does it send?"
-- [ ] The flow shows LIVE while one of its email steps shows DRAFT. Explain this in a line ("1 of 2 emails is not live"), because the owner reads LIVE as "everything is on". **(fix)**
-- [ ] The Wait step's Settings disclosure shows JSON (`delay_seconds`, `days_of_week`). Show "Waits 45 minutes · any day" as the main text and keep the JSON in Advanced. **(fix)**
+- [x] The flow shows LIVE while one of its email steps shows DRAFT. Explain this in a line ("1 of 2 emails is not live"), because the owner reads LIVE as "everything is on". **(fix)**
+- [x] The Wait step's Settings disclosure shows JSON (`delay_seconds`, `days_of_week`). Show "Waits 45 minutes · any day" as the main text and keep the JSON in Advanced. **(fix)**
 - [ ] The "Sync templates" button (submit) re-ingests this flow's templates for AI. Not clicked.
 - [ ] Each send-email step links to `/flow-messages/:id`. No per-step performance is shown. **(fix: add opens, clicks and revenue per email if Klaviyo provides them)**
 
 ### Flow message `/flow-messages/:id`
 
-- [ ] "Back" is history back (keep).
-- [ ] An empty REPLY TO shows "—". **(fix: the old page left it blank)**
+- [x] "Back" is history back (keep). (With a fallback link when the page was opened in a new tab.)
+- [x] An empty REPLY TO shows "—". **(fix: the old page left it blank)**
 - [ ] Add "Use as reference design" here. The owner's own best flow emails are natural references. (simplification)
 
 ### List `/lists/:id`
 
-- [ ] Opt-in shows the raw value `single_opt_in` plus a plain line. Show only "Single opt-in" plus the line. **(fix)**
+- [x] Opt-in shows the raw value `single_opt_in` plus a plain line. Show only "Single opt-in" plus the line. **(fix)**
 
 ### Segment `/segments/:id`
 
-- [ ] A "⭐ Starred" pill shows for starred segments. (new)
-- [ ] The rules are raw JSON that refers to metrics by id. Translate them to a sentence, e.g. "Can receive email AND did <metric name> more than 3 times, all time." Keep the JSON in Advanced. **(fix)**
+- [x] A "⭐ Starred" pill shows for starred segments. (new)
+- [x] The rules are raw JSON that refers to metrics by id. Translate them to a sentence, e.g. "Can receive email AND did <metric name> more than 3 times, all time." Keep the JSON in Advanced. **(fix)**
 
 ### Metric `/metrics/:id`
 
-- [ ] The "What this measures" line is plain English (e.g. "Someone completed a purchase").
-- [ ] No event counts or trend are shown. Low owner value. Add "events last 30 days" or drop the page from the owner view. (simplification)
+- [x] The "What this measures" line is plain English (e.g. "Someone completed a purchase").
+- [x] No event counts or trend are shown. Low owner value. Add "events last 30 days" or drop the page from the owner view. (simplification) (Events in the last 30 days are shown.)
 
 ---
 
