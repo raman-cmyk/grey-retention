@@ -37,7 +37,10 @@ test('UIR-009 owner tracks a competitor, browses its emails and stops tracking',
   ).toBeVisible()
   await expect(field).toHaveValue('brand.com')
 
-  const domain = `northwind-${randomBytes(3).toString('hex')}.example`
+  // Letters only, so a search for an email's number matches that email.
+  const domain = `northwind-${randomBytes(4)
+    .toString('hex')
+    .replace(/[0-9]/g, (d) => 'ghijklmnop'[Number(d)]!)}.example`
   await field.fill(`https://www.${domain}/`)
   await page.getByRole('button', { name: 'Track' }).click()
   await expect(page.getByText(`Tracking ${domain}.`)).toBeVisible()
@@ -89,7 +92,8 @@ test('UIR-009 owner tracks a competitor, browses its emails and stops tracking',
   await expect(
     dialog.getByRole('link', { name: /Use this design/ })
   ).toHaveAttribute('href', /^\/first-draft\?reference=/)
-  await dialog.getByRole('button', { name: 'Close' }).click()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
 
   // Empty tabs say so plainly.
   await page.getByRole('tab', { name: 'Best picks 0' }).click()
