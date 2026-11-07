@@ -67,9 +67,49 @@ describe('connectKlaviyo', () => {
       credential_hint: 'pk_Ab3dE••••••••1a2b',
       template_count: 24,
       // The sample account reports the workspace timezone (UIR-023).
-      account_timezone: 'Asia/Kathmandu'
+      account_timezone: 'Asia/Kathmandu',
+      // ...and what business it belongs to (UIR-021).
+      account_website: undefined,
+      account_currency: 'USD',
+      account_country: 'US'
     })
     expect(allArgs()).not.toContain(key)
+  })
+
+  it('connects ANOTHER brand’s sample account for keys ending in 0000', async () => {
+    await connectKlaviyo(
+      {},
+      form({ apiKey: 'pk_Ab3dEfg12hi34jk56lm78no90pq12rs0000' })
+    )
+    expect(rpc).toHaveBeenCalledWith(
+      'connect_sample_provider',
+      expect.objectContaining({
+        account_label: 'Northwind Outdoor (sample)',
+        account_website: 'https://northwind-outdoor.example',
+        account_currency: 'EUR',
+        account_country: 'DE',
+        // Trying the other brand's sample never moves the brand timezone.
+        account_timezone: 'Asia/Kathmandu'
+      })
+    )
+  })
+
+  it('connects ANOTHER brand’s sample store for Shopify tokens ending in 0000', async () => {
+    await connectShopify(
+      {},
+      form({
+        shopDomain: 'cedar.myshopify.com',
+        accessToken: 'shpat_ab12cd34ef56ab12cd34ef560000'
+      })
+    )
+    expect(rpc).toHaveBeenCalledWith(
+      'connect_sample_provider',
+      expect.objectContaining({
+        provider: 'shopify',
+        account_currency: 'EUR',
+        account_country: 'DE'
+      })
+    )
   })
 
   it('sends no account timezone when the workspace one is unknown', async () => {
@@ -155,6 +195,36 @@ describe('connectKlaviyo', () => {
     )
   })
 
+  it('drops the newest arguments first on an older database', async () => {
+    const known = ['t', 'provider', 'account_label', 'credential_hint']
+    // A database with the timezone update but not the account facts.
+    rpc.mockImplementation(
+      async (name: string, args: Record<string, unknown>) =>
+        name === 'connect_sample_provider' &&
+        Object.keys(args).some(
+          (key) =>
+            ![
+              ...known,
+              'shop_domain',
+              'template_count',
+              'account_timezone'
+            ].includes(key)
+        )
+          ? { data: null, error: { code: 'PGRST202' } }
+          : { data: 1, error: null }
+    )
+    expect((await connectKlaviyo({}, form({ apiKey: key }))).message).toContain(
+      'connected'
+    )
+    const calls = rpc.mock.calls.filter(
+      ([name]) => name === 'connect_sample_provider'
+    )
+    expect(calls).toHaveLength(2)
+    expect(calls[1][1]).toHaveProperty('account_timezone')
+    expect(calls[1][1]).not.toHaveProperty('account_website')
+    expect(calls[1][1]).not.toHaveProperty('account_currency')
+  })
+
   it('reports a database refusal without details', async () => {
     rpc.mockResolvedValue({ data: null, error: { code: '42501' } })
     expect(await connectKlaviyo({}, form({ apiKey: key }))).toEqual({
@@ -184,7 +254,10 @@ describe('connectShopify', () => {
       provider: 'shopify',
       account_label: 'cedar-lane.myshopify.com',
       credential_hint: 'shpat_ab12••••••••ff00',
-      shop_domain: 'cedar-lane.myshopify.com'
+      shop_domain: 'cedar-lane.myshopify.com',
+      account_website: undefined,
+      account_currency: 'USD',
+      account_country: 'US'
     })
     expect(calls()).toEqual([
       'connect_sample_provider',

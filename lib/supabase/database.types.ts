@@ -4805,8 +4805,11 @@ export type Database = {
       }
       workspace_connections: {
         Row: {
+          account_country: string | null
+          account_currency: string | null
           account_label: string | null
           account_timezone: string | null
+          account_website: string | null
           connected_at: string | null
           credential_hint: string | null
           fixture_account: string
@@ -4824,8 +4827,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          account_country?: string | null
+          account_currency?: string | null
           account_label?: string | null
           account_timezone?: string | null
+          account_website?: string | null
           connected_at?: string | null
           credential_hint?: string | null
           fixture_account: string
@@ -4843,8 +4849,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          account_country?: string | null
+          account_currency?: string | null
           account_label?: string | null
           account_timezone?: string | null
+          account_website?: string | null
           connected_at?: string | null
           credential_hint?: string | null
           fixture_account?: string
@@ -5118,8 +5127,11 @@ export type Database = {
       }
       connect_sample_provider: {
         Args: {
+          account_country?: string
+          account_currency?: string
           account_label: string
           account_timezone?: string
+          account_website?: string
           credential_hint: string
           provider: string
           shop_domain?: string

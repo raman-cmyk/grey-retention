@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ArrowRight, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
+import { BrandCheck } from '@/features/brand-profile/brand-check'
 import { campaignWorkspace } from '@/features/campaigns/data'
 import { CampaignEditor } from '@/features/campaigns/editor'
 import { CampaignCalendar } from '@/features/campaigns/calendar'
@@ -39,6 +40,11 @@ export default async function CampaignAgentPage({
         <Notice error>{error}</Notice>
       ) : (
         <>
+          {/* UIR-021: before GROS plans the month or writes a campaign. */}
+          <BrandCheck
+            tenantId={context.tenantId}
+            action="GROS plans or writes your campaigns"
+          />
           <CampaignCalendar
             campaigns={data!.campaigns}
             month={month}

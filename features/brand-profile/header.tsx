@@ -108,7 +108,7 @@ export function MismatchBanner({
           This profile may belong to a different brand
         </h2>
         {mismatches.map((m) => (
-          <p key={m.source}>{m.message}</p>
+          <p key={m.message}>{m.message}</p>
         ))}
         {owner ? (
           <p>

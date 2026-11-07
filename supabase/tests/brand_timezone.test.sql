@@ -36,9 +36,9 @@ select hasnt_function('public','connect_sample_provider',array['uuid','text','te
 select ok(not has_function_privilege('authenticated','private.set_tenant_timezone(uuid,text,text)','execute'),'helpers stay private');
 select ok(not has_function_privilege('authenticated','private.plan_in_flight(uuid)','execute'),'the plan check stays private');
 select ok(not has_function_privilege('authenticated','private.known_timezone(text)','execute'),'the timezone check stays private');
-select ok(not has_function_privilege('anon','public.connect_sample_provider(uuid,text,text,text,text,integer,text)','execute'),'anon cannot connect');
-select ok(not has_function_privilege('service_role','public.connect_sample_provider(uuid,text,text,text,text,integer,text)','execute'),'nor the service role');
-select ok(has_function_privilege('authenticated','public.connect_sample_provider(uuid,text,text,text,text,integer,text)','execute'),'members may call connect (it checks the owner)');
+select ok(not has_function_privilege('anon','public.connect_sample_provider(uuid,text,text,text,text,integer,text,text,text,text)','execute'),'anon cannot connect');
+select ok(not has_function_privilege('service_role','public.connect_sample_provider(uuid,text,text,text,text,integer,text,text,text,text)','execute'),'nor the service role');
+select ok(has_function_privilege('authenticated','public.connect_sample_provider(uuid,text,text,text,text,integer,text,text,text,text)','execute'),'members may call connect (it checks the owner)');
 select ok(not has_column_privilege('authenticated','public.tenants','timezone','update'),'no one writes the timezone directly');
 select ok(not has_column_privilege('authenticated','public.tenants','timezone_source','update'),'nor where it came from');
 select ok(has_column_privilege('authenticated','public.tenants','name','update'),'the workspace name stays editable');
