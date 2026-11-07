@@ -9,14 +9,20 @@ import { runScheduledJobs } from '@/features/cron/scheduler'
 import { logger } from '@/lib/logger'
 import { createServiceClient } from '@/lib/supabase/service'
 import { runFixtureJobs } from '@/features/integrations/worker'
+import { runInboxStep } from '@/features/inbox/step'
+import { scheduleLimits } from '@/features/cron/scheduler'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 const noStore = { 'cache-control': 'no-store' }
 
 /**
  * Scheduled sweep: Vercel cron and the GitHub Actions schedule call this with
- * `Authorization: Bearer <CRON_SECRET>`. It runs due jobs for every active
- * workspace in bounded batches through the fixture adapters only.
+ * `Authorization: Bearer <CRON_SECRET>`. It first reads the Inspiration inbox
+ * once (INB-001: Gmail when `INBOX_IMAP_USER` and `INBOX_IMAP_APP_PASSWORD`
+ * are set, otherwise the sample inbox; at most 15 seconds), then runs due
+ * jobs for every active workspace in bounded batches through the fixture
+ * adapters only, in what is left of the 40-second budget. The inbox does
+ * not depend on `ADAPTER_MODE`; the workspace jobs do.
  */
 export async function GET(request: NextRequest) {
   if (
@@ -29,21 +35,38 @@ export async function GET(request: NextRequest) {
       { error: 'Unauthorized' },
       { status: 401, headers: noStore }
     )
-  if (!scheduledDispatchAllowed(process.env.ADAPTER_MODE))
-    return NextResponse.json(
-      { error: 'Scheduled jobs run only with sample providers in this build.' },
-      { status: 503, headers: noStore }
-    )
   const db = createServiceClient()
   if (!db)
     return NextResponse.json(
       { error: 'Server configuration unavailable' },
       { status: 503, headers: noStore }
     )
+  const started = Date.now()
+  // Never throws and never waits more than 15 s: an inbox problem is
+  // reported and the sweep goes on.
+  const inbox = await runInboxStep(db)
+  if (!scheduledDispatchAllowed(process.env.ADAPTER_MODE))
+    return NextResponse.json(
+      {
+        error: 'Scheduled jobs run only with sample providers in this build.',
+        inbox
+      },
+      { status: 503, headers: noStore }
+    )
   try {
-    const run = await runScheduledJobs(db)
+    const run = await runScheduledJobs(db, {
+      limits: {
+        budgetMs: Math.max(
+          5_000,
+          scheduleLimits.budgetMs - (Date.now() - started)
+        )
+      }
+    })
     logger.info('Scheduled job run finished', run)
-    return NextResponse.json({ live: false, ...run }, { headers: noStore })
+    return NextResponse.json(
+      { live: false, ...run, inbox },
+      { headers: noStore }
+    )
   } catch (error) {
     logger.error('Scheduled job run could not start', {
       code: (error as { code?: string }).code ?? 'scheduler_error'

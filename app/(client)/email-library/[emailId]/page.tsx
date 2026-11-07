@@ -16,7 +16,10 @@ export default async function EmailPreview({
   const { email: e, error } = await referenceEmailDetail(emailId)
   if (error) return <Notice error>{error}</Notice>
   if (!e) notFound()
-  const micro = microSchema.parse(e.micro)
+  // Real inbox emails are not labelled yet (INB-003): no sample facts.
+  const parsed = microSchema.safeParse(e.micro)
+  if (!parsed.success) notFound()
+  const micro = parsed.data
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeading

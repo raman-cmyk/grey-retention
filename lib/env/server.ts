@@ -17,7 +17,12 @@ const serverEnvironmentSchema = z.object({
   GEMINI_LABEL_MODEL: z.string().optional(),
   GEMINI_COPY_MODEL: z.string().optional(),
   GEMINI_TIMEOUT_MS: z.string().optional(),
-  DEEPSEEK_API_KEY: z.string().optional()
+  DEEPSEEK_API_KEY: z.string().optional(),
+  // Inspiration inbox (INB-001): read by features/inbox/config.ts, which
+  // checks the values and never logs them. `fake` (default) or `gmail_imap`.
+  INBOX_TRANSPORT: z.string().optional(),
+  INBOX_IMAP_USER: z.string().optional(),
+  INBOX_IMAP_APP_PASSWORD: z.string().optional()
 })
 
 let parsedEnvironment: z.infer<typeof serverEnvironmentSchema> | undefined

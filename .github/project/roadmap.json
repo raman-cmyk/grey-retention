@@ -1095,6 +1095,172 @@
       ],
       "blockedBy": "APR-001",
       "doneWhen": "The owner gets the Sunday email, taps Approve all once, and the week is approved; tapping the same link again or after 7 days does nothing and says why."
+    },
+    {
+      "id": "SHP-001",
+      "title": "Hide Shopify everywhere (Klaviyo only)",
+      "milestone": "S3",
+      "priority": "P0",
+      "type": "chore",
+      "area": "connections",
+      "problem": "Lane B. v2 is Klaviyo only. Products, images, prices, orders and bestsellers come from the Klaviyo API. The app still shows Shopify on Connections, in the Store tab, in onboarding and in copy.",
+      "scope": [
+        "Hide Shopify on Connections, the Store tab, onboarding, the brand check, settings and owner-facing copy.",
+        "The Store tab shows Klaviyo catalog data, or nothing, never Shopify.",
+        "No new Shopify code. Keep tables and adapters (no destructive migrations)."
+      ],
+      "doneWhen": "No owner or staff screen offers or mentions connecting Shopify. Tests cover the hidden routes and copy. `pnpm verify` is green. The ledger has a handoff entry."
+    },
+    {
+      "id": "INB-001",
+      "title": "Inspiration inbox: Gmail IMAP transport and brand assignment",
+      "milestone": "S2",
+      "priority": "P0",
+      "type": "feature",
+      "area": "competitor-watch",
+      "problem": "Lane B. Competitor emails are fixture-only. v2 needs real newsletters. For now (D4) they arrive at `ramangreyofficial+<brand-slug>@gmail.com` and are read over IMAP.",
+      "scope": [
+        "An `InboundCaptureTransport` port with a fake (the default) and a Gmail IMAP adapter. A catch-all domain can replace Gmail later without other changes.",
+        "The scheduled worker polls the inbox through the job system. The work is idempotent: the message id is never processed twice.",
+        "The brand comes from the +alias slug, then from the sender domain. Anything else goes to the ops queue.",
+        "Each captured email stores its raw MIME and HTML as a real (non-synthetic) capture.",
+        "Credentials come only from `INBOX_IMAP_USER` and `INBOX_IMAP_APP_PASSWORD` on the server. They are never in code, logs or chat."
+      ],
+      "doneWhen": "The fake transport delivers sample emails end to end. The IMAP adapter is unit-tested against a recorded session. Tests cover: assignment by alias, by sender, unknown sender, no duplicates and the failure paths. `pnpm verify` and `test:db` are green."
+    },
+    {
+      "id": "INB-002",
+      "title": "Inspiration inbox: keep every image at once and a 600px screenshot",
+      "milestone": "S2",
+      "priority": "P0",
+      "type": "feature",
+      "area": "competitor-watch",
+      "problem": "Lane B. Tracking and image URLs in newsletters expire. We must keep every image as soon as an email arrives, and keep a picture of the whole email.",
+      "scope": [
+        "On arrival, download every image the HTML references into private storage. Record size, type and source, and handle failures and size limits.",
+        "Render the email at 600px wide, sandboxed with links off, and save a full-height screenshot.",
+        "Both run as idempotent jobs. A retry never stores anything twice."
+      ],
+      "doneWhen": "A captured email shows its stored images and its screenshot in Inspiration. Tests cover: broken images, oversized files, non-image responses, and a retry that stores nothing twice. `pnpm verify` and `test:db` are green."
+    },
+    {
+      "id": "INB-003",
+      "title": "Inspiration extraction: sections, text/design, micro and macro facts, repetition",
+      "milestone": "S2",
+      "priority": "P0",
+      "type": "feature",
+      "area": "competitor-library",
+      "problem": "Lane B. A stored email teaches nothing until it is broken into sections and facts.",
+      "scope": [
+        "Find section boundaries from the HTML structure (table rows, image slices). The model only labels sections; it does not find them.",
+        "Label each section text or design, and give the email a text:design ratio.",
+        "Micro facts per email: subject, preview, offer, angle, CTA, send day and time (brand timezone), block sequence.",
+        "Macro facts per brand: frequency, campaign-type mix, discount depth and pattern, text:design ratio.",
+        "Repetition weighting: a pattern that repeats counts more than a one-off.",
+        "Each email is processed once; its labels are stored and never reprocessed. Labelling goes through the provider-neutral AI port, fake by default."
+      ],
+      "doneWhen": "A brand page shows its summary, made from its own emails. Tests cover section splitting on real-shaped HTML, the facts, the weighting, and process-once. `pnpm verify` and `test:db` are green. Gate (owner): 200 emails assigned and labelled correctly, plus a per-brand summary the owner agrees with."
+    },
+    {
+      "id": "INB-004",
+      "title": "Inbox ops queue and admin brand directory",
+      "milestone": "S2",
+      "priority": "P0",
+      "type": "feature",
+      "area": "support-ops",
+      "problem": "Lane B. A person must see what the inbox could not handle. The owner subscribes to competitors by hand and needs each brand's address.",
+      "scope": [
+        "An inbox ops queue covering: unknown sender; parse failure; double-opt-in confirmations (links matching \"confirm\" are clicked by the worker only for known brands, and every click is logged); brands that unsubscribed us (a resubscribe task); pending subscriptions",
+        "An admin brand directory: each competitor brand with its `+alias` address, niche, subscription status and last email received.",
+        "Admin only, through RLS and server checks."
+      ],
+      "doneWhen": "An admin sees the queue and the directory, and can resolve a task. Tests cover authorization (owners and staff refused), every task type and the resolve path. `pnpm verify` and `test:db` are green."
+    },
+    {
+      "id": "KLV-001",
+      "title": "Live Klaviyo adapter: key scopes, catalog, bestsellers, scheduled campaigns, Engaged segment",
+      "milestone": "S3",
+      "priority": "P0",
+      "type": "feature",
+      "area": "connections",
+      "problem": "Lane B. Everything comes from Klaviyo, but today only a fake adapter exists.",
+      "scope": [
+        "A live Klaviyo adapter behind the existing `klaviyo-read` port. The fake stays the default.",
+        "The adapter covers: the key's scopes checked on paste, with the exact missing scopes shown; the account's timezone and currency; the catalog cached and cleaned: variant suffixes stripped, variants grouped into one product, currency checked, an image required; a block with a clear message when the catalog is empty; bestsellers from Placed Order events, cached weekly; existing scheduled campaigns read, so those days count as taken; the Engaged 90 days segment created, or Engaged 180 days when 90 days gives fewer than 1,000 profiles or under 20% of the list",
+        "Rate limits and expired or revoked keys go to the ops queue, and generation pauses.",
+        "Every step is an idempotent job that retries 3 times."
+      ],
+      "doneWhen": "Contract tests against recorded Klaviyo responses pass. A live call happens only when the owner pastes a real key. Tests cover the failure paths (bad key, missing scope, empty catalog, rate limit). `pnpm verify` and `test:db` are green."
+    },
+    {
+      "id": "WIZ-001",
+      "title": "Onboarding wizard (VISION §5 and §10)",
+      "milestone": "S3",
+      "priority": "P0",
+      "type": "feature",
+      "area": "onboarding",
+      "problem": "Lane B. Onboarding is the most important screen. It collects everything the AI may use, and nothing else.",
+      "scope": [
+        "A step-by-step wizard: 1. Klaviyo key, with the scope check and a guide. 2. Max discount %. 3. Discount codes (code, %, expiry). Zero codes is allowed. 4. Blackout dates. 5. Store timezone and currency, read from Klaviyo. 6. Send frequency: 2, 3 or 4 a week. 7. Brand kit: logo, 3 colours and a font, scraped and then shown visually for confirmation. 8. Brand facts sheet: shipping, returns, guarantees, banned words and claims, tone as 3 chips. It is pre-filled by scraping those pages. 9. Featurable products, pre-ticked: the top 20 bestsellers plus anything added in the last 30 days. 10. 5–10 competitors, suggested by niche and similar size. When there are none, cold-start mode, said plainly.",
+        "It checks for a dedicated sending domain and flags it without blocking.",
+        "It tells the owner that pushed templates are edited through Change.",
+        "When it finishes, the post-onboarding job chain starts and shows progress."
+      ],
+      "doneWhen": "The owner can finish onboarding at 375px, with the keyboard. Each step's answer is saved and can be resumed. Tests cover validation, authorization and failure paths. `pnpm verify`, `test:db` and `test:e2e` are green."
+    },
+    {
+      "id": "QAG-001",
+      "title": "Full QA before Klaviyo push (VISION Step 4)",
+      "milestone": "S4",
+      "priority": "P0",
+      "type": "feature",
+      "area": "release-gates",
+      "problem": "Lane B. Nothing may reach a client's Klaviyo account unless it passes every hard check.",
+      "scope": [
+        "Each of these checks blocks the push when it fails:",
+        "Every link returns 200 and matches the intended product.",
+        "The discount code is in the client's list, not expired, and no more than the max.",
+        "The send date is not a blackout date and not already taken by another campaign.",
+        "Every featured product exists and is featurable.",
+        "The HTML is under 102KB, so Gmail does not clip it.",
+        "A 375px screenshot renders cleanly. The approval screen reuses it.",
+        "The copy passes the facts sheet and the banned-words list.",
+        "The audience is the Engaged segment.",
+        "The send time is converted from the store's timezone. Results are stored per campaign in `qa_results` and shown in words."
+      ],
+      "doneWhen": "Each check has passing and failing tests. A failure blocks the push and says why. `pnpm verify` and `test:db` are green."
+    },
+    {
+      "id": "PSH-001",
+      "title": "Klaviyo push as draft",
+      "milestone": "S4",
+      "priority": "P0",
+      "type": "feature",
+      "area": "execution",
+      "problem": "Lane B. Approved, QA-passed emails must land in the client's Klaviyo account.",
+      "scope": [
+        "The push runs in this order: upload images to Klaviyo, create the template, create the campaign, assign the Engaged segment, save it as a **draft**.",
+        "No scheduling: that comes only after Step 5 proves approval.",
+        "Idempotent jobs with 3 retries, then the ops queue.",
+        "Hourly status sync: a campaign edited or deleted outside the app is marked \"externally modified\" and never overwritten.",
+        "The fake adapter is the default; live calls only with the owner's key."
+      ],
+      "doneWhen": "Contract tests against recorded Klaviyo responses pass. Tests cover partial-failure retries (no duplicate templates or campaigns) and externally modified campaigns. `pnpm verify` and `test:db` are green. Gate (owner): 10 of 10 drafts land in Klaviyo with zero manual fixes."
+    },
+    {
+      "id": "OPD-001",
+      "title": "Ops dashboard (VISION §10)",
+      "milestone": "S4",
+      "priority": "P0",
+      "type": "feature",
+      "area": "admin",
+      "problem": "Lane B. The platform team needs one daily view of every client and every task waiting for a person.",
+      "scope": [
+        "Every client, with: next send; approval status; QA failures; last results; days since competitor data was refreshed; LLM spend against its cap",
+        "The ops queue across every source: inbox; low-confidence labels; copy QA failed 3 times; Change requests past 2 rounds; Klaviyo API errors",
+        "Admin only."
+      ],
+      "doneWhen": "An admin sees every client and can open and resolve tasks. Tests cover authorization and every task source. `pnpm verify` and `test:db` are green."
     }
   ]
 }

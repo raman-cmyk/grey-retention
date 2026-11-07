@@ -162,15 +162,34 @@ test('STAB-001 scheduled sweep finishes queued work once per job across workspac
   const responses = await Promise.all(
     [1, 2, 3].map(() => sweep(request, `Bearer ${secret}`))
   )
+  const inboxStates: string[] = []
   for (const response of responses) {
     expect(response.status()).toBe(200)
     expect(response.headers()['cache-control']).toBe('no-store')
     const body = await response.json()
     expect(body).toMatchObject({ live: false, failed: 0 })
     expect(Object.keys(body).sort()).toEqual(
-      ['deferred', 'failed', 'live', 'processed', 'rounds', 'tenants'].sort()
+      [
+        'deferred',
+        'failed',
+        'inbox',
+        'live',
+        'processed',
+        'rounds',
+        'tenants'
+      ].sort()
     )
+    // INB-001: each sweep reads the sample inbox first; of three at once,
+    // the ones that find a poll already running say so.
+    expect(body.inbox).toMatchObject({
+      transport: 'fake',
+      ready: true,
+      synthetic: true
+    })
+    expect(['done', 'busy']).toContain(body.inbox.run.state)
+    inboxStates.push(body.inbox.run.state)
   }
+  expect(inboxStates).toContain('done')
 
   for (const { job, campaign } of jobs) {
     const [run, content] = await Promise.all([
