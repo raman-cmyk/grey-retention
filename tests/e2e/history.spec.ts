@@ -37,6 +37,11 @@ test('UC-11 paged GROS history keeps old and newest messages after refresh', asy
     await expect(page.getByText(q(n), { exact: true })).toBeVisible()
   }
   await page.reload()
+  // Wait until the page runs: it then scrolls to the newest message once,
+  // and a click on "Earlier messages" before that scroll can be lost.
+  await expect(
+    page.getByRole('button', { name: 'Make shared', exact: true })
+  ).toBeEnabled()
   const messages = page.getByRole('list', { name: 'Messages', exact: true })
   await expect(messages.getByText(q(25), { exact: true })).toBeVisible()
   await expect(messages.getByText(q(0), { exact: true })).toHaveCount(0)
