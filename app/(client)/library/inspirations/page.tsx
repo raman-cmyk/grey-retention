@@ -84,6 +84,7 @@ export default async function InspirationsPage() {
             items={library.items}
             timezone={ctx.timezone}
             canUse={owner}
+            uploadsCapped={library.uploadsCapped}
           />
         </>
       )}

@@ -3,7 +3,7 @@ import { sourceFormat } from '@/features/email-generation/html'
 import { toSafePreview } from '@/features/email-generation/to-safe-preview'
 import { readPages } from '@/lib/db/read-pages'
 import { createClient } from '@/lib/supabase/server'
-import { classifyFormat, type LibraryItem } from './model'
+import { classifyFormat, latestUploads, type LibraryItem } from './model'
 
 /** A competitor domain the workspace tracks. */
 export type TrackedDomain = {
@@ -20,12 +20,12 @@ export type TrackedDomain = {
 export type ReferenceLibraryData = {
   items: LibraryItem[]
   tracked: TrackedDomain[]
+  /** True when there may be older uploads than the latest 40 read. */
+  uploadsCapped: boolean
 }
 
 /** The latest sends per competitor shown in the library (spec §9). */
 export const latestPerDomain = 20
-/** The latest pasted or uploaded references shown (newest first). */
-export const latestUploads = 40
 /** The most tracked domains at a time (the database checks it too). */
 export const domainLimit = 10
 
@@ -185,5 +185,9 @@ export async function referenceLibrary(
       sample: capture?.synthetic ?? true
     }
   })
-  return { items, tracked }
+  return {
+    items,
+    tracked,
+    uploadsCapped: (imports.data?.length ?? 0) >= latestUploads
+  }
 }

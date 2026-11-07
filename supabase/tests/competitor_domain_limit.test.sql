@@ -1,5 +1,5 @@
 begin;
-select plan(27);
+select plan(29);
 
 -- Workspace 101: owner ...01, manager (admin) ...06, staff ...05. Workspace 102: owner ...04.
 update public.competitor_subscriptions set active = false where tenant_id = '00000000-0000-4000-8000-000000000101';
@@ -57,12 +57,15 @@ set local role authenticated;
 select throws_ok($$select public.update_competitor_subscription('00000000-0000-4000-8000-000000000101',(pg_temp.sub('limit-1.example')).id,0,false,'')$$,'PT409','Stale subscription','a stale page cannot stop tracking');
 
 -- Another workspace has its own 10 (also for a domain this one tracks);
--- managers, staff and other workspaces cannot track here.
+-- managers, staff and other workspaces cannot track or stop tracking here.
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
 select lives_ok($$select public.subscribe_competitor('00000000-0000-4000-8000-000000000102','limit-2.example')$$,'another workspace tracks a domain this one tracks too');
 select throws_ok($$select public.subscribe_competitor('00000000-0000-4000-8000-000000000101','limit-12.example')$$,'42501',null,'another workspace cannot track here');
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000006","role":"authenticated"}',true);
 select throws_ok($$select public.subscribe_competitor('00000000-0000-4000-8000-000000000101','limit-13.example')$$,'42501',null,'a manager cannot track');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000005","role":"authenticated"}',true);
+select throws_ok($$select public.subscribe_competitor('00000000-0000-4000-8000-000000000101','limit-14.example')$$,'42501',null,'staff cannot track');
+select throws_ok($$select public.update_competitor_subscription('00000000-0000-4000-8000-000000000101',(pg_temp.sub('limit-1.example')).id,(pg_temp.sub('limit-1.example')).revision,false,'')$$,'42501',null,'staff cannot stop tracking');
 
 select * from finish();
 rollback;

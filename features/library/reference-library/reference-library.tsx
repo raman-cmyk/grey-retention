@@ -15,6 +15,7 @@ import { formatBrandDate } from '@/lib/brand-time'
 import { cn } from '@/lib/utils'
 import {
   filterLibrary,
+  latestUploads,
   libraryTabs,
   pageSize,
   referenceHref,
@@ -43,6 +44,10 @@ const emptyText: Record<LibraryTab, { title: string; body: string }> = {
 const emailsWord = (n: number) => `${n} ${n === 1 ? 'email' : 'emails'}`
 
 /** What the card and the preview say about an item without a design. */
+/** The label above the text when an item has no design to show. */
+const textHeadingOf = (item: LibraryItem) =>
+  item.source === 'template' ? 'Saved layout' : 'Plain-text email'
+
 const noDesignText = (item: LibraryItem) =>
   item.source === 'template'
     ? 'This saved layout has no preview yet. Using it starts from the same sections.'
@@ -80,7 +85,7 @@ function Card({
           />
         ) : (
           <div className="h-full overflow-auto p-4 text-xs">
-            <PlainTextEmail text={item.text} />
+            <PlainTextEmail text={item.text} heading={textHeadingOf(item)} />
           </div>
         )}
       </div>
@@ -133,7 +138,7 @@ type ModeProps =
        */
       canUse?: boolean
       onPick?: never
-      selectedId?: never
+      selected?: never
     }
   | {
       mode: 'pick'
@@ -142,8 +147,8 @@ type ModeProps =
        * back to the server, never its preview markup.
        */
       onPick: (item: LibraryItem) => void
-      /** The reference already chosen, marked "Selected". */
-      selectedId?: string | null
+      /** The reference already chosen (id and source), marked "Selected". */
+      selected?: Pick<LibraryItem, 'id' | 'source'> | null
       canUse?: never
     }
 
@@ -153,11 +158,23 @@ export function ReferenceLibrary(
     /** The brand timezone the dates are shown in. */
     timezone: string
     initialTab?: LibraryTab
+    /**
+     * True when only the latest uploads were read (`latestUploads`); the
+     * Yours tab then says so.
+     */
+    uploadsCapped?: boolean
   } & ModeProps
 ) {
-  const { items, timezone, initialTab = 'competitors' } = props
+  const {
+    items,
+    timezone,
+    initialTab = 'competitors',
+    uploadsCapped = false
+  } = props
   const canUse = props.mode === 'pick' || props.canUse !== false
-  const selectedId = props.mode === 'pick' ? props.selectedId : null
+  const chosen = props.mode === 'pick' ? props.selected : null
+  const isSelected = (item: LibraryItem) =>
+    chosen?.id === item.id && chosen.source === item.source
   const id = useId()
   const [tab, setTab] = useState<LibraryTab>(initialTab)
   const [show, setShow] = useState<ShowFilter>('all')
@@ -217,7 +234,6 @@ export function ReferenceLibrary(
         type="button"
         size="sm"
         variant="secondary"
-        aria-pressed={selectedId === item.id}
         onClick={() => {
           setOpen(null)
           props.onPick(item)
@@ -225,7 +241,10 @@ export function ReferenceLibrary(
       >
         <Sparkles className="size-4" aria-hidden="true" />
         Use this reference
-        <span className="sr-only">: {item.title}</span>
+        <span className="sr-only">
+          : {item.title}
+          {isSelected(item) ? ' (selected now)' : ''}
+        </span>
       </Button>
     ) : (
       <Link
@@ -388,10 +407,15 @@ export function ReferenceLibrary(
                   timezone={timezone}
                   onOpen={() => setOpen(item)}
                   action={action(item)}
-                  selected={selectedId === item.id}
+                  selected={isSelected(item)}
                 />
               ))}
             </ul>
+            {tab === 'yours' && uploadsCapped && (
+              <p className="text-sm text-[var(--text-muted)]">
+                Showing your latest {latestUploads} uploads.
+              </p>
+            )}
             {matches.length > visible.length && (
               <div className="text-center">
                 <Button
@@ -430,6 +454,7 @@ export function ReferenceLibrary(
             }
             notes={[]}
             height={900}
+            textHeading={textHeadingOf(open)}
           />
         )}
       </Modal>

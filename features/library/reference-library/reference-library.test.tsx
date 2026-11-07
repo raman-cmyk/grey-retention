@@ -44,11 +44,15 @@ describe('ReferenceLibrary', () => {
     const onPick = vi.fn()
     render(
       <ReferenceLibrary
-        items={many(2)}
+        items={[
+          ...many(2),
+          // Same id, other source: not the chosen one.
+          item(1, { tab: 'yours', source: 'import', domain: null })
+        ]}
         timezone="UTC"
         mode="pick"
         onPick={onPick}
-        selectedId="e1"
+        selected={{ id: 'e1', source: 'competitor' }}
       />
     )
     const chosen = screen
@@ -56,8 +60,11 @@ describe('ReferenceLibrary', () => {
       .find((li) => li.textContent?.includes('Fictional email 1'))!
     expect(within(chosen).getByText('Selected')).toBeVisible()
     expect(
-      within(chosen).getByRole('button', { name: /Use this reference/ })
-    ).toHaveAttribute('aria-pressed', 'true')
+      within(chosen).getByRole('button', {
+        name: /Use this reference.*\(selected now\)/
+      })
+    ).toBeVisible()
+    expect(screen.getAllByText('Selected')).toHaveLength(1)
     await userEvent.click(
       within(chosen).getByRole('button', { name: /Open the preview/ })
     )
@@ -92,6 +99,28 @@ describe('ReferenceLibrary', () => {
     expect(
       screen.getAllByText(/This saved layout has no preview yet/)[0]
     ).toBeVisible()
+    // Neither the card nor the preview calls it a plain-text email.
+    expect(screen.queryByText('Plain-text email')).toBeNull()
+    expect(screen.getAllByText('Saved layout')).toHaveLength(2)
+  })
+
+  it('says when only the latest 40 uploads are shown', async () => {
+    const uploads = [item(1, { tab: 'yours', source: 'import', domain: null })]
+    const { rerender } = render(
+      <ReferenceLibrary items={uploads} timezone="UTC" initialTab="yours" />
+    )
+    expect(screen.queryByText(/latest 40 uploads/)).toBeNull()
+    rerender(
+      <ReferenceLibrary
+        items={uploads}
+        timezone="UTC"
+        initialTab="yours"
+        uploadsCapped
+      />
+    )
+    expect(screen.getByText('Showing your latest 40 uploads.')).toBeVisible()
+    await userEvent.click(screen.getByRole('tab', { name: /^Competitors/ }))
+    expect(screen.queryByText(/latest 40 uploads/)).toBeNull()
   })
 
   it('jumps to the first and last tab with Home and End', async () => {

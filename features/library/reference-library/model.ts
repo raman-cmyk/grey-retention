@@ -105,6 +105,9 @@ export function tabCounts(items: LibraryItem[]) {
 /** Cards shown per "Load more" step. */
 export const pageSize = 20
 
+/** The latest pasted or uploaded references read (newest first). */
+export const latestUploads = 40
+
 /**
  * Where "Use this design" leads from the Inspiration page: a new draft with
  * the reference already chosen (competitor emails and uploads), or the

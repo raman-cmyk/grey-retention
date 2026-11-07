@@ -44,6 +44,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 
 const { referenceLibrary, latestPerDomain } = await import('./data')
+const { latestUploads } = await import('./model')
 const tenant = '00000000-0000-4000-8000-000000000101'
 
 afterEach(() => {
@@ -157,6 +158,34 @@ describe('referenceLibrary', () => {
       source: 'template',
       sample: true
     })
+  })
+
+  it('says when there may be older uploads than the latest 40', async () => {
+    const upload = (n: number) => ({
+      id: `i${n}`,
+      subject: `Upload ${n}`,
+      original_body: 'Hello',
+      readable_text: 'Hello',
+      content_format: 'text',
+      source_description: 'Pasted email',
+      created_at: '2026-11-02T10:00:00Z'
+    })
+    db.tables = {
+      competitor_subscriptions: { data: [], error: null },
+      reference_imports: {
+        data: Array.from({ length: 39 }, (_, i) => upload(i)),
+        error: null
+      }
+    }
+    expect((await referenceLibrary(tenant))?.uploadsCapped).toBe(false)
+    expect(db.calls.find((c) => c.table === 'reference_imports')?.limit).toBe(
+      latestUploads
+    )
+    db.tables.reference_imports = {
+      data: Array.from({ length: 40 }, (_, i) => upload(i)),
+      error: null
+    }
+    expect((await referenceLibrary(tenant))?.uploadsCapped).toBe(true)
   })
 
   it('shows PENDING until emails arrive and ERROR when a capture failed', async () => {
