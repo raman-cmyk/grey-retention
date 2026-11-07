@@ -1573,33 +1573,45 @@ export type Database = {
       }
       competitor_captures: {
         Row: {
+          alias_slug: string | null
+          brand_name: string | null
           created_at: string
           cursor: string | null
           domain: string
           id: string
           last_error: string | null
           last_received_at: string | null
+          niche: string | null
           status: string
+          subscription_status: string
           synthetic: boolean
         }
         Insert: {
+          alias_slug?: string | null
+          brand_name?: string | null
           created_at?: string
           cursor?: string | null
           domain: string
           id?: string
           last_error?: string | null
           last_received_at?: string | null
+          niche?: string | null
           status?: string
+          subscription_status?: string
           synthetic?: boolean
         }
         Update: {
+          alias_slug?: string | null
+          brand_name?: string | null
           created_at?: string
           cursor?: string | null
           domain?: string
           id?: string
           last_error?: string | null
           last_received_at?: string | null
+          niche?: string | null
           status?: string
+          subscription_status?: string
           synthetic?: boolean
         }
         Relationships: []
@@ -1609,8 +1621,14 @@ export type Database = {
           capture_id: string
           created_at: string
           external_id: string
+          extraction_version: number | null
+          html_path: string | null
           id: string
+          inbox_message_id: string | null
+          labelled_at: string | null
           micro: Json
+          preview_text: string | null
+          raw_path: string | null
           received_at: string
           safe_html: string
           subject: string
@@ -1621,8 +1639,14 @@ export type Database = {
           capture_id: string
           created_at?: string
           external_id: string
+          extraction_version?: number | null
+          html_path?: string | null
           id?: string
+          inbox_message_id?: string | null
+          labelled_at?: string | null
           micro: Json
+          preview_text?: string | null
+          raw_path?: string | null
           received_at: string
           safe_html: string
           subject: string
@@ -1633,8 +1657,14 @@ export type Database = {
           capture_id?: string
           created_at?: string
           external_id?: string
+          extraction_version?: number | null
+          html_path?: string | null
           id?: string
+          inbox_message_id?: string | null
+          labelled_at?: string | null
           micro?: Json
+          preview_text?: string | null
+          raw_path?: string | null
           received_at?: string
           safe_html?: string
           subject?: string
@@ -1644,6 +1674,39 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: 'competitor_emails_capture_id_fkey'
+            columns: ['capture_id']
+            isOneToOne: false
+            referencedRelation: 'competitor_captures'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'competitor_emails_inbox_message_id_fkey'
+            columns: ['inbox_message_id']
+            isOneToOne: true
+            referencedRelation: 'inbox_messages'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      competitor_sender_domains: {
+        Row: {
+          capture_id: string
+          created_at: string
+          domain: string
+        }
+        Insert: {
+          capture_id: string
+          created_at?: string
+          domain: string
+        }
+        Update: {
+          capture_id?: string
+          created_at?: string
+          domain?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'competitor_sender_domains_capture_id_fkey'
             columns: ['capture_id']
             isOneToOne: false
             referencedRelation: 'competitor_captures'
@@ -3023,6 +3086,126 @@ export type Database = {
           }
         ]
       }
+      inbox_mailboxes: {
+        Row: {
+          created_at: string
+          id: string
+          key: string
+          last_error_code: string | null
+          last_polled_at: string | null
+          last_uid: number
+          paused_until: string | null
+          transport: string
+          uidvalidity: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          key: string
+          last_error_code?: string | null
+          last_polled_at?: string | null
+          last_uid?: number
+          paused_until?: string | null
+          transport: string
+          uidvalidity?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          key?: string
+          last_error_code?: string | null
+          last_polled_at?: string | null
+          last_uid?: number
+          paused_until?: string | null
+          transport?: string
+          uidvalidity?: number | null
+        }
+        Relationships: []
+      }
+      inbox_messages: {
+        Row: {
+          alias_slug: string | null
+          capture_id: string | null
+          created_at: string
+          from_address: string | null
+          from_domain: string | null
+          html_path: string | null
+          id: string
+          mailbox_id: string
+          message_key: string
+          method: string | null
+          raw_bytes: number
+          raw_path: string | null
+          raw_sha256: string | null
+          received_at: string
+          state: string
+          subject: string
+          synthetic: boolean
+          transport_id: string | null
+          uid: number
+          uidvalidity: number
+        }
+        Insert: {
+          alias_slug?: string | null
+          capture_id?: string | null
+          created_at?: string
+          from_address?: string | null
+          from_domain?: string | null
+          html_path?: string | null
+          id?: string
+          mailbox_id: string
+          message_key: string
+          method?: string | null
+          raw_bytes: number
+          raw_path?: string | null
+          raw_sha256?: string | null
+          received_at: string
+          state: string
+          subject?: string
+          synthetic: boolean
+          transport_id?: string | null
+          uid: number
+          uidvalidity: number
+        }
+        Update: {
+          alias_slug?: string | null
+          capture_id?: string | null
+          created_at?: string
+          from_address?: string | null
+          from_domain?: string | null
+          html_path?: string | null
+          id?: string
+          mailbox_id?: string
+          message_key?: string
+          method?: string | null
+          raw_bytes?: number
+          raw_path?: string | null
+          raw_sha256?: string | null
+          received_at?: string
+          state?: string
+          subject?: string
+          synthetic?: boolean
+          transport_id?: string | null
+          uid?: number
+          uidvalidity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'inbox_messages_capture_id_fkey'
+            columns: ['capture_id']
+            isOneToOne: false
+            referencedRelation: 'competitor_captures'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'inbox_messages_mailbox_id_fkey'
+            columns: ['mailbox_id']
+            isOneToOne: false
+            referencedRelation: 'inbox_mailboxes'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       job_runs: {
         Row: {
           attempt: number
@@ -3476,6 +3659,56 @@ export type Database = {
             columns: ['tenant_id']
             isOneToOne: false
             referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      ops_tasks: {
+        Row: {
+          created_at: string
+          dedupe_key: string
+          detail: Json
+          id: string
+          kind: string
+          occurrences: number
+          resolved_at: string | null
+          resolved_by: string | null
+          state: string
+          subject_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dedupe_key: string
+          detail?: Json
+          id?: string
+          kind: string
+          occurrences?: number
+          resolved_at?: string | null
+          resolved_by?: string | null
+          state?: string
+          subject_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dedupe_key?: string
+          detail?: Json
+          id?: string
+          kind?: string
+          occurrences?: number
+          resolved_at?: string | null
+          resolved_by?: string | null
+          state?: string
+          subject_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'ops_tasks_resolved_by_fkey'
+            columns: ['resolved_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
             referencedColumns: ['id']
           }
         ]
@@ -4023,6 +4256,60 @@ export type Database = {
             referencedColumns: ['id']
           }
         ]
+      }
+      platform_jobs: {
+        Row: {
+          attempt: number
+          available_at: string
+          created_at: string
+          failure_class: string | null
+          finished_at: string | null
+          id: string
+          idempotency_key: string
+          kind: string
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_token: string | null
+          result: Json
+          status: string
+          subject_key: string
+          updated_at: string
+        }
+        Insert: {
+          attempt?: number
+          available_at?: string
+          created_at?: string
+          failure_class?: string | null
+          finished_at?: string | null
+          id?: string
+          idempotency_key: string
+          kind: string
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          result?: Json
+          status?: string
+          subject_key: string
+          updated_at?: string
+        }
+        Update: {
+          attempt?: number
+          available_at?: string
+          created_at?: string
+          failure_class?: string | null
+          finished_at?: string | null
+          id?: string
+          idempotency_key?: string
+          kind?: string
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          result?: Json
+          status?: string
+          subject_key?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       playbooks: {
         Row: {
@@ -4939,6 +5226,16 @@ export type Database = {
         Args: { event_date: string; name: string; notes: string; t: string }
         Returns: string
       }
+      admin_save_inbox_brand: {
+        Args: {
+          alias: string
+          brand_domain: string
+          brand_niche: string
+          name: string
+          senders?: string[]
+        }
+        Returns: string
+      }
       admit_email_file_upload: {
         Args: { input: Json; request_key: string; t: string }
         Returns: {
@@ -4947,6 +5244,15 @@ export type Database = {
           state: string
           storage_path: string
         }[]
+      }
+      advance_inbox_cursor: {
+        Args: {
+          job: string
+          last_seen: number
+          lease: string
+          uid_validity: number
+        }
+        Returns: undefined
       }
       advance_optimizer_clock: {
         Args: { observed_at: string; sweep: string; t: string }
@@ -5117,6 +5423,17 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      claim_platform_job: {
+        Args: { kinds: string[]; subject?: string }
+        Returns: {
+          attempt: number
+          context: Json
+          id: string
+          kind: string
+          lease_token: string
+          subject_key: string
+        }[]
+      }
       complete_asset_import: {
         Args: { import_id: string; t: string }
         Returns: undefined
@@ -5278,6 +5595,7 @@ export type Database = {
         Returns: string
       }
       enqueue_health_check: { Args: { t: string }; Returns: undefined }
+      enqueue_inbox_poll: { Args: { mailbox: string }; Returns: string }
       enqueue_l1_delivery: {
         Args: {
           expected_revision: number
@@ -5334,6 +5652,15 @@ export type Database = {
         Args: { failure: string; job: string; lease: string }
         Returns: undefined
       }
+      fail_platform_job: {
+        Args: {
+          error_code: string
+          failure: string
+          job: string
+          lease: string
+        }
+        Returns: undefined
+      }
       finalize_email_file_upload: {
         Args: { import: string; t: string }
         Returns: string
@@ -5377,6 +5704,10 @@ export type Database = {
       finish_plan_job: {
         Args: { job: string; lease: string; output: Json }
         Returns: string
+      }
+      finish_platform_job: {
+        Args: { job: string; lease: string; outcome?: Json }
+        Returns: undefined
       }
       finish_playbook_job: {
         Args: { job: string; lease: string; output: Json }
@@ -5510,6 +5841,10 @@ export type Database = {
           t: string
         }
         Returns: undefined
+      }
+      record_inbox_message: {
+        Args: { job: string; lease: string; msg: Json }
+        Returns: Json
       }
       record_render_upload: {
         Args: {
