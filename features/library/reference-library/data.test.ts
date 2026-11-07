@@ -7,12 +7,37 @@ type Result = { data: unknown; error: { code: string } | null }
 const db = vi.hoisted(() => ({
   on: true,
   tables: {} as Record<string, Result>,
-  calls: [] as { table: string; filters: [string, unknown][]; limit?: number }[]
+  calls: [] as {
+    table: string
+    filters: [string, unknown][]
+    limit?: number
+  }[],
+  signed: [] as { bucket: string; paths: string[] }[]
 }))
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () =>
     db.on
       ? {
+          storage: {
+            from: (bucket: string) => ({
+              createSignedUrls: async (paths: string[]) => {
+                db.signed.push({ bucket, paths })
+                // Storage refuses what this member may not read.
+                return {
+                  data: paths.map((path) =>
+                    path.includes('not-mine')
+                      ? { path, signedUrl: '', error: 'Object not found' }
+                      : {
+                          path,
+                          signedUrl: `https://db.test/${path}?token=t`,
+                          error: null
+                        }
+                  ),
+                  error: null
+                }
+              }
+            })
+          },
           from: (table: string) => {
             const call = {
               table,
@@ -51,6 +76,7 @@ afterEach(() => {
   db.on = true
   db.tables = {}
   db.calls = []
+  db.signed = []
 })
 
 describe('referenceLibrary', () => {
@@ -226,5 +252,74 @@ describe('referenceLibrary', () => {
     expect(await referenceLibrary(tenant)).toBeNull()
     db.on = false
     expect(await referenceLibrary(tenant)).toBeNull()
+  })
+
+  it('shows the stored screenshot where there is one, signed with the member’s own session', async () => {
+    const email = (id: string, screenshot_path: string | null) => ({
+      id,
+      capture_id: 'c1',
+      subject: `Email ${id}`,
+      text_content: 'Hello',
+      safe_html: '<p>Hello</p>',
+      received_at: '2026-11-02T10:00:00Z',
+      synthetic: true,
+      screenshot_path,
+      screenshot_width: 640,
+      screenshot_height: 2400
+    })
+    db.tables = {
+      competitor_subscriptions: {
+        data: [
+          {
+            id: 's1',
+            capture_id: 'c1',
+            label: 'Northwind',
+            revision: 1,
+            active: true
+          }
+        ],
+        error: null
+      },
+      competitor_captures: {
+        data: [
+          {
+            id: 'c1',
+            domain: 'northwind.example',
+            status: 'live',
+            synthetic: true
+          }
+        ],
+        error: null
+      },
+      competitor_emails: {
+        data: [
+          email('e1', 'shot/11111111-1111-4111-8111-111111111111.jpg'),
+          email('e2', null),
+          email('e3', 'shot/not-mine.jpg')
+        ],
+        error: null
+      }
+    }
+    const library = await referenceLibrary(tenant)
+    const byId = Object.fromEntries(
+      (library?.items ?? []).map((i) => [i.id, i])
+    )
+    expect(byId.e1?.screenshot).toEqual({
+      url: 'https://db.test/shot/11111111-1111-4111-8111-111111111111.jpg?token=t',
+      width: 640,
+      height: 2400
+    })
+    expect(byId.e2?.screenshot).toBeNull()
+    // A picture storage refuses is simply not shown.
+    expect(byId.e3?.screenshot).toBeNull()
+    expect(db.signed).toEqual([
+      {
+        bucket: 'inbox-assets',
+        paths: [
+          'shot/11111111-1111-4111-8111-111111111111.jpg',
+          'shot/not-mine.jpg'
+        ]
+      }
+    ])
   })
 })
