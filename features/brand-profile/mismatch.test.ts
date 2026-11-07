@@ -1,6 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { brandMismatches, catalogueElsewhere, hostOf } from './mismatch'
+import {
+  brandMismatches,
+  catalogueElsewhere,
+  countryName,
+  hostOf
+} from './mismatch'
 
 const base = {
   brandName: 'Cedar Lane',
@@ -27,6 +32,12 @@ describe('brand-mismatch guard (UIR-021)', () => {
     expect(hostOf('not a site')).toBeNull()
     expect(hostOf('')).toBeNull()
     expect(hostOf(null)).toBeNull()
+    expect(hostOf('  cedar-lane.example ')).toBe('cedar-lane.example')
+    expect(hostOf('http://cedar-lane.example/')).toBe('cedar-lane.example')
+    expect(hostOf('https://cedar-lane.example:8443/shop')).toBe(
+      'cedar-lane.example'
+    )
+    expect(hostOf('https://café.example')).toBe('xn--caf-dma.example')
   })
 
   it('says nothing when everything belongs to one brand', () => {
@@ -55,7 +66,7 @@ describe('brand-mismatch guard (UIR-021)', () => {
       'Your Brand profile says “Cedar Lane”, but the connected Klaviyo account is “Northwind Outdoor (sample)”. Check that the profile describes this brand before the AI writes anything.',
       'Your Brand profile’s website is cedar-lane.example, but the connected Klaviyo account’s website is northwind-outdoor.example.',
       'Klaviyo reports amounts in EUR, but the Shopify store sells in AUD. Check that both accounts belong to this brand.',
-      'The Klaviyo account is in DE, but the Shopify store is in AU. Check that both accounts belong to this brand.'
+      'The Klaviyo account is in Germany, but the Shopify store is in Australia. Check that both accounts belong to this brand.'
     ])
   })
 
@@ -71,6 +82,59 @@ describe('brand-mismatch guard (UIR-021)', () => {
     expect(
       brandMismatches({ ...base, productUrls: urls }).map((m) => m.source)
     ).toEqual(['catalogue'])
+  })
+
+  it('accepts the brand’s own subdomains and Shopify store as its website', () => {
+    expect(
+      brandMismatches({
+        ...base,
+        klaviyo: facts('USD', 'US', 'https://shop.cedar-lane.example')
+      })
+    ).toEqual([])
+    expect(
+      brandMismatches({
+        ...base,
+        klaviyo: facts('USD', 'US', 'https://cedar-lane.myshopify.com')
+      })
+    ).toEqual([])
+  })
+
+  it('names countries in plain English', () => {
+    expect(countryName('DE')).toBe('Germany')
+    expect(countryName('au')).toBe('Australia')
+    expect(countryName('ZZ')).toBe('Unknown Region')
+  })
+
+  it('warns about the catalogue only when more than half points elsewhere', () => {
+    expect(
+      catalogueElsewhere(
+        ['https://other.example/a', 'https://cedar-lane.example/b'],
+        base.website,
+        null
+      )
+    ).toBeNull()
+    expect(
+      catalogueElsewhere(
+        [
+          'https://other.example/a',
+          'https://other.example/b',
+          'https://cedar-lane.example/c'
+        ],
+        base.website,
+        null
+      )
+    ).toBe('other.example')
+  })
+
+  it('does not compare the catalogue without a website in the profile', () => {
+    // The Shopify store alone is not "your website".
+    expect(
+      catalogueElsewhere(
+        ['https://cedarlane.example/a', 'https://cedarlane.example/b'],
+        '',
+        'cedar-lane.myshopify.com'
+      )
+    ).toBeNull()
   })
 
   it('does not guess from too little', () => {

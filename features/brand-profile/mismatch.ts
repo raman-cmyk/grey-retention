@@ -108,7 +108,8 @@ export function sameName(a: Set<string>, b: Set<string>) {
 }
 
 /** "www.cedar-lane.example" → "cedar-lane.example"; null when not a web address. */
-export function hostOf(url: string | null | undefined) {
+export function hostOf(value: string | null | undefined) {
+  const url = value?.trim()
   if (!url) return null
   try {
     const parsed = new URL(/^[a-z]+:\/\//i.test(url) ? url : `https://${url}`)
@@ -125,23 +126,36 @@ const sameSite = (a: string, b: string) =>
 
 /**
  * The site most catalogue links point to, when it is not the brand's own
- * website (or its Shopify store) and at least half the links go there.
+ * website (or its Shopify store) and more than half the links go there.
+ * Without a website in the profile there is nothing to compare with.
  */
 export function catalogueElsewhere(
   productUrls: string[],
   website: string | null,
   shopDomain: string | null
 ) {
-  const own = [hostOf(website), hostOf(shopDomain)].filter((h): h is string =>
-    Boolean(h)
-  )
+  const site = hostOf(website)
+  if (!site) return null
+  const own = [site, hostOf(shopDomain)].filter((h): h is string => Boolean(h))
   const hosts = productUrls.map(hostOf).filter((h): h is string => Boolean(h))
-  if (!own.length || hosts.length < 2) return null
+  if (hosts.length < 2) return null
   const elsewhere = hosts.filter((h) => !own.some((o) => sameSite(h, o)))
-  if (elsewhere.length * 2 < hosts.length) return null
+  if (elsewhere.length * 2 <= hosts.length) return null
   const counts = new Map<string, number>()
   for (const h of elsewhere) counts.set(h, (counts.get(h) ?? 0) + 1)
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]![0]
+}
+
+/** "DE" → "Germany", in plain English; the code itself if unknown. */
+export function countryName(code: string) {
+  try {
+    return (
+      new Intl.DisplayNames('en', { type: 'region' }).of(code.toUpperCase()) ??
+      code
+    )
+  } catch {
+    return code
+  }
 }
 
 export function brandMismatches(input: MismatchInput): Mismatch[] {
@@ -170,10 +184,17 @@ export function brandMismatches(input: MismatchInput): Mismatch[] {
         message: `Your Brand profile says “${label}”, but the connected Shopify store is ${input.shopDomain}. Check that the profile and product catalogue belong to this store.`
       })
   }
-  // The website the Klaviyo organisation reported.
+  // The website the Klaviyo organisation reported (its Shopify store's
+  // address counts as the brand's own too).
   const brandHost = hostOf(input.website)
   const klaviyoHost = hostOf(input.klaviyo?.website)
-  if (brandHost && klaviyoHost && !sameSite(brandHost, klaviyoHost))
+  const shopHost = hostOf(input.shopDomain)
+  if (
+    brandHost &&
+    klaviyoHost &&
+    !sameSite(brandHost, klaviyoHost) &&
+    !(shopHost && sameSite(shopHost, klaviyoHost))
+  )
     found.push({
       source: 'klaviyo',
       message: `Your Brand profile’s website is ${brandHost}, but the connected Klaviyo account’s website is ${klaviyoHost}.`
@@ -190,7 +211,7 @@ export function brandMismatches(input: MismatchInput): Mismatch[] {
     if (k.country && s.country && k.country !== s.country)
       found.push({
         source: 'shopify',
-        message: `The Klaviyo account is in ${k.country}, but the Shopify store is in ${s.country}. Check that both accounts belong to this brand.`
+        message: `The Klaviyo account is in ${countryName(k.country)}, but the Shopify store is in ${countryName(s.country)}. Check that both accounts belong to this brand.`
       })
   }
   const other = catalogueElsewhere(
@@ -201,7 +222,7 @@ export function brandMismatches(input: MismatchInput): Mismatch[] {
   if (other)
     found.push({
       source: 'catalogue',
-      message: `Most products in your catalogue link to ${other}, not to ${brandHost ?? 'your website'}. Check that the catalogue belongs to this brand before the AI uses it.`
+      message: `Most products in your catalogue link to ${other}, not to ${brandHost}. Check that the catalogue belongs to this brand before the AI uses it.`
     })
   return found
 }

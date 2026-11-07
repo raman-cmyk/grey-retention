@@ -75,20 +75,17 @@ async function save(
   return saved
 }
 
-/** "cedar-lane.example" → "https://cedar-lane.example"; null when unusable. */
-function websiteOf(domain: string | null | undefined) {
-  const host = (domain ?? '').trim().toLowerCase()
-  return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(host) ? `https://${host}` : null
-}
-
-/** Only well-formed facts are saved (the database checks them again). */
+/**
+ * Only well-formed facts are saved (the database checks them again). The
+ * website is kept as its origin only (`https://host`): the guard needs the
+ * host, and nothing after it can then hold a key.
+ */
 function accountFacts(account: AccountReport) {
+  const website = account.website?.match(
+    /^(https:\/\/[a-z0-9.-]+\.[a-z]{2,})\/?$/
+  )?.[1]
   return {
-    account_website:
-      account.website &&
-      /^https:\/\/[a-z0-9.-]+\.[a-z]{2,}(\/\S*)?$/.test(account.website)
-        ? account.website
-        : undefined,
+    account_website: website && website.length <= 300 ? website : undefined,
     account_currency:
       account.currency && /^[A-Z]{3}$/.test(account.currency)
         ? account.currency
@@ -118,14 +115,13 @@ export async function connectKlaviyo(
   const { context, db, verifier } = session
   const brand = await db
     .from('brand_profiles')
-    .select('brand_name,domain')
+    .select('brand_name')
     .eq('tenant_id', context.tenantId)
     .maybeSingle()
   const account = await verifier.klaviyo({
     keyHint: key.value.hint,
     workspaceLabel: brand.data?.brand_name || context.tenantName,
-    workspaceTimezone: context.timezone,
-    workspaceWebsite: websiteOf(brand.data?.domain)
+    workspaceTimezone: context.timezone
   })
   const saved = await save(db, {
     t: context.tenantId,

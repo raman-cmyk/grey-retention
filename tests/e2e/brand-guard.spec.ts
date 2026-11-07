@@ -68,4 +68,12 @@ test('UIR-021 the brand check warns before AI steps when Klaviyo is another bran
   await expect(check).toContainText(brandName)
   await check.getByRole('link', { name: 'Open the Brand profile' }).click()
   await expect(page).toHaveURL(/\/brand$/)
+
+  // Trying the other brand's sample does not move the brand timezone.
+  await page.goto('/settings')
+  await expect(
+    page
+      .getByRole('region', { name: 'Timezone' })
+      .getByText('Asia/Kathmandu (UTC+05:45)')
+  ).toBeVisible()
 })

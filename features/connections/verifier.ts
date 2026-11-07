@@ -12,8 +12,6 @@ export interface ConnectionVerifier {
     keyHint: string
     workspaceLabel: string
     workspaceTimezone: string
-    /** The Brand profile's website, when it has one. */
-    workspaceWebsite: string | null
   }): Promise<AccountReport & { templateCount: number; timezone: string }>
   shopify(input: {
     shopDomain: string
@@ -37,13 +35,16 @@ export type AccountReport = {
 
 /** Sample keys and tokens ending in this connect to ANOTHER brand's account. */
 export const OTHER_BRAND_SUFFIX = '0000'
-/** The other brand's sample account (a mismatch fixture, never real). */
+/**
+ * The other brand's sample account (a mismatch fixture, never real). It
+ * reports the workspace's own timezone, like the matching sample, so trying
+ * it never moves the brand timezone.
+ */
 export const OTHER_BRAND_ACCOUNT = {
   accountLabel: 'Northwind Outdoor (sample)',
   website: 'https://northwind-outdoor.example',
   currency: 'EUR',
-  country: 'DE',
-  timezone: 'Europe/Berlin'
+  country: 'DE'
 }
 /** What the matching sample accounts report. */
 const SAMPLE_CURRENCY = 'USD'
@@ -57,22 +58,26 @@ export class SampleConnectionVerifier implements ConnectionVerifier {
   async klaviyo({
     keyHint,
     workspaceLabel,
-    workspaceTimezone,
-    workspaceWebsite
+    workspaceTimezone
   }: {
     keyHint: string
     workspaceLabel: string
     workspaceTimezone: string
-    workspaceWebsite: string | null
   }) {
     if (keyHint.endsWith(OTHER_BRAND_SUFFIX))
-      return { ...OTHER_BRAND_ACCOUNT, templateCount: SAMPLE_TEMPLATE_COUNT }
+      return {
+        ...OTHER_BRAND_ACCOUNT,
+        templateCount: SAMPLE_TEMPLATE_COUNT,
+        timezone: workspaceTimezone
+      }
     return {
       accountLabel: workspaceLabel.slice(0, 200),
       templateCount: SAMPLE_TEMPLATE_COUNT,
-      // The sample account reports the workspace's own timezone and website.
+      // The matching sample reports the workspace's own timezone and no
+      // website: a copy of the profile's website would go stale when the
+      // owner corrects it, and then look like another brand's.
       timezone: workspaceTimezone,
-      website: workspaceWebsite,
+      website: null,
       currency: SAMPLE_CURRENCY,
       country: SAMPLE_COUNTRY
     }

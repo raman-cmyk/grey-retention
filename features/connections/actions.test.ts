@@ -88,7 +88,26 @@ describe('connectKlaviyo', () => {
         account_website: 'https://northwind-outdoor.example',
         account_currency: 'EUR',
         account_country: 'DE',
-        account_timezone: 'Europe/Berlin'
+        // Trying the other brand's sample never moves the brand timezone.
+        account_timezone: 'Asia/Kathmandu'
+      })
+    )
+  })
+
+  it('connects ANOTHER brand’s sample store for Shopify tokens ending in 0000', async () => {
+    await connectShopify(
+      {},
+      form({
+        shopDomain: 'cedar.myshopify.com',
+        accessToken: 'shpat_ab12cd34ef56ab12cd34ef560000'
+      })
+    )
+    expect(rpc).toHaveBeenCalledWith(
+      'connect_sample_provider',
+      expect.objectContaining({
+        provider: 'shopify',
+        account_currency: 'EUR',
+        account_country: 'DE'
       })
     )
   })
