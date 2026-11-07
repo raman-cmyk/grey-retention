@@ -39,6 +39,8 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   typedRoutes: true,
+  // The IMAP client (INB-001) loads its parts at run time; keep it unbundled.
+  serverExternalPackages: ['imapflow'],
   experimental: { serverActions: { bodySizeLimit: '12mb' } },
   async headers() {
     return [
