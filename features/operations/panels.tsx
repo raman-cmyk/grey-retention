@@ -85,58 +85,6 @@ export async function BudgetPanel({ tenantId }: { tenantId: string }) {
     </Panel>
   )
 }
-export async function HolidayPanel({
-  tenantId,
-  owner
-}: {
-  tenantId: string
-  owner: boolean
-}) {
-  const db = await createClient()
-  if (!db) return null
-  const r = await db
-    .from('holidays')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .order('event_date')
-  return (
-    <Panel title="Workspace holidays and events">
-      {r.error ? (
-        <Notice error>Events unavailable.</Notice>
-      ) : (
-        <ul className="mb-4 space-y-2 text-sm">
-          {r.data?.map((h) => (
-            <li key={h.id}>
-              {h.event_date} · {h.name} · {h.notes}
-            </li>
-          ))}
-        </ul>
-      )}
-      {owner && (
-        <ActionForm
-          action={operationAction}
-          className="grid gap-3 sm:grid-cols-2"
-        >
-          <input type="hidden" name="kind" value="holiday" />
-          <Field label="Event name">
-            <TextField name="name" required maxLength={200} />
-          </Field>
-          <Field label="Event date">
-            <TextField name="date" type="date" required />
-          </Field>
-          <Field label="Event notes">
-            <textarea name="notes" className={controlClass} maxLength={2000} />
-          </Field>
-          <div className="self-end">
-            <SubmitButton variant="secondary">
-              Save workspace event
-            </SubmitButton>
-          </div>
-        </ActionForm>
-      )}
-    </Panel>
-  )
-}
 export async function TeamPanel() {
   const ctx = await requireRequestContext('client'),
     db = await createClient()

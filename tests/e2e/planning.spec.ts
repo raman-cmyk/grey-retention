@@ -27,20 +27,17 @@ test('UC-05/06 guarded month review and exact weekly copy batch persist', async 
   }).format(eventSlot)
   const eventName = `Original studio day ${info.project.name}`
   await login(page, role)
-  await page.goto('/settings')
-  await page.getByLabel('Event name').fill(eventName)
-  await page.getByLabel('Event date').fill(eventDate)
+  await page.goto('/holidays')
+  await page.getByLabel('Name', { exact: true }).fill(eventName)
+  await page.getByLabel('Date', { exact: true }).fill(eventDate)
+  await page.getByLabel('Type', { exact: true }).selectOption('event')
   await page
-    .getByLabel('Event notes')
+    .getByLabel('Notes for the AI strategist (optional)')
     .fill('Original owner-supplied event; no offer implied.')
-  await page
-    .getByRole('button', { name: 'Save workspace event', exact: true })
-    .click()
+  await page.getByRole('button', { name: 'Add entry', exact: true }).click()
+  await expect(page.getByText(`Added “${eventName}”.`)).toBeVisible()
   await expect(
-    page.getByText(
-      `${eventDate} · ${eventName} · Original owner-supplied event; no offer implied.`,
-      { exact: true }
-    )
+    page.getByText('Original owner-supplied event; no offer implied.')
   ).toBeVisible()
   await page.goto('/brand')
   await page

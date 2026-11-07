@@ -140,7 +140,7 @@ describe('sidebar (expanded)', () => {
     )
     expect(
       nav.getByRole('link', { name: 'Holidays & Events' })
-    ).toHaveAttribute('href', '/settings#holidays')
+    ).toHaveAttribute('href', '/holidays')
     expect(nav.getByRole('link', { name: 'Connections' })).toHaveAttribute(
       'href',
       '/connections'
