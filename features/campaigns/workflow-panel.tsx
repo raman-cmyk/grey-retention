@@ -163,8 +163,13 @@ export async function WorkflowPanel({
             {owner && <RejectionForm campaign={c} />}
             {c.copy_state === 'approved' && (
               <Notice>
-                Owner approved copy v{c.copy_revision}. Next: make the design
-                below.
+                Owner approved copy v{c.copy_revision}.
+                {['unassigned', 'revisions_requested'].includes(
+                  c.design_state
+                ) &&
+                  (owner
+                    ? ' Next: make the design below.'
+                    : ' Next: the owner makes the design below.')}
               </Notice>
             )}
           </>

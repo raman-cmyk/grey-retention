@@ -151,6 +151,8 @@ The diagram is a proposed journey, not a replacement for the existing campaign-s
 
 ### UC-07 — Produce a design through a human designer
 
+> **Retired on 7 Nov 2026 (decision D3, RET-001).** There is no human designer: the AI builds every email from coded blocks (docs/BLOCK_LIBRARY.md). The designer routes answer Not found; this use case is kept as history.
+
 **Actor:** assigned designer; brand owner; admin for assignment/escalation. **Trigger:** approved copy selects the human path. **Precondition:** approved copy and authorized assignment. **Source:** PRD §8 Path A.
 
 1. Assign a designer and establish the 24-hour SLA.

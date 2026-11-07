@@ -97,8 +97,7 @@ export default async function CampaignPage({
                 </ActionForm>
               )}
             <p className="mt-4 text-xs leading-5 text-[var(--text-muted)]">
-              Brand owner approves each exact version. Assignment and escalation
-              belong to platform admin.
+              Brand owner approves each exact version.
             </p>
           </Panel>
           {context.tenantRole === 'owner' && !campaign.superseded_by_plan && (

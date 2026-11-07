@@ -128,8 +128,6 @@ export async function workflowAction(
     revalidatePath('/campaigns', 'layout')
     revalidatePath('/dashboard')
     revalidatePath('/campaign-agent')
-    revalidatePath('/designer/dashboard')
-    revalidatePath('/admin/designers')
     return {
       message: ['schedule', 'cancel', 'generate_copy'].includes(v.kind)
         ? 'Intent queued. Run fixture jobs to obtain a confirmed outcome.'

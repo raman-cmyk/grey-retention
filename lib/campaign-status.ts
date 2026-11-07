@@ -19,7 +19,7 @@ export const campaignStatuses = {
     label: 'Draft',
     tone: 'warning',
     meaning:
-      'The copy or the design is being made or changed. Nothing waits for you yet.'
+      'The copy or the design is being made or changed. Open it to see the next step.'
   },
   needs_approval: {
     label: 'Needs your approval',

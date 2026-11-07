@@ -64,4 +64,10 @@ select public.correct_asset('00000000-0000-4000-8000-000000000101','00000000-000
 select is((select design_state from public.campaigns where id='00000000-0000-4000-8000-000000000601'),'unassigned','corrected asset invalidates affected design approval');
 select is((select design_revision from public.campaigns where id='00000000-0000-4000-8000-000000000601'),4,'source correction bumps design revision');
 select throws_ok($$select public.review_render('00000000-0000-4000-8000-000000000101',current_setting('test.image_render')::uuid,3,'approved','whole_design','Owner approval')$$,'PT409',null,'old approved source cannot be approved again after correction');
+-- Kept from the retired designer journey (RET-001): another workspace
+-- cannot read this workspace's design artifacts in Storage.
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000004',true);
+select is((select count(*) from storage.objects where bucket_id='email-artifacts' and name like '00000000-0000-4000-8000-000000000101/%'),0::bigint,'another workspace cannot read design artifacts');
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',true);
+select is((select count(*) from storage.objects where bucket_id='email-artifacts' and name like '00000000-0000-4000-8000-000000000101/%'),3::bigint,'the owner reads their own design artifacts');
 select * from finish();rollback;

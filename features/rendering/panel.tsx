@@ -58,6 +58,13 @@ export async function RenderPanel({
           </div>
         </ActionForm>
       )}
+      {!r && c.design_state === 'owner_approved' && (
+        <Notice>
+          This design was approved as a designer upload before designers were
+          retired. The delivery package uses it; a new design needs your
+          approval again.
+        </Notice>
+      )}
       {r && (
         <div className="mt-5">
           <h3 className="mb-4 font-semibold">
