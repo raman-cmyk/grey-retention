@@ -1,0 +1,74 @@
+{
+  "subject": "New: meet the Example Balm",
+  "preview": "Our newest balm, made for everyday care.",
+  "brand": {
+    "name": "Example Co",
+    "site": "https://example.com",
+    "logo": "https://example.com/logo.png",
+    "font": "Poppins",
+    "ink": "#121212",
+    "background": "#FAFAFA",
+    "accent": "#B23F79",
+    "dark": "#6E1E2D",
+    "radius": "8px"
+  },
+  "type": "New arrival",
+  "blocks": [
+    { "type": "announcement_bar", "text": "Just launched" },
+    { "type": "header_logo" },
+    {
+      "type": "hero_product",
+      "eyebrow": "Just launched",
+      "headline": "Meet the Example Balm",
+      "sub": "One balm for the spots that need a little extra care.",
+      "image": "https://example.com/hero.png",
+      "alt": "Example Balm",
+      "url": "https://example.com/products/example-balm",
+      "cta": "Shop the new balm"
+    },
+    {
+      "type": "steps",
+      "heading": "How to use it",
+      "items": [
+        ["Start clean.", "Apply to clean, dry skin."],
+        ["Glide it on.", "Smooth over the area you want to care for."],
+        ["Make it a habit.", "Use it morning or night as the last step."]
+      ]
+    },
+    {
+      "type": "product_grid_2col",
+      "heading": "Pair it with",
+      "products": [
+        {
+          "title": "Example Toner",
+          "price": "$24.00",
+          "image": "https://example.com/toner.png",
+          "url": "https://example.com/products/example-toner"
+        },
+        {
+          "title": "Example Cream",
+          "price": "$30.00",
+          "image": "https://example.com/cream.png",
+          "url": "https://example.com/products/example-cream"
+        }
+      ]
+    },
+    {
+      "type": "faq",
+      "heading": "Quick answers",
+      "items": [
+        [
+          "Can I use more than one?",
+          "Yes. Start with one, then add another step."
+        ]
+      ]
+    },
+    {
+      "type": "cta",
+      "label": "Shop the new balm",
+      "url": "https://example.com/products/example-balm"
+    },
+    { "type": "signoff", "text": "With love, the Example team" },
+    { "type": "footer" }
+  ]
+}
