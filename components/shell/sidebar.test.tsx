@@ -178,6 +178,22 @@ describe('sidebar (expanded)', () => {
     expect(current.map((link) => link.textContent)).toEqual([label])
   })
 
+  it('keeps Assignments current on an open designer brief', () => {
+    location.pathname = '/designer/assignments/abc'
+    shell(undefined, {
+      navigation: designerNavigation,
+      contextLabel: 'Designer workspace'
+    })
+    const current = within(
+      screen.getByRole('navigation', {
+        name: 'Designer workspace navigation'
+      })
+    )
+      .getAllByRole('link')
+      .filter((link) => link.getAttribute('aria-current') === 'page')
+    expect(current.map((link) => link.textContent)).toEqual(['Assignments'])
+  })
+
   it('opens a closed group that holds the current page, without saving it', async () => {
     location.pathname = '/assets'
     shell()
