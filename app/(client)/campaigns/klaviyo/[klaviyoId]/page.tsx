@@ -8,6 +8,7 @@ import { campaignTone } from '@/features/dashboard/klaviyo-card'
 import { EmailPreviewCard } from '@/features/email-generation/preview-card'
 import { formatCount, formatMoney } from '@/features/klaviyo-data/summary'
 import type { AudienceRef } from '@/lib/providers/klaviyo-read'
+import { plannerBack } from '@/features/planner/back'
 import {
   InfoCard,
   KlaviyoDetail,
@@ -58,14 +59,18 @@ export default async function KlaviyoCampaignPage({
   searchParams
 }: {
   params: Promise<{ klaviyoId: string }>
-  searchParams: Promise<{ from?: string | string[] }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const [{ klaviyoId }, { from }, { timezone, data }] = await Promise.all([
+  const [{ klaviyoId }, query, { timezone, now, data }] = await Promise.all([
     params,
     searchParams,
     loadKlaviyo()
   ])
-  if (data.state !== 'sample') return <NotConnected from={from} data={data} />
+  const from = query.from
+  // Opened from the Campaigns planner: Back returns to that exact view.
+  const back = plannerBack(query, timezone, now)
+  if (data.state !== 'sample')
+    return <NotConnected from={from} back={back} data={data} />
   const campaign = data.snapshot.campaigns.find((c) => c.id === klaviyoId)
   if (!campaign) notFound()
   const tz = timezone
@@ -75,7 +80,7 @@ export default async function KlaviyoCampaignPage({
     value ? `${formatBrandDateTime(value, tz)} (${timezoneLabel(tz)})` : null
   const stats = campaign.stats
   return (
-    <KlaviyoDetail from={from}>
+    <KlaviyoDetail from={from} back={back}>
       <DetailHero
         icon={Mail}
         kind="Campaign"
