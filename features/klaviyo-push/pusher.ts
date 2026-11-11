@@ -6,7 +6,6 @@ import {
   type KlaviyoClient
 } from '@/lib/providers/klaviyo/client'
 import {
-  addVariation,
   audienceExists,
   campaignParts,
   createCampaign,
@@ -20,6 +19,7 @@ import {
   importImage,
   readDraft,
   setEvenTest,
+  templateHtml,
   updateVariation,
   type DraftRead,
   type VariationContent
@@ -44,23 +44,23 @@ import {
  * sent (D17: the owner schedules it in Klaviyo).
  *
  * Step 0's push that worked (docs/step0/README.md), step by step: the
- * pictures are imported into Klaviyo's library and the HTML points at them
- * (VISION rule 11); the final checks run on exactly the HTML sent; each
- * design becomes an HTML template; the campaign is made with its list or
- * segment, then its message with design A. For an A/B design test
- * (EML-005) design B is added, the message's test is set to an even split
- * with no winner and read back; until that is verified nothing else
- * happens, and if it fails (Klaviyo refuses, keeps other settings, the time
- * runs out) design B is taken out at once, so no draft is ever left that
- * Klaviyo's own A/B settings could finish by sending a "winner". If B
- * cannot be taken out the push is refused (`ab_test_unsafe`).
+ * audience is checked in the account; the pictures are imported into
+ * Klaviyo's library and the HTML points at them (VISION rule 11); the
+ * final checks run on exactly the HTML sent; each design becomes an HTML
+ * template; the campaign is made with its audience, then its message. For
+ * an A/B design test (EML-005) the message is made in ONE request with both
+ * designs and an even test with no winner, read back at once, so a draft
+ * never exists with two designs and Klaviyo's own A/B settings; if Klaviyo
+ * refuses that, the message is made with design A alone, and if it does
+ * not keep the even test, design B is taken out at once. Either way the
+ * answer says only design A went in. A push that cannot make the draft safe
+ * is refused (`ab_test_unsafe`) and logged as an error.
  *
  * Every step is saved as it is made (`PushStore`, under the build's push
- * lease), so a push that stops half way goes on where it was and never
- * makes a second picture, template or campaign: a campaign or template
- * whose answer was lost is found again. The same key again updates the
- * draft to this content; a draft the owner scheduled, sent, deleted or
- * changed in Klaviyo (its variations' names, subjects and previews, its
+ * lease), so a push that stops goes on where it was and never makes a
+ * second picture, template, campaign or message. The same key again
+ * updates the draft to this content; a draft the owner scheduled, sent,
+ * deleted or changed in Klaviyo (a subject, a preview, the A/B test, its
  * mark) is never touched (`rejected`).
  *
  * It never throws: Klaviyo's answers become the port's codes.
@@ -71,7 +71,7 @@ export type PushTemplate = {
   id: string
   hash: string
   deleted: boolean
-  /** The variation it was put on (then its content is there). */
+  /** The variation it is on now (one template per design at a time). */
   variation?: string | null
 }
 export type PushProgress = {
@@ -82,18 +82,19 @@ export type PushProgress = {
   messageId: string | null
   /** When the first campaign create was sent (its answer may be lost). */
   createStartedAt: string | null
+  /** When a message create was sent and not yet saved. */
+  messageStartedAt: string | null
   /** When a template create was sent and not yet saved. */
   templateStartedAt: string | null
   /** The list or segment the campaign was made for. */
   audienceId: string | null
   designs: 'both' | 'A' | null
   fallback: string | null
-  /** `pending`: design B was added and the even test is not verified yet. */
+  /** `pending`: an A/B message was sent for and not yet seen safe. */
   ab: 'pending' | 'verified' | null
   reason: string | null
-  /** A fingerprint of the variations as we left them. */
+  /** Fingerprints of the variations after our last write, and where we take them. */
   written: string | null
-  /** The fingerprint they are being changed to (a push stopped half way). */
   target: string | null
 }
 export type PushStep = Partial<
@@ -133,6 +134,7 @@ const empty: PushProgress = {
   campaignId: null,
   messageId: null,
   createStartedAt: null,
+  messageStartedAt: null,
   templateStartedAt: null,
   audienceId: null,
   designs: null,
@@ -148,6 +150,8 @@ const empty: PushProgress = {
  * time: everything made so far is saved, and the next run goes on.
  */
 class TimeUp extends Error {}
+/** Klaviyo may still be making what we asked for: come back, never ask twice. */
+class Wait extends Error {}
 
 /** A push we will not make; `checks` name what stopped it. */
 class Refused extends Error {
@@ -160,9 +164,11 @@ class Refused extends Error {
 }
 
 /** A push takes at most this long, so it ends inside its route's minute. */
-export const pushBudgetMs = 25_000
+export const pushBudgetMs = 30_000
 /** A create whose answer was lost is looked for from a minute before. */
 const findSlackMs = 60_000
+/** A create whose answer was lost may take this long to show. */
+const showMs = 120_000
 
 /** Our mark on a campaign: which push made it. */
 export const pushMark = (key: string) => `GROS draft ${key}`
@@ -181,22 +187,16 @@ function designsOf(input: DraftInput): Design[] {
   return [a, b]
 }
 
-type Shown = {
-  name: string | null
-  subject: string | null
-  preview: string | null
-}
-/** A fingerprint of the variations as Klaviyo shows them. */
-const fingerprint = (variations: Shown[]) =>
+/** One variation's fingerprint: what a reader sees of it (subject, preview). */
+const seen = (v: { subject: string | null; preview: string | null }) =>
   createHash('sha256')
-    .update(
-      JSON.stringify(
-        variations
-          .map((v) => [v.name ?? '', v.subject ?? '', v.preview ?? ''])
-          .sort()
-      )
-    )
+    .update(JSON.stringify([v.subject ?? '', v.preview ?? '']))
     .digest('hex')
+    .slice(0, 16)
+const fingerprints = (
+  vs: { subject: string | null; preview: string | null }[]
+) => [...new Set(vs.map(seen))].sort().join(',')
+const setOf = (s: string | null) => new Set(s ? s.split(',') : [])
 
 /** The client, refusing to start a request that might not end in time. */
 function timed(
@@ -221,7 +221,7 @@ type Deps = {
   source: PushSource
   store: PushStore
   now?: () => Date
-  /** The longest one push may take (default 25 s), each request at most `callMs`. */
+  /** The longest one push may take (default 30 s), each request at most `callMs`. */
   budgetMs?: number
   /** A time (ms since epoch) no push goes past, e.g. its route's end. */
   deadline?: number
@@ -256,9 +256,10 @@ async function failed(
   store: PushStore
 ): Promise<DraftResult> {
   const build = input.lease?.build ?? 'none'
-  if (error instanceof TimeUp) {
-    logger.info('Klaviyo push paused: out of time; the next run goes on', {
-      build
+  if (error instanceof TimeUp || error instanceof Wait) {
+    logger.info('Klaviyo push paused; the next run goes on', {
+      build,
+      why: error instanceof Wait ? 'klaviyo_catching_up' : 'out_of_time'
     })
     // Not a failed try: the build waits and the next run goes on from here.
     return { ok: false, code: 'rate_limited', retryAfterSeconds: 30 }
@@ -304,16 +305,27 @@ async function failed(
   return { ok: false, code: 'unavailable' }
 }
 
+/** A refused search or lookup is tried again, never taken as "not there". */
+const retried = (error: unknown): never => {
+  if (error instanceof KlaviyoError && error.kind === 'rejected')
+    throw new KlaviyoError('unavailable', error.details)
+  throw error
+}
+
 async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
   const now = deps.now ?? (() => new Date())
+  const started = now().getTime()
   const deadline = Math.min(
-    now().getTime() + (deps.budgetMs ?? pushBudgetMs),
+    started + (deps.budgetMs ?? pushBudgetMs),
     deps.deadline ?? Number.POSITIVE_INFINITY
   )
   // Checked before Klaviyo is called at all.
   if (input.sample) throw new Refused('sample_email', ['sample'])
   const ref = refOf(input)
   if (!ref) throw new Refused('no_push_lease', ['lease'])
+  // The build's content checks (QAG-001) must have passed.
+  if (input.contentChecked !== true)
+    throw new Refused('content_not_checked', ['release_qa'])
   const designs = designsOf(input)
   const before = preflight(
     designs.map((d) => d.html),
@@ -323,13 +335,15 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
 
   const live = await deps.source.client(input.tenantId)
   if (!live) return { ok: false, code: 'auth' }
-  const callMs = deps.callMs ?? 8_000
+  const callMs = deps.callMs ?? 6_000
   const left = () => deadline - now().getTime()
   const client = timed(live, left, callMs)
-  /** Before marking a create as sent: the create itself must fit. */
-  const fits = () => {
-    if (left() < callMs) throw new TimeUp()
+  /** Before marking a create as sent: everything it may need must fit. */
+  const fits = (requests: number) => {
+    if (left() < requests * callMs) throw new TimeUp()
   }
+  const ago = (iso: string | null) =>
+    iso ? now().getTime() - Date.parse(iso) : Number.POSITIVE_INFINITY
 
   let p = (await deps.store.load(ref)) ?? { ...empty }
   if (p.state === 'refused' && p.reason === 'externally_modified')
@@ -341,38 +355,76 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     delete rest.checks
     p = { ...p, ...rest, images: { ...p.images, ...(images ?? {}) } }
   }
-  const close = async (reason: string, check: string): Promise<never> => {
-    await save({ state: 'refused', reason }).catch(() => undefined)
-    throw new Refused(reason, [check])
+  const close = async (): Promise<never> => {
+    await save({ state: 'refused', reason: 'externally_modified' }).catch(
+      () => undefined
+    )
+    throw new Refused('externally_modified', ['externally_modified'])
   }
-  // After Klaviyo refused the even test, this draft stays design A.
-  const wanted = p.fallback ? designs.slice(0, 1) : designs
-  let made = false
+  /** Which variation is which design: as recorded, else by our name. */
+  const variationOf = (r: DraftRead, approach: 'A' | 'B') => {
+    const id = p.templates.find(
+      (t) => t.approach === approach && t.variation
+    )?.variation
+    return (
+      r.variations.find((v) => v.id === id) ??
+      r.variations.find((v) => v.name === designName(approach))
+    )
+  }
 
-  // 0. A draft made before: still a draft, still ours as we left it; an
-  //    A/B test left unverified is made safe before anything else.
+  // 0. A draft made before: an A/B message not yet seen safe is made safe
+  //    first; then it must still be a draft, ours, as we left it.
   let read: DraftRead | null = null
+  let parts: Awaited<ReturnType<typeof campaignParts>> = null
   if (p.messageId) {
-    read = await readDraft(client, p.messageId)
-    if (!read)
-      return p.written
-        ? close('externally_modified', 'externally_modified')
-        : // Never read since we made it: Klaviyo may not show it yet.
-          { ok: false, code: 'unavailable' }
-    if (read.status !== 'draft') throw new Refused('not_a_draft', ['not_draft'])
-    if (read.description !== pushMark(ref.key))
-      return close('externally_modified', 'externally_modified')
-    const shown = fingerprint(read.variations)
-    if (p.written && shown !== p.written && shown !== p.target)
-      return close('externally_modified', 'externally_modified')
-    if (p.ab === 'pending') read = await takeOutB(read, 'ab_test_not_finished')
+    // Untimed: an A/B message not yet seen safe is checked whatever the time.
+    read = await readDraft(p.ab === 'pending' ? live : client, p.messageId)
+    if (!read) {
+      if (p.ab === 'pending') {
+        logger.error(
+          'Klaviyo push: an A/B draft could not be read to check it is safe',
+          { build: ref.build }
+        )
+        throw new Wait()
+      }
+      // Never read since we made it: Klaviyo may not show it yet.
+      if (!p.written) throw new Wait()
+      return close()
+    }
+    if (read.status !== 'draft') {
+      if (p.ab === 'pending')
+        logger.error(
+          'Klaviyo push: an A/B draft not yet seen safe was scheduled',
+          { build: ref.build }
+        )
+      throw new Refused('not_a_draft', ['not_draft'])
+    }
+    if (read.description !== pushMark(ref.key)) return close()
+    if (p.ab === 'pending') read = await settle(read)
+    const allowed = new Set([...setOf(p.written), ...setOf(p.target)])
+    if (p.written && read.variations.some((v) => !allowed.has(seen(v))))
+      return close()
+    if (
+      p.ab === 'verified' &&
+      read.variations.length === 2 &&
+      read.winnerPercentage !== 0
+    )
+      return close()
   } else if (p.campaignId) {
-    const parts = await campaignParts(client, p.campaignId)
-    if (!parts || parts.description !== pushMark(ref.key))
-      return close('externally_modified', 'externally_modified')
+    parts = await campaignParts(client, p.campaignId)
+    if (!parts) {
+      if (ago(p.createStartedAt) < 10 * 60_000) throw new Wait()
+      return close()
+    }
+    if (parts.description !== pushMark(ref.key)) return close()
   }
   if (p.audienceId && p.audienceId !== input.audienceId)
     throw new Refused('audience_changed', ['audience'])
+  // A draft made with one design (or after Klaviyo refused the even test)
+  // stays one design: design B is only ever made together with its test.
+  const madeAlone =
+    !!p.fallback || (!!read && read.variations.length === 1 && p.ab === null)
+  const wanted = madeAlone ? designs.slice(0, 1) : [...designs]
 
   // 1. The planned list or segment is in this account (before any write).
   if (!p.campaignId && !(await audienceExists(client, input.audienceId)))
@@ -393,6 +445,7 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     await save({ images: { [src]: url } })
   }
   const htmls = wanted.map((d) => withImages(d.html, p.images))
+  const hashes = htmls.map(htmlHash)
 
   // 3. The final checks on exactly the HTML sent.
   const moved = new Set(Object.values(p.images))
@@ -401,74 +454,79 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
   const failing = checks.filter((c) => !c.pass).map((c) => c.id)
   if (failing.length) throw new Refused('final_checks', failing)
 
-  // 4. One template per design: none when its variation already shows
-  //    this design; one whose answer was lost is found by its name.
-  const templates: PushTemplate[] = []
-  for (const [i, d] of wanted.entries()) {
-    const hash = htmlHash(htmls[i]!)
-    const onVariation = read?.variations.map((v) => v.id) ?? []
-    let t =
-      p.templates.find(
-        (x) =>
-          x.approach === d.approach &&
-          x.hash === hash &&
-          !!x.variation &&
-          onVariation.includes(x.variation)
-      ) ??
-      p.templates.find(
-        (x) => x.approach === d.approach && x.hash === hash && !x.deleted
-      )
-    if (!t) {
-      const name = templateName(ref.key, d.approach, hash)
-      let id: string | null = null
-      if (p.templateStartedAt)
-        id = await findTemplate(
-          client,
-          name,
-          new Date(Date.parse(p.templateStartedAt) - findSlackMs)
-        ).catch((error) => {
-          // Without template read access a lost template stays behind.
-          if (error instanceof KlaviyoError && error.kind === 'missing_scope')
-            return null
-          throw error
-        })
-      if (!id) {
-        fits()
-        await save({ templateStartedAt: now().toISOString() })
-        id = await createTemplate(client, name, htmls[i]!)
-      }
-      t = { approach: d.approach, id, hash, deleted: false, variation: null }
-      await save({ templates: [...p.templates, t], templateStartedAt: null })
+  /** A template of this design (never one already deleted). */
+  const templateFor = async (i: number) => {
+    const approach = wanted[i]!.approach
+    const found = p.templates.find(
+      (t) => t.approach === approach && t.hash === hashes[i] && !t.deleted
+    )
+    if (found) return found
+    const name = templateName(ref.key, approach, hashes[i]!)
+    let id: string | null = null
+    if (p.templateStartedAt)
+      id = await findTemplate(
+        client,
+        name,
+        new Date(Date.parse(p.templateStartedAt) - findSlackMs)
+      ).catch((error) => {
+        // Without template read access a lost template stays behind.
+        if (error instanceof KlaviyoError && error.kind === 'missing_scope')
+          return null
+        return retried(error)
+      })
+    if (!id) {
+      fits(1)
+      await save({ templateStartedAt: now().toISOString() })
+      id = await createTemplate(client, name, htmls[i]!)
     }
-    templates.push(t)
+    const t: PushTemplate = {
+      approach,
+      id,
+      hash: hashes[i]!,
+      deleted: false,
+      variation: null
+    }
+    await save({ templates: [...p.templates, t], templateStartedAt: null })
+    return t
   }
-  const contents: VariationContent[] = wanted.map((d, i) => ({
-    name: designName(d.approach),
+  /** Template `t` is now on `variation` (and no other template of its design). */
+  const applied = (t: PushTemplate, variation: string) =>
+    save({
+      templates: p.templates.map((x) =>
+        x.id === t.id
+          ? { ...x, variation }
+          : x.approach === t.approach && x.variation === variation
+            ? { ...x, variation: null }
+            : x
+      )
+    })
+  const content = (i: number, templateId: string): VariationContent => ({
+    name: designName(wanted[i]!.approach),
     subject: input.subject,
     preview: input.preheader,
-    templateId: templates[i]!.id
-  }))
+    templateId
+  })
 
-  // 5. The campaign, made once (found again if its answer was lost).
+  // 4. Each design's template, then the campaign, made once (found again
+  //    if its answer was lost), as Step 0 did.
+  const templates: PushTemplate[] = []
+  if (!p.messageId)
+    for (const i of wanted.keys()) templates.push(await templateFor(i))
   if (!p.campaignId) {
     if (p.createStartedAt) {
       const found = await findOwnCampaign(client, {
         name: input.name,
         description: pushMark(ref.key),
         since: new Date(Date.parse(p.createStartedAt) - findSlackMs)
-      }).catch((error) => {
-        // A refused search is retried, never taken as "not there".
-        if (error instanceof KlaviyoError && error.kind === 'rejected')
-          throw new KlaviyoError('unavailable', error.details)
-        throw error
-      })
+      }).catch(retried)
       if (found === 'ambiguous')
         throw new Refused('campaign_ambiguous', ['campaign'])
       if (found) await save({ campaignId: found })
+      // Not there yet: Klaviyo may still show it; never make a second one.
+      else if (ago(p.createStartedAt) < showMs) throw new Wait()
     }
     if (!p.campaignId) {
-      fits()
-      // Only the first create starts the search window.
+      fits(1)
       if (!p.createStartedAt)
         await save({
           createStartedAt: now().toISOString(),
@@ -484,39 +542,83 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     }
   }
 
-  // 6. Its message, with design A (one Klaviyo made itself is used).
+  // 5. Its message, made once, in one request with its designs: an A/B
+  //    message has both and the even test, and is checked safe at once.
   if (!p.messageId) {
-    const parts = await campaignParts(client, p.campaignId!)
-    if (!parts) return { ok: false, code: 'unavailable' }
+    parts = parts ?? (await campaignParts(client, p.campaignId!))
+    if (!parts) throw new Wait()
     if (parts.messageIds.length > 1)
       throw new Refused('campaign_ambiguous', ['campaign'])
-    let messageId = parts.messageIds[0]
-    if (!messageId) {
-      if (!parts.audienceRef)
-        throw new KlaviyoError('invalid_response', {
-          endpoint: '/api/campaigns/'
-        })
-      messageId = await createMessage(client, {
-        campaignId: p.campaignId!,
-        audienceRef: parts.audienceRef,
-        name: input.name,
-        variation: contents[0]!
+    const existing = parts.messageIds[0]
+    if (existing) {
+      // A message Klaviyo made itself (or one whose answer was lost): it is
+      // taken over, with one design.
+      await save({ messageId: existing, messageStartedAt: null })
+      read = await readDraft(client, existing)
+      if (!read) throw new Wait()
+      wanted.splice(1)
+    } else {
+      // A message sent for may still appear: never make a second one.
+      if (ago(p.messageStartedAt) < showMs) throw new Wait()
+      // The create and its read back must fit (they run without the
+      // per-request check); taking design B out again, when needed, may run
+      // up to two requests past the end (the route leaves room for it).
+      fits(2)
+      await save({
+        messageStartedAt: now().toISOString(),
+        target: fingerprints(wanted.map((_, i) => content(i, ''))),
+        ...(wanted.length === 2 ? { ab: 'pending' as const } : {})
       })
-      made = true
-    }
-    await save({ messageId })
-    read = await readDraft(client, messageId)
-    // Just made: Klaviyo may not show it yet.
-    if (!read) return { ok: false, code: 'unavailable' }
-    if (made) {
-      const a = read.variations[0]
-      if (read.variations.length !== 1 || !a)
-        throw new KlaviyoError('invalid_response', {
-          endpoint: '/api/campaign-messages/'
+      let messageId: string
+      try {
+        messageId = await createMessage(live, {
+          campaignId: p.campaignId!,
+          audienceRef: parts.audienceRef ?? '',
+          name: input.name,
+          variations: templates.map((t, i) => content(i, t.id))
         })
-      await applied(templates[0]!.id, a.id)
+      } catch (error) {
+        if (
+          wanted.length !== 2 ||
+          !(error instanceof KlaviyoError && error.kind === 'rejected')
+        )
+          throw error
+        // Klaviyo refused the message with its test: design A alone.
+        await save({ ab: null, designs: 'A', fallback: 'ab_test_refused' })
+        logger.warn('Klaviyo push: only design A went in', {
+          build: ref.build,
+          reason: 'ab_test_refused'
+        })
+        wanted.splice(1)
+        messageId = await createMessage(live, {
+          campaignId: p.campaignId!,
+          audienceRef: parts.audienceRef ?? '',
+          name: input.name,
+          variations: [content(0, templates[0]!.id)]
+        })
+      }
+      await save({ messageId, messageStartedAt: null })
+      const made = await readDraft(live, messageId)
+      if (!made) {
+        if (p.ab === 'pending')
+          logger.error(
+            'Klaviyo push: an A/B draft could not be read to check it is safe',
+            { build: ref.build }
+          )
+        throw new Wait()
+      }
+      read = made
+      for (const [i, t] of templates.slice(0, wanted.length).entries()) {
+        const v =
+          read.variations.find(
+            (x) => x.name === designName(wanted[i]!.approach)
+          ) ?? read.variations[i]
+        if (v) await applied(t, v.id)
+      }
+      if (p.ab === 'pending') read = await settle(read)
+      if (p.fallback) wanted.splice(1)
+      await save({ written: fingerprints(read.variations) })
     }
-    await save({ written: fingerprint(read.variations) })
   }
   if (!read)
     throw new KlaviyoError('invalid_response', {
@@ -524,166 +626,88 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     })
   const messageId = p.messageId!
 
-  // Which variation is which design: as recorded, else by our names, else
-  // the one variation of a message we just took over.
-  const recorded = (approach: 'A' | 'B') =>
-    [...p.templates]
-      .reverse()
-      .find((t) => t.approach === approach && t.variation)?.variation ?? null
-  const variationOf = (approach: 'A' | 'B') =>
-    read!.variations.find((v) => v.id === recorded(approach)) ??
-    read!.variations.find((v) => v.name === designName(approach)) ??
-    (approach === 'A' && read!.variations.length === 1 && !recorded('A')
-      ? read!.variations[0]
-      : undefined)
-  const known = new Set(
-    (['A', 'B'] as const).map((a) => variationOf(a)?.id).filter(Boolean)
-  )
-  if (read.variations.some((v) => !known.has(v.id)))
-    return close('externally_modified', 'externally_modified')
-
-  // 7. Design A takes this content.
-  const shown = read.variations.map((v) => ({ ...v }))
-  const wrote = async (change: () => void) => {
-    change()
-    await save({ written: fingerprint(shown) })
-  }
-  // Where this push takes the variations: a push stopped half way is
-  // recognised by it, never taken for a change made in Klaviyo.
+  // 6. Each design's variation shows this content (written only where it
+  //    does not), then read back.
+  const a =
+    variationOf(read, 'A') ??
+    (read.variations.length === 1 ? read.variations[0] : undefined)
+  const b = wanted.length === 2 ? variationOf(read, 'B') : undefined
+  if (!a || (wanted.length === 2 && !b)) return close()
+  const ours = new Set([a.id, b?.id].filter(Boolean))
+  // A variation neither design: a leftover B of a one-design draft is
+  // taken out; anything else was made in Klaviyo.
+  const others = read.variations.filter((v) => !ours.has(v.id))
+  if (others.some((v) => v.name !== designName('B'))) return close()
+  if (others.length) read = await takeOutB(read)
   await save({
-    target: fingerprint(
-      contents.map((c) => ({
-        name: c.name,
-        subject: c.subject,
-        preview: c.preview
-      }))
-    )
+    target: fingerprints([
+      ...read.variations,
+      ...wanted.map((_, i) => content(i, ''))
+    ])
   })
-  const a = variationOf('A')!
-  if (!showing(a, contents[0]!, templates[0]!)) {
-    await updateVariation(client, a.id, contents[0]!)
-    await applied(templates[0]!.id, a.id)
-    await wrote(() =>
-      Object.assign(
-        shown.find((v) => v.id === a.id)!,
-        contents[0]
-      )
-    )
+  let wrote = false
+  for (const [i, v] of [a, b].entries()) {
+    if (!v || i >= wanted.length) continue
+    const on = p.templates.find((t) => t.variation === v.id)
+    const same = on?.hash === hashes[i]
+    if (same && v.subject === input.subject && v.preview === input.preheader)
+      continue
+    // The same design: the template the variation shows (Klaviyo's copy)
+    // is kept; a new design gets its own template.
+    const t = same && v.templateId ? null : await templateFor(i)
+    await updateVariation(client, v.id, content(i, t?.id ?? v.templateId!))
+    if (t) await applied(t, v.id)
+    wrote = true
+  }
+  if (wrote) {
+    const after = await readDraft(client, messageId)
+    if (!after) throw new Wait()
+    read = after
+    await save({ written: fingerprints(read.variations) })
   }
 
-  // 8. Design B: added, then the even test set and read back; on any
-  //    failure before it is verified, taken out again.
-  const b = variationOf('B')
-  if (wanted.length === 2) {
-    const needsWork =
-      !b ||
-      !showing(b, contents[1]!, templates[1]!) ||
-      read.winnerPercentage !== 0
-    // The test is made in one go (B, the even split, the read back), so it
-    // starts only with time for two requests; then it runs without the
-    // per-request check, as taking B out again would.
-    if (needsWork && left() < 2 * callMs) throw new TimeUp()
-    const ab = live
-    try {
-      if (b) {
-        if (!showing(b, contents[1]!, templates[1]!)) {
-          await save({ ab: 'pending' })
-          await updateVariation(ab, b.id, contents[1]!)
-          await applied(templates[1]!.id, b.id)
-          await wrote(() =>
-            Object.assign(
-              shown.find((v) => v.id === b.id)!,
-              contents[1]
-            )
-          )
+  // 7. Our templates, once Klaviyo's copy on the variation is checked to be
+  //    ours; a failure here never fails the finished draft.
+  const kept: PushTemplate[] = []
+  for (const t of p.templates) {
+    const shown = read.variations.find((v) => v.id === t.variation)
+    let gone = t.deleted
+    if (
+      !gone &&
+      shown?.templateId &&
+      shown.templateId !== t.id &&
+      left() >= 2 * callMs
+    )
+      try {
+        const html = await templateHtml(client, shown.templateId)
+        if (html !== null && htmlHash(html) === t.hash) {
+          await deleteTemplate(client, t.id)
+          gone = true
         }
-      } else {
-        await save({ ab: 'pending' })
-        const id = await addVariation(ab, messageId, contents[1]!)
-        await applied(templates[1]!.id, id)
-        await wrote(() => shown.push({ id, ...contents[1]!, templateId: null }))
-      }
-      read = await readDraft(ab, messageId)
-      if (!read)
-        throw new KlaviyoError('unavailable', {
-          endpoint: '/api/campaign-messages/'
-        })
-      if (read.winnerPercentage !== 0) {
-        await save({ ab: 'pending' })
-        await setEvenTest(ab, messageId)
-        read = await readDraft(ab, messageId)
-        if (!read)
-          throw new KlaviyoError('unavailable', {
-            endpoint: '/api/campaign-messages/'
+      } catch (error) {
+        if (error instanceof KlaviyoError && error.kind === 'rejected')
+          gone = error.details.status === 404
+        else
+          logger.warn('Klaviyo push: a template was left for now', {
+            build: ref.build
           })
       }
-      if (read.winnerPercentage !== 0 || read.variations.length !== 2)
-        throw new Refused('ab_test_not_kept', ['ab_test'])
-      await save({ ab: 'verified', designs: 'both' })
-    } catch (error) {
-      if (error instanceof Refused && error.reason === 'ab_test_unsafe')
-        throw error
-      const reason =
-        error instanceof KlaviyoError && error.kind === 'rejected'
-          ? 'ab_test_refused'
-          : error instanceof Refused
-            ? error.reason
-            : 'ab_test_not_finished'
-      const current = (await readDraft(live, messageId)) ?? read
-      if (!current) throw error
-      read = await takeOutB(current, reason)
-      // Klaviyo refused or changed the test: this draft is design A from now.
-      if (reason === 'ab_test_refused' || reason === 'ab_test_not_kept') {
-        await save({ designs: 'A', fallback: reason })
-        logger.warn('Klaviyo push: only design A went in', {
-          build: ref.build,
-          reason
-        })
-      } else throw error
-    }
-  } else if (b) {
-    // One design asked for: a design B left from before is taken out.
-    read = await takeOutB(read, p.fallback ?? 'one_design')
+    // Deleted ones are kept only while a variation shows their design.
+    if (!gone || t.variation) kept.push({ ...t, deleted: gone })
   }
-
-  // 9. Our templates, once each variation keeps Klaviyo's own copy.
-  const kept: PushTemplate[] = []
-  const all = read.variations.every((v) => v.templateId)
-  for (const t of p.templates) {
-    if (
-      t.deleted ||
-      !all ||
-      read.variations.some((v) => v.templateId === t.id)
-    ) {
-      kept.push(t)
-      continue
-    }
-    try {
-      await deleteTemplate(client, t.id)
-    } catch (error) {
-      // Gone already, or refused: it is left; anything else is tried again.
-      if (!(error instanceof KlaviyoError && error.kind === 'rejected'))
-        throw error
-      logger.warn('Klaviyo push: a template was left', { build: ref.build })
-    }
-    kept.push({ ...t, deleted: true })
-  }
-  // Deleted ones are kept only while a variation still shows them.
-  const pruned = kept.filter(
-    (t) => !t.deleted || read!.variations.some((v) => v.id === t.variation)
-  )
 
   await save({
     state: 'drafted',
-    templates: pruned,
-    designs: p.designs ?? (wanted.length === 2 ? 'both' : 'A'),
-    written: fingerprint(read.variations),
+    templates: kept,
+    designs: wanted.length === 2 ? 'both' : 'A',
+    ...(wanted.length === 2 ? { ab: 'verified' as const } : {}),
+    written: fingerprints(read.variations),
     target: null,
     reason: null
   })
   logger.info('Klaviyo draft ready', {
     build: ref.build,
-    designs: p.designs ?? 'A',
+    designs: wanted.length === 2 ? 'both' : 'A',
     fallback: p.fallback ?? 'none',
     pictures: Object.keys(p.images).length
   })
@@ -691,73 +715,78 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     ok: true,
     campaignId: p.campaignId!,
     sample: false,
-    ...(input.variations ? { designs: p.designs ?? 'A' } : {})
-  }
-
-  /** The variation already shows this design (our template, put on it). */
-  function showing(
-    v: {
-      id: string
-      name: string | null
-      subject: string | null
-      preview: string | null
-    },
-    c: VariationContent,
-    t: PushTemplate
-  ) {
-    const now = p.templates.find((x) => x.id === t.id) ?? t
-    return (
-      now.variation === v.id &&
-      v.name === c.name &&
-      v.subject === c.subject &&
-      v.preview === c.preview
-    )
-  }
-
-  async function applied(templateId: string, variation: string) {
-    await save({
-      templates: p.templates.map((t) =>
-        t.id === templateId ? { ...t, variation } : t
-      )
-    })
+    ...(input.variations
+      ? { designs: wanted.length === 2 ? ('both' as const) : ('A' as const) }
+      : {})
   }
 
   /**
-   * Design B out of our draft, with no time check (it makes the draft
-   * safe), and one variation, design A, checked to remain; else refused.
+   * An A/B message seen once: safe with two variations and no winner;
+   * otherwise design B is taken out (design A from now on).
    */
-  async function takeOutB(r: DraftRead, why: string) {
-    const msg = p.messageId!
-    const a =
-      r.variations.find((v) => v.id === recorded('A')) ??
-      r.variations.find((v) => v.name === designName('A'))
+  async function settle(r: DraftRead) {
+    if (r.variations.length === 2 && r.winnerPercentage === 0) {
+      await save({ ab: 'verified', designs: 'both' })
+      return r
+    }
+    const after = await takeOutB(r)
+    if (after.variations.length === 1) {
+      await save({ designs: 'A', fallback: 'ab_test_not_kept' })
+      logger.warn('Klaviyo push: only design A went in', {
+        build: ref!.build,
+        reason: 'ab_test_not_kept'
+      })
+    }
+    return after
+  }
+
+  /**
+   * Every variation but design A out of our draft, with no time check (it
+   * makes the draft safe), and one variation, design A, checked to remain.
+   * If one cannot be taken out, the even test is set as a last resort;
+   * else the push is refused (`ab_test_unsafe`).
+   */
+  async function takeOutB(r: DraftRead) {
+    const keep = variationOf(r, 'A')
     for (const v of r.variations)
-      if (a && v.id !== a.id) {
-        try {
-          await deleteVariation(live!, v.id)
-        } catch (error) {
+      if (keep && v.id !== keep.id)
+        await deleteVariation(live!, v.id).catch((error) => {
           if (!(error instanceof KlaviyoError && error.kind === 'rejected'))
             throw error
-        }
-      }
-    const after = await readDraft(live!, msg)
+        })
+    let after = await readDraft(live!, p.messageId!)
     if (
-      !after ||
-      after.variations.length !== 1 ||
-      after.variations[0]!.id !== a?.id
+      after &&
+      after.variations.length === 1 &&
+      after.variations[0]!.id === keep?.id
     ) {
-      logger.error('Klaviyo push: design B could not be taken out', {
-        build: ref!.build,
-        why
-      })
-      throw new Refused('ab_test_unsafe', ['ab_test'])
+      await save({ ab: null, written: fingerprints(after.variations) })
+      return after
     }
-    await save({
-      ab: null,
-      written: fingerprint(after.variations),
-      target: null
+    if (
+      after &&
+      after.variations.length === 2 &&
+      p.fallback !== 'ab_test_refused'
+    ) {
+      await setEvenTest(live!, p.messageId!).catch(() => undefined)
+      after = await readDraft(live!, p.messageId!)
+      if (
+        after &&
+        after.variations.length === 2 &&
+        after.winnerPercentage === 0
+      ) {
+        logger.warn(
+          'Klaviyo push: design B could not be taken out; the even test holds',
+          { build: ref!.build }
+        )
+        await save({ ab: 'verified', designs: 'both', fallback: null })
+        return after
+      }
+    }
+    logger.error('Klaviyo push: design B could not be taken out', {
+      build: ref!.build
     })
-    return after
+    throw new Refused('ab_test_unsafe', ['ab_test'])
   }
 }
 

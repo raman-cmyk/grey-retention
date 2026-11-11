@@ -51,6 +51,12 @@ export type DraftInput = {
    * and two runs never both make a draft. The fake ignores it.
    */
   lease?: { build: string; token: string }
+  /**
+   * The build's content checks (QAG-001 `runReleaseQa`: links, code,
+   * products, copy, dates) passed on this email. The live pusher refuses an
+   * email without it (`release_qa`).
+   */
+  contentChecked?: boolean
 }
 
 export type DraftResult =

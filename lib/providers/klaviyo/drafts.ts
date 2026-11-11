@@ -91,6 +91,29 @@ export async function findTemplate(
   return ours.length === 1 ? ours[0]!.id : null
 }
 
+/** A template's HTML; null when Klaviyo no longer has it. */
+export async function templateHtml(client: KlaviyoClient, id: string) {
+  let body: unknown
+  try {
+    body = await client.get(
+      `/api/templates/${kid.parse(id)}?fields[template]=html`,
+      'templates:read'
+    )
+  } catch (error) {
+    if (gone(error)) return null
+    throw error
+  }
+  return (
+    parsed(
+      z.object({
+        data: z.object({ attributes: z.object({ html: z.string().nullish() }) })
+      }),
+      body,
+      '/api/templates/'
+    ).data.attributes.html ?? null
+  )
+}
+
 export async function deleteTemplate(client: KlaviyoClient, id: string) {
   kid.parse(id)
   await client.write('DELETE', `/api/templates/${id}`, null, 'templates:write')
@@ -257,16 +280,22 @@ export async function campaignParts(
   }
 }
 
-/** The campaign's email message with one variation (design A); its id. */
+/**
+ * The campaign's email message with its variations, made in one request:
+ * design A, or design A and B with an even test and no winner (EML-005),
+ * so a draft never exists with two designs and Klaviyo's own A/B settings.
+ * Its id.
+ */
 export async function createMessage(
   client: KlaviyoClient,
   message: {
     campaignId: string
     audienceRef: string
     name: string
-    variation: VariationContent
+    variations: VariationContent[]
   }
 ) {
+  const even = message.variations.length === 2
   const body = await client.write(
     'POST',
     '/api/campaign-messages',
@@ -274,8 +303,11 @@ export async function createMessage(
       data: {
         type: 'campaign-message',
         attributes: {
-          definition: { name: message.name.slice(0, 120) },
-          variations: [variation(message.variation)]
+          definition: {
+            name: message.name.slice(0, 120),
+            ...(even ? { ab_test: { winner_percentage: 0 } } : {})
+          },
+          variations: message.variations.map(variation)
         },
         relationships: {
           campaign: {
@@ -326,7 +358,8 @@ export async function findOwnCampaign(
   const query = new URLSearchParams({
     'fields[campaign]': 'definition.name,definition.description,created_at',
     filter: `greater-or-equal(created_at,${stamp(own.since)})`,
-    sort: '-created_at'
+    sort: '-created_at',
+    'page[size]': '100'
   })
   const page = z.object({
     data: z.array(
@@ -344,6 +377,7 @@ export async function findOwnCampaign(
     links: z.object({ next: z.string().nullish() }).partial().nullish()
   })
   const ours: string[] = []
+  let sameName = 0
   let body = parsed(
     page,
     await client.get(`/api/campaigns?${query}`, 'campaigns:read'),
@@ -351,11 +385,10 @@ export async function findOwnCampaign(
   )
   for (let n = 1; ; n++) {
     for (const c of body.data)
-      if (
-        c.attributes.definition.name === own.name.slice(0, 120) &&
-        c.attributes.definition.description === own.description
-      )
+      if (c.attributes.definition.description === own.description)
         ours.push(c.id)
+      else if (c.attributes.definition.name === own.name.slice(0, 120))
+        sameName++
     const next = body.links?.next
     if (!next) break
     // Not seen to the end: never guess that it is not there.
@@ -367,6 +400,8 @@ export async function findOwnCampaign(
     )
   }
   if (ours.length > 1) return 'ambiguous'
+  // Our name without our mark: Klaviyo may not keep the mark; never guess.
+  if (!ours.length && sameName) return 'ambiguous'
   return ours[0] ?? null
 }
 

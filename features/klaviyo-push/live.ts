@@ -20,7 +20,7 @@ type Db = SupabaseClient<Database>
 type Env = Record<string, string | undefined>
 
 /** Each Klaviyo request waits at most this long (a write may then be checked again). */
-export const pushCallMs = 8_000
+export const pushCallMs = 6_000
 
 /** The push steps in `klaviyo_draft_pushes`, saved through `save_klaviyo_push`. */
 export function databasePushStore(db: Db): PushStore {
@@ -29,7 +29,7 @@ export function databasePushStore(db: Db): PushStore {
       const { data, error } = await db
         .from('klaviyo_draft_pushes')
         .select(
-          'state,images,templates,campaign_id,message_id,create_started_at,template_started_at,audience_id,designs,fallback,ab,reason,written,target'
+          'state,images,templates,campaign_id,message_id,create_started_at,message_started_at,template_started_at,audience_id,designs,fallback,ab,reason,written,target'
         )
         .eq('tenant_id', tenantId)
         .eq('push_key', key)
@@ -43,6 +43,7 @@ export function databasePushStore(db: Db): PushStore {
         campaignId: data.campaign_id,
         messageId: data.message_id,
         createStartedAt: data.create_started_at,
+        messageStartedAt: data.message_started_at,
         templateStartedAt: data.template_started_at,
         audienceId: data.audience_id,
         ab: data.ab as PushProgress['ab'],
@@ -62,6 +63,7 @@ export function databasePushStore(db: Db): PushStore {
         ['campaignId', 'campaign_id'],
         ['messageId', 'message_id'],
         ['createStartedAt', 'create_started_at'],
+        ['messageStartedAt', 'message_started_at'],
         ['templateStartedAt', 'template_started_at'],
         ['audienceId', 'audience_id'],
         ['ab', 'ab'],

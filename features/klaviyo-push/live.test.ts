@@ -16,6 +16,7 @@ const input: DraftInput = {
   plannedSendAt: '2026-11-17T18:00:00Z',
   audienceId: 'SegEng90',
   sample: false,
+  contentChecked: true,
   lease: {
     build: '00000000-0000-4000-8000-00000000b101',
     token: '00000000-0000-4000-8000-00000000aaaa'

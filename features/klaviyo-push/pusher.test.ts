@@ -41,6 +41,7 @@ const input = (over: Partial<DraftInput> = {}): DraftInput => ({
   audienceId: 'SegEng90',
   sample: false,
   lease: { build: '00000000-0000-4000-8000-00000000b101', token: 'lease-1' },
+  contentChecked: true,
   ...over
 })
 const ab = (over: Partial<DraftInput> = {}) =>
@@ -63,6 +64,7 @@ function memoryStore() {
     campaignId: null,
     messageId: null,
     createStartedAt: null,
+    messageStartedAt: null,
     templateStartedAt: null,
     audienceId: null,
     designs: null,
@@ -125,7 +127,7 @@ function setup(
       ? {
           now: () => new Date(clock.now),
           budgetMs: options.budgetMs,
-          callMs: 8_000
+          callMs: 6_000
         }
       : {})
   })
@@ -145,11 +147,15 @@ const variationsOf = (account: FakeDraftAccount) => {
 async function untilDone(
   pusher: ReturnType<typeof setup>['pusher'],
   draft: DraftInput,
-  runs = 20
+  runs = 20,
+  /** Between runs (the build waits, e.g. for Klaviyo to show what it made). */
+  between: () => void = () => {}
 ) {
   let result = await pusher.createDraft(draft)
-  for (let n = 0; !result.ok && n < runs; n++)
+  for (let n = 0; !result.ok && n < runs; n++) {
+    between()
     result = await pusher.createDraft(draft)
+  }
   return result
 }
 
@@ -200,7 +206,7 @@ describe('the live Klaviyo draft push', () => {
       designs: 'A',
       ab: null,
       target: null,
-      written: expect.stringMatching(/^[a-f0-9]{64}$/)
+      written: expect.stringMatching(/^[a-f0-9]{16}$/)
     })
     expect(memory.saves.find((s) => s.checks)?.checks).toEqual([
       { id: 'images', pass: true, problems: [] },
@@ -249,9 +255,9 @@ describe('the live Klaviyo draft push', () => {
       ])
     })
 
-  it('refuses, and says so loudly, when design B cannot be taken out', async () => {
+  it('refuses, and says so loudly, when Klaviyo keeps its own test and design B cannot be taken out', async () => {
     const { account, pusher } = setup({
-      abTest: 'refused',
+      abTest: 'ignored',
       deleteVariation: 'refused'
     })
     expect(await pusher.createDraft(ab())).toEqual({
@@ -263,8 +269,8 @@ describe('the live Klaviyo draft push', () => {
     expect(variationsOf(account)).toHaveLength(2)
   })
 
-  it('takes design B out when the time runs out before the even test is verified, and goes on next run', async () => {
-    // 3 s an answer, 8 s a request, 25 s a push.
+  it('never leaves two designs with Klaviyo’s own test, whatever the time, and goes on next run', async () => {
+    // 3 s an answer, 6 s a request, 30 s a push.
     const clock = { now: Date.parse('2026-11-11T12:00:00Z'), perCall: 3_000 }
     const { account, memory, pusher } = setup({}, { clock })
     let result = await pusher.createDraft(ab())
@@ -328,10 +334,10 @@ describe('the live Klaviyo draft push', () => {
     for (const faults of [
       { rateLimit: '/api/images' },
       { outage: '/api/templates' },
-      { outage: '/api/campaign-messages' },
-      { outage: '/api/campaign-variations' }
+      { outage: '/api/campaign-messages' }
     ] satisfies DraftFaults[]) {
-      const { account, pusher } = setup(faults)
+      const clock = { now: Date.parse('2026-11-11T12:00:00Z'), perCall: 100 }
+      const { account, pusher } = setup(faults, { clock })
       const first = await pusher.createDraft(ab())
       expect(first.ok, JSON.stringify(faults)).toBe(false)
       if (faults.rateLimit)
@@ -340,19 +346,20 @@ describe('the live Klaviyo draft push', () => {
           code: 'rate_limited',
           retryAfterSeconds: 30
         })
-      expect(await untilDone(pusher, ab())).toMatchObject({
-        ok: true,
-        designs: 'both'
-      })
+      // A create answered 503 is never sent again before it could show.
+      expect(
+        await untilDone(pusher, ab(), 20, () => (clock.now += 180_000))
+      ).toMatchObject({ ok: true, designs: 'both' })
       expect(account.campaigns.size).toBe(1)
+      expect(account.messages.size).toBe(1)
       expect(account.images.size).toBe(2)
       expect(variationsOf(account)).toHaveLength(2)
     }
   })
 
-  it('goes on with a slow Klaviyo inside the cron’s 20 s', async () => {
+  it('goes on with a slow Klaviyo inside the cron’s 25 s', async () => {
     const clock = { now: Date.parse('2026-11-11T12:00:00Z'), perCall: 2_500 }
-    const { account, pusher } = setup({}, { clock, budgetMs: 20_000 })
+    const { account, pusher } = setup({}, { clock, budgetMs: 25_000 })
     expect(await untilDone(pusher, ab(), 40)).toMatchObject({
       ok: true,
       designs: 'both'
@@ -360,16 +367,14 @@ describe('the live Klaviyo draft push', () => {
     expect(account.campaigns.size).toBe(1)
   })
 
-  it('takes over the message Klaviyo makes itself, and keeps our designs when Klaviyo renames them', async () => {
+  it('takes over the message Klaviyo makes itself (one design), and keeps our designs when Klaviyo renames them', async () => {
     const auto = setup({ autoMessage: true })
     expect(await auto.pusher.createDraft(ab())).toMatchObject({
       ok: true,
-      designs: 'both'
+      designs: 'A'
     })
-    expect(variationsOf(auto.account).map((v) => v.name)).toEqual([
-      'Design A',
-      'Design B'
-    ])
+    expect(variationsOf(auto.account).map((v) => v.name)).toEqual(['Design A'])
+    expect(auto.account.messages.size).toBe(1)
     const renamed = setup({ renameVariations: true })
     expect(await renamed.pusher.createDraft(ab())).toMatchObject({
       ok: true,
@@ -388,7 +393,8 @@ describe('the live Klaviyo draft push', () => {
     const lag = setup({ lagRead: true })
     expect(await lag.pusher.createDraft(input())).toEqual({
       ok: false,
-      code: 'unavailable'
+      code: 'rate_limited',
+      retryAfterSeconds: 30
     })
     expect(await lag.pusher.createDraft(input())).toMatchObject({ ok: true })
     expect(lag.account.messages.size).toBe(1)
@@ -398,7 +404,10 @@ describe('the live Klaviyo draft push', () => {
       ok: false,
       code: 'unavailable'
     })
-    expect(partial.account.variations.size).toBe(1)
+    // Made in one request with its test, and never a second message.
+    expect(partial.account.messages.size).toBe(1)
+    expect((await partial.pusher.createDraft(ab())).ok).toBe(false)
+    expect(partial.account.messages.size).toBe(1)
   })
 
   it('never touches a draft the owner scheduled, deleted or changed in Klaviyo', async () => {
@@ -559,6 +568,71 @@ describe('the live Klaviyo draft push', () => {
     await pusher.createDraft(input())
     const [variation] = variationsOf(account)
     expect(account.templates.has(variation!.templateId!)).toBe(true)
+  })
+})
+
+describe('pushing the same email again (what the reviews found)', () => {
+  it('changes only the subject without a new template, and never sends a deleted one', async () => {
+    const { account, pusher } = setup()
+    await pusher.createDraft(input())
+    const made = () =>
+      account.calls.filter((c) => c === 'POST /api/templates').length
+    expect(made()).toBe(1)
+    // The fake refuses a template id it does not have.
+    expect(
+      await pusher.createDraft(input({ subject: 'New subject' }))
+    ).toMatchObject({
+      ok: true
+    })
+    expect(made()).toBe(1)
+    expect(variationsOf(account)[0]!.subject).toBe('New subject')
+    // And again: the draft is ours as we left it.
+    expect(
+      await pusher.createDraft(input({ subject: 'New subject' }))
+    ).toMatchObject({
+      ok: true
+    })
+  })
+
+  it('shows the design last pushed: A, then B, then A again', async () => {
+    const { account, pusher } = setup()
+    for (const title of ['H1', 'H2', 'H1']) {
+      expect(
+        await pusher.createDraft(input({ html: page(title, [hero]) }))
+      ).toMatchObject({
+        ok: true
+      })
+      const [v] = variationsOf(account)
+      expect(account.templates.get(v!.templateId!)!.html).toContain(
+        `<h1>${title}</h1>`
+      )
+    }
+  })
+
+  it('checks an A/B draft whose first read back failed before anything else', async () => {
+    const { account, memory, pusher } = setup({ lagRead: true })
+    expect((await pusher.createDraft(ab())).ok).toBe(false)
+    expect(memory.row()?.ab).toBe('pending')
+    expect(await pusher.createDraft(ab())).toMatchObject({
+      ok: true,
+      designs: 'both'
+    })
+    expect(only(account.messages)[1].winnerPercentage).toBe(0)
+    expect(memory.row()?.ab).toBe('verified')
+  })
+
+  it('never deletes a template a variation still points at, after a new design', async () => {
+    const { account, pusher } = setup({ copiesTemplates: false })
+    await pusher.createDraft(input())
+    await pusher.createDraft(input({ html: page('A2', [hero]) }))
+    const [v] = variationsOf(account)
+    expect(account.templates.get(v!.templateId!)!.html).toContain('<h1>A2</h1>')
+  })
+
+  it('keeps a finished draft finished when cleaning up a template fails', async () => {
+    const { account, pusher } = setup({ outage: '/api/templates/' })
+    expect(await pusher.createDraft(input())).toMatchObject({ ok: true })
+    expect(account.campaigns.size).toBe(1)
   })
 })
 

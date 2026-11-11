@@ -33,6 +33,9 @@ create table public.klaviyo_draft_pushes (
   -- When a campaign create was sent: its answer may be lost, so a retry
   -- looks for the campaign made since then before making one.
   create_started_at timestamptz,
+  -- When a message create was sent and not yet saved (never sent again
+  -- while it may still appear).
+  message_started_at timestamptz,
   -- When a template create was sent and not yet saved (found by its name).
   template_started_at timestamptz,
   -- The list or segment the campaign was made for (it never changes).
@@ -47,13 +50,12 @@ create table public.klaviyo_draft_pushes (
   checks jsonb not null default '[]'::jsonb
     check (jsonb_typeof(checks) = 'array' and octet_length(checks::text) <= 20000),
   reason text check (reason is null or reason ~ '^[a-z][a-z_]{1,39}$'),
-  -- A fingerprint of the draft's variations as we left them (names,
-  -- subjects, previews): a draft changed in Klaviyo since is never
-  -- overwritten.
-  written text check (written is null or written ~ '^[a-f0-9]{64}$'),
-  -- The fingerprint this push is taking them to (one stopped half way is
-  -- recognised by it).
-  target text check (target is null or target ~ '^[a-f0-9]{64}$'),
+  -- Fingerprints of the draft's variations as Klaviyo showed them after our
+  -- last write (one per variation: its subject and preview), and those this
+  -- push is taking them to: a draft showing anything else was changed in
+  -- Klaviyo and is never overwritten.
+  written text check (written is null or written ~ '^[a-f0-9]{16}(,[a-f0-9]{16}){0,7}$'),
+  target text check (target is null or target ~ '^[a-f0-9]{16}(,[a-f0-9]{16}){0,7}$'),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   primary key (tenant_id, push_key),
@@ -83,9 +85,10 @@ create or replace function public.save_klaviyo_push(build uuid, lease uuid, step
 returns void language plpgsql security definer set search_path = '' as $$
 declare
   allowed constant text[] := array['state', 'images', 'templates', 'campaign_id', 'message_id', 'create_started_at',
-    'template_started_at', 'audience_id', 'designs', 'fallback', 'ab', 'checks', 'reason', 'written', 'target'];
-  texts constant text[] := array['state', 'campaign_id', 'message_id', 'create_started_at', 'template_started_at',
-    'audience_id', 'designs', 'fallback', 'ab', 'reason', 'written', 'target'];
+    'message_started_at', 'template_started_at', 'audience_id', 'designs', 'fallback', 'ab', 'checks', 'reason',
+    'written', 'target'];
+  texts constant text[] := array['state', 'campaign_id', 'message_id', 'create_started_at', 'message_started_at',
+    'template_started_at', 'audience_id', 'designs', 'fallback', 'ab', 'reason', 'written', 'target'];
   t uuid; key uuid; cur public.klaviyo_draft_pushes;
 begin
   if coalesce(auth.role(), '') <> 'service_role' then raise exception 'Access denied' using errcode = '42501'; end if;
@@ -120,13 +123,15 @@ begin
       and private.safe_time(step->>'create_started_at') is null)
     or (step ? 'template_started_at' and step->'template_started_at' <> 'null'::jsonb
       and private.safe_time(step->>'template_started_at') is null)
+    or (step ? 'message_started_at' and step->'message_started_at' <> 'null'::jsonb
+      and private.safe_time(step->>'message_started_at') is null)
     or (step ? 'audience_id' and step->'audience_id' <> 'null'::jsonb and step->>'audience_id' !~ '^[A-Za-z0-9_-]{1,64}$')
     or (step ? 'ab' and step->'ab' <> 'null'::jsonb and step->>'ab' not in ('pending', 'verified'))
-    or (step ? 'target' and step->'target' <> 'null'::jsonb and step->>'target' !~ '^[a-f0-9]{64}$')
+    or (step ? 'target' and step->'target' <> 'null'::jsonb and step->>'target' !~ '^[a-f0-9]{16}(,[a-f0-9]{16}){0,7}$')
     or (step ? 'designs' and step->'designs' <> 'null'::jsonb and step->>'designs' not in ('both', 'A'))
     or (step ? 'fallback' and step->'fallback' <> 'null'::jsonb and step->>'fallback' !~ '^[a-z][a-z_]{1,39}$')
     or (step ? 'reason' and step->'reason' <> 'null'::jsonb and step->>'reason' !~ '^[a-z][a-z_]{1,39}$')
-    or (step ? 'written' and step->'written' <> 'null'::jsonb and step->>'written' !~ '^[a-f0-9]{64}$')
+    or (step ? 'written' and step->'written' <> 'null'::jsonb and step->>'written' !~ '^[a-f0-9]{16}(,[a-f0-9]{16}){0,7}$')
     or (step ? 'checks' and (jsonb_typeof(step->'checks') <> 'array' or jsonb_array_length(step->'checks') > 6
       or octet_length((step->'checks')::text) > 20000
       or exists (select 1 from jsonb_array_elements(step->'checks') x
@@ -165,6 +170,8 @@ begin
         else p.create_started_at end,
       template_started_at = case when step ? 'template_started_at' then (step->>'template_started_at')::timestamptz
         else p.template_started_at end,
+      message_started_at = case when step ? 'message_started_at' then (step->>'message_started_at')::timestamptz
+        else p.message_started_at end,
       audience_id = case when step ? 'audience_id' then step->>'audience_id' else p.audience_id end,
       ab = case when step ? 'ab' then step->>'ab' else p.ab end,
       target = case when step ? 'target' then step->>'target' else p.target end,

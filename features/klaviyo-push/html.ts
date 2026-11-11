@@ -13,7 +13,7 @@ import { gmailClipBytes } from '@/features/release-qa/checks'
 
 const imgSrc = /(<img\b[^>]*?\ssrc\s*=\s*)(["'])(.*?)\2/gi
 /** An `<img>` whose src is not in quotes: neither moved nor checked otherwise. */
-const unquotedSrc = /<img\b[^>]*?\ssrc\s*=\s*(?!["'])/i
+const unquotedSrc = /<img\b[^>]*?\ssrc\s*=(?!\s*["'])/i
 const decode = (s: string) => s.replace(/&amp;/g, '&')
 const encode = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
 

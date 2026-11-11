@@ -140,14 +140,14 @@ select throws_ok($$select pg_temp.save('{"campaign_id":null,"message_id":null}')
 select throws_ok($$select pg_temp.save('{"audience_id":"SegVIP"}')$$,'PT409',null,'its audience never changes');
 select throws_ok($$select pg_temp.save('{"create_started_at":"2026-11-11T13:00:00Z"}')$$,'PT409',null,
   'its first create time stays the first');
-select lives_ok($$select pg_temp.save(jsonb_build_object('ab','pending','target',repeat('c',64)))$$,'an A/B test under way');
+select lives_ok($$select pg_temp.save(jsonb_build_object('ab','pending','target',repeat('c',16)))$$,'an A/B test under way');
 select lives_ok($$select pg_temp.save('{"designs":"both","ab":"verified"}')$$,'and verified');
 select throws_ok($$select pg_temp.save('{"state":"started"}')$$,'PT409',null,'a push never starts again');
 select lives_ok($$select pg_temp.save('{"designs":"A"}')$$,'one design again, without a refusal, is fine');
 select lives_ok($$select pg_temp.save('{"designs":"both"}')$$,'and both again');
 select lives_ok($$select pg_temp.save(jsonb_build_object('designs','A','fallback','ab_test_refused','ab',null))$$,'Klaviyo refused the even test: design A');
 select throws_ok($$select pg_temp.save('{"designs":"both"}')$$,'PT409',null,'design A stays design A');
-select lives_ok($$select pg_temp.save(jsonb_build_object('state','drafted','designs','A','written',repeat('b',64),'reason',null))$$,
+select lives_ok($$select pg_temp.save(jsonb_build_object('state','drafted','designs','A','written',repeat('b',16),'reason',null))$$,
   'then the draft is ready');
 reset role;
 select results_eq($$select state, (select count(*) from jsonb_object_keys(images))::integer, campaign_id, message_id, designs, fallback

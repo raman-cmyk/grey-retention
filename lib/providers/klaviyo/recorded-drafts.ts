@@ -12,7 +12,10 @@ import type { KlaviyoResponse, KlaviyoTransport } from './client'
  */
 
 export type DraftFaults = {
-  /** The A/B settings PATCH is refused (400), or answered 200 and not kept. */
+  /**
+   * The A/B settings (in a message create or a PATCH) are refused (400), or
+   * answered and not kept.
+   */
   abTest?: 'refused' | 'ignored'
   /** The campaign is made, but its answer is lost (a timeout), once. */
   loseCreate?: boolean
@@ -129,7 +132,13 @@ const listSorts = [
 ]
 
 export function fakeDraftAccount(
-  options: { faults?: DraftFaults; now?: () => Date; audiences?: string[] } = {}
+  options: {
+    faults?: DraftFaults
+    now?: () => Date
+    audiences?: string[]
+    /** The most campaigns a list page holds (100, as Klaviyo). */
+    pageSize?: number
+  } = {}
 ): FakeDraftAccount {
   const now = options.now ?? (() => new Date())
   let n = 0
@@ -190,6 +199,14 @@ export function fakeDraftAccount(
     return mid
   }
   const lagged = new Set<string>()
+  /** A template id given that the account does not have (Klaviyo refuses it). */
+  const unknownTemplate = (definition: unknown) => {
+    const t =
+      isObj(definition) && isObj(definition.details)
+        ? definition.details.template_id
+        : undefined
+    return t !== undefined && t !== null && !account.templates.has(String(t))
+  }
   const relOf = (data: Obj | undefined, name: string) => {
     const rel = isObj(data?.relationships) ? (data.relationships as Obj) : {}
     const r = rel[name]
@@ -267,6 +284,17 @@ export function fakeDraftAccount(
       })
     }
     const template = path.match(/^\/api\/templates\/([^/]+)$/)
+    if (template && request.method === 'GET') {
+      const t = account.templates.get(template[1]!)
+      if (!t) return refused(404, 'not_found')
+      return json(200, {
+        data: {
+          type: 'template',
+          id: template[1],
+          attributes: { html: t.html }
+        }
+      })
+    }
     if (template && request.method === 'DELETE') {
       if (!account.templates.delete(template[1]!)) return refused(404)
       return json(204)
@@ -361,8 +389,9 @@ export function fakeDraftAccount(
       if (filter && !listFilter.test(filter)) return bad()
       const sort = url.searchParams.get('sort')
       if (sort && !listSorts.includes(sort)) return bad()
-      const size = Number(url.searchParams.get('page[size]') ?? 2)
-      if (!(size >= 1 && size <= 100)) return bad()
+      const asked = Number(url.searchParams.get('page[size]') ?? 10)
+      if (!(asked >= 1 && asked <= 100)) return bad()
+      const size = Math.min(asked, options.pageSize ?? 100)
       const since = filter.match(/greater-or-equal\(created_at,([^)]+)\)/)?.[1]
       const all = [...account.campaigns.entries()]
         .filter(
@@ -434,9 +463,22 @@ export function fakeDraftAccount(
             )))
       )
         return bad()
+      const vs = (variations ?? []) as Obj[]
+      if (vs.some((v) => unknownTemplate(v.definition))) return bad()
+      const ab = definition.ab_test
+      if (
+        ab !== undefined &&
+        (vs.length < 2 || account.faults.abTest === 'refused')
+      )
+        return bad()
       const mid = newMessage(cid as string, String(definition.name ?? ''))
-      for (const v of (variations ?? []) as Obj[])
-        addVariation(mid, v.definition as Obj)
+      for (const v of vs) addVariation(mid, v.definition as Obj)
+      if (
+        isObj(ab) &&
+        typeof ab.winner_percentage === 'number' &&
+        account.faults.abTest !== 'ignored'
+      )
+        account.messages.get(mid)!.winnerPercentage = ab.winner_percentage
       if (account.faults.lagRead) lagged.add(mid)
       return json(201, { data: { type: 'campaign-message', id: mid } })
     }
@@ -538,6 +580,7 @@ export function fakeDraftAccount(
         return bad()
       if (!m) return refused(404, 'not_found')
       if (m.status !== 'draft') return bad()
+      if (unknownTemplate(attributes.definition)) return bad()
       const vid = addVariation(mid as string, attributes.definition as Obj)
       return json(201, { data: { type: 'campaign-variation', id: vid } })
     }
@@ -559,7 +602,8 @@ export function fakeDraftAccount(
           data?.type !== 'campaign-variation' ||
           data.id !== variation[1] ||
           !attributes ||
-          !variationDefinition(attributes.definition)
+          !variationDefinition(attributes.definition) ||
+          unknownTemplate(attributes.definition)
         )
           return bad()
         const d = attributes.definition as Obj

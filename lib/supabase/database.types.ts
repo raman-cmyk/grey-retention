@@ -4281,6 +4281,7 @@ export type Database = {
           fallback: string | null
           images: Json
           message_id: string | null
+          message_started_at: string | null
           push_key: string
           reason: string | null
           state: string
@@ -4302,6 +4303,7 @@ export type Database = {
           fallback?: string | null
           images?: Json
           message_id?: string | null
+          message_started_at?: string | null
           push_key: string
           reason?: string | null
           state?: string
@@ -4323,6 +4325,7 @@ export type Database = {
           fallback?: string | null
           images?: Json
           message_id?: string | null
+          message_started_at?: string | null
           push_key?: string
           reason?: string | null
           state?: string

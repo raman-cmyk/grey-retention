@@ -158,6 +158,11 @@ describe('the Klaviyo draft writes', () => {
 
   it('makes a campaign, then its message, and reads it back; a deleted one reads as gone', async () => {
     const account = fakeDraftAccount()
+    account.templates.set('T1', {
+      name: 'T',
+      html: '<p>T</p>',
+      created: new Date(0).toISOString()
+    })
     const client = klaviyoClient(key, { transport: account.transport })
     expect(await audienceExists(client, 'SegEng90')).toBe(true)
     expect(await audienceExists(client, 'LstNews')).toBe(true)
@@ -177,12 +182,14 @@ describe('the Klaviyo draft writes', () => {
       campaignId,
       audienceRef: parts!.audienceRef!,
       name: 'Mother & Daughter',
-      variation: {
-        name: 'Design A',
-        subject: 'S',
-        preview: 'P',
-        templateId: 'T1'
-      }
+      variations: [
+        {
+          name: 'Design A',
+          subject: 'S',
+          preview: 'P',
+          templateId: 'T1'
+        }
+      ]
     })
     expect(await readDraft(client, messageId)).toMatchObject({
       status: 'draft',
@@ -206,7 +213,8 @@ describe('the Klaviyo draft writes', () => {
         description: 'GROS draft other',
         since
       })
-    ).toBeNull()
+      // Our name without our mark: never guessed.
+    ).toBe('ambiguous')
     account.messages.clear()
     expect(await readDraft(client, messageId)).toBeNull()
     // No address is built from an id that is not one.
@@ -214,7 +222,7 @@ describe('the Klaviyo draft writes', () => {
   })
 
   it('looks through every page of campaigns, and never guesses past the last one it read', async () => {
-    const account = fakeDraftAccount()
+    const account = fakeDraftAccount({ pageSize: 2 })
     const client = klaviyoClient(key, { transport: account.transport })
     for (let i = 0; i < 5; i++)
       await createCampaign(client, {
@@ -243,6 +251,11 @@ describe('the Klaviyo draft writes', () => {
 
   it('reads a partial answer as unknown, never as no variations', async () => {
     const account = fakeDraftAccount({ faults: { dropRelationships: true } })
+    account.templates.set('T1', {
+      name: 'T',
+      html: '<p>T</p>',
+      created: new Date(0).toISOString()
+    })
     const client = klaviyoClient(key, { transport: account.transport })
     const campaignId = await createCampaign(client, {
       name: 'N',
@@ -255,12 +268,14 @@ describe('the Klaviyo draft writes', () => {
       campaignId,
       audienceRef: parts!.audienceRef!,
       name: 'N',
-      variation: {
-        name: 'Design A',
-        subject: 'S',
-        preview: 'P',
-        templateId: 'T1'
-      }
+      variations: [
+        {
+          name: 'Design A',
+          subject: 'S',
+          preview: 'P',
+          templateId: 'T1'
+        }
+      ]
     })
     expect((await failure(readDraft(client, messageId))).kind).toBe(
       'invalid_response'
