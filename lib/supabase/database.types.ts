@@ -6173,6 +6173,14 @@ export type Database = {
         Returns: string
       }
       operator_diagnostics: { Args: never; Returns: Json }
+      platform_ai_usage_today: {
+        Args: never
+        Returns: {
+          cap_micro: number
+          reserved_micro: number
+          spent_micro: number
+        }[]
+      }
       prepare_copy_review: {
         Args: { t: string; week: string }
         Returns: string
@@ -6341,6 +6349,15 @@ export type Database = {
         Args: { invite: string; t: string }
         Returns: undefined
       }
+      reserve_ai_usage: {
+        Args: {
+          estimate: number
+          feature: string
+          operation: string
+          t: string
+        }
+        Returns: string
+      }
       reserve_fixture_usage: {
         Args: {
           estimate: number
@@ -6348,6 +6365,10 @@ export type Database = {
           operation: string
           t: string
         }
+        Returns: string
+      }
+      reserve_platform_ai_usage: {
+        Args: { estimate: number; feature: string; operation: string }
         Returns: string
       }
       resolve_admin_context: {
@@ -6574,6 +6595,23 @@ export type Database = {
           weekly: number
         }
         Returns: undefined
+      }
+      set_platform_ai_daily_cap: { Args: { cap: number }; Returns: undefined }
+      settle_ai_usage: {
+        Args: { actual: number; reservation: string; t: string }
+        Returns: undefined
+      }
+      settle_platform_ai_usage: {
+        Args: { actual: number; reservation: string }
+        Returns: undefined
+      }
+      settle_stale_ai_usage: {
+        Args: { older_than?: string; t: string }
+        Returns: number
+      }
+      settle_stale_platform_ai_usage: {
+        Args: { older_than?: string }
+        Returns: number
       }
       simulate_l2_schedule: {
         Args: {
