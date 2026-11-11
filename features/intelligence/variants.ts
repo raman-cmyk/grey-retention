@@ -150,14 +150,57 @@ export function variantProblems(
   return problems
 }
 
+type Row = VariantSpec['rows'][number]
+
+/** Neighbouring paragraphs are one text slot; social icons are one row. */
+export function mergeSlots(slots: Slot[]): Slot[] {
+  const merged: Slot[] = []
+  for (const slot of slots) {
+    const last = merged.at(-1)
+    if (last?.kind === 'text' && slot.kind === 'text')
+      merged[merged.length - 1] = {
+        kind: 'text',
+        lines: Math.min(12, last.lines + slot.lines)
+      }
+    else if (last?.kind === 'social' && slot.kind === 'social') continue
+    else merged.push(slot)
+  }
+  return merged
+}
+
+/**
+ * Rows of a single column are one stack: the same design whether the HTML
+ * put each part in a row of its own or all in one. The stack is cut again
+ * into rows of at most 8 slots, so it never takes more rows than before.
+ */
+export function stackRows(rows: Row[]): Row[] {
+  const out: Row[] = []
+  let stack: Slot[] = []
+  const flush = () => {
+    const merged = mergeSlots(stack)
+    for (let i = 0; i < merged.length; i += 8)
+      out.push({ columns: [{ width: 1, slots: merged.slice(i, i + 8) }] })
+    stack = []
+  }
+  for (const row of rows) {
+    if (row.columns.length === 1) stack.push(...row.columns[0]!.slots)
+    else {
+      flush()
+      out.push(row)
+    }
+  }
+  flush()
+  return out
+}
+
 /**
  * The structure as it is stored: defaults filled in, keys in a fixed order,
- * column widths to two decimals.
+ * single-column rows stacked, column widths to two decimals.
  */
 export function normalSpec(spec: VariantSpec): VariantSpec {
   const parsed = variantSpecSchema.parse(spec)
   return {
-    rows: parsed.rows.map((row) => ({
+    rows: stackRows(parsed.rows).map((row) => ({
       columns: row.columns.map((c) => ({
         width: Math.round(c.width * 100) / 100,
         slots: c.slots.map(normalSlot)

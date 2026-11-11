@@ -22,7 +22,8 @@ function database(answer: { data?: unknown; error?: { code: string } }) {
   return { rpc, db: { rpc } as unknown as Db }
 }
 const row = (over: Record<string, unknown> = {}) => ({
-  id: 'v1',
+  id: '00000000-0000-4000-8000-0000000000aa',
+  key: 'cta/seed',
   family: 'cta',
   layout: 'single_column',
   purpose: 'call_to_action',
@@ -94,15 +95,16 @@ describe('searchBlockVariants', () => {
       ok: true,
       variants: [
         {
-          id: 'v1',
+          id: 'cta/seed',
           family: 'cta',
           layout: 'single_column',
           purpose: 'call_to_action',
           styles: ['minimal'],
           spec: seedSpecs.cta.spec,
           source: 'seed',
-          evidence: 3,
-          matches: 2
+          evidenceCount: 3,
+          matches: 2,
+          score: null
         }
       ]
     })
@@ -148,8 +150,10 @@ describe('searchBlockVariants', () => {
       await searchBlockVariants(database({ error: { code: '08006' } }).db)
     ).toEqual({ ok: false, code: 'unavailable' })
     const found = await searchBlockVariants(
-      database({ data: [row(), row({ id: 'v2', spec: { rows: [] } })] }).db
+      database({
+        data: [row(), row({ key: 'cta/0123456789abcdef', spec: { rows: [] } })]
+      }).db
     )
-    expect(found.ok && found.variants.map((v) => v.id)).toEqual(['v1'])
+    expect(found.ok && found.variants.map((v) => v.id)).toEqual(['cta/seed'])
   })
 })

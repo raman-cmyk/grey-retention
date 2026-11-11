@@ -1,5 +1,5 @@
 begin;
-select plan(51);
+select plan(62);
 
 -- CI-002: the block library. Owner ...01 follows northwind.example
 -- (workspace 101); ...02 is a platform admin; ...03 is a designer with no
@@ -47,6 +47,7 @@ select ok(not bool_or(has_table_privilege(r, 'public.block_variants', p)),'brows
 select is((select count(*)::int from public.block_variants where source = 'seed' and pass = 'seed' and evidence = 0 and model is null),20,
   'the 20 seed blocks are in the library');
 select is((select count(distinct family)::int from public.block_variants),20,'one seed for each family');
+select is((select count(*)::int from public.block_variants where key = family || '/seed'),20,'each seed is named <family>/seed');
 
 -- A followed sample brand's email with four sections, tagged.
 set local role authenticated;
@@ -68,7 +69,7 @@ select public.record_inbox_message(current_setting('test.poll')::uuid,current_se
 select set_config('test.message',(select id::text from public.inbox_messages where message_key=pg_temp.k(1)),true);
 select set_config('test.job',(select id::text from public.claim_platform_job(array['inbox.assets'])),true);
 select public.record_inbox_sections(current_setting('test.job')::uuid,(select lease_token from public.platform_jobs where id=current_setting('test.job')::uuid),
-  'fake/'||pg_temp.k(1)||'.marked.html',(select jsonb_agg(pg_temp.sect(n)) from generate_series(1,5) n),null,0.5);
+  'fake/'||pg_temp.k(1)||'.marked.html',(select jsonb_agg(pg_temp.sect(n)) from generate_series(1,6) n),null,0.5);
 select public.finish_platform_job(current_setting('test.job')::uuid,(select lease_token from public.platform_jobs where id=current_setting('test.job')::uuid));
 reset role;
 update public.platform_jobs set available_at = now() where kind = 'inbox.label' and subject_key = current_setting('test.message');
@@ -79,7 +80,8 @@ select public.record_section_tags(current_setting('test.label')::uuid,current_se
   pg_temp.tag(1), pg_temp.tag(2),
   pg_temp.tag(3,'{"family":"cta","layout":"single_column","purpose":"call_to_action","styles":["minimal"]}'),
   jsonb_build_object('ordinal',4,'state','untagged','pass','strong','model','gemini-2.5-flash'),
-  pg_temp.tag(5,'{"family":"text","layout":"single_column","purpose":"story","styles":[]}')),'tags-v1');
+  pg_temp.tag(5,'{"family":"text","layout":"single_column","purpose":"story","styles":[]}'),
+  pg_temp.tag(6,'{"family":"text","layout":"single_column","purpose":"story","styles":[]}')),'tags-v1');
 select is((select count(*)::int from public.platform_jobs where kind='inbox.variant'),0,'no variant job before the email is tagged');
 select public.record_inbox_tags(current_setting('test.label')::uuid,current_setting('test.labellease')::uuid,
   jsonb_build_object('state','tagged','industry','apparel','email_type','new_arrivals','offer_type','percent_off','season','spring',
@@ -95,6 +97,8 @@ select isnt(current_setting('test.variant'),'','the worker claims it');
 -- Only well-formed entries, for this email's tagged sections.
 select throws_ok($$select public.record_block_variants(current_setting('test.label')::uuid,current_setting('test.labellease')::uuid,
   jsonb_build_array(pg_temp.made(1,pg_temp.k(10),pg_temp.k(11))))$$,'23514',null,'another kind of job cannot place sections');
+select throws_ok($$select public.record_block_variants(current_setting('test.variant')::uuid,gen_random_uuid(),
+  jsonb_build_array(pg_temp.made(1,pg_temp.k(10),pg_temp.k(11))))$$,'PT409',null,'a stale lease cannot place sections');
 select throws_ok($$select pg_temp.place('{}'::jsonb)$$,'23514',null,'a list of sections is required');
 select throws_ok($$select pg_temp.place((select jsonb_agg(pg_temp.made(1,pg_temp.k(10),pg_temp.k(11))) from generate_series(1,41)))$$,'23514',null,
   'at most 40 sections');
@@ -129,18 +133,23 @@ select is((select family||'/'||layout||'/'||purpose||'/'||array_to_string(styles
     from public.block_variants where fingerprint=pg_temp.k(10)),
   'product_feature/image_left/product_showcase/photo_led/competitor/maker/gemini-2.5-flash/1',
   'with the section''s own tags, from a competitor, seen once');
+select is((select key from public.block_variants where fingerprint=pg_temp.k(10)),'product_feature/'||left(pg_temp.k(10),16),
+  'named by its family and fingerprint');
+select throws_ok($$select pg_temp.place(jsonb_build_array(pg_temp.made(3,pg_temp.k(10),pg_temp.k(31))))$$,'23514',null,
+  'a fingerprint belongs to one family');
 select is(pg_temp.place(jsonb_build_array(pg_temp.made(2,pg_temp.k(10),pg_temp.k(12)),
     jsonb_build_object('section_id',pg_temp.section(3),'state','matched','variant_id',(select id from public.block_variants where family='cta'),
       'skeleton_fingerprint',pg_temp.k(30)),
-    jsonb_build_object('section_id',pg_temp.section(5),'state','unusable','skeleton_fingerprint',pg_temp.k(50)))),
-  '{"made": 0, "matched": 2, "dropped": 1}'::jsonb,'the same structure again adds evidence instead of a copy');
+    jsonb_build_object('section_id',pg_temp.section(5),'state','unusable','skeleton_fingerprint',pg_temp.k(50)),
+    jsonb_build_object('section_id',pg_temp.section(6),'state','unusable','skeleton_fingerprint',null))),
+  '{"made": 0, "matched": 2, "dropped": 2}'::jsonb,'the same structure again adds evidence instead of a copy');
 select is((select evidence from public.block_variants where fingerprint=pg_temp.k(10)),2,'the variant has been seen twice');
 select is((select evidence from public.block_variants where family='cta' and source='seed'),1,'a seed gains evidence too');
 select is((select count(*)::int from public.block_variants),21,'one new variant in all');
 select is((select string_agg(ordinal||':'||coalesce(variant_state,'-')||':'||(variant_id is not null)||':'||(skeleton_fingerprint is not null),
     ',' order by ordinal) from public.email_sections where inbox_message_id=current_setting('test.message')::uuid),
-  '1:made:true:true,2:matched:true:true,3:matched:true:true,4:-:false:false,5:unusable:false:true',
-  'each section knows what it became');
+  '1:made:true:true,2:matched:true:true,3:matched:true:true,4:-:false:false,5:unusable:false:true,6:unusable:false:false',
+  'each section knows what it became (an unusable structure is remembered only when a model answered)');
 select is(pg_temp.place(jsonb_build_array(pg_temp.made(1,pg_temp.k(13),pg_temp.k(11)),
     jsonb_build_object('section_id',pg_temp.section(5),'state','no_structure'))),
   '{"made": 0, "matched": 0, "dropped": 0}'::jsonb,'a retry places nothing twice');
@@ -162,6 +171,8 @@ select public.defer_platform_job(current_setting('test.variant')::uuid,current_s
 select is((select status||'/'||attempt||'/'||last_error_code from public.platform_jobs where id=current_setting('test.variant')::uuid),
   'queued/0/variants_continue','a variant job put back keeps its tries');
 reset role;
+update public.inbox_messages set labelled_at = labelled_at + interval '1 second' where id = current_setting('test.message')::uuid;
+select is((select count(*)::int from public.platform_jobs where kind='inbox.variant'),1,'a later change queues no second variant job');
 
 select throws_ok($$update public.email_sections set variant_state='made' where id=pg_temp.section(4)::uuid$$,'23514',null,
   'a placed section is placed whole');
@@ -170,14 +181,15 @@ select throws_ok($$update public.email_sections set variant_state='made' where i
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000003","role":"authenticated"}',true);
 select throws_ok($$select * from public.search_block_variants()$$,'42501',null,'someone who is not in a workspace cannot search');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000003"}',true);
+select throws_ok($$select * from public.search_block_variants()$$,'42501',null,'nor without a role in the token');
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
 select is((select count(*)::int from public.search_block_variants('{}', 100)),21,'any workspace member can, the whole library');
 select is((select count(*)::int from public.block_variants),0,'but not the table itself');
-select is((select string_agg(source||':'||evidence, ',') from public.search_block_variants('{"family":"product_feature"}')),
-  'competitor:2,seed:0','by family, most seen first');
-select is((select string_agg(family||':'||matches, ',') from public.search_block_variants('{"industry":"apparel","season":["spring","summer"]}')),
-  'product_feature:2,cta:1','by the emails'' labels: only variants seen in such emails, most seen there first');
-select is((select count(*)::int from public.search_block_variants('{"industry":"home"}')),0,'none seen in another industry');
+select is((select string_agg(key||':'||evidence, ',') from public.search_block_variants('{"family":"product_feature"}')),
+  'product_feature/'||left(pg_temp.k(10),16)||':2,product_feature/seed:0','by family, most seen first, by name');
+select is((select count(*)::int from public.search_block_variants('{"industry":"apparel"}')),0,
+  'a member finds nothing by the emails'' labels that fewer than 3 brands sent');
 select is((select string_agg(family, ',') from public.search_block_variants('{"style":["minimal"],"purpose":"call_to_action","source":"seed"}')),
   'cta','by style, purpose and source together');
 select is((select count(*)::int from public.search_block_variants('{}', 3)),3,'a search returns at most what was asked');
@@ -187,6 +199,51 @@ select throws_ok($$select * from public.search_block_variants('{"family":[]}')$$
 select throws_ok($$select * from public.search_block_variants('{}', 0)$$,'23514',null,'one to 100 results');
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
 select is((select count(*)::int from public.block_variants),21,'a platform admin reads the table');
+select is((select string_agg(family||':'||matches, ',') from public.search_block_variants('{"industry":"apparel","season":["spring","summer"]}')),
+  'product_feature:2,cta:1','and searches by the emails'' labels with no minimum, most seen there first');
+reset role;
+set local role service_role;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+select is((select string_agg(family||':'||matches, ',') from public.search_block_variants('{"industry":"apparel"}')),
+  'product_feature:2,cta:1','so do the agents');
+select is((select count(*)::int from public.search_block_variants('{"industry":"home"}')),0,'none seen in another industry');
+reset role;
+
+-- Two more brands send the same product structure: now 3 brands.
+select set_config('request.jwt.claims','',true);
+set local role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',true);
+select public.admin_save_inbox_brand('southwind.example','southwind','Southwind','apparel');
+select public.admin_save_inbox_brand('eastwind.example','eastwind','Eastwind','apparel');
+reset role;
+select set_config('request.jwt.claim.sub','',true);
+select pg_temp.obj('inbox-raw','fake/'||pg_temp.k(n)||'.eml') from generate_series(2,3) n;
+set local role service_role;
+select public.record_inbox_message(current_setting('test.poll')::uuid,current_setting('test.polllease')::uuid,
+  jsonb_build_object('messageKey',pg_temp.k(n),'uid',9400+n,'uidValidity',1,'rawBytes',900,'receivedAt','2026-11-02T10:00:00Z',
+    'synthetic',true,'kind','message','rawPath','fake/'||pg_temp.k(n)||'.eml','rawSha256',pg_temp.k(n),
+    'subject','Spring','text','Hello','aliasSlug',(array['southwind','eastwind'])[n-1]))
+  from generate_series(2,3) n;
+reset role;
+insert into public.email_sections(inbox_message_id, ordinal, html, kind, words, images, block_type, label_source, labelled_at, layout, purpose,
+    styles, confidence, tag_state, tag_pass, tag_version, variant_id, variant_state, variant_version, skeleton_fingerprint)
+  select m.id, 1, '<tr><td>x</td></tr>', 'design', 1, 1, 'product_feature', 'gemini', now(), 'image_left', 'product_showcase', '{photo_led}', 0.8,
+    'tagged', 'fast', 'tags-v1', (select id from public.block_variants where fingerprint = pg_temp.k(10)), 'matched', 'variants-v1', pg_temp.k(10)
+  from public.inbox_messages m where m.message_key in (pg_temp.k(2), pg_temp.k(3));
+update public.inbox_messages set labels_state = 'tagged', industry = 'apparel', email_type = 'sale', offer_type = 'none', season = 'spring',
+    angle = 'value', brand_size = 'mid', labels_confidence = 0.8, labels_pass = 'fast', labels_model = 'gemini-2.5-flash-lite',
+    facts = '{"version":2}', extraction_version = 2, labelled_at = now()
+  where message_key in (pg_temp.k(2), pg_temp.k(3));
+select is((select count(distinct capture_id)::int from public.inbox_messages where state = 'assigned'),3,'three brands');
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
+select is((select string_agg(family||':'||matches, ',') from public.search_block_variants('{"industry":"apparel"}')),
+  'product_feature:4','a member now finds the structure 3 brands sent, but not one only one brand sent');
+reset role;
+update public.tenant_memberships set status = 'inactive' where profile_id = '00000000-0000-4000-8000-000000000005';
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000005","role":"authenticated"}',true);
+select throws_ok($$select * from public.search_block_variants()$$,'42501',null,'a member who left cannot search');
 reset role;
 
 select * from finish();

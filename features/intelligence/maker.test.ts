@@ -125,7 +125,7 @@ describe('the Variant maker', () => {
         ...skeletonMade,
         model: 'gemini-2.5-flash'
       })
-    for (const code of ['invalid_output', 'refused'])
+    for (const code of ['invalid_output', 'refused', 'incomplete'])
       expect(await makeVariant(input, askWith({ ok: false, code }))).toEqual({
         ...skeletonMade,
         model: null
@@ -170,8 +170,45 @@ describe('the Variant maker', () => {
     ).toEqual({
       state: 'dropped',
       reason: 'unusable',
-      model: 'gemini-2.5-flash'
+      model: 'gemini-2.5-flash',
+      remember: true
     })
+    // Without a real answer it is tried again once a model is set up.
+    for (const run of [
+      { ok: true, content: null, provider: 'fake', model: 'fake' } as AiRun,
+      { ok: false, code: 'incomplete' } as AiRun
+    ])
+      expect(
+        await makeVariant({ ...input, skeleton: noPrice }, askWith(run))
+      ).toEqual({
+        state: 'dropped',
+        reason: 'unusable',
+        model: null,
+        remember: false
+      })
+  })
+
+  it('leaves a structure far too large out without a call', async () => {
+    const huge: VariantSpec = {
+      ...skeleton,
+      rows: Array.from({ length: 6 }, () => ({
+        columns: Array.from({ length: 4 }, () => ({
+          width: 0.25,
+          slots: Array.from({ length: 3 }, () => ({
+            kind: 'text' as const,
+            lines: 1
+          }))
+        }))
+      }))
+    }
+    const ask = askWith(gemini({ spec: answer, confidence: 0.9 }))
+    expect(await makeVariant({ ...input, skeleton: huge }, ask)).toEqual({
+      state: 'dropped',
+      reason: 'unusable',
+      model: null,
+      remember: true
+    })
+    expect(ask).not.toHaveBeenCalled()
   })
 
   it('throws a failure worth another try, so the job is tried again or put back', async () => {

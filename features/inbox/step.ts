@@ -6,7 +6,7 @@ import { keepInboxImages, type AssetsRun } from './assets'
 import { inboxConfig, type InboxConfig } from './config'
 import { liveImageFetcher, sampleImageFetcher } from './image-fetch'
 import { labelInboxEmails, type LabelRun } from './label'
-import { liveVariantMs, makeInboxVariants, type VariantRun } from './variants'
+import { makeInboxVariants, type VariantRun } from './variants'
 import {
   confirmSubscriptions,
   liveLinkClicker,
@@ -32,7 +32,10 @@ export type InboxStep =
       assets: AssetsRun | { state: 'failed'; code: string } | null
       /** Emails tagged, with their sections and facts (INB-003, CI-001). */
       labels: LabelRun | { state: 'failed'; code: string } | null
-      /** Tagged sections placed in the block library (CI-002). */
+      /**
+       * Tagged sections placed in the block library (CI-002), with the
+       * sample rules only; live, the tagging run does it (null here).
+       */
       variants: VariantRun | { state: 'failed'; code: string } | null
       /** Subscription confirmations clicked or refused (INB-004). */
       confirms: ConfirmRun | { state: 'failed'; code: string } | null
@@ -46,12 +49,11 @@ type Steps = {
     deadline: number
   ) => Promise<AssetsRun>
   label?: (db: SupabaseClient<Database>, deadline: number) => Promise<LabelRun>
+  /** Null when the step leaves the library to the tagging run (live). */
   variants?: (
     db: SupabaseClient<Database>,
     deadline: number
-  ) => Promise<VariantRun>
-  /** Time kept for tagging after the variants (one live batch). */
-  labelReserveMs?: number
+  ) => Promise<VariantRun | null>
   confirm?: (
     db: SupabaseClient<Database>,
     deadline: number
@@ -109,16 +111,17 @@ export async function runInboxStep(
       const { ask, pictures, batchMs } = inboxTagging(d)
       return labelInboxEmails(d, ask, deadline, { pictures, batchMs })
     })
+  // With a live model the library is filled by the tagging run (CI-003),
+  // whose calls are capped to fit its route; the sweep's share is too
+  // short for a batch. The sample rules cost nothing, so they run here.
   const variants =
     options.variants ??
     ((d: SupabaseClient<Database>, deadline: number) => {
-      const { ask, pictures, batchMs } = inboxTagging(d)
-      return makeInboxVariants(d, ask, deadline, {
-        pictures,
-        batchMs: batchMs ? liveVariantMs : 0
-      })
+      const { ask, batchMs } = inboxTagging(d)
+      return batchMs
+        ? Promise.resolve(null)
+        : makeInboxVariants(d, ask, deadline)
     })
-  const labelReserveMs = options.labelReserveMs ?? inboxTagging(db).batchMs
   const work = async () => {
     try {
       result.run = await poll(db, transport)
@@ -135,22 +138,21 @@ export async function runInboxStep(
       const code = (error as { code?: string }).code ?? 'assets_step_error'
       result.assets = { state: 'failed', code }
     }
-    // The library, then tagging, share the images' deadline. Each new
-    // tagged email adds one variant job, so the variants go first, and
-    // stop in time for one tagging batch. Live, both work a batch at a time
-    // and put an email back when time runs short (it continues next sweep).
+    // Tagging, then the library, share the images' deadline. Live,
+    // tagging works a batch at a time and puts an email back when time
+    // runs short (it continues in the tagging run or the next sweep).
     const shared = started + (options.assetsUntilMs ?? assetsUntilMs)
-    try {
-      result.variants = await variants(db, shared - labelReserveMs)
-    } catch (error) {
-      const code = (error as { code?: string }).code ?? 'variants_step_error'
-      result.variants = { state: 'failed', code }
-    }
     try {
       result.labels = await label(db, shared)
     } catch (error) {
       const code = (error as { code?: string }).code ?? 'labels_step_error'
       result.labels = { state: 'failed', code }
+    }
+    try {
+      result.variants = await variants(db, shared)
+    } catch (error) {
+      const code = (error as { code?: string }).code ?? 'variants_step_error'
+      result.variants = { state: 'failed', code }
     }
     try {
       result.confirms = await confirm(db, shared)

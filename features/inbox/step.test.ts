@@ -2,6 +2,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
+const live = vi.hoisted(() => ({ inboxTagging: vi.fn() }))
+vi.mock('@/features/intelligence/live', () => live)
 import { fakeInboundTransport } from './fake-transport'
 import { runInboxStep } from './step'
 import type { pollInbox } from './worker'
@@ -124,7 +126,7 @@ describe('runInboxStep', () => {
     expect(deadline - before).toBeLessThan(1_500)
   })
 
-  it('places tagged sections in the library first, stopping in time for one tagging batch', async () => {
+  it('tags first, then places the tagged sections in the library, by the same deadline', async () => {
     const poll = vi.fn(async () => ({ state: 'busy' as const }))
     const order: string[] = []
     const place = vi.fn(async () => {
@@ -135,22 +137,34 @@ describe('runInboxStep', () => {
       order.push('labels')
       return nothingLabelled
     })
-    const before = Date.now()
     await runInboxStep(db, ready, {
       poll,
       assets,
       label: tag,
       variants: place,
       confirm,
-      assetsUntilMs: 10_000,
-      labelReserveMs: 4_000
+      assetsUntilMs: 10_000
     })
-    expect(order).toEqual(['variants', 'labels'])
+    expect(order).toEqual(['labels', 'variants'])
     const placeBy = (place.mock.calls[0] as unknown as [unknown, number])[1]
     const tagBy = (tag.mock.calls[0] as unknown as [unknown, number])[1]
-    expect(tagBy - placeBy).toBe(4_000)
-    expect(tagBy - before).toBeGreaterThanOrEqual(10_000)
-    expect(tagBy - before).toBeLessThan(10_500)
+    expect(placeBy).toBe(tagBy)
+  })
+
+  it('leaves the library to the tagging run when a live model is set up', async () => {
+    live.inboxTagging.mockReturnValue({
+      ask: vi.fn(),
+      pictures: true,
+      batchMs: 8_000
+    })
+    const poll = vi.fn(async () => ({ state: 'busy' as const }))
+    const step = await runInboxStep(db, ready, {
+      poll,
+      assets,
+      label,
+      confirm
+    })
+    expect(step).toMatchObject({ variants: null, labels: nothingLabelled })
   })
 
   it('reports a library step that fails and still tags', async () => {

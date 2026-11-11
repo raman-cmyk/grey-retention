@@ -146,6 +146,79 @@ describe('skeletonOf', () => {
     expect(JSON.stringify(read)).not.toMatch(/Linen|shop\.example|222222/)
   })
 
+  it('ignores spacer cells and tracking pixels, and keeps every column at least a tenth wide', () => {
+    const product = (n: string) =>
+      `<td width="180"><img src="${n}.jpg" width="180" height="180"><p>Shirt</p><p>$20</p></td>`
+    const gap =
+      '<td width="20"><img src="spacer.gif" width="20" height="1"></td>'
+    const spaced = skeletonOf(
+      `<table><tr>${product('a')}${gap}${product('b')}${gap}${product('c')}</tr></table>`
+    )
+    expect(spaced!.rows[0]!.columns.map((c) => c.width)).toEqual([
+      0.34, 0.33, 0.33
+    ])
+    const pixels = skeletonOf(
+      '<table><tr>' +
+        '<td width="1"><img src="x.gif" width="1" height="1"></td>'.repeat(3) +
+        '<td width="600"><h2>Hello there</h2><p>Body text here</p></td></tr></table>'
+    )
+    expect(pixels!.rows[0]!.columns).toHaveLength(1)
+    const icon = skeletonOf(
+      '<table><tr><td width="30"><img src="i.png" width="30" height="30"></td>' +
+        '<td width="570"><p>Free shipping on every order over fifty</p></td></tr></table>'
+    )
+    expect(icon!.rows[0]!.columns.map((c) => c.width)).toEqual([0.1, 0.9])
+  })
+
+  it('always gives a structure the library can store, whatever the columns', () => {
+    // Every mix of up to four cells of these widths, with or without content.
+    const widths = [
+      '',
+      '1',
+      '20',
+      '45',
+      '90',
+      '200',
+      '300',
+      '590',
+      '10%',
+      '80%'
+    ]
+    const cells = widths.flatMap((w) => [
+      `<td width="${w}"><img src="p.jpg" width="${w || 100}" height="100"><p>$9</p></td>`,
+      `<td width="${w}"><p>Words in a column</p><a style="background:#000">Go</a></td>`,
+      `<td width="${w}">&nbsp;</td>`
+    ])
+    let seed = 7
+    const next = () => (seed = (seed * 48_271) % 2_147_483_647)
+    for (let n = 0; n < 400; n++) {
+      const row = Array.from(
+        { length: 1 + (next() % 4) },
+        () => cells[next() % cells.length]
+      ).join('')
+      const read = skeletonOf(`<table><tr>${row}</tr></table><hr>`)
+      if (read) {
+        expect(variantSpecSchema.safeParse(read).success, row).toBe(true)
+        for (const r of read.rows)
+          expect(
+            Math.abs(r.columns.reduce((a, c) => a + c.width, 0) - 1),
+            row
+          ).toBeLessThanOrEqual(0.02)
+      }
+    }
+  })
+
+  it('reads a hidden preview line and a coloured footer link as nothing special', () => {
+    const read = skeletonOf(
+      '<div style="max-height:0;overflow:hidden">A hidden preview line for inboxes</div>' +
+        '<table><tr><td style="color:#999999"><a href="https://x.test/u">Unsubscribe</a> from these emails</td></tr></table>'
+    )
+    expect(read!.rows).toHaveLength(1)
+    expect(read!.rows[0]!.columns[0]!.slots.map((s) => s.kind)).toEqual([
+      'text'
+    ])
+  })
+
   it('gives nothing for an empty or oversized section', () => {
     expect(skeletonOf('<table><tr><td>&nbsp;</td></tr></table>')).toBeNull()
     expect(skeletonOf('<td>x</td>'.repeat(6_000))).toBeNull()

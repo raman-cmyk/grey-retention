@@ -81,6 +81,12 @@ function todoOf(row: SectionRow): Todo | null {
   const purpose = row.purpose as Purpose
   if (!layouts.includes(layout) || !purposes.includes(purpose)) return null
   const skeleton = skeletonOf(row.html)
+  let key: string | null = null
+  try {
+    key = skeleton ? fingerprintOf(family, skeleton) : null
+  } catch {
+    // Not a structure the library can store: left out as no structure.
+  }
   return {
     row,
     family,
@@ -89,8 +95,8 @@ function todoOf(row: SectionRow): Todo | null {
     styles: (row.styles ?? []).filter((s): s is Style =>
       (styleList as readonly string[]).includes(s)
     ),
-    skeleton,
-    key: skeleton ? fingerprintOf(family, skeleton) : null
+    skeleton: key ? skeleton : null,
+    key
   }
 }
 
@@ -113,7 +119,9 @@ function entryOf(todo: Todo, made: Made) {
     return {
       section_id: todo.row.id,
       state: made.reason,
-      skeleton_fingerprint: todo.key
+      // Remembered only when a model really answered (or it is far too
+      // large): with the fake it is tried again once a model is set up.
+      skeleton_fingerprint: made.remember ? todo.key : null
     }
   return {
     section_id: todo.row.id,
@@ -123,7 +131,6 @@ function entryOf(todo: Todo, made: Made) {
       fingerprint: made.fingerprint,
       pass: made.pass,
       model: made.model,
-      styles: todo.styles,
       spec: made.spec
     }
   }
@@ -172,6 +179,10 @@ export async function makeInboxVariants(
       })
       if (deferred.error) throw deferred.error
       run.deferred++
+      // A spent budget or a rate limit is worth seeing in the logs (a daily
+      // quota would keep putting jobs back).
+      if (reason.startsWith('ai_'))
+        logger.warn('Inbox variant job put back', { reason, delaySeconds })
     }
     const record = async (entries: object[]) => {
       if (!entries.length) return
@@ -252,12 +263,12 @@ export async function makeInboxVariants(
       let cutShort = false
       for (let i = 0; i < pending.length; i += variantBatch) {
         // A batch started late would outlive the run; the job comes back.
-        if (i > 0 && Date.now() + batchMs > deadline) {
+        if (Date.now() + batchMs > deadline) {
           cutShort = true
           break
         }
         const batch = pending.slice(i, i + variantBatch)
-        const made = await Promise.all(
+        const settled = await Promise.allSettled(
           batch.map(async ([lead]) =>
             makeVariant(
               {
@@ -276,15 +287,20 @@ export async function makeInboxVariants(
             )
           )
         )
-        const entries = batch.flatMap((group, n) =>
-          group.map((t) => entryOf(t, made[n]!))
-        )
-        for (const m of made)
-          if (m.state === 'dropped')
+        // What was answered is kept even when another call failed: the
+        // retry pays only for the rest.
+        const entries = batch.flatMap((group, n) => {
+          const made = settled[n]!
+          if (made.status === 'rejected') return []
+          if (made.value.state === 'dropped')
             logger.info('Section left out of the block library', {
-              reason: m.reason
+              reason: made.value.reason
             })
+          return group.map((t) => entryOf(t, made.value))
+        })
         await record(entries)
+        const failed = settled.find((r) => r.status === 'rejected')
+        if (failed) throw failed.reason
       }
       if (cutShort) {
         await putBack(0, 'variants_continue')

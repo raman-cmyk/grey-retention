@@ -469,20 +469,35 @@ test('INB-002 a sample inbox email keeps its images and its 600px screenshot sho
   expect(variantIds.length).toBeGreaterThan(0)
   const member = localAccounts()
   const owner = await signIn(member.owner!.email, member.owner!.password)
-  const found = await owner.db.rpc('search_block_variants', {
-    filters: labelled.data!.industry
-      ? { industry: labelled.data!.industry }
-      : {},
+  const families = await owner.db.rpc('search_block_variants', {
+    filters: {},
     max_results: 100
   })
-  expect(found.error).toBeNull()
-  const library = found.data as { id: string; spec: unknown }[]
+  expect(families.error).toBeNull()
+  const library = families.data as { id: string; key: string; spec: unknown }[]
   expect(library.map((v) => v.id)).toEqual(
     expect.arrayContaining([...new Set(variantIds)])
   )
   // Never a competitor's words, links or pictures.
   for (const v of library)
     expect(JSON.stringify(v.spec)).not.toMatch(/https?:|Spring layers/)
+  // By the email's labels, a member only finds structures 3 brands sent:
+  // never this one brand's email. The agents (service role) find it.
+  if (labelled.data!.industry) {
+    const filters = { industry: labelled.data!.industry }
+    const mine = await owner.db.rpc('search_block_variants', {
+      filters,
+      max_results: 100
+    })
+    expect(mine.data).toEqual([])
+    const agents = await admin.rpc('search_block_variants', {
+      filters,
+      max_results: 100
+    })
+    expect((agents.data as { id: string }[]).map((v) => v.id)).toEqual(
+      expect.arrayContaining([...new Set(variantIds)])
+    )
+  }
 
   // The sample newsletter was sent a few days ago, so its brand summary
   // (the last 90 days) shows it.

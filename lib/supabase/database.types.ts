@@ -600,6 +600,7 @@ export type Database = {
           family: string
           fingerprint: string
           id: string
+          key: string
           layout: string
           model: string | null
           pass: string
@@ -615,6 +616,7 @@ export type Database = {
           family: string
           fingerprint: string
           id?: string
+          key: string
           layout: string
           model?: string | null
           pass: string
@@ -630,6 +632,7 @@ export type Database = {
           family?: string
           fingerprint?: string
           id?: string
+          key?: string
           layout?: string
           model?: string | null
           pass?: string
@@ -6923,6 +6926,7 @@ export type Database = {
           evidence: number
           family: string
           id: string
+          key: string
           layout: string
           matches: number
           purpose: string

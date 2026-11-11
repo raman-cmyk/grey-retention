@@ -148,7 +148,6 @@ describe('makeInboxVariants', () => {
           fingerprint: productKey,
           pass: 'skeleton',
           model: null,
-          styles: ['photo_led'],
           spec: skeletonOf(productHtml(1))
         }
       }
@@ -257,6 +256,56 @@ describe('makeInboxVariants', () => {
     })
   })
 
+  it('remembers a structure as unusable only when a model really answered', async () => {
+    // A product block without a price cannot be drawn, whatever is asked.
+    const html =
+      '<table><tr><td><h2>Our story</h2><p>Words only here</p></td></tr></table>'
+    const fake = database({ rows: [tagged('s1', html)] })
+    await makeInboxVariants(asDb(fake), sampleAsk, later())
+    expect(recorded(fake)).toEqual([
+      { section_id: 's1', state: 'unusable', skeleton_fingerprint: null }
+    ])
+    const real = database({ rows: [tagged('s1', html)] })
+    await makeInboxVariants(
+      asDb(real),
+      askWith(() => sure({ rows: [] })),
+      later()
+    )
+    expect(recorded(real)).toEqual([
+      {
+        section_id: 's1',
+        state: 'unusable',
+        skeleton_fingerprint: fingerprintOf(
+          'product_feature',
+          skeletonOf(html)!
+        )
+      }
+    ])
+  })
+
+  it('keeps the answers already paid for when another call in the batch fails, then retries the job', async () => {
+    const db = database({
+      rows: [
+        tagged('s1', productHtml(1)),
+        tagged('s2', ctaHtml, { block_type: 'cta', layout: 'single_column' })
+      ]
+    })
+    const ask = askWith((callerKey) =>
+      callerKey === 'variant:s2'
+        ? { ok: false, code: 'timeout' }
+        : sure(skeletonOf(productHtml(1)))
+    )
+    expect(await makeInboxVariants(asDb(db), ask, later())).toMatchObject({
+      made: 1,
+      retried: 1,
+      emails: 0
+    })
+    expect(recorded(db).map((e) => e.section_id)).toEqual(['s1'])
+    expect(db.named('fail_platform_job')[0]!.args).toMatchObject({
+      error_code: 'ai_timeout'
+    })
+  })
+
   it('works in batches and puts the job back, without using a try, when time runs short', async () => {
     const rows = Array.from({ length: variantBatch + 2 }, (_, i) =>
       // Eight different structures: one to four columns, each with or
@@ -278,6 +327,11 @@ describe('makeInboxVariants', () => {
     })
     clock.mockRestore()
     expect(run.deferred).toBe(1)
+    // The first batch was saved before the job went back.
+    expect(recorded(db)).toHaveLength(variantBatch)
+    expect(
+      db.calls.findIndex((c) => c.name === 'record_block_variants')
+    ).toBeLessThan(db.calls.findIndex((c) => c.name === 'defer_platform_job'))
     expect(run.emails).toBe(0)
     expect(db.named('defer_platform_job')[0]!.args).toMatchObject({
       delay_seconds: 0,

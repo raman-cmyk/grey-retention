@@ -50,6 +50,10 @@ export type LibraryFilter = z.infer<typeof libraryFilterSchema>
 
 /** A variant as a search returns it: its structure and its labels. */
 export type LibraryVariant = {
+  /**
+   * Its stable name: `<family>/seed` for a seed block (e.g.
+   * `hero_product/seed`), `<family>/<16 hex>` for one from a competitor.
+   */
   id: string
   family: BlockType
   layout: Layout
@@ -58,9 +62,11 @@ export type LibraryVariant = {
   spec: VariantSpec
   source: 'seed' | 'competitor'
   /** Sections seen with this structure. */
-  evidence: number
+  evidenceCount: number
   /** With an email label: the sections from such emails. */
   matches: number
+  /** How well it did in sent emails: none until results are learned (LRN-002). */
+  score: number | null
 }
 
 export type LibrarySearch =
@@ -85,7 +91,8 @@ const columns: Record<keyof LibraryFilter, string> = {
  * Searches the block library, most seen first (or, with an email label,
  * most seen in such emails). Any signed-in workspace member and the agents
  * may search; only structures come back, never a section, an email or the
- * brand they came from. A stored row that no longer reads as a variant is
+ * brand they came from. A member searching by the emails' labels only sees
+ * structures seen at 3 brands or more. A stored row that no longer reads as a variant is
  * skipped rather than handed on.
  */
 export async function searchBlockVariants(
@@ -121,15 +128,16 @@ export async function searchBlockVariants(
     const spec = variantSpecSchema.safeParse(row.spec)
     if (!spec.success) continue
     variants.push({
-      id: row.id,
+      id: row.key,
       family: row.family as BlockType,
       layout: row.layout as Layout,
       purpose: row.purpose as Purpose,
       styles: row.styles as Style[],
       spec: spec.data,
       source: row.source as 'seed' | 'competitor',
-      evidence: row.evidence,
-      matches: row.matches
+      evidenceCount: row.evidence,
+      matches: row.matches,
+      score: null
     })
   }
   return { ok: true, variants }

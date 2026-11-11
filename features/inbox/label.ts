@@ -164,6 +164,10 @@ export async function labelInboxEmails(
       })
       if (deferred.error) throw deferred.error
       run.deferred++
+      // A spent budget or a rate limit is worth seeing in the logs (a daily
+      // quota would keep putting jobs back).
+      if (reason.startsWith('ai_'))
+        logger.warn('Inbox label job put back', { reason, delaySeconds })
     }
     try {
       const [message, rows] = await Promise.all([
@@ -230,7 +234,7 @@ export async function labelInboxEmails(
           break
         }
         const batch = todo.slice(i, i + tagBatch)
-        const tagged = await Promise.all(
+        const settled = await Promise.allSettled(
           batch.map(async (row) => {
             const section = sections[stored.indexOf(row)]!
             return {
@@ -251,14 +255,23 @@ export async function labelInboxEmails(
             }
           })
         )
-        const recorded = await db.rpc('record_section_tags', {
-          ...lease,
-          sections: tagged.map((t) =>
-            storedTags(t.row.ordinal, t.result)
-          ) as unknown as Json,
-          tag_version: tagVersion
-        })
-        if (recorded.error) throw recorded.error
+        // What was answered is kept even when another call failed: the
+        // retry pays only for the rest.
+        const tagged = settled.flatMap((r) =>
+          r.status === 'fulfilled' ? [r.value] : []
+        )
+        if (tagged.length) {
+          const recorded = await db.rpc('record_section_tags', {
+            ...lease,
+            sections: tagged.map((t) =>
+              storedTags(t.row.ordinal, t.result)
+            ) as unknown as Json,
+            tag_version: tagVersion
+          })
+          if (recorded.error) throw recorded.error
+        }
+        const failed = settled.find((r) => r.status === 'rejected')
+        if (failed) throw failed.reason
         for (const { row, result } of tagged) {
           if (result.state === 'untagged') run.untagged++
           families.set(

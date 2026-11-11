@@ -1,6 +1,12 @@
 import { parseFragment, type DefaultTreeAdapterTypes as T } from 'parse5'
 import { oversized } from '@/features/blocks/labeller'
-import type { Slot, VariantSpec } from './variants'
+import {
+  mergeSlots,
+  stackRows,
+  variantSpecSchema,
+  type Slot,
+  type VariantSpec
+} from './variants'
 
 /**
  * A section's structure read from its own HTML, without AI (CI-002): its
@@ -18,8 +24,40 @@ const attr = (n: T.Element, name: string) =>
   n.attrs.find((a) => a.name === name)?.value ?? ''
 const styleOf = (n: T.Element) => attr(n, 'style').toLowerCase()
 const unseen = new Set(['script', 'style', 'head', 'title', 'template'])
-const hidden = (n: T.Element) =>
-  /display\s*:\s*none|visibility\s*:\s*hidden/.test(styleOf(n))
+/**
+ * Not shown, by the same rule as the sections (INB-003): display:none,
+ * visibility:hidden, opacity:0, the hidden attribute, or a box squeezed to
+ * max-height:0 with its overflow hidden (the hidden preview line).
+ */
+const hidden = (n: T.Element) => {
+  const style = styleOf(n)
+  return (
+    n.attrs.some((a) => a.name === 'hidden') ||
+    /(?:^|[;\s])(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?![.\d]))/.test(
+      style
+    ) ||
+    (/(?:^|[;\s])max-height\s*:\s*0(?![.\d])/.test(style) &&
+      /overflow\s*:\s*hidden/.test(style))
+  )
+}
+/** A tracking pixel or spacer: no part of the design. */
+function spacer(img: T.Element) {
+  const size = (name: string) =>
+    Number.parseFloat(
+      attr(img, name) ||
+        new RegExp(`(?:^|;)\\s*${name}\\s*:\\s*([\\d.]+)px`).exec(
+          styleOf(img)
+        )?.[1] ||
+        ''
+    )
+  const width = size('width')
+  const height = size('height')
+  return (
+    (width > 0 && width <= 2) ||
+    (height > 0 && height <= 2) ||
+    /spacer|blank\.gif|pixel\.gif/i.test(attr(img, 'src'))
+  )
+}
 const children = (n: Node): T.ChildNode[] =>
   'childNodes' in n ? n.childNodes : []
 const cellsOf = (tr: T.Element) =>
@@ -82,15 +120,17 @@ function imageSlot(img: T.Element, nearPrice: boolean): Slot {
 function buttonStyle(a: T.Element): 'solid' | 'outline' | 'link' | null {
   const cell = a.parentNode
   const own = styleOf(a)
-  const around =
-    cell && isElement(cell) ? `${styleOf(cell)} ${attr(cell, 'bgcolor')}` : ''
-  if (
-    /background|bgcolor|#[0-9a-f]{3,6}/.test(
-      `${own.includes('background') ? own : ''} ${around}`
-    ) &&
-    words(textOf(a)) <= 6
-  )
-    return 'solid'
+  // A filled box: a background on the link itself or on the cell around it
+  // (a text colour alone is a plain link).
+  const filled =
+    /background(?:-color)?\s*:\s*(?!none|transparent)[#a-z]/.test(own) ||
+    (!!cell &&
+      isElement(cell) &&
+      (!!attr(cell, 'bgcolor') ||
+        /background(?:-color)?\s*:\s*(?!none|transparent)[#a-z]/.test(
+          styleOf(cell)
+        )))
+  if (filled && words(textOf(a)) <= 6) return 'solid'
   if (/border\s*:/.test(own) && words(textOf(a)) <= 6) return 'outline'
   return null
 }
@@ -119,7 +159,10 @@ function slotsOf(cell: Node, rowHasPrice = false): Slot[] {
       return
     }
     if (unseen.has(n.tagName) || hidden(n)) return
-    if (n.tagName === 'img') return void slots.push(imageSlot(n, nearPrice))
+    if (n.tagName === 'img') {
+      if (!spacer(n)) slots.push(imageSlot(n, nearPrice))
+      return
+    }
     if (n.tagName === 'hr') return void slots.push({ kind: 'divider' })
     if (n.tagName === 'a') {
       const style = buttonStyle(n)
@@ -161,16 +204,7 @@ function slotsOf(cell: Node, rowHasPrice = false): Slot[] {
     for (const c of children(n)) walk(c)
   }
   walk(cell)
-  // Neighbouring paragraphs are one text slot; social icons are one row.
-  const merged: Slot[] = []
-  for (const slot of slots) {
-    const last = merged.at(-1)
-    if (last?.kind === 'text' && slot.kind === 'text')
-      last.lines = Math.min(12, last.lines + slot.lines)
-    else if (last?.kind === 'social' && slot.kind === 'social') continue
-    else merged.push(slot)
-  }
-  return merged.slice(0, 8)
+  return mergeSlots(slots).slice(0, 8)
 }
 
 type Row = { cells: { node: T.Element; width: number | null }[] }
@@ -206,7 +240,7 @@ function rowsOf(n: Node, depth = 0): Row[] {
     } else {
       const inner = rowsOf(c, depth + 1)
       if (inner.length) rows.push(...inner)
-      else if (textOf(c).trim() || hasImage(c))
+      else if (textOf(c).trim() || hasImage(c) || c.tagName === 'hr')
         rows.push({ cells: [{ node: c, width: 1 }] })
     }
   }
@@ -214,8 +248,43 @@ function rowsOf(n: Node, depth = 0): Row[] {
 }
 
 function hasImage(n: Node): boolean {
-  if (isElement(n) && n.tagName === 'img') return true
+  if (isElement(n) && n.tagName === 'img') return !spacer(n)
   return children(n).some(hasImage)
+}
+
+/** Narrowest column the library draws. */
+const minWidth = 0.1
+
+/**
+ * Column widths as shares that add up to the whole row, none narrower than
+ * a tenth: a column below it is widened and the others share what is left
+ * in proportion (at most four columns, so it always fits).
+ */
+function fitWidths(columns: { share: number; slots: Slot[] }[]) {
+  const total = columns.reduce((a, c) => a + c.share, 0) || 1
+  const shares = columns.map((c) => c.share / total)
+  const fixed = new Set<number>()
+  for (let round = 0; round < columns.length; round++) {
+    const free = shares.map((_, i) => i).filter((i) => !fixed.has(i))
+    const room = 1 - minWidth * fixed.size
+    const sum = free.reduce((a, i) => a + shares[i]!, 0) || 1
+    for (const i of free) shares[i] = (shares[i]! / sum) * room
+    const narrow = free.filter((i) => shares[i]! < minWidth)
+    if (!narrow.length) break
+    for (const i of narrow) {
+      shares[i] = minWidth
+      fixed.add(i)
+    }
+  }
+  const widths = shares.map((w) => Math.round(w * 100) / 100)
+  // Rounding drift goes to the widest column.
+  const widest = widths.indexOf(Math.max(...widths))
+  if (widest >= 0)
+    widths[widest] =
+      Math.round(
+        (widths[widest]! + 1 - widths.reduce((a, w) => a + w, 0)) * 100
+      ) / 100
+  return columns.map((c, i) => ({ width: widths[i]!, slots: c.slots }))
 }
 
 function firstStyled(root: Node): T.Element | null {
@@ -245,7 +314,7 @@ function luminance(hex: string) {
 export function skeletonOf(html: string): VariantSpec | null {
   if (oversized(html)) return null
   const root = parseFragment(html)
-  const rows = rowsOf(root)
+  const read = rowsOf(root)
     .map((row) => {
       const known = row.cells.map((c) => c.width)
       const rowPrice = price.test(
@@ -258,21 +327,15 @@ export function skeletonOf(html: string): VariantSpec | null {
       const total = raw.reduce((a, b) => a + b, 0) || 1
       const columns = row.cells
         .map((c, i) => ({
-          width: Math.max(0.1, Math.round((raw[i]! / total) * 100) / 100),
+          share: raw[i]! / total,
           slots: slotsOf(c.node, rowPrice)
         }))
         .filter((c) => c.slots.length)
-      // Widths add up to the whole row again after empty cells drop out.
-      const sum = columns.reduce((a, c) => a + c.width, 0)
-      for (const c of columns)
-        c.width = Math.round((c.width / (sum || 1)) * 100) / 100
-      const drift = 1 - columns.reduce((a, c) => a + c.width, 0)
-      if (columns.length)
-        columns[0]!.width = Math.round((columns[0]!.width + drift) * 100) / 100
-      return { columns }
+      return { columns: fitWidths(columns) }
     })
     .filter((row) => row.columns.length)
-    .slice(0, 6)
+  // Parts stacked in rows of their own are one stack; then at most 6 rows.
+  const rows = stackRows(read).slice(0, 6)
   if (!rows.length) return null
   const styled = firstStyled(root)
   const style = styled ? styleOf(styled) : ''
@@ -307,5 +370,7 @@ export function skeletonOf(html: string): VariantSpec | null {
         : pad < 32
           ? 'm'
           : 'l'
-  return { rows, align, background, padding }
+  // Whatever the HTML held, only a structure the library can store.
+  const spec = variantSpecSchema.safeParse({ rows, align, background, padding })
+  return spec.success ? spec.data : null
 }
