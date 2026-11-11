@@ -91,3 +91,14 @@ test('RET-002 the weekly copy review is retired (decision D17)', async ({
   await page.goto('/campaign-agent')
   await expect(page.locator('a[href^="/copy-review"]')).toHaveCount(0)
 })
+
+test('RET-002 admins read the fallback log on Operations (decision D16)', async ({
+  page
+}) => {
+  await login(page, 'admin')
+  await page.goto('/admin/operations')
+  await expect(
+    page.getByRole('heading', { name: 'Fallback log', exact: true })
+  ).toBeVisible()
+  await expect(page.getByText('No fallbacks yet.')).toBeVisible()
+})
