@@ -9,6 +9,8 @@ import { sampleCompetitors, sampleStore } from './sample'
  */
 export type StrategyData = {
   load(input: { tenantId: string; start: string }): Promise<{
+    /** True while this is the sample store, not the workspace's own. */
+    sample: boolean
     /** Raw store data for `readPulseInput` (checked there). */
     pulse: unknown
     /** Raw competitor data for `readMapperInput` (checked there). */
@@ -33,6 +35,7 @@ export const sampleStrategyData: StrategyData = {
     const store = sampleStore(start)
     const competitors = sampleCompetitors(start)
     return {
+      sample: true,
       pulse: store,
       mapper: {
         industry: store.brand.industry,

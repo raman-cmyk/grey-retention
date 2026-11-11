@@ -11,6 +11,9 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { runFixtureJobs } from '@/features/integrations/worker'
 import { runInboxStep } from '@/features/inbox/step'
 import { runStrategyRuns } from '@/features/strategy/worker'
+
+/** Time the sweep gives to plan steps before the workspace jobs. */
+const planBudgetMs = 5_000
 import { scheduleLimits } from '@/features/cron/scheduler'
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -47,8 +50,12 @@ export async function GET(request: NextRequest) {
   // Never throws and never waits more than 18 s: an inbox problem is
   // reported and the sweep goes on.
   const inbox = await runInboxStep(db)
-  // "Plan next 15 days" steps (STR-003): a failure stays queued for the next run.
-  const plans = await runStrategyRuns(db).catch((error) => {
+  // "Plan next 15 days" steps (STR-003 part 2): the code-only path (no AI
+  // call, nothing metered), at most 5 s of this sweep; a failure stays
+  // queued for the next run.
+  const plans = await runStrategyRuns(db, {
+    deadline: Date.now() + planBudgetMs
+  }).catch((error) => {
     logger.error('Plan steps could not run', {
       code: (error as { code?: string }).code ?? 'plan_step_error'
     })
@@ -58,7 +65,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error: 'Scheduled jobs run only with sample providers in this build.',
-        inbox
+        inbox,
+        plans
       },
       { status: 503, headers: noStore }
     )

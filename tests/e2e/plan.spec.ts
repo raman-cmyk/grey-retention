@@ -26,10 +26,21 @@ test('STR-003 owner plans the next 15 days and picks an offer', async ({
     page.getByRole('heading', { name: 'Which offers should we run?' })
   ).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText(/BIGSALE40 is not offered/)).toBeVisible()
+  await expect(page.getByText(/uses a sample store/).first()).toBeVisible()
+
+  // Ticks with "You choose" are refused, not silently dropped.
+  await page.getByRole('checkbox', { name: /CANDLE10/ }).check()
+  await page.getByRole('button', { name: 'Plan the 15 days' }).click()
+  await expect(
+    page.getByText(
+      'You ticked offers: choose “Only the offers I tick”, or untick them.'
+    )
+  ).toBeVisible()
+  await page.getByRole('checkbox', { name: /CANDLE10/ }).uncheck()
 
   // One offer, ticked.
   await page.getByRole('checkbox', { name: /WELCOME15/ }).check()
-  await page.getByRole('radio', { name: 'Run the offers I ticked' }).check()
+  await page.getByRole('radio', { name: 'Only the offers I tick' }).check()
   await page.getByRole('button', { name: 'Plan the 15 days' }).click()
   await expect(
     page.getByRole('heading', { name: /^Your emails from / })

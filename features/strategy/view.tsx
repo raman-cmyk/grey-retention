@@ -1,32 +1,40 @@
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { Notice, Panel } from '@/components/ui/workspace'
 import { Pill } from '@/components/ui/pill'
-import type { FifteenDayPlan } from './plan'
-import type { Pulse } from './pulse'
+import type { PlanRun } from './load'
+import type { StoredPlan, StoredPulse } from './stored'
 import { pickOffers, startPlan } from './actions'
 import { PlanProgress } from './progress'
 
-export type PlanRun = {
-  id: string
-  state: 'pulse_queued' | 'offers_ready' | 'plan_queued' | 'planned' | 'failed'
-  startOn: string
-  pulse: Pulse | null
-  plan: FifteenDayPlan | null
-}
+export type { PlanRun }
 
-const day = (iso: string) =>
-  new Intl.DateTimeFormat('en-GB', {
+const day = (iso: string) => {
+  const date = new Date(`${iso}T12:00:00Z`)
+  if (Number.isNaN(date.getTime())) return iso
+  return new Intl.DateTimeFormat('en-GB', {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
     timeZone: 'UTC'
-  }).format(new Date(`${iso}T12:00:00Z`))
+  }).format(date)
+}
 
-function StartButton({ again }: { again?: boolean }) {
+function StartButton({ label = 'Plan next 15 days' }: { label?: string }) {
   return (
     <ActionForm action={startPlan}>
-      <SubmitButton>{again ? 'Plan again' : 'Plan next 15 days'}</SubmitButton>
+      <SubmitButton pendingLabel="Starting…">{label}</SubmitButton>
     </ActionForm>
+  )
+}
+
+function SampleNotice() {
+  return (
+    <div className="mb-4">
+      <Notice>
+        This plan uses a sample store until your own store is connected. The
+        offers, products and dates below are examples.
+      </Notice>
+    </div>
   )
 }
 
@@ -42,6 +50,7 @@ export function PlanView({
   run: PlanRun | null
   owner: boolean
 }) {
+  const start = owner ? <StartButton /> : null
   if (!run || run.state === 'failed')
     return (
       <Panel title="Your next 15 days">
@@ -54,11 +63,17 @@ export function PlanView({
           We read your store and what similar brands sent, then plan your emails
           for the next 15 days. You can choose which offers to run.
         </p>
-        {owner ? (
-          <StartButton />
-        ) : (
-          <Notice>Only this workspace’s owner starts a plan.</Notice>
-        )}
+        {start ?? <Notice>Only this workspace’s owner starts a plan.</Notice>}
+      </Panel>
+    )
+  if (run.stale && run.state !== 'planned')
+    return (
+      <Panel title="These 15 days have begun">
+        <p className="mb-4 text-sm leading-6 text-[var(--text-muted)]">
+          This plan was for days that have started. Start a new plan for the
+          next 15 days.
+        </p>
+        {owner ? <StartButton label="Start again" /> : null}
       </Panel>
     )
   if (run.state === 'pulse_queued')
@@ -69,7 +84,14 @@ export function PlanView({
     return <OfferStep run={run} pulse={run.pulse} owner={owner} />
   if (run.state === 'planned' && run.plan)
     return <PlannedDays plan={run.plan} owner={owner} />
-  return <Notice error>This plan could not be shown. Reload the page.</Notice>
+  return (
+    <Panel title="Your next 15 days">
+      <div className="mb-4">
+        <Notice error>This plan could not be shown. Start a new one.</Notice>
+      </div>
+      {start}
+    </Panel>
+  )
 }
 
 function OfferStep({
@@ -78,7 +100,7 @@ function OfferStep({
   owner
 }: {
   run: PlanRun
-  pulse: Pulse
+  pulse: StoredPulse
   owner: boolean
 }) {
   return (
@@ -86,6 +108,7 @@ function OfferStep({
       <Panel
         title={`What matters from ${day(pulse.start)} to ${day(pulse.end)}`}
       >
+        {pulse.sample && <SampleNotice />}
         <p className="mb-4 text-sm leading-6">{pulse.summary}</p>
         <ul className="space-y-3 text-sm">
           {pulse.highlights.map((h) => (
@@ -109,12 +132,12 @@ function OfferStep({
         {!owner ? (
           <Notice>Only this workspace’s owner chooses the offers.</Notice>
         ) : (
-          <ActionForm action={pickOffers} className="space-y-4">
+          <ActionForm action={pickOffers} className="space-y-4" preserveValues>
             <input type="hidden" name="run" value={run.id} />
             {pulse.offers.length ? (
               <fieldset className="space-y-2">
                 <legend className="mb-2 text-sm font-medium">
-                  Tick the offers to run, or let us choose
+                  The offers you can run
                 </legend>
                 {pulse.offers.map((o) => (
                   <label key={o.id} className="flex items-center gap-2 text-sm">
@@ -134,7 +157,7 @@ function OfferStep({
               {pulse.offers.length > 0 && (
                 <label className="flex items-center gap-2 text-sm">
                   <input type="radio" name="mode" value="picked" />
-                  Run the offers I ticked
+                  Only the offers I tick
                 </label>
               )}
               <label className="flex items-center gap-2 text-sm">
@@ -156,21 +179,16 @@ function OfferStep({
   )
 }
 
-function PlannedDays({
-  plan,
-  owner
-}: {
-  plan: FifteenDayPlan
-  owner: boolean
-}) {
+function PlannedDays({ plan, owner }: { plan: StoredPlan; owner: boolean }) {
   const fromFacts =
     plan.source.brief === 'code' && plan.source.planner === 'code'
   return (
     <div className="space-y-6">
       <Panel title={`Your emails from ${day(plan.start)} to ${day(plan.end)}`}>
+        {plan.sample && <SampleNotice />}
         {fromFacts && (
           <p className="mb-4 text-sm text-[var(--text-muted)]">
-            Planned from your store’s facts and similar brands’ timing; the AI
+            Planned from the store’s facts and similar brands’ timing; the AI
             was not used for this plan.
           </p>
         )}
@@ -188,7 +206,7 @@ function PlannedDays({
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-semibold">
-                    {day(s.date)} · {s.time}
+                    {day(s.date)} · {s.time} store time
                   </p>
                   <Pill>{s.emailType}</Pill>
                   {s.offer && (
@@ -234,7 +252,7 @@ function PlannedDays({
           </Notice>
         )}
       </Panel>
-      {owner && <StartButton again />}
+      {owner && <StartButton label="Plan again" />}
     </div>
   )
 }

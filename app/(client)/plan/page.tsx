@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: 'Plan next 15 days' }
 
 export default async function PlanPage() {
   const context = await requireRequestContext('client')
-  const run = await latestPlanRun(context.tenantId)
+  const run = await latestPlanRun(context.tenantId, context.timezone)
   return (
     <div className="mx-auto max-w-[820px]">
       <PageHeading

@@ -6029,7 +6029,7 @@ export type Database = {
         }[]
       }
       claim_strategy_run: {
-        Args: never
+        Args: { target?: string }
         Returns: {
           id: string
           lease_token: string
@@ -6268,7 +6268,7 @@ export type Database = {
         Returns: undefined
       }
       fail_strategy_step: {
-        Args: { code: string; lease: string; run: string }
+        Args: { code: string; final?: boolean; lease: string; run: string }
         Returns: string
       }
       finalize_email_file_upload: {

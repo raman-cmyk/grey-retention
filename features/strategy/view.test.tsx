@@ -1,6 +1,8 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('server-only', () => ({}))
+
 vi.mock('./actions', () => ({
   startPlan: vi.fn(async () => ({})),
   pickOffers: vi.fn(async () => ({}))
@@ -9,11 +11,15 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 
 import { PlanView, type PlanRun } from './view'
 import { codePulse, gatherEvidence } from './pulse'
+import type { StoredPlan } from './stored'
 import { sampleStore } from './sample'
-import type { FifteenDayPlan } from './plan'
 
-const pulse = codePulse(gatherEvidence(sampleStore('2026-11-16')))
-const plan: FifteenDayPlan = {
+const pulse = {
+  ...codePulse(gatherEvidence(sampleStore('2026-11-16'))),
+  sample: true
+}
+const plan: StoredPlan = {
+  sample: true,
   start: '2026-11-16',
   end: '2026-11-30',
   dropped: 0,
@@ -43,6 +49,7 @@ const run = (over: Partial<PlanRun>): PlanRun => ({
   id: '00000000-0000-4000-8000-0000000000aa',
   state: 'planned',
   startOn: '2026-11-16',
+  stale: false,
   pulse,
   plan,
   ...over
@@ -81,6 +88,10 @@ describe('the Plan next 15 days screen', () => {
     expect(screen.getAllByRole('checkbox')).toHaveLength(2)
     expect(screen.getByRole('radio', { name: 'You choose' })).toBeChecked()
     expect(
+      screen.getByRole('radio', { name: 'Only the offers I tick' })
+    ).not.toBeChecked()
+    expect(screen.getByText(/uses a sample store/)).toBeVisible()
+    expect(
       screen.getByText(/BIGSALE40 is not offered: It is 40% off/)
     ).toBeVisible()
     expect(
@@ -90,7 +101,7 @@ describe('the Plan next 15 days screen', () => {
 
   it('shows each planned email with its reason and facts, and says the AI was not used', () => {
     render(<PlanView run={run({})} owner />)
-    expect(screen.getByText('Tue 17 Nov · 10:00')).toBeVisible()
+    expect(screen.getByText('Tue 17 Nov · 10:00 store time')).toBeVisible()
     expect(screen.getByText('10% off with CANDLE10')).toBeVisible()
     expect(
       screen.getByText('Use the candle offer before it ends.')
@@ -123,5 +134,50 @@ describe('the Plan next 15 days screen', () => {
         'No email fits these 15 days with your current settings.'
       )
     ).toBeVisible()
+  })
+
+  it('shows staff the offers without the form', () => {
+    render(
+      <PlanView
+        run={run({ state: 'offers_ready', plan: null })}
+        owner={false}
+      />
+    )
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(
+      screen.getByText('Only this workspace’s owner chooses the offers.')
+    ).toBeVisible()
+  })
+
+  it('offers a new plan when the 15 days have begun', () => {
+    render(<PlanView run={run({ state: 'offers_ready', stale: true })} owner />)
+    expect(
+      screen.getByRole('heading', { name: 'These 15 days have begun' })
+    ).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'Start again' })
+    ).toBeInTheDocument()
+  })
+
+  it('shows progress while the plan is being made', () => {
+    render(<PlanView run={run({ state: 'plan_queued', plan: null })} owner />)
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Planning your next 15 days'
+    )
+  })
+
+  it('never shows a saved plan of a broken shape, and lets the owner start again', () => {
+    render(
+      <PlanView
+        run={run({ state: 'offers_ready', pulse: null, plan: null })}
+        owner
+      />
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'This plan could not be shown'
+    )
+    expect(
+      screen.getByRole('button', { name: 'Plan next 15 days' })
+    ).toBeInTheDocument()
   })
 })

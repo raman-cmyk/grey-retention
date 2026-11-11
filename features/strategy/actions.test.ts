@@ -64,61 +64,58 @@ describe('starting a plan', () => {
 })
 
 describe('picking offers', () => {
-  it('sends the ticked offers', async () => {
-    await pickOffers(
-      {},
-      form([
-        ['run', run],
-        ['mode', 'picked'],
-        ['offers', 'offer:CANDLE10'],
-        ['offers', 'offer:WELCOME15']
-      ])
-    )
+  const pick = (fields: [string, string][]) =>
+    pickOffers({}, form([['run', run], ...fields]))
+
+  it('sends only the ticked offers, then runs this plan', async () => {
+    await pick([
+      ['mode', 'picked'],
+      ['offers', 'offer:CANDLE10'],
+      ['offers', 'offer:WELCOME15']
+    ])
     expect(rpc).toHaveBeenCalledWith('pick_strategy_offers', {
       t: tenantId,
       run,
       pick: { mode: 'picked', offers: ['offer:CANDLE10', 'offer:WELCOME15'] }
     })
     expect(after).toHaveBeenCalledOnce()
+    expect(redirect).toHaveBeenCalledWith('/plan')
   })
 
-  it('sends "you choose" and "none" without offers', async () => {
-    await pickOffers(
-      {},
-      form([
-        ['run', run],
-        ['mode', 'auto'],
-        ['offers', 'offer:X']
-      ])
-    )
+  it('sends "you choose" and "none" when nothing is ticked', async () => {
+    await pick([['mode', 'auto']])
     expect(rpc).toHaveBeenLastCalledWith('pick_strategy_offers', {
       t: tenantId,
       run,
       pick: { mode: 'auto' }
     })
+    await pick([['mode', 'none']])
+    expect(rpc).toHaveBeenLastCalledWith('pick_strategy_offers', {
+      t: tenantId,
+      run,
+      pick: { mode: 'none' }
+    })
   })
 
-  it('needs a tick for "the offers I ticked", and a real choice', async () => {
-    expect(
-      await pickOffers(
-        {},
-        form([
-          ['run', run],
-          ['mode', 'picked']
+  it('never throws away ticked offers: ticks need "only the offers I tick"', async () => {
+    for (const mode of ['auto', 'none'])
+      expect(
+        await pick([
+          ['mode', mode],
+          ['offers', 'offer:X']
         ])
-      )
-    ).toEqual({
-      error: 'Tick at least one offer, or let us choose.'
+      ).toEqual({
+        error:
+          'You ticked offers: choose “Only the offers I tick”, or untick them.'
+      })
+    expect(await pick([['mode', 'picked']])).toEqual({
+      error: 'Tick at least one offer, or choose another option.'
     })
-    expect(
-      await pickOffers(
-        {},
-        form([
-          ['run', run],
-          ['mode', 'all']
-        ])
-      )
-    ).toEqual({
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('refuses a broken form', async () => {
+    expect(await pick([['mode', 'all']])).toEqual({
       error: 'Choose how to use your offers.'
     })
     expect(
@@ -129,24 +126,40 @@ describe('picking offers', () => {
           ['mode', 'auto']
         ])
       )
-    ).toEqual({
-      error: 'Choose how to use your offers.'
+    ).toEqual({ error: 'Choose how to use your offers.' })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('is the owner’s only', async () => {
+    auth.requireRequestContext.mockResolvedValue({
+      tenantId,
+      tenantRole: 'staff'
+    })
+    expect(await pick([['mode', 'auto']])).toEqual({
+      error: 'Only this workspace’s owner plans its emails.'
     })
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('says when the plan already moved on', async () => {
+  it('shows the plan where it is when it already moved on', async () => {
     rpc.mockResolvedValue({ data: null, error: { code: 'PT409' } })
-    expect(
-      await pickOffers(
-        {},
-        form([
-          ['run', run],
-          ['mode', 'none']
-        ])
-      )
-    ).toEqual({
-      error: 'This plan already moved on. Look again.'
+    expect(await pick([['mode', 'none']])).toBeUndefined()
+    expect(redirect).toHaveBeenCalledWith('/plan')
+    expect(after).not.toHaveBeenCalled()
+  })
+
+  it('says what went wrong otherwise', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: '22023' } })
+    expect(await pick([['mode', 'none']])).toEqual({
+      error: 'Those offers are not in this plan. Choose again.'
+    })
+    rpc.mockResolvedValue({ data: null, error: { code: 'XX000' } })
+    expect(await pick([['mode', 'none']])).toEqual({
+      error: 'We could not save your choice. Try again.'
+    })
+    supabase.createClient.mockResolvedValue(null)
+    expect(await pick([['mode', 'none']])).toEqual({
+      error: 'Planning is unavailable right now.'
     })
   })
 })
