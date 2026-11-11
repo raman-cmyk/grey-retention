@@ -30,6 +30,7 @@ const settings = z.object({
   GEMINI_LABEL_MODEL: z.string().trim().optional(),
   GEMINI_COPY_MODEL: z.string().trim().optional(),
   GEMINI_PLAN_MODEL: z.string().trim().optional(),
+  GEMINI_REVIEW_MODEL: z.string().trim().optional(),
   GEMINI_TIMEOUT_MS: z.coerce
     .number()
     .int()
@@ -56,6 +57,7 @@ export function aiSetup(
     GEMINI_LABEL_MODEL: env.GEMINI_LABEL_MODEL,
     GEMINI_COPY_MODEL: env.GEMINI_COPY_MODEL,
     GEMINI_PLAN_MODEL: env.GEMINI_PLAN_MODEL,
+    GEMINI_REVIEW_MODEL: env.GEMINI_REVIEW_MODEL,
     GEMINI_TIMEOUT_MS: env.GEMINI_TIMEOUT_MS
   })
   if (s.AI_DEFAULT_PROVIDER?.toLowerCase() === 'fake')
@@ -80,7 +82,8 @@ export function aiSetup(
   const configured = {
     label: s.GEMINI_LABEL_MODEL,
     copy: s.GEMINI_COPY_MODEL,
-    plan: s.GEMINI_PLAN_MODEL
+    plan: s.GEMINI_PLAN_MODEL,
+    review: s.GEMINI_REVIEW_MODEL
   }[purpose]
   const model = configured || defaultGeminiModels[purpose]
   if (!isGeminiModel(model))

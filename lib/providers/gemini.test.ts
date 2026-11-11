@@ -83,6 +83,19 @@ describe('geminiRequestBody', () => {
     })
   })
 
+  it('sends pictures as inline data after the task text', () => {
+    const body = JSON.parse(
+      geminiRequestBody({
+        ...request,
+        images: [{ mediaType: 'image/png', base64: 'iVBORw0KGgo=' }]
+      })
+    )
+    expect(body.contents[0].parts).toEqual([
+      { text: request.user },
+      { inlineData: { mimeType: 'image/png', data: 'iVBORw0KGgo=' } }
+    ])
+  })
+
   it('omits the thinking budget for 3.x models and JSON settings for text', () => {
     const body = JSON.parse(
       geminiRequestBody({

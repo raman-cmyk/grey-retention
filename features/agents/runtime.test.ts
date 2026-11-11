@@ -331,6 +331,56 @@ describe('runAgent', () => {
     })
   })
 
+  it("sends the agent's pictures and lets a call use a stronger tier", async () => {
+    const ai = ok({ family: 'hero', confidence: 0.95 })
+    const withImage = {
+      ...tagger,
+      images: () => [
+        { mediaType: 'image/png' as const, base64: 'iVBORw0KGgo=' }
+      ]
+    }
+    const log = new InMemoryRunLog()
+    await runAgent(
+      withImage,
+      { html: 'x' },
+      {
+        tenantId,
+        industry: null,
+        callerKey: 's',
+        memory: new InMemoryMemoryStore(),
+        log,
+        ai,
+        now,
+        purpose: 'review'
+      }
+    )
+    const call = (ai as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(call.purpose).toBe('review')
+    expect(call.request.images).toEqual([
+      { mediaType: 'image/png', base64: 'iVBORw0KGgo=' }
+    ])
+    // A different picture is a different question.
+    await runAgent(
+      {
+        ...withImage,
+        images: () => [
+          { mediaType: 'image/png' as const, base64: 'AAAAAAAAAAA=' }
+        ]
+      },
+      { html: 'x' },
+      {
+        tenantId,
+        industry: null,
+        callerKey: 's',
+        memory: new InMemoryMemoryStore(),
+        log,
+        ai,
+        now
+      }
+    )
+    expect(log.entries[0].promptDigest).not.toBe(log.entries[1].promptDigest)
+  })
+
   it('gives the same prompt the same digest, and a new version a new one', async () => {
     const log = new InMemoryRunLog()
     const ctx = {

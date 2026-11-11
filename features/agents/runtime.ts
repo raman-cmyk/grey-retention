@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { z } from 'zod'
-import type { AiProviderRequest } from '@/lib/providers/contracts'
+import type { AiImage, AiProviderRequest } from '@/lib/providers/contracts'
 import type { AiPurpose } from '@/lib/providers/gemini-pricing'
 import type { AiRunResult } from '@/features/ai/run'
 import {
@@ -29,6 +29,8 @@ export type AgentDefinition<I, O> = {
   instructions: string
   /** The task for this call. Untrusted content must be inside JSON here. */
   task: (input: I) => string
+  /** Pictures for this call, e.g. a section crop or an email screenshot. */
+  images?: (input: I) => AiImage[]
   /** JSON Schema sent to the model, and the zod check run on its answer. */
   schema: { name: string; definition: Record<string, unknown> }
   output: z.ZodType<O>
@@ -106,6 +108,11 @@ export async function runAgent<I, O>(
     log: RunLog
     ai: AiCall
     now?: string
+    /**
+     * Use another model tier for this call, e.g. `review` (Flash) to re-run
+     * a low-confidence `label` (Flash-Lite) answer.
+     */
+    purpose?: AiPurpose
   }
 ): Promise<AgentResult<O>> {
   const now = ctx.now ?? new Date().toISOString()
@@ -121,9 +128,13 @@ export async function runAgent<I, O>(
       : null
   const system = buildInstructions(def, rules, book)
   const user = def.task(input)
-  const promptDigest = createHash('sha256')
-    .update(`${def.name}@${def.version}\n${system}\n${user}`)
-    .digest('hex')
+  const images = def.images ? def.images(input) : []
+  const digest = createHash('sha256').update(
+    `${def.name}@${def.version}\n${system}\n${user}`
+  )
+  for (const image of images)
+    digest.update(`\n${image.mediaType}:${image.base64}`)
+  const promptDigest = digest.digest('hex')
   const base = {
     agent: def.name,
     version: def.version,
@@ -136,7 +147,7 @@ export async function runAgent<I, O>(
   const result = await ctx.ai({
     tenantId: ctx.tenantId,
     callerKey: `${def.name}:${ctx.callerKey}`,
-    purpose: def.purpose,
+    purpose: ctx.purpose ?? def.purpose,
     request: {
       system,
       user,
@@ -144,7 +155,8 @@ export async function runAgent<I, O>(
       temperature: def.temperature,
       responseKind: 'json',
       schema: def.schema,
-      ...(def.reasoningEffort ? { reasoningEffort: def.reasoningEffort } : {})
+      ...(def.reasoningEffort ? { reasoningEffort: def.reasoningEffort } : {}),
+      ...(images.length ? { images } : {})
     }
   })
   if (!result.ok) {
