@@ -326,3 +326,10 @@ describe('the safe layouts', () => {
       }
   })
 })
+
+describe('the output limit', () => {
+  it('leaves room for the answer after the thinking budget', async () => {
+    const { thinkingBudget } = await import('@/features/strategy/retry')
+    expect(sectionPlannerAgent.maxOutputTokens).toBe(800 + thinkingBudget.low)
+  })
+})
