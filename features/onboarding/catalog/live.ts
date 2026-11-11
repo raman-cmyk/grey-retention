@@ -134,10 +134,18 @@ export async function runCatalogReadingJob(
     const reason = (
       pauses as Record<string, (typeof pauses)[keyof typeof pauses]>
     )[error.kind]
-    if (!reason)
+    if (!reason) {
+      // What Klaviyo said, for the developers (never the key).
+      logger.warn('Catalog read: Klaviyo failed', {
+        kind: error.kind,
+        endpoint: error.details.endpoint,
+        status: error.details.status ?? 0,
+        code: error.details.code ?? 'none'
+      })
       throw new ProviderFault(
         error.kind === 'unavailable' ? 'transient' : 'validation'
       )
+    }
     logger.warn('Catalog read paused', {
       reason,
       endpoint: error.details.endpoint,

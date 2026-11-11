@@ -42,6 +42,8 @@ export type CatalogItem = {
   published: boolean
   created: string | null
   variants: CatalogVariant[]
+  /** Some of its variants were not in the answer: its stock is unknown. */
+  variantsMissing: boolean
 }
 
 export type StoreEvent = {
@@ -199,9 +201,14 @@ export function readCatalogItems(
     more,
     (body) => {
       const variants = new Map<string, CatalogVariant>()
+      let skipped = 0
       for (const raw of body.included ?? []) {
         const v = variantRecord.safeParse(raw)
-        if (!v.success) continue
+        // A variant we cannot read makes the read incomplete.
+        if (!v.success) {
+          skipped++
+          continue
+        }
         const a = v.data.attributes
         variants.set(v.data.id, {
           id: v.data.id,
@@ -216,8 +223,8 @@ export function readCatalogItems(
           published: a.published !== false
         })
       }
-      let skipped = 0
       const records: CatalogItem[] = []
+      let related = false
       for (const raw of body.data) {
         const item = itemRecord.safeParse(raw)
         if (!item.success) {
@@ -225,6 +232,12 @@ export function readCatalogItems(
           continue
         }
         const a = item.data.attributes
+        const ids = item.data.relationships?.variants?.data
+        if (ids) related = true
+        const own = (ids ?? []).flatMap(({ id }) => {
+          const v = variants.get(id)
+          return v ? [v] : []
+        })
         records.push({
           id: item.data.id,
           externalId: shortId(item.data.id, a.external_id),
@@ -237,14 +250,12 @@ export function readCatalogItems(
           created: z.iso.datetime({ offset: true }).safeParse(a.created).success
             ? a.created!
             : null,
-          variants: (item.data.relationships?.variants?.data ?? []).flatMap(
-            ({ id }) => {
-              const v = variants.get(id)
-              return v ? [v] : []
-            }
-          )
+          variants: own,
+          variantsMissing: own.length < (ids?.length ?? 0)
         })
       }
+      // Variants sent without saying whose they are: the read is not whole.
+      if (variants.size > 0 && !related) skipped++
       return { records, skipped }
     }
   )
@@ -265,7 +276,20 @@ const metricRecord = z.object({
 export type StoreMetrics = {
   placedOrder: string | null
   viewedProduct: string | null
+  /** False when not every page of metrics was read. */
+  complete: boolean
 }
+
+/** Store platforms whose own metrics are preferred, in this order. */
+const storePlatforms = [
+  'shopify',
+  'woocommerce',
+  'bigcommerce',
+  'magento',
+  'salesforce commerce cloud',
+  'wix',
+  'squarespace'
+]
 
 /**
  * The store's Placed Order and Viewed Product metrics; a store's own
@@ -292,18 +316,25 @@ export async function findStoreMetrics(
       return { records, skipped }
     }
   )
-  const pick = (name: string) => {
-    const named = read.records.filter((m) => m.attributes.name === name)
-    const own = named.find(
-      (m) =>
-        (m.attributes.integration?.name ?? '').toLowerCase() !== 'api' &&
-        !!m.attributes.integration?.name
-    )
-    return (own ?? named[0])?.id ?? null
+  // A store platform's own metric first, then another integration's, then
+  // one sent through the API.
+  const rank = (m: (typeof read.records)[number]) => {
+    const source = (m.attributes.integration?.name ?? '').toLowerCase()
+    const platform = storePlatforms.indexOf(source)
+    return platform >= 0
+      ? platform
+      : source && source !== 'api'
+        ? storePlatforms.length
+        : storePlatforms.length + 1
   }
+  const pick = (name: string) =>
+    read.records
+      .filter((m) => m.attributes.name === name)
+      .sort((a, b) => rank(a) - rank(b))[0]?.id ?? null
   return {
     placedOrder: pick('Placed Order'),
-    viewedProduct: pick('Viewed Product')
+    viewedProduct: pick('Viewed Product'),
+    complete: read.complete && read.skipped === 0
   }
 }
 
@@ -311,7 +342,8 @@ const eventRecord = z.object({
   type: z.literal('event'),
   attributes: z.object({
     datetime: z.iso.datetime({ offset: true }),
-    event_properties: z.record(z.string(), z.unknown())
+    // Klaviyo may send no properties: the event then says nothing.
+    event_properties: z.record(z.string(), z.unknown()).nullish()
   })
 })
 
@@ -340,7 +372,7 @@ export function readEvents(
         return [
           {
             at: new Date(e.data.attributes.datetime).toISOString(),
-            props: e.data.attributes.event_properties
+            props: e.data.attributes.event_properties ?? {}
           }
         ]
       })

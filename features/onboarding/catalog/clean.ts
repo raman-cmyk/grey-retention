@@ -34,6 +34,8 @@ export type RawProduct = {
   launchedAt: string | null
   stock: number | null
   variantCount: number
+  /** Ids of items merged into this one (listed one per variant). */
+  otherIds?: string[]
 }
 
 export type Sales = { units30d: number; units90d: number }
@@ -138,6 +140,33 @@ const httpsOf = (value: unknown) => {
 }
 const textOf = (value: unknown) =>
   typeof value === 'string' && value.trim() ? value.trim() : null
+/** A product photo: https, and not a store's "no image" placeholder. */
+const imageOf = (value: unknown) => {
+  const url = httpsOf(value)
+  return url && !/\/no-image|no_image|placeholder/i.test(url) ? url : null
+}
+
+/**
+ * A price as a number: 89, "89.00", or a store's formatted money such as
+ * "$89.00", "1.299,00 €", "Rs. 1,299" or "<span class=money>$89.00</span>"
+ * (Shopify's Viewed Product sends its money format). The last separator
+ * followed by one or two digits is the decimal point; others group
+ * thousands.
+ */
+export function moneyOf(value: unknown): number | null {
+  if (typeof value === 'number') return numberOf(value)
+  if (typeof value !== 'string') return null
+  const text = value.replace(/<[^>]*>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ')
+  const raw = /\d[\d.,\s']*/.exec(text)?.[0]?.replace(/[\s']/g, '') ?? ''
+  if (!raw) return null
+  const last = Math.max(raw.lastIndexOf('.'), raw.lastIndexOf(','))
+  const decimals = last >= 0 ? raw.length - last - 1 : 0
+  const whole =
+    last >= 0 && decimals >= 1 && decimals <= 2
+      ? `${raw.slice(0, last).replace(/[.,]/g, '')}.${raw.slice(last + 1)}`
+      : raw.replace(/[.,]/g, '')
+  return numberOf(Number(whole))
+}
 
 /**
  * Klaviyo catalog items as products: an item's variants are its own (the
@@ -145,7 +174,10 @@ const textOf = (value: unknown) =>
  * that are one product listed per variant (the same title without the
  * variant, the same page) become one product.
  */
-export function fromCatalogItems(items: CatalogItem[]): RawProduct[] {
+export function fromCatalogItems(
+  items: CatalogItem[],
+  now: number
+): RawProduct[] {
   const products = new Map<string, RawProduct>()
   for (const item of items) {
     const prices = item.variants
@@ -165,7 +197,9 @@ export function fromCatalogItems(items: CatalogItem[]): RawProduct[] {
         (item.variants.length === 0 || item.variants.some((v) => v.published)),
       launchedAt: item.created,
       stock:
-        stocks.length > 0 && stocks.every((s) => s !== null)
+        !item.variantsMissing &&
+        stocks.length > 0 &&
+        stocks.every((s) => s !== null)
           ? stocks.reduce<number>((sum, s) => sum + (s ?? 0), 0)
           : null,
       variantCount: Math.max(1, item.variants.length)
@@ -192,13 +226,23 @@ export function fromCatalogItems(items: CatalogItem[]): RawProduct[] {
           : Math.min(known.price, product.price)
     known.image ??= product.image
     known.published ||= product.published
+    known.otherIds = [...(known.otherIds ?? []), product.externalId]
     if (
       product.launchedAt &&
-      (!known.launchedAt || product.launchedAt < known.launchedAt)
+      (!known.launchedAt ||
+        Date.parse(product.launchedAt) < Date.parse(known.launchedAt))
     )
       known.launchedAt = product.launchedAt
   }
-  return [...products.values()]
+  // An item's date is when it reached Klaviyo: it says when the product
+  // was added only for a catalog that has been in Klaviyo long enough.
+  const dates = items
+    .map((i) => (i.created ? Date.parse(i.created) : NaN))
+    .filter((t) => Number.isFinite(t))
+  const settled = dates.length > 0 && Math.min(...dates) <= now - 60 * day
+  return [...products.values()].map((p) =>
+    settled ? p : { ...p, launchedAt: null }
+  )
 }
 
 type Line = {
@@ -231,9 +275,14 @@ export function orderLines(props: Record<string, unknown>): Line[] {
       id,
       title: textOf(shopify ? l.title : l.ProductName),
       quantity: Math.min(quantity, 1000),
-      price: numberOf(shopify ? l.price : l.ItemPrice),
+      price: moneyOf(shopify ? l.price : l.ItemPrice),
       url: shopify ? null : httpsOf(l.ProductURL),
-      image: shopify ? null : httpsOf(l.ImageURL),
+      image: shopify
+        ? imageOf(
+            (l.product as { images?: { src?: unknown }[] } | undefined)
+              ?.images?.[0]?.src
+          )
+        : imageOf(l.ImageURL),
       variant: textOf(shopify ? l.variant_title : l.SKU)
     })
   }
@@ -274,6 +323,8 @@ export function fromEvents(
 ): RawProduct[] {
   type Seen = RawProduct & {
     first: string
+    firstView: string | null
+    firstOrder: string | null
     titles: Map<string, number>
     variants: Set<string>
     prices: number[]
@@ -282,6 +333,7 @@ export function fromEvents(
   const add = (
     id: string,
     at: string,
+    stream: 'view' | 'order',
     fields: {
       title: string | null
       url: string | null
@@ -306,6 +358,8 @@ export function fromEvents(
         stock: null,
         variantCount: 1,
         first: at,
+        firstView: null,
+        firstOrder: null,
         titles: new Map(),
         variants: new Set(),
         prices: []
@@ -326,17 +380,23 @@ export function fromEvents(
     }
     if (fields.variant) s.variants.add(fields.variant)
     if (at < s.first) s.first = at
+    if (stream === 'view' && (!s.firstView || at < s.firstView))
+      s.firstView = at
+    if (stream === 'order' && (!s.firstOrder || at < s.firstOrder))
+      s.firstOrder = at
   }
   for (const view of views) {
     const p = view.props
     const id = idOf(p.ProductID)
     if (!id) continue
-    add(id, view.at, {
-      title: textOf(p.ProductName),
+    // A store's own snippet sends Name and its formatted money (Shopify);
+    // an integration sends ProductName and numbers.
+    add(id, view.at, 'view', {
+      title: textOf(p.ProductName) ?? textOf(p.Name),
       url: httpsOf(p.URL),
-      image: httpsOf(p.ImageURL),
-      price: numberOf(p.Price),
-      compareAt: numberOf(p.CompareAtPrice),
+      image: imageOf(p.ImageURL),
+      price: moneyOf(p.Price),
+      compareAt: moneyOf(p.CompareAtPrice),
       variant: textOf(p.SKU)
     })
   }
@@ -344,24 +404,39 @@ export function fromEvents(
   for (const order of orders)
     for (const line of orderLines(order.props)) {
       if (viewed.has(line.id)) {
-        // Only the first time it was seen counts from an order.
+        // A viewed product keeps its page's values; its order lines only
+        // fill a missing title or price, and say when it was first seen.
         const s = seen.get(line.id)!
         if (order.at < s.first) s.first = order.at
+        if (!s.firstOrder || order.at < s.firstOrder) s.firstOrder = order.at
         if (line.variant) s.variants.add(line.variant)
+        if (s.titles.size === 0 && line.title)
+          s.titles.set(baseTitle(line.title), 1)
+        if (s.price === null && line.price !== null) s.price = line.price
+        s.image ??= line.image
         continue
       }
-      add(line.id, order.at, { ...line, compareAt: null })
+      add(line.id, order.at, 'order', { ...line, compareAt: null })
     }
-  const times = [...views, ...orders].map((e) => e.at).sort()
-  const reachesBack =
-    times.length > 0 && Date.parse(times[0]!) <= now - 60 * day
+  // A product is new only when first seen lately in events that reach
+  // back far enough to show it was not there before.
+  const oldest = (events: StoreEvent[]) =>
+    events.reduce<string | null>((o, e) => (!o || e.at < o ? e.at : o), null)
+  const reaches = (at: string | null) =>
+    at !== null && Date.parse(at) <= now - 60 * day
+  const viewsReach = reaches(oldest(views))
+  const ordersReach = reaches(oldest(orders))
+  const lately = (at: string | null) =>
+    at !== null && Date.parse(at) >= now - newArrivalDays * day
   return [...seen.values()].map((s) => {
     const title =
       [...s.titles.entries()].sort(
         (a, b) => b[1] - a[1] || a[0].length - b[0].length
       )[0]?.[0] ?? ''
     const fresh =
-      reachesBack && Date.parse(s.first) >= now - newArrivalDays * day
+      lately(s.first) &&
+      ((viewsReach && lately(s.firstView)) ||
+        (ordersReach && lately(s.firstOrder)))
     // On sale: lower now than its compare-at price, and seen earlier in
     // the window at that full price.
     const saleSeen =
@@ -391,15 +466,19 @@ const currencyNames = [
   'Currency',
   'currency'
 ]
+/** The shop's own currency in a Shopify order, when it says it. */
+const shopCurrency = (props: Record<string, unknown>) =>
+  (props.$extra as { currency?: unknown } | undefined)?.currency
 
 /** The currency most of the orders are in, and how many say one. */
 export function orderCurrency(orders: StoreEvent[]) {
   const counts = new Map<string, number>()
   let said = 0
   for (const order of orders) {
-    const raw = currencyNames
-      .map((name) => order.props[name])
-      .find((v) => typeof v === 'string')
+    const raw = [
+      shopCurrency(order.props),
+      ...currencyNames.map((name) => order.props[name])
+    ].find((v) => typeof v === 'string')
     const code = typeof raw === 'string' ? raw.trim().toUpperCase() : ''
     if (!/^[A-Z]{3}$/.test(code)) continue
     said++
@@ -436,10 +515,18 @@ export function withSales(
   for (const s of sales.values())
     for (const t of s.titles) byTitle.set(t, [...(byTitle.get(t) ?? []), s])
   return products.map((p) => {
-    const own = sales.get(p.externalId)
+    // Its own sales and those of the items merged into it.
+    const owned = [p.externalId, ...(p.otherIds ?? [])].flatMap((id) => {
+      const s = sales.get(id)
+      return s ? [s] : []
+    })
     const titled = byTitle.get(p.title.toLowerCase())
-    const s = own ?? (titled?.length === 1 ? titled[0] : undefined)
-    return { ...p, units30d: s?.units30d ?? 0, units90d: s?.units90d ?? 0 }
+    const found = owned.length ? owned : titled?.length === 1 ? titled : []
+    return {
+      ...p,
+      units30d: found.reduce((n, s) => n + s.units30d, 0),
+      units90d: found.reduce((n, s) => n + s.units90d, 0)
+    }
   })
 }
 
@@ -541,7 +628,12 @@ export function finishCatalog(
 ): { records: CatalogRecord[]; leftOut: number; truncated: boolean } {
   const unit = minorUnits(options.currency)
   const drops = new Map(options.duplicates.map((d) => [d.drop, d.keep]))
-  const byId = new Map(listed.map((p) => [p.externalId, { ...p }]))
+  let leftOut = 0
+  // One product per Klaviyo id (the first wins).
+  const byId = new Map<string, Listed>()
+  for (const p of listed)
+    if (byId.has(p.externalId)) leftOut++
+    else byId.set(p.externalId, { ...p })
   for (const [drop, keep] of drops) {
     const d = byId.get(drop)
     const k = byId.get(keep)
@@ -549,15 +641,38 @@ export function finishCatalog(
     k.units30d += d.units30d
     k.units90d += d.units90d
   }
-  let leftOut = 0
-  const usable = [...byId.values()].filter((p) => {
+  // What the database stores: a page (https, no spaces, 2000 characters at
+  // most), a price that fits, a title of 2 to 200 characters, a known id.
+  const usable = [...byId.values()].flatMap((p) => {
+    const title = Array.from(p.title).slice(0, 200).join('')
+    const priceMinor = p.price === null ? NaN : Math.round(p.price * unit)
     const ok =
       p.url !== null &&
-      p.price !== null &&
-      p.title.length >= 2 &&
+      p.url.length <= 2000 &&
+      !/\s/.test(p.url) &&
+      Number.isSafeInteger(priceMinor) &&
+      priceMinor >= 0 &&
+      priceMinor <= 999_999_999 &&
+      Array.from(title.trim()).length >= 2 &&
       /^[A-Za-z0-9$:._-]{1,160}$/.test(p.externalId)
-    if (!ok) leftOut++
-    return ok
+    if (!ok) {
+      leftOut++
+      return []
+    }
+    const launched = p.launchedAt ? Date.parse(p.launchedAt) : NaN
+    return [
+      {
+        ...p,
+        title,
+        image:
+          p.image && p.image.length <= 2000 && !/\s/.test(p.image)
+            ? p.image
+            : null,
+        launchedAt: Number.isFinite(launched)
+          ? new Date(launched).toISOString()
+          : null
+      }
+    ]
   })
   usable.sort(
     (a, b) =>
@@ -592,18 +707,23 @@ export function finishCatalog(
       options.now - Date.parse(p.launchedAt) <= newArrivalDays * day &&
       Date.parse(p.launchedAt) <= options.now
     const bestsellerRank = ranks.get(p.externalId) ?? null
+    // A product at no price (a free gift) is never featured by default.
     const picked =
-      everyone ||
-      newArrival ||
-      (bestsellerRank !== null && bestsellerRank <= topBestsellers)
+      p.price! > 0 &&
+      (everyone ||
+        newArrival ||
+        (bestsellerRank !== null && bestsellerRank <= topBestsellers))
     const priceMinor = Math.round(p.price! * unit)
+    const compare = p.compareAt === null ? NaN : Math.round(p.compareAt * unit)
     const compareAtMinor =
-      p.compareAt !== null && Math.round(p.compareAt * unit) > priceMinor
-        ? Math.round(p.compareAt * unit)
+      Number.isSafeInteger(compare) &&
+      compare > priceMinor &&
+      compare <= 999_999_999
+        ? compare
         : null
     return {
       externalId: p.externalId,
-      title: p.title.slice(0, 200),
+      title: p.title,
       url: p.url!,
       priceMinor,
       currency: options.currency,
@@ -633,5 +753,7 @@ export function priceBand(records: CatalogRecord[]) {
   if (!prices.length) return null
   const at = (q: number) => prices[Math.round(q * (prices.length - 1))]!
   const unit = minorUnits(records[0]!.currency)
-  return { min: at(0.1) / unit, max: at(0.9) / unit }
+  // Major units to the cent, as findings hold money.
+  const cents = (minor: number) => Math.round((minor / unit) * 100) / 100
+  return { min: cents(at(0.1)), max: cents(at(0.9)) }
 }

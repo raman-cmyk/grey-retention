@@ -17,7 +17,7 @@ import {
   KlaviyoError,
   type KlaviyoClient
 } from '@/lib/providers/klaviyo/client'
-import type { FindingInput } from '../findings'
+import { findingInput, type FindingInput } from '../findings'
 import { analyseCatalog, analystInput, type CatalogAnalysis } from './analyst'
 import {
   currencyCheck,
@@ -38,6 +38,8 @@ type Job = Database['public']['Tables']['job_runs']['Row']
 export const catalogRunMs = 30_000
 /** The longest one Klaviyo request may take in a catalog read. */
 export const klaviyoCallMs = 6_000
+/** Pages of views read before the orders, when the views are the catalog. */
+export const viewPagesFirst = 5
 
 export type CatalogRun = {
   state: 'ready' | 'empty'
@@ -107,56 +109,83 @@ export async function readBrandCatalog(
     await deps.client.get(accountPath, 'accounts:read')
   )
   const since = new Date(started - salesWindowDays * day)
+  const unread: PagedRead<never> = { records: [], complete: false, skipped: 0 }
 
-  let items: PagedRead<CatalogItem> = none
+  let items: PagedRead<CatalogItem> = unread
   if (more())
     try {
       items = await readCatalogItems(deps.client, more)
     } catch (error) {
-      // Klaviyo refusing this read (a changed shape or query) is not the
-      // end: the events still show the products.
-      if (
-        !(error instanceof KlaviyoError) ||
-        !['rejected', 'invalid_response'].includes(error.kind)
-      )
-        throw error
+      // Klaviyo refusing this read (a changed shape or query, or a key
+      // without the Catalogs scope) is not the end: the events still show
+      // the products. The read is then not whole.
+      const usable =
+        error instanceof KlaviyoError &&
+        (['rejected', 'invalid_response'].includes(error.kind) ||
+          (error.kind === 'missing_scope' &&
+            error.details.scope === 'catalogs:read'))
+      if (!usable) throw error
       logger.warn('Catalog read: Klaviyo catalog unreadable, using events', {
         kind: error.kind,
-        status: error.details.status ?? 0
+        status: error.details.status ?? 0,
+        code: error.details.code ?? 'none'
       })
-      items = { records: [], complete: false, skipped: 0 }
     }
-  else items = { records: [], complete: false, skipped: 0 }
+  const fromApi = items.records.length > 0
   const metrics = more()
     ? await findStoreMetrics(deps.client, more)
-    : { placedOrder: null, viewedProduct: null }
+    : { placedOrder: null, viewedProduct: null, complete: false }
+  // Without the catalog, the views show the products: they are read first,
+  // so a slow answer never leaves only the orders (which have no pages).
+  const views: PagedRead<StoreEvent> = fromApi
+    ? none
+    : metrics.viewedProduct && more()
+      ? await readEvents(
+          deps.client,
+          metrics.viewedProduct,
+          since,
+          more,
+          viewPagesFirst
+        )
+      : metrics.viewedProduct
+        ? unread
+        : none
   const orders: PagedRead<StoreEvent> =
     metrics.placedOrder && more()
       ? await readEvents(deps.client, metrics.placedOrder, since, more)
-      : none
-  const fromApi = items.records.length > 0
-  const views: PagedRead<StoreEvent> =
-    !fromApi && metrics.viewedProduct && more()
-      ? await readEvents(deps.client, metrics.viewedProduct, since, more)
-      : none
-  const complete =
+      : metrics.placedOrder
+        ? unread
+        : none
+  const skipped = items.skipped + orders.skipped + views.skipped
+  const read =
     items.complete &&
+    metrics.complete &&
     orders.complete &&
     views.complete &&
-    (fromApi || !!metrics.viewedProduct || !!metrics.placedOrder)
+    skipped === 0
 
   const orderMoney = orderCurrency(orders.records)
   const currency = account.currency ?? orderMoney.currency
-  if (!currency)
-    throw new KlaviyoError('invalid_response', { endpoint: '/api/accounts/' })
+  if (!currency) {
+    logger.warn('Catalog read: no currency in the account or the orders')
+    throw Object.assign(new Error('No store currency'), { code: 'no_currency' })
+  }
   const check = account.currency
     ? currencyCheck(account.currency, orderMoney)
     : 'unverified'
   const raw = fromApi
-    ? fromCatalogItems(items.records)
+    ? fromCatalogItems(items.records, started)
     : fromEvents(views.records, orders.records, started)
   const listed = withSales(raw, salesFrom(orders.records, started))
-  const source = fromApi ? 'api' : raw.length ? 'events' : null
+
+  // Nothing found before the time ran out is not "no products": the read
+  // is tried again later, and nothing earlier is replaced.
+  if (!listed.length && !read) {
+    logger.warn('Catalog read: no products found before the time ran out', {
+      live: deps.live
+    })
+    throw new KlaviyoError('unavailable', { endpoint: '/api/events/' })
+  }
 
   let analysis: CatalogAnalysis = { answered: false, reason: 'no_products' }
   if (listed.length && !deps.ask)
@@ -179,7 +208,16 @@ export async function readBrandCatalog(
     duplicates: analysis.answered ? analysis.duplicates : [],
     now: started
   })
+  // Products were found but none could be stored (no page, no price…):
+  // something is off, and nothing earlier is retired.
+  if (!records.length && leftOut > 0) {
+    logger.warn('Catalog read: no product could be stored', { leftOut })
+    throw Object.assign(new Error('No storable product'), {
+      code: 'no_storable_product'
+    })
+  }
   const state = records.length ? 'ready' : 'empty'
+  const source = state === 'ready' ? (fromApi ? 'api' : 'events') : null
   const pass = (counted: boolean) =>
     !deps.live ? 'sample' : counted ? 'code' : 'model'
   const ref = `klaviyo:${fromApi ? 'catalog' : 'events'}`
@@ -187,7 +225,9 @@ export async function readBrandCatalog(
     pass: 'sample' | 'model' | 'code'
     model: string | null
   })[] = []
-  const band = state === 'ready' ? priceBand(records) : null
+  // A price band only in the store's own currency.
+  const band =
+    state === 'ready' && check !== 'mismatch' ? priceBand(records) : null
   if (band)
     findings.push({
       topic: 'price_band',
@@ -228,13 +268,30 @@ export async function readBrandCatalog(
       pass: pass(false),
       model: analysis.model
     })
+  // A finding that does not hold its topic's shape is left out, never sent.
+  const kept = findings.filter((f) => findingInput.safeParse(f).success)
+  if (kept.length < findings.length)
+    logger.warn('Catalog read: findings left out', {
+      count: findings.length - kept.length
+    })
 
+  const oldest = (events: StoreEvent[]) =>
+    events.reduce<string | null>((o, e) => (!o || e.at < o ? e.at : o), null)
+  const window = {
+    since: since.toISOString(),
+    orders: orders.records.length,
+    views: views.records.length,
+    ...(oldest(orders.records) ? { oldestOrder: oldest(orders.records) } : {}),
+    ...(oldest(views.records) ? { oldestView: oldest(views.records) } : {})
+  }
+  const complete = read && !truncated
   const summary = {
     state,
-    ...(source && state === 'ready' ? { source } : {}),
+    ...(source ? { source } : {}),
     currency,
     currencyCheck: check,
-    complete: complete && !truncated,
+    complete,
+    window,
     ...(state === 'empty'
       ? { reason: 'no_products' }
       : check === 'mismatch'
@@ -248,8 +305,8 @@ export async function readBrandCatalog(
     products: records.length,
     featurable,
     leftOut,
-    skipped: items.skipped + orders.skipped + views.skipped,
-    complete: summary.complete,
+    skipped,
+    complete,
     currencyCheck: check,
     live: deps.live
   })
@@ -259,18 +316,18 @@ export async function readBrandCatalog(
     job: job.id,
     lease: job.lease_token!,
     products: records as unknown as Json,
-    findings: findings as unknown as Json,
+    findings: kept as unknown as Json,
     summary: summary as unknown as Json,
     live: deps.live
   })
   if (stored.error) throw stored.error
   return {
     state,
-    source: state === 'ready' ? source : null,
+    source,
     products: records.length,
     featurable,
-    findings: findings.length,
-    complete: summary.complete,
+    findings: kept.length,
+    complete,
     live: deps.live,
     analysis: analysis.answered ? 'done' : 'skipped'
   }

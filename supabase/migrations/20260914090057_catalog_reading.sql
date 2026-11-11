@@ -25,9 +25,9 @@
 -- (live AI, the workspace's Klaviyo key): never in the sweep or an owner's
 -- "Run jobs". Locks: the tenant first, then the job, then products.
 --
--- Also the guard deferred from KLV-001: the old sample command
--- (set_fixture_connection) never changes a live Klaviyo connection, except
--- to disconnect it.
+-- Also the guard deferred from KLV-001: a live Klaviyo connection changes
+-- only through its key check (connect_klaviyo_live), by being disconnected,
+-- or when Klaviyo refuses its key; never through the sample commands.
 
 alter table public.products drop constraint products_source_check,
   add constraint products_source_check check (source in ('manual','fixture','klaviyo'));
@@ -60,9 +60,20 @@ alter table public.products
   add constraint products_catalog_run_fk foreign key (tenant_id, catalog_run_id) references public.job_runs(tenant_id, id),
   add constraint products_klaviyo_shape check (source <> 'klaviyo' or (external_id is not null and catalog_run_id is not null)),
   add constraint products_hidden_shape check (not (featurable and hidden_reason is not null)
-    and (retired_at is null or (not featurable and hidden_reason = 'retired'))),
+    and (retired_at is null or (not featurable and hidden_reason is not distinct from 'retired'))),
+  -- A Klaviyo product is featured only with its real photo.
+  add constraint products_featurable_photo check (source <> 'klaviyo' or not featurable or image_url is not null),
   add constraint products_sale_shape check (not compare_at_is_sale or coalesce(compare_at_minor > price_minor, false));
 create unique index products_external on public.products (tenant_id, source, external_id) where external_id is not null;
+-- The catalog is written by the commands only: the browser roles read it
+-- (RLS), and nothing more.
+revoke insert, update, delete, truncate, references, trigger on public.products from authenticated;
+revoke all on public.products from anon;
+do $$ begin
+  if current_setting('server_version_num')::integer >= 170000 then
+    execute 'revoke maintain on public.products from authenticated';
+  end if;
+end $$;
 
 alter table public.brand_findings add constraint brand_findings_catalog_topics
   check (source <> 'catalog' or topic in ('locale','price_band','offering','claim'));
@@ -123,6 +134,126 @@ begin
  if status in ('expired','error') then perform private.notify_owners(t,'connection_health',t,'A fixture connection needs attention. Inspect connection diagnostics; no live account is connected.');end if;
 end $$;
 
+-- Nothing but the key check brings a live Klaviyo connection back, or
+-- changes what it says about the account: connect_sample_provider with the
+-- same hint (or any other update) is refused. A different hint (a sample
+-- key over the live one) still turns it into a sample connection, and
+-- disconnecting or Klaviyo refusing the key still work.
+create or replace function private.guard_live_klaviyo()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if old.provider = 'klaviyo' and old.mode = 'live' and new.mode = 'live'
+    and new.credential_hint is not distinct from old.credential_hint
+    and coalesce(current_setting('grey.live_klaviyo_check', true), '') <> 'on'
+    and new.status = 'connected'
+    and (old.status <> 'connected'
+      or new.account_label is distinct from old.account_label
+      or new.account_timezone is distinct from old.account_timezone
+      or new.account_website is distinct from old.account_website
+      or new.account_currency is distinct from old.account_currency
+      or new.account_country is distinct from old.account_country
+      or new.connected_at is distinct from old.connected_at) then
+    raise exception 'Live Klaviyo changes only through its key check' using errcode = 'PT409';
+  end if;
+  return new;
+end $$;
+revoke all on function private.guard_live_klaviyo() from public, anon, authenticated;
+create trigger guard_live_klaviyo before update on public.workspace_connections
+  for each row execute function private.guard_live_klaviyo();
+
+-- The key check's own command, as before (20260914090049), saying for the
+-- guard that this change comes from a checked key.
+create or replace function public.connect_klaviyo_live(
+  t uuid,
+  api_key text,
+  credential_hint text,
+  account_label text,
+  klaviyo_account_id text,
+  api_revision text,
+  later_missing text[] default '{}',
+  account_timezone text default null,
+  account_website text default null,
+  account_currency text default null,
+  account_country text default null
+) returns integer
+language plpgsql security definer set search_path = '' as $$
+declare r integer; stored uuid; missing text[] := coalesce(later_missing, '{}'); secret_name text := 'klaviyo_key:' || t;
+begin
+  perform private.require_member(t, true);
+  perform 1 from public.tenants where id = t for update;
+  -- Every check runs before anything is written, so no error ever echoes a
+  -- row holding the key.
+  if api_key is null or api_key !~ '^pk_[A-Za-z0-9]{20,64}$' then
+    raise exception 'A Klaviyo private API key starts with pk_' using errcode = '23514';
+  end if;
+  if credential_hint is null or credential_hint !~ '^pk_[A-Za-z0-9]{5}•{8}[A-Za-z0-9]{4}$'
+     or left(credential_hint, 8) <> left(api_key, 8) or right(credential_hint, 4) <> right(api_key, 4) then
+    raise exception 'The hint does not match the key' using errcode = '23514';
+  end if;
+  if klaviyo_account_id is null or klaviyo_account_id !~ '^[A-Za-z0-9]{1,64}$' then
+    raise exception 'Unknown Klaviyo account' using errcode = '23514';
+  end if;
+  if api_revision is null or api_revision !~ '^\d{4}-\d{2}-\d{2}(\.pre)?$' then
+    raise exception 'Unknown Klaviyo API revision' using errcode = '23514';
+  end if;
+  if cardinality(missing) > 20 or exists (select 1 from unnest(missing) s where s !~ '^[a-z-]+:(read|write)$') then
+    raise exception 'Invalid scopes' using errcode = '23514';
+  end if;
+  perform set_config('grey.live_klaviyo_check', 'on', true);
+  r := public.connect_sample_provider(t, 'klaviyo', account_label, credential_hint, null, null,
+    account_timezone, account_website, account_currency, account_country);
+  update public.workspace_connections set mode = 'live' where tenant_id = t and provider = 'klaviyo';
+  perform set_config('grey.live_klaviyo_check', '', true);
+  select c.secret_id into stored from public.klaviyo_credentials c where c.tenant_id = t for update;
+  if stored is not null and exists (select 1 from vault.secrets s where s.id = stored) then
+    perform vault.update_secret(stored, api_key);
+  else
+    -- A secret left behind under this workspace's name is replaced.
+    delete from vault.secrets s where s.name = secret_name;
+    stored := vault.create_secret(api_key, secret_name, 'Klaviyo private API key of one workspace');
+  end if;
+  insert into public.klaviyo_credentials(tenant_id, secret_id, key_hint, klaviyo_account_id, api_revision, later_missing)
+    values (t, stored, credential_hint, connect_klaviyo_live.klaviyo_account_id, connect_klaviyo_live.api_revision, missing)
+    on conflict (tenant_id) do update
+      set secret_id = excluded.secret_id, key_hint = excluded.key_hint, klaviyo_account_id = excluded.klaviyo_account_id,
+          api_revision = excluded.api_revision, later_missing = excluded.later_missing, status = 'active',
+          checked_at = now(), updated_at = now();
+  return r;
+end $$;
+
+-- Source reads are the worker's: an owner (who reads the lease token as a
+-- member) never records, fails or pauses one. As before otherwise
+-- (20260914090015).
+create or replace function private.onboarding_lease(job uuid, lease uuid)
+returns public.job_runs language plpgsql security definer set search_path = '' as $$
+declare j public.job_runs; t uuid;
+begin
+  select tenant_id into t from public.job_runs where id = job;
+  if t is null or not private.worker_access(t) then raise exception 'Access denied' using errcode = '42501'; end if;
+  perform 1 from public.tenants where tenants.id = t for update;
+  if not private.worker_access(t) then raise exception 'Access denied' using errcode = '42501'; end if;
+  select * into j from public.job_runs where id = job for update;
+  if j.kind in ('email.rewrite','email.import') then raise exception 'Access denied' using errcode = '42501'; end if;
+  if j.kind in ('brand.read_site','brand.read_catalog') and coalesce(auth.role(), '') <> 'service_role' then
+    raise exception 'Access denied' using errcode = '42501';
+  end if;
+  if j.status <> 'running' or j.lease_token is distinct from lease or j.lease_until <= now() then
+    raise exception 'Lease unavailable' using errcode = 'PT409';
+  end if;
+  return j;
+end $$;
+
+-- A time as Postgres reads it, or null when it is not one.
+create or replace function private.safe_time(value text)
+returns timestamptz language plpgsql immutable set search_path = '' as $$
+begin
+  if value is null or value !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$' then return null; end if;
+  return value::timestamptz;
+exception when others then
+  return null;
+end $$;
+revoke all on function private.safe_time(text) from public, anon, authenticated;
+
 -- The owner starts a read of the Klaviyo catalog (at most once a day per
 -- kind of connection; asking again the same day returns the same job, and
 -- restarts it when it failed). The job keeps the kind of connection it
@@ -159,19 +290,26 @@ end $$;
 create or replace function public.record_catalog_reading(job uuid, lease uuid, products jsonb, findings jsonb, summary jsonb, live boolean)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
-  j public.job_runs; newer boolean; n_products integer := 0; n_findings integer := 0; n_featurable integer := 0;
-  st text; cur text; keys constant text[] := array['externalId','title','url','priceMinor','currency','imageUrl','compareAtMinor',
+  j public.job_runs; newer boolean; n_findings integer := 0; n_featurable integer := 0;
+  st text; cur text; topics text[]; keys constant text[] := array['externalId','title','url','priceMinor','currency','imageUrl','compareAtMinor',
     'compareAtIsSale','featurable','hiddenReason','units30d','units90d','bestsellerRank','launchedAt','newArrival','stock',
     'variantCount'];
   whole constant text := '^[0-9]{1,9}$';
 begin
   j := private.onboarding_lease(job, lease);
   if j.kind <> 'brand.read_catalog' then raise exception 'Not a catalog reading job' using errcode = '23514'; end if;
-  if live is null or live <> (j.input->>'mode' = 'live') then raise exception 'Invalid catalog reading' using errcode = '23514'; end if;
+  if live is null or live is distinct from (coalesce(j.input->>'mode', '') = 'live') then
+    raise exception 'Invalid catalog reading' using errcode = '23514';
+  end if;
+  -- The sample catalog only for a synthetic brand, also when it is stored.
+  if not live and not coalesce((select b.synthetic from public.brand_profiles b where b.tenant_id = j.tenant_id), false) then
+    raise exception 'Invalid catalog reading' using errcode = '23514';
+  end if;
   -- The summary.
   st := summary->>'state'; cur := summary->>'currency';
   if jsonb_typeof(summary) is distinct from 'object' or st is null or st not in ('ready','empty')
-    or summary - 'state' - 'source' - 'currency' - 'currencyCheck' - 'complete' - 'reason' <> '{}'::jsonb
+    or summary - 'state' - 'source' - 'currency' - 'currencyCheck' - 'complete' - 'reason' - 'window' <> '{}'::jsonb
+    or (summary ? 'window' and (jsonb_typeof(summary->'window') <> 'object' or length((summary->'window')::text) > 600))
     or (summary ? 'source' and coalesce(summary->>'source', '') not in ('api','events'))
     or (st = 'ready' and not summary ? 'source')
     or (cur is not null and cur !~ '^[A-Z]{3}$') or (st = 'ready' and cur is null)
@@ -184,16 +322,18 @@ begin
   if jsonb_typeof(products) is distinct from 'array' or jsonb_array_length(products) > 500
     or (st = 'empty' and jsonb_array_length(products) > 0) or (st = 'ready' and jsonb_array_length(products) = 0)
     or exists (select 1 from jsonb_array_elements(products) p
-      where jsonb_typeof(p) <> 'object' or p - keys <> '{}'::jsonb
+      where jsonb_typeof(p) <> 'object' or p - keys <> '{}'::jsonb or not (p ?& keys)
         or jsonb_typeof(p->'externalId') is distinct from 'string' or p->>'externalId' !~ '^[A-Za-z0-9$:._-]{1,160}$'
         or jsonb_typeof(p->'title') is distinct from 'string' or length(btrim(p->>'title')) not between 2 and 200
         or jsonb_typeof(p->'url') is distinct from 'string' or private.https_host(p->>'url') is null or length(p->>'url') > 2000
+        or p->>'url' ~ '[\s[:cntrl:]]'
         or jsonb_typeof(p->'priceMinor') is distinct from 'number' or p->>'priceMinor' !~ whole
         or p->>'currency' is distinct from cur
         or jsonb_typeof(p->'imageUrl') not in ('string','null')
-        or (jsonb_typeof(p->'imageUrl') = 'string' and private.https_host(p->>'imageUrl') is null)
+        or (jsonb_typeof(p->'imageUrl') = 'string' and (length(p->>'imageUrl') > 2000
+          or p->>'imageUrl' !~ '^https://[^\s/?#@]+(/[^\s]*)?$' or private.https_host(p->>'imageUrl') is null))
         or jsonb_typeof(p->'compareAtMinor') not in ('number','null')
-        or (jsonb_typeof(p->'compareAtMinor') = 'number' and p->>'compareAtMinor' !~ whole)
+        or (jsonb_typeof(p->'compareAtMinor') = 'number' and (p->>'compareAtMinor' !~ whole or (p->>'compareAtMinor')::bigint = 0))
         or jsonb_typeof(p->'compareAtIsSale') is distinct from 'boolean'
         or jsonb_typeof(p->'featurable') is distinct from 'boolean'
         or jsonb_typeof(p->'hiddenReason') not in ('string','null')
@@ -205,17 +345,20 @@ begin
         or jsonb_typeof(p->'units90d') is distinct from 'number' or p->>'units90d' !~ whole
         or (p->>'units30d')::bigint > (p->>'units90d')::bigint
         or jsonb_typeof(p->'bestsellerRank') not in ('number','null')
-        or (jsonb_typeof(p->'bestsellerRank') = 'number' and p->>'bestsellerRank' !~ '^[1-9][0-9]{0,2}$')
+        or (jsonb_typeof(p->'bestsellerRank') = 'number' and (p->>'bestsellerRank' !~ '^[1-9][0-9]{0,2}$'
+          or (p->>'bestsellerRank')::integer > 500))
         or jsonb_typeof(p->'launchedAt') not in ('string','null')
-        or (jsonb_typeof(p->'launchedAt') = 'string' and p->>'launchedAt' !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$')
+        or (jsonb_typeof(p->'launchedAt') = 'string' and private.safe_time(p->>'launchedAt') is null)
         or jsonb_typeof(p->'newArrival') is distinct from 'boolean'
         or jsonb_typeof(p->'stock') not in ('number','null') or (jsonb_typeof(p->'stock') = 'number' and p->>'stock' !~ whole)
-        or jsonb_typeof(p->'variantCount') is distinct from 'number' or p->>'variantCount' !~ '^[1-9][0-9]{0,2}$')
+        or jsonb_typeof(p->'variantCount') is distinct from 'number' or p->>'variantCount' !~ '^[1-9][0-9]{0,2}$'
+        or (p->>'variantCount')::integer > 500)
     or (select count(distinct p->>'externalId') from jsonb_array_elements(products) p) <> jsonb_array_length(products) then
     raise exception 'Invalid catalog product' using errcode = '23514';
   end if;
   -- The findings: the topics a catalog can state, each citing Klaviyo.
   if jsonb_typeof(findings) is distinct from 'array' or jsonb_array_length(findings) > 20
+    or (st = 'empty' and jsonb_array_length(findings) > 0)
     or exists (select 1 from jsonb_array_elements(findings) f
       where jsonb_typeof(f) <> 'object' or f - 'topic' - 'statement' - 'value' - 'evidence' - 'confidence' - 'pass' - 'model' <> '{}'::jsonb
         or coalesce(f->>'topic', '') not in ('locale','price_band','offering','claim')
@@ -223,7 +366,11 @@ begin
         or jsonb_typeof(f->'confidence') is distinct from 'number' or (f->>'confidence')::numeric not between 0 and 1
         or coalesce(f->>'pass', '') not in ('sample','model','code')
         or (f->>'pass' = 'sample') = live
-        or (f ? 'model' and jsonb_typeof(f->'model') not in ('string','null'))
+        -- Code counts the price band and the locale; a model writes the rest.
+        or (f->>'pass' = 'code' and (f->>'topic' not in ('price_band','locale') or coalesce(f->>'model', '') <> ''))
+        or (f->>'pass' = 'model' and (f->>'topic' not in ('offering','claim') or coalesce(btrim(f->>'model'), '') = ''))
+        or (f->>'topic' in ('price_band','locale') and f->'value'->>'currency' is distinct from cur)
+        or (f ? 'model' and coalesce(jsonb_typeof(f->'model'), 'missing') not in ('string','null'))
         or jsonb_typeof(f->'evidence') is distinct from 'object' or (f->'evidence') - 'ref' <> '{}'::jsonb
         or coalesce(f->'evidence'->>'ref', '') !~ '^klaviyo:(account|catalog|events)(:[A-Za-z0-9 $._:-]{1,120})?$') then
     raise exception 'Invalid finding' using errcode = '23514';
@@ -252,7 +399,6 @@ begin
         bestseller_rank = excluded.bestseller_rank, launched_at = excluded.launched_at,
         new_arrival = excluded.new_arrival, stock_known = excluded.stock_known, variant_count = excluded.variant_count,
         catalog_run_id = excluded.catalog_run_id, retired_at = null, updated_at = now();
-    get diagnostics n_products = row_count;
     if (summary->>'complete')::boolean then
       update public.products set featurable = false, hidden_reason = 'retired', retired_at = now(), updated_at = now()
         where tenant_id = j.tenant_id and source = 'klaviyo' and catalog_run_id is distinct from j.id and retired_at is null;
@@ -266,8 +412,13 @@ begin
         products = excluded.products, featurable = excluded.featurable, currency = excluded.currency,
         currency_check = excluded.currency_check, complete = excluded.complete, reason = excluded.reason,
         live = excluded.live, updated_at = now();
+    -- A read replaces what it says again (everything when the store has no
+    -- products); a fact it could not state this time (the analysis was
+    -- skipped) stays.
+    select coalesce(array_agg(distinct e->>'topic'), '{}') into topics from jsonb_array_elements(findings) e;
     update public.brand_findings set superseded_at = now()
-      where tenant_id = j.tenant_id and source = 'catalog' and superseded_at is null;
+      where tenant_id = j.tenant_id and source = 'catalog' and superseded_at is null
+        and (st = 'empty' or topic = any(topics));
   end if;
   insert into public.brand_findings(tenant_id, run_id, source, topic, statement, value, evidence, confidence, pass, model,
       superseded_at)
@@ -279,20 +430,25 @@ begin
   update public.job_runs
     set status = 'succeeded', lease_token = null, lease_until = null, error_code = null, updated_at = now(),
         checkpoint = jsonb_build_object('state', st, 'source', summary->'source', 'products', jsonb_array_length(products),
-          'featurable', n_featurable, 'findings', n_findings, 'complete', summary->'complete', 'live', live, 'newer', newer)
+          'featurable', n_featurable, 'findings', n_findings, 'complete', summary->'complete', 'live', live, 'newer', newer,
+          'window', summary->'window')
     where id = j.id;
   return jsonb_build_object('products', jsonb_array_length(products), 'featurable', n_featurable, 'findings', n_findings,
     'newer', newer);
 end $$;
 
 -- A catalog read Klaviyo stopped. A rate limit puts it back for later
--- (between a minute and a day), without using one of its tries. A rejected
--- key or a missing scope ends it: a live connection then needs the owner
--- (the key is no longer read; connecting again with a key fixes it), and
--- the owners are told. Locks: the tenant first, then the job.
+-- (between a minute and a day), without using one of its tries, at most 6
+-- times and for at most a day; then it ends and the owners are told. A
+-- rejected key or a missing scope ends a live read: the live connection
+-- then needs the owner (the key is no longer read; connecting again with a
+-- key fixes it), and the owners are told. When the owner connected a new
+-- key after the read began, the read is only put back (the new key may
+-- work). A sample read that Klaviyo refused only ends. Locks: the tenant
+-- first, then the job, then the connection.
 create or replace function public.pause_source_reading(job uuid, lease uuid, reason text, seconds integer default null)
 returns void language plpgsql security definer set search_path = '' as $$
-declare j public.job_runs; is_live boolean;
+declare j public.job_runs; pauses integer; rechecked boolean;
 begin
   j := private.onboarding_lease(job, lease);
   if j.kind <> 'brand.read_catalog' or reason is null
@@ -300,32 +456,52 @@ begin
     raise exception 'Invalid pause' using errcode = '23514';
   end if;
   if reason = 'rate_limited' then
+    pauses := coalesce((j.checkpoint->>'pauses')::integer, 0) + 1;
+    if pauses > 6 or j.created_at < now() - interval '1 day' then
+      update public.job_runs set status = 'failed', failure_class = 'rate_limit', error_code = 'rate_limited',
+          checkpoint = coalesce(j.checkpoint, '{}'::jsonb) || jsonb_build_object('pauses', pauses),
+          lease_token = null, lease_until = null, updated_at = now()
+        where id = j.id;
+      perform private.notify_owners(j.tenant_id, 'connection_health', j.tenant_id,
+        'Klaviyo kept asking us to slow down, so the catalog was not read. Start the catalog read again later.');
+      return;
+    end if;
     update public.job_runs set status = 'retry_wait', attempt = greatest(attempt - 1, 0),
         available_at = now() + make_interval(secs => least(greatest(coalesce(seconds, 60), 60), 86400)),
+        checkpoint = coalesce(j.checkpoint, '{}'::jsonb) || jsonb_build_object('pauses', pauses),
         error_code = 'rate_limited', lease_token = null, lease_until = null, updated_at = now()
       where id = j.id;
     return;
   end if;
+  if coalesce(j.input->>'mode', '') = 'live' then
+    perform 1 from public.workspace_connections w
+      where w.tenant_id = j.tenant_id and w.provider = 'klaviyo' for update;
+    rechecked := exists (select 1 from public.klaviyo_credentials c
+      where c.tenant_id = j.tenant_id and c.checked_at > j.updated_at);
+    if rechecked then
+      update public.job_runs set status = 'retry_wait', attempt = greatest(attempt - 1, 0), available_at = now(),
+          error_code = reason, lease_token = null, lease_until = null, updated_at = now()
+        where id = j.id;
+      return;
+    end if;
+  end if;
   update public.job_runs set status = 'failed', failure_class = 'auth', error_code = reason, lease_token = null,
       lease_until = null, updated_at = now()
     where id = j.id;
-  select w.mode = 'live' into is_live from public.workspace_connections w
-    where w.tenant_id = j.tenant_id and w.provider = 'klaviyo' for update;
-  if coalesce(is_live, false) then
-    update public.workspace_connections set status = 'expired', last_error = reason, revision = revision + 1, updated_at = now()
-      where tenant_id = j.tenant_id and provider = 'klaviyo';
-    if reason = 'klaviyo_key_rejected' then
-      update public.klaviyo_credentials set status = 'revoked', updated_at = now() where tenant_id = j.tenant_id;
-    end if;
+  if coalesce(j.input->>'mode', '') <> 'live' then return; end if;
+  update public.workspace_connections set status = 'expired', last_error = reason, revision = revision + 1, updated_at = now()
+    where tenant_id = j.tenant_id and provider = 'klaviyo' and mode = 'live';
+  if reason = 'klaviyo_key_rejected' then
+    update public.klaviyo_credentials set status = 'revoked', updated_at = now() where tenant_id = j.tenant_id;
   end if;
   insert into public.catalog_status as s (tenant_id, run_id, state, reason, live, updated_at)
-    values (j.tenant_id, j.id, 'paused', reason, j.input->>'mode' = 'live', now())
+    values (j.tenant_id, j.id, 'paused', reason, true, now())
     on conflict (tenant_id) do update set run_id = excluded.run_id, state = 'paused', reason = excluded.reason,
       live = excluded.live, updated_at = now();
   perform private.notify_owners(j.tenant_id, 'connection_health', j.tenant_id,
     case when reason = 'klaviyo_key_rejected'
       then 'Klaviyo no longer accepts the API key. Connect Klaviyo again with a new private key to read the catalog.'
-      else 'The Klaviyo API key cannot read the catalog. Connect Klaviyo again with a key that has Catalogs, Events and Metrics read access.' end);
+      else 'The Klaviyo API key cannot read the catalog. Connect Klaviyo again with a key that has Accounts, Catalogs, Events and Metrics read access.' end);
 end $$;
 
 -- Site and catalog reads use live AI (and the open internet or the
@@ -352,6 +528,9 @@ begin
       lease_until = now() + interval '90 seconds', updated_at = now()
     where id = j.id returning *;
 end $$;
+
+create index job_runs_source_reads on public.job_runs (available_at, created_at)
+  where kind in ('brand.read_site','brand.read_catalog');
 
 -- The source reads (site and catalog) waiting, across active workspaces.
 create or replace function public.source_readings_waiting() returns integer
@@ -392,7 +571,7 @@ begin
     where id = j.id returning *;
 end $$;
 
-revoke all on function public.start_catalog_reading(uuid) from public, anon;
+revoke all on function public.start_catalog_reading(uuid) from public, anon, service_role;
 grant execute on function public.start_catalog_reading(uuid) to authenticated;
 revoke all on function public.record_catalog_reading(uuid, uuid, jsonb, jsonb, jsonb, boolean) from public, anon, authenticated;
 grant execute on function public.record_catalog_reading(uuid, uuid, jsonb, jsonb, jsonb, boolean) to service_role;

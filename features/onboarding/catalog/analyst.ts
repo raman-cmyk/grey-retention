@@ -135,7 +135,7 @@ export function sampleOffering(products: Listed[]) {
         .sort(
           (a, b) => b.units90d - a.units90d || a.title.localeCompare(b.title)
         )
-        .map((p) => p.title)
+        .map((p) => Array.from(p.title).slice(0, 80).join(''))
     )
   ].slice(0, 3)
   if (!names.length) return null

@@ -90,27 +90,37 @@ export function catalogRecordings(
     price: 18.5
   }
 
+  const money = (amount: number) => `$${amount.toFixed(2)}`
+  // Shopify's own Viewed Product: Name, and prices in the shop's money
+  // format; an integration sends ProductName and numbers.
   const view = (
     item: Item,
     daysAgo: number,
-    over: Partial<Record<string, unknown>> = {}
+    over: Partial<Record<string, unknown>> = {},
+    shape: 'shopify' | 'integration' = 'shopify'
   ) => ({
     type: 'event',
     id: `view-${item.id}-${daysAgo}`,
     attributes: {
-      timestamp: Math.floor((now - daysAgo * day) / 1000),
       datetime: at(daysAgo),
-      uuid: `00000000-0000-4000-8000-${item.id.padStart(6, '0')}${String(daysAgo).padStart(6, '0')}`,
       event_properties: {
-        ProductName: item.name,
+        ...(shape === 'shopify'
+          ? {
+              Name: item.name,
+              Price: money(item.price),
+              CompareAtPrice: money(item.compareAt ?? 0)
+            }
+          : {
+              ProductName: item.name,
+              Price: item.price,
+              CompareAtPrice: item.compareAt ?? null
+            }),
         ProductID: Number(item.id),
         SKU: `CL-${item.id}`,
         Categories: ['Menswear'],
         ImageURL: item.image,
         URL: site(item.path),
         Brand: 'Cedar Goods',
-        Price: item.price,
-        CompareAtPrice: item.compareAt ?? null,
         ...over
       }
     }
@@ -122,9 +132,7 @@ export function catalogRecordings(
     type: 'event',
     id: `order-${daysAgo}-${lines.map((l) => l.item.id).join('-')}`,
     attributes: {
-      timestamp: Math.floor((now - daysAgo * day) / 1000),
       datetime: at(daysAgo, 15),
-      uuid: `00000000-0000-4000-9000-${String(daysAgo).padStart(12, '0')}`,
       event_properties: {
         $event_id: `100${daysAgo}`,
         $value: lines.reduce((s, l) => s + l.item.price * l.quantity, 0),
@@ -144,12 +152,12 @@ export function catalogRecordings(
       }
     }
   })
-  const events = (data: unknown[]) =>
+  const events = (data: unknown[], next: string | null = null) =>
     json(200, {
       data,
       links: {
         self: 'https://a.klaviyo.com/api/events/',
-        next: null,
+        next,
         prev: null
       }
     })
@@ -162,7 +170,13 @@ export function catalogRecordings(
           id: 'OpnEml',
           attributes: {
             name: 'Opened Email',
-            integration: { name: 'Klaviyo', category: 'Internal' }
+            integration: {
+              object: 'integration',
+              id: '0rG4eQ',
+              key: 'klaviyo',
+              name: 'Klaviyo',
+              category: 'Internal'
+            }
           }
         },
         {
@@ -170,7 +184,13 @@ export function catalogRecordings(
           id: 'PlcdOr',
           attributes: {
             name: 'Placed Order',
-            integration: { name: 'Shopify', category: 'eCommerce' }
+            integration: {
+              object: 'integration',
+              id: '0eMvjm',
+              key: 'shopify',
+              name: 'Shopify',
+              category: 'eCommerce'
+            }
           }
         },
         {
@@ -178,7 +198,13 @@ export function catalogRecordings(
           id: 'VwdPrd',
           attributes: {
             name: 'Viewed Product',
-            integration: { name: 'Shopify', category: 'eCommerce' }
+            integration: {
+              object: 'integration',
+              id: '0eMvjm',
+              key: 'shopify',
+              name: 'Shopify',
+              category: 'eCommerce'
+            }
           }
         }
       ],
@@ -189,15 +215,24 @@ export function catalogRecordings(
       data: [],
       links: { self: 'https://a.klaviyo.com/api/catalog-items/', next: null }
     }),
-    viewedProduct: events([
-      view(socks, 2),
-      view(overshirt, 3, { Price: 69, CompareAtPrice: 89 }),
-      view(knit, 4),
-      view(beanie, 9),
-      view(overshirt, 12, { Price: 69, CompareAtPrice: 89 }),
-      view(socks, 12),
+    /** Two pages of views, the second behind Klaviyo's next link. */
+    viewedProduct: events(
+      [
+        view(socks, 2),
+        view(overshirt, 3, { Price: '$69.00', CompareAtPrice: '$89.00' }),
+        view(knit, 4, {
+          Price: '<span class=money>$120.00</span>',
+          CompareAtPrice: '<span class=money>$240.00</span>'
+        }),
+        view(beanie, 9),
+        view(overshirt, 12, { Price: '$69.00', CompareAtPrice: '$89.00' }),
+        view(socks, 12)
+      ],
+      viewsPage2
+    ),
+    viewedProductPage2: events([
       view(tote, 20),
-      view(knit, 40, { ProductName: 'Weekend Knit - Navy / L' }),
+      view(knit, 40, { ProductName: 'Weekend Knit - Navy / L' }, 'integration'),
       view(overshirt, 60),
       view(oldTote, 70),
       view(tote, 80)
@@ -310,9 +345,7 @@ export function catalogRecordings(
         type: 'event',
         id: 'custom-order-1',
         attributes: {
-          timestamp: Math.floor((now - 3 * day) / 1000),
           datetime: at(3),
-          uuid: '00000000-0000-4000-a000-000000000001',
           event_properties: {
             $value: 223,
             Currency: 'USD',
@@ -343,6 +376,10 @@ export function catalogRecordings(
 
 export type CatalogStore = 'shopify' | 'custom' | 'empty'
 
+/** Klaviyo's next link to the second page of the views. */
+export const viewsPage2 =
+  'https://a.klaviyo.com/api/events/?fields%5Bevent%5D=event_properties%2Cdatetime&filter=equals%28metric_id%2C%22VwdPrd%22%29&page%5Bcursor%5D=views2&sort=-datetime'
+
 const eventsQuery =
   /^\/api\/events\?fields\[event\]=event_properties,datetime&filter=equals\(metric_id,"([A-Za-z0-9]{1,64})"\),greater-than\(datetime,\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\)&sort=-datetime$/
 
@@ -358,7 +395,7 @@ export function recordedCatalogTransport(
     domain?: string
     now?: Date
     fail?: {
-      on: 'account' | 'catalog' | 'metrics' | 'orders' | 'views'
+      on: 'account' | 'catalog' | 'metrics' | 'orders' | 'views' | 'views2'
       with: KlaviyoResponse
     }
   } = {}
@@ -389,6 +426,16 @@ export function recordedCatalogTransport(
           : store === 'custom'
             ? r.customOrders
             : json(200, { data: [], links: { next: null } }))
+      )
+    if (
+      path.startsWith('/api/events/?') &&
+      path.includes('page[cursor]=views2')
+    )
+      return (
+        fail('views2') ??
+        (store === 'shopify'
+          ? r.viewedProductPage2
+          : json(200, { data: [], links: { next: null } }))
       )
     if (metric === 'VwdPrd')
       return (
