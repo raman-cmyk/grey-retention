@@ -592,3 +592,64 @@ test('INB-004 an admin works the inbox queue and keeps the brand directory', asy
   await expect(cedar).toContainText('news.cedar-lane.example')
   await adminPage.close()
 })
+
+test('ONB-101 the owner starts a site read and the sweep stores what the sample site says', async ({
+  request
+}) => {
+  requireLocal()
+  const accounts = localAccounts()
+  const secret = localSecret()
+  const owner = await signIn(accounts.owner!.email, accounts.owner!.password)
+  const started = await owner.db.rpc('start_site_reading', {
+    t: owner.tenant
+  })
+  expect(started.error).toBeNull()
+  // Asking again the same day is the same read.
+  expect(
+    (await owner.db.rpc('start_site_reading', { t: owner.tenant })).data
+  ).toBe(started.data)
+  await drain(request, secret)
+  const job = await serviceClient()
+    .from('job_runs')
+    .select('status,checkpoint')
+    .eq('id', started.data as string)
+    .single()
+  expect(job.data).toMatchObject({
+    status: 'succeeded',
+    checkpoint: { live: false }
+  })
+  // The sample site, read with the sample rules: each fact with its page.
+  const findings = await owner.db
+    .from('brand_findings')
+    .select('topic,value,evidence,pass')
+    .eq('tenant_id', owner.tenant)
+    .is('superseded_at', null)
+  expect(findings.error).toBeNull()
+  const rows = findings.data as {
+    topic: string
+    value: unknown
+    evidence: { url: string; quote: string }
+    pass: string
+  }[]
+  expect(rows.map((f) => f.topic)).toEqual(
+    expect.arrayContaining([
+      'free_shipping',
+      'returns',
+      'guarantee',
+      'delivery_days',
+      'claim'
+    ])
+  )
+  expect(rows.find((f) => f.topic === 'returns')).toMatchObject({
+    value: { days: 30 },
+    pass: 'sample',
+    evidence: { url: 'https://cedar-lane.example/pages/returns' }
+  })
+  // Another workspace reads none of them.
+  const other = await signIn(accounts.other!.email, accounts.other!.password)
+  const none = await other.db
+    .from('brand_findings')
+    .select('id')
+    .eq('tenant_id', owner.tenant)
+  expect(none.data).toEqual([])
+})
