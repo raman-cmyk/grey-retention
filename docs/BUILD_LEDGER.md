@@ -1532,13 +1532,13 @@ Append entries using this exact shape:
 - Known issues: the cap is a UTC day. The ops dashboard (lane B, #314) should show `platform_ai_usage_today()`.
 - Next consumer: lane B, INB-003 (label competitor sections): call `runAi({ tenantId: null, callerKey: 'section:<id>', purpose: 'label', request }, { ledger: new SupabaseBudgetLedger(createServiceClient()) })`.
 
-### 2026-11-11 — MEM-001 — agent runtime and shared memory (part 1)
+### 2026-11-11 — MEM-001 — agent runtime and shared memory
 
 - Status: review
 - Branch/worktree: `claude/mem-001-agent-runtime`
 - Commit(s): see the MEM-001 pull request.
 - Changed contracts: new `features/agents/runtime.ts`: an `AgentDefinition` (name, prompt version, purpose, instructions, task, JSON schema + zod output, token and reasoning settings) and `runAgent(def, input, { tenantId, industry, callerKey, memory, log, ai })`. It appends the Brand book (when `usesBrandBook`) and the selected do's and don'ts to the instructions, keeps untrusted content in the task JSON, calls `runAi` through the injected `ai`, validates the answer, and records one run-log entry (agent, version, prompt digest, rule ids, Brand book version, model, cost, verdict, short detail). New `features/agents/memory.ts`: the `MemoryRule` shape, `selectRules` (active, confidence ≥ 0.5, not expired, for this agent; brand first, then industry, then global; max 20), `lessonsBlock`, `brandBookBlock` (truncated at 8,000 chars), `MemoryStore` and in-memory doubles. New AI purpose `plan` → Gemini 2.5 Pro (price added; `GEMINI_PLAN_MODEL`), metered as `playbook`.
-- Migrations: none in part 1. Part 2 adds the tables (do's and don'ts, Brand book versions, agent runs) and the Supabase stores.
+- Migrations: `agent_memory` (number chosen at merge, D24): `agent_memory_rules`, `brand_books` (versioned), `agent_runs`; members read their own rows, operators read all, platform and industry rules are never shown to clients; writes only through the service-role commands `add_memory_rule`, `update_memory_rule`, `save_brand_book`, `record_agent_run`. New `features/agents/supabase-stores.ts`: `SupabaseMemoryStore` (same selection as the in-memory store; filters built only from validated ids and industry names) and `SupabaseRunLog` (a failed log write never blocks the agent).
 - Verification run: `vitest run features/agents features/ai lib/providers`; eslint and tsc clean for the changed files.
-- Known issues: until part 2, jobs use the in-memory stores (no persistence).
-- Next consumer: lanes A and B: define every agent as an `AgentDefinition` and call `runAgent`; pass `ai: (i) => runAi(i, { ledger: new SupabaseBudgetLedger(createServiceClient()) })`.
+- Known issues: generated types need `pnpm supabase:types` after merge; until then the stores use narrow typed signatures. pgTAP `agent_memory.test.sql` runs in CI (no Docker in the supervisor sandbox).
+- Next consumer: lanes A and B: define every agent as an `AgentDefinition` and call `runAgent(def, input, { tenantId, industry, callerKey, memory: new SupabaseMemoryStore(db), log: new SupabaseRunLog(db), ai: (i) => runAi(i, { ledger: new SupabaseBudgetLedger(db) }) })` with a service-role `db`. LRN-002 writes rules with `add_memory_rule`; ONB-106 saves the Brand book with `save_brand_book`.
