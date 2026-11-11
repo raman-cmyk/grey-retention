@@ -66,6 +66,8 @@ export type PushTemplate = {
   id: string
   hash: string
   deleted: boolean
+  /** The variation it was put on (then its content is there). */
+  variation?: string | null
 }
 export type PushProgress = {
   state: 'started' | 'drafted' | 'refused'
@@ -111,6 +113,13 @@ const empty: PushProgress = {
   written: null
 }
 
+/**
+ * A push stops before a Klaviyo request that might not end inside its
+ * time (`budgetMs`): everything made so far is saved, and the next run
+ * goes on from there.
+ */
+class TimeUp extends Error {}
+
 /** A push we will not make; `checks` name what stopped it. */
 class Refused extends Error {
   constructor(
@@ -152,11 +161,38 @@ const writtenOf = (read: DraftRead) =>
     )
     .digest('hex')
 
-export function liveDraftPusher(deps: {
+type Deps = {
   source: PushSource
   store: PushStore
   now?: () => Date
-}): DraftPusher {
+  /** The longest one push may take (default 30 s), with each request at most `callMs`. */
+  budgetMs?: number
+  callMs?: number
+}
+
+/** A push takes at most this long, so it ends inside its route's minute. */
+export const pushBudgetMs = 30_000
+
+/** The client, refusing to start a request that might not end in time. */
+function timed(
+  client: KlaviyoClient,
+  left: () => number,
+  callMs: number
+): KlaviyoClient {
+  const check = () => {
+    if (left() < callMs) throw new TimeUp()
+  }
+  return {
+    get: (path, scope) => (check(), client.get(path, scope)),
+    next: (url, scope) => (check(), client.next(url, scope)),
+    write: (method, path, body, scope) => (
+      check(),
+      client.write(method, path, body, scope)
+    )
+  }
+}
+
+export function liveDraftPusher(deps: Deps): DraftPusher {
   return {
     async createDraft(input) {
       try {
@@ -173,6 +209,11 @@ async function failed(
   input: DraftInput,
   store: PushStore
 ): Promise<DraftResult> {
+  if (error instanceof TimeUp) {
+    logger.info('Klaviyo push paused: out of time; it goes on at the next run')
+    // Not a failed try: the build waits and the next run goes on from here.
+    return { ok: false, code: 'rate_limited', retryAfterSeconds: 30 }
+  }
   if (error instanceof Refused) {
     logger.warn('Klaviyo push refused', {
       reason: error.reason,
@@ -213,11 +254,9 @@ async function failed(
   return { ok: false, code: 'unavailable' }
 }
 
-async function push(
-  input: DraftInput,
-  deps: { source: PushSource; store: PushStore; now?: () => Date }
-): Promise<DraftResult> {
+async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
   const now = deps.now ?? (() => new Date())
+  const deadline = now().getTime() + (deps.budgetMs ?? pushBudgetMs)
   const tenantId = input.tenantId
   const key = input.idempotencyKey
   // The sample store never reaches a real Klaviyo account.
@@ -229,8 +268,13 @@ async function push(
     if (footerProblems(d.html).length)
       throw new Refused('footer_missing', ['footer'])
 
-  const client = await deps.source.client(tenantId)
-  if (!client) return { ok: false, code: 'auth' }
+  const live = await deps.source.client(tenantId)
+  if (!live) return { ok: false, code: 'auth' }
+  const client = timed(
+    live,
+    () => deadline - now().getTime(),
+    deps.callMs ?? 10_000
+  )
 
   let p = (await deps.store.load(tenantId, key)) ?? { ...empty }
   if (p.state === 'refused' && p.reason === 'externally_modified')
@@ -350,18 +394,43 @@ async function push(
   }
   read = await reread()
 
-  // 5. An existing draft takes this content: each design's variation.
-  if (!made) {
-    for (const c of contents) {
-      const v = read.variations.find((x) => x.name === c.name)
-      if (v) await updateVariation(client, v.id, c)
-      else await addVariation(client, messageId, c)
+  // 5. Each design's variation takes this content (once: a variation that
+  //    already shows it is left as it is, so a push stopped half way goes
+  //    on instead of starting again).
+  const applied = (templateId: string, variation: string) =>
+    save({
+      templates: p.templates.map((t) =>
+        t.id === templateId ? { ...t, variation } : t
+      )
+    })
+  let wrote = false
+  for (const [i, c] of contents.entries()) {
+    const t = templates[i]!
+    const v = read.variations.find((x) => x.name === c.name)
+    const current = p.templates.find((x) => x.id === t.id)
+    if (made && v && !current?.variation) await applied(t.id, v.id)
+    else if (
+      v &&
+      current?.variation === v.id &&
+      v.subject === c.subject &&
+      v.preview === c.preview
+    )
+      continue
+    else if (v) {
+      await updateVariation(client, v.id, c)
+      await applied(t.id, v.id)
+      wrote = true
+    } else {
+      await applied(t.id, await addVariation(client, messageId, c))
+      wrote = true
     }
-    for (const v of read.variations)
-      if (!contents.some((c) => c.name === v.name))
-        await deleteVariation(client, v.id)
-    read = await reread()
   }
+  for (const v of read.variations)
+    if (!contents.some((c) => c.name === v.name)) {
+      await deleteVariation(client, v.id)
+      wrote = true
+    }
+  if (wrote) read = await reread()
 
   // 6. An A/B design test: an even split, no winner; else design A only.
   if (wanted.length === 2) {
@@ -381,7 +450,6 @@ async function push(
     if (fallback)
       read = await onlyDesignA(
         client,
-        messageId,
         read,
         contents[0]!,
         fallback,
@@ -434,13 +502,14 @@ async function push(
  */
 async function onlyDesignA(
   client: KlaviyoClient,
-  messageId: string,
   read: DraftRead,
   a: VariationContent,
   fallback: string,
   save: (step: PushStep) => Promise<void>,
   reread: () => Promise<DraftRead>
 ) {
+  // Decided first: a push stopped here goes on with design A only.
+  await save({ designs: 'A', fallback })
   for (const v of read.variations) {
     if (v.name === a.name) continue
     try {
@@ -463,13 +532,12 @@ async function onlyDesignA(
     if (after.variations.some((v) => v.subject !== a.subject))
       throw new Refused('ab_test_unsafe', ['ab_test'])
     how = `${fallback}_same_email`
+    await save({ fallback: how })
   }
-  await save({ designs: 'A', fallback: how })
   logger.warn('Klaviyo push: only design A went in', {
     reason: how,
     variations: after.variations.length
   })
-  void messageId
   return after
 }
 

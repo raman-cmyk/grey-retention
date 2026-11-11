@@ -19,7 +19,7 @@ type Db = SupabaseClient<Database>
 type Env = Record<string, string | undefined>
 
 /** Each Klaviyo request waits at most this long (a write may then be checked again). */
-export const pushCallMs = 15_000
+export const pushCallMs = 10_000
 
 /** The push steps in `klaviyo_draft_pushes`, saved through `save_klaviyo_push`. */
 export function databasePushStore(db: Db): PushStore {
@@ -108,12 +108,18 @@ export function liveSource(db: Db, env: Env = process.env): PushSource {
  * sample draft (no Klaviyo call); a real email goes to the workspace's own
  * Klaviyo only when the owner's switch is on, else the fake as before.
  */
-export function draftPusherFor(db: Db, env: Env = process.env): DraftPusher {
+export function draftPusherFor(
+  db: Db,
+  options: { env?: Env; budgetMs?: number } = {}
+): DraftPusher {
+  const env = options.env ?? process.env
   const fake = fakeDraftPusher()
   if (klaviyoMode(env) !== 'live') return fake
   const live = liveDraftPusher({
     source: liveSource(db, env),
-    store: databasePushStore(db)
+    store: databasePushStore(db),
+    budgetMs: options.budgetMs,
+    callMs: pushCallMs
   })
   return {
     createDraft: (input) =>

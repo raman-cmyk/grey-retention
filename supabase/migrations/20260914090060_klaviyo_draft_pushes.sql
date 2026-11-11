@@ -22,7 +22,8 @@ create table public.klaviyo_draft_pushes (
   -- Each picture's address in the email -> its address in Klaviyo.
   images jsonb not null default '{}'::jsonb
     check (jsonb_typeof(images) = 'object' and octet_length(images::text) <= 60000),
-  -- Our templates: [{ "approach": "A", "id": "...", "hash": "...", "deleted": false }].
+  -- Our templates: [{ "approach": "A", "id": "...", "hash": "...", "deleted": false,
+  -- "variation": "..." }] (the variation it was put on, once it is).
   templates jsonb not null default '[]'::jsonb
     check (jsonb_typeof(templates) = 'array' and jsonb_array_length(templates) <= 20),
   campaign_id text check (campaign_id is null or campaign_id ~ '^[A-Za-z0-9_-]{1,64}$'),
@@ -84,11 +85,13 @@ begin
           or i.value #>> '{}' !~ '^https://[^\s"''<>]{1,2000}$')))
     or (step ? 'templates' and (jsonb_typeof(step->'templates') <> 'array'
       or exists (select 1 from jsonb_array_elements(step->'templates') x
-        where jsonb_typeof(x) <> 'object' or x - 'approach' - 'id' - 'hash' - 'deleted' <> '{}'::jsonb
+        where jsonb_typeof(x) <> 'object' or x - 'approach' - 'id' - 'hash' - 'deleted' - 'variation' <> '{}'::jsonb
           or coalesce(x->>'approach', '') not in ('A', 'B')
           or coalesce(x->>'id', '') !~ '^[A-Za-z0-9_-]{1,64}$'
           or coalesce(x->>'hash', '') !~ '^[a-f0-9]{64}$'
-          or jsonb_typeof(x->'deleted') is distinct from 'boolean')))
+          or jsonb_typeof(x->'deleted') is distinct from 'boolean'
+          or (x ? 'variation' and x->'variation' <> 'null'::jsonb
+            and coalesce(x->>'variation', '') !~ '^[A-Za-z0-9_-]{1,64}$'))))
     or (step ? 'campaign_id' and step->'campaign_id' <> 'null'::jsonb and coalesce(step->>'campaign_id', '') !~ '^[A-Za-z0-9_-]{1,64}$')
     or (step ? 'message_id' and step->'message_id' <> 'null'::jsonb and coalesce(step->>'message_id', '') !~ '^[A-Za-z0-9_-]{1,64}$')
     or (step ? 'create_started_at' and step->'create_started_at' <> 'null'::jsonb

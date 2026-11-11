@@ -387,6 +387,43 @@ describe('the live Klaviyo draft push', () => {
     }
   })
 
+  it('stops before a request that might not end in time, and the next run goes on from there', async () => {
+    const account = fakeDraftAccount()
+    const memory = memoryStore()
+    let clock = Date.parse('2026-11-11T12:00:00Z')
+    const pusher = liveDraftPusher({
+      source: {
+        client: async () =>
+          klaviyoClient('pk_SAMPLE0123456789abcdefghij', {
+            // Each Klaviyo answer takes 4 s.
+            transport: async (request) => {
+              clock += 4_000
+              return account.transport(request)
+            },
+            maxWaits: 0
+          }),
+        timezone: async () => 'UTC'
+      },
+      store: memory.store,
+      now: () => new Date(clock),
+      budgetMs: 20_000,
+      callMs: 10_000
+    })
+    // A request starts only with 10 s left: three fit (20, 16, 12 s left).
+    expect(await pusher.createDraft(ab())).toEqual({
+      ok: false,
+      code: 'rate_limited',
+      retryAfterSeconds: 30
+    })
+    expect(account.calls).toHaveLength(3)
+    let result = await pusher.createDraft(ab())
+    for (let run = 0; !result.ok && run < 10; run++)
+      result = await pusher.createDraft(ab())
+    expect(result).toMatchObject({ ok: true, designs: 'both' })
+    expect(account.campaigns.size).toBe(1)
+    expect(account.images.size).toBe(2)
+  })
+
   it('keeps our template while a variation still points at it', async () => {
     const { account, pusher } = setup({ copiesTemplates: false })
     await pusher.createDraft(input())
