@@ -28,6 +28,17 @@ alter table public.brand_findings drop constraint brand_findings_topic_check,
     check (source <> 'ads' or topic in ('offering','audience','tone','claim','free_shipping','promotion','angle','creative',
       'landing_page'));
 
+-- An ad's link on the brand's own site: https on the standard port, a host
+-- of plain labels (no escapes, no empty label), the brand's domain or one
+-- of its subdomains. Never null.
+create or replace function private.ad_link_ok(link text, domain text)
+returns boolean language sql immutable set search_path = '' as $$
+  select coalesce(length(link) <= 500
+    and private.https_host(link) ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
+    and private.on_site(private.https_host(link), domain), false);
+$$;
+revoke all on function private.ad_link_ok(text, text) from public, anon, authenticated;
+
 -- The value each topic holds, as before (20260914090059), with the ads
 -- topics.
 create or replace function private.finding_value_ok(topic text, v jsonb)
@@ -76,6 +87,7 @@ begin
           and (v->>'percent')::integer between 1 and 90 and v - 'kind' - 'percent' = '{}'::jsonb, false);
       end if;
       return coalesce(v->>'kind' = 'amount_off' and jsonb_typeof(v->'amount') = 'number' and v->>'amount' ~ money
+        and (v->>'amount')::numeric > 0
         and coalesce(v->>'currency', '') ~ '^[A-Z]{3}$' and v - 'kind' - 'amount' - 'currency' = '{}'::jsonb, false);
     when 'landing_page' then
       return coalesce(jsonb_typeof(v->'url') = 'string' and length(v->>'url') <= 500
@@ -144,7 +156,8 @@ begin
   if jsonb_typeof(summary) is distinct from 'object' or st is null or st not in ('ready','none','skipped')
     or summary - 'state' - 'analysis' - 'reason' <> '{}'::jsonb
     or coalesce(summary->>'analysis', '') not in ('done','skipped')
-    or (summary ? 'reason' and coalesce(summary->>'reason', '') !~ '^[a-z_]{1,40}$')
+    or (summary ? 'reason' and (jsonb_typeof(summary->'reason') is distinct from 'string'
+      or summary->>'reason' !~ '^[a-z_]{1,40}$'))
     or (st <> 'ready' and summary->>'analysis' = 'done') then
     raise exception 'Invalid ads summary' using errcode = '23514';
   end if;
@@ -156,8 +169,7 @@ begin
       where jsonb_typeof(a) <> 'object' or a - 'id' - 'link' <> '{}'::jsonb
         or jsonb_typeof(a->'id') is distinct from 'string' or a->>'id' !~ '^[0-9]{1,25}$'
         or coalesce(jsonb_typeof(a->'link'), 'missing') not in ('string','null')
-        or (jsonb_typeof(a->'link') = 'string' and (length(a->>'link') > 500
-          or not coalesce(private.https_host(a->>'link') = d or private.https_host(a->>'link') like '%.' || d, false))))
+        or (jsonb_typeof(a->'link') = 'string' and not private.ad_link_ok(a->>'link', d)))
     or (select count(distinct a->>'id') from jsonb_array_elements(ads) a) <> jsonb_array_length(ads) then
     raise exception 'Invalid ads' using errcode = '23514';
   end if;
@@ -176,7 +188,7 @@ begin
         or coalesce(f->>'pass', '') not in ('sample','model','code')
         or (f->>'pass' = 'sample') = live
         or (f->>'pass' = 'code' and (f->>'topic' not in ('landing_page','creative') or coalesce(f->>'model', '') <> ''))
-        or (f->>'pass' = 'model' and coalesce(btrim(f->>'model'), '') = '')
+        or (f->>'pass' = 'model' and (coalesce(btrim(f->>'model'), '') = '' or summary->>'analysis' <> 'done'))
         or (f ? 'model' and coalesce(jsonb_typeof(f->'model'), 'missing') not in ('string','null'))
         or jsonb_typeof(f->'evidence') is distinct from 'object' or (f->'evidence') - 'url' - 'quote' <> '{}'::jsonb
         or jsonb_typeof(f->'evidence'->'url') is distinct from 'string'
@@ -184,8 +196,7 @@ begin
         or not (substr(f->'evidence'->>'url', length(library) + 1) = any(ids))
         or jsonb_typeof(f->'evidence'->'quote') is distinct from 'string'
         or length(f->'evidence'->>'quote') not between 1 and 300
-        or (f->>'topic' = 'landing_page' and not coalesce(private.https_host(f->'value'->>'url') = d
-          or private.https_host(f->'value'->>'url') like '%.' || d, false))) then
+        or (f->>'topic' = 'landing_page' and not private.ad_link_ok(f->'value'->>'url', d))) then
     raise exception 'Invalid finding' using errcode = '23514';
   end if;
   newer := exists (select 1 from public.job_runs r
@@ -194,6 +205,12 @@ begin
   if not newer and st in ('ready','none') then
     update public.brand_findings set superseded_at = now()
       where tenant_id = j.tenant_id and source = 'ads' and superseded_at is null;
+  end if;
+  -- A real brand's read, even a skipped one, never leaves sample findings
+  -- standing (a brand that was synthetic before).
+  if live then
+    update public.brand_findings set superseded_at = now()
+      where tenant_id = j.tenant_id and source = 'ads' and pass = 'sample' and superseded_at is null;
   end if;
   insert into public.brand_findings(tenant_id, run_id, source, topic, statement, value, evidence, confidence, pass, model,
       superseded_at)

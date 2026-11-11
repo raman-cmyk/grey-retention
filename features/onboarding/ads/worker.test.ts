@@ -14,13 +14,18 @@ import { adsRunMs, libraryMs, readBrandAds } from './worker'
 
 type Db = Parameters<typeof readBrandAds>[0]
 type Job = Parameters<typeof readBrandAds>[1]
-const jobFor = (domain = 'cedar-lane.example') =>
+const jobFor = (
+  domain = 'cedar-lane.example',
+  mode = domain.endsWith('.example') ? 'sample' : 'live',
+  attempt = 1
+) =>
   ({
     id: 'job-1',
     tenant_id: 'tenant-1',
     lease_token: 'lease-1',
     kind: 'brand.read_ads',
-    input: { domain, mode: domain.endsWith('.example') ? 'sample' : 'live' }
+    attempt,
+    input: { domain, mode }
   }) as unknown as Job
 
 function database(error: unknown = null) {
@@ -130,6 +135,67 @@ describe('readBrandAds', () => {
     )
   })
 
+  it('picks the library by the read’s own mode, whatever its domain looks like', async () => {
+    // A synthetic brand on a real-looking domain: the sample library, which
+    // reads only sample brands, so the read is skipped as a sample read.
+    const synthetic = database()
+    await readBrandAds(synthetic.db, jobFor('real-brand.com', 'sample'), {
+      library: adLibraryFor,
+      askFor: () => sampleAsk
+    })
+    expect(recorded(synthetic.calls)).toMatchObject({
+      live: false,
+      summary: { state: 'skipped', reason: 'library_not_set_up' }
+    })
+    // A real brand on a `.example` domain: never the sample ads.
+    const real = database()
+    await readBrandAds(real.db, jobFor('cedar-lane.example', 'live'), {
+      library: adLibraryFor,
+      askFor: () => sampleAsk
+    })
+    expect(recorded(real.calls)).toMatchObject({
+      live: true,
+      ads: [],
+      summary: { state: 'skipped', reason: 'library_not_set_up' }
+    })
+  })
+
+  it('skips ads of no page that is the brand’s own, replacing nothing', async () => {
+    const { db, calls } = database()
+    await readBrandAds(db, jobFor(), {
+      library: () =>
+        library({
+          ok: true,
+          ads: sampleAds('cedar-lane.example').map((ad) => ({
+            ...ad,
+            linkUrl: 'https://cedar-lane.myshop.example/'
+          }))
+        }),
+      askFor: () => sampleAsk
+    })
+    expect(recorded(calls)).toMatchObject({
+      findings: [],
+      ads: [],
+      summary: { state: 'skipped', reason: 'no_own_page' }
+    })
+  })
+
+  it('names the job in the analyst’s call', async () => {
+    const ask = vi.fn(async () => ({
+      ok: true,
+      content: null,
+      provider: 'fake',
+      model: 'fake'
+    }))
+    await readBrandAds(database().db, jobFor(), {
+      library: adLibraryFor,
+      askFor: () => ask as unknown as Ask
+    })
+    expect((ask.mock.calls[0] as unknown[])[2]).toMatchObject({
+      callerKey: 'ads:job-1'
+    })
+  })
+
   it('stores no ads as none, which replaces the earlier ads findings', async () => {
     const { db, calls } = database()
     const run = await readBrandAds(db, jobFor('no-ads-shop.example'), {
@@ -171,7 +237,21 @@ describe('readBrandAds', () => {
     expect(recorded(refused.calls).summary.reason).toBe('library_refused')
   })
 
-  it('tries again later when the library is unwell, slow or busy, storing nothing', async () => {
+  it('tries again later when the library is unwell, slow, busy or fails, storing nothing', async () => {
+    const failing: AdLibrary = {
+      live: true,
+      activeAds: () => {
+        throw new Error('socket hang up')
+      }
+    }
+    const broken = database()
+    await expect(
+      readBrandAds(broken.db, jobFor(), {
+        library: () => failing,
+        askFor: () => sampleAsk
+      })
+    ).rejects.toBeInstanceOf(ProviderFault)
+    expect(broken.calls).toEqual([])
     for (const answer of [
       { ok: false as const, code: 'unavailable' as const },
       { ok: false as const, code: 'rate_limited' as const }
@@ -203,6 +283,24 @@ describe('readBrandAds', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('logs and skips an unreadable library on the read’s last try, replacing nothing', async () => {
+    const { db, calls } = database()
+    const run = await readBrandAds(
+      db,
+      jobFor('cedar-lane.example', 'sample', 4),
+      {
+        library: () => library({ ok: false, code: 'unavailable' }),
+        askFor: () => sampleAsk
+      }
+    )
+    expect(run.state).toBe('skipped')
+    expect(recorded(calls).summary).toEqual({
+      state: 'skipped',
+      analysis: 'skipped',
+      reason: 'library_unavailable'
+    })
   })
 
   it('stores what code counts when no model is set up, or no time is left for one', async () => {

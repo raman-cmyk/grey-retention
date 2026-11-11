@@ -18,12 +18,15 @@ type Job = Database['public']['Tables']['job_runs']['Row']
 export const adsRunMs = 25_000
 /** The longest the Ad Library may take to answer. */
 export const libraryMs = 10_000
+/** Tries a job has (the readers' run fails it after the fourth). */
+const lastTry = 4
 
 export type AdsRun = {
   /**
-   * `ready`: the brand's live ads were read; `none`: it runs none (its
-   * earlier ads findings are replaced); `skipped`: no library could read
-   * them (nothing is replaced, D16).
+   * `ready`: the brand's live ads were read; `none`: the library has no
+   * live ads for it (its earlier ads findings are replaced); `skipped`: no
+   * library could read them, or none of the ads found is the brand's own
+   * page (nothing is replaced, D16).
    */
   state: 'ready' | 'none' | 'skipped'
   reason?: string
@@ -35,20 +38,29 @@ export type AdsRun = {
   live: boolean
 }
 
-/** The library's answer, or an outage when it takes too long. */
+/**
+ * The library's answer; an outage when it takes too long (the request is
+ * aborted) or fails instead of answering.
+ */
 async function inTime(
-  answer: Promise<AdLibraryAnswer>,
+  ask: (signal: AbortSignal) => Promise<AdLibraryAnswer>,
   ms: number
 ): Promise<AdLibraryAnswer> {
+  const abort = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
-      answer,
+      Promise.resolve()
+        .then(() => ask(abort.signal))
+        .catch((): AdLibraryAnswer => ({
+          ok: false,
+          code: 'unavailable'
+        })),
       new Promise<AdLibraryAnswer>((resolve) => {
-        timer = setTimeout(
-          () => resolve({ ok: false, code: 'unavailable' }),
-          ms
-        )
+        timer = setTimeout(() => {
+          abort.abort()
+          resolve({ ok: false, code: 'unavailable' })
+        }, ms)
       })
     ])
   } finally {
@@ -61,16 +73,17 @@ async function inTime(
  * active ads, keeps the brand's own (`ownAds`: its own page, at most 30,
  * texts capped), counts their landing pages and formats, asks the Ads
  * analyst what they offer and say, and stores it all at once with the ads
- * read (`record_ad_findings`, which also finishes the job). No ads, or a
- * library that cannot read this brand, is logged and skipped (D16); an
- * outage or a rate limit fails the job for another try (earlier findings
- * stay).
+ * read (`record_ad_findings`, which also finishes the job). No ads, a
+ * library that cannot read this brand, or ads of no page that is the
+ * brand's, is logged and skipped (D16); an outage or a rate limit fails
+ * the job for another try (earlier findings stay), and on its last try the
+ * read is logged and skipped instead.
  */
 export async function readBrandAds(
   db: Db,
   job: Job,
   deps: {
-    library: (domain: string) => AdLibrary
+    library: (mode: 'sample' | 'live') => AdLibrary
     /**
      * How to ask the Ads analyst: the sample rules for sample ads; a model
      * for live ones, or null when no model is set up (then only the
@@ -93,10 +106,11 @@ export async function readBrandAds(
   if (brand.error || !brand.data) throw new Error('Brand unavailable')
   // The domain the job was started for, so a website changed mid-run
   // does not mix two brands.
-  const domain = String(
-    (job.input as { domain?: unknown } | null)?.domain ?? ''
-  )
-  const library = deps.library(domain)
+  const input = (job.input ?? {}) as { domain?: unknown; mode?: unknown }
+  const domain = String(input.domain ?? '')
+  // The library of the read's own mode (a synthetic brand's sample ads,
+  // or a real brand's live ones), whatever its domain looks like.
+  const library = deps.library(input.mode === 'live' ? 'live' : 'sample')
   const run: AdsRun = {
     state: 'skipped',
     ads: 0,
@@ -108,27 +122,37 @@ export async function readBrandAds(
   let ads: ReturnType<typeof ownAds> = []
   let findings: (AdFinding & { pass: string; model: string | null })[] = []
   const answer = await inTime(
-    library.activeAds({ brandName: brand.data.brand_name, domain }),
+    (signal) =>
+      library.activeAds({ brandName: brand.data.brand_name, domain, signal }),
     Math.min(libraryMs, Math.max(0, deadline - now()))
   )
+  const retrying =
+    !answer.ok &&
+    (answer.code === 'unavailable' || answer.code === 'rate_limited')
+  if (!answer.ok && retrying && (job.attempt ?? 0) < lastTry) {
+    logger.warn('Ad Library unavailable; the read is tried again', {
+      code: answer.code
+    })
+    throw new ProviderFault(
+      answer.code === 'rate_limited' ? 'rate_limit' : 'transient'
+    )
+  }
   if (!answer.ok) {
-    if (answer.code === 'unavailable' || answer.code === 'rate_limited') {
-      logger.warn('Ad Library unavailable; the read is tried again', {
-        code: answer.code
-      })
-      throw new ProviderFault(
-        answer.code === 'rate_limited' ? 'rate_limit' : 'transient'
-      )
-    }
-    run.reason =
-      answer.code === 'not_set_up' ? 'library_not_set_up' : 'library_refused'
+    run.reason = retrying
+      ? 'library_unavailable'
+      : answer.code === 'not_set_up'
+        ? 'library_not_set_up'
+        : 'library_refused'
     logger.info('Ads read skipped', { reason: run.reason })
+  } else if (!answer.ads.some((ad) => ad.active)) {
+    run.state = 'none'
+    logger.info('Ads read: the brand runs no live ads')
   } else {
-    ads = ownAds(answer.ads, domain)
+    ads = ownAds(answer.ads, domain, brand.data.brand_name)
     run.ads = ads.length
     if (!ads.length) {
-      run.state = 'none'
-      logger.info('Ads read: the brand runs no live ads')
+      run.reason = 'no_own_page'
+      logger.info('Ads read skipped', { reason: run.reason })
     } else {
       run.state = 'ready'
       const counted = countedAdFindings(ads)
@@ -143,7 +167,7 @@ export async function readBrandAds(
           brand.data.brand_name,
           ads,
           ask,
-          'ads-read'
+          `ads:${job.id}`
         )
         if (!analysis.answered)
           logger.info('Ads analyst answer left out', {

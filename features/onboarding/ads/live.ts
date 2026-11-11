@@ -9,10 +9,11 @@ type Db = SupabaseClient<Database>
 type Job = Database['public']['Tables']['job_runs']['Row']
 
 /**
- * One ads read as the readers' run does it: the sample ads for a synthetic
- * brand, none yet for a real brand (until the owner chooses how the live
- * Ad Library is read); the Ads analyst on the workspace's own budget,
- * every model call capped at `siteCallTimeoutMs`.
+ * One ads read as the readers' run does it, by the mode it was started in:
+ * the sample ads for a synthetic brand, none yet for a real brand (until
+ * the owner chooses how the live Ad Library is read); the Ads analyst on
+ * the workspace's own budget, every model call capped at
+ * `siteCallTimeoutMs`.
  */
 export async function runAdsReadingJob(
   db: Db,

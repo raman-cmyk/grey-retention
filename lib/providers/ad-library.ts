@@ -37,6 +37,8 @@ export type AdQuery = {
   brandName: string
   /** The brand's own domain, lower case, without `www.`. */
   domain: string
+  /** Aborted when the read stops waiting for the answer. */
+  signal?: AbortSignal
 }
 
 export type AdLibraryAnswer =
@@ -83,36 +85,93 @@ export function httpsHost(url: string | null): string | null {
   }
 }
 
+/** A link as a browser reads it, when it fits (500 characters). */
+const normalised = (url: string) => {
+  const href = new URL(url).href
+  return href.length <= 500 ? href : null
+}
+
 /** The brand's domain or one of its subdomains (never a look-alike). */
 export const onDomain = (host: string | null, domain: string) =>
   !!host && (host === domain || host.endsWith(`.${domain}`))
 
-/** Text as an ad shows it: no control characters, one space, capped. */
+/**
+ * Text as an ad shows it: no control, zero-width or direction characters,
+ * one space, capped.
+ */
 const clean = (texts: string[]) =>
   [
     ...new Set(
       texts
-        .map((t) => t.replace(/[\u0000-\u001f\u007f]+/g, ' '))
+        .map((t) =>
+          t
+            .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+            .replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/g, '')
+        )
         .map((t) => t.replace(/\s+/g, ' ').trim().slice(0, maxText))
         .filter(Boolean)
     )
   ].slice(0, maxTexts)
 
+/** A name as compared: lower case letters and digits only. */
+const squashed = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+/** Whether a page's name is the brand's ("Cedar Lane" for "Cedar Lane Co"). */
+export function namedLike(pageName: string, brandName: string) {
+  const page = squashed(pageName)
+  const brand = squashed(brandName)
+  if (page.length < 3 || brand.length < 3) return false
+  return page.includes(brand) || brand.includes(page)
+}
+
 /**
- * The ads the Ads analyst reads: only the brand's own page (the page whose
- * ads send people to the brand's own domain most often; a reseller's page
- * linking to it too is left out), only active ads, each once, newest
- * first, at most `maxAds`, each text cleaned and capped. A link that is
- * not https on the brand's own domain is dropped (the ad stays).
+ * The brand's own page among the ads: of the pages whose live ads send
+ * people to the brand's own domain, those named like the brand first, then
+ * the one with the most such ads (each ad counted once). Null when there is
+ * none, or two pages are equally likely (never a guess).
  */
-export function ownAds(ads: LibraryAd[], domain: string): LibraryAd[] {
-  const linking = new Map<string, number>()
+export function ownPage(
+  ads: LibraryAd[],
+  domain: string,
+  brandName: string
+): string | null {
+  const linking = new Map<string, Set<string>>()
+  const named = new Map<string, boolean>()
   for (const ad of ads)
-    if (ad.active && onDomain(httpsHost(ad.linkUrl), domain))
-      linking.set(ad.pageId, (linking.get(ad.pageId) ?? 0) + 1)
-  const page = [...linking.entries()].sort(
-    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0])
-  )[0]?.[0]
+    if (
+      ad.active &&
+      adId.test(ad.id) &&
+      onDomain(httpsHost(ad.linkUrl), domain)
+    ) {
+      linking.set(ad.pageId, (linking.get(ad.pageId) ?? new Set()).add(ad.id))
+      named.set(
+        ad.pageId,
+        (named.get(ad.pageId) ?? false) || namedLike(ad.pageName, brandName)
+      )
+    }
+  const ranked = [...linking.entries()]
+    .map(([page, ids]) => ({ page, named: named.get(page)!, count: ids.size }))
+    .sort((a, b) => Number(b.named) - Number(a.named) || b.count - a.count)
+  const [first, second] = ranked
+  if (!first) return null
+  if (second && second.named === first.named && second.count === first.count)
+    return null
+  return first.page
+}
+
+/**
+ * The ads the Ads analyst reads: only the brand's own page (`ownPage`: a
+ * reseller's or an affiliate's page linking to the brand too is left out),
+ * only active ads, each once, newest first, at most `maxAds`, each text
+ * cleaned and capped. A link that is not https on the brand's own domain
+ * is dropped (the ad stays); one kept is as a browser reads it.
+ */
+export function ownAds(
+  ads: LibraryAd[],
+  domain: string,
+  brandName: string
+): LibraryAd[] {
+  const page = ownPage(ads, domain, brandName)
   if (!page) return []
   const seen = new Set<string>()
   return ads
@@ -134,11 +193,11 @@ export function ownAds(ads: LibraryAd[], domain: string): LibraryAd[] {
       texts: clean(ad.texts),
       titles: clean(ad.titles),
       descriptions: clean(ad.descriptions),
+      // As a browser reads it (the host lower case, no default port), so
+      // the database checks the same address.
       linkUrl:
-        ad.linkUrl &&
-        ad.linkUrl.length <= 500 &&
-        onDomain(httpsHost(ad.linkUrl), domain)
-          ? ad.linkUrl
+        ad.linkUrl && onDomain(httpsHost(ad.linkUrl), domain)
+          ? normalised(ad.linkUrl)
           : null,
       platforms: [...new Set(ad.platforms)].slice(0, 6)
     }))
@@ -235,12 +294,13 @@ export const sampleAdLibrary: AdLibrary = {
 }
 
 /**
- * The library a brand's read uses: the sample library for a synthetic
- * brand; for a real brand none yet (`not_set_up`), until the owner
- * chooses how the live Ad Library is read.
+ * The library a read uses, by the job's mode (set when it was started):
+ * the sample library for a synthetic brand (which reads `*.example` only);
+ * for a real brand none yet (`not_set_up`), until the owner chooses how the
+ * live Ad Library is read.
  */
-export function adLibraryFor(domain: string): AdLibrary {
-  if (domain.trim().toLowerCase().endsWith('.example')) return sampleAdLibrary
+export function adLibraryFor(mode: 'sample' | 'live'): AdLibrary {
+  if (mode === 'sample') return sampleAdLibrary
   return {
     live: true,
     async activeAds() {

@@ -1,5 +1,5 @@
 begin;
-select plan(57);
+select plan(78);
 
 -- ONB-104: ads reads and their findings. Owner ...01 and staff ...05 are in
 -- workspace 101 (a synthetic brand, cedar-lane.example); owner ...04 runs
@@ -84,6 +84,9 @@ select is(public.start_ads_reading('00000000-0000-4000-8000-000000000101')::text
   'asking again the same day is the same read');
 select pg_temp.as_owner('00000000-0000-4000-8000-000000000005');
 select throws_ok($$select public.start_ads_reading('00000000-0000-4000-8000-000000000101')$$,'42501',null,'staff cannot start a read');
+select pg_temp.as_owner('00000000-0000-4000-8000-000000000004');
+select throws_ok($$select public.start_ads_reading('00000000-0000-4000-8000-000000000101')$$,'42501',null,
+  'nor another workspace''s owner');
 reset role;
 select is((select kind||'/'||status||'/'||(input->>'domain')||'/'||(input->>'mode') from public.job_runs
   where id=current_setting('test.job')::uuid),'brand.read_ads/queued/cedar-lane.example/sample',
@@ -107,7 +110,7 @@ set local role service_role;
 select pg_temp.as_worker();
 select is((select count(*)::integer from public.claim_job('00000000-0000-4000-8000-000000000101') where kind='brand.read_ads'),0,
   'the workspace jobs never take an ads read');
-select ok(public.source_readings_waiting() >= 2,'the readers'' run sees the ads reads waiting');
+select is(public.source_readings_waiting(),2,'the readers'' run sees the ads reads waiting');
 select is((select kind from public.claim_source_reading()),'brand.read_ads','and takes the oldest');
 reset role;
 set local role authenticated;
@@ -122,8 +125,11 @@ select pg_temp.as_worker();
 select throws_ok($$select public.record_ad_findings(current_setting('test.job')::uuid,'00000000-0000-4000-8000-00000000bbbb',
   '[]','[]',pg_temp.s('skipped','skipped'),false)$$,'PT409',null,'only under the job''s lease');
 select throws_ok(format('select pg_temp.record(summary => %L)', s),'23514',null,'refused summary: '||s)
-  from unnest(array['{"state":"great","analysis":"done"}','{"state":"ready"}','{"state":"none","analysis":"done"}',
-    '{"state":"ready","analysis":"done","why":"x"}','{"state":"skipped","analysis":"skipped","reason":"Not Set Up"}']) s;
+  from unnest(array['{"state":"great","analysis":"done"}','{"state":"ready"}','{"state":"ready","analysis":"done","why":"x"}']) s;
+-- With no ads and no findings, so only the summary can be wrong.
+select throws_ok(format('select pg_temp.record(''[]'',''[]'',%L)', s),'23514',null,'refused summary: '||s)
+  from unnest(array['{"state":"none","analysis":"done"}','{"state":"skipped","analysis":"skipped","reason":"Not Set Up"}',
+    '{"state":"skipped","analysis":"skipped","reason":true}']) s;
 select throws_ok(format('select pg_temp.record(ads => %L)', a),'23514',null,'refused ads: '||a)
   from unnest(array['[]','[{"id":"../x","link":null}]','[{"id":"9001","link":"https://evil.example/"}]',
     '[{"id":"9001","link":"https://cedar-lane.example.evil/"}]','[{"id":"9001","link":null},{"id":"9001","link":null}]',
@@ -150,8 +156,9 @@ select is((select status||'/'||(checkpoint->>'state')||'/'||(checkpoint->>'ads')
 select is(pg_temp.current_ads(),2,'its findings are current');
 reset role;
 select throws_ok($$insert into public.brand_findings(tenant_id,run_id,source,topic,statement,evidence,confidence,pass)
-  values ('00000000-0000-4000-8000-000000000101',current_setting('test.job')::uuid,'ads','returns','Returns.',
-    '{"ref":"x"}',0.5,'sample')$$,'23514',null,'ads state only what ads can');
+  values ('00000000-0000-4000-8000-000000000101',current_setting('test.job')::uuid,'ads','performance','What made money.',
+    '{"ref":"x"}',0.5,'sample')$$,'23514',
+  'new row for relation "brand_findings" violates check constraint "brand_findings_ads_topics"','ads state only what ads can');
 
 -- Members read them; another workspace does not.
 set local role authenticated;
@@ -204,6 +211,80 @@ select lives_ok($$select pg_temp.record('[]','[]',jsonb_build_object('state','sk
 select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.f(jsonb_build_object('pass','code','topic','creative',
   'statement','Most live ads are videos.','value','{}'::jsonb))),jsonb_build_array(pg_temp.ad('9001','https://north-studio.com/')),
   pg_temp.s(),current_setting('test.real'),true)$$,'PT409',null,'a finished read records nothing more');
+reset role;
+
+-- A real brand's live reads: each pass where it belongs, a subdomain is the
+-- brand's own, a later skipped read never makes an older one late.
+reset role;
+select set_config('test.a',pg_temp.job('00000000-0000-4000-8000-000000000102','a','live','3 hours','north-studio.com'),true);
+select set_config('test.b',pg_temp.job('00000000-0000-4000-8000-000000000102','b','live','2 hours','north-studio.com'),true);
+select set_config('test.c',pg_temp.job('00000000-0000-4000-8000-000000000102','c','live','150 minutes','north-studio.com'),true);
+select pg_temp.lease(current_setting('test.a'));
+select pg_temp.lease(current_setting('test.b'));
+select pg_temp.lease(current_setting('test.c'));
+create function pg_temp.live_ads() returns jsonb language sql as $$
+  select jsonb_build_array(pg_temp.ad('8001','https://shop.north-studio.com/p'), pg_temp.ad('8002', null))
+$$;
+create function pg_temp.lf(extra jsonb default '{}') returns jsonb language sql as $$
+  select pg_temp.f(jsonb_build_object('evidence',
+    jsonb_build_object('url','https://www.facebook.com/ads/library/?id=8001','quote','Twenty off.'))) || extra
+$$;
+create function pg_temp.live_findings() returns jsonb language sql as $$
+  select jsonb_build_array(
+    pg_temp.lf(jsonb_build_object('topic','creative','statement','Most live ads are videos.','value','{}'::jsonb,'pass','code')),
+    pg_temp.lf(jsonb_build_object('topic','landing_page','statement','Live ads send people to /p.',
+      'value',jsonb_build_object('url','https://shop.north-studio.com/p'),'pass','code')),
+    pg_temp.lf(jsonb_build_object('topic','angle','statement','Ads speak of quiet homes.','value','{}'::jsonb,
+      'pass','model','model','gemini-2.5-flash')))
+$$;
+set local role authenticated;
+select pg_temp.as_owner('00000000-0000-4000-8000-000000000004');
+select throws_ok($$select public.fail_job(current_setting('test.b')::uuid,'00000000-0000-4000-8000-00000000aaaa','auth')$$,
+  '42501',null,'an owner cannot fail a running ads read');
+reset role;
+set local role service_role;
+select pg_temp.as_worker();
+select is(pg_temp.record(pg_temp.live_findings(),pg_temp.live_ads(),pg_temp.s(),current_setting('test.a'),true)->>'findings','3',
+  'a live read stores code''s counts and the model''s words, a subdomain as the brand''s own');
+select throws_ok(format('select pg_temp.record(jsonb_build_array(%L::jsonb),pg_temp.live_ads(),%L::jsonb,current_setting(''test.b''),true)',
+    f, coalesce(sm, '{"state":"ready","analysis":"done"}')),'23514',null,'refused live finding: '||f::text)
+  from (values
+    (pg_temp.lf(jsonb_build_object('pass','code')), null),
+    (pg_temp.lf(jsonb_build_object('topic','creative','statement','Videos.','value','{}'::jsonb,'pass','code','model','x')), null),
+    (pg_temp.lf(jsonb_build_object('pass','model','model',' ')), null),
+    (pg_temp.lf(), null),
+    (pg_temp.lf(jsonb_build_object('pass','model','model','gemini-2.5-flash')), '{"state":"ready","analysis":"skipped"}'),
+    (pg_temp.lf(jsonb_build_object('topic','landing_page','value',jsonb_build_object('url','https://xnorth-studio.com/p'),
+      'pass','code')), null),
+    (pg_temp.lf(jsonb_build_object('pass','model','model','m','value',
+      jsonb_build_object('kind','amount_off','amount',0,'currency','USD'))), null)) x(f, sm);
+select throws_ok(format('select pg_temp.record(''[]'',jsonb_build_array(pg_temp.ad(''8001'',%L)),pg_temp.s(''ready'',''skipped''),
+    current_setting(''test.b''),true)', l),'23514',null,'refused live link: '||l)
+  from unnest(array['https://xnorth-studio.com/p','https://north-studio.com:443/p','https://evil.example\.north-studio.com/x',
+    'https://north-studio.com.evil/']) l;
+reset role;
+insert into public.brand_findings(tenant_id,run_id,source,topic,statement,evidence,confidence,pass)
+  values ('00000000-0000-4000-8000-000000000102',current_setting('test.real')::uuid,'ads','angle','From when the brand was a sample.',
+    '{"url":"https://www.facebook.com/ads/library/?id=1","quote":"Sample words."}',0.5,'sample');
+set local role service_role;
+select pg_temp.as_worker();
+select lives_ok($$select pg_temp.record('[]','[]',pg_temp.s('skipped','skipped'),current_setting('test.b'),true)$$,
+  'a later live read is skipped');
+select is(pg_temp.current_ads('00000000-0000-4000-8000-000000000102'),3,
+  'and replaces only what was left from the sample ads');
+select is(pg_temp.record(pg_temp.live_findings(),pg_temp.live_ads(),pg_temp.s(),current_setting('test.c'),true)->>'newer','false',
+  'a read older than that skipped one, but newer than the last ready read, is not late');
+select is((select count(*)::integer from public.brand_findings where run_id=current_setting('test.a')::uuid
+  and superseded_at is not null),3,'and replaces the earlier read''s findings');
+reset role;
+select set_config('test.stale',pg_temp.job('00000000-0000-4000-8000-000000000102','stale','live','0','north-studio.com'),true);
+update public.job_runs set status='running', lease_token=gen_random_uuid(), lease_until=now()-interval '1 minute'
+  where id=current_setting('test.stale')::uuid;
+set local role service_role;
+select pg_temp.as_worker();
+select is((select count(*)::integer from public.claim_job('00000000-0000-4000-8000-000000000102')),0,'the workspace jobs');
+select is((select status from public.job_runs where id=current_setting('test.stale')::uuid),'running',
+  'never touch an ads read whose lease ran out');
 reset role;
 
 select * from finish();

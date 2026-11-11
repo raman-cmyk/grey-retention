@@ -90,7 +90,13 @@ export const topicValues = {
         percent: z.number().int().min(1).max(90)
       })
       .strict(),
-    z.object({ kind: z.literal('amount_off'), amount, currency }).strict(),
+    z
+      .object({
+        kind: z.literal('amount_off'),
+        amount: amount.positive(),
+        currency
+      })
+      .strict(),
     z.object({ kind: z.literal('gift') }).strict(),
     z.object({ kind: z.literal('bundle') }).strict()
   ]),

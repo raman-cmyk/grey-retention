@@ -164,54 +164,120 @@ export function analystInput(brand: string, ads: LibraryAd[]): AdsAnalystInput {
 /** Shortest quote kept: a few words, not a stray character. */
 export const minQuote = 12
 
-/** Everything an ad says, as one folded text (what a quote must be in). */
-const wordsOf = (ad: LibraryAd) =>
-  fold([...ad.texts, ...ad.titles, ...ad.descriptions].join(' \n '))
+/** What an ad says, each text on its own (a quote is from one of them). */
+const fieldsOf = (ad: LibraryAd) =>
+  [...ad.texts, ...ad.titles, ...ad.descriptions].map(fold)
+const escaped = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-/** The plain numbers in a quote ("$1,299.00" is 1299). */
-const numbersIn = (quote: string) =>
-  [...quote.matchAll(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g)].map((m) =>
-    Number(m[0].replace(/,/g, ''))
-  )
-const symbols: Record<string, string> = { $: 'USD', '£': 'GBP', '€': 'EUR' }
+/**
+ * The quote as the ad writes it (its own capitals) from one of its texts,
+ * whitespace and case aside; null when the ad does not say it.
+ */
+function asWritten(ad: LibraryAd, quote: string): string | null {
+  const pattern = new RegExp(escaped(quote), 'i')
+  for (const field of fieldsOf(ad)) {
+    const found = pattern.exec(field)
+    if (found) return found[0]
+  }
+  return null
+}
+
+/** The currencies each money sign may stand for. */
+const signs: Record<string, string[]> = {
+  $: ['USD', 'CAD', 'AUD', 'NZD', 'SGD', 'HKD', 'MXN'],
+  '£': ['GBP'],
+  '€': ['EUR']
+}
+const money = String.raw`(?:([$£€])\s?(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d{1,6}(?:\.\d{1,2})?)|(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d{1,6}(?:\.\d{1,2})?)\s?([A-Z]{3})\b)`
 const cents = (n: number) => Math.round(n * 100) / 100
 
-/** A sentence with no number, price, date or claim (the shared check). */
-const plain = (s: string) =>
-  statedFact(s) === null &&
-  !/\b(best|in the world|#1|number one|leading|award|guarantee|cheapest|finest|perfect)\b/i.test(
-    s
+/** Amounts of money a quote names right before `after`, each with its currencies. */
+function amountsBefore(quote: string, after: string) {
+  return [...quote.matchAll(new RegExp(`${money}\\s*${after}`, 'gi'))]
+    .filter((m) => !/\bup to\s*$/i.test(quote.slice(0, m.index)))
+    .map((m) => ({
+      amount: Number((m[2] ?? m[3])!.replace(/,/g, '')),
+      currencies: m[1] ? signs[m[1]]! : [m[4]!.toUpperCase()]
+    }))
+}
+/** Amounts a quote says free shipping starts at ("over $75"). */
+const thresholds = (quote: string) =>
+  [
+    ...quote.matchAll(
+      new RegExp(
+        `free (?:shipping|delivery) (?:on|for) (?:all )?orders? (?:over|above|of|from) ${money}`,
+        'gi'
+      )
+    )
+  ].map((m) => ({
+    amount: Number((m[2] ?? m[3])!.replace(/,/g, '')),
+    currencies: m[1] ? signs[m[1]]! : [m[4]!.toUpperCase()]
+  }))
+const named = (
+  found: { amount: number; currencies: string[] }[],
+  amount: number | undefined,
+  currency: string | undefined
+) =>
+  amount !== undefined &&
+  !!currency &&
+  found.some(
+    (m) =>
+      Math.abs(m.amount - amount) < 0.005 && m.currencies.includes(currency)
   )
 
-/** The topic's value from the model's flat fields; null when it does not hold. */
+/** Words that make a claim the ads would have to prove. */
+const claims =
+  /\b(best|in the world|#1|number one|leading|award|guarantee|cheapest|finest|perfect|organic|natural|hand-?made|sustainab\w*|eco|vegan|cruelty|plastic|recycled|certified|clinical\w*|proven|non-toxic|toxic|safe|healthy|cure|heal\w*)\b/i
+
+/** A sentence with no number, price, date or claim (the shared check). */
+const plain = (s: string) => statedFact(s) === null && !claims.test(s)
+
+/**
+ * The topic's value from the model's flat fields, each offer said by the
+ * quote in an offer's own words ("20% off", "$10 off", "free gift",
+ * "bundle", "free shipping on orders over $75"); null when it does not
+ * hold.
+ */
 function valueOf(f: RawFinding, quote: string): Record<string, unknown> | null {
-  const shown = numbersIn(quote)
-  const has = (n: number | undefined) =>
-    n !== undefined && shown.some((s) => Math.abs(s - n) < 0.005)
   const currency = f.currency?.trim().toUpperCase()
-  // The quote's own money sign, when it has one, must be the currency.
-  const sign = /([$£€])\s?\d/.exec(quote)?.[1]
-  const sameCurrency = !sign || symbols[sign] === currency
   switch (f.topic) {
-    case 'promotion':
-      if (f.kind === 'percent_off')
-        return f.percent !== undefined &&
-          new RegExp(`\\b${Math.round(f.percent)}\\s?(%|percent)`, 'i').test(
-            quote
-          )
-          ? { kind: 'percent_off', percent: Math.round(f.percent) }
+    case 'promotion': {
+      if (f.kind === 'percent_off') {
+        const p = f.percent === undefined ? undefined : Math.round(f.percent)
+        if (p === undefined || p !== f.percent) return null
+        const off = new RegExp(`\\b${p}\\s?(?:%|percent)\\s*off\\b`, 'i')
+        const upTo = new RegExp(`\\bup to\\s+${p}\\s?(?:%|percent)`, 'i')
+        return off.test(quote) && !upTo.test(quote)
+          ? { kind: 'percent_off', percent: p }
           : null
+      }
       if (f.kind === 'amount_off')
-        return has(f.amount) && currency && sameCurrency
+        return named(amountsBefore(quote, 'off\\b'), f.amount, currency)
           ? { kind: 'amount_off', amount: cents(f.amount!), currency }
           : null
-      if (f.kind === 'gift' || f.kind === 'bundle') return { kind: f.kind }
+      if (f.kind === 'gift')
+        return /\bfree gift\b|\bgift with (?:purchase|every|your|any)\b/i.test(
+          quote
+        )
+          ? { kind: 'gift' }
+          : null
+      if (f.kind === 'bundle')
+        return /\bbundles?\b|\bbuy (?:one|two|three|\d+),? get\b/i.test(quote)
+          ? { kind: 'bundle' }
+          : null
       return null
+    }
     case 'free_shipping':
-      if (!/free (shipping|delivery)/i.test(quote)) return null
-      if (f.kind === 'always') return { kind: 'always' }
+      if (!/\bfree (?:shipping|delivery)\b/i.test(quote)) return null
+      // Always free only when the quote names no threshold at all.
+      if (f.kind === 'always')
+        return /\b(over|above|from|orders? of|minimum|spend|when you)\b|[$£€]\s?\d|\d\s?[A-Z]{3}\b/i.test(
+          quote
+        )
+          ? null
+          : { kind: 'always' }
       if (f.kind === 'over')
-        return has(f.amount) && currency && sameCurrency
+        return named(thresholds(quote), f.amount, currency)
           ? { kind: 'over', amount: cents(f.amount!), currency }
           : null
       return null
@@ -220,13 +286,39 @@ function valueOf(f: RawFinding, quote: string): Record<string, unknown> | null {
   }
 }
 
+/** An offer's statement, written from its value (never the model's numbers). */
+function offerStatement(
+  topic: string,
+  value: Record<string, unknown>,
+  said: string
+): string {
+  const amount = `${value.amount} ${value.currency}`
+  if (topic === 'free_shipping')
+    return value.kind === 'over'
+      ? `A live ad offers free shipping on orders over ${amount}.`
+      : 'A live ad offers free shipping.'
+  if (topic !== 'promotion') return said
+  switch (value.kind) {
+    case 'percent_off':
+      return `A live ad offers ${value.percent}% off.`
+    case 'amount_off':
+      return `A live ad offers ${amount} off.`
+    case 'gift':
+      return 'A live ad offers a free gift.'
+    default:
+      return 'A live ad offers a bundle.'
+  }
+}
+
 export type AdFinding = FindingInput & { adId: string }
 
 /**
  * The findings that hold up: ads this read has, a quote of a few words
- * found word for word in the first cited ad (whitespace and case aside),
- * an offer whose numbers are in its quote, and words-only topics in plain
- * words. Anything else is dropped (D16).
+ * found word for word in one text of the first cited ad (whitespace and
+ * case aside; kept as the ad writes it), an offer in an offer's own words
+ * whose numbers are in its quote (its statement written from it), and
+ * words-only topics in plain words with no claims. Anything else is
+ * dropped (D16).
  */
 export function checkedAdFindings(
   ads: LibraryAd[],
@@ -238,17 +330,17 @@ export function checkedAdFindings(
   for (const f of raw) {
     const first = byId.get(f.adIds[0]!)
     if (!first || f.adIds.some((id) => !byId.has(id))) continue
-    const quote = fold(f.quote)
-    if (
-      quote.length < minQuote ||
-      !wordsOf(first).toLowerCase().includes(quote.toLowerCase())
-    )
-      continue
+    const asked = fold(f.quote)
+    const quote = asked.length < minQuote ? null : asWritten(first, asked)
+    if (!quote) continue
     const value = valueOf(f, quote)
     if (!value) continue
     const finding = findingInput.safeParse({
       topic: f.topic,
-      statement: fold(f.statement).slice(0, 300),
+      statement: offerStatement(f.topic, value, fold(f.statement)).slice(
+        0,
+        300
+      ),
       value,
       evidence: { url: adLibraryUrl(first.id), quote },
       confidence: Math.round(Math.min(0.9, f.confidence) * 100) / 100
@@ -311,7 +403,8 @@ export function sampleAdFindings(ads: LibraryAd[]): RawFinding[] {
           confidence: 0.7,
           kind: 'over',
           amount: Number(ship[2]),
-          currency: symbols[ship[1]!]
+          // The sample brands are in the United States.
+          currency: signs[ship[1]!]![0]
         })
     }
   return found
@@ -454,7 +547,10 @@ export async function analyseAds(
   if (!answer.ok) {
     const reason = unusable[answer.code]
     if (reason) return { answered: false, reason }
-    // A spent budget stops the read, as a site read does.
+    // A spent budget leaves the ads without words; what code counted
+    // stands (as for a catalog or history read).
+    if (answer.code === 'cap_reached')
+      return { answered: false, reason: 'budget_spent' }
     throw new TagError(answer.code, answer.retryAfterSeconds)
   }
   const parsed = adsAnalystOutput.safeParse(answer.content)
