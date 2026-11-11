@@ -14,16 +14,17 @@ export type Reservation =
  * Per-client spend cap (VISION section 10). A request reserves its upper-bound
  * cost before dispatch and settles the real cost afterwards. Operation ids
  * are unique per call (see runAi), so a reservation is settled once.
+ * `tenantId: null` meters platform work against the platform's daily cap.
  */
 export interface BudgetLedger {
   reserve(input: {
-    tenantId: string
+    tenantId: string | null
     operationId: string
     feature: BudgetFeature
     estimateMicro: number
   }): Promise<Reservation>
   settle(input: {
-    tenantId: string
+    tenantId: string | null
     reservationId: string
     actualMicro: number
   }): Promise<void>
@@ -34,7 +35,7 @@ export class InMemoryBudgetLedger implements BudgetLedger {
   readonly reservations = new Map<
     string,
     {
-      tenantId: string
+      tenantId: string | null
       operationId: string
       estimateMicro: number
       actualMicro: number | null
@@ -42,7 +43,7 @@ export class InMemoryBudgetLedger implements BudgetLedger {
   >()
   constructor(private readonly capMicro: number) {}
 
-  spentMicro(tenantId: string) {
+  spentMicro(tenantId: string | null) {
     let total = 0
     for (const r of this.reservations.values())
       if (r.tenantId === tenantId) total += r.actualMicro ?? r.estimateMicro
@@ -50,7 +51,7 @@ export class InMemoryBudgetLedger implements BudgetLedger {
   }
 
   async reserve(input: Parameters<BudgetLedger['reserve']>[0]) {
-    const id = `${input.tenantId}:${input.operationId}`
+    const id = `${input.tenantId ?? 'platform'}:${input.operationId}`
     if (this.reservations.has(id))
       return { ok: false as const, code: 'ledger_unavailable' as const }
     if (
@@ -94,6 +95,20 @@ type LiveUsageRpc = {
     data: null
     error: { code?: string; message?: string } | null
   }>
+  (
+    fn: 'reserve_platform_ai_usage',
+    args: { operation: string; feature: string; estimate: number }
+  ): PromiseLike<{
+    data: string | null
+    error: { code?: string; message?: string } | null
+  }>
+  (
+    fn: 'settle_platform_ai_usage',
+    args: { reservation: string; actual: number }
+  ): PromiseLike<{
+    data: null
+    error: { code?: string; message?: string } | null
+  }>
 }
 
 /**
@@ -102,7 +117,9 @@ type LiveUsageRpc = {
  * wrap private.reserve_budget / reconcile_budget, which enforce the cycle and
  * daily caps and alert owners at 80% with live wording. An `ai:` operation can
  * be reserved only once and is never auto-released, and owners can't reach
- * it through the fixture commands. Pass a service-role client.
+ * it through the fixture commands. Platform work (`tenantId: null`) goes to
+ * public.reserve_platform_ai_usage / settle_platform_ai_usage (migration
+ * 20260914090047), the platform's own daily cap. Pass a service-role client.
  */
 export class SupabaseBudgetLedger implements BudgetLedger {
   // The generated types gain these RPCs at the next `pnpm supabase:types`;
@@ -113,12 +130,19 @@ export class SupabaseBudgetLedger implements BudgetLedger {
   }
 
   async reserve(input: Parameters<BudgetLedger['reserve']>[0]) {
-    const { data, error } = await this.rpc('reserve_ai_usage', {
-      t: input.tenantId,
-      operation: input.operationId,
-      feature: input.feature,
-      estimate: input.estimateMicro
-    })
+    const { data, error } =
+      input.tenantId === null
+        ? await this.rpc('reserve_platform_ai_usage', {
+            operation: input.operationId,
+            feature: input.feature,
+            estimate: input.estimateMicro
+          })
+        : await this.rpc('reserve_ai_usage', {
+            t: input.tenantId,
+            operation: input.operationId,
+            feature: input.feature,
+            estimate: input.estimateMicro
+          })
     if (error || !data)
       return {
         ok: false as const,
@@ -134,11 +158,18 @@ export class SupabaseBudgetLedger implements BudgetLedger {
   }
 
   async settle(input: Parameters<BudgetLedger['settle']>[0]) {
-    const { error } = await this.rpc('settle_ai_usage', {
-      t: input.tenantId,
-      reservation: input.reservationId,
-      actual: Math.max(0, Math.ceil(input.actualMicro))
-    })
+    const actual = Math.max(0, Math.ceil(input.actualMicro))
+    const { error } =
+      input.tenantId === null
+        ? await this.rpc('settle_platform_ai_usage', {
+            reservation: input.reservationId,
+            actual
+          })
+        : await this.rpc('settle_ai_usage', {
+            t: input.tenantId,
+            reservation: input.reservationId,
+            actual
+          })
     if (error) throw new Error('AI usage could not be settled')
   }
 }
