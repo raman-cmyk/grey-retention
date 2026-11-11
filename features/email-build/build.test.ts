@@ -6,6 +6,7 @@ import { fakeDraftPusher } from '@/lib/providers/klaviyo-draft'
 import {
   endOfLocalDay,
   offersAt,
+  ownerOrSampleOffers,
   sampleOffers,
   sampleStoreSource
 } from './ports'
@@ -172,6 +173,68 @@ describe('the ports', () => {
     ).toEqual({
       maxDiscountPercent: 20,
       codes: [{ code: 'NEW', percent: 10, expiresAt: null }]
+    })
+  })
+
+  it('let the owner’s saved offers win, fall back to the sample only when nothing is saved, and never on a failed read', async () => {
+    const at = '2026-11-17T23:00:00.000Z'
+    const sample = {
+      offers: async () => ({
+        maxDiscountPercent: 20,
+        codes: [{ code: 'CANDLE10', percent: 10, expiresAt: null }]
+      })
+    }
+    const saved = (value: unknown) =>
+      ownerOrSampleOffers({ managed: async () => value as never }, sample)
+    const owned = (code: string, expiresAt: string | null) => ({
+      id: code,
+      code,
+      percent: 10,
+      expiresAt,
+      ended: false
+    })
+    // 1. The owner saved a max and codes: those, never the sample's.
+    expect(
+      await saved({
+        maxDiscountPercent: 15,
+        revision: 1,
+        codes: [
+          owned('OLD', '2026-11-17T22:00:00.000Z'),
+          owned('OWNER10', null)
+        ]
+      }).offers(tenantId, at)
+    ).toEqual({
+      maxDiscountPercent: 15,
+      codes: [{ code: 'OWNER10', percent: 10, expiresAt: null }]
+    })
+    // Codes but no max saved: the owner's (no discount), not the sample's.
+    expect(
+      await saved({
+        maxDiscountPercent: null,
+        revision: 0,
+        codes: [owned('OWNER10', null)]
+      }).offers(tenantId, at)
+    ).toEqual({
+      maxDiscountPercent: null,
+      codes: [{ code: 'OWNER10', percent: 10, expiresAt: null }]
+    })
+    // 2. Nothing saved: the sample offers.
+    expect(
+      await saved({ maxDiscountPercent: null, revision: 0, codes: [] }).offers(
+        tenantId,
+        at
+      )
+    ).toEqual(await sample.offers())
+    // 3. The read failed (null or thrown): null, so the build offers nothing.
+    expect(await saved(null).offers(tenantId, at)).toBeNull()
+    const thrown = ownerOrSampleOffers(
+      { managed: async () => Promise.reject(new Error('down')) },
+      sample
+    )
+    expect(await thrown.offers(tenantId, at)).toBeNull()
+    expect(await offersAt(thrown, tenantId, at)).toEqual({
+      maxDiscountPercent: 0,
+      codes: []
     })
   })
 

@@ -38,6 +38,7 @@ const failureWords: Record<string, string> = {
   klaviyo_auth: 'Klaviyo did not accept the connection.',
   klaviyo_rejected: 'Klaviyo or the launch check refused it.',
   klaviyo_rate_limited: 'Klaviyo was busy for too long.',
+  day_passed: 'Its day passed before it was ready.',
   planned_email_invalid: 'This planned email cannot be built. Plan again.'
 }
 

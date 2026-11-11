@@ -6,11 +6,17 @@ import {
   fakeDraftPusher,
   type DraftPusher
 } from '@/lib/providers/klaviyo-draft'
-import type { OfferSource } from '@/features/offers/source'
+import { SupabaseOfferSource, type OfferSource } from '@/features/offers/source'
 import { databaseFallbackLog, type FallbackLog } from '@/features/fallback/log'
 import { stepCode } from '@/features/strategy/worker'
 import { buildEmail, builtEmail, plannedEmail } from './build'
-import { sampleOffersFrom, sampleStoreFrom, type StoreSource } from './ports'
+import {
+  ownerOrSampleOffers,
+  sampleOffersFrom,
+  sampleStoreFrom,
+  type SavedOffers,
+  type StoreSource
+} from './ports'
 
 type Db = SupabaseClient<Database>
 
@@ -33,8 +39,14 @@ export async function runEmailBuilds(
   deps: {
     /** Default: the sample store from the plan's first day. */
     stores?: StoreSource
-    /** Default: the sample offers from the plan's first day (DSC-001's port). */
+    /**
+     * Default: what the owner saved in Settings (DSC-001, read with this
+     * service-role client), or the sample offers from the plan's first day
+     * when the owner has saved nothing (`ownerOrSampleOffers`).
+     */
     offers?: OfferSource
+    /** Default: DSC-001's `SupabaseOfferSource` on `db`. */
+    saved?: SavedOffers
     pusher?: DraftPusher
     fallbacks?: FallbackLog
     /** Run only this build (the owner's click): its build, then its push. */
@@ -48,6 +60,7 @@ export async function runEmailBuilds(
 ) {
   const pusher = deps.pusher ?? fakeDraftPusher()
   const fallbacks = deps.fallbacks ?? databaseFallbackLog(db)
+  const saved = deps.saved ?? new SupabaseOfferSource(db)
   const now = deps.now ?? Date.now
   const limit = deps.build ? 2 : (deps.limit ?? 10)
   let ran = 0
@@ -97,7 +110,9 @@ export async function runEmailBuilds(
           continue
         }
         const stores = deps.stores ?? sampleStoreFrom(job.start_on)
-        const offers = deps.offers ?? sampleOffersFrom(job.start_on)
+        const offers =
+          deps.offers ??
+          ownerOrSampleOffers(saved, sampleOffersFrom(job.start_on))
         // The workspace's one brand timezone is "store time" everywhere.
         const store = {
           ...(await stores.read(job.tenant_id)),

@@ -62,6 +62,11 @@ export async function createEmail(
     run: parsed.data.run,
     slot: parsed.data.slot
   })
+  if (error?.code === 'PT409' && /failed 5 times/.test(error.message ?? ''))
+    return {
+      error:
+        'This email could not be made after 5 tries. Plan again for new emails.'
+    }
   if (error?.code === 'PT409')
     return {
       error:

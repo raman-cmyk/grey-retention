@@ -28,10 +28,19 @@ const planned: PlannedEmail = {
 }
 
 type Call = { fn: string; args: Record<string, unknown> }
-/** A database that hands out the given steps, then nothing, and records calls. */
+type Saved = {
+  brand_offers?: Record<string, unknown>[]
+  discount_codes?: Record<string, unknown>[]
+}
+/**
+ * A database that hands out the given steps, then nothing, and records
+ * calls. `saved` is what the owner saved in Settings (DSC-001's tables, read
+ * by the real `SupabaseOfferSource`); 'error' makes that read fail.
+ */
 function fakeDb(
   steps: Record<string, unknown>[],
-  fail: Record<string, { code: string }> = {}
+  fail: Record<string, { code: string }> = {},
+  saved: Saved | 'error' = {}
 ) {
   const queue = [...steps]
   const calls: Call[] = []
@@ -44,7 +53,21 @@ function fakeDb(
     }
     return { data: fn === 'fail_email_step' ? 'retry' : null, error: null }
   })
-  return { db: { rpc } as never, calls }
+  const from = (table: keyof Saved) => {
+    const result =
+      saved === 'error'
+        ? { data: null, error: { code: 'PGRST000' } }
+        : { data: saved[table] ?? [], error: null }
+    const query = {
+      eq: () => query,
+      then: (
+        done: (r: typeof result) => unknown,
+        failed: (e: unknown) => unknown
+      ) => Promise.resolve(result).then(done, failed)
+    }
+    return { select: () => query }
+  }
+  return { db: { rpc, from } as never, calls }
 }
 const step = (over: Record<string, unknown> = {}) => ({
   id: 'build-1',
@@ -153,6 +176,69 @@ describe('building and pushing (code-only, fake pusher)', () => {
       await runEmailBuilds(db, { deadline: 1000, now: () => 2000 })
     ).toEqual({ ran: 0 })
     expect(calls).toEqual([])
+  })
+})
+
+describe('the offers a build uses', () => {
+  // The plan chose the sample code CANDLE10 (10% off; the sample max is 20%).
+  const offerStep = () =>
+    step({
+      planned: {
+        ...planned,
+        emailType: 'offer',
+        offer: { id: 'offer:CANDLE10', code: 'CANDLE10', percent: 10 }
+      }
+    })
+  const builtWith = async (saved: Saved | 'error') => {
+    const { db, calls } = fakeDb([offerStep()], {}, saved)
+    await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+    return calls.find((c) => c.fn === 'finish_email_build')!.args
+      .result as BuiltEmail
+  }
+  const code = (over: Record<string, unknown> = {}) => ({
+    id: '00000000-0000-4000-8000-0000000000c1',
+    code: 'CANDLE10',
+    percent: 10,
+    expires_at: null,
+    ...over
+  })
+
+  it('uses what the owner saved, even while the store is the sample store', async () => {
+    // The owner's max is 5%, so the planned 10% code is not offered.
+    const email = await builtWith({
+      brand_offers: [{ max_discount_percent: 5, revision: 1 }],
+      discount_codes: [code()]
+    })
+    expect(email.sample).toBe(true)
+    expect(email.code).toBeNull()
+    expect(email.html).not.toContain('CANDLE10')
+    // Found in the owner's codes, then refused by the owner's max.
+    expect(email.changes).toContain('offer_above_max')
+    // The owner's own CANDLE10 is 15% off: the email says 15%, not the sample's 10%.
+    const own = await builtWith({
+      brand_offers: [{ max_discount_percent: 20, revision: 2 }],
+      discount_codes: [code({ percent: 15 })]
+    })
+    expect(own.code).toBe('CANDLE10')
+    expect(own.html).toContain('15%')
+    expect(own.html).not.toContain('10%')
+    // A saved code with no max saved yet: no discount (DSC-001), not the sample.
+    const codesOnly = await builtWith({ discount_codes: [code()] })
+    expect(codesOnly.code).toBeNull()
+  })
+
+  it('uses the sample offers only when the owner has saved nothing', async () => {
+    const email = await builtWith({})
+    expect(email.code).toBe('CANDLE10')
+    expect(email.html).toContain('CANDLE10')
+  })
+
+  it('gives no discount, never the sample, when the saved offers cannot be read', async () => {
+    const email = await builtWith('error')
+    expect(email.code).toBeNull()
+    expect(email.html).not.toContain('CANDLE10')
+    // No codes at all were read (the sample would have CANDLE10).
+    expect(email.changes).toContain('offer_not_in_codes')
   })
 })
 

@@ -78,6 +78,10 @@ describe('creating an email', () => {
         { code: 'PT409' },
         'This email’s day has passed or the plan has changed. Plan again to create it.'
       ],
+      [
+        { code: 'PT409', message: 'This email failed 5 times; plan again' },
+        'This email could not be made after 5 tries. Plan again for new emails.'
+      ],
       [{ code: '22023' }, 'This plan has no such email. Reload the page.'],
       [{ code: 'XX000' }, 'We could not create the email. Try again.']
     ] as const

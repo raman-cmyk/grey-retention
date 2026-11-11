@@ -1,5 +1,5 @@
 begin;
-select plan(62);
+select plan(79);
 
 -- Workspace 101: owner ...01, staff ...05. Workspace 102: owner ...04.
 select ok(not has_table_privilege('authenticated','public.email_builds','insert,update,delete,truncate'),'members cannot write builds directly');
@@ -61,6 +61,14 @@ set local role authenticated;
 select is((select count(*) from public.email_builds where tenant_id='00000000-0000-4000-8000-000000000101'),0::bigint,'another workspace cannot read it');
 select throws_ok($$select public.create_email_build('00000000-0000-4000-8000-000000000102','00000000-0000-4000-8000-00000000e002',0)$$,'PT409','This plan is not ready yet','no email from a plan still being made');
 select throws_ok($$select public.create_email_build('00000000-0000-4000-8000-000000000102','00000000-0000-4000-8000-00000000e001',0)$$,'42501','Plan unavailable','nor from another workspace''s plan through its own');
+select throws_ok($$select public.create_email_build('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e001',0)$$,'42501',null,'another workspace''s owner cannot create in this one');
+reset role;
+
+-- Platform admins read every workspace's builds but never create emails.
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
+set local role authenticated;
+select is((select count(*) from public.email_builds where tenant_id='00000000-0000-4000-8000-000000000101'),1::bigint,'platform admins read every workspace''s builds');
+select throws_ok($$select public.create_email_build('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e001',0)$$,'42501',null,'platform admins cannot create an email');
 reset role;
 
 -- Job commands check the caller themselves.
@@ -68,6 +76,8 @@ select set_config('request.jwt.claims','{}',true);
 set local role service_role;
 select throws_ok($$select * from public.claim_email_build()$$,'42501',null,'a call without the job role cannot claim');
 select throws_ok($$select public.fail_email_step(current_setting('test.build')::uuid,gen_random_uuid(),'x_y')$$,'42501',null,'nor fail a step');
+select throws_ok($$select public.finish_email_build(current_setting('test.build')::uuid,gen_random_uuid(),'{}')$$,'42501',null,'nor finish a build');
+select throws_ok($$select public.finish_email_push(current_setting('test.build')::uuid,gen_random_uuid(),'c1',false)$$,'42501',null,'nor finish a push');
 reset role;
 
 -- A job builds the email: leases are exact, the planned email comes along.
@@ -82,14 +92,24 @@ select throws_ok($$select public.finish_email_build(current_setting('test.build'
 select throws_ok($$select public.finish_email_push(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'c1',false)$$,'PT409','Lease unavailable','a build step cannot be finished as a push');
 select throws_ok($$select public.finish_email_build(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'{"subject":"s","preheader":"p"}')$$,'22023',null,'a built email needs its HTML');
 select throws_ok($$select public.finish_email_build(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'{"subject":"s","preheader":"p","html":""}')$$,'22023',null,'and not an empty one');
+select throws_ok($$select public.finish_email_build(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'{"subject":"  ","preheader":"p","html":"<p>x</p>"}')$$,'22023',null,'a built email needs a subject');
 select lives_ok($$select public.finish_email_build(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'{"subject":"s","preheader":"p","html":"<p>x</p>"}')$$,'the job finishes the build');
 select is((select state from public.email_builds where id=current_setting('test.build')::uuid),'push_queued','the email waits for the push');
+select throws_ok($$select public.finish_email_build(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'{"subject":"s","preheader":"p","html":"<p>y</p>"}')$$,'PT409','Lease unavailable','a finished build cannot be finished again');
+
+-- The push's lease runs out: claimed again, it keeps the same push key.
+select set_config('test.key',(select c.push_key from public.claim_email_build(current_setting('test.build')::uuid) c)::text,true);
+reset role;
+select pg_temp.later(current_setting('test.build')::uuid, 10);
+set local role service_role;
+select set_config('test.claim',(select c.push_key || ' ' || c.lease_token from public.claim_email_build(current_setting('test.build')::uuid) c),true);
+select is(split_part(current_setting('test.claim'),' ',1),current_setting('test.key'),'a push claimed again after its lease ran out has the same push key');
+select set_config('test.lease',split_part(current_setting('test.claim'),' ',2),true);
 
 -- Klaviyo is busy: the push waits as long as it asked.
-select set_config('test.lease',pg_temp.claim(current_setting('test.build')::uuid)::text,true);
 select throws_ok($$select public.fail_email_step(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'rate_limited',false,0)$$,'22023',null,'a wait needs at least a second');
 select is(public.fail_email_step(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'rate_limited',false,600),'retry','a busy Klaviyo is tried again');
-select is((select attempts || ':' || waits from public.email_builds where id=current_setting('test.build')::uuid),'0:1','a wait does not use up an attempt');
+select is((select attempts || ':' || waits from public.email_builds where id=current_setting('test.build')::uuid),'1:1','a wait gives its attempt back');
 select is((select email->>'html' from public.email_builds where id=current_setting('test.build')::uuid),'<p>x</p>','the built email is kept for the retry');
 reset role;
 select pg_temp.later(current_setting('test.build')::uuid, 2);
@@ -102,6 +122,8 @@ select set_config('test.lease',pg_temp.claim()::text,true);
 select isnt(current_setting('test.lease'),null,'then the push is tried again');
 select throws_ok($$select public.finish_email_push(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'',false)$$,'22023',null,'a draft needs its campaign id');
 select lives_ok($$select public.finish_email_push(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'sample-draft-1',true)$$,'the job records the draft');
+select throws_ok($$select public.finish_email_push(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'sample-draft-2',true)$$,'PT409','Lease unavailable','a recorded draft cannot be recorded again');
+select throws_ok($$select public.fail_email_step(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'x_y',true)$$,'PT409','Lease unavailable','nor failed');
 reset role;
 select is((select state || ':' || klaviyo_campaign_id || ':' || sample_draft::text from public.email_builds where id=current_setting('test.build')::uuid),
   'drafted:sample-draft-1:true','the email is a draft, marked as the fake''s');
@@ -182,6 +204,44 @@ set local role service_role;
 select is(pg_temp.claim(current_setting('test.fourth')::uuid),null,'a step out of attempts is not handed out');
 reset role;
 select is((select state || ':' || error_code from public.email_builds where id=current_setting('test.fourth')::uuid),'failed:step_timed_out','it fails as timed out');
+
+-- Klaviyo's 20th wait fails the step, and a wait is at most a day.
+insert into public.email_builds (id, tenant_id, run_id, slot, state, email, waits, created_by)
+  values ('00000000-0000-4000-8000-00000000b001','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e001',1,
+          'push_queued','{"subject":"s","preheader":"p","html":"<p>x</p>"}',19,'00000000-0000-4000-8000-000000000001');
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+set local role service_role;
+select throws_ok($$select public.fail_email_step('00000000-0000-4000-8000-00000000b001',gen_random_uuid(),'rate_limited',false,86401)$$,'22023',null,'a wait is at most a day');
+select is(public.fail_email_step('00000000-0000-4000-8000-00000000b001',pg_temp.claim('00000000-0000-4000-8000-00000000b001'),'rate_limited',false,60),'failed','Klaviyo''s 20th wait fails the step');
+reset role;
+select is((select state || ':' || error_code from public.email_builds where id='00000000-0000-4000-8000-00000000b001'),'failed:rate_limited','with Klaviyo''s reason');
+
+-- After 5 failed builds the planned email is not built again.
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+set local role authenticated;
+select throws_ok($$select public.create_email_build('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e001',1)$$,'PT409','This email failed 5 times; plan again','an email that failed 5 times is not built again');
+reset role;
+
+-- A step whose planned day has passed fails instead of pushing late.
+insert into public.email_builds (id, tenant_id, run_id, slot, created_by)
+  values ('00000000-0000-4000-8000-00000000b002','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e001',1,'00000000-0000-4000-8000-000000000001');
+update public.strategy_runs set plan = jsonb_set(plan,'{slots,1,date}',to_jsonb((current_setting('test.today')::date-1)::text))
+  where id='00000000-0000-4000-8000-00000000e001';
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+set local role service_role;
+select is(pg_temp.claim('00000000-0000-4000-8000-00000000b002'),null,'a step whose day has passed is not handed out');
+reset role;
+select is((select state || ':' || error_code from public.email_builds where id='00000000-0000-4000-8000-00000000b002'),'failed:day_passed','it fails as its day passed');
+
+-- A planned email needs a real day.
+update public.strategy_runs set plan = jsonb_set(plan,'{slots,1,date}','"soon"')
+  where id='00000000-0000-4000-8000-00000000e001';
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+set local role authenticated;
+select throws_ok($$select public.create_email_build('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e001',1)$$,'22023','This planned email has no day','a planned email without a real day is refused');
+reset role;
+update public.strategy_runs set plan = jsonb_set(plan,'{slots,1,date}',to_jsonb((current_setting('test.today')::date+3)::text))
+  where id='00000000-0000-4000-8000-00000000e001';
 -- A newer plan replaces this one: no more emails from the old one.
 insert into public.strategy_runs (tenant_id, start_on, state, created_by, created_at)
   values ('00000000-0000-4000-8000-000000000101',current_setting('test.today')::date+1,'failed','00000000-0000-4000-8000-000000000001',now()+interval '1 second');

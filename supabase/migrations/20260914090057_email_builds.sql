@@ -5,12 +5,18 @@
 -- Nothing waits for a person, and nothing is scheduled or sent here.
 --
 -- * One build per planned email at a time; clicking again returns it.
+--   After 5 failed builds the planned email is not built again (each try
+--   costs a build run, paid AI once builds use it).
 -- * One push key per planned email: "Try again" after a failed push keeps
 --   the key, so Klaviyo returns the same draft instead of a second one
---   (an unknown remote outcome is never repeated with a new key).
+--   (an unknown remote outcome is never repeated with a new key). The
+--   pusher updates that draft to the email just built, so what Klaviyo
+--   holds matches the stored email; a draft the owner already scheduled or
+--   sent is refused, never changed (DraftPusher contract).
 -- * The owner writes only through create_email_build; jobs (service role)
 --   claim a step with a lease and finish or fail it. After 3 failed
---   attempts a step fails for good; a busy Klaviyo can ask for a later try.
+--   attempts a step fails for good; a busy Klaviyo can ask for a later try,
+--   up to 20 times per step. A step whose planned day has passed fails.
 -- * The number is chosen at merge time (D24).
 
 create table public.email_builds (
@@ -28,7 +34,7 @@ create table public.email_builds (
   -- True when the draft came from the fake pusher (no Klaviyo call).
   sample_draft boolean not null default false,
   attempts integer not null default 0 check (attempts between 0 and 10),
-  -- Times Klaviyo asked to wait; a step gives up after 20.
+  -- Times Klaviyo asked this step to wait; a step gives up after 20.
   waits integer not null default 0 check (waits between 0 and 20),
   lease_token uuid,
   lease_until timestamptz,
@@ -105,8 +111,12 @@ begin
     where b.run_id = run and b.slot = create_email_build.slot
       and b.state in ('build_queued', 'push_queued', 'drafted');
   if found then return build; end if;
+  if (select count(*) from public.email_builds b
+      where b.run_id = run and b.slot = create_email_build.slot and b.state = 'failed') >= 5 then
+    raise exception 'This email failed 5 times; plan again' using errcode = 'PT409';
+  end if;
   -- A failed build that reached the push may have made a draft already:
-  -- its key is kept, so a new push returns that draft.
+  -- its key is kept, so a new push returns (and updates) that draft.
   select b.push_key into key from public.email_builds b
     where b.run_id = run and b.slot = create_email_build.slot
       and b.state = 'failed' and b.email is not null
@@ -126,6 +136,7 @@ language plpgsql security definer set search_path='' as $$
 declare
   b public.email_builds;
   lease uuid := gen_random_uuid();
+  passed boolean;
 begin
   if coalesce(auth.role(), '') <> 'service_role' then
     raise exception 'Only jobs build emails' using errcode = '42501';
@@ -144,10 +155,22 @@ begin
       limit 1
       for update skip locked;
     if not found then return; end if;
+    -- A planned day that has passed (store time) needs no draft any more:
+    -- a long wait or a paused workspace must not push one late.
+    begin
+      select (s.plan->'slots'->b.slot->>'date')::date < (now() at time zone coalesce(w.timezone, 'UTC'))::date
+        into passed
+        from public.strategy_runs s, public.tenants w
+        where s.id = b.run_id and w.id = b.tenant_id;
+    exception when others then
+      passed := true;
+    end;
+    passed := coalesce(passed, true);
     -- A step whose lease ran out three times is not tried again; look on.
-    exit when b.attempts < 3;
+    exit when b.attempts < 3 and not passed;
     update public.email_builds e
-      set state = 'failed', error_code = 'step_timed_out', lease_token = null, lease_until = null, updated_at = now()
+      set state = 'failed', error_code = case when passed then 'day_passed' else 'step_timed_out' end,
+          lease_token = null, lease_until = null, updated_at = now()
       where e.id = b.id;
   end loop;
   update public.email_builds e
@@ -185,11 +208,13 @@ begin
      or coalesce(jsonb_typeof(result->'html'), '') <> 'string'
      or coalesce(jsonb_typeof(result->'subject'), '') <> 'string'
      or coalesce(jsonb_typeof(result->'preheader'), '') <> 'string'
+     or length(btrim(result->>'subject')) = 0
      or octet_length(result->>'html') not between 1 and 200000 then
     raise exception 'A built email needs its subject, preview and HTML' using errcode = '22023';
   end if;
+  -- The push is a new step: its own attempts and waits.
   update public.email_builds
-    set email = result, state = 'push_queued', attempts = 0, error_code = null, not_before = null,
+    set email = result, state = 'push_queued', attempts = 0, waits = 0, error_code = null, not_before = null,
         lease_token = null, lease_until = null, updated_at = now()
     where id = build;
 end $$;

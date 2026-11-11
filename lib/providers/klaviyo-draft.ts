@@ -6,7 +6,11 @@
  * 1. It only ever creates a draft campaign: it never schedules or sends
  *    (D17: the owner schedules in Klaviyo).
  * 2. `idempotencyKey` is one per planned email (the build's push key): the
- *    same key again returns the same campaign id, never a second draft.
+ *    same key again returns the same campaign id, never a second draft,
+ *    and updates that draft to this input's content, so Klaviyo holds the
+ *    email just built (a "Try again" after a push timed out may rebuild
+ *    it). A campaign that is no longer a draft (the owner scheduled or
+ *    sent it) is never changed: the answer is `rejected`.
  * 3. It never throws: failures come back as codes. `rate_limited` and
  *    `unavailable` are tried again later (with `retryAfterSeconds` when
  *    Klaviyo gives one); `auth` and `rejected` are final.

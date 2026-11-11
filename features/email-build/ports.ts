@@ -6,7 +6,7 @@ import {
   type CatalogProduct,
   type DiscountCode
 } from '@/features/assembly/inputs'
-import type { OfferSource } from '@/features/offers/source'
+import type { OfferSource, SupabaseOfferSource } from '@/features/offers/source'
 import { sampleStore } from '@/features/strategy/sample'
 import { localTimeCandidates } from '@/lib/local-time'
 
@@ -16,9 +16,10 @@ import { localTimeCandidates } from '@/lib/local-time'
  * implementation; the real ones come from other items:
  *
  * - `OfferSource` (DSC-001, `features/offers/source.ts`): the owner's max
- *   discount and the codes still working when the email sends. While the
- *   store is the sample store, the build reads `sampleOffers`, so the
- *   plan's sample codes match; the real source comes with the first reader.
+ *   discount and the codes still working when the email sends. What the
+ *   owner saved in Settings wins, even while the store is the sample store;
+ *   only when nothing is saved does the build read the sample offers
+ *   (`ownerOrSampleOffers`).
  * - `StoreSource`: brand kit, catalog and brand facts (lane B's readers).
  * - `DraftPusher` (`lib/providers/klaviyo-draft.ts`): the email into
  *   Klaviyo as a draft (PSH-001 builds the live one).
@@ -96,6 +97,36 @@ export const sampleOffersFrom = (start: string): OfferSource => ({
   }
 })
 export const sampleOffers = sampleOffersFrom(today())
+
+/** What DSC-001's `SupabaseOfferSource` reads: everything the owner saved, or null when it cannot be read. */
+export type SavedOffers = Pick<SupabaseOfferSource, 'managed'>
+
+/**
+ * The offers a build uses (supervisor, 11 Nov). The owner's own wins: a
+ * saved max discount (a `brand_offers` row) or any active code, even while
+ * the store is the sample store. Only when the owner has saved nothing do
+ * the sample offers apply, so the sample plan's codes still match. A read
+ * that fails is null, so `offersAt` gives no discount: never the sample.
+ */
+export const ownerOrSampleOffers = (
+  saved: SavedOffers,
+  sample: OfferSource
+): OfferSource => ({
+  async offers(tenantId, at) {
+    const managed = await saved.managed(tenantId).catch(() => null)
+    if (!managed) return null
+    if (managed.maxDiscountPercent === null && managed.codes.length === 0)
+      return sample.offers(tenantId, at)
+    const sends = at ? Date.parse(at) : Date.now()
+    return {
+      // No max saved yet means no discount, whatever codes exist (DSC-001).
+      maxDiscountPercent: managed.maxDiscountPercent,
+      codes: managed.codes
+        .filter((c) => c.expiresAt === null || Date.parse(c.expiresAt) > sends)
+        .map(({ code, percent, expiresAt }) => ({ code, percent, expiresAt }))
+    }
+  }
+})
 
 const money = (amount: number, currency: string) =>
   new Intl.NumberFormat('en-AU', { style: 'currency', currency }).format(amount)
