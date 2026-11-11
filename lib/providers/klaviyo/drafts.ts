@@ -65,15 +65,19 @@ export async function createTemplate(
 
 /**
  * A template we made, by its exact name, made since `since` (a create
- * whose answer was lost); null when there is none.
+ * whose answer was lost), never one of `skip` (ours known deleted); null
+ * when there is none.
  */
 export async function findTemplate(
   client: KlaviyoClient,
   name: string,
-  since: Date
+  since: Date,
+  skip: ReadonlySet<string> = new Set()
 ) {
   const query = new URLSearchParams({
     'fields[template]': 'name,created',
+    // The first made: ours, before any copy Klaviyo makes of it.
+    sort: 'created',
     filter: `equals(name,"${name.replace(/[^A-Za-z0-9 ]/g, '')}"),greater-or-equal(created,${stamp(since)})`
   })
   const body = parsed(
@@ -88,9 +92,11 @@ export async function findTemplate(
     await client.get(`/api/templates?${query}`, 'templates:read'),
     '/api/templates'
   )
-  const ours = body.data.filter((t) => t.attributes.name === name)
+  const ours = body.data.filter(
+    (t) => t.attributes.name === name && !skip.has(t.id)
+  )
   // A lost create shows once; more than one is our earlier lost ones: the
-  // first is used (a leftover template is harmless).
+  // first made is used (a leftover template is harmless).
   return ours[0]?.id ?? null
 }
 
@@ -370,6 +376,9 @@ const variation = (v: VariationContent) => ({
  * whose answer was lost): matched here, not in Klaviyo's filter, so no name
  * is ever put in a query. More than one is `ambiguous` (never guessed).
  */
+/** Another push's mark, whole (`pushMark` of a key). */
+const otherMark = /^GROS draft [A-Za-z0-9_-]{1,64}$/
+
 export async function findOwnCampaign(
   client: KlaviyoClient,
   own: { name: string; description: string; since: Date },
@@ -407,10 +416,11 @@ export async function findOwnCampaign(
     for (const c of body.data)
       if (c.attributes.definition.description === own.description)
         ours.push(c.id)
-      // Our name with no mark of ours at all (another email's mark is not ours).
+      // Our name without our mark: only another push's whole mark makes it
+      // that push's; anything else (a mark changed in Klaviyo) is unknown.
       else if (
         c.attributes.definition.name === own.name.slice(0, 120) &&
-        !c.attributes.definition.description?.startsWith('GROS draft ')
+        !otherMark.test(c.attributes.definition.description ?? '')
       )
         sameName++
     const next = body.links?.next

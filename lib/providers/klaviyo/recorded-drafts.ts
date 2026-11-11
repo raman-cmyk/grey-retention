@@ -54,6 +54,16 @@ export type DraftFaults = {
   trimsText?: boolean
   /** Message reads list the variations last made first. */
   reverseReads?: boolean
+  /** A variation delete is answered (204) and never done. */
+  deleteIgnored?: boolean
+  /** The nth variation update (from 1) is refused (400). */
+  refuseUpdate?: number
+  /** The message create's answer leaves out its variations. */
+  dropCreateIds?: boolean
+  /** Klaviyo's copy of a template is not the same HTML as ours. */
+  changesCopies?: boolean
+  /** The seconds a rate-limited answer asks to wait (30). */
+  retryAfter?: number
 }
 
 type Campaign = {
@@ -176,7 +186,13 @@ export function fakeDraftAccount(
     const source = account.templates.get(templateId)
     if (!source || !account.faults.copiesTemplates) return templateId
     const copy = id('TplCopy')
-    account.templates.set(copy, { ...source })
+    account.templates.set(copy, {
+      ...source,
+      html: account.faults.changesCopies
+        ? `${source.html}<!-- copy -->`
+        : source.html,
+      created: now().toISOString()
+    })
     return copy
   }
   const kept = (text: string) =>
@@ -192,6 +208,7 @@ export function fakeDraftAccount(
   }
   /** Deletes done that the next message read does not show yet. */
   const late = new Set<string>()
+  let updates = 0
   const addVariation = (messageId: string, definition: Obj) => {
     const vid = id('Var')
     const message = account.messages.get(messageId)!
@@ -246,7 +263,7 @@ export function fakeDraftAccount(
       if (firstTime(`rate ${account.faults.rateLimit}`))
         return {
           ...refused(429, 'throttled'),
-          headers: { 'retry-after': '30' }
+          headers: { 'retry-after': String(account.faults.retryAfter ?? 30) }
         }
     if (account.faults.outage && path.startsWith(account.faults.outage))
       if (firstTime(`outage ${account.faults.outage}`)) return refused(503)
@@ -294,8 +311,13 @@ export function fakeDraftAccount(
         /^equals\(name,"([^"]*)"\),greater-or-equal\(created,([0-9T:Z.+-]+)\)$/
       )
       if (!m) return bad()
+      const sort = url.searchParams.get('sort')
+      if (sort && !['created', '-created', 'name', '-name'].includes(sort))
+        return bad()
+      const listed = [...account.templates.entries()]
+      if (sort === '-created') listed.reverse()
       return json(200, {
-        data: [...account.templates.entries()]
+        data: listed
           .filter(
             ([, t]) =>
               t.name === m[1] && Date.parse(t.created) >= Date.parse(m[2]!)
@@ -513,14 +535,18 @@ export function fakeDraftAccount(
         data: {
           type: 'campaign-message',
           id: mid,
-          relationships: {
-            'campaign-variations': {
-              data: account.messages.get(mid)!.variationIds.map((v) => ({
-                type: 'campaign-variation',
-                id: v
-              }))
-            }
-          }
+          ...(account.faults.dropCreateIds
+            ? {}
+            : {
+                relationships: {
+                  'campaign-variations': {
+                    data: account.messages.get(mid)!.variationIds.map((v) => ({
+                      type: 'campaign-variation',
+                      id: v
+                    }))
+                  }
+                }
+              })
         }
       })
     }
@@ -626,6 +652,7 @@ export function fakeDraftAccount(
       if (m.status !== 'draft') return bad()
       if (request.method === 'DELETE') {
         if (account.faults.deleteVariation === 'refused') return bad()
+        if (account.faults.deleteIgnored) return json(204)
         if (account.faults.lagDelete && firstTime('lag delete'))
           late.add(variation[1]!)
         else drop(variation[1]!)
@@ -640,6 +667,7 @@ export function fakeDraftAccount(
           unknownTemplate(attributes.definition)
         )
           return bad()
+        if (++updates === account.faults.refuseUpdate) return bad()
         const d = attributes.definition as Obj
         const details = (d.details ?? {}) as Obj
         if (!account.faults.renameVariations && str(d.name))

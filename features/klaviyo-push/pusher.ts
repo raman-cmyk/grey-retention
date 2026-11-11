@@ -364,21 +364,52 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     )
     throw new Refused('externally_modified', ['externally_modified'])
   }
-  /**
-   * Which variation is which design: as recorded when made, else by our
-   * name, else by the order they were made in (A first).
-   */
-  const variationOf = (r: DraftRead, approach: 'A' | 'B') => {
+  /** A design's variation as recorded when made, else by our name. */
+  const named = (r: DraftRead, approach: 'A' | 'B') => {
     const id = p.templates.find(
       (t) => t.approach === approach && t.variation
     )?.variation
     return (
       r.variations.find((v) => v.id === id) ??
-      r.variations.find((v) => v.name === designName(approach)) ??
-      (r.variations.length <= 2
-        ? r.variations[approach === 'A' ? 0 : 1]
-        : undefined)
+      r.variations.find((v) => v.name === designName(approach))
     )
+  }
+  /**
+   * Which variation is which design: as recorded when made (from Klaviyo's
+   * answer to the create), else by our name, else by what it shows (its
+   * template's HTML is one of ours). Never by the order Klaviyo lists them.
+   */
+  const identify = async (r: DraftRead, via: KlaviyoClient) => {
+    let a = named(r, 'A')
+    let b = named(r, 'B')
+    if (b && b.id === a?.id) b = undefined
+    if (r.variations.length === 2 && (!a || !b))
+      for (const v of r.variations) {
+        if (v.id === a?.id || v.id === b?.id || !v.templateId) continue
+        const html = await templateHtml(via, v.templateId).catch((error) => {
+          if (error instanceof KlaviyoError) return null
+          throw error
+        })
+        const t =
+          html === null
+            ? undefined
+            : p.templates.find((x) => x.hash === htmlHash(html))
+        if (t?.approach === 'A' && !a) a = v
+        else if (t?.approach === 'B' && !b) b = v
+      }
+    return { a, b }
+  }
+  /** After a failure on an A/B draft not yet seen safe: one try to make it safe. */
+  const makeSafe = async (mid: string) => {
+    try {
+      const r = await readDraft(live, mid)
+      if (r && p.ab === 'pending') await settle(r)
+    } catch {
+      logger.error(
+        'Klaviyo push: an A/B draft could not be made safe after a failure',
+        { build: ref.build }
+      )
+    }
   }
   /**
    * Work on an A/B draft not yet seen safe: Klaviyo being unwell never
@@ -392,7 +423,9 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
         p.ab === 'pending' &&
         error instanceof KlaviyoError &&
         error.kind !== 'bad_key' &&
-        error.kind !== 'missing_scope'
+        error.kind !== 'missing_scope' &&
+        // Klaviyo's own wait is already a wait, with its time.
+        error.kind !== 'rate_limited'
       ) {
         logger.error(
           'Klaviyo push: an A/B draft not yet seen safe waits for Klaviyo',
@@ -408,6 +441,28 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
   //    first; then it must still be a draft, ours, as we left it.
   let read: DraftRead | null = null
   let parts: Awaited<ReturnType<typeof campaignParts>> = null
+  if (p.ab === 'pending' && !p.messageId && p.campaignId) {
+    // An A/B message sent for whose answer was lost: found in its campaign
+    // first, whatever the time.
+    const cid = p.campaignId
+    parts = await whilePending(() => campaignParts(live, cid))
+    if (!parts) {
+      if (ago(p.createStartedAt) < 10 * 60_000) throw new Wait()
+      return close()
+    }
+    if (parts.description !== pushMark(ref.key)) return close()
+    if (parts.messageIds.length > 1) {
+      logger.error('Klaviyo push: an A/B draft has more than one message', {
+        build: ref.build
+      })
+      throw new Refused('campaign_ambiguous', ['campaign'])
+    }
+    const found = parts.messageIds[0]
+    if (found) await save({ messageId: found, messageStartedAt: null })
+    else if (ago(p.messageStartedAt) < showMs) throw new Wait()
+    // Never made: nothing to make safe.
+    else await save({ ab: null })
+  }
   if (p.messageId) {
     const mid = p.messageId
     // Untimed: an A/B message not yet seen safe is checked whatever the time.
@@ -436,17 +491,22 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
       throw new Refused('not_a_draft', ['not_draft'])
     }
     if (read.description !== pushMark(ref.key)) return close(read)
-    if (p.ab === 'pending') read = await settle(read)
+    // An owner's change is looked for on the draft as found, before any
+    // of ours (taking design B out to make it safe comes first).
     const allowed = new Set([...setOf(p.written), ...setOf(p.target)])
-    if (p.written && read.variations.some((v) => !allowed.has(seen(v))))
-      return close(read)
+    // What we sent counts too: a draft never read back since its create.
+    const changed =
+      (!!p.written || !!p.target) &&
+      read.variations.some((v) => !allowed.has(seen(v)))
+    if (p.ab === 'pending') read = await settle(read)
+    if (changed) return close(read)
     if (
       p.ab === 'verified' &&
       read.variations.length === 2 &&
       read.winnerPercentage !== 0
     )
       return close(read)
-  } else if (p.campaignId) {
+  } else if (p.campaignId && !parts) {
     parts = await campaignParts(client, p.campaignId)
     if (!parts) {
       if (ago(p.createStartedAt) < 10 * 60_000) throw new Wait()
@@ -467,8 +527,7 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     throw new Refused('audience_changed', ['audience'])
   // A draft made with one design (or after Klaviyo refused the even test)
   // stays one design: design B is only ever made together with its test.
-  const madeAlone =
-    !!p.fallback || (!!read && read.variations.length === 1 && p.ab === null)
+  const madeAlone = !!p.fallback || (!!read && read.variations.length === 1)
   const wanted = madeAlone ? designs.slice(0, 1) : [...designs]
 
   // 1. The planned list or segment is in this account (before any write).
@@ -512,7 +571,8 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
       id = await findTemplate(
         client,
         name,
-        new Date(Date.parse(p.templateStartedAt) - findSlackMs)
+        new Date(Date.parse(p.templateStartedAt) - findSlackMs),
+        new Set(p.templates.filter((t) => t.deleted).map((t) => t.id))
       ).catch((error) => {
         // Without template read access a lost template stays behind.
         if (error instanceof KlaviyoError && error.kind === 'missing_scope')
@@ -658,6 +718,11 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
           variations: templates.map((t, i) => content(i, t.id))
         })
       } catch (error) {
+        if (error instanceof KlaviyoError && error.kind === 'rate_limited') {
+          // Not made: sent again once Klaviyo allows, with no wait to show.
+          await save({ messageStartedAt: null, ab: null })
+          throw error
+        }
         if (wanted.length !== 2) throw error
         if (!(error instanceof KlaviyoError && error.kind === 'rejected')) {
           // The message may be there: the next run finds it, checks it first.
@@ -707,15 +772,16 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
         throw new Wait()
       }
       read = back
-      // Our names, where Klaviyo kept them, win over the order.
+      // Each design's variation where the answer did not say (by our name,
+      // else by what it shows).
+      const found = await identify(read, live)
       for (const [i, id] of sent.entries()) {
         const recorded = p.templates.find((t) => t.id === id)!
         const v =
-          read.variations.find(
-            (x) => x.name === designName(wanted[i]!.approach)
-          ) ??
-          read.variations.find((x) => x.id === recorded.variation) ??
-          read.variations[i]
+          i === 0
+            ? (found.a ??
+              (read.variations.length === 1 ? read.variations[0] : undefined))
+            : found.b
         if (v && v.id !== recorded.variation) await applied(recorded, v.id)
       }
       if (p.ab === 'pending') read = await settle(read)
@@ -731,17 +797,18 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
 
   // 6. Each design's variation shows this content (written only where it
   //    does not), then read back.
+  const found = await identify(read, client)
   const a =
-    variationOf(read, 'A') ??
-    (read.variations.length === 1 ? read.variations[0] : undefined)
-  const b = wanted.length === 2 ? variationOf(read, 'B') : undefined
+    found.a ?? (read.variations.length === 1 ? read.variations[0] : undefined)
+  const b = wanted.length === 2 ? found.b : undefined
   if (!a || (wanted.length === 2 && !b)) return close(read)
-  const ours = new Set([a.id, b?.id].filter(Boolean))
-  // A variation neither design: a leftover B of a one-design draft is
-  // taken out; anything else was made in Klaviyo.
-  const others = read.variations.filter((v) => !ours.has(v.id))
-  if (others.some((v) => v.name !== designName('B'))) return close(read)
-  if (others.length) read = await takeOutB(read)
+  // A variation neither design: design B of a draft now pushed with one
+  // design is taken out; anything else was made in Klaviyo.
+  const others = read.variations.filter((v) => v.id !== a.id && v.id !== b?.id)
+  if (others.length) {
+    if (others.some((v) => v.id !== found.b?.id)) return close(read)
+    read = await takeOutB(read, a, false)
+  }
   await save({
     target: fingerprints([
       ...read.variations,
@@ -749,24 +816,33 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     ])
   })
   let wrote = false
-  for (const [i, v] of [a, b].entries()) {
-    if (!v || i >= wanted.length) continue
-    const on = p.templates.find((t) => t.variation === v.id)
-    const same = on?.hash === hashes[i]
-    if (
-      same &&
-      norm(v.subject) === norm(input.subject) &&
-      norm(v.preview) === norm(input.preheader)
-    )
-      continue
-    // A change may reset the even test: two designs are checked again.
-    if (wanted.length === 2 && p.ab !== 'pending') await save({ ab: 'pending' })
-    // The same design: the template the variation shows (Klaviyo's copy)
-    // is kept; a new design gets its own template.
-    const t = same && v.templateId ? null : await templateFor(i)
-    await updateVariation(client, v.id, content(i, t?.id ?? v.templateId!))
-    if (t) await applied(t, v.id)
-    wrote = true
+  try {
+    for (const [i, v] of [a, b].entries()) {
+      if (!v || i >= wanted.length) continue
+      const on = p.templates.find((t) => t.variation === v.id)
+      const same = on?.hash === hashes[i]
+      if (
+        same &&
+        norm(v.subject) === norm(input.subject) &&
+        norm(v.preview) === norm(input.preheader)
+      )
+        continue
+      // A change may reset the even test: two designs are checked again.
+      if (wanted.length === 2 && p.ab !== 'pending')
+        await save({ ab: 'pending' })
+      // The same design: the template the variation shows (Klaviyo's copy)
+      // is kept; a new design gets its own template.
+      const t = same && v.templateId ? null : await templateFor(i)
+      await updateVariation(client, v.id, content(i, t?.id ?? v.templateId!))
+      if (t) await applied(t, v.id)
+      wrote = true
+    }
+  } catch (error) {
+    // Stopped half way on a two-design draft: made safe before the answer
+    // (a run that only ran out of time checks it first next run).
+    if (!(error instanceof Wait) && !(error instanceof TimeUp))
+      await makeSafe(messageId)
+    throw error
   }
   if (wrote) {
     const after = await whilePending(() => readDraft(client, messageId))
@@ -809,7 +885,7 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     state: 'drafted',
     templates: kept,
     designs: wanted.length === 2 ? 'both' : 'A',
-    ...(wanted.length === 2 ? { ab: 'verified' as const } : {}),
+    ab: wanted.length === 2 ? 'verified' : null,
     written: fingerprints(read.variations),
     target: null,
     reason: null
@@ -834,76 +910,101 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
    * otherwise design B is taken out (design A from now on).
    */
   async function settle(r: DraftRead) {
-    if (r.variations.length === 2 && r.winnerPercentage === 0) {
-      await save({ ab: 'verified', designs: 'both' })
-      return r
-    }
-    const after = await whilePending(() => takeOutB(r))
-    if (after.variations.length === 1) {
-      await save({ designs: 'A', fallback: p.fallback ?? 'ab_test_not_kept' })
-      logger.warn('Klaviyo push: only design A went in', {
-        build: ref!.build,
-        reason: p.fallback ?? 'ab_test_not_kept'
-      })
-    }
-    return after
+    return whilePending(async () => {
+      if (
+        !p.fallback &&
+        r.variations.length === 2 &&
+        r.winnerPercentage === 0
+      ) {
+        await save({ ab: 'verified', designs: 'both' })
+        return r
+      }
+      const { a } = await identify(r, live!)
+      const keep =
+        a ?? (r.variations.length === 1 ? r.variations[0] : undefined)
+      if (!keep) {
+        // Neither design is known: no winner at least, then refused.
+        if (r.variations.length === 2)
+          await setEvenTest(live!, p.messageId!).catch(() => undefined)
+        logger.error(
+          'Klaviyo push: design A could not be told apart in an A/B draft',
+          { build: ref!.build }
+        )
+        throw new Refused('ab_test_unsafe', ['ab_test'])
+      }
+      return takeOutB(r, keep, true)
+    })
   }
 
   /**
-   * Every variation but design A out of our draft, with no time check (it
-   * makes the draft safe), and one variation, design A, checked to remain.
-   * If one cannot be taken out, the even test is set as a last resort;
-   * else the push is refused (`ab_test_unsafe`).
+   * Every variation but `keep` (design A) out of our draft, with no time
+   * check (it makes the draft safe), and one variation, design A, checked
+   * to remain. When settling an A/B draft, design A is the answer from
+   * the first delete that went through. A delete Klaviyo answered but does
+   * not show yet sets the even test meanwhile and waits; one it refuses
+   * has the even test set as a last resort; else the push is refused
+   * (`ab_test_unsafe`).
    */
-  async function takeOutB(r: DraftRead) {
-    const keep = variationOf(r, 'A')
+  async function takeOutB(
+    r: DraftRead,
+    keep: DraftRead['variations'][number],
+    settling: boolean
+  ) {
+    const mid = p.messageId!
     let refusedDelete = false
     for (const v of r.variations)
-      if (keep && v.id !== keep.id)
+      if (v.id !== keep.id)
         await deleteVariation(live!, v.id).catch((error) => {
           if (!(error instanceof KlaviyoError && error.kind === 'rejected'))
             throw error
           refusedDelete = true
         })
-    let after = await readDraft(live!, p.messageId!)
+    if (settling && !refusedDelete && !p.fallback) {
+      await save({ designs: 'A', fallback: 'ab_test_not_kept' })
+      logger.warn('Klaviyo push: only design A went in', {
+        build: ref!.build,
+        reason: 'ab_test_not_kept'
+      })
+    }
+    let after = await readDraft(live!, mid)
     if (
       after &&
       after.variations.length === 1 &&
-      after.variations[0]!.id === keep?.id
+      after.variations[0]!.id === keep.id
     ) {
       await save({ ab: null, written: fingerprints(after.variations) })
       return after
     }
-    // Every delete went through: Klaviyo shows it on a later read.
-    if (
-      keep &&
-      !refusedDelete &&
-      after?.variations.some((v) => v.id === keep.id)
-    ) {
-      logger.warn('Klaviyo push: waiting for Klaviyo to show design B gone', {
-        build: ref!.build
-      })
-      throw new Wait()
-    }
     if (
       after &&
-      after.variations.length === 2 &&
-      p.fallback !== 'ab_test_refused' &&
-      !(p.designs === 'A' && p.fallback)
+      after.variations.length > 1 &&
+      after.variations.some((v) => v.id === keep.id)
     ) {
-      await setEvenTest(live!, p.messageId!).catch(() => undefined)
-      after = await readDraft(live!, p.messageId!)
-      if (
-        after &&
-        after.variations.length === 2 &&
-        after.winnerPercentage === 0
-      ) {
-        logger.warn(
-          'Klaviyo push: design B could not be taken out; the even test holds',
-          { build: ref!.build }
-        )
-        await save({ ab: 'verified', designs: 'both', fallback: null })
-        return after
+      if (!refusedDelete) {
+        // Klaviyo answered the delete and still shows design B: the even
+        // test meanwhile (no harm once B goes); the next run looks again.
+        await setEvenTest(live!, mid).catch(() => undefined)
+        logger.error('Klaviyo push: design B still shows after its delete', {
+          build: ref!.build
+        })
+        throw new Wait()
+      }
+      if (settling && !p.fallback && after.variations.length === 2) {
+        // Design B cannot be taken out: the even test, as a last resort.
+        await setEvenTest(live!, mid).catch(() => undefined)
+        after = await readDraft(live!, mid)
+        if (
+          after &&
+          after.variations.length === 2 &&
+          after.winnerPercentage === 0
+        ) {
+          logger.warn(
+            'Klaviyo push: design B could not be taken out; the even test holds',
+            { build: ref!.build }
+          )
+          await save({ ab: 'verified', designs: 'both' })
+          return after
+        }
       }
     }
     logger.error('Klaviyo push: design B could not be taken out', {

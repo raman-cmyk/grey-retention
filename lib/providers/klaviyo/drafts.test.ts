@@ -13,7 +13,9 @@ import {
   campaignParts,
   createCampaign,
   createMessage,
+  createTemplate,
   findOwnCampaign,
+  findTemplate,
   readDraft,
   setEvenTest
 } from './drafts'
@@ -218,15 +220,18 @@ describe('the Klaviyo draft writes', () => {
         since
       })
     ).toBeNull()
-    // Our name without any mark (it was changed in Klaviyo): never guessed.
-    account.campaigns.get(campaignId)!.description = 'Edited'
-    expect(
-      await findOwnCampaign(client, {
-        name: 'Mother & Daughter + #2 "Say hi"',
-        description: 'GROS draft k1',
-        since
-      })
-    ).toBe('ambiguous')
+    // Our name without our mark (it was changed in Klaviyo, even to look
+    // like one): never guessed.
+    for (const edited of ['Edited', 'GROS draft k1 (edited)']) {
+      account.campaigns.get(campaignId)!.description = edited
+      expect(
+        await findOwnCampaign(client, {
+          name: 'Mother & Daughter + #2 "Say hi"',
+          description: 'GROS draft k1',
+          since
+        })
+      ).toBe('ambiguous')
+    }
     account.messages.clear()
     expect(await readDraft(client, messageId)).toBeNull()
     // No address is built from an id that is not one.
@@ -259,6 +264,44 @@ describe('the Klaviyo draft writes', () => {
         2
       )
     ).toBe('ambiguous')
+  })
+
+  it('finds a lost template by its exact name, the first made, never one known deleted', async () => {
+    const account = fakeDraftAccount()
+    const client = klaviyoClient(key, { transport: account.transport })
+    const since = new Date(Date.now() - 60_000)
+    const first = await createTemplate(
+      client,
+      'GROS 6f1c2d3e A 12ab34cd',
+      '<p>1</p>'
+    )
+    const second = await createTemplate(
+      client,
+      'GROS 6f1c2d3e A 12ab34cd',
+      '<p>2</p>'
+    )
+    await createTemplate(client, 'GROS 6f1c2d3e B 12ab34cd', '<p>B</p>')
+    expect(await findTemplate(client, 'GROS 6f1c2d3e A 12ab34cd', since)).toBe(
+      first
+    )
+    expect(
+      await findTemplate(
+        client,
+        'GROS 6f1c2d3e A 12ab34cd',
+        since,
+        new Set([first])
+      )
+    ).toBe(second)
+    expect(
+      await findTemplate(
+        client,
+        'GROS 6f1c2d3e A 12ab34cd',
+        new Date(Date.now() + 60_000)
+      )
+    ).toBeNull()
+    expect(
+      account.calls.filter((c) => c === 'GET /api/templates')
+    ).toHaveLength(3)
   })
 
   it('reads a partial answer as unknown, never as no variations', async () => {
