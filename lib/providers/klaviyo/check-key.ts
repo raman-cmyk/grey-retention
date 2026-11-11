@@ -21,7 +21,10 @@ export const requiredScopes = [
   'metrics:read',
   'segments:read'
 ] as const satisfies readonly KlaviyoScope[]
-/** Scopes later steps need (pushing drafts); missing ones are a warning. */
+/**
+ * Scopes later steps need (reading the flows, pushing drafts); missing ones
+ * are a warning, not a refusal.
+ */
 export const laterScopes = [
   'templates:read',
   'images:read',

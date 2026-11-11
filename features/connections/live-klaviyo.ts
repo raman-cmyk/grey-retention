@@ -156,8 +156,13 @@ export async function connectLiveKlaviyo(
           ? 'Ask your workspace owner to connect accounts.'
           : 'We could not save this connection. Nothing was changed. Try again.'
     }
+  // Only what the missing access is for: the flows, the emails, or both.
+  const uses = [
+    result.laterMissing.includes('flows:read') ? 'read your flows' : null,
+    result.laterMissing.some((s) => s !== 'flows:read') ? 'send emails' : null
+  ].filter(Boolean)
   const later = result.laterMissing.length
-    ? ` Later, to read your flows and send emails, GROS also needs ${areas(result.laterMissing)}: make a new key then.`
+    ? ` Later, to ${uses.join(' and ')}, GROS also needs ${areas(result.laterMissing)}: make a new key then.`
     : ''
   return {
     message: `Klaviyo connected: ${a.organization ?? 'your account'}. For now we only read your Klaviyo data. Nothing is sent until you approve it.${later}`

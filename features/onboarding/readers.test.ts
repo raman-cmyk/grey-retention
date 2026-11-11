@@ -15,6 +15,7 @@ vi.mock('./catalog/live', () => ({ runCatalogReadingJob: jobs.catalog }))
 vi.mock('./history/live', () => ({ runHistoryReadingJob: jobs.history }))
 import { TagError } from '@/features/intelligence/passes'
 import { catalogRunMs, klaviyoCallMs } from './catalog/worker'
+import { historyRunMs } from './history/worker'
 import {
   dbMarginMs,
   readersRunMs,
@@ -103,12 +104,13 @@ describe('the readers run fits its route', () => {
     // request or model call without the time it may take, so it ends by
     // sourceRunMs; one capped Gemini call is counted again as a margin,
     // then the database work.
-    expect(sourceRunMs).toBe(Math.max(siteRunMs, catalogRunMs))
+    expect(sourceRunMs).toBe(Math.max(siteRunMs, catalogRunMs, historyRunMs))
     expect(
       readersRunMs + sourceRunMs + siteCallTimeoutMs + dbMarginMs
     ).toBeLessThanOrEqual(60_000)
     expect(pageTimeoutMs + siteCallTimeoutMs).toBeLessThan(siteRunMs)
     expect(klaviyoCallMs + siteCallTimeoutMs).toBeLessThan(catalogRunMs)
+    expect(klaviyoCallMs + siteCallTimeoutMs).toBeLessThan(historyRunMs)
   })
 })
 

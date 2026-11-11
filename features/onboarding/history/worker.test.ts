@@ -11,7 +11,7 @@ import {
 } from '@/lib/providers/klaviyo/recorded-history'
 import type { KlaviyoResponse } from '@/lib/providers/klaviyo/client'
 import type { HistorySnapshot } from './facts'
-import { planFromHistory } from './read'
+import { planFromHistory, unknownAudience } from './read'
 import { historyRunMs, readBrandHistory } from './worker'
 
 type Db = Parameters<typeof readBrandHistory>[0]
@@ -25,17 +25,23 @@ const job = {
 } as unknown as Job
 const now = Date.parse('2026-11-11T12:00:00Z')
 
-function database() {
+function database(timezone: string | null = null) {
   const calls: { name: string; args: Record<string, unknown> }[] = []
-  const chain = {
-    select: () => chain,
-    eq: () => chain,
-    single: async () => ({ data: { brand_name: 'Cedar Goods' }, error: null })
+  const chain = (row: Record<string, unknown>) => {
+    const c = {
+      select: () => c,
+      eq: () => c,
+      single: async () => ({ data: row, error: null })
+    }
+    return c
   }
   return {
     calls,
     db: {
-      from: () => chain,
+      from: (table: string) =>
+        chain(
+          table === 'tenants' ? { timezone } : { brand_name: 'Cedar Goods' }
+        ),
       rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
         calls.push({ name, args })
         return { data: {}, error: null }
@@ -62,16 +68,28 @@ const storedOf = (calls: ReturnType<typeof database>['calls']) =>
 const read = async (
   options: {
     fail?: { on: HistoryFailure; with: KlaviyoResponse }
+    variationsApart?: boolean
+    reportsCut?: boolean
+    /** Answers some requests differently (null: as recorded). */
+    instead?: (url: string) => KlaviyoResponse | null
+    timezone?: string | null
     live?: boolean
     ask?: Ask | null
     clock?: () => number
   } = {}
 ) => {
-  const transport = recordedHistoryTransport({
+  const recordedAnswers = recordedHistoryTransport({
     now: new Date(now),
-    fail: options.fail
+    fail: options.fail,
+    variationsApart: options.variationsApart,
+    reportsCut: options.reportsCut
   })
-  const { db, calls } = database()
+  const transport = (async (request) =>
+    options.instead?.(decodeURIComponent(request.url)) ??
+    recordedAnswers(request)) as typeof recordedAnswers
+  transport.calls = recordedAnswers.calls
+  const { db, calls } = database(options.timezone ?? null)
+  const waits: number[] = []
   const run = await readBrandHistory(db, job, {
     client: klaviyoClient('pk_SAMPLE0123456789abcdefghij', {
       transport,
@@ -80,9 +98,27 @@ const read = async (
     live: options.live ?? false,
     ask: options.ask === undefined ? sampleAsk : options.ask,
     callMs: 10_000,
-    now: options.clock ?? (() => now)
+    now: options.clock ?? (() => now),
+    sleep: async (ms) => {
+      waits.push(ms)
+    }
   })
-  return { run, calls, transport, stored: storedOf(calls) }
+  return { run, calls, transport, waits, stored: storedOf(calls) }
+}
+const refused = (status: number): KlaviyoResponse => ({
+  status,
+  headers: { 'content-type': 'application/vnd.api+json' },
+  body: JSON.stringify({ errors: [{ status, code: 'invalid' }] })
+})
+const allParts = {
+  sent: true,
+  scheduled: true,
+  audiences: true,
+  campaignReport: true,
+  flows: true,
+  flowReport: true,
+  lists: true,
+  segments: true
 }
 const gemini =
   (content: unknown): Ask =>
@@ -101,19 +137,31 @@ beforeEach(() => {
 
 describe('readBrandHistory', () => {
   it('counts what the brand sent: results, emails a week, the usual hour, the scheduled days', async () => {
-    const { stored, run, transport } = await read()
+    const { stored, run, transport, waits } = await read()
     const h = stored.snapshot
     expect(h).toMatchObject({
       currency: 'USD',
-      // Klaviyo's US/Pacific, by its standard name.
+      // The workspace has no timezone: Klaviyo's US/Pacific, by its
+      // standard name.
       timezone: 'America/Los_Angeles',
-      // 10 emails in the last 8 weeks; most at 11:00 in the store's time
-      // (before the clocks went back).
-      sendsPerWeek: 1.3,
+      // 10 emails since the first, 45 days ago; most at 11:00 in the
+      // store's time (before the clocks went back), one at each
+      // recipient's 11:00, one at Klaviyo's times (not counted).
+      sendsPerWeek: 1.6,
       usualSendTime: '11:00',
-      flowsRead: true
+      flowsRead: true,
+      window: { sentDays: 365, sentCap: 300, flowDays: 90 },
+      parts: allParts
     })
     expect(h.sent).toHaveLength(10)
+    // An archived campaign was still sent; an A/B test is marked.
+    expect(h.sent.find((e) => e.id === 'MsgA03')).toBeDefined()
+    expect(h.sent.find((e) => e.id === 'MsgA09')).toMatchObject({
+      abTest: true
+    })
+    expect(h.sent.find((e) => e.id === 'MsgA07')).toMatchObject({
+      strategy: 'optimized'
+    })
     expect(h.sent[1]).toMatchObject({
       id: 'MsgA02',
       subject: '20% off knitwear this weekend',
@@ -127,15 +175,18 @@ describe('readBrandHistory', () => {
       ['MsgS01', ['SegEng90'], false],
       ['MsgS02', ['SegVIP'], true]
     ])
-    expect(h.flows.map((f) => [f.name, f.revenue90d])).toEqual([
-      ['Abandoned cart', 5350.5],
-      ['Welcome series', 2700],
-      ['Old winback (draft)', 0]
+    expect(h.flows.map((f) => [f.name, f.sends90d, f.revenue90d])).toEqual([
+      ['Abandoned cart', 1020, 5350.5],
+      ['Welcome series', 900, 2700],
+      ['Old winback (draft)', 0, 0]
     ])
-    expect(h.audiences[0]).toMatchObject({
-      name: 'Engaged 90 days',
-      starred: true
-    })
+    expect(h.audiences.map((a) => [a.id, a.excludedOnly])).toEqual([
+      ['SegEng90', false],
+      ['LstSuppr', true],
+      ['LstNews', false],
+      ['SegVIP', false],
+      ['SegOld', false]
+    ])
     expect(stored.summary).toEqual({
       state: 'ready',
       complete: true,
@@ -153,6 +204,129 @@ describe('readBrandHistory', () => {
         .filter((c) => c.startsWith('POST'))
         .map((c) => c.split(' ')[1])
     ).toEqual(['/api/campaign-values-reports', '/api/flow-values-reports'])
+    // The variations came with the list: none asked for apart.
+    expect(
+      transport.calls.some((c) => c.includes('/campaign-variations?'))
+    ).toBe(false)
+    // Klaviyo answers one report question a second.
+    expect(waits).toEqual([1_100])
+  })
+
+  it("reads every day and hour in the workspace's timezone, when it has one", async () => {
+    const { stored } = await read({ timezone: 'Europe/Berlin' })
+    expect(stored.snapshot).toMatchObject({
+      timezone: 'Europe/Berlin',
+      // 18:00 UTC is 19:00 in Berlin since the clocks went back (25
+      // October: four emails), 20:00 before (three).
+      usualSendTime: '19:00'
+    })
+    expect(stored.snapshot.scheduled[0]!.date).toBe('2026-11-13')
+  })
+
+  it("asks for a message's variations apart when the list leaves them out", async () => {
+    const { stored, transport } = await read({ variationsApart: true })
+    expect(
+      transport.calls.filter((c) => c.includes('/campaign-variations?'))
+    ).toHaveLength(12)
+    expect(stored.snapshot.sent[1]).toMatchObject({
+      id: 'MsgA02',
+      subject: '20% off knitwear this weekend'
+    })
+    expect(stored.snapshot.sent.find((e) => e.id === 'MsgA09')).toMatchObject({
+      abTest: true
+    })
+    expect(stored.summary).toMatchObject({ complete: true })
+  })
+
+  it('calls the read incomplete when some content cannot be read', async () => {
+    const { stored } = await read({
+      variationsApart: true,
+      fail: { on: 'variations', with: refused(404) }
+    })
+    expect(stored.summary).toMatchObject({ complete: false })
+    // The report still counts them as emails, without a subject.
+    expect(stored.snapshot.sent).toHaveLength(10)
+    expect(stored.snapshot.sent[0]!.subject).toBeNull()
+  })
+
+  it('keeps the results Klaviyo gave when a report has another page, and says the read is not whole', async () => {
+    const { stored } = await read({ reportsCut: true })
+    expect(stored.snapshot.parts).toMatchObject({
+      campaignReport: false,
+      flowReport: false
+    })
+    expect(stored.snapshot.sent[1]!.revenue).toBe(3120)
+    // Flow results not read whole are unknown, not added up.
+    expect(stored.snapshot.flows.every((f) => f.sends90d === null)).toBe(true)
+    expect(stored.summary).toMatchObject({ complete: false })
+    // No "best email" from a part of the results.
+    expect(stored.findings.map((f) => f.statement)).not.toContainEqual(
+      expect.stringContaining('earned the most')
+    )
+  })
+
+  it('asks no report without a Placed Order metric: the results are unknown, not nothing', async () => {
+    const { stored, transport } = await read({
+      instead: (url) =>
+        url.includes('/api/metrics?')
+          ? {
+              status: 200,
+              headers: { 'content-type': 'application/vnd.api+json' },
+              body: JSON.stringify({
+                data: [
+                  {
+                    type: 'metric',
+                    id: 'OpnEml',
+                    attributes: {
+                      name: 'Opened Email',
+                      integration: {
+                        object: 'integration',
+                        id: '0rG4eQ',
+                        name: 'Klaviyo'
+                      }
+                    }
+                  }
+                ],
+                links: { next: null }
+              })
+            }
+          : null
+    })
+    expect(transport.calls.filter((c) => c.startsWith('POST'))).toEqual([])
+    expect(stored.snapshot.sent.every((e) => e.revenue === null)).toBe(true)
+    expect(
+      stored.snapshot.flows.map((f) => [f.sends90d, f.revenue90d])
+    ).toEqual([
+      [null, null],
+      [null, null],
+      [null, null]
+    ])
+    expect(stored.findings.map((f) => f.statement)).not.toContainEqual(
+      expect.stringContaining('earned the most')
+    )
+  })
+
+  it('leaves out a refused campaign report, the flow report Klaviyo slows down, or the scheduled audiences, and goes on', async () => {
+    const campaign = await read({
+      fail: { on: 'campaignReport', with: refused(400) }
+    })
+    expect(campaign.stored.snapshot.sent[1]!.revenue).toBeNull()
+    expect(campaign.stored.snapshot.flows[0]!.revenue90d).toBe(5350.5)
+
+    const flows = await read({
+      fail: { on: 'flowReport', with: recorded.throttled(60) }
+    })
+    expect(flows.stored.snapshot.flows[0]!.revenue90d).toBeNull()
+    expect(flows.stored.summary).toMatchObject({ complete: false })
+
+    const audiences = await read({
+      fail: { on: 'audiences', with: refused(400) }
+    })
+    // The days still count as taken, to an audience not known.
+    expect(
+      audiences.stored.snapshot.scheduled.map((e) => e.audienceIds)
+    ).toEqual([[], []])
+    expect(audiences.stored.summary).toMatchObject({ complete: false })
   })
 
   it('writes what the history says for the Brand strategist, each citing Klaviyo', async () => {
@@ -161,7 +335,7 @@ describe('readBrandHistory', () => {
       expect.objectContaining({
         topic: 'performance',
         statement:
-          'The brand sends about 1.3 emails a week, most often at 11:00.',
+          'The brand sends about 1.6 emails a week, most often at 11:00.',
         evidence: { ref: 'klaviyo:campaigns' },
         pass: 'sample'
       }),
@@ -189,16 +363,19 @@ describe('readBrandHistory', () => {
     expect(plan).toMatchObject({
       sendsPerWeek: 2,
       sendTime: '11:00',
+      // The two sent in the week before count against its first week.
       existing: [
-        { date: expect.any(String), audienceId: 'SegEng90', offer: false },
-        { date: expect.any(String), audienceId: 'SegVIP', offer: true }
+        { date: '2026-11-05', audienceId: unknownAudience, offer: true },
+        { date: '2026-11-08', audienceId: unknownAudience, offer: false },
+        { date: '2026-11-13', audienceId: 'SegEng90', offer: false },
+        { date: '2026-11-16', audienceId: 'SegVIP', offer: true }
       ]
     })
+    // Never the suppression list, never an inactive segment.
     expect(plan.audiences.map((a) => a.label)).toEqual([
       'Engaged 90 days',
-      'Do not email',
-      'Newsletter',
-      'VIP customers'
+      'VIP customers',
+      'Newsletter'
     ])
     expect(plan.results[0]).toEqual({
       title: 'New: the Field Overshirt in sand',
@@ -209,12 +386,18 @@ describe('readBrandHistory', () => {
   })
 
   it('leaves the flows out when the key cannot read them, and goes on', async () => {
-    const { stored, run } = await read({
+    const { stored, run, transport } = await read({
       fail: { on: 'flows', with: recorded.noScope }
     })
     expect(stored.snapshot).toMatchObject({ flows: [], flowsRead: false })
     expect(stored.summary).toMatchObject({ flowsRead: false, complete: true })
     expect(run.flowsRead).toBe(false)
+    // No flow report asked.
+    expect(
+      transport.calls
+        .filter((c) => c.startsWith('POST'))
+        .map((c) => c.split(' ')[1])
+    ).toEqual(['/api/campaign-values-reports'])
   })
 
   it('stops for Klaviyo to pause the job on a refused key, a missing campaigns scope or a rate limit, storing nothing', async () => {

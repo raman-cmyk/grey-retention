@@ -121,6 +121,9 @@ async function capped(response: Response, limit: number) {
   return Buffer.concat(chunks).toString('utf8')
 }
 
+/** The only addresses `query` POSTs to: Klaviyo's report questions. */
+const reportPaths = /^\/api\/(campaign|flow)-values-reports\/?$/
+
 /** Waits at most this long inside one call for a short rate limit. */
 const shortWaitSeconds = 10
 /** A private API key, and nothing else, ever goes into the header. */
@@ -235,7 +238,17 @@ export function klaviyoClient(
       }
       return send(parsed, scope)
     },
-    query: (path, body, scope) => send(new URL(path, klaviyoHost), scope, body)
+    query: async (path, body, scope) => {
+      // Only Klaviyo's report questions: nothing else is ever POSTed.
+      const url = new URL(path, klaviyoHost)
+      if (
+        !reportPaths.test(url.pathname) ||
+        body === undefined ||
+        body === null
+      )
+        throw new KlaviyoError('rejected', { endpoint: url.pathname })
+      return send(url, scope, body)
+    }
   }
 }
 

@@ -1,5 +1,5 @@
 begin;
-select plan(63);
+select plan(96);
 
 -- ONB-103: history reads, the stored history and its findings. Owner ...01
 -- and staff ...05 are in workspace 101 (a synthetic brand); owner ...04 runs
@@ -7,14 +7,19 @@ select plan(63);
 create function pg_temp.snap(extra jsonb default '{}') returns jsonb language sql as $$
   select jsonb_build_object('currency','USD','timezone','America/Los_Angeles','sendsPerWeek',1.3,'usualSendTime','11:00',
     'sent',jsonb_build_array(jsonb_build_object('id','MsgA02','campaignId','CmpA02','name','20% off','subject','20% off knitwear',
-      'preview',null,'sentAt','2026-11-05T18:00:00.000Z','recipients',2380,'opens',1050,'clicks',210,'orders',31,'revenue',3120,
+      'preview',null,'sentAt','2026-11-05T18:00:00.000Z','offer',true,'collecting',false,'abTest',false,'strategy','static',
+      'recipients',2380,'opens',1050,'clicks',210,'orders',31,'revenue',3120,
       'revenuePerRecipient',1.31,'openRate',0.4412,'clickRate',0.0882,'unsubscribeRate',0.002)),
     'scheduled',jsonb_build_array(jsonb_build_object('id','MsgS01','campaignId','CmpS01','subject','Winter layers',
       'sendAt','2026-11-13T18:00:00.000Z','date','2026-11-13','audienceIds',jsonb_build_array('SegEng90'),'offer',false)),
     'flows',jsonb_build_array(jsonb_build_object('id','FlwCart','name','Abandoned cart','status','live','trigger','Metric',
-      'recipients90d',1020,'orders90d',52,'revenue90d',5350.5)),
-    'audiences',jsonb_build_array(jsonb_build_object('id','SegEng90','kind','segment','name','Engaged 90 days','active',true,'starred',true)),
-    'flowsRead',true) || extra
+      'sends90d',1020,'orders90d',52,'revenue90d',5350.5)),
+    'audiences',jsonb_build_array(jsonb_build_object('id','SegEng90','kind','segment','name','Engaged 90 days','active',true,'starred',true,
+      'excludedOnly',false)),
+    'flowsRead',true,
+    'window',jsonb_build_object('sentDays',365,'sentCap',300,'flowDays',90),
+    'parts',jsonb_build_object('sent',true,'scheduled',true,'audiences',true,'campaignReport',true,'flows',true,'flowReport',true,
+      'lists',true,'segments',true)) || extra
 $$;
 create function pg_temp.f(extra jsonb default '{}') returns jsonb language sql as $$
   select jsonb_build_object('topic','performance','statement','The brand sends about 1.3 emails a week, most often at 11:00.',
@@ -218,6 +223,135 @@ select results_eq($$select state, sent, reason from public.klaviyo_history where
   $$values ('empty',0,'no_emails')$$,'is stored as empty');
 select is((select count(*)::integer from public.brand_findings where tenant_id='00000000-0000-4000-8000-000000000101'
   and source='klaviyo_history' and superseded_at is null),0,'with no current findings');
+
+-- Review cases. Another workspace's owner never starts this one's read.
+set local role authenticated;
+select pg_temp.as_owner('00000000-0000-4000-8000-000000000004');
+select throws_ok($$select public.start_history_reading('00000000-0000-4000-8000-000000000101')$$,'42501',null,
+  'another workspace''s owner cannot start a read');
+reset role;
+
+-- The history is checked as strictly as the app reads it back.
+select set_config('test.strict',pg_temp.job('00000000-0000-4000-8000-000000000101','strict'),true);
+select pg_temp.lease(current_setting('test.strict'));
+set local role service_role;
+select pg_temp.as_worker();
+select throws_ok(format('select pg_temp.record(pg_temp.snap(%L), ''[]'', pg_temp.s(), current_setting(''test.strict''))', x),'23514',null,
+  'refused: '||x)
+  from unnest(array[
+    '{"sent":[{"id":123}]}',
+    '{"window":{"sentDays":30,"sentCap":300,"flowDays":90}}',
+    '{"parts":{"sent":true}}',
+    '{"scheduled":[{"id":"S1","campaignId":null,"subject":null,"sendAt":"2026-11-13T18:00:00Z","date":"2026-02-30","audienceIds":[],"offer":false}]}',
+    '{"scheduled":[{"id":"S1","campaignId":null,"subject":null,"sendAt":"2026-11-13T18:00:00Z","date":"2026-11-13","audienceIds":["a b"],"offer":false}]}',
+    '{"flows":[{"id":"F1","name":"Cart","status":"live","trigger":null,"sends90d":-1,"orders90d":0,"revenue90d":0}]}',
+    '{"flows":[{"id":"F1","name":"Cart","status":"live","trigger":null,"sends90d":1,"orders90d":0,"revenue90d":0,"note":"x"}]}',
+    '{"audiences":[{"id":"A1","kind":"list","name":"L","active":true,"starred":false}]}'
+  ]) x;
+select throws_ok($$select pg_temp.record(pg_temp.snap() || jsonb_build_object('sent', (pg_temp.snap()->'sent') || (pg_temp.snap()->'sent')),
+  '[]', pg_temp.s(), current_setting('test.strict'))$$,'23514',null,'an email once in the history');
+select throws_ok($$select pg_temp.record(pg_temp.snap('{"sent":[],"scheduled":[]}'), '[]', pg_temp.s(), current_setting('test.strict'))$$,
+  '23514',null,'ready only with something sent or scheduled');
+select throws_ok($$select pg_temp.record(pg_temp.snap('{"sent":[],"scheduled":[]}'), jsonb_build_array(pg_temp.f()),
+  pg_temp.s('{"state":"empty"}'), current_setting('test.strict'))$$,'23514',null,'no findings when nothing was sent');
+select throws_ok($$select public.record_catalog_reading(current_setting('test.strict')::uuid,'00000000-0000-4000-8000-00000000aaaa',
+  '[]','[]','{"state":"empty","currency":"USD","currencyCheck":"unverified","complete":true}',false)$$,'23514','Not a catalog reading job',
+  'a history read is not a catalog read');
+select lives_ok($$select pg_temp.record(pg_temp.snap(), '[]', pg_temp.s(), current_setting('test.strict'))$$,'a whole history is stored');
+select throws_ok($$select pg_temp.record(pg_temp.snap(), '[]', pg_temp.s(), current_setting('test.strict'))$$,'PT409',null,
+  'a finished read records nothing more');
+reset role;
+-- A catalog job, an expired lease, a live job said to be sample.
+insert into public.job_runs(tenant_id,kind,idempotency_key,input,created_by,status,lease_token,lease_until)
+  values ('00000000-0000-4000-8000-000000000101','brand.read_catalog','cat-test','{"mode":"fixture"}','00000000-0000-4000-8000-000000000001',
+    'running','00000000-0000-4000-8000-00000000aaaa',now()+interval '1 minute');
+select set_config('test.late',pg_temp.job('00000000-0000-4000-8000-000000000101','late'),true);
+update public.job_runs set status='running', lease_token='00000000-0000-4000-8000-00000000aaaa', lease_until=now()-interval '1 second'
+  where id=current_setting('test.late')::uuid;
+select set_config('test.livejob',pg_temp.job('00000000-0000-4000-8000-000000000101','livejob','live'),true);
+select pg_temp.lease(current_setting('test.livejob'));
+set local role service_role;
+select pg_temp.as_worker();
+select throws_ok($$select pg_temp.record(pg_temp.snap(), '[]', pg_temp.s(),
+  (select id::text from public.job_runs where idempotency_key='cat-test'))$$,'23514','Not a history reading job','a catalog read is not a history read');
+select throws_ok($$select pg_temp.record(pg_temp.snap(), '[]', pg_temp.s(), current_setting('test.late'))$$,'PT409',null,
+  'an expired lease records nothing');
+select throws_ok($$select pg_temp.record(pg_temp.snap(), '[]', pg_temp.s(), current_setting('test.livejob'), false)$$,'23514',null,
+  'a live read cannot be stored as sample');
+reset role;
+update public.brand_profiles set synthetic=false where tenant_id='00000000-0000-4000-8000-000000000101';
+select set_config('test.realbrand',pg_temp.job('00000000-0000-4000-8000-000000000101','realbrand'),true);
+select pg_temp.lease(current_setting('test.realbrand'));
+set local role service_role;
+select pg_temp.as_worker();
+select throws_ok($$select pg_temp.record(pg_temp.snap(), '[]', pg_temp.s(), current_setting('test.realbrand'))$$,'23514',null,
+  'the sample account is never stored for a real brand');
+reset role;
+update public.brand_profiles set synthetic=true where tenant_id='00000000-0000-4000-8000-000000000101';
+
+-- Pauses: a catalog pause never writes the history; a history read paused
+-- after a sample history keeps that history sample, and its own run.
+select set_config('test.catpause',(select id::text from public.job_runs where idempotency_key='cat-test'),true);
+select set_config('test.beforerun',(select run_id::text from public.klaviyo_history where tenant_id='00000000-0000-4000-8000-000000000101'),true);
+set local role service_role;
+select pg_temp.as_worker();
+select lives_ok($$select public.pause_source_reading(current_setting('test.catpause')::uuid,'00000000-0000-4000-8000-00000000aaaa','klaviyo_key_rejected')$$,
+  'a catalog read paused');
+reset role;
+select results_eq($$select state, run_id::text from public.klaviyo_history where tenant_id='00000000-0000-4000-8000-000000000101'$$,
+  $$values ('ready',current_setting('test.beforerun'))$$,'leaves the history as it is');
+select is((select count(*)::integer from public.catalog_status where tenant_id='00000000-0000-4000-8000-000000000101'),0,
+  'and writes no catalog status for a sample read');
+select ok(not exists(select 1 from public.notifications where tenant_id='00000000-0000-4000-8000-000000000101'
+  and message like 'Klaviyo no longer accepts%'),'and tells no one for a sample connection');
+select pg_temp.lease(current_setting('test.livejob'));
+set local role service_role;
+select pg_temp.as_worker();
+select lives_ok($$select public.pause_source_reading(current_setting('test.livejob')::uuid,'00000000-0000-4000-8000-00000000aaaa','klaviyo_scope_missing')$$,
+  'a live history read with a scope missing');
+reset role;
+select results_eq($$select state, reason, live, run_id::text from public.klaviyo_history where tenant_id='00000000-0000-4000-8000-000000000101'$$,
+  $$values ('paused','klaviyo_scope_missing',false,current_setting('test.beforerun'))$$,
+  'pauses the history, which stays the sample one of its own read');
+select ok(exists(select 1 from public.notifications where tenant_id='00000000-0000-4000-8000-000000000101'
+  and message like 'The Klaviyo API key cannot read what you sent.%'),'and the owner is told what the history read needs');
+
+-- A first pause, with nothing read before, says nothing was read.
+select set_config('test.first',pg_temp.job('00000000-0000-4000-8000-000000000102','first','live'),true);
+delete from public.klaviyo_history where tenant_id='00000000-0000-4000-8000-000000000102';
+select pg_temp.lease(current_setting('test.first'));
+set local role service_role;
+select pg_temp.as_worker();
+select lives_ok($$select public.pause_source_reading(current_setting('test.first')::uuid,'00000000-0000-4000-8000-00000000aaaa','klaviyo_key_rejected')$$,
+  'a first read refused');
+reset role;
+select results_eq($$select state, snapshot is null, complete, flows_read from public.klaviyo_history
+    where tenant_id='00000000-0000-4000-8000-000000000102'$$,
+  $$values ('paused',true,false,false)$$,'is a paused history with nothing in it');
+
+-- Rate limits: at most 6 pauses; a read started again counts from nothing.
+select set_config('test.busy',pg_temp.job('00000000-0000-4000-8000-000000000101','busy'),true);
+update public.job_runs set checkpoint='{"pauses":6}' where id=current_setting('test.busy')::uuid;
+select pg_temp.lease(current_setting('test.busy'));
+set local role service_role;
+select pg_temp.as_worker();
+select lives_ok($$select public.pause_source_reading(current_setting('test.busy')::uuid,'00000000-0000-4000-8000-00000000aaaa','rate_limited',30)$$,
+  'a seventh rate limit');
+reset role;
+select results_eq($$select status, failure_class from public.job_runs where id=current_setting('test.busy')::uuid$$,
+  $$values ('failed','rate_limit')$$,'ends the history read');
+select ok(exists(select 1 from public.notifications where tenant_id='00000000-0000-4000-8000-000000000101'
+  and message like 'Klaviyo kept asking us to slow down, so what you sent was not read.%'),'and the owner is told, for this read');
+update public.job_runs set idempotency_key='first-read' where id=current_setting('test.job')::uuid;
+update public.job_runs set idempotency_key='brand.read_history:fixture:'||to_char(now() at time zone 'UTC','YYYY-MM-DD')
+  where id=current_setting('test.busy')::uuid;
+set local role authenticated;
+select pg_temp.as_owner('00000000-0000-4000-8000-000000000001');
+select lives_ok($$select public.start_history_reading('00000000-0000-4000-8000-000000000101')$$,'the owner starts it again');
+reset role;
+select results_eq($$select id::text, status, attempt, checkpoint from public.job_runs
+    where idempotency_key='brand.read_history:fixture:'||to_char(now() at time zone 'UTC','YYYY-MM-DD')$$,
+  $$values (current_setting('test.busy'),'queued',0,'{}'::jsonb)$$,'with all its tries and no pauses counted');
 
 select * from finish();
 rollback;

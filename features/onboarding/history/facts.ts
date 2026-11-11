@@ -12,7 +12,7 @@ import type {
  * emails with their results, how often and when the brand sends, the best
  * emails, the days already scheduled, the flows and the audiences. This is
  * the history the strategy agents read; the Klaviyo historian only puts the
- * patterns into words.
+ * patterns into words. A number not read is null, never 0.
  */
 
 const day = 86_400_000
@@ -20,6 +20,10 @@ const day = 86_400_000
 export const recentWeeks = 8
 /** An email needs this many recipients for its rates to count. */
 export const minRecipients = 100
+/** An email sent in the last days is still collecting its orders. */
+export const attributionDays = 5
+/** What a read covers: sent emails of a year (at most 300), flows of 90 days. */
+export const windowRead = { sentDays: 365, sentCap: 300, flowDays: 90 } as const
 
 const money = z.number().finite().nonnegative().max(100_000_000)
 const count = z.number().int().nonnegative().max(100_000_000)
@@ -34,6 +38,13 @@ export const sentEmail = z.object({
   subject: z.string().max(300).nullable(),
   preview: z.string().max(300).nullable(),
   sentAt: isoTime,
+  /** Its subject or preview speaks of an offer. */
+  offer: z.boolean(),
+  /** Sent in the last days: its orders are still coming in. */
+  collecting: z.boolean(),
+  /** An A/B content test: the subject is the first variation's. */
+  abTest: z.boolean(),
+  strategy: z.enum(['static', 'local', 'optimized']),
   recipients: count.nullable(),
   opens: count.nullable(),
   clicks: count.nullable(),
@@ -53,7 +64,7 @@ export const scheduledEmail = z.object({
   sendAt: isoTime,
   /** The day it goes out, in the store's timezone (YYYY-MM-DD). */
   date: z.iso.date(),
-  /** The lists and segments it goes to (Klaviyo ids). */
+  /** The lists and segments it goes to (Klaviyo ids); empty when unknown. */
   audienceIds: z.array(kid).max(50),
   /** Its subject or preview speaks of an offer. */
   offer: z.boolean()
@@ -65,9 +76,10 @@ export const flowResult = z.object({
   name: z.string().max(200),
   status: z.string().max(20),
   trigger: z.string().max(40).nullable(),
-  recipients90d: count,
-  orders90d: count,
-  revenue90d: money
+  /** Emails it delivered in 90 days (sends, not people); null when not read. */
+  sends90d: count.nullable(),
+  orders90d: count.nullable(),
+  revenue90d: money.nullable()
 })
 export type FlowResult = z.infer<typeof flowResult>
 
@@ -76,26 +88,47 @@ export const audience = z.object({
   kind: z.enum(['list', 'segment']),
   name: z.string().max(200),
   active: z.boolean(),
-  starred: z.boolean()
+  starred: z.boolean(),
+  /** Used by scheduled emails only to leave people out (a suppression list). */
+  excludedOnly: z.boolean()
+})
+
+/** Which parts were read whole. */
+export const partsRead = z.object({
+  sent: z.boolean(),
+  scheduled: z.boolean(),
+  audiences: z.boolean(),
+  campaignReport: z.boolean(),
+  flows: z.boolean(),
+  flowReport: z.boolean(),
+  lists: z.boolean(),
+  segments: z.boolean()
 })
 
 /** The history as it is stored (one per workspace) and read back. */
 export const historySnapshot = z.object({
   currency: z.string().regex(/^[A-Z]{3}$/),
+  /** The brand's timezone (UIR-023): every day and hour is in it. */
   timezone: z.string().min(1).max(60),
-  /** Emails sent in the last 8 weeks, a week on average (1 decimal). */
+  /** Emails sent in the last 8 weeks (or since the first), a week (1 decimal). */
   sendsPerWeek: z.number().min(0).max(50),
   /** The hour most emails went out at, store time ("10:00"); null if none. */
   usualSendTime: z
     .string()
     .regex(/^([01]\d|2[0-3]):00$/)
     .nullable(),
-  sent: z.array(sentEmail).max(400),
-  scheduled: z.array(scheduledEmail).max(100),
+  sent: z.array(sentEmail).max(300),
+  scheduled: z.array(scheduledEmail).max(300),
   flows: z.array(flowResult).max(100),
   audiences: z.array(audience).max(120),
   /** False when the key cannot read flows (the Flows scope). */
-  flowsRead: z.boolean()
+  flowsRead: z.boolean(),
+  window: z.object({
+    sentDays: z.literal(windowRead.sentDays),
+    sentCap: z.literal(windowRead.sentCap),
+    flowDays: z.literal(windowRead.flowDays)
+  }),
+  parts: partsRead
 })
 export type HistorySnapshot = z.infer<typeof historySnapshot>
 
@@ -129,7 +162,7 @@ export function localParts(iso: string, timezone: string) {
   }
 }
 
-/** A safe timezone: the account's, or UTC when it is not one. */
+/** A safe timezone: the one given, or UTC when it is not one. */
 export function zoneOr(timezone: string | null) {
   if (!timezone) return 'UTC'
   try {
@@ -140,8 +173,18 @@ export function zoneOr(timezone: string | null) {
   }
 }
 
-const offerWords =
-  /(\d+\s?%|% off|\boff\b|\bsale\b|\bcode\b|\bdiscount\b|free shipping|\bbogo\b|buy one|save \$?\d)/i
+/**
+ * Whether a subject or preview speaks of an offer: money or a percentage
+ * off, a sale, a code to use, a coupon, a deal, free shipping, a gift with
+ * an order. "100% merino", "kick off" or "dress code" are not offers.
+ */
+export const offerWords =
+  /(\d+(?:[.,]\d+)?\s?%\s?off\b|\bsave\s+(?:[$€£¥₹]\s?)?\d+|\b(?:up to|get|take|extra)\s+(?:[$€£¥₹]\s?\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s?%)|[$€£¥₹]\s?\d+(?:[.,]\d+)?\s?off\b|\boff (?:everything|sitewide|all)\b|\bsale\b|\b(?:use|with|enter) (?:the )?code\b|\b(?:coupon|promo|discount|deal|clearance|bogo)s?\b|\bbuy one\b|free shipping|free gift|gift with (?:purchase|your order))/i
+
+/** A channel that is an email: said so, or unknown with a subject or a report row. */
+const isEmail = (m: CampaignMessage, inReport: boolean) =>
+  m.channel === 'email' ||
+  (m.channel === null && (m.subject !== null || inReport))
 
 /** The sent emails (email channel only), each with its results. */
 export function sentEmails(
@@ -160,7 +203,7 @@ export function sentEmails(
         m.status === 'sent' &&
         m.sendAt !== null &&
         Date.parse(m.sendAt) <= now &&
-        (m.channel === 'email' || (m.channel === null && m.subject !== null))
+        isEmail(m, byMessage.has(m.id))
     )
     .map((m) => {
       const r = byMessage.get(m.id)
@@ -171,6 +214,10 @@ export function sentEmails(
         subject: m.subject,
         preview: m.preview,
         sentAt: m.sendAt!,
+        offer: offerWords.test(`${m.subject ?? ''} ${m.preview ?? ''}`),
+        collecting: now - Date.parse(m.sendAt!) < attributionDays * day,
+        abTest: m.abTest,
+        strategy: m.strategy,
         recipients: whole(num(r, 'recipients')),
         opens: whole(num(r, 'opens_unique')),
         clicks: whole(num(r, 'clicks_unique')),
@@ -183,31 +230,51 @@ export function sentEmails(
       }
     })
     .sort((a, b) => Date.parse(b.sentAt) - Date.parse(a.sentAt))
-    .slice(0, 400)
+    .slice(0, windowRead.sentCap)
 }
 
-/** Emails a week over the last 8 weeks, and the hour most went out at. */
+/**
+ * Emails a week over the last 8 weeks (or since the first email read, when
+ * the store began sending lately), and the hour most went out at in store
+ * time: a local-time send counts by its clock hour, a send at times Klaviyo
+ * picks per person does not count for the hour.
+ */
 export function cadence(sent: SentEmail[], timezone: string, now: number) {
   const recent = sent.filter(
     (e) => now - Date.parse(e.sentAt) <= recentWeeks * 7 * day
   )
+  const first = sent.reduce(
+    (t, e) => Math.min(t, Date.parse(e.sentAt)),
+    Number.POSITIVE_INFINITY
+  )
+  const weeks = Number.isFinite(first)
+    ? Math.min(recentWeeks, Math.max(1, (now - first) / (7 * day)))
+    : recentWeeks
   const hours = new Map<number, number>()
   for (const e of recent) {
-    const h = localParts(e.sentAt, timezone).hour
+    if (e.strategy === 'optimized') continue
+    const h =
+      e.strategy === 'local'
+        ? new Date(e.sentAt).getUTCHours()
+        : localParts(e.sentAt, timezone).hour
     hours.set(h, (hours.get(h) ?? 0) + 1)
   }
   const top = [...hours.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]
   return {
-    sendsPerWeek: Math.round((recent.length / recentWeeks) * 10) / 10,
+    sendsPerWeek: Math.round((recent.length / weeks) * 10) / 10,
     usualSendTime: top ? `${String(top[0]).padStart(2, '0')}:00` : null
   }
 }
 
-/** The best emails: the most revenue per recipient, with enough recipients. */
+/**
+ * The best emails: the most revenue per recipient, with enough recipients,
+ * no longer collecting orders.
+ */
 export function bestEmails(sent: SentEmail[], limit = 5) {
   return sent
     .filter(
       (e) =>
+        !e.collecting &&
         (e.recipients ?? 0) >= minRecipients &&
         e.revenuePerRecipient !== null &&
         e.revenuePerRecipient > 0
@@ -232,9 +299,10 @@ export function scheduledEmails(
     .filter(
       (m) =>
         m.status === 'scheduled' &&
+        !m.archived &&
         m.sendAt !== null &&
         Date.parse(m.sendAt) > now &&
-        m.channel !== 'sms'
+        isEmail(m, false)
     )
     .map((m) => ({
       id: m.id,
@@ -249,11 +317,19 @@ export function scheduledEmails(
       offer: offerWords.test(`${m.subject ?? ''} ${m.preview ?? ''}`)
     }))
     .sort((a, b) => Date.parse(a.sendAt) - Date.parse(b.sendAt))
-    .slice(0, 100)
+    .slice(0, 300)
 }
 
-/** Each flow with its email results of the last 90 days, added up. */
-export function flowResults(flows: Flow[], report: ReportRow[]): FlowResult[] {
+/**
+ * Each flow with its email results of the last 90 days, added up. When the
+ * report was not read, the results are unknown (null); a flow the report
+ * does not list sent nothing (0).
+ */
+export function flowResults(
+  flows: Flow[],
+  report: ReportRow[],
+  reportRead: boolean
+): FlowResult[] {
   const sums = new Map<string, { r: number; o: number; v: number }>()
   for (const row of report) {
     const id = row.groupings.flow_id
@@ -266,23 +342,35 @@ export function flowResults(flows: Flow[], report: ReportRow[]): FlowResult[] {
   }
   return flows
     .map((f) => {
-      const s = sums.get(f.id)
+      const s = reportRead ? (sums.get(f.id) ?? { r: 0, o: 0, v: 0 }) : null
       return {
         id: f.id,
         name: f.name,
         status: f.status,
         trigger: f.trigger,
-        recipients90d: Math.round(s?.r ?? 0),
-        orders90d: Math.round(s?.o ?? 0),
-        revenue90d: Math.round((s?.v ?? 0) * 100) / 100
+        sends90d: s ? Math.round(s.r) : null,
+        orders90d: s ? Math.round(s.o) : null,
+        revenue90d: s ? Math.round(s.v * 100) / 100 : null
       }
     })
-    .sort((a, b) => b.revenue90d - a.revenue90d || a.name.localeCompare(b.name))
+    .sort(
+      (a, b) =>
+        (b.revenue90d ?? -1) - (a.revenue90d ?? -1) ||
+        a.name.localeCompare(b.name)
+    )
     .slice(0, 100)
 }
 
-/** Lists and segments, active and starred ones first. */
-export function audienceList(groups: Audience[]) {
+/**
+ * Lists and segments, starred and active ones first; one the scheduled
+ * emails only leave out (a suppression list) is marked so.
+ */
+export function audienceList(
+  groups: Audience[],
+  campaigns: CampaignAudience[] = []
+) {
+  const included = new Set(campaigns.flatMap((c) => c.included))
+  const excluded = new Set(campaigns.flatMap((c) => c.excluded))
   return [...groups]
     .sort(
       (a, b) =>
@@ -291,4 +379,8 @@ export function audienceList(groups: Audience[]) {
         a.name.localeCompare(b.name)
     )
     .slice(0, 120)
+    .map((g) => ({
+      ...g,
+      excludedOnly: excluded.has(g.id) && !included.has(g.id)
+    }))
 }

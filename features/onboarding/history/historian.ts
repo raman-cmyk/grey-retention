@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { AgentDefinition } from '@/features/agents/runtime'
 import type { Ask } from '@/features/intelligence/passes'
+import { statedFact } from '@/features/strategy/words'
 import {
   bestEmails,
   localParts,
@@ -38,6 +39,8 @@ export type HistorianInput = {
   best: EmailRow[]
   recent: EmailRow[]
   flows: Pick<FlowResult, 'name' | 'status' | 'trigger' | 'revenue90d'>[]
+  /** False when the flows' results were not read (their revenue is unknown). */
+  flowResultsKnown: boolean
   audiences: string[]
 }
 
@@ -134,9 +137,14 @@ export function historianInput(
     currency: history.currency,
     best: best.map((e) => row(e, history.timezone)),
     recent: history.sent
-      .filter((e) => !bestIds.has(e.id))
+      .filter((e) => !bestIds.has(e.id) && !e.collecting)
       .slice(0, 10)
       .map((e) => row(e, history.timezone)),
+    // Unknown when the report was not read whole, or could not be asked
+    // (no Placed Order metric).
+    flowResultsKnown:
+      history.parts.flowReport &&
+      history.flows.every((f) => f.revenue90d !== null),
     flows: history.flows
       .filter((f) => f.status !== 'draft')
       .slice(0, 20)
@@ -146,16 +154,20 @@ export function historianInput(
         trigger,
         revenue90d
       })),
+    // Who emails go to: never a list they only leave out.
     audiences: history.audiences
-      .filter((a) => a.active)
+      .filter((a) => a.active && !a.excludedOnly)
       .slice(0, 40)
       .map((a) => a.name)
   }
 }
 
-/** A sentence for the record: no numbers, prices or claims. */
+/**
+ * A sentence for the record: no number (digits or words), price, date or
+ * code (the strategy agents' shared check, `statedFact`), and no claim.
+ */
 const plain = (s: string) =>
-  !/[0-9$€£¥%]/.test(s) &&
+  statedFact(s) === null &&
   !/\b(best in|in the world|#1|number one|leading|award|guarantee|cheapest|finest)\b/i.test(
     s
   )
@@ -180,7 +192,7 @@ export type HistorianRead =
 /** What the sample rules say: who the store writes to. */
 export function sampleHistory(history: HistorySnapshot): HistorianFinding[] {
   const names = history.audiences
-    .filter((a) => a.active && a.kind === 'segment')
+    .filter((a) => a.active && !a.excludedOnly && a.kind === 'segment')
     .slice(0, 2)
     .map((a) => a.name)
   return names.length

@@ -52,6 +52,9 @@ describe('the findings contract', () => {
     expect(listIn(/check \(source <> 'site' or topic in \(([^)]+)\)/)).toEqual([
       ...sourceTopics.site
     ])
+    expect(
+      listIn(/check \(source <> 'klaviyo_history' or topic in \(([^)]+)\)/)
+    ).toEqual([...sourceTopics.klaviyo_history])
     for (const topic of findingTopics)
       expect(sql, topic).toMatch(new RegExp(`'${topic}'`))
   })

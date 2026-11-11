@@ -12,7 +12,9 @@ import {
   readCampaignMessages,
   readCampaignReport,
   readFlowReport,
-  readFlows
+  readFlows,
+  readMessageContent,
+  variationsPath
 } from './history'
 import { recorded } from './recorded'
 import { recordedHistoryTransport } from './recorded-history'
@@ -20,6 +22,7 @@ import { recordedHistoryTransport } from './recorded-history'
 const key = 'pk_SAMPLE0123456789abcdefghij'
 const now = new Date('2026-11-11T12:00:00Z')
 const always = () => true
+const lastYear = new Date(now.getTime() - 365 * 86_400_000)
 const client = (transport: KlaviyoTransport) =>
   klaviyoClient(key, { transport, maxWaits: 0 })
 const failure = async (call: Promise<unknown>) => {
@@ -47,16 +50,68 @@ describe('the history reads, against recorded Klaviyo answers', () => {
       id: 'MsgA02',
       campaignId: 'CmpA02',
       campaignName: '20% off knitwear this weekend',
+      archived: false,
       name: '20% off knitwear this weekend (email)',
       status: 'sent',
       sendAt: expect.stringMatching(/T18:00:00\.000Z$/),
+      strategy: 'static',
       channel: 'email',
       subject: '20% off knitwear this weekend',
-      preview: 'Use code KNIT20 at checkout.'
+      preview: 'Use code KNIT20 at checkout.',
+      contentKnown: true,
+      abTest: false
     })
     expect(transport.calls).toEqual([
-      'GET /api/campaign-messages?fields[campaign-message]=definition.name,definition.status,definition.send_options.send_time,created&fields[campaign]=definition.name,definition.archived&filter=equals(status,"sent"),greater-than(created,2025-11-11T12:00:00Z)&include=campaign,campaign-variations&page[size]=100&sort=-created'
+      'GET /api/campaign-messages?fields[campaign-message]=definition.name,definition.status,definition.send_options.send_time,definition.send_options.send_strategy,created&fields[campaign]=definition.name,definition.archived,definition.send_settings.send_strategy&filter=equals(status,"sent"),greater-than(created,2025-11-11T12:00:00Z)&include=campaign,campaign-variations&page[size]=100&sort=-created'
     ])
+  })
+
+  it('keeps archived campaigns, and tells how each email was timed and tested', async () => {
+    const read = await readCampaignMessages(
+      client(recordedHistoryTransport({ now })),
+      'sent',
+      lastYear,
+      always
+    )
+    const byId = new Map(read.records.map((m) => [m.id, m]))
+    expect(byId.get('MsgA03')).toMatchObject({ archived: true })
+    expect(byId.get('MsgA05')).toMatchObject({
+      strategy: 'local',
+      sendAt: expect.stringMatching(/T11:00:00\.000Z$/)
+    })
+    expect(byId.get('MsgA07')).toMatchObject({ strategy: 'optimized' })
+    // An A/B test: two variations, the first one's subject.
+    expect(byId.get('MsgA09')).toMatchObject({
+      abTest: true,
+      subject: 'Last chance: 15% off overshirts'
+    })
+  })
+
+  it('asks for the variations one message at a time when the list leaves them out', async () => {
+    const transport = recordedHistoryTransport({ now, variationsApart: true })
+    const read = await readCampaignMessages(
+      client(transport),
+      'sent',
+      lastYear,
+      always
+    )
+    expect(read.records[0]).toMatchObject({
+      id: 'MsgA01',
+      contentKnown: false,
+      subject: null,
+      channel: null
+    })
+    expect(await readMessageContent(client(transport), 'MsgA09')).toEqual({
+      channel: 'email',
+      subject: 'Last chance: 15% off overshirts',
+      preview: 'Ends at midnight.',
+      abTest: true,
+      found: true
+    })
+    expect(transport.calls.at(-1)).toBe(
+      'GET /api/campaign-messages/MsgA09/campaign-variations?fields[campaign-variation]=definition.details'
+    )
+    expect(() => variationsPath('Msg/../x')).toThrow(KlaviyoError)
   })
 
   it('reads the scheduled emails and their audiences', async () => {
@@ -91,9 +146,10 @@ describe('the history reads, against recorded Klaviyo answers', () => {
       requests.push(request)
       return inner(request)
     }
-    const rows = await readCampaignReport(client(transport), 'PlcdOr')
-    expect(rows).toHaveLength(10)
-    expect(rows[1]).toMatchObject({
+    const report = await readCampaignReport(client(transport), 'PlcdOr')
+    expect(report.complete).toBe(true)
+    expect(report.rows).toHaveLength(10)
+    expect(report.rows[1]).toMatchObject({
       groupings: { campaign_message_id: 'MsgA02' },
       statistics: { recipients: 2380, conversion_value: 3120 }
     })
@@ -116,15 +172,46 @@ describe('the history reads, against recorded Klaviyo answers', () => {
           ]),
           timeframe: { key: 'last_365_days' },
           conversion_metric_id: 'PlcdOr',
+          group_by: ['campaign_id', 'campaign_message_id', 'send_channel'],
           filter: 'equals(send_channel,"email")'
         }
       }
     })
     expect(
-      (await readFlowReport(client(transport), 'PlcdOr')).map(
+      (await readFlowReport(client(transport), 'PlcdOr')).rows.map(
         (r) => r.groupings.flow_id
       )
     ).toEqual(['FlwCart', 'FlwCart', 'FlwWel'])
+    expect(JSON.parse(requests[1]!.body!).data.attributes).toMatchObject({
+      statistics: ['recipients', 'conversions', 'conversion_value'],
+      timeframe: { key: 'last_90_days' },
+      group_by: ['flow_id', 'flow_message_id', 'send_channel']
+    })
+  })
+
+  it('says a report is not whole when Klaviyo has another page', async () => {
+    const transport = recordedHistoryTransport({ now, reportsCut: true })
+    expect(await readCampaignReport(client(transport), 'PlcdOr')).toMatchObject(
+      { complete: false, rows: expect.arrayContaining([expect.anything()]) }
+    )
+    expect((await readFlowReport(client(transport), 'PlcdOr')).complete).toBe(
+      false
+    )
+  })
+
+  it('asks a question only of the two reports, and only with one', async () => {
+    const transport = recordedHistoryTransport({ now })
+    for (const call of [
+      client(transport).query('/api/campaigns', {}, 'campaigns:read'),
+      client(transport).query(
+        '/api/campaign-values-reports/../profiles',
+        {},
+        'campaigns:read'
+      ),
+      client(transport).query(campaignReportPath, null, 'campaigns:read')
+    ])
+      expect((await failure(call)).kind).toBe('rejected')
+    expect(transport.calls).toEqual([])
   })
 
   it('reads the flows, lists and segments', async () => {

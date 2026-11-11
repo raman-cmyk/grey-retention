@@ -17,13 +17,25 @@ export type CampaignMessage = {
   id: string
   campaignId: string | null
   campaignName: string | null
+  /** The campaign is archived in Klaviyo (it was still sent). */
+  archived: boolean
   name: string | null
   status: 'sent' | 'scheduled'
   /** When it was (or will be) sent, ISO; null when Klaviyo does not say. */
   sendAt: string | null
+  /**
+   * How it is sent: `static` at one time, `local` at the same clock time in
+   * each recipient's timezone, `optimized` at a time Klaviyo picks per
+   * recipient (send-time optimization or a send-time test).
+   */
+  strategy: 'static' | 'local' | 'optimized'
   channel: string | null
   subject: string | null
   preview: string | null
+  /** Its variations came with it (their subject, preview and channel). */
+  contentKnown: boolean
+  /** It has more than one variation (an A/B content test). */
+  abTest: boolean
 }
 
 export type CampaignAudience = {
@@ -35,6 +47,12 @@ export type CampaignAudience = {
 export type ReportRow = {
   groupings: Record<string, string>
   statistics: Record<string, number>
+}
+
+export type ReportRead = {
+  rows: ReportRow[]
+  /** False when Klaviyo said there was more than this one page. */
+  complete: boolean
 }
 
 export type Flow = {
@@ -65,23 +83,29 @@ export function messagesPath(status: 'sent' | 'scheduled', since: Date | null) {
       ? `equals(status,"sent"),greater-than(created,${stamp(since)})`
       : `equals(status,"${status}")`
   return (
-    '/api/campaign-messages?fields[campaign-message]=definition.name,definition.status,definition.send_options.send_time,created' +
-    `&fields[campaign]=definition.name,definition.archived&filter=${filter}` +
+    '/api/campaign-messages?fields[campaign-message]=definition.name,definition.status,definition.send_options.send_time,definition.send_options.send_strategy,created' +
+    `&fields[campaign]=definition.name,definition.archived,definition.send_settings.send_strategy&filter=${filter}` +
     '&include=campaign,campaign-variations&page[size]=100&sort=-created'
   )
 }
 
+const kidPattern = /^[A-Za-z0-9]{1,64}$/
+
 export function campaignAudiencesPath(ids: string[]) {
-  if (
-    !ids.length ||
-    ids.length > 100 ||
-    ids.some((id) => !/^[A-Za-z0-9]{1,64}$/.test(id))
-  )
+  if (!ids.length || ids.length > 100 || ids.some((id) => !kidPattern.test(id)))
     throw new KlaviyoError('invalid_response', { endpoint: '/api/campaigns/' })
   return (
     `/api/campaigns?fields[campaign]=definition.name&fields[campaign-audience]=definition.included,definition.excluded` +
     `&filter=any(id,[${ids.map((id) => `"${id}"`).join(',')}])&include=campaign-audiences&page[size]=100`
   )
+}
+
+export function variationsPath(messageId: string) {
+  if (!kidPattern.test(messageId))
+    throw new KlaviyoError('invalid_response', {
+      endpoint: '/api/campaign-messages/'
+    })
+  return `/api/campaign-messages/${messageId}/campaign-variations?fields[campaign-variation]=definition.details`
 }
 
 export const campaignReportPath = '/api/campaign-values-reports'
@@ -107,11 +131,10 @@ export const campaignStatistics = [
 export const flowStatistics = [
   'recipients',
   'conversions',
-  'conversion_value',
-  'click_rate'
+  'conversion_value'
 ] as const
 
-const id = z.string().regex(/^[A-Za-z0-9]{1,64}$/)
+const id = z.string().regex(kidPattern)
 const text = (max: number) =>
   z
     .string()
@@ -131,7 +154,9 @@ const messageRecord = z.object({
     definition: z.object({
       name: text(200),
       status: z.string().nullish(),
-      send_options: z.object({ send_time: when }).nullish()
+      send_options: z
+        .object({ send_time: when, send_strategy: z.string().nullish() })
+        .nullish()
     }),
     created: z.string().nullish()
   }),
@@ -148,7 +173,11 @@ const campaignRecord = z.object({
   type: z.literal('campaign'),
   id,
   attributes: z.object({
-    definition: z.object({ name: text(200), archived: z.boolean().nullish() })
+    definition: z.object({
+      name: text(200),
+      archived: z.boolean().nullish(),
+      send_settings: z.object({ send_strategy: z.string().nullish() }).nullish()
+    })
   }),
   relationships: z
     .object({
@@ -185,6 +214,36 @@ const audienceRecord = z.object({
   })
 })
 
+const localStrategies = new Set([
+  'local_timezone',
+  'content_variation_local_timezone',
+  'timezone'
+])
+const optimizedStrategies = new Set([
+  'send_time_optimization',
+  'personalized_send_time_optimization',
+  'ab_send_time_test'
+])
+function strategyOf(
+  message: string | null | undefined,
+  campaign: string | null | undefined
+) {
+  const s = (message ?? campaign ?? '').toLowerCase()
+  if (optimizedStrategies.has(s)) return 'optimized' as const
+  if (localStrategies.has(s) || (campaign ?? '').toLowerCase() === 'timezone')
+    return 'local' as const
+  return 'static' as const
+}
+
+type Details = z.infer<
+  typeof variationRecord
+>['attributes']['definition']['details']
+const contentOf = (details: Details | undefined) => ({
+  channel: details?.channel?.trim().toLowerCase() || null,
+  subject: details?.subject ?? null,
+  preview: details?.preview_text ?? null
+})
+
 /** Campaign messages of one status, each with its campaign and first variation. */
 export function readCampaignMessages(
   client: KlaviyoClient,
@@ -202,7 +261,7 @@ export function readCampaignMessages(
       let skipped = 0
       const campaigns = new Map<
         string,
-        { name: string | null; archived: boolean }
+        { name: string | null; archived: boolean; strategy: string | null }
       >()
       const variations = new Map<string, z.infer<typeof variationRecord>>()
       for (const raw of body.included ?? []) {
@@ -210,7 +269,9 @@ export function readCampaignMessages(
         if (c.success) {
           campaigns.set(c.data.id, {
             name: c.data.attributes.definition.name,
-            archived: c.data.attributes.definition.archived === true
+            archived: c.data.attributes.definition.archived === true,
+            strategy:
+              c.data.attributes.definition.send_settings?.send_strategy ?? null
           })
           continue
         }
@@ -227,23 +288,23 @@ export function readCampaignMessages(
         const d = m.data.attributes.definition
         const campaignId = m.data.relationships?.campaign?.data?.id ?? null
         const campaign = campaignId ? campaigns.get(campaignId) : undefined
-        if (campaign?.archived) continue
-        const variation = (
-          m.data.relationships?.['campaign-variations']?.data ?? []
-        )
-          .map((r) => variations.get(r.id))
-          .find(Boolean)
-        const details = variation?.attributes.definition.details
+        const ids = m.data.relationships?.['campaign-variations']?.data ?? []
+        const variation = ids.map((r) => variations.get(r.id)).find(Boolean)
         records.push({
           id: m.data.id,
           campaignId,
           campaignName: campaign?.name ?? null,
+          archived: campaign?.archived ?? false,
           name: d.name,
           status,
           sendAt: d.send_options?.send_time ?? null,
-          channel: details?.channel?.trim().toLowerCase() || null,
-          subject: details?.subject ?? null,
-          preview: details?.preview_text ?? null
+          strategy: strategyOf(
+            d.send_options?.send_strategy,
+            campaign?.strategy
+          ),
+          ...contentOf(variation?.attributes.definition.details),
+          contentKnown: !!variation,
+          abTest: ids.length > 1
         })
       }
       return { records, skipped }
@@ -251,49 +312,83 @@ export function readCampaignMessages(
   )
 }
 
-/** The audiences (lists and segments, by id) of up to 100 campaigns. */
+/**
+ * The content of one message (its first variation's subject, preview and
+ * channel), for a message whose variations did not come with the list.
+ */
+export async function readMessageContent(
+  client: KlaviyoClient,
+  messageId: string
+) {
+  const body = z
+    .object({ data: z.array(z.unknown()) })
+    .safeParse(await client.get(variationsPath(messageId), 'campaigns:read'))
+  if (!body.success)
+    throw new KlaviyoError('invalid_response', {
+      endpoint: '/api/campaign-messages/'
+    })
+  const variations = body.data.data.flatMap((raw) => {
+    const v = variationRecord.safeParse(raw)
+    return v.success ? [v.data] : []
+  })
+  return {
+    ...contentOf(variations[0]?.attributes.definition.details),
+    abTest: variations.length > 1,
+    found: variations.length > 0
+  }
+}
+
+/** The audiences (lists and segments, by id) of campaigns, 100 at a time. */
 export async function readCampaignAudiences(
   client: KlaviyoClient,
   campaignIds: string[],
   more: MorePages
 ): Promise<PagedRead<CampaignAudience>> {
-  if (!campaignIds.length) return { records: [], complete: true, skipped: 0 }
-  return readPages(
-    client,
-    campaignAudiencesPath(campaignIds.slice(0, 100)),
-    'campaigns:read',
-    1,
-    more,
-    (body) => {
-      const audiences = new Map<string, z.infer<typeof audienceRecord>>()
-      for (const raw of body.included ?? []) {
-        const a = audienceRecord.safeParse(raw)
-        if (a.success) audiences.set(a.data.id, a.data)
-      }
-      let skipped = 0
-      const records: CampaignAudience[] = []
-      for (const raw of body.data) {
-        const c = campaignRecord.safeParse(raw)
-        if (!c.success) {
-          skipped++
-          continue
+  const records: CampaignAudience[] = []
+  let skipped = 0
+  for (let start = 0; start < campaignIds.length; start += 100) {
+    if (start > 0 && !more()) return { records, complete: false, skipped }
+    const read = await readPages(
+      client,
+      campaignAudiencesPath(campaignIds.slice(start, start + 100)),
+      'campaigns:read',
+      1,
+      more,
+      (body) => {
+        const audiences = new Map<string, z.infer<typeof audienceRecord>>()
+        for (const raw of body.included ?? []) {
+          const a = audienceRecord.safeParse(raw)
+          if (a.success) audiences.set(a.data.id, a.data)
         }
-        const own = (c.data.relationships?.['campaign-audiences']?.data ?? [])
-          .map((r) => audiences.get(r.id)?.attributes.definition)
-          .filter((a) => !!a)
-        records.push({
-          campaignId: c.data.id,
-          included: [...new Set(own.flatMap((a) => a!.included ?? []))].filter(
-            (x) => id.safeParse(x).success
-          ),
-          excluded: [...new Set(own.flatMap((a) => a!.excluded ?? []))].filter(
-            (x) => id.safeParse(x).success
-          )
-        })
+        let bad = 0
+        const found: CampaignAudience[] = []
+        for (const raw of body.data) {
+          const c = campaignRecord.safeParse(raw)
+          if (!c.success) {
+            bad++
+            continue
+          }
+          const own = (c.data.relationships?.['campaign-audiences']?.data ?? [])
+            .map((r) => audiences.get(r.id)?.attributes.definition)
+            .filter((a) => !!a)
+          found.push({
+            campaignId: c.data.id,
+            included: [
+              ...new Set(own.flatMap((a) => a!.included ?? []))
+            ].filter((x) => kidPattern.test(x)),
+            excluded: [
+              ...new Set(own.flatMap((a) => a!.excluded ?? []))
+            ].filter((x) => kidPattern.test(x))
+          })
+        }
+        return { records: found, skipped: bad }
       }
-      return { records, skipped }
-    }
-  )
+    )
+    records.push(...read.records)
+    skipped += read.skipped
+    if (!read.complete) return { records, complete: false, skipped }
+  }
+  return { records, complete: true, skipped }
 }
 
 const reportAnswer = z.object({
@@ -306,31 +401,36 @@ const reportAnswer = z.object({
         })
       )
     })
-  })
+  }),
+  links: z.object({ next: z.string().nullish() }).partial().nullish()
 })
 
-function reportRows(body: unknown, endpoint: string): ReportRow[] {
+function reportRows(body: unknown, endpoint: string): ReportRead {
   const parsed = reportAnswer.safeParse(body)
   if (!parsed.success) throw new KlaviyoError('invalid_response', { endpoint })
-  return parsed.data.data.attributes.results.map((r) => ({
-    groupings: Object.fromEntries(
-      Object.entries(r.groupings).flatMap(([k, v]) =>
-        typeof v === 'string' && v.length <= 200 ? [[k, v]] : []
+  return {
+    rows: parsed.data.data.attributes.results.map((r) => ({
+      groupings: Object.fromEntries(
+        Object.entries(r.groupings).flatMap(([k, v]) =>
+          typeof v === 'string' && v.length <= 200 ? [[k, v]] : []
+        )
+      ),
+      statistics: Object.fromEntries(
+        Object.entries(r.statistics).flatMap(([k, v]) =>
+          typeof v === 'number' && Number.isFinite(v) && v >= 0 ? [[k, v]] : []
+        )
       )
-    ),
-    statistics: Object.fromEntries(
-      Object.entries(r.statistics).flatMap(([k, v]) =>
-        typeof v === 'number' && Number.isFinite(v) && v >= 0 ? [[k, v]] : []
-      )
-    )
-  }))
+    })),
+    // More than one page: not followed (a report allows 2 questions a minute).
+    complete: !parsed.data.links?.next
+  }
 }
 
 /** The email campaigns' results of the last year, per campaign message. */
 export async function readCampaignReport(
   client: KlaviyoClient,
   conversionMetricId: string
-): Promise<ReportRow[]> {
+): Promise<ReportRead> {
   return reportRows(
     await client.query(
       campaignReportPath,
@@ -341,6 +441,7 @@ export async function readCampaignReport(
             statistics: campaignStatistics,
             timeframe: { key: 'last_365_days' },
             conversion_metric_id: conversionMetricId,
+            group_by: ['campaign_id', 'campaign_message_id', 'send_channel'],
             filter: 'equals(send_channel,"email")'
           }
         }
@@ -355,7 +456,7 @@ export async function readCampaignReport(
 export async function readFlowReport(
   client: KlaviyoClient,
   conversionMetricId: string
-): Promise<ReportRow[]> {
+): Promise<ReportRead> {
   return reportRows(
     await client.query(
       flowReportPath,
@@ -366,6 +467,7 @@ export async function readFlowReport(
             statistics: flowStatistics,
             timeframe: { key: 'last_90_days' },
             conversion_metric_id: conversionMetricId,
+            group_by: ['flow_id', 'flow_message_id', 'send_channel'],
             filter: 'equals(send_channel,"email")'
           }
         }
@@ -380,7 +482,7 @@ const flowRecord = z.object({
   type: z.literal('flow'),
   id,
   attributes: z.object({
-    name: z.string().trim().min(1).max(300),
+    name: z.string().nullish(),
     status: z.string().nullish(),
     trigger_type: z.string().nullish()
   })
@@ -404,7 +506,8 @@ export function readFlows(client: KlaviyoClient, more: MorePages) {
         return [
           {
             id: f.data.id,
-            name: f.data.attributes.name.slice(0, 200),
+            name:
+              f.data.attributes.name?.trim().slice(0, 200) || 'Untitled flow',
             status: (f.data.attributes.status ?? 'unknown')
               .toLowerCase()
               .slice(0, 20),

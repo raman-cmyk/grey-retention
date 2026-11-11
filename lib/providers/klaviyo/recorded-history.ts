@@ -4,7 +4,9 @@ import {
   flowReportPath,
   flowsPath,
   listsPath,
-  segmentsPath
+  messagesPath,
+  segmentsPath,
+  variationsPath
 } from './history'
 import { recorded } from './recorded'
 import { catalogRecordings } from './recorded-catalog'
@@ -16,9 +18,12 @@ import { catalogRecordings } from './recorded-catalog'
  * flows, lists and segments. No real account, customer or result is in
  * here. Dates are relative to `now`.
  *
- * The store sends about twice a week at 10:00 (US/Pacific); the "20% off
- * knitwear" email earned the most per recipient; two emails are scheduled
- * for the coming week; a welcome series and an abandoned-cart flow run.
+ * The store sent ten emails over six weeks, most at 18:00 UTC (10:00 or
+ * 11:00 in US/Pacific, by daylight time): one at each recipient's own
+ * 11:00, one at a time Klaviyo picked per recipient, one as an A/B test of
+ * two subjects, one from a campaign archived since. The "20% off knitwear"
+ * email earned the most per recipient; two emails are scheduled for the
+ * coming week; a welcome series and an abandoned-cart flow run.
  */
 
 const day = 86_400_000
@@ -34,8 +39,17 @@ type Email = {
   preview: string
   /** Days ago (negative: scheduled ahead). */
   days: number
-  /** Hour of the day, UTC (18:00 UTC is 10:00 in US/Pacific winter time). */
+  /**
+   * Hour of the day, UTC (18:00 UTC is 10:00 in US/Pacific winter time);
+   * for a send in each recipient's timezone, the clock hour there.
+   */
   hourUtc?: number
+  /** Klaviyo's send strategy, when not one time for everyone. */
+  strategy?: 'local_timezone' | 'send_time_optimization'
+  /** The campaign was archived after it was sent. */
+  archived?: boolean
+  /** A second subject, tested against the first (an A/B content test). */
+  testSubject?: string
   recipients: number
   revenue: number
   orders: number
@@ -71,6 +85,7 @@ const sentEmails: Email[] = [
     subject: 'How we make the Weekend Knit',
     preview: 'A visit to our mill.',
     days: 10,
+    archived: true,
     recipients: 2350,
     revenue: 610,
     orders: 6,
@@ -93,6 +108,8 @@ const sentEmails: Email[] = [
     subject: 'Our customers’ favourite layers',
     preview: 'Rated 4.8 by 300 buyers.',
     days: 17,
+    hourUtc: 11,
+    strategy: 'local_timezone',
     recipients: 2300,
     revenue: 940,
     orders: 9,
@@ -115,6 +132,7 @@ const sentEmails: Email[] = [
     subject: 'Trail Socks are here',
     preview: 'Merino, made to last.',
     days: 24,
+    strategy: 'send_time_optimization',
     recipients: 2250,
     revenue: 520,
     orders: 11,
@@ -138,6 +156,7 @@ const sentEmails: Email[] = [
     subject: 'Last chance: 15% off overshirts',
     preview: 'Ends at midnight.',
     days: 38,
+    testSubject: 'Ends tonight: 15% off overshirts',
     recipients: 2180,
     revenue: 2410,
     orders: 25,
@@ -181,7 +200,18 @@ const scheduledEmails: Email[] = [
   }
 ]
 
-export function historyRecordings(options: { now?: Date } = {}) {
+export type HistoryScenario = {
+  now?: Date
+  /** Klaviyo lists the messages without their variations. */
+  variationsApart?: boolean
+  /** The reports say there is more than one page. */
+  reportsCut?: boolean
+}
+
+const variationIds = (e: Email) =>
+  e.testSubject ? [`varA${e.id}`, `varB${e.id}`] : [`varA${e.id}`]
+
+export function historyRecordings(options: HistoryScenario = {}) {
   const now = (options.now ?? new Date()).getTime()
   const at = (e: Email) =>
     new Date(
@@ -201,41 +231,52 @@ export function historyRecordings(options: { now?: Date } = {}) {
       definition: {
         name: `${e.subject} (email)`,
         status,
-        send_options: { send_time: at(e) }
+        send_options: {
+          send_time: at(e),
+          send_strategy: e.strategy ?? 'static'
+        }
       }
     },
     relationships: {
       campaign: { data: { type: 'campaign', id: campaignId(e) } },
       'campaign-variations': {
-        data: [{ type: 'campaign-variation', id: `var-${e.id}` }]
+        data: variationIds(e).map((id) => ({ type: 'campaign-variation', id }))
       }
     }
   })
+  const variations = (e: Email) =>
+    variationIds(e).map((id, i) => ({
+      type: 'campaign-variation',
+      id,
+      attributes: {
+        created: '2026-01-01T00:00:00+00:00',
+        updated: '2026-01-01T00:00:00+00:00',
+        definition: {
+          name: i ? 'Variation B' : 'Variation A',
+          details: {
+            channel: 'email',
+            subject: i ? e.testSubject : e.subject,
+            preview_text: e.preview,
+            from_label: 'Cedar Goods',
+            from_email: 'hello@cedar.example'
+          }
+        }
+      }
+    }))
   const included = (emails: Email[]) =>
     emails.flatMap((e) => [
       {
         type: 'campaign',
         id: campaignId(e),
-        attributes: { definition: { name: e.subject, archived: false } }
-      },
-      {
-        type: 'campaign-variation',
-        id: `var-${e.id}`,
         attributes: {
-          created: '2026-01-01T00:00:00+00:00',
-          updated: '2026-01-01T00:00:00+00:00',
           definition: {
-            name: 'Main',
-            details: {
-              channel: 'email',
-              subject: e.subject,
-              preview_text: e.preview,
-              from_label: 'Cedar Goods',
-              from_email: 'hello@cedar.example'
-            }
+            name: e.subject,
+            archived: e.archived === true,
+            send_settings: { send_strategy: e.strategy ?? 'static' }
           }
         }
-      }
+      },
+      ...(options.variationsApart ? [] : variations(e))
     ])
   const page = (data: unknown[], extra: Record<string, unknown> = {}) =>
     json(200, {
@@ -243,6 +284,12 @@ export function historyRecordings(options: { now?: Date } = {}) {
       ...extra,
       links: { self: 'https://a.klaviyo.com/api/', next: null }
     })
+  const reportLinks = (path: string) => ({
+    self: `https://a.klaviyo.com${path}`,
+    ...(options.reportsCut
+      ? { next: `https://a.klaviyo.com${path}?page_cursor=2` }
+      : {})
+  })
 
   return {
     sent: page(
@@ -252,6 +299,13 @@ export function historyRecordings(options: { now?: Date } = {}) {
     scheduled: page(
       scheduledEmails.map((e) => message(e, 'scheduled')),
       { included: included(scheduledEmails) }
+    ),
+    /** Each message's variations, asked for one message at a time. */
+    variations: new Map(
+      [...sentEmails, ...scheduledEmails].map((e) => [
+        e.id,
+        page(variations(e))
+      ])
     ),
     /** The scheduled campaigns' audiences. */
     campaignAudiences: page(
@@ -302,7 +356,7 @@ export function historyRecordings(options: { now?: Date } = {}) {
           }))
         }
       },
-      links: { self: 'https://a.klaviyo.com/api/campaign-values-reports/' }
+      links: reportLinks(campaignReportPath)
     }),
     flows: page([
       {
@@ -380,7 +434,7 @@ export function historyRecordings(options: { now?: Date } = {}) {
           ]
         }
       },
-      links: { self: 'https://a.klaviyo.com/api/flow-values-reports/' }
+      links: reportLinks(flowReportPath)
     }),
     lists: page([
       { type: 'list', id: 'LstNews', attributes: { name: 'Newsletter' } },
@@ -418,10 +472,15 @@ export function historyRecordings(options: { now?: Date } = {}) {
   }
 }
 
-const sentQuery =
-  /^\/api\/campaign-messages\?fields\[campaign-message\]=definition\.name,definition\.status,definition\.send_options\.send_time,created&fields\[campaign\]=definition\.name,definition\.archived&filter=equals\(status,"sent"\),greater-than\(created,\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\)&include=campaign,campaign-variations&page\[size\]=100&sort=-created$/
-const scheduledQuery =
-  '/api/campaign-messages?fields[campaign-message]=definition.name,definition.status,definition.send_options.send_time,created&fields[campaign]=definition.name,definition.archived&filter=equals(status,"scheduled")&include=campaign,campaign-variations&page[size]=100&sort=-created'
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** The sent messages since any second: `messagesPath('sent', since)`. */
+const sentQuery = new RegExp(
+  `^${escape(messagesPath('sent', new Date(0))).replace(
+    escape('1970-01-01T00:00:00Z'),
+    '\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z'
+  )}$`
+)
+const scheduledQuery = messagesPath('scheduled', null)
 const audiencesQuery =
   /^\/api\/campaigns\?fields\[campaign\]=definition\.name&fields\[campaign-audience\]=definition\.included,definition\.excluded&filter=any\(id,\[("[A-Za-z0-9]+",?)+\]\)&include=campaign-audiences&page\[size\]=100$/
 
@@ -434,6 +493,7 @@ export type HistoryFailure =
   | 'flowReport'
   | 'lists'
   | 'segments'
+  | 'variations'
 
 /**
  * A transport answering from the recordings, like Klaviyo: the account,
@@ -442,14 +502,13 @@ export type HistoryFailure =
  * given response instead.
  */
 export function recordedHistoryTransport(
-  options: {
-    now?: Date
+  options: HistoryScenario & {
     fail?: { on: HistoryFailure; with: KlaviyoResponse }
   } = {}
 ): KlaviyoTransport & { calls: string[] } {
   const calls: string[] = []
   const transport = (async (request) => {
-    const r = historyRecordings({ now: options.now })
+    const r = historyRecordings(options)
     const url = new URL(request.url)
     const path = decodeURIComponent(url.pathname + url.search)
     calls.push(`${request.method} ${path}`)
@@ -472,6 +531,8 @@ export function recordedHistoryTransport(
     if (path === flowsPath) return fail('flows') ?? r.flows
     if (path === listsPath) return fail('lists') ?? r.lists
     if (path === segmentsPath) return fail('segments') ?? r.segments
+    for (const [id, answer] of r.variations)
+      if (path === variationsPath(id)) return fail('variations') ?? answer
     return notFound
   }) as KlaviyoTransport & { calls: string[] }
   transport.calls = calls

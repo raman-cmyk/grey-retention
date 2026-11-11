@@ -169,15 +169,28 @@ describe('connectLiveKlaviyo', () => {
     expect(db.rpc).not.toHaveBeenCalled()
   })
 
-  it('connects with a note when only later steps lack a scope', async () => {
-    const result = await connectLiveKlaviyo(
-      database(),
-      input,
-      recordedCheck({ missing: ['templates:read', 'images:read'] })
-    )
-    expect(result.message).toMatch(
-      /Later, to read your flows and send emails, GROS also needs Templates and Images/
-    )
+  it('connects with a note when only later steps lack a scope, saying what each is for', async () => {
+    for (const [missing, words] of [
+      [
+        ['templates:read', 'images:read'],
+        'Later, to send emails, GROS also needs Templates and Images: make a new key then.'
+      ],
+      [
+        ['flows:read'],
+        'Later, to read your flows, GROS also needs Flows: make a new key then.'
+      ],
+      [
+        ['templates:read', 'flows:read'],
+        'Later, to read your flows and send emails, GROS also needs Templates and Flows: make a new key then.'
+      ]
+    ] as const) {
+      const result = await connectLiveKlaviyo(
+        database(),
+        input,
+        recordedCheck({ missing: [...missing] })
+      )
+      expect(result.message).toContain(words)
+    }
   })
 
   it('says the database refused in plain words, never the key', async () => {

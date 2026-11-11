@@ -84,7 +84,7 @@ create table public.klaviyo_history (
   -- same shape when it is read back); kept while a later read is paused.
   snapshot jsonb check (snapshot is null or (jsonb_typeof(snapshot) = 'object' and length(snapshot::text) <= 900000)),
   sent integer not null default 0 check (sent between 0 and 400),
-  scheduled integer not null default 0 check (scheduled between 0 and 100),
+  scheduled integer not null default 0 check (scheduled between 0 and 300),
   flows integer not null default 0 check (flows between 0 and 100),
   audiences integer not null default 0 check (audiences between 0 and 120),
   -- False when the key cannot read flows (they are left out).
@@ -137,7 +137,32 @@ begin
     on conflict (tenant_id, idempotency_key) do update set idempotency_key = excluded.idempotency_key
     returning id into j;
   update public.job_runs set status = 'queued', attempt = 0, available_at = now(), failure_class = null, error_code = null,
-      lease_token = null, lease_until = null, updated_at = now()
+      lease_token = null, lease_until = null, checkpoint = '{}'::jsonb, updated_at = now()
+    where id = j and status in ('failed', 'cancelled');
+  return j;
+end $$;
+
+-- The catalog's start, as before (20260914090057), with the same restart
+-- fix: a read started again counts its pauses from nothing.
+create or replace function public.start_catalog_reading(t uuid)
+returns uuid language plpgsql security definer set search_path = '' as $$
+declare c public.workspace_connections; j uuid;
+begin
+  perform private.require_member(t, true);
+  select * into c from public.workspace_connections w where w.tenant_id = t and w.provider = 'klaviyo';
+  if not found or c.status <> 'connected' then raise exception 'Connect Klaviyo first' using errcode = '23514'; end if;
+  -- A sample connection has only the sample catalog, which is never a real
+  -- brand's: a real brand needs its live Klaviyo.
+  if c.mode <> 'live' and not coalesce((select b.synthetic from public.brand_profiles b where b.tenant_id = t), false) then
+    raise exception 'Connect live Klaviyo first' using errcode = '23514';
+  end if;
+  insert into public.job_runs(tenant_id, kind, idempotency_key, input, created_by)
+    values (t, 'brand.read_catalog', 'brand.read_catalog:' || c.mode || ':' || to_char(now() at time zone 'UTC', 'YYYY-MM-DD'),
+      jsonb_build_object('mode', c.mode), auth.uid())
+    on conflict (tenant_id, idempotency_key) do update set idempotency_key = excluded.idempotency_key
+    returning id into j;
+  update public.job_runs set status = 'queued', attempt = 0, available_at = now(), failure_class = null, error_code = null,
+      lease_token = null, lease_until = null, checkpoint = '{}'::jsonb, updated_at = now()
     where id = j and status in ('failed', 'cancelled');
   return j;
 end $$;
@@ -153,7 +178,14 @@ returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
   j public.job_runs; newer boolean; st text; n_findings integer := 0; topics text[];
   n_sent integer; n_scheduled integer; n_flows integer; n_audiences integer;
-  keys constant text[] := array['currency','timezone','sendsPerWeek','usualSendTime','sent','scheduled','flows','audiences','flowsRead'];
+  keys constant text[] := array['currency','timezone','sendsPerWeek','usualSendTime','sent','scheduled','flows','audiences','flowsRead',
+    'window','parts'];
+  parts constant text[] := array['sent','scheduled','audiences','campaignReport','flows','flowReport','lists','segments'];
+  sent_keys constant text[] := array['id','campaignId','name','subject','preview','sentAt','offer','collecting','abTest','strategy',
+    'recipients','opens','clicks','orders','revenue','revenuePerRecipient','openRate','clickRate','unsubscribeRate'];
+  scheduled_keys constant text[] := array['id','campaignId','subject','sendAt','date','audienceIds','offer'];
+  flow_keys constant text[] := array['id','name','status','trigger','sends90d','orders90d','revenue90d'];
+  audience_keys constant text[] := array['id','kind','name','active','starred','excludedOnly'];
 begin
   j := private.onboarding_lease(job, lease);
   if j.kind <> 'brand.read_history' then raise exception 'Not a history reading job' using errcode = '23514'; end if;
@@ -177,28 +209,78 @@ begin
     or coalesce(snapshot->>'currency', '') !~ '^[A-Z]{3}$'
     or jsonb_typeof(snapshot->'timezone') is distinct from 'string' or length(snapshot->>'timezone') not between 1 and 60
     or jsonb_typeof(snapshot->'sendsPerWeek') is distinct from 'number' or (snapshot->>'sendsPerWeek')::numeric not between 0 and 50
-    or (jsonb_typeof(snapshot->'usualSendTime') = 'string' and snapshot->>'usualSendTime' !~ '^([01][0-9]|2[0-3]):00$')
     or coalesce(jsonb_typeof(snapshot->'usualSendTime'), 'missing') not in ('string','null')
-    or jsonb_typeof(snapshot->'sent') is distinct from 'array' or jsonb_array_length(snapshot->'sent') > 400
-    or jsonb_typeof(snapshot->'scheduled') is distinct from 'array' or jsonb_array_length(snapshot->'scheduled') > 100
+    or (jsonb_typeof(snapshot->'usualSendTime') = 'string' and snapshot->>'usualSendTime' !~ '^([01][0-9]|2[0-3]):00$')
+    or jsonb_typeof(snapshot->'sent') is distinct from 'array' or jsonb_array_length(snapshot->'sent') > 300
+    or jsonb_typeof(snapshot->'scheduled') is distinct from 'array' or jsonb_array_length(snapshot->'scheduled') > 300
     or jsonb_typeof(snapshot->'flows') is distinct from 'array' or jsonb_array_length(snapshot->'flows') > 100
     or jsonb_typeof(snapshot->'audiences') is distinct from 'array' or jsonb_array_length(snapshot->'audiences') > 120
     or jsonb_typeof(snapshot->'flowsRead') is distinct from 'boolean'
     or (snapshot->>'flowsRead')::boolean is distinct from (summary->>'flowsRead')::boolean
     or (not (snapshot->>'flowsRead')::boolean and jsonb_array_length(snapshot->'flows') > 0)
+    or snapshot->'window' is distinct from '{"sentDays": 365, "sentCap": 300, "flowDays": 90}'::jsonb
+    or jsonb_typeof(snapshot->'parts') is distinct from 'object' or not ((snapshot->'parts') ?& parts)
+    or (snapshot->'parts') - parts <> '{}'::jsonb
+    or exists (select 1 from jsonb_each(snapshot->'parts') x where jsonb_typeof(x.value) <> 'boolean')
+    -- Each sent email: its own keys, an id, a time, words of bounded length,
+    -- flags, and results that are whole, money or rates (or unknown).
     or exists (select 1 from jsonb_array_elements(snapshot->'sent') e
-      where jsonb_typeof(e) <> 'object' or coalesce(e->>'id', '') !~ '^[A-Za-z0-9]{1,64}$'
-        or private.safe_time(e->>'sentAt') is null)
+      where jsonb_typeof(e) <> 'object' or not (e ?& sent_keys) or e - sent_keys <> '{}'::jsonb
+        or jsonb_typeof(e->'id') is distinct from 'string' or e->>'id' !~ '^[A-Za-z0-9]{1,64}$'
+        or coalesce(jsonb_typeof(e->'campaignId'), 'missing') not in ('string','null')
+        or (jsonb_typeof(e->'campaignId') = 'string' and e->>'campaignId' !~ '^[A-Za-z0-9]{1,64}$')
+        or exists (select 1 from unnest(array['name','subject','preview']) k
+          where coalesce(jsonb_typeof(e->k), 'missing') not in ('string','null') or length(e->>k) > 300)
+        or jsonb_typeof(e->'sentAt') is distinct from 'string' or private.safe_time(e->>'sentAt') is null
+        or exists (select 1 from unnest(array['offer','collecting','abTest']) k where jsonb_typeof(e->k) is distinct from 'boolean')
+        or coalesce(e->>'strategy', '') not in ('static','local','optimized')
+        or exists (select 1 from unnest(array['recipients','opens','clicks','orders']) k
+          where coalesce(jsonb_typeof(e->k), 'missing') not in ('number','null')
+            or (jsonb_typeof(e->k) = 'number' and e->>k !~ '^[0-9]{1,9}$'))
+        or exists (select 1 from unnest(array['revenue','revenuePerRecipient']) k
+          where coalesce(jsonb_typeof(e->k), 'missing') not in ('number','null')
+            or (jsonb_typeof(e->k) = 'number' and (e->>k)::numeric not between 0 and 100000000))
+        or exists (select 1 from unnest(array['openRate','clickRate','unsubscribeRate']) k
+          where coalesce(jsonb_typeof(e->k), 'missing') not in ('number','null')
+            or (jsonb_typeof(e->k) = 'number' and (e->>k)::numeric not between 0 and 1)))
+    or (select count(distinct e->>'id') from jsonb_array_elements(snapshot->'sent') e) <> jsonb_array_length(snapshot->'sent')
+    -- Each scheduled email: a real day, its audiences, whether it is an offer.
     or exists (select 1 from jsonb_array_elements(snapshot->'scheduled') e
-      where jsonb_typeof(e) <> 'object' or coalesce(e->>'id', '') !~ '^[A-Za-z0-9]{1,64}$'
-        or private.safe_time(e->>'sendAt') is null or coalesce(e->>'date', '') !~ '^\d{4}-\d{2}-\d{2}$'
-        or jsonb_typeof(e->'audienceIds') is distinct from 'array' or jsonb_typeof(e->'offer') is distinct from 'boolean')
+      where jsonb_typeof(e) <> 'object' or not (e ?& scheduled_keys) or e - scheduled_keys <> '{}'::jsonb
+        or jsonb_typeof(e->'id') is distinct from 'string' or e->>'id' !~ '^[A-Za-z0-9]{1,64}$'
+        or coalesce(jsonb_typeof(e->'campaignId'), 'missing') not in ('string','null')
+        or (jsonb_typeof(e->'campaignId') = 'string' and e->>'campaignId' !~ '^[A-Za-z0-9]{1,64}$')
+        or coalesce(jsonb_typeof(e->'subject'), 'missing') not in ('string','null') or length(e->>'subject') > 300
+        or jsonb_typeof(e->'sendAt') is distinct from 'string' or private.safe_time(e->>'sendAt') is null
+        or jsonb_typeof(e->'date') is distinct from 'string'
+        or private.safe_time((e->>'date') || 'T00:00:00Z') is null or (e->>'date') !~ '^\d{4}-\d{2}-\d{2}$'
+        or to_char(((e->>'date') || 'T00:00:00Z')::timestamptz at time zone 'UTC', 'YYYY-MM-DD') <> e->>'date'
+        or jsonb_typeof(e->'audienceIds') is distinct from 'array' or jsonb_array_length(e->'audienceIds') > 50
+        or exists (select 1 from jsonb_array_elements(e->'audienceIds') a
+          where jsonb_typeof(a) <> 'string' or a #>> '{}' !~ '^[A-Za-z0-9]{1,64}$')
+        or jsonb_typeof(e->'offer') is distinct from 'boolean')
+    or (select count(distinct e->>'id') from jsonb_array_elements(snapshot->'scheduled') e) <> jsonb_array_length(snapshot->'scheduled')
+    -- Each flow: its results whole and money, or unknown.
     or exists (select 1 from jsonb_array_elements(snapshot->'flows') e
-      where jsonb_typeof(e) <> 'object' or coalesce(e->>'id', '') !~ '^[A-Za-z0-9]{1,64}$'
-        or jsonb_typeof(e->'revenue90d') is distinct from 'number')
+      where jsonb_typeof(e) <> 'object' or not (e ?& flow_keys) or e - flow_keys <> '{}'::jsonb
+        or jsonb_typeof(e->'id') is distinct from 'string' or e->>'id' !~ '^[A-Za-z0-9]{1,64}$'
+        or jsonb_typeof(e->'name') is distinct from 'string' or length(e->>'name') not between 1 and 200
+        or jsonb_typeof(e->'status') is distinct from 'string' or length(e->>'status') > 20
+        or coalesce(jsonb_typeof(e->'trigger'), 'missing') not in ('string','null') or length(e->>'trigger') > 40
+        or exists (select 1 from unnest(array['sends90d','orders90d']) k
+          where coalesce(jsonb_typeof(e->k), 'missing') not in ('number','null')
+            or (jsonb_typeof(e->k) = 'number' and e->>k !~ '^[0-9]{1,9}$'))
+        or coalesce(jsonb_typeof(e->'revenue90d'), 'missing') not in ('number','null')
+        or (jsonb_typeof(e->'revenue90d') = 'number' and (e->>'revenue90d')::numeric not between 0 and 100000000))
+    or (select count(distinct e->>'id') from jsonb_array_elements(snapshot->'flows') e) <> jsonb_array_length(snapshot->'flows')
+    -- Each list or segment.
     or exists (select 1 from jsonb_array_elements(snapshot->'audiences') e
-      where jsonb_typeof(e) <> 'object' or coalesce(e->>'id', '') !~ '^[A-Za-z0-9]{1,64}$'
-        or coalesce(e->>'kind', '') not in ('list','segment'))
+      where jsonb_typeof(e) <> 'object' or not (e ?& audience_keys) or e - audience_keys <> '{}'::jsonb
+        or jsonb_typeof(e->'id') is distinct from 'string' or e->>'id' !~ '^[A-Za-z0-9]{1,64}$'
+        or coalesce(e->>'kind', '') not in ('list','segment')
+        or jsonb_typeof(e->'name') is distinct from 'string' or length(e->>'name') not between 1 and 200
+        or exists (select 1 from unnest(array['active','starred','excludedOnly']) k where jsonb_typeof(e->k) is distinct from 'boolean'))
+    or (select count(distinct e->>'id') from jsonb_array_elements(snapshot->'audiences') e) <> jsonb_array_length(snapshot->'audiences')
     or (st = 'empty') <> (jsonb_array_length(snapshot->'sent') = 0 and jsonb_array_length(snapshot->'scheduled') = 0) then
     raise exception 'Invalid history' using errcode = '23514';
   end if;
@@ -275,7 +357,9 @@ begin
           lease_token = null, lease_until = null, updated_at = now()
         where id = j.id;
       perform private.notify_owners(j.tenant_id, 'connection_health', j.tenant_id,
-        'Klaviyo kept asking us to slow down, so your store''s data was not read. Start the read again later.');
+        case when j.kind = 'brand.read_catalog'
+          then 'Klaviyo kept asking us to slow down, so the catalog was not read. Start the catalog read again later.'
+          else 'Klaviyo kept asking us to slow down, so what you sent was not read. Start the history read again later.' end);
       return;
     end if;
     update public.job_runs set status = 'retry_wait', attempt = greatest(attempt - 1, 0),
@@ -312,15 +396,21 @@ begin
       on conflict (tenant_id) do update set run_id = excluded.run_id, state = 'paused', reason = excluded.reason,
         live = excluded.live, updated_at = now();
   else
-    insert into public.klaviyo_history as h (tenant_id, run_id, state, reason, live, read_at, updated_at)
-      values (j.tenant_id, j.id, 'paused', reason, true, now(), now())
-      on conflict (tenant_id) do update set run_id = excluded.run_id, state = 'paused', reason = excluded.reason,
-        live = excluded.live, updated_at = now();
+    -- The history read before stays as it is (its own run, live or
+    -- sample); only its state says a later read stopped.
+    insert into public.klaviyo_history as h (tenant_id, run_id, state, reason, live, complete, flows_read, read_at, updated_at)
+      values (j.tenant_id, j.id, 'paused', reason, true, false, false, now(), now())
+      on conflict (tenant_id) do update set state = 'paused', reason = excluded.reason, updated_at = now();
   end if;
   perform private.notify_owners(j.tenant_id, 'connection_health', j.tenant_id,
-    case when reason = 'klaviyo_key_rejected'
-      then 'Klaviyo no longer accepts the API key. Connect Klaviyo again with a new private key to read your store''s data.'
-      else 'The Klaviyo API key cannot read your store''s data. Connect Klaviyo again with a key that has Accounts, Campaigns, Catalogs, Events, Lists, Metrics and Segments read access.' end);
+    case
+      when reason = 'klaviyo_key_rejected' and j.kind = 'brand.read_catalog'
+        then 'Klaviyo no longer accepts the API key. Connect Klaviyo again with a new private key to read the catalog.'
+      when reason = 'klaviyo_key_rejected'
+        then 'Klaviyo no longer accepts the API key. Connect Klaviyo again with a new private key to read what you sent.'
+      when j.kind = 'brand.read_catalog'
+        then 'The Klaviyo API key cannot read the catalog. Connect Klaviyo again with a key that has Accounts, Catalogs, Events and Metrics read access.'
+      else 'The Klaviyo API key cannot read what you sent. Connect Klaviyo again with a key that has Accounts, Campaigns, Lists, Metrics and Segments read access.' end);
 end $$;
 
 -- Source reads are the worker's: as before (20260914090057), for history

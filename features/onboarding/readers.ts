@@ -53,7 +53,7 @@ export async function runSourceReadingJob(
 
 /**
  * The onboarding readers' run: the source reads waiting across the
- * workspaces (site and catalog), one after another, as the worker. A read
+ * workspaces (site, catalog and history), one after another, as the worker. A read
  * is taken only while `readersRunMs` has not passed; each takes at most
  * `sourceRunMs`, so the run ends inside its route's 60 seconds. A read
  * that fails is recorded on its job (tried again later, at most four

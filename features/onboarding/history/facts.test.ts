@@ -3,13 +3,16 @@ import { describe, expect, it, vi } from 'vitest'
 import { sampleAsk, type Ask, type AiRun } from '@/features/intelligence/passes'
 import type { CampaignMessage } from '@/lib/providers/klaviyo/history'
 import {
+  audienceList,
   bestEmails,
   cadence,
   flowResults,
   historySnapshot,
   localParts,
+  offerWords,
   scheduledEmails,
   sentEmails,
+  windowRead,
   zoneOr,
   type HistorySnapshot
 } from './facts'
@@ -19,7 +22,7 @@ import {
   readHistory,
   sampleHistory
 } from './historian'
-import { planFromHistory, readKlaviyoHistory } from './read'
+import { planFromHistory, readKlaviyoHistory, unknownAudience } from './read'
 
 const now = Date.parse('2026-11-11T12:00:00Z')
 const day = 86_400_000
@@ -31,12 +34,16 @@ const message = (over: Partial<CampaignMessage>): CampaignMessage => ({
   id: 'M1',
   campaignId: 'C1',
   campaignName: 'Campaign',
+  archived: false,
   name: 'Message',
   status: 'sent',
   sendAt: iso(3),
+  strategy: 'static',
   channel: 'email',
   subject: 'Hello',
   preview: null,
+  contentKnown: true,
+  abTest: false,
   ...over
 })
 
@@ -49,7 +56,9 @@ describe('the counted history', () => {
         message({ id: 'S', channel: 'sms' }),
         message({ id: 'F', sendAt: new Date(now + day).toISOString() }),
         message({ id: 'N', sendAt: null }),
-        message({ id: 'U', channel: null, subject: null })
+        message({ id: 'U', channel: null, subject: null }),
+        message({ id: 'R', channel: null, subject: null, sendAt: iso(20) }),
+        message({ id: 'X', archived: true, sendAt: iso(30), abTest: true })
       ],
       [
         {
@@ -60,18 +69,66 @@ describe('the counted history', () => {
             open_rate: 0.412345,
             revenue_per_recipient: 0.123
           }
+        },
+        // A message of unknown channel the email report counts is an email.
+        {
+          groupings: { campaign_message_id: 'R' },
+          statistics: { recipients: 5 }
         }
       ],
       now
     )
-    expect(sent.map((e) => e.id)).toEqual(['B', 'A'])
+    expect(sent.map((e) => e.id)).toEqual(['B', 'A', 'R', 'X'])
     expect(sent[0]).toMatchObject({
       recipients: 1000,
       revenue: 123.46,
       openRate: 0.4123,
-      revenuePerRecipient: 0.12
+      revenuePerRecipient: 0.12,
+      // Two days ago: its orders are still coming in.
+      collecting: true
     })
-    expect(sent[1]).toMatchObject({ recipients: null, revenue: null })
+    expect(sent[1]).toMatchObject({
+      recipients: null,
+      revenue: null,
+      collecting: false
+    })
+    // An archived campaign was still sent; an A/B test is marked.
+    expect(sent[3]).toMatchObject({ id: 'X', abTest: true })
+  })
+
+  it('keeps at most the newest 300 sent emails', () => {
+    const sent = sentEmails(
+      Array.from({ length: 320 }, (_, i) =>
+        message({ id: `M${i}`, sendAt: iso(1 + i) })
+      ),
+      [],
+      now
+    )
+    expect(sent).toHaveLength(windowRead.sentCap)
+    expect(sent.at(-1)!.id).toBe('M299')
+  })
+
+  it('tells an offer from words that only look like one', () => {
+    for (const offer of [
+      '20% off knitwear',
+      'Save $10 today',
+      'Take 15% this weekend',
+      '$5 off your order',
+      'Use code KNIT20',
+      'Free shipping over $75',
+      'Our winter sale',
+      'A coupon for you',
+      'Buy one, get one'
+    ])
+      expect(offerWords.test(offer), offer).toBe(true)
+    for (const plain of [
+      '100% merino',
+      'Kick off the season',
+      'Our dress code for winter',
+      'Off we go to the mill',
+      'Saved by the knit'
+    ])
+      expect(offerWords.test(plain), plain).toBe(false)
   })
 
   it('counts emails a week over the last 8 weeks and the usual hour, in the store time', () => {
@@ -99,9 +156,42 @@ describe('the counted history', () => {
     expect(zoneOr(null)).toBe('UTC')
   })
 
-  it('ranks the best emails by revenue per recipient, with enough recipients', () => {
+  it("counts a local-time send by its clock hour and a send at Klaviyo's times not at all", () => {
     const sent = sentEmails(
-      ['A', 'B', 'C'].map((id) => message({ id })),
+      [
+        // 10:00 in each recipient's timezone (stored as 10:00 UTC).
+        message({ id: 'L1', sendAt: iso(2, 10), strategy: 'local' }),
+        message({ id: 'L2', sendAt: iso(9, 10), strategy: 'local' }),
+        // 18:00 UTC: 10:00 in Los Angeles.
+        message({ id: 'S1', sendAt: iso(16, 18) }),
+        message({ id: 'O1', sendAt: iso(5, 3), strategy: 'optimized' }),
+        message({ id: 'O2', sendAt: iso(12, 3), strategy: 'optimized' }),
+        message({ id: 'O3', sendAt: iso(19, 3), strategy: 'optimized' })
+      ],
+      [],
+      now
+    )
+    // Six emails since the first, 19 days ago: 2.2 a week.
+    expect(cadence(sent, 'America/Los_Angeles', now)).toEqual({
+      sendsPerWeek: 2.2,
+      usualSendTime: '10:00'
+    })
+    // A store that began sending lately: emails a week since the first.
+    expect(
+      cadence(
+        sentEmails([message({ id: 'A', sendAt: iso(2) })], [], now),
+        'UTC',
+        now
+      ).sendsPerWeek
+    ).toBe(1)
+  })
+
+  it('ranks the best emails by revenue per recipient, with enough recipients, no longer collecting orders', () => {
+    const sent = sentEmails(
+      [
+        ...['A', 'B', 'C'].map((id) => message({ id, sendAt: iso(10) })),
+        message({ id: 'D', sendAt: iso(2) })
+      ],
       [
         {
           groupings: { campaign_message_id: 'A' },
@@ -114,6 +204,10 @@ describe('the counted history', () => {
         {
           groupings: { campaign_message_id: 'C' },
           statistics: { recipients: 500, revenue_per_recipient: 2 }
+        },
+        {
+          groupings: { campaign_message_id: 'D' },
+          statistics: { recipients: 500, revenue_per_recipient: 7 }
         }
       ],
       now
@@ -143,6 +237,21 @@ describe('the counted history', () => {
           status: 'scheduled',
           sendAt: '2026-11-15T18:00:00Z',
           channel: 'sms'
+        }),
+        // An archived campaign never goes out.
+        message({
+          id: 'S5',
+          status: 'scheduled',
+          sendAt: '2026-11-16T18:00:00Z',
+          archived: true
+        }),
+        // Unknown channel, no subject: not known to be an email.
+        message({
+          id: 'S6',
+          status: 'scheduled',
+          sendAt: '2026-11-17T18:00:00Z',
+          channel: null,
+          subject: null
         })
       ],
       [{ campaignId: 'C2', included: ['SegVIP'], excluded: [] }],
@@ -157,10 +266,14 @@ describe('the counted history', () => {
     ])
   })
 
-  it("adds up each flow's messages", () => {
+  it("adds up each flow's messages; unknown when the report was not read", () => {
+    const flows = [
+      { id: 'F1', name: 'Cart', status: 'live', trigger: 'Metric' },
+      { id: 'F2', name: 'Welcome', status: 'live', trigger: 'Added to List' }
+    ]
     expect(
       flowResults(
-        [{ id: 'F1', name: 'Cart', status: 'live', trigger: 'Metric' }],
+        flows,
         [
           {
             groupings: { flow_id: 'F1' },
@@ -175,7 +288,8 @@ describe('the counted history', () => {
             statistics: { recipients: 5, conversions: 2, conversion_value: 1 }
           },
           { groupings: { flow_id: 'F9' }, statistics: { recipients: 99 } }
-        ]
+        ],
+        true
       )
     ).toEqual([
       {
@@ -183,10 +297,69 @@ describe('the counted history', () => {
         name: 'Cart',
         status: 'live',
         trigger: 'Metric',
-        recipients90d: 15,
+        sends90d: 15,
         orders90d: 3,
         revenue90d: 6.56
+      },
+      // Not in the report: it sent nothing.
+      {
+        id: 'F2',
+        name: 'Welcome',
+        status: 'live',
+        trigger: 'Added to List',
+        sends90d: 0,
+        orders90d: 0,
+        revenue90d: 0
       }
+    ])
+    expect(
+      flowResults(flows, [], false).map((f) => [f.sends90d, f.revenue90d])
+    ).toEqual([
+      [null, null],
+      [null, null]
+    ])
+  })
+
+  it('marks a list the scheduled emails only leave out', () => {
+    const groups = [
+      {
+        id: 'LstSuppr',
+        kind: 'list',
+        name: 'Do not email',
+        active: true,
+        starred: false
+      },
+      {
+        id: 'LstNews',
+        kind: 'list',
+        name: 'Newsletter',
+        active: true,
+        starred: false
+      },
+      {
+        id: 'SegEng',
+        kind: 'segment',
+        name: 'Engaged',
+        active: true,
+        starred: true
+      }
+    ] as const
+    expect(
+      audienceList(
+        [...groups],
+        [
+          {
+            campaignId: 'C1',
+            included: ['SegEng'],
+            excluded: ['LstSuppr', 'LstNews']
+          },
+          { campaignId: 'C2', included: ['LstNews'], excluded: ['LstSuppr'] }
+        ]
+      ).map((a) => [a.id, a.excludedOnly])
+    ).toEqual([
+      ['SegEng', false],
+      ['LstSuppr', true],
+      ['LstNews', false]
     ])
   })
 })
@@ -198,7 +371,7 @@ const snapshot = (over: Partial<HistorySnapshot> = {}): HistorySnapshot =>
     sendsPerWeek: 5.4,
     usualSendTime: '05:00',
     sent: sentEmails(
-      [message({ id: 'A', subject: 'Twenty off' })],
+      [message({ id: 'A', subject: 'Twenty off', sendAt: iso(6) })],
       [
         {
           groupings: { campaign_message_id: 'A' },
@@ -248,17 +421,38 @@ const snapshot = (over: Partial<HistorySnapshot> = {}): HistorySnapshot =>
         kind: 'segment',
         name: 'Engaged',
         active: true,
-        starred: true
+        starred: true,
+        excludedOnly: false
       },
       {
         id: 'SegB',
         kind: 'segment',
         name: 'Old',
         active: false,
-        starred: false
+        starred: false,
+        excludedOnly: false
+      },
+      {
+        id: 'LstSup',
+        kind: 'list',
+        name: 'Do not email',
+        active: true,
+        starred: false,
+        excludedOnly: true
       }
     ],
     flowsRead: true,
+    window: windowRead,
+    parts: {
+      sent: true,
+      scheduled: true,
+      audiences: true,
+      campaignReport: true,
+      flows: true,
+      flowReport: true,
+      lists: true,
+      segments: true
+    },
     ...over
   })
 
@@ -268,12 +462,19 @@ describe('planFromHistory', () => {
     expect(plan).toEqual({
       sendsPerWeek: 4,
       sendTime: '07:00',
+      // Never a suppression list, never an inactive segment.
       audiences: [{ id: 'SegA', label: 'Engaged' }],
-      existing: [{ date: '2026-11-20', audienceId: 'SegA', offer: true }],
+      // The email sent 7 days before the window counts against its first
+      // week; a scheduled one with no known audience still takes its day.
+      existing: [
+        { date: '2026-11-05', audienceId: unknownAudience, offer: false },
+        { date: '2026-11-20', audienceId: 'SegA', offer: true },
+        { date: '2026-11-21', audienceId: unknownAudience, offer: false }
+      ],
       results: [
         {
           title: 'Twenty off',
-          sentOn: expect.any(String),
+          sentOn: '2026-11-05',
           clicks: 40,
           revenue: 1800
         }
@@ -285,6 +486,46 @@ describe('planFromHistory', () => {
         days: 15
       })
     ).toMatchObject({ sendsPerWeek: 2, sendTime: null })
+  })
+
+  it('takes at most 50 audiences, starred and segments first', () => {
+    const many = Array.from({ length: 60 }, (_, i) => ({
+      id: `Lst${i}`,
+      kind: 'list' as const,
+      name: `List ${i}`,
+      active: true,
+      starred: false,
+      excludedOnly: false
+    }))
+    const plan = planFromHistory(
+      snapshot({
+        audiences: [
+          ...many,
+          {
+            id: 'SegZ',
+            kind: 'segment',
+            name: 'Zed',
+            active: true,
+            starred: false,
+            excludedOnly: false
+          },
+          {
+            id: 'LstStar',
+            kind: 'list',
+            name: 'Starred',
+            active: true,
+            starred: true,
+            excludedOnly: false
+          }
+        ]
+      }),
+      { start: '2026-11-12', days: 15 }
+    )
+    expect(plan.audiences).toHaveLength(50)
+    expect(plan.audiences.slice(0, 2).map((a) => a.id)).toEqual([
+      'LstStar',
+      'SegZ'
+    ])
   })
 })
 

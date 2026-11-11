@@ -20,6 +20,7 @@ import {
   readCampaignReport,
   readFlowReport,
   readFlows,
+  readMessageContent,
   type Audience,
   type CampaignAudience,
   type CampaignMessage,
@@ -36,6 +37,7 @@ import {
   historySnapshot,
   scheduledEmails,
   sentEmails,
+  windowRead,
   zoneOr,
   type HistorySnapshot
 } from './facts'
@@ -48,6 +50,10 @@ type Job = Database['public']['Tables']['job_runs']['Row']
 export const historyRunMs = 30_000
 /** Sent emails are read from the last year. */
 export const historyDays = 365
+/** Messages whose content is asked for one by one, at most. */
+export const maxContentReads = 20
+/** Klaviyo answers one report question a second. */
+export const reportGapMs = 1_100
 
 const day = 86_400_000
 const none = <T>(): PagedRead<T> => ({
@@ -104,6 +110,8 @@ export async function readBrandHistory(
     callMs: number
     klaviyoMs?: number
     now?: () => number
+    /** Waits between the two report questions (tests pass a fake). */
+    sleep?: (ms: number) => Promise<void>
   }
 ): Promise<HistoryRun> {
   const now = deps.now ?? Date.now
@@ -111,17 +119,26 @@ export async function readBrandHistory(
   const deadline = started + historyRunMs
   const klaviyoMs = deps.klaviyoMs ?? klaviyoCallMs
   const more = () => now() + klaviyoMs + deps.callMs <= deadline
-  const brand = await db
-    .from('brand_profiles')
-    .select('brand_name')
-    .eq('tenant_id', job.tenant_id)
-    .single()
+  const sleep =
+    deps.sleep ??
+    ((ms: number) => new Promise<void>((done) => setTimeout(done, ms)))
+  const [brand, tenant] = await Promise.all([
+    db
+      .from('brand_profiles')
+      .select('brand_name')
+      .eq('tenant_id', job.tenant_id)
+      .single(),
+    db.from('tenants').select('timezone').eq('id', job.tenant_id).single()
+  ])
   if (brand.error) throw brand.error
+  if (tenant.error) throw tenant.error
 
   const account = accountFacts(
     await deps.client.get(accountPath, 'accounts:read')
   )
-  const timezone = zoneOr(account.timezone)
+  // Every day and hour in the brand's one timezone (UIR-023); the Klaviyo
+  // account's only when the workspace has none.
+  const timezone = zoneOr(tenant.data.timezone || account.timezone)
   const currency = account.currency
   if (!currency) {
     logger.warn('History read: no currency in the account')
@@ -142,50 +159,141 @@ export async function readBrandHistory(
   const scheduledRead: PagedRead<CampaignMessage> = more()
     ? await readCampaignMessages(deps.client, 'scheduled', null, more)
     : unread()
+
+  // Klaviyo may send a message's variations apart from the list: the
+  // newest ones without their subject are asked for one by one.
+  let fetched = 0
+  for (const m of [...scheduledRead.records, ...sentRead.records]) {
+    if (m.contentKnown || fetched >= maxContentReads || !more()) continue
+    fetched++
+    let content: Awaited<ReturnType<typeof readMessageContent>>
+    try {
+      content = await readMessageContent(deps.client, m.id)
+    } catch (error) {
+      // One message Klaviyo no longer finds (or answers oddly) stays
+      // without its content; the read goes on, counted incomplete.
+      if (
+        !(error instanceof KlaviyoError) ||
+        !['rejected', 'invalid_response'].includes(error.kind)
+      )
+        throw error
+      logger.warn('History read: a message content left out', {
+        kind: error.kind,
+        status: error.details.status ?? 0
+      })
+      continue
+    }
+    Object.assign(m, {
+      channel: content.channel,
+      subject: content.subject,
+      preview: content.preview,
+      abTest: content.abTest,
+      contentKnown: content.found
+    })
+  }
+  const unknownContent = [...scheduledRead.records, ...sentRead.records].filter(
+    (m) => !m.contentKnown
+  ).length
+
   const scheduledIds = [
     ...new Set(
       scheduledRead.records.flatMap((m) => (m.campaignId ? [m.campaignId] : []))
     )
   ]
-  const audiencesRead: PagedRead<CampaignAudience> = !scheduledIds.length
-    ? none()
-    : more()
-      ? await readCampaignAudiences(deps.client, scheduledIds, more)
-      : unread()
+  let audiencesRead: PagedRead<CampaignAudience> = none()
+  if (scheduledIds.length)
+    try {
+      audiencesRead = more()
+        ? await readCampaignAudiences(deps.client, scheduledIds, more)
+        : unread()
+    } catch (error) {
+      // The audiences of the scheduled emails are a detail: a refusal leaves
+      // them out (the days still count as taken), and the read goes on.
+      if (
+        !(error instanceof KlaviyoError) ||
+        !['rejected', 'invalid_response'].includes(error.kind)
+      )
+        throw error
+      logger.warn('History read: scheduled audiences left out', {
+        kind: error.kind,
+        status: error.details.status ?? 0,
+        code: error.details.code ?? 'none'
+      })
+      audiencesRead = unread()
+    }
 
+  // The campaign report: a refusal or an outage leaves the results unknown
+  // (null), not the read; only Klaviyo's pace pauses the job.
   let campaignReport: ReportRow[] = []
-  let reportRead = !metrics.placedOrder
-  if (metrics.placedOrder && sentRead.records.length && more()) {
-    campaignReport = await readCampaignReport(deps.client, metrics.placedOrder)
-    reportRead = true
-  } else if (!sentRead.records.length) reportRead = true
+  let reportRead = !metrics.placedOrder || !sentRead.records.length
+  let lastReportAt: number | null = null
+  if (metrics.placedOrder && sentRead.records.length && more())
+    try {
+      const report = await readCampaignReport(deps.client, metrics.placedOrder)
+      campaignReport = report.rows
+      reportRead = report.complete
+    } catch (error) {
+      if (
+        !(error instanceof KlaviyoError) ||
+        error.kind === 'rate_limited' ||
+        error.kind === 'bad_key'
+      )
+        throw error
+      if (error.kind === 'missing_scope') throw error
+      logger.warn('History read: campaign results left out', {
+        kind: error.kind,
+        status: error.details.status ?? 0,
+        code: error.details.code ?? 'none'
+      })
+    } finally {
+      lastReportAt = now()
+    }
 
   // Flows need the Flows scope, which reading the store does not require:
-  // without it, the flows are left out and the read goes on.
+  // without it, the flows are left out and the read goes on. Their report
+  // is a detail too: any failure, Klaviyo's pace included, leaves their
+  // results unknown.
   let flowsRead = true
   let flowsList: PagedRead<Flow> = unread()
   let flowReport: ReportRow[] = []
-  let flowReportRead = false
-  const withoutFlows = (error: unknown) => {
-    if (error instanceof KlaviyoError && error.kind === 'missing_scope') {
-      logger.info('History read: the key cannot read flows; left out')
-      flowsRead = false
-      return true
-    }
-    return false
-  }
+  let flowReportRead = !metrics.placedOrder
   try {
     if (more()) flowsList = await readFlows(deps.client, more)
-    if (flowsList.records.length && metrics.placedOrder && more()) {
-      flowReport = await readFlowReport(deps.client, metrics.placedOrder)
-      flowReportRead = true
-    } else if (!flowsList.records.length && flowsList.complete)
-      flowReportRead = true
+    if (!flowsList.records.length && flowsList.complete) flowReportRead = true
+    else if (metrics.placedOrder && more()) {
+      // Klaviyo answers one report question a second.
+      if (lastReportAt !== null) {
+        const gap = reportGapMs - (now() - lastReportAt)
+        if (gap > 0) await sleep(gap)
+      }
+      try {
+        const report = await readFlowReport(deps.client, metrics.placedOrder)
+        flowReport = report.rows
+        flowReportRead = report.complete
+      } catch (error) {
+        if (!(error instanceof KlaviyoError) || error.kind === 'bad_key')
+          throw error
+        if (error.kind === 'missing_scope') throw error
+        logger.warn('History read: flow results left out', {
+          kind: error.kind,
+          status: error.details.status ?? 0,
+          code: error.details.code ?? 'none'
+        })
+        flowReport = []
+        flowReportRead = false
+      }
+    }
   } catch (error) {
-    if (!withoutFlows(error)) throw error
-  }
-  if (!flowsRead) {
+    if (!(
+      error instanceof KlaviyoError &&
+      error.kind === 'missing_scope' &&
+      error.details.scope === 'flows:read'
+    ))
+      throw error
+    logger.info('History read: the key cannot read flows; left out')
+    flowsRead = false
     flowsList = none()
+    flowReport = []
     flowReportRead = true
   }
   const lists: PagedRead<Audience> = more()
@@ -195,6 +303,7 @@ export async function readBrandHistory(
     ? await readAudiences(deps.client, 'segment', more)
     : unread()
 
+  const noSendTime = sentRead.records.filter((m) => m.sendAt === null).length
   const reads = [
     sentRead,
     scheduledRead,
@@ -203,13 +312,22 @@ export async function readBrandHistory(
     lists,
     segments
   ]
-  const skipped = reads.reduce((n, r) => n + r.skipped, 0)
+  const skipped =
+    reads.reduce((n, r) => n + r.skipped, 0) + noSendTime + unknownContent
+  const parts = {
+    sent: sentRead.complete && sentRead.skipped === 0 && noSendTime === 0,
+    scheduled: scheduledRead.complete && scheduledRead.skipped === 0,
+    audiences: audiencesRead.complete && audiencesRead.skipped === 0,
+    campaignReport: reportRead,
+    flows: flowsList.complete && flowsList.skipped === 0,
+    flowReport: flowReportRead,
+    lists: lists.complete && lists.skipped === 0,
+    segments: segments.complete && segments.skipped === 0
+  }
   const complete =
     metrics.complete &&
-    reads.every((r) => r.complete) &&
-    skipped === 0 &&
-    reportRead &&
-    flowReportRead
+    Object.values(parts).every(Boolean) &&
+    unknownContent === 0
 
   const sent = sentEmails(sentRead.records, campaignReport, started)
   const scheduled = scheduledEmails(
@@ -226,9 +344,20 @@ export async function readBrandHistory(
     usualSendTime,
     sent,
     scheduled,
-    flows: flowResults(flowsList.records, flowReport),
-    audiences: audienceList([...lists.records, ...segments.records]),
-    flowsRead
+    // Without the store's Placed Order metric no report was asked: the
+    // flows' results are unknown, not nothing.
+    flows: flowResults(
+      flowsList.records,
+      flowReport,
+      flowReportRead && metrics.placedOrder !== null
+    ),
+    audiences: audienceList(
+      [...lists.records, ...segments.records],
+      audiencesRead.records
+    ),
+    flowsRead,
+    window: windowRead,
+    parts
   })
   const empty = !sent.length && !scheduled.length
   if (empty && !complete) {
@@ -257,7 +386,7 @@ export async function readBrandHistory(
 
   const counted = deps.live ? ('code' as const) : ('sample' as const)
   const findings: Finding[] = []
-  if (sent.length)
+  if (sent.length && sendsPerWeek > 0)
     findings.push({
       topic: 'performance',
       statement: usualSendTime
@@ -269,14 +398,16 @@ export async function readBrandHistory(
       pass: counted,
       model: null
     })
-  const best = bestEmails(sent, 1)[0]
+  const best = parts.campaignReport ? bestEmails(sent, 1)[0] : undefined
   if (best?.subject)
     findings.push({
       topic: 'performance',
-      statement: `The email "${best.subject.slice(0, 200)}" earned the most per recipient in the last year.`,
+      statement: complete
+        ? `The email "${best.subject.slice(0, 200)}" earned the most per recipient in the last year.`
+        : `Of the emails read, "${best.subject.slice(0, 200)}" earned the most per recipient.`,
       value: {},
       evidence: { ref: `klaviyo:campaign:${best.id}` },
-      confidence: 0.9,
+      confidence: complete ? 0.9 : 0.7,
       pass: counted,
       model: null
     })
