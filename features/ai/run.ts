@@ -20,7 +20,9 @@ import type { BudgetFeature, BudgetLedger } from './budget-ledger'
 
 const purposeFeature: Record<AiPurpose, BudgetFeature> = {
   label: 'learning',
-  copy: 'copy'
+  copy: 'copy',
+  plan: 'playbook',
+  review: 'learning'
 }
 
 export type AiRunResult =
@@ -45,11 +47,28 @@ export type AiRunResult =
       diagnostic?: string
     }
 
+/** Most pictures one call may carry. */
+export const maxImages = 8
+
 const runInput = z.object({
   tenantId: z.uuid().nullable(),
   callerKey: z.string().trim().min(1).max(120),
-  purpose: z.enum(['label', 'copy']),
-  maxOutputTokens: z.number().int().min(1).max(65_536)
+  purpose: z.enum(['label', 'copy', 'plan', 'review']),
+  maxOutputTokens: z.number().int().min(1).max(65_536),
+  images: z
+    .array(
+      z.object({
+        mediaType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+        // About 3 MB of picture per image; base64 only.
+        base64: z
+          .string()
+          .min(16)
+          .max(4_000_000)
+          .regex(/^[A-Za-z0-9+/]+={0,2}$/)
+      })
+    )
+    .max(maxImages)
+    .optional()
 })
 
 /**
@@ -87,7 +106,8 @@ export async function runAi(
     tenantId: input.tenantId,
     callerKey: input.callerKey,
     purpose: input.purpose,
-    maxOutputTokens: input.request.maxOutputTokens
+    maxOutputTokens: input.request.maxOutputTokens,
+    images: input.request.images
   })
   if (!valid.success) return { ok: false, code: 'rejected_request' }
   const setup = aiSetup(input.purpose, deps.env)
@@ -124,8 +144,11 @@ export async function runAi(
   }
   const estimate = geminiEstimateMicro(
     setup.model,
-    body,
-    request.maxOutputTokens
+    request.images?.length
+      ? geminiRequestBody({ ...request, images: [] })
+      : body,
+    request.maxOutputTokens,
+    request.images?.length ?? 0
   )
   const reservation = await deps.ledger.reserve({
     tenantId: input.tenantId,

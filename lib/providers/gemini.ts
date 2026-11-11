@@ -38,7 +38,17 @@ export function geminiRequestBody(request: AiProviderRequest) {
     })
   return JSON.stringify({
     systemInstruction: { parts: [{ text: request.system }] },
-    contents: [{ role: 'user', parts: [{ text: request.user }] }],
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { text: request.user },
+          ...(request.images ?? []).map((image) => ({
+            inlineData: { mimeType: image.mediaType, data: image.base64 }
+          }))
+        ]
+      }
+    ],
     generationConfig: {
       maxOutputTokens: request.maxOutputTokens,
       temperature: request.temperature,
