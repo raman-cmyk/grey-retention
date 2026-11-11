@@ -1427,4 +1427,3 @@ Append entries using this exact shape:
 - Verification run: format, lint, typecheck clean; `vitest run features/strategy` 19/19 (the facts, the check, retries, fallback, memory in the prompt, the pick).
 - Known issues: runs on the sample store only; real codes, catalog, results and dates come from lane B's readers and the campaign defaults. Not yet run by a job or shown on a screen: the "Plan next 15 days" run (job, saved pick, screen) is STR-003.
 - Next consumer: STR-002 (Competitor mapper) and STR-003 (Brief writer, Calendar planner, Strategy critic) read the pulse and the pick.
-
