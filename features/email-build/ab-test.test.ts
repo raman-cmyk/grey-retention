@@ -6,14 +6,16 @@ import { memoryFallbackLog } from '@/features/fallback/log'
 import { gmailClipBytes } from '@/features/release-qa/checks'
 import {
   abTestSize,
+  clipMarginBytes,
   deliverability,
+  heavyPictureBytes,
   runAbTest,
   summarize,
   type AbPair,
   type Drawing
 } from './ab-test'
 import type { PlannedEmail } from './build'
-import { fakeHeroImages, fakeScreenshots } from './design'
+import { fakeHeroImages, fakeScreenshots, type HeroImagePort } from './design'
 import { sampleOffers, sampleStoreSource } from './ports'
 
 const tenantId = '00000000-0000-4000-8000-000000000101'
@@ -32,6 +34,8 @@ const planned = (over: Partial<PlannedEmail> = {}): PlannedEmail => ({
   audience: { id: 'sample-engaged', label: 'Engaged subscribers (sample)' },
   ...over
 })
+const emails = (...list: PlannedEmail[]) =>
+  list.map((p, i) => ({ slot: i + 3, planned: p }))
 /** A Visual inspector that always answers the same. */
 const inspector = (answer: unknown) =>
   vi.fn<AiCall>(async () =>
@@ -48,11 +52,20 @@ const inspector = (answer: unknown) =>
           settled: true
         }
   )
-const context = (ai: AiCall) => {
+const run = async (
+  list: { slot: number; planned: PlannedEmail }[],
+  ai: AiCall,
+  heroImages: HeroImagePort = fakeHeroImages
+) => {
   const fallbacks = memoryFallbackLog()
-  return {
-    fallbacks,
-    ctx: {
+  const result = await runAbTest(
+    {
+      emails: list,
+      store: await sampleStoreSource.read(tenantId),
+      offers: sampleOffers
+    },
+    { shots: fakeScreenshots, heroImages },
+    {
       tenantId,
       callerKey: 'ab-test:t1',
       memory: new InMemoryMemoryStore(),
@@ -60,19 +73,6 @@ const context = (ai: AiCall) => {
       ai,
       fallbacks
     }
-  }
-}
-const ports = { shots: fakeScreenshots, heroImages: fakeHeroImages }
-const run = async (list: PlannedEmail[], ai: AiCall) => {
-  const { ctx, fallbacks } = context(ai)
-  const result = await runAbTest(
-    {
-      planned: list,
-      store: await sampleStoreSource.read(tenantId),
-      offers: sampleOffers
-    },
-    ports,
-    ctx
   )
   return { ...result, fallbacks }
 }
@@ -89,13 +89,21 @@ describe('deliverability (code)', () => {
       words: 60,
       wordsPerImage: 60,
       spam: [],
+      pictureBytes: null,
       score: 100
     })
   })
 
-  it('takes points off for clipping, too few words per picture, no words and spam', () => {
-    const big = `<p>${words(60)}</p><!--${'x'.repeat(gmailClipBytes)}-->`
-    expect(deliverability(big)).toMatchObject({ clipped: true, score: 60 })
+  it('counts only words a reader sees: no hidden preheader, no Klaviyo tags, it’s is one word', () => {
+    const d = deliverability(
+      `<div style="display:none;max-height:0">${words(50)}</div><p>{% unsubscribe %} it&#39;s here&nbsp;now</p>`
+    )
+    expect(d.words).toBe(3)
+  })
+
+  it('takes points off for clipping (with a margin), too few words per picture, no words, spam and a heavy picture', () => {
+    const near = `<p>${words(60)}</p><!--${'x'.repeat(gmailClipBytes - clipMarginBytes)}-->`
+    expect(deliverability(near)).toMatchObject({ clipped: true, score: 60 })
     expect(
       deliverability(`<img src="a"><img src="b"><p>${words(30)}</p>`)
     ).toMatchObject({ wordsPerImage: 15, score: 80 })
@@ -106,56 +114,111 @@ describe('deliverability (code)', () => {
     expect(
       deliverability(`<p>${words(60)} act now, click here</p>`)
     ).toMatchObject({ spam: ['act now', 'click here'], score: 80 })
+    expect(
+      deliverability(`<p>${words(60)}</p>`, heavyPictureBytes + 1)
+    ).toMatchObject({ pictureBytes: heavyPictureBytes + 1, score: 80 })
+  })
+
+  it('matches spam phrases as whole words only', () => {
+    expect(
+      deliverability(
+        `<p>${words(60)} please contact now or learn moneywise</p>`
+      ).spam
+    ).toEqual([])
   })
 })
 
 describe('the A-vs-B test harness', () => {
-  it('draws each planned email both ways from the same content, and scores each', async () => {
+  it('draws each planned email both ways from the same content, one look each', async () => {
+    const ai = inspector({ problems: [], score: 8 })
     const { pairs, skipped } = await run(
-      [planned(), planned({ date: inDays(4) })],
-      inspector({ problems: [], score: 8 })
+      emails(planned(), planned({ date: inDays(4) })),
+      ai
     )
     expect(skipped).toEqual([])
-    expect(pairs).toHaveLength(2)
+    expect(pairs.map((p) => [p.slot, p.bStatus])).toEqual([
+      [3, 'made'],
+      [4, 'made']
+    ])
     for (const p of pairs) {
-      expect(p.a).toMatchObject({ approach: 'A', made: true, looks: 8 })
-      expect(p.b).toMatchObject({ approach: 'B', made: true, looks: 8 })
-      // The same locked content: the same product in both drawings.
-      expect(p.a.html).toContain('Linen throw')
-      expect(p.b.html).toContain('Linen throw')
-      expect(p.a.deliverability.score).toBeGreaterThan(0)
-      expect(p.b.deliverability.score).toBeGreaterThan(0)
+      expect(p.a).toMatchObject({ approach: 'A', inspected: true, looks: 8 })
+      expect(p.b).toMatchObject({ approach: 'B', inspected: true, looks: 8 })
+      // On fakes the picture is the product photo itself: the same email.
+      expect(p.b!.html).toBe(p.a.html)
     }
-    expect(pairs.map((p) => p.slot)).toEqual([0, 1])
+    // One look per drawing: 2 emails, A and B.
+    expect(ai).toHaveBeenCalledTimes(4)
   })
 
-  it('without the AI, scores looks as unknown and counts B as not made (it falls back to A)', async () => {
-    const { pairs, fallbacks } = await run([planned()], inspector('refused'))
-    expect(pairs[0].a).toMatchObject({ made: true, looks: null })
-    expect(pairs[0].b).toMatchObject({ made: false, looks: null })
-    expect(fallbacks.entries().map((e) => e.reasonCode)).toContain(
-      'design_b_fallback'
+  it('does not draw B (nor pay for a picture) for an email without a product hero', async () => {
+    const ai = inspector({ problems: [], score: 7 })
+    const pictures = vi.fn(fakeHeroImages.design)
+    const { pairs } = await run(
+      emails(planned({ emailType: 'story', products: [] })),
+      ai,
+      { design: pictures }
     )
-    expect(summarize(pairs).compared).toBe(0)
+    expect(pairs[0]).toMatchObject({ bStatus: 'no_hero', b: null })
+    expect(pictures).not.toHaveBeenCalled()
+    expect(ai).toHaveBeenCalledTimes(1)
   })
 
-  it('reads an older inspector answer without a score as passed, with looks unknown', async () => {
-    const { pairs } = await run([planned()], inspector({ problems: [] }))
-    expect(pairs[0].a).toMatchObject({ made: true, looks: null })
-    expect(pairs[0].b).toMatchObject({ made: true, looks: null })
+  it('without the AI, asks the inspector once for the whole run and scores looks as unknown', async () => {
+    const ai = inspector('refused')
+    const { pairs } = await run(
+      emails(
+        planned(),
+        planned({ date: inDays(4) }),
+        planned({ date: inDays(5) })
+      ),
+      ai
+    )
+    expect(ai).toHaveBeenCalledTimes(1)
+    for (const p of pairs) {
+      expect(p.a).toMatchObject({ inspected: false, looks: null })
+      expect(p.b).toMatchObject({ inspected: false, looks: null })
+    }
+    expect(summarize(pairs).counted.looks).toBe(0)
+  })
+
+  it('keeps an answer whose score is out of range, without the score', async () => {
+    const { pairs } = await run(
+      emails(planned()),
+      inspector({ problems: [], score: 11 })
+    )
+    expect(pairs[0].a).toMatchObject({ inspected: true, looks: null })
+  })
+
+  it('logs a failed B picture once per email, and leaves B out', async () => {
+    const { pairs, fallbacks } = await run(
+      emails(planned(), planned({ date: inDays(4) })),
+      inspector({ problems: [], score: 8 }),
+      { design: async () => ({ ok: false, code: 'image_refused' }) }
+    )
+    expect(pairs.map((p) => [p.bStatus, p.b])).toEqual([
+      ['picture_failed', null],
+      ['picture_failed', null]
+    ])
+    const entries = fallbacks
+      .entries()
+      .filter((e) => e.reasonCode === 'b_picture_failed')
+    expect(entries).toHaveLength(2)
+    expect(new Set(entries.map((e) => e.dedupeKey)).size).toBe(2)
   })
 
   it('skips a planned email it cannot build, with its code, and draws at most 10', async () => {
     const one = await run(
       // Melbourne's clock skips 02:00 to 03:00 that day.
-      [planned({ date: '2027-10-03', time: '02:30' }), planned()],
+      emails(planned({ date: '2027-10-03', time: '02:30' }), planned()),
       inspector({ problems: [], score: 7 })
     )
-    expect(one.skipped).toEqual([{ slot: 0, code: 'slot_time_invalid' }])
-    expect(one.pairs.map((p) => p.slot)).toEqual([1])
+    expect(one.skipped).toEqual([{ slot: 3, code: 'slot_time_invalid' }])
+    expect(one.pairs.map((p) => p.slot)).toEqual([4])
     const many = await run(
-      Array.from({ length: abTestSize + 2 }, (_, i) =>
-        planned({ date: inDays(2 + i) })
+      emails(
+        ...Array.from({ length: abTestSize + 2 }, (_, i) =>
+          planned({ date: inDays(2 + i) })
+        )
       ),
       inspector({ problems: [], score: 7 })
     )
@@ -169,59 +232,59 @@ describe('the summary', () => {
     over: Partial<Drawing> = {}
   ): Drawing => ({
     approach,
-    made: true,
     html: '',
+    inspected: true,
     looks: null,
     findings: 0,
     deliverability: deliverability('<p>enough words here for one</p>'),
     ...over
   })
-  const pair = (slot: number, a: Partial<Drawing>, b: Partial<Drawing>) =>
-    ({
-      slot,
-      date: inDays(2),
-      emailType: 'bestseller',
-      a: drawing('A', a),
-      b: drawing('B', b)
-    }) satisfies AbPair
+  const pair = (
+    slot: number,
+    a: Partial<Drawing>,
+    b: Partial<Drawing> | null,
+    bStatus: AbPair['bStatus'] = b ? 'made' : 'no_hero'
+  ): AbPair => ({
+    slot,
+    date: inDays(2),
+    emailType: 'bestseller',
+    a: drawing('A', a),
+    b: b ? drawing('B', b) : null,
+    bStatus
+  })
 
-  it('compares only emails where B was made, and works without stars or results', () => {
-    const pairs = [
+  it('compares the same emails on both sides, and works without stars or results', () => {
+    const s = summarize([
       pair(0, { looks: 6 }, { looks: 8 }),
       pair(1, { looks: 7 }, { looks: 9 }),
-      pair(2, { looks: 5 }, { made: false })
-    ]
-    expect(summarize(pairs)).toEqual({
-      compared: 2,
-      a: {
-        emails: 2,
-        looks: 6.5,
-        stars: null,
-        deliverability: 100,
-        clickRate: null
-      },
-      b: {
-        emails: 2,
-        looks: 8.5,
-        stars: null,
-        deliverability: 100,
-        clickRate: null
-      }
+      // A judged alone: left out of looks for both sides.
+      pair(2, { looks: 2 }, { looks: null }),
+      pair(3, { looks: 9 }, null),
+      pair(4, { looks: 9 }, null, 'picture_failed')
+    ])
+    expect(s).toMatchObject({
+      emails: 5,
+      made: 3,
+      noHero: 1,
+      pictureFailed: 1,
+      counted: { looks: 2, stars: 0, clicks: 0 },
+      a: { looks: 6.5, stars: null, deliverability: 100, clickRate: null },
+      b: { looks: 8.5, stars: null, deliverability: 100, clickRate: null }
     })
   })
 
-  it('adds the owner’s optional stars and the clicks per variation once sent', () => {
-    const pairs = [pair(0, {}, {}), pair(1, {}, {})]
-    const s = summarize(pairs, {
+  it('adds the owner’s optional stars and the clicks per variation, paired', () => {
+    const s = summarize([pair(0, {}, {}), pair(1, {}, {})], {
       stars: { '0:A': 3, '0:B': 5, '1:B': 4, '1:A': 9 },
       results: {
         '0:A': { delivered: 100, clicks: 2 },
         '0:B': { delivered: 100, clicks: 4 },
-        '1:B': { delivered: 0, clicks: 0 }
+        '1:B': { delivered: 50, clicks: 5 }
       }
     })
-    // A 9 is not a star rating: left out, never guessed.
+    // Email 1 has no valid A stars (9) and no A results: left out on both sides.
+    expect(s.counted).toEqual({ looks: 0, stars: 1, clicks: 1 })
     expect(s.a).toMatchObject({ stars: 3, clickRate: 0.02 })
-    expect(s.b).toMatchObject({ stars: 4.5, clickRate: 0.04 })
+    expect(s.b).toMatchObject({ stars: 5, clickRate: 0.04 })
   })
 })

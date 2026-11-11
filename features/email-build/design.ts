@@ -74,6 +74,8 @@ export interface HeroImagePort {
         url: string
         /** The original product photo it started from, for the inspector. */
         source: AiImage
+        /** The designed picture's file size, when the adapter knows it (EML-005). */
+        bytes?: number
       }
     | { ok: false; code: string }
   >
@@ -185,7 +187,8 @@ const answer = z.strictObject({
     )
     .max(10),
   /** EML-005: how good it looks on both screens, 1 to 10 (older answers lack it). */
-  score: z.int().min(1).max(10).optional()
+  // A score out of range drops the score, never the whole answer.
+  score: z.int().min(1).max(10).optional().catch(undefined)
 })
 type VisualAnswer = z.infer<typeof answer>
 
@@ -348,7 +351,7 @@ type Ctx = Omit<AgentCtx, 'industry'> & {
   fallbacks: FallbackLog
 }
 
-type Look = {
+export type Look = {
   findings: VisualFinding[]
   /** False when the inspector did not judge it (code failed, or it gave up). */
   inspected: boolean
@@ -356,8 +359,12 @@ type Look = {
   score: number | null
 }
 
-/** Photographs the email and judges it: code first, then the inspector. */
-async function look(
+/**
+ * Photographs the email and judges it: code first, then the inspector.
+ * `skipped` remembers an inspector that gave up, so later looks in the same
+ * run do not pay for it again (the A-vs-B test shares one across its run).
+ */
+export async function look(
   approach: Approach,
   design: { html: string; blocks: Block[] },
   brand: BlockBrand,
