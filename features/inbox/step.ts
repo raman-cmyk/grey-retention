@@ -12,7 +12,7 @@ import {
   sampleLinkClicker,
   type ConfirmRun
 } from './confirm'
-import { sampleLabeller } from './labeller'
+import { inboxTagging } from '@/features/intelligence/live'
 import { pollInbox, type InboxRun } from './worker'
 
 /** The longest the sweep waits for the inbox before the workspace jobs. */
@@ -29,7 +29,7 @@ export type InboxStep =
       run: InboxRun
       /** Images kept for emails recorded now or earlier (INB-002). */
       assets: AssetsRun | { state: 'failed'; code: string } | null
-      /** Emails labelled, with their sections and facts (INB-003). */
+      /** Emails tagged, with their sections and facts (INB-003, CI-001). */
       labels: LabelRun | { state: 'failed'; code: string } | null
       /** Subscription confirmations clicked or refused (INB-004). */
       confirms: ConfirmRun | { state: 'failed'; code: string } | null
@@ -95,8 +95,10 @@ export async function runInboxStep(
       ))
   const label =
     options.label ??
-    ((d: SupabaseClient<Database>, deadline: number) =>
-      labelInboxEmails(d, sampleLabeller, deadline))
+    ((d: SupabaseClient<Database>, deadline: number) => {
+      const { ask, pictures, batchMs } = inboxTagging(d)
+      return labelInboxEmails(d, ask, deadline, { pictures, batchMs })
+    })
   const work = async () => {
     try {
       result.run = await poll(db, transport)
@@ -113,7 +115,8 @@ export async function runInboxStep(
       const code = (error as { code?: string }).code ?? 'assets_step_error'
       result.assets = { state: 'failed', code }
     }
-    // Labelling is quick (no network): it shares the images' deadline.
+    // Tagging shares the images' deadline. Live, it works a batch at a time
+    // and puts an email back when time runs short (it continues next sweep).
     try {
       result.labels = await label(
         db,

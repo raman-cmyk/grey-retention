@@ -2,6 +2,14 @@ import { z } from 'zod'
 import type { AgentDefinition } from '@/features/agents/runtime'
 import type { FallbackLog } from '@/features/fallback/log'
 import { keyPart } from '@/features/fallback/entry'
+import {
+  angles,
+  brandSizes,
+  emailTypes,
+  industries,
+  offerTypes,
+  type BrandSize
+} from '@/features/intelligence/taxonomy'
 import { pulseDays } from './pulse'
 import { failedWords, tryAgent, type AgentCtx } from './retry'
 import { statedFact } from './words'
@@ -25,63 +33,24 @@ export const lookbackDays = 90
 /** A pattern needs this many different brands. */
 export const minBrands = 2
 
-export type BrandSize = 'small' | 'medium' | 'large'
+export type { BrandSize }
 
 /**
- * The labels the mapper accepts, closed lists so that no competitor name,
- * subject or phrase can travel in a label (D18: types, timing, offers and
- * angles only). CI-001's Email classifier maps its labels onto these; an
- * email with any other label is left out.
+ * The labels the mapper accepts are lane B's closed lists (CI-001,
+ * `features/intelligence/taxonomy.ts`), so no competitor name, subject or
+ * phrase can travel in a label (D18: types, timing, offers and angles
+ * only). An untagged email has no labels and is left out.
  */
-export const competitorEmailTypes = [
-  'launch',
-  'new arrivals',
-  'bestseller',
-  'sale',
-  'offer',
-  'story',
-  'gift guide',
-  'restock',
-  'reminder',
-  'education',
-  'newsletter',
-  'event'
-] as const
-export const competitorOfferTypes = [
-  'no offer',
-  'percent off',
-  'money off',
-  'free shipping',
-  'gift with purchase',
-  'bundle',
-  'free sample',
-  'loyalty points'
-] as const
-export const competitorAngles = [
-  'urgency',
-  'gifting',
-  'newness',
-  'social proof',
-  'education',
-  'founder story',
-  'seasonal',
-  'value',
-  'exclusivity',
-  'community',
-  'self care',
-  'sustainability'
-] as const
-
 export const libraryEmail = z.object({
   id: z.string().min(1).max(120),
   /** An opaque brand id; the name never leaves the library. */
   brandId: z.string().min(1).max(120),
-  industry: z.string().trim().min(1).max(60),
-  brandSize: z.enum(['small', 'medium', 'large']),
+  industry: z.enum(industries),
+  brandSize: z.enum(brandSizes),
   sentOn: z.iso.date(),
-  emailType: z.enum(competitorEmailTypes),
-  offerType: z.enum(competitorOfferTypes),
-  angle: z.enum(competitorAngles)
+  emailType: z.enum(emailTypes),
+  offerType: z.enum(offerTypes),
+  angle: z.enum(angles)
 })
 /** One competitor email, as the classifier labelled it (CI-001). */
 export type LibraryEmail = z.infer<typeof libraryEmail>
@@ -313,6 +282,9 @@ export function checkMoves(answer: MapperAnswer, patterns: Pattern[]) {
   return problems
 }
 
+/** A taxonomy key in plain words: `gift_guide` -> "gift guide". */
+const label = (key: string) => key.replace(/_/g, ' ')
+
 const share = (p: Pattern) =>
   p.ofBrands ? Math.round((p.brands / p.ofBrands) * 100) / 100 : 0
 
@@ -332,7 +304,7 @@ export function codeMoves(patterns: Pattern[]): CompetitorMove[] {
     day: p.day,
     move: moveText(
       p,
-      `They sent a ${p.emailType} email (${p.offerType}, ${p.angle})`
+      `They sent a ${label(p.emailType)} email (${p.offerType === 'none' ? 'no offer' : label(p.offerType)}, ${label(p.angle)})`
     ),
     patternId: p.id,
     emailIds: p.emailIds,
@@ -343,7 +315,7 @@ export function codeMoves(patterns: Pattern[]): CompetitorMove[] {
 /** The mapper's input; a bad top level is a caller bug and throws. */
 export const mapperInput = z.object({
   industry: z.string().trim().min(1).max(60),
-  brandSize: z.enum(['small', 'medium', 'large']),
+  brandSize: z.enum(brandSizes),
   start: z.iso.date(),
   ourDates: z.array(z.unknown()),
   pastDates: z.array(z.unknown()),

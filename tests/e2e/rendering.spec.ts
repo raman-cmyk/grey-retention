@@ -17,6 +17,30 @@ test('UC-08 original strip artifacts, focused revision, owner approval and mappe
     .first()
     .click()
   await expect(page).toHaveURL(/\/campaigns\//)
+  // D17 (RET-002): the weekly copy batch is retired, so this journey
+  // approves its own campaign's copy when it is not approved yet.
+  await expect(
+    page
+      .getByRole('button', { name: /^Queue original fixture (copy|design)$/ })
+      .first()
+  ).toBeVisible()
+  const queueCopy = page.getByRole('button', {
+    name: 'Queue original fixture copy',
+    exact: true
+  })
+  if (await queueCopy.isVisible()) {
+    await queueCopy.click()
+    await expect(
+      page.getByText(
+        'Intent queued. Run fixture jobs to obtain a confirmed outcome.',
+        { exact: true }
+      )
+    ).toBeVisible()
+    await page
+      .getByRole('button', { name: 'Run queued fixture jobs', exact: true })
+      .click()
+    await page.getByRole('button', { name: /^Approve copy v\d+$/ }).click()
+  }
   await expect(
     page.getByRole('button', {
       name: 'Queue original fixture design',

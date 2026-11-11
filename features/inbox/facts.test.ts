@@ -111,7 +111,7 @@ describe('micro facts', () => {
       textRatio
     })
     expect(facts).toMatchObject({
-      version: 1,
+      version: 2,
       preview: 'Light layers, made to last',
       // The standing "Free shipping" bar is not this email's offer.
       offer: { kind: 'percent', value: 20, code: 'SPRING20' },

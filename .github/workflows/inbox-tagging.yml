@@ -1,0 +1,52 @@
+name: Inbox tagging
+
+# Tags waiting Inspiration inbox emails (CI-003). The sweep (minutes 3 and
+# 33) leaves tagging only what is left of its 15 seconds, about one email
+# live; this gives tagging its own run, between the sweeps and the
+# screenshots. Jobs are leased, so two runs never work the same email at the
+# same time, and the platform's daily AI budget (GEM-003) still caps the
+# spend. Each run is one small request (no checkout, no install); the
+# repository is public, so standard runner minutes are not billed.
+#
+# Off until turned on, exactly like the scheduled jobs
+# (docs/SCHEDULED_JOBS_RUNBOOK.md): the same CRON_SECRET repository secret
+# and the same SCHEDULED_JOBS_ENABLED=true repository variable. It prints
+# counts only, never a link or the secret.
+on:
+  schedule:
+    - cron: '10,25,40,55 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: inbox-tagging
+  cancel-in-progress: false
+
+jobs:
+  tagging:
+    if: vars.SCHEDULED_JOBS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      APP_URL: https://grey-retention-app.vercel.app
+    steps:
+      - name: Tag waiting emails
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::Add the CRON_SECRET repository secret (see docs/SCHEDULED_JOBS_RUNBOOK.md)."
+            exit 1
+          fi
+          # The header goes through stdin so the secret never appears in the
+          # process list; GitHub also masks it in the log. HTTPS only.
+          status=$(printf 'header = "Authorization: Bearer %s"\n' "$CRON_SECRET" |
+            curl --config - --proto '=https' --silent --show-error --max-time 75 \
+              --output run.json --write-out '%{http_code}' \
+              "$APP_URL/api/internal/inbox/tags") || status=000
+          jq -c '{state, live, emails, sections, untagged, retried, deferred, code}' run.json 2>/dev/null || true
+          if [ "$status" != "200" ]; then
+            echo "::error::The app returned HTTP $status."
+            exit 1
+          fi
