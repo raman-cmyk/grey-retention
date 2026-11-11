@@ -25,6 +25,7 @@ function database(
     uploadError?: { message: string; statusCode: string | number }
     advanceError?: { code: string; message: string }
     failError?: { code: string; message: string }
+    flagError?: { code: string; message: string }
   } = {}
 ) {
   const calls: { name: string; args: Record<string, unknown> }[] = []
@@ -82,6 +83,10 @@ function database(
         }
         case 'fail_platform_job':
           return { data: null, error: options.failError ?? null }
+        case 'flag_inbox_message':
+          return options.flagError
+            ? { data: null, error: options.flagError }
+            : { data: { already: false }, error: null }
         case 'advance_inbox_cursor':
           if (options.advanceError)
             return { data: null, error: options.advanceError }
@@ -168,6 +173,83 @@ describe('pollInbox', () => {
     // The next poll finds nothing new.
     const again = await pollInbox(db as unknown as Db, transport)
     expect(again).toMatchObject({ state: 'done', recorded: 0, unassigned: 0 })
+  })
+
+  it('notes a confirmation for the confirm worker, and keeps the text of an email waiting for a brand', async () => {
+    const confirm = sampleNewsletter({
+      slug: 'northwind',
+      fromDomain: 'mail.northwind.example',
+      subject: 'Please confirm your subscription',
+      day: 6,
+      html: true
+    })
+    const waiting = sampleNewsletter({
+      slug: null,
+      fromDomain: 'news.cedar.example',
+      subject: 'Linen week',
+      day: 7
+    })
+    const ordinary = sampleNewsletter({
+      slug: 'northwind',
+      fromDomain: 'mail.northwind.example',
+      subject: 'New linen',
+      day: 8
+    })
+    const db = database()
+    await pollInbox(
+      db as unknown as Db,
+      fakeInboundTransport([confirm, waiting, ordinary])
+    )
+    const flags = db.calls
+      .filter((c) => c.name === 'flag_inbox_message')
+      .map((c) => c.args)
+    expect(flags).toEqual([
+      expect.objectContaining({ signal: 'opt_in', confirm_url: undefined }),
+      expect.objectContaining({
+        signal: undefined,
+        text_part: expect.stringContaining('Linen week')
+      })
+    ])
+    // An ordinary newsletter that found its brand needs no note.
+    expect(flags).toHaveLength(2)
+  })
+
+  it('notes a re-delivered email again, so a signal is never lost between two calls', async () => {
+    const confirm = sampleNewsletter({
+      slug: 'northwind',
+      fromDomain: 'mail.northwind.example',
+      subject: 'Please confirm your subscription',
+      day: 6
+    })
+    const db = database()
+    await pollInbox(
+      db as unknown as Db,
+      fakeInboundTransport([confirm, confirm])
+    )
+    expect(
+      db.calls.filter((c) => c.name === 'flag_inbox_message')
+    ).toHaveLength(2)
+  })
+
+  it('does not note a message the database refused, and fails the poll when a note fails', async () => {
+    const confirm = sampleNewsletter({
+      slug: 'northwind',
+      fromDomain: 'mail.northwind.example',
+      subject: 'Please confirm your subscription',
+      day: 6
+    })
+    const refusing = database({
+      refuse: (msg) =>
+        msg.kind === 'message' ? { code: '23514', message: 'odd' } : null
+    })
+    await pollInbox(refusing as unknown as Db, fakeInboundTransport([confirm]))
+    expect(names(refusing)).not.toContain('flag_inbox_message')
+    const failing = database({
+      flagError: { code: 'XX000', message: 'down' }
+    })
+    await pollInbox(failing as unknown as Db, fakeInboundTransport([confirm]))
+    expect(names(failing)).toContain('fail_platform_job')
+    expect(names(failing)).not.toContain('advance_inbox_cursor')
   })
 
   it('counts a message re-delivered under a new UID as a duplicate', async () => {

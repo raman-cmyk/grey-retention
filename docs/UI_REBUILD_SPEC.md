@@ -1,5 +1,7 @@
 # Old app → new app: 1:1 UI/UX rebuild spec
 
+> **Superseded design/planning direction — 7 November 2026.** The owner requires a fresh UI/UX process in Figma. The older layouts, theme, milestones and parity checkboxes below are history, not replacement acceptance criteria. Current scope includes 2,000+ blocks, strategic segmentation, per-customer exposure, conversational segmentation and central AI chat. Start with [BUILD_BRIEF.md](BUILD_BRIEF.md), [DESIGN_RESET.md](DESIGN_RESET.md) and [PROJECT_TODOS.md](PROJECT_TODOS.md).
+
 Source: `demo.gravtyretention.com` (old Grey Retention app), crawled screen by screen on 6 Nov 2026.
 
 **Goal:** rebuild every screen, layout, control, empty state and small interaction below in the new app — **1:1 in structure and behaviour**.
@@ -780,7 +782,7 @@ Right panel:
   - connected state:
     - full-width accent button "✓ Klaviyo Connected"
     - caption "Dreams Studio · pk_YxS7U••••••••9de0"
-    - link `Update API key`, which reveals a password input "pk_…", full-width `Validate & swap key`, and the caption "The new key is validated against Klaviyo before we save. If it fails, your existing key stays in place."
+    - link `Update API key`, which reveals a password input "pk\_…", full-width `Validate & swap key`, and the caption "The new key is validated against Klaviyo before we save. If it fails, your existing key stays in place."
   - disconnected state: key input + Connect
 - [x] **Shopify card:**
   - tinted tile with a bag icon

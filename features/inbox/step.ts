@@ -5,6 +5,14 @@ import { logger } from '@/lib/logger'
 import { keepInboxImages, type AssetsRun } from './assets'
 import { inboxConfig, type InboxConfig } from './config'
 import { liveImageFetcher, sampleImageFetcher } from './image-fetch'
+import { labelInboxEmails, type LabelRun } from './label'
+import {
+  confirmSubscriptions,
+  liveLinkClicker,
+  sampleLinkClicker,
+  type ConfirmRun
+} from './confirm'
+import { sampleLabeller } from './labeller'
 import { pollInbox, type InboxRun } from './worker'
 
 /** The longest the sweep waits for the inbox before the workspace jobs. */
@@ -21,6 +29,10 @@ export type InboxStep =
       run: InboxRun
       /** Images kept for emails recorded now or earlier (INB-002). */
       assets: AssetsRun | { state: 'failed'; code: string } | null
+      /** Emails labelled, with their sections and facts (INB-003). */
+      labels: LabelRun | { state: 'failed'; code: string } | null
+      /** Subscription confirmations clicked or refused (INB-004). */
+      confirms: ConfirmRun | { state: 'failed'; code: string } | null
     }
   | { transport: 'gmail_imap'; ready: false; reason: string }
 
@@ -30,6 +42,11 @@ type Steps = {
     db: SupabaseClient<Database>,
     deadline: number
   ) => Promise<AssetsRun>
+  label?: (db: SupabaseClient<Database>, deadline: number) => Promise<LabelRun>
+  confirm?: (
+    db: SupabaseClient<Database>,
+    deadline: number
+  ) => Promise<ConfirmRun>
 }
 
 /**
@@ -64,8 +81,22 @@ export async function runInboxStep(
     ready: true,
     synthetic: transport.synthetic,
     run: { state: 'failed', code: 'inbox_step_timeout' },
-    assets: null
+    assets: null,
+    labels: null,
+    confirms: null
   }
+  const confirm =
+    options.confirm ??
+    ((d: SupabaseClient<Database>, deadline: number) =>
+      confirmSubscriptions(
+        d,
+        { real: liveLinkClicker, sample: sampleLinkClicker },
+        deadline
+      ))
+  const label =
+    options.label ??
+    ((d: SupabaseClient<Database>, deadline: number) =>
+      labelInboxEmails(d, sampleLabeller, deadline))
   const work = async () => {
     try {
       result.run = await poll(db, transport)
@@ -81,6 +112,29 @@ export async function runInboxStep(
     } catch (error) {
       const code = (error as { code?: string }).code ?? 'assets_step_error'
       result.assets = { state: 'failed', code }
+    }
+    // Labelling is quick (no network): it shares the images' deadline.
+    try {
+      result.labels = await label(
+        db,
+        started + (options.assetsUntilMs ?? assetsUntilMs)
+      )
+    } catch (error) {
+      const code = (error as { code?: string }).code ?? 'labels_step_error'
+      result.labels = { state: 'failed', code }
+    }
+    try {
+      result.confirms = await confirm(
+        db,
+        started + (options.assetsUntilMs ?? assetsUntilMs)
+      )
+      // Brands that have sent nothing a week after being added (one open
+      // task per brand; cheap, so on every sweep).
+      const pending = await db.rpc('check_pending_subscriptions')
+      if (pending.error) throw pending.error
+    } catch (error) {
+      const code = (error as { code?: string }).code ?? 'confirm_step_error'
+      result.confirms = { state: 'failed', code }
     }
   }
   let timer: ReturnType<typeof setTimeout> | undefined

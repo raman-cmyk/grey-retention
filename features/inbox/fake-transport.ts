@@ -8,18 +8,34 @@ export type FakeMessage = { raw: string; internalDate: string }
 
 const crlf = (s: string) => s.replace(/\r?\n/g, '\r\n')
 
-/** A small, real-shaped sample newsletter (fictional brands, .example). */
+/** 15:00 UTC, this many days before today. */
+function daysBefore(days: number) {
+  const date = new Date()
+  date.setUTCHours(15, 0, 0, 0)
+  date.setUTCDate(date.getUTCDate() - days)
+  return date
+}
+
+/**
+ * A small, real-shaped sample newsletter (fictional brands, .example),
+ * sent at 15:00 UTC on `day` November 2026, or `daysAgo` days before today.
+ * `day` also numbers its Message-ID.
+ */
 export function sampleNewsletter(n: {
   slug: string | null
   fromDomain: string
   subject: string
   day: number
+  daysAgo?: number
   html?: boolean
 }): FakeMessage {
   const to = n.slug
     ? `capture+${n.slug}@inbox.example`
     : 'capture@inbox.example'
-  const date = new Date(Date.UTC(2026, 10, n.day, 15, 0, 0))
+  const date =
+    n.daysAgo === undefined
+      ? new Date(Date.UTC(2026, 10, n.day, 15, 0, 0))
+      : daysBefore(n.daysAgo)
   const body = n.html
     ? [
         'Content-Type: multipart/alternative; boundary="b1"',
@@ -58,26 +74,32 @@ export function sampleNewsletter(n: {
   }
 }
 
-/** The sample mailbox the fake transport serves by default. */
+/**
+ * The sample mailbox the fake transport serves by default: sent in the
+ * last week, so it always falls inside a brand summary's 90 days.
+ */
 export const sampleMailbox: FakeMessage[] = [
   sampleNewsletter({
     slug: 'northwind',
     fromDomain: 'mail.northwind.example',
     subject: 'Spring layers are here',
     day: 2,
+    daysAgo: 5,
     html: true
   }),
   sampleNewsletter({
     slug: null,
     fromDomain: 'news.cedar-lane.example',
     subject: 'Three ways to style linen',
-    day: 3
+    day: 3,
+    daysAgo: 4
   }),
   sampleNewsletter({
     slug: 'juniper',
     fromDomain: 'juniper.example',
     subject: 'Our founder on slow mornings',
     day: 4,
+    daysAgo: 3,
     html: true
   })
 ]
