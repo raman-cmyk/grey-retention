@@ -5559,6 +5559,72 @@ export type Database = {
           }
         ]
       }
+      strategy_runs: {
+        Row: {
+          attempts: number
+          created_at: string
+          created_by: string
+          error_code: string | null
+          id: string
+          lease_token: string | null
+          lease_until: string | null
+          offer_pick: Json | null
+          plan: Json | null
+          pulse: Json | null
+          start_on: string
+          state: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          created_by: string
+          error_code?: string | null
+          id?: string
+          lease_token?: string | null
+          lease_until?: string | null
+          offer_pick?: Json | null
+          plan?: Json | null
+          pulse?: Json | null
+          start_on: string
+          state?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          created_by?: string
+          error_code?: string | null
+          id?: string
+          lease_token?: string | null
+          lease_until?: string | null
+          offer_pick?: Json | null
+          plan?: Json | null
+          pulse?: Json | null
+          start_on?: string
+          state?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'strategy_runs_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'strategy_runs_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       support_messages: {
         Row: {
           actor_id: string
@@ -6370,6 +6436,18 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      claim_strategy_run: {
+        Args: { target?: string }
+        Returns: {
+          id: string
+          lease_token: string
+          offer_pick: Json
+          pulse: Json
+          start_on: string
+          state: string
+          tenant_id: string
+        }[]
+      }
       complete_asset_import: {
         Args: { import_id: string; t: string }
         Returns: undefined
@@ -6622,6 +6700,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      fail_strategy_step: {
+        Args: { code: string; final?: boolean; lease: string; run: string }
+        Returns: string
+      }
       finalize_email_file_upload: {
         Args: { import: string; t: string }
         Returns: string
@@ -6697,6 +6779,14 @@ export type Database = {
         Args: { job: string; lease: string; output: Json }
         Returns: string
       }
+      finish_strategy_plan: {
+        Args: { lease: string; result: Json; run: string }
+        Returns: undefined
+      }
+      finish_strategy_pulse: {
+        Args: { lease: string; result: Json; run: string }
+        Returns: undefined
+      }
       fixture_copy_preference: {
         Args: { campaign: string; t: string }
         Returns: Json
@@ -6769,6 +6859,10 @@ export type Database = {
         Returns: string
       }
       operator_diagnostics: { Args: never; Returns: Json }
+      pick_strategy_offers: {
+        Args: { pick: Json; run: string; t: string }
+        Returns: undefined
+      }
       platform_ai_usage_today: {
         Args: never
         Returns: {
@@ -7296,6 +7390,7 @@ export type Database = {
       }
       site_readings_waiting: { Args: never; Returns: number }
       start_site_reading: { Args: { t: string }; Returns: string }
+      start_strategy_run: { Args: { t: string }; Returns: string }
       submit_design: {
         Args: {
           assignment: string

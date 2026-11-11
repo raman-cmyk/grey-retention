@@ -10,6 +10,7 @@ export type NavigationIcon =
   | 'brand'
   | 'assets'
   | 'campaigns'
+  | 'plan'
   | 'clients'
   | 'connections'
   | 'dashboard'
@@ -93,6 +94,7 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
     primary: [
       { label: 'Dashboard', href: '/dashboard', icon: 'dashboard' },
       { label: 'Brand & Store', href: '/brand', icon: 'brand' },
+      { label: 'Plan next 15 days', href: '/plan', icon: 'plan' },
       { label: 'Campaigns', href: '/campaign-agent', icon: 'campaigns' },
       { label: `Ask ${assistantName}`, href: '/gros', icon: 'gros' },
       {
