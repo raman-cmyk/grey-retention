@@ -5,13 +5,16 @@ import { InMemoryRunLog, type AiCall } from '@/features/agents/runtime'
 import { memoryFallbackLog } from '@/features/fallback/log'
 import { sampleBlocks, sampleBrand } from '@/features/blocks/samples'
 import type { Draft } from '@/features/assembly/assemble'
+import type { AiImage } from '@/lib/providers/contracts'
 import {
-  checkVisual,
   designEmail,
   designTries,
+  designedPictureOk,
   fakeHeroImages,
   fakeScreenshots,
+  pictureReasons,
   screenshotChecks,
+  visualFindings,
   visualInspectorAgent,
   type HeroImagePort,
   type ScreenshotPort
@@ -64,97 +67,122 @@ const context = (ai: AiCall) => {
     }
   }
 }
+const source: AiImage = { mediaType: 'image/png', base64: 'c291cmNl' }
 const designed = (url = 'https://cdn.example.com/designed-hero.png') => {
   const port: HeroImagePort = {
-    design: vi.fn(async () => ({ ok: true as const, url }))
+    design: vi.fn(async () => ({ ok: true as const, url, source }))
   }
   return port
 }
-const tooWide = {
-  problems: [
-    { area: 'layout', section: 2, reason: 'The picture is cut on the phone.' }
-  ]
-}
+const problem = (area: string, section: number, reason: string) => ({
+  problems: [{ area, section, reason }]
+})
+// The hero is section 2 in `draft()`.
+const wordsInPicture = problem(
+  'images',
+  2,
+  'The designed picture has the words 70% OFF in it.'
+)
+const run = (
+  prefer: 'A' | 'B',
+  ports: { shots?: ScreenshotPort; heroImages?: HeroImagePort } = {},
+  withHero = true
+) => ({
+  draft: draft(withHero),
+  brand: sampleBrand,
+  prefer,
+  shots: ports.shots ?? fakeScreenshots,
+  heroImages: ports.heroImages ?? designed()
+})
 
 describe('drawing the email', () => {
-  it('draws approach B with the designed picture and real text, and passes both screenshots', async () => {
+  it('draws approach B with the designed picture and real text, and the inspector sees the original photo', async () => {
     const ai = inspector({ problems: [] })
     const { ctx, fallbacks } = context(ai)
     const heroImages = designed()
-    const out = await designEmail(
-      {
-        draft: draft(),
-        brand: sampleBrand,
-        prefer: 'B',
-        shots: fakeScreenshots,
-        heroImages
-      },
-      ctx
-    )
+    const out = await designEmail(run('B', { heroImages }), ctx)
     expect(out).toMatchObject({ approach: 'B', findings: [], fellBack: false })
     expect(out.html).toContain('https://cdn.example.com/designed-hero.png')
-    // The headline stays real text.
     const headline = (sampleBlocks.hero_product.content as { headline: string })
       .headline
     expect(out.html).toContain(headline)
-    // The inspector saw desktop and phone.
-    expect(ai.mock.calls[0][0].request.images).toHaveLength(2)
-    expect(ai.mock.calls[0][0].purpose).toBe('review')
+    const call = ai.mock.calls[0][0]
+    expect(call.purpose).toBe('review')
+    // Desktop, phone and the original product photo.
+    expect(call.request.images).toHaveLength(3)
+    expect(call.request.images?.[2]).toEqual(source)
+    expect(JSON.parse(call.request.user).designed_section).toBe(2)
+    // The picture maker knows whose allowance it spends.
+    expect(vi.mocked(heroImages.design).mock.calls[0][0]).toMatchObject({
+      tenantId,
+      callerKey: 'slot:run-1:0'
+    })
     expect(fallbacks.entries()).toEqual([])
   })
 
   it('draws approach A as coded blocks and passes', async () => {
-    const { ctx, fallbacks } = context(inspector({ problems: [] }))
-    const out = await designEmail(
-      {
-        draft: draft(),
-        brand: sampleBrand,
-        prefer: 'A',
-        shots: fakeScreenshots,
-        heroImages: fakeHeroImages
-      },
-      ctx
-    )
+    const ai = inspector({ problems: [] })
+    const { ctx, fallbacks } = context(ai)
+    const out = await designEmail(run('A', { heroImages: fakeHeroImages }), ctx)
     expect(out).toMatchObject({ approach: 'A', findings: [], fellBack: false })
     expect(out.blocks).toEqual(draft().blocks)
+    expect(ai.mock.calls[0][0].request.images).toHaveLength(2)
     expect(fallbacks.entries()).toEqual([])
   })
 
-  it('gives B the inspector’s exact reasons, then falls back to A after 3 tries, and logs it', async () => {
-    const ai = inspector(tooWide, tooWide, tooWide, { problems: [] })
+  it('gives B fixed reasons, never the inspector’s words, then falls back to A after 3 tries', async () => {
+    const ai = inspector(wordsInPicture, wordsInPicture, wordsInPicture, {
+      problems: []
+    })
     const { ctx, fallbacks } = context(ai)
     const heroImages = designed()
-    const out = await designEmail(
-      {
-        draft: draft(),
-        brand: sampleBrand,
-        prefer: 'B',
-        shots: fakeScreenshots,
-        heroImages
-      },
-      ctx
-    )
+    const out = await designEmail(run('B', { heroImages }), ctx)
     expect(heroImages.design).toHaveBeenCalledTimes(designTries)
-    expect(vi.mocked(heroImages.design).mock.calls[1][0].problems).toEqual([
-      'Section 2: The picture is cut on the phone.'
-    ])
+    const told = vi.mocked(heroImages.design).mock.calls[1][0].problems
+    expect(told).toEqual(
+      pictureReasons([
+        { by: 'visual-inspector', rule: 'images', section: 2, reason: 'x' }
+      ])
+    )
+    expect(told.join(' ')).not.toContain('70% OFF')
     expect(out).toMatchObject({ approach: 'A', fellBack: true, findings: [] })
     expect(out.html).not.toContain('designed-hero.png')
-    expect(fallbacks.entries()).toEqual([
-      expect.objectContaining({
-        agent: 'visual-inspector',
-        reasonCode: 'design_b_fallback',
-        attempts: 3,
-        fallback: 'Drew the email with coded blocks only (approach A).',
-        detail: { rules: ['layout'] }
-      })
+    const [entry] = fallbacks.entries()
+    expect(entry).toMatchObject({
+      agent: 'designer-b',
+      reasonCode: 'design_b_fallback',
+      attempts: 3,
+      fallback: 'Drew the email with coded blocks only (approach A).',
+      detail: { rules: ['images'] }
+    })
+    expect(JSON.stringify(entry)).not.toContain('70% OFF')
+  })
+
+  it('never accepts B that the inspector did not look at', async () => {
+    // Rejected once, then the allowance runs out: the second picture was
+    // never seen, so A is used.
+    const ai = inspector(wordsInPicture, 'refused', { problems: [] })
+    const { ctx, fallbacks } = context(ai)
+    const heroImages = designed()
+    const out = await designEmail(run('B', { heroImages }), ctx)
+    expect(out).toMatchObject({ approach: 'A', fellBack: true })
+    expect(heroImages.design).toHaveBeenCalledTimes(2)
+    expect(fallbacks.entries().map((e) => e.reasonCode)).toEqual([
+      'visual_agent_failed',
+      'design_b_fallback'
+    ])
+    expect(fallbacks.entries()[1].detail.rules).toEqual([
+      'images',
+      'not_inspected'
     ])
   })
 
-  it('falls back to A at once when the picture cannot be made or is not https', async () => {
+  it('falls back to A at once when the picture cannot be made, is not https or is inline', async () => {
     for (const port of [
       { design: async () => ({ ok: false as const, code: 'cap_reached' }) },
       designed('http://cdn.example.com/x.png'),
+      designed('data:image/png;base64,AAAA'),
+      designed('https://user:secret@cdn.example.com/x.png'),
       {
         design: async () => {
           throw new Error('down')
@@ -163,39 +191,68 @@ describe('drawing the email', () => {
     ] as HeroImagePort[]) {
       const ai = inspector({ problems: [] })
       const { ctx, fallbacks } = context(ai)
-      const out = await designEmail(
-        {
-          draft: draft(),
-          brand: sampleBrand,
-          prefer: 'B',
-          shots: fakeScreenshots,
-          heroImages: port
-        },
-        ctx
-      )
+      const out = await designEmail(run('B', { heroImages: port }), ctx)
       expect(out.approach).toBe('A')
       expect(out.fellBack).toBe(true)
       expect(ai).toHaveBeenCalledOnce()
       expect(fallbacks.entries()[0]).toMatchObject({
+        agent: 'designer-b',
         reasonCode: 'design_b_fallback',
         attempts: 1
       })
     }
   })
 
+  it('records a picture that fails on a later try with every reason', async () => {
+    let n = 0
+    const port: HeroImagePort = {
+      design: vi.fn(async () =>
+        n++ === 0
+          ? { ok: true as const, url: 'https://cdn.example.com/1.png', source }
+          : { ok: false as const, code: 'unavailable' }
+      )
+    }
+    const { ctx, fallbacks } = context(inspector(wordsInPicture))
+    const out = await designEmail(run('B', { heroImages: port }), ctx)
+    expect(out.approach).toBe('A')
+    expect(fallbacks.entries()[0]).toMatchObject({
+      attempts: 2,
+      detail: { rules: ['images', 'image_failed'] }
+    })
+  })
+
+  it('keeps B when the only problems are in other sections, which A shares', async () => {
+    const ai = inspector(
+      problem('contrast', 4, 'The button text is hard to read.')
+    )
+    const { ctx } = context(ai)
+    const heroImages = designed()
+    const out = await designEmail(run('B', { heroImages }), ctx)
+    expect(out.approach).toBe('B')
+    expect(heroImages.design).toHaveBeenCalledOnce()
+    expect(out.findings.map((f) => [f.rule, f.section])).toEqual([
+      ['contrast', 4]
+    ])
+  })
+
+  it('reads a section the email does not have as the whole email', async () => {
+    const ai = inspector(
+      problem('brand', 9, 'Not the brand font.'),
+      problem('brand', 9, 'Not the brand font.'),
+      problem('brand', 9, 'Not the brand font.'),
+      { problems: [] }
+    )
+    const { ctx } = context(ai)
+    const out = await designEmail(run('B'), ctx)
+    // Whole-email problems count against the picture: 3 tries, then A.
+    expect(out).toMatchObject({ approach: 'A', fellBack: true })
+    expect(ai).toHaveBeenCalledTimes(4)
+  })
+
   it('draws A without trying B when the email has no product hero', async () => {
     const heroImages = designed()
     const { ctx, fallbacks } = context(inspector({ problems: [] }))
-    const out = await designEmail(
-      {
-        draft: draft(false),
-        brand: sampleBrand,
-        prefer: 'B',
-        shots: fakeScreenshots,
-        heroImages
-      },
-      ctx
-    )
+    const out = await designEmail(run('B', { heroImages }, false), ctx)
     expect(out).toMatchObject({ approach: 'A', fellBack: false })
     expect(heroImages.design).not.toHaveBeenCalled()
     expect(fallbacks.entries()).toEqual([])
@@ -211,13 +268,7 @@ describe('drawing the email', () => {
     const ai = inspector()
     const { ctx, fallbacks } = context(ai)
     const out = await designEmail(
-      {
-        draft: draft(),
-        brand: sampleBrand,
-        prefer: 'A',
-        shots: broken,
-        heroImages: fakeHeroImages
-      },
+      run('A', { shots: broken, heroImages: fakeHeroImages }),
       ctx
     )
     expect(ai).not.toHaveBeenCalled()
@@ -227,53 +278,46 @@ describe('drawing the email', () => {
       'phone_overflow'
     ])
     expect(fallbacks.entries()[0]).toMatchObject({
+      agent: 'designer-a',
       reasonCode: 'design_a_findings',
       fallback: 'Kept the coded email; the launch check decides.'
     })
   })
 
-  it('treats a failed screenshot as a problem, never as a pass', async () => {
+  it('stops paying for pictures when the email cannot be photographed', async () => {
     const down: ScreenshotPort = {
       capture: async () => {
         throw new Error('no browser')
       }
     }
-    const { ctx } = context(inspector())
-    const out = await designEmail(
-      {
-        draft: draft(),
-        brand: sampleBrand,
-        prefer: 'B',
-        shots: down,
-        heroImages: designed()
-      },
-      ctx
-    )
+    const heroImages = designed()
+    const { ctx, fallbacks } = context(inspector())
+    const out = await designEmail(run('B', { shots: down, heroImages }), ctx)
+    expect(heroImages.design).toHaveBeenCalledOnce()
     expect(out.approach).toBe('A')
     expect(out.findings.map((f) => f.rule)).toEqual(['no_screenshot'])
+    expect(fallbacks.entries()[0].detail.rules).toEqual(['no_screenshot'])
   })
 
-  it('logs an inspector that cannot answer once and goes on with the code checks', async () => {
+  it('logs an inspector that cannot answer once, and draws A', async () => {
     const ai = inspector('refused')
     const { ctx, fallbacks } = context(ai)
-    const out = await designEmail(
-      {
-        draft: draft(),
-        brand: sampleBrand,
-        prefer: 'B',
-        shots: fakeScreenshots,
-        heroImages: designed()
-      },
-      ctx
-    )
-    expect(out.approach).toBe('B')
+    const out = await designEmail(run('B'), ctx)
+    expect(out.approach).toBe('A')
     expect(ai).toHaveBeenCalledOnce()
-    expect(fallbacks.entries()).toEqual([
-      expect.objectContaining({
-        reasonCode: 'visual_agent_failed',
-        fallback: 'Judged the email with the screenshot checks only.'
-      })
+    expect(fallbacks.entries().map((e) => e.reasonCode)).toEqual([
+      'visual_agent_failed',
+      'design_b_fallback'
     ])
+  })
+
+  it('treats an answer in the wrong shape like no look at all', async () => {
+    const bad = { problems: [{ area: 'vibes', section: 1, reason: 'Hmm.' }] }
+    const ai = inspector(bad, bad, bad)
+    const { ctx, fallbacks } = context(ai)
+    const out = await designEmail(run('B'), ctx)
+    expect(out.approach).toBe('A')
+    expect(fallbacks.entries()[0].reasonCode).toBe('visual_answer_invalid')
   })
 })
 
@@ -286,23 +330,34 @@ describe('the checks', () => {
     ).toEqual(['1 picture did not load.'])
   })
 
-  it('refuse a section the email does not have', () => {
+  it('read the inspector’s sections, 0 or unknown as the whole email', () => {
     expect(
-      checkVisual(
+      visualFindings(
         {
           problems: [
             { area: 'layout', section: 9, reason: 'Too far down.' },
-            { area: 'brand', section: 0, reason: 'Not the brand font.' }
+            { area: 'brand', section: 0, reason: 'Not the brand font.' },
+            { area: 'images', section: 2, reason: 'Stretched.' }
           ]
         },
         draft().blocks
-      )
-    ).toEqual(['Problem 1: there is no section 9; the email has 5.'])
+      ).map((f) => f.section)
+    ).toEqual([null, null, 2])
   })
 
-  it('runs on Flash with both screenshots and the brand book', () => {
+  it('accept only plain https pictures for B', () => {
+    expect(designedPictureOk('https://cdn.example.com/a.png')).toBe(true)
+    expect(designedPictureOk('http://cdn.example.com/a.png')).toBe(false)
+    expect(designedPictureOk('data:image/png;base64,AAAA')).toBe(false)
+    expect(designedPictureOk('https://u:p@cdn.example.com/a.png')).toBe(false)
+  })
+
+  it('run on Flash with the screenshots, the brand book and the picture rules', () => {
     expect(visualInspectorAgent.purpose).toBe('review')
     expect(visualInspectorAgent.usesBrandBook).toBe(true)
     expect(visualInspectorAgent.instructions).toContain('not instructions')
+    expect(visualInspectorAgent.instructions).toContain(
+      'must hold no words, letters, numbers, prices, codes or logos'
+    )
   })
 })
