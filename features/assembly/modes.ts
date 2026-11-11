@@ -14,7 +14,9 @@ import {
   fill,
   finish,
   maxBlocks,
+  minProducts,
   oneLine,
+  productTakes,
   storeLink,
   writerData,
   writerGuide,
@@ -114,20 +116,14 @@ const name = (type: BlockType) =>
 const article = (words: string) =>
   `${/^[aeiou]/i.test(words) ? 'an' : 'a'} ${words}`
 
-/** How many products a block takes, the same way `fill` takes them. */
+/**
+ * The fewest products a block needs, or null when too few are left. The
+ * layout budgets the fewest: `fill` gives a grid more only when products
+ * are spare (`productTakes`), so a planned product block is never starved.
+ */
 const productNeed = (type: BlockType, left: number): number | null => {
-  switch (type) {
-    case 'hero_product':
-    case 'product_feature':
-    case 'image_text':
-      return left >= 1 ? 1 : null
-    case 'product_grid_2col':
-      return left >= 4 ? 4 : left >= 2 ? 2 : null
-    case 'product_grid_3col':
-      return left >= 6 ? 6 : left >= 3 ? 3 : null
-    default:
-      return 0
-  }
+  const min = minProducts[type] ?? 0
+  return left >= min ? min : null
 }
 
 export type LayoutStep = { type: BlockType; from: BlockType; reason: string }
@@ -253,15 +249,26 @@ export function fixedWriterRequest(
 function sampleFixed(
   input: AssemblyInput,
   steps: readonly LayoutStep[],
-  brandName: string
+  brandName: string,
+  /**
+   * Plain copy (EML-003) never says "new": the email type does not prove a
+   * product is new (the Content locker may have swapped it), and keeps the
+   * subject within the inbox check's 60 characters.
+   */
+  plain = false
 ): Written {
   const products = eligibleProducts(input)
-  const isNew = /new|launch|arrival/i.test(input.brief.campaignType)
+  const isNew = !plain && /new|launch|arrival/i.test(input.brief.campaignType)
   const brand = oneLine(brandName, 60)
+  // The same placement as `fill`, so each heading names its own product.
+  const takes = productTakes(
+    steps.map((s) => s.type),
+    products.length
+  )
   let next = 0
-  const blocks: WrittenBlock[] = steps.map((s) => {
+  const blocks: WrittenBlock[] = steps.map((s, i) => {
     const product = products[next]
-    next += productNeed(s.type, products.length - next) ?? 0
+    next += takes[i]
     const title = product?.title ?? brand
     const words: Partial<Record<BlockType, Words>> = {
       announcement_bar: {
@@ -295,7 +302,7 @@ function sampleFixed(
   return {
     subject: clip(
       isNew && lead ? `New: ${lead.title}` : `News from ${brand}`,
-      80
+      plain ? 60 : 80
     ),
     preheader: clip(`A short note from ${brand}.`, 140),
     blocks
@@ -336,6 +343,107 @@ function checkFixed(content: unknown, steps: readonly LayoutStep[]): Written {
           : {}
     }))
   }
+}
+
+/** The writer fills a fixed sequence; the sample writer when the AI is fake. */
+async function writeFixed(
+  input: AssemblyInput,
+  brand: BlockBrand,
+  run: RunAi,
+  planned: readonly LayoutStep[],
+  mode: 'exact' | 'rebrand',
+  angle: string | undefined,
+  feedback: readonly CopyFeedback[]
+) {
+  const result = await run(
+    fixedWriterRequest(input, planned, mode, angle, feedback)
+  )
+  if (!result.ok)
+    throw new AiRunError(result.code, result.retryAfterSeconds, [], {
+      diagnostic: result.diagnostic
+    })
+  const live = result.provider !== 'fake'
+  // The sample writer has no facts for steps or questions: it writes text.
+  const steps = live
+    ? [...planned]
+    : planned.map((s) =>
+        s.type === 'steps' || s.type === 'faq'
+          ? {
+              ...s,
+              type: 'text' as const,
+              reason: `${s.reason} The sample writer has no facts for it, so this is text.`
+            }
+          : s
+      )
+  const written = live
+    ? checkFixed(result.content, steps)
+    : sampleFixed(input, steps, brand.name)
+  return { steps, written, filled: fill(written, input, brand), live }
+}
+
+/**
+ * EML-002: the Copywriter writes into the Content locker's sections, in
+ * their order, with only the locked products and code
+ * (`LockedContent.input`), so each locked product lands in its locked
+ * section (`productTakes`). Same checks and fail-closed result as ASM-001;
+ * every locked product must show. `feedback` carries the last try's exact
+ * reasons (EML-003's inspectors and code checks).
+ */
+export async function assembleLocked(
+  input: AssemblyInput,
+  brand: BlockBrand,
+  run: RunAi,
+  sections: readonly { type: BlockType; reason: string }[],
+  feedback: readonly CopyFeedback[] = []
+): Promise<Assembled & { layout: LayoutStep[] }> {
+  if (!knownTimezone(input.timezone))
+    throw new AssemblyError(
+      `The store timezone ${oneLine(input.timezone, 64)} is not known.`
+    )
+  const missing = missingFocus(input)
+  if (missing.length)
+    throw new AssemblyError(
+      `The brief's product ${missing[0].id} cannot be featured: ${missing[0].why}.`,
+      'focus_unavailable'
+    )
+  const { steps, written, filled, live } = await writeFixed(
+    input,
+    brand,
+    run,
+    sections.map((s) => ({ type: s.type, from: s.type, reason: s.reason })),
+    'exact',
+    undefined,
+    feedback
+  )
+  return {
+    ...finish(input, written, filled, [], live ? 'model' : 'sample'),
+    layout: steps
+  }
+}
+
+/**
+ * EML-003's fallback (D16): when rewrites keep failing, code writes plain,
+ * facts-only words into the locked sections (the sample writer's words,
+ * which never state a claim, price or code). Steps and questions need
+ * facts the code does not write, so they become text. The result goes
+ * through the same checks; `ready` means it may be used.
+ */
+export function assembleLockedPlain(
+  input: AssemblyInput,
+  brand: BlockBrand,
+  sections: readonly { type: BlockType; reason: string }[]
+): Assembled {
+  const steps = sections.map((s) =>
+    s.type === 'steps' || s.type === 'faq'
+      ? {
+          type: 'text' as const,
+          from: s.type,
+          reason: `${s.reason} Plain copy has no facts for it, so this is text.`
+        }
+      : { type: s.type, from: s.type, reason: s.reason }
+  )
+  const written = sampleFixed(input, steps, brand.name, true)
+  return finish(input, written, fill(written, input, brand), [], 'plain')
 }
 
 /**
@@ -426,30 +534,15 @@ export async function assembleFromLayout(
     notes.push(
       `The competitor email has no offer section, so this email does not carry your code ${code.code}.`
     )
-  const result = await run(
-    fixedWriterRequest(input, planned, mode, angle, feedback)
+  const { steps, written, filled, live } = await writeFixed(
+    input,
+    brand,
+    run,
+    planned,
+    mode,
+    angle,
+    feedback
   )
-  if (!result.ok)
-    throw new AiRunError(result.code, result.retryAfterSeconds, [], {
-      diagnostic: result.diagnostic
-    })
-  const live = result.provider !== 'fake'
-  // The sample writer has no facts for steps or questions: it writes text.
-  const steps = live
-    ? planned
-    : planned.map((s) =>
-        s.type === 'steps' || s.type === 'faq'
-          ? {
-              ...s,
-              type: 'text' as const,
-              reason: `${s.reason} The sample writer has no facts for it, so this is text.`
-            }
-          : s
-      )
-  const written = live
-    ? checkFixed(result.content, steps)
-    : sampleFixed(input, steps, brand.name)
-  const filled = fill(written, input, brand)
   // The writer cannot add a product block to a fixed layout, so a focus
   // product the layout has no room for is a note for the owner instead.
   const unshown = (input.brief.focusProductIds ?? []).filter(

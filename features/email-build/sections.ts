@@ -3,6 +3,7 @@ import type { AgentDefinition } from '@/features/agents/runtime'
 import type { FallbackLog } from '@/features/fallback/log'
 import { keyPart } from '@/features/fallback/entry'
 import { blockTypes, type BlockType } from '@/features/blocks/catalog'
+import { minProducts } from '@/features/assembly/assemble'
 import {
   layoutSequence,
   type CompetitorLayout,
@@ -49,14 +50,8 @@ export const seedVariants: Variant[] = blockTypes.map((family) => ({
   score: null
 }))
 
-/** Products each family needs. */
-const productNeed: Partial<Record<BlockType, number>> = {
-  hero_product: 1,
-  product_feature: 1,
-  image_text: 1,
-  product_grid_2col: 2,
-  product_grid_3col: 3
-}
+/** Products each family needs (the fewest it shows). */
+export const productNeed = minProducts
 const heroes: BlockType[] = ['hero_product', 'hero_image']
 
 /** The library search: allowed families, this industry and email type, best results first. */
