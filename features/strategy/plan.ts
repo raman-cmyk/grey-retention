@@ -814,7 +814,6 @@ export async function planFifteenDays(
   const input = readPlanInput(raw)
   const agentCtx: AgentCtx = { ...ctx, industry: input.industry }
   const facts = planEvidence(input)
-  const { from, to } = windowOf(input)
   const source: FifteenDayPlan['source'] = {
     brief: 'agent',
     planner: 'agent',
@@ -989,6 +988,19 @@ export async function planFifteenDays(
       { dropped: byCritic }
     )
 
+  return planOutput(input, actions, kept, dropped.length, source)
+}
+
+/** The plan as it is saved and shown: facts, prices and codes from code. */
+function planOutput(
+  input: PlanInput,
+  actions: BriefAction[],
+  kept: Slot[],
+  dropped: number,
+  source: FifteenDayPlan['source']
+): FifteenDayPlan {
+  const facts = planEvidence(input)
+  const { from, to } = windowOf(input)
   const products = new Map(input.products.map((p) => [p.id, p]))
   const offers = new Map(input.offers.map((o) => [o.id, o]))
   const audiences = new Map(input.audiences.map((a) => [a.id, a]))
@@ -1031,9 +1043,30 @@ export async function planFifteenDays(
     start: from,
     end: to,
     brief: actions,
-    dropped: dropped.length,
+    dropped,
     notes,
     source,
     slots: slotsOut
   }
+}
+
+/**
+ * With no live model set up (the fake, the default), the honest sample
+ * path: the plain brief and calendar from code, checked by the same rules,
+ * with no agent call and nothing logged as a fallback.
+ */
+export function samplePlan(raw: PlanInput): FifteenDayPlan {
+  const input = readPlanInput(raw)
+  const actions = codeBrief(input)
+  const { kept, dropped } = keepPassing(
+    codeSlots(input, actions),
+    new Map(),
+    input,
+    actions
+  )
+  return planOutput(input, actions, kept, dropped.length, {
+    brief: 'code',
+    planner: 'code',
+    critic: 'skipped'
+  })
 }

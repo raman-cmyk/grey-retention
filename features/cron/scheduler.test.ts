@@ -88,13 +88,17 @@ describe('tenantsWithDueJobs', () => {
       expect(call.ops).toContainEqual(['limit', [50]])
       expect(call.ops).toContainEqual([
         'not',
-        ['kind', 'in', '("email.rewrite","email.import")']
+        ['kind', 'in', '("email.rewrite","email.import","brand.read_site")']
       ])
     }
   })
 
-  it('never selects paid AI rewrites or file imports', () => {
-    expect(separatelyDispatchedKinds).toEqual(['email.rewrite', 'email.import'])
+  it('never selects paid AI rewrites, file imports or site reads', () => {
+    expect(separatelyDispatchedKinds).toEqual([
+      'email.rewrite',
+      'email.import',
+      'brand.read_site'
+    ])
   })
 
   it('fails instead of guessing when the queue cannot be read', async () => {
