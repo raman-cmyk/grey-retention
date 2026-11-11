@@ -446,7 +446,7 @@ select results_eq($$select w.status, w.last_error, c.status from public.workspac
     where w.tenant_id='00000000-0000-4000-8000-000000000102' and w.provider='klaviyo'$$,
   $$values ('expired','klaviyo_scope_missing','active')$$,'the connection needs the owner; the key is not revoked');
 select ok(exists(select 1 from public.notifications where tenant_id='00000000-0000-4000-8000-000000000102'
-  and message like '%Accounts, Catalogs, Events and Metrics read access%'),'and the owner is told which access it needs');
+  and message like '%Accounts, Campaigns, Catalogs, Events, Lists, Metrics and Segments read access%'),'and the owner is told which access it needs');
 
 -- A key changed after the read began: the read is only put back.
 set local role authenticated;

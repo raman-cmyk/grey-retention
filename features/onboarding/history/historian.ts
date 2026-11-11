@@ -156,7 +156,7 @@ export function historianInput(
 /** A sentence for the record: no numbers, prices or claims. */
 const plain = (s: string) =>
   !/[0-9$€£¥%]/.test(s) &&
-  !/\b(best in|#1|number one|leading|award|guarantee|cheapest|finest)\b/i.test(
+  !/\b(best in|in the world|#1|number one|leading|award|guarantee|cheapest|finest)\b/i.test(
     s
   )
 
