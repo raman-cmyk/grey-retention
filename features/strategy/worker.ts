@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger'
 import {
   codePulse,
   gatherEvidence,
+  offerFact,
   offerPick,
   offersToPlan,
   readPulseInput
@@ -16,7 +17,8 @@ import { storedPulse } from './stored'
 import { SupabaseOfferSource } from '@/features/offers/source'
 import type { SavedOffers } from '@/features/email-build/ports'
 import {
-  offerWorksAt,
+  leftOutNote,
+  offerEmailsThatFail,
   planOfferSource,
   pulseCodes,
   readPlanOffers,
@@ -92,17 +94,22 @@ export async function runStrategyRuns(
         const { input } = readPulseInput(store.pulse)
         if (input.start !== run.start_on) throw final('store_wrong_days')
         // The owner's offers (or the sample's when nothing is saved), never
-        // the store data's own codes.
-        const pulse = codePulse(
+        // the store data's own codes; a code ending too early says why.
+        const listed = pulseCodes(offers, run.start_on, timezone)
+        const gathered = codePulse(
           gatherEvidence({
             ...input,
             brand: {
               ...input.brand,
               maxDiscountPercent: offers.maxDiscountPercent
             },
-            codes: pulseCodes(offers, run.start_on, timezone)
+            codes: listed.codes
           })
         )
+        const pulse = {
+          ...gathered,
+          leftOut: [...gathered.leftOut, ...listed.leftOut]
+        }
         const done = await db.rpc('finish_strategy_pulse', {
           run: run.id,
           lease: run.lease_token,
@@ -120,20 +127,30 @@ export async function runStrategyRuns(
         const mapper = readMapperInput(store.mapper)
         if (mapper.start !== run.start_on) throw final('store_wrong_days')
         // Settings may have changed since the offer step: only picked offers
-        // that still work, with their current percent and last full day.
+        // that still work, with their current percent and last send day, and
+        // their facts rewritten to match (the emails show these facts).
         const { usable, leftOut } = stillUsable(
           picked.offers,
           offers,
           run.start_on,
           timezone
         )
-        const ids = new Set(usable.map((o) => o.id))
+        const current = new Map(usable.map((o) => [o.id, o]))
         const pulse = {
           ...stored.data,
           offers: usable,
-          highlights: stored.data.highlights.filter(
-            (h) => h.kind !== 'offer' || ids.has(h.id)
-          )
+          highlights: stored.data.highlights.flatMap((h) => {
+            if (h.kind !== 'offer') return [h]
+            const o = current.get(h.id)
+            return o
+              ? [
+                  {
+                    ...h,
+                    fact: offerFact(o.code, o.percent, o.until, stored.data.end)
+                  }
+                ]
+              : []
+          })
         }
         const made = samplePlan({
           ...store.plan,
@@ -143,18 +160,13 @@ export async function runStrategyRuns(
           moves: codeMoves(mapPatterns(mapper))
         })
         // Every offer email works at its own send time, as "Create email"
-        // will check it (a guard: the plan's last full days ensure it).
-        if (made.slots.some((s) => !offerWorksAt(s, offers, timezone)))
+        // will check it (a guard: the plan's last send days ensure it).
+        if (offerEmailsThatFail(made.slots, offers, timezone).length)
           throw final('plan_offer_unusable')
+        const note = leftOutNote(leftOut)
         const plan = {
           ...made,
-          notes: [
-            ...leftOut.map(
-              (code) =>
-                `${code} was left out: it changed in your Settings after you picked it.`
-            ),
-            ...made.notes
-          ]
+          notes: [...(note ? [note] : []), ...made.notes].slice(0, 10)
         }
         const done = await db.rpc('finish_strategy_plan', {
           run: run.id,

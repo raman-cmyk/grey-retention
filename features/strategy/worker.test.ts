@@ -5,7 +5,7 @@ import { runStrategyRuns, stepCode } from './worker'
 import { sampleStrategyData } from './data'
 import { codePulse, gatherEvidence } from './pulse'
 import { sampleStore } from './sample'
-import type { StoredPlan, StoredPulse } from './stored'
+import { storedPulse, type StoredPlan, type StoredPulse } from './stored'
 
 const tenant = '00000000-0000-4000-8000-000000000101'
 const start = '2026-11-16'
@@ -18,16 +18,19 @@ type Saved = {
 /**
  * A database that hands out the given runs, then nothing, and records
  * calls. `saved` is what the owner saved in Settings (DSC-001's tables, read
- * by the real `SupabaseOfferSource`; 'error' makes that read fail), and the
- * workspace's timezone is Melbourne, like the sample store's.
+ * by the real `SupabaseOfferSource`; 'error' makes that read fail);
+ * `timezone` is the workspace's (Melbourne, like the sample store's, unless
+ * a test says otherwise). `reads` records each table read and its filters.
  */
 function fakeDb(
   runs: Record<string, unknown>[],
   fail: Record<string, { code: string }> = {},
-  saved: Saved | 'error' = {}
+  saved: Saved | 'error' = {},
+  timezone = 'Australia/Melbourne'
 ) {
   const queue = [...runs]
   const calls: Call[] = []
+  const reads: { table: string; filters: [string, string][] }[] = []
   const rpc = vi.fn(async (fn: string, args: Record<string, unknown> = {}) => {
     calls.push({ fn, args })
     if (fail[fn]) return { data: null, error: fail[fn] }
@@ -38,14 +41,19 @@ function fakeDb(
     return { data: fn === 'fail_strategy_step' ? 'retry' : null, error: null }
   })
   const from = (table: keyof Saved | 'tenants') => {
+    const read = { table, filters: [] as [string, string][] }
+    reads.push(read)
     const result =
       table === 'tenants'
-        ? { data: [{ timezone: 'Australia/Melbourne' }], error: null }
+        ? { data: [{ timezone }], error: null }
         : saved === 'error'
           ? { data: null, error: { code: 'PGRST000' } }
           : { data: saved[table] ?? [], error: null }
     const query = {
-      eq: () => query,
+      eq: (column: string, value: string) => {
+        read.filters.push([column, value])
+        return query
+      },
       maybeSingle: async () => ({
         data: result.data?.[0] ?? null,
         error: result.error
@@ -57,7 +65,7 @@ function fakeDb(
     }
     return { select: () => query }
   }
-  return { db: { rpc, from } as never, calls }
+  return { db: { rpc, from } as never, calls, reads }
 }
 /** A code the owner saved, as DSC-001 stores it. */
 const saved = (code: string, percent: number, expires_at: string | null) => ({
@@ -221,14 +229,100 @@ describe('the offers a plan uses (#379)', () => {
       },
       { mode: 'picked', offers: ['offer:CANDLE10', 'offer:WELCOME15'] }
     )
-    expect(
-      plan.slots
-        .filter((s) => s.offer)
-        .every((s) => s.offer!.code === 'CANDLE10')
-    ).toBe(true)
+    const offers = plan.slots.filter((s) => s.offer)
+    expect(offers.length).toBeGreaterThan(0)
+    expect(offers.every((s) => s.offer!.code === 'CANDLE10')).toBe(true)
     expect(plan.notes).toContain(
-      'WELCOME15 was left out: it changed in your Settings after you picked it.'
+      'Left out because your offers in Settings changed after they were listed: WELCOME15.'
     )
+  })
+
+  it('reads only this workspace’s offers and timezone', async () => {
+    const { db, reads } = fakeDb([run()], {}, own)
+    await runStrategyRuns(db)
+    const filters = (table: string) =>
+      reads.filter((r) => r.table === table).flatMap((r) => r.filters)
+    expect(filters('tenants')).toEqual([['id', tenant]])
+    expect(filters('brand_offers')).toEqual([['tenant_id', tenant]])
+    expect(filters('discount_codes')).toEqual([
+      ['tenant_id', tenant],
+      ['status', 'active']
+    ])
+  })
+
+  it('keeps an end date saved in Settings on its own day, in the workspace’s timezone', async () => {
+    // Settings ends a code at 23:59:59 store time: the 20th is its last day.
+    const melbourne = await pulseFor({
+      brand_offers: [{ max_discount_percent: 20, revision: 1 }],
+      discount_codes: [saved('SAVE10', 10, '2026-11-20T12:59:59.000Z')]
+    })
+    expect(melbourne.offers).toEqual([
+      expect.objectContaining({ code: 'SAVE10', until: '2026-11-20' })
+    ])
+    // 11 am UTC on the 20th: after the last send in Melbourne (10 pm), not in UTC.
+    const at11 = {
+      brand_offers: [{ max_discount_percent: 20, revision: 1 }],
+      discount_codes: [saved('SAVE10', 10, '2026-11-20T11:00:00Z')]
+    }
+    expect((await pulseFor(at11)).offers[0].until).toBe('2026-11-20')
+    const utc = fakeDb([run()], {}, at11, 'UTC')
+    await runStrategyRuns(utc.db)
+    const inUtc = utc.calls.find((c) => c.fn === 'finish_strategy_pulse')!.args
+      .result as StoredPulse
+    expect(inUtc.offers[0].until).toBe('2026-11-19')
+  })
+
+  it('handles every code Settings allows (more than 50)', async () => {
+    const many: Saved = {
+      brand_offers: [{ max_discount_percent: 25, revision: 1 }],
+      discount_codes: Array.from({ length: 60 }, (_, i) =>
+        saved(`CODE${String(i + 1).padStart(2, '0')}`, 10, null)
+      )
+    }
+    const stored = await pulseFor(many)
+    expect(stored.offers).toHaveLength(60)
+    expect(storedPulse.safeParse(stored).success).toBe(true)
+    const plan = await planFor(stored, many)
+    expect(plan.slots.length).toBeGreaterThan(0)
+  })
+
+  it('shows the current percent in the facts behind an offer email', async () => {
+    // Picked at 15% from the sample; the owner saved WELCOME15 at 10% since.
+    const stored = await pulseFor({})
+    const plan = await planFor(
+      stored,
+      {
+        brand_offers: [{ max_discount_percent: 20, revision: 2 }],
+        discount_codes: [saved('WELCOME15', 10, null)]
+      },
+      { mode: 'picked', offers: ['offer:WELCOME15'] }
+    )
+    const offers = plan.slots.filter((s) => s.offer)
+    expect(offers.length).toBeGreaterThan(0)
+    expect(offers.every((s) => s.offer!.percent === 10)).toBe(true)
+    const facts = JSON.stringify(plan.slots.map((s) => s.evidence))
+    expect(facts).not.toContain('15% off with WELCOME15')
+  })
+
+  it('tries the plan step again too when the saved offers cannot be read', async () => {
+    const stored = await pulseFor({})
+    const { db, calls } = fakeDb(
+      [
+        run({
+          state: 'plan_queued',
+          pulse: stored,
+          offer_pick: { mode: 'auto' }
+        })
+      ],
+      {},
+      'error'
+    )
+    await runStrategyRuns(db)
+    expect(calls.some((c) => c.fn === 'finish_strategy_plan')).toBe(false)
+    expect(failure(calls)).toMatchObject({
+      code: 'offers_unreadable',
+      final: false
+    })
   })
 
   it('tries the step again when the saved offers cannot be read, never using the sample', async () => {

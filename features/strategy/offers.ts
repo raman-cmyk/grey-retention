@@ -10,6 +10,7 @@ import {
 import { validTimezone } from '@/lib/brand-time'
 import { localDateTime, localTimeCandidates } from '@/lib/local-time'
 import { addDays } from './pulse'
+import { sendHours } from './plan'
 import type { StoredPulse } from './stored'
 
 /**
@@ -60,27 +61,43 @@ export async function readPlanOffers(
 }
 
 /**
- * The last store-local day a code works all day: the plan's inclusive
- * `until`. A code ending at 2 pm on the 20th works all day only until the
- * 19th, so no planned send on the 20th can miss it. Null: no end.
+ * The last store-local day an email can send with a code: the plan's
+ * inclusive `until`, the code's real last day. It is the day the code ends
+ * when it still works at the latest send time (Settings ends a code at
+ * 23:59:59 store time, so the 20th stays the 20th); a code ending earlier
+ * in the day (2 pm on the 20th) last works for a whole day of sends on the
+ * 19th, so no planned send can miss it. Null: no end.
  */
-export function lastFullDay(expiresAt: string | null, timezone: string) {
+export function lastSendDay(expiresAt: string | null, timezone: string) {
   if (expiresAt === null) return null
-  return addDays(localDateTime(expiresAt, timezone).slice(0, 10), -1)
+  const local = localDateTime(expiresAt, timezone)
+  const day = local.slice(0, 10)
+  return local.slice(11) > sendHours.to ? day : addDays(day, -1)
 }
 
-/** The pulse's code rows: each code that works for at least one whole planned day. */
+/**
+ * The pulse's code rows: each code an email can still send with during the
+ * 15 days. One that ends before that is left out with its reason, so the
+ * owner sees why a saved code is missing.
+ */
 export function pulseCodes(
   offers: PlanOffers,
   start: string,
   timezone: string
 ) {
-  return offers.codes.flatMap((c) => {
-    const expiresOn = lastFullDay(c.expiresAt, timezone)
-    return expiresOn !== null && expiresOn < start
-      ? []
-      : [{ code: c.code, percent: c.percent, expiresOn }]
-  })
+  const codes: { code: string; percent: number; expiresOn: string | null }[] =
+    []
+  const leftOut: { code: string; why: string }[] = []
+  for (const c of offers.codes) {
+    const expiresOn = lastSendDay(c.expiresAt, timezone)
+    if (expiresOn !== null && expiresOn < start)
+      leftOut.push({
+        code: c.code,
+        why: `It ends on ${localDateTime(c.expiresAt!, timezone).slice(0, 10)}, before an email in these 15 days could use it.`
+      })
+    else codes.push({ code: c.code, percent: c.percent, expiresOn })
+  }
+  return { codes, leftOut }
 }
 
 type Offer = StoredPulse['offers'][number]
@@ -99,7 +116,7 @@ export function stillUsable(
   timezone: string
 ): { usable: Offer[]; leftOut: string[] } {
   const now = new Map(
-    pulseCodes(offers, start, timezone).map((c) => [key(c.code), c])
+    pulseCodes(offers, start, timezone).codes.map((c) => [key(c.code), c])
   )
   const usable: Offer[] = []
   const leftOut: string[] = []
@@ -141,6 +158,24 @@ export function offerWorksAt(
     code.percent <= Math.min(100, offers.maxDiscountPercent) &&
     (code.expiresAt === null || Date.parse(code.expiresAt) > Date.parse(sendAt))
   )
+}
+
+/** The planned offer emails whose offer would not work when they send (a guard). */
+export function offerEmailsThatFail<
+  S extends Parameters<typeof offerWorksAt>[0]
+>(slots: readonly S[], offers: PlanOffers, timezone: string): S[] {
+  return slots.filter((s) => !offerWorksAt(s, offers, timezone))
+}
+
+/**
+ * One plain note for the picked offers that no longer work with Settings
+ * (at most ten codes named, so the note stays short), or null.
+ */
+export function leftOutNote(codes: readonly string[]) {
+  if (!codes.length) return null
+  const named = codes.slice(0, 10).join(', ')
+  const more = codes.length > 10 ? ` and ${codes.length - 10} more` : ''
+  return `Left out because your offers in Settings changed after they were listed: ${named}${more}.`
 }
 
 /** The workspace's one brand timezone ("store time" on every screen). */
