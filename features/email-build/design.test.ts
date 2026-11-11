@@ -120,6 +120,17 @@ describe('drawing the email', () => {
     expect(fallbacks.entries()).toEqual([])
   })
 
+  it('passes the inspector’s 1 to 10 looks score on, and drops a score out of range', async () => {
+    const scored = context(inspector({ problems: [], score: 9 }))
+    expect(
+      await designEmail(run('A', { heroImages: fakeHeroImages }), scored.ctx)
+    ).toMatchObject({ approach: 'A', looks: 9 })
+    const wrong = context(inspector({ problems: [], score: 0 }))
+    expect(
+      await designEmail(run('A', { heroImages: fakeHeroImages }), wrong.ctx)
+    ).toMatchObject({ approach: 'A', findings: [], looks: null })
+  })
+
   it('draws approach A as coded blocks and passes', async () => {
     const ai = inspector({ problems: [] })
     const { ctx, fallbacks } = context(ai)

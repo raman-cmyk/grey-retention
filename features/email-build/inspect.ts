@@ -79,7 +79,8 @@ export const subjectMax = 60
 export const previewRange = { min: 20, max: 140 } as const
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-const phrase = (text: string, words: string) =>
+/** `words` in `text` as whole words ("act now", not "contact now"). */
+export const phrase = (text: string, words: string) =>
   new RegExp(`(^|[^a-z0-9])${escape(words)}($|[^a-z0-9])`, 'i').test(text)
 
 /** Text that comes from the store, never from the writer. */
