@@ -6,6 +6,7 @@ import { memoryFallbackLog } from '@/features/fallback/log'
 import { sampleBrand } from '@/features/blocks/samples'
 import {
   AiRunError,
+  AssemblyError,
   type Assembled,
   type CopyFeedback,
   type Draft,
@@ -17,6 +18,7 @@ import { lockContent, type LockedContent, type LockInput } from './content'
 import {
   brandInspectorAgent,
   checkInspection,
+  codeFindings,
   emailChecks,
   emailInspectorAgent,
   priceChecks,
@@ -26,15 +28,21 @@ import {
 
 const tenantId = '00000000-0000-4000-8000-000000000101'
 const brand = { ...sampleBrand, site: 'https://cedar.example.com' }
-const product = (id: string, title: string, price: string): CatalogProduct => ({
+const product = (
+  id: string,
+  title: string,
+  price: string,
+  over: Partial<CatalogProduct> = {}
+): CatalogProduct => ({
   id,
   title,
   price,
   image: `https://cedar.example.com/img/${id}.jpg`,
   url: `https://cedar.example.com/products/${id}`,
-  featurable: true
+  featurable: true,
+  ...over
 })
-const lockInput: LockInput = {
+const lockInput = (over: Partial<LockInput['store']> = {}): LockInput => ({
   slot: {
     date: '2026-11-17',
     emailType: 'offer',
@@ -80,10 +88,11 @@ const lockInput: LockInput = {
     maxDiscountPercent: 20,
     sendAt: '2026-11-17T18:00:00Z',
     timezone: 'America/Los_Angeles',
-    facts: { ...unknownFacts, bannedPhrases: ['miracle'] }
+    facts: { ...unknownFacts, bannedPhrases: ['miracle'] },
+    ...over
   },
   site: 'https://cedar.example.com'
-}
+})
 
 const live = (content: unknown) => ({
   ok: true as const,
@@ -112,6 +121,15 @@ const words = (over: Partial<Record<string, unknown>> = {}) => ({
   ],
   ...over
 })
+const withHeading = (heading: string) => {
+  const w = words()
+  w.blocks[2] = {
+    type: 'product_grid_2col',
+    reason: 'Products.',
+    words: { heading }
+  }
+  return w
+}
 const writer = (...answers: unknown[]) => {
   const queue = [...answers]
   return vi.fn<RunAi>(async () => live(queue.shift() ?? answers.at(-1)))
@@ -147,25 +165,26 @@ const context = (ai: AiCall) => {
     }
   }
 }
-const lock = async (): Promise<LockedContent> =>
-  lockContent(lockInput, context(inspectors()).ctx)
+const lock = async (raw = lockInput()): Promise<LockedContent> =>
+  lockContent(raw, context(inspectors()).ctx)
+const sectionsOf = (locked: LockedContent) =>
+  locked.sections.map((s) => ({ type: s.family, reason: s.purpose }))
 const build = (locked: LockedContent, run: RunAi) => ({
   locked,
+  brandName: brand.name,
   write: (feedback: CopyFeedback[]) =>
-    assembleLocked(
-      locked.input,
-      brand,
-      run,
-      locked.sections.map((s) => ({ type: s.family, reason: s.purpose })),
-      feedback
-    ),
-  plain: () =>
-    assembleLockedPlain(
-      locked.input,
-      brand,
-      locked.sections.map((s) => ({ type: s.family, reason: s.purpose }))
-    )
+    assembleLocked(locked.input, brand, run, sectionsOf(locked), feedback),
+  plain: () => assembleLockedPlain(locked.input, brand, sectionsOf(locked))
 })
+const draftOf = async (locked: LockedContent, answer = words()) =>
+  (
+    await assembleLocked(
+      locked.input,
+      brand,
+      writer(answer),
+      sectionsOf(locked)
+    )
+  ).draft
 const userOf = (run: ReturnType<typeof writer>, call: number) =>
   run.mock.calls[call][0].user
 
@@ -197,8 +216,7 @@ describe('the fix loop', () => {
     const result = await writeAndInspect(build(locked, run), ctx)
     expect(result.status).toBe('passed')
     expect(result.rounds).toHaveLength(2)
-    const rules = result.rounds[0].findings.map((f) => f.rule)
-    expect(rules).toEqual(
+    expect(result.rounds[0].findings.map((f) => f.rule)).toEqual(
       expect.arrayContaining([
         'banned_phrase',
         'subject_shouting',
@@ -211,31 +229,23 @@ describe('the fix loop', () => {
     expect(userOf(run, 1)).toContain('exclamation mark')
   })
 
-  it('finds a wrong price in the words and gets it rewritten', async () => {
+  it('finds a wrong price and a typed link in the words and gets them rewritten', async () => {
     const locked = await lock()
-    const priced = words()
-    priced.blocks[2] = {
-      type: 'product_grid_2col',
-      reason: 'Products.',
-      words: { heading: 'The candle, now only $19' }
-    }
-    const run = writer(priced, words())
+    const run = writer(
+      withHeading('Now only $19, see cedar.example.com/sale'),
+      words()
+    )
     const { ctx } = context(inspectors())
     const result = await writeAndInspect(build(locked, run), ctx)
     expect(result.status).toBe('passed')
-    expect(result.rounds[0].findings).toEqual([
-      {
-        by: 'code',
-        rule: 'wrong_price',
-        field: '3-product_grid_2col',
-        reason:
-          '"$19" is not a product\'s price: never write a price, the system shows it.'
-      }
+    expect(result.rounds[0].findings.map((f) => [f.rule, f.field])).toEqual([
+      ['wrong_price', '3-product_grid_2col'],
+      ['link_in_words', '3-product_grid_2col']
     ])
     expect(run).toHaveBeenCalledTimes(2)
   })
 
-  it('takes an inspector’s exact problem and fix to the rewrite', async () => {
+  it('takes an inspector’s exact problem and fix to the rewrite, and never pays twice for the same draft', async () => {
     const locked = await lock()
     const run = writer(words(), words())
     const ai = inspectors(
@@ -249,22 +259,47 @@ describe('the fix loop', () => {
           }
         ]
       },
+      { problems: [] }
+    )
+    const { ctx } = context(ai)
+    const result = await writeAndInspect(build(locked, run), ctx)
+    // The writer kept sending the same draft: the verdict is reused.
+    expect(result.status).toBe('plain')
+    expect(ai).toHaveBeenCalledTimes(2)
+    expect(result.rounds[0].findings).toEqual([
+      {
+        by: 'brand-inspector',
+        rule: 'brand-inspector',
+        field: '3-product_grid_2col',
+        reason: 'The brand never says "slow". Try: "Made for long evenings"'
+      }
+    ])
+    expect(userOf(run, 1)).toContain('Made for long evenings')
+  })
+
+  it('passes the rewrite an Email inspector problem led to', async () => {
+    const locked = await lock()
+    const run = writer(words(), withHeading('Made for long evenings'))
+    const ai = inspectors(
       { problems: [] },
+      {
+        problems: [
+          {
+            field: '3-product_grid_2col',
+            quote: 'Made for slow evenings',
+            reason: 'Say what the products are for.',
+            fix: ''
+          }
+        ]
+      },
       { problems: [] },
       { problems: [] }
     )
     const { ctx } = context(ai)
     const result = await writeAndInspect(build(locked, run), ctx)
     expect(result.status).toBe('passed')
-    expect(result.rounds[0].findings).toEqual([
-      {
-        by: 'brand-inspector',
-        rule: 'inspector',
-        field: '3-product_grid_2col',
-        reason: 'The brand never says "slow". Try: "Made for long evenings"'
-      }
-    ])
-    expect(userOf(run, 1)).toContain('Made for long evenings')
+    expect(result.rounds[0].findings[0].by).toBe('email-inspector')
+    expect(ai).toHaveBeenCalledTimes(4)
   })
 
   it('never lets an inspector pass a draft code refused', async () => {
@@ -276,7 +311,7 @@ describe('the fix loop', () => {
     const result = await writeAndInspect(build(locked, run), ctx)
     expect(ai).not.toHaveBeenCalled()
     expect(run).toHaveBeenCalledTimes(rewriteRounds + 1)
-    expect(result.status).toBe('plain')
+    expect(result).toMatchObject({ status: 'plain', cause: 'rewrites_failed' })
     if (result.status !== 'plain') return
     expect(result.draft.source).toBe('plain')
     expect(result.draft.productIds).toEqual(['p-candle', 'p-tray'])
@@ -288,10 +323,52 @@ describe('the fix loop', () => {
       fallback: 'Used plain copy: the facts only, in the locked sections.'
     })
     expect(entry.detail.rules).toContain('discount_over_max')
-    expect(JSON.stringify(entry)).not.toContain('30%')
+    const logged = JSON.stringify(entry)
+    for (const secret of ['30%', 'CANDLE10', 'Cedar candle', 'Oak tray', '$'])
+      expect(logged).not.toContain(secret)
   })
 
-  it('falls back to plain copy at once with the fake writer or a used-up allowance', async () => {
+  it('never calls an old product new in plain copy', async () => {
+    const launch = lockInput()
+    launch.slot = {
+      ...launch.slot,
+      emailType: 'launch',
+      offer: null,
+      products: [{ id: 'p-new', title: 'Brass lamp' }]
+    }
+    launch.store.products = [
+      product('p-new', 'Brass lamp', '$90.00', {
+        image: 'http://cdn.example.com/lamp.jpg'
+      }),
+      product('p-candle', 'Cedar candle', '$24.00')
+    ]
+    launch.sections = {
+      ...launch.sections,
+      sections: [
+        { family: 'header_logo', variantId: 'header_logo/seed', purpose: 'L' },
+        {
+          family: 'hero_product',
+          variantId: 'hero_product/seed',
+          purpose: 'The new product.'
+        },
+        { family: 'cta', variantId: 'cta/seed', purpose: 'One action.' },
+        { family: 'footer', variantId: 'footer/seed', purpose: 'Links.' }
+      ]
+    }
+    const locked = await lock(launch)
+    expect(locked.input.products.map((p) => p.id)).toEqual(['p-candle'])
+    const plain = assembleLockedPlain(locked.input, brand, sectionsOf(locked))
+    expect(plain.status).toBe('ready')
+    const shown = JSON.stringify([
+      plain.draft.subject,
+      plain.draft.preheader,
+      plain.draft.blocks.map((b) => b.content)
+    ])
+    expect(shown).not.toMatch(/\bnew\b|launched/i)
+    expect(plain.draft.subject.length).toBeLessThanOrEqual(60)
+  })
+
+  it('goes plain at once with the fake writer or no allowance, and says why', async () => {
     const locked = await lock()
     const fake = vi.fn<RunAi>(async () => ({
       ok: true,
@@ -300,23 +377,84 @@ describe('the fix loop', () => {
       model: 'fake'
     }))
     const one = context(inspectors())
-    expect((await writeAndInspect(build(locked, fake), one.ctx)).status).toBe(
-      'plain'
-    )
+    expect(await writeAndInspect(build(locked, fake), one.ctx)).toMatchObject({
+      status: 'plain',
+      cause: 'no_live_writer'
+    })
     expect(fake).toHaveBeenCalledOnce()
-    const capped = vi.fn<RunAi>(async () => {
+    expect(one.fallbacks.entries()[0].reason).toBe(
+      'No live writer is switched on (sample mode).'
+    )
+    const capped = vi.fn(async (): Promise<Assembled> => {
       throw new AiRunError('cap_reached')
     })
     const two = context(inspectors())
-    const out = await writeAndInspect(
-      { ...build(locked, capped), write: capped as never },
-      two.ctx
-    )
-    expect(out.status).toBe('plain')
+    expect(
+      await writeAndInspect({ ...build(locked, fake), write: capped }, two.ctx)
+    ).toMatchObject({ status: 'plain', cause: 'allowance_used' })
     expect(capped).toHaveBeenCalledOnce()
-    expect(two.fallbacks.entries()[0].reason).toBe(
-      'The copy still failed after 0 tries: no live writer.'
+    expect(two.fallbacks.entries()[0].reason).toContain('allowance is used up')
+  })
+
+  it('asks the job to try again later when the AI is busy, without plain copy', async () => {
+    const locked = await lock()
+    const busy = vi.fn(async (): Promise<Assembled> => {
+      throw new AiRunError('rate_limited', 30)
+    })
+    const { ctx, fallbacks } = context(inspectors())
+    expect(
+      await writeAndInspect({ ...build(locked, writer()), write: busy }, ctx)
+    ).toEqual({
+      status: 'retry',
+      rounds: [],
+      code: 'rate_limited',
+      retryAfterSeconds: 30
+    })
+    expect(fallbacks.entries()).toEqual([])
+  })
+
+  it('gives a wrong-shape answer’s exact problems to the next try', async () => {
+    const locked = await lock()
+    let calls = 0
+    const feedbacks: CopyFeedback[][] = []
+    const write = async (feedback: CopyFeedback[]): Promise<Assembled> => {
+      feedbacks.push(feedback)
+      if (calls++ === 0)
+        throw new AiRunError('invalid_output', undefined, [
+          { field: 'blocks', reason: 'Write exactly 5 blocks in this order.' }
+        ])
+      return assembleLocked(
+        locked.input,
+        brand,
+        writer(words()),
+        sectionsOf(locked)
+      )
+    }
+    const { ctx } = context(inspectors())
+    const result = await writeAndInspect(
+      { ...build(locked, writer()), write },
+      ctx
     )
+    expect(result.status).toBe('passed')
+    expect(feedbacks[1]).toEqual([
+      { field: 'blocks', reason: 'Write exactly 5 blocks in this order.' }
+    ])
+  })
+
+  it('throws when the brief cannot be built, and for bugs', async () => {
+    const locked = await lock()
+    const { ctx } = context(inspectors())
+    for (const error of [
+      new AssemblyError('The product cannot be featured.', 'focus_unavailable'),
+      new TypeError('bug')
+    ]) {
+      const write = async (): Promise<Assembled> => {
+        throw error
+      }
+      await expect(
+        writeAndInspect({ ...build(locked, writer()), write }, ctx)
+      ).rejects.toBe(error)
+    }
   })
 
   it('logs an inspector that cannot answer once, and goes on with code checks', async () => {
@@ -334,51 +472,64 @@ describe('the fix loop', () => {
     ])
   })
 
+  it('logs an inspector that keeps quoting store words, after 3 tries', async () => {
+    const locked = await lock()
+    const price = {
+      problems: [
+        {
+          field: '3-product_grid_2col',
+          quote: '$48.00',
+          reason: 'The price looks high.',
+          fix: ''
+        }
+      ]
+    }
+    const ai = inspectors(price, price, price, { problems: [] })
+    const { ctx, fallbacks } = context(ai)
+    const result = await writeAndInspect(build(locked, writer(words())), ctx)
+    expect(result.status).toBe('passed')
+    expect(fallbacks.entries()[0]).toMatchObject({
+      agent: 'brand-inspector',
+      reasonCode: 'inspector_check_failed',
+      reason:
+        'The brand inspector kept quoting words that are not the writer’s.'
+    })
+  })
+
   it('reports an email that even plain copy cannot make', async () => {
     const locked = await lock()
     const { ctx, fallbacks } = context(inspectors())
     const result = await writeAndInspect(
       {
         ...build(locked, writer(words({ subject: 'x'.repeat(70) }))),
-        plain: (): Assembled => ({
-          status: 'rewrite',
-          draft: {
-            subject: '',
-            preheader: '',
-            plan: [],
-            blocks: [],
-            source: 'plain',
-            productIds: [],
-            code: null
-          },
-          problems: [{ field: 'email', reason: 'Broken.' }]
-        })
+        plain: (): Assembled => {
+          const real = assembleLockedPlain(
+            locked.input,
+            brand,
+            sectionsOf(locked)
+          )
+          return { ...real, draft: { ...real.draft, productIds: ['p-tray'] } }
+        }
       },
       ctx
     )
-    expect(result.status).toBe('failed')
+    expect(result).toMatchObject({ status: 'failed', cause: 'rewrites_failed' })
     expect(fallbacks.entries()[0]).toMatchObject({
       reasonCode: 'copy_failed',
-      fallback: 'Plain copy failed the code checks too: no email was built.'
+      fallback: 'Plain copy failed the code checks too: no email was built.',
+      detail: expect.objectContaining({ plainRules: ['lock_mismatch'] })
     })
   })
 })
 
 describe('the email checks (code)', () => {
-  it('find two main buttons, a link outside the store and a picture without words', async () => {
+  it('find two main buttons, an unlocked link and a picture without words', async () => {
     const locked = await lock()
-    const ready = await assembleLocked(
-      locked.input,
-      brand,
-      writer(words()),
-      locked.sections.map((s) => ({ type: s.family, reason: s.purpose }))
-    )
-    const draft = ready.draft
+    const draft = await draftOf(locked)
     const twice = {
       ...draft,
       blocks: [
-        ...draft.blocks.slice(0, 3),
-        draft.blocks[3],
+        ...draft.blocks.slice(0, 4),
         {
           type: 'cta' as const,
           content: { label: 'Elsewhere', url: 'https://other.example.net/x' }
@@ -389,74 +540,132 @@ describe('the email checks (code)', () => {
             image: 'https://cedar.example.com/img/room.jpg',
             alt: ' ',
             headline: 'Room',
-            url: 'http://cedar.example.com',
+            url: 'https://cedar.example.com',
             cta: 'Look'
           }
         },
         ...draft.blocks.slice(4)
       ] as Draft['blocks']
     }
-    const rules = emailChecks(twice, ['cedar.example.com']).map((f) => [
-      f.rule,
-      f.field
-    ])
-    expect(rules).toEqual(
+    expect(
+      emailChecks(twice, locked, brand.name).map((f) => [f.rule, f.field])
+    ).toEqual(
       expect.arrayContaining([
         ['one_action', 'email'],
-        ['link_host', '5-cta'],
-        ['link_https', '6-hero_image'],
+        ['link_not_locked', '5-cta'],
         ['image_alt', '6-hero_image']
       ])
     )
-    expect(emailChecks(draft, ['cedar.example.com'], 'CANDLE10')).toEqual([])
+    expect(emailChecks(draft, locked, brand.name)).toEqual([])
   })
 
-  it('check subject and preview lengths, and leave the offer code alone in capitals', () => {
-    const draft = {
-      subject: 'CANDLE10 inside',
-      preheader: 'Short',
-      plan: [],
-      blocks: [],
-      source: 'model' as const,
-      productIds: [],
-      code: 'CANDLE10'
-    }
-    expect(emailChecks(draft, [], 'CANDLE10').map((f) => f.rule)).toEqual([
-      'preview_length'
-    ])
+  it('never blame the writer for store words: titles, the brand name and the code', async () => {
+    const locked = await lock(
+      lockInput({
+        products: [
+          product('p-candle', 'CEDAR Candle - $25 Gift Set', '$24.00'),
+          product('p-tray', 'Oak tray, 2 pounds', '$48.00')
+        ]
+      })
+    )
+    const draft = await draftOf(locked)
+    const loud = { ...draft, subject: 'CEDAR Candle - $25 Gift Set: CANDLE10' }
+    expect(emailChecks(loud, locked, 'CEDAR')).toEqual([])
+    expect(priceChecks(loud, locked, 'CEDAR')).toEqual([])
+  })
+
+  it('never blame the writer for a confirmed review', async () => {
+    const raw = lockInput({
+      facts: { ...unknownFacts, reviewsVerified: true },
+      confirmed: {
+        reviews: [
+          { quote: 'A total winner, act now!!!', author: 'Ana', rating: 5 }
+        ]
+      }
+    })
+    raw.sections.sections.splice(3, 0, {
+      family: 'review_strip',
+      variantId: 'review_strip/seed',
+      purpose: 'What customers say.'
+    })
+    const locked = await lock(raw)
+    expect(locked.sections.map((s) => s.family)).toContain('review_strip')
+    const answer = words()
+    answer.blocks.splice(3, 0, {
+      type: 'review_strip',
+      reason: 'Reviews.',
+      words: { heading: 'What people say' }
+    })
+    const draft = await draftOf(locked, answer)
+    expect(JSON.stringify(draft.blocks)).toContain('A total winner')
+    expect(emailChecks(draft, locked, brand.name)).toEqual([])
+  })
+
+  it('check subject and preview lengths', async () => {
+    const locked = await lock()
+    const draft = await draftOf(locked)
+    expect(
+      emailChecks(
+        { ...draft, subject: 'x'.repeat(61), preheader: 'Short' },
+        locked,
+        brand.name
+      ).map((f) => f.rule)
+    ).toEqual(['subject_length', 'preview_length'])
+  })
+
+  it('accept locked product links on another host', async () => {
+    const locked = await lock(
+      lockInput({
+        products: [
+          product('p-candle', 'Cedar candle', '$24.00', {
+            url: 'https://cedar-store.myshopify.com/products/p-candle'
+          }),
+          product('p-tray', 'Oak tray', '$48.00')
+        ]
+      })
+    )
+    const draft = await draftOf(locked)
+    expect(emailChecks(draft, locked, brand.name)).toEqual([])
+  })
+
+  it('flag a draft that does not show the locked products', async () => {
+    const locked = await lock()
+    const draft = await draftOf(locked)
+    expect(
+      codeFindings(
+        { status: 'ready', draft: { ...draft, productIds: ['p-tray'] } },
+        locked,
+        brand.name
+      ).map((f) => f.rule)
+    ).toEqual(['lock_mismatch'])
   })
 })
 
 describe('the price check (code)', () => {
   it('allows a locked product’s real price and refuses any other', async () => {
     const locked = await lock()
-    const { draft } = await assembleLocked(
-      locked.input,
-      brand,
-      writer(words()),
-      locked.sections.map((s) => ({ type: s.family, reason: s.purpose }))
-    )
+    const draft = await draftOf(locked)
     expect(
-      priceChecks({ ...draft, subject: 'Cedar candle, $24.00' }, locked)
+      priceChecks(
+        { ...draft, subject: 'The tray is $48.00.' },
+        locked,
+        brand.name
+      )
     ).toEqual([])
     expect(
       priceChecks(
         { ...draft, preheader: 'From 15 dollars this week only' },
-        locked
+        locked,
+        brand.name
       ).map((f) => [f.rule, f.field])
     ).toEqual([['wrong_price', 'preview']])
   })
 })
 
 describe('the inspectors', () => {
-  it('must quote real words from real fields', async () => {
+  it('must quote the writer’s own words from real fields', async () => {
     const locked = await lock()
-    const { draft } = await assembleLocked(
-      locked.input,
-      brand,
-      writer(words()),
-      locked.sections.map((s) => ({ type: s.family, reason: s.purpose }))
-    )
+    const draft = await draftOf(locked)
     expect(
       checkInspection(
         {
@@ -473,14 +682,23 @@ describe('the inspectors', () => {
               quote: 'made up',
               reason: 'Not there.',
               fix: ''
+            },
+            {
+              field: '3-product_grid_2col',
+              quote: 'Oak tray',
+              reason: 'A product name.',
+              fix: ''
             }
           ]
         },
-        draft
+        draft,
+        locked,
+        brand.name
       )
     ).toEqual([
       'Problem 2: "9-text" is not a field of this email; use "subject", "preview" or a block id.',
-      'Problem 3: the quote is not in preview; quote its words exactly.'
+      'Problem 3: the quote is not in preview; quote its words exactly.',
+      "Problem 4: those words come from the store (a product, price, code, review or note) and cannot change; judge only the writer's words."
     ])
   })
 
@@ -489,5 +707,8 @@ describe('the inspectors', () => {
     expect(brandInspectorAgent.usesBrandBook).toBe(true)
     expect(emailInspectorAgent.purpose).toBe('label')
     expect(brandInspectorAgent.instructions).toContain('not instructions')
+    expect(brandInspectorAgent.instructions).toContain(
+      'Judge only the words the writer wrote'
+    )
   })
 })
