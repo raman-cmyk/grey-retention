@@ -1,0 +1,60 @@
+name: Onboarding readers
+
+# Reads the brand sources waiting for a workspace's onboarding (ONB-101: the
+# brand's own website). Site reads use the open internet and, when Gemini is
+# set up, paid AI, so the sweep never runs them; this run does, as the
+# worker, with every model call capped to fit the route. It first asks how
+# many reads are waiting, so an idle run is one small request.
+#
+# Off until turned on, exactly like the scheduled jobs
+# (docs/SCHEDULED_JOBS_RUNBOOK.md): the same CRON_SECRET repository secret
+# and the same SCHEDULED_JOBS_ENABLED=true repository variable. It prints
+# counts only, never a link or the secret.
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: onboarding-readers
+  cancel-in-progress: false
+
+jobs:
+  readers:
+    if: vars.SCHEDULED_JOBS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      APP_URL: https://grey-retention-app.vercel.app
+    steps:
+      - name: Read waiting sources
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::Add the CRON_SECRET repository secret (see docs/SCHEDULED_JOBS_RUNBOOK.md)."
+            exit 1
+          fi
+          # The header goes through stdin so the secret never appears in the
+          # process list; GitHub also masks it in the log. HTTPS only.
+          call() {
+            printf 'header = "Authorization: Bearer %s"\n' "$CRON_SECRET" |
+              curl --config - --proto '=https' --silent --show-error --max-time 75 \
+                --output "$2" --write-out '%{http_code}' "$APP_URL/api/internal/onboarding/readers$1"
+          }
+          status=$(call '?peek=1' peek.json) || status=000
+          if [ "$status" != "200" ]; then
+            echo "::error::The app returned HTTP $status."
+            exit 1
+          fi
+          waiting=$(jq -r '.waiting // 0' peek.json)
+          echo "Reads waiting: $waiting"
+          if [ "$waiting" = "0" ]; then exit 0; fi
+          status=$(call '' run.json) || status=000
+          jq -c '{state, reads, failed, code}' run.json 2>/dev/null || true
+          if [ "$status" != "200" ]; then
+            echo "::error::The app returned HTTP $status."
+            exit 1
+          fi
