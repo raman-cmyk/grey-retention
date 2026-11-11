@@ -1547,7 +1547,7 @@ Append entries using this exact shape:
 - Branch/worktree: `claude/str-003-part-2-plan-run` (issue #352), stacked on EML-001.
 - Commit(s): see the STR-003 part 2 pull request.
 - Changed contracts: see Global decision STR-003 part 2. New table, six commands, a sidebar item, `/plan` in the proxy matcher, the cron route runs plan steps (its reply gains `plans: { ran }`).
-- Migrations: `strategy_runs` (number chosen at merge time, D24).
+- Migrations: `20260914090053_strategy_runs.sql` (numbered at merge time, D24; after CI-002 `090052`).
 - Verification run: format, lint, typecheck clean; unit tests for the job (sample pulse and plan with the pick, the owner's own run, 2 steps per call, the deadline, retries and final failures, stored data re-checked), the actions (owner only, after() for his run, the tick rules, PT409 shows the plan, plain errors) and the screen (start, progress, offer pick, sample notice, days begun, broken saved data, planned emails, staff); pgTAP `strategy_runs` 66/66; browser: plan (start → offers → ticks refused with "you choose" → plan → reload) and smoke, desktop and mobile.
 - Review: rls-migration-reviewer "no blocking" (null leases, a pick without offers, out-of-date runs, paused workspaces, retry wait, MAINTAIN, tests: all done); code-reviewer "not ready" on paid AI in the sweep and dropped ticks: both fixed as above, with the owner's own run, final failures, re-checked saved data and the sample notice.
 - Known issues: the sample store serves every workspace until lane B's readers and the campaign defaults land, so plans are code-only for now; wiring the agents into the job needs its own route time limit and a longer or renewable lease (a Pro plan step can take minutes). No "Create email" yet (EML wiring).
