@@ -5,6 +5,7 @@ import type { FormResult } from '@/components/ui/action-form'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { createClient } from '@/lib/supabase/server'
 import { runFixtureJobs } from '@/features/integrations/worker'
+import { klaviyoMode } from '@/features/connections/live-klaviyo'
 const commands = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('connection'),
@@ -60,6 +61,19 @@ export async function onboardingAction(
   try {
     const v = parsed.data
     let result: { error: { code?: string; message: string } | null } | undefined
+    // With live Klaviyo on, a sample status never changes the Klaviyo
+    // connection: "connected" after "expired" would hand a live key out
+    // again without a check. Disconnecting stays allowed: it deletes the key.
+    if (
+      v.kind === 'connection' &&
+      v.provider === 'klaviyo' &&
+      v.status !== 'disconnected' &&
+      klaviyoMode() === 'live'
+    )
+      return {
+        error:
+          'Klaviyo is checked with Klaviyo itself now, so its sample status cannot be changed. Paste a key on the Klaviyo card instead.'
+      }
     if (v.kind === 'connection')
       result = await db.rpc('set_fixture_connection', {
         t: context.tenantId,

@@ -241,4 +241,17 @@ describe('CI workflows', () => {
     // The secret only reaches the steps that call the app.
     expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(2)
   })
+  it('keeps the inbox tagging workflow opt-in, HTTPS-only and one request a run', () => {
+    const text = read('inbox-tagging.yml')
+    expect(text).toContain("if: vars.SCHEDULED_JOBS_ENABLED == 'true'")
+    expect(text).toContain("--proto '=https'")
+    expect(text).toMatch(/\npermissions: \{\}\n/)
+    const crons = [...text.matchAll(/- cron: '([^']+)'/g)].map((m) => m[1]!)
+    expect(crons).toEqual(['10,25,40,55 * * * *'])
+    // Nothing is checked out or installed: one call to the app.
+    expect(text).not.toContain('actions/checkout')
+    expect(text).not.toContain('pnpm install')
+    expect(text).toContain('/api/internal/inbox/tags')
+    expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(1)
+  })
 })
