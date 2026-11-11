@@ -624,6 +624,8 @@ export async function lockContent(
     industry?: string | null
     campaignId?: string | null
     fallbacks: FallbackLog
+    /** False: code places the products (no AI call), e.g. a code-only build. */
+    agent?: boolean
   }
 ): Promise<LockedContent> {
   if (localDay(raw.store.sendAt, raw.store.timezone) !== raw.slot.date)
@@ -647,7 +649,7 @@ export async function lockContent(
 
   let placed = codePlacement(needs, pool)
   let source: LockedContent['source'] = 'code'
-  if (needs.length && choice(needs, pool)) {
+  if (ctx.agent !== false && needs.length && choice(needs, pool)) {
     const result = await tryAgent(
       contentLockerAgent,
       (problems) => ({ slot: input.slot, needs, pool, problems }),

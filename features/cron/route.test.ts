@@ -16,6 +16,10 @@ const strategy = vi.hoisted(() => ({
   runStrategyRuns: vi.fn(async () => ({ ran: 1 }))
 }))
 vi.mock('@/features/strategy/worker', () => strategy)
+const emails = vi.hoisted(() => ({
+  runEmailBuilds: vi.fn(async () => ({ ran: 2 }))
+}))
+vi.mock('@/features/email-build/worker', () => emails)
 
 import { GET } from '@/app/api/internal/jobs/route'
 
@@ -146,10 +150,12 @@ describe('GET /api/internal/jobs (scheduled sweep)', () => {
           more: false
         }
       },
-      plans: { ran: 1 }
+      plans: { ran: 1 },
+      emails: { ran: 2 }
     })
     expect(scheduler.runScheduledJobs).toHaveBeenCalledOnce()
     expect(strategy.runStrategyRuns).toHaveBeenCalledOnce()
+    expect(emails.runEmailBuilds).toHaveBeenCalledOnce()
     // The inbox is read first, then the workspace jobs.
     expect(inbox.runInboxStep.mock.invocationCallOrder[0]).toBeLessThan(
       scheduler.runScheduledJobs.mock.invocationCallOrder[0]!
