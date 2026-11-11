@@ -5,8 +5,13 @@ import { InMemoryRunLog, type AiCall } from '@/features/agents/runtime'
 import { memoryFallbackLog } from '@/features/fallback/log'
 import { sampleBrand } from '@/features/blocks/samples'
 import type { BlockType } from '@/features/blocks/catalog'
-import { fill } from '@/features/assembly/assemble'
-import { unknownFacts, type CatalogProduct } from '@/features/assembly/inputs'
+import { fill, productTakes, type RunAi } from '@/features/assembly/assemble'
+import { assembleLocked } from '@/features/assembly/modes'
+import {
+  assemblyInputSchema,
+  unknownFacts,
+  type CatalogProduct
+} from '@/features/assembly/inputs'
 import {
   checkPlacement,
   contentLockerAgent,
@@ -334,6 +339,7 @@ describe('locking products, prices, pictures and links', () => {
     expect(smaller.changes).toEqual([
       { key: 'section_few_products', did: 'smaller_section' }
     ])
+    expect(fallbacks.entries()).toHaveLength(1)
     const none = await lockContent(
       input({
         slot,
@@ -345,7 +351,7 @@ describe('locking products, prices, pictures and links', () => {
           'footer'
         )
       }),
-      ctx
+      context(reply()).ctx
     )
     expect(none.sections.map((s) => s.family)).toEqual([
       'header_logo',
@@ -356,7 +362,6 @@ describe('locking products, prices, pictures and links', () => {
     expect(none.changes).toEqual([
       { key: 'section_few_products', did: 'left_out' }
     ])
-    expect(fallbacks.entries()).toHaveLength(1)
   })
 
   it('uses a confirmed photo for a picture hero, or a product hero without one', async () => {
@@ -444,7 +449,7 @@ describe('the Content locker agent', () => {
   it('gets its exact problems back, then its answer is used', async () => {
     const ai = reply(
       placed(['p-made-up'], ['p-throw']),
-      placed(['p-throw'], ['p-tray'])
+      placed(['p-tray'], ['p-throw'])
     )
     const { ctx } = context(ai)
     const locked = await lockContent(input(), ctx)
@@ -454,12 +459,14 @@ describe('the Content locker agent', () => {
         .fix_these_problems_from_your_last_answer
     ).toEqual([
       '"p-made-up" is not one of the products given.',
-      'Use the planned product "p-tray".'
+      'Use the planned product "p-tray".',
+      'Put the main planned product "p-tray" first, in section 1.',
+      'Place every planned product before any other product.'
     ])
     expect(locked.source).toBe('agent')
     expect(locked.input.products.map((p) => p.id)).toEqual([
-      'p-throw',
-      'p-tray'
+      'p-tray',
+      'p-throw'
     ])
   })
 
@@ -515,7 +522,8 @@ describe('the Content locker agent', () => {
     ])
     // Fewer sections than planned products: only planned ones.
     expect(checkPlacement(placed(['p-mug']), [needs[0]], pool)).toEqual([
-      'Use only planned products: the sections need 1 and 2 are planned.'
+      'Use only planned products: the sections need 1 and 2 are planned.',
+      'Put the main planned product "p-tray" first, in section 1.'
     ])
   })
 
@@ -565,5 +573,351 @@ describe('the filler places locked products exactly where locked', () => {
     )
     expect(problems).toEqual([])
     expect(productIds).toEqual(['p-tray', 'p-throw', 'p-candle', 'p-mug'])
+  })
+})
+
+const sectionsOf = (locked: {
+  sections: { family: BlockType; purpose: string }[]
+}) => locked.sections.map((s) => ({ type: s.family, reason: s.purpose }))
+const fakeWriter = vi.fn<RunAi>(async () => ({
+  ok: true,
+  content: { fixture: true },
+  provider: 'fake',
+  model: 'fake'
+}))
+
+describe('from the lock to the written email', () => {
+  it('puts each locked product in its locked section, with the sample writer', async () => {
+    const { ctx } = context(reply(placed(['p-tray'], ['p-throw'])))
+    const locked = await lockContent(input(), ctx)
+    const built = await assembleLocked(
+      locked.input,
+      sampleBrand,
+      fakeWriter,
+      sectionsOf(locked)
+    )
+    expect(built.status).toBe('sample')
+    expect(built.draft.productIds).toEqual(['p-tray', 'p-throw'])
+    expect(built.draft.blocks.map((b) => b.type)).toEqual(
+      locked.sections.map((s) => s.family)
+    )
+    const hero = built.draft.blocks[1].content as { url: string }
+    expect(hero.url).toBe(locked.sections[1].products[0].url)
+  })
+
+  it('keeps two 2-column grids at two products each, with a live writer', async () => {
+    const sections = plan(
+      'header_logo',
+      'product_grid_2col',
+      'product_grid_2col',
+      'cta',
+      'footer'
+    )
+    const slot = {
+      ...input().slot,
+      products: [
+        { id: 'p-tray', title: 'Oak tray' },
+        { id: 'p-throw', title: 'Linen throw' },
+        { id: 'p-candle', title: 'Cedar candle' },
+        { id: 'p-mug', title: 'Stone mug' }
+      ]
+    }
+    const { ctx } = context(
+      reply(placed(['p-tray', 'p-throw'], ['p-candle', 'p-mug']))
+    )
+    const locked = await lockContent(input({ slot, sections }), ctx)
+    const live = vi.fn<RunAi>(async () => ({
+      ok: true,
+      provider: 'gemini',
+      model: 'writer',
+      content: {
+        subject: 'New for the table',
+        preheader: 'Four new things for slow dinners at home.',
+        blocks: [
+          { type: 'header_logo', reason: 'Logo.', words: {} },
+          {
+            type: 'product_grid_2col',
+            reason: 'Two.',
+            words: { heading: 'For the table' }
+          },
+          {
+            type: 'product_grid_2col',
+            reason: 'Two more.',
+            words: { heading: 'For the shelf' }
+          },
+          { type: 'cta', reason: 'One action.', words: { label: 'Shop now' } },
+          { type: 'footer', reason: 'Links.', words: {} }
+        ]
+      }
+    }))
+    const built = await assembleLocked(
+      locked.input,
+      sampleBrand,
+      live,
+      sectionsOf(locked)
+    )
+    expect(built.status).toBe('ready')
+    const grids = built.draft.blocks
+      .filter((b) => b.type === 'product_grid_2col')
+      .map((b) =>
+        (b.content as { products: { url: string }[] }).products.map((p) =>
+          p.url.split('/').pop()
+        )
+      )
+    expect(grids).toEqual([
+      ['p-tray', 'p-throw'],
+      ['p-candle', 'p-mug']
+    ])
+  })
+})
+
+describe('more safe choices', () => {
+  it('drops the offer when no section can show it, and when the plan has none', async () => {
+    const offer = { id: 'offer:CANDLE10', code: 'CANDLE10', percent: 10 }
+    const broken = context(reply(placed(['p-tray'], ['p-throw'])))
+    const noLink = await lockContent(
+      input({
+        site: 'javascript:alert(1)',
+        slot: { ...input().slot, offer },
+        sections: plan(
+          'header_logo',
+          'offer_banner',
+          'product_grid_2col',
+          'cta',
+          'footer'
+        )
+      }),
+      broken.ctx
+    )
+    expect(noLink.sections.map((s) => s.family)).toEqual([
+      'header_logo',
+      'product_grid_2col',
+      'text',
+      'footer'
+    ])
+    expect(noLink.offer).toBeNull()
+    expect(noLink.input.codes).toEqual([])
+    expect(noLink.input.brief.offerCode).toBeUndefined()
+    expect(noLink.changes).toEqual([
+      { key: 'section_no_link', did: 'left_out' },
+      { key: 'section_no_link', did: 'left_out' },
+      { key: 'offer_no_section', did: 'no_offer' }
+    ])
+    const { ctx } = context(reply(placed(['p-tray'], ['p-throw'])))
+    const noSection = await lockContent(
+      input({ slot: { ...input().slot, offer } }),
+      ctx
+    )
+    expect(noSection.offer).toBeNull()
+    expect(noSection.input.codes).toEqual([])
+    expect(noSection.changes).toEqual([
+      { key: 'offer_no_section', did: 'no_offer' }
+    ])
+  })
+
+  it('treats a blank store link like none: buttons go to the first product', async () => {
+    const { ctx } = context(reply(placed(['p-tray'], ['p-throw'])))
+    const locked = await lockContent(input({ site: '   ' }), ctx)
+    expect(locked.sections[4].link).toEqual({
+      url: 'https://cedar.example.com/products/p-tray',
+      from: 'catalog'
+    })
+  })
+
+  it('leaves out a section the store has nothing for', async () => {
+    const { ctx } = context(reply(placed(['p-tray'], ['p-throw'])))
+    const locked = await lockContent(
+      input({
+        sections: plan(
+          'header_logo',
+          'hero_product',
+          'review_strip',
+          'product_feature',
+          'cta',
+          'footer'
+        )
+      }),
+      ctx
+    )
+    expect(locked.sections.map((s) => s.family)).not.toContain('review_strip')
+    expect(locked.changes).toEqual([
+      { key: 'section_not_fillable', did: 'left_out' }
+    ])
+  })
+
+  it('says a refused planned product was left out when nothing replaced it', async () => {
+    const ai = reply()
+    const { ctx, fallbacks } = context(ai)
+    const locked = await lockContent(
+      input({
+        slot: {
+          ...input().slot,
+          products: [
+            { id: 'p-tray', title: 'Oak tray' },
+            { id: 'p-ask', title: 'Custom table' }
+          ]
+        },
+        sections: plan('header_logo', 'hero_product', 'cta', 'footer')
+      }),
+      ctx
+    )
+    expect(ai).not.toHaveBeenCalled()
+    expect(locked.changes).toEqual([
+      { key: 'product_price_unknown', did: 'skipped_product' }
+    ])
+    expect(fallbacks.entries()[0].fallback).toBe('Left that product out.')
+  })
+
+  it('locks the checked product when the catalog repeats an id', async () => {
+    const store = {
+      ...input().store,
+      products: [
+        products[0],
+        product('p-x', 'Good x', '$5.00'),
+        product('p-x', 'Bad x', 'Ask us', {
+          image: 'http://cdn.example.com/x.jpg'
+        })
+      ]
+    }
+    const slot = {
+      ...input().slot,
+      products: [
+        { id: 'p-tray', title: 'Oak tray' },
+        { id: 'p-x', title: 'x' }
+      ]
+    }
+    const { ctx } = context(reply(placed(['p-tray'], ['p-x'])))
+    const locked = await lockContent(input({ store, slot }), ctx)
+    expect(locked.sections[3].products[0]).toMatchObject({
+      id: 'p-x',
+      title: 'Good x',
+      price: '$5.00'
+    })
+    expect(locked.input.products.map((p) => p.title)).toEqual([
+      'Oak tray',
+      'Good x'
+    ])
+  })
+
+  it('locks at most 6 products, so the writer input fits the job boundary', async () => {
+    const many = Array.from({ length: 9 }, (_, i) =>
+      product(`p-${i}`, `Thing ${i}`, `$${10 + i}.00`)
+    )
+    const slot = {
+      ...input().slot,
+      products: [{ id: 'p-0', title: 'Thing 0' }]
+    }
+    const { ctx } = context(reply('refused'))
+    const locked = await lockContent(
+      input({
+        slot,
+        store: { ...input().store, products: many },
+        sections: plan(
+          'header_logo',
+          'hero_product',
+          'product_grid_3col',
+          'product_grid_3col',
+          'footer'
+        )
+      }),
+      ctx
+    )
+    expect(locked.input.products).toHaveLength(6)
+    expect(locked.sections.map((s) => s.family)).toEqual([
+      'header_logo',
+      'hero_product',
+      'product_grid_3col',
+      'product_grid_2col',
+      'text',
+      'footer'
+    ])
+    expect(assemblyInputSchema.safeParse(locked.input).success).toBe(true)
+  })
+
+  it('locks confirmed customer and founder photos', async () => {
+    const photo = (n: number) => ({
+      image: `https://cdn.example.com/c${n}.jpg`,
+      alt: `Customer photo ${n}`
+    })
+    const { ctx } = context(reply())
+    const locked = await lockContent(
+      input({
+        slot: { ...input().slot, products: [] },
+        store: {
+          ...input().store,
+          confirmed: {
+            customerPhotos: [1, 2, 3, 4].map(photo),
+            founder: {
+              name: 'Ana',
+              photo: photo(9),
+              note: ['We started in a garage.']
+            }
+          }
+        },
+        sections: plan('header_logo', 'founder_note', 'ugc_grid', 'footer')
+      }),
+      ctx
+    )
+    expect(locked.sections[1].photos).toEqual([
+      {
+        url: 'https://cdn.example.com/c9.jpg',
+        alt: 'Customer photo 9',
+        from: 'confirmed photos'
+      }
+    ])
+    expect(locked.sections[2].photos.map((p) => p.url)).toEqual([
+      'https://cdn.example.com/c1.jpg',
+      'https://cdn.example.com/c2.jpg',
+      'https://cdn.example.com/c3.jpg'
+    ])
+  })
+})
+
+describe('agent give-ups', () => {
+  it('log a check that keeps failing, after 3 tries', async () => {
+    const wrong = placed(['p-throw'], ['p-tray'])
+    const ai = reply(wrong, wrong, wrong)
+    const { ctx, fallbacks } = context(ai)
+    const locked = await lockContent(input(), ctx)
+    expect(ai).toHaveBeenCalledTimes(3)
+    expect(locked.source).toBe('code')
+    expect(locked.input.products.map((p) => p.id)).toEqual([
+      'p-tray',
+      'p-throw'
+    ])
+    expect(fallbacks.entries()[0]).toMatchObject({
+      reasonCode: 'content_check_failed',
+      attempts: 3
+    })
+  })
+
+  it('log an answer in the wrong shape', async () => {
+    const ai = reply({ nope: true }, { nope: true }, { nope: true })
+    const { ctx, fallbacks } = context(ai)
+    expect((await lockContent(input(), ctx)).source).toBe('code')
+    expect(fallbacks.entries()[0].reasonCode).toBe('content_answer_invalid')
+  })
+
+  it('leave room for the answer in the output limit', () => {
+    expect(contentLockerAgent.reasoningEffort).toBe('none')
+    expect(contentLockerAgent.maxOutputTokens).toBeGreaterThanOrEqual(400)
+  })
+})
+
+describe('product placement in the filler', () => {
+  it('gives a grid its bigger size only with products to spare', () => {
+    expect(productTakes(['product_grid_2col', 'product_feature'], 5)).toEqual([
+      4, 1
+    ])
+    expect(productTakes(['product_grid_2col', 'product_feature'], 4)).toEqual([
+      2, 1
+    ])
+    expect(productTakes(['product_grid_3col'], 6)).toEqual([6])
+    expect(productTakes(['product_grid_2col', 'product_grid_2col'], 4)).toEqual(
+      [2, 2]
+    )
+    expect(productTakes(['hero_product', 'product_grid_3col'], 3)).toEqual([
+      1, 0
+    ])
   })
 })
