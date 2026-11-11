@@ -4,6 +4,7 @@ vi.mock('server-only', () => ({}))
 import { runAi } from './run'
 import { aiAvailability, aiSetup } from './setup'
 import { InMemoryBudgetLedger, SupabaseBudgetLedger } from './budget-ledger'
+import { geminiEstimateMicro } from '@/lib/providers/gemini-pricing'
 
 const tenantId = '00000000-0000-4000-8000-000000000101'
 const env = (values: Record<string, string>) =>
@@ -293,6 +294,32 @@ describe('runAi', () => {
     // the per-picture allowance keeps it under a cent.
     const reserved = [...ledger.reservations.values()][0]
     expect(reserved.estimateMicro).toBeLessThan(10_000)
+  })
+
+  it('sends and reserves the answer room plus the thinking budget', async () => {
+    const ledger = new InMemoryBudgetLedger(10_000_000)
+    const fetch = vi.fn(async () => geminiOk())
+    const result = await runAi(
+      {
+        tenantId,
+        callerKey: 'review:think',
+        purpose: 'review',
+        request: { ...request, reasoningEffort: 'medium' }
+      },
+      { ledger, env: live, fetch }
+    )
+    expect(result.ok).toBe(true)
+    const body = String(
+      ((fetch.mock.calls as unknown[][])[0][1] as RequestInit).body
+    )
+    expect(JSON.parse(body).generationConfig).toMatchObject({
+      maxOutputTokens: 256 + 4_096,
+      thinkingConfig: { thinkingBudget: 4_096 }
+    })
+    const reserved = [...ledger.reservations.values()][0]
+    expect(reserved.estimateMicro).toBe(
+      geminiEstimateMicro('gemini-2.5-flash', body, 256 + 4_096)
+    )
   })
 
   it('refuses unsafe or too many pictures before reserving anything', async () => {

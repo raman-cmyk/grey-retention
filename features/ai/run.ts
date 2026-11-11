@@ -9,7 +9,11 @@ import {
   type AiProviderResponse
 } from '@/lib/providers/contracts'
 import { FakeAiProvider } from '@/lib/providers/fake'
-import { GeminiProvider, geminiRequestBody } from '@/lib/providers/gemini'
+import {
+  GeminiProvider,
+  geminiOutputTokens,
+  geminiRequestBody
+} from '@/lib/providers/gemini'
 import {
   geminiCostMicro,
   geminiEstimateMicro,
@@ -147,7 +151,7 @@ export async function runAi(
     request.images?.length
       ? geminiRequestBody({ ...request, images: [] })
       : body,
-    request.maxOutputTokens,
+    geminiOutputTokens(request),
     request.images?.length ?? 0
   )
   const reservation = await deps.ledger.reserve({

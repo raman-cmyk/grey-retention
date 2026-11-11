@@ -5,7 +5,9 @@ import { AiProviderError, type AiProviderRequest } from './contracts'
 import {
   GeminiProvider,
   geminiBaseUrl,
+  geminiOutputTokens,
   geminiRequestBody,
+  selfThinkingAllowance,
   geminiUsage,
   maxResponseBytes
 } from './gemini'
@@ -106,7 +108,7 @@ describe('geminiRequestBody', () => {
       })
     )
     expect(body.generationConfig).toEqual({
-      maxOutputTokens: 256,
+      maxOutputTokens: 256 + selfThinkingAllowance,
       temperature: 0
     })
   })
@@ -350,5 +352,79 @@ describe('Gemini pricing', () => {
   it('only allows models with a known price', () => {
     expect(isGeminiModel('gemini-2.5-flash')).toBe(true)
     expect(isGeminiModel('gemini-ultra-unpriced')).toBe(false)
+  })
+})
+
+describe('thinking room (Gemini 2.5 counts thinking as output)', () => {
+  const config = (r: Partial<AiProviderRequest>) =>
+    JSON.parse(geminiRequestBody({ ...request, ...r })).generationConfig
+
+  it('adds the thinking budget on top of the answer room', () => {
+    expect(
+      config({ model: 'gemini-2.5-flash', reasoningEffort: 'low' })
+    ).toMatchObject({
+      maxOutputTokens: 256 + 1_024,
+      thinkingConfig: { thinkingBudget: 1_024 }
+    })
+    expect(
+      config({ model: 'gemini-2.5-flash', reasoningEffort: 'medium' })
+    ).toMatchObject({
+      maxOutputTokens: 256 + 4_096,
+      thinkingConfig: { thinkingBudget: 4_096 }
+    })
+  })
+
+  it('adds nothing when thinking is off, or for Flash-Lite with no effort', () => {
+    expect(config({ reasoningEffort: 'none' }).maxOutputTokens).toBe(256)
+    expect(config({ reasoningEffort: undefined })).toEqual(
+      expect.not.objectContaining({ thinkingConfig: expect.anything() })
+    )
+    expect(config({ reasoningEffort: undefined }).maxOutputTokens).toBe(256)
+  })
+
+  it('keeps room when the model decides its own thinking (3.x, or 2.5 with no effort)', () => {
+    for (const r of [
+      { model: 'gemini-3-flash-preview', reasoningEffort: 'medium' },
+      { model: 'gemini-3.1-flash-lite', reasoningEffort: undefined },
+      { model: 'gemini-2.5-flash', reasoningEffort: undefined },
+      { model: 'gemini-2.5-pro', reasoningEffort: undefined }
+    ] as const) {
+      const c = config(r)
+      expect(c.maxOutputTokens).toBe(256 + selfThinkingAllowance)
+      expect(c.thinkingConfig).toBeUndefined()
+    }
+  })
+
+  it('never asks 2.5 Pro to switch thinking off, which it refuses', () => {
+    expect(
+      config({ model: 'gemini-2.5-pro', reasoningEffort: 'none' })
+    ).toMatchObject({
+      maxOutputTokens: 256 + 128,
+      thinkingConfig: { thinkingBudget: 128 }
+    })
+  })
+
+  it("stays within the model's largest answer", () => {
+    expect(
+      geminiOutputTokens({
+        model: 'gemini-2.5-flash',
+        reasoningEffort: 'medium',
+        maxOutputTokens: 65_000
+      })
+    ).toBe(65_536)
+  })
+
+  it('reserves the same output the request allows', () => {
+    const r = {
+      ...request,
+      model: 'gemini-2.5-flash' as const,
+      reasoningEffort: 'medium' as const
+    }
+    const body = geminiRequestBody(r)
+    expect(
+      geminiEstimateMicro('gemini-2.5-flash', body, geminiOutputTokens(r))
+    ).toBeGreaterThan(
+      geminiEstimateMicro('gemini-2.5-flash', body, r.maxOutputTokens)
+    )
   })
 })
