@@ -1,7 +1,5 @@
 import { z } from 'zod'
-import type { AgentDefinition, AiCall, RunLog } from '@/features/agents/runtime'
-import { runAgent } from '@/features/agents/runtime'
-import type { MemoryStore } from '@/features/agents/memory'
+import type { AgentDefinition } from '@/features/agents/runtime'
 import type { FallbackLog } from '@/features/fallback/log'
 import { keyPart } from '@/features/fallback/entry'
 import { blockTypes, type BlockType } from '@/features/blocks/catalog'
@@ -11,6 +9,7 @@ import {
   type DroppedSection
 } from '@/features/assembly/modes'
 import type { EmailType } from '@/features/strategy/plan'
+import { failedWords, tryAgent, type AgentCtx } from '@/features/strategy/retry'
 
 /**
  * EML-001, layer 1 of the email build (AGENT_MAP.md §4, decisions D1, D18,
@@ -342,8 +341,6 @@ export function codeSectionPlan(input: SectionInput): SectionPlan {
   return { mode: input.mode, sections, dropped: [], source: 'code' }
 }
 
-export const sectionTries = 3
-
 /**
  * Plans the sections for one email. Copy mode is code alone; Remix and
  * Scratch ask the Section planner, check it, retry up to 3 times, then use
@@ -351,16 +348,7 @@ export const sectionTries = 3
  */
 export async function planSections(
   input: SectionInput,
-  ctx: {
-    tenantId: string
-    /** e.g. `slot:<run>:<index>`; also the fallback subject. */
-    callerKey: string
-    memory: MemoryStore
-    log: RunLog
-    ai: AiCall
-    fallbacks: FallbackLog
-    now?: string
-  }
+  ctx: Omit<AgentCtx, 'industry'> & { fallbacks: FallbackLog }
 ): Promise<SectionPlan> {
   if (input.mode === 'copy') return copyPlan(input)
   const variants = searchVariants(input.library, {
@@ -369,65 +357,40 @@ export async function planSections(
     allowed: input.allowed
   })
   const byId = new Map(variants.map((v) => [v.id, v]))
-  let problems: string[] = []
-  let reasonCode = 'sections_check_failed'
-  let runId: string | undefined
-  let tries = 0
-  while (tries < sectionTries) {
-    tries++
-    const result = await runAgent(
-      sectionPlannerAgent,
-      { input, variants, problems },
-      {
-        tenantId: ctx.tenantId,
-        industry: input.industry,
-        callerKey: ctx.callerKey,
-        memory: ctx.memory,
-        log: ctx.log,
-        ai: ctx.ai,
-        now: ctx.now
-      }
-    )
-    runId = result.runId
-    if (!result.ok) {
-      if (result.code !== 'invalid_output') {
-        reasonCode = 'sections_agent_failed'
-        break
-      }
-      reasonCode = 'sections_answer_invalid'
-      problems = ['The answer did not match the required JSON shape.']
-      continue
-    }
-    const planned = result.output.sections.map((s) => ({
+  const planned = (answer: SectionAnswer) =>
+    answer.sections.map((s) => ({
       family: byId.get(s.variantId)?.family ?? null,
       variantId: s.variantId,
       purpose: s.purpose
     }))
-    problems = checkSections(planned, input)
-    if (!problems.length)
-      return {
-        mode: input.mode,
-        sections: planned.map((s) => ({ ...s, family: s.family! })),
-        dropped: [],
-        source: 'agent'
-      }
-    reasonCode = 'sections_check_failed'
-  }
+  const result = await tryAgent(
+    sectionPlannerAgent,
+    (problems) => ({ input, variants, problems }),
+    (answer) => checkSections(planned(answer), input),
+    { ...ctx, industry: input.industry }
+  )
+  if (result.ok)
+    return {
+      mode: input.mode,
+      sections: planned(result.output).map((s) => ({
+        ...s,
+        family: s.family!
+      })),
+      dropped: [],
+      source: 'agent'
+    }
   await ctx.fallbacks.record({
     tenantId: ctx.tenantId,
     campaignId: null,
     agent: sectionPlannerAgent.name,
-    reasonCode,
-    reason:
-      reasonCode === 'sections_agent_failed'
-        ? 'The Section planner could not answer (AI unavailable or the allowance is used up).'
-        : `The Section planner's layout failed the check ${tries === 1 ? 'once' : `${tries} times`}.`,
+    reasonCode: `sections_${result.reasonCode}`,
+    reason: `The Section planner ${failedWords[result.reasonCode]}.`,
     fallback: 'Used the safe standard layout for this email type.',
-    attempts: tries,
+    attempts: result.tries,
     detail: {
       mode: input.mode,
       emailType: input.slot.emailType,
-      ...(runId ? { runId } : {})
+      ...(result.runId ? { runId: result.runId } : {})
     },
     dedupeKey: `section-planner:${keyPart(ctx.callerKey)}`
   })
