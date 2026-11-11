@@ -2,6 +2,7 @@ import type { AiProviderRequest } from '@/lib/providers/contracts'
 import type { BlockBrand } from '@/features/blocks/brand'
 import {
   parseBlock,
+  urlSchema,
   type Block,
   type BlockType
 } from '@/features/blocks/catalog'
@@ -664,15 +665,8 @@ function fitWords(
   return out
 }
 
-/**
- * Places the client's data into the written blocks and checks each one.
- * Product blocks take the next products in order, and no product repeats:
- * a product block with too few products left is dropped and reported.
- * `printed` is what the email will actually say (the clipped words of the
- * kept blocks), which is what the word checks read.
- */
 /** The fewest products each product section shows. */
-export const minProducts: Partial<Record<BlockType, number>> = {
+export const minProducts: Readonly<Partial<Record<BlockType, number>>> = {
   hero_product: 1,
   product_feature: 1,
   image_text: 1,
@@ -680,6 +674,44 @@ export const minProducts: Partial<Record<BlockType, number>> = {
   product_grid_3col: 3
 }
 
+/**
+ * How many products each block shows, in order, the way `fill` places
+ * them (0 for a block that shows none or has too few left). A grid shows
+ * its bigger size (4 or 6) only when the product blocks after it still get
+ * their fewest, so a locked list (EML-002) lands where it was locked.
+ */
+export function productTakes(
+  types: readonly BlockType[],
+  available: number
+): number[] {
+  let left = available
+  return types.map((type, i) => {
+    const min = minProducts[type] ?? 0
+    if (!min || left < min) return 0
+    const spare =
+      left - types.slice(i + 1).reduce((n, t) => n + (minProducts[t] ?? 0), 0)
+    const n =
+      type === 'product_grid_2col'
+        ? spare >= 4
+          ? 4
+          : 2
+        : type === 'product_grid_3col'
+          ? spare >= 6
+            ? 6
+            : 3
+          : 1
+    left -= n
+    return n
+  })
+}
+
+/**
+ * Places the client's data into the written blocks and checks each one.
+ * Product blocks take the next products in order, and no product repeats:
+ * a product block with too few products left is dropped and reported.
+ * `printed` is what the email will actually say (the clipped words of the
+ * kept blocks), which is what the word checks read.
+ */
 export function fill(
   written: Written,
   input: AssemblyInput,
@@ -703,14 +735,10 @@ export function fill(
     return out
   }
   const show = (p: CatalogProduct) => toProduct(p, input.maxDiscountPercent)
-  // A grid shows its bigger size only when the product sections after it
-  // still get theirs, so a locked list (EML-002) lands where it was locked.
-  const later = written.blocks.map((_, i) =>
-    written.blocks
-      .slice(i + 1)
-      .reduce((n, b) => n + (minProducts[b.type] ?? 0), 0)
+  const takes = productTakes(
+    written.blocks.map((b) => b.type),
+    products.length
   )
-  const spare = (index: number) => left() - later[index]
   const link = storeLink(input, brand)
   const code = usableCode(input)
   const c = usableMaterial(input)
@@ -797,14 +825,14 @@ export function fill(
         if (left() < 2) return short(2 - left())
         content = {
           heading: w.heading,
-          products: take(spare(index) >= 4 ? 4 : 2).map(show)
+          products: take(takes[index]).map(show)
         }
         break
       case 'product_grid_3col':
         if (left() < 3) return short(3 - left())
         content = {
           heading: w.heading,
-          products: take(spare(index) >= 6 ? 6 : 3).map(show)
+          products: take(takes[index]).map(show)
         }
         break
       case 'image_text': {
@@ -996,9 +1024,20 @@ export function wordProblems(
   return out
 }
 
-/** The link for buttons and banners: the store, or the first product. */
-export const storeLink = (input: AssemblyInput, brand: BlockBrand) =>
-  brand.site || eligibleProducts(input)[0]?.url || ''
+/**
+ * The link for buttons and banners: the store link when it is a real link,
+ * the first product's page when the brand has none, and nothing (no link
+ * sections) when the store link is broken. The Content locker (EML-002)
+ * uses the same rule.
+ */
+export const storeLink = (
+  input: AssemblyInput,
+  brand: Pick<BlockBrand, 'site'>
+) => {
+  const site = brand.site.trim()
+  if (site) return urlSchema.safeParse(site).success ? site : ''
+  return eligibleProducts(input)[0]?.url ?? ''
+}
 
 /** Blocks that need a link the email has. */
 const linked = new Set<BlockType>(['cta', 'hero_image', 'offer_banner'])

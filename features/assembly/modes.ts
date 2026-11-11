@@ -14,7 +14,9 @@ import {
   fill,
   finish,
   maxBlocks,
+  minProducts,
   oneLine,
+  productTakes,
   storeLink,
   writerData,
   writerGuide,
@@ -114,20 +116,14 @@ const name = (type: BlockType) =>
 const article = (words: string) =>
   `${/^[aeiou]/i.test(words) ? 'an' : 'a'} ${words}`
 
-/** How many products a block takes, the same way `fill` takes them. */
+/**
+ * The fewest products a block needs, or null when too few are left. The
+ * layout budgets the fewest: `fill` gives a grid more only when products
+ * are spare (`productTakes`), so a planned product block is never starved.
+ */
 const productNeed = (type: BlockType, left: number): number | null => {
-  switch (type) {
-    case 'hero_product':
-    case 'product_feature':
-    case 'image_text':
-      return left >= 1 ? 1 : null
-    case 'product_grid_2col':
-      return left >= 4 ? 4 : left >= 2 ? 2 : null
-    case 'product_grid_3col':
-      return left >= 6 ? 6 : left >= 3 ? 3 : null
-    default:
-      return 0
-  }
+  const min = minProducts[type] ?? 0
+  return left >= min ? min : null
 }
 
 export type LayoutStep = { type: BlockType; from: BlockType; reason: string }
@@ -258,10 +254,15 @@ function sampleFixed(
   const products = eligibleProducts(input)
   const isNew = /new|launch|arrival/i.test(input.brief.campaignType)
   const brand = oneLine(brandName, 60)
+  // The same placement as `fill`, so each heading names its own product.
+  const takes = productTakes(
+    steps.map((s) => s.type),
+    products.length
+  )
   let next = 0
-  const blocks: WrittenBlock[] = steps.map((s) => {
+  const blocks: WrittenBlock[] = steps.map((s, i) => {
     const product = products[next]
-    next += productNeed(s.type, products.length - next) ?? 0
+    next += takes[i]
     const title = product?.title ?? brand
     const words: Partial<Record<BlockType, Words>> = {
       announcement_bar: {
@@ -375,11 +376,12 @@ async function writeFixed(
 }
 
 /**
- * EML-002 and EML-003: the Copywriter writes into the Content locker's
- * sections, in their order, with only the locked products and code
- * (`LockedContent.input`). Same checks and fail-closed result as ASM-001;
- * every locked product must show. `feedback` carries the inspectors' and
- * the code checks' exact reasons from the last try.
+ * EML-002: the Copywriter writes into the Content locker's sections, in
+ * their order, with only the locked products and code
+ * (`LockedContent.input`), so each locked product lands in its locked
+ * section (`productTakes`). Same checks and fail-closed result as ASM-001;
+ * every locked product must show. `feedback` carries the last try's exact
+ * reasons (EML-003's inspectors and code checks).
  */
 export async function assembleLocked(
   input: AssemblyInput,

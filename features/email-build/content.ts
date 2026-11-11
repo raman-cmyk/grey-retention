@@ -3,17 +3,26 @@ import type { AgentDefinition } from '@/features/agents/runtime'
 import type { FallbackLog } from '@/features/fallback/log'
 import { keyPart } from '@/features/fallback/entry'
 import { urlSchema, type BlockType } from '@/features/blocks/catalog'
-import { amount, endsText, toProduct } from '@/features/assembly/assemble'
+import {
+  amount,
+  endsText,
+  storeLink,
+  toProduct
+} from '@/features/assembly/assemble'
 import {
   allowedBlockTypes,
-  maxProducts,
   productProblem,
   usableMaterial,
   type AssemblyInput,
   type CatalogProduct
 } from '@/features/assembly/inputs'
 import type { PlannedSlot } from '@/features/strategy/plan'
-import { failedWords, tryAgent, type AgentCtx } from '@/features/strategy/retry'
+import {
+  failedWords,
+  outputLimit,
+  tryAgent,
+  type AgentCtx
+} from '@/features/strategy/retry'
 import { productNeed, type PlannedSection, type SectionPlan } from './sections'
 
 /**
@@ -41,6 +50,7 @@ export const changeWords = {
   offer_not_in_codes: 'the planned code is not in the discount codes',
   offer_ended: 'the planned code ends before the email sends',
   offer_above_max: 'the planned code is above the max discount',
+  offer_no_section: 'the email has no section that shows the offer',
   section_no_offer: 'an offer section has no offer to show',
   section_no_photo: 'a picture section has no confirmed photo',
   section_few_products: 'a product section has too few products',
@@ -187,6 +197,12 @@ export type Pool = {
   refused: ChangeKey[]
 }
 
+/**
+ * At most this many products are locked: the job boundary's limit for the
+ * brief's products (`assemblyInputSchema`, `focusProductIds`).
+ */
+export const maxLocked = 6
+
 /** Lockable products: the slot's first (in plan order), then the catalog's. */
 export function productPool(input: LockInput): Pool {
   const byId = new Map(input.store.products.map((p) => [p.id, p]))
@@ -200,23 +216,27 @@ export function productPool(input: LockInput): Pool {
   }
   const others = input.store.products
     .filter((p) => !plannedIds.includes(p.id) && productLock(p) === null)
-    .slice(0, Math.max(maxProducts - planned.length, 0))
-  return { planned: planned.slice(0, maxProducts), others, refused }
+    .slice(0, Math.max(maxLocked - planned.length, 0))
+  return { planned: planned.slice(0, maxLocked), others, refused }
 }
 
 /**
  * The section plan, cut to what can be locked: offer sections need the
  * offer, a picture hero needs a confirmed photo (else a product hero),
- * product sections need enough products (else a smaller one), and every
- * other section needs what its block shows. A replaced section uses the
- * family's seed variant. The email always keeps a message.
+ * product sections need enough products (else a smaller one), button and
+ * banner sections need a link (`storeLink`'s rule), and every other
+ * section needs what its block shows. A replaced section uses the
+ * family's seed variant. The email always keeps a message. An offer with
+ * no offer section left is dropped too, so the writer never gets a code
+ * it cannot show.
  */
 export function lockableSections(
   input: LockInput,
   pool: Pool,
-  offer: LockedOffer | null,
+  lockedOffer: LockedOffer | null,
   changes: Change[]
-): PlannedSection[] {
+): { sections: PlannedSection[]; offer: LockedOffer | null } {
+  let offer = lockedOffer
   const full: AssemblyInput = {
     ...input.store,
     brief: {
@@ -264,7 +284,22 @@ export function lockableSections(
     }
     out.push(s)
   }
-  return withMessage(out, (s) => s)
+  // `storeLink`: a real store link, else the first product's page when the
+  // brand has none; a broken store link means no link sections.
+  const site = input.site.trim()
+  const hasLink = site
+    ? urlSchema.safeParse(site).success
+    : out.some((s) => productNeed[s.family])
+  const kept = out.filter((s) => {
+    if (hasLink || !linked.has(s.family)) return true
+    changes.push({ key: 'section_no_link', did: 'left_out' })
+    return false
+  })
+  if (offer && !kept.some((s) => s.family === 'offer_banner')) {
+    changes.push({ key: 'offer_no_section', did: 'no_offer' })
+    offer = null
+  }
+  return { sections: withMessage(kept, (s) => s), offer }
 }
 
 const message: PlannedSection = {
@@ -384,9 +419,10 @@ export const contentLockerAgent: AgentDefinition<LockTask, LockAnswer> = {
     }
   },
   output: answer,
-  maxOutputTokens: 400,
+  // No thinking: placing ids is simple, and thinking would count as output.
+  maxOutputTokens: outputLimit(400, 'none'),
   temperature: 0.2,
-  reasoningEffort: 'low'
+  reasoningEffort: 'none'
 }
 
 /** Code's check of a placement; empty means it passed. */
@@ -431,6 +467,20 @@ export function checkPlacement(
     problems.push(
       `Use only planned products: the sections need ${total} and ${planned.length} are planned.`
     )
+  // The plan's main product leads; planned products come before others.
+  const order = [...needs]
+    .sort((a, b) => a.section - b.section)
+    .flatMap((n) => answered.get(n.section) ?? [])
+  if (planned.length && order.length && order[0] !== planned[0])
+    problems.push(
+      `Put the main planned product "${planned[0]}" first, in section 1.`
+    )
+  const firstOther = order.findIndex((id) => !planned.includes(id))
+  if (
+    firstOther >= 0 &&
+    order.slice(firstOther).some((id) => planned.includes(id))
+  )
+    problems.push('Place every planned product before any other product.')
   return problems
 }
 
@@ -487,13 +537,6 @@ export function lockFrom(
       from: 'catalog'
     }
   }
-  const storeLink = urlSchema.safeParse(input.site).success
-    ? { url: input.site, from: 'store link' as const }
-    : // `fill` (ASM-001) falls back to the first product's page only when
-      // the brand has no store link at all.
-      !input.site.trim() && ordered[0]
-      ? { url: ordered[0].url, from: 'catalog' as const }
-      : null
   const writer: AssemblyInput = {
     ...input.store,
     brief: {
@@ -505,14 +548,21 @@ export function lockFrom(
     products: ordered,
     codes: input.store.codes.filter((c) => c.code === offer?.code)
   }
+  // The same link `fill` puts on buttons and banners.
+  const url = storeLink(writer, { site: input.site })
+  const link = url
+    ? {
+        url,
+        from:
+          url === input.site.trim()
+            ? ('store link' as const)
+            : ('catalog' as const)
+      }
+    : null
   const material = usableMaterial(writer)
   let n = 0
   const locked: LockedSection[] = []
   for (const s of sections) {
-    if (linked.has(s.family) && !storeLink) {
-      changes.push({ key: 'section_no_link', did: 'left_out' })
-      continue
-    }
     const products = productNeed[s.family]
       ? (inSection.get(++n) ?? []).map((id) => show(byId.get(id)!))
       : []
@@ -531,7 +581,7 @@ export function lockFrom(
       ...s,
       products,
       photos,
-      link: linked.has(s.family) ? storeLink : null
+      link: linked.has(s.family) ? link : null
     })
   }
   return {
@@ -560,27 +610,44 @@ const sentence = (parts: string[]) => {
   return `${text.charAt(0).toUpperCase()}${text.slice(1)}.`
 }
 
+/** The catalog with each id once (the first wins), so one product is checked and locked. */
+const firstById = (products: readonly CatalogProduct[]) => {
+  const seen = new Set<string>()
+  return products.filter((p) => !seen.has(p.id) && !!seen.add(p.id))
+}
+
 /**
  * Locks one email's content. Code decides what can be shown; the Content
  * locker places products when there is a choice (3 tries with the exact
  * problems), else code places them in plan order. Never throws for an
- * agent problem; throws when the send time is not on the slot's day.
+ * agent problem. Throws for bad input: a send time not on the slot's day,
+ * an unknown timezone or an unreadable send time (`RangeError`).
  */
 export async function lockContent(
-  input: LockInput,
+  raw: LockInput,
   ctx: Omit<AgentCtx, 'industry'> & {
     industry?: string | null
     campaignId?: string | null
     fallbacks: FallbackLog
   }
 ): Promise<LockedContent> {
-  if (localDay(input.store.sendAt, input.store.timezone) !== input.slot.date)
+  if (localDay(raw.store.sendAt, raw.store.timezone) !== raw.slot.date)
     throw new Error('The send time is not on the slot’s day.')
+  const input: LockInput = {
+    ...raw,
+    store: { ...raw.store, products: firstById(raw.store.products) },
+    site: raw.site.trim()
+  }
   const changes: Change[] = []
-  const { offer, change } = offerLock(input.slot, input.store)
-  if (change) changes.push({ key: change, did: 'no_offer' })
+  const locked0 = offerLock(input.slot, input.store)
+  if (locked0.change) changes.push({ key: locked0.change, did: 'no_offer' })
   const pool = productPool(input)
-  const sections = lockableSections(input, pool, offer, changes)
+  const { sections, offer } = lockableSections(
+    input,
+    pool,
+    locked0.offer,
+    changes
+  )
   const needs = productNeeds(sections)
 
   let placed = codePlacement(needs, pool)
