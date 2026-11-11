@@ -34,6 +34,69 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_fallbacks: {
+        Row: {
+          agent: string
+          attempts: number
+          campaign_id: string | null
+          created_at: string
+          dedupe_key: string
+          detail: Json
+          fallback: string
+          id: string
+          last_seen_at: string
+          occurrences: number
+          reason: string
+          reason_code: string
+          tenant_id: string | null
+        }
+        Insert: {
+          agent: string
+          attempts?: number
+          campaign_id?: string | null
+          created_at?: string
+          dedupe_key: string
+          detail?: Json
+          fallback: string
+          id?: string
+          last_seen_at?: string
+          occurrences?: number
+          reason: string
+          reason_code: string
+          tenant_id?: string | null
+        }
+        Update: {
+          agent?: string
+          attempts?: number
+          campaign_id?: string | null
+          created_at?: string
+          dedupe_key?: string
+          detail?: Json
+          fallback?: string
+          id?: string
+          last_seen_at?: string
+          occurrences?: number
+          reason?: string
+          reason_code?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'agent_fallbacks_tenant_id_campaign_id_fkey'
+            columns: ['tenant_id', 'campaign_id']
+            isOneToOne: false
+            referencedRelation: 'campaigns'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'agent_fallbacks_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       agent_memory_rules: {
         Row: {
           applies_to: string[]
@@ -5808,6 +5871,23 @@ export type Database = {
         Args: { brand: string; sender: string }
         Returns: number
       }
+      admin_fallback_log: {
+        Args: { max_rows?: number }
+        Returns: {
+          agent: string
+          attempts: number
+          campaign_id: string
+          created_at: string
+          detail: Json
+          fallback: string
+          id: string
+          last_seen_at: string
+          occurrences: number
+          reason: string
+          reason_code: string
+          workspace: string
+        }[]
+      }
       admin_inbox_brand_counts: {
         Args: never
         Returns: {
@@ -6487,6 +6567,20 @@ export type Database = {
           path: string
         }
         Returns: undefined
+      }
+      record_fallback: {
+        Args: {
+          agent_key: string
+          campaign: string
+          dedupe: string
+          facts: Json
+          fallback_text: string
+          reason_key: string
+          reason_text: string
+          tenant: string
+          tries: number
+        }
+        Returns: string
       }
       record_import_item: {
         Args: {

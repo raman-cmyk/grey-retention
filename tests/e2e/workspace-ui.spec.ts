@@ -120,7 +120,7 @@ test('Klaviyo detail pages render with a heading and no overflow', async ({
   expect(errors).toEqual([])
 })
 
-test('core workspace surfaces render without overflow and invalid review dates recover', async ({
+test('core workspace surfaces render without overflow', async ({
   page
 }, info) => {
   await login(page)
@@ -129,8 +129,6 @@ test('core workspace surfaces render without overflow and invalid review dates r
   for (const [path, heading] of [
     ['/dashboard', 'Dashboard'],
     ['/campaign-agent', 'Campaigns'],
-    ['/copy-review?week=2026-99-99', 'Weekly copy review'],
-    ['/copy-review?week=2026-02-31', 'Weekly copy review'],
     ['/brand', 'Brand & Store'],
     ['/assets', 'Brand assets'],
     ['/gros', 'Ask GROS'],

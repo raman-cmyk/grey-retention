@@ -81,3 +81,24 @@ test('RET-001 the designer workflow is retired (decision D3)', async ({
   expect((await page.request.get('/admin/designers')).status()).toBe(404)
   await expect(page.getByRole('link', { name: 'Designers' })).toHaveCount(0)
 })
+
+test('RET-002 the weekly copy review is retired (decision D17)', async ({
+  page
+}) => {
+  await login(page)
+  for (const path of ['/copy-review', '/copy-review?week=2026-11-09'])
+    expect((await page.request.get(path)).status(), path).toBe(404)
+  await page.goto('/campaign-agent')
+  await expect(page.locator('a[href^="/copy-review"]')).toHaveCount(0)
+})
+
+test('RET-002 admins read the fallback log on Operations (decision D16)', async ({
+  page
+}) => {
+  await login(page, 'admin')
+  await page.goto('/admin/operations')
+  await expect(
+    page.getByRole('heading', { name: 'Fallback log', exact: true })
+  ).toBeVisible()
+  await expect(page.getByText('No fallbacks yet.')).toBeVisible()
+})

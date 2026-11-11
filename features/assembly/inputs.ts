@@ -210,7 +210,7 @@ export const assemblyInputSchema = z.object({
     .optional()
 }) satisfies z.ZodType<AssemblyInput>
 
-/** Why a product cannot be placed, for the ops queue. */
+/** Why a product cannot be placed, for the fallback log (D16). */
 export function productProblem(p: CatalogProduct): string | null {
   if (!p.featurable) return 'not featurable'
   const checked = productSchema.safeParse({
@@ -283,7 +283,7 @@ export function usableMaterial(input: AssemblyInput) {
 
 /**
  * A focus product the brief names but that cannot be placed. The email is
- * not built without it: a person fixes the catalog or the brief.
+ * not built without it: the job falls back and logs why (D16).
  */
 export function missingFocus(input: AssemblyInput) {
   return (input.brief.focusProductIds ?? []).flatMap((id) => {

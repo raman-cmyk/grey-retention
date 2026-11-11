@@ -1,6 +1,4 @@
 import type { Route } from 'next'
-import Link from 'next/link'
-import { ArrowRight } from 'lucide-react'
 import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
 import { BrandCheck } from '@/features/brand-profile/brand-check'
 import { CampaignEditor } from '@/features/campaigns/editor'
@@ -74,26 +72,6 @@ export default async function CampaignAgentPage({
             tenantId={context.tenantId}
             action="GROS plans or writes your campaigns"
           />
-          {owner && (
-            <Link
-              href="/copy-review"
-              className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] px-5 py-4 transition-colors hover:bg-[var(--surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:outline-hidden"
-            >
-              <div>
-                <span className="text-sm font-semibold">
-                  Weekly copy review
-                </span>
-                <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
-                  Review approved calendar entries and confirm the exact copy
-                  batch.
-                </p>
-              </div>
-              <span className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--brand-ink)]">
-                Open weekly copy review
-                <ArrowRight className="size-4" aria-hidden="true" />
-              </span>
-            </Link>
-          )}
           <div id="planning" className="scroll-mt-28">
             <PlanningPanel
               tenantId={context.tenantId}

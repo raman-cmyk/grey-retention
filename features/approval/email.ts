@@ -15,6 +15,9 @@ import {
  * approval itself happens there, on a button the owner presses, so a mail
  * scanner that opens links can never approve anything (see links.ts).
  * Replies are not read yet, so the email does not invite them.
+ *
+ * Hidden by decision D17 (RET-002): there is no weekly approval. Nothing
+ * routes to, schedules or imports this code; it is kept for reference.
  */
 export type ApprovalEmailItem = BatchItem & {
   /** The 375px screenshot QA made (Step 4), reused here. */
