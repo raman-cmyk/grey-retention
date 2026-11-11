@@ -1786,16 +1786,25 @@ export type Database = {
       }
       competitor_emails: {
         Row: {
+          angle: string | null
+          brand_size: string | null
           capture_id: string
           created_at: string
+          email_type: string | null
           external_id: string
           extraction_version: number | null
           facts: Json | null
           html_path: string | null
           id: string
           inbox_message_id: string | null
+          industry: string | null
           labelled_at: string | null
+          labels_confidence: number | null
+          labels_model: string | null
+          labels_pass: string | null
+          labels_state: string | null
           micro: Json
+          offer_type: string | null
           preview_text: string | null
           raw_path: string | null
           received_at: string
@@ -1803,21 +1812,31 @@ export type Database = {
           screenshot_height: number | null
           screenshot_path: string | null
           screenshot_width: number | null
+          season: string | null
           subject: string
           synthetic: boolean
           text_content: string
         }
         Insert: {
+          angle?: string | null
+          brand_size?: string | null
           capture_id: string
           created_at?: string
+          email_type?: string | null
           external_id: string
           extraction_version?: number | null
           facts?: Json | null
           html_path?: string | null
           id?: string
           inbox_message_id?: string | null
+          industry?: string | null
           labelled_at?: string | null
+          labels_confidence?: number | null
+          labels_model?: string | null
+          labels_pass?: string | null
+          labels_state?: string | null
           micro: Json
+          offer_type?: string | null
           preview_text?: string | null
           raw_path?: string | null
           received_at: string
@@ -1825,21 +1844,31 @@ export type Database = {
           screenshot_height?: number | null
           screenshot_path?: string | null
           screenshot_width?: number | null
+          season?: string | null
           subject: string
           synthetic?: boolean
           text_content: string
         }
         Update: {
+          angle?: string | null
+          brand_size?: string | null
           capture_id?: string
           created_at?: string
+          email_type?: string | null
           external_id?: string
           extraction_version?: number | null
           facts?: Json | null
           html_path?: string | null
           id?: string
           inbox_message_id?: string | null
+          industry?: string | null
           labelled_at?: string | null
+          labels_confidence?: number | null
+          labels_model?: string | null
+          labels_pass?: string | null
+          labels_state?: string | null
           micro?: Json
+          offer_type?: string | null
           preview_text?: string | null
           raw_path?: string | null
           received_at?: string
@@ -1847,6 +1876,7 @@ export type Database = {
           screenshot_height?: number | null
           screenshot_path?: string | null
           screenshot_width?: number | null
+          season?: string | null
           subject?: string
           synthetic?: boolean
           text_content?: string
@@ -2933,11 +2963,17 @@ export type Database = {
           label_model: string | null
           label_source: string | null
           labelled_at: string | null
+          layout: string | null
           links: Json
           ordinal: number
           owner_block_type: string | null
           owner_labelled_at: string | null
           owner_labelled_by: string | null
+          purpose: string | null
+          styles: string[] | null
+          tag_pass: string | null
+          tag_state: string | null
+          tag_version: string | null
           text: string
           top: number | null
           wide_images: number
@@ -2957,11 +2993,17 @@ export type Database = {
           label_model?: string | null
           label_source?: string | null
           labelled_at?: string | null
+          layout?: string | null
           links?: Json
           ordinal: number
           owner_block_type?: string | null
           owner_labelled_at?: string | null
           owner_labelled_by?: string | null
+          purpose?: string | null
+          styles?: string[] | null
+          tag_pass?: string | null
+          tag_state?: string | null
+          tag_version?: string | null
           text?: string
           top?: number | null
           wide_images?: number
@@ -2981,11 +3023,17 @@ export type Database = {
           label_model?: string | null
           label_source?: string | null
           labelled_at?: string | null
+          layout?: string | null
           links?: Json
           ordinal?: number
           owner_block_type?: string | null
           owner_labelled_at?: string | null
           owner_labelled_by?: string | null
+          purpose?: string | null
+          styles?: string[] | null
+          tag_pass?: string | null
+          tag_state?: string | null
+          tag_version?: string | null
           text?: string
           top?: number | null
           wide_images?: number
@@ -3499,10 +3547,13 @@ export type Database = {
       inbox_messages: {
         Row: {
           alias_slug: string | null
+          angle: string | null
           assets_state: string
+          brand_size: string | null
           capture_id: string | null
           confirm_url: string | null
           created_at: string
+          email_type: string | null
           extraction_version: number | null
           facts: Json | null
           from_address: string | null
@@ -3511,11 +3562,17 @@ export type Database = {
           id: string
           images_failed: number
           images_stored: number
+          industry: string | null
           labelled_at: string | null
+          labels_confidence: number | null
+          labels_model: string | null
+          labels_pass: string | null
+          labels_state: string | null
           mailbox_id: string
           marked_html_path: string | null
           message_key: string
           method: string | null
+          offer_type: string | null
           preheader: string | null
           raw_bytes: number
           raw_path: string | null
@@ -3525,6 +3582,7 @@ export type Database = {
           screenshot_height: number | null
           screenshot_path: string | null
           screenshot_width: number | null
+          season: string | null
           signal: string | null
           state: string
           subject: string
@@ -3537,10 +3595,13 @@ export type Database = {
         }
         Insert: {
           alias_slug?: string | null
+          angle?: string | null
           assets_state?: string
+          brand_size?: string | null
           capture_id?: string | null
           confirm_url?: string | null
           created_at?: string
+          email_type?: string | null
           extraction_version?: number | null
           facts?: Json | null
           from_address?: string | null
@@ -3549,11 +3610,17 @@ export type Database = {
           id?: string
           images_failed?: number
           images_stored?: number
+          industry?: string | null
           labelled_at?: string | null
+          labels_confidence?: number | null
+          labels_model?: string | null
+          labels_pass?: string | null
+          labels_state?: string | null
           mailbox_id: string
           marked_html_path?: string | null
           message_key: string
           method?: string | null
+          offer_type?: string | null
           preheader?: string | null
           raw_bytes: number
           raw_path?: string | null
@@ -3563,6 +3630,7 @@ export type Database = {
           screenshot_height?: number | null
           screenshot_path?: string | null
           screenshot_width?: number | null
+          season?: string | null
           signal?: string | null
           state: string
           subject?: string
@@ -3575,10 +3643,13 @@ export type Database = {
         }
         Update: {
           alias_slug?: string | null
+          angle?: string | null
           assets_state?: string
+          brand_size?: string | null
           capture_id?: string | null
           confirm_url?: string | null
           created_at?: string
+          email_type?: string | null
           extraction_version?: number | null
           facts?: Json | null
           from_address?: string | null
@@ -3587,11 +3658,17 @@ export type Database = {
           id?: string
           images_failed?: number
           images_stored?: number
+          industry?: string | null
           labelled_at?: string | null
+          labels_confidence?: number | null
+          labels_model?: string | null
+          labels_pass?: string | null
+          labels_state?: string | null
           mailbox_id?: string
           marked_html_path?: string | null
           message_key?: string
           method?: string | null
+          offer_type?: string | null
           preheader?: string | null
           raw_bytes?: number
           raw_path?: string | null
@@ -3601,6 +3678,7 @@ export type Database = {
           screenshot_height?: number | null
           screenshot_path?: string | null
           screenshot_width?: number | null
+          season?: string | null
           signal?: string | null
           state?: string
           subject?: string
@@ -6078,6 +6156,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      defer_platform_job: {
+        Args: {
+          delay_seconds: number
+          job: string
+          lease: string
+          reason: string
+        }
+        Returns: undefined
+      }
       define_fixture_package: {
         Args: { allocation: number; daily: number; name: string }
         Returns: string
@@ -6451,6 +6538,16 @@ export type Database = {
         }
         Returns: number
       }
+      record_inbox_tags: {
+        Args: {
+          email: Json
+          facts: Json
+          job: string
+          lease: string
+          version: number
+        }
+        Returns: Json
+      }
       record_render_upload: {
         Args: {
           byte_size: number
@@ -6461,6 +6558,15 @@ export type Database = {
           section: string
         }
         Returns: undefined
+      }
+      record_section_tags: {
+        Args: {
+          job: string
+          lease: string
+          sections: Json
+          tag_version: string
+        }
+        Returns: number
       }
       recover_expired_usage: { Args: { t: string }; Returns: number }
       refresh_catalog_stock: {

@@ -7,7 +7,7 @@ import type { EmailSection } from './sections'
  * without AI, so the same email always gives the same facts.
  */
 
-export const factsVersion = 1
+export const factsVersion = 2
 
 export const angles = [
   'restock',
