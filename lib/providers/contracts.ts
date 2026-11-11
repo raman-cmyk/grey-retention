@@ -25,6 +25,12 @@ export interface RetentionProvider {
   listMetrics(cursor?: string): Promise<Page<ExternalRecord>>
 }
 
+export type AiImage = {
+  mediaType: 'image/jpeg' | 'image/png' | 'image/webp'
+  /** Base64 without a data: prefix. */
+  base64: string
+}
+
 export interface AiProviderRequest {
   system: string
   user: string
@@ -38,6 +44,11 @@ export interface AiProviderRequest {
   timeoutMs?: number
   /** Hashed, non-identifying end-user identifier for provider abuse checks. */
   safetyIdentifier?: string
+  /**
+   * Pictures sent with the task (section crops, email screenshots). Only
+   * JPEG, PNG and WebP; the adapter sends them after the task text.
+   */
+  images?: AiImage[]
 }
 
 export interface AiProviderResponse {

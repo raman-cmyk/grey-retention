@@ -20,7 +20,9 @@ import type { BudgetFeature, BudgetLedger } from './budget-ledger'
 
 const purposeFeature: Record<AiPurpose, BudgetFeature> = {
   label: 'learning',
-  copy: 'copy'
+  copy: 'copy',
+  plan: 'playbook',
+  review: 'learning'
 }
 
 export type AiRunResult =
@@ -45,11 +47,28 @@ export type AiRunResult =
       diagnostic?: string
     }
 
+/** Most pictures one call may carry. */
+export const maxImages = 8
+
 const runInput = z.object({
-  tenantId: z.uuid(),
+  tenantId: z.uuid().nullable(),
   callerKey: z.string().trim().min(1).max(120),
-  purpose: z.enum(['label', 'copy']),
-  maxOutputTokens: z.number().int().min(1).max(65_536)
+  purpose: z.enum(['label', 'copy', 'plan', 'review']),
+  maxOutputTokens: z.number().int().min(1).max(65_536),
+  images: z
+    .array(
+      z.object({
+        mediaType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+        // About 3 MB of picture per image; base64 only.
+        base64: z
+          .string()
+          .min(16)
+          .max(4_000_000)
+          .regex(/^[A-Za-z0-9+/]+={0,2}$/)
+      })
+    )
+    .max(maxImages)
+    .optional()
 })
 
 /**
@@ -62,10 +81,15 @@ const runInput = z.object({
  * so a retry is always charged and can never reuse a settled reservation.
  * Callers make their work idempotent by storing the result before marking
  * their job done. The caller must already have authorised the tenant.
+ *
+ * `tenantId: null` is platform work that belongs to no client (labelling
+ * competitor emails in the Inspiration inbox); it is metered against the
+ * platform's own daily cap instead of a client's package.
  */
 export async function runAi(
   input: {
-    tenantId: string
+    /** The client workspace, or null for platform work. */
+    tenantId: string | null
     /** What the call is for, e.g. `section:<id>`; never a raw job id. */
     callerKey: string
     purpose: AiPurpose
@@ -82,7 +106,8 @@ export async function runAi(
     tenantId: input.tenantId,
     callerKey: input.callerKey,
     purpose: input.purpose,
-    maxOutputTokens: input.request.maxOutputTokens
+    maxOutputTokens: input.request.maxOutputTokens,
+    images: input.request.images
   })
   if (!valid.success) return { ok: false, code: 'rejected_request' }
   const setup = aiSetup(input.purpose, deps.env)
@@ -119,8 +144,11 @@ export async function runAi(
   }
   const estimate = geminiEstimateMicro(
     setup.model,
-    body,
-    request.maxOutputTokens
+    request.images?.length
+      ? geminiRequestBody({ ...request, images: [] })
+      : body,
+    request.maxOutputTokens,
+    request.images?.length ?? 0
   )
   const reservation = await deps.ledger.reserve({
     tenantId: input.tenantId,

@@ -56,6 +56,16 @@ describe('aiSetup', () => {
     })
   })
 
+  it('uses Gemini 2.5 Pro for planning agents unless configured', () => {
+    expect(aiSetup('plan', live)).toMatchObject({ model: 'gemini-2.5-pro' })
+    expect(
+      aiSetup(
+        'plan',
+        env({ GEMINI_API_KEY: 'k', GEMINI_PLAN_MODEL: 'gemini-2.5-flash' })
+      )
+    ).toMatchObject({ model: 'gemini-2.5-flash' })
+  })
+
   it('takes model names from configuration and fails closed on unknown ones', () => {
     expect(
       aiSetup(
@@ -255,6 +265,73 @@ describe('runAi', () => {
     expect(ledger.reservations.size).toBe(0)
   })
 
+  it('sends pictures and reserves a fixed allowance per picture, not its byte size', async () => {
+    const big = 'A'.repeat(3_000_000)
+    const ledger = new InMemoryBudgetLedger(10_000_000)
+    const fetch = vi.fn(async () => geminiOk())
+    const result = await runAi(
+      {
+        tenantId,
+        callerKey: 'label:img',
+        purpose: 'label',
+        request: {
+          ...request,
+          images: [{ mediaType: 'image/png', base64: big }]
+        }
+      },
+      { ledger, env: live, fetch }
+    )
+    expect(result.ok).toBe(true)
+    const sent = JSON.parse(
+      String(
+        (fetch.mock.calls as unknown[][])[0][1] &&
+          ((fetch.mock.calls as unknown[][])[0][1] as RequestInit).body
+      )
+    )
+    expect(sent.contents[0].parts[1].inlineData.data).toHaveLength(3_000_000)
+    // 3M base64 bytes counted as tokens would reserve ~$0.30 on Flash-Lite;
+    // the per-picture allowance keeps it under a cent.
+    const reserved = [...ledger.reservations.values()][0]
+    expect(reserved.estimateMicro).toBeLessThan(10_000)
+  })
+
+  it('refuses unsafe or too many pictures before reserving anything', async () => {
+    const ledger = new InMemoryBudgetLedger(10_000_000)
+    const fetch = vi.fn()
+    for (const images of [
+      [{ mediaType: 'image/gif', base64: 'R0lGODlhAQABAAAAACw=' }],
+      [{ mediaType: 'image/png', base64: 'not base64!' }],
+      Array.from({ length: 9 }, () => ({
+        mediaType: 'image/png',
+        base64: 'iVBORw0KGgoAAAA='
+      }))
+    ])
+      expect(
+        await runAi(
+          {
+            tenantId,
+            callerKey: 'x',
+            purpose: 'label',
+            request: { ...request, images: images as never }
+          },
+          { ledger, env: live, fetch }
+        )
+      ).toEqual({ ok: false, code: 'rejected_request' })
+    expect(fetch).not.toHaveBeenCalled()
+    expect(ledger.reservations.size).toBe(0)
+  })
+
+  it('uses Flash for the review tier (second tries and inspectors)', async () => {
+    const fetch = vi.fn(async () => geminiOk())
+    await runAi(
+      { tenantId, callerKey: 'review:1', purpose: 'review', request },
+      { ledger: new InMemoryBudgetLedger(1_000_000), env: live, fetch }
+    )
+    expect(String((fetch.mock.calls as unknown[][])[0][0])).toContain(
+      'gemini-2.5-flash:generateContent'
+    )
+  })
+
   it('reports an unsupported configured model without calling anything', async () => {
     const fetch = vi.fn()
     const result = await runAi(
@@ -336,5 +413,68 @@ describe('SupabaseBudgetLedger', () => {
       reservation: 'r1',
       actual: 58
     })
+  })
+
+  it('routes platform work to the platform budget', async () => {
+    const rpc = vi.fn(async (fn: string) => ({
+      data: fn.startsWith('reserve') ? 'p1' : null,
+      error: null
+    }))
+    const ledger = new SupabaseBudgetLedger({ rpc } as never)
+    expect(
+      await ledger.reserve({
+        tenantId: null,
+        operationId: 'ai:label:section-1:x',
+        feature: 'learning',
+        estimateMicro: 100
+      })
+    ).toEqual({ ok: true, reservationId: 'p1' })
+    await ledger.settle({
+      tenantId: null,
+      reservationId: 'p1',
+      actualMicro: 9.5
+    })
+    expect(rpc.mock.calls).toEqual([
+      [
+        'reserve_platform_ai_usage',
+        {
+          operation: 'ai:label:section-1:x',
+          feature: 'learning',
+          estimate: 100
+        }
+      ],
+      ['settle_platform_ai_usage', { reservation: 'p1', actual: 10 }]
+    ])
+  })
+
+  it('maps the platform cap message to cap_reached', async () => {
+    const rpc = vi.fn(async () => ({
+      data: null,
+      error: {
+        code: '23514',
+        message: 'Platform AI allowance reached; no AI request was sent'
+      }
+    }))
+    expect(
+      await new SupabaseBudgetLedger({ rpc } as never).reserve({
+        tenantId: null,
+        operationId: 'ai:label:s:y',
+        feature: 'learning',
+        estimateMicro: 100
+      })
+    ).toEqual({ ok: false, code: 'cap_reached' })
+  })
+})
+
+describe('runAi platform work', () => {
+  it('meters a competitor-section label against the platform, not a client', async () => {
+    const ledger = new InMemoryBudgetLedger(1_000_000)
+    const result = await runAi(
+      { tenantId: null, callerKey: 'section:abc', purpose: 'label', request },
+      { ledger, env: live, fetch: vi.fn(async () => geminiOk()) }
+    )
+    expect(result).toMatchObject({ ok: true, costMicro: 58 })
+    expect(ledger.spentMicro(null)).toBe(58)
+    expect(ledger.spentMicro(tenantId)).toBe(0)
   })
 })
