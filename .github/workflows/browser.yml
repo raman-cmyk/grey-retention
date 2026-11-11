@@ -50,7 +50,23 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec playwright install chromium
+      # Best effort: ubuntu-latest already has Chromium's libraries; apt adds
+      # only optional fonts, and the Ubuntu mirror sometimes fails to resolve.
+      # A truly missing library still fails loudly when the journeys launch.
+      - name: Install browser system packages (best effort)
+        # A timeout or failure here never fails the job.
+        continue-on-error: true
+        timeout-minutes: 6
+        run: |
+          for attempt in 1 2; do
+            if sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 update && pnpm exec playwright install-deps chromium; then
+              exit 0
+            fi
+            echo "Attempt $attempt failed; retrying in 20 seconds."
+            sleep 20
+          done
+          echo "::warning::apt unavailable; using the runner's preinstalled libraries"
       # Only the services the journeys use: database, auth, REST, storage, mail.
       - run: pnpm exec supabase start -x studio,logflare,vector,imgproxy,edge-runtime,realtime,postgres-meta,supavisor
       - run: pnpm supabase:reset
