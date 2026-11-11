@@ -4184,6 +4184,72 @@ export type Database = {
           }
         ]
       }
+      klaviyo_history: {
+        Row: {
+          audiences: number
+          complete: boolean
+          flows: number
+          flows_read: boolean
+          live: boolean
+          read_at: string
+          reason: string | null
+          run_id: string
+          scheduled: number
+          sent: number
+          snapshot: Json | null
+          state: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          audiences?: number
+          complete?: boolean
+          flows?: number
+          flows_read?: boolean
+          live: boolean
+          read_at?: string
+          reason?: string | null
+          run_id: string
+          scheduled?: number
+          sent?: number
+          snapshot?: Json | null
+          state: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          audiences?: number
+          complete?: boolean
+          flows?: number
+          flows_read?: boolean
+          live?: boolean
+          read_at?: string
+          reason?: string | null
+          run_id?: string
+          scheduled?: number
+          sent?: number
+          snapshot?: Json | null
+          state?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'klaviyo_history_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'klaviyo_history_tenant_id_run_id_fkey'
+            columns: ['tenant_id', 'run_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       klaviyo_key_checks: {
         Row: {
           checked_at: string
@@ -7159,6 +7225,17 @@ export type Database = {
         }
         Returns: Json
       }
+      record_klaviyo_history: {
+        Args: {
+          findings: Json
+          job: string
+          lease: string
+          live: boolean
+          snapshot: Json
+          summary: Json
+        }
+        Returns: Json
+      }
       record_render_upload: {
         Args: {
           byte_size: number
@@ -7547,6 +7624,7 @@ export type Database = {
       site_readings_waiting: { Args: never; Returns: number }
       source_readings_waiting: { Args: never; Returns: number }
       start_catalog_reading: { Args: { t: string }; Returns: string }
+      start_history_reading: { Args: { t: string }; Returns: string }
       start_site_reading: { Args: { t: string }; Returns: string }
       start_strategy_run: { Args: { t: string }; Returns: string }
       submit_design: {

@@ -24,7 +24,9 @@ export const requiredScopes = [
 /** Scopes later steps need (pushing drafts); missing ones are a warning. */
 export const laterScopes = [
   'templates:read',
-  'images:read'
+  'images:read',
+  // The Klaviyo historian reads the flows and their results (ONB-103).
+  'flows:read'
 ] as const satisfies readonly KlaviyoScope[]
 /** Write scopes no read can prove; checked when they are first used. */
 export const unverifiedScopes = [
@@ -52,7 +54,8 @@ export const probes: Record<
   'metrics:read': '/api/metrics?fields[metric]=name',
   'segments:read': '/api/segments?page[size]=1&fields[segment]=name',
   'templates:read': '/api/templates?page[size]=1&fields[template]=name',
-  'images:read': '/api/images?page[size]=1&fields[image]=name'
+  'images:read': '/api/images?page[size]=1&fields[image]=name',
+  'flows:read': '/api/flows?page[size]=1&fields[flow]=name'
 }
 
 const accountSchema = z.object({

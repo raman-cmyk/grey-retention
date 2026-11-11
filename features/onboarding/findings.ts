@@ -76,7 +76,9 @@ export const topicValues = {
   offering: z.object({}).strict(),
   audience: z.object({}).strict(),
   tone: z.object({}).strict(),
-  contact: z.object({}).strict()
+  contact: z.object({}).strict(),
+  /** What made money, in words (the Klaviyo historian, ONB-103). */
+  performance: z.object({}).strict()
 } as const
 export type FindingTopic = keyof typeof topicValues
 export const findingTopics = Object.keys(topicValues) as FindingTopic[]
@@ -98,7 +100,7 @@ export const sourceTopics: Record<FindingSource, readonly FindingTopic[]> = {
     'contact'
   ],
   catalog: ['locale', 'price_band', 'offering', 'claim'],
-  klaviyo_history: ['offering', 'audience', 'tone', 'claim'],
+  klaviyo_history: ['offering', 'audience', 'tone', 'claim', 'performance'],
   ads: ['offering', 'audience', 'tone', 'claim', 'free_shipping'],
   reviews: ['review_platform', 'claim', 'audience'],
   social: ['audience', 'tone', 'claim', 'offering']

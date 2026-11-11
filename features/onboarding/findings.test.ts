@@ -12,13 +12,16 @@ import {
 } from './findings'
 
 const migrations = path.join(process.cwd(), 'supabase/migrations')
+// The findings migrations in order: a later one may widen a list.
 const sql = readdirSync(migrations)
-  .filter((f) => f.endsWith('_brand_findings.sql'))
+  .filter((f) => /_(brand_findings|klaviyo_history)\.sql$/.test(f))
+  .sort()
   .map((f) => readFileSync(path.join(migrations, f), 'utf8'))
   .join('\n')
+/** The list in the last statement that matches (the one in force). */
 const listIn = (pattern: RegExp) =>
-  pattern
-    .exec(sql)?.[1]
+  [...sql.matchAll(new RegExp(pattern.source, 'g'))]
+    .at(-1)?.[1]
     ?.match(/'([a-z_]+)'/g)
     ?.map((v) => v.slice(1, -1))
 
@@ -42,7 +45,9 @@ describe('the findings contract', () => {
       listIn(/source text not null check \(source in \(([^)]+)\)/)
     ).toEqual([...findingSources])
     expect(
-      listIn(/topic text not null check \(topic in \(([^)]+)\)/)?.sort()
+      listIn(
+        /(?:topic text not null check|brand_findings_topic_check check) \(topic in \(([^)]+)\)/
+      )?.sort()
     ).toEqual([...findingTopics].sort())
     expect(listIn(/check \(source <> 'site' or topic in \(([^)]+)\)/)).toEqual([
       ...sourceTopics.site

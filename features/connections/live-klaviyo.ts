@@ -45,6 +45,7 @@ const areaOf: Record<KlaviyoScope, string> = {
   'campaigns:write': 'Campaigns',
   'catalogs:read': 'Catalogs',
   'events:read': 'Events',
+  'flows:read': 'Flows',
   'lists:read': 'Lists',
   'metrics:read': 'Metrics',
   'profiles:read': 'Profiles',
@@ -76,7 +77,7 @@ const writeAreas = new Set(writeLater.map((s) => areaOf[s]))
  * How to make a key that works: Klaviyo cannot change an existing key. Each
  * area is named once, with the access it needs now and later.
  */
-const newKeySteps = `Klaviyo cannot change an existing key, so please make a new one. In Klaviyo, open Settings, then API keys, then Create Private API Key. Choose Read Access for ${areas(requiredScopes.filter((s) => !writeAreas.has(areaOf[s])))}. Choose Read/Write Access for ${areas(writeLater)}, so GROS can send emails later. Then paste the new key here.`
+const newKeySteps = `Klaviyo cannot change an existing key, so please make a new one. In Klaviyo, open Settings, then API keys, then Create Private API Key. Choose Read Access for ${areas([...requiredScopes.filter((s) => !writeAreas.has(areaOf[s])), 'flows:read'])}. Choose Read/Write Access for ${areas(writeLater)}, so GROS can send emails later. Then paste the new key here.`
 
 /** What the owner reads when a key cannot be used, in plain words. */
 export function refusalWords(check: KeyCheck): string | null {
@@ -156,7 +157,7 @@ export async function connectLiveKlaviyo(
           : 'We could not save this connection. Nothing was changed. Try again.'
     }
   const later = result.laterMissing.length
-    ? ` Later, to send emails, GROS also needs ${areas(result.laterMissing)}: make a new key then.`
+    ? ` Later, to read your flows and send emails, GROS also needs ${areas(result.laterMissing)}: make a new key then.`
     : ''
   return {
     message: `Klaviyo connected: ${a.organization ?? 'your account'}. For now we only read your Klaviyo data. Nothing is sent until you approve it.${later}`

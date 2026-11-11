@@ -78,7 +78,7 @@ describe('refusalWords', () => {
     expect(missing).toMatch(/^This key cannot read Catalogs and Events\. /)
     // A new key needs every area, not only the missing ones.
     expect(missing).toContain(
-      'Choose Read Access for Accounts, Catalogs, Events, Lists and Metrics. Choose Read/Write Access for Campaigns, Segments, Templates and Images, so GROS can send emails later.'
+      'Choose Read Access for Accounts, Catalogs, Events, Lists, Metrics and Flows. Choose Read/Write Access for Campaigns, Segments, Templates and Images, so GROS can send emails later.'
     )
     expect(missing).toContain('Klaviyo cannot change an existing key')
   })
@@ -176,7 +176,7 @@ describe('connectLiveKlaviyo', () => {
       recordedCheck({ missing: ['templates:read', 'images:read'] })
     )
     expect(result.message).toMatch(
-      /Later, to send emails, GROS also needs Templates and Images/
+      /Later, to read your flows and send emails, GROS also needs Templates and Images/
     )
   })
 
