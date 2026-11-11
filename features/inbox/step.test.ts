@@ -21,6 +21,15 @@ const nothingLabelled = {
   deferred: 0
 }
 const label = vi.fn(async () => nothingLabelled)
+const nothingPlaced = {
+  emails: 0,
+  made: 0,
+  matched: 0,
+  dropped: 0,
+  retried: 0,
+  deferred: 0
+}
+const variants = vi.fn(async () => nothingPlaced)
 const nothingConfirmed = { clicked: 0, refused: 0, failed: 0 }
 const confirm = vi.fn(async () => nothingConfirmed)
 
@@ -47,7 +56,7 @@ describe('runInboxStep', () => {
   it('returns the poll and says whether the mail is sample mail', async () => {
     const poll = vi.fn(async () => ({ state: 'busy' as const }))
     expect(
-      await runInboxStep(db, ready, { poll, assets, label, confirm })
+      await runInboxStep(db, ready, { poll, assets, label, variants, confirm })
     ).toEqual({
       transport: 'fake',
       ready: true,
@@ -55,6 +64,7 @@ describe('runInboxStep', () => {
       run: { state: 'busy' },
       assets: none,
       labels: nothingLabelled,
+      variants: nothingPlaced,
       confirms: nothingConfirmed
     })
   })
@@ -64,7 +74,13 @@ describe('runInboxStep', () => {
     const poll = vi.fn(async () => {
       throw Object.assign(new Error('secret detail'), { code: 'PGRST301' })
     }) as unknown as typeof pollInbox
-    const step = await runInboxStep(db, ready, { poll, assets, label, confirm })
+    const step = await runInboxStep(db, ready, {
+      poll,
+      assets,
+      label,
+      variants,
+      confirm
+    })
     expect(step).toMatchObject({ run: { state: 'failed', code: 'PGRST301' } })
     expect(JSON.stringify(warn.mock.calls)).not.toContain('secret detail')
   })
@@ -78,6 +94,7 @@ describe('runInboxStep', () => {
       poll,
       assets,
       label,
+      variants,
       timeoutMs: 20
     })
     expect(step).toMatchObject({
@@ -96,12 +113,65 @@ describe('runInboxStep', () => {
     const step = await runInboxStep(db, ready, {
       poll,
       assets: keep,
+      label,
+      variants,
+      confirm,
       assetsUntilMs: 1_000
     })
     expect(step).toMatchObject({ assets: { emails: 2, stored: 5 } })
     const deadline = (keep.mock.calls[0] as unknown as [unknown, number])[1]
     expect(deadline - before).toBeGreaterThanOrEqual(1_000)
     expect(deadline - before).toBeLessThan(1_500)
+  })
+
+  it('places tagged sections in the library first, stopping in time for one tagging batch', async () => {
+    const poll = vi.fn(async () => ({ state: 'busy' as const }))
+    const order: string[] = []
+    const place = vi.fn(async () => {
+      order.push('variants')
+      return nothingPlaced
+    })
+    const tag = vi.fn(async () => {
+      order.push('labels')
+      return nothingLabelled
+    })
+    const before = Date.now()
+    await runInboxStep(db, ready, {
+      poll,
+      assets,
+      label: tag,
+      variants: place,
+      confirm,
+      assetsUntilMs: 10_000,
+      labelReserveMs: 4_000
+    })
+    expect(order).toEqual(['variants', 'labels'])
+    const placeBy = (place.mock.calls[0] as unknown as [unknown, number])[1]
+    const tagBy = (tag.mock.calls[0] as unknown as [unknown, number])[1]
+    expect(tagBy - placeBy).toBe(4_000)
+    expect(tagBy - before).toBeGreaterThanOrEqual(10_000)
+    expect(tagBy - before).toBeLessThan(10_500)
+  })
+
+  it('reports a library step that fails and still tags', async () => {
+    const poll = vi.fn(async () => ({ state: 'busy' as const }))
+    const broken = vi.fn(async () => {
+      throw Object.assign(new Error('x'), { code: 'PGRST000' })
+    })
+    const tag = vi.fn(async () => nothingLabelled)
+    expect(
+      await runInboxStep(db, ready, {
+        poll,
+        assets,
+        label: tag,
+        variants: broken,
+        confirm
+      })
+    ).toMatchObject({
+      variants: { state: 'failed', code: 'PGRST000' },
+      labels: nothingLabelled
+    })
+    expect(tag).toHaveBeenCalledOnce()
   })
 
   it('reports an image step that fails without hiding the poll', async () => {
@@ -111,7 +181,13 @@ describe('runInboxStep', () => {
       throw Object.assign(new Error('x'), { code: 'PGRST000' })
     })
     expect(
-      await runInboxStep(db, ready, { poll, assets: keep, label, confirm })
+      await runInboxStep(db, ready, {
+        poll,
+        assets: keep,
+        label,
+        variants,
+        confirm
+      })
     ).toMatchObject({
       run: { state: 'busy' },
       assets: { state: 'failed', code: 'PGRST000' }

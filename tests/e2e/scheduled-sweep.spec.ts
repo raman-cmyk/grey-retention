@@ -448,6 +448,42 @@ test('INB-002 a sample inbox email keeps its images and its 600px screenshot sho
       ])
   }
   expect(sections.data!.some((s) => s.tag_state === 'tagged')).toBe(true)
+
+  // CI-002: the sweep after that places each tagged section in the block
+  // library, structure only (a new variant, or evidence for one already
+  // there), and a workspace member finds it by the email's labels.
+  expect((await sweep(request, `Bearer ${secret}`)).status()).toBe(200)
+  const placed = await admin
+    .from('email_sections')
+    .select('tag_state,variant_state,variant_id')
+    .eq('inbox_message_id', message.data!.id)
+  for (const s of placed.data!)
+    if (s.tag_state === 'tagged')
+      expect(['made', 'matched', 'no_structure', 'unusable']).toContain(
+        s.variant_state
+      )
+    else expect(s.variant_state).toBeNull()
+  const variantIds = placed.data!.flatMap((s) =>
+    s.variant_id ? [s.variant_id] : []
+  )
+  expect(variantIds.length).toBeGreaterThan(0)
+  const member = localAccounts()
+  const owner = await signIn(member.owner!.email, member.owner!.password)
+  const found = await owner.db.rpc('search_block_variants', {
+    filters: labelled.data!.industry
+      ? { industry: labelled.data!.industry }
+      : {},
+    max_results: 100
+  })
+  expect(found.error).toBeNull()
+  const library = found.data as { id: string; spec: unknown }[]
+  expect(library.map((v) => v.id)).toEqual(
+    expect.arrayContaining([...new Set(variantIds)])
+  )
+  // Never a competitor's words, links or pictures.
+  for (const v of library)
+    expect(JSON.stringify(v.spec)).not.toMatch(/https?:|Spring layers/)
+
   // The sample newsletter was sent a few days ago, so its brand summary
   // (the last 90 days) shows it.
   await page.reload()

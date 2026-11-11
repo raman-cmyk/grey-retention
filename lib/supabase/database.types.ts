@@ -593,6 +593,54 @@ export type Database = {
           }
         ]
       }
+      block_variants: {
+        Row: {
+          created_at: string
+          evidence: number
+          family: string
+          fingerprint: string
+          id: string
+          layout: string
+          model: string | null
+          pass: string
+          purpose: string
+          source: string
+          spec: Json
+          styles: string[]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          evidence?: number
+          family: string
+          fingerprint: string
+          id?: string
+          layout: string
+          model?: string | null
+          pass: string
+          purpose: string
+          source: string
+          spec: Json
+          styles?: string[]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          evidence?: number
+          family?: string
+          fingerprint?: string
+          id?: string
+          layout?: string
+          model?: string | null
+          pass?: string
+          purpose?: string
+          source?: string
+          spec?: Json
+          styles?: string[]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       brand_books: {
         Row: {
           content: Json
@@ -2970,12 +3018,16 @@ export type Database = {
           owner_labelled_at: string | null
           owner_labelled_by: string | null
           purpose: string | null
+          skeleton_fingerprint: string | null
           styles: string[] | null
           tag_pass: string | null
           tag_state: string | null
           tag_version: string | null
           text: string
           top: number | null
+          variant_id: string | null
+          variant_state: string | null
+          variant_version: string | null
           wide_images: number
           words: number
         }
@@ -3000,12 +3052,16 @@ export type Database = {
           owner_labelled_at?: string | null
           owner_labelled_by?: string | null
           purpose?: string | null
+          skeleton_fingerprint?: string | null
           styles?: string[] | null
           tag_pass?: string | null
           tag_state?: string | null
           tag_version?: string | null
           text?: string
           top?: number | null
+          variant_id?: string | null
+          variant_state?: string | null
+          variant_version?: string | null
           wide_images?: number
           words: number
         }
@@ -3030,12 +3086,16 @@ export type Database = {
           owner_labelled_at?: string | null
           owner_labelled_by?: string | null
           purpose?: string | null
+          skeleton_fingerprint?: string | null
           styles?: string[] | null
           tag_pass?: string | null
           tag_state?: string | null
           tag_version?: string | null
           text?: string
           top?: number | null
+          variant_id?: string | null
+          variant_state?: string | null
+          variant_version?: string | null
           wide_images?: number
           words?: number
         }
@@ -3052,6 +3112,13 @@ export type Database = {
             columns: ['owner_labelled_by']
             isOneToOne: false
             referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_sections_variant_id_fkey'
+            columns: ['variant_id']
+            isOneToOne: false
+            referencedRelation: 'block_variants'
             referencedColumns: ['id']
           }
         ]
@@ -6290,6 +6357,13 @@ export type Database = {
         Args: { import: string; t: string }
         Returns: string
       }
+      find_block_variants: {
+        Args: { keys: string[] }
+        Returns: {
+          fingerprint: string
+          variant_id: string
+        }[]
+      }
       finish_capture_job: {
         Args: { job: string; lease: string; output: Json }
         Returns: undefined
@@ -6465,6 +6539,10 @@ export type Database = {
           t: string
         }
         Returns: string
+      }
+      record_block_variants: {
+        Args: { job: string; lease: string; sections: Json }
+        Returns: Json
       }
       record_confirmation_click: {
         Args: {
@@ -6838,6 +6916,20 @@ export type Database = {
       save_own_template: {
         Args: { delivery: string; t: string }
         Returns: string
+      }
+      search_block_variants: {
+        Args: { filters?: Json; max_results?: number }
+        Returns: {
+          evidence: number
+          family: string
+          id: string
+          layout: string
+          matches: number
+          purpose: string
+          source: string
+          spec: Json
+          styles: string[]
+        }[]
       }
       set_brand_timezone: {
         Args: { expected: string; t: string; timezone: string }

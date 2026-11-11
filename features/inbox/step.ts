@@ -6,6 +6,7 @@ import { keepInboxImages, type AssetsRun } from './assets'
 import { inboxConfig, type InboxConfig } from './config'
 import { liveImageFetcher, sampleImageFetcher } from './image-fetch'
 import { labelInboxEmails, type LabelRun } from './label'
+import { liveVariantMs, makeInboxVariants, type VariantRun } from './variants'
 import {
   confirmSubscriptions,
   liveLinkClicker,
@@ -31,6 +32,8 @@ export type InboxStep =
       assets: AssetsRun | { state: 'failed'; code: string } | null
       /** Emails tagged, with their sections and facts (INB-003, CI-001). */
       labels: LabelRun | { state: 'failed'; code: string } | null
+      /** Tagged sections placed in the block library (CI-002). */
+      variants: VariantRun | { state: 'failed'; code: string } | null
       /** Subscription confirmations clicked or refused (INB-004). */
       confirms: ConfirmRun | { state: 'failed'; code: string } | null
     }
@@ -43,6 +46,12 @@ type Steps = {
     deadline: number
   ) => Promise<AssetsRun>
   label?: (db: SupabaseClient<Database>, deadline: number) => Promise<LabelRun>
+  variants?: (
+    db: SupabaseClient<Database>,
+    deadline: number
+  ) => Promise<VariantRun>
+  /** Time kept for tagging after the variants (one live batch). */
+  labelReserveMs?: number
   confirm?: (
     db: SupabaseClient<Database>,
     deadline: number
@@ -83,6 +92,7 @@ export async function runInboxStep(
     run: { state: 'failed', code: 'inbox_step_timeout' },
     assets: null,
     labels: null,
+    variants: null,
     confirms: null
   }
   const confirm =
@@ -99,6 +109,16 @@ export async function runInboxStep(
       const { ask, pictures, batchMs } = inboxTagging(d)
       return labelInboxEmails(d, ask, deadline, { pictures, batchMs })
     })
+  const variants =
+    options.variants ??
+    ((d: SupabaseClient<Database>, deadline: number) => {
+      const { ask, pictures, batchMs } = inboxTagging(d)
+      return makeInboxVariants(d, ask, deadline, {
+        pictures,
+        batchMs: batchMs ? liveVariantMs : 0
+      })
+    })
+  const labelReserveMs = options.labelReserveMs ?? inboxTagging(db).batchMs
   const work = async () => {
     try {
       result.run = await poll(db, transport)
@@ -115,22 +135,25 @@ export async function runInboxStep(
       const code = (error as { code?: string }).code ?? 'assets_step_error'
       result.assets = { state: 'failed', code }
     }
-    // Tagging shares the images' deadline. Live, it works a batch at a time
-    // and puts an email back when time runs short (it continues next sweep).
+    // The library, then tagging, share the images' deadline. Each new
+    // tagged email adds one variant job, so the variants go first, and
+    // stop in time for one tagging batch. Live, both work a batch at a time
+    // and put an email back when time runs short (it continues next sweep).
+    const shared = started + (options.assetsUntilMs ?? assetsUntilMs)
     try {
-      result.labels = await label(
-        db,
-        started + (options.assetsUntilMs ?? assetsUntilMs)
-      )
+      result.variants = await variants(db, shared - labelReserveMs)
+    } catch (error) {
+      const code = (error as { code?: string }).code ?? 'variants_step_error'
+      result.variants = { state: 'failed', code }
+    }
+    try {
+      result.labels = await label(db, shared)
     } catch (error) {
       const code = (error as { code?: string }).code ?? 'labels_step_error'
       result.labels = { state: 'failed', code }
     }
     try {
-      result.confirms = await confirm(
-        db,
-        started + (options.assetsUntilMs ?? assetsUntilMs)
-      )
+      result.confirms = await confirm(db, shared)
       // Brands that have sent nothing a week after being added (one open
       // task per brand; cheap, so on every sweep).
       const pending = await db.rpc('check_pending_subscriptions')

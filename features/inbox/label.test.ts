@@ -356,7 +356,7 @@ describe('labelInboxEmails', () => {
   it('fails the job for a retry when the model is unavailable, and records nothing', async () => {
     const ask: Ask = async () => ({
       ok: false,
-      code: 'rate_limited',
+      code: 'unavailable',
       retryAfterSeconds: 7
     })
     const db = database({ jobs: ['m1'] })
@@ -365,7 +365,7 @@ describe('labelInboxEmails', () => {
     expect(db.calls.map((c) => c.name)).not.toContain('record_inbox_tags')
     expect(
       db.calls.find((c) => c.name === 'fail_platform_job')!.args
-    ).toMatchObject({ failure: 'unavailable', error_code: 'ai_rate_limited' })
+    ).toMatchObject({ failure: 'unavailable', error_code: 'ai_unavailable' })
   })
 
   it('stores a refused section as untagged and goes on', async () => {
@@ -510,13 +510,28 @@ describe('labelInboxEmails', () => {
     ).toHaveLength(1)
   })
 
-  it('stops the run after a rate limit, which would refuse the next email too', async () => {
-    const limited: Ask = async () => ({ ok: false, code: 'rate_limited' })
-    const db = database({ jobs: ['m1', 'm2'] })
-    const run = await labelInboxEmails(db as unknown as Db, limited, later())
-    expect(run).toMatchObject({ retried: 1 })
-    expect(
-      db.calls.filter((c) => c.name === 'claim_platform_job')
-    ).toHaveLength(1)
+  it('puts the job back after a rate limit, without using a try, for at least five minutes, and stops the run', async () => {
+    for (const [retryAfterSeconds, delay] of [
+      [undefined, 300],
+      [7, 300],
+      [900, 900],
+      [200_000, 86_400]
+    ] as const) {
+      const limited: Ask = async () => ({
+        ok: false,
+        code: 'rate_limited',
+        retryAfterSeconds
+      })
+      const db = database({ jobs: ['m1', 'm2'] })
+      const run = await labelInboxEmails(db as unknown as Db, limited, later())
+      expect(run).toMatchObject({ retried: 0, deferred: 1 })
+      expect(
+        db.calls.find((c) => c.name === 'defer_platform_job')!.args
+      ).toMatchObject({ delay_seconds: delay, reason: 'ai_rate_limited' })
+      expect(db.calls.map((c) => c.name)).not.toContain('fail_platform_job')
+      expect(
+        db.calls.filter((c) => c.name === 'claim_platform_job')
+      ).toHaveLength(1)
+    }
   })
 })

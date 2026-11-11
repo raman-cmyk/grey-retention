@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
 import { classifyEmail, industryOf } from '@/features/intelligence/classifier'
-import { TagError, type Ask } from '@/features/intelligence/passes'
+import { TagError, waitFor, type Ask } from '@/features/intelligence/passes'
 import { tagSection } from '@/features/intelligence/tagger'
 import {
   sectionTagsSchema,
@@ -35,8 +35,6 @@ const maxPictureBytes = 1_500_000
 export const tagBatch = 6
 /** Time a live batch of calls is given; no batch starts with less left. */
 export const liveBatchMs = 8_000
-/** How long a job waits when the platform's AI budget is spent. */
-const budgetWaitSeconds = 3_600
 
 /** A stored picture (a section crop or the screenshot), if small enough. */
 async function pictureOf(
@@ -129,8 +127,9 @@ function storedFamily(row: SectionRow): string | null {
  * once, so a retry or a run cut short pays only for what is left. Then the
  * facts are worked out and the Email classifier labels the email, both
  * recorded once per version. An email already tagged is finished without a
- * call. When time runs short, or the platform's AI budget is spent, the job
- * is put back without using up a try (D16: it simply runs later).
+ * call. When time runs short, the platform's AI budget is spent or the
+ * provider is rate limiting, the job is put back without using up a try
+ * (D16: it simply runs later).
  * `pictures` sends each section's crop and the screenshot along; `batchMs`
  * is the time a batch needs (none for the sample rules).
  */
@@ -321,10 +320,12 @@ export async function labelInboxEmails(
       if (finished.error) throw finished.error
       run.emails++
     } catch (error) {
-      // The platform's budget is spent for now: this job and every other
-      // one would be refused, so it waits and the run stops.
-      if (error instanceof TagError && error.code === 'cap_reached') {
-        await putBack(budgetWaitSeconds, 'ai_cap_reached')
+      // The platform's budget is spent, or the provider is rate limiting:
+      // this job and every other one would be refused, so it waits without
+      // using a try and the run stops.
+      const wait = waitFor(error)
+      if (wait) {
+        await putBack(wait.delaySeconds, wait.reason)
         break
       }
       run.retried++
@@ -349,8 +350,6 @@ export async function labelInboxEmails(
           code: failed.error.code ?? 'unknown',
           failure: failure.code
         })
-      // A rate limit would refuse the next email too.
-      if (error instanceof TagError && error.code === 'rate_limited') break
     }
   }
   return run
