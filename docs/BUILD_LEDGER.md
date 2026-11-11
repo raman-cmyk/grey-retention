@@ -1434,8 +1434,9 @@ Append entries using this exact shape:
 - Status: review
 - Branch/worktree: `claude/ci-003-tagging-run`
 - Commit(s): see the CI-003 pull request.
-- Changed contracts: new `features/inbox/tag-run.ts` `runTagging(db)`: works the same leased `inbox.label` jobs as the sweep (`labelInboxEmails` with `inboxTagging`), for 45 seconds instead of what is left of the sweep's 15, and never throws. New route `GET /api/internal/inbox/tags` (CRON_SECRET, `maxDuration` 60, counts only). New workflow `.github/workflows/inbox-tagging.yml` at minutes 10, 25, 40 and 55, gated by `SCHEDULED_JOBS_ENABLED` like the sweep and screenshots. Leases keep the sweep and this run off the same email; the platform's daily AI budget (GEM-003) still caps live spend.
+- Changed contracts: new `features/inbox/tag-run.ts` `runTagging(db)`: works the same leased `inbox.label` jobs as the sweep (`labelInboxEmails` with `inboxTagging`), starting no new work after 28 seconds and capping each Gemini call at 10 seconds (`GEMINI_TIMEOUT_MS` lowered for this run only), so the last piece of work (two calls one after the other, plus downloads) ends well inside the route's 60 seconds and Vercel never stops it mid-batch. It never throws. New route `GET /api/internal/inbox/tags` (CRON_SECRET, `maxDuration` 60, counts only, no-store). New workflow `.github/workflows/inbox-tagging.yml` at minutes 10, 25, 40 and 55, gated by `SCHEDULED_JOBS_ENABLED` like the sweep and screenshots: one HTTPS request a run, no checkout, `permissions: {}`. Leases keep the sweep and this run off the same email at the same time; the platform's daily AI budget (GEM-003) still caps live spend.
+- Actions minutes: the repository is public (checked 11 Nov), so standard runner minutes are not billed; the earlier 1,500-minute limit was set while it was private.
 - Migrations: none.
-- Verification run: `vitest run features/inbox/tag-run.test.ts`; eslint and tsc clean for the changed files.
-- Known issues: none.
+- Verification run: `vitest run features/inbox/tag-run.test.ts features/inbox/tag-route.test.ts tests/ci/workflows.test.ts`; eslint and tsc clean for the changed files. Reviewed by the code-reviewer; its timing, test and workflow findings are fixed.
+- Known issues: a `rate_limited` answer still fails the job with a try (label.ts, lane B's code); with two runs an hour more, a rate limit is a little more likely. Lane B was asked to defer it like `cap_reached`.
 - Next consumer: lane B (CI-002 reads the tagged sections).

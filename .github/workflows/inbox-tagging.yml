@@ -3,8 +3,10 @@ name: Inbox tagging
 # Tags waiting Inspiration inbox emails (CI-003). The sweep (minutes 3 and
 # 33) leaves tagging only what is left of its 15 seconds, about one email
 # live; this gives tagging its own run, between the sweeps and the
-# screenshots. Jobs are leased, so runs never tag the same email twice, and
-# the platform's daily AI budget (GEM-003) still caps the spend.
+# screenshots. Jobs are leased, so two runs never work the same email at the
+# same time, and the platform's daily AI budget (GEM-003) still caps the
+# spend. Each run is one small request (no checkout, no install); the
+# repository is public, so standard runner minutes are not billed.
 #
 # Off until turned on, exactly like the scheduled jobs
 # (docs/SCHEDULED_JOBS_RUNBOOK.md): the same CRON_SECRET repository secret
@@ -15,8 +17,7 @@ on:
     - cron: '10,25,40,55 * * * *'
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: inbox-tagging
