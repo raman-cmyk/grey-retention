@@ -11,7 +11,7 @@ import {
   type BrandSize
 } from '@/features/intelligence/taxonomy'
 import { pulseDays } from './pulse'
-import { failedWords, outputLimit, tryAgent, type AgentCtx } from './retry'
+import { failedWords, tryAgent, type AgentCtx } from './retry'
 import { statedFact } from './words'
 
 /**
@@ -257,7 +257,7 @@ export const competitorMapperAgent: AgentDefinition<MapperTask, MapperAnswer> =
       }
     },
     output: answer,
-    maxOutputTokens: outputLimit(1000, 'low'),
+    maxOutputTokens: 1000,
     temperature: 0.3,
     reasoningEffort: 'low'
   }

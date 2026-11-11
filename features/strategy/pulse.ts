@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { AgentDefinition } from '@/features/agents/runtime'
 import type { FallbackLog } from '@/features/fallback/log'
 import { keyPart } from '@/features/fallback/entry'
-import { failedWords, outputLimit, tryAgent, type AgentCtx } from './retry'
+import { failedWords, tryAgent, type AgentCtx } from './retry'
 import { statedFact } from './words'
 
 /**
@@ -328,7 +328,7 @@ export const brandPulseAgent: AgentDefinition<PulseTask, PulseAnswer> = {
     }
   },
   output: answer,
-  maxOutputTokens: outputLimit(1200, 'low'),
+  maxOutputTokens: 1200,
   temperature: 0.3,
   reasoningEffort: 'low'
 }
