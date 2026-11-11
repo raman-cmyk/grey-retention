@@ -17,12 +17,7 @@ import {
   type CatalogProduct
 } from '@/features/assembly/inputs'
 import type { PlannedSlot } from '@/features/strategy/plan'
-import {
-  failedWords,
-  outputLimit,
-  tryAgent,
-  type AgentCtx
-} from '@/features/strategy/retry'
+import { failedWords, tryAgent, type AgentCtx } from '@/features/strategy/retry'
 import { productNeed, type PlannedSection, type SectionPlan } from './sections'
 
 /**
@@ -419,8 +414,8 @@ export const contentLockerAgent: AgentDefinition<LockTask, LockAnswer> = {
     }
   },
   output: answer,
-  // No thinking: placing ids is simple, and thinking would count as output.
-  maxOutputTokens: outputLimit(400, 'none'),
+  // No thinking: placing ids is simple.
+  maxOutputTokens: 400,
   temperature: 0.2,
   reasoningEffort: 'none'
 }
