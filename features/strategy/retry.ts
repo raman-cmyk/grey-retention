@@ -5,6 +5,18 @@ import type { MemoryStore } from '@/features/agents/memory'
 /** Every agent answer gets this many tries (AGENT_MAP.md loops, D16). */
 export const agentTries = 3
 
+/**
+ * Gemini 2.5 counts thinking tokens as output, and a reply cut off at the
+ * output limit is a refusal (never retried). So an agent's limit is the
+ * room its answer needs plus the thinking budget for its effort; these are
+ * the budgets `lib/providers/gemini.ts` sends.
+ */
+export const thinkingBudget = { none: 0, low: 1_024, medium: 4_096 } as const
+export const outputLimit = (
+  answer: number,
+  effort: keyof typeof thinkingBudget
+) => answer + thinkingBudget[effort]
+
 export type AgentCtx = {
   tenantId: string
   industry: string | null
