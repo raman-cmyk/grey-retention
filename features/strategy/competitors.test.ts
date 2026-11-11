@@ -9,7 +9,9 @@ import {
   competitorMapperAgent,
   mapPatterns,
   pickEvidence,
+  readMapperInput,
   runCompetitorMapper,
+  type LibraryEmail,
   type MapperInput
 } from './competitors'
 import { sampleCompetitors } from './sample'
@@ -113,6 +115,41 @@ describe('the evidence (code)', () => {
   })
 })
 
+describe('what may reach the agent', () => {
+  it('leaves out an email whose labels are not on the closed lists', () => {
+    const named = {
+      ...input.library[0],
+      id: 'e-named',
+      brandId: 'b9',
+      angle: 'like Acme Candles do'
+    } as unknown as LibraryEmail
+    const broken = {
+      ...input.library[0],
+      id: 'e-broken',
+      sentOn: '2026-10-1'
+    } as LibraryEmail
+    expect(
+      pickEvidence({
+        ...input,
+        library: [...input.library, named, broken]
+      }).map((e) => e.id)
+    ).toEqual(['e1', 'e2', 'e3', 'e4', 'e5', 'e6'])
+    // And nothing throws on the broken date.
+    expect(() =>
+      mapPatterns({ ...input, library: [...input.library, broken] })
+    ).not.toThrow()
+  })
+
+  it('refuses a broken start and drops broken dates', () => {
+    expect(() => readMapperInput({ ...input, start: 'soon' })).toThrow()
+    const read = readMapperInput({
+      ...input,
+      ourDates: [...input.ourDates, { date: 'x', name: 'Bad', kind: 'event' }]
+    })
+    expect(read.ourDates).toEqual(input.ourDates)
+  })
+})
+
 describe('the moves check (code)', () => {
   const patterns = mapPatterns(input)
   it('names each problem exactly', () => {
@@ -131,7 +168,7 @@ describe('the moves check (code)', () => {
     ).toEqual([
       '"pattern:1" is listed twice.',
       '"pattern:9" is not one of the pattern ids.',
-      'The move for "pattern:2" writes a number, date or quote; code adds those.'
+      'The move for "pattern:2" writes a quote; code adds counts and dates.'
     ])
   })
 })
@@ -185,9 +222,13 @@ describe('running the Competitor mapper', () => {
       expect.objectContaining({
         agent: 'competitor-mapper',
         reasonCode: 'mapper_check_failed',
+        reason: 'The Competitor mapper kept failing the facts check.',
         attempts: 3
       })
     ])
+    expect(result.fallbackRecorded).toBe(true)
+    // The log carries no email or brand ids.
+    expect(JSON.stringify(fallbacks.entries())).not.toMatch(/"e\d|"b\d/)
   })
 
   it('does not retry a refused call', async () => {
