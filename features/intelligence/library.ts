@@ -92,8 +92,8 @@ const columns: Record<keyof LibraryFilter, string> = {
  * most seen in such emails). Any signed-in workspace member and the agents
  * may search; only structures come back, never a section, an email or the
  * brand they came from. A member searching by the emails' labels only sees
- * structures seen at 3 brands or more. A stored row that no longer reads as a variant is
- * skipped rather than handed on.
+ * structures seen at 3 brands or more. A stored row that no longer reads
+ * as a variant is skipped rather than handed on.
  */
 export async function searchBlockVariants(
   db: SupabaseClient<Database>,

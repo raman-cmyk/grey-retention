@@ -340,7 +340,8 @@ describe('makeInboxVariants', () => {
     expect(db.named('finish_platform_job')).toHaveLength(0)
   })
 
-  it('waits an hour when the AI budget is spent, and stops the run', async () => {
+  it('waits an hour when the AI budget is spent, says so in the logs, and stops the run', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const db = database({ jobs: ['m1', 'm2'] })
     const ask = askWith(() => ({ ok: false, code: 'cap_reached' }))
     expect(await makeInboxVariants(asDb(db), ask, later())).toMatchObject({
@@ -352,6 +353,41 @@ describe('makeInboxVariants', () => {
       reason: 'ai_cap_reached'
     })
     expect(db.named('claim_platform_job')).toHaveLength(1)
+    const logged = warn.mock.calls.map(([line]) => JSON.parse(String(line)))
+    expect(logged).toContainEqual(
+      expect.objectContaining({
+        level: 'warn',
+        message: 'Inbox variant job put back',
+        reason: 'ai_cap_reached',
+        delaySeconds: 3600
+      })
+    )
+    warn.mockRestore()
+  })
+
+  it('puts the job back before its first batch when the reads used up the time', async () => {
+    const db = database()
+    let now = 1_000_000
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const rpc = db.rpc.getMockImplementation()!
+    db.rpc.mockImplementation(
+      async (name: string, args: Record<string, unknown>) => {
+        // The lookup of known structures takes a second.
+        if (name === 'find_block_variants') now += 1_000
+        return rpc(name, args)
+      }
+    )
+    const ask = askWith(() => sure(skeletonOf(productHtml(1))))
+    const run = await makeInboxVariants(asDb(db), ask, 1_000_000 + 6_500, {
+      batchMs: 6_000
+    })
+    clock.mockRestore()
+    expect(run).toMatchObject({ deferred: 1, emails: 0 })
+    expect(ask).not.toHaveBeenCalled()
+    expect(db.named('defer_platform_job')[0]!.args).toMatchObject({
+      delay_seconds: 0,
+      reason: 'variants_continue'
+    })
   })
 
   it('puts the job back on a rate limit and stops; an unavailable model uses a try; a lost lease is reported as such', async () => {

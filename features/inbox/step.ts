@@ -105,10 +105,13 @@ export async function runInboxStep(
         { real: liveLinkClicker, sample: sampleLinkClicker },
         deadline
       ))
+  // How the agents are asked, set up once for both steps.
+  let tagging: ReturnType<typeof inboxTagging> | undefined
+  const agents = (d: SupabaseClient<Database>) => (tagging ??= inboxTagging(d))
   const label =
     options.label ??
     ((d: SupabaseClient<Database>, deadline: number) => {
-      const { ask, pictures, batchMs } = inboxTagging(d)
+      const { ask, pictures, batchMs } = agents(d)
       return labelInboxEmails(d, ask, deadline, { pictures, batchMs })
     })
   // With a live model the library is filled by the tagging run (CI-003),
@@ -117,7 +120,7 @@ export async function runInboxStep(
   const variants =
     options.variants ??
     ((d: SupabaseClient<Database>, deadline: number) => {
-      const { ask, batchMs } = inboxTagging(d)
+      const { ask, batchMs } = agents(d)
       return batchMs
         ? Promise.resolve(null)
         : makeInboxVariants(d, ask, deadline)

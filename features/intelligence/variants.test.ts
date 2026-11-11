@@ -6,10 +6,13 @@ import { sampleBlocks, sampleBrand } from '@/features/blocks/samples'
 import { skeletonOf } from './skeleton'
 import {
   fingerprintOf,
+  mergeSlots,
   normalSpec,
+  stackRows,
   seedVariants,
   variantProblems,
   variantSpecSchema,
+  type Slot,
   type VariantSpec
 } from './variants'
 
@@ -80,6 +83,132 @@ describe('block variants', () => {
     expect(fingerprintOf('image_text', spec)).not.toBe(
       fingerprintOf('product_feature', spec)
     )
+  })
+
+  it('stack single-column rows: one row of four slots and four rows of one are the same design', () => {
+    const parts: Slot[] = [
+      { kind: 'eyebrow' },
+      { kind: 'heading', size: 'l' },
+      { kind: 'text', lines: 2 },
+      { kind: 'button', style: 'solid' }
+    ]
+    const oneRow = {
+      ...spec,
+      rows: [{ columns: [{ width: 1, slots: parts }] }]
+    }
+    const fourRows = {
+      ...spec,
+      rows: parts.map((slot) => ({ columns: [{ width: 1, slots: [slot] }] }))
+    }
+    expect(fingerprintOf('hero_image', fourRows)).toBe(
+      fingerprintOf('hero_image', oneRow)
+    )
+    expect(normalSpec(fourRows).rows).toEqual(normalSpec(oneRow).rows)
+    // A two-column row between stacks stays where it is.
+    const split = {
+      columns: [
+        { width: 0.5, slots: [{ kind: 'heading', size: 'm' } as Slot] },
+        { width: 0.5, slots: [{ kind: 'price' } as Slot] }
+      ]
+    }
+    expect(
+      stackRows([fourRows.rows[0]!, split, fourRows.rows[1]!]).map(
+        (r) => r.columns.length
+      )
+    ).toEqual([1, 2, 1])
+  })
+
+  it('merge neighbouring paragraphs in every column, so an answer and the HTML agree', () => {
+    const row = (slots: Slot[]) => ({
+      ...spec,
+      rows: [
+        {
+          columns: [
+            {
+              width: 0.5,
+              slots: [
+                { kind: 'image', role: 'product', aspect: '1:1', bleed: false }
+              ] as Slot[]
+            },
+            { width: 0.5, slots }
+          ]
+        }
+      ]
+    })
+    expect(
+      fingerprintOf(
+        'product_feature',
+        row([
+          { kind: 'heading', size: 's' },
+          { kind: 'text', lines: 1 },
+          { kind: 'text', lines: 1 },
+          { kind: 'price' }
+        ])
+      )
+    ).toBe(
+      fingerprintOf(
+        'product_feature',
+        row([
+          { kind: 'heading', size: 's' },
+          { kind: 'text', lines: 2 },
+          { kind: 'price' }
+        ])
+      )
+    )
+    expect(
+      mergeSlots([
+        { kind: 'social' },
+        { kind: 'social' },
+        { kind: 'text', lines: 9 },
+        { kind: 'text', lines: 9 }
+      ])
+    ).toEqual([{ kind: 'social' }, { kind: 'text', lines: 12 }])
+  })
+
+  it('cut a long stack into rows of at most 8 slots, never more rows than before, and store the same thing twice the same', () => {
+    const kinds = [
+      'eyebrow',
+      'heading',
+      'text',
+      'button',
+      'divider',
+      'quote',
+      'rating',
+      'code',
+      'price',
+      'spacer'
+    ] as const
+    const slotOf = (i: number): Slot => {
+      const kind = kinds[i % kinds.length]!
+      return kind === 'heading'
+        ? { kind, size: 'm' }
+        : kind === 'text'
+          ? { kind, lines: 3 }
+          : kind === 'button'
+            ? { kind, style: 'link' }
+            : { kind }
+    }
+    for (let rows = 1; rows <= 6; rows++)
+      for (let perRow = 1; perRow <= 8; perRow++) {
+        const long: VariantSpec = {
+          ...spec,
+          rows: Array.from({ length: rows }, (_, r) => ({
+            columns: [
+              {
+                width: 1,
+                slots: Array.from({ length: perRow }, (_, i) =>
+                  slotOf(r * perRow + i)
+                )
+              }
+            ]
+          }))
+        }
+        const once = normalSpec(long)
+        expect(once.rows.length).toBeLessThanOrEqual(rows)
+        for (const r of once.rows)
+          expect(r.columns[0]!.slots.length).toBeLessThanOrEqual(8)
+        expect(normalSpec(once)).toEqual(once)
+      }
   })
 
   it('say in words what makes a structure undrawable', () => {
@@ -216,6 +345,38 @@ describe('skeletonOf', () => {
     expect(read!.rows).toHaveLength(1)
     expect(read!.rows[0]!.columns[0]!.slots.map((s) => s.kind)).toEqual([
       'text'
+    ])
+  })
+
+  it('reads a line between parts as a divider, in its own row or as a thin wide picture, and a 0px pixel as nothing', () => {
+    const lined = skeletonOf(
+      '<table><tr><td><p>Above the line here</p></td></tr><tr><td><hr></td></tr>' +
+        '<tr><td><p>Below the line here</p></td></tr>' +
+        '<tr><td><img src="https://x.test/line.png" width="560" height="1"></td></tr>' +
+        '<tr><td><p>And the end</p><img src="https://t.test/o.gif" width="0" height="0"></td></tr></table>'
+    )
+    expect(lined!.rows[0]!.columns[0]!.slots.map((s) => s.kind)).toEqual([
+      'text',
+      'divider',
+      'text',
+      'divider',
+      'text'
+    ])
+  })
+
+  it('reads links in a coloured footer as words, and a coloured cell holding only a link as a button', () => {
+    const footer = skeletonOf(
+      '<table><tr><td bgcolor="#111111"><a href="https://x.test/u">Unsubscribe</a> | ' +
+        '<a href="https://x.test/p">Manage preferences</a><p>Sent to you because you signed up</p></td></tr></table>'
+    )
+    expect(
+      footer!.rows[0]!.columns[0]!.slots.some((s) => s.kind === 'button')
+    ).toBe(false)
+    const button = skeletonOf(
+      '<table><tr><td bgcolor="#111111"> <a href="https://x.test">Shop now</a> </td></tr></table>'
+    )
+    expect(button!.rows[0]!.columns[0]!.slots).toEqual([
+      { kind: 'button', style: 'solid' }
     ])
   })
 

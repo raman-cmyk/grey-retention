@@ -195,7 +195,8 @@ export function stackRows(rows: Row[]): Row[] {
 
 /**
  * The structure as it is stored: defaults filled in, keys in a fixed order,
- * single-column rows stacked, column widths to two decimals.
+ * single-column rows stacked, neighbouring paragraphs in every column
+ * merged, column widths to two decimals.
  */
 export function normalSpec(spec: VariantSpec): VariantSpec {
   const parsed = variantSpecSchema.parse(spec)
@@ -203,7 +204,7 @@ export function normalSpec(spec: VariantSpec): VariantSpec {
     rows: stackRows(parsed.rows).map((row) => ({
       columns: row.columns.map((c) => ({
         width: Math.round(c.width * 100) / 100,
-        slots: c.slots.map(normalSlot)
+        slots: mergeSlots(c.slots.map(normalSlot))
       }))
     })),
     align: parsed.align,

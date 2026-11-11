@@ -163,22 +163,25 @@ describe('runTagging', () => {
   })
 
   it('keeps the library part and the rest of tagging inside 60 seconds', () => {
-    // The library starts no batch after its share; its last batch makes one
-    // capped call per new structure (in parallel), after a picture download
-    // of at most pictureTimeoutMs. Counted as two calls to keep a margin.
-    // Tagging then has what is left of tagRunMs, and its last piece may be
-    // two capped calls one after the other, plus 10 s for pictures and
-    // database writes.
+    // The supervisor's bound: the library's share, two capped calls, then
+    // tagging's remaining share and 10 s for pictures and writes.
     expect(
       variantShareMs +
         2 * tagCallTimeoutMs +
         (tagRunMs - variantShareMs) +
         10_000
     ).toBeLessThanOrEqual(60_000)
-    // The library part even ends before tagging's own deadline.
+    // The real one: the library takes a job or starts a batch only while
+    // liveVariantMs is left of its share, and a batch is one capped call
+    // per new structure (in parallel) after a capped picture download. So
+    // it ends before tagging's own deadline, and tagging's last piece (two
+    // calls one after the other, plus pictures and writes) ends in time.
+    const libraryEnds =
+      variantShareMs - liveVariantMs + pictureTimeoutMs + tagCallTimeoutMs
+    expect(libraryEnds).toBeLessThanOrEqual(tagRunMs)
     expect(
-      variantShareMs + pictureTimeoutMs + tagCallTimeoutMs
-    ).toBeLessThanOrEqual(tagRunMs)
+      Math.max(libraryEnds, tagRunMs) + 2 * tagCallTimeoutMs + 10_000
+    ).toBeLessThanOrEqual(60_000)
   })
 
   it('leaves room for the last piece of work (two capped calls) inside 60 seconds', () => {

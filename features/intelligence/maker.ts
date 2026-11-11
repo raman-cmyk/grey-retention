@@ -175,10 +175,12 @@ export type Made =
       reason: 'unusable'
       model: string | null
       /**
-       * Whether the same structure is left out next time without a call:
-       * only when a model really answered, or the structure is far too
-       * large to draw. Not with the fake, a refusal or a cut-off answer,
-       * so the structure is tried again once a model is set up.
+       * Whether later sections with the same structure are left out
+       * without a call: when a model really answered (an unreadable or
+       * cut-off answer too, which would come back the same), or the
+       * structure is far too large to draw. Not with the fake or a
+       * refusal, so later sections with it are tried once a model is set
+       * up (this section itself stays out).
        */
       remember: boolean
     }
@@ -218,7 +220,8 @@ export async function makeVariant(
   })
   if (answer.ok && answer.provider === 'fake') return fallback(null, false)
   if (!answer.ok) {
-    if (fallbackCodes.has(answer.code)) return fallback(null, false)
+    if (fallbackCodes.has(answer.code))
+      return fallback(null, answer.code !== 'refused')
     throw new TagError(answer.code, answer.retryAfterSeconds)
   }
   const parsed = madeVariantSchema.safeParse(answer.content)

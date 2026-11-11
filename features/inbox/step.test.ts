@@ -1,9 +1,10 @@
 // @vitest-environment node
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 const live = vi.hoisted(() => ({ inboxTagging: vi.fn() }))
 vi.mock('@/features/intelligence/live', () => live)
+import { sampleAsk } from '@/features/intelligence/passes'
 import { fakeInboundTransport } from './fake-transport'
 import { runInboxStep } from './step'
 import type { pollInbox } from './worker'
@@ -36,6 +37,14 @@ const nothingConfirmed = { clicked: 0, refused: 0, failed: 0 }
 const confirm = vi.fn(async () => nothingConfirmed)
 
 describe('runInboxStep', () => {
+  // The sample rules, unless a test sets up a live model.
+  beforeEach(() =>
+    live.inboxTagging.mockReturnValue({
+      ask: sampleAsk,
+      pictures: false,
+      batchMs: 0
+    })
+  )
   afterEach(() => vi.restoreAllMocks())
 
   it('reports an inbox that is not set up, in words, without polling', async () => {
@@ -149,6 +158,17 @@ describe('runInboxStep', () => {
     const placeBy = (place.mock.calls[0] as unknown as [unknown, number])[1]
     const tagBy = (tag.mock.calls[0] as unknown as [unknown, number])[1]
     expect(placeBy).toBe(tagBy)
+  })
+
+  it('places sections itself with the sample rules', async () => {
+    const poll = vi.fn(async () => ({ state: 'busy' as const }))
+    const step = await runInboxStep(db, ready, {
+      poll,
+      assets,
+      label,
+      confirm
+    })
+    expect(step).toMatchObject({ variants: nothingPlaced })
   })
 
   it('leaves the library to the tagging run when a live model is set up', async () => {

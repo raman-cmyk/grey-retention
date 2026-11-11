@@ -41,21 +41,31 @@ const hidden = (n: T.Element) => {
   )
 }
 /** A tracking pixel or spacer: no part of the design. */
+/** A width or height in pixels, from the attribute or the style; NaN if none. */
+function sizeOf(img: T.Element, name: 'width' | 'height') {
+  return Number.parseFloat(
+    attr(img, name) ||
+      new RegExp(`(?:^|;)\\s*${name}\\s*:\\s*([\\d.]+)px`).exec(
+        styleOf(img)
+      )?.[1] ||
+      ''
+  )
+}
+/** A thin wide picture used as a line between parts: a divider. */
+function rule(img: T.Element) {
+  const height = sizeOf(img, 'height')
+  return Number.isFinite(height) && height <= 2 && sizeOf(img, 'width') >= 100
+}
+/** A tracking pixel or spacer (0 to 2 pixels, or named so): not a picture. */
 function spacer(img: T.Element) {
-  const size = (name: string) =>
-    Number.parseFloat(
-      attr(img, name) ||
-        new RegExp(`(?:^|;)\\s*${name}\\s*:\\s*([\\d.]+)px`).exec(
-          styleOf(img)
-        )?.[1] ||
-        ''
-    )
-  const width = size('width')
-  const height = size('height')
+  const width = sizeOf(img, 'width')
+  const height = sizeOf(img, 'height')
   return (
-    (width > 0 && width <= 2) ||
-    (height > 0 && height <= 2) ||
-    /spacer|blank\.gif|pixel\.gif/i.test(attr(img, 'src'))
+    (Number.isFinite(width) && width <= 2) ||
+    (Number.isFinite(height) && height <= 2) ||
+    /(?:^|[/_.-])(?:spacer|blank|pixel|clear|transparent)\.(?:gif|png)(?:$|[?#])/i.test(
+      attr(img, 'src')
+    )
   )
 }
 const children = (n: Node): T.ChildNode[] =>
@@ -120,16 +130,21 @@ function imageSlot(img: T.Element, nearPrice: boolean): Slot {
 function buttonStyle(a: T.Element): 'solid' | 'outline' | 'link' | null {
   const cell = a.parentNode
   const own = styleOf(a)
-  // A filled box: a background on the link itself or on the cell around it
-  // (a text colour alone is a plain link).
+  const painted = (style: string) =>
+    /background(?:-color)?\s*:\s*(?!none|transparent)[#a-z]/.test(style)
+  // The cell around it is the button only when the link is all it holds
+  // (links in a coloured footer are plain links).
+  const alone =
+    !!cell &&
+    isElement(cell) &&
+    children(cell).every((c) => c === a || (isText(c) && !c.value.trim()))
+  // A filled box: a background on the link itself or on the cell that is
+  // only the link (a text colour alone is a plain link).
   const filled =
-    /background(?:-color)?\s*:\s*(?!none|transparent)[#a-z]/.test(own) ||
-    (!!cell &&
-      isElement(cell) &&
-      (!!attr(cell, 'bgcolor') ||
-        /background(?:-color)?\s*:\s*(?!none|transparent)[#a-z]/.test(
-          styleOf(cell)
-        )))
+    painted(own) ||
+    (alone &&
+      isElement(cell!) &&
+      (!!attr(cell!, 'bgcolor') || painted(styleOf(cell!))))
   if (filled && words(textOf(a)) <= 6) return 'solid'
   if (/border\s*:/.test(own) && words(textOf(a)) <= 6) return 'outline'
   return null
@@ -160,7 +175,8 @@ function slotsOf(cell: Node, rowHasPrice = false): Slot[] {
     }
     if (unseen.has(n.tagName) || hidden(n)) return
     if (n.tagName === 'img') {
-      if (!spacer(n)) slots.push(imageSlot(n, nearPrice))
+      if (rule(n)) slots.push({ kind: 'divider' })
+      else if (!spacer(n)) slots.push(imageSlot(n, nearPrice))
       return
     }
     if (n.tagName === 'hr') return void slots.push({ kind: 'divider' })
@@ -216,9 +232,7 @@ function rowsOf(n: Node, depth = 0): Row[] {
   for (const c of children(n)) {
     if (!isElement(c) || unseen.has(c.tagName) || hidden(c)) continue
     if (c.tagName === 'tr') {
-      const cells = cellsOf(c).filter(
-        (cell) => textOf(cell).trim() || hasImage(cell)
-      )
+      const cells = cellsOf(c).filter(hasContent)
       if (cells.length >= 2)
         rows.push({
           cells: cells.slice(0, 4).map((node) => ({ node, width: share(node) }))
@@ -240,8 +254,7 @@ function rowsOf(n: Node, depth = 0): Row[] {
     } else {
       const inner = rowsOf(c, depth + 1)
       if (inner.length) rows.push(...inner)
-      else if (textOf(c).trim() || hasImage(c) || c.tagName === 'hr')
-        rows.push({ cells: [{ node: c, width: 1 }] })
+      else if (hasContent(c)) rows.push({ cells: [{ node: c, width: 1 }] })
     }
   }
   return rows
@@ -251,6 +264,16 @@ function hasImage(n: Node): boolean {
   if (isElement(n) && n.tagName === 'img') return !spacer(n)
   return children(n).some(hasImage)
 }
+
+function hasDivider(n: Node): boolean {
+  if (isElement(n) && (n.tagName === 'hr' || (n.tagName === 'img' && rule(n))))
+    return true
+  return children(n).some(hasDivider)
+}
+
+/** Words, a picture or a divider: something a slot is made of. */
+const hasContent = (n: Node) =>
+  !!textOf(n).trim() || hasImage(n) || hasDivider(n)
 
 /** Narrowest column the library draws. */
 const minWidth = 0.1

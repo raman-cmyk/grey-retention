@@ -30,8 +30,8 @@ export type TagRun =
  * The tagging run (CI-003): the same leased `inbox.label` jobs the sweep
  * works (and first, within `variantShareMs`, the `inbox.variant` jobs that
  * place tagged sections in the block library, CI-002), but with a run to
- * itself instead of what is left of the sweep's
- * 15 seconds, so live tagging keeps up with the inbox. Leases keep the sweep
+ * itself instead of what is left of the sweep's 15 seconds, so live
+ * tagging keeps up with the inbox. Leases keep the sweep
  * and this run off the same email at the same time; a job cut short or
  * stopped by the platform's AI budget is put back without using a try.
  *

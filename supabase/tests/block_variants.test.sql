@@ -1,5 +1,5 @@
 begin;
-select plan(62);
+select plan(66);
 
 -- CI-002: the block library. Owner ...01 follows northwind.example
 -- (workspace 101); ...02 is a platform admin; ...03 is a designer with no
@@ -44,6 +44,7 @@ select ok(has_function_privilege('authenticated','public.search_block_variants(j
   'signed-in people may search the library; anonymous visitors may not');
 select ok(not bool_or(has_table_privilege(r, 'public.block_variants', p)),'browser roles cannot write the library')
   from unnest(array['anon','authenticated']) r, unnest(array['insert','update','delete','truncate','references','trigger']) p;
+select ok(not has_table_privilege('anon','public.block_variants','select'),'anonymous visitors cannot read it');
 select is((select count(*)::int from public.block_variants where source = 'seed' and pass = 'seed' and evidence = 0 and model is null),20,
   'the 20 seed blocks are in the library');
 select is((select count(distinct family)::int from public.block_variants),20,'one seed for each family');
@@ -176,6 +177,41 @@ select is((select count(*)::int from public.platform_jobs where kind='inbox.vari
 
 select throws_ok($$update public.email_sections set variant_state='made' where id=pg_temp.section(4)::uuid$$,'23514',null,
   'a placed section is placed whole');
+
+-- Mail from an unknown sender joins the library only once it is assigned.
+select pg_temp.obj('inbox-raw','fake/'||pg_temp.k(n)||'.eml') from generate_series(4,5) n;
+set local role service_role;
+select public.record_inbox_message(current_setting('test.poll')::uuid,current_setting('test.polllease')::uuid,
+  jsonb_build_object('messageKey',pg_temp.k(n),'uid',9400+n,'uidValidity',1,'rawBytes',900,'receivedAt','2026-11-03T10:00:00Z',
+    'synthetic',true,'kind','message','rawPath','fake/'||pg_temp.k(n)||'.eml','rawSha256',pg_temp.k(n),
+    'subject','Hello','text','Hello'))
+  from generate_series(4,5) n;
+reset role;
+select set_config('test.unknown',(select id::text from public.inbox_messages where message_key=pg_temp.k(4)),true);
+select set_config('test.unknown2',(select id::text from public.inbox_messages where message_key=pg_temp.k(5)),true);
+insert into public.email_sections(inbox_message_id, ordinal, html, kind, words, images, block_type, label_source, labelled_at, layout, purpose,
+    styles, confidence, tag_state, tag_pass, tag_version)
+  select id, 1, '<tr><td>x</td></tr>', 'text', 1, 0, 'text', 'gemini', now(), 'single_column', 'story', '{}', 0.8, 'tagged', 'fast', 'tags-v1'
+  from public.inbox_messages where id in (current_setting('test.unknown')::uuid, current_setting('test.unknown2')::uuid);
+update public.inbox_messages set facts = '{"version":2}', extraction_version = 2, labelled_at = now()
+  where id = current_setting('test.unknown')::uuid;
+select is((select state||'/'||(select count(*) from public.platform_jobs j where j.kind='inbox.variant' and j.subject_key=m.id::text)
+    from public.inbox_messages m where m.id = current_setting('test.unknown')::uuid),'unassigned/0',
+  'a tagged email from an unknown sender is not placed');
+update public.inbox_messages set state = 'assigned', method = 'admin',
+    capture_id = (select id from public.competitor_captures where domain = 'northwind.example')
+  where id = current_setting('test.unknown')::uuid;
+select is((select count(*)::int from public.platform_jobs where kind='inbox.variant' and subject_key=current_setting('test.unknown')),1,
+  'once an admin assigns it, it is queued for the library');
+insert into public.platform_jobs(kind, subject_key, idempotency_key)
+  values ('inbox.variant', current_setting('test.unknown2'), 'inbox.variant:' || current_setting('test.unknown2') || ':test');
+set local role service_role;
+select set_config('test.stray',(select id::text from public.claim_platform_job(array['inbox.variant'], current_setting('test.unknown2'))),true);
+select throws_ok($$select public.record_block_variants(current_setting('test.stray')::uuid,
+  (select lease_token from public.platform_jobs where id = current_setting('test.stray')::uuid),
+  jsonb_build_array(jsonb_build_object('section_id',(select id from public.email_sections where inbox_message_id = current_setting('test.unknown2')::uuid),
+    'state','no_structure')))$$,'23514',null,'an email not assigned to a brand is never placed');
+reset role;
 
 -- Search: signed-in members and the agents, by every label.
 set local role authenticated;

@@ -173,10 +173,18 @@ describe('the Variant maker', () => {
       model: 'gemini-2.5-flash',
       remember: true
     })
-    // Without a real answer it is tried again once a model is set up.
+    // A cut-off answer would come back the same: remembered too.
+    expect(
+      await makeVariant(
+        { ...input, skeleton: noPrice },
+        askWith({ ok: false, code: 'incomplete' })
+      )
+    ).toMatchObject({ state: 'dropped', remember: true })
+    // Without a real answer, later sections with it are tried once a model
+    // is set up.
     for (const run of [
       { ok: true, content: null, provider: 'fake', model: 'fake' } as AiRun,
-      { ok: false, code: 'incomplete' } as AiRun
+      { ok: false, code: 'refused' } as AiRun
     ])
       expect(
         await makeVariant({ ...input, skeleton: noPrice }, askWith(run))
