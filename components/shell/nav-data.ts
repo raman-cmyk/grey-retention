@@ -144,7 +144,6 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
             href: '/email-library',
             icon: 'templates'
           },
-          { label: 'Copy review', href: '/copy-review', icon: 'copy' },
           { label: 'Assets', href: '/assets', icon: 'assets' },
           { label: 'Results & learning', href: '/reports', icon: 'reports' }
         ]

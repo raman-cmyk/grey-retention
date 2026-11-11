@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { refreshAuthSession } from '@/lib/supabase/proxy'
 import { isRetiredDesignerPath } from '@/features/designers/retired-paths'
+import { isRetiredApprovalPath } from '@/features/approval/retired-paths'
 
 const publicAuthRoutes = new Set([
   '/login',
@@ -18,9 +19,13 @@ function loginPath(pathname: string) {
 }
 
 export async function proxy(request: NextRequest) {
-  // Decision D3: the designer workflow is retired. Rewriting to a path no
-  // route serves renders the app's Not found page with a 404 status.
-  if (isRetiredDesignerPath(request.nextUrl.pathname))
+  // Decisions D3 and D17: the designer workflow and the weekly copy review
+  // are retired. Rewriting to a path no route serves renders the app's Not
+  // found page with a 404 status.
+  if (
+    isRetiredDesignerPath(request.nextUrl.pathname) ||
+    isRetiredApprovalPath(request.nextUrl.pathname)
+  )
     return NextResponse.rewrite(new URL('/retired-designer-route', request.url))
   if (
     process.env.AUTH_MODE === 'demo' &&
@@ -56,6 +61,8 @@ export const config = {
     '/brand/:path*',
     '/store/:path*',
     '/campaign-agent/:path*',
+    // Retired by D17 (RET-002): answered with a 404 above.
+    '/copy-review/:path*',
     '/competitor-agent/:path*',
     '/library/:path*',
     '/connections/:path*',

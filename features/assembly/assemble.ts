@@ -78,7 +78,11 @@ export type Draft = {
 export class AssemblyError extends Error {
   constructor(
     message: string,
-    /** `focus_unavailable` goes to a person; `bug` is ours to fix. */
+    /**
+     * `focus_unavailable`: the product or brief cannot be placed; the caller
+     * picks a safer option and records it (`assemblyFallback`, D16).
+     * `bug` is ours to fix; it is recorded the same way.
+     */
     readonly code: 'focus_unavailable' | 'bug' = 'bug'
   ) {
     super(message)
@@ -1069,7 +1073,7 @@ export function finish(
  * draft. `feedback` carries the last failed checks, for `withCopyQa`
  * (ASM-002) to regenerate with. A brief whose focus product cannot be
  * placed, or a store without a known timezone, is not built
- * (`AssemblyError`, for a person).
+ * (`AssemblyError`, recorded in the fallback log, D16).
  */
 export async function assembleEmail(
   input: AssemblyInput,

@@ -498,7 +498,10 @@ export function checkCopy(input: {
 
 /**
  * Regenerate until clean (VISION Step 3): up to `maxAttempts` tries, each
- * told what failed last time. If none passes, the email goes to a human.
+ * told what failed last time. If none passes, the answer is `fallback`
+ * (decision D16, RET-002): nothing waits for a person. The caller uses a
+ * safer option (plainer copy, a safer block variant) and records it with
+ * `copyCheckFallback` (features/fallback/entry.ts).
  */
 export async function withCopyQa<T extends CopyDraft>(input: {
   generate: (feedback: QaFailure[]) => Promise<T>
@@ -507,7 +510,7 @@ export async function withCopyQa<T extends CopyDraft>(input: {
 }): Promise<
   | { status: 'passed'; draft: T; attempts: QaResult[]; errors: unknown[] }
   | {
-      status: 'needs_human'
+      status: 'fallback'
       /** The last draft that was generated, or null if every try threw. */
       draft: T | null
       attempts: QaResult[]
@@ -534,5 +537,5 @@ export async function withCopyQa<T extends CopyDraft>(input: {
     if (result.pass) return { status: 'passed', draft, attempts, errors }
     feedback = result.failures
   }
-  return { status: 'needs_human', draft, attempts, errors }
+  return { status: 'fallback', draft, attempts, errors }
 }
