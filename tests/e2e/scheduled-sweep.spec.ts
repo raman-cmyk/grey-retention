@@ -212,11 +212,14 @@ test('STAB-001 scheduled sweep finishes queued work once per job across workspac
         'failed',
         'inbox',
         'live',
+        // STR-003 part 2: "Plan next 15 days" steps run in each sweep.
+        'plans',
         'processed',
         'rounds',
         'tenants'
       ].sort()
     )
+    expect(body.plans).toEqual({ ran: expect.any(Number) })
     // INB-001: each sweep reads the sample inbox first; of three at once,
     // the ones that find a poll already running say so.
     expect(body.inbox).toMatchObject({

@@ -79,7 +79,7 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('sidebar (expanded)', () => {
-  it('shows the workspace block and the six main pages in order', () => {
+  it('shows the workspace block and the seven main pages in order', () => {
     shell()
     const top = screen.getByTestId('shell-workspace')
     expect(within(top).getByText('Northwind Coffee')).toBeInTheDocument()
@@ -90,11 +90,12 @@ describe('sidebar (expanded)', () => {
     ).toHaveAttribute('aria-expanded', 'true')
     const labels = within(desktopNav())
       .getAllByRole('link')
-      .slice(0, 6)
+      .slice(0, 7)
       .map((link) => link.textContent)
     expect(labels).toEqual([
       'Dashboard',
       'Brand & Store',
+      'Plan next 15 days',
       'Campaigns',
       'Ask GROS',
       'Inspiration',
