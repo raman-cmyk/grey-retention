@@ -306,7 +306,7 @@ export function sampleFindings(page: ReadPage): RawFinding[] {
 /**
  * Reads one page: the Site reader on the `review` tier (Flash), or the
  * sample rules when the AI is the fake. An unreadable or refused answer
- * leaves the page without findings (D16); a failure worth another try
+ * leaves the page unread (D16: logged and skipped, replacing nothing); a failure worth another try
  * (a rate limit, a timeout, a spent budget) throws `TagError`, so the job
  * is tried again and the earlier findings stay until a full run replaces
  * them.
@@ -320,6 +320,11 @@ export async function readSitePage(
   dropped: number
   pass: 'sample' | 'model'
   model: string | null
+  /**
+   * False when the answer was unreadable, refused or not of the shape
+   * asked: the page then counts as not read, so it replaces nothing.
+   */
+  answered: boolean
 }> {
   const answer = await ask(siteReader, input, {
     callerKey,
@@ -331,16 +336,40 @@ export async function readSitePage(
       input.page,
       sampleFindings(input.page)
     )
-    return { findings: kept, dropped, pass: 'sample', model: null }
+    return {
+      findings: kept,
+      dropped,
+      pass: 'sample',
+      model: null,
+      answered: true
+    }
   }
   if (!answer.ok) {
     if (answer.code === 'invalid_output' || answer.code === 'refused')
-      return { findings: [], dropped: 0, pass: 'model', model: null }
+      return {
+        findings: [],
+        dropped: 0,
+        pass: 'model',
+        model: null,
+        answered: false
+      }
     throw new TagError(answer.code, answer.retryAfterSeconds)
   }
   const parsed = siteReaderOutput.safeParse(answer.content)
   if (!parsed.success)
-    return { findings: [], dropped: 0, pass: 'model', model: answer.model }
+    return {
+      findings: [],
+      dropped: 0,
+      pass: 'model',
+      model: answer.model,
+      answered: false
+    }
   const { kept, dropped } = checkedFindings(input.page, parsed.data.findings)
-  return { findings: kept, dropped, pass: 'model', model: answer.model }
+  return {
+    findings: kept,
+    dropped,
+    pass: 'model',
+    model: answer.model,
+    answered: true
+  }
 }

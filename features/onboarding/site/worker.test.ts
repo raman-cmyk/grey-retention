@@ -8,20 +8,23 @@ import { readBrandSite, siteRunMs } from './worker'
 
 type Db = Parameters<typeof readBrandSite>[0]
 type Job = Parameters<typeof readBrandSite>[1]
-const job = {
-  id: 'job-1',
-  tenant_id: 'tenant-1',
-  lease_token: 'lease-1',
-  kind: 'brand.read_site'
-} as unknown as Job
+const jobFor = (domain = 'cedar-lane.example') =>
+  ({
+    id: 'job-1',
+    tenant_id: 'tenant-1',
+    lease_token: 'lease-1',
+    kind: 'brand.read_site',
+    input: { domain }
+  }) as unknown as Job
+const job = jobFor()
 
-function database(domain = 'cedar-lane.example') {
+function database() {
   const calls: { name: string; args: Record<string, unknown> }[] = []
   const chain = {
     select: () => chain,
     eq: () => chain,
     single: async () => ({
-      data: { brand_name: 'Cedar Lane', domain },
+      data: { brand_name: 'Cedar Lane' },
       error: null
     })
   }
@@ -112,8 +115,8 @@ describe('readBrandSite', () => {
 
   it('stores nothing, and replaces nothing, when the home page cannot be read or there is no website', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {})
-    const down = database('shop.com')
-    await readBrandSite(down.db, job, {
+    const down = database()
+    await readBrandSite(down.db, jobFor('shop.com'), {
       fetcher: sampleSiteFetcher,
       ask: sampleAsk
     })
@@ -128,8 +131,8 @@ describe('readBrandSite', () => {
         }
       ]
     })
-    const none = database('')
-    await readBrandSite(none.db, job, {
+    const none = database()
+    await readBrandSite(none.db, jobFor(''), {
       fetcher: sampleSiteFetcher,
       ask: sampleAsk
     })
@@ -161,6 +164,20 @@ describe('readBrandSite', () => {
       pages.every((p) => p.state === 'skipped' && p.reason === 'time_up')
     ).toBe(true)
     expect(recorded(calls).findings).toEqual([])
+  })
+
+  it('counts a page whose answer was unusable as not read, so it replaces nothing', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const junk: Ask = async () => ({ ok: false, code: 'invalid_output' })
+    const { db, calls } = database()
+    await readBrandSite(db, job, { fetcher: sampleSiteFetcher, ask: junk })
+    const args = recorded(calls)
+    expect(args.findings).toEqual([])
+    expect(
+      args.pages.every(
+        (p) => p.state === 'skipped' && p.reason === 'model_unusable'
+      )
+    ).toBe(true)
   })
 
   it('fails the job, storing nothing, when the model is down, so the earlier findings stay', async () => {

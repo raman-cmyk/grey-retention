@@ -74,11 +74,15 @@ export async function readBrandSite(
   const deadline = now() + siteRunMs
   const brand = await db
     .from('brand_profiles')
-    .select('brand_name,domain')
+    .select('brand_name')
     .eq('tenant_id', job.tenant_id)
     .single()
   if (brand.error || !brand.data) throw new Error('Brand unavailable')
-  const domain = brand.data.domain
+  // The domain the job was started for, so a website changed mid-run
+  // does not mix two sites.
+  const domain = String(
+    (job.input as { domain?: unknown } | null)?.domain ?? ''
+  )
   const fetcher = deps.fetcher(domain)
   const run: SiteRun = {
     pages: [],
@@ -104,6 +108,7 @@ export async function readBrandSite(
     run.dropped += result.dropped
     for (const f of result.findings)
       findings.push({ ...f, pass: result.pass, model: result.model })
+    if (!result.answered) return { reason: 'model_unusable' }
     return { count: result.findings.length }
   }
   const home = homeUrl(domain)

@@ -11,7 +11,9 @@
 --   run of a source replaces that source's current findings.
 -- * brand.read_site jobs: the Site reader reads the brand's own website;
 --   the owner starts it (once a day at most); record_site_findings stores
---   a run's findings at once and finishes the job.
+--   a run's findings at once and finishes the job. A run replaces the site
+--   findings from the kinds of page it read; a page it could not read, or
+--   whose answer was unusable, replaces nothing.
 --
 -- Every active member of the workspace reads its findings; only the
 -- worker writes them.
@@ -106,17 +108,34 @@ alter table public.job_runs drop constraint job_runs_kind_check,
     'reviews.remind','design.render','ops.health','results.pull','reports.digest','learning.synthesize','optimizer.winback',
     'optimizer.suppress','email.rewrite','email.import','brand.read_site'));
 
+-- A brand's website as the readers use it: lower case, without `www.`
+-- (the reader reads the domain and its `www.` both); null unless it is a
+-- plain host name (never an address).
+create or replace function private.site_domain(domain text)
+returns text language sql immutable set search_path = '' as $$
+  select case when d ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' and d !~ '^[0-9.]+$' then d end
+  from (select regexp_replace(lower(btrim(coalesce(domain, ''))), '^www\.', '') as d) x;
+$$;
+revoke all on function private.site_domain(text) from public, anon, authenticated;
+
+-- The host of an https link on the standard port, lower case; null for
+-- anything else (another scheme, a port, a name and password).
+create or replace function private.https_host(url text)
+returns text language sql immutable set search_path = '' as $$
+  select lower(substring(url from '^https://([^/:?#@]+)(?:[/?#]|$)'));
+$$;
+revoke all on function private.https_host(text) from public, anon, authenticated;
+
 -- The owner starts a read of the brand's own website (at most once a day;
--- asking again the same day returns the same job).
+-- asking again the same day returns the same job). The job keeps the
+-- domain it reads, so a website changed mid-run does not break it.
 create or replace function public.start_site_reading(t uuid)
 returns uuid language plpgsql security definer set search_path = '' as $$
 declare d text; j uuid;
 begin
   perform private.require_member(t, true);
-  select lower(btrim(domain)) into d from public.brand_profiles where tenant_id = t;
-  if coalesce(d, '') !~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' then
-    raise exception 'Add the brand''s website first' using errcode = '23514';
-  end if;
+  select private.site_domain(domain) into d from public.brand_profiles where tenant_id = t;
+  if d is null then raise exception 'Add the brand''s website first' using errcode = '23514'; end if;
   insert into public.job_runs(tenant_id, kind, idempotency_key, input, created_by)
     values (t, 'brand.read_site', 'brand.read_site:' || d || ':' || to_char(now() at time zone 'UTC', 'YYYY-MM-DD'),
       jsonb_build_object('domain', d), auth.uid())
@@ -126,57 +145,65 @@ begin
 end $$;
 
 -- A run's findings, all at once, with the pages read and skipped; then the
--- job is finished. Evidence must be a page on the brand's own host. When
--- no page could be read, nothing earlier is replaced. Locks: the tenant
--- first, then the job.
+-- job is finished. Every page and every piece of evidence is on the
+-- domain the job reads (or its `www.`), and evidence cites a page this run
+-- read. The run replaces the current site findings from the kinds of page
+-- it read, unless a newer run has already replaced them (then its own are
+-- kept, already replaced). Locks: the tenant first, then the job.
 create or replace function public.record_site_findings(job uuid, lease uuid, findings jsonb, pages jsonb, live boolean)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
-  t uuid; j public.job_runs; d text; f jsonb; host text; n integer := 0;
+  j public.job_runs; d text; f jsonb; n integer := 0; read_kinds text[]; newer boolean;
   kinds constant text[] := array['home','product','about','shipping','returns','faq'];
 begin
-  select tenant_id into t from public.job_runs where id = job;
-  if t is null or not private.worker_access(t) then raise exception 'Access denied' using errcode = '42501'; end if;
-  perform 1 from public.tenants where id = t for update;
-  select * into j from public.job_runs where id = job for update;
+  j := private.onboarding_lease(job, lease);
   if j.kind <> 'brand.read_site' then raise exception 'Not a site reading job' using errcode = '23514'; end if;
-  if j.status <> 'running' or j.lease_token is distinct from lease or j.lease_until <= now() then
-    raise exception 'Lease unavailable' using errcode = 'PT409';
-  end if;
-  select lower(btrim(domain)) into d from public.brand_profiles where tenant_id = t;
+  d := private.site_domain(j.input->>'domain');
+  if d is null then raise exception 'Invalid site reading' using errcode = '23514'; end if;
   if live is null or jsonb_typeof(findings) is distinct from 'array' or jsonb_array_length(findings) > 200
     or jsonb_typeof(pages) is distinct from 'array' or jsonb_array_length(pages) > 8
     or exists (select 1 from jsonb_array_elements(pages) p
       where jsonb_typeof(p) <> 'object' or jsonb_typeof(p->'url') is distinct from 'string' or length(p->>'url') > 500
+        or coalesce(private.https_host(p->>'url'), '') not in (d, 'www.' || d)
         or not (coalesce(p->>'kind', '') = any(kinds)) or coalesce(p->>'state', '') not in ('read','skipped')
         or (p ? 'reason' and (jsonb_typeof(p->'reason') <> 'string' or p->>'reason' !~ '^[a-z_]{1,40}$'))
-        or (p ? 'findings' and jsonb_typeof(p->'findings') <> 'number')) then
+        or (p ? 'findings' and (jsonb_typeof(p->'findings') <> 'number' or p->>'findings' !~ '^[0-9]{1,3}$'))
+        or p - 'url' - 'kind' - 'state' - 'reason' - 'findings' <> '{}'::jsonb) then
     raise exception 'Invalid site reading' using errcode = '23514';
   end if;
+  select coalesce(array_agg(distinct p->>'kind'), '{}') into read_kinds
+    from jsonb_array_elements(pages) p where p->>'state' = 'read';
   for f in select * from jsonb_array_elements(findings) loop
-    host := lower(substring(f->'evidence'->>'url' from '^https://([^/:?#@]+)(?:[/?#]|$)'));
-    if jsonb_typeof(f) <> 'object' or jsonb_typeof(f->'statement') is distinct from 'string'
+    if jsonb_typeof(f) <> 'object' or jsonb_typeof(f->'topic') is distinct from 'string'
+      or jsonb_typeof(f->'statement') is distinct from 'string'
       or jsonb_typeof(f->'confidence') is distinct from 'number' or (f->>'confidence')::numeric not between 0 and 1
       or coalesce(f->>'pass', '') not in ('sample','model')
       or (f ? 'model' and jsonb_typeof(f->'model') not in ('string','null'))
-      or jsonb_typeof(f->'evidence') is distinct from 'object' or host is null or host not in (d, 'www.' || d)
+      or f - 'topic' - 'statement' - 'value' - 'evidence' - 'confidence' - 'pass' - 'model' <> '{}'::jsonb
+      or jsonb_typeof(f->'evidence') is distinct from 'object'
+      or coalesce(private.https_host(f->'evidence'->>'url'), '') not in (d, 'www.' || d)
       or jsonb_typeof(f->'evidence'->'quote') is distinct from 'string' or length(f->'evidence'->>'quote') not between 1 and 300
-      or not (coalesce(f->'evidence'->>'page', '') = any(kinds))
+      or not (coalesce(f->'evidence'->>'page', '') = any(read_kinds))
       or (f->'evidence') - 'url' - 'quote' - 'page' <> '{}'::jsonb then
       raise exception 'Invalid finding' using errcode = '23514';
     end if;
   end loop;
-  if exists (select 1 from jsonb_array_elements(pages) p where p->>'state' = 'read') then
+  -- A newer run of this site already replaced the findings: this one's are
+  -- kept for the record, already replaced.
+  newer := exists (select 1 from public.brand_findings b join public.job_runs r on r.tenant_id = b.tenant_id and r.id = b.run_id
+    where b.tenant_id = j.tenant_id and b.source = 'site' and b.superseded_at is null and r.created_at > j.created_at);
+  if cardinality(read_kinds) > 0 and not newer then
     update public.brand_findings set superseded_at = now()
-      where tenant_id = t and source = 'site' and superseded_at is null;
-    insert into public.brand_findings(tenant_id, run_id, source, topic, statement, value, evidence, confidence, pass, model)
-      select t, j.id, 'site', e->>'topic', e->>'statement', coalesce(e->'value', '{}'::jsonb), e->'evidence',
-        round((e->>'confidence')::numeric, 2), e->>'pass', left(nullif(btrim(coalesce(e->>'model', '')), ''), 100)
-      from jsonb_array_elements(findings) e;
-    get diagnostics n = row_count;
-  elsif jsonb_array_length(findings) > 0 then
-    raise exception 'Findings without a page read' using errcode = '23514';
+      where tenant_id = j.tenant_id and source = 'site' and superseded_at is null
+        and evidence->>'page' = any(read_kinds);
   end if;
+  insert into public.brand_findings(tenant_id, run_id, source, topic, statement, value, evidence, confidence, pass, model,
+      superseded_at)
+    select j.tenant_id, j.id, 'site', e->>'topic', e->>'statement', coalesce(e->'value', '{}'::jsonb), e->'evidence',
+      round((e->>'confidence')::numeric, 2), e->>'pass', left(nullif(btrim(coalesce(e->>'model', '')), ''), 100),
+      case when newer then now() end
+    from jsonb_array_elements(findings) e;
+  get diagnostics n = row_count;
   update public.job_runs
     set status = 'succeeded', lease_token = null, lease_until = null, error_code = null, updated_at = now(),
         checkpoint = jsonb_build_object('pages', pages, 'findings', n, 'live', live)
