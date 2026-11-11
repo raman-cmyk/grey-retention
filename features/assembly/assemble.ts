@@ -68,7 +68,11 @@ export type Draft = {
   /** Why each block is there, in order (shown to the owner). */
   plan: { type: BlockType; reason: string }[]
   blocks: Block[]
-  source: 'model' | 'sample'
+  /**
+   * `plain`: the fallback when the inspectors' rewrites keep failing
+   * (EML-003, D16): code writes facts-only words into the safest sections.
+   */
+  source: 'model' | 'sample' | 'plain'
   /** The catalog ids placed, in order, for product checks and removals. */
   productIds: string[]
   /** The code the email carries, if any. */
@@ -1039,7 +1043,7 @@ export function finish(
   written: Written,
   filled: ReturnType<typeof fill>,
   earlier: readonly CopyFeedback[],
-  source: 'model' | 'sample',
+  source: Draft['source'],
   /** False when the writer cannot add a product block (a fixed layout). */
   focusRequired = true
 ): Assembled {
