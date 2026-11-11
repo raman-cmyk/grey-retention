@@ -781,6 +781,69 @@ export type Database = {
           }
         ]
       }
+      brand_findings: {
+        Row: {
+          confidence: number
+          created_at: string
+          evidence: Json
+          id: string
+          model: string | null
+          pass: string
+          run_id: string
+          source: string
+          statement: string
+          superseded_at: string | null
+          tenant_id: string
+          topic: string
+          value: Json
+        }
+        Insert: {
+          confidence: number
+          created_at?: string
+          evidence: Json
+          id?: string
+          model?: string | null
+          pass: string
+          run_id: string
+          source: string
+          statement: string
+          superseded_at?: string | null
+          tenant_id: string
+          topic: string
+          value?: Json
+        }
+        Update: {
+          confidence?: number
+          created_at?: string
+          evidence?: Json
+          id?: string
+          model?: string | null
+          pass?: string
+          run_id?: string
+          source?: string
+          statement?: string
+          superseded_at?: string | null
+          tenant_id?: string
+          topic?: string
+          value?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_findings_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_findings_tenant_id_run_id_fkey'
+            columns: ['tenant_id', 'run_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       brand_kits: {
         Row: {
           approved_by: string | null
@@ -6743,6 +6806,16 @@ export type Database = {
         }
         Returns: number
       }
+      record_site_findings: {
+        Args: {
+          findings: Json
+          job: string
+          lease: string
+          live: boolean
+          pages: Json
+        }
+        Returns: Json
+      }
       recover_expired_usage: { Args: { t: string }; Returns: number }
       refresh_catalog_stock: {
         Args: { product: string; stock: number; t: string }
@@ -7093,6 +7166,7 @@ export type Database = {
         Args: { candidate: string; observed_at: string; t: string }
         Returns: undefined
       }
+      start_site_reading: { Args: { t: string }; Returns: string }
       submit_design: {
         Args: {
           assignment: string

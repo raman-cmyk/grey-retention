@@ -17,7 +17,8 @@
 -- worker writes them.
 
 -- The value each topic holds: one fixed shape per topic (features/
--- onboarding/findings.ts holds the same shapes).
+-- onboarding/findings.ts holds the same shapes). Never null: a check that
+-- is null would let any value through.
 create or replace function private.finding_value_ok(topic text, v jsonb)
 returns boolean language plpgsql immutable set search_path = '' as $$
 declare
@@ -27,38 +28,38 @@ begin
   if jsonb_typeof(v) is distinct from 'object' or length(v::text) > 1000 then return false; end if;
   case topic
     when 'free_shipping' then
-      if v->>'kind' in ('always','never') then return v - 'kind' = '{}'::jsonb; end if;
-      return v->>'kind' = 'over' and jsonb_typeof(v->'amount') = 'number' and v->>'amount' ~ money
-        and coalesce(v->>'currency', '') ~ '^[A-Z]{3}$' and v - 'kind' - 'amount' - 'currency' = '{}'::jsonb;
+      if v->>'kind' in ('always','never') then return coalesce(v - 'kind' = '{}'::jsonb, false); end if;
+      return coalesce(v->>'kind' = 'over' and jsonb_typeof(v->'amount') = 'number' and v->>'amount' ~ money
+        and coalesce(v->>'currency', '') ~ '^[A-Z]{3}$' and v - 'kind' - 'amount' - 'currency' = '{}'::jsonb, false);
     when 'returns', 'guarantee' then
-      return jsonb_typeof(v->'days') = 'number' and v->>'days' ~ whole_days and (v->>'days')::integer <= 3650
-        and v - 'days' = '{}'::jsonb;
+      return coalesce(jsonb_typeof(v->'days') = 'number' and v->>'days' ~ whole_days and (v->>'days')::integer <= 3650
+        and v - 'days' = '{}'::jsonb, false);
     when 'delivery_days' then
       if jsonb_typeof(v->'min') is distinct from 'number' or jsonb_typeof(v->'max') is distinct from 'number'
         or v->>'min' !~ '^[0-9]{1,2}$' or v->>'max' !~ '^[0-9]{1,2}$' then return false; end if;
-      return (v->>'min')::integer <= (v->>'max')::integer and (v->>'max')::integer <= 90
+      return coalesce((v->>'min')::integer <= (v->>'max')::integer and (v->>'max')::integer <= 90
         and (not v ? 'region' or (jsonb_typeof(v->'region') = 'string' and length(v->>'region') between 2 and 60))
-        and v - 'min' - 'max' - 'region' = '{}'::jsonb;
+        and v - 'min' - 'max' - 'region' = '{}'::jsonb, false);
     when 'locale' then
       return coalesce(v->>'language', '') ~ '^[a-z]{2}$' and coalesce(v->>'currency', '') ~ '^[A-Z]{3}$'
         and v - 'language' - 'currency' = '{}'::jsonb;
     when 'price_band' then
       if jsonb_typeof(v->'min') is distinct from 'number' or jsonb_typeof(v->'max') is distinct from 'number'
         or v->>'min' !~ money or v->>'max' !~ money then return false; end if;
-      return (v->>'min')::numeric <= (v->>'max')::numeric and coalesce(v->>'currency', '') ~ '^[A-Z]{3}$'
-        and v - 'min' - 'max' - 'currency' = '{}'::jsonb;
+      return coalesce((v->>'min')::numeric <= (v->>'max')::numeric and coalesce(v->>'currency', '') ~ '^[A-Z]{3}$'
+        and v - 'min' - 'max' - 'currency' = '{}'::jsonb, false);
     when 'claim' then
-      return v->>'subject' in ('brand','product')
+      return coalesce(v->>'subject' in ('brand','product')
         and (not v ? 'productId' or (jsonb_typeof(v->'productId') = 'string' and length(v->>'productId') between 1 and 100))
-        and v - 'subject' - 'productId' = '{}'::jsonb;
+        and v - 'subject' - 'productId' = '{}'::jsonb, false);
     when 'review_platform' then
-      return jsonb_typeof(v->'name') = 'string' and length(v->>'name') between 2 and 60
+      return coalesce(jsonb_typeof(v->'name') = 'string' and length(v->>'name') between 2 and 60
         and jsonb_typeof(v->'verified') = 'boolean'
         and (not v ? 'rating' or (jsonb_typeof(v->'rating') = 'number' and (v->>'rating')::numeric between 0 and 5))
         and (not v ? 'count' or (jsonb_typeof(v->'count') = 'number' and v->>'count' ~ '^[0-9]{1,9}$'))
-        and v - 'name' - 'verified' - 'rating' - 'count' = '{}'::jsonb;
+        and v - 'name' - 'verified' - 'rating' - 'count' = '{}'::jsonb, false);
     when 'shipping', 'offering', 'audience', 'tone', 'contact' then
-      return v = '{}'::jsonb;
+      return coalesce(v = '{}'::jsonb, false);
     else
       return false;
   end case;
@@ -161,7 +162,7 @@ begin
       or jsonb_typeof(f->'evidence') is distinct from 'object' or host is null or host not in (d, 'www.' || d)
       or jsonb_typeof(f->'evidence'->'quote') is distinct from 'string' or length(f->'evidence'->>'quote') not between 1 and 300
       or not (coalesce(f->'evidence'->>'page', '') = any(kinds))
-      or f->'evidence' - 'url' - 'quote' - 'page' <> '{}'::jsonb then
+      or (f->'evidence') - 'url' - 'quote' - 'page' <> '{}'::jsonb then
       raise exception 'Invalid finding' using errcode = '23514';
     end if;
   end loop;
@@ -169,9 +170,9 @@ begin
     update public.brand_findings set superseded_at = now()
       where tenant_id = t and source = 'site' and superseded_at is null;
     insert into public.brand_findings(tenant_id, run_id, source, topic, statement, value, evidence, confidence, pass, model)
-      select t, j.id, 'site', f->>'topic', f->>'statement', coalesce(f->'value', '{}'::jsonb), f->'evidence',
-        round((f->>'confidence')::numeric, 2), f->>'pass', left(nullif(btrim(coalesce(f->>'model', '')), ''), 100)
-      from jsonb_array_elements(findings) f;
+      select t, j.id, 'site', e->>'topic', e->>'statement', coalesce(e->'value', '{}'::jsonb), e->'evidence',
+        round((e->>'confidence')::numeric, 2), e->>'pass', left(nullif(btrim(coalesce(e->>'model', '')), ''), 100)
+      from jsonb_array_elements(findings) e;
     get diagnostics n = row_count;
   elsif jsonb_array_length(findings) > 0 then
     raise exception 'Findings without a page read' using errcode = '23514';

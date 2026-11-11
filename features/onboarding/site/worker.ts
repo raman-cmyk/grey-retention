@@ -153,11 +153,21 @@ export async function readBrandSite(
         else skip(o.url, o.kind, o.reason)
     }
   }
-  run.findings = findings.length
+  // A fact repeated on every page (a footer line) is kept once: the first
+  // page it was read on.
+  const seen = new Set<string>()
+  const unique = findings.filter((f) => {
+    const quote = 'quote' in f.evidence ? f.evidence.quote : ''
+    const key = `${f.topic}:${quote.toLowerCase()}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+  run.findings = unique.length
   const recorded = await db.rpc('record_site_findings', {
     job: job.id,
     lease: job.lease_token!,
-    findings: findings.map((f) => ({
+    findings: unique.map((f) => ({
       topic: f.topic,
       statement: f.statement,
       value: f.value,
