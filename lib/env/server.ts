@@ -21,6 +21,8 @@ const serverEnvironmentSchema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_LABEL_MODEL: z.string().optional(),
   GEMINI_COPY_MODEL: z.string().optional(),
+  GEMINI_PLAN_MODEL: z.string().optional(),
+  GEMINI_REVIEW_MODEL: z.string().optional(),
   GEMINI_TIMEOUT_MS: z.string().optional(),
   DEEPSEEK_API_KEY: z.string().optional(),
   // Inspiration inbox (INB-001): read by features/inbox/config.ts, which

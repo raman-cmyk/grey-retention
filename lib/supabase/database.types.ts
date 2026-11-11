@@ -34,6 +34,139 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_memory_rules: {
+        Row: {
+          applies_to: string[]
+          confidence: number
+          created_at: string
+          evidence: Json
+          evidence_count: number
+          expires_at: string | null
+          id: string
+          idempotency_key: string
+          industry: string | null
+          kind: string
+          revision: number
+          rule: string
+          source: string
+          status: string
+          tenant_id: string | null
+          updated_at: string
+          why: string
+        }
+        Insert: {
+          applies_to?: string[]
+          confidence: number
+          created_at?: string
+          evidence?: Json
+          evidence_count?: number
+          expires_at?: string | null
+          id?: string
+          idempotency_key: string
+          industry?: string | null
+          kind: string
+          revision?: number
+          rule: string
+          source: string
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+          why?: string
+        }
+        Update: {
+          applies_to?: string[]
+          confidence?: number
+          created_at?: string
+          evidence?: Json
+          evidence_count?: number
+          expires_at?: string | null
+          id?: string
+          idempotency_key?: string
+          industry?: string | null
+          kind?: string
+          revision?: number
+          rule?: string
+          source?: string
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+          why?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'agent_memory_rules_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      agent_runs: {
+        Row: {
+          agent: string
+          brand_book_version: number | null
+          caller_key: string
+          cost_micro: number
+          created_at: string
+          detail: string | null
+          id: string
+          model: string | null
+          output: Json | null
+          prompt_digest: string
+          provider: string | null
+          rule_ids: string[]
+          run_key: string
+          tenant_id: string | null
+          verdict: string
+          version: string
+        }
+        Insert: {
+          agent: string
+          brand_book_version?: number | null
+          caller_key: string
+          cost_micro?: number
+          created_at?: string
+          detail?: string | null
+          id?: string
+          model?: string | null
+          output?: Json | null
+          prompt_digest: string
+          provider?: string | null
+          rule_ids?: string[]
+          run_key: string
+          tenant_id?: string | null
+          verdict: string
+          version: string
+        }
+        Update: {
+          agent?: string
+          brand_book_version?: number | null
+          caller_key?: string
+          cost_micro?: number
+          created_at?: string
+          detail?: string | null
+          id?: string
+          model?: string | null
+          output?: Json | null
+          prompt_digest?: string
+          provider?: string | null
+          rule_ids?: string[]
+          run_key?: string
+          tenant_id?: string | null
+          verdict?: string
+          version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'agent_runs_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       ai_calls: {
         Row: {
           cost_micro_usd: number
@@ -455,6 +588,38 @@ export type Database = {
             foreignKeyName: 'autopilot_streaks_tenant_id_fkey'
             columns: ['tenant_id']
             isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      brand_books: {
+        Row: {
+          content: Json
+          created_at: string
+          tenant_id: string
+          version: number
+          written_by: string
+        }
+        Insert: {
+          content: Json
+          created_at?: string
+          tenant_id: string
+          version: number
+          written_by: string
+        }
+        Update: {
+          content?: Json
+          created_at?: string
+          tenant_id?: string
+          version?: number
+          written_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_books_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
             referencedRelation: 'tenants'
             referencedColumns: ['id']
           }
@@ -5556,6 +5721,7 @@ export type Database = {
         Args: { event_date: string; name: string; notes: string; t: string }
         Returns: string
       }
+      add_memory_rule: { Args: { r: Json }; Returns: string }
       admin_assign_inbox_message: {
         Args: { brand: string; message: string }
         Returns: string
@@ -6199,6 +6365,7 @@ export type Database = {
         Args: { actual: number; reservation: string; t: string }
         Returns: undefined
       }
+      record_agent_run: { Args: { run: Json }; Returns: string }
       record_asset_upload: {
         Args: {
           actor: string
@@ -6473,6 +6640,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      save_brand_book: {
+        Args: { content: Json; t: string; written_by: string }
+        Returns: number
+      }
       save_brand_section: {
         Args: {
           content: Json
@@ -6666,6 +6837,15 @@ export type Database = {
           t: string
         }
         Returns: undefined
+      }
+      update_memory_rule: {
+        Args: {
+          expected_revision: number
+          new_confidence: number
+          new_status: string
+          rule_id: string
+        }
+        Returns: number
       }
       update_team_access: {
         Args: {
