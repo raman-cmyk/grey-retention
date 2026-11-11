@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
 import { classifyEmail, industryOf } from '@/features/intelligence/classifier'
-import { TagError, type Ask } from '@/features/intelligence/passes'
+import { TagError, waitFor, type Ask } from '@/features/intelligence/passes'
 import { tagSection } from '@/features/intelligence/tagger'
 import {
   sectionTagsSchema,
@@ -12,8 +12,8 @@ import {
   type SectionTags,
   type Tagged
 } from '@/features/intelligence/taxonomy'
-import type { AiImage } from '@/lib/providers/contracts'
 import { InboundTransportError } from '@/lib/providers/inbound-capture'
+import { storedPicture } from './pictures'
 import { emailFacts, factsVersion } from './facts'
 import type { EmailSection } from './sections'
 
@@ -29,28 +29,10 @@ export type LabelRun = {
   deferred: number
 }
 
-/** A picture larger than this is not sent to the agents. */
-const maxPictureBytes = 1_500_000
 /** Sections tagged at once (each may take two calls). */
 export const tagBatch = 6
 /** Time a live batch of calls is given; no batch starts with less left. */
 export const liveBatchMs = 8_000
-/** How long a job waits when the platform's AI budget is spent. */
-const budgetWaitSeconds = 3_600
-
-/** A stored picture (a section crop or the screenshot), if small enough. */
-async function pictureOf(
-  db: Db,
-  path: string | null
-): Promise<AiImage | undefined> {
-  if (!path) return undefined
-  const { data, error } = await db.storage.from('inbox-assets').download(path)
-  if (error || !data || data.size > maxPictureBytes) return undefined
-  return {
-    mediaType: 'image/jpeg',
-    base64: Buffer.from(await data.arrayBuffer()).toString('base64')
-  }
-}
 
 /** One section's outcome as the database stores it. */
 function storedTags(ordinal: number, t: Tagged<SectionTags>) {
@@ -129,8 +111,9 @@ function storedFamily(row: SectionRow): string | null {
  * once, so a retry or a run cut short pays only for what is left. Then the
  * facts are worked out and the Email classifier labels the email, both
  * recorded once per version. An email already tagged is finished without a
- * call. When time runs short, or the platform's AI budget is spent, the job
- * is put back without using up a try (D16: it simply runs later).
+ * call. When time runs short, the platform's AI budget is spent or the
+ * provider is rate limiting, the job is put back without using up a try
+ * (D16: it simply runs later).
  * `pictures` sends each section's crop and the screenshot along; `batchMs`
  * is the time a batch needs (none for the sample rules).
  */
@@ -165,6 +148,10 @@ export async function labelInboxEmails(
       })
       if (deferred.error) throw deferred.error
       run.deferred++
+      // A spent budget or a rate limit is worth seeing in the logs (a daily
+      // quota would keep putting jobs back).
+      if (reason.startsWith('ai_'))
+        logger.warn('Inbox label job put back', { reason, delaySeconds })
     }
     try {
       const [message, rows] = await Promise.all([
@@ -231,7 +218,7 @@ export async function labelInboxEmails(
           break
         }
         const batch = todo.slice(i, i + tagBatch)
-        const tagged = await Promise.all(
+        const settled = await Promise.allSettled(
           batch.map(async (row) => {
             const section = sections[stored.indexOf(row)]!
             return {
@@ -243,7 +230,7 @@ export async function labelInboxEmails(
                   position: { ordinal: row.ordinal, of: sections.length },
                   subject: message.data.subject,
                   image: options.pictures
-                    ? await pictureOf(db, row.image_path)
+                    ? await storedPicture(db, row.image_path)
                     : undefined
                 },
                 ask,
@@ -252,14 +239,23 @@ export async function labelInboxEmails(
             }
           })
         )
-        const recorded = await db.rpc('record_section_tags', {
-          ...lease,
-          sections: tagged.map((t) =>
-            storedTags(t.row.ordinal, t.result)
-          ) as unknown as Json,
-          tag_version: tagVersion
-        })
-        if (recorded.error) throw recorded.error
+        // What was answered is kept even when another call failed: the
+        // retry pays only for the rest.
+        const tagged = settled.flatMap((r) =>
+          r.status === 'fulfilled' ? [r.value] : []
+        )
+        if (tagged.length) {
+          const recorded = await db.rpc('record_section_tags', {
+            ...lease,
+            sections: tagged.map((t) =>
+              storedTags(t.row.ordinal, t.result)
+            ) as unknown as Json,
+            tag_version: tagVersion
+          })
+          if (recorded.error) throw recorded.error
+        }
+        const failed = settled.find((r) => r.status === 'rejected')
+        if (failed) throw failed.reason
         for (const { row, result } of tagged) {
           if (result.state === 'untagged') run.untagged++
           families.set(
@@ -302,7 +298,7 @@ export async function labelInboxEmails(
             .join('\n')
             .slice(0, 4000),
           image: options.pictures
-            ? await pictureOf(db, message.data.screenshot_path)
+            ? await storedPicture(db, message.data.screenshot_path)
             : undefined
         },
         ask
@@ -321,10 +317,12 @@ export async function labelInboxEmails(
       if (finished.error) throw finished.error
       run.emails++
     } catch (error) {
-      // The platform's budget is spent for now: this job and every other
-      // one would be refused, so it waits and the run stops.
-      if (error instanceof TagError && error.code === 'cap_reached') {
-        await putBack(budgetWaitSeconds, 'ai_cap_reached')
+      // The platform's budget is spent, or the provider is rate limiting:
+      // this job and every other one would be refused, so it waits without
+      // using a try and the run stops.
+      const wait = waitFor(error)
+      if (wait) {
+        await putBack(wait.delaySeconds, wait.reason)
         break
       }
       run.retried++
@@ -349,8 +347,6 @@ export async function labelInboxEmails(
           code: failed.error.code ?? 'unknown',
           failure: failure.code
         })
-      // A rate limit would refuse the next email too.
-      if (error instanceof TagError && error.code === 'rate_limited') break
     }
   }
   return run

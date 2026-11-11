@@ -29,6 +29,61 @@ const refusalReasons = new Set([
   'LANGUAGE'
 ])
 const thinkingBudgets = { none: 0, low: 1_024, medium: 4_096 } as const
+/** 2.5 Pro cannot switch thinking off; this is its smallest budget. */
+const proMinThinking = 128
+/**
+ * Room kept for thinking when the model decides how much to think itself:
+ * any 3.x model, and 2.5 Flash or Pro with no effort set. 2.5 Flash-Lite
+ * does not think unless asked.
+ */
+export const selfThinkingAllowance = 4_096
+/** The largest answer the supported models give. */
+const maxModelOutput = 65_536
+
+/**
+ * The thinking budget sent for this request, or null when none is sent
+ * (3.x models choose their own; no effort means the model's default).
+ */
+export function geminiThinkingBudget(
+  request: Pick<AiProviderRequest, 'model' | 'reasoningEffort'>
+): number | null {
+  if (!request.reasoningEffort || !request.model.startsWith('gemini-2.5'))
+    return null
+  const budget = thinkingBudgets[request.reasoningEffort]
+  return request.model.startsWith('gemini-2.5-pro')
+    ? Math.max(budget, proMinThinking)
+    : budget
+}
+
+/** Output kept for thinking on this request. */
+function thinkingRoom(
+  request: Pick<AiProviderRequest, 'model' | 'reasoningEffort'>
+) {
+  const budget = geminiThinkingBudget(request)
+  if (budget !== null) return budget
+  if (request.model.startsWith('gemini-2.5-flash-lite')) return 0
+  return selfThinkingAllowance
+}
+
+/**
+ * Gemini counts thinking tokens as output, so a cut-off at
+ * `maxOutputTokens` can land inside the thinking and leave no answer
+ * (`incomplete`). `maxOutputTokens` in a request is the room for the answer;
+ * the thinking room is added on top here, and the cost estimate uses the
+ * same number. The total never goes over the model's largest answer, so an
+ * answer room near 65,536 with thinking gets less than it asked for.
+ */
+export function geminiOutputTokens(
+  request: Pick<
+    AiProviderRequest,
+    'model' | 'reasoningEffort' | 'maxOutputTokens'
+  >
+) {
+  return Math.min(
+    maxModelOutput,
+    request.maxOutputTokens + thinkingRoom(request)
+  )
+}
 
 /** The exact JSON body sent; also the input to the cost ceiling. */
 export function geminiRequestBody(request: AiProviderRequest) {
@@ -36,6 +91,7 @@ export function geminiRequestBody(request: AiProviderRequest) {
     throw new AiProviderError('rejected_request', 'none', {
       diagnostic: 'schema_required'
     })
+  const budget = geminiThinkingBudget(request)
   return JSON.stringify({
     systemInstruction: { parts: [{ text: request.system }] },
     contents: [
@@ -50,7 +106,7 @@ export function geminiRequestBody(request: AiProviderRequest) {
       }
     ],
     generationConfig: {
-      maxOutputTokens: request.maxOutputTokens,
+      maxOutputTokens: geminiOutputTokens(request),
       temperature: request.temperature,
       ...(request.responseKind === 'json'
         ? {
@@ -59,13 +115,7 @@ export function geminiRequestBody(request: AiProviderRequest) {
           }
         : {}),
       // Thinking budgets apply to 2.5 models; 3.x models choose their own.
-      ...(request.reasoningEffort && request.model.startsWith('gemini-2.5')
-        ? {
-            thinkingConfig: {
-              thinkingBudget: thinkingBudgets[request.reasoningEffort]
-            }
-          }
-        : {})
+      ...(budget !== null ? { thinkingConfig: { thinkingBudget: budget } } : {})
     }
   })
 }
