@@ -121,6 +121,9 @@ describe('SupabaseRunLog', () => {
       costMicro: 58,
       ruleIds: ['00000000-0000-4000-8000-0000000000a1']
     })
+    expect(String(args.run.runKey)).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    )
     expect(String(args.run.callerKey)).toHaveLength(200)
     expect(String(args.run.detail)).toHaveLength(500)
   })

@@ -19,6 +19,9 @@ create table public.agent_memory_rules (
   evidence jsonb not null default '[]'::jsonb check (jsonb_typeof(evidence) = 'array'),
   status text not null default 'active' check (status in ('active', 'expired', 'retired')),
   expires_at timestamptz,
+  -- A retried learning job sends the same key and gets the same rule back.
+  idempotency_key text not null unique check (char_length(idempotency_key) between 8 and 200),
+  revision integer not null default 1 check (revision >= 1),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -49,6 +52,8 @@ create table public.agent_runs (
   verdict text not null check (verdict in ('ok', 'invalid_output', 'failed', 'fallback')),
   detail text check (detail is null or char_length(detail) <= 500),
   output jsonb,
+  -- One key per recorded run: a retried write returns the same row.
+  run_key uuid not null unique,
   created_at timestamptz not null default now()
 );
 create index agent_runs_tenant_idx on public.agent_runs (tenant_id, created_at desc);
@@ -62,55 +67,71 @@ create policy memory_rules_member_read on public.agent_memory_rules for select t
   using ((tenant_id is not null and private.is_active_member(tenant_id)) or private.is_operator());
 create policy brand_books_member_read on public.brand_books for select to authenticated
   using (private.is_active_member(tenant_id) or private.is_operator());
+-- Runs carry AI cost and raw output: owners and admins only, like other cost tables.
 create policy agent_runs_member_read on public.agent_runs for select to authenticated
-  using ((tenant_id is not null and private.is_active_member(tenant_id)) or private.is_operator());
+  using ((tenant_id is not null and private.is_active_member(tenant_id, array['owner','admin']::public.tenant_role[])) or private.is_operator());
 
 revoke all on public.agent_memory_rules, public.brand_books, public.agent_runs from public, anon, authenticated;
 grant select on public.agent_memory_rules, public.brand_books, public.agent_runs to authenticated;
+-- Even the worker writes only through the commands below.
+revoke insert, update, delete, truncate, references, trigger on public.agent_memory_rules, public.brand_books, public.agent_runs from service_role;
 do $$ begin
   if current_setting('server_version_num')::integer >= 170000 then
-    execute 'revoke maintain on public.agent_memory_rules, public.brand_books, public.agent_runs from public, anon, authenticated';
+    execute 'revoke maintain on public.agent_memory_rules, public.brand_books, public.agent_runs from public, anon, authenticated, service_role';
   end if;
 end $$;
 
 -- Writes go through these worker commands (service role only).
 create or replace function public.record_agent_run(run jsonb) returns uuid language plpgsql security definer set search_path='' as $$
-declare rid uuid;
+declare rid uuid; ids jsonb := nullif(run->'ruleIds', 'null'::jsonb);
 begin
  perform private.require_service();
+ if ids is not null and jsonb_typeof(ids) <> 'array' then raise exception 'ruleIds must be a list' using errcode='23514'; end if;
  insert into public.agent_runs (tenant_id, agent, version, caller_key, prompt_digest, rule_ids, brand_book_version,
-   provider, model, cost_micro, verdict, detail, output)
+   provider, model, cost_micro, verdict, detail, output, run_key)
  values ((run->>'tenantId')::uuid, run->>'agent', run->>'version', run->>'callerKey', run->>'promptDigest',
-   coalesce((select array_agg(x::uuid) from jsonb_array_elements_text(coalesce(run->'ruleIds', '[]'::jsonb)) x), '{}'),
+   coalesce((select array_agg(x::uuid) from jsonb_array_elements_text(coalesce(ids, '[]'::jsonb)) x), '{}'),
    (run->>'brandBookVersion')::integer, run->>'provider', run->>'model', coalesce((run->>'costMicro')::bigint, 0),
-   run->>'verdict', left(run->>'detail', 500), run->'output')
+   run->>'verdict', left(run->>'detail', 500), nullif(run->'output', 'null'::jsonb), (run->>'runKey')::uuid)
+ on conflict (run_key) do nothing
  returning id into rid;
+ if rid is null then select a.id into rid from public.agent_runs a where a.run_key = (run->>'runKey')::uuid; end if;
  return rid;
 end $$;
 
 create or replace function public.add_memory_rule(r jsonb) returns uuid language plpgsql security definer set search_path='' as $$
-declare rid uuid;
+declare rid uuid; c numeric; applies jsonb := nullif(r->'appliesTo', 'null'::jsonb); ev jsonb := coalesce(nullif(r->'evidence', 'null'::jsonb), '[]'::jsonb);
 begin
  perform private.require_service();
+ c := (r->>'confidence')::numeric;
+ if c is null or c < 0 or c > 1 then raise exception 'Confidence must be between 0 and 1' using errcode='23514'; end if;
+ if applies is not null and jsonb_typeof(applies) <> 'array' then raise exception 'appliesTo must be a list' using errcode='23514'; end if;
  insert into public.agent_memory_rules (tenant_id, industry, kind, rule, why, applies_to, confidence, source,
-   evidence_count, evidence, expires_at)
+   evidence_count, evidence, expires_at, idempotency_key)
  values ((r->>'tenantId')::uuid, nullif(btrim(r->>'industry'), ''), r->>'kind', btrim(r->>'rule'), coalesce(r->>'why', ''),
-   coalesce((select array_agg(x) from jsonb_array_elements_text(coalesce(r->'appliesTo', '[]'::jsonb)) x), '{}'),
-   (r->>'confidence')::numeric, r->>'source', coalesce((r->>'evidenceCount')::integer, 0),
-   coalesce(r->'evidence', '[]'::jsonb), (r->>'expiresAt')::timestamptz)
+   coalesce((select array_agg(x) from jsonb_array_elements_text(coalesce(applies, '[]'::jsonb)) x), '{}'),
+   c, r->>'source', coalesce((r->>'evidenceCount')::integer, 0), ev, (r->>'expiresAt')::timestamptz, r->>'idempotencyKey')
+ on conflict (idempotency_key) do nothing
  returning id into rid;
+ if rid is null then select m.id into rid from public.agent_memory_rules m where m.idempotency_key = r->>'idempotencyKey'; end if;
  return rid;
 end $$;
 
--- Later results can weaken or retire a rule (D22: rules expire when results disagree).
-create or replace function public.update_memory_rule(rule_id uuid, new_status text, new_confidence numeric) returns void language plpgsql security definer set search_path='' as $$
+-- Later results can weaken or retire a rule (D22). The caller passes the
+-- revision it read; expired and retired rules never come back.
+create or replace function public.update_memory_rule(rule_id uuid, expected_revision integer, new_status text, new_confidence numeric) returns integer language plpgsql security definer set search_path='' as $$
+declare m public.agent_memory_rules;
 begin
  perform private.require_service();
  if new_status is null or new_status not in ('active', 'expired', 'retired') or new_confidence is null or new_confidence < 0 or new_confidence > 1 then
   raise exception 'Invalid rule update' using errcode='23514';
  end if;
- update public.agent_memory_rules set status = new_status, confidence = new_confidence, updated_at = now() where id = rule_id;
- if not found then raise exception 'Rule not found' using errcode='PT409'; end if;
+ select * into m from public.agent_memory_rules where id = rule_id for update;
+ if m.id is null then raise exception 'Rule unavailable' using errcode='42501'; end if;
+ if m.revision <> expected_revision then raise exception 'Rule changed since it was read' using errcode='PT409'; end if;
+ if m.status <> 'active' and new_status = 'active' then raise exception 'An expired or retired rule cannot come back' using errcode='PT409'; end if;
+ update public.agent_memory_rules set status = new_status, confidence = new_confidence, revision = revision + 1, updated_at = now() where id = rule_id;
+ return m.revision + 1;
 end $$;
 
 create or replace function public.save_brand_book(t uuid, content jsonb, written_by text) returns integer language plpgsql security definer set search_path='' as $$
@@ -125,6 +146,6 @@ begin
 end $$;
 
 revoke all on function public.record_agent_run(jsonb), public.add_memory_rule(jsonb),
-  public.update_memory_rule(uuid, text, numeric), public.save_brand_book(uuid, jsonb, text) from public, anon, authenticated;
+  public.update_memory_rule(uuid, integer, text, numeric), public.save_brand_book(uuid, jsonb, text) from public, anon, authenticated;
 grant execute on function public.record_agent_run(jsonb), public.add_memory_rule(jsonb),
-  public.update_memory_rule(uuid, text, numeric), public.save_brand_book(uuid, jsonb, text) to service_role;
+  public.update_memory_rule(uuid, integer, text, numeric), public.save_brand_book(uuid, jsonb, text) to service_role;

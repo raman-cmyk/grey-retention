@@ -1,4 +1,5 @@
 import 'server-only'
+import { randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import {
@@ -136,7 +137,9 @@ export class SupabaseRunLog implements RunLog {
         costMicro: Math.max(0, Math.ceil(entry.costMicro)),
         verdict: entry.verdict,
         detail: entry.detail?.slice(0, 500) ?? null,
-        output: entry.output
+        output: entry.output,
+        // One key per record call: a retried write returns the same row.
+        runKey: randomUUID()
       }
     })
     // The run log never blocks the agent's work; a failed write is reported.
