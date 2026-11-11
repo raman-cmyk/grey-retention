@@ -56,6 +56,7 @@ const run = (over: Partial<PlanRun>): PlanRun => ({
   pulse,
   plan,
   builds: {},
+  today: '2026-11-15',
   ...over
 })
 
@@ -123,7 +124,8 @@ describe('the Plan next 15 days screen', () => {
     const build = (state: string, sampleDraft = false) => ({
       id: '00000000-0000-4000-8000-0000000000bb',
       state: state as 'drafted',
-      sampleDraft
+      sampleDraft,
+      reason: null
     })
     const { rerender } = render(<PlanView run={run({})} owner />)
     expect(
@@ -140,7 +142,7 @@ describe('the Plan next 15 days screen', () => {
     rerender(
       <PlanView run={run({ builds: { 0: build('drafted', true) } })} owner />
     )
-    expect(screen.getByText('In Klaviyo as a draft')).toBeVisible()
+    expect(screen.getByText('Sample draft (not in Klaviyo)')).toBeVisible()
     expect(screen.getByText(/nothing was sent to it/)).toBeVisible()
     expect(screen.getByRole('link', { name: 'See the email' })).toHaveAttribute(
       'href',

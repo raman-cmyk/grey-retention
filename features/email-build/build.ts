@@ -39,7 +39,7 @@ export const plannedEmail = z.object({
     'reminder',
     'education'
   ]),
-  angle: z.string().min(1).max(200),
+  angle: z.string().min(1).max(600),
   products: z.array(z.object({ id: z.string(), title: z.string() })).max(6),
   offer: z
     .object({ id: z.string(), code: z.string(), percent: z.number() })

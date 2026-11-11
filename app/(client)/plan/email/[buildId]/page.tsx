@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { z } from 'zod'
 import { PageHeading } from '@/components/ui/workspace'
 import { requireRequestContext } from '@/features/auth/application/request-context'
-import { EmailPreview } from '@/features/email-build/preview'
+import { BuiltEmailPreview } from '@/features/email-build/preview'
 
 export const metadata: Metadata = { title: 'Your email' }
 
@@ -21,7 +21,7 @@ export default async function PlannedEmailPage({
         title="Your email"
         description="The email as it lands in Klaviyo: a draft you schedule yourself."
       />
-      <EmailPreview tenantId={context.tenantId} buildId={buildId} />
+      <BuiltEmailPreview tenantId={context.tenantId} buildId={buildId} />
     </div>
   )
 }

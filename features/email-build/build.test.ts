@@ -2,9 +2,9 @@
 import { describe, expect, it } from 'vitest'
 import { memoryFallbackLog } from '@/features/fallback/log'
 import { builtEmail, buildEmail, type PlannedEmail } from './build'
+import { fakeDraftPusher } from '@/lib/providers/klaviyo-draft'
 import {
   endOfLocalDay,
-  fakeDraftPusher,
   offersAt,
   sampleOffers,
   sampleStoreSource
@@ -185,7 +185,8 @@ describe('the ports', () => {
       preheader: 'p',
       html: '<p>x</p>',
       plannedSendAt: '2026-11-17T23:00:00Z',
-      audienceId: 'a'
+      audienceId: 'a',
+      sample: true
     }
     const one = await pusher.createDraft(input)
     const two = await pusher.createDraft(input)

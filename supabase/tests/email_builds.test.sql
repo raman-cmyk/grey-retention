@@ -1,5 +1,5 @@
 begin;
-select plan(51);
+select plan(62);
 
 -- Workspace 101: owner ...01, staff ...05. Workspace 102: owner ...04.
 select ok(not has_table_privilege('authenticated','public.email_builds','insert,update,delete,truncate'),'members cannot write builds directly');
@@ -52,6 +52,10 @@ set local role authenticated;
 select throws_ok($$select public.create_email_build('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e001',0)$$,'42501',null,'staff cannot create an email');
 select is((select count(*) from public.email_builds where tenant_id='00000000-0000-4000-8000-000000000101'),1::bigint,'staff read their own workspace''s builds');
 reset role;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000006","role":"authenticated"}',true);
+set local role authenticated;
+select throws_ok($$select public.create_email_build('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e001',0)$$,'42501',null,'a workspace admin cannot create an email either');
+reset role;
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
 set local role authenticated;
 select is((select count(*) from public.email_builds where tenant_id='00000000-0000-4000-8000-000000000101'),0::bigint,'another workspace cannot read it');
@@ -85,6 +89,7 @@ select is((select state from public.email_builds where id=current_setting('test.
 select set_config('test.lease',pg_temp.claim(current_setting('test.build')::uuid)::text,true);
 select throws_ok($$select public.fail_email_step(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'rate_limited',false,0)$$,'22023',null,'a wait needs at least a second');
 select is(public.fail_email_step(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'rate_limited',false,600),'retry','a busy Klaviyo is tried again');
+select is((select attempts || ':' || waits from public.email_builds where id=current_setting('test.build')::uuid),'0:1','a wait does not use up an attempt');
 select is((select email->>'html' from public.email_builds where id=current_setting('test.build')::uuid),'<p>x</p>','the built email is kept for the retry');
 reset role;
 select pg_temp.later(current_setting('test.build')::uuid, 2);
@@ -143,12 +148,53 @@ set local role service_role;
 select is(public.fail_email_step(current_setting('test.final')::uuid,pg_temp.claim(current_setting('test.final')::uuid),'rejected',true),'failed','a final failure fails at once');
 reset role;
 
+-- A build that reached the push and failed keeps its push key for the next.
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+set local role authenticated;
+select set_config('test.third',public.create_email_build('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e001',1)::text,true);
+reset role;
+select isnt((select push_key from public.email_builds where id=current_setting('test.third')::uuid),
+  (select push_key from public.email_builds where id=current_setting('test.final')::uuid),'a build that never reached the push gets a new key');
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+set local role service_role;
+select set_config('test.lease',pg_temp.claim(current_setting('test.third')::uuid)::text,true);
+select lives_ok($$select public.finish_email_build(current_setting('test.third')::uuid,current_setting('test.lease')::uuid,'{"subject":"s","preheader":"p","html":"<p>x</p>"}')$$,'the third build is built');
+select set_config('test.lease',pg_temp.claim(current_setting('test.third')::uuid)::text,true);
+reset role;
+-- Its lease runs out: finishing or failing with it is refused.
+select pg_temp.later(current_setting('test.third')::uuid, 10);
+set local role service_role;
+select throws_ok($$select public.finish_email_push(current_setting('test.third')::uuid,current_setting('test.lease')::uuid,'c3',false)$$,'PT409','Lease unavailable','an expired lease cannot finish a push');
+select throws_ok($$select public.fail_email_step(current_setting('test.third')::uuid,current_setting('test.lease')::uuid,'x_y')$$,'PT409','Lease unavailable','nor fail it');
+select is(public.fail_email_step(current_setting('test.third')::uuid,pg_temp.claim(current_setting('test.third')::uuid),'klaviyo_unavailable',true),'failed','the push fails for good');
+reset role;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+set local role authenticated;
+select set_config('test.fourth',public.create_email_build('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e001',1)::text,true);
+reset role;
+select is((select push_key from public.email_builds where id=current_setting('test.fourth')::uuid),
+  (select push_key from public.email_builds where id=current_setting('test.third')::uuid),'"Try again" after a push keeps the key, so Klaviyo returns the same draft');
+-- A step whose lease ran out three times fails as timed out.
+update public.email_builds set attempts = 3, lease_token = gen_random_uuid(), lease_until = now() - interval '1 minute',
+  updated_at = now() - interval '10 minutes' where id = current_setting('test.fourth')::uuid;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+set local role service_role;
+select is(pg_temp.claim(current_setting('test.fourth')::uuid),null,'a step out of attempts is not handed out');
+reset role;
+select is((select state || ':' || error_code from public.email_builds where id=current_setting('test.fourth')::uuid),'failed:step_timed_out','it fails as timed out');
+-- A newer plan replaces this one: no more emails from the old one.
+insert into public.strategy_runs (tenant_id, start_on, state, created_by, created_at)
+  values ('00000000-0000-4000-8000-000000000101',current_setting('test.today')::date+1,'failed','00000000-0000-4000-8000-000000000001',now()+interval '1 second');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+set local role authenticated;
+select throws_ok($$select public.create_email_build('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e001',1)$$,'PT409','This plan has been replaced; use the latest plan','an older plan is refused');
+reset role;
+
 -- A paused workspace's builds wait.
 update public.tenants set status='paused' where id='00000000-0000-4000-8000-000000000101';
-set local role authenticated;
-reset role;
 insert into public.email_builds (tenant_id, run_id, slot, created_by)
   values ('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e001',1,'00000000-0000-4000-8000-000000000001');
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
 set local role service_role;
 select is(pg_temp.claim(),null,'a paused workspace''s build is not handed out');
 reset role;

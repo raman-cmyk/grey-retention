@@ -56,7 +56,9 @@ test('STR-003 owner plans the next 15 days and picks an offer', async ({
   // EML-004 part 2: "Create email" on the first planned email builds it and
   // puts it into Klaviyo as a draft (the fake pusher: a sample draft).
   await page.getByRole('button', { name: 'Create email' }).first().click()
-  await expect(page.getByText('In Klaviyo as a draft').first()).toBeVisible({
+  await expect(
+    page.getByText('Sample draft (not in Klaviyo)').first()
+  ).toBeVisible({
     timeout: 30_000
   })
   await expect(page.getByText(/nothing was sent to it/).first()).toBeVisible()

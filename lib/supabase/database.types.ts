@@ -2801,12 +2801,14 @@ export type Database = {
           lease_token: string | null
           lease_until: string | null
           not_before: string | null
+          push_key: string
           run_id: string
           sample_draft: boolean
           slot: number
           state: string
           tenant_id: string
           updated_at: string
+          waits: number
         }
         Insert: {
           attempts?: number
@@ -2819,12 +2821,14 @@ export type Database = {
           lease_token?: string | null
           lease_until?: string | null
           not_before?: string | null
+          push_key?: string
           run_id: string
           sample_draft?: boolean
           slot: number
           state?: string
           tenant_id: string
           updated_at?: string
+          waits?: number
         }
         Update: {
           attempts?: number
@@ -2837,12 +2841,14 @@ export type Database = {
           lease_token?: string | null
           lease_until?: string | null
           not_before?: string | null
+          push_key?: string
           run_id?: string
           sample_draft?: boolean
           slot?: number
           state?: string
           tenant_id?: string
           updated_at?: string
+          waits?: number
         }
         Relationships: [
           {
@@ -6361,10 +6367,13 @@ export type Database = {
           id: string
           lease_token: string
           planned: Json
+          push_key: string
           run_id: string
           slot: number
+          start_on: string
           state: string
           tenant_id: string
+          timezone: string
         }[]
       }
       claim_email_file_import: {

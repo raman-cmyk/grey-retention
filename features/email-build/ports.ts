@@ -20,7 +20,11 @@ import { localTimeCandidates } from '@/lib/local-time'
  *   store is the sample store, the build reads `sampleOffers`, so the
  *   plan's sample codes match; the real source comes with the first reader.
  * - `StoreSource`: brand kit, catalog and brand facts (lane B's readers).
- * - `DraftPusher`: the email into Klaviyo as a draft (PSH-001).
+ * - `DraftPusher` (`lib/providers/klaviyo-draft.ts`): the email into
+ *   Klaviyo as a draft (PSH-001 builds the live one).
+ *
+ * The sample sources are anchored to the plan's first day, like the plan's
+ * own sample, so a code the plan chose is still there when the email builds.
  */
 
 /**
@@ -60,49 +64,7 @@ export interface StoreSource {
   read(tenantId: string): Promise<Store>
 }
 
-/**
- * Puts one built email into the client's Klaviyo account as a DRAFT
- * campaign. Contract (supervisor, 11 Nov), for PSH-001's live adapter:
- *
- * 1. It only ever creates a draft campaign: it never schedules or sends
- *    (D17: the owner schedules in Klaviyo).
- * 2. `idempotencyKey` is one per email build: the same key again returns
- *    the same campaign id, never a second draft.
- * 3. It never throws: failures come back as codes. `rate_limited` and
- *    `unavailable` are tried again later (with `retryAfterSeconds` when
- *    Klaviyo gives one); `auth` and `rejected` are final.
- *
- * Before it creates the draft it uploads the pictures to Klaviyo (VISION
- * rule 11) and runs the launch check (QAG-001 `runReleaseQa`); a failed
- * check comes back as `rejected` with the failing check ids.
- */
-export type DraftInput = {
-  tenantId: string
-  idempotencyKey: string
-  /** The campaign's name in Klaviyo, e.g. "Tue 17 Nov · Offer". */
-  name: string
-  subject: string
-  preheader: string
-  html: string
-  /** When the plan meant it to send, ISO with offset; Klaviyo keeps it unscheduled. */
-  plannedSendAt: string
-  /** The plan's audience, by our id (lane B maps it to a Klaviyo segment). */
-  audienceId: string
-}
-
-export type DraftResult =
-  | { ok: true; campaignId: string; sample: boolean }
-  | {
-      ok: false
-      code: 'auth' | 'rate_limited' | 'unavailable' | 'rejected'
-      retryAfterSeconds?: number
-      /** For `rejected` by the launch check: the failing check ids. */
-      checks?: string[]
-    }
-
-export interface DraftPusher {
-  createDraft(input: DraftInput): Promise<DraftResult>
-}
+const today = () => new Date().toISOString().slice(0, 10)
 
 /** When a code ending on a store-local date stops working: that day's end. */
 export function endOfLocalDay(date: string, timeZone: string) {
@@ -110,11 +72,10 @@ export function endOfLocalDay(date: string, timeZone: string) {
   return last ? new Date(Date.parse(last) + 60_000).toISOString() : null
 }
 
-/** The sample store's offers, through DSC-001's port. */
-export const sampleOffers: OfferSource = {
+/** The sample store's offers, through DSC-001's port, from the plan's first day. */
+export const sampleOffersFrom = (start: string): OfferSource => ({
   async offers(_tenantId, at) {
-    const today = new Date().toISOString().slice(0, 10)
-    const store = sampleStore(today)
+    const store = sampleStore(start)
     const sends = at ? Date.parse(at) : Date.now()
     const codes = store.codes
       .map((c) => ({
@@ -133,16 +94,16 @@ export const sampleOffers: OfferSource = {
       codes
     }
   }
-}
+})
+export const sampleOffers = sampleOffersFrom(today())
 
 const money = (amount: number, currency: string) =>
   new Intl.NumberFormat('en-AU', { style: 'currency', currency }).format(amount)
 
-/** The sample store's brand and catalog (until lane B's readers). */
-export const sampleStoreSource: StoreSource = {
+/** The sample store's brand and catalog (until lane B's readers), from the plan's first day. */
+export const sampleStoreFrom = (start: string): StoreSource => ({
   async read() {
-    const today = new Date().toISOString().slice(0, 10)
-    const store = sampleStore(today)
+    const store = sampleStore(start)
     const site = 'https://cedar-lane.example'
     return {
       sample: true,
@@ -161,20 +122,5 @@ export const sampleStoreSource: StoreSource = {
       facts: unknownFacts
     }
   }
-}
-
-/** The fake pusher: no Klaviyo call; the same key gives the same id. */
-export function fakeDraftPusher(): DraftPusher & { calls: DraftInput[] } {
-  const calls: DraftInput[] = []
-  return {
-    calls,
-    async createDraft(input) {
-      calls.push(input)
-      return {
-        ok: true,
-        campaignId: `sample-draft-${input.idempotencyKey}`,
-        sample: true
-      }
-    }
-  }
-}
+})
+export const sampleStoreSource = sampleStoreFrom(today())

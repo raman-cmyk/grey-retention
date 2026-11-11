@@ -5,6 +5,9 @@
 -- Nothing waits for a person, and nothing is scheduled or sent here.
 --
 -- * One build per planned email at a time; clicking again returns it.
+-- * One push key per planned email: "Try again" after a failed push keeps
+--   the key, so Klaviyo returns the same draft instead of a second one
+--   (an unknown remote outcome is never repeated with a new key).
 -- * The owner writes only through create_email_build; jobs (service role)
 --   claim a step with a lease and finish or fail it. After 3 failed
 --   attempts a step fails for good; a busy Klaviyo can ask for a later try.
@@ -16,6 +19,8 @@ create table public.email_builds (
   run_id uuid not null,
   -- The planned email's place in the run's plan (plan->'slots'->slot).
   slot integer not null check (slot between 0 and 19),
+  -- The DraftPusher's idempotency key (one per planned email, see above).
+  push_key uuid not null default gen_random_uuid(),
   state text not null default 'build_queued'
     check (state in ('build_queued', 'push_queued', 'drafted', 'failed')),
   email jsonb check (email is null or (jsonb_typeof(email) = 'object' and octet_length(email::text) <= 300000)),
@@ -23,6 +28,8 @@ create table public.email_builds (
   -- True when the draft came from the fake pusher (no Klaviyo call).
   sample_draft boolean not null default false,
   attempts integer not null default 0 check (attempts between 0 and 10),
+  -- Times Klaviyo asked to wait; a step gives up after 20.
+  waits integer not null default 0 check (waits between 0 and 20),
   lease_token uuid,
   lease_until timestamptz,
   -- A step Klaviyo asked to retry later waits until then.
@@ -65,6 +72,7 @@ declare
   zone text;
   day date;
   build uuid;
+  key uuid;
 begin
   -- require_member locks the workspace row (tenant first), then the run.
   perform private.require_member(t, true);
@@ -72,6 +80,11 @@ begin
   if not found then raise exception 'Plan unavailable' using errcode = '42501'; end if;
   if r.state <> 'planned' then
     raise exception 'This plan is not ready yet' using errcode = 'PT409';
+  end if;
+  -- Only the latest plan: an older one (an old tab) has been replaced.
+  if exists (select 1 from public.strategy_runs s
+             where s.tenant_id = t and s.created_at > r.created_at) then
+    raise exception 'This plan has been replaced; use the latest plan' using errcode = 'PT409';
   end if;
   if slot is null or slot < 0 or slot >= jsonb_array_length(coalesce(r.plan->'slots', '[]'::jsonb)) then
     raise exception 'This plan has no such email' using errcode = '22023';
@@ -92,8 +105,14 @@ begin
     where b.run_id = run and b.slot = create_email_build.slot
       and b.state in ('build_queued', 'push_queued', 'drafted');
   if found then return build; end if;
-  insert into public.email_builds (tenant_id, run_id, slot, created_by)
-    values (t, run, create_email_build.slot, auth.uid())
+  -- A failed build that reached the push may have made a draft already:
+  -- its key is kept, so a new push returns that draft.
+  select b.push_key into key from public.email_builds b
+    where b.run_id = run and b.slot = create_email_build.slot
+      and b.state = 'failed' and b.email is not null
+    order by b.created_at desc limit 1;
+  insert into public.email_builds (tenant_id, run_id, slot, push_key, created_by)
+    values (t, run, create_email_build.slot, coalesce(key, gen_random_uuid()), auth.uid())
     returning id into build;
   return build;
 end $$;
@@ -101,7 +120,8 @@ end $$;
 -- A job takes the oldest waiting step with a short lease, and the planned
 -- email it builds. `target` claims that one build (the owner's click).
 create or replace function public.claim_email_build(target uuid default null)
-returns table (id uuid, tenant_id uuid, state text, run_id uuid, slot integer, planned jsonb, email jsonb, lease_token uuid)
+returns table (id uuid, tenant_id uuid, state text, run_id uuid, slot integer, planned jsonb, email jsonb,
+  push_key uuid, timezone text, start_on date, lease_token uuid)
 language plpgsql security definer set search_path='' as $$
 declare
   b public.email_builds;
@@ -119,7 +139,8 @@ begin
         and (e.attempts = 0 or e.updated_at < now() - interval '1 minute')
         and exists (select 1 from public.tenants w where w.id = e.tenant_id and w.status = 'active')
         and (target is null or e.id = target)
-      order by e.updated_at, e.id
+      -- Pushes first: a built email should not wait behind new builds.
+      order by (e.state = 'push_queued') desc, e.updated_at, e.id
       limit 1
       for update skip locked;
     if not found then return; end if;
@@ -132,10 +153,12 @@ begin
   update public.email_builds e
     set attempts = e.attempts + 1, lease_token = lease, lease_until = now() + interval '5 minutes', updated_at = now()
     where e.id = b.id;
+  -- The workspace's one brand timezone (every screen's "store time").
   return query
-    select b.id, b.tenant_id, b.state, b.run_id, b.slot,
-      (select s.plan->'slots'->b.slot from public.strategy_runs s where s.id = b.run_id),
-      b.email, lease;
+    select b.id, b.tenant_id, b.state, b.run_id, b.slot, s.plan->'slots'->b.slot,
+      b.email, b.push_key, coalesce(w.timezone, 'UTC'), s.start_on, lease
+    from public.strategy_runs s, public.tenants w
+    where s.id = b.run_id and w.id = b.tenant_id;
 end $$;
 
 create or replace function private.leased_email_build(build uuid, lease uuid, expected text)
@@ -162,7 +185,7 @@ begin
      or coalesce(jsonb_typeof(result->'html'), '') <> 'string'
      or coalesce(jsonb_typeof(result->'subject'), '') <> 'string'
      or coalesce(jsonb_typeof(result->'preheader'), '') <> 'string'
-     or length(result->>'html') not between 1 and 200000 then
+     or octet_length(result->>'html') not between 1 and 200000 then
     raise exception 'A built email needs its subject, preview and HTML' using errcode = '22023';
   end if;
   update public.email_builds
@@ -209,9 +232,15 @@ begin
      or b.state not in ('build_queued', 'push_queued') then
     raise exception 'Lease unavailable' using errcode = 'PT409';
   end if;
-  give_up := coalesce(final, false) or b.attempts >= 3;
+  give_up := coalesce(final, false)
+    or (retry_after_seconds is null and b.attempts >= 3)
+    or (retry_after_seconds is not null and b.waits >= 19);
   update public.email_builds
     set state = case when give_up then 'failed' else b.state end,
+        -- Klaviyo asking to wait does not use up an attempt.
+        attempts = case when retry_after_seconds is not null and not give_up
+                        then greatest(b.attempts - 1, 0) else b.attempts end,
+        waits = case when retry_after_seconds is not null then least(b.waits + 1, 20) else b.waits end,
         error_code = code,
         not_before = case when give_up or retry_after_seconds is null then null
                           else now() + make_interval(secs => retry_after_seconds) end,

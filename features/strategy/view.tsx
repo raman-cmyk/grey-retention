@@ -90,6 +90,7 @@ export function PlanView({
         owner={owner}
         run={run.id}
         builds={run.builds}
+        today={run.today}
       />
     )
   return (
@@ -192,12 +193,15 @@ function EmailStatus({
   build,
   owner,
   run,
-  slot
+  slot,
+  passed
 }: {
   build: EmailBuildView | undefined
   owner: boolean
   run: string
   slot: number
+  /** The email's day has passed (store time). */
+  passed: boolean
 }) {
   if (!build || build.state === 'failed')
     return (
@@ -205,9 +209,14 @@ function EmailStatus({
         {build && (
           <p role="alert" className="text-sm text-[var(--danger-ink)]">
             We could not create this email.
+            {build.reason ? ` ${build.reason}` : ''}
           </p>
         )}
-        {owner ? (
+        {passed ? (
+          <p className="text-sm text-[var(--text-muted)]">
+            This day has passed.
+          </p>
+        ) : owner ? (
           <CreateEmailButton
             run={run}
             slot={slot}
@@ -230,11 +239,15 @@ function EmailStatus({
     )
   return (
     <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-      <Pill tone="success">In Klaviyo as a draft</Pill>
-      {build.sampleDraft && (
-        <span className="text-[var(--text-muted)]">
-          Sample draft: Klaviyo is not connected, so nothing was sent to it.
-        </span>
+      {build.sampleDraft ? (
+        <>
+          <Pill tone="info">Sample draft (not in Klaviyo)</Pill>
+          <span className="text-[var(--text-muted)]">
+            Klaviyo is not connected yet, so nothing was sent to it.
+          </span>
+        </>
+      ) : (
+        <Pill tone="success">In Klaviyo as a draft</Pill>
       )}
       <a
         className="font-medium underline underline-offset-2"
@@ -250,12 +263,14 @@ function PlannedDays({
   plan,
   owner,
   run,
-  builds
+  builds,
+  today
 }: {
   plan: StoredPlan
   owner: boolean
   run: string
   builds: Record<number, EmailBuildView>
+  today: string
 }) {
   const fromFacts =
     plan.source.brief === 'code' && plan.source.planner === 'code'
@@ -325,6 +340,7 @@ function PlannedDays({
                   owner={owner}
                   run={run}
                   slot={i}
+                  passed={s.date < today}
                 />
               </li>
             ))}

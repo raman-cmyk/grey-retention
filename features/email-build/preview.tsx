@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation'
 import { Notice, Panel } from '@/components/ui/workspace'
 import { Pill } from '@/components/ui/pill'
 import { createClient } from '@/lib/supabase/server'
+import { previewHtml } from '@/features/email-generation/html'
+import { ScaledFrame } from '@/features/email-generation/scaled-frame'
 import { builtEmail } from './build'
 import { changeWords, type ChangeKey } from './content'
 
@@ -11,7 +13,7 @@ import { changeWords, type ChangeKey } from './content'
  * a sandboxed frame, with plain notes on how it was made. RLS: members
  * read their own workspace's builds.
  */
-export async function EmailPreview({
+export async function BuiltEmailPreview({
   tenantId,
   buildId
 }: {
@@ -32,17 +34,27 @@ export async function EmailPreview({
   if (!data) notFound()
   const email = builtEmail.safeParse(data.email)
   if (!email.success)
-    return <Notice>This email is not ready yet. Go back to the plan.</Notice>
+    return data.state === 'failed' ? (
+      <Notice error>
+        We could not create this email. Go back to the plan to try again.
+      </Notice>
+    ) : (
+      <Notice>This email is still being created. Go back to the plan.</Notice>
+    )
   const e = email.data
   const changes = e.changes.filter((c): c is ChangeKey => c in changeWords)
   return (
     <div className="space-y-6">
       <Panel title={e.name}>
         <div className="mb-4 flex flex-wrap gap-2">
-          {data.state === 'drafted' ? (
-            <Pill tone="success">In Klaviyo as a draft</Pill>
-          ) : (
+          {data.state === 'failed' ? (
+            <Pill tone="danger">Not put into Klaviyo</Pill>
+          ) : data.state !== 'drafted' ? (
             <Pill tone="info">Being put into Klaviyo</Pill>
+          ) : data.sample_draft ? (
+            <Pill tone="info">Sample draft (not in Klaviyo)</Pill>
+          ) : (
+            <Pill tone="success">In Klaviyo as a draft</Pill>
           )}
           <Pill>
             {e.approach === 'A' ? 'Coded sections' : 'Designed top picture'}
@@ -87,11 +99,11 @@ export async function EmailPreview({
         </div>
       </Panel>
       <Panel title="The email">
-        <iframe
+        {/* The project's safe preview: active content and outside loads removed, a strict CSP. */}
+        <ScaledFrame
           title={`The email: ${e.subject}`}
-          srcDoc={e.html}
-          sandbox=""
-          className="h-[900px] w-full rounded-lg border border-[var(--line)] bg-white"
+          srcDoc={previewHtml(e.html).html}
+          height={1400}
         />
       </Panel>
       <a

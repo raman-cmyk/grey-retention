@@ -6,11 +6,10 @@ import { runEmailBuilds } from './worker'
 import { buildEmail, type BuiltEmail, type PlannedEmail } from './build'
 import {
   fakeDraftPusher,
-  sampleOffers,
-  sampleStoreSource,
   type DraftPusher,
   type DraftResult
-} from './ports'
+} from '@/lib/providers/klaviyo-draft'
+import { sampleOffers, sampleStoreSource } from './ports'
 
 const tenant = '00000000-0000-4000-8000-000000000101'
 const inDays = (n: number) => {
@@ -55,6 +54,9 @@ const step = (over: Record<string, unknown> = {}) => ({
   slot: 0,
   planned,
   email: null,
+  push_key: 'key-1',
+  timezone: 'Asia/Kathmandu',
+  start_on: inDays(1),
   lease_token: 'lease-1',
   ...over
 })
@@ -89,7 +91,22 @@ describe('building and pushing (code-only, fake pusher)', () => {
     })
   })
 
-  it('pushes a built email as a draft, keyed by the build', async () => {
+  it('builds in the workspace’s own timezone', async () => {
+    const { db, calls } = fakeDb([step()])
+    await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+    const email = calls.find((c) => c.fn === 'finish_email_build')!.args
+      .result as BuiltEmail
+    expect(
+      new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Kathmandu',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23'
+      }).format(new Date(email.plannedSendAt))
+    ).toBe('10:00')
+  })
+
+  it('pushes a built email as a draft, keyed by the planned email’s push key', async () => {
     const pusher = fakeDraftPusher()
     const email = await built()
     const { db, calls } = fakeDb([step({ state: 'push_queued', email })])
@@ -97,7 +114,8 @@ describe('building and pushing (code-only, fake pusher)', () => {
     expect(pusher.calls).toEqual([
       expect.objectContaining({
         tenantId: tenant,
-        idempotencyKey: 'build-1',
+        idempotencyKey: 'key-1',
+        sample: true,
         subject: email.subject,
         html: email.html,
         audienceId: 'sample-engaged'
@@ -106,7 +124,7 @@ describe('building and pushing (code-only, fake pusher)', () => {
     expect(calls.find((c) => c.fn === 'finish_email_push')!.args).toEqual({
       build: 'build-1',
       lease: 'lease-1',
-      campaign: 'sample-draft-build-1',
+      campaign: 'sample-draft-key-1',
       sample: true
     })
   })
@@ -202,7 +220,11 @@ describe('failed steps', () => {
         'built_email_invalid'
       ],
       [
-        step({ planned: { ...planned, date: '2027-10-03', time: '02:30' } }),
+        // Melbourne's clock skips 02:00 to 03:00 that day.
+        step({
+          planned: { ...planned, date: '2027-10-03', time: '02:30' },
+          timezone: 'Australia/Melbourne'
+        }),
         'slot_time_invalid'
       ]
     ] as const
@@ -211,6 +233,22 @@ describe('failed steps', () => {
       await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
       expect(failure(calls), code).toMatchObject({ code, final: true })
     }
+  })
+
+  it('fail at once when the database refuses the built email, and retry a lost draft record with the same key', async () => {
+    const one = fakeDb([step()], { finish_email_build: { code: '22023' } })
+    await runEmailBuilds(one.db, { fallbacks: memoryFallbackLog() })
+    expect(failure(one.calls)).toMatchObject({
+      code: 'built_email_invalid',
+      final: true
+    })
+    const pusher = fakeDraftPusher()
+    const two = fakeDb([step({ state: 'push_queued', email: await built() })], {
+      finish_email_push: { code: 'PT409' }
+    })
+    await runEmailBuilds(two.db, { pusher })
+    expect(failure(two.calls)).toMatchObject({ final: false })
+    expect(pusher.calls[0].idempotencyKey).toBe('key-1')
   })
 
   it('stop the call when a claim fails', async () => {
