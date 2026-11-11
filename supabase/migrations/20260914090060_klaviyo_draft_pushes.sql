@@ -33,9 +33,16 @@ create table public.klaviyo_draft_pushes (
   -- When a campaign create was sent: its answer may be lost, so a retry
   -- looks for the campaign made since then before making one.
   create_started_at timestamptz,
+  -- When a template create was sent and not yet saved (found by its name).
+  template_started_at timestamptz,
+  -- The list or segment the campaign was made for (it never changes).
+  audience_id text check (audience_id is null or audience_id ~ '^[A-Za-z0-9_-]{1,64}$'),
   designs text check (designs is null or designs in ('both', 'A')),
   -- Why only design A went in (Klaviyo refused or changed the even test).
   fallback text check (fallback is null or fallback ~ '^[a-z][a-z_]{1,39}$'),
+  -- `pending`: design B was added and the even test is not verified yet
+  -- (a push that stops there takes B out before anything else).
+  ab text check (ab is null or ab in ('pending', 'verified')),
   -- The final checks on the HTML sent: [{ "id": "images", "pass": true, "problems": [] }].
   checks jsonb not null default '[]'::jsonb
     check (jsonb_typeof(checks) = 'array' and octet_length(checks::text) <= 20000),
@@ -44,10 +51,13 @@ create table public.klaviyo_draft_pushes (
   -- subjects, previews): a draft changed in Klaviyo since is never
   -- overwritten.
   written text check (written is null or written ~ '^[a-f0-9]{64}$'),
+  -- The fingerprint this push is taking them to (one stopped half way is
+  -- recognised by it).
+  target text check (target is null or target ~ '^[a-f0-9]{64}$'),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   primary key (tenant_id, push_key),
-  check ((campaign_id is null) = (message_id is null)),
+  check (message_id is null or campaign_id is not null),
   check (state <> 'drafted' or (campaign_id is not null and designs is not null)),
   check (state <> 'refused' or reason is not null)
 );
@@ -64,17 +74,18 @@ grant select on public.klaviyo_draft_pushes to service_role;
 -- the email's build (`private.leased_email_build`, EML-004 part 2): a run
 -- whose lease ran out, or that never had it, saves nothing, so two runs
 -- never both make a campaign. `step` names the columns it sets; each is
--- checked. What a push made stays made: its campaign and message, design A
--- once Klaviyo refused the even test, and a push closed because the owner
--- changed or deleted its draft in Klaviyo. Locks: the tenant first, then
+-- checked. What a push made stays made: its campaign and message, its
+-- audience, its first create time, design A once Klaviyo refused the even
+-- test, and a push closed because the owner changed or deleted its draft
+-- in Klaviyo. Locks: the tenant first, then
 -- the build, then the push row.
 create or replace function public.save_klaviyo_push(build uuid, lease uuid, step jsonb)
 returns void language plpgsql security definer set search_path = '' as $$
 declare
   allowed constant text[] := array['state', 'images', 'templates', 'campaign_id', 'message_id', 'create_started_at',
-    'designs', 'fallback', 'checks', 'reason', 'written'];
-  texts constant text[] := array['state', 'campaign_id', 'message_id', 'create_started_at', 'designs', 'fallback',
-    'reason', 'written'];
+    'template_started_at', 'audience_id', 'designs', 'fallback', 'ab', 'checks', 'reason', 'written', 'target'];
+  texts constant text[] := array['state', 'campaign_id', 'message_id', 'create_started_at', 'template_started_at',
+    'audience_id', 'designs', 'fallback', 'ab', 'reason', 'written', 'target'];
   t uuid; key uuid; cur public.klaviyo_draft_pushes;
 begin
   if coalesce(auth.role(), '') <> 'service_role' then raise exception 'Access denied' using errcode = '42501'; end if;
@@ -107,6 +118,11 @@ begin
     or (step ? 'message_id' and step->'message_id' <> 'null'::jsonb and step->>'message_id' !~ '^[A-Za-z0-9_-]{1,64}$')
     or (step ? 'create_started_at' and step->'create_started_at' <> 'null'::jsonb
       and private.safe_time(step->>'create_started_at') is null)
+    or (step ? 'template_started_at' and step->'template_started_at' <> 'null'::jsonb
+      and private.safe_time(step->>'template_started_at') is null)
+    or (step ? 'audience_id' and step->'audience_id' <> 'null'::jsonb and step->>'audience_id' !~ '^[A-Za-z0-9_-]{1,64}$')
+    or (step ? 'ab' and step->'ab' <> 'null'::jsonb and step->>'ab' not in ('pending', 'verified'))
+    or (step ? 'target' and step->'target' <> 'null'::jsonb and step->>'target' !~ '^[a-f0-9]{64}$')
     or (step ? 'designs' and step->'designs' <> 'null'::jsonb and step->>'designs' not in ('both', 'A'))
     or (step ? 'fallback' and step->'fallback' <> 'null'::jsonb and step->>'fallback' !~ '^[a-z][a-z_]{1,39}$')
     or (step ? 'reason' and step->'reason' <> 'null'::jsonb and step->>'reason' !~ '^[a-z][a-z_]{1,39}$')
@@ -129,7 +145,11 @@ begin
       or (step ? 'state' and step->>'state' = 'started')
       or (step ? 'campaign_id' and cur.campaign_id is not null and step->>'campaign_id' is distinct from cur.campaign_id)
       or (step ? 'message_id' and cur.message_id is not null and step->>'message_id' is distinct from cur.message_id)
-      or (step ? 'designs' and cur.designs = 'A' and step->>'designs' is distinct from 'A') then
+      or (step ? 'audience_id' and cur.audience_id is not null and step->>'audience_id' is distinct from cur.audience_id)
+      or (step ? 'create_started_at' and cur.create_started_at is not null
+        and (step->>'create_started_at')::timestamptz is distinct from cur.create_started_at)
+      or (step ? 'designs' and cur.designs = 'A' and cur.fallback is not null
+        and step->>'designs' is distinct from 'A') then
       raise exception 'This push cannot go back' using errcode = 'PT409';
     end if;
   else
@@ -143,6 +163,11 @@ begin
       message_id = case when step ? 'message_id' then step->>'message_id' else p.message_id end,
       create_started_at = case when step ? 'create_started_at' then (step->>'create_started_at')::timestamptz
         else p.create_started_at end,
+      template_started_at = case when step ? 'template_started_at' then (step->>'template_started_at')::timestamptz
+        else p.template_started_at end,
+      audience_id = case when step ? 'audience_id' then step->>'audience_id' else p.audience_id end,
+      ab = case when step ? 'ab' then step->>'ab' else p.ab end,
+      target = case when step ? 'target' then step->>'target' else p.target end,
       designs = case when step ? 'designs' then step->>'designs' else p.designs end,
       fallback = case when step ? 'fallback' then step->>'fallback' else p.fallback end,
       checks = case when step ? 'checks' then step->'checks' else p.checks end,

@@ -20,8 +20,8 @@ function buildSoon(build: string) {
     const service = createServiceClient()
     if (!service) return
     try {
-      // The fake draft pusher unless the owner's KLAVIYO_MODE=live switch
-      // is on (PSH-001).
+      // The fake draft pusher unless the owner's write switch is on
+      // (KLAVIYO_DRAFT_PUSH=live with KLAVIYO_MODE=live, PSH-001).
       await runEmailBuilds(service, { build, pusher: draftPusherFor(service) })
     } catch (error) {
       logger.error('Email build could not start', {

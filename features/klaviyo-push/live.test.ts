@@ -12,7 +12,7 @@ const input: DraftInput = {
   name: 'Tue 17 Nov · Offer',
   subject: 'Hello',
   preheader: '',
-  html: '<p>{% unsubscribe %} {{ organization.full_address }}</p>',
+  html: '<p>{{ organization.name }} {{ organization.full_address }} {% unsubscribe %} {% manage_preferences %} {% web_view %}</p>',
   plannedSendAt: '2026-11-17T18:00:00Z',
   audienceId: 'SegEng90',
   sample: false,
@@ -56,7 +56,10 @@ describe('the pusher "Create email" uses', () => {
     for (const env of [
       {},
       { KLAVIYO_MODE: 'fixture' },
-      { KLAVIYO_MODE: 'LIVE' }
+      { KLAVIYO_MODE: 'LIVE' },
+      // Reads live, writes not switched on (and the other way round).
+      { KLAVIYO_MODE: 'live' },
+      { KLAVIYO_DRAFT_PUSH: 'live' }
     ]) {
       const result = await draftPusherFor(db, { env }).createDraft(input)
       expect(result).toEqual({
@@ -70,7 +73,9 @@ describe('the pusher "Create email" uses', () => {
 
   it('gives the sample store’s emails a sample draft even with the switch on, and asks for the key otherwise', async () => {
     const { db, rpc } = database({ klaviyo_api_key: { data: null } })
-    const pusher = draftPusherFor(db, { env: { KLAVIYO_MODE: 'live' } })
+    const pusher = draftPusherFor(db, {
+      env: { KLAVIYO_MODE: 'live', KLAVIYO_DRAFT_PUSH: 'live' }
+    })
     expect(await pusher.createDraft({ ...input, sample: true })).toMatchObject({
       ok: true,
       sample: true
@@ -81,14 +86,16 @@ describe('the pusher "Create email" uses', () => {
     expect(rpc).toHaveBeenCalledWith('klaviyo_api_key', { t: input.tenantId })
   })
 
-  it('reads no key at another API revision', async () => {
+  it('reads no key at another API revision: a server setting, tried again', async () => {
     const { db, rpc } = database({ klaviyo_api_key: { data: 'pk_x' } })
-    expect(
-      await liveSource(db, {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(
+      liveSource(db, {
         KLAVIYO_MODE: 'live',
+        KLAVIYO_DRAFT_PUSH: 'live',
         KLAVIYO_API_REVISION: '2025-01-15'
       }).client(input.tenantId)
-    ).toBeNull()
+    ).rejects.toMatchObject({ kind: 'unavailable' })
     expect(rpc).not.toHaveBeenCalled()
   })
 })

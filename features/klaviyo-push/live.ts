@@ -2,7 +2,8 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { klaviyoMode, revisionOk } from '@/features/connections/live-klaviyo'
-import { klaviyoClient } from '@/lib/providers/klaviyo/client'
+import { logger } from '@/lib/logger'
+import { KlaviyoError, klaviyoClient } from '@/lib/providers/klaviyo/client'
 import {
   fakeDraftPusher,
   type DraftPusher
@@ -19,7 +20,7 @@ type Db = SupabaseClient<Database>
 type Env = Record<string, string | undefined>
 
 /** Each Klaviyo request waits at most this long (a write may then be checked again). */
-export const pushCallMs = 10_000
+export const pushCallMs = 8_000
 
 /** The push steps in `klaviyo_draft_pushes`, saved through `save_klaviyo_push`. */
 export function databasePushStore(db: Db): PushStore {
@@ -28,7 +29,7 @@ export function databasePushStore(db: Db): PushStore {
       const { data, error } = await db
         .from('klaviyo_draft_pushes')
         .select(
-          'state,images,templates,campaign_id,message_id,create_started_at,designs,fallback,reason,written'
+          'state,images,templates,campaign_id,message_id,create_started_at,template_started_at,audience_id,designs,fallback,ab,reason,written,target'
         )
         .eq('tenant_id', tenantId)
         .eq('push_key', key)
@@ -42,6 +43,10 @@ export function databasePushStore(db: Db): PushStore {
         campaignId: data.campaign_id,
         messageId: data.message_id,
         createStartedAt: data.create_started_at,
+        templateStartedAt: data.template_started_at,
+        audienceId: data.audience_id,
+        ab: data.ab as PushProgress['ab'],
+        target: data.target,
         designs: data.designs as PushProgress['designs'],
         fallback: data.fallback,
         reason: data.reason,
@@ -57,6 +62,10 @@ export function databasePushStore(db: Db): PushStore {
         ['campaignId', 'campaign_id'],
         ['messageId', 'message_id'],
         ['createStartedAt', 'create_started_at'],
+        ['templateStartedAt', 'template_started_at'],
+        ['audienceId', 'audience_id'],
+        ['ab', 'ab'],
+        ['target', 'target'],
         ['designs', 'designs'],
         ['fallback', 'fallback'],
         ['checks', 'checks'],
@@ -84,11 +93,19 @@ export function databasePushStore(db: Db): PushStore {
 export function liveSource(db: Db, env: Env = process.env): PushSource {
   return {
     async client(tenantId) {
-      if (klaviyoMode(env) !== 'live' || !revisionOk(env)) return null
+      if (!draftPushLive(env)) return null
+      // A server setting, not the owner's key: tried again, never "auth".
+      if (!revisionOk(env)) {
+        logger.error(
+          'Klaviyo push: KLAVIYO_API_REVISION is not the one this client is written for'
+        )
+        throw new KlaviyoError('unavailable', { endpoint: 'revision' })
+      }
       const { data, error } = await db.rpc('klaviyo_api_key', { t: tenantId })
       if (error) throw error
+      // No wait inside a request: a busy Klaviyo is the build's wait.
       return data
-        ? klaviyoClient(data, { timeoutMs: pushCallMs, maxWaits: 1 })
+        ? klaviyoClient(data, { timeoutMs: pushCallMs, maxWaits: 0 })
         : null
     },
     async timezone(tenantId) {
@@ -104,21 +121,32 @@ export function liveSource(db: Db, env: Env = process.env): PushSource {
 }
 
 /**
+ * Writing drafts into a real Klaviyo account is its own switch, the
+ * owner's, off by default: `KLAVIYO_DRAFT_PUSH=live`, on top of
+ * `KLAVIYO_MODE=live` (KLV-001's reads). One without the other writes
+ * nothing.
+ */
+export const draftPushLive = (env: Env) =>
+  klaviyoMode(env) === 'live' && env.KLAVIYO_DRAFT_PUSH === 'live'
+
+/**
  * The pusher "Create email" uses: the sample store's emails always get a
  * sample draft (no Klaviyo call); a real email goes to the workspace's own
- * Klaviyo only when the owner's switch is on, else the fake as before.
+ * Klaviyo only when the owner's write switch is on, else the fake as
+ * before. `deadline` is a time no push goes past (its route's end).
  */
 export function draftPusherFor(
   db: Db,
-  options: { env?: Env; budgetMs?: number } = {}
+  options: { env?: Env; budgetMs?: number; deadline?: number } = {}
 ): DraftPusher {
   const env = options.env ?? process.env
   const fake = fakeDraftPusher()
-  if (klaviyoMode(env) !== 'live') return fake
+  if (!draftPushLive(env)) return fake
   const live = liveDraftPusher({
     source: liveSource(db, env),
     store: databasePushStore(db),
     budgetMs: options.budgetMs,
+    deadline: options.deadline,
     callMs: pushCallMs
   })
   return {

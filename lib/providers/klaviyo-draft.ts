@@ -17,9 +17,12 @@
  * 4. A `sample` email (built from the sample store) never reaches a real
  *    Klaviyo account: a live adapter answers `rejected` for it.
  *
- * Before it creates the draft it uploads the pictures to Klaviyo (VISION
- * rule 11) and runs the launch check (QAG-001 `runReleaseQa`); a failed
- * check comes back as `rejected` with the failing check ids.
+ * The live pusher (PSH-001) moves the pictures into Klaviyo (VISION rule
+ * 11) and checks the HTML it sends (pictures, footer tags, size); a failed
+ * check comes back as `rejected` with the failing check ids. The launch
+ * check on the content (QAG-001 `runReleaseQa`: links, code, products,
+ * copy, dates) is the build's to run before it asks for the push; it is not
+ * wired yet, and must be before the owner's write switch is turned on.
  */
 export type DraftInput = {
   tenantId: string
@@ -74,18 +77,31 @@ export interface DraftPusher {
   createDraft(input: DraftInput): Promise<DraftResult>
 }
 
-/** The fake pusher: no Klaviyo call; the same key gives the same id. */
-export function fakeDraftPusher(): DraftPusher & { calls: DraftInput[] } {
+/**
+ * The fake pusher: no Klaviyo call; the same key gives the same id. Like
+ * the live one it refuses variations that are not exactly A then B, and
+ * `designs: 'A'` makes it answer as if Klaviyo refused the even test (to
+ * test alternating the designs).
+ */
+export function fakeDraftPusher(
+  options: { designs?: 'both' | 'A' } = {}
+): DraftPusher & { calls: DraftInput[] } {
   const calls: DraftInput[] = []
   return {
     calls,
     async createDraft(input) {
       calls.push(input)
+      const v = input.variations
+      if (
+        v &&
+        (v.length !== 2 || v[0]!.approach !== 'A' || v[1]!.approach !== 'B')
+      )
+        return { ok: false, code: 'rejected', checks: ['variations'] }
       return {
         ok: true,
         campaignId: `sample-draft-${input.idempotencyKey}`,
         sample: true,
-        ...(input.variations ? { designs: 'both' as const } : {})
+        ...(v ? { designs: options.designs ?? 'both' } : {})
       }
     }
   }

@@ -9,7 +9,10 @@ import {
   type KlaviyoTransport
 } from './client'
 import {
-  createDraftCampaign,
+  audienceExists,
+  campaignParts,
+  createCampaign,
+  createMessage,
   findOwnCampaign,
   readDraft,
   setEvenTest
@@ -121,42 +124,146 @@ describe('the Klaviyo draft writes', () => {
     })
   })
 
-  it('makes a draft to one audience and reads it back; a deleted one reads as gone', async () => {
+  it('refuses a body that would schedule or send, whatever the address', async () => {
+    const sent: string[] = []
+    const client = klaviyoClient(key, {
+      transport: async (request) => {
+        sent.push(request.method)
+        return { status: 200, headers: {}, body: '{}' }
+      }
+    })
+    for (const body of [
+      { data: { attributes: { definition: { status: 'scheduled' } } } },
+      {
+        data: {
+          attributes: { definition: { send_options: { send_time: 'x' } } }
+        }
+      },
+      { data: [{ attributes: { send_time: 'x' } }] }
+    ])
+      expect(
+        (
+          await failure(
+            client.write(
+              'PATCH',
+              '/api/campaign-messages/Msg1',
+              body,
+              'campaigns:write'
+            )
+          )
+        ).kind
+      ).toBe('rejected')
+    expect(sent).toEqual([])
+  })
+
+  it('makes a campaign, then its message, and reads it back; a deleted one reads as gone', async () => {
     const account = fakeDraftAccount()
     const client = klaviyoClient(key, { transport: account.transport })
-    const made = await createDraftCampaign(client, {
-      name: 'Tue 17 Nov · Offer',
+    expect(await audienceExists(client, 'SegEng90')).toBe(true)
+    expect(await audienceExists(client, 'LstNews')).toBe(true)
+    expect(await audienceExists(client, 'SegGone')).toBe(false)
+    const campaignId = await createCampaign(client, {
+      name: 'Mother & Daughter + #2 "Say hi"',
       description: 'GROS draft k1',
       audienceId: 'SegEng90',
-      timezone: 'Europe/Berlin',
-      variations: [
-        { name: 'Design A', subject: 'S', preview: 'P', templateId: 'T1' }
-      ]
+      timezone: 'Europe/Berlin'
     })
-    expect(await readDraft(client, made.messageId)).toMatchObject({
+    const parts = await campaignParts(client, campaignId)
+    expect(parts).toMatchObject({
+      description: 'GROS draft k1',
+      messageIds: []
+    })
+    const messageId = await createMessage(client, {
+      campaignId,
+      audienceRef: parts!.audienceRef!,
+      name: 'Mother & Daughter',
+      variation: {
+        name: 'Design A',
+        subject: 'S',
+        preview: 'P',
+        templateId: 'T1'
+      }
+    })
+    expect(await readDraft(client, messageId)).toMatchObject({
       status: 'draft',
-      campaignId: made.campaignId,
+      campaignId,
       description: 'GROS draft k1',
       winnerPercentage: null,
       variations: [{ name: 'Design A', subject: 'S', preview: 'P' }]
     })
+    // Found again by time, with its exact name and mark matched here.
+    const since = new Date(Date.now() - 60_000)
     expect(
       await findOwnCampaign(client, {
-        name: 'Tue 17 Nov · Offer',
+        name: 'Mother & Daughter + #2 "Say hi"',
         description: 'GROS draft k1',
-        since: new Date(Date.now() - 60_000)
+        since
       })
-    ).toEqual(made)
+    ).toBe(campaignId)
     expect(
       await findOwnCampaign(client, {
-        name: 'Tue 17 Nov · Offer',
+        name: 'Mother & Daughter + #2 "Say hi"',
         description: 'GROS draft other',
-        since: new Date(Date.now() - 60_000)
+        since
       })
     ).toBeNull()
     account.messages.clear()
-    expect(await readDraft(client, made.messageId)).toBeNull()
+    expect(await readDraft(client, messageId)).toBeNull()
     // No address is built from an id that is not one.
     await expect(readDraft(client, 'a/b')).rejects.toThrow()
+  })
+
+  it('looks through every page of campaigns, and never guesses past the last one it read', async () => {
+    const account = fakeDraftAccount()
+    const client = klaviyoClient(key, { transport: account.transport })
+    for (let i = 0; i < 5; i++)
+      await createCampaign(client, {
+        name: `Email ${i}`,
+        description: `GROS draft k${i}`,
+        audienceId: 'SegEng90',
+        timezone: 'UTC'
+      })
+    const since = new Date(Date.now() - 60_000)
+    // The fake answers 2 a page: the oldest is on the third.
+    expect(
+      await findOwnCampaign(client, {
+        name: 'Email 0',
+        description: 'GROS draft k0',
+        since
+      })
+    ).toEqual(expect.stringMatching(/^Cmp/))
+    expect(
+      await findOwnCampaign(
+        client,
+        { name: 'Email 0', description: 'GROS draft k0', since },
+        2
+      )
+    ).toBe('ambiguous')
+  })
+
+  it('reads a partial answer as unknown, never as no variations', async () => {
+    const account = fakeDraftAccount({ faults: { dropRelationships: true } })
+    const client = klaviyoClient(key, { transport: account.transport })
+    const campaignId = await createCampaign(client, {
+      name: 'N',
+      description: 'D',
+      audienceId: 'SegEng90',
+      timezone: 'UTC'
+    })
+    const parts = await campaignParts(client, campaignId)
+    const messageId = await createMessage(client, {
+      campaignId,
+      audienceRef: parts!.audienceRef!,
+      name: 'N',
+      variation: {
+        name: 'Design A',
+        subject: 'S',
+        preview: 'P',
+        templateId: 'T1'
+      }
+    })
+    expect((await failure(readDraft(client, messageId))).kind).toBe(
+      'invalid_response'
+    )
   })
 })

@@ -1,5 +1,5 @@
 begin;
-select plan(66);
+select plan(76);
 
 -- PSH-001: the live push's steps. Workspace 101: owner ...01, staff ...05.
 -- Workspace 102: owner ...04.
@@ -95,7 +95,11 @@ select throws_ok(format('select pg_temp.save(%L)', x),'23514',null,'refused step
     '{"checks":[{"id":"images","pass":"yes","problems":[]}]}',
     '{"checks":[{"id":"Images","pass":true,"problems":[]}]}',
     '{"checks":[{"id":"images","pass":true,"problems":[],"extra":1}]}',
-    '{"written":"abc"}'
+    '{"written":"abc"}',
+    '{"target":"abc"}',
+    '{"ab":"maybe"}',
+    '{"audience_id":"a b"}',
+    '{"template_started_at":"soon"}'
   ]) x;
 select throws_ok(format('select pg_temp.save(%L::jsonb)', jsonb_build_object('images',
   (select jsonb_object_agg('https://cedar.example/'||i||'.jpg','https://img.example/'||i||'.jpg') from generate_series(1,41) i))),
@@ -116,15 +120,16 @@ select throws_ok($$select public.save_klaviyo_push('00000000-0000-4000-8000-0000
   '23514',null,'a step is there');
 select throws_ok($$select public.save_klaviyo_push(null,'00000000-0000-4000-8000-00000000aaaa','{"state":"started"}')$$,
   '23514',null,'a build is named');
-select throws_ok($$select pg_temp.save('{"campaign_id":"Cmp1"}')$$,'23514',null,'a campaign is saved with its message');
 select throws_ok($$select pg_temp.save('{"message_id":"Msg1"}')$$,'23514',null,'a message is saved with its campaign');
+select lives_ok($$select pg_temp.save('{"campaign_id":"Cmp1","audience_id":"SegEng90","create_started_at":"2026-11-11T12:00:00Z"}')$$,
+  'a campaign is saved before its message');
 select throws_ok($$select pg_temp.save('{"state":"drafted"}')$$,'23514',null,'drafted only with its campaign and designs');
 select throws_ok($$select pg_temp.save('{"state":"refused"}')$$,'23514',null,'refused only with its reason');
 
 -- Steps are saved one after another; pictures add up.
 select lives_ok($$select pg_temp.save('{"images":{"https://cedar.example/a.jpg":"https://img.example/1.jpg"}}')$$,'a picture moved');
 select lives_ok($$select pg_temp.save(jsonb_build_object('images',jsonb_build_object('https://cedar.example/b.jpg','https://img.example/2.jpg'),
-  'create_started_at',now(),'campaign_id','Cmp1','message_id','Msg1',
+  'campaign_id','Cmp1','message_id','Msg1',
   'templates',jsonb_build_array(jsonb_build_object('approach','A','id','T1','hash',repeat('a',64),'deleted',false,'variation','Var1')),
   'checks',jsonb_build_array(jsonb_build_object('id','images','pass',true,'problems','[]'::jsonb))))$$,'then the campaign');
 select lives_ok($$select pg_temp.save('{"campaign_id":"Cmp1","message_id":"Msg1"}')$$,'the same campaign again is fine');
@@ -132,8 +137,15 @@ select lives_ok($$select pg_temp.save('{"campaign_id":"Cmp1","message_id":"Msg1"
 -- What a push made stays made.
 select throws_ok($$select pg_temp.save('{"campaign_id":"Cmp2","message_id":"Msg2"}')$$,'PT409',null,'its campaign is never swapped');
 select throws_ok($$select pg_temp.save('{"campaign_id":null,"message_id":null}')$$,'PT409',null,'nor cleared');
+select throws_ok($$select pg_temp.save('{"audience_id":"SegVIP"}')$$,'PT409',null,'its audience never changes');
+select throws_ok($$select pg_temp.save('{"create_started_at":"2026-11-11T13:00:00Z"}')$$,'PT409',null,
+  'its first create time stays the first');
+select lives_ok($$select pg_temp.save(jsonb_build_object('ab','pending','target',repeat('c',64)))$$,'an A/B test under way');
+select lives_ok($$select pg_temp.save('{"designs":"both","ab":"verified"}')$$,'and verified');
 select throws_ok($$select pg_temp.save('{"state":"started"}')$$,'PT409',null,'a push never starts again');
-select lives_ok($$select pg_temp.save(jsonb_build_object('designs','A','fallback','ab_test_refused'))$$,'Klaviyo refused the even test: design A');
+select lives_ok($$select pg_temp.save('{"designs":"A"}')$$,'one design again, without a refusal, is fine');
+select lives_ok($$select pg_temp.save('{"designs":"both"}')$$,'and both again');
+select lives_ok($$select pg_temp.save(jsonb_build_object('designs','A','fallback','ab_test_refused','ab',null))$$,'Klaviyo refused the even test: design A');
 select throws_ok($$select pg_temp.save('{"designs":"both"}')$$,'PT409',null,'design A stays design A');
 select lives_ok($$select pg_temp.save(jsonb_build_object('state','drafted','designs','A','written',repeat('b',64),'reason',null))$$,
   'then the draft is ready');

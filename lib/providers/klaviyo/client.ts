@@ -55,6 +55,8 @@ export class KlaviyoError extends Error {
       status?: number
       /** Klaviyo's own error code, e.g. permission_denied. */
       code?: string
+      /** Where Klaviyo says the request was wrong (a JSON pointer, bounded). */
+      pointer?: string
       scope?: KlaviyoScope
       retryAfterSeconds?: number
     }
@@ -139,6 +141,7 @@ const kid = '[A-Za-z0-9_-]{1,64}'
  */
 const draftWrites: { method: KlaviyoWriteMethod; path: RegExp }[] = [
   { method: 'POST', path: /^\/api\/campaigns\/?$/ },
+  { method: 'POST', path: /^\/api\/campaign-messages\/?$/ },
   { method: 'PATCH', path: new RegExp(`^/api/campaign-messages/${kid}/?$`) },
   { method: 'POST', path: /^\/api\/campaign-variations\/?$/ },
   { method: 'PATCH', path: new RegExp(`^/api/campaign-variations/${kid}/?$`) },
@@ -149,6 +152,27 @@ const draftWrites: { method: KlaviyoWriteMethod; path: RegExp }[] = [
 ]
 export const isDraftWrite = (method: KlaviyoWriteMethod, path: string) =>
   draftWrites.some((w) => w.method === method && w.path.test(path))
+
+/**
+ * Fields a draft write never carries, anywhere in its body: a message's
+ * status, send options and times (D17: only the owner schedules).
+ */
+const scheduleFields = new Set([
+  'status',
+  'send_options',
+  'send_time',
+  'send_times',
+  'recipient_percentage',
+  'scheduled_at'
+])
+export function carriesSchedule(body: unknown): boolean {
+  if (Array.isArray(body)) return body.some(carriesSchedule)
+  if (body && typeof body === 'object')
+    return Object.entries(body).some(
+      ([k, v]) => scheduleFields.has(k) || carriesSchedule(v)
+    )
+  return false
+}
 
 export type KlaviyoClient = {
   /** A GET of `path` (with its query) on Klaviyo's host; the parsed body. */
@@ -229,7 +253,7 @@ export function klaviyoClient(
           })
         }
       }
-      const code = errorCode(response.body)
+      const { code, pointer } = errorOf(response.body)
       const status = response.status
       if (status === 401)
         throw new KlaviyoError('bad_key', { endpoint, status, code })
@@ -258,7 +282,7 @@ export function klaviyoClient(
       }
       if (status >= 500)
         throw new KlaviyoError('unavailable', { endpoint, status, code })
-      throw new KlaviyoError('rejected', { endpoint, status, code })
+      throw new KlaviyoError('rejected', { endpoint, status, code, pointer })
     }
   }
   return {
@@ -278,7 +302,8 @@ export function klaviyoClient(
         url.origin !== klaviyoHost ||
         url.search !== '' ||
         !isDraftWrite(method, url.pathname) ||
-        (method === 'DELETE') !== (body === null)
+        (method === 'DELETE') !== (body === null) ||
+        carriesSchedule(body)
       )
         throw new KlaviyoError('rejected', { endpoint: url.pathname })
       return send(url, scope, {
@@ -289,15 +314,27 @@ export function klaviyoClient(
   }
 }
 
-/** Klaviyo's own error code from a JSON:API error body, if any. */
-function errorCode(body: string) {
+/** Klaviyo's own error code and the place it names, from a JSON:API error body. */
+function errorOf(body: string) {
   try {
-    const code = (JSON.parse(body) as { errors?: { code?: unknown }[] })
-      .errors?.[0]?.code
-    return typeof code === 'string' && /^[a-z_]{1,60}$/.test(code)
-      ? code
-      : undefined
+    const first = (
+      JSON.parse(body) as {
+        errors?: { code?: unknown; source?: { pointer?: unknown } }[]
+      }
+    ).errors?.[0]
+    const code = first?.code
+    const pointer = first?.source?.pointer
+    return {
+      code:
+        typeof code === 'string' && /^[a-z_]{1,60}$/.test(code)
+          ? code
+          : undefined,
+      pointer:
+        typeof pointer === 'string' && /^\/[A-Za-z0-9_/-]{0,120}$/.test(pointer)
+          ? pointer
+          : undefined
+    }
   } catch {
-    return undefined
+    return { code: undefined, pointer: undefined }
   }
 }

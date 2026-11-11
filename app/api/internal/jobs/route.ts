@@ -17,8 +17,10 @@ import { draftPusherFor } from '@/features/klaviyo-push/live'
 /** Time the sweep gives to plan steps before the workspace jobs. */
 const planBudgetMs = 5_000
 const emailBudgetMs = 5_000
-/** A live push inside this route takes at most this long (PSH-001). */
-const cronPushBudgetMs = 15_000
+/** A live push inside this route takes at most this long (PSH-001)... */
+const cronPushBudgetMs = 20_000
+/** ...and none goes past this point of the route's minute. */
+const cronPushEndMs = 40_000
 import { scheduleLimits } from '@/features/cron/scheduler'
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -67,12 +69,17 @@ export async function GET(request: NextRequest) {
     return { ran: 0 }
   })
   // "Create email" steps (EML-004 part 2): the code-only build and the
-  // draft push (the fake one unless the owner's KLAVIYO_MODE=live switch is
-  // on, PSH-001), claimed for at most 5 s, each live push at most 15 s; a
+  // draft push (the fake one unless the owner's write switch,
+  // KLAVIYO_DRAFT_PUSH=live with KLAVIYO_MODE=live, is on: PSH-001),
+  // claimed for at most 5 s, each live push at most 20 s and never past
+  // 40 s into the route (an A/B test started then may end 8 s later); a
   // failure stays queued for the next run.
   const emails = await runEmailBuilds(db, {
     deadline: Date.now() + emailBudgetMs,
-    pusher: draftPusherFor(db, { budgetMs: cronPushBudgetMs })
+    pusher: draftPusherFor(db, {
+      budgetMs: cronPushBudgetMs,
+      deadline: started + cronPushEndMs
+    })
   }).catch((error) => {
     logger.error('Email build steps could not run', {
       code: (error as { code?: string }).code ?? 'email_build_error'

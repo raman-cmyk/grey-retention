@@ -4271,6 +4271,8 @@ export type Database = {
       }
       klaviyo_draft_pushes: {
         Row: {
+          ab: string | null
+          audience_id: string | null
           campaign_id: string | null
           checks: Json
           create_started_at: string | null
@@ -4282,12 +4284,16 @@ export type Database = {
           push_key: string
           reason: string | null
           state: string
+          target: string | null
+          template_started_at: string | null
           templates: Json
           tenant_id: string
           updated_at: string
           written: string | null
         }
         Insert: {
+          ab?: string | null
+          audience_id?: string | null
           campaign_id?: string | null
           checks?: Json
           create_started_at?: string | null
@@ -4299,12 +4305,16 @@ export type Database = {
           push_key: string
           reason?: string | null
           state?: string
+          target?: string | null
+          template_started_at?: string | null
           templates?: Json
           tenant_id: string
           updated_at?: string
           written?: string | null
         }
         Update: {
+          ab?: string | null
+          audience_id?: string | null
           campaign_id?: string | null
           checks?: Json
           create_started_at?: string | null
@@ -4316,6 +4326,8 @@ export type Database = {
           push_key?: string
           reason?: string | null
           state?: string
+          target?: string | null
+          template_started_at?: string | null
           templates?: Json
           tenant_id?: string
           updated_at?: string
