@@ -51,6 +51,18 @@ describe('the fallback log on Admin -> Operations', () => {
     expect(within(second).getByText('Platform')).toBeVisible()
   })
 
+  it('reads nothing for someone who is not an admin', async () => {
+    const rpc = answer({ data: [row], error: null })
+    auth.requireRequestContext.mockRejectedValueOnce(new Error('NEXT_REDIRECT'))
+    await expect(FallbackLogPanel()).rejects.toThrow('NEXT_REDIRECT')
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('shows nothing without a database', async () => {
+    supabase.createClient.mockResolvedValue(null)
+    expect(await FallbackLogPanel()).toBeNull()
+  })
+
   it('says when there is nothing yet, or when it cannot load', async () => {
     answer({ data: [], error: null })
     render(await FallbackLogPanel())

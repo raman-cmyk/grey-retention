@@ -8,13 +8,18 @@
 -- * One row per problem (tenant + dedupe key); a repeat adds to `occurrences`
 --   and keeps the latest reason, so a retried job does not flood the log.
 -- * Platform-wide work (competitor intelligence) has no tenant.
+-- * Not the run log: agent_runs (MEM-001) keeps every AI call; this keeps one
+--   line per give-up decision, AI or code, with detail.runId when there is one.
+-- * Platform admins read every workspace's entries, so the reason is fixed
+--   words per rule or code, never the email's copy, codes or products.
 
 create table public.agent_fallbacks (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid references public.tenants(id) on delete cascade,
   campaign_id uuid,
-  -- Which agent or check gave up, for example 'copy_check' or 'assembly'.
-  agent text not null check (agent ~ '^[a-z][a-z0-9_]{1,39}$'),
+  -- Which agent or check gave up: the AgentDefinition name (MEM-001), for
+  -- example 'copy-check', 'brand-inspector' or 'assembly'.
+  agent text not null check (agent ~ '^[a-z][a-z0-9_-]{1,59}$'),
   -- A stable reason key for grouping, for example 'copy_check_failed'.
   reason_code text not null check (reason_code ~ '^[a-z][a-z0-9_]{1,59}$'),
   -- Plain words for an admin: what went wrong.
@@ -25,7 +30,8 @@ create table public.agent_fallbacks (
   -- Small structured facts (failed rules, revision, model); never prompts,
   -- copy, provider payloads or secrets.
   detail jsonb not null default '{}' check (jsonb_typeof(detail) = 'object' and length(detail::text) <= 4000),
-  dedupe_key text not null check (length(dedupe_key) between 1 and 300),
+  -- Built by the caller from stable ids, for example 'copy_check:<campaign>:<revision>'.
+  dedupe_key text not null check (length(dedupe_key) <= 300 and dedupe_key ~ '^[A-Za-z0-9][A-Za-z0-9:_.-]*$'),
   occurrences integer not null default 1 check (occurrences >= 1),
   created_at timestamptz not null default now(),
   last_seen_at timestamptz not null default now(),
@@ -37,9 +43,11 @@ create index agent_fallbacks_recent on public.agent_fallbacks (last_seen_at desc
 create index agent_fallbacks_campaign on public.agent_fallbacks (tenant_id, campaign_id) where campaign_id is not null;
 
 alter table public.agent_fallbacks enable row level security;
-create policy operator_read on public.agent_fallbacks for select to authenticated using (private.is_operator());
--- Read-only from the browser: only the command below writes.
+create policy operator_read on public.agent_fallbacks for select to authenticated using ((select private.is_operator()));
+-- Only the command below writes, so every entry is checked and counted:
+-- jobs (service role) cannot write the table directly either.
 revoke all on public.agent_fallbacks from public, anon, authenticated;
+revoke insert, update, delete, truncate, references, trigger on public.agent_fallbacks from service_role;
 grant select on public.agent_fallbacks to authenticated;
 
 create or replace function public.record_fallback(
@@ -85,8 +93,8 @@ begin
   values
     (tenant, campaign, agent_key, reason_key, btrim(reason_text), btrim(fallback_text),
      coalesce(tries, 0), coalesce(facts, '{}'::jsonb), dedupe)
+  -- A repeat keeps its campaign, so it still goes when that campaign goes.
   on conflict (tenant_id, dedupe_key) do update set
-    campaign_id = excluded.campaign_id,
     agent = excluded.agent,
     reason_code = excluded.reason_code,
     reason = excluded.reason,

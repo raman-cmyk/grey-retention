@@ -45,6 +45,13 @@ export async function planningAction(
   const db = await createClient()
   if (!db || process.env.AUTH_MODE === 'demo')
     return { error: 'Supabase authentication required.' }
+  // D17 (RET-002): the weekly copy batch is retired, on the server too.
+  if (
+    p.data.kind === 'queue_week' ||
+    p.data.kind === 'review_week' ||
+    p.data.kind === 'approve_batch'
+  )
+    return { error: 'The weekly copy review is retired.' }
   try {
     const v = p.data,
       t = context.tenantId
@@ -65,12 +72,6 @@ export async function planningAction(
       })
     if (v.kind === 'approve_plan')
       r = await db.rpc('approve_plan', { t, plan: v.id })
-    if (v.kind === 'queue_week')
-      r = await db.rpc('queue_weekly_copy', { t, week: v.week })
-    if (v.kind === 'review_week')
-      r = await db.rpc('prepare_copy_review', { t, week: v.week })
-    if (v.kind === 'approve_batch')
-      r = await db.rpc('approve_copy_batch', { t, batch: v.id })
     if (v.kind === 'reject')
       r = await db.rpc('reject_campaign_version', {
         t,
@@ -91,9 +92,7 @@ export async function planningAction(
       message:
         v.kind === 'run'
           ? 'Fixture pass completed; inspect persisted state.'
-          : v.kind === 'approve_batch'
-            ? 'Exact reviewed versions approved atomically.'
-            : 'Planning command saved.'
+          : 'Planning command saved.'
     }
   } catch {
     return { error: 'Planning operation unavailable; inspect job state.' }

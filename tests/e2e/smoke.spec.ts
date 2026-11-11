@@ -89,5 +89,5 @@ test('RET-002 the weekly copy review is retired (decision D17)', async ({
   for (const path of ['/copy-review', '/copy-review?week=2026-11-09'])
     expect((await page.request.get(path)).status(), path).toBe(404)
   await page.goto('/campaign-agent')
-  await expect(page.getByRole('link', { name: /copy review/i })).toHaveCount(0)
+  await expect(page.locator('a[href^="/copy-review"]')).toHaveCount(0)
 })

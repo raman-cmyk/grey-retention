@@ -26,7 +26,7 @@ export async function proxy(request: NextRequest) {
     isRetiredDesignerPath(request.nextUrl.pathname) ||
     isRetiredApprovalPath(request.nextUrl.pathname)
   )
-    return NextResponse.rewrite(new URL('/retired-designer-route', request.url))
+    return NextResponse.rewrite(new URL('/retired-route', request.url))
   if (
     process.env.AUTH_MODE === 'demo' &&
     process.env.NODE_ENV !== 'production'

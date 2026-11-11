@@ -511,8 +511,11 @@ export async function withCopyQa<T extends CopyDraft>(input: {
   | { status: 'passed'; draft: T; attempts: QaResult[]; errors: unknown[] }
   | {
       status: 'fallback'
-      /** The last draft that was generated, or null if every try threw. */
-      draft: T | null
+      /**
+       * The last draft, which FAILED the check (null if every try threw).
+       * Never send it: it is kept only to show what went wrong.
+       */
+      lastFailedDraft: T | null
       attempts: QaResult[]
       errors: unknown[]
     }
@@ -537,5 +540,5 @@ export async function withCopyQa<T extends CopyDraft>(input: {
     if (result.pass) return { status: 'passed', draft, attempts, errors }
     feedback = result.failures
   }
-  return { status: 'fallback', draft, attempts, errors }
+  return { status: 'fallback', lastFailedDraft: draft, attempts, errors }
 }

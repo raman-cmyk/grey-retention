@@ -215,7 +215,7 @@ describe('withCopyQa', () => {
     expect(generate.mock.calls[1][0][0].rule).toBe('discount_over_max')
   })
 
-  it('sends the email to a human after three failed tries', async () => {
+  it('falls back after three failed tries (D16: never to a person)', async () => {
     const generate = vi.fn(async () => draft('Clinically proven'))
     const result = await withCopyQa({ generate, check: (d) => check(d) })
     expect(result.status).toBe('fallback')
@@ -280,7 +280,7 @@ describe('gaps found by the assembly reviewer', () => {
       throw new Error('down')
     })
     const result = await withCopyQa({ generate, check: (d) => check(d) })
-    expect(result).toMatchObject({ status: 'fallback', draft: null })
+    expect(result).toMatchObject({ status: 'fallback', lastFailedDraft: null })
     expect(result.errors).toHaveLength(3)
   })
 })

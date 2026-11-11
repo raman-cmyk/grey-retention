@@ -9,7 +9,6 @@ export type NavigationIcon =
   | 'bill'
   | 'brand'
   | 'assets'
-  | 'copy'
   | 'campaigns'
   | 'clients'
   | 'connections'
@@ -85,7 +84,8 @@ export function navigationLinks(navigation: ShellNavigation) {
  * items from docs/OWNER_JOURNEYS.md §2 and §18 (which win where they differ):
  * "Campaigns" and "Inspiration" instead of "… Agent", Team and Request a
  * Feature in Workspace. "More tools" holds pages the old app did not have;
- * they move into the rebuilt screens as those land (copy review into §7).
+ * they move into the rebuilt screens as those land. The weekly copy review
+ * is retired (D17, RET-002).
  */
 export function createClientNavigation(assistantName: string): ShellNavigation {
   return {

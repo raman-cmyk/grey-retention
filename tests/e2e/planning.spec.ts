@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { login } from './accounts'
-test('UC-05/06 guarded month review and exact weekly copy batch persist', async ({
+test('UC-05 guarded month review persists (the weekly copy batch is retired, D17)', async ({
   page
 }, info) => {
   test.setTimeout(120_000)
