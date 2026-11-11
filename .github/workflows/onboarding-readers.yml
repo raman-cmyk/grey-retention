@@ -1,9 +1,10 @@
 name: Onboarding readers
 
 # Reads the brand sources waiting for a workspace's onboarding (ONB-101: the
-# brand's own website). Site reads use the open internet and, when Gemini is
-# set up, paid AI, so the sweep never runs them; this run does, as the
-# worker, with every model call capped to fit the route. It first asks how
+# brand's own website; ONB-102: its Klaviyo catalog). These reads use the
+# open internet or the workspace's Klaviyo key and, when Gemini is set up,
+# paid AI, so the sweep never runs them; this run does, as the worker, with
+# every model and Klaviyo call capped to fit the route. It first asks how
 # many reads are waiting, so an idle run is one small request.
 #
 # Off until turned on, exactly like the scheduled jobs
@@ -53,7 +54,7 @@ jobs:
           echo "Reads waiting: $waiting"
           if [ "$waiting" = "0" ]; then exit 0; fi
           status=$(call '' run.json) || status=000
-          jq -c '{state, reads, failed, code}' run.json 2>/dev/null || true
+          jq -c '{state, reads, failed, paused, code}' run.json 2>/dev/null || true
           if [ "$status" != "200" ]; then
             echo "::error::The app returned HTTP $status."
             exit 1

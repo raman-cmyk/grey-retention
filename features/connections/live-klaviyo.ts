@@ -31,7 +31,9 @@ export function klaviyoMode(
  * The revision the client speaks. A different KLAVIYO_API_REVISION in the
  * settings stops live checks (never a silent mismatch).
  */
-function revisionOk(env: Record<string, string | undefined> = process.env) {
+export function revisionOk(
+  env: Record<string, string | undefined> = process.env
+) {
   const set = env.KLAVIYO_API_REVISION?.trim()
   return !set || set === klaviyoRevision
 }

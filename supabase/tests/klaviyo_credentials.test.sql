@@ -87,7 +87,10 @@ update public.workspace_connections set status='expired' where tenant_id='000000
 set local role service_role;
 select is(public.klaviyo_api_key('00000000-0000-4000-8000-000000000101'),null,'not while the connection needs attention');
 reset role;
+-- Only the key check brings a live connection back (ONB-102's guard).
+select set_config('grey.live_klaviyo_check','on',true);
 update public.workspace_connections set status='connected' where tenant_id='00000000-0000-4000-8000-000000000101' and provider='klaviyo';
+select set_config('grey.live_klaviyo_check','',true);
 
 -- The same hint again (a new check of a key that ends alike) keeps the same
 -- Vault secret and replaces its value.
