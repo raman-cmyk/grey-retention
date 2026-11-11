@@ -18,6 +18,10 @@ function database(
     >
     jobs?: string[]
     recordError?: { code: string; message: string }
+    /** What storing the marked copy answers. */
+    marked?: 'ok' | 'exists' | 'down'
+    sectionsError?: { code: string; message: string }
+    assetsState?: 'pending' | 'done'
   } = {}
 ) {
   const stored = new Map<string, Uint8Array>()
@@ -39,6 +43,10 @@ function database(
           error: null
         }
       }
+      if (name === 'record_inbox_sections' && options.sectionsError)
+        return (args.sections as unknown[]).length
+          ? { data: null, error: options.sectionsError }
+          : { data: 0, error: null }
       if (name === 'record_inbox_images')
         return options.recordError
           ? { data: null, error: options.recordError }
@@ -56,7 +64,8 @@ function database(
                     id,
                     html_path: `fake/${id}.html`,
                     raw_path: `fake/${id}.eml`,
-                    synthetic: m.synthetic ?? true
+                    synthetic: m.synthetic ?? true,
+                    assets_state: options.assetsState ?? 'pending'
                   },
                   error: null
                 }
@@ -76,6 +85,24 @@ function database(
             : { data: new Blob([text]), error: null }
         },
         upload: async (path: string, body: Uint8Array) => {
+          // INB-003: the marked HTML copy goes next to the email's HTML.
+          if (bucket === 'inbox-raw') {
+            expect(path).toMatch(/^fake\/[a-f0-9]{64}\.marked\.html$/)
+            if (options.marked === 'exists')
+              return {
+                data: null,
+                error: {
+                  message: 'The resource already exists',
+                  statusCode: '409'
+                }
+              }
+            if (options.marked === 'down')
+              return {
+                data: null,
+                error: { message: 'Service unavailable', statusCode: '503' }
+              }
+            return { data: { path }, error: null }
+          }
           expect(bucket).toBe('inbox-assets')
           uploads.push(path)
           if (stored.has(path))
@@ -289,13 +316,98 @@ describe('keepInboxImages', () => {
     const names = db.calls.map((c) => c.name)
     expect(names).toEqual([
       'claim_platform_job',
+      'record_inbox_sections',
       'record_inbox_images',
       'finish_platform_job',
       'claim_platform_job'
     ])
-    expect(db.calls[1]!.args.images).toMatchObject([
+    // The images were fetched and stored before the sections were recorded.
+    expect(db.stored.size).toBe(1)
+    expect(db.calls[1]!.args).toMatchObject({
+      marked_path: expect.stringMatching(/^fake\/[a-f0-9]{64}\.marked\.html$/),
+      sections: [{ ordinal: 1, kind: 'design' }]
+    })
+    expect(db.calls[2]!.args.images).toMatchObject([
       { ordinal: 1, state: 'stored', source: 'remote' }
     ])
+  })
+
+  const hero = {
+    m1: {
+      html: '<table width="600"><tr><td><img src="https://mail.northwind.example/hero.png" width="600"></td></tr><tr><td>Spring layers are here</td></tr></table>'
+    }
+  }
+  const sweep = (db: ReturnType<typeof database>) =>
+    keepInboxImages(
+      db as unknown as Db,
+      { real: fetcher({}), sample: sampleImageFetcher },
+      later()
+    )
+
+  it('records the sections when their marked copy is already stored', async () => {
+    const db = database({ jobs: ['m1'], messages: hero, marked: 'exists' })
+    expect(await sweep(db)).toMatchObject({ emails: 1, retried: 0 })
+    expect(
+      db.calls.find((c) => c.name === 'record_inbox_sections')!.args
+    ).toMatchObject({
+      marked_path: expect.stringMatching(/\.marked\.html$/),
+      sections: [{ ordinal: 1 }, { ordinal: 2 }]
+    })
+  })
+
+  it('still keeps and records the images when the sections cannot be stored', async () => {
+    const db = database({ jobs: ['m1'], messages: hero, marked: 'down' })
+    expect(await sweep(db)).toMatchObject({ emails: 1, stored: 1, retried: 0 })
+    expect(
+      db.calls
+        .filter((c) => c.name === 'record_inbox_sections')
+        .map((c) => c.args)
+    ).toEqual([
+      { job: 'job-m1', lease: 'lease', marked_path: null, sections: [] }
+    ])
+    expect(db.calls.map((c) => c.name)).toContain('record_inbox_images')
+    expect(db.calls.map((c) => c.name)).toContain('finish_platform_job')
+  })
+
+  it('records the email without sections when the database refuses the cut', async () => {
+    const db = database({
+      jobs: ['m1'],
+      messages: hero,
+      sectionsError: { code: '23514', message: 'Invalid sections' }
+    })
+    expect(await sweep(db)).toMatchObject({ emails: 1, retried: 0 })
+    expect(
+      db.calls.filter((c) => c.name === 'record_inbox_sections')
+    ).toHaveLength(2)
+  })
+
+  it('fails the job when its lease is lost while recording the sections', async () => {
+    const db = database({
+      jobs: ['m1'],
+      messages: hero,
+      sectionsError: { code: 'PT409', message: 'Lease lost' }
+    })
+    expect(await sweep(db)).toMatchObject({ emails: 0, retried: 1 })
+    expect(db.calls.map((c) => c.name)).not.toContain('record_inbox_images')
+    expect(db.calls.map((c) => c.name)).toContain('fail_platform_job')
+  })
+
+  it('only cuts an email whose images were kept before sections existed', async () => {
+    const real = fetcher({})
+    const db = database({ jobs: ['m1'], messages: hero, assetsState: 'done' })
+    const run = await keepInboxImages(
+      db as unknown as Db,
+      { real, sample: { fetch: vi.fn(sampleImageFetcher.fetch) } },
+      later()
+    )
+    expect(run).toEqual({ emails: 1, stored: 0, failed: 0, retried: 0 })
+    expect(db.calls.map((c) => c.name)).toEqual([
+      'claim_platform_job',
+      'record_inbox_sections',
+      'finish_platform_job',
+      'claim_platform_job'
+    ])
+    expect(db.stored.size).toBe(0)
   })
 
   it('uses the live fetcher only for real emails', async () => {

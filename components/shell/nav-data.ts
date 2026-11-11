@@ -159,6 +159,7 @@ export const adminNavigation: ShellNavigation = {
     { label: 'Clients', href: '/admin/clients', icon: 'clients' },
     { label: 'Prompt engine', href: '/admin/prompts', icon: 'prompts' },
     { label: 'Templates', href: '/admin/templates', icon: 'templates' },
+    { label: 'Inspiration inbox', href: '/admin/inbox', icon: 'inspirations' },
     { label: 'Operations', href: '/admin/operations', icon: 'operations' }
   ],
   groups: []

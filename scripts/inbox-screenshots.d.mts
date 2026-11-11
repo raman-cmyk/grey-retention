@@ -6,6 +6,7 @@ export type ScreenshotJob = {
   html: string
   images: { ref: string; url: string }[]
   upload: string
+  sections: { ordinal: number; upload: string }[]
 }
 
 export const width: number
@@ -13,6 +14,8 @@ export const maxWidth: number
 export const maxHeight: number
 export const maxBytes: number
 export const perRun: number
+export const cropBudgetMs: number
+export const uploadBudgetMs: number
 export function launch(chromium: BrowserType): Promise<Browser>
 export function prepareHtml(
   html: string,
@@ -23,9 +26,22 @@ export function allowedOrigins(
 ): Set<string>
 export function render(
   browser: Browser,
-  job: Pick<ScreenshotJob, 'html' | 'images'>,
-  html: string
-): Promise<{ image: Uint8Array; width: number; height: number }>
+  job: Pick<ScreenshotJob, 'html' | 'images'> &
+    Partial<Pick<ScreenshotJob, 'sections'>>,
+  html: string,
+  /** When to stop cropping sections (epoch milliseconds). */
+  until?: number
+): Promise<{
+  image: Uint8Array
+  width: number
+  height: number
+  sections: {
+    ordinal: number
+    top: number
+    height: number
+    image: Uint8Array
+  }[]
+}>
 export function run(options: {
   base: string
   secret: string
