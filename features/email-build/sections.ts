@@ -10,12 +10,7 @@ import {
   type DroppedSection
 } from '@/features/assembly/modes'
 import type { EmailType } from '@/features/strategy/plan'
-import {
-  failedWords,
-  outputLimit,
-  tryAgent,
-  type AgentCtx
-} from '@/features/strategy/retry'
+import { failedWords, tryAgent, type AgentCtx } from '@/features/strategy/retry'
 
 /**
  * EML-001, layer 1 of the email build (AGENT_MAP.md §4, decisions D1, D18,
@@ -228,7 +223,7 @@ export const sectionPlannerAgent: AgentDefinition<SectionTask, SectionAnswer> =
       }
     },
     output: answer,
-    maxOutputTokens: outputLimit(800, 'low'),
+    maxOutputTokens: 800,
     temperature: 0.4,
     reasoningEffort: 'low'
   }
