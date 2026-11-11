@@ -91,3 +91,67 @@ export function sampleStore(start: string): PulseInput {
     ]
   }
 }
+
+/**
+ * A synthetic competitor library for the sample store: home brands of each
+ * size over the last 90 days, labelled as lane B's classifier will (CI-001).
+ */
+export function sampleCompetitors(start: string) {
+  const day = (offset: number) => {
+    const d = new Date(`${start}T00:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + offset)
+    return d.toISOString().slice(0, 10)
+  }
+  // A public holiday 40 days ago and a sale event 60 days ago; month ends
+  // fall on day -16 (31 Oct) and day -47 (30 Sep) for a 16 Nov start.
+  const pastDates = [
+    { date: day(-40), name: 'Public holiday', kind: 'holiday' as const },
+    { date: day(-60), name: 'Spring sale', kind: 'sale' as const }
+  ]
+  const ourDates = [
+    { date: day(9), name: 'Public holiday', kind: 'holiday' as const },
+    { date: day(3), name: 'Studio open day', kind: 'event' as const }
+  ]
+  type Email = import('./competitors').LibraryEmail
+  const email = (
+    id: string,
+    brandId: string,
+    sentOn: string,
+    emailType: string,
+    offerType: string,
+    angle: string,
+    over: Partial<Email> = {}
+  ): Email => ({
+    id,
+    brandId,
+    industry: 'home',
+    brandSize: 'small',
+    sentOn,
+    emailType,
+    offerType,
+    angle,
+    ...over
+  })
+  const library: Email[] = [
+    // Two days before the public holiday, three small home brands sent a
+    // gift guide with no discount.
+    email('e1', 'b1', day(-42), 'gift guide', 'no offer', 'gifting'),
+    email('e2', 'b2', day(-42), 'gift guide', 'no offer', 'gifting'),
+    email('e3', 'b3', day(-42), 'gift guide', 'no offer', 'gifting'),
+    // Three days before month end, two brands ran a percent-off sale.
+    email('e4', 'b1', day(-19), 'sale', 'percent off', 'urgency'),
+    email('e5', 'b4', day(-50), 'sale', 'percent off', 'urgency'),
+    // One brand alone: not a pattern.
+    email('e6', 'b5', day(-42), 'new arrivals', 'no offer', 'newness'),
+    // Not the same: a large brand, another industry, too long ago, too late.
+    email('e7', 'b6', day(-42), 'gift guide', 'no offer', 'gifting', {
+      brandSize: 'large'
+    }),
+    email('e8', 'b7', day(-42), 'gift guide', 'no offer', 'gifting', {
+      industry: 'beauty'
+    }),
+    email('e9', 'b8', day(-95), 'sale', 'percent off', 'urgency'),
+    email('e10', 'b9', day(0), 'sale', 'percent off', 'urgency')
+  ]
+  return { pastDates, ourDates, library }
+}
