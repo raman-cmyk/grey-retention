@@ -14,7 +14,8 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - Support segment-specific planning at higher brand volume: 30–35 campaigns/month and roughly 12 per customer average are illustrative, not quotas or a settled cap.
 - Visual direction selected: **calm, minimal light interface**. Layouts and interaction details still need design review.
 - Completely rethink UI/UX in Figma. Supersede current UI and old-app parity; preserve useful underlying functionality.
-- Klaviyo only, no designer workflow, client-owned content and mandatory approval remain.
+- Klaviyo only, no designer workflow and client-owned content remain. **Superseded 11 Nov 2026:** no weekly approval and no human loop (D16, D17); the owner starts planning and email creation, and created emails land in Klaviyo as drafts.
+- 11 Nov 2026: the agent plan v3 in [AGENT_MAP.md](AGENT_MAP.md) is the build plan (decisions D16–D24 in BUILD_BRIEF.md).
 
 ## Hard design rules and current scope
 
@@ -22,20 +23,23 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 
 ## To-dos
 
-| ID               | Task                                                                                                          | Status / evidence                                                 |
-| ---------------- | ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| DOC-OWNER-001    | Reconcile vision, build brief, agent entry points and historical design/roadmap references                    | Documentation prepared in this change; verify merged revision     |
-| UX-RESET-001     | Map core user jobs and propose a clean information architecture                                               | Draft in [DESIGN_RESET.md](DESIGN_RESET.md); owner review pending |
-| UX-RESET-002     | Explore 2–3 visual directions on the same key screen in Figma                                                 | Not started                                                       |
-| UX-RESET-003     | Prototype weekly plan → segment refinement → email review → approval, desktop and phone                       | Not started                                                       |
-| UX-RESET-004     | Define tokens, components, states and responsive behavior; map approved Figma components to code              | Not started                                                       |
-| BLK-SCALE-001    | Define type/variant/template taxonomy, counting, provenance, deduplication and quality toward 2,000+ blocks   | Not started                                                       |
-| SEG-STRATEGY-001 | Define strategic segment rules using supported Klaviyo data, refresh behavior and exclusions                  | Not started                                                       |
-| SEG-EXPOSURE-001 | Define frequency window/cap, overlap resolution, priorities and external-send accounting                      | Owner decisions and design required                               |
-| SEG-CHAT-001     | Design and build chat → explicit rules → estimated membership/overlap preview → approval                      | Not started                                                       |
-| CHAT-CORE-001    | Define central AI workspace context, tools, evidence, permissions and quality evaluation                      | Not started; no model chosen                                      |
-| PLAN-SEG-001     | Carry approved audiences and exposure constraints through strategy, calendar, QA, weekly approval and results | Not started                                                       |
-| VERIFY-BASE-001  | Reconcile merged code, applied migrations, deployment and live-provider readiness before feature claims       | Not independently verified in this documentation task             |
+| ID               | Task                                                                                                              | Status / evidence                                                 |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| DOC-OWNER-001    | Reconcile vision, build brief, agent entry points and historical design/roadmap references                        | Documentation prepared in this change; verify merged revision     |
+| UX-RESET-001     | Map core user jobs and propose a clean information architecture                                                   | Draft in [DESIGN_RESET.md](DESIGN_RESET.md); owner review pending |
+| UX-RESET-002     | Explore 2–3 visual directions on the same key screen in Figma                                                     | Not started                                                       |
+| UX-RESET-003     | Prototype weekly plan → segment refinement → email review → approval, desktop and phone                           | Not started                                                       |
+| UX-RESET-004     | Define tokens, components, states and responsive behavior; map approved Figma components to code                  | Not started                                                       |
+| BLK-SCALE-001    | Define type/variant/template taxonomy, counting, provenance, deduplication and quality toward 2,000+ blocks       | Not started                                                       |
+| SEG-STRATEGY-001 | Define strategic segment rules using supported Klaviyo data, refresh behavior and exclusions                      | Not started                                                       |
+| SEG-EXPOSURE-001 | Define frequency window/cap, overlap resolution, priorities and external-send accounting                          | Owner decisions and design required                               |
+| SEG-CHAT-001     | Design and build chat → explicit rules → estimated membership/overlap preview → approval                          | Not started                                                       |
+| CHAT-CORE-001    | Define central AI workspace context, tools, evidence, permissions and quality evaluation                          | Not started; no model chosen                                      |
+| PLAN-SEG-001     | Carry approved audiences and exposure constraints through strategy, calendar, QA, weekly approval and results     | Not started                                                       |
+| VERIFY-BASE-001  | Reconcile merged code, applied migrations, deployment and live-provider readiness before feature claims           | Not independently verified in this documentation task             |
+| AGENT-V3-001     | Agent plan v3 (AGENT_MAP.md): competitor tagging, brand onboarding team, 15-day strategy, 3-layer email, learning | Plan written 11 Nov; lanes restarted on it                        |
+| EML-AB-001       | Test layer 3: A coded blocks vs B designed hero + coded body, 10 emails each for one brand                        | Not started; owner picks the default                              |
+| MEM-DONT-001     | Do's and don'ts memory from results, inspector rejections and owner edits                                         | Not started                                                       |
 
 ## Research follow-ups
 
