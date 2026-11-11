@@ -17,6 +17,7 @@ export type KlaviyoScope =
   | 'campaigns:read'
   | 'catalogs:read'
   | 'events:read'
+  | 'flows:read'
   | 'lists:read'
   | 'metrics:read'
   | 'profiles:read'
@@ -120,6 +121,9 @@ async function capped(response: Response, limit: number) {
   return Buffer.concat(chunks).toString('utf8')
 }
 
+/** The only addresses `query` POSTs to: Klaviyo's report questions. */
+const reportPaths = /^\/api\/(campaign|flow)-values-reports\/?$/
+
 /** Waits at most this long inside one call for a short rate limit. */
 const shortWaitSeconds = 10
 /** A private API key, and nothing else, ever goes into the header. */
@@ -131,6 +135,11 @@ export type KlaviyoClient = {
   get(path: string, scope: KlaviyoScope): Promise<unknown>
   /** Follows a `links.next` URL, only on Klaviyo's own host. */
   next(url: string, scope: KlaviyoScope): Promise<unknown>
+  /**
+   * A report query (Klaviyo's reporting endpoints take a POST with the
+   * question in the body; nothing is written): `path` on Klaviyo's host.
+   */
+  query(path: string, body: unknown, scope: KlaviyoScope): Promise<unknown>
 }
 
 /**
@@ -151,7 +160,7 @@ export function klaviyoClient(
   const transport = options.transport ?? fetchTransport
   const wait = options.wait ?? sleep
   const maxWaits = options.maxWaits ?? 2
-  const send = async (url: URL, scope: KlaviyoScope) => {
+  const send = async (url: URL, scope: KlaviyoScope, body?: unknown) => {
     if (url.origin !== klaviyoHost)
       throw new KlaviyoError('invalid_response', { endpoint: 'next link' })
     const endpoint = url.pathname
@@ -160,13 +169,17 @@ export function klaviyoClient(
       let response: KlaviyoResponse
       try {
         response = await transport({
-          method: 'GET',
+          method: body === undefined ? 'GET' : 'POST',
           url: url.toString(),
           headers: {
             authorization: `Klaviyo-API-Key ${apiKey}`,
             revision: klaviyoRevision,
-            accept: 'application/vnd.api+json'
+            accept: 'application/vnd.api+json',
+            ...(body === undefined
+              ? {}
+              : { 'content-type': 'application/vnd.api+json' })
           },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
           timeoutMs: options.timeoutMs ?? 10_000
         })
       } catch {
@@ -224,6 +237,17 @@ export function klaviyoClient(
         throw new KlaviyoError('invalid_response', { endpoint: 'next link' })
       }
       return send(parsed, scope)
+    },
+    query: async (path, body, scope) => {
+      // Only Klaviyo's report questions: nothing else is ever POSTed.
+      const url = new URL(path, klaviyoHost)
+      if (
+        !reportPaths.test(url.pathname) ||
+        body === undefined ||
+        body === null
+      )
+        throw new KlaviyoError('rejected', { endpoint: url.pathname })
+      return send(url, scope, body)
     }
   }
 }

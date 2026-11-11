@@ -91,7 +91,7 @@ describe('tenantsWithDueJobs', () => {
         [
           'kind',
           'in',
-          '("email.rewrite","email.import","brand.read_site","brand.read_catalog")'
+          '("email.rewrite","email.import","brand.read_site","brand.read_catalog","brand.read_history")'
         ]
       ])
     }
@@ -102,7 +102,8 @@ describe('tenantsWithDueJobs', () => {
       'email.rewrite',
       'email.import',
       'brand.read_site',
-      'brand.read_catalog'
+      'brand.read_catalog',
+      'brand.read_history'
     ])
   })
 

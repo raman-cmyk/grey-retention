@@ -7,7 +7,8 @@ import { ProviderFault } from '@/features/integrations/failures'
 import {
   KlaviyoError,
   klaviyoClient,
-  type KlaviyoClient
+  type KlaviyoClient,
+  type KlaviyoTransport
 } from '@/lib/providers/klaviyo/client'
 import { recordedCatalogTransport } from '@/lib/providers/klaviyo/recorded-catalog'
 import { cappedEnv, jobFailure, siteAsk, siteCallTimeoutMs } from '../site/live'
@@ -42,7 +43,10 @@ export type CatalogSource =
 export async function catalogSourceFor(
   db: Db,
   job: Job,
-  env: NodeJS.ProcessEnv
+  env: NodeJS.ProcessEnv,
+  /** The recorded sample account this read uses (the catalog's by default). */
+  sample: (domain: string) => KlaviyoTransport = (domain) =>
+    recordedCatalogTransport({ store: 'shopify', domain })
 ): Promise<CatalogSource> {
   const mode = (job.input as { mode?: unknown } | null)?.mode
   const connection = await db
@@ -86,7 +90,7 @@ export async function catalogSourceFor(
       .replace(/^www\./, '') || 'cedar.example'
   return {
     client: klaviyoClient(sampleKlaviyoKey, {
-      transport: recordedCatalogTransport({ store: 'shopify', domain }),
+      transport: sample(domain),
       maxWaits: 0
     }),
     live: false
@@ -99,9 +103,51 @@ const pauses = {
   missing_scope: 'klaviyo_scope_missing'
 } as const
 
+export type PauseReason = (typeof pauses)[keyof typeof pauses]
 export type CatalogReading =
   | ({ outcome: 'read' } & CatalogRun)
-  | { outcome: 'paused'; reason: (typeof pauses)[keyof typeof pauses] }
+  | { outcome: 'paused'; reason: PauseReason }
+
+/**
+ * A Klaviyo failure of a source read, handled the same way for every
+ * Klaviyo reader: a rate limit, a refused key or a missing scope pauses the
+ * job (`pause_source_reading`); an outage is tried again; anything else
+ * stops it. What Klaviyo said is logged, never the key.
+ */
+export async function pauseOnKlaviyo(
+  db: Db,
+  job: Job,
+  error: KlaviyoError,
+  label: string
+): Promise<{ outcome: 'paused'; reason: PauseReason }> {
+  const reason = (pauses as Record<string, PauseReason>)[error.kind]
+  if (!reason) {
+    logger.warn(`${label}: Klaviyo failed`, {
+      kind: error.kind,
+      endpoint: error.details.endpoint,
+      status: error.details.status ?? 0,
+      code: error.details.code ?? 'none'
+    })
+    throw new ProviderFault(
+      error.kind === 'unavailable' ? 'transient' : 'validation'
+    )
+  }
+  logger.warn(`${label} paused`, {
+    reason,
+    endpoint: error.details.endpoint,
+    retryAfterSeconds: error.details.retryAfterSeconds ?? 0
+  })
+  const paused = await db.rpc('pause_source_reading', {
+    job: job.id,
+    lease: job.lease_token!,
+    reason,
+    ...(error.details.retryAfterSeconds !== undefined
+      ? { seconds: error.details.retryAfterSeconds }
+      : {})
+  })
+  if (paused.error) throw paused.error
+  return { outcome: 'paused', reason }
+}
 
 /**
  * One catalog read as the readers' run does it: every Klaviyo request
@@ -131,35 +177,6 @@ export async function runCatalogReadingJob(
     return { outcome: 'read', ...run }
   } catch (error) {
     if (!(error instanceof KlaviyoError)) throw jobFailure(error)
-    const reason = (
-      pauses as Record<string, (typeof pauses)[keyof typeof pauses]>
-    )[error.kind]
-    if (!reason) {
-      // What Klaviyo said, for the developers (never the key).
-      logger.warn('Catalog read: Klaviyo failed', {
-        kind: error.kind,
-        endpoint: error.details.endpoint,
-        status: error.details.status ?? 0,
-        code: error.details.code ?? 'none'
-      })
-      throw new ProviderFault(
-        error.kind === 'unavailable' ? 'transient' : 'validation'
-      )
-    }
-    logger.warn('Catalog read paused', {
-      reason,
-      endpoint: error.details.endpoint,
-      retryAfterSeconds: error.details.retryAfterSeconds ?? 0
-    })
-    const paused = await db.rpc('pause_source_reading', {
-      job: job.id,
-      lease: job.lease_token!,
-      reason,
-      ...(error.details.retryAfterSeconds !== undefined
-        ? { seconds: error.details.retryAfterSeconds }
-        : {})
-    })
-    if (paused.error) throw paused.error
-    return { outcome: 'paused', reason }
+    return pauseOnKlaviyo(db, job, error, 'Catalog read')
   }
 }
