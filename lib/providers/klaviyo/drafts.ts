@@ -7,8 +7,9 @@ import { KlaviyoError, type KlaviyoClient } from './client'
  * the shapes revision 2026-10-15 publishes and in the order Step 0's push
  * that worked used (docs/step0/README.md): pictures imported, an HTML
  * template, the campaign with its audience (no message inline), then its
- * message with design A, design B added for an A/B test, the message's
- * test settings, and reading it all back. Nothing here schedules or sends:
+ * message made in one request with its designs (and, for an A/B test, the
+ * even test), and reading it all back. No variation is ever added to a
+ * message afterwards. Nothing here schedules or sends:
  * the client refuses any address or body field that would (`isDraftWrite`,
  * `carriesSchedule`).
  */
@@ -88,7 +89,9 @@ export async function findTemplate(
     '/api/templates'
   )
   const ours = body.data.filter((t) => t.attributes.name === name)
-  return ours.length === 1 ? ours[0]!.id : null
+  // A lost create shows once; more than one is our earlier lost ones: the
+  // first is used (a leftover template is harmless).
+  return ours[0]?.id ?? null
 }
 
 /** A template's HTML; null when Klaviyo no longer has it. */
@@ -324,13 +327,30 @@ export async function createMessage(
     },
     'campaigns:write'
   )
-  return parsed(
+  const data = parsed(
     z.object({
-      data: z.object({ type: z.literal('campaign-message'), id: kid })
+      data: z.object({
+        type: z.literal('campaign-message'),
+        id: kid,
+        relationships: z
+          .object({
+            'campaign-variations': z
+              .object({ data: z.array(z.object({ id: kid })).nullish() })
+              .nullish()
+          })
+          .nullish()
+      })
     }),
     body,
     '/api/campaign-messages'
-  ).data.id
+  ).data
+  return {
+    messageId: data.id,
+    /** Its variations, in the order given (when Klaviyo says). */
+    variationIds: (data.relationships?.['campaign-variations']?.data ?? []).map(
+      (v) => v.id
+    )
+  }
 }
 
 const variation = (v: VariationContent) => ({
@@ -387,7 +407,11 @@ export async function findOwnCampaign(
     for (const c of body.data)
       if (c.attributes.definition.description === own.description)
         ours.push(c.id)
-      else if (c.attributes.definition.name === own.name.slice(0, 120))
+      // Our name with no mark of ours at all (another email's mark is not ours).
+      else if (
+        c.attributes.definition.name === own.name.slice(0, 120) &&
+        !c.attributes.definition.description?.startsWith('GROS draft ')
+      )
         sameName++
     const next = body.links?.next
     if (!next) break
@@ -548,38 +572,6 @@ export async function updateVariation(
     },
     'campaigns:write'
   )
-}
-
-/** A variation added to a message; its id. */
-export async function addVariation(
-  client: KlaviyoClient,
-  messageId: string,
-  content: VariationContent
-) {
-  kid.parse(messageId)
-  const body = await client.write(
-    'POST',
-    '/api/campaign-variations',
-    {
-      data: {
-        type: 'campaign-variation',
-        attributes: variation(content),
-        relationships: {
-          'campaign-message': {
-            data: { type: 'campaign-message', id: messageId }
-          }
-        }
-      }
-    },
-    'campaigns:write'
-  )
-  return parsed(
-    z.object({
-      data: z.object({ type: z.literal('campaign-variation'), id: kid })
-    }),
-    body,
-    '/api/campaign-variations'
-  ).data.id
 }
 
 /** A variation taken out; true also when it was already gone. */

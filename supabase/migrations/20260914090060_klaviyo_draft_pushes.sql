@@ -43,7 +43,7 @@ create table public.klaviyo_draft_pushes (
   designs text check (designs is null or designs in ('both', 'A')),
   -- Why only design A went in (Klaviyo refused or changed the even test).
   fallback text check (fallback is null or fallback ~ '^[a-z][a-z_]{1,39}$'),
-  -- `pending`: design B was added and the even test is not verified yet
+  -- `pending`: an A/B message was sent for and not yet seen safe (two designs, no winner)
   -- (a push that stops there takes B out before anything else).
   ab text check (ab is null or ab in ('pending', 'verified')),
   -- The final checks on the HTML sent: [{ "id": "images", "pass": true, "problems": [] }].

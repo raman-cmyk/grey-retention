@@ -178,7 +178,7 @@ describe('the Klaviyo draft writes', () => {
       description: 'GROS draft k1',
       messageIds: []
     })
-    const messageId = await createMessage(client, {
+    const { messageId, variationIds } = await createMessage(client, {
       campaignId,
       audienceRef: parts!.audienceRef!,
       name: 'Mother & Daughter',
@@ -196,8 +196,11 @@ describe('the Klaviyo draft writes', () => {
       campaignId,
       description: 'GROS draft k1',
       winnerPercentage: null,
-      variations: [{ name: 'Design A', subject: 'S', preview: 'P' }]
+      variations: [
+        { id: variationIds[0], name: 'Design A', subject: 'S', preview: 'P' }
+      ]
     })
+    expect(variationIds).toHaveLength(1)
     // Found again by time, with its exact name and mark matched here.
     const since = new Date(Date.now() - 60_000)
     expect(
@@ -207,13 +210,22 @@ describe('the Klaviyo draft writes', () => {
         since
       })
     ).toBe(campaignId)
+    // Our name with another push's mark: that push's, not ours.
     expect(
       await findOwnCampaign(client, {
         name: 'Mother & Daughter + #2 "Say hi"',
         description: 'GROS draft other',
         since
       })
-      // Our name without our mark: never guessed.
+    ).toBeNull()
+    // Our name without any mark (it was changed in Klaviyo): never guessed.
+    account.campaigns.get(campaignId)!.description = 'Edited'
+    expect(
+      await findOwnCampaign(client, {
+        name: 'Mother & Daughter + #2 "Say hi"',
+        description: 'GROS draft k1',
+        since
+      })
     ).toBe('ambiguous')
     account.messages.clear()
     expect(await readDraft(client, messageId)).toBeNull()
@@ -264,7 +276,7 @@ describe('the Klaviyo draft writes', () => {
       timezone: 'UTC'
     })
     const parts = await campaignParts(client, campaignId)
-    const messageId = await createMessage(client, {
+    const { messageId } = await createMessage(client, {
       campaignId,
       audienceRef: parts!.audienceRef!,
       name: 'N',

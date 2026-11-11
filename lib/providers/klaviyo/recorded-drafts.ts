@@ -42,6 +42,18 @@ export type DraftFaults = {
   lagRead?: boolean
   /** Message reads leave out their relationships. */
   dropRelationships?: boolean
+  /** The first message is made but its answer is lost (a timeout). */
+  loseMessage?: boolean
+  /** The first template delete is done but its answer is lost. */
+  loseDelete?: boolean
+  /** The first variation delete shows only after one more message read. */
+  lagDelete?: boolean
+  /** A variation update sets Klaviyo's own A/B test again. */
+  resetTestOnUpdate?: boolean
+  /** Klaviyo trims a subject and preview and keeps one space in a row. */
+  trimsText?: boolean
+  /** Message reads list the variations last made first. */
+  reverseReads?: boolean
 }
 
 type Campaign = {
@@ -167,6 +179,19 @@ export function fakeDraftAccount(
     account.templates.set(copy, { ...source })
     return copy
   }
+  const kept = (text: string) =>
+    account.faults.trimsText ? text.trim().replace(/\s+/g, ' ') : text
+  /** A variation out of its message (Klaviyo's test goes with design B). */
+  const drop = (vid: string) => {
+    const v = account.variations.get(vid)
+    if (!v) return
+    const m = account.messages.get(v.messageId)!
+    account.variations.delete(vid)
+    m.variationIds = m.variationIds.filter((x) => x !== vid)
+    if (m.variationIds.length < 2) m.winnerPercentage = null
+  }
+  /** Deletes done that the next message read does not show yet. */
+  const late = new Set<string>()
   const addVariation = (messageId: string, definition: Obj) => {
     const vid = id('Var')
     const message = account.messages.get(messageId)!
@@ -176,8 +201,8 @@ export function fakeDraftAccount(
       name: account.faults.renameVariations
         ? `Variation ${message.variationIds.length + 1}`
         : String(definition.name ?? ''),
-      subject: String(details.subject ?? ''),
-      preview: String(details.preview_text ?? ''),
+      subject: kept(String(details.subject ?? '')),
+      preview: kept(String(details.preview_text ?? '')),
       templateId: keepTemplate(details.template_id as string | undefined)
     })
     message.variationIds.push(vid)
@@ -297,6 +322,8 @@ export function fakeDraftAccount(
     }
     if (template && request.method === 'DELETE') {
       if (!account.templates.delete(template[1]!)) return refused(404)
+      if (account.faults.loseDelete && firstTime('lose delete'))
+        throw new Error('timeout')
       return json(204)
     }
 
@@ -480,7 +507,22 @@ export function fakeDraftAccount(
       )
         account.messages.get(mid)!.winnerPercentage = ab.winner_percentage
       if (account.faults.lagRead) lagged.add(mid)
-      return json(201, { data: { type: 'campaign-message', id: mid } })
+      if (account.faults.loseMessage && firstTime('lose message'))
+        throw new Error('timeout')
+      return json(201, {
+        data: {
+          type: 'campaign-message',
+          id: mid,
+          relationships: {
+            'campaign-variations': {
+              data: account.messages.get(mid)!.variationIds.map((v) => ({
+                type: 'campaign-variation',
+                id: v
+              }))
+            }
+          }
+        }
+      })
     }
     const message = path.match(/^\/api\/campaign-messages\/([^/]+)$/)
     if (message) {
@@ -511,7 +553,12 @@ export function fakeDraftAccount(
       }
       if (lagged.delete(message[1]!)) return refused(404, 'not_found')
       const c = account.campaigns.get(m.campaignId)!
-      return json(200, {
+      const lateHere = m.variationIds.filter((v) => late.has(v))
+      const listed = account.faults.reverseReads
+        ? [...m.variationIds].reverse()
+        : m.variationIds
+      for (const v of lateHere) late.delete(v)
+      const answer = json(200, {
         data: {
           type: 'campaign-message',
           id: message[1],
@@ -530,7 +577,7 @@ export function fakeDraftAccount(
                 relationships: {
                   campaign: { data: { type: 'campaign', id: m.campaignId } },
                   'campaign-variations': {
-                    data: m.variationIds.map((v) => ({
+                    data: listed.map((v) => ({
                       type: 'campaign-variation',
                       id: v
                     }))
@@ -546,7 +593,7 @@ export function fakeDraftAccount(
               definition: { name: c.name, description: c.description }
             }
           },
-          ...m.variationIds.map((vid) => {
+          ...listed.map((vid) => {
             const v = account.variations.get(vid)!
             return {
               type: 'campaign-variation',
@@ -566,24 +613,11 @@ export function fakeDraftAccount(
           })
         ]
       })
+      for (const v of lateHere) drop(v)
+      return answer
     }
 
-    // Variations.
-    if (path === '/api/campaign-variations' && request.method === 'POST') {
-      const mid = relOf(data, 'campaign-message')
-      const m = kid(mid) ? account.messages.get(mid as string) : undefined
-      if (
-        data?.type !== 'campaign-variation' ||
-        !attributes ||
-        !variationDefinition(attributes.definition)
-      )
-        return bad()
-      if (!m) return refused(404, 'not_found')
-      if (m.status !== 'draft') return bad()
-      if (unknownTemplate(attributes.definition)) return bad()
-      const vid = addVariation(mid as string, attributes.definition as Obj)
-      return json(201, { data: { type: 'campaign-variation', id: vid } })
-    }
+    // Variations (made only with their message).
     const variation = path.match(/^\/api\/campaign-variations\/([^/]+)$/)
     if (variation) {
       const v = account.variations.get(variation[1]!)
@@ -592,9 +626,9 @@ export function fakeDraftAccount(
       if (m.status !== 'draft') return bad()
       if (request.method === 'DELETE') {
         if (account.faults.deleteVariation === 'refused') return bad()
-        account.variations.delete(variation[1]!)
-        m.variationIds = m.variationIds.filter((x) => x !== variation[1])
-        if (m.variationIds.length < 2) m.winnerPercentage = null
+        if (account.faults.lagDelete && firstTime('lag delete'))
+          late.add(variation[1]!)
+        else drop(variation[1]!)
         return json(204)
       }
       if (request.method === 'PATCH') {
@@ -610,11 +644,13 @@ export function fakeDraftAccount(
         const details = (d.details ?? {}) as Obj
         if (!account.faults.renameVariations && str(d.name))
           v.name = d.name as string
-        if (str(details.subject)) v.subject = details.subject as string
+        if (str(details.subject)) v.subject = kept(details.subject as string)
         if (str(details.preview_text))
-          v.preview = details.preview_text as string
+          v.preview = kept(details.preview_text as string)
         if (str(details.template_id))
           v.templateId = keepTemplate(details.template_id as string)
+        if (account.faults.resetTestOnUpdate && m.variationIds.length > 1)
+          m.winnerPercentage = 20
         return json(200, {
           data: { type: 'campaign-variation', id: variation[1] }
         })

@@ -127,6 +127,25 @@ describe('GET /api/internal/jobs (scheduled sweep)', () => {
     )
   })
 
+  it('leaves the workspace jobs for the next run when the earlier steps used the minute', async () => {
+    let t = 1_000_000
+    vi.spyOn(Date, 'now').mockImplementation(() => t)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    emails.runEmailBuilds.mockImplementationOnce(async () => {
+      // A live push making an unsafe A/B draft safe ran past its end.
+      t += 52_000
+      return { ran: 1 }
+    })
+    const response = await GET(request(`Bearer ${secret}`))
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      live: false,
+      skipped: 'out_of_time',
+      emails: { ran: 1 }
+    })
+    expect(scheduler.runScheduledJobs).not.toHaveBeenCalled()
+  })
+
   it('runs the sweep and returns only counts', async () => {
     const response = await GET(request(`Bearer ${secret}`))
     expect(response.status).toBe(200)

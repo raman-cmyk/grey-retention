@@ -143,7 +143,6 @@ const draftWrites: { method: KlaviyoWriteMethod; path: RegExp }[] = [
   { method: 'POST', path: /^\/api\/campaigns\/?$/ },
   { method: 'POST', path: /^\/api\/campaign-messages\/?$/ },
   { method: 'PATCH', path: new RegExp(`^/api/campaign-messages/${kid}/?$`) },
-  { method: 'POST', path: /^\/api\/campaign-variations\/?$/ },
   { method: 'PATCH', path: new RegExp(`^/api/campaign-variations/${kid}/?$`) },
   { method: 'DELETE', path: new RegExp(`^/api/campaign-variations/${kid}/?$`) },
   { method: 'POST', path: /^\/api\/templates\/?$/ },

@@ -19,8 +19,13 @@ const planBudgetMs = 5_000
 const emailBudgetMs = 5_000
 /** A live push inside this route takes at most this long (PSH-001)... */
 const cronPushBudgetMs = 25_000
-/** ...and none goes past this point of the route's minute. */
-const cronPushEndMs = 40_000
+/**
+ * ...and starts no request past this point of the route's minute: making
+ * an unsafe A/B draft safe runs past it (at most four 6 s requests).
+ */
+const cronPushEndMs = 30_000
+/** The scheduled jobs are left for the next run once this much has gone. */
+const schedulerLatestMs = 50_000
 import { scheduleLimits } from '@/features/cron/scheduler'
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -72,9 +77,9 @@ export async function GET(request: NextRequest) {
   // draft push (the fake one unless the owner's write switch,
   // KLAVIYO_DRAFT_PUSH=live with KLAVIYO_MODE=live, is on: PSH-001),
   // claimed for at most 5 s, each live push at most 25 s and no request
-  // started that might not end 40 s into the route (taking an unsafe A/B
-  // design out may add two 6 s requests); a failure stays queued for the
-  // next run.
+  // started that might not end 30 s into the route (making an unsafe A/B
+  // draft safe may add up to four 6 s requests); a failure stays queued
+  // for the next run.
   const emails = await runEmailBuilds(db, {
     deadline: Date.now() + emailBudgetMs,
     pusher: draftPusherFor(db, {
@@ -97,6 +102,15 @@ export async function GET(request: NextRequest) {
       },
       { status: 503, headers: noStore }
     )
+  if (Date.now() - started > schedulerLatestMs) {
+    logger.warn('Scheduled jobs left for the next run', {
+      code: 'sweep_out_of_time'
+    })
+    return NextResponse.json(
+      { live: false, skipped: 'out_of_time', inbox, plans, emails },
+      { headers: noStore }
+    )
+  }
   try {
     const run = await runScheduledJobs(db, {
       limits: {
