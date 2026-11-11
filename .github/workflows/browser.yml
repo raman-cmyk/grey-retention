@@ -51,10 +51,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install chromium
-      # The runner's Ubuntu mirror sometimes fails to resolve; retry the
-      # system packages so a mirror hiccup doesn't fail the browser job
-      # before any test runs.
-      - name: Install browser system packages (with retries)
+      # Best effort: ubuntu-latest already has Chromium's libraries; apt adds
+      # only optional fonts, and the Ubuntu mirror sometimes fails to resolve.
+      # A truly missing library still fails loudly when the journeys launch.
+      - name: Install browser system packages (best effort)
         timeout-minutes: 10
         run: |
           for attempt in 1 2 3; do
@@ -64,7 +64,7 @@ jobs:
             echo "Attempt $attempt failed; retrying in 20 seconds."
             sleep 20
           done
-          exit 1
+          echo "::warning::apt unavailable; using the runner's preinstalled libraries"
       # Only the services the journeys use: database, auth, REST, storage, mail.
       - run: pnpm exec supabase start -x studio,logflare,vector,imgproxy,edge-runtime,realtime,postgres-meta,supavisor
       - run: pnpm supabase:reset

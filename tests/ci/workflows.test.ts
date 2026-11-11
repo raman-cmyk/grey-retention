@@ -200,13 +200,18 @@ describe('CI workflows', () => {
     }
   })
 
-  it('retries the browser system packages so a mirror hiccup is not a failed run', () => {
-    const browser = read('browser.yml')
-    expect(browser).not.toContain('playwright install --with-deps')
-    expect(browser).toContain('pnpm exec playwright install chromium')
-    expect(browser).toMatch(/for attempt in 1 2 3; do/)
-    expect(browser).toContain('apt-get -o Acquire::Retries=3 update')
-    expect(browser).toContain('pnpm exec playwright install-deps chromium')
+  it('installs browser system packages best effort, so a mirror outage is not a failed run', () => {
+    for (const name of ['browser.yml', 'inbox-screenshots.yml']) {
+      const text = read(name)
+      expect(text).not.toContain('playwright install --with-deps')
+      expect(text).toContain('pnpm exec playwright install chromium')
+      expect(text).toContain('apt-get -o Acquire::Retries=3 update')
+      expect(text).toContain('pnpm exec playwright install-deps chromium')
+      expect(text).toContain(
+        "::warning::apt unavailable; using the runner's preinstalled libraries"
+      )
+    }
+    expect(read('browser.yml')).toMatch(/for attempt in 1 2 3; do/)
   })
 
   it('keeps a failed browser run debuggable', () => {

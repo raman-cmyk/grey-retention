@@ -1653,7 +1653,7 @@ Append entries using this exact shape:
 - Status: review
 - Branch/worktree: `claude/ci-004-browser-retry`
 - Commit(s): see the CI-004 pull request.
-- Changed contracts: `.github/workflows/browser.yml` installs Chromium, then its system packages with `apt-get -o Acquire::Retries=3 update && playwright install-deps chromium`, up to 3 times (20 s apart, 10-minute step limit). Twice on 11 Nov (#380, #381) the runner could not resolve the Ubuntu mirror and the browser job failed before any test ran. Proposed by lane A on #381.
+- Changed contracts: `.github/workflows/browser.yml` and `inbox-screenshots.yml` install Chromium, then its system packages best effort (`apt-get -o Acquire::Retries=3 update && playwright install-deps chromium`; browser.yml tries 3 times, 20 s apart). If apt stays unreachable the step warns and the job carries on: ubuntu-latest already has every library Chromium needs, apt only adds optional fonts, and a truly missing library still fails the journeys at launch. Twice on 11 Nov (#380, #381) the runner could not resolve the Ubuntu mirror and the browser job failed before any test ran. Proposed by lane A on #381; azure.archive.ubuntu.com was unreachable from the runners for over 2 hours.
 - Migrations: none.
 - Verification run: `vitest run tests/ci/workflows.test.ts`; the PR's own browser job runs the new steps.
 - Known issues: none.
