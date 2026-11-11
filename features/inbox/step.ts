@@ -6,6 +6,7 @@ import { keepInboxImages, type AssetsRun } from './assets'
 import { inboxConfig, type InboxConfig } from './config'
 import { liveImageFetcher, sampleImageFetcher } from './image-fetch'
 import { labelInboxEmails, type LabelRun } from './label'
+import { makeInboxVariants, type VariantRun } from './variants'
 import {
   confirmSubscriptions,
   liveLinkClicker,
@@ -31,6 +32,11 @@ export type InboxStep =
       assets: AssetsRun | { state: 'failed'; code: string } | null
       /** Emails tagged, with their sections and facts (INB-003, CI-001). */
       labels: LabelRun | { state: 'failed'; code: string } | null
+      /**
+       * Tagged sections placed in the block library (CI-002), with the
+       * sample rules only; live, the tagging run does it (null here).
+       */
+      variants: VariantRun | { state: 'failed'; code: string } | null
       /** Subscription confirmations clicked or refused (INB-004). */
       confirms: ConfirmRun | { state: 'failed'; code: string } | null
     }
@@ -43,6 +49,11 @@ type Steps = {
     deadline: number
   ) => Promise<AssetsRun>
   label?: (db: SupabaseClient<Database>, deadline: number) => Promise<LabelRun>
+  /** Null when the step leaves the library to the tagging run (live). */
+  variants?: (
+    db: SupabaseClient<Database>,
+    deadline: number
+  ) => Promise<VariantRun | null>
   confirm?: (
     db: SupabaseClient<Database>,
     deadline: number
@@ -83,6 +94,7 @@ export async function runInboxStep(
     run: { state: 'failed', code: 'inbox_step_timeout' },
     assets: null,
     labels: null,
+    variants: null,
     confirms: null
   }
   const confirm =
@@ -93,11 +105,25 @@ export async function runInboxStep(
         { real: liveLinkClicker, sample: sampleLinkClicker },
         deadline
       ))
+  // How the agents are asked, set up once for both steps.
+  let tagging: ReturnType<typeof inboxTagging> | undefined
+  const agents = (d: SupabaseClient<Database>) => (tagging ??= inboxTagging(d))
   const label =
     options.label ??
     ((d: SupabaseClient<Database>, deadline: number) => {
-      const { ask, pictures, batchMs } = inboxTagging(d)
+      const { ask, pictures, batchMs } = agents(d)
       return labelInboxEmails(d, ask, deadline, { pictures, batchMs })
+    })
+  // With a live model the library is filled by the tagging run (CI-003),
+  // whose calls are capped to fit its route; the sweep's share is too
+  // short for a batch. The sample rules cost nothing, so they run here.
+  const variants =
+    options.variants ??
+    ((d: SupabaseClient<Database>, deadline: number) => {
+      const { ask, batchMs } = agents(d)
+      return batchMs
+        ? Promise.resolve(null)
+        : makeInboxVariants(d, ask, deadline)
     })
   const work = async () => {
     try {
@@ -115,22 +141,24 @@ export async function runInboxStep(
       const code = (error as { code?: string }).code ?? 'assets_step_error'
       result.assets = { state: 'failed', code }
     }
-    // Tagging shares the images' deadline. Live, it works a batch at a time
-    // and puts an email back when time runs short (it continues next sweep).
+    // Tagging, then the library, share the images' deadline. Live,
+    // tagging works a batch at a time and puts an email back when time
+    // runs short (it continues in the tagging run or the next sweep).
+    const shared = started + (options.assetsUntilMs ?? assetsUntilMs)
     try {
-      result.labels = await label(
-        db,
-        started + (options.assetsUntilMs ?? assetsUntilMs)
-      )
+      result.labels = await label(db, shared)
     } catch (error) {
       const code = (error as { code?: string }).code ?? 'labels_step_error'
       result.labels = { state: 'failed', code }
     }
     try {
-      result.confirms = await confirm(
-        db,
-        started + (options.assetsUntilMs ?? assetsUntilMs)
-      )
+      result.variants = await variants(db, shared)
+    } catch (error) {
+      const code = (error as { code?: string }).code ?? 'variants_step_error'
+      result.variants = { state: 'failed', code }
+    }
+    try {
+      result.confirms = await confirm(db, shared)
       // Brands that have sent nothing a week after being added (one open
       // task per brand; cheap, so on every sweep).
       const pending = await db.rpc('check_pending_subscriptions')

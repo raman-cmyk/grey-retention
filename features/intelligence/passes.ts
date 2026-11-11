@@ -62,6 +62,35 @@ export class TagError extends Error {
   }
 }
 
+/** How long a job waits when the platform's AI budget is spent. */
+export const budgetWaitSeconds = 3_600
+/** The shortest wait after a rate limit. */
+export const rateLimitWaitSeconds = 300
+
+/**
+ * When a failed call puts its job back without using up a try (D16: it
+ * simply runs later): the platform's AI budget is spent (an hour), or the
+ * provider is rate limiting (its own wait, at least five minutes). Every
+ * other job would be refused too, so the run stops. Null for any other
+ * failure, which uses a try as usual.
+ */
+export function waitFor(
+  error: unknown
+): { delaySeconds: number; reason: string } | null {
+  if (!(error instanceof TagError)) return null
+  if (error.code === 'cap_reached')
+    return { delaySeconds: budgetWaitSeconds, reason: 'ai_cap_reached' }
+  if (error.code === 'rate_limited')
+    return {
+      delaySeconds: Math.min(
+        86_400,
+        Math.max(rateLimitWaitSeconds, Math.ceil(error.retryAfterSeconds ?? 0))
+      ),
+      reason: 'ai_rate_limited'
+    }
+  return null
+}
+
 /**
  * Asks one agent with the `label` tier, then, when its answer is
  * unreadable or unsure, once more with the `review` tier. Still unsure, or
