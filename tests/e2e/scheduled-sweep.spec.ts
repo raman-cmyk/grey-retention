@@ -674,3 +674,113 @@ test('ONB-101 the owner starts a site read and the readers run stores what the s
     .eq('tenant_id', owner.tenant)
   expect(none.data).toEqual([])
 })
+
+test('ONB-102 the owner starts a catalog read and the readers run stores the cleaned sample catalog', async ({
+  request
+}) => {
+  requireLocal()
+  const accounts = localAccounts()
+  const secret = localSecret()
+  const owner = await signIn(accounts.owner!.email, accounts.owner!.password)
+  // Klaviyo first: the sample connection of this synthetic brand.
+  expect(
+    (
+      await owner.db.rpc('set_fixture_connection', {
+        t: owner.tenant,
+        provider: 'klaviyo',
+        status: 'connected'
+      })
+    ).error
+  ).toBeNull()
+  const started = await owner.db.rpc('start_catalog_reading', {
+    t: owner.tenant
+  })
+  expect(started.error).toBeNull()
+  // The sweep (and an owner's "Run jobs") never takes a catalog read.
+  await drain(request, secret)
+  const waiting = await serviceClient()
+    .from('job_runs')
+    .select('status')
+    .eq('id', started.data as string)
+    .single()
+  expect(waiting.data).toEqual({ status: 'queued' })
+  // The onboarding readers' run does.
+  const ran = await request.get('/api/internal/onboarding/readers', {
+    headers: { authorization: `Bearer ${secret}` }
+  })
+  expect(ran.status()).toBe(200)
+  expect(await ran.json()).toMatchObject({ state: 'done', failed: 0 })
+  const job = await serviceClient()
+    .from('job_runs')
+    .select('status,checkpoint')
+    .eq('id', started.data as string)
+    .single()
+  expect(job.data).toMatchObject({
+    status: 'succeeded',
+    checkpoint: { state: 'ready', source: 'events', live: false }
+  })
+  // The sample store's catalog, cleaned: sample products only, each with
+  // its page; a product without a photo or listed twice is not featured.
+  const products = await owner.db
+    .from('products')
+    .select('external_id,title,url,featurable,hidden_reason,synthetic')
+    .eq('tenant_id', owner.tenant)
+    .eq('source', 'klaviyo')
+    .is('retired_at', null)
+  expect(products.error).toBeNull()
+  const rows = products.data!
+  expect(rows.length).toBe(6)
+  expect(rows.every((p) => p.synthetic)).toBe(true)
+  expect(
+    rows.every((p) => p.url.startsWith('https://cedar-lane.example/'))
+  ).toBe(true)
+  expect(rows.find((p) => p.title === 'Merino Beanie')).toMatchObject({
+    featurable: false,
+    hidden_reason: 'no_image'
+  })
+  expect(rows.filter((p) => p.hidden_reason === 'duplicate')).toHaveLength(1)
+  const status = await owner.db
+    .from('catalog_status')
+    .select('state,source,featurable,currency,currency_check,live')
+    .eq('tenant_id', owner.tenant)
+    .single()
+  expect(status.data).toEqual({
+    state: 'ready',
+    source: 'events',
+    featurable: 4,
+    currency: 'USD',
+    currency_check: 'matched',
+    live: false
+  })
+  const findings = await owner.db
+    .from('brand_findings')
+    .select('topic,pass,evidence')
+    .eq('tenant_id', owner.tenant)
+    .eq('source', 'catalog')
+    .is('superseded_at', null)
+  expect(findings.data!.map((f) => f.topic).sort()).toEqual([
+    'locale',
+    'offering',
+    'price_band'
+  ])
+  expect(findings.data!.every((f) => f.pass === 'sample')).toBe(true)
+  // Another workspace reads none of it.
+  const other = await signIn(accounts.other!.email, accounts.other!.password)
+  expect(
+    (
+      await other.db
+        .from('products')
+        .select('id')
+        .eq('tenant_id', owner.tenant)
+        .eq('source', 'klaviyo')
+    ).data
+  ).toEqual([])
+  expect(
+    (
+      await other.db
+        .from('catalog_status')
+        .select('state')
+        .eq('tenant_id', owner.tenant)
+    ).data
+  ).toEqual([])
+})
