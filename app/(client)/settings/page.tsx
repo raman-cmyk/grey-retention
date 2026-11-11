@@ -6,6 +6,8 @@ import { PolicyPanel } from '@/features/delivery/panels'
 import { settingsPage } from '@/features/settings/data'
 import { brandTimezone } from '@/features/settings/timezone'
 import { DefaultsForm, TimezoneCard } from '@/features/settings/settings-form'
+import { offersPage } from '@/features/offers/data'
+import { OffersCard } from '@/features/offers/offers-form'
 
 export const metadata: Metadata = { title: 'Settings' }
 
@@ -22,9 +24,10 @@ const unavailableText = {
 export default async function SettingsPage() {
   const ctx = await requireRequestContext('client')
   const owner = ctx.tenantRole === 'owner'
-  const [{ now, timezone, state, data }, zone] = await Promise.all([
+  const [{ now, timezone, state, data }, zone, offers] = await Promise.all([
     settingsPage(ctx),
-    brandTimezone(ctx)
+    brandTimezone(ctx),
+    offersPage(ctx)
   ])
   return (
     <div className="mx-auto max-w-[900px]">
@@ -47,6 +50,22 @@ export default async function SettingsPage() {
           klaviyoTimezone={zone.klaviyoDiffers ? zone.klaviyoTimezone : null}
           owner={owner}
         />
+        {offers ? (
+          <OffersCard
+            maxDiscountPercent={offers.maxDiscountPercent}
+            revision={offers.revision}
+            codes={offers.codes}
+            timezone={timezone}
+            editor={['owner', 'admin'].includes(ctx.tenantRole)}
+          />
+        ) : (
+          state !== 'demo' && (
+            <Notice error>
+              Offers are unavailable right now. Emails offer no discount until
+              they load.
+            </Notice>
+          )
+        )}
         {data ? (
           <DefaultsForm
             defaults={data.defaults}
