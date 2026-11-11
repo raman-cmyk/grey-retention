@@ -1,5 +1,5 @@
 begin;
-select plan(106);
+select plan(164);
 
 -- ONB-102: catalog reads, the cleaned catalog, its status and findings, and
 -- the guard on the old sample command. Owner ...01 and staff ...05 are in
@@ -297,6 +297,204 @@ set local role service_role;
 select pg_temp.as_worker();
 select is(public.klaviyo_api_key('00000000-0000-4000-8000-000000000102'),null,'and the key is no longer read');
 reset role;
+
+-- Review cases. The browser roles only read products.
+select ok(not bool_or(has_table_privilege(r,'public.products',p)),'browser roles cannot write products')
+  from unnest(array['anon','authenticated']) r, unnest(array['insert','update','delete','truncate']) p;
+select ok(not has_table_privilege('anon','public.products','select'),'anonymous visitors cannot read products');
+select ok(current_setting('server_version_num')::integer < 170000
+  or (not has_table_privilege('authenticated','public.catalog_status','maintain')
+    and not has_table_privilege('authenticated','public.products','maintain')),'nor maintain products or the status');
+
+-- An owner (who can read the lease token) never fails or records a read.
+select set_config('test.mine',pg_temp.job('00000000-0000-4000-8000-000000000101','mine'),true);
+select pg_temp.lease(current_setting('test.mine'));
+set local role authenticated;
+select pg_temp.as_owner('00000000-0000-4000-8000-000000000001');
+select throws_ok($$select public.fail_job(current_setting('test.mine')::uuid,'00000000-0000-4000-8000-00000000aaaa','auth')$$,
+  '42501',null,'an owner cannot fail a running catalog read');
+reset role;
+
+-- Every product key is required; values within the table's limits.
+set local role service_role;
+select pg_temp.as_worker();
+select throws_ok(format('select pg_temp.record(jsonb_build_array(pg_temp.p() - %L), ''[]'', pg_temp.s(), current_setting(''test.mine''))', k),
+  '23514',null,'a product without '||k||' is refused')
+  from unnest(array['imageUrl','hiddenReason','stock','launchedAt','compareAtMinor','bestsellerRank','units30d']) k;
+select throws_ok(format('select pg_temp.record(jsonb_build_array(pg_temp.p(%L)), ''[]'', pg_temp.s(), current_setting(''test.mine''))', x),
+  '23514',null,'refused: '||x)
+  from unnest(array['{"bestsellerRank":501}','{"variantCount":501}','{"compareAtMinor":0,"compareAtIsSale":false}',
+    '{"imageUrl":"https://cedar-lane.example?x"}','{"launchedAt":"2026-02-30T10:00:00Z"}','{"url":"https://cedar-lane.example/a b"}']) x;
+-- Findings: in the store's currency, and none for a store without products.
+select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.p()), jsonb_build_array(pg_temp.f('{"value":{"min":1,"max":2,"currency":"EUR"}}')),
+  pg_temp.s(), current_setting('test.mine'))$$,'23514',null,'a price band only in the store''s currency');
+select throws_ok($$select pg_temp.record('[]', jsonb_build_array(pg_temp.f()),
+  '{"state":"empty","currency":"USD","currencyCheck":"unverified","complete":true}', current_setting('test.mine'))$$,
+  '23514',null,'no findings for a store without products');
+reset role;
+-- The sample catalog is never stored for a real brand.
+update public.brand_profiles set synthetic=false where tenant_id='00000000-0000-4000-8000-000000000101';
+set local role service_role;
+select pg_temp.as_worker();
+select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.p()), '[]', pg_temp.s(), current_setting('test.mine'))$$,
+  '23514',null,'a sample catalog is never stored for a real brand');
+reset role;
+update public.brand_profiles set synthetic=true where tenant_id='00000000-0000-4000-8000-000000000101';
+
+-- A read replaces only the findings it states again.
+set local role service_role;
+select pg_temp.as_worker();
+select lives_ok($$select pg_temp.record(jsonb_build_array(pg_temp.p()), jsonb_build_array(pg_temp.f(),
+  pg_temp.f('{"topic":"offering","statement":"Sells products such as Field Overshirt.","value":{},"confidence":0.6}')), pg_temp.s(),
+  current_setting('test.mine'))$$,'a read with a price band and an offering is stored');
+select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.p()), '[]', pg_temp.s(), current_setting('test.mine'))$$,
+  'PT409',null,'a finished read records nothing more');
+reset role;
+select set_config('test.mine2',pg_temp.job('00000000-0000-4000-8000-000000000101','mine2'),true);
+select pg_temp.lease(current_setting('test.mine2'));
+set local role service_role;
+select pg_temp.as_worker();
+select lives_ok($$select pg_temp.record(jsonb_build_array(pg_temp.p()), jsonb_build_array(pg_temp.f()), pg_temp.s(),
+  current_setting('test.mine2'))$$,'a read without the analysis is stored');
+reset role;
+select results_eq($$select topic, run_id::text from public.brand_findings where tenant_id='00000000-0000-4000-8000-000000000101'
+    and source='catalog' and superseded_at is null order by topic$$,
+  $$values ('offering',current_setting('test.mine')), ('price_band',current_setting('test.mine2'))$$,
+  'its price band replaces the earlier one; the earlier offering stays');
+select throws_ok($$update public.products set image_url=null where tenant_id='00000000-0000-4000-8000-000000000101'
+  and external_id='7001'$$,'23514',null,'a featured Klaviyo product keeps its photo');
+
+-- An expired lease, and a site read handed to the catalog commands.
+select set_config('test.late',pg_temp.job('00000000-0000-4000-8000-000000000101','late'),true);
+update public.job_runs set status='running', lease_token='00000000-0000-4000-8000-00000000aaaa', lease_until=now()-interval '1 second'
+  where id=current_setting('test.late')::uuid;
+with site as (insert into public.job_runs(tenant_id,kind,idempotency_key,input,created_by)
+  values ('00000000-0000-4000-8000-000000000101','brand.read_site','site-test',jsonb_build_object('domain','cedar-lane.example'),
+    '00000000-0000-4000-8000-000000000001') returning id)
+select set_config('test.site',(select id::text from site),true);
+select pg_temp.lease(current_setting('test.site'));
+set local role service_role;
+select pg_temp.as_worker();
+select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.p()), '[]', pg_temp.s(), current_setting('test.late'))$$,
+  'PT409',null,'an expired lease records nothing');
+select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.p()), '[]', pg_temp.s(), current_setting('test.site'))$$,
+  '23514',null,'a site read is not a catalog read');
+select throws_ok($$select public.pause_source_reading(current_setting('test.site')::uuid,'00000000-0000-4000-8000-00000000aaaa','rate_limited')$$,
+  '23514',null,'nor paused as one');
+reset role;
+
+-- Rate limits: at most 6 pauses, and at most a day; then the read ends.
+select set_config('test.busy',pg_temp.job('00000000-0000-4000-8000-000000000101','busy'),true);
+update public.job_runs set checkpoint='{"pauses":6}' where id=current_setting('test.busy')::uuid;
+select pg_temp.lease(current_setting('test.busy'));
+select set_config('test.old2',pg_temp.job('00000000-0000-4000-8000-000000000101','old2','fixture','2 days'),true);
+select pg_temp.lease(current_setting('test.old2'));
+set local role service_role;
+select pg_temp.as_worker();
+select lives_ok($$select public.pause_source_reading(current_setting('test.busy')::uuid,'00000000-0000-4000-8000-00000000aaaa','rate_limited',30)$$,
+  'a seventh rate limit');
+select lives_ok($$select public.pause_source_reading(current_setting('test.old2')::uuid,'00000000-0000-4000-8000-00000000aaaa','rate_limited',30)$$,
+  'a rate limit a day on');
+reset role;
+select results_eq($$select status, failure_class, error_code from public.job_runs
+    where id in (current_setting('test.busy')::uuid, current_setting('test.old2')::uuid)$$,
+  $$values ('failed','rate_limit','rate_limited'), ('failed','rate_limit','rate_limited')$$,'end the read');
+select ok(exists(select 1 from public.notifications where tenant_id='00000000-0000-4000-8000-000000000101'
+  and message like 'Klaviyo kept asking us to slow down%'),'and the owner is told');
+
+-- A sample read Klaviyo refused only ends: the sample connection stays.
+select set_config('test.samplekey',pg_temp.job('00000000-0000-4000-8000-000000000101','samplekey'),true);
+select pg_temp.lease(current_setting('test.samplekey'));
+set local role service_role;
+select pg_temp.as_worker();
+select lives_ok($$select public.pause_source_reading(current_setting('test.samplekey')::uuid,'00000000-0000-4000-8000-00000000aaaa','klaviyo_key_rejected')$$,
+  'a sample read with a refused key');
+reset role;
+select is((select status||' '||failure_class from public.job_runs where id=current_setting('test.samplekey')::uuid),'failed auth','ends');
+select is((select mode||'/'||status from public.workspace_connections where tenant_id='00000000-0000-4000-8000-000000000101' and provider='klaviyo'),
+  'fixture/connected','and leaves the sample connection as it is');
+
+-- The guard on every path: the sample connect cannot bring a live
+-- connection back with its own hint; the key check can.
+update public.workspace_connections set credential_hint='pk_LIVEA••••••••0000'
+  where tenant_id='00000000-0000-4000-8000-000000000102' and provider='klaviyo';
+set local role authenticated;
+select pg_temp.as_owner('00000000-0000-4000-8000-000000000004');
+select throws_ok($$select public.start_catalog_reading('00000000-0000-4000-8000-000000000102')$$,'23514',null,
+  'no catalog read while the live connection needs attention');
+select throws_ok($$select public.connect_sample_provider('00000000-0000-4000-8000-000000000102','klaviyo','Cedar Goods','pk_LIVEA••••••••0000')$$,
+  'PT409',null,'the sample connect never brings a live connection back');
+select lives_ok($$select public.connect_klaviyo_live('00000000-0000-4000-8000-000000000102','pk_LIVEA0123456789abcdefghij0000',
+  'pk_LIVEA••••••••0000','Cedar Goods','CdrG01','2026-10-15')$$,'the key check does');
+select is(public.start_catalog_reading('00000000-0000-4000-8000-000000000102')::text,current_setting('test.live'),
+  'today''s failed read starts again');
+reset role;
+select is((select status||' '||attempt from public.job_runs where id=current_setting('test.live')::uuid),'queued 0','with all its tries');
+select results_eq($$select w.mode, w.status, c.status from public.workspace_connections w join public.klaviyo_credentials c using (tenant_id)
+    where w.tenant_id='00000000-0000-4000-8000-000000000102' and w.provider='klaviyo'$$,
+  $$values ('live','connected','active')$$,'the live connection is back, with its key');
+
+-- A missing scope: the live connection needs the owner, the key stays.
+select pg_temp.lease(current_setting('test.live'));
+set local role service_role;
+select pg_temp.as_worker();
+select lives_ok($$select public.pause_source_reading(current_setting('test.live')::uuid,'00000000-0000-4000-8000-00000000aaaa','klaviyo_scope_missing')$$,
+  'a missing scope stops the read');
+select is(public.klaviyo_api_key('00000000-0000-4000-8000-000000000102'),null,'the key is no longer read');
+reset role;
+select results_eq($$select w.status, w.last_error, c.status from public.workspace_connections w join public.klaviyo_credentials c using (tenant_id)
+    where w.tenant_id='00000000-0000-4000-8000-000000000102' and w.provider='klaviyo'$$,
+  $$values ('expired','klaviyo_scope_missing','active')$$,'the connection needs the owner; the key is not revoked');
+select ok(exists(select 1 from public.notifications where tenant_id='00000000-0000-4000-8000-000000000102'
+  and message like '%Accounts, Catalogs, Events and Metrics read access%'),'and the owner is told which access it needs');
+
+-- A key changed after the read began: the read is only put back.
+set local role authenticated;
+select pg_temp.as_owner('00000000-0000-4000-8000-000000000004');
+select lives_ok($$select public.connect_klaviyo_live('00000000-0000-4000-8000-000000000102','pk_LIVEA0123456789abcdefghij0000',
+  'pk_LIVEA••••••••0000','Cedar Goods','CdrG01','2026-10-15')$$,'the owner connects again');
+select lives_ok($$select public.start_catalog_reading('00000000-0000-4000-8000-000000000102')$$,'and starts the read again');
+reset role;
+select pg_temp.lease(current_setting('test.live'));
+update public.job_runs set updated_at=now()-interval '1 minute' where id=current_setting('test.live')::uuid;
+set local role service_role;
+select pg_temp.as_worker();
+select lives_ok($$select public.pause_source_reading(current_setting('test.live')::uuid,'00000000-0000-4000-8000-00000000aaaa','klaviyo_key_rejected')$$,
+  'an old key refused');
+reset role;
+select is((select status from public.job_runs where id=current_setting('test.live')::uuid),'retry_wait','puts the read back');
+select results_eq($$select w.status, c.status from public.workspace_connections w join public.klaviyo_credentials c using (tenant_id)
+    where w.tenant_id='00000000-0000-4000-8000-000000000102' and w.provider='klaviyo'$$,
+  $$values ('connected','active')$$,'and leaves the new key alone');
+
+-- A live read: real products, counted facts as code, a model's words.
+select pg_temp.lease(current_setting('test.live'));
+set local role service_role;
+select pg_temp.as_worker();
+select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.p()), jsonb_build_array(pg_temp.f()), pg_temp.s(), current_setting('test.live'), true)$$,
+  '23514',null,'a live read never states the sample rules');
+select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.p()), jsonb_build_array(pg_temp.f('{"pass":"model","model":"gemini-2.5-flash"}')),
+  pg_temp.s(), current_setting('test.live'), true)$$,'23514',null,'a model never counts the price band');
+select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.p()), jsonb_build_array(pg_temp.f('{"topic":"offering","statement":"Sells coats.","value":{},"pass":"model"}')),
+  pg_temp.s(), current_setting('test.live'), true)$$,'23514',null,'a model''s words name the model');
+select lives_ok($$select pg_temp.record(jsonb_build_array(pg_temp.p()), jsonb_build_array(pg_temp.f('{"pass":"code"}'),
+  pg_temp.f('{"topic":"offering","statement":"Sells coats.","value":{},"pass":"model","model":"gemini-2.5-flash"}')),
+  pg_temp.s(), current_setting('test.live'), true)$$,'a live read is stored');
+reset role;
+select results_eq($$select source, synthetic, featurable from public.products where tenant_id='00000000-0000-4000-8000-000000000102' and source='klaviyo'$$,
+  $$values ('klaviyo',false,true)$$,'as real products');
+select results_eq($$select topic, pass from public.brand_findings where tenant_id='00000000-0000-4000-8000-000000000102' and source='catalog'
+    and superseded_at is null order by topic$$,
+  $$values ('offering','model'), ('price_band','code')$$,'with its findings');
+
+-- A sample key over the live one still makes it a sample connection.
+set local role authenticated;
+select pg_temp.as_owner('00000000-0000-4000-8000-000000000004');
+select lives_ok($$select public.connect_sample_provider('00000000-0000-4000-8000-000000000102','klaviyo','Cedar Goods','pk_OTHER••••••••1111')$$,
+  'a sample connection with another key');
+reset role;
+select is((select mode from public.workspace_connections where tenant_id='00000000-0000-4000-8000-000000000102' and provider='klaviyo'),
+  'fixture','replaces the live one');
 
 select * from finish();
 rollback;

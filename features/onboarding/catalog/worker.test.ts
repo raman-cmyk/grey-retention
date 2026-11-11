@@ -111,7 +111,15 @@ describe('readBrandCatalog', () => {
       source: 'events',
       currency: 'USD',
       currencyCheck: 'matched',
-      complete: true
+      complete: true,
+      // What was read: 90 days, 5 orders and both pages of views.
+      window: {
+        since: '2026-08-13T12:00:00.000Z',
+        orders: 5,
+        views: 11,
+        oldestOrder: expect.any(String),
+        oldestView: expect.any(String)
+      }
     })
     expect(stored.live).toBe(false)
     const byId = new Map(stored.products.map((p) => [p.externalId, p]))
@@ -141,8 +149,13 @@ describe('readBrandCatalog', () => {
       'GET /api/catalog-items',
       'GET /api/metrics',
       'GET /api/events',
+      'GET /api/events/',
       'GET /api/events'
     ])
+    // The views first (both pages, through Klaviyo's next link), then the orders.
+    expect(transport.calls[3]).toContain('metric_id,"VwdPrd"')
+    expect(transport.calls[4]).toContain('page[cursor]=views2')
+    expect(transport.calls[5]).toContain('metric_id,"PlcdOr"')
     expect(transport.calls.every((c) => c.startsWith('GET '))).toBe(true)
   })
 
@@ -174,7 +187,9 @@ describe('readBrandCatalog', () => {
 
   it('reads a catalog sent to Klaviyo directly, with its variants and sales by its own ids', async () => {
     const { stored, transport } = await read({ store: 'custom' })
-    expect(stored.summary).toMatchObject({ source: 'api', complete: true })
+    // One catalog record could not be read: the read is not whole, so it
+    // retires nothing.
+    expect(stored.summary).toMatchObject({ source: 'api', complete: false })
     expect(
       stored.products.map((p) => [
         p.externalId,
@@ -207,6 +222,55 @@ describe('readBrandCatalog', () => {
     expect(warn.mock.calls.flat().join(' ')).toContain('no products')
   })
 
+  it('uses the events when the key cannot read the catalog, never stopping the connection for it', async () => {
+    const { stored } = await read({
+      store: 'custom',
+      fail: { on: 'catalog', with: recorded.noScope }
+    })
+    expect(stored.summary).toMatchObject({ source: 'events', complete: false })
+  })
+
+  it('stops, storing nothing, when products were found but none could be stored', async () => {
+    const noPages: KlaviyoResponse = {
+      status: 200,
+      headers: {},
+      body: JSON.stringify({
+        data: [
+          {
+            type: 'event',
+            attributes: {
+              datetime: '2026-11-10T10:00:00+00:00',
+              event_properties: {
+                Name: 'Field Overshirt',
+                ProductID: 1,
+                Price: '$89.00'
+              }
+            }
+          }
+        ],
+        links: { next: null }
+      })
+    }
+    const transport = recordedCatalogTransport({
+      now: new Date(now),
+      fail: { on: 'views', with: noPages }
+    })
+    const { db, calls } = database()
+    await expect(
+      readBrandCatalog(db, job, {
+        client: klaviyoClient('pk_SAMPLE0123456789abcdefghij', {
+          transport,
+          maxWaits: 0
+        }),
+        live: false,
+        ask: sampleAsk,
+        callMs: 10_000,
+        now: () => now
+      })
+    ).rejects.toMatchObject({ code: 'no_storable_product' })
+    expect(calls.map((c) => c.name)).not.toContain('record_catalog_reading')
+  })
+
   it('features nothing and states no locale when the orders are in another currency', async () => {
     const eur: KlaviyoResponse = {
       ...recorded.account,
@@ -219,7 +283,8 @@ describe('readBrandCatalog', () => {
       reason: 'currency_mismatch'
     })
     expect(stored.products.some((p) => p.featurable)).toBe(false)
-    expect(stored.findings.map((f) => f.topic)).not.toContain('locale')
+    // No price band in a currency the prices may not be in, and no locale.
+    expect(stored.findings.map((f) => f.topic)).toEqual(['offering'])
   })
 
   it('uses the events when Klaviyo refuses the catalog request (a changed address), and says the read is not whole', async () => {
@@ -264,16 +329,44 @@ describe('readBrandCatalog', () => {
     }
   })
 
-  it('asks for no Klaviyo page, and no analysis, without the time for it; the read is then incomplete', async () => {
-    let clock = now
-    const recordedAnswers = recordedCatalogTransport({ now: new Date(now) })
-    // The catalog answer takes most of the run's time.
+  const slowAfter = (part: string, left: number) => {
+    const state = { clock: now }
+    const answers = recordedCatalogTransport({ now: new Date(now) })
     const slow = (async (request) => {
-      const answer = await recordedAnswers(request)
-      if (request.url.includes('/api/catalog-items'))
-        clock = now + catalogRunMs - 12_000
+      const answer = await answers(request)
+      if (decodeURIComponent(request.url).includes(part))
+        state.clock = now + catalogRunMs - left
       return answer
-    }) as typeof recordedAnswers
+    }) as typeof answers
+    return { state, answers, slow }
+  }
+
+  it('never calls a store with nothing read yet "no products": it tries again later, replacing nothing', async () => {
+    // The catalog answer takes most of the run's time.
+    const { state, answers, slow } = slowAfter('/api/catalog-items', 12_000)
+    const { db, calls } = database()
+    await expect(
+      readBrandCatalog(db, job, {
+        client: klaviyoClient('pk_SAMPLE0123456789abcdefghij', {
+          transport: slow,
+          maxWaits: 0
+        }),
+        live: false,
+        ask: sampleAsk,
+        callMs: 10_000,
+        now: () => state.clock
+      })
+    ).rejects.toMatchObject({ kind: 'unavailable' })
+    expect(calls.map((c) => c.name)).not.toContain('record_catalog_reading')
+    // No Klaviyo page without the time for it and the analyst's call.
+    expect(answers.calls.map((c) => c.split('?')[0])).toEqual([
+      'GET /api/accounts',
+      'GET /api/catalog-items'
+    ])
+  })
+
+  it('reads the views before the orders, and stores what it read in time as an incomplete read', async () => {
+    const { state, answers, slow } = slowAfter('metric_id,"VwdPrd"', 12_000)
     const { db, calls } = database()
     const done = await readBrandCatalog(db, job, {
       client: klaviyoClient('pk_SAMPLE0123456789abcdefghij', {
@@ -283,17 +376,18 @@ describe('readBrandCatalog', () => {
       live: false,
       ask: sampleAsk,
       callMs: 10_000,
-      now: () => clock
+      now: () => state.clock
     })
-    expect(done).toMatchObject({
-      state: 'empty',
+    expect(done).toMatchObject({ state: 'ready', complete: false })
+    expect(recordedOf(calls).summary).toMatchObject({
       complete: false,
-      analysis: 'skipped'
+      window: { orders: 0, views: 6 }
     })
-    expect(recordedOf(calls).summary).toMatchObject({ complete: false })
-    expect(recordedAnswers.calls.map((c) => c.split('?')[0])).toEqual([
+    expect(answers.calls.map((c) => c.split('?')[0])).toEqual([
       'GET /api/accounts',
-      'GET /api/catalog-items'
+      'GET /api/catalog-items',
+      'GET /api/metrics',
+      'GET /api/events'
     ])
   })
 

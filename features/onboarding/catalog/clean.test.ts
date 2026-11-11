@@ -6,6 +6,7 @@ import type { CatalogItem, StoreEvent } from '@/lib/providers/klaviyo/catalog'
 import { catalogRecordings } from '@/lib/providers/klaviyo/recorded-catalog'
 import {
   baseTitle,
+  moneyOf,
   checkDuplicates,
   currencyCheck,
   finishCatalog,
@@ -39,7 +40,8 @@ const eventsOf = (response: { body: string }): StoreEvent[] =>
     props: e.attributes.event_properties
   }))
 const r = catalogRecordings({ now: new Date(now) })
-const views = eventsOf(r.viewedProduct)
+const fromItems = (items: CatalogItem[]) => fromCatalogItems(items, now)
+const views = [...eventsOf(r.viewedProduct), ...eventsOf(r.viewedProductPage2)]
 const orders = eventsOf(r.placedOrder)
 
 describe('baseTitle', () => {
@@ -74,6 +76,7 @@ describe('the catalog API path', () => {
     published: true,
     created: '2026-05-01T00:00:00.000Z',
     variants: [],
+    variantsMissing: false,
     ...over
   })
   const variant = (sku: string, stock: number | null, price = 89) => ({
@@ -87,7 +90,7 @@ describe('the catalog API path', () => {
   })
 
   it("groups an item's variants: the lowest price, the stock added up only when each says it", () => {
-    const [p] = fromCatalogItems([
+    const [p] = fromItems([
       item({
         price: null,
         image: null,
@@ -105,14 +108,13 @@ describe('the catalog API path', () => {
       image: 'https://cedar.example/s.jpg'
     })
     expect(
-      fromCatalogItems([
-        item({ variants: [variant('S', 4), variant('M', null)] })
-      ])[0]!.stock
+      fromItems([item({ variants: [variant('S', 4), variant('M', null)] })])[0]!
+        .stock
     ).toBeNull()
   })
 
   it('makes one product of items listed one per variant (the same title and page)', () => {
-    const products = fromCatalogItems([
+    const products = fromItems([
       item({
         externalId: 'a',
         title: 'Field Overshirt - S',
@@ -137,11 +139,9 @@ describe('the catalog API path', () => {
   })
 
   it('counts an unpublished item (or one whose variants are all unpublished) as unpublished', () => {
-    expect(fromCatalogItems([item({ published: false })])[0]!.published).toBe(
-      false
-    )
+    expect(fromItems([item({ published: false })])[0]!.published).toBe(false)
     expect(
-      fromCatalogItems([
+      fromItems([
         item({ variants: [{ ...variant('S', 1), published: false }] })
       ])[0]!.published
     ).toBe(false)
@@ -448,5 +448,266 @@ describe('finishCatalog', () => {
     expect(minorUnits('JPY')).toBe(1)
     expect(minorUnits('USD')).toBe(100)
     expect(minorUnits('KWD')).toBe(1000)
+  })
+})
+
+describe('what the reviews found', () => {
+  const at = (days: number) => new Date(now - days * day).toISOString()
+  const viewOf = (
+    days: number,
+    props: Record<string, unknown>
+  ): StoreEvent => ({
+    at: at(days),
+    props: { ProductID: 1, URL: 'https://cedar.example/p/1', ...props }
+  })
+  const orderOf = (
+    days: number,
+    lines: Record<string, unknown>[]
+  ): StoreEvent => ({
+    at: at(days),
+    props: { $extra: { line_items: lines } }
+  })
+
+  it("reads a store's formatted money, as Shopify's Viewed Product sends it", () => {
+    for (const [value, amount] of [
+      ['$89.00', 89],
+      ['1.299,00 €', 1299],
+      ['Rs. 1,299', 1299],
+      ['£1,299.50', 1299.5],
+      ["CHF 1'299.00", 1299],
+      ['<span class=money>$89.00</span>', 89],
+      ['89,5 €', 89.5],
+      ['89', 89],
+      [89, 89],
+      ['', null],
+      ['free', null],
+      [-1, null]
+    ] as const)
+      expect(moneyOf(value), String(value)).toBe(amount)
+  })
+
+  it("fills a viewed product's missing title or price from its order lines", () => {
+    const [p] = fromEvents(
+      [viewOf(2, { Price: 'n/a' })],
+      [
+        orderOf(5, [
+          {
+            product_id: 1,
+            title: 'Field Overshirt',
+            quantity: 1,
+            price: '89.00'
+          }
+        ])
+      ],
+      now
+    )
+    expect(p).toMatchObject({ title: 'Field Overshirt', price: 89 })
+  })
+
+  it('calls nothing new from events that do not reach back far enough to know', () => {
+    // Orders reach back 80 days, but the views only 3: a product only viewed
+    // lately is not known to be new.
+    const products = fromEvents(
+      [
+        viewOf(1, { Name: 'Fresh Socks', Price: '$9.00' }),
+        viewOf(3, { Name: 'Fresh Socks', Price: '$9.00' })
+      ],
+      [
+        orderOf(80, [
+          { product_id: 2, title: 'Old Coat', quantity: 1, price: '120.00' }
+        ]),
+        orderOf(10, [
+          { product_id: 3, title: 'New Bag', quantity: 1, price: '45.00' }
+        ])
+      ],
+      now
+    )
+    const byId = new Map(products.map((p) => [p.externalId, p.launchedAt]))
+    expect(byId.get('1')).toBeNull()
+    expect(byId.get('2')).toBeNull()
+    // First ordered 10 days ago, in orders reaching back 80: new.
+    expect(byId.get('3')).not.toBeNull()
+  })
+
+  it("dates a catalog item's launch only for a catalog that has been in Klaviyo long enough", () => {
+    const fresh = fromCatalogItems(
+      [
+        {
+          id: 'a',
+          externalId: 'a',
+          title: 'A',
+          url: 'https://cedar.example/a',
+          image: null,
+          price: 1,
+          compareAt: null,
+          published: true,
+          created: at(5),
+          variants: [],
+          variantsMissing: false
+        }
+      ],
+      now
+    )
+    expect(fresh[0]!.launchedAt).toBeNull()
+  })
+
+  it('takes a stock as unknown when some of its variants were not in the answer', () => {
+    const [p] = fromCatalogItems(
+      [
+        {
+          id: 'a',
+          externalId: 'a',
+          title: 'A',
+          url: 'https://cedar.example/a',
+          image: null,
+          price: 1,
+          compareAt: null,
+          published: true,
+          created: null,
+          variants: [
+            {
+              id: 'v',
+              title: 'A - S',
+              sku: 'S',
+              price: 1,
+              stock: 3,
+              image: null,
+              published: true
+            }
+          ],
+          variantsMissing: true
+        }
+      ],
+      now
+    )
+    expect(p!.stock).toBeNull()
+  })
+
+  it('adds up the sales of items listed one per variant', () => {
+    const item = (id: string, title: string) => ({
+      id,
+      externalId: id,
+      title,
+      url: 'https://cedar.example/products/tote',
+      image: null,
+      price: 45,
+      compareAt: null,
+      published: true,
+      created: null,
+      variants: [],
+      variantsMissing: false
+    })
+    const merged = fromCatalogItems(
+      [item('t-s', 'Tote - S'), item('t-m', 'Tote - M')],
+      now
+    )
+    const sales = salesFrom(
+      [
+        {
+          at: at(2),
+          props: {
+            Items: [{ ProductID: 't-s', ProductName: 'Tote - S', Quantity: 2 }]
+          }
+        },
+        {
+          at: at(3),
+          props: {
+            Items: [{ ProductID: 't-m', ProductName: 'Tote - M', Quantity: 3 }]
+          }
+        }
+      ],
+      now
+    )
+    expect(withSales(merged, sales)).toMatchObject([
+      { externalId: 't-s', units90d: 5 }
+    ])
+  })
+
+  it('never lets one odd record fail a read: it is left out, or its odd part dropped', () => {
+    const base = withSales(
+      fromEvents(views, orders, now),
+      salesFrom(orders, now)
+    )[0]!
+    const { records, leftOut } = finishCatalog(
+      [
+        base,
+        { ...base },
+        { ...base, externalId: 'big', price: 99_999_999 },
+        { ...base, externalId: 'space', url: 'https://cedar.example/a b' },
+        {
+          ...base,
+          externalId: 'long',
+          url: `https://cedar.example/${'a'.repeat(2000)}`
+        },
+        {
+          ...base,
+          externalId: 'img',
+          image: `https://cedar.example/${'i'.repeat(2000)}.jpg`
+        },
+        {
+          ...base,
+          externalId: 'when',
+          launchedAt: '2026-11-01T10:00:00+05:30'
+        },
+        { ...base, externalId: 'free', price: 0 },
+        { ...base, externalId: 'emoji', title: '🧥'.repeat(250) },
+        { ...base, externalId: 'one', title: '🧥' }
+      ],
+      { currency: 'USD', currencyCheck: 'matched', duplicates: [], now }
+    )
+    // The repeated id, the price that does not fit, the page with a space,
+    // the page too long, the one-letter title.
+    expect(leftOut).toBe(5)
+    const byId = new Map(records.map((r) => [r.externalId, r]))
+    expect(byId.get('img')!.imageUrl).toBeNull()
+    expect(byId.get('when')!.launchedAt).toBe('2026-11-01T04:30:00.000Z')
+    expect(byId.get('free')).toMatchObject({
+      featurable: false,
+      hiddenReason: 'not_picked'
+    })
+    expect(Array.from(byId.get('emoji')!.title)).toHaveLength(200)
+  })
+
+  it('never takes a "no image" placeholder for a photo', () => {
+    const [p] = fromEvents(
+      [
+        viewOf(1, {
+          Name: 'Coat',
+          Price: '$9.00',
+          ImageURL: 'https://cdn.shopify.com/s/images/admin/no-image-large.gif'
+        })
+      ],
+      [],
+      now
+    )
+    expect(p!.image).toBeNull()
+  })
+
+  it('gives a price band to the cent, also in a currency with three decimals', () => {
+    const { records } = finishCatalog(
+      [
+        {
+          ...withSales(
+            fromEvents(views, orders, now),
+            salesFrom(orders, now)
+          )[0]!,
+          price: 12.345
+        }
+      ],
+      { currency: 'KWD', currencyCheck: 'matched', duplicates: [], now }
+    )
+    expect(records[0]!.priceMinor).toBe(12345)
+    expect(priceBand(records)).toEqual({ min: 12.35, max: 12.35 })
+  })
+
+  it("reads the shop's own currency in a Shopify order", () => {
+    expect(
+      orderCurrency([
+        {
+          at: at(1),
+          props: { $extra: { currency: 'EUR' }, $currency_code: 'USD' }
+        }
+      ])
+    ).toMatchObject({ currency: 'EUR' })
   })
 })

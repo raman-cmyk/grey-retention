@@ -7,6 +7,17 @@ vi.mock('./worker', async (actual) => ({
   ...(await actual<typeof import('./worker')>()),
   readBrandCatalog: worker.readBrandCatalog
 }))
+const client = vi.hoisted(() => ({ options: [] as unknown[] }))
+vi.mock('@/lib/providers/klaviyo/client', async (actual) => {
+  const real = await actual<typeof import('@/lib/providers/klaviyo/client')>()
+  return {
+    ...real,
+    klaviyoClient: (key: string, options: unknown) => {
+      client.options.push(options)
+      return real.klaviyoClient(key, options as never)
+    }
+  }
+})
 import { ProviderFault } from '@/features/integrations/failures'
 import { sampleAsk } from '@/features/intelligence/passes'
 import { KlaviyoError } from '@/lib/providers/klaviyo/client'
@@ -227,5 +238,44 @@ describe('runCatalogReadingJob', () => {
       runCatalogReadingJob(db, jobOf('live'), off)
     ).rejects.toBeInstanceOf(ProviderFault)
     expect(worker.readBrandCatalog).not.toHaveBeenCalled()
+  })
+})
+
+describe('the live client and the logs', () => {
+  it('asks Klaviyo with every request capped and no rate limit waited out', async () => {
+    client.options.length = 0
+    const { db } = database({
+      connection: { mode: 'live', status: 'connected' },
+      key: 'pk_LIVE0123456789abcdefghijk'
+    })
+    await catalogSourceFor(db, jobOf('live'), live)
+    expect(client.options).toEqual([{ maxWaits: 0, timeoutMs: 6_000 }])
+  })
+
+  it('logs what Klaviyo said, never the key', async () => {
+    const lines: string[] = []
+    for (const level of ['log', 'warn', 'error', 'info'] as const)
+      vi.spyOn(console, level).mockImplementation((...args) => {
+        lines.push(args.map(String).join(' '))
+      })
+    worker.readBrandCatalog.mockRejectedValue(
+      new KlaviyoError('rejected', {
+        endpoint: '/api/events/',
+        status: 400,
+        code: 'invalid'
+      })
+    )
+    const { db } = database({
+      connection: { mode: 'live', status: 'connected' },
+      key: 'pk_LIVE0123456789abcdefghijk'
+    })
+    await expect(
+      runCatalogReadingJob(db, jobOf('live'), live)
+    ).rejects.toBeInstanceOf(ProviderFault)
+    const text = lines.join('\n')
+    expect(text).toContain('Klaviyo failed')
+    expect(text).toContain('/api/events/')
+    expect(text).toContain('invalid')
+    expect(text).not.toContain('pk_LIVE0123456789abcdefghijk')
   })
 })

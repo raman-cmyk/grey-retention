@@ -74,7 +74,8 @@ describe('the catalog read, against recorded Klaviyo answers', () => {
     const transport = recordedCatalogTransport({ now })
     expect(await findStoreMetrics(client(transport), always)).toEqual({
       placedOrder: 'PlcdOr',
-      viewedProduct: 'VwdPrd'
+      viewedProduct: 'VwdPrd',
+      complete: true
     })
     expect(transport.calls).toEqual([`GET ${metricsPath}`])
   })
@@ -86,7 +87,7 @@ describe('the catalog read, against recorded Klaviyo answers', () => {
     expect(views.complete).toBe(true)
     expect(views.records).toHaveLength(11)
     expect(views.records[0]).toMatchObject({
-      props: { ProductName: 'Trail Socks', ProductID: 7005, Price: 18.5 }
+      props: { Name: 'Trail Socks', ProductID: 7005, Price: '$18.50' }
     })
     const orders = await readEvents(client(transport), 'PlcdOr', since, always)
     expect(orders.records[0]!.props).toMatchObject({
