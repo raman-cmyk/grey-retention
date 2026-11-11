@@ -119,7 +119,7 @@ type LiveUsageRpc = {
  * be reserved only once and is never auto-released, and owners can't reach
  * it through the fixture commands. Platform work (`tenantId: null`) goes to
  * public.reserve_platform_ai_usage / settle_platform_ai_usage (migration
- * 20260914090061), the platform's own daily cap. Pass a service-role client.
+ * 20260914090047), the platform's own daily cap. Pass a service-role client.
  */
 export class SupabaseBudgetLedger implements BudgetLedger {
   // The generated types gain these RPCs at the next `pnpm supabase:types`;
