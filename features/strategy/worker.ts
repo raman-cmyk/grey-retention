@@ -23,8 +23,11 @@ import {
   pulseCodes,
   readPlanOffers,
   stillUsable,
-  workspaceTimezone
+  workspaceTimezone,
+  type PlanOffers
 } from './offers'
+import { databaseFallbackLog, type FallbackLog } from '@/features/fallback/log'
+import { keyPart } from '@/features/fallback/entry'
 
 type Db = SupabaseClient<Database>
 
@@ -55,6 +58,8 @@ export async function runStrategyRuns(
     data?: StrategyData
     /** Default: DSC-001's `SupabaseOfferSource` on `db` (service role). */
     saved?: SavedOffers
+    /** Default: the database fallback log (`agent_fallbacks`). */
+    fallbacks?: FallbackLog
     /** Run only this plan (the owner's click), once. */
     run?: string
     /** Steps to run at most. */
@@ -66,6 +71,7 @@ export async function runStrategyRuns(
 ) {
   const data = deps.data ?? sampleStrategyData
   const saved = deps.saved ?? new SupabaseOfferSource(db)
+  const fallbacks = deps.fallbacks ?? databaseFallbackLog(db)
   const now = deps.now ?? Date.now
   const limit = deps.run ? 1 : (deps.limit ?? 2)
   let ran = 0
@@ -84,12 +90,41 @@ export async function runStrategyRuns(
         start: run.start_on
       })
       const timezone = await workspaceTimezone(db, run.tenant_id)
-      const offers = await readPlanOffers(
-        planOfferSource(saved, run.start_on),
-        run.tenant_id,
-        run.start_on,
-        timezone
-      )
+      let offers: PlanOffers
+      let unreadable = false
+      try {
+        offers = await readPlanOffers(
+          planOfferSource(saved, run.start_on),
+          run.tenant_id,
+          run.start_on,
+          timezone
+        )
+      } catch (error) {
+        // A failed read is tried again within the step's normal attempts;
+        // on the last one the plan goes on with no offers, so it is never
+        // stuck, and the fallback log says so (supervisor, 11 Nov).
+        if (
+          stepCode(error) !== 'offers_unreadable' ||
+          (await attemptsOf(db, run.id)) < planStepTries
+        )
+          throw error
+        offers = { maxDiscountPercent: 0, codes: [] }
+        unreadable = true
+        await fallbacks.record({
+          tenantId: run.tenant_id,
+          campaignId: null,
+          agent: 'plan-offers',
+          reasonCode: 'offers_unreadable',
+          reason: `The saved offers could not be read after ${planStepTries} tries.`,
+          fallback:
+            run.state === 'pulse_queued'
+              ? 'Listed no offers for these 15 days.'
+              : 'Planned these 15 days with no offers.',
+          attempts: planStepTries,
+          detail: { step: run.state },
+          dedupeKey: `plan-offers:${keyPart(run.id)}:${run.state}`
+        })
+      }
       if (run.state === 'pulse_queued') {
         const { input } = readPulseInput(store.pulse)
         if (input.start !== run.start_on) throw final('store_wrong_days')
@@ -108,7 +143,10 @@ export async function runStrategyRuns(
         )
         const pulse = {
           ...gathered,
-          leftOut: [...gathered.leftOut, ...listed.leftOut]
+          leftOut: [...gathered.leftOut, ...listed.leftOut],
+          summary: unreadable
+            ? `${gathered.summary} ${unreadableWords} none are listed.`
+            : gathered.summary
         }
         const done = await db.rpc('finish_strategy_pulse', {
           run: run.id,
@@ -163,7 +201,9 @@ export async function runStrategyRuns(
         // will check it (a guard: the plan's last send days ensure it).
         if (offerEmailsThatFail(made.slots, offers, timezone).length)
           throw final('plan_offer_unusable')
-        const note = leftOutNote(leftOut)
+        const note = unreadable
+          ? `${unreadableWords} this plan has no offers. Start again to plan with them.`
+          : leftOutNote(leftOut)
         const plan = {
           ...made,
           notes: [...(note ? [note] : []), ...made.notes].slice(0, 10)
@@ -191,6 +231,22 @@ export async function runStrategyRuns(
     }
   }
   return { ran }
+}
+
+/** A plan step's tries: `claim_strategy_run` gives up after this many. */
+export const planStepTries = 3
+
+const unreadableWords = 'Your saved offers could not be read, so'
+
+/** How many times this step has been claimed (the claim counts them). */
+async function attemptsOf(db: Db, runId: string) {
+  const { data, error } = await db
+    .from('strategy_runs')
+    .select('attempts')
+    .eq('id', runId)
+    .maybeSingle()
+  if (error) throw error
+  return data?.attempts ?? 0
 }
 
 /** A failure a retry cannot fix (bad stored or store data). */

@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
 import { runStrategyRuns, stepCode } from './worker'
+import { memoryFallbackLog } from '@/features/fallback/log'
 import { sampleStrategyData } from './data'
 import { codePulse, gatherEvidence } from './pulse'
 import { sampleStore } from './sample'
@@ -26,7 +27,8 @@ function fakeDb(
   runs: Record<string, unknown>[],
   fail: Record<string, { code: string }> = {},
   saved: Saved | 'error' = {},
-  timezone = 'Australia/Melbourne'
+  timezone = 'Australia/Melbourne',
+  attempts = 1
 ) {
   const queue = [...runs]
   const calls: Call[] = []
@@ -40,15 +42,17 @@ function fakeDb(
     }
     return { data: fn === 'fail_strategy_step' ? 'retry' : null, error: null }
   })
-  const from = (table: keyof Saved | 'tenants') => {
+  const from = (table: keyof Saved | 'tenants' | 'strategy_runs') => {
     const read = { table, filters: [] as [string, string][] }
     reads.push(read)
     const result =
       table === 'tenants'
         ? { data: [{ timezone }], error: null }
-        : saved === 'error'
-          ? { data: null, error: { code: 'PGRST000' } }
-          : { data: saved[table] ?? [], error: null }
+        : table === 'strategy_runs'
+          ? { data: [{ attempts }], error: null }
+          : saved === 'error'
+            ? { data: null, error: { code: 'PGRST000' } }
+            : { data: saved[table] ?? [], error: null }
     const query = {
       eq: (column: string, value: string) => {
         read.filters.push([column, value])
@@ -302,6 +306,49 @@ describe('the offers a plan uses (#379)', () => {
     expect(offers.every((s) => s.offer!.percent === 10)).toBe(true)
     const facts = JSON.stringify(plan.slots.map((s) => s.evidence))
     expect(facts).not.toContain('15% off with WELCOME15')
+  })
+
+  it('on the last try, plans with no offers instead of getting stuck, and logs the fallback', async () => {
+    // The third claim of the step is its last (`claim_strategy_run`).
+    const fallbacks = memoryFallbackLog()
+    const one = fakeDb([run()], {}, 'error', 'Australia/Melbourne', 3)
+    expect(await runStrategyRuns(one.db, { fallbacks })).toEqual({ ran: 1 })
+    expect(failure(one.calls)).toBeUndefined()
+    const listed = one.calls.find((c) => c.fn === 'finish_strategy_pulse')!.args
+      .result as StoredPulse
+    expect(listed.offers).toEqual([])
+    expect(listed.summary).toContain(
+      'Your saved offers could not be read, so none are listed.'
+    )
+    const two = fakeDb(
+      [run({ state: 'plan_queued', pulse, offer_pick: { mode: 'auto' } })],
+      {},
+      'error',
+      'Australia/Melbourne',
+      3
+    )
+    expect(await runStrategyRuns(two.db, { fallbacks })).toEqual({ ran: 1 })
+    const plan = two.calls.find((c) => c.fn === 'finish_strategy_plan')!.args
+      .result as StoredPlan
+    expect(plan.slots.length).toBeGreaterThan(0)
+    expect(plan.slots.some((s) => s.offer)).toBe(false)
+    expect(plan.notes).toContain(
+      'Your saved offers could not be read, so this plan has no offers. Start again to plan with them.'
+    )
+    expect(fallbacks.entries()).toEqual([
+      expect.objectContaining({
+        tenantId: tenant,
+        agent: 'plan-offers',
+        reasonCode: 'offers_unreadable',
+        fallback: 'Listed no offers for these 15 days.',
+        attempts: 3
+      }),
+      expect.objectContaining({
+        agent: 'plan-offers',
+        reasonCode: 'offers_unreadable',
+        fallback: 'Planned these 15 days with no offers.'
+      })
+    ])
   })
 
   it('tries the plan step again too when the saved offers cannot be read', async () => {
