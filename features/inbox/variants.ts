@@ -18,8 +18,8 @@ import {
   fingerprintOf,
   type VariantSpec
 } from '@/features/intelligence/variants'
-import type { AiImage } from '@/lib/providers/contracts'
 import { InboundTransportError } from '@/lib/providers/inbound-capture'
+import { storedPicture } from './pictures'
 
 type Db = SupabaseClient<Database>
 type Lease = { id: string; lease_token: string; subject_key: string }
@@ -41,8 +41,6 @@ export type VariantRun = {
 export const variantBatch = 6
 /** Time a live batch is given; no batch starts with less left. */
 export const liveVariantMs = 6_000
-/** A picture larger than this is not sent to the Variant maker. */
-const maxPictureBytes = 1_500_000
 
 type SectionRow = {
   id: string
@@ -97,19 +95,6 @@ function todoOf(row: SectionRow): Todo | null {
     ),
     skeleton: key ? skeleton : null,
     key
-  }
-}
-
-async function pictureOf(
-  db: Db,
-  path: string | null
-): Promise<AiImage | undefined> {
-  if (!path) return undefined
-  const { data, error } = await db.storage.from('inbox-assets').download(path)
-  if (error || !data || data.size > maxPictureBytes) return undefined
-  return {
-    mediaType: 'image/jpeg',
-    base64: Buffer.from(await data.arrayBuffer()).toString('base64')
   }
 }
 
@@ -279,7 +264,7 @@ export async function makeInboxVariants(
                 styles: lead!.styles,
                 skeleton: lead!.skeleton!,
                 image: options.pictures
-                  ? await pictureOf(db, lead!.row.image_path)
+                  ? await storedPicture(db, lead!.row.image_path)
                   : undefined
               },
               ask,

@@ -12,8 +12,8 @@ import {
   type SectionTags,
   type Tagged
 } from '@/features/intelligence/taxonomy'
-import type { AiImage } from '@/lib/providers/contracts'
 import { InboundTransportError } from '@/lib/providers/inbound-capture'
+import { storedPicture } from './pictures'
 import { emailFacts, factsVersion } from './facts'
 import type { EmailSection } from './sections'
 
@@ -29,26 +29,10 @@ export type LabelRun = {
   deferred: number
 }
 
-/** A picture larger than this is not sent to the agents. */
-const maxPictureBytes = 1_500_000
 /** Sections tagged at once (each may take two calls). */
 export const tagBatch = 6
 /** Time a live batch of calls is given; no batch starts with less left. */
 export const liveBatchMs = 8_000
-
-/** A stored picture (a section crop or the screenshot), if small enough. */
-async function pictureOf(
-  db: Db,
-  path: string | null
-): Promise<AiImage | undefined> {
-  if (!path) return undefined
-  const { data, error } = await db.storage.from('inbox-assets').download(path)
-  if (error || !data || data.size > maxPictureBytes) return undefined
-  return {
-    mediaType: 'image/jpeg',
-    base64: Buffer.from(await data.arrayBuffer()).toString('base64')
-  }
-}
 
 /** One section's outcome as the database stores it. */
 function storedTags(ordinal: number, t: Tagged<SectionTags>) {
@@ -246,7 +230,7 @@ export async function labelInboxEmails(
                   position: { ordinal: row.ordinal, of: sections.length },
                   subject: message.data.subject,
                   image: options.pictures
-                    ? await pictureOf(db, row.image_path)
+                    ? await storedPicture(db, row.image_path)
                     : undefined
                 },
                 ask,
@@ -314,7 +298,7 @@ export async function labelInboxEmails(
             .join('\n')
             .slice(0, 4000),
           image: options.pictures
-            ? await pictureOf(db, message.data.screenshot_path)
+            ? await storedPicture(db, message.data.screenshot_path)
             : undefined
         },
         ask

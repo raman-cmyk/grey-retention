@@ -11,6 +11,7 @@ import {
   tagRunMs,
   variantShareMs
 } from './tag-run'
+import { pictureTimeoutMs } from './pictures'
 import { liveVariantMs } from './variants'
 
 type Db = Parameters<typeof runTagging>[0]
@@ -159,6 +160,25 @@ describe('runTagging', () => {
       variants: { state: 'failed', code: 'PGRST000' },
       ...counts
     })
+  })
+
+  it('keeps the library part and the rest of tagging inside 60 seconds', () => {
+    // The library starts no batch after its share; its last batch makes one
+    // capped call per new structure (in parallel), after a picture download
+    // of at most pictureTimeoutMs. Counted as two calls to keep a margin.
+    // Tagging then has what is left of tagRunMs, and its last piece may be
+    // two capped calls one after the other, plus 10 s for pictures and
+    // database writes.
+    expect(
+      variantShareMs +
+        2 * tagCallTimeoutMs +
+        (tagRunMs - variantShareMs) +
+        10_000
+    ).toBeLessThanOrEqual(60_000)
+    // The library part even ends before tagging's own deadline.
+    expect(
+      variantShareMs + pictureTimeoutMs + tagCallTimeoutMs
+    ).toBeLessThanOrEqual(tagRunMs)
   })
 
   it('leaves room for the last piece of work (two capped calls) inside 60 seconds', () => {
