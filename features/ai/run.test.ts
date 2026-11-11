@@ -285,7 +285,7 @@ describe('SupabaseBudgetLedger', () => {
         estimateMicro: 100
       })
     ).toEqual({ ok: false, code: 'cap_reached' })
-    expect(rpc).toHaveBeenCalledWith('reserve_fixture_usage', {
+    expect(rpc).toHaveBeenCalledWith('reserve_ai_usage', {
       t: tenantId,
       operation: 'label:8',
       feature: 'learning',
@@ -331,7 +331,7 @@ describe('SupabaseBudgetLedger', () => {
       reservationId: 'r1',
       actualMicro: 57.2
     })
-    expect(rpc).toHaveBeenCalledWith('reconcile_fixture_usage', {
+    expect(rpc).toHaveBeenCalledWith('settle_ai_usage', {
       t: tenantId,
       reservation: 'r1',
       actual: 58
