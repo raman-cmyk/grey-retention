@@ -52,7 +52,8 @@ create table public.klaviyo_draft_pushes (
 alter table public.klaviyo_draft_pushes enable row level security;
 create policy member_read on public.klaviyo_draft_pushes for select to authenticated
   using (private.is_active_member(tenant_id));
-revoke all on public.klaviyo_draft_pushes from public, anon, authenticated;
+-- Written only through `save_klaviyo_push`, by the worker too.
+revoke all on public.klaviyo_draft_pushes from public, anon, authenticated, service_role;
 grant select on public.klaviyo_draft_pushes to authenticated;
 grant select on public.klaviyo_draft_pushes to service_role;
 
@@ -82,7 +83,7 @@ begin
     or (step ? 'images' and (jsonb_typeof(step->'images') <> 'object'
       or exists (select 1 from jsonb_each(step->'images') i
         where length(i.key) not between 9 and 2000 or jsonb_typeof(i.value) <> 'string'
-          or i.value #>> '{}' !~ '^https://[^\s"''<>]{1,2000}$')))
+          or length(i.value #>> '{}') > 2000 or i.value #>> '{}' !~ '^https://[^\s"''<>]+$')))
     or (step ? 'templates' and (jsonb_typeof(step->'templates') <> 'array'
       or exists (select 1 from jsonb_array_elements(step->'templates') x
         where jsonb_typeof(x) <> 'object' or x - 'approach' - 'id' - 'hash' - 'deleted' - 'variation' <> '{}'::jsonb

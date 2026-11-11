@@ -281,7 +281,9 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     throw new Refused('externally_modified', ['externally_modified'])
   const save = async (step: PushStep) => {
     await deps.store.save(tenantId, key, step)
-    const { checks: _checks, images, ...rest } = step
+    // The checks are kept for the record only, not in the progress.
+    const { images, ...rest } = step
+    delete rest.checks
     p = { ...p, ...rest, images: { ...p.images, ...(images ?? {}) } }
   }
 
