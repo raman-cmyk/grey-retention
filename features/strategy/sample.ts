@@ -135,23 +135,23 @@ export function sampleCompetitors(start: string) {
   const library: Email[] = [
     // Two days before the public holiday, three small home brands sent a
     // gift guide with no discount.
-    email('e1', 'b1', day(-42), 'gift guide', 'no offer', 'gifting'),
-    email('e2', 'b2', day(-42), 'gift guide', 'no offer', 'gifting'),
-    email('e3', 'b3', day(-42), 'gift guide', 'no offer', 'gifting'),
+    email('e1', 'b1', day(-42), 'gift_guide', 'none', 'gifting'),
+    email('e2', 'b2', day(-42), 'gift_guide', 'none', 'gifting'),
+    email('e3', 'b3', day(-42), 'gift_guide', 'none', 'gifting'),
     // Three days before month end, two brands ran a percent-off sale.
-    email('e4', 'b1', day(-19), 'sale', 'percent off', 'urgency'),
-    email('e5', 'b4', day(-50), 'sale', 'percent off', 'urgency'),
+    email('e4', 'b1', day(-19), 'sale', 'percent_off', 'urgency'),
+    email('e5', 'b4', day(-50), 'sale', 'percent_off', 'urgency'),
     // One brand alone: not a pattern.
-    email('e6', 'b5', day(-42), 'new arrivals', 'no offer', 'newness'),
+    email('e6', 'b5', day(-42), 'new_arrivals', 'none', 'newness'),
     // Not the same: a large brand, another industry, too long ago, too late.
-    email('e7', 'b6', day(-42), 'gift guide', 'no offer', 'gifting', {
+    email('e7', 'b6', day(-42), 'gift_guide', 'none', 'gifting', {
       brandSize: 'large'
     }),
-    email('e8', 'b7', day(-42), 'gift guide', 'no offer', 'gifting', {
+    email('e8', 'b7', day(-42), 'gift_guide', 'none', 'gifting', {
       industry: 'beauty'
     }),
-    email('e9', 'b8', day(-95), 'sale', 'percent off', 'urgency'),
-    email('e10', 'b9', day(0), 'sale', 'percent off', 'urgency')
+    email('e9', 'b8', day(-95), 'sale', 'percent_off', 'urgency'),
+    email('e10', 'b9', day(0), 'sale', 'percent_off', 'urgency')
   ]
   return { pastDates, ourDates, library }
 }

@@ -13,7 +13,13 @@ const db = {
 const ready = { ready: true as const, transport: fakeInboundTransport() }
 const none = { emails: 0, stored: 0, failed: 0, retried: 0 }
 const assets = vi.fn(async () => none)
-const nothingLabelled = { emails: 0, sections: 0, retried: 0 }
+const nothingLabelled = {
+  emails: 0,
+  sections: 0,
+  untagged: 0,
+  retried: 0,
+  deferred: 0
+}
 const label = vi.fn(async () => nothingLabelled)
 const nothingConfirmed = { clicked: 0, refused: 0, failed: 0 }
 const confirm = vi.fn(async () => nothingConfirmed)

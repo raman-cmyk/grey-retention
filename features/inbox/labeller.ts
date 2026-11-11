@@ -1,34 +1,15 @@
-import { blockTypes, type BlockType } from '@/features/blocks/catalog'
-import { labelSection, type RunAi } from '@/features/blocks/labeller'
+import type { BlockType } from '@/features/blocks/catalog'
 import type { EmailSection } from './sections'
 
-export { blockTypes, type BlockType }
-
+/**
+ * The INB-003 rules for a section's family (one of the 20 block types),
+ * from its structure and words: honest, cheap and fixed. The Section tagger
+ * (features/intelligence/tagger.ts) uses them as its sample family.
+ */
 export type SectionLabel = {
   type: BlockType | 'unsure'
   confidence: number
-  /** Who labelled it (a person's own label is kept apart). */
-  source: 'sample' | 'gemini'
-  /** The model that answered; null for the sample rules. */
-  model?: string | null
-}
-
-/**
- * Picks one of the 20 block types for a section (the model's only job,
- * VISION Step 1). Lane A's `labelSection` (Gemini when live) has the same
- * shape and replaces the sample labeller below when it lands.
- */
-export interface SectionLabeller {
-  /** Whether it looks at the section's crop (the sample labeller does not). */
-  readonly wantsImage?: boolean
-  label(input: {
-    /** The stored section's id (the metered AI call is keyed by it). */
-    sectionId: string
-    section: EmailSection
-    /** Its place in the email: 1 of n. */
-    position: { ordinal: number; of: number }
-    image?: { mediaType: string; base64: string }
-  }): Promise<SectionLabel>
+  source: 'sample'
 }
 
 const price = /[$£€]\s?\d/
@@ -96,39 +77,4 @@ export function sampleLabel(
   if (s.images >= 1 && s.words >= 30) return sure('image_text', 0.6)
   if (s.images === 0 && s.words > 0) return sure('text', 0.7)
   return { type: 'unsure', confidence: 0.2, source: 'sample' }
-}
-
-export const sampleLabeller: SectionLabeller = {
-  async label({ section, position }) {
-    return sampleLabel(section, position)
-  }
-}
-
-/**
- * Lane A's labeller (BLK-003 `labelSection`: Gemini through `runAi`, its
- * own sample rules when `runAi` answers with the fake) behind this port.
- * `runFor` gives the metered call for one section. Competitor sections
- * belong to no workspace, so once GEM-001..003 are merged it is
- * `(id) => (request) => runAi({ tenantId: null, callerKey: \`section:${id}\`,
- * purpose: 'label', request }, { ledger: new SupabaseBudgetLedger(
- * createServiceClient()) })`, metered against the platform's daily cap.
- * Until then the sweep uses `sampleLabeller`.
- */
-export function blockLabeller(
-  runFor: (sectionId: string) => RunAi
-): SectionLabeller {
-  return {
-    async label({ section, sectionId }) {
-      const label = await labelSection(
-        { html: section.html, text: section.text },
-        runFor(sectionId)
-      )
-      return {
-        type: label.type,
-        confidence: label.confidence,
-        source: label.source,
-        model: label.model
-      }
-    }
-  }
 }
