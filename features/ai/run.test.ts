@@ -56,6 +56,16 @@ describe('aiSetup', () => {
     })
   })
 
+  it('uses Gemini 2.5 Pro for planning agents unless configured', () => {
+    expect(aiSetup('plan', live)).toMatchObject({ model: 'gemini-2.5-pro' })
+    expect(
+      aiSetup(
+        'plan',
+        env({ GEMINI_API_KEY: 'k', GEMINI_PLAN_MODEL: 'gemini-2.5-flash' })
+      )
+    ).toMatchObject({ model: 'gemini-2.5-flash' })
+  })
+
   it('takes model names from configuration and fails closed on unknown ones', () => {
     expect(
       aiSetup(

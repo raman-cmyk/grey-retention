@@ -9,6 +9,12 @@ export const geminiModels = {
     cachedInput: 10_000,
     output: 400_000
   },
+  // Up to 200k input tokens; longer prompts are refused before dispatch.
+  'gemini-2.5-pro': {
+    input: 1_250_000,
+    cachedInput: 125_000,
+    output: 10_000_000
+  },
   'gemini-2.5-flash': {
     input: 300_000,
     cachedInput: 30_000,
@@ -28,10 +34,15 @@ export const geminiModels = {
 
 export type GeminiModel = keyof typeof geminiModels
 
-/** Decision D5: Flash-Lite labels and classifies, Flash writes copy. */
+/**
+ * Decision D5: Flash-Lite labels and classifies, Flash writes copy. The agent
+ * plan (AGENT_MAP.md) adds `plan` for rare, hard reasoning (Brand strategist,
+ * Brief writer, Calendar planner) on 2.5 Pro.
+ */
 export const defaultGeminiModels = {
   label: 'gemini-2.5-flash-lite',
-  copy: 'gemini-2.5-flash'
+  copy: 'gemini-2.5-flash',
+  plan: 'gemini-2.5-pro'
 } as const satisfies Record<string, GeminiModel>
 
 export type AiPurpose = keyof typeof defaultGeminiModels

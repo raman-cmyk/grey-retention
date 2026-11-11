@@ -20,7 +20,8 @@ import type { BudgetFeature, BudgetLedger } from './budget-ledger'
 
 const purposeFeature: Record<AiPurpose, BudgetFeature> = {
   label: 'learning',
-  copy: 'copy'
+  copy: 'copy',
+  plan: 'playbook'
 }
 
 export type AiRunResult =
@@ -48,7 +49,7 @@ export type AiRunResult =
 const runInput = z.object({
   tenantId: z.uuid().nullable(),
   callerKey: z.string().trim().min(1).max(120),
-  purpose: z.enum(['label', 'copy']),
+  purpose: z.enum(['label', 'copy', 'plan']),
   maxOutputTokens: z.number().int().min(1).max(65_536)
 })
 

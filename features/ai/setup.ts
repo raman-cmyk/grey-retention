@@ -29,6 +29,7 @@ const settings = z.object({
   GEMINI_API_KEY: z.string().trim().optional(),
   GEMINI_LABEL_MODEL: z.string().trim().optional(),
   GEMINI_COPY_MODEL: z.string().trim().optional(),
+  GEMINI_PLAN_MODEL: z.string().trim().optional(),
   GEMINI_TIMEOUT_MS: z.coerce
     .number()
     .int()
@@ -54,6 +55,7 @@ export function aiSetup(
     GEMINI_API_KEY: env.GEMINI_API_KEY,
     GEMINI_LABEL_MODEL: env.GEMINI_LABEL_MODEL,
     GEMINI_COPY_MODEL: env.GEMINI_COPY_MODEL,
+    GEMINI_PLAN_MODEL: env.GEMINI_PLAN_MODEL,
     GEMINI_TIMEOUT_MS: env.GEMINI_TIMEOUT_MS
   })
   if (s.AI_DEFAULT_PROVIDER?.toLowerCase() === 'fake')
@@ -75,8 +77,11 @@ export function aiSetup(
       reason: 'missing_key',
       timeoutMs: s.GEMINI_TIMEOUT_MS
     }
-  const configured =
-    purpose === 'label' ? s.GEMINI_LABEL_MODEL : s.GEMINI_COPY_MODEL
+  const configured = {
+    label: s.GEMINI_LABEL_MODEL,
+    copy: s.GEMINI_COPY_MODEL,
+    plan: s.GEMINI_PLAN_MODEL
+  }[purpose]
   const model = configured || defaultGeminiModels[purpose]
   if (!isGeminiModel(model))
     return { ready: false, provider: 'gemini', reason: 'unsupported_model' }
