@@ -829,6 +829,45 @@ export type Database = {
           }
         ]
       }
+      brand_offers: {
+        Row: {
+          max_discount_percent: number
+          revision: number
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          max_discount_percent: number
+          revision?: number
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          max_discount_percent?: number
+          revision?: number
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_offers_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_offers_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       brand_profile_sections: {
         Row: {
           content: Json
@@ -2699,82 +2738,54 @@ export type Database = {
           }
         ]
       }
-      email_builds: {
+      discount_codes: {
         Row: {
-          attempts: number
+          code: string
           created_at: string
-          created_by: string
-          email: Json | null
-          error_code: string | null
+          created_by: string | null
+          expires_at: string | null
           id: string
-          klaviyo_campaign_id: string | null
-          lease_token: string | null
-          lease_until: string | null
-          not_before: string | null
-          run_id: string
-          sample_draft: boolean
-          slot: number
-          state: string
+          percent: number
+          retired_at: string | null
+          status: string
           tenant_id: string
-          updated_at: string
         }
         Insert: {
-          attempts?: number
+          code: string
           created_at?: string
-          created_by: string
-          email?: Json | null
-          error_code?: string | null
+          created_by?: string | null
+          expires_at?: string | null
           id?: string
-          klaviyo_campaign_id?: string | null
-          lease_token?: string | null
-          lease_until?: string | null
-          not_before?: string | null
-          run_id: string
-          sample_draft?: boolean
-          slot: number
-          state?: string
+          percent: number
+          retired_at?: string | null
+          status?: string
           tenant_id: string
-          updated_at?: string
         }
         Update: {
-          attempts?: number
+          code?: string
           created_at?: string
-          created_by?: string
-          email?: Json | null
-          error_code?: string | null
+          created_by?: string | null
+          expires_at?: string | null
           id?: string
-          klaviyo_campaign_id?: string | null
-          lease_token?: string | null
-          lease_until?: string | null
-          not_before?: string | null
-          run_id?: string
-          sample_draft?: boolean
-          slot?: number
-          state?: string
+          percent?: number
+          retired_at?: string | null
+          status?: string
           tenant_id?: string
-          updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: 'email_builds_created_by_fkey'
+            foreignKeyName: 'discount_codes_created_by_fkey'
             columns: ['created_by']
             isOneToOne: false
             referencedRelation: 'profiles'
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'email_builds_tenant_id_fkey'
+            foreignKeyName: 'discount_codes_tenant_id_fkey'
             columns: ['tenant_id']
             isOneToOne: false
             referencedRelation: 'tenants'
             referencedColumns: ['id']
-          },
-          {
-            foreignKeyName: 'email_builds_tenant_id_run_id_fkey'
-            columns: ['tenant_id', 'run_id']
-            isOneToOne: false
-            referencedRelation: 'strategy_runs'
-            referencedColumns: ['tenant_id', 'id']
           }
         ]
       }
@@ -6073,6 +6084,10 @@ export type Database = {
         Args: { body: string; t: string; target_id: string }
         Returns: undefined
       }
+      add_discount_code: {
+        Args: { code: string; expires_at: string; percent: number; t: string }
+        Returns: string
+      }
       add_holiday: {
         Args: { event_date: string; name: string; notes: string; t: string }
         Returns: string
@@ -6260,19 +6275,6 @@ export type Database = {
         Returns: undefined
       }
       check_pending_subscriptions: { Args: never; Returns: number }
-      claim_email_build: {
-        Args: { target?: string }
-        Returns: {
-          email: Json
-          id: string
-          lease_token: string
-          planned: Json
-          run_id: string
-          slot: number
-          state: string
-          tenant_id: string
-        }[]
-      }
       claim_email_file_import: {
         Args: { import: string; t: string }
         Returns: {
@@ -6415,10 +6417,6 @@ export type Database = {
           settings: Json
           t: string
         }
-        Returns: string
-      }
-      create_email_build: {
-        Args: { run: string; slot: number; t: string }
         Returns: string
       }
       create_email_result: {
@@ -6597,16 +6595,6 @@ export type Database = {
         Args: { failure: Json; job: string; lease: string }
         Returns: string
       }
-      fail_email_step: {
-        Args: {
-          build: string
-          code: string
-          final?: boolean
-          lease: string
-          retry_after_seconds?: number
-        }
-        Returns: string
-      }
       fail_job: {
         Args: { failure: string; job: string; lease: string }
         Returns: undefined
@@ -6647,10 +6635,6 @@ export type Database = {
         Args: { job: string; lease: string }
         Returns: undefined
       }
-      finish_email_build: {
-        Args: { build: string; lease: string; result: Json }
-        Returns: undefined
-      }
       finish_email_file_import: {
         Args: { job: string; lease: string; output: Json }
         Returns: string
@@ -6658,15 +6642,6 @@ export type Database = {
       finish_email_generation: {
         Args: { job: string; lease: string; output: Json; usage: Json }
         Returns: number
-      }
-      finish_email_push: {
-        Args: {
-          build: string
-          campaign: string
-          lease: string
-          sample: boolean
-        }
-        Returns: undefined
       }
       finish_health_check: {
         Args: { job: string; lease: string }
@@ -7075,6 +7050,7 @@ export type Database = {
         }
         Returns: number
       }
+      retire_discount_code: { Args: { code_id: string }; Returns: undefined }
       retry_email_file_import: {
         Args: { import: string; t: string }
         Returns: string
@@ -7265,6 +7241,10 @@ export type Database = {
       set_holiday_country: {
         Args: { country: string; t: string }
         Returns: undefined
+      }
+      set_max_discount: {
+        Args: { expected_revision: number; percent: number; t: string }
+        Returns: number
       }
       set_planning_preferences: {
         Args: {
