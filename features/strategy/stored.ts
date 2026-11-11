@@ -27,8 +27,9 @@ export const storedOffer = z.object({
 export const storedPulse = z.object({
   start: isoDate,
   end: isoDate,
-  offers: z.array(storedOffer).max(50),
-  leftOut: z.array(z.object({ code: z.string().max(40), why: words })).max(50),
+  // Up to DSC-001's 200 codes per workspace.
+  offers: z.array(storedOffer).max(200),
+  leftOut: z.array(z.object({ code: z.string().max(40), why: words })).max(200),
   highlights: z
     .array(
       z.object({

@@ -1,9 +1,10 @@
 begin;
-select plan(66);
+select plan(67);
 
 -- Workspace 101: owner ...01, staff ...05. Workspace 102: owner ...04. Admin ...02.
 select ok(not has_table_privilege('authenticated','public.strategy_runs','insert,update,delete,truncate'),'members cannot write plans directly');
 select ok(not has_table_privilege('service_role','public.strategy_runs','insert,update,delete,truncate,maintain'),'jobs write plans only through the commands');
+select ok(has_table_privilege('service_role','public.strategy_runs','select'),'jobs read a step''s attempts (the plan job''s last try for offers, #379)');
 select ok(not has_table_privilege('anon','public.strategy_runs','select'),'anon cannot read plans');
 select ok(not has_function_privilege('anon','public.start_strategy_run(uuid)','execute'),'anon cannot start a plan');
 select ok(not has_function_privilege('authenticated','public.claim_strategy_run(uuid)','execute'),'members cannot claim a plan step');

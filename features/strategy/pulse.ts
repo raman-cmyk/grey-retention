@@ -149,6 +149,15 @@ export const addDays = (date: string, days: number) => {
   return d.toISOString().slice(0, 10)
 }
 
+/** An offer's fact, in plain words: "10% off with CANDLE10, until 2026-11-22." */
+export const offerFact = (
+  code: string,
+  percent: number,
+  until: string | null,
+  end: string
+) =>
+  `${percent}% off with ${code}${until !== null && until <= end ? `, until ${until}` : ''}.`
+
 /** The facts, built by code from the store's data. */
 export function gatherEvidence(input: PulseInput) {
   const end = addDays(input.start, pulseDays - 1)
@@ -173,11 +182,7 @@ export function gatherEvidence(input: PulseInput) {
       evidence.push({
         id,
         kind: 'offer',
-        fact: `${c.percent}% off with ${c.code}${
-          c.expiresOn !== null && c.expiresOn <= end
-            ? `, until ${c.expiresOn}`
-            : ''
-        }.`
+        fact: offerFact(c.code, c.percent, c.expiresOn, end)
       })
     }
   }
