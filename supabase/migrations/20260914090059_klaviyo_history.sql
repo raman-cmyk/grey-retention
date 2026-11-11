@@ -83,7 +83,7 @@ create table public.klaviyo_history (
   -- The counted history (features/onboarding/history/facts.ts checks the
   -- same shape when it is read back); kept while a later read is paused.
   snapshot jsonb check (snapshot is null or (jsonb_typeof(snapshot) = 'object' and length(snapshot::text) <= 900000)),
-  sent integer not null default 0 check (sent between 0 and 400),
+  sent integer not null default 0 check (sent between 0 and 300),
   scheduled integer not null default 0 check (scheduled between 0 and 300),
   flows integer not null default 0 check (flows between 0 and 100),
   audiences integer not null default 0 check (audiences between 0 and 120),

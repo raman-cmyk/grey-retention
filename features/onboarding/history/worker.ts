@@ -136,8 +136,8 @@ export async function readBrandHistory(
   const account = accountFacts(
     await deps.client.get(accountPath, 'accounts:read')
   )
-  // Every day and hour in the brand's one timezone (UIR-023); the Klaviyo
-  // account's only when the workspace has none.
+  // Every day and hour in the brand's one timezone, the workspace's
+  // (UIR-023; it is always set, UTC by default).
   const timezone = zoneOr(tenant.data.timezone || account.timezone)
   const currency = account.currency
   if (!currency) {
@@ -266,22 +266,24 @@ export async function readBrandHistory(
         const gap = reportGapMs - (now() - lastReportAt)
         if (gap > 0) await sleep(gap)
       }
-      try {
-        const report = await readFlowReport(deps.client, metrics.placedOrder)
-        flowReport = report.rows
-        flowReportRead = report.complete
-      } catch (error) {
-        if (!(error instanceof KlaviyoError) || error.kind === 'bad_key')
-          throw error
-        if (error.kind === 'missing_scope') throw error
-        logger.warn('History read: flow results left out', {
-          kind: error.kind,
-          status: error.details.status ?? 0,
-          code: error.details.code ?? 'none'
-        })
-        flowReport = []
-        flowReportRead = false
-      }
+      // Only a refused key stops the read here: the flows already read are
+      // kept, their results unknown.
+      if (more())
+        try {
+          const report = await readFlowReport(deps.client, metrics.placedOrder)
+          flowReport = report.rows
+          flowReportRead = report.complete
+        } catch (error) {
+          if (!(error instanceof KlaviyoError) || error.kind === 'bad_key')
+            throw error
+          logger.warn('History read: flow results left out', {
+            kind: error.kind,
+            status: error.details.status ?? 0,
+            code: error.details.code ?? 'none'
+          })
+          flowReport = []
+          flowReportRead = false
+        }
     }
   } catch (error) {
     if (!(
@@ -359,8 +361,11 @@ export async function readBrandHistory(
     window: windowRead,
     parts
   })
+  // Nothing sent or scheduled is tried again only when those two reads
+  // were cut short; a detail missing (a report, a list page) is not a
+  // reason to read an empty account again.
   const empty = !sent.length && !scheduled.length
-  if (empty && !complete) {
+  if (empty && !(parts.sent && parts.scheduled)) {
     logger.warn('History read: nothing found before the time ran out', {
       live: deps.live
     })

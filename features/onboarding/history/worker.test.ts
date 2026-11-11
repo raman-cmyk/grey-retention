@@ -247,6 +247,43 @@ describe('readBrandHistory', () => {
     // The report still counts them as emails, without a subject.
     expect(stored.snapshot.sent).toHaveLength(10)
     expect(stored.snapshot.sent[0]!.subject).toBeNull()
+    // The scheduled ones still take their days.
+    expect(stored.snapshot.scheduled.map((e) => e.id)).toEqual([
+      'MsgS01',
+      'MsgS02'
+    ])
+  })
+
+  it('keeps the flows already read when their report is refused for access', async () => {
+    const { stored } = await read({
+      fail: { on: 'flowReport', with: recorded.noScope }
+    })
+    expect(stored.snapshot.flowsRead).toBe(true)
+    expect(stored.snapshot.flows.map((f) => [f.name, f.revenue90d])).toEqual([
+      ['Abandoned cart', null],
+      ['Old winback (draft)', null],
+      ['Welcome series', null]
+    ])
+  })
+
+  it('stores an account with flows but nothing sent as empty, even when a detail is cut short', async () => {
+    const nothing: KlaviyoResponse = {
+      status: 200,
+      headers: { 'content-type': 'application/vnd.api+json' },
+      body: '{"data":[],"links":{"next":null}}'
+    }
+    const { run, stored } = await read({
+      reportsCut: true,
+      instead: (url) =>
+        url.includes('/api/campaign-messages?') ? nothing : null
+    })
+    expect(run).toMatchObject({ state: 'empty', complete: false })
+    expect(stored.summary).toMatchObject({
+      state: 'empty',
+      complete: false,
+      reason: 'no_emails'
+    })
+    expect(stored.snapshot.flows).toHaveLength(3)
   })
 
   it('keeps the results Klaviyo gave when a report has another page, and says the read is not whole', async () => {

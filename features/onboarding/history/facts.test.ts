@@ -108,6 +108,49 @@ describe('the counted history', () => {
     expect(sent.at(-1)!.id).toBe('M299')
   })
 
+  it('counts at most 50 emails a week', () => {
+    const sent = sentEmails(
+      Array.from({ length: 300 }, (_, i) =>
+        message({ id: `M${i}`, sendAt: iso(1 + (i % 30), 10 + (i % 8)) })
+      ),
+      [],
+      now
+    )
+    expect(cadence(sent, 'UTC', now).sendsPerWeek).toBe(50)
+  })
+
+  it("dates a send at each recipient's own clock time by that clock time", () => {
+    // 19:00 on 20 November in each recipient's timezone: stored as 19:00
+    // UTC, which would be the 21st in Tokyo.
+    const [local] = scheduledEmails(
+      [
+        message({
+          id: 'L1',
+          status: 'scheduled',
+          sendAt: '2026-11-20T19:00:00Z',
+          strategy: 'local'
+        })
+      ],
+      [],
+      'Asia/Tokyo',
+      now
+    )
+    expect(local!.date).toBe('2026-11-20')
+    const [plain] = scheduledEmails(
+      [
+        message({
+          id: 'P1',
+          status: 'scheduled',
+          sendAt: '2026-11-20T19:00:00Z'
+        })
+      ],
+      [],
+      'Asia/Tokyo',
+      now
+    )
+    expect(plain!.date).toBe('2026-11-21')
+  })
+
   it('tells an offer from words that only look like one', () => {
     for (const offer of [
       '20% off knitwear',
@@ -252,6 +295,15 @@ describe('the counted history', () => {
           sendAt: '2026-11-17T18:00:00Z',
           channel: null,
           subject: null
+        }),
+        // Its content not given by Klaviyo: it still takes its day.
+        message({
+          id: 'S7',
+          status: 'scheduled',
+          sendAt: '2026-11-18T18:00:00Z',
+          channel: null,
+          subject: null,
+          contentKnown: false
         })
       ],
       [{ campaignId: 'C2', included: ['SegVIP'], excluded: [] }],
@@ -262,7 +314,8 @@ describe('the counted history', () => {
       scheduled.map((e) => [e.id, e.date, e.audienceIds, e.offer])
     ).toEqual([
       ['S1', '2026-11-12', [], false],
-      ['S2', '2026-11-14', ['SegVIP'], true]
+      ['S2', '2026-11-14', ['SegVIP'], true],
+      ['S7', '2026-11-18', [], false]
     ])
   })
 
@@ -488,6 +541,49 @@ describe('planFromHistory', () => {
     ).toMatchObject({ sendsPerWeek: 2, sendTime: null })
   })
 
+  it("dates the week before's local-time sends by their clock time, and keeps the window's own days first", () => {
+    const sent = sentEmails(
+      [
+        message({
+          id: 'L1',
+          sendAt: '2026-11-08T03:00:00Z',
+          strategy: 'local'
+        }),
+        ...Array.from({ length: 150 }, (_, i) =>
+          message({ id: `W${i}`, sendAt: iso(4 + (i % 3), 12) })
+        )
+      ],
+      [],
+      now
+    )
+    const scheduled = Array.from({ length: 100 }, (_, i) => ({
+      id: `S${i}`,
+      campaignId: null,
+      subject: null,
+      sendAt: `2026-11-${String(12 + (i % 15)).padStart(2, '0')}T18:00:00.000Z`,
+      date: `2026-11-${String(12 + (i % 15)).padStart(2, '0')}`,
+      audienceIds: [],
+      offer: false
+    }))
+    const plan = planFromHistory(snapshot({ sent, scheduled }), {
+      start: '2026-11-12',
+      days: 15
+    })
+    // 03:00 on the 8th at each recipient's clock, not the evening of the
+    // 7th in Los Angeles.
+    expect(plan.existing).toContainEqual({
+      date: '2026-11-08',
+      audienceId: unknownAudience,
+      offer: false
+    })
+    expect(plan.existing).toHaveLength(200)
+    // Every scheduled day of the window is kept; the oldest of the week
+    // before are left out.
+    expect(plan.existing.filter((e) => e.date >= '2026-11-12')).toHaveLength(
+      100
+    )
+  })
+
   it('takes at most 50 audiences, starred and segments first', () => {
     const many = Array.from({ length: 60 }, (_, i) => ({
       id: `Lst${i}`,
@@ -587,6 +683,32 @@ describe('the Klaviyo historian', () => {
       temperature: 0,
       reasoningEffort: 'none'
     })
+  })
+
+  it('tells the historian when nothing is known about the flows', () => {
+    const unread = historianInput(
+      'Cedar Goods',
+      snapshot({ flowsRead: false, flows: [] })
+    )
+    expect(unread).toMatchObject({ flowsRead: false, flowResultsKnown: false })
+    const unknown = historianInput(
+      'Cedar Goods',
+      snapshot({
+        flows: [
+          {
+            id: 'F1',
+            name: 'Cart',
+            status: 'live',
+            trigger: null,
+            sends90d: null,
+            orders90d: null,
+            revenue90d: null
+          }
+        ]
+      })
+    )
+    expect(unknown).toMatchObject({ flowsRead: true, flowResultsKnown: false })
+    expect(input).toMatchObject({ flowsRead: true, flowResultsKnown: true })
   })
 
   it('uses the sample rules when the AI is the fake', async () => {

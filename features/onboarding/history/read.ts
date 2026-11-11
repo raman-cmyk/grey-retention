@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import type { PlanInput } from '@/features/strategy/plan'
-import { historySnapshot, localParts, type HistorySnapshot } from './facts'
+import { historySnapshot, sendParts, type HistorySnapshot } from './facts'
 
 /**
  * What the brand already sent, as the strategy agents read it (ONB-103):
@@ -95,7 +95,7 @@ export function planFromHistory(
     .map((a) => ({ id: a.id, label: a.name }))
   const sent = history.sent
     .map((e) => ({
-      date: localParts(e.sentAt, history.timezone).date,
+      date: sendParts(e.sentAt, e.strategy, history.timezone).date,
       offer: e.offer
     }))
     .filter((e) => e.date >= from && e.date < end)
@@ -115,9 +115,10 @@ export function planFromHistory(
         ? null
         : `${String(Math.min(sendHours.to, Math.max(sendHours.from, hour))).padStart(2, '0')}:00`,
     audiences,
+    // The latest 200: the window's own days before the week before it.
     existing: [...sent, ...scheduled]
       .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(0, maxExisting),
+      .slice(-maxExisting),
     results: history.sent
       .filter(
         (e) => e.recipients !== null && e.clicks !== null && e.revenue !== null
@@ -125,7 +126,7 @@ export function planFromHistory(
       .slice(0, 20)
       .map((e) => ({
         title: (e.subject ?? e.name ?? 'Email').slice(0, 200),
-        sentOn: localParts(e.sentAt, history.timezone).date,
+        sentOn: sendParts(e.sentAt, e.strategy, history.timezone).date,
         clicks: e.clicks!,
         revenue: e.revenue!
       }))

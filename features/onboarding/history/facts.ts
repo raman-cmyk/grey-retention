@@ -93,7 +93,11 @@ export const audience = z.object({
   excludedOnly: z.boolean()
 })
 
-/** Which parts were read whole. */
+/**
+ * Which parts were read whole. A report part is also whole when there was
+ * nothing to ask (no sent email, or no Placed Order metric: the results
+ * are then unknown, null).
+ */
 export const partsRead = z.object({
   sent: z.boolean(),
   scheduled: z.boolean(),
@@ -160,6 +164,19 @@ export function localParts(iso: string, timezone: string) {
     hour: Number(get('hour')),
     weekday: get('weekday')
   }
+}
+
+/**
+ * The day and hour an email goes out, in store time. A send at each
+ * recipient's own clock time (Klaviyo's local-timezone strategy) carries
+ * that clock time as UTC: its day and hour are read as they are.
+ */
+export function sendParts(
+  iso: string,
+  strategy: SentEmail['strategy'],
+  timezone: string
+) {
+  return localParts(iso, strategy === 'local' ? 'UTC' : timezone)
 }
 
 /** A safe timezone: the one given, or UTC when it is not one. */
@@ -253,15 +270,14 @@ export function cadence(sent: SentEmail[], timezone: string, now: number) {
   const hours = new Map<number, number>()
   for (const e of recent) {
     if (e.strategy === 'optimized') continue
-    const h =
-      e.strategy === 'local'
-        ? new Date(e.sentAt).getUTCHours()
-        : localParts(e.sentAt, timezone).hour
+    const h = sendParts(e.sentAt, e.strategy, timezone).hour
     hours.set(h, (hours.get(h) ?? 0) + 1)
   }
   const top = [...hours.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]
   return {
-    sendsPerWeek: Math.round((recent.length / weeks) * 10) / 10,
+    // At most 50 (the stored history's limit): a store sending more than
+    // seven campaigns a day in its first weeks.
+    sendsPerWeek: Math.min(50, Math.round((recent.length / weeks) * 10) / 10),
     usualSendTime: top ? `${String(top[0]).padStart(2, '0')}:00` : null
   }
 }
@@ -287,7 +303,11 @@ export function bestEmails(sent: SentEmail[], limit = 5) {
     .slice(0, limit)
 }
 
-/** The emails already scheduled, on their day in the store's timezone. */
+/**
+ * The emails already scheduled, on their day in the store's timezone. One
+ * whose content Klaviyo did not give still takes its day (it may be an
+ * email); an archived one never goes out.
+ */
 export function scheduledEmails(
   messages: CampaignMessage[],
   audiences: CampaignAudience[],
@@ -302,14 +322,14 @@ export function scheduledEmails(
         !m.archived &&
         m.sendAt !== null &&
         Date.parse(m.sendAt) > now &&
-        isEmail(m, false)
+        (isEmail(m, false) || !m.contentKnown)
     )
     .map((m) => ({
       id: m.id,
       campaignId: m.campaignId,
       subject: m.subject,
       sendAt: m.sendAt!,
-      date: localParts(m.sendAt!, timezone).date,
+      date: sendParts(m.sendAt!, m.strategy, timezone).date,
       audienceIds: (m.campaignId
         ? (byCampaign.get(m.campaignId)?.included ?? [])
         : []
