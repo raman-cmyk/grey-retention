@@ -249,10 +249,16 @@ export function fixedWriterRequest(
 function sampleFixed(
   input: AssemblyInput,
   steps: readonly LayoutStep[],
-  brandName: string
+  brandName: string,
+  /**
+   * Plain copy (EML-003) never says "new": the email type does not prove a
+   * product is new (the Content locker may have swapped it), and keeps the
+   * subject within the inbox check's 60 characters.
+   */
+  plain = false
 ): Written {
   const products = eligibleProducts(input)
-  const isNew = /new|launch|arrival/i.test(input.brief.campaignType)
+  const isNew = !plain && /new|launch|arrival/i.test(input.brief.campaignType)
   const brand = oneLine(brandName, 60)
   // The same placement as `fill`, so each heading names its own product.
   const takes = productTakes(
@@ -296,7 +302,7 @@ function sampleFixed(
   return {
     subject: clip(
       isNew && lead ? `New: ${lead.title}` : `News from ${brand}`,
-      80
+      plain ? 60 : 80
     ),
     preheader: clip(`A short note from ${brand}.`, 140),
     blocks
@@ -427,12 +433,16 @@ export function assembleLockedPlain(
   brand: BlockBrand,
   sections: readonly { type: BlockType; reason: string }[]
 ): Assembled {
-  const steps = sections.map((s) => ({
-    type: s.type === 'steps' || s.type === 'faq' ? ('text' as const) : s.type,
-    from: s.type,
-    reason: s.reason
-  }))
-  const written = sampleFixed(input, steps, brand.name)
+  const steps = sections.map((s) =>
+    s.type === 'steps' || s.type === 'faq'
+      ? {
+          type: 'text' as const,
+          from: s.type,
+          reason: `${s.reason} Plain copy has no facts for it, so this is text.`
+        }
+      : { type: s.type, from: s.type, reason: s.reason }
+  )
+  const written = sampleFixed(input, steps, brand.name, true)
   return finish(input, written, fill(written, input, brand), [], 'plain')
 }
 
