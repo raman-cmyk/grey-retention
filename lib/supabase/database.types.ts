@@ -4269,6 +4269,68 @@ export type Database = {
           }
         ]
       }
+      klaviyo_draft_pushes: {
+        Row: {
+          campaign_id: string | null
+          checks: Json
+          create_started_at: string | null
+          created_at: string
+          designs: string | null
+          fallback: string | null
+          images: Json
+          message_id: string | null
+          push_key: string
+          reason: string | null
+          state: string
+          templates: Json
+          tenant_id: string
+          updated_at: string
+          written: string | null
+        }
+        Insert: {
+          campaign_id?: string | null
+          checks?: Json
+          create_started_at?: string | null
+          created_at?: string
+          designs?: string | null
+          fallback?: string | null
+          images?: Json
+          message_id?: string | null
+          push_key: string
+          reason?: string | null
+          state?: string
+          templates?: Json
+          tenant_id: string
+          updated_at?: string
+          written?: string | null
+        }
+        Update: {
+          campaign_id?: string | null
+          checks?: Json
+          create_started_at?: string | null
+          created_at?: string
+          designs?: string | null
+          fallback?: string | null
+          images?: Json
+          message_id?: string | null
+          push_key?: string
+          reason?: string | null
+          state?: string
+          templates?: Json
+          tenant_id?: string
+          updated_at?: string
+          written?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'klaviyo_draft_pushes_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       klaviyo_key_checks: {
         Row: {
           checked_at: string
@@ -7575,6 +7637,10 @@ export type Database = {
           t: string
         }
         Returns: Json
+      }
+      save_klaviyo_push: {
+        Args: { key: string; step: Json; t: string }
+        Returns: undefined
       }
       save_l2_simulation_policy: {
         Args: {

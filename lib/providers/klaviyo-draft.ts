@@ -35,10 +35,27 @@ export type DraftInput = {
   audienceId: string
   /** Built from the sample store: never for a real Klaviyo account. */
   sample: boolean
+  /**
+   * An A/B design test (EML-005): exactly two, A first, with the same
+   * subject, preheader and audience. They go into ONE draft campaign with
+   * two variations sent to half the audience each and no winner picked
+   * (the owner still schedules it). Without it the draft has `html` only.
+   */
+  variations?: { approach: 'A' | 'B'; html: string }[]
 }
 
 export type DraftResult =
-  | { ok: true; campaignId: string; sample: boolean }
+  | {
+      ok: true
+      campaignId: string
+      sample: boolean
+      /**
+       * Which designs went in: both, or A only when Klaviyo refused an even
+       * test (the draft then has one variation; alternate the designs
+       * across emails instead). Absent when no variations were asked.
+       */
+      designs?: 'both' | 'A'
+    }
   | {
       ok: false
       code: 'auth' | 'rate_limited' | 'unavailable' | 'rejected'
@@ -61,7 +78,8 @@ export function fakeDraftPusher(): DraftPusher & { calls: DraftInput[] } {
       return {
         ok: true,
         campaignId: `sample-draft-${input.idempotencyKey}`,
-        sample: true
+        sample: true,
+        ...(input.variations ? { designs: 'both' as const } : {})
       }
     }
   }
