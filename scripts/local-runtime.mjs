@@ -82,6 +82,12 @@ export function localEnvironment(status) {
     ...process.env,
     AUTH_MODE: 'supabase',
     ADAPTER_MODE: 'fake',
+    // Local runs and browser journeys never call Klaviyo, whatever a local
+    // env file says (KLV-001).
+    KLAVIYO_MODE: 'fake',
+    // Local runs and browser journeys never call a live AI model (the sweep
+    // would tag competitor emails with it), whatever a local env file says.
+    AI_DEFAULT_PROVIDER: 'fake',
     NEXT_PUBLIC_APP_URL: 'http://127.0.0.1:3100',
     NEXT_PUBLIC_SUPABASE_URL: status.url,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: status.anon,
