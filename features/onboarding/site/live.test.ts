@@ -6,12 +6,15 @@ import { classifyFailure } from '@/features/integrations/failures'
 import { sampleAsk, TagError } from '@/features/intelligence/passes'
 import {
   cappedEnv,
+  dbMarginMs,
   jobFailure,
   readersRunMs,
   runSiteReadings,
   siteAsk,
-  siteCallTimeoutMs
+  siteCallTimeoutMs,
+  siteRunMs
 } from './live'
+import { pageTimeoutMs } from './fetch'
 
 describe('jobFailure', () => {
   it('lets the job runner try an AI outage or a rate limit again, and stop on a spent budget', () => {
@@ -127,5 +130,17 @@ describe('runSiteReadings', () => {
       state: 'failed',
       code: 'PGRST301'
     })
+  })
+})
+
+describe('the readers run fits its route', () => {
+  it('ends inside 60 seconds: start cutoff, one read, one more capped call and the database margin', () => {
+    // No read starts after readersRunMs; a read starts no page or model call
+    // without the time it may take, so it ends by siteRunMs; one capped
+    // Gemini call is counted again as a margin, then the database work.
+    expect(
+      readersRunMs + siteRunMs + siteCallTimeoutMs + dbMarginMs
+    ).toBeLessThanOrEqual(60_000)
+    expect(pageTimeoutMs + siteCallTimeoutMs).toBeLessThan(siteRunMs)
   })
 })

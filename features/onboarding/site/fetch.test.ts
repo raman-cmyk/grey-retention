@@ -24,10 +24,22 @@ const answering = (result: Awaited<ReturnType<ImageFetcher['fetch']>>) => {
 
 describe('the site hosts', () => {
   it("are the brand's domain and its www., and the home page is https", () => {
-    expect([...siteHosts('WWW.Cedar-Lane.example ')]).toEqual([
+    const hosts = siteHosts('WWW.Cedar-Lane.example ')
+    expect(hosts.domain).toBe('cedar-lane.example')
+    for (const host of [
       'cedar-lane.example',
-      'www.cedar-lane.example'
+      'www.cedar-lane.example',
+      'shop.cedar-lane.example',
+      'SHOP.Cedar-Lane.example'
     ])
+      expect(hosts.has(host), host).toBe(true)
+    for (const host of [
+      'evilcedar-lane.example',
+      'cedar-lane.example.evil.com',
+      'cedar-lane.exampl',
+      ''
+    ])
+      expect(hosts.has(host), host).toBe(false)
     expect(homeUrl('cedar-lane.example')).toBe('https://cedar-lane.example/')
     for (const bad of [
       '',
@@ -136,8 +148,10 @@ describe('the sample site reader', () => {
 describe("the live reader's guards, against a real server", () => {
   let server: Server
   let port = ''
+  let seen: Record<string, unknown> = {}
   beforeAll(async () => {
     server = createServer((req, res) => {
+      seen = { ...req.headers }
       const path = req.url ?? '/'
       if (path === '/')
         return res
@@ -196,6 +210,28 @@ describe("the live reader's guards, against a real server", () => {
       ok: false,
       failure: 'blocked'
     })
+  })
+
+  it('sends no cookie and no credentials: a plain request for HTML', async () => {
+    await fetcher(['http:']).fetch(at('/'), limits)
+    expect(Object.keys(seen).sort()).toEqual(
+      ['accept', 'connection', 'host', 'user-agent'].sort()
+    )
+    expect(seen['user-agent']).toMatch(/BrandReader/)
+    expect(seen.accept).toMatch(/^text\/html/)
+    // A link with a name and password is never opened at all.
+    expect(
+      await fetcher(['http:']).fetch(
+        `http://user:secret@shop.test:${port}/`,
+        limits
+      )
+    ).toEqual({ ok: false, failure: 'blocked' })
+  })
+
+  it("never reaches a private address, also behind the brand's own name", async () => {
+    expect(
+      await fetcher(['http:']).fetch(at('/', 'inside.shop.test'), limits)
+    ).toEqual({ ok: false, failure: 'blocked' })
   })
 
   it('refuses plain http, also on a redirect, when https is required', async () => {

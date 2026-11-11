@@ -4,7 +4,7 @@ import type { Database, Json } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
 import type { Ask } from '@/features/intelligence/passes'
 import type { FindingInput, SitePageKind } from '../findings'
-import { homeUrl, type SiteFetcher } from './fetch'
+import { homeUrl, pageTimeoutMs, type SiteFetcher } from './fetch'
 import { pagesToRead, readPage, type ReadPage } from './pages'
 import { readSitePage } from './reader'
 
@@ -162,7 +162,10 @@ export async function readBrandSite(
       else skip(homePage.url, 'home', outcome.reason)
       const rest = pagesToRead(homePage, domain)
       const outcomes = await inTurns(rest, parallelPages, async (target, n) => {
-        if (now() > deadline) return { ...target, reason: 'time_up' }
+        // A page is fetched only with time for its fetch and one model call,
+        // so every page the run starts ends by its deadline.
+        if (now() + pageTimeoutMs + callMs > deadline)
+          return { ...target, reason: 'time_up' }
         const fetched = await fetcher.fetch(target.url)
         if (!fetched.ok) return { ...target, reason: fetched.failure }
         const outcome = await read(

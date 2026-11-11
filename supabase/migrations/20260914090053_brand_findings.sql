@@ -126,6 +126,14 @@ returns text language sql immutable set search_path = '' as $$
 $$;
 revoke all on function private.https_host(text) from public, anon, authenticated;
 
+-- Whether a host is the brand's: its domain or one of its own subdomains
+-- (`www.`, `shop.`…), never a look-alike.
+create or replace function private.on_site(host text, domain text)
+returns boolean language sql immutable set search_path = '' as $$
+  select coalesce(host = domain or right(host, length(domain) + 1) = '.' || domain, false);
+$$;
+revoke all on function private.on_site(text, text) from public, anon, authenticated;
+
 -- The owner starts a read of the brand's own website (at most once a day;
 -- asking again the same day returns the same job). The job keeps the
 -- domain it reads, so a website changed mid-run does not break it.
@@ -150,7 +158,7 @@ end $$;
 
 -- A run's findings, all at once, with the pages read and skipped; then the
 -- job is finished. Every page and every piece of evidence is on the
--- domain the job reads (or its `www.`), and evidence cites a page this run
+-- domain the job reads (or one of its subdomains), and evidence cites a page this run
 -- read. The run replaces the current site findings from the kinds of page
 -- it read, unless a newer run has already replaced them (then its own are
 -- kept, already replaced). Locks: the tenant first, then the job.
@@ -168,7 +176,7 @@ begin
     or jsonb_typeof(pages) is distinct from 'array' or jsonb_array_length(pages) > 8
     or exists (select 1 from jsonb_array_elements(pages) p
       where jsonb_typeof(p) <> 'object' or jsonb_typeof(p->'url') is distinct from 'string' or length(p->>'url') > 500
-        or coalesce(private.https_host(p->>'url'), '') not in (d, 'www.' || d)
+        or not private.on_site(coalesce(private.https_host(p->>'url'), ''), d)
         or not (coalesce(p->>'kind', '') = any(kinds)) or coalesce(p->>'state', '') not in ('read','skipped')
         or (p ? 'reason' and (jsonb_typeof(p->'reason') <> 'string' or p->>'reason' !~ '^[a-z_]{1,40}$'))
         or (p ? 'findings' and (jsonb_typeof(p->'findings') <> 'number' or p->>'findings' !~ '^[0-9]{1,3}$'))
@@ -185,7 +193,7 @@ begin
       or (f ? 'model' and jsonb_typeof(f->'model') not in ('string','null'))
       or f - 'topic' - 'statement' - 'value' - 'evidence' - 'confidence' - 'pass' - 'model' <> '{}'::jsonb
       or jsonb_typeof(f->'evidence') is distinct from 'object'
-      or coalesce(private.https_host(f->'evidence'->>'url'), '') not in (d, 'www.' || d)
+      or not private.on_site(coalesce(private.https_host(f->'evidence'->>'url'), ''), d)
       or jsonb_typeof(f->'evidence'->'quote') is distinct from 'string' or length(f->'evidence'->>'quote') not between 1 and 300
       or not (coalesce(f->'evidence'->>'page', '') = any(read_kinds))
       or (f->'evidence') - 'url' - 'quote' - 'page' <> '{}'::jsonb then

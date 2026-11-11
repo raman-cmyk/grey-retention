@@ -29,6 +29,11 @@ type Job = Database['public']['Tables']['job_runs']['Row']
 export const siteCallTimeoutMs = 10_000
 /** No new site read starts after this long into the readers' run. */
 export const readersRunMs = 15_000
+/**
+ * Time kept for the database work around a read (claiming it, reading the
+ * brand, storing its findings), on top of the read's own limit.
+ */
+export const dbMarginMs = 4_000
 
 /**
  * An AI failure as the job runner classifies it: an outage or a rate limit

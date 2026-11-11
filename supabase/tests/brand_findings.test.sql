@@ -1,5 +1,5 @@
 begin;
-select plan(83);
+select plan(84);
 
 -- ONB-101: onboarding findings and the Site reader's job. Owner ...01 and
 -- staff ...05 are in workspace 101 (cedar-lane.example); owner ...04 runs
@@ -102,7 +102,7 @@ select throws_ok($$select pg_temp.record('[]', '[{"url":"https://cedar-lane.exam
 select throws_ok(format('select pg_temp.record(jsonb_build_array(pg_temp.f(pg_temp.ev(%L))))', u),'23514',null,'evidence: '||u)
   from unnest(array['https://other.example/pages/returns','http://cedar-lane.example/pages/returns',
     'https://cedar-lane.example.evil.com/','https://cedar-lane.example@evil.example/','https://evil.example@cedar-lane.example/',
-    'https://cedar-lane.example:8443/pages/returns']) u;
+    'https://cedar-lane.example:8443/pages/returns','https://evilcedar-lane.example/pages/returns']) u;
 select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.f(pg_temp.ev('https://cedar-lane.example/pages/faq','faq'))))$$,
   '23514',null,'evidence cites a page this run read');
 select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.f(jsonb_build_object('evidence',
@@ -120,8 +120,8 @@ select is((select count(*)::int from public.brand_findings),0,'nothing was store
 
 select is(pg_temp.record(jsonb_build_array(pg_temp.f(),
     pg_temp.f('{"topic":"free_shipping","statement":"Free shipping over $75.","value":{"kind":"over","amount":75,"currency":"USD"},
-      "evidence":{"url":"https://www.cedar-lane.example/","quote":"Free shipping on orders over $75.","page":"home"},"pass":"model","model":"gemini-2.5-flash"}'))),
-  '{"pages": 3, "findings": 2}'::jsonb,'a run''s findings are stored at once');
+      "evidence":{"url":"https://shop.cedar-lane.example/","quote":"Free shipping on orders over $75.","page":"home"},"pass":"model","model":"gemini-2.5-flash"}'))),
+  '{"pages": 3, "findings": 2}'::jsonb,'a run''s findings are stored at once, from the brand''s own subdomains too');
 select is((select string_agg(topic||':'||confidence||':'||pass||':'||coalesce(model,'-'),',' order by topic) from public.brand_findings
     where run_id=current_setting('test.job')::uuid and source='site' and superseded_at is null),
   'free_shipping:0.70:model:gemini-2.5-flash,returns:0.70:sample:-','with their source, confidence, pass and model');
@@ -164,7 +164,7 @@ select is((select count(*)::int from public.brand_findings where superseded_at i
   'and replaces nothing');
 select is(pg_temp.record(jsonb_build_array(pg_temp.f('{"value":{"days":60},"statement":"Returns within 60 days."}')),
     pg_temp.pages(), current_setting('test.job3')),'{"pages": 3, "findings": 1}'::jsonb,'a newer run');
-select is((select string_agg(topic||':'||(superseded_at is null),',' order by created_at, topic) from public.brand_findings
+select is((select string_agg(topic||':'||(superseded_at is null),',' order by superseded_at is null, topic) from public.brand_findings
     where tenant_id='00000000-0000-4000-8000-000000000101'),
   'free_shipping:false,returns:false,returns:true','replaces what the pages it read said earlier');
 select is(pg_temp.record(jsonb_build_array(pg_temp.f('{"value":{"days":90},"statement":"Returns within 90 days."}')),
