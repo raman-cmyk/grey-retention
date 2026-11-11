@@ -29,6 +29,44 @@ const refusalReasons = new Set([
   'LANGUAGE'
 ])
 const thinkingBudgets = { none: 0, low: 1_024, medium: 4_096 } as const
+/** 2.5 Pro cannot switch thinking off; this is its smallest budget. */
+const proMinThinking = 128
+/** The largest answer a 2.5 model gives. */
+const maxModelOutput = 65_536
+
+/**
+ * The thinking budget sent for this request, or null when none is set
+ * (3.x models choose their own; no effort means the model's default).
+ */
+export function geminiThinkingBudget(
+  request: Pick<AiProviderRequest, 'model' | 'reasoningEffort'>
+): number | null {
+  if (!request.reasoningEffort || !request.model.startsWith('gemini-2.5'))
+    return null
+  const budget = thinkingBudgets[request.reasoningEffort]
+  return request.model.startsWith('gemini-2.5-pro')
+    ? Math.max(budget, proMinThinking)
+    : budget
+}
+
+/**
+ * Gemini 2.5 counts thinking tokens as output, so a cut-off at
+ * `maxOutputTokens` can land inside the thinking and leave no answer
+ * (`incomplete`). `maxOutputTokens` in a request is the room for the answer;
+ * the thinking budget is added on top here, and the cost estimate uses the
+ * same number.
+ */
+export function geminiOutputTokens(
+  request: Pick<
+    AiProviderRequest,
+    'model' | 'reasoningEffort' | 'maxOutputTokens'
+  >
+) {
+  return Math.min(
+    maxModelOutput,
+    request.maxOutputTokens + (geminiThinkingBudget(request) ?? 0)
+  )
+}
 
 /** The exact JSON body sent; also the input to the cost ceiling. */
 export function geminiRequestBody(request: AiProviderRequest) {
@@ -50,7 +88,7 @@ export function geminiRequestBody(request: AiProviderRequest) {
       }
     ],
     generationConfig: {
-      maxOutputTokens: request.maxOutputTokens,
+      maxOutputTokens: geminiOutputTokens(request),
       temperature: request.temperature,
       ...(request.responseKind === 'json'
         ? {
@@ -59,12 +97,8 @@ export function geminiRequestBody(request: AiProviderRequest) {
           }
         : {}),
       // Thinking budgets apply to 2.5 models; 3.x models choose their own.
-      ...(request.reasoningEffort && request.model.startsWith('gemini-2.5')
-        ? {
-            thinkingConfig: {
-              thinkingBudget: thinkingBudgets[request.reasoningEffort]
-            }
-          }
+      ...(geminiThinkingBudget(request) !== null
+        ? { thinkingConfig: { thinkingBudget: geminiThinkingBudget(request) } }
         : {})
     }
   })
