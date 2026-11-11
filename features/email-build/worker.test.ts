@@ -63,7 +63,7 @@ const built = async (): Promise<BuiltEmail> => {
     {
       planned,
       store: await sampleStoreSource.read(tenant),
-      offers: await sampleOffers.read(tenant)
+      offers: sampleOffers
     },
     { tenantId: tenant, callerKey: 'x', fallbacks: memoryFallbackLog() }
   )

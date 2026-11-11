@@ -13,7 +13,8 @@ import { codeSectionPlan, seedVariants } from './sections'
 import { lockContent, type ChangeKey } from './content'
 import { codeFindings } from './inspect'
 import { designA } from './design'
-import type { Offers, Store } from './ports'
+import type { OfferSource } from '@/features/offers/source'
+import { offersAt, type Store } from './ports'
 
 /**
  * EML-004 part 2: one planned email, built from start to finish. This part
@@ -92,7 +93,7 @@ const typeName = (type: PlannedEmail['emailType']) =>
 
 /** Builds one planned email on the code-only path. Never throws for bad data. */
 export async function buildEmail(
-  input: { planned: PlannedEmail; store: Store; offers: Offers },
+  input: { planned: PlannedEmail; store: Store; offers: OfferSource },
   ctx: {
     tenantId: string
     callerKey: string
@@ -107,10 +108,12 @@ export async function buildEmail(
     store.timezone
   )[0]
   if (!sendAt) return { ok: false, code: 'slot_time_invalid' }
+  // DSC-001: the max and the codes still working when this email sends.
+  const rules = await offersAt(offers, ctx.tenantId, sendAt)
   const assembly: Omit<AssemblyInput, 'brief'> = {
     products: store.products,
-    codes: offers.codes,
-    maxDiscountPercent: offers.maxDiscountPercent,
+    codes: rules.codes,
+    maxDiscountPercent: rules.maxDiscountPercent,
     sendAt,
     timezone: store.timezone,
     facts: store.facts

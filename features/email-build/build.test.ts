@@ -5,6 +5,7 @@ import { builtEmail, buildEmail, type PlannedEmail } from './build'
 import {
   endOfLocalDay,
   fakeDraftPusher,
+  offersAt,
   sampleOffers,
   sampleStoreSource
 } from './ports'
@@ -34,7 +35,7 @@ const build = async (p = planned()) => {
     {
       planned: p,
       store: await sampleStoreSource.read(tenantId),
-      offers: await sampleOffers.read(tenantId)
+      offers: sampleOffers
     },
     { tenantId, callerKey: 'email-build:b1', fallbacks }
   )
@@ -123,14 +124,55 @@ describe('the ports', () => {
   })
 
   it('read the sample offers with the max discount', async () => {
-    const offers = await sampleOffers.read(tenantId)
-    expect(offers.maxDiscountPercent).toBe(20)
-    expect(offers.codes.map((c) => c.code)).toEqual([
-      'WELCOME15',
-      'CANDLE10',
+    const offers = await sampleOffers.offers(tenantId, new Date().toISOString())
+    expect(offers?.maxDiscountPercent).toBe(20)
+    // The ended code is left out; the rest are sorted by code.
+    expect(offers?.codes.map((c) => c.code)).toEqual([
       'BIGSALE40',
-      'SPRING20'
+      'CANDLE10',
+      'WELCOME15'
     ])
+  })
+
+  it('treat an unreadable or unset max as no discount, and drop codes that end before the send', async () => {
+    const at = '2026-11-17T23:00:00.000Z'
+    const read = (value: unknown) => ({
+      offers: async () => value as never
+    })
+    expect(await offersAt(read(null), tenantId, at)).toEqual({
+      maxDiscountPercent: 0,
+      codes: []
+    })
+    expect(
+      await offersAt(
+        read({ maxDiscountPercent: null, codes: [] }),
+        tenantId,
+        at
+      )
+    ).toEqual({ maxDiscountPercent: 0, codes: [] })
+    expect(
+      await offersAt(
+        { offers: async () => Promise.reject(new Error('down')) },
+        tenantId,
+        at
+      )
+    ).toEqual({ maxDiscountPercent: 0, codes: [] })
+    expect(
+      await offersAt(
+        read({
+          maxDiscountPercent: 20,
+          codes: [
+            { code: 'OLD', percent: 10, expiresAt: '2026-11-17T22:00:00.000Z' },
+            { code: 'NEW', percent: 10, expiresAt: null }
+          ]
+        }),
+        tenantId,
+        at
+      )
+    ).toEqual({
+      maxDiscountPercent: 20,
+      codes: [{ code: 'NEW', percent: 10, expiresAt: null }]
+    })
   })
 
   it('fake pusher gives the same draft for the same key', async () => {

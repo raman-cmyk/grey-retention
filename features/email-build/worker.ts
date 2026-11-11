@@ -10,9 +10,9 @@ import {
   sampleOffers,
   sampleStoreSource,
   type DraftPusher,
-  type OfferSource,
   type StoreSource
 } from './ports'
+import type { OfferSource } from '@/features/offers/source'
 
 type Db = SupabaseClient<Database>
 
@@ -86,12 +86,9 @@ export async function runEmailBuilds(
           await fail('planned_email_invalid', true)
           continue
         }
-        const [store, rules] = await Promise.all([
-          stores.read(job.tenant_id),
-          offers.read(job.tenant_id)
-        ])
+        const store = await stores.read(job.tenant_id)
         const built = await buildEmail(
-          { planned: planned.data, store, offers: rules },
+          { planned: planned.data, store, offers },
           {
             tenantId: job.tenant_id,
             callerKey: `email-build:${job.id}`,
