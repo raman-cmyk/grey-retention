@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { login } from './accounts'
-import { localWeek } from '../../features/planning/guards'
-test('UC-05/06 guarded month review and exact weekly copy batch persist', async ({
+test('UC-05 guarded month review persists (the weekly copy batch is retired, D17)', async ({
   page
 }, info) => {
   test.setTimeout(120_000)
@@ -123,20 +122,6 @@ test('UC-05/06 guarded month review and exact weekly copy batch persist', async 
   expect(
     await page.getByRole('link', { name: /Synthetic \d+/ }).count()
   ).toBeGreaterThan(10)
-  const firstEntryText = await page
-    .locator('section')
-    .filter({
-      has: page.getByRole('heading', {
-        name: 'Guarded 30-day planning',
-        exact: true
-      })
-    })
-    .getByRole('link', { name: /Synthetic \d+/ })
-    .first()
-    .textContent()
-  const firstEntryTime = firstEntryText!.match(
-    /\d{4}-\d{2}-\d{2}T[0-9:.]+(?:Z|[+-]\d{2}:\d{2})/
-  )![0]
   await page.getByRole('button', { name: 'Review plan approval' }).click()
   await page
     .getByRole('button', {
@@ -150,48 +135,8 @@ test('UC-05/06 guarded month review and exact weekly copy batch persist', async 
   await expect(
     page.getByRole('button', { name: 'Review plan approval', exact: true })
   ).toHaveCount(0)
-  await page.goto(
-    `/copy-review?week=${localWeek(firstEntryTime, role === 'owner' ? 'Asia/Kathmandu' : 'Australia/Melbourne')}`
-  )
-  await page.getByRole('button', { name: 'Queue approved-entry copy' }).click()
-  await expect(
-    page.getByRole('button', { name: 'Queue approved-entry copy' })
-  ).toBeEnabled()
-  await page.getByRole('button', { name: 'Run planning fixture jobs' }).click()
-  await expect(
-    page.getByText(/copy.generate · succeeded/).first()
-  ).toBeVisible()
-  // A bounded worker pass processes four; complete a second pass if needed.
-  await page.getByRole('button', { name: 'Run planning fixture jobs' }).click()
-  await expect(
-    page.getByRole('button', { name: 'Run planning fixture jobs' })
-  ).toBeEnabled()
-  await page
-    .getByRole('button', { name: 'Prepare exact weekly review' })
-    .click()
-  await expect(
-    page.getByRole('heading', {
-      name: 'Immutable review batch · open',
-      exact: true
-    })
-  ).toBeVisible()
-  await page.getByRole('button', { name: 'Review bulk copy approval' }).click()
-  await page
-    .getByRole('button', { name: 'Approve exact weekly copy batch' })
-    .click()
-  await expect(
-    page.getByRole('heading', {
-      name: 'Immutable review batch · approved',
-      exact: true
-    })
-  ).toBeVisible()
-  await page.reload()
-  await expect(
-    page.getByRole('heading', {
-      name: 'Immutable review batch · approved',
-      exact: true
-    })
-  ).toBeVisible()
+  // D17 (RET-002): the weekly copy review is retired; the plan approval
+  // above is where this journey ends now.
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth

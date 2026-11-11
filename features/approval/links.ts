@@ -25,6 +25,9 @@ import { z } from 'zod'
  * Approve all from the email approves only those pairs (APR-001
  * `approveAll(items, claims.items, …)`), so a redo that landed after the
  * email was sent is never approved from it.
+ *
+ * Hidden by decision D17 (RET-002): there is no weekly approval. Nothing
+ * routes to, schedules or imports this code; it is kept for reference.
  */
 export const linkLifetimeDays = 7
 

@@ -397,13 +397,6 @@ export function CampaignOverview({
                 </p>
               </Link>
             ))}
-            <Link
-              href="/copy-review"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--brand-secondary)]"
-            >
-              Open weekly copy review
-              <ArrowRight className="size-3.5" aria-hidden />
-            </Link>
           </Panel>
           <Panel title="Brand foundation">
             <div className="space-y-4">

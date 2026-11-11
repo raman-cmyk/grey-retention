@@ -17,6 +17,9 @@ import { can } from '@/features/workflow/domain/policy'
  * PT409 when one moved.
  *
  * Pure rules: the job and the screen call these and store the result.
+ *
+ * Hidden by decision D17 (RET-002): there is no weekly approval. Nothing
+ * routes to, schedules or imports this code; it is kept for reference.
  */
 export type ItemState =
   'pending_approval' | 'change_requested' | 'needs_human' | 'approved'
