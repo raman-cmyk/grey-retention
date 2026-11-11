@@ -12,6 +12,10 @@ vi.mock('@/lib/supabase/service', () => service)
 vi.mock('@/features/integrations/worker', () => ({ runFixtureJobs: vi.fn() }))
 const inbox = vi.hoisted(() => ({ runInboxStep: vi.fn() }))
 vi.mock('@/features/inbox/step', () => inbox)
+const strategy = vi.hoisted(() => ({
+  runStrategyRuns: vi.fn(async () => ({ ran: 1 }))
+}))
+vi.mock('@/features/strategy/worker', () => strategy)
 
 import { GET } from '@/app/api/internal/jobs/route'
 
@@ -141,9 +145,11 @@ describe('GET /api/internal/jobs (scheduled sweep)', () => {
           skipped: 0,
           more: false
         }
-      }
+      },
+      plans: { ran: 1 }
     })
     expect(scheduler.runScheduledJobs).toHaveBeenCalledOnce()
+    expect(strategy.runStrategyRuns).toHaveBeenCalledOnce()
     // The inbox is read first, then the workspace jobs.
     expect(inbox.runInboxStep.mock.invocationCallOrder[0]).toBeLessThan(
       scheduler.runScheduledJobs.mock.invocationCallOrder[0]!

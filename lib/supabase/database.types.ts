@@ -656,6 +656,57 @@ export type Database = {
           }
         ]
       }
+      block_variants: {
+        Row: {
+          created_at: string
+          evidence: number
+          family: string
+          fingerprint: string
+          id: string
+          key: string
+          layout: string
+          model: string | null
+          pass: string
+          purpose: string
+          source: string
+          spec: Json
+          styles: string[]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          evidence?: number
+          family: string
+          fingerprint: string
+          id?: string
+          key: string
+          layout: string
+          model?: string | null
+          pass: string
+          purpose: string
+          source: string
+          spec: Json
+          styles?: string[]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          evidence?: number
+          family?: string
+          fingerprint?: string
+          id?: string
+          key?: string
+          layout?: string
+          model?: string | null
+          pass?: string
+          purpose?: string
+          source?: string
+          spec?: Json
+          styles?: string[]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       brand_books: {
         Row: {
           content: Json
@@ -3033,12 +3084,16 @@ export type Database = {
           owner_labelled_at: string | null
           owner_labelled_by: string | null
           purpose: string | null
+          skeleton_fingerprint: string | null
           styles: string[] | null
           tag_pass: string | null
           tag_state: string | null
           tag_version: string | null
           text: string
           top: number | null
+          variant_id: string | null
+          variant_state: string | null
+          variant_version: string | null
           wide_images: number
           words: number
         }
@@ -3063,12 +3118,16 @@ export type Database = {
           owner_labelled_at?: string | null
           owner_labelled_by?: string | null
           purpose?: string | null
+          skeleton_fingerprint?: string | null
           styles?: string[] | null
           tag_pass?: string | null
           tag_state?: string | null
           tag_version?: string | null
           text?: string
           top?: number | null
+          variant_id?: string | null
+          variant_state?: string | null
+          variant_version?: string | null
           wide_images?: number
           words: number
         }
@@ -3093,12 +3152,16 @@ export type Database = {
           owner_labelled_at?: string | null
           owner_labelled_by?: string | null
           purpose?: string | null
+          skeleton_fingerprint?: string | null
           styles?: string[] | null
           tag_pass?: string | null
           tag_state?: string | null
           tag_version?: string | null
           text?: string
           top?: number | null
+          variant_id?: string | null
+          variant_state?: string | null
+          variant_version?: string | null
           wide_images?: number
           words?: number
         }
@@ -3115,6 +3178,13 @@ export type Database = {
             columns: ['owner_labelled_by']
             isOneToOne: false
             referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_sections_variant_id_fkey'
+            columns: ['variant_id']
+            isOneToOne: false
+            referencedRelation: 'block_variants'
             referencedColumns: ['id']
           }
         ]
@@ -5336,6 +5406,72 @@ export type Database = {
           }
         ]
       }
+      strategy_runs: {
+        Row: {
+          attempts: number
+          created_at: string
+          created_by: string
+          error_code: string | null
+          id: string
+          lease_token: string | null
+          lease_until: string | null
+          offer_pick: Json | null
+          plan: Json | null
+          pulse: Json | null
+          start_on: string
+          state: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          created_by: string
+          error_code?: string | null
+          id?: string
+          lease_token?: string | null
+          lease_until?: string | null
+          offer_pick?: Json | null
+          plan?: Json | null
+          pulse?: Json | null
+          start_on: string
+          state?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          created_by?: string
+          error_code?: string | null
+          id?: string
+          lease_token?: string | null
+          lease_until?: string | null
+          offer_pick?: Json | null
+          plan?: Json | null
+          pulse?: Json | null
+          start_on?: string
+          state?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'strategy_runs_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'strategy_runs_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       support_messages: {
         Row: {
           actor_id: string
@@ -6114,6 +6250,18 @@ export type Database = {
           subject_key: string
         }[]
       }
+      claim_strategy_run: {
+        Args: { target?: string }
+        Returns: {
+          id: string
+          lease_token: string
+          offer_pick: Json
+          pulse: Json
+          start_on: string
+          state: string
+          tenant_id: string
+        }[]
+      }
       complete_asset_import: {
         Args: { import_id: string; t: string }
         Returns: undefined
@@ -6366,9 +6514,20 @@ export type Database = {
         }
         Returns: undefined
       }
+      fail_strategy_step: {
+        Args: { code: string; final?: boolean; lease: string; run: string }
+        Returns: string
+      }
       finalize_email_file_upload: {
         Args: { import: string; t: string }
         Returns: string
+      }
+      find_block_variants: {
+        Args: { keys: string[] }
+        Returns: {
+          fingerprint: string
+          variant_id: string
+        }[]
       }
       finish_capture_job: {
         Args: { job: string; lease: string; output: Json }
@@ -6433,6 +6592,14 @@ export type Database = {
       finish_result_job: {
         Args: { job: string; lease: string; output: Json }
         Returns: string
+      }
+      finish_strategy_plan: {
+        Args: { lease: string; result: Json; run: string }
+        Returns: undefined
+      }
+      finish_strategy_pulse: {
+        Args: { lease: string; result: Json; run: string }
+        Returns: undefined
       }
       fixture_copy_preference: {
         Args: { campaign: string; t: string }
@@ -6506,6 +6673,10 @@ export type Database = {
         Returns: string
       }
       operator_diagnostics: { Args: never; Returns: Json }
+      pick_strategy_offers: {
+        Args: { pick: Json; run: string; t: string }
+        Returns: undefined
+      }
       platform_ai_usage_today: {
         Args: never
         Returns: {
@@ -6545,6 +6716,10 @@ export type Database = {
           t: string
         }
         Returns: string
+      }
+      record_block_variants: {
+        Args: { job: string; lease: string; sections: Json }
+        Returns: Json
       }
       record_confirmation_click: {
         Args: {
@@ -6933,6 +7108,21 @@ export type Database = {
         Args: { delivery: string; t: string }
         Returns: string
       }
+      search_block_variants: {
+        Args: { filters?: Json; max_results?: number }
+        Returns: {
+          evidence: number
+          family: string
+          id: string
+          key: string
+          layout: string
+          matches: number
+          purpose: string
+          source: string
+          spec: Json
+          styles: string[]
+        }[]
+      }
       set_brand_timezone: {
         Args: { expected: string; t: string; timezone: string }
         Returns: boolean
@@ -6997,6 +7187,7 @@ export type Database = {
         Args: { candidate: string; observed_at: string; t: string }
         Returns: undefined
       }
+      start_strategy_run: { Args: { t: string }; Returns: string }
       submit_design: {
         Args: {
           assignment: string
