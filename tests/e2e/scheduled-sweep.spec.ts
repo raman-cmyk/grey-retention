@@ -413,28 +413,41 @@ test('INB-002 a sample inbox email keeps its images and its 600px screenshot sho
     )
     .toBe(shot.data!.screenshot_width)
 
-  // INB-003: the next sweep labels the email once: sections with block
-  // types, and its facts on the competitor email.
+  // INB-003 and CI-001: the next sweep tags the email once: each section
+  // with its family, layout and purpose, the email with its labels (the
+  // brand's niche gives the industry), and its facts.
   expect((await sweep(request, `Bearer ${secret}`)).status()).toBe(200)
   const labelled = await admin
     .from('inbox_messages')
-    .select('labelled_at,extraction_version,facts')
+    .select('labelled_at,extraction_version,facts,industry,labels_state')
     .eq('id', message.data!.id)
     .single()
   expect(labelled.data).toMatchObject({
-    extraction_version: 1,
-    facts: { subject: 'Spring layers are here', version: 1 }
+    extraction_version: 2,
+    facts: { subject: 'Spring layers are here', version: 2 }
   })
+  expect(['tagged', 'untagged']).toContain(labelled.data!.labels_state)
   const sections = await admin
     .from('email_sections')
-    .select('ordinal,block_type,label_source,image_path')
+    .select(
+      'ordinal,block_type,label_source,image_path,tag_state,layout,purpose'
+    )
     .eq('inbox_message_id', message.data!.id)
     .order('ordinal')
   expect(sections.data!.length).toBeGreaterThan(0)
   for (const s of sections.data!) {
     expect(s.label_source).toBe('sample')
     expect(s.image_path).toBe(`sect/${message.data!.id}/${s.ordinal}.jpg`)
+    // Tagged with every label, or untagged with none.
+    if (s.tag_state === 'tagged') expect(s.layout && s.purpose).toBeTruthy()
+    else
+      expect([s.tag_state, s.block_type, s.layout]).toEqual([
+        'untagged',
+        'unsure',
+        null
+      ])
   }
+  expect(sections.data!.some((s) => s.tag_state === 'tagged')).toBe(true)
   // The sample newsletter was sent a few days ago, so its brand summary
   // (the last 90 days) shows it.
   await page.reload()

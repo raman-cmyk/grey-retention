@@ -521,7 +521,8 @@ DATABASE_URL
 CREDENTIALS_ENCRYPTION_KEY
 CRON_SECRET
 ADAPTER_MODE=fake|real
-KLAVIYO_API_REVISION
+KLAVIYO_API_REVISION        unset, or the revision the client speaks (2026-10-15)
+KLAVIYO_MODE               live = check keys with Klaviyo (owner's switch); else sample
 AI_DEFAULT_PROVIDER
 ANTHROPIC_API_KEY          optional
 OPENAI_API_KEY             optional

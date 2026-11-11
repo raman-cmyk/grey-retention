@@ -16,9 +16,9 @@ select ok(not bool_or(has_function_privilege(r, f, 'execute')),'browser roles ca
   from unnest(array['anon','authenticated']) r,
        unnest(array['public.record_inbox_sections(uuid,uuid,text,jsonb,text,numeric)','public.record_inbox_screenshot(uuid,uuid,integer,integer,jsonb)',
          'public.record_inbox_labels(uuid,uuid,jsonb,jsonb,integer)']) f;
-select ok(bool_and(has_function_privilege('service_role', f, 'execute')),'the worker can')
+select ok(bool_and(has_function_privilege('service_role', f, 'execute')),'the worker can (CI-001 records tags instead of labels)')
   from unnest(array['public.record_inbox_sections(uuid,uuid,text,jsonb,text,numeric)','public.record_inbox_screenshot(uuid,uuid,integer,integer,jsonb)',
-    'public.record_inbox_labels(uuid,uuid,jsonb,jsonb,integer)']) f;
+    'public.record_section_tags(uuid,uuid,jsonb,text)','public.record_inbox_tags(uuid,uuid,jsonb,jsonb,integer)']) f;
 select ok(not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and p.proname = 'record_inbox_screenshot' and pg_get_function_identity_arguments(p.oid) = 'job uuid, lease uuid, width integer, height integer'),
   'the old screenshot command without boxes is gone');
@@ -97,7 +97,7 @@ reset role;
 -- A person's own label (INB-004 keeps it apart from the machine's).
 update public.email_sections set owner_block_type='hero_image', owner_labelled_at=now()
   where inbox_message_id=current_setting('test.message')::uuid and ordinal=2;
-set local role service_role;
+-- CI-001 retired this command for the worker; its rules still hold.
 select throws_ok($$select public.record_inbox_labels(current_setting('test.label')::uuid,current_setting('test.labellease')::uuid,'[]','{}',0)$$,'23514',null,'a version is required');
 select throws_ok($$select public.record_inbox_labels(current_setting('test.poll')::uuid,current_setting('test.polllease')::uuid,'[]','{"version":1}',1)$$,'23514',null,'another kind of job cannot record labels');
 select throws_ok($$select public.record_inbox_labels(current_setting('test.label')::uuid,current_setting('test.labellease')::uuid,
