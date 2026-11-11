@@ -297,6 +297,8 @@ Confirmed: reference-neutral visual direction, white-label-first architecture, c
 
 - EML-001 (2026-11-11): layer 1 of the email build (`features/email-build/sections.ts`). `BuildMode` is `copy` (D1 Exact: the competitor's tagged sections through ASM-003's `layoutSequence`, code only), `remix` (the competitor's angle as a structure-only `strategyNote`) or `scratch`. `Variant` (`id`, `family` = one of the 20 block types, `industries`, `emailTypes`, `score`) is the library shape CI-002's Variant maker should feed; until then `seedVariants` has one `<family>/seed` per type. `searchVariants` keeps allowed families for the industry and email type, best results first, 3 per family. The `section-planner` agent (purpose `copy`, Flash) picks variants by id; `checkSections` requires real variants of allowed families, the logo header first (after an optional announcement bar), the footer last, one button, one hero, products within the slot's count and an offer banner only with an offer. Then the usual 3 tries and a logged fallback to a safe layout per email type (`codeSectionPlan`), which always passes the check.
 
+- STR-003 part 2 (2026-11-11): "Plan next 15 days" end to end. Migration `strategy_runs` (number at merge, D24): one open run per workspace (`pulse_queued` → `offers_ready` → `plan_queued` → `planned`, or `failed`), starting tomorrow in the store's timezone; owner commands `start_strategy_run(t)` (returns the open run) and `pick_strategy_offers(t, run, pick)` (`auto`, `none`, or `picked` offer ids the pulse lists; PT409 when the run is not waiting); service-role job commands `claim_strategy_run()` (5-minute lease, skip locked, a step out of 3 attempts is failed), `finish_strategy_pulse`, `finish_strategy_plan` and `fail_strategy_step` (lease-checked; tried again until the third attempt). Even the service role writes only through the commands. `runStrategyRuns` (`features/strategy/worker.ts`) runs 2 steps per call from the cron route and right after the owner's click (`after()`); with no live model (the fake, the default) it takes the honest sample path (code pulse, moves and plan, nothing metered or logged), with Gemini it runs the agents through metered `runAi` with MEM-001's memory and run log and the fallback log. Store data comes through the `StrategyData` port; `sampleStrategyData` serves the sample store until lane B's readers land. The `/plan` screen (sidebar: Plan next 15 days) starts a plan, shows progress, the pulse and the offer pick, then every planned email with its reason and facts; staff see it read-only. "Create email" on a slot arrives with the email build.
+
 ## Migration allocation
 
 To reduce parallel conflicts, each workstream owns a numeric migration block. Do not renumber an already shared migration.
@@ -1469,3 +1471,14 @@ Append entries using this exact shape:
 - Verification run: format, lint, typecheck clean; `vitest run features/email-build features/strategy` 55/55.
 - Known issues: only seed variants until CI-002; results scores come from LRN-001/002. No screen yet: "Create email" on a plan slot arrives with STR-003 part 2.
 - Next consumer: EML-002 (Content locker) fills the planned sections with locked facts.
+
+### 2026-11-11 — STR-003 part 2 — the "Plan next 15 days" run, job and screen (sample data)
+
+- Status: review
+- Branch/worktree: `claude/str-003-part-2-plan-run` (issue #352), stacked on EML-001.
+- Commit(s): see the STR-003 part 2 pull request.
+- Changed contracts: see Global decision STR-003 part 2. New table, six commands, a sidebar item, `/plan` in the proxy matcher, the cron route runs plan steps (its reply gains `plans: { ran }`).
+- Migrations: `strategy_runs` (number chosen at merge time, D24).
+- Verification run: format, lint, typecheck clean; unit tests for the job (sample pulse, sample plan with the pick, 2 steps per call, failures with short codes, store data for other days, a pick not in the pulse), the actions (owner only, after() run, redirects, plain errors, PT409) and the screen (start, progress, offer pick, planned emails, failed, nothing fits); pgTAP `strategy_runs` 37/37; browser: plan (start → offers → plan → reload), desktop and mobile.
+- Known issues: the sample store serves every workspace until lane B's readers and the campaign defaults land; no "Create email" yet (EML wiring); with the fake AI the plan is code-only and says so.
+- Next consumer: EML-001's Section planner starts from a planned slot; LRN-002 reads plans and results.
