@@ -1825,6 +1825,66 @@ export type Database = {
           }
         ]
       }
+      catalog_status: {
+        Row: {
+          complete: boolean
+          currency: string | null
+          currency_check: string
+          featurable: number
+          live: boolean
+          products: number
+          reason: string | null
+          run_id: string
+          source: string | null
+          state: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          complete?: boolean
+          currency?: string | null
+          currency_check?: string
+          featurable?: number
+          live: boolean
+          products?: number
+          reason?: string | null
+          run_id: string
+          source?: string | null
+          state: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          complete?: boolean
+          currency?: string | null
+          currency_check?: string
+          featurable?: number
+          live?: boolean
+          products?: number
+          reason?: string | null
+          run_id?: string
+          source?: string | null
+          state?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'catalog_status_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'catalog_status_tenant_id_run_id_fkey'
+            columns: ['tenant_id', 'run_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       chat_messages: {
         Row: {
           actor_id: string
@@ -5362,48 +5422,100 @@ export type Database = {
       }
       products: {
         Row: {
+          bestseller_rank: number | null
+          catalog_run_id: string | null
+          compare_at_is_sale: boolean
+          compare_at_minor: number | null
           created_at: string
           currency: string
+          external_id: string | null
+          featurable: boolean
+          hidden_reason: string | null
           id: string
+          image_url: string | null
+          launched_at: string | null
+          new_arrival: boolean
           price_minor: number
+          retired_at: string | null
           source: string
           stock: number
+          stock_known: boolean
           stock_observed_at: string
           synthetic: boolean
           tenant_id: string
           title: string
+          units_30d: number | null
+          units_90d: number | null
           updated_at: string
           url: string
+          variant_count: number
         }
         Insert: {
+          bestseller_rank?: number | null
+          catalog_run_id?: string | null
+          compare_at_is_sale?: boolean
+          compare_at_minor?: number | null
           created_at?: string
           currency?: string
+          external_id?: string | null
+          featurable?: boolean
+          hidden_reason?: string | null
           id?: string
+          image_url?: string | null
+          launched_at?: string | null
+          new_arrival?: boolean
           price_minor?: number
+          retired_at?: string | null
           source: string
           stock?: number
+          stock_known?: boolean
           stock_observed_at: string
           synthetic?: boolean
           tenant_id: string
           title: string
+          units_30d?: number | null
+          units_90d?: number | null
           updated_at?: string
           url: string
+          variant_count?: number
         }
         Update: {
+          bestseller_rank?: number | null
+          catalog_run_id?: string | null
+          compare_at_is_sale?: boolean
+          compare_at_minor?: number | null
           created_at?: string
           currency?: string
+          external_id?: string | null
+          featurable?: boolean
+          hidden_reason?: string | null
           id?: string
+          image_url?: string | null
+          launched_at?: string | null
+          new_arrival?: boolean
           price_minor?: number
+          retired_at?: string | null
           source?: string
           stock?: number
+          stock_known?: boolean
           stock_observed_at?: string
           synthetic?: boolean
           tenant_id?: string
           title?: string
+          units_30d?: number | null
+          units_90d?: number | null
           updated_at?: string
           url?: string
+          variant_count?: number
         }
         Relationships: [
+          {
+            foreignKeyName: 'products_catalog_run_fk'
+            columns: ['tenant_id', 'catalog_run_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['tenant_id', 'id']
+          },
           {
             foreignKeyName: 'products_tenant_id_fkey'
             columns: ['tenant_id']
@@ -6537,6 +6649,35 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      claim_source_reading: {
+        Args: never
+        Returns: {
+          attempt: number
+          available_at: string
+          campaign_id: string | null
+          checkpoint: Json
+          created_at: string
+          created_by: string
+          error_code: string | null
+          failure_class: string | null
+          id: string
+          idempotency_key: string
+          input: Json
+          kind: string
+          lease_token: string | null
+          lease_until: string | null
+          max_attempts: number
+          status: string
+          tenant_id: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: '*'
+          to: 'job_runs'
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       claim_strategy_run: {
         Args: { target?: string }
         Returns: {
@@ -6987,6 +7128,10 @@ export type Database = {
         Returns: string
       }
       operator_diagnostics: { Args: never; Returns: Json }
+      pause_source_reading: {
+        Args: { job: string; lease: string; reason: string; seconds?: number }
+        Returns: undefined
+      }
       pick_strategy_offers: {
         Args: { pick: Json; run: string; t: string }
         Returns: undefined
@@ -7033,6 +7178,17 @@ export type Database = {
       }
       record_block_variants: {
         Args: { job: string; lease: string; sections: Json }
+        Returns: Json
+      }
+      record_catalog_reading: {
+        Args: {
+          findings: Json
+          job: string
+          lease: string
+          live: boolean
+          products: Json
+          summary: Json
+        }
         Returns: Json
       }
       record_confirmation_click: {
@@ -7517,6 +7673,8 @@ export type Database = {
         Returns: undefined
       }
       site_readings_waiting: { Args: never; Returns: number }
+      source_readings_waiting: { Args: never; Returns: number }
+      start_catalog_reading: { Args: { t: string }; Returns: string }
       start_site_reading: { Args: { t: string }; Returns: string }
       start_strategy_run: { Args: { t: string }; Returns: string }
       submit_design: {

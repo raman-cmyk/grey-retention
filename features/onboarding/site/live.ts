@@ -1,7 +1,6 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
-import { logger } from '@/lib/logger'
 import {
   SupabaseMemoryStore,
   SupabaseRunLog
@@ -9,10 +8,7 @@ import {
 import { SupabaseBudgetLedger } from '@/features/ai/budget-ledger'
 import { runAi } from '@/features/ai/run'
 import { aiSetup } from '@/features/ai/setup'
-import {
-  classifyFailure,
-  ProviderFault
-} from '@/features/integrations/failures'
+import { ProviderFault } from '@/features/integrations/failures'
 import {
   agentAsk,
   sampleAsk,
@@ -110,63 +106,6 @@ export async function runSiteReadingJob(
     })
   } catch (error) {
     throw jobFailure(error)
-  }
-}
-
-export type ReadersRun =
-  | { state: 'done'; reads: number; failed: number }
-  | { state: 'failed'; code: string }
-
-/**
- * The onboarding readers' run (ONB-101): the site reads waiting across the
- * workspaces, one after another, as the worker. A read is taken only while
- * `readersRunMs` has not passed; each takes at most `siteRunMs` plus one
- * capped call, so the run ends inside its route's 60 seconds. A read that
- * fails is recorded on its job (tried again later, at most four tries);
- * the run goes on. It never throws.
- */
-export async function runSiteReadings(
-  db: Db,
-  options: {
-    env?: NodeJS.ProcessEnv
-    budgetMs?: number
-    now?: () => number
-    read?: (db: Db, job: Job) => Promise<unknown>
-  } = {}
-): Promise<ReadersRun> {
-  const now = options.now ?? Date.now
-  const started = now()
-  const read =
-    options.read ?? ((d: Db, j: Job) => runSiteReadingJob(d, j, options.env))
-  const run = { state: 'done' as const, reads: 0, failed: 0 }
-  try {
-    while (now() - started < (options.budgetMs ?? readersRunMs)) {
-      const claimed = await db.rpc('claim_site_reading')
-      if (claimed.error) throw claimed.error
-      const job = (claimed.data as Job[] | null)?.[0]
-      if (!job) break
-      try {
-        await read(db, job)
-        run.reads++
-      } catch (error) {
-        run.failed++
-        const failed = await db.rpc('fail_job', {
-          job: job.id,
-          lease: job.lease_token!,
-          failure: classifyFailure(jobFailure(error))
-        })
-        if (failed.error)
-          logger.warn('Site read failure not recorded', {
-            code: failed.error.code ?? 'unknown'
-          })
-      }
-    }
-    logger.info('Onboarding readers run finished', run)
-    return run
-  } catch (error) {
-    const code = (error as { code?: string }).code ?? 'readers_run_error'
-    logger.error('Onboarding readers run failed', { code })
-    return { state: 'failed', code }
   }
 }
 

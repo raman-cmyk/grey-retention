@@ -5,6 +5,7 @@ import { builtEmail, buildEmail, type PlannedEmail } from './build'
 import { fakeDraftPusher } from '@/lib/providers/klaviyo-draft'
 import {
   endOfLocalDay,
+  featurableStock,
   offersAt,
   ownerOrSampleOffers,
   sampleOffers,
@@ -236,6 +237,32 @@ describe('the ports', () => {
       maxDiscountPercent: 0,
       codes: []
     })
+  })
+
+  it('feature a product unless its stock is known to be 0 (unknown stock is allowed)', async () => {
+    expect(featurableStock(0)).toBe(false)
+    expect(featurableStock(3)).toBe(true)
+    expect(featurableStock(null)).toBe(true)
+    expect(featurableStock(undefined)).toBe(true)
+    // An email built from products whose stock nobody knows still has them.
+    const store = await sampleStoreSource.read(tenantId)
+    const unknown = {
+      ...store,
+      products: store.products.map((p) => ({
+        ...p,
+        featurable: featurableStock(null)
+      }))
+    }
+    const result = await buildEmail(
+      {
+        planned: planned({ offer: null, emailType: 'bestseller' }),
+        store: unknown,
+        offers: sampleOffers
+      },
+      { tenantId, callerKey: 'email-build:b2', fallbacks: memoryFallbackLog() }
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.email.productIds.length).toBeGreaterThan(0)
   })
 
   it('fake pusher gives the same draft for the same key', async () => {

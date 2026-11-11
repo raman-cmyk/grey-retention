@@ -57,9 +57,18 @@ export type Store = {
   industry: string
   /** The store's IANA timezone. */
   timezone: string
+  /** `featurable` comes from `featurableStock`: unknown stock is allowed. */
   products: CatalogProduct[]
   facts: BrandFacts
 }
+
+/**
+ * Whether a product's stock lets an email feature it: only a stock known
+ * to be 0 rules it out. Unknown stock (null or missing, e.g. products
+ * built from Klaviyo "Viewed Product" events, lane B) is allowed, or emails
+ * for those stores would have no products at all.
+ */
+export const featurableStock = (stock: number | null | undefined) => stock !== 0
 
 export interface StoreSource {
   read(tenantId: string): Promise<Store>
@@ -147,8 +156,8 @@ export const sampleStoreFrom = (start: string): StoreSource => ({
         price: money(p.price, store.brand.currency),
         image: `${site}/images/${p.id}.jpg`,
         url: `${site}/products/${p.id}`,
-        // Sold out or not yet launched products are not featured.
-        featurable: p.stock !== 0
+        // A product known to be sold out is not featured.
+        featurable: featurableStock(p.stock)
       })),
       facts: unknownFacts
     }
