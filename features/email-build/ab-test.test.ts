@@ -145,6 +145,8 @@ describe('the A-vs-B test harness', () => {
       expect(p.b).toMatchObject({ approach: 'B', inspected: true, looks: 8 })
       // On fakes the picture is the product photo itself: the same email.
       expect(p.b!.html).toBe(p.a.html)
+      // Inspected and nothing wrong: B may become a Klaviyo variation.
+      expect(p.bSendable).toBe(true)
     }
     // One look per drawing: 2 emails, A and B.
     expect(ai).toHaveBeenCalledTimes(4)
@@ -163,22 +165,64 @@ describe('the A-vs-B test harness', () => {
     expect(ai).toHaveBeenCalledTimes(1)
   })
 
-  it('without the AI, asks the inspector once for the whole run and scores looks as unknown', async () => {
+  it('without the AI, asks the inspector once for the whole run and pays for no picture nobody can judge', async () => {
     const ai = inspector('refused')
+    const pictures = vi.fn(fakeHeroImages.design)
     const { pairs } = await run(
       emails(
         planned(),
         planned({ date: inDays(4) }),
         planned({ date: inDays(5) })
       ),
-      ai
+      ai,
+      { design: pictures }
     )
     expect(ai).toHaveBeenCalledTimes(1)
+    expect(pictures).not.toHaveBeenCalled()
     for (const p of pairs) {
       expect(p.a).toMatchObject({ inspected: false, looks: null })
-      expect(p.b).toMatchObject({ inspected: false, looks: null })
+      expect(p).toMatchObject({
+        bStatus: 'not_judged',
+        b: null,
+        bSendable: false
+      })
     }
-    expect(summarize(pairs).counted.looks).toBe(0)
+    expect(summarize(pairs)).toMatchObject({
+      made: 0,
+      notJudged: 3,
+      sendable: 0
+    })
+  })
+
+  it('never lets a B with a problem in its picture or the whole email become a variation, but keeps its looks', async () => {
+    const { pairs } = await run(
+      emails(planned()),
+      inspector({
+        problems: [
+          { area: 'images', section: 0, reason: 'The picture has words in it.' }
+        ],
+        score: 6
+      })
+    )
+    expect(pairs[0]).toMatchObject({ bStatus: 'made', bSendable: false })
+    expect(pairs[0].b).toMatchObject({ inspected: true, looks: 6 })
+    expect(summarize(pairs)).toMatchObject({
+      made: 1,
+      sendable: 0,
+      counted: { looks: 1 }
+    })
+  })
+
+  it('draws each slot once', async () => {
+    const { pairs, skipped } = await run(
+      [
+        { slot: 7, planned: planned() },
+        { slot: 7, planned: planned({ date: inDays(4) }) }
+      ],
+      inspector({ problems: [], score: 7 })
+    )
+    expect(pairs.map((p) => p.slot)).toEqual([7])
+    expect(skipped).toEqual([{ slot: 7, code: 'duplicate_slot' }])
   })
 
   it('keeps an answer whose score is out of range, without the score', async () => {
@@ -250,7 +294,8 @@ describe('the summary', () => {
     emailType: 'bestseller',
     a: drawing('A', a),
     b: b ? drawing('B', b) : null,
-    bStatus
+    bStatus,
+    bSendable: bStatus === 'made'
   })
 
   it('compares the same emails on both sides, and works without stars or results', () => {

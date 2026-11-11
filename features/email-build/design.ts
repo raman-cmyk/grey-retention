@@ -419,8 +419,7 @@ export async function look(
     agent: visualInspectorAgent.name,
     reasonCode: `visual_${result.reasonCode}`,
     reason: `The Visual inspector ${failedWords[result.reasonCode]}.`,
-    fallback:
-      'Judged the email with the screenshot checks only, and drew it with coded blocks.',
+    fallback: 'Judged the email with the screenshot checks only.',
     attempts: result.tries,
     detail: result.runId ? { runId: result.runId } : {},
     dedupeKey: `visual-inspector:${keyPart(ctx.callerKey)}`

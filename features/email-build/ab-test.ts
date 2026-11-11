@@ -1,5 +1,5 @@
 import type { OfferSource } from '@/features/offers/source'
-import { keyPart } from '@/features/fallback/entry'
+import { clip, keyPart } from '@/features/fallback/entry'
 import { gmailClipBytes } from '@/features/release-qa/checks'
 import { lockedDraft, type PlannedEmail } from './build'
 import {
@@ -8,6 +8,7 @@ import {
   designedPictureOk,
   heroIndex,
   look,
+  visualInspectorAgent,
   type Approach,
   type HeroImagePort,
   type Look,
@@ -35,8 +36,9 @@ import type { Store } from './ports'
  * Sending (supervisor, 11 Nov, option a): each planned email goes into
  * Klaviyo as one draft with A and B as two variations of the same content,
  * day and audience, split 50/50 with no automatic winner; the owner still
- * schedules it (D17). Only a made B is ever a variation B. No run waits on
- * the owner (D16): the stars are optional.
+ * schedules it (D17). Only a sendable B (inspected, and nothing wrong in its
+ * picture or the whole email: VISION rules 9 and 10) is ever a variation B.
+ * No run waits on the owner (D16): the stars are optional.
  *
  * This part has no database and no screen; the comparison page and the
  * owner's saved default come in part 2, as a leased job with a spending cap.
@@ -145,8 +147,12 @@ export type Drawing = {
   deliverability: Deliverability
 }
 
-/** B for one email: drawn, not drawn (no product hero), or its picture failed. */
-export type BStatus = 'made' | 'no_hero' | 'picture_failed'
+/**
+ * B for one email: drawn; not drawn because the email has no product hero,
+ * or because the inspector gave up earlier in the run (no picture is paid
+ * for that nobody can judge); or its picture could not be made.
+ */
+export type BStatus = 'made' | 'no_hero' | 'not_judged' | 'picture_failed'
 
 export type AbPair = {
   /** The planned email's place in its plan (stable: stars and results use it). */
@@ -157,6 +163,11 @@ export type AbPair = {
   /** Only a made B: never A's drawing under B's name. */
   b: Drawing | null
   bStatus: BStatus
+  /**
+   * B may become Klaviyo variation B: made, inspected, and nothing wrong in
+   * its picture's section or the whole email. Its looks still count when not.
+   */
+  bSendable: boolean
 }
 
 type Ctx = Parameters<typeof look>[5]
@@ -198,7 +209,14 @@ export async function runAbTest(
   // Short enough that the slot and approach survive `keyPart`'s limit.
   const base = ctx.callerKey.slice(0, 80)
   const brand = input.store.brand
+  const seen = new Set<number>()
   for (const { slot, planned } of input.emails.slice(0, abTestSize)) {
+    // One drawing per planned email: stars, results and logs key on the slot.
+    if (seen.has(slot)) {
+      skipped.push({ slot, code: 'duplicate_slot' })
+      continue
+    }
+    seen.add(slot)
     const key = `${base}:${slot}`
     const made = await lockedDraft(
       { planned, store: input.store, offers: input.offers },
@@ -208,14 +226,15 @@ export async function runAbTest(
       skipped.push({ slot, code: made.code })
       continue
     }
-    const pair = (b: Drawing | null, bStatus: BStatus) =>
+    const pair = (b: Drawing | null, bStatus: BStatus, bSendable = false) =>
       pairs.push({
         slot,
         date: planned.date,
         emailType: planned.emailType,
         a,
         b,
-        bStatus
+        bStatus,
+        bSendable
       })
     const aDesign = designA(made.draft, brand)
     const a = drawing(
@@ -235,6 +254,10 @@ export async function runAbTest(
     const at = heroIndex(made.draft)
     if (at < 0) {
       pair(null, 'no_hero')
+      continue
+    }
+    if (gaveUp.has(visualInspectorAgent.name)) {
+      pair(null, 'not_judged')
       continue
     }
     const hero = made.draft.blocks[at].content as {
@@ -267,29 +290,29 @@ export async function runAbTest(
         fallback:
           'This email is left out of the comparison; A was drawn alone.',
         attempts: 1,
-        detail: { code: picture.ok ? 'image_not_https' : picture.code },
+        detail: {
+          code: picture.ok ? 'image_not_https' : clip(picture.code, 60)
+        },
         dedupeKey: `ab-test:${keyPart(key)}`
       })
       pair(null, 'picture_failed')
       continue
     }
     const bDesign = designB(made.draft, brand, picture.url)
+    const bSeen = await look(
+      'B',
+      bDesign,
+      brand,
+      { section: at + 1, source: picture.source },
+      ports.shots,
+      { ...ctx, callerKey: `${key}:B` },
+      gaveUp
+    )
     pair(
-      drawing(
-        'B',
-        bDesign.html,
-        await look(
-          'B',
-          bDesign,
-          brand,
-          { section: at + 1, source: picture.source },
-          ports.shots,
-          { ...ctx, callerKey: `${key}:B` },
-          gaveUp
-        ),
-        picture.bytes ?? null
-      ),
-      'made'
+      drawing('B', bDesign.html, bSeen, picture.bytes ?? null),
+      'made',
+      bSeen.inspected &&
+        !bSeen.findings.some((f) => f.section === null || f.section === at + 1)
     )
   }
   return { pairs, skipped }
@@ -358,11 +381,14 @@ export function summarize(
     }
   }
   return {
-    /** Emails drawn; with B made; without a product hero; B picture failed. */
+    /** Emails drawn; with B made; without a product hero; not judged; B picture failed. */
     emails: pairs.length,
     made: made.length,
     noHero: pairs.filter((p) => p.bStatus === 'no_hero').length,
+    notJudged: pairs.filter((p) => p.bStatus === 'not_judged').length,
     pictureFailed: pairs.filter((p) => p.bStatus === 'picture_failed').length,
+    /** Bs that may become Klaviyo variations. */
+    sendable: pairs.filter((p) => p.bSendable).length,
     /** Pairs each score was averaged over. */
     counted: {
       looks: judged.length,
