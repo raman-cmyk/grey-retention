@@ -200,6 +200,15 @@ describe('CI workflows', () => {
     }
   })
 
+  it('retries the browser system packages so a mirror hiccup is not a failed run', () => {
+    const browser = read('browser.yml')
+    expect(browser).not.toContain('playwright install --with-deps')
+    expect(browser).toContain('pnpm exec playwright install chromium')
+    expect(browser).toMatch(/for attempt in 1 2 3; do/)
+    expect(browser).toContain('apt-get -o Acquire::Retries=3 update')
+    expect(browser).toContain('pnpm exec playwright install-deps chromium')
+  })
+
   it('keeps a failed browser run debuggable', () => {
     const browser = read('browser.yml')
     // A step limit below the job limit turns a slow run into a failure, so
