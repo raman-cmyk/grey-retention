@@ -142,7 +142,14 @@ describe('addDiscountCode', () => {
       (await addDiscountCode({}, form({ code: 'WELCOME15', percent: '15' })))
         .error
     ).toBe('WELCOME15 is already in your list.')
-    fail('PT409', 'Too many codes')
+    rpc.mockResolvedValueOnce({
+      data: null,
+      error: {
+        code: 'PT409',
+        message: 'Too many codes',
+        details: 'too_many_codes'
+      }
+    })
     expect(
       (await addDiscountCode({}, form({ code: 'MORE5', percent: '5' }))).error
     ).toMatch(/200 codes/)

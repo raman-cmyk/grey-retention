@@ -92,10 +92,10 @@ export function OffersCard({
                 <span>{c.percent}% off</span>
                 <span className="text-[var(--text-muted)]">
                   {c.expiresAt
-                    ? `until ${formatBrandDate(c.expiresAt, timezone)}`
+                    ? `${c.ended ? 'ended' : 'until'} ${formatBrandDate(c.expiresAt, timezone)}`
                     : 'no end date'}
                 </span>
-                {aboveMax(c) && (
+                {!c.ended && aboveMax(c) && (
                   <span className="text-[var(--text-muted)]">
                     above your max, not used
                   </span>

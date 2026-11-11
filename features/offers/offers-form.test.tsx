@@ -15,13 +15,15 @@ const codes = [
     id: '00000000-0000-4000-8000-0000000000c1',
     code: 'WELCOME15',
     percent: 15,
-    expiresAt: null
+    expiresAt: null,
+    ended: false
   },
   {
     id: '00000000-0000-4000-8000-0000000000c2',
     code: 'BIGSALE40',
     percent: 40,
-    expiresAt: '2026-12-31T18:14:59.000Z'
+    expiresAt: '2026-12-31T18:14:59.000Z',
+    ended: false
   }
 ]
 

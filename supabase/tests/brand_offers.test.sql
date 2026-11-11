@@ -47,15 +47,50 @@ select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-00000000
 select is((select count(*) from public.brand_offers)+(select count(*) from public.discount_codes),0::bigint,'another brand sees nothing');
 select throws_ok($$select public.set_max_discount('00000000-0000-4000-8000-000000000101',90,3)$$,'42501',null,'another brand cannot change the max discount');
 select throws_ok($$select public.add_discount_code('00000000-0000-4000-8000-000000000101','THEIRS90',90,null)$$,'42501',null,'another brand cannot add a code');
+reset role;
+select set_config('test.active_code',(select id::text from public.discount_codes where status='active' limit 1),true);
+set local role authenticated;
+select throws_ok($$select public.retire_discount_code(current_setting('test.active_code')::uuid)$$,'42501',null,'another brand cannot retire a real code');
 select throws_ok($$select public.retire_discount_code(gen_random_uuid())$$,'42501',null,'an unknown code is unavailable');
 
 -- Operators read for support.
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
 select is((select count(*) from public.discount_codes where status='active'),2::bigint,'an operator reads the codes');
+select throws_ok($$select public.set_max_discount('00000000-0000-4000-8000-000000000101',90,3)$$,'42501',null,'an operator cannot change the max discount');
+select throws_ok($$select public.add_discount_code('00000000-0000-4000-8000-000000000101','OPS90',90,null)$$,'42501',null,'an operator cannot add a code');
+
+-- The worker reads, but never writes directly or calls the owner commands.
+reset role;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+set local role service_role;
+select is((select count(*) from public.discount_codes where status='active'),2::bigint,'the worker reads the codes');
+select throws_ok($$insert into public.discount_codes(tenant_id,code,percent) values('00000000-0000-4000-8000-000000000101','WORKER50',50)$$,'42501',null,'the worker cannot insert a code');
+select throws_ok($$update public.brand_offers set max_discount_percent=90$$,'42501',null,'the worker cannot change the max discount');
+select throws_ok($$select public.set_max_discount('00000000-0000-4000-8000-000000000101',90,3)$$,'42501',null,'the worker cannot call the owner commands');
+
+-- An ended code is retired when the next code is added, freeing its spelling and its place.
+reset role;
+update public.discount_codes set expires_at=now()-interval '1 hour' where code='CANDLE10';
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+set local role authenticated;
+select lives_ok($$select public.add_discount_code('00000000-0000-4000-8000-000000000101','CANDLE10',10,null)$$,'an ended code can be added again');
+select is((select status from public.discount_codes where code='CANDLE10' and expires_at is not null),'retired','the ended code was retired');
+
+-- At most 200 active codes.
+do $$ begin
+  for i in 1..198 loop
+    perform public.add_discount_code('00000000-0000-4000-8000-000000000101','BULK'||i,5,null);
+  end loop;
+end $$;
+select is((select count(*) from public.discount_codes where status='active'),200::bigint,'200 active codes');
+select throws_ok($$select public.add_discount_code('00000000-0000-4000-8000-000000000101','ONEMORE',5,null)$$,'PT409',null,'the 201st code is refused');
 
 -- No sign-in, no access.
 reset role;
+select set_config('request.jwt.claims','{}',true);
 set local role anon;
+select throws_ok($$select count(*) from public.discount_codes$$,'42501',null,'anonymous callers cannot read codes');
+select throws_ok($$select count(*) from public.brand_offers$$,'42501',null,'anonymous callers cannot read the max discount');
 select throws_ok($$select public.set_max_discount('00000000-0000-4000-8000-000000000101',10,3)$$,'42501',null,'anonymous callers are refused');
 
 select * from finish();

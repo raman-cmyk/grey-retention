@@ -28,7 +28,11 @@ export interface OfferSource {
 }
 
 /** A code the owner manages in Settings. */
-export type ManagedCode = DiscountCode & { id: string }
+export type ManagedCode = DiscountCode & {
+  id: string
+  /** Its end date has passed; agents no longer use it. */
+  ended: boolean
+}
 
 type Row = Record<string, unknown>
 type Query = PromiseLike<{ data: Row[] | null; error: unknown }>
@@ -45,7 +49,7 @@ type Untyped = {
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-function toCode(row: Row): ManagedCode | null {
+function toCode(row: Row, now: number): ManagedCode | null {
   const percent = Number(row.percent)
   if (
     typeof row.id !== 'string' ||
@@ -55,13 +59,15 @@ function toCode(row: Row): ManagedCode | null {
     percent > 100
   )
     return null
+  const expiresAt = row.expires_at
+    ? new Date(String(row.expires_at)).toISOString()
+    : null
   return {
     id: row.id,
     code: row.code,
     percent,
-    expiresAt: row.expires_at
-      ? new Date(String(row.expires_at)).toISOString()
-      : null
+    expiresAt,
+    ended: expiresAt !== null && Date.parse(expiresAt) <= now
   }
 }
 
@@ -101,7 +107,7 @@ export class SupabaseOfferSource implements OfferSource {
       maxDiscountPercent: row ? Number(row.max_discount_percent) : null,
       revision: row ? Number(row.revision) : 0,
       codes: codes.data
-        .map(toCode)
+        .map((r) => toCode(r, Date.now()))
         .filter((c): c is ManagedCode => c !== null)
         .sort((a, b) => a.code.localeCompare(b.code))
     }

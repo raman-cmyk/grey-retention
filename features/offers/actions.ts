@@ -14,7 +14,7 @@ type Rpc = {
     args: Record<string, unknown>
   ): PromiseLike<{
     data: unknown
-    error: { code?: string; message?: string } | null
+    error: { code?: string; message?: string; details?: string } | null
   }>
 }
 
@@ -92,7 +92,7 @@ export async function addDiscountCode(
     if (error.code === 'PT409')
       return {
         error:
-          error.message === 'Too many codes'
+          error.details === 'too_many_codes'
             ? 'You have 200 codes. Remove one you no longer use first.'
             : `${code} is already in your list.`
       }

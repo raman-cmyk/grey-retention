@@ -57,19 +57,30 @@ describe('SupabaseOfferSource', () => {
           id: '00000000-0000-4000-8000-0000000000c1',
           code: 'WELCOME15',
           percent: 15,
-          expiresAt: null
+          expiresAt: null,
+          ended: false
         },
         {
           id: '00000000-0000-4000-8000-0000000000c2',
           code: 'ZED10',
           percent: 10,
-          expiresAt: null
+          expiresAt: null,
+          ended: false
         }
       ]
     })
     expect(calls).toEqual([
       ['discount_codes', 'tenant_id', tenant, 'status', 'active']
     ])
+  })
+
+  it('marks a code whose end date has passed', async () => {
+    const { db } = fakeDb(
+      [],
+      [code({ expires_at: '2020-01-01T00:00:00+00:00' })]
+    )
+    const managed = await new SupabaseOfferSource(db).managed(tenant)
+    expect(managed?.codes[0]).toMatchObject({ code: 'WELCOME15', ended: true })
   })
 
   it('says "not set" before the owner saves anything', async () => {

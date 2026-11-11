@@ -9,7 +9,7 @@ create table public.brand_offers (
   tenant_id uuid primary key references public.tenants(id),
   max_discount_percent integer not null check (max_discount_percent between 0 and 100),
   revision integer not null default 1 check (revision >= 1),
-  updated_by uuid references auth.users(id),
+  updated_by uuid references public.profiles(id) on delete set null,
   updated_at timestamptz not null default now()
 );
 
@@ -20,7 +20,7 @@ create table public.discount_codes (
   percent integer not null check (percent between 1 and 100),
   expires_at timestamptz,
   status text not null default 'active' check (status in ('active', 'retired')),
-  created_by uuid references auth.users(id),
+  created_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now(),
   retired_at timestamptz,
   check ((status = 'retired') = (retired_at is not null))
@@ -77,7 +77,8 @@ begin
 end $$;
 
 -- Adds a real code. A code that already works, a past expiry or more than
--- 200 active codes is refused.
+-- 200 active codes is refused. Codes whose end date has passed are retired
+-- first, so they never block a new code or count toward the 200.
 create or replace function public.add_discount_code(t uuid, code text, percent integer, expires_at timestamptz) returns uuid language plpgsql security definer set search_path='' as $$
 declare rid uuid; c text := btrim(code);
 begin
@@ -85,11 +86,13 @@ begin
  if c is null or c !~ '^[A-Za-z0-9_-]{3,40}$' then raise exception 'Invalid code' using errcode='23514'; end if;
  if percent is null or percent < 1 or percent > 100 then raise exception 'Percent must be 1 to 100' using errcode='23514'; end if;
  if expires_at is not null and expires_at <= now() then raise exception 'Code already expired' using errcode='23514'; end if;
+ update public.discount_codes d set status = 'retired', retired_at = now()
+  where d.tenant_id = t and d.status = 'active' and d.expires_at is not null and d.expires_at <= now();
  if exists (select 1 from public.discount_codes d where d.tenant_id = t and d.status = 'active' and upper(d.code) = upper(c)) then
-  raise exception 'Code already added' using errcode='PT409';
+  raise exception 'Code already added' using errcode='PT409', detail='duplicate_code';
  end if;
  if (select count(*) from public.discount_codes d where d.tenant_id = t and d.status = 'active') >= 200 then
-  raise exception 'Too many codes' using errcode='PT409';
+  raise exception 'Too many codes' using errcode='PT409', detail='too_many_codes';
  end if;
  insert into public.discount_codes (tenant_id, code, percent, expires_at, created_by) values (t, c, percent, expires_at, auth.uid()) returning id into rid;
  return rid;
@@ -106,6 +109,6 @@ begin
 end $$;
 
 revoke all on function public.set_max_discount(uuid, integer, integer), public.add_discount_code(uuid, text, integer, timestamptz),
-  public.retire_discount_code(uuid) from public, anon;
+  public.retire_discount_code(uuid) from public, anon, service_role;
 grant execute on function public.set_max_discount(uuid, integer, integer), public.add_discount_code(uuid, text, integer, timestamptz),
   public.retire_discount_code(uuid) to authenticated;
