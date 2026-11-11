@@ -6,7 +6,7 @@ The rules above are shared with every coding agent working in this repository (C
 
 ## What this product is
 
-Grey Retention (the AI agent inside it is called GROS) lets a small Klaviyo store owner set a max discount, enter discount codes and approve one batch of emails a week; strategy, calendar, copy, block-built design and scheduling run themselves, learned from competitors' emails in the Inspiration inbox. Klaviyo only (no Shopify), no designer. **Start with `docs/BUILD_BRIEF.md`**, then `docs/VISION.md` (source of truth). Build state lives in `docs/BUILD_LEDGER.md`; old plans are in `docs/archive/`.
+Grey Retention (the AI team inside it is called GROS) lets a small Klaviyo store owner set a max discount and real discount codes, then click "Plan next 15 days" or "Create email" whenever he wants; a team of AI agents understands the brand, plans, writes, designs, checks its own work and learns do's and don'ts from results and competitors' emails. No human loop and no weekly approval (decisions D16–D24). Read `docs/AGENT_MAP.md` after the build brief. Klaviyo only (no Shopify), no designer. **Start with `docs/BUILD_BRIEF.md`**, then `docs/VISION.md` (source of truth). Build state lives in `docs/BUILD_LEDGER.md`; old plans are in `docs/archive/`.
 
 ## Current owner corrections
 
@@ -71,7 +71,7 @@ Every migration is `20260914` + two-digit domain + four-digit sequence, for exam
 | `2026091408xxxx` | Operations, packages, reports             |
 | `2026091409xxxx` | Final integration / cross-domain commands |
 
-Use `/new-migration <domain> <short_name>` to get the next number.
+Use `/new-migration <domain> <short_name>` to get the next number. **D24:** choose the final number at merge time: rename your unmerged migration to the next number after the newest on `main` right before merging.
 
 ## Known traps
 
@@ -81,7 +81,7 @@ Use `/new-migration <domain> <short_name>` to get the next number.
 - **Generated types** only come from `pnpm supabase:types`; never hand-edit `database.types.ts`.
 - **Secrets:** never read, print, or commit `.env`, `.env.local`, or `.audit/` (it holds random local passwords and cron secrets). Settings deny reading them.
 - **Fake by default:** `ADAPTER_MODE=fake` and `AI_DEFAULT_PROVIDER=fake`. Switching anything to a live Klaviyo/Shopify/AI/email provider, sending email, deploying, or touching a remote Supabase project needs the owner's explicit OK in the conversation.
-- **Owner approval is sacred:** copy, design, and consequential AI/Klaviyo actions require explicit owner confirmation. Admins never creatively approve. Don't add shortcuts around this.
+- **The owner starts consequential work:** emails are created only when the owner clicks Create, and land in Klaviyo as drafts until he schedules them (D17). Inside a run there is no human loop (D16): agents check each other and fall back safely. Admins never creatively approve. Live providers still need the owner's OK.
 
 ## Claude Code setup in this repo
 
