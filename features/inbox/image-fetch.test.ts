@@ -19,6 +19,10 @@ beforeAll(async () => {
   server = createServer((req, res) => {
     const path = req.url ?? '/'
     if (path === '/a.png') return res.writeHead(200).end(png)
+    if (path === '/page.html')
+      return res
+        .writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+        .end('<p>Hello</p>')
     if (path === '/missing.png') return res.writeHead(404).end()
     if (path === '/declared-big.png')
       return res.writeHead(200, { 'content-length': '999999' }).end()
@@ -55,8 +59,9 @@ afterAll(() => {
 
 // "shop.test" plays a public host and "inside.test" a private one, both on
 // this machine; only 10.x counts as private here.
-const fetcher = () =>
+const fetcher = (types?: RegExp) =>
   createImageFetcher({
+    types,
     ports: [port],
     isReserved: (a) => a.startsWith('10.') || a === '::ffff:10.0.0.9',
     resolve: (host, done) =>
@@ -79,6 +84,21 @@ describe('the live image fetcher', () => {
     expect(Buffer.from((got as { bytes: Uint8Array }).bytes).equals(png)).toBe(
       true
     )
+  })
+
+  it('reads only the content types asked for, when asked (the Site reader: HTML only)', async () => {
+    const pages = fetcher(/^\s*text\/html\b/i)
+    expect(await pages.fetch(at('/page.html'), limits)).toMatchObject({
+      ok: true
+    })
+    expect(await pages.fetch(at('/a.png'), limits)).toEqual({
+      ok: false,
+      failure: 'broken'
+    })
+    // Without a type rule anything is read, as before.
+    expect(await fetcher().fetch(at('/page.html'), limits)).toMatchObject({
+      ok: true
+    })
   })
 
   it('reports broken links, oversized files and slow servers', async () => {
