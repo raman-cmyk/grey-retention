@@ -14,12 +14,7 @@ import {
   type CopyFeedback,
   type Draft
 } from '@/features/assembly/assemble'
-import {
-  failedWords,
-  outputLimit,
-  tryAgent,
-  type AgentCtx
-} from '@/features/strategy/retry'
+import { failedWords, tryAgent, type AgentCtx } from '@/features/strategy/retry'
 import type { LockedContent } from './content'
 
 /**
@@ -390,7 +385,7 @@ export const brandInspectorAgent: AgentDefinition<
     }),
   schema,
   output: answer,
-  maxOutputTokens: outputLimit(900, 'low'),
+  maxOutputTokens: 900,
   temperature: 0.1,
   reasoningEffort: 'low',
   usesBrandBook: true
@@ -417,7 +412,7 @@ export const emailInspectorAgent: AgentDefinition<
     }),
   schema,
   output: answer,
-  maxOutputTokens: outputLimit(700, 'none'),
+  maxOutputTokens: 700,
   temperature: 0.1,
   reasoningEffort: 'none'
 }
