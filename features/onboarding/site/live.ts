@@ -51,16 +51,17 @@ export function jobFailure(error: unknown): unknown {
   )
 }
 
-/** The environment of the readers' run: every model call capped. */
+/**
+ * The environment of the readers' run: every model call capped. The
+ * timeout the AI setup really uses (it ignores a value it cannot take and
+ * uses its default) is read back, so the cap always holds.
+ */
 export function cappedEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const configured = Number(env.GEMINI_TIMEOUT_MS)
+  const setup = aiSetup('review', env)
+  const used = 'timeoutMs' in setup ? setup.timeoutMs : siteCallTimeoutMs
   return {
     ...env,
-    GEMINI_TIMEOUT_MS: String(
-      Number.isFinite(configured) && configured > 0
-        ? Math.min(configured, siteCallTimeoutMs)
-        : siteCallTimeoutMs
-    )
+    GEMINI_TIMEOUT_MS: String(Math.min(used, siteCallTimeoutMs))
   } as NodeJS.ProcessEnv
 }
 

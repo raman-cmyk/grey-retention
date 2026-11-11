@@ -1,5 +1,5 @@
 begin;
-select plan(84);
+select plan(86);
 
 -- ONB-101: onboarding findings and the Site reader's job. Owner ...01 and
 -- staff ...05 are in workspace 101 (cedar-lane.example); owner ...04 runs
@@ -201,6 +201,20 @@ select is((select kind||'/'||status from public.claim_site_reading()),'brand.rea
 select isnt((select lease_until < now() and status = 'running' from public.job_runs where id = current_setting('test.job5')::uuid),true,
   'a read whose lease ran out is taken back');
 reset role;
+-- A paused workspace's read waits; a read whose lease ran out on its fourth
+-- try is failed, not tried again.
+select set_config('test.r2',pg_temp.job('00000000-0000-4000-8000-000000000102','brand.read_site:test:r2','north-studio.example','2 hours'),true);
+update public.tenants set status = 'paused' where id = '00000000-0000-4000-8000-000000000102';
+update public.job_runs set status = 'running', attempt = 4, lease_token = gen_random_uuid(), lease_until = now() - interval '1 second'
+  where id = current_setting('test.r1')::uuid;
+set local role service_role;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+select ok(not exists (select 1 from generate_series(1,5) g, lateral public.claim_site_reading() c
+    where c.tenant_id = '00000000-0000-4000-8000-000000000102'),'a paused workspace''s read waits');
+select is((select status from public.job_runs where id = current_setting('test.r1')::uuid),'failed',
+  'a read whose lease ran out on its fourth try is failed');
+reset role;
+update public.tenants set status = 'active' where id = '00000000-0000-4000-8000-000000000102';
 update public.job_runs set status = 'failed', attempt = 4 where id = current_setting('test.job')::uuid;
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);

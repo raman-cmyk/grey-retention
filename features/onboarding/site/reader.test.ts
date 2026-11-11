@@ -236,6 +236,34 @@ describe('readSitePage', () => {
     ).toEqual([{ subject: 'product' }])
   })
 
+  it('takes a year of returns as 365 days, and no returns only when the page says so', () => {
+    const policy = readPage(
+      '<p>Returns are accepted within 1 year of delivery.</p><p>All sale items are final sale.</p><p>We are happy to help you.</p>',
+      'https://shop.example/pages/returns',
+      'returns'
+    )
+    const returns = (quote: string, days: number) => ({
+      topic: 'returns' as const,
+      statement: 'Returns.',
+      quote,
+      confidence: 0.9,
+      days
+    })
+    expect(
+      checkedFindings(policy, [
+        returns('Returns are accepted within 1 year of delivery.', 365),
+        returns('All sale items are final sale.', 0),
+        returns('We are happy to help you.', 0)
+      ]).kept.map((f) => [
+        ('quote' in f.evidence && f.evidence.quote) || '',
+        f.value
+      ])
+    ).toEqual([
+      ['Returns are accepted within 1 year of delivery.', { days: 365 }],
+      ['All sale items are final sale.', { days: 0 }]
+    ])
+  })
+
   it('reads prices with thousands separators', () => {
     const big = readPage(
       '<p>The Cabin Sofa — $1,299.00</p><p>The Lounge Chair — $649.00</p>',

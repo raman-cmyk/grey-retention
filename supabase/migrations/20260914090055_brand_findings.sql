@@ -260,24 +260,29 @@ language sql stable security definer set search_path = '' as $$
 $$;
 
 -- The next site read due, across active workspaces, leased to the worker
--- for 90 seconds. A read whose lease ran out is tried again (or failed
--- after its fourth try) first. Locks: the tenant first, then the job.
+-- for 90 seconds; a read whose lease ran out is taken back first (or
+-- failed after its fourth try). Locks: the tenant first, then its jobs; the
+-- candidate is chosen without a lock, and a read another worker took in
+-- the meantime is skipped (the next call takes the next one).
 create or replace function public.claim_site_reading() returns setof public.job_runs
 language plpgsql security definer set search_path = '' as $$
-declare candidate public.job_runs; j public.job_runs;
+declare candidate uuid; tenant uuid; j public.job_runs;
 begin
   if coalesce(auth.role(), '') <> 'service_role' then raise exception 'Access denied' using errcode = '42501'; end if;
+  select r.id, r.tenant_id into candidate, tenant from public.job_runs r
+    join public.tenants t on t.id = r.tenant_id and t.status = 'active'
+    where r.kind = 'brand.read_site'
+      and ((r.status in ('queued','retry_wait') and r.attempt < 4 and r.available_at <= now())
+        or (r.status in ('leased','running') and r.lease_until < now()))
+    order by r.available_at, r.created_at limit 1;
+  if candidate is null then return; end if;
+  perform 1 from public.tenants where id = tenant and status = 'active' for update;
+  if not found then return; end if;
   update public.job_runs set status = case when attempt >= 4 then 'failed' else 'retry_wait' end, lease_token = null, lease_until = null,
       available_at = now(), error_code = 'stale_lease', updated_at = now()
-    where kind = 'brand.read_site' and status in ('leased','running') and lease_until < now();
-  select r.* into candidate from public.job_runs r join public.tenants t on t.id = r.tenant_id and t.status = 'active'
-    where r.kind = 'brand.read_site' and r.status in ('queued','retry_wait') and r.attempt < 4 and r.available_at <= now()
-    order by r.available_at, r.created_at limit 1;
-  if candidate.id is null then return; end if;
-  perform 1 from public.tenants where id = candidate.tenant_id and status = 'active' for update;
-  if not found then return; end if;
+    where tenant_id = tenant and kind = 'brand.read_site' and status in ('leased','running') and lease_until < now();
   select * into j from public.job_runs
-    where id = candidate.id and status in ('queued','retry_wait') and attempt < 4 and available_at <= now()
+    where id = candidate and status in ('queued','retry_wait') and attempt < 4 and available_at <= now()
     for update skip locked;
   if j.id is null then return; end if;
   return query update public.job_runs set status = 'running', attempt = attempt + 1, lease_token = gen_random_uuid(),

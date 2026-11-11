@@ -14,6 +14,8 @@ const serverEnvironmentSchema = z.object({
   // accepted so a typo never breaks other pages
   // (features/connections/live-klaviyo.ts).
   KLAVIYO_MODE: z.string().optional(),
+  /** `live` reads real brand websites (ONB-101); the owner's switch, off by default. */
+  SITE_READER_MODE: z.string().optional(),
   AI_DEFAULT_PROVIDER: z.string().default('fake'),
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),

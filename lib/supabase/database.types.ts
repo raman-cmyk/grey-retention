@@ -892,6 +892,45 @@ export type Database = {
           }
         ]
       }
+      brand_offers: {
+        Row: {
+          max_discount_percent: number
+          revision: number
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          max_discount_percent: number
+          revision?: number
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          max_discount_percent?: number
+          revision?: number
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_offers_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_offers_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       brand_profile_sections: {
         Row: {
           content: Json
@@ -2758,6 +2797,57 @@ export type Database = {
             columns: ['profile_id']
             isOneToOne: true
             referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      discount_codes: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          percent: number
+          retired_at: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          percent: number
+          retired_at?: string | null
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          percent?: number
+          retired_at?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'discount_codes_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'discount_codes_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
             referencedColumns: ['id']
           }
         ]
@@ -5991,6 +6081,10 @@ export type Database = {
         Args: { body: string; t: string; target_id: string }
         Returns: undefined
       }
+      add_discount_code: {
+        Args: { code: string; expires_at: string; percent: number; t: string }
+        Returns: string
+      }
       add_holiday: {
         Args: { event_date: string; name: string; notes: string; t: string }
         Returns: string
@@ -6964,6 +7058,7 @@ export type Database = {
         }
         Returns: number
       }
+      retire_discount_code: { Args: { code_id: string }; Returns: undefined }
       retry_email_file_import: {
         Args: { import: string; t: string }
         Returns: string
@@ -7154,6 +7249,10 @@ export type Database = {
       set_holiday_country: {
         Args: { country: string; t: string }
         Returns: undefined
+      }
+      set_max_discount: {
+        Args: { expected_revision: number; percent: number; t: string }
+        Returns: number
       }
       set_planning_preferences: {
         Args: {

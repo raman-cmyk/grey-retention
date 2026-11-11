@@ -46,8 +46,13 @@ describe('cappedEnv and siteAsk', () => {
       cappedEnv(env({ GEMINI_TIMEOUT_MS: '60000' })).GEMINI_TIMEOUT_MS
     ).toBe(String(siteCallTimeoutMs))
     expect(
-      cappedEnv(env({ GEMINI_TIMEOUT_MS: '4000' })).GEMINI_TIMEOUT_MS
-    ).toBe('4000')
+      cappedEnv(env({ GEMINI_TIMEOUT_MS: '6000' })).GEMINI_TIMEOUT_MS
+    ).toBe('6000')
+    // A value the AI setup cannot take (it would fall back to 60 s) is capped.
+    for (const odd of ['4000', '7.5', 'soon'])
+      expect(cappedEnv(env({ GEMINI_TIMEOUT_MS: odd })).GEMINI_TIMEOUT_MS).toBe(
+        String(siteCallTimeoutMs)
+      )
     expect(cappedEnv(env({})).GEMINI_TIMEOUT_MS).toBe(String(siteCallTimeoutMs))
   })
 

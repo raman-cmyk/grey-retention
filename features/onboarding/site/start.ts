@@ -9,7 +9,7 @@ export type SiteReadingStart =
 /**
  * Starts a read of the brand's own website (ONB-101), as the workspace
  * owner: at most one a day, asking again the same day returns the same
- * job. The workspace jobs run it at the next sweep.
+ * job. The onboarding readers' run reads it (not the sweep).
  */
 export async function startSiteReading(
   db: SupabaseClient<Database>,

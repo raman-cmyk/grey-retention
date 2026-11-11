@@ -168,8 +168,17 @@ function backed(f: RawFinding, quote: string): boolean {
   switch (f.topic) {
     case 'free_shipping':
       return f.kind !== 'over' || has(f.amount)
+    // No returns (0 days) only when the quote says so; a year may be
+    // written as 1 year.
     case 'returns':
-      return has(f.days)
+      if (f.days === 0)
+        return /final sale|no returns|non-?refundable|(?:not|cannot) (?:accept|be) return/i.test(
+          quote
+        )
+      return (
+        has(f.days) ||
+        (f.days !== undefined && f.days % 365 === 0 && has(f.days / 365))
+      )
     case 'guarantee':
       return (
         has(f.days) ||
