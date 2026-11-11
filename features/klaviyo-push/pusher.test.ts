@@ -66,6 +66,7 @@ function memoryStore() {
     createStartedAt: null,
     messageStartedAt: null,
     templateStartedAt: null,
+    deleteAnsweredAt: null,
     audienceId: null,
     designs: null,
     fallback: null,
@@ -1037,6 +1038,77 @@ describe('an A/B draft left half made (the fourth review)', () => {
     expect(await pusher.createDraft(ab())).toMatchObject({
       ok: true,
       designs: 'A'
+    })
+  })
+})
+
+describe('an A/B draft when Klaviyo stays odd (the fifth review)', () => {
+  const unnamed = {
+    dropCreateIds: true,
+    renameVariations: true,
+    lagRead: true
+  }
+
+  for (const winner of [0, 20])
+    it(`takes Klaviyo being unwell while it tells the designs apart as a reason to try again (winner ${winner})`, async () => {
+      const { account, memory, pusher } = setup(unnamed)
+      expect((await pusher.createDraft(ab())).ok).toBe(false)
+      only(account.messages)[1].winnerPercentage = winner
+      account.faults.outage = '/api/templates/'
+      expect(await pusher.createDraft(ab())).toMatchObject({
+        ok: false,
+        code: winner ? 'rate_limited' : 'unavailable'
+      })
+      expect(memory.row()?.reason).not.toBe('externally_modified')
+      expect(await pusher.createDraft(ab())).toMatchObject({
+        ok: true,
+        designs: winner ? 'A' : 'both'
+      })
+      expect(variationsOf(account)).toHaveLength(winner ? 1 : 2)
+      if (winner) expect(shows(account, 'A')).toBe(true)
+    })
+
+  it('refuses, without closing the draft, two designs it cannot tell apart', async () => {
+    const { account, memory, pusher } = setup({
+      ...unnamed,
+      changesCopies: true
+    })
+    expect((await pusher.createDraft(ab())).ok).toBe(false)
+    for (let n = 0; n < 2; n++)
+      expect(await pusher.createDraft(ab())).toEqual({
+        ok: false,
+        code: 'rejected',
+        checks: ['ab_test']
+      })
+    expect(memory.row()?.reason).toBe('designs_unknown')
+    expect(only(account.messages)[1].winnerPercentage).toBe(0)
+  })
+
+  it('gives up on a delete Klaviyo answers and never does, after 10 minutes, loudly', async () => {
+    const clock = { now: Date.parse('2026-11-11T12:00:00Z'), perCall: 100 }
+    const { account, memory, pusher } = setup(
+      { lagRead: true, deleteIgnored: true },
+      { clock }
+    )
+    expect((await pusher.createDraft(ab())).ok).toBe(false)
+    only(account.messages)[1].winnerPercentage = 20
+    let result = await pusher.createDraft(ab())
+    let runs = 1
+    for (; runs < 20 && !result.ok && result.code === 'rate_limited'; runs++) {
+      clock.now += 2 * 60_000
+      result = await pusher.createDraft(ab())
+    }
+    expect(result).toEqual({ ok: false, code: 'rejected', checks: ['ab_test'] })
+    expect(runs).toBeLessThanOrEqual(7)
+    expect(memory.row()).toMatchObject({ reason: 'ab_test_unsafe' })
+    expect(only(account.messages)[1].winnerPercentage).toBe(0)
+    expect(console.error).toHaveBeenCalled()
+    // A rebuild of the same email stops at once, never waiting again.
+    clock.now += 60_000
+    expect(await pusher.createDraft(ab())).toEqual({
+      ok: false,
+      code: 'rejected',
+      checks: ['ab_test']
     })
   })
 })

@@ -4277,6 +4277,7 @@ export type Database = {
           checks: Json
           create_started_at: string | null
           created_at: string
+          delete_answered_at: string | null
           designs: string | null
           fallback: string | null
           images: Json
@@ -4299,6 +4300,7 @@ export type Database = {
           checks?: Json
           create_started_at?: string | null
           created_at?: string
+          delete_answered_at?: string | null
           designs?: string | null
           fallback?: string | null
           images?: Json
@@ -4321,6 +4323,7 @@ export type Database = {
           checks?: Json
           create_started_at?: string | null
           created_at?: string
+          delete_answered_at?: string | null
           designs?: string | null
           fallback?: string | null
           images?: Json

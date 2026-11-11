@@ -90,6 +90,8 @@ export type PushProgress = {
   messageStartedAt: string | null
   /** When a template create was sent and not yet saved. */
   templateStartedAt: string | null
+  /** When Klaviyo first answered a delete of design B it did not show done. */
+  deleteAnsweredAt: string | null
   /** The list or segment the campaign was made for. */
   audienceId: string | null
   designs: 'both' | 'A' | null
@@ -140,6 +142,7 @@ const empty: PushProgress = {
   createStartedAt: null,
   messageStartedAt: null,
   templateStartedAt: null,
+  deleteAnsweredAt: null,
   audienceId: null,
   designs: null,
   fallback: null,
@@ -173,6 +176,8 @@ export const pushBudgetMs = 30_000
 const findSlackMs = 60_000
 /** A create whose answer was lost may take this long to show. */
 const showMs = 120_000
+/** A delete Klaviyo answered is waited for this long to show, then given up. */
+const deleteShowMs = 10 * 60_000
 
 /** Our mark on a campaign: which push made it. */
 export const pushMark = (key: string) => `GROS draft ${key}`
@@ -386,10 +391,9 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     if (r.variations.length === 2 && (!a || !b))
       for (const v of r.variations) {
         if (v.id === a?.id || v.id === b?.id || !v.templateId) continue
-        const html = await templateHtml(via, v.templateId).catch((error) => {
-          if (error instanceof KlaviyoError) return null
-          throw error
-        })
+        // A template Klaviyo no longer has reads as null; any other
+        // failure is Klaviyo's, and the push tries again.
+        const html = await templateHtml(via, v.templateId)
         const t =
           html === null
             ? undefined
@@ -774,7 +778,7 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
       read = back
       // Each design's variation where the answer did not say (by our name,
       // else by what it shows).
-      const found = await identify(read, live)
+      const found = await whilePending(() => identify(back, live))
       for (const [i, id] of sent.entries()) {
         const recorded = p.templates.find((t) => t.id === id)!
         const v =
@@ -801,7 +805,13 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
   const a =
     found.a ?? (read.variations.length === 1 ? read.variations[0] : undefined)
   const b = wanted.length === 2 ? found.b : undefined
-  if (!a || (wanted.length === 2 && !b)) return close(read)
+  if (!a || (wanted.length === 2 && !b)) {
+    // Not a change in Klaviyo for sure: refused, and a later push looks again.
+    logger.warn('Klaviyo push: the designs could not be told apart', {
+      build: ref.build
+    })
+    throw new Refused('designs_unknown', ['ab_test'])
+  }
   // A variation neither design: design B of a draft now pushed with one
   // design is taken out; anything else was made in Klaviyo.
   const others = read.variations.filter((v) => v.id !== a.id && v.id !== b?.id)
@@ -972,7 +982,11 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
       after.variations.length === 1 &&
       after.variations[0]!.id === keep.id
     ) {
-      await save({ ab: null, written: fingerprints(after.variations) })
+      await save({
+        ab: null,
+        written: fingerprints(after.variations),
+        ...(p.deleteAnsweredAt ? { deleteAnsweredAt: null } : {})
+      })
       return after
     }
     if (
@@ -984,10 +998,20 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
         // Klaviyo answered the delete and still shows design B: the even
         // test meanwhile (no harm once B goes); the next run looks again.
         await setEvenTest(live!, mid).catch(() => undefined)
-        logger.error('Klaviyo push: design B still shows after its delete', {
+        if (!p.deleteAnsweredAt)
+          await save({ deleteAnsweredAt: now().toISOString() })
+        if (ago(p.deleteAnsweredAt) < deleteShowMs) {
+          logger.error('Klaviyo push: design B still shows after its delete', {
+            build: ref!.build
+          })
+          throw new Wait()
+        }
+        // Klaviyo never did it: the even test, if it held, leaves no
+        // winner; the push stops here.
+        logger.error('Klaviyo push: design B was never taken out', {
           build: ref!.build
         })
-        throw new Wait()
+        throw new Refused('ab_test_unsafe', ['ab_test'])
       }
       if (settling && !p.fallback && after.variations.length === 2) {
         // Design B cannot be taken out: the even test, as a last resort.

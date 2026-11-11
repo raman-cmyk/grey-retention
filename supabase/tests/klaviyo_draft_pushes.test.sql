@@ -1,5 +1,5 @@
 begin;
-select plan(76);
+select plan(79);
 
 -- PSH-001: the live push's steps. Workspace 101: owner ...01, staff ...05.
 -- Workspace 102: owner ...04.
@@ -99,7 +99,8 @@ select throws_ok(format('select pg_temp.save(%L)', x),'23514',null,'refused step
     '{"target":"abc"}',
     '{"ab":"maybe"}',
     '{"audience_id":"a b"}',
-    '{"template_started_at":"soon"}'
+    '{"template_started_at":"soon"}',
+    '{"delete_answered_at":"soon"}'
   ]) x;
 select throws_ok(format('select pg_temp.save(%L::jsonb)', jsonb_build_object('images',
   (select jsonb_object_agg('https://cedar.example/'||i||'.jpg','https://img.example/'||i||'.jpg') from generate_series(1,41) i))),
@@ -142,6 +143,9 @@ select throws_ok($$select pg_temp.save('{"create_started_at":"2026-11-11T13:00:0
   'its first create time stays the first');
 select lives_ok($$select pg_temp.save(jsonb_build_object('ab','pending','target',repeat('c',16)))$$,'an A/B test under way');
 select lives_ok($$select pg_temp.save('{"designs":"both","ab":"verified"}')$$,'and verified');
+select lives_ok($$select pg_temp.save('{"delete_answered_at":"2026-11-11T12:05:00Z"}')$$,'a delete Klaviyo has not shown yet');
+select is((select delete_answered_at from public.klaviyo_draft_pushes where push_key='00000000-0000-4000-8000-00000000c101'),
+  '2026-11-11T12:05:00Z'::timestamptz,'is kept with its time');
 select throws_ok($$select pg_temp.save('{"state":"started"}')$$,'PT409',null,'a push never starts again');
 select lives_ok($$select pg_temp.save('{"designs":"A"}')$$,'one design again, without a refusal, is fine');
 select lives_ok($$select pg_temp.save('{"designs":"both"}')$$,'and both again');

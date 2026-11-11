@@ -29,7 +29,7 @@ export function databasePushStore(db: Db): PushStore {
       const { data, error } = await db
         .from('klaviyo_draft_pushes')
         .select(
-          'state,images,templates,campaign_id,message_id,create_started_at,message_started_at,template_started_at,audience_id,designs,fallback,ab,reason,written,target'
+          'state,images,templates,campaign_id,message_id,create_started_at,message_started_at,template_started_at,delete_answered_at,audience_id,designs,fallback,ab,reason,written,target'
         )
         .eq('tenant_id', tenantId)
         .eq('push_key', key)
@@ -45,6 +45,7 @@ export function databasePushStore(db: Db): PushStore {
         createStartedAt: data.create_started_at,
         messageStartedAt: data.message_started_at,
         templateStartedAt: data.template_started_at,
+        deleteAnsweredAt: data.delete_answered_at,
         audienceId: data.audience_id,
         ab: data.ab as PushProgress['ab'],
         target: data.target,
@@ -65,6 +66,7 @@ export function databasePushStore(db: Db): PushStore {
         ['createStartedAt', 'create_started_at'],
         ['messageStartedAt', 'message_started_at'],
         ['templateStartedAt', 'template_started_at'],
+        ['deleteAnsweredAt', 'delete_answered_at'],
         ['audienceId', 'audience_id'],
         ['ab', 'ab'],
         ['target', 'target'],

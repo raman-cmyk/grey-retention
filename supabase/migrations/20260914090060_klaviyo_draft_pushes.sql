@@ -38,6 +38,9 @@ create table public.klaviyo_draft_pushes (
   message_started_at timestamptz,
   -- When a template create was sent and not yet saved (found by its name).
   template_started_at timestamptz,
+  -- When Klaviyo first answered a delete of design B it did not show done
+  -- (the push waits for it, at most 10 minutes).
+  delete_answered_at timestamptz,
   -- The list or segment the campaign was made for (it never changes).
   audience_id text check (audience_id is null or audience_id ~ '^[A-Za-z0-9_-]{1,64}$'),
   designs text check (designs is null or designs in ('both', 'A')),
@@ -85,10 +88,11 @@ create or replace function public.save_klaviyo_push(build uuid, lease uuid, step
 returns void language plpgsql security definer set search_path = '' as $$
 declare
   allowed constant text[] := array['state', 'images', 'templates', 'campaign_id', 'message_id', 'create_started_at',
-    'message_started_at', 'template_started_at', 'audience_id', 'designs', 'fallback', 'ab', 'checks', 'reason',
-    'written', 'target'];
+    'message_started_at', 'template_started_at', 'delete_answered_at', 'audience_id', 'designs', 'fallback', 'ab',
+    'checks', 'reason', 'written', 'target'];
   texts constant text[] := array['state', 'campaign_id', 'message_id', 'create_started_at', 'message_started_at',
-    'template_started_at', 'audience_id', 'designs', 'fallback', 'ab', 'reason', 'written', 'target'];
+    'template_started_at', 'delete_answered_at', 'audience_id', 'designs', 'fallback', 'ab', 'reason', 'written',
+    'target'];
   t uuid; key uuid; cur public.klaviyo_draft_pushes;
 begin
   if coalesce(auth.role(), '') <> 'service_role' then raise exception 'Access denied' using errcode = '42501'; end if;
@@ -125,6 +129,8 @@ begin
       and private.safe_time(step->>'template_started_at') is null)
     or (step ? 'message_started_at' and step->'message_started_at' <> 'null'::jsonb
       and private.safe_time(step->>'message_started_at') is null)
+    or (step ? 'delete_answered_at' and step->'delete_answered_at' <> 'null'::jsonb
+      and private.safe_time(step->>'delete_answered_at') is null)
     or (step ? 'audience_id' and step->'audience_id' <> 'null'::jsonb and step->>'audience_id' !~ '^[A-Za-z0-9_-]{1,64}$')
     or (step ? 'ab' and step->'ab' <> 'null'::jsonb and step->>'ab' not in ('pending', 'verified'))
     or (step ? 'target' and step->'target' <> 'null'::jsonb and step->>'target' !~ '^[a-f0-9]{16}(,[a-f0-9]{16}){0,7}$')
@@ -172,6 +178,8 @@ begin
         else p.template_started_at end,
       message_started_at = case when step ? 'message_started_at' then (step->>'message_started_at')::timestamptz
         else p.message_started_at end,
+      delete_answered_at = case when step ? 'delete_answered_at' then (step->>'delete_answered_at')::timestamptz
+        else p.delete_answered_at end,
       audience_id = case when step ? 'audience_id' then step->>'audience_id' else p.audience_id end,
       ab = case when step ? 'ab' then step->>'ab' else p.ab end,
       target = case when step ? 'target' then step->>'target' else p.target end,
