@@ -4,7 +4,7 @@ Every email Grey Retention builds is a sequence of these **20 block types**. The
 
 The reference set is the Step 0 renderer ([`docs/step0/render.py`](step0/render.py)): its 10 types (marked "Step 0") keep their names and their input fields, and the Step 0 example ([`docs/step0/example_spec.json`](step0/example_spec.json)) is valid input, which a test checks. The other 10 follow the same field conventions.
 
-**Owner approval: pending.** Raman approves this list (issue BLK-001, #295) or asks for changes. The code is in `features/blocks/catalog.ts`. A test checks that this table matches the code.
+**Owner approval: approved.** Raman approved this list as is on 7 November 2026 (issue BLK-001, #295). A change to the list needs his approval again. The code is in `features/blocks/catalog.ts`. A test checks that this table matches the code.
 
 | #   | Block                                                      | What it is for                                                             | Content it needs                                                            |
 | --- | ---------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------- |

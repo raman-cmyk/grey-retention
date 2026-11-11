@@ -22,6 +22,13 @@ export const maxHeight = 16000
 export const maxBytes = 9.5 * 1024 * 1024
 /** Emails photographed per run at most. */
 export const perRun = 20
+/**
+ * A job's lease lasts two minutes: section crops stop after 70 seconds and
+ * their uploads after 90, so the report always arrives in time. Sections
+ * left out simply have no crop.
+ */
+export const cropBudgetMs = 70_000
+export const uploadBudgetMs = 90_000
 
 /**
  * Puts each stored image in place of the reference the HTML uses, and
@@ -59,8 +66,49 @@ async function contentSize(page) {
   }
 }
 
-/** Renders one job and returns the JPEG and its size. */
-export async function render(browser, job, html) {
+/**
+ * INB-003: one picture per section. A section is every element marked
+ * with its number (one row, or a few paragraphs); its box is the area
+ * around all of them, inside the whole picture.
+ */
+async function crops(page, job, full, until) {
+  const out = []
+  for (const { ordinal } of job.sections ?? []) {
+    if (Date.now() > until) break
+    const boxes = []
+    for (const el of await page
+      .locator(`[data-gr-section="${ordinal}"]`)
+      .all()) {
+      const box = await el.boundingBox()
+      if (box && box.height > 0) boxes.push(box)
+    }
+    if (!boxes.length) continue
+    const top = Math.max(0, Math.floor(Math.min(...boxes.map((b) => b.y))))
+    const bottom = Math.min(
+      full.height,
+      Math.ceil(Math.max(...boxes.map((b) => b.y + b.height)))
+    )
+    if (bottom <= top) continue
+    const image = await page.screenshot({
+      type: 'jpeg',
+      quality: 80,
+      fullPage: true,
+      clip: { x: 0, y: top, width: full.width, height: bottom - top },
+      timeout: 30_000
+    })
+    if (image.byteLength <= maxBytes)
+      out.push({ ordinal, top, height: bottom - top, image })
+  }
+  return out
+}
+
+/** Renders one job and returns the JPEG, its size and its section crops. */
+export async function render(
+  browser,
+  job,
+  html,
+  until = Date.now() + cropBudgetMs
+) {
   const origins = allowedOrigins(job)
   const context = await browser.newContext({
     viewport: { width, height: 800 },
@@ -106,7 +154,7 @@ export async function render(browser, job, html) {
     let image = await shoot(80)
     if (image.byteLength > maxBytes) image = await shoot(50)
     if (image.byteLength > maxBytes) throw new Error('too_large')
-    return { image, ...full }
+    return { image, ...full, sections: await crops(page, job, full, until) }
   } finally {
     await context.close()
   }
@@ -140,6 +188,7 @@ export async function run({ base, secret, browser, log = console.log }) {
           method: 'POST',
           body: JSON.stringify({ job: job.job, lease: job.lease, ...body })
         }).catch(() => null)
+      const started = Date.now()
       let html
       try {
         const got = await fetch(job.html, {
@@ -154,7 +203,7 @@ export async function run({ base, secret, browser, log = console.log }) {
       }
       let shot
       try {
-        shot = await render(browser, job, html)
+        shot = await render(browser, job, html, started + cropBudgetMs)
       } catch {
         counts.failed++
         await report({ failure: 'render_failed' })
@@ -171,7 +220,28 @@ export async function run({ base, secret, browser, log = console.log }) {
         await report({ failure: 'upload_failed' })
         continue
       }
-      if (await report({ width: shot.width, height: shot.height }))
+      // Section crops that do not upload are simply not reported.
+      const boxes = []
+      for (const crop of shot.sections) {
+        const left = started + uploadBudgetMs - Date.now()
+        if (left < 1_000) break
+        const target = job.sections.find((s) => s.ordinal === crop.ordinal)
+        const put = target
+          ? await fetch(target.upload, {
+              method: 'PUT',
+              headers: { 'content-type': 'image/jpeg', 'x-upsert': 'true' },
+              body: crop.image,
+              signal: AbortSignal.timeout(Math.min(20_000, left))
+            }).catch(() => null)
+          : null
+        if (put?.ok)
+          boxes.push({
+            ordinal: crop.ordinal,
+            top: crop.top,
+            height: crop.height
+          })
+      }
+      if (await report({ width: shot.width, height: shot.height, boxes }))
         counts.taken++
       else counts.failed++
     }

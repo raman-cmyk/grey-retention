@@ -38,6 +38,11 @@ function database(
       const query = {
         select: () => query,
         eq: () => query,
+        order: async () => ({
+          data:
+            table === 'email_sections' ? [{ ordinal: 1 }, { ordinal: 2 }] : [],
+          error: null
+        }),
         in: async () => ({
           data: [
             {
@@ -53,12 +58,20 @@ function database(
             html_path:
               options.htmlPath === undefined
                 ? `gmail/${'b'.repeat(64)}.html`
-                : options.htmlPath
+                : options.htmlPath,
+            marked_html_path:
+              options.htmlPath === undefined
+                ? `gmail/${'c'.repeat(64)}.marked.html`
+                : null
           },
           error: null
         })
       }
-      expect(['inbox_messages', 'inbox_message_images']).toContain(table)
+      expect([
+        'inbox_messages',
+        'inbox_message_images',
+        'email_sections'
+      ]).toContain(table)
       return query
     },
     storage: {
@@ -98,14 +111,25 @@ describe('screenshotJobs', () => {
     expect(jobs[0]).toEqual({
       job,
       lease,
-      html: `https://db.test/sign/inbox-raw/gmail/${'b'.repeat(64)}.html?token=t`,
+      // INB-003: the browser renders the marked copy.
+      html: `https://db.test/sign/inbox-raw/gmail/${'c'.repeat(64)}.marked.html?token=t`,
       images: [
         {
           ref: 'https://cdn.shop.test/a.png?x=1&amp;y=2',
           url: 'https://db.test/sign/inbox-assets/img/aa.png?token=t'
         }
       ],
-      upload: `https://db.test/upload/inbox-assets/shot/${message}.jpg?token=u`
+      upload: `https://db.test/upload/inbox-assets/shot/${message}.jpg?token=u`,
+      sections: [
+        {
+          ordinal: 1,
+          upload: `https://db.test/upload/inbox-assets/sect/${message}/1.jpg?token=u`
+        },
+        {
+          ordinal: 2,
+          upload: `https://db.test/upload/inbox-assets/sect/${message}/2.jpg?token=u`
+        }
+      ]
     })
   })
 

@@ -1,7 +1,12 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Browser } from '@playwright/test'
-import { allowedOrigins, prepareHtml, run } from './inbox-screenshots.mjs'
+import {
+  allowedOrigins,
+  prepareHtml,
+  render,
+  run
+} from './inbox-screenshots.mjs'
 
 const job = {
   job: 'j1',
@@ -48,6 +53,43 @@ describe('the screenshot browser', () => {
 
   it('may load only from the job’s own signed links', () => {
     expect([...allowedOrigins(job)]).toEqual(['https://db.test'])
+  })
+
+  it('stops cropping sections once the time is up, so the report is never late', async () => {
+    const page = {
+      route: async () => {},
+      setContent: async () => {},
+      url: () => 'about:blank',
+      context: () => ({
+        newCDPSession: async () => ({
+          send: async () => ({ cssContentSize: { width: 600, height: 900 } }),
+          detach: async () => {}
+        })
+      }),
+      screenshot: vi.fn(async () => Buffer.from([0xff, 0xd8, 0xff])),
+      locator: vi.fn(() => ({
+        all: async () => [
+          { boundingBox: async () => ({ x: 0, y: 0, width: 600, height: 120 }) }
+        ]
+      }))
+    }
+    const browser = {
+      newContext: async () => ({
+        newPage: async () => page,
+        close: async () => {}
+      })
+    } as unknown as Browser
+    const sectioned = { ...job, sections: [{ ordinal: 1, upload: 'u' }] }
+    const late = await render(browser, sectioned, '<p>x</p>', Date.now() - 1)
+    expect(late.sections).toEqual([])
+    expect(page.locator).not.toHaveBeenCalled()
+    const inTime = await render(
+      browser,
+      sectioned,
+      '<p>x</p>',
+      Date.now() + 60_000
+    )
+    expect(inTime.sections).toMatchObject([{ ordinal: 1, top: 0, height: 120 }])
   })
 
   it('renders, uploads and reports each job, and prints counts only', async () => {
@@ -112,7 +154,7 @@ describe('the screenshot browser', () => {
       .filter((c) => c.method === 'POST')
       .map((c) => JSON.parse(c.body!))
     expect(reports).toEqual([
-      { job: 'j1', lease: 'l1', width: 600, height: 900 },
+      { job: 'j1', lease: 'l1', width: 600, height: 900, boxes: [] },
       { job: 'j2', lease: 'l1', failure: 'render_failed' }
     ])
     expect(calls.filter((c) => c.method === 'PUT').map((c) => c.url)).toEqual([

@@ -8,6 +8,7 @@ import { InboundTransportError } from '@/lib/providers/inbound-capture'
 import type { ImageFailure, ImageFetcher } from '@/lib/providers/image-fetch'
 import { sha256 } from './addresses'
 import { dataUri, imageRefs, sniffImage, type ImageRef } from './images'
+import { sectionEmail } from './sections'
 
 type Db = SupabaseClient<Database>
 
@@ -189,6 +190,80 @@ export async function keepImages(
 }
 
 /**
+ * INB-003: cuts the email into sections from its HTML structure, stores
+ * the marked copy the screenshot browser renders (next to the HTML, by its
+ * content) and records the sections once.
+ */
+export async function keepSections(
+  db: Db,
+  lease: { job: string; lease: string },
+  html: string,
+  htmlPath: string
+) {
+  const cut = sectionEmail(html)
+  let markedPath: string | null = null
+  if (cut.sections.length) {
+    const mailbox = htmlPath.slice(0, htmlPath.indexOf('/'))
+    markedPath = `${mailbox}/${sha256(cut.markedHtml)}.marked.html`
+    const { error } = await db.storage
+      .from('inbox-raw')
+      .upload(markedPath, cut.markedHtml, {
+        contentType: 'text/html',
+        upsert: false
+      })
+    const status = String(
+      (error as { statusCode?: string | number } | null)?.statusCode ?? ''
+    )
+    if (error && !/exists|duplicate/i.test(error.message) && status !== '409')
+      throw new InboundTransportError('unavailable', 'storage_upload_failed')
+  }
+  const recorded = await db.rpc('record_inbox_sections', {
+    ...lease,
+    marked_path: markedPath as string,
+    sections: cut.sections.map((s) => ({
+      ...s,
+      html: s.html.slice(0, 200_000)
+    })),
+    preheader: cut.preheader ?? undefined,
+    text_ratio: cut.textRatio ?? undefined
+  })
+  if (recorded.error) throw recorded.error
+  return cut.sections.length
+}
+
+/**
+ * Sections, or none when they cannot be kept (storage down, a refused
+ * cut): the images still count more. The email is then recorded without
+ * sections, so it still gets its facts from the subject. A lost lease
+ * (PT409) still fails the job.
+ */
+async function keepSectionsOrNone(
+  db: Db,
+  lease: { job: string; lease: string },
+  html: string,
+  htmlPath: string
+) {
+  try {
+    return await keepSections(db, lease, html, htmlPath)
+  } catch (error) {
+    if ((error as { code?: string }).code === 'PT409') throw error
+    logger.warn('Inbox sections not kept', {
+      code:
+        error instanceof InboundTransportError
+          ? error.code
+          : ((error as { code?: string }).code ?? 'unknown')
+    })
+    const none = await db.rpc('record_inbox_sections', {
+      ...lease,
+      marked_path: null as unknown as string,
+      sections: []
+    })
+    if (none.error) throw none.error
+    return 0
+  }
+}
+
+/**
  * The image part of the sweep (INB-002): takes `inbox.assets` jobs one at
  * a time until `deadline`, and for each email keeps every image, records
  * the result once and queues its screenshot. Sample emails use the sample
@@ -212,15 +287,29 @@ export async function keepInboxImages(
     try {
       const message = await db
         .from('inbox_messages')
-        .select('id,html_path,raw_path,synthetic')
+        .select('id,html_path,raw_path,synthetic,assets_state')
         .eq('id', job.subject_key)
         .single()
       if (message.error || !message.data?.html_path || !message.data.raw_path)
         throw new InboundTransportError('protocol', 'inbox_message_missing')
-      const { html_path, raw_path, synthetic } = message.data
+      const { html_path, raw_path, synthetic, assets_state } = message.data
       const html = new TextDecoder().decode(
         await download(db, 'inbox-raw', html_path)
       )
+      // An email whose images were kept before sections existed (INB-002)
+      // is only cut into sections.
+      if (assets_state === 'done') {
+        const sections = await keepSectionsOrNone(db, lease, html, html_path)
+        const finished = await db.rpc('finish_platform_job', {
+          ...lease,
+          outcome: { sections }
+        })
+        if (finished.error) throw finished.error
+        run.emails++
+        continue
+      }
+      // Images first: they are what expires. Sections before the record,
+      // so the screenshot it queues renders the marked copy.
       const images = await keepImages(
         db,
         html,
@@ -230,6 +319,7 @@ export async function keepInboxImages(
         assetLimits,
         job.attempt >= lastAttempt
       )
+      await keepSectionsOrNone(db, lease, html, html_path)
       const recorded = await db.rpc('record_inbox_images', {
         ...lease,
         images

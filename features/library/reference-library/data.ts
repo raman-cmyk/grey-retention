@@ -1,6 +1,7 @@
 import 'server-only'
 import { sourceFormat } from '@/features/email-generation/html'
 import { toSafePreview } from '@/features/email-generation/to-safe-preview'
+import { summaryWindowDays } from '@/features/inbox/brand-summary'
 import { readPages } from '@/lib/db/read-pages'
 import { createClient } from '@/lib/supabase/server'
 import { classifyFormat, latestUploads, type LibraryItem } from './model'
@@ -22,7 +23,18 @@ export type ReferenceLibraryData = {
   tracked: TrackedDomain[]
   /** True when there may be older uploads than the latest 40 read. */
   uploadsCapped: boolean
+  /**
+   * INB-003: each tracked domain's labelled emails of the last 90 days
+   * (their stored facts), for the brand summary.
+   */
+  factsByDomain: Record<string, { facts: unknown }[]>
 }
+
+/**
+ * The most labelled emails per brand read for its summary: far more than
+ * any brand sends in 90 days (that would be over 75 a week).
+ */
+const summaryEmailLimit = 1000
 
 /** The latest sends per competitor shown in the library (spec §9). */
 export const latestPerDomain = 20
@@ -70,45 +82,62 @@ export async function referenceLibrary(
   const ids = subscriptions.data.map((s) => s.capture_id)
   // Only what the library shows is read: the latest 20 per domain (one
   // small query each, at most 10 domains) and the latest uploads.
-  const [captures, perDomain, imports, templates] = await Promise.all([
-    ids.length
-      ? db
-          .from('competitor_captures')
-          .select('id,domain,status,synthetic')
-          .in('id', ids)
-      : Promise.resolve({ data: [], error: null }),
-    Promise.all(
-      ids.map((id) =>
-        db
-          .from('competitor_emails')
-          .select(
-            'id,capture_id,subject,text_content,safe_html,received_at,synthetic,screenshot_path,screenshot_width,screenshot_height'
-          )
-          .eq('capture_id', id)
-          .order('received_at', { ascending: false })
-          .order('id')
-          .limit(latestPerDomain)
-      )
-    ),
-    db
-      .from('reference_imports')
-      .select(
-        'id,subject,original_body,readable_text,content_format,source_description,created_at'
-      )
-      .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false })
-      .order('id')
-      .limit(latestUploads),
-    readPages((from, to) =>
+  const since = new Date(
+    Date.now() - summaryWindowDays * 86_400_000
+  ).toISOString()
+  const [captures, perDomain, imports, templates, labelled] = await Promise.all(
+    [
+      ids.length
+        ? db
+            .from('competitor_captures')
+            .select('id,domain,status,synthetic')
+            .in('id', ids)
+        : Promise.resolve({ data: [], error: null }),
+      Promise.all(
+        ids.map((id) =>
+          db
+            .from('competitor_emails')
+            .select(
+              'id,capture_id,subject,text_content,safe_html,received_at,synthetic,screenshot_path,screenshot_width,screenshot_height'
+            )
+            .eq('capture_id', id)
+            .order('received_at', { ascending: false })
+            .order('id')
+            .limit(latestPerDomain)
+        )
+      ),
       db
-        .from('own_templates')
-        .select('id,name,created_at')
+        .from('reference_imports')
+        .select(
+          'id,subject,original_body,readable_text,content_format,source_description,created_at'
+        )
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false })
         .order('id')
-        .range(from, to)
-    )
-  ])
+        .limit(latestUploads),
+      readPages((from, to) =>
+        db
+          .from('own_templates')
+          .select('id,name,created_at')
+          .eq('tenant_id', tenantId)
+          .order('created_at', { ascending: false })
+          .order('id')
+          .range(from, to)
+      ),
+      Promise.all(
+        ids.map((id) =>
+          db
+            .from('competitor_emails')
+            .select('capture_id,facts')
+            .eq('capture_id', id)
+            .not('facts', 'is', null)
+            .gte('received_at', since)
+            .order('received_at', { ascending: false })
+            .limit(summaryEmailLimit)
+        )
+      )
+    ]
+  )
   const emails = {
     error: perDomain.find((r) => r.error)?.error ?? null,
     data: perDomain.flatMap((r) => r.data ?? [])
@@ -208,9 +237,16 @@ export async function referenceLibrary(
       sample: capture?.synthetic ?? true
     }
   })
+  const factsByDomain: Record<string, { facts: unknown }[]> = {}
+  for (const result of labelled)
+    for (const row of result.data ?? []) {
+      const domain = captureById.get(row.capture_id)?.domain
+      if (domain) (factsByDomain[domain] ??= []).push({ facts: row.facts })
+    }
   return {
     items,
     tracked,
+    factsByDomain,
     uploadsCapped: (imports.data?.length ?? 0) >= latestUploads
   }
 }
