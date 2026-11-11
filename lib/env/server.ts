@@ -8,7 +8,12 @@ const serverEnvironmentSchema = z.object({
   DATABASE_URL: z.string().min(1).optional(),
   CREDENTIALS_ENCRYPTION_KEY: z.string().min(32).optional(),
   CRON_SECRET: z.string().min(32).optional(),
-  KLAVIYO_API_REVISION: z.string().default('2026-07-15'),
+  KLAVIYO_API_REVISION: z.string().default('2026-10-15'),
+  // KLV-001: exactly `live` (the owner's decision, set in Vercel) checks
+  // keys with Klaviyo; anything else, or nothing, is sample. Any value is
+  // accepted so a typo never breaks other pages
+  // (features/connections/live-klaviyo.ts).
+  KLAVIYO_MODE: z.string().optional(),
   AI_DEFAULT_PROVIDER: z.string().default('fake'),
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),

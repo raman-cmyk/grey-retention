@@ -7,6 +7,8 @@ const supabase = vi.hoisted(() => ({ createClient: vi.fn() }))
 vi.mock('@/features/auth/application/request-context', () => auth)
 vi.mock('@/lib/supabase/server', () => supabase)
 
+import { revalidatePath } from 'next/cache'
+import { recordedTransport } from '@/lib/providers/klaviyo/recorded'
 import * as actions from './actions'
 import { connectKlaviyo } from './actions'
 
@@ -221,5 +223,111 @@ describe('connectKlaviyo', () => {
 describe('Shopify (v2 is Klaviyo only)', () => {
   it('has no Shopify connect action any more', () => {
     expect('connectShopify' in actions).toBe(false)
+  })
+})
+
+describe('connectKlaviyo with live Klaviyo (KLV-001)', () => {
+  it('never calls Klaviyo in sample mode, even on a hosted database', async () => {
+    vi.stubEnv(
+      'NEXT_PUBLIC_SUPABASE_URL',
+      'https://example-project.supabase.co'
+    )
+    vi.stubEnv('KLAVIYO_MODE', '')
+    const network = vi.fn()
+    vi.stubGlobal('fetch', network)
+    expect((await connectKlaviyo({}, form({ apiKey: key }))).message).toMatch(
+      /sample data/
+    )
+    expect(network).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it('in live mode, refuses staff, demo sign-in and a bad key before any call', async () => {
+    vi.stubEnv('KLAVIYO_MODE', 'live')
+    const network = vi.fn()
+    vi.stubGlobal('fetch', network)
+    expect(
+      (await connectKlaviyo({}, form({ apiKey: 'AbC123' }))).error
+    ).toContain('public site ID')
+    vi.stubEnv('AUTH_MODE', 'demo')
+    expect((await connectKlaviyo({}, form({ apiKey: key }))).error).toMatch(
+      /sign in again/
+    )
+    vi.stubEnv('AUTH_MODE', 'supabase')
+    auth.requireRequestContext.mockResolvedValue({
+      tenantId: tenant,
+      tenantRole: 'staff',
+      tenantName: 'x'
+    })
+    expect(await connectKlaviyo({}, form({ apiKey: key }))).toEqual({
+      error: 'Ask your workspace owner to connect accounts.'
+    })
+    expect(network).not.toHaveBeenCalled()
+    expect(rpc).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  /** fetch answering like Klaviyo, from the recordings. */
+  const klaviyo = (answer = recordedTransport()) => {
+    const sent: { url: string; init: RequestInit }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: RequestInit) => {
+        sent.push({ url, init })
+        const r = await answer({
+          method: 'GET',
+          url,
+          headers: {},
+          timeoutMs: 0
+        })
+        return new Response(r.body, { status: r.status, headers: r.headers })
+      })
+    )
+    return sent
+  }
+
+  it('in live mode, checks an owner key with Klaviyo and saves it for the workspace signed in', async () => {
+    vi.stubEnv('KLAVIYO_MODE', 'live')
+    const sent = klaviyo()
+    rpc.mockImplementation(async () => ({ data: 1, error: null }))
+    const result = await connectKlaviyo(
+      {},
+      form({ apiKey: `  ${key}  `, t: 'another-workspace' })
+    )
+    expect(result.message).toMatch(/^Klaviyo connected: Cedar Goods\./)
+    // One read-only GET per scope, only to Klaviyo, never following a redirect.
+    expect(sent).toHaveLength(9)
+    for (const { url, init } of sent) {
+      expect(url.startsWith('https://a.klaviyo.com/api/')).toBe(true)
+      expect(init).toMatchObject({ method: 'GET', redirect: 'error' })
+    }
+    expect(rpc.mock.calls.map((c) => c[0])).toEqual([
+      'begin_klaviyo_key_check',
+      'connect_klaviyo_live'
+    ])
+    // The workspace comes from the sign-in, never from the form; the key is trimmed.
+    expect(rpc.mock.calls[1]![1]).toMatchObject({ t: tenant, api_key: key })
+    expect(revalidatePath).toHaveBeenCalledWith('/connections')
+    vi.unstubAllGlobals()
+  })
+
+  it('in live mode, waits for no rate limit and refreshes nothing when a key is refused', async () => {
+    vi.stubEnv('KLAVIYO_MODE', 'live')
+    const sent = klaviyo(
+      recordedTransport({
+        all: { status: 429, headers: { 'retry-after': '1' }, body: '{}' }
+      })
+    )
+    rpc.mockImplementation(async () => ({ data: 1, error: null }))
+    expect((await connectKlaviyo({}, form({ apiKey: key }))).error).toMatch(
+      /slow down/
+    )
+    expect(sent).toHaveLength(9)
+    expect(rpc).not.toHaveBeenCalledWith(
+      'connect_klaviyo_live',
+      expect.anything()
+    )
+    expect(revalidatePath).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
   })
 })
