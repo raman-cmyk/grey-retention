@@ -7,6 +7,9 @@ vi.mock('./actions', () => ({
   startPlan: vi.fn(async () => ({})),
   pickOffers: vi.fn(async () => ({}))
 }))
+vi.mock('@/features/email-build/actions', () => ({
+  createEmail: vi.fn(async () => ({}))
+}))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 
 import { PlanView, type PlanRun } from './view'
@@ -52,6 +55,7 @@ const run = (over: Partial<PlanRun>): PlanRun => ({
   stale: false,
   pulse,
   plan,
+  builds: {},
   ...over
 })
 
@@ -113,6 +117,48 @@ describe('the Plan next 15 days screen', () => {
     expect(
       screen.getByRole('button', { name: 'Plan again' })
     ).toBeInTheDocument()
+  })
+
+  it('lets the owner create each planned email, and shows where it is', () => {
+    const build = (state: string, sampleDraft = false) => ({
+      id: '00000000-0000-4000-8000-0000000000bb',
+      state: state as 'drafted',
+      sampleDraft
+    })
+    const { rerender } = render(<PlanView run={run({})} owner />)
+    expect(
+      screen.getByRole('button', { name: 'Create email' })
+    ).toBeInTheDocument()
+    rerender(
+      <PlanView run={run({ builds: { 0: build('build_queued') } })} owner />
+    )
+    expect(screen.getByText(/Creating your email/)).toBeVisible()
+    rerender(
+      <PlanView run={run({ builds: { 0: build('push_queued') } })} owner />
+    )
+    expect(screen.getByText(/into Klaviyo as a draft…/)).toBeVisible()
+    rerender(
+      <PlanView run={run({ builds: { 0: build('drafted', true) } })} owner />
+    )
+    expect(screen.getByText('In Klaviyo as a draft')).toBeVisible()
+    expect(screen.getByText(/nothing was sent to it/)).toBeVisible()
+    expect(screen.getByRole('link', { name: 'See the email' })).toHaveAttribute(
+      'href',
+      '/plan/email/00000000-0000-4000-8000-0000000000bb'
+    )
+    expect(screen.queryByRole('button', { name: 'Create email' })).toBeNull()
+    rerender(<PlanView run={run({ builds: { 0: build('failed') } })} owner />)
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'We could not create this email'
+    )
+    expect(
+      screen.getByRole('button', { name: 'Try again' })
+    ).toBeInTheDocument()
+  })
+
+  it('shows staff the emails without the button', () => {
+    render(<PlanView run={run({})} owner={false} />)
+    expect(screen.queryByRole('button', { name: 'Create email' })).toBeNull()
   })
 
   it('says when a plan failed, and when nothing fits', () => {
