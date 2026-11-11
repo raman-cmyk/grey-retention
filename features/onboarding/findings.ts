@@ -138,7 +138,11 @@ export type Finding = FindingInput & {
   id: string
   runId: string
   source: FindingSource
-  pass: 'sample' | 'model'
+  /**
+   * How it was found: the sample rules on sample data, a model on real
+   * data, or code counting real data (a catalog's price band).
+   */
+  pass: 'sample' | 'model' | 'code'
   model: string | null
   createdAt: string
 }
@@ -187,7 +191,7 @@ export async function listFindings(
       id: row.id,
       runId: row.run_id,
       source: row.source as FindingSource,
-      pass: row.pass as 'sample' | 'model',
+      pass: row.pass as Finding['pass'],
       model: row.model,
       createdAt: row.created_at
     })

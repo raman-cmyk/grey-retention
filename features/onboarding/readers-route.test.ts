@@ -5,8 +5,8 @@ import { NextRequest } from 'next/server'
 vi.mock('server-only', () => ({}))
 const service = vi.hoisted(() => ({ createServiceClient: vi.fn() }))
 vi.mock('@/lib/supabase/service', () => service)
-const readers = vi.hoisted(() => ({ runSiteReadings: vi.fn() }))
-vi.mock('@/features/onboarding/site/live', () => readers)
+const readers = vi.hoisted(() => ({ runSourceReadings: vi.fn() }))
+vi.mock('@/features/onboarding/readers', () => readers)
 
 import { GET } from '@/app/api/internal/onboarding/readers/route'
 
@@ -23,7 +23,7 @@ describe('GET /api/internal/onboarding/readers', () => {
     vi.stubEnv('CRON_SECRET', secret)
     service.createServiceClient.mockReturnValue({ rpc })
     rpc.mockResolvedValue({ data: 2, error: null })
-    readers.runSiteReadings.mockResolvedValue({
+    readers.runSourceReadings.mockResolvedValue({
       state: 'done',
       reads: 1,
       failed: 0
@@ -38,7 +38,7 @@ describe('GET /api/internal/onboarding/readers', () => {
   it('refuses a missing or wrong secret without reading anything', async () => {
     for (const header of [undefined, 'Bearer wrong', `Basic ${secret}`])
       expect((await GET(request(header))).status).toBe(401)
-    expect(readers.runSiteReadings).not.toHaveBeenCalled()
+    expect(readers.runSourceReadings).not.toHaveBeenCalled()
     expect(rpc).not.toHaveBeenCalled()
   })
 
@@ -46,8 +46,8 @@ describe('GET /api/internal/onboarding/readers', () => {
     const response = await GET(request(`Bearer ${secret}`, '?peek=1'))
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ waiting: 2 })
-    expect(rpc).toHaveBeenCalledWith('site_readings_waiting')
-    expect(readers.runSiteReadings).not.toHaveBeenCalled()
+    expect(rpc).toHaveBeenCalledWith('source_readings_waiting')
+    expect(readers.runSourceReadings).not.toHaveBeenCalled()
   })
 
   it('runs the waiting reads and answers with counts only, never cached', async () => {
@@ -59,7 +59,7 @@ describe('GET /api/internal/onboarding/readers', () => {
       reads: 1,
       failed: 0
     })
-    readers.runSiteReadings.mockResolvedValue({
+    readers.runSourceReadings.mockResolvedValue({
       state: 'failed',
       code: 'PGRST301'
     })
