@@ -121,6 +121,43 @@ describe('ConnectionsBoard', () => {
     expect(within(card('Klaviyo')).getByRole('status')).toHaveFocus()
   })
 
+  it('says a live connection is live, and a sample one is sample data', () => {
+    const view = render(
+      <ConnectionsBoard owner klaviyo={{ ...klaviyo, mode: 'live' }} live />
+    )
+    const live = within(card('Klaviyo'))
+    expect(
+      live.getByText(
+        'Live: we only read your Klaviyo data. Nothing is sent to Klaviyo yet.'
+      )
+    ).toBeVisible()
+    expect(live.queryByText(/Sample data/)).toBeNull()
+    expect(live.queryByText(/sample templates/)).toBeNull()
+    view.rerender(
+      <ConnectionsBoard owner klaviyo={{ ...klaviyo, mode: 'fixture' }} live />
+    )
+    // With live Klaviyo on, a sample connection asks for the real key.
+    expect(
+      within(card('Klaviyo')).getByText(
+        'Sample connection. Paste your real key to connect your Klaviyo.'
+      )
+    ).toBeVisible()
+    // There is no real key yet: a first connect, not a swap.
+    expect(
+      within(card('Klaviyo')).getByLabelText('Private API key')
+    ).toBeVisible()
+    expect(
+      within(card('Klaviyo')).getByRole('button', { name: 'Connect' })
+    ).toBeVisible()
+    expect(within(card('Klaviyo')).queryByText(/existing key stays/)).toBeNull()
+    view.rerender(<ConnectionsBoard owner klaviyo={klaviyo} />)
+    expect(
+      within(card('Klaviyo')).getByText(
+        'Sample data — nothing is sent to Klaviyo.'
+      )
+    ).toBeVisible()
+  })
+
   it('labels the sample mode honestly', () => {
     render(<ConnectionsBoard owner klaviyo={null} />)
     expect(

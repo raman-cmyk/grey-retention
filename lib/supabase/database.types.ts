@@ -34,6 +34,139 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_memory_rules: {
+        Row: {
+          applies_to: string[]
+          confidence: number
+          created_at: string
+          evidence: Json
+          evidence_count: number
+          expires_at: string | null
+          id: string
+          idempotency_key: string
+          industry: string | null
+          kind: string
+          revision: number
+          rule: string
+          source: string
+          status: string
+          tenant_id: string | null
+          updated_at: string
+          why: string
+        }
+        Insert: {
+          applies_to?: string[]
+          confidence: number
+          created_at?: string
+          evidence?: Json
+          evidence_count?: number
+          expires_at?: string | null
+          id?: string
+          idempotency_key: string
+          industry?: string | null
+          kind: string
+          revision?: number
+          rule: string
+          source: string
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+          why?: string
+        }
+        Update: {
+          applies_to?: string[]
+          confidence?: number
+          created_at?: string
+          evidence?: Json
+          evidence_count?: number
+          expires_at?: string | null
+          id?: string
+          idempotency_key?: string
+          industry?: string | null
+          kind?: string
+          revision?: number
+          rule?: string
+          source?: string
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+          why?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'agent_memory_rules_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      agent_runs: {
+        Row: {
+          agent: string
+          brand_book_version: number | null
+          caller_key: string
+          cost_micro: number
+          created_at: string
+          detail: string | null
+          id: string
+          model: string | null
+          output: Json | null
+          prompt_digest: string
+          provider: string | null
+          rule_ids: string[]
+          run_key: string
+          tenant_id: string | null
+          verdict: string
+          version: string
+        }
+        Insert: {
+          agent: string
+          brand_book_version?: number | null
+          caller_key: string
+          cost_micro?: number
+          created_at?: string
+          detail?: string | null
+          id?: string
+          model?: string | null
+          output?: Json | null
+          prompt_digest: string
+          provider?: string | null
+          rule_ids?: string[]
+          run_key: string
+          tenant_id?: string | null
+          verdict: string
+          version: string
+        }
+        Update: {
+          agent?: string
+          brand_book_version?: number | null
+          caller_key?: string
+          cost_micro?: number
+          created_at?: string
+          detail?: string | null
+          id?: string
+          model?: string | null
+          output?: Json | null
+          prompt_digest?: string
+          provider?: string | null
+          rule_ids?: string[]
+          run_key?: string
+          tenant_id?: string | null
+          verdict?: string
+          version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'agent_runs_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       ai_calls: {
         Row: {
           cost_micro_usd: number
@@ -455,6 +588,38 @@ export type Database = {
             foreignKeyName: 'autopilot_streaks_tenant_id_fkey'
             columns: ['tenant_id']
             isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      brand_books: {
+        Row: {
+          content: Json
+          created_at: string
+          tenant_id: string
+          version: number
+          written_by: string
+        }
+        Insert: {
+          content: Json
+          created_at?: string
+          tenant_id: string
+          version: number
+          written_by: string
+        }
+        Update: {
+          content?: Json
+          created_at?: string
+          tenant_id?: string
+          version?: number
+          written_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_books_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
             referencedRelation: 'tenants'
             referencedColumns: ['id']
           }
@@ -3548,6 +3713,79 @@ export type Database = {
           }
         ]
       }
+      klaviyo_credentials: {
+        Row: {
+          api_revision: string
+          checked_at: string
+          created_at: string
+          key_hint: string
+          klaviyo_account_id: string
+          later_missing: string[]
+          secret_id: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          api_revision: string
+          checked_at?: string
+          created_at?: string
+          key_hint: string
+          klaviyo_account_id: string
+          later_missing?: string[]
+          secret_id: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          api_revision?: string
+          checked_at?: string
+          created_at?: string
+          key_hint?: string
+          klaviyo_account_id?: string
+          later_missing?: string[]
+          secret_id?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'klaviyo_credentials_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      klaviyo_key_checks: {
+        Row: {
+          checked_at: string
+          id: number
+          tenant_id: string
+        }
+        Insert: {
+          checked_at?: string
+          id?: never
+          tenant_id: string
+        }
+        Update: {
+          checked_at?: string
+          id?: never
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'klaviyo_key_checks_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       l2_silence_candidates: {
         Row: {
           brand_revision: number
@@ -5483,6 +5721,7 @@ export type Database = {
         Args: { event_date: string; name: string; notes: string; t: string }
         Returns: string
       }
+      add_memory_rule: { Args: { r: Json }; Returns: string }
       admin_assign_inbox_message: {
         Args: { brand: string; message: string }
         Returns: string
@@ -5624,6 +5863,7 @@ export type Database = {
         }
         Returns: string
       }
+      begin_klaviyo_key_check: { Args: { t: string }; Returns: undefined }
       change_fixture_profile_evidence: {
         Args: {
           bounce: boolean
@@ -5723,6 +5963,22 @@ export type Database = {
       confirm_fixture_sent: {
         Args: { delivery: string; observed_at: string; t: string }
         Returns: undefined
+      }
+      connect_klaviyo_live: {
+        Args: {
+          account_country?: string
+          account_currency?: string
+          account_label: string
+          account_timezone?: string
+          account_website?: string
+          api_key: string
+          api_revision: string
+          credential_hint: string
+          klaviyo_account_id: string
+          later_missing?: string[]
+          t: string
+        }
+        Returns: number
       }
       connect_sample_provider: {
         Args: {
@@ -6069,6 +6325,7 @@ export type Database = {
         }
         Returns: string
       }
+      klaviyo_api_key: { Args: { t: string }; Returns: string }
       my_pending_invites: {
         Args: never
         Returns: {
@@ -6082,6 +6339,14 @@ export type Database = {
         Returns: string
       }
       operator_diagnostics: { Args: never; Returns: Json }
+      platform_ai_usage_today: {
+        Args: never
+        Returns: {
+          cap_micro: number
+          reserved_micro: number
+          spent_micro: number
+        }[]
+      }
       prepare_copy_review: {
         Args: { t: string; week: string }
         Returns: string
@@ -6100,6 +6365,7 @@ export type Database = {
         Args: { actual: number; reservation: string; t: string }
         Returns: undefined
       }
+      record_agent_run: { Args: { run: Json }; Returns: string }
       record_asset_upload: {
         Args: {
           actor: string
@@ -6250,6 +6516,15 @@ export type Database = {
         Args: { invite: string; t: string }
         Returns: undefined
       }
+      reserve_ai_usage: {
+        Args: {
+          estimate: number
+          feature: string
+          operation: string
+          t: string
+        }
+        Returns: string
+      }
       reserve_fixture_usage: {
         Args: {
           estimate: number
@@ -6257,6 +6532,10 @@ export type Database = {
           operation: string
           t: string
         }
+        Returns: string
+      }
+      reserve_platform_ai_usage: {
+        Args: { estimate: number; feature: string; operation: string }
         Returns: string
       }
       resolve_admin_context: {
@@ -6360,6 +6639,10 @@ export type Database = {
           voice: string
         }
         Returns: undefined
+      }
+      save_brand_book: {
+        Args: { content: Json; t: string; written_by: string }
+        Returns: number
       }
       save_brand_section: {
         Args: {
@@ -6484,6 +6767,23 @@ export type Database = {
         }
         Returns: undefined
       }
+      set_platform_ai_daily_cap: { Args: { cap: number }; Returns: undefined }
+      settle_ai_usage: {
+        Args: { actual: number; reservation: string; t: string }
+        Returns: undefined
+      }
+      settle_platform_ai_usage: {
+        Args: { actual: number; reservation: string }
+        Returns: undefined
+      }
+      settle_stale_ai_usage: {
+        Args: { older_than?: string; t: string }
+        Returns: number
+      }
+      settle_stale_platform_ai_usage: {
+        Args: { older_than?: string }
+        Returns: number
+      }
       simulate_l2_schedule: {
         Args: {
           candidate: string
@@ -6537,6 +6837,15 @@ export type Database = {
           t: string
         }
         Returns: undefined
+      }
+      update_memory_rule: {
+        Args: {
+          expected_revision: number
+          new_confidence: number
+          new_status: string
+          rule_id: string
+        }
+        Returns: number
       }
       update_team_access: {
         Args: {
