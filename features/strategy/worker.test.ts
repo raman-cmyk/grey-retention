@@ -11,10 +11,20 @@ const tenant = '00000000-0000-4000-8000-000000000101'
 const start = '2026-11-16'
 
 type Call = { fn: string; args: Record<string, unknown> }
-/** A database that hands out the given runs, then nothing, and records calls. */
+type Saved = {
+  brand_offers?: Record<string, unknown>[]
+  discount_codes?: Record<string, unknown>[]
+}
+/**
+ * A database that hands out the given runs, then nothing, and records
+ * calls. `saved` is what the owner saved in Settings (DSC-001's tables, read
+ * by the real `SupabaseOfferSource`; 'error' makes that read fail), and the
+ * workspace's timezone is Melbourne, like the sample store's.
+ */
 function fakeDb(
   runs: Record<string, unknown>[],
-  fail: Record<string, { code: string }> = {}
+  fail: Record<string, { code: string }> = {},
+  saved: Saved | 'error' = {}
 ) {
   const queue = [...runs]
   const calls: Call[] = []
@@ -27,8 +37,35 @@ function fakeDb(
     }
     return { data: fn === 'fail_strategy_step' ? 'retry' : null, error: null }
   })
-  return { db: { rpc } as never, calls }
+  const from = (table: keyof Saved | 'tenants') => {
+    const result =
+      table === 'tenants'
+        ? { data: [{ timezone: 'Australia/Melbourne' }], error: null }
+        : saved === 'error'
+          ? { data: null, error: { code: 'PGRST000' } }
+          : { data: saved[table] ?? [], error: null }
+    const query = {
+      eq: () => query,
+      maybeSingle: async () => ({
+        data: result.data?.[0] ?? null,
+        error: result.error
+      }),
+      then: (
+        done: (r: typeof result) => unknown,
+        failed: (e: unknown) => unknown
+      ) => Promise.resolve(result).then(done, failed)
+    }
+    return { select: () => query }
+  }
+  return { db: { rpc, from } as never, calls }
 }
+/** A code the owner saved, as DSC-001 stores it. */
+const saved = (code: string, percent: number, expires_at: string | null) => ({
+  id: `00000000-0000-4000-8000-${code.length.toString().padStart(4, '0')}${percent.toString().padStart(8, '0')}`,
+  code,
+  percent,
+  expires_at
+})
 const run = (over: Record<string, unknown> = {}) => ({
   id: 'run-1',
   tenant_id: tenant,
@@ -49,9 +86,10 @@ describe('running plan steps (the code-only path)', () => {
     expect(await runStrategyRuns(db)).toEqual({ ran: 1 })
     const finish = calls.find((c) => c.fn === 'finish_strategy_pulse')!
     expect(finish.args).toMatchObject({ run: 'run-1', lease: 'lease-1' })
-    const saved = finish.args.result as StoredPulse
-    expect(saved).toMatchObject({ source: 'code', sample: true })
-    expect(saved.offers.map((o) => o.code)).toEqual(['WELCOME15', 'CANDLE10'])
+    const stored = finish.args.result as StoredPulse
+    expect(stored).toMatchObject({ source: 'code', sample: true })
+    // Nothing saved in Settings: the sample offers, sorted by code.
+    expect(stored.offers.map((o) => o.code)).toEqual(['CANDLE10', 'WELCOME15'])
   })
 
   it('plans the 15 days with the owner’s pick', async () => {
@@ -106,6 +144,103 @@ describe('running plan steps (the code-only path)', () => {
       await runStrategyRuns(late.db, { deadline: 1000, now: () => 2000 })
     ).toEqual({ ran: 0 })
     expect(late.calls).toEqual([])
+  })
+})
+
+describe('the offers a plan uses (#379)', () => {
+  // The owner's own codes, unlike the sample store's: 25% max, a 30% code
+  // above it, and a code that ends at 2 pm on the plan's fourth day.
+  const own: Saved = {
+    brand_offers: [{ max_discount_percent: 25, revision: 1 }],
+    discount_codes: [
+      saved('OWNER20', 20, null),
+      saved('OWNER30', 30, null),
+      saved('ENDSOON', 10, '2026-11-19T14:00:00+11:00')
+    ]
+  }
+  const sampleCodes = ['WELCOME15', 'CANDLE10', 'BIGSALE40', 'SPRING20']
+  const pulseFor = async (savedOffers: Saved) => {
+    const { db, calls } = fakeDb([run()], {}, savedOffers)
+    await runStrategyRuns(db)
+    return calls.find((c) => c.fn === 'finish_strategy_pulse')!.args
+      .result as StoredPulse
+  }
+  const planFor = async (
+    stored: StoredPulse,
+    savedOffers: Saved,
+    pick: unknown = { mode: 'auto' }
+  ) => {
+    const { db, calls } = fakeDb(
+      [run({ state: 'plan_queued', pulse: stored, offer_pick: pick })],
+      {},
+      savedOffers
+    )
+    await runStrategyRuns(db)
+    return calls.find((c) => c.fn === 'finish_strategy_plan')!.args
+      .result as StoredPlan
+  }
+
+  it('lists and plans only the owner’s saved codes when they differ from the sample store’s', async () => {
+    const stored = await pulseFor(own)
+    expect(stored.sample).toBe(true)
+    // ENDSOON works all day only until the 18th (it ends at 2 pm on the 19th).
+    expect(stored.offers).toEqual([
+      expect.objectContaining({ code: 'ENDSOON', until: '2026-11-18' }),
+      expect.objectContaining({ code: 'OWNER20', percent: 20, until: null })
+    ])
+    expect(stored.leftOut).toEqual([
+      { code: 'OWNER30', why: 'It is 30% off, above your 25% maximum.' }
+    ])
+    const listed = JSON.stringify(stored)
+    for (const code of sampleCodes) expect(listed).not.toContain(code)
+
+    const plan = await planFor(stored, own)
+    const offers = plan.slots.filter((s) => s.offer)
+    expect(offers.length).toBeGreaterThan(0)
+    for (const s of offers) {
+      expect(['ENDSOON', 'OWNER20']).toContain(s.offer!.code)
+      expect(s.offer!.percent).toBeLessThanOrEqual(25)
+      if (s.offer!.code === 'ENDSOON') expect(s.date <= '2026-11-18').toBe(true)
+    }
+    const planned = JSON.stringify(plan)
+    for (const code of [...sampleCodes, 'OWNER30'])
+      expect(planned).not.toContain(code)
+  })
+
+  it('drops a picked offer that changed in Settings before the plan step, and says so', async () => {
+    // Picked from the sample offers; then the owner saves a 12% max.
+    const stored = await pulseFor({})
+    const plan = await planFor(
+      stored,
+      {
+        brand_offers: [{ max_discount_percent: 12, revision: 2 }],
+        discount_codes: [
+          saved('CANDLE10', 10, null),
+          saved('WELCOME15', 15, null)
+        ]
+      },
+      { mode: 'picked', offers: ['offer:CANDLE10', 'offer:WELCOME15'] }
+    )
+    expect(
+      plan.slots
+        .filter((s) => s.offer)
+        .every((s) => s.offer!.code === 'CANDLE10')
+    ).toBe(true)
+    expect(plan.notes).toContain(
+      'WELCOME15 was left out: it changed in your Settings after you picked it.'
+    )
+  })
+
+  it('tries the step again when the saved offers cannot be read, never using the sample', async () => {
+    const { db, calls } = fakeDb([run()], {}, 'error')
+    expect(await runStrategyRuns(db)).toEqual({ ran: 0 })
+    expect(calls.some((c) => c.fn === 'finish_strategy_pulse')).toBe(false)
+    expect(failure(calls)).toEqual({
+      run: 'run-1',
+      lease: 'lease-1',
+      code: 'offers_unreadable',
+      final: false
+    })
   })
 })
 

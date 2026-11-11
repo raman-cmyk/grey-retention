@@ -13,6 +13,16 @@ import { codeMoves, mapPatterns, readMapperInput } from './competitors'
 import { samplePlan } from './plan'
 import { sampleStrategyData, type StrategyData } from './data'
 import { storedPulse } from './stored'
+import { SupabaseOfferSource } from '@/features/offers/source'
+import type { SavedOffers } from '@/features/email-build/ports'
+import {
+  offerWorksAt,
+  planOfferSource,
+  pulseCodes,
+  readPlanOffers,
+  stillUsable,
+  workspaceTimezone
+} from './offers'
 
 type Db = SupabaseClient<Database>
 
@@ -30,11 +40,19 @@ type Db = SupabaseClient<Database>
  * The agents (STR-001..003, built on MEM-001's runAgent) are wired in here
  * together with the first real store reader, with their own time limit and
  * a lease long enough for paid steps.
+ *
+ * Offers (#379) come from what the owner saved in Settings, by the same
+ * rule as "Create email" (`features/strategy/offers.ts`), in the
+ * workspace's one timezone: the offer step lists them, and the plan step
+ * keeps only picked offers that still work and checks every offer email at
+ * its own send time.
  */
 export async function runStrategyRuns(
   db: Db,
   deps: {
     data?: StrategyData
+    /** Default: DSC-001's `SupabaseOfferSource` on `db` (service role). */
+    saved?: SavedOffers
     /** Run only this plan (the owner's click), once. */
     run?: string
     /** Steps to run at most. */
@@ -45,6 +63,7 @@ export async function runStrategyRuns(
   } = {}
 ) {
   const data = deps.data ?? sampleStrategyData
+  const saved = deps.saved ?? new SupabaseOfferSource(db)
   const now = deps.now ?? Date.now
   const limit = deps.run ? 1 : (deps.limit ?? 2)
   let ran = 0
@@ -62,10 +81,28 @@ export async function runStrategyRuns(
         tenantId: run.tenant_id,
         start: run.start_on
       })
+      const timezone = await workspaceTimezone(db, run.tenant_id)
+      const offers = await readPlanOffers(
+        planOfferSource(saved, run.start_on),
+        run.tenant_id,
+        run.start_on,
+        timezone
+      )
       if (run.state === 'pulse_queued') {
         const { input } = readPulseInput(store.pulse)
         if (input.start !== run.start_on) throw final('store_wrong_days')
-        const pulse = codePulse(gatherEvidence(input))
+        // The owner's offers (or the sample's when nothing is saved), never
+        // the store data's own codes.
+        const pulse = codePulse(
+          gatherEvidence({
+            ...input,
+            brand: {
+              ...input.brand,
+              maxDiscountPercent: offers.maxDiscountPercent
+            },
+            codes: pulseCodes(offers, run.start_on, timezone)
+          })
+        )
         const done = await db.rpc('finish_strategy_pulse', {
           run: run.id,
           lease: run.lease_token,
@@ -78,17 +115,47 @@ export async function runStrategyRuns(
           throw final('stored_pulse_invalid')
         const pick = offerPick.safeParse(run.offer_pick)
         if (!pick.success) throw final('stored_pick_invalid')
-        const offers = offersToPlan(stored.data, pick.data)
-        if (!offers.ok) throw final('pick_not_in_pulse')
+        const picked = offersToPlan(stored.data, pick.data)
+        if (!picked.ok) throw final('pick_not_in_pulse')
         const mapper = readMapperInput(store.mapper)
         if (mapper.start !== run.start_on) throw final('store_wrong_days')
-        const plan = samplePlan({
+        // Settings may have changed since the offer step: only picked offers
+        // that still work, with their current percent and last full day.
+        const { usable, leftOut } = stillUsable(
+          picked.offers,
+          offers,
+          run.start_on,
+          timezone
+        )
+        const ids = new Set(usable.map((o) => o.id))
+        const pulse = {
+          ...stored.data,
+          offers: usable,
+          highlights: stored.data.highlights.filter(
+            (h) => h.kind !== 'offer' || ids.has(h.id)
+          )
+        }
+        const made = samplePlan({
           ...store.plan,
           start: run.start_on,
-          pulse: stored.data,
-          offers: offers.offers,
+          pulse,
+          offers: usable,
           moves: codeMoves(mapPatterns(mapper))
         })
+        // Every offer email works at its own send time, as "Create email"
+        // will check it (a guard: the plan's last full days ensure it).
+        if (made.slots.some((s) => !offerWorksAt(s, offers, timezone)))
+          throw final('plan_offer_unusable')
+        const plan = {
+          ...made,
+          notes: [
+            ...leftOut.map(
+              (code) =>
+                `${code} was left out: it changed in your Settings after you picked it.`
+            ),
+            ...made.notes
+          ]
+        }
         const done = await db.rpc('finish_strategy_plan', {
           run: run.id,
           lease: run.lease_token,
