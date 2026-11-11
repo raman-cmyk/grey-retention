@@ -40,6 +40,7 @@ const input = (over: Partial<DraftInput> = {}): DraftInput => ({
   plannedSendAt: '2026-11-17T18:00:00Z',
   audienceId: 'SegEng90',
   sample: false,
+  lease: { build: '00000000-0000-4000-8000-00000000b101', token: 'lease-1' },
   ...over
 })
 const ab = (over: Partial<DraftInput> = {}) =>
@@ -56,11 +57,11 @@ function memoryStore() {
   const rows = new Map<string, PushProgress & { checks?: unknown }>()
   const saves: PushStep[] = []
   const store: PushStore = {
-    async load(t, k) {
+    async load({ tenantId: t, key: k }) {
       const row = rows.get(`${t}/${k}`)
       return row ? structuredClone(row) : null
     },
-    async save(t, k, step) {
+    async save({ tenantId: t, key: k }, step) {
       saves.push(step)
       const row = rows.get(`${t}/${k}`) ?? {
         state: 'started',
@@ -317,6 +318,19 @@ describe('the live Klaviyo draft push', () => {
   it('refuses, without calling Klaviyo, what must never reach it', async () => {
     for (const [over, checks] of [
       [{ sample: true }, ['sample']],
+      [{ lease: undefined }, ['lease']],
+      [
+        {
+          html: page(
+            'A',
+            Array.from(
+              { length: 41 },
+              (_, i) => `https://cedar.example/${i}.jpg`
+            )
+          )
+        },
+        ['images']
+      ],
       [{ audienceId: 'sample engaged' }, ['audience']],
       [
         { html: '<html><img src="https://cedar.example/a.jpg"></html>' },

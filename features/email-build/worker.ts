@@ -166,7 +166,9 @@ export async function runEmailBuilds(
           html: email.data.html,
           plannedSendAt: email.data.plannedSendAt,
           audienceId: email.data.audienceId,
-          sample: email.data.sample
+          sample: email.data.sample,
+          // The live pusher saves its steps under this build's lease (PSH-001).
+          lease: { build: job.id, token: job.lease_token }
         })
         if (!pushed.ok) {
           await fail(

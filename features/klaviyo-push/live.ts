@@ -24,7 +24,7 @@ export const pushCallMs = 10_000
 /** The push steps in `klaviyo_draft_pushes`, saved through `save_klaviyo_push`. */
 export function databasePushStore(db: Db): PushStore {
   return {
-    async load(tenantId, key) {
+    async load({ tenantId, key }) {
       const { data, error } = await db
         .from('klaviyo_draft_pushes')
         .select(
@@ -48,7 +48,7 @@ export function databasePushStore(db: Db): PushStore {
         written: data.written
       }
     },
-    async save(tenantId, key, step: PushStep) {
+    async save({ build, lease }, step: PushStep) {
       const row: Record<string, unknown> = {}
       const names: [keyof PushStep, string][] = [
         ['state', 'state'],
@@ -66,8 +66,8 @@ export function databasePushStore(db: Db): PushStore {
       for (const [from, to] of names)
         if (from in step) row[to] = step[from] ?? null
       const { error } = await db.rpc('save_klaviyo_push', {
-        t: tenantId,
-        key,
+        build,
+        lease,
         step: row as Json
       })
       if (error) throw error

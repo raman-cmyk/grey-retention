@@ -8,9 +8,10 @@
 -- campaign and its message, which designs went in (both, or A only after
 -- Klaviyo refused an even A/B test), and the final checks on the HTML sent.
 --
--- Only the worker writes it, and only while the email's build holds its
--- push lease; members of the workspace read it. Nothing here schedules or
--- sends (D17: the owner schedules in Klaviyo).
+-- Only the worker writes it, and only under the exact push lease of the
+-- email's build; members of the workspace (and platform operators, as for
+-- the builds) read it. Nothing here schedules or sends (D17: the owner
+-- schedules in Klaviyo).
 --
 -- The number is chosen at merge time (D24).
 
@@ -19,9 +20,10 @@ create table public.klaviyo_draft_pushes (
   push_key uuid not null,
   state text not null default 'started'
     check (state in ('started', 'drafted', 'refused')),
-  -- Each picture's address in the email -> its address in Klaviyo.
+  -- Each picture's address in the email -> its address in Klaviyo (pictures
+  -- of every build of this planned email: at most 5 builds of 40 each).
   images jsonb not null default '{}'::jsonb
-    check (jsonb_typeof(images) = 'object' and octet_length(images::text) <= 60000),
+    check (jsonb_typeof(images) = 'object' and octet_length(images::text) <= 900000),
   -- Our templates: [{ "approach": "A", "id": "...", "hash": "...", "deleted": false,
   -- "variation": "..." }] (the variation it was put on, once it is).
   templates jsonb not null default '[]'::jsonb
@@ -46,73 +48,93 @@ create table public.klaviyo_draft_pushes (
   updated_at timestamptz not null default now(),
   primary key (tenant_id, push_key),
   check ((campaign_id is null) = (message_id is null)),
-  check (state <> 'drafted' or (campaign_id is not null and designs is not null))
+  check (state <> 'drafted' or (campaign_id is not null and designs is not null)),
+  check (state <> 'refused' or reason is not null)
 );
 
 alter table public.klaviyo_draft_pushes enable row level security;
-create policy member_read on public.klaviyo_draft_pushes for select to authenticated
-  using (private.is_active_member(tenant_id));
+create policy klaviyo_draft_pushes_member_read on public.klaviyo_draft_pushes for select to authenticated
+  using (private.is_active_member(tenant_id) or (select private.is_operator()));
 -- Written only through `save_klaviyo_push`, by the worker too.
 revoke all on public.klaviyo_draft_pushes from public, anon, authenticated, service_role;
 grant select on public.klaviyo_draft_pushes to authenticated;
 grant select on public.klaviyo_draft_pushes to service_role;
 
--- One step of a push, saved by the worker while the email's build holds
--- its push lease. `step` names the columns it sets; each is checked.
--- Locks: the tenant first, then the push row.
-create or replace function public.save_klaviyo_push(t uuid, key uuid, step jsonb)
+-- One step of a push, saved by the worker under the exact push lease of
+-- the email's build (`private.leased_email_build`, EML-004 part 2): a run
+-- whose lease ran out, or that never had it, saves nothing, so two runs
+-- never both make a campaign. `step` names the columns it sets; each is
+-- checked. What a push made stays made: its campaign and message, design A
+-- once Klaviyo refused the even test, and a push closed because the owner
+-- changed or deleted its draft in Klaviyo. Locks: the tenant first, then
+-- the build, then the push row.
+create or replace function public.save_klaviyo_push(build uuid, lease uuid, step jsonb)
 returns void language plpgsql security definer set search_path = '' as $$
 declare
   allowed constant text[] := array['state', 'images', 'templates', 'campaign_id', 'message_id', 'create_started_at',
     'designs', 'fallback', 'checks', 'reason', 'written'];
+  texts constant text[] := array['state', 'campaign_id', 'message_id', 'create_started_at', 'designs', 'fallback',
+    'reason', 'written'];
+  t uuid; key uuid; cur public.klaviyo_draft_pushes;
 begin
   if coalesce(auth.role(), '') <> 'service_role' then raise exception 'Access denied' using errcode = '42501'; end if;
-  if t is null or key is null or jsonb_typeof(step) is distinct from 'object' or step = '{}'::jsonb
-    or exists (select 1 from jsonb_object_keys(step) k where k <> all (allowed)) then
+  if build is null or lease is null or jsonb_typeof(step) is distinct from 'object' or step = '{}'::jsonb
+    or exists (select 1 from jsonb_object_keys(step) k where k <> all (allowed))
+    or exists (select 1 from unnest(texts) k where step ? k and jsonb_typeof(step->k) not in ('string', 'null')) then
     raise exception 'Invalid push step' using errcode = '23514';
   end if;
+  select b.tenant_id, b.push_key into t, key from public.email_builds b where b.id = build;
+  if not found then raise exception 'Lease unavailable' using errcode = 'PT409'; end if;
   perform 1 from public.tenants where id = t for share;
-  if not found then raise exception 'Invalid push step' using errcode = '23514'; end if;
-  -- Only the push of a build that holds its lease writes its steps.
-  if not exists (select 1 from public.email_builds b
-      where b.tenant_id = t and b.push_key = key and b.state = 'push_queued'
-        and b.lease_token is not null and b.lease_until > now()) then
-    raise exception 'Push lease unavailable' using errcode = 'PT409';
-  end if;
+  -- The caller's own build, in its push step, with its unexpired lease.
+  perform private.leased_email_build(build, lease, 'push_queued');
   if (step ? 'state' and coalesce(step->>'state', '') not in ('started', 'drafted', 'refused'))
     or (step ? 'images' and (jsonb_typeof(step->'images') <> 'object'
+      or (select count(*) from jsonb_object_keys(step->'images')) > 40
       or exists (select 1 from jsonb_each(step->'images') i
         where length(i.key) not between 9 and 2000 or jsonb_typeof(i.value) <> 'string'
           or length(i.value #>> '{}') > 2000 or i.value #>> '{}' !~ '^https://[^\s"''<>]+$')))
-    or (step ? 'templates' and (jsonb_typeof(step->'templates') <> 'array'
+    or (step ? 'templates' and (jsonb_typeof(step->'templates') <> 'array' or jsonb_array_length(step->'templates') > 20
       or exists (select 1 from jsonb_array_elements(step->'templates') x
         where jsonb_typeof(x) <> 'object' or x - 'approach' - 'id' - 'hash' - 'deleted' - 'variation' <> '{}'::jsonb
           or coalesce(x->>'approach', '') not in ('A', 'B')
-          or coalesce(x->>'id', '') !~ '^[A-Za-z0-9_-]{1,64}$'
-          or coalesce(x->>'hash', '') !~ '^[a-f0-9]{64}$'
+          or jsonb_typeof(x->'id') is distinct from 'string' or x->>'id' !~ '^[A-Za-z0-9_-]{1,64}$'
+          or jsonb_typeof(x->'hash') is distinct from 'string' or x->>'hash' !~ '^[a-f0-9]{64}$'
           or jsonb_typeof(x->'deleted') is distinct from 'boolean'
           or (x ? 'variation' and x->'variation' <> 'null'::jsonb
-            and coalesce(x->>'variation', '') !~ '^[A-Za-z0-9_-]{1,64}$'))))
-    or (step ? 'campaign_id' and step->'campaign_id' <> 'null'::jsonb and coalesce(step->>'campaign_id', '') !~ '^[A-Za-z0-9_-]{1,64}$')
-    or (step ? 'message_id' and step->'message_id' <> 'null'::jsonb and coalesce(step->>'message_id', '') !~ '^[A-Za-z0-9_-]{1,64}$')
+            and (jsonb_typeof(x->'variation') <> 'string' or x->>'variation' !~ '^[A-Za-z0-9_-]{1,64}$')))))
+    or (step ? 'campaign_id' and step->'campaign_id' <> 'null'::jsonb and step->>'campaign_id' !~ '^[A-Za-z0-9_-]{1,64}$')
+    or (step ? 'message_id' and step->'message_id' <> 'null'::jsonb and step->>'message_id' !~ '^[A-Za-z0-9_-]{1,64}$')
     or (step ? 'create_started_at' and step->'create_started_at' <> 'null'::jsonb
       and private.safe_time(step->>'create_started_at') is null)
-    or (step ? 'designs' and step->'designs' <> 'null'::jsonb and coalesce(step->>'designs', '') not in ('both', 'A'))
-    or (step ? 'fallback' and step->'fallback' <> 'null'::jsonb and coalesce(step->>'fallback', '') !~ '^[a-z][a-z_]{1,39}$')
-    or (step ? 'reason' and step->'reason' <> 'null'::jsonb and coalesce(step->>'reason', '') !~ '^[a-z][a-z_]{1,39}$')
-    or (step ? 'written' and step->'written' <> 'null'::jsonb and coalesce(step->>'written', '') !~ '^[a-f0-9]{64}$')
-    or (step ? 'checks' and (jsonb_typeof(step->'checks') <> 'array' or jsonb_array_length(step->'checks') > 12
+    or (step ? 'designs' and step->'designs' <> 'null'::jsonb and step->>'designs' not in ('both', 'A'))
+    or (step ? 'fallback' and step->'fallback' <> 'null'::jsonb and step->>'fallback' !~ '^[a-z][a-z_]{1,39}$')
+    or (step ? 'reason' and step->'reason' <> 'null'::jsonb and step->>'reason' !~ '^[a-z][a-z_]{1,39}$')
+    or (step ? 'written' and step->'written' <> 'null'::jsonb and step->>'written' !~ '^[a-f0-9]{64}$')
+    or (step ? 'checks' and (jsonb_typeof(step->'checks') <> 'array' or jsonb_array_length(step->'checks') > 6
+      or octet_length((step->'checks')::text) > 20000
       or exists (select 1 from jsonb_array_elements(step->'checks') x
         where jsonb_typeof(x) <> 'object' or x - 'id' - 'pass' - 'problems' <> '{}'::jsonb
-          or coalesce(x->>'id', '') !~ '^[a-z][a-z_]{1,39}$'
+          or jsonb_typeof(x->'id') is distinct from 'string' or x->>'id' !~ '^[a-z][a-z_]{1,39}$'
           or jsonb_typeof(x->'pass') is distinct from 'boolean'
-          or jsonb_typeof(x->'problems') is distinct from 'array' or jsonb_array_length(x->'problems') > 20
+          or jsonb_typeof(x->'problems') is distinct from 'array' or jsonb_array_length(x->'problems') > 10
           or exists (select 1 from jsonb_array_elements(x->'problems') p
             where jsonb_typeof(p) <> 'string' or length(p #>> '{}') > 300)))) then
     raise exception 'Invalid push step' using errcode = '23514';
   end if;
-  insert into public.klaviyo_draft_pushes as p (tenant_id, push_key) values (t, key)
-    on conflict (tenant_id, push_key) do nothing;
+  select * into cur from public.klaviyo_draft_pushes p where p.tenant_id = t and p.push_key = key for update;
+  if found then
+    -- What a push made stays made.
+    if (cur.state = 'refused' and cur.reason = 'externally_modified')
+      or (step ? 'state' and step->>'state' = 'started')
+      or (step ? 'campaign_id' and cur.campaign_id is not null and step->>'campaign_id' is distinct from cur.campaign_id)
+      or (step ? 'message_id' and cur.message_id is not null and step->>'message_id' is distinct from cur.message_id)
+      or (step ? 'designs' and cur.designs = 'A' and step->>'designs' is distinct from 'A') then
+      raise exception 'This push cannot go back' using errcode = 'PT409';
+    end if;
+  else
+    insert into public.klaviyo_draft_pushes (tenant_id, push_key) values (t, key);
+  end if;
   update public.klaviyo_draft_pushes p set
       state = case when step ? 'state' then step->>'state' else p.state end,
       images = case when step ? 'images' then p.images || (step->'images') else p.images end,

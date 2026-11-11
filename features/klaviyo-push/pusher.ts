@@ -89,9 +89,21 @@ export type PushStep = Partial<
   }
 >
 /** Where each push's steps are kept (`klaviyo_draft_pushes`). */
+/** One push: its workspace and key, and the build's push lease it runs under. */
+export type PushRef = {
+  tenantId: string
+  key: string
+  build: string
+  lease: string
+}
+/**
+ * Where each push's steps are kept (`klaviyo_draft_pushes`). A step is saved
+ * only under the build's exact push lease: a run that lost it saves
+ * nothing, so two runs never both make a campaign.
+ */
 export type PushStore = {
-  load(tenantId: string, key: string): Promise<PushProgress | null>
-  save(tenantId: string, key: string, step: PushStep): Promise<void>
+  load(ref: PushRef): Promise<PushProgress | null>
+  save(ref: PushRef, step: PushStep): Promise<void>
 }
 /** The workspace's live Klaviyo and its timezone. */
 export type PushSource = {
@@ -131,6 +143,18 @@ class Refused extends Error {
 }
 
 const klaviyoId = /^[A-Za-z0-9_-]{1,64}$/
+/** Pictures an email may have (each is imported into Klaviyo once). */
+export const maxPictures = 40
+
+const refOf = (
+  input: DraftInput,
+  lease: { build: string; token: string }
+): PushRef => ({
+  tenantId: input.tenantId,
+  key: input.idempotencyKey,
+  build: lease.build,
+  lease: lease.token
+})
 /** A create whose answer was lost is looked for from a minute before. */
 const findSlackMs = 60_000
 
@@ -220,8 +244,8 @@ async function failed(
       checks: error.checks.join(',')
     })
     try {
-      if (!input.sample)
-        await store.save(input.tenantId, input.idempotencyKey, {
+      if (!input.sample && input.lease)
+        await store.save(refOf(input, input.lease), {
           state: 'refused',
           reason: error.reason
         })
@@ -261,6 +285,9 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
   const key = input.idempotencyKey
   // The sample store never reaches a real Klaviyo account.
   if (input.sample) throw new Refused('sample_email', ['sample'])
+  // Every step is saved under the build's push lease.
+  if (!input.lease) throw new Refused('no_push_lease', ['lease'])
+  const ref = refOf(input, input.lease)
   const designs = designsOf(input)
   if (!klaviyoId.test(input.audienceId))
     throw new Refused('audience_not_in_klaviyo', ['audience'])
@@ -276,11 +303,11 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     deps.callMs ?? 10_000
   )
 
-  let p = (await deps.store.load(tenantId, key)) ?? { ...empty }
+  let p = (await deps.store.load(ref)) ?? { ...empty }
   if (p.state === 'refused' && p.reason === 'externally_modified')
     throw new Refused('externally_modified', ['externally_modified'])
   const save = async (step: PushStep) => {
-    await deps.store.save(tenantId, key, step)
+    await deps.store.save(ref, step)
     // The checks are kept for the record only, not in the progress.
     const { images, ...rest } = step
     delete rest.checks
@@ -304,11 +331,15 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
   // After Klaviyo refused the even test once, this draft stays design A.
   const wanted = p.designs === 'A' ? designs.slice(0, 1) : designs
 
-  // 1. The pictures, into Klaviyo's library.
+  // 1. The pictures, into Klaviyo's library (all checked before the first).
   let n = Object.keys(p.images).length
-  for (const src of [...new Set(wanted.flatMap((d) => imageSources(d.html)))]) {
+  const pictures = [...new Set(wanted.flatMap((d) => imageSources(d.html)))]
+  if (pictures.length > maxPictures)
+    throw new Refused('too_many_pictures', ['images'])
+  if (pictures.some((src) => !importable(src) || src.length > 2000))
+    throw new Refused('image_not_importable', ['images'])
+  for (const src of pictures) {
     if (p.images[src]) continue
-    if (!importable(src)) throw new Refused('image_not_importable', ['images'])
     let url: string
     try {
       url = await importImage(client, src, `GROS ${short(key)} ${++n}`)
@@ -552,6 +583,11 @@ function mergeChecks(perDesign: FinalCheck[][]): FinalCheck[] {
         perDesign.length > 1 ? `Design ${i ? 'B' : 'A'}: ${p}` : p
       )
     )
-    return { id, pass: problems.length === 0, problems }
+    // At most 10 problems a check, each in a line (what the store keeps).
+    return {
+      id,
+      pass: problems.length === 0,
+      problems: problems.slice(0, 10).map((x) => x.slice(0, 280))
+    }
   })
 }

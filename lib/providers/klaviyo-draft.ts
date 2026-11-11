@@ -42,6 +42,12 @@ export type DraftInput = {
    * (the owner still schedules it). Without it the draft has `html` only.
    */
   variations?: { approach: 'A' | 'B'; html: string }[]
+  /**
+   * The build's push lease (PSH-001): the live pusher saves each step it
+   * makes in Klaviyo under it, so a run that lost its lease saves nothing
+   * and two runs never both make a draft. The fake ignores it.
+   */
+  lease?: { build: string; token: string }
 }
 
 export type DraftResult =

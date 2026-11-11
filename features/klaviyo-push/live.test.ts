@@ -15,7 +15,18 @@ const input: DraftInput = {
   html: '<p>{% unsubscribe %} {{ organization.full_address }}</p>',
   plannedSendAt: '2026-11-17T18:00:00Z',
   audienceId: 'SegEng90',
-  sample: false
+  sample: false,
+  lease: {
+    build: '00000000-0000-4000-8000-00000000b101',
+    token: '00000000-0000-4000-8000-00000000aaaa'
+  }
+}
+
+const ref = {
+  tenantId: input.tenantId,
+  key: input.idempotencyKey,
+  build: '00000000-0000-4000-8000-00000000b101',
+  lease: '00000000-0000-4000-8000-00000000aaaa'
 }
 
 /** A database that answers each RPC and table read from `answers`. */
@@ -85,15 +96,15 @@ describe('the pusher "Create email" uses', () => {
 describe('the push steps in the database', () => {
   it('saves a step under its column names through the worker-only command', async () => {
     const { db, rpc } = database({ save_klaviyo_push: { data: null } })
-    await databasePushStore(db).save(input.tenantId, input.idempotencyKey, {
+    await databasePushStore(db).save(ref, {
       campaignId: 'Cmp1',
       messageId: 'Msg1',
       images: { 'https://cedar.example/a.jpg': 'https://img.example/a.jpg' },
       designs: null
     })
     expect(rpc).toHaveBeenCalledWith('save_klaviyo_push', {
-      t: input.tenantId,
-      key: input.idempotencyKey,
+      build: ref.build,
+      lease: ref.lease,
       step: {
         campaign_id: 'Cmp1',
         message_id: 'Msg1',
@@ -121,7 +132,7 @@ describe('the push steps in the database', () => {
     expect(
       await databasePushStore(
         database({ klaviyo_draft_pushes: { data: row } }).db
-      ).load(input.tenantId, input.idempotencyKey)
+      ).load(ref)
     ).toEqual({
       state: 'drafted',
       images: {},
@@ -134,11 +145,6 @@ describe('the push steps in the database', () => {
       reason: null,
       written: 'b'.repeat(64)
     })
-    expect(
-      await databasePushStore(database({}).db).load(
-        input.tenantId,
-        input.idempotencyKey
-      )
-    ).toBeNull()
+    expect(await databasePushStore(database({}).db).load(ref)).toBeNull()
   })
 })

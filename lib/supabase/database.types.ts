@@ -7639,7 +7639,7 @@ export type Database = {
         Returns: Json
       }
       save_klaviyo_push: {
-        Args: { key: string; step: Json; t: string }
+        Args: { build: string; lease: string; step: Json }
         Returns: undefined
       }
       save_l2_simulation_policy: {
