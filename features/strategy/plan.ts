@@ -6,7 +6,13 @@ import { planningViolations, localWeek } from '@/features/planning/guards'
 import { developmentPolicy } from '@/features/workflow/domain/policy'
 import { addDays, pulseDays, type Pulse } from './pulse'
 import type { CompetitorMove } from './competitors'
-import { failedWords, tryAgent, type AgentCtx, type TryResult } from './retry'
+import {
+  failedWords,
+  outputLimit,
+  tryAgent,
+  type AgentCtx,
+  type TryResult
+} from './retry'
 import { statedFact } from './words'
 
 /**
@@ -265,7 +271,7 @@ export const briefWriterAgent: AgentDefinition<BriefTask, BriefAnswer> = {
     }
   },
   output: briefAnswer,
-  maxOutputTokens: 2000,
+  maxOutputTokens: outputLimit(2000, 'medium'),
   temperature: 0.4,
   reasoningEffort: 'medium'
 }
@@ -453,7 +459,7 @@ export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
     }
   },
   output: slotAnswer,
-  maxOutputTokens: 2500,
+  maxOutputTokens: outputLimit(2500, 'medium'),
   temperature: 0.3,
   reasoningEffort: 'medium'
 }
@@ -786,7 +792,7 @@ export const strategyCriticAgent: AgentDefinition<CriticTask, CriticAnswer> = {
     }
   },
   output: criticAnswer,
-  maxOutputTokens: 1200,
+  maxOutputTokens: outputLimit(1200, 'low'),
   temperature: 0.2,
   reasoningEffort: 'low'
 }
