@@ -667,6 +667,15 @@ function fitWords(
  * `printed` is what the email will actually say (the clipped words of the
  * kept blocks), which is what the word checks read.
  */
+/** The fewest products each product section shows. */
+export const minProducts: Partial<Record<BlockType, number>> = {
+  hero_product: 1,
+  product_feature: 1,
+  image_text: 1,
+  product_grid_2col: 2,
+  product_grid_3col: 3
+}
+
 export function fill(
   written: Written,
   input: AssemblyInput,
@@ -690,6 +699,14 @@ export function fill(
     return out
   }
   const show = (p: CatalogProduct) => toProduct(p, input.maxDiscountPercent)
+  // A grid shows its bigger size only when the product sections after it
+  // still get theirs, so a locked list (EML-002) lands where it was locked.
+  const later = written.blocks.map((_, i) =>
+    written.blocks
+      .slice(i + 1)
+      .reduce((n, b) => n + (minProducts[b.type] ?? 0), 0)
+  )
+  const spare = (index: number) => left() - later[index]
   const link = storeLink(input, brand)
   const code = usableCode(input)
   const c = usableMaterial(input)
@@ -776,14 +793,14 @@ export function fill(
         if (left() < 2) return short(2 - left())
         content = {
           heading: w.heading,
-          products: take(left() >= 4 ? 4 : 2).map(show)
+          products: take(spare(index) >= 4 ? 4 : 2).map(show)
         }
         break
       case 'product_grid_3col':
         if (left() < 3) return short(3 - left())
         content = {
           heading: w.heading,
-          products: take(left() >= 6 ? 6 : 3).map(show)
+          products: take(spare(index) >= 6 ? 6 : 3).map(show)
         }
         break
       case 'image_text': {
