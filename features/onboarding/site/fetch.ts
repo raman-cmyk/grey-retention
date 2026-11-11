@@ -31,21 +31,29 @@ export const maxPageBytes = 1_500_000
 /** Longest one page may take. */
 export const pageTimeoutMs = 6_000
 
+/**
+ * The guards of the live reader for one brand: https only (also on every
+ * redirect), port 443, the brand's own host and its `www.`, HTML only.
+ */
+export function siteFetchOptions(domain: string) {
+  const hosts = siteHosts(domain)
+  return {
+    ports: ['443'],
+    protocols: ['https:' as const],
+    accept: 'text/html,application/xhtml+xml;q=0.9',
+    types: /^\s*(text\/html|application\/xhtml\+xml)\b/i,
+    userAgent: 'Mozilla/5.0 (compatible; BrandReader/1.0)',
+    allowHost: (host: string) => hosts.has(host)
+  }
+}
+
 /** The live reader for one brand: https on 443, its own host only. */
 export function liveSiteFetcher(
   domain: string,
   fetcher?: ImageFetcher
 ): SiteFetcher {
   const hosts = siteHosts(domain)
-  const http =
-    fetcher ??
-    createImageFetcher({
-      ports: ['443'],
-      accept: 'text/html,application/xhtml+xml;q=0.9',
-      types: /^\s*(text\/html|application\/xhtml\+xml)\b/i,
-      userAgent: 'Mozilla/5.0 (compatible; BrandReader/1.0)',
-      allowHost: (host) => hosts.has(host)
-    })
+  const http = fetcher ?? createImageFetcher(siteFetchOptions(domain))
   return {
     live: true,
     async fetch(url) {

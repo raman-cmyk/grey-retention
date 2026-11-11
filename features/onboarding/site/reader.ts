@@ -42,7 +42,7 @@ const rawFinding = z.object({
 })
 type RawFinding = z.infer<typeof rawFinding>
 export const siteReaderOutput = z.object({
-  findings: z.array(rawFinding).max(20)
+  findings: z.array(rawFinding).max(15)
 })
 export type SiteReaderOutput = z.infer<typeof siteReaderOutput>
 
@@ -79,7 +79,7 @@ export const siteReader: AgentDefinition<SiteReaderInput, SiteReaderOutput> = {
       properties: {
         findings: {
           type: 'array',
-          maxItems: 20,
+          maxItems: 15,
           items: {
             type: 'object',
             properties: {
@@ -107,19 +107,25 @@ export const siteReader: AgentDefinition<SiteReaderInput, SiteReaderOutput> = {
     }
   },
   output: siteReaderOutput,
-  maxOutputTokens: 1_500,
+  // Room for 15 findings with their quotes; a longer answer is cut off and
+  // the page skipped, never the run.
+  maxOutputTokens: 2_500,
   temperature: 0,
   // An extraction, not a reasoning task.
   reasoningEffort: 'none'
 }
 
+/** Money to the cent, as the database stores it. */
+const cents = (n: number | undefined) =>
+  n === undefined ? undefined : Math.round(n * 100) / 100
+
 /** The topic's own value, built from the model's flat fields. */
-function valueOf(f: RawFinding): Record<string, unknown> {
+function valueOf(f: RawFinding, page: ReadPage): Record<string, unknown> {
   const currency = f.currency?.trim().toUpperCase()
   switch (f.topic) {
     case 'free_shipping':
       return f.kind === 'over'
-        ? { kind: 'over', amount: f.amount, currency }
+        ? { kind: 'over', amount: cents(f.amount), currency }
         : { kind: f.kind }
     case 'returns':
     case 'guarantee':
@@ -131,18 +137,59 @@ function valueOf(f: RawFinding): Record<string, unknown> {
     case 'locale':
       return { language: f.language?.toLowerCase(), currency }
     case 'price_band':
-      return { min: f.min, max: f.max, currency }
+      return { min: cents(f.min), max: cents(f.max), currency }
     case 'claim':
-      return { subject: f.subject ?? 'brand' }
+      // Who a claim is about: as the model says, else the page's kind.
+      return {
+        subject: f.subject ?? (page.kind === 'product' ? 'product' : 'brand')
+      }
     default:
       return {}
   }
 }
 
+/** Shortest quote kept: a few words, not a stray character. */
+export const minQuote = 12
+
+/** The plain numbers in a quote ("$1,299.00" is 1299, "1-year" is 1). */
+const numbersIn = (quote: string) =>
+  [...quote.matchAll(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g)].map((m) =>
+    Number(m[0].replace(/,/g, ''))
+  )
+
+/**
+ * Whether the numbers of a value are in its quote, so a real quote cannot
+ * carry a made-up number (a year of guarantee may be written as 1 year).
+ */
+function backed(f: RawFinding, quote: string): boolean {
+  const shown = numbersIn(quote)
+  const has = (n: number | undefined) =>
+    n === undefined || shown.some((s) => Math.abs(s - n) < 0.005)
+  switch (f.topic) {
+    case 'free_shipping':
+      return f.kind !== 'over' || has(f.amount)
+    case 'returns':
+      return has(f.days)
+    case 'guarantee':
+      return (
+        has(f.days) ||
+        (f.days !== undefined && f.days % 365 === 0 && has(f.days / 365))
+      )
+    case 'delivery_days':
+      return has(f.min) && has(f.max)
+    // A range spans the prices of a page: one end is enough on one line.
+    case 'price_band':
+      return has(f.min) || has(f.max)
+    default:
+      return true
+  }
+}
+
 /**
  * The findings that hold up: a topic the site may state, a value of the
- * topic's own shape, and a quote found word for word in the page's visible
- * text (whitespace and case aside). Anything else is dropped (D16).
+ * topic's own shape whose numbers are in the quote, and a quote of a few
+ * words found word for word in the page's visible text (whitespace and
+ * case aside). Anything else is dropped (D16).
  */
 export function checkedFindings(
   page: ReadPage,
@@ -153,11 +200,20 @@ export function checkedFindings(
   const seen = new Set<string>()
   for (const f of raw) {
     const quote = fold(f.quote)
-    if (!quote || !text.includes(quote.toLowerCase())) continue
+    // A price may be quoted alone ("$89.00"); anything else needs words.
+    const priced =
+      (f.topic === 'price_band' || f.topic === 'locale') &&
+      /[$£€]\s?\d/.test(quote)
+    if (
+      (quote.length < minQuote && !priced) ||
+      !text.includes(quote.toLowerCase())
+    )
+      continue
+    if (!backed(f, quote)) continue
     const finding = findingInput.safeParse({
       topic: f.topic,
       statement: fold(f.statement).slice(0, 300),
-      value: valueOf(f),
+      value: valueOf(f, page),
       evidence: { url: page.url, quote, page: page.kind },
       confidence: Math.round(f.confidence * 100) / 100
     })
@@ -171,8 +227,8 @@ export function checkedFindings(
 }
 
 const symbols: Record<string, string> = { $: 'USD', '£': 'GBP', '€': 'EUR' }
-const money = String.raw`([$£€])\s?(\d{1,6}(?:[.,]\d{2})?)`
-const num = (s: string) => Number(s.replace(',', '.'))
+const money = String.raw`([$£€])\s?(\d{1,3}(?:,\d{3})+(?:\.\d{2})?|\d{1,6}(?:\.\d{2})?)`
+const num = (s: string) => Number(s.replace(/,/g, ''))
 
 /**
  * The honest sample rules, used when the AI is the fake: only facts stated
@@ -303,29 +359,35 @@ export function sampleFindings(page: ReadPage): RawFinding[] {
   return found
 }
 
+/** Why a page's answer could not be used (the page then counts as not read). */
+const unusable: Record<string, string> = {
+  invalid_output: 'model_unusable',
+  refused: 'model_refused',
+  incomplete: 'answer_too_long'
+}
+
 /**
  * Reads one page: the Site reader on the `review` tier (Flash), or the
- * sample rules when the AI is the fake. An unreadable or refused answer
- * leaves the page unread (D16: logged and skipped, replacing nothing); a failure worth another try
- * (a rate limit, a timeout, a spent budget) throws `TagError`, so the job
- * is tried again and the earlier findings stay until a full run replaces
- * them.
+ * sample rules when the AI is the fake. An unreadable, refused or cut-off
+ * answer leaves the page unread (D16: logged and skipped, replacing
+ * nothing). A failure worth another try (a rate limit, a timeout, an
+ * outage) throws `TagError`, so the job is tried again and the earlier
+ * findings stay.
  */
 export async function readSitePage(
   input: SiteReaderInput,
   ask: Ask,
   callerKey: string
-): Promise<{
-  findings: FindingInput[]
-  dropped: number
-  pass: 'sample' | 'model'
-  model: string | null
-  /**
-   * False when the answer was unreadable, refused or not of the shape
-   * asked: the page then counts as not read, so it replaces nothing.
-   */
-  answered: boolean
-}> {
+): Promise<
+  | {
+      answered: true
+      findings: FindingInput[]
+      dropped: number
+      pass: 'sample' | 'model'
+      model: string | null
+    }
+  | { answered: false; reason: string; model: string | null }
+> {
   const answer = await ask(siteReader, input, {
     callerKey,
     tier: 'review',
@@ -337,39 +399,27 @@ export async function readSitePage(
       sampleFindings(input.page)
     )
     return {
+      answered: true,
       findings: kept,
       dropped,
       pass: 'sample',
-      model: null,
-      answered: true
+      model: null
     }
   }
   if (!answer.ok) {
-    if (answer.code === 'invalid_output' || answer.code === 'refused')
-      return {
-        findings: [],
-        dropped: 0,
-        pass: 'model',
-        model: null,
-        answered: false
-      }
+    const reason = unusable[answer.code]
+    if (reason) return { answered: false, reason, model: null }
     throw new TagError(answer.code, answer.retryAfterSeconds)
   }
   const parsed = siteReaderOutput.safeParse(answer.content)
   if (!parsed.success)
-    return {
-      findings: [],
-      dropped: 0,
-      pass: 'model',
-      model: answer.model,
-      answered: false
-    }
+    return { answered: false, reason: 'model_unusable', model: answer.model }
   const { kept, dropped } = checkedFindings(input.page, parsed.data.findings)
   return {
+    answered: true,
     findings: kept,
     dropped,
     pass: 'model',
-    model: answer.model,
-    answered: true
+    model: answer.model
   }
 }

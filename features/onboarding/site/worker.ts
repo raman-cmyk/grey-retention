@@ -32,7 +32,10 @@ export type SiteRun = {
   live: boolean
 }
 
-/** Runs `work` on each item, a few at a time. */
+/**
+ * Runs `work` on each item, a few at a time. After a failure no new item is
+ * started (the job fails and is tried again; nothing more is paid for).
+ */
 async function inTurns<T, R>(
   items: T[],
   width: number,
@@ -40,16 +43,25 @@ async function inTurns<T, R>(
 ): Promise<R[]> {
   const results: R[] = new Array(items.length)
   let next = 0
+  let failed = false
   await Promise.all(
     Array.from({ length: Math.min(width, items.length) }, async () => {
-      while (next < items.length) {
+      while (next < items.length && !failed) {
         const i = next++
-        results[i] = await work(items[i]!, i)
+        try {
+          results[i] = await work(items[i]!, i)
+        } catch (error) {
+          failed = true
+          throw error
+        }
       }
     })
   )
   return results
 }
+
+/** Longest page address kept (the database refuses longer ones). */
+const maxUrl = 500
 
 /**
  * The Site reader's job (ONB-101): reads the brand's own home page, finds
@@ -66,12 +78,20 @@ export async function readBrandSite(
   job: Job,
   deps: {
     fetcher: (domain: string) => SiteFetcher
-    ask: Ask
+    /**
+     * How to ask the Site reader for a site: the sample rules for the
+     * sample site; a model for a live one, or null when no model is set up
+     * (then a live site is not read: no fact is guessed from a real page).
+     */
+    askFor: (live: boolean) => Ask | null
+    /** Time one model call may take; none is started with less left. */
+    callMs?: number
     now?: () => number
   }
 ): Promise<SiteRun> {
   const now = deps.now ?? Date.now
   const deadline = now() + siteRunMs
+  const callMs = deps.callMs ?? 0
   const brand = await db
     .from('brand_profiles')
     .select('brand_name')
@@ -84,56 +104,62 @@ export async function readBrandSite(
     (job.input as { domain?: unknown } | null)?.domain ?? ''
   )
   const fetcher = deps.fetcher(domain)
+  const ask = deps.askFor(fetcher.live)
   const run: SiteRun = {
     pages: [],
     findings: 0,
     dropped: 0,
     live: fetcher.live
   }
-  const findings: (FindingInput & { pass: string; model: string | null })[] = []
+  // Each page's findings in page order, so a repeated fact cites the first.
+  const byPage: (FindingInput & { pass: string; model: string | null })[][] = []
   const skip = (url: string, kind: SitePageKind, reason: string) => {
-    run.pages.push({ url, kind, state: 'skipped', reason })
+    run.pages.push({
+      url: url.slice(0, maxUrl),
+      kind,
+      state: 'skipped',
+      reason
+    })
     logger.info('Site page skipped', { kind, reason })
   }
   const read = async (
     page: ReadPage,
     n: number
   ): Promise<{ count: number } | { reason: string }> => {
-    if (now() > deadline) return { reason: 'time_up' }
+    if (page.url.length > maxUrl) return { reason: 'url_too_long' }
+    if (!ask) return { reason: 'no_model' }
+    if (now() + callMs > deadline) return { reason: 'time_up' }
     const result = await readSitePage(
       { brand: brand.data.brand_name, page },
-      deps.ask,
+      ask,
       `site-page:${page.kind}:${n}`
     )
+    if (!result.answered) return { reason: result.reason }
     run.dropped += result.dropped
-    for (const f of result.findings)
-      findings.push({ ...f, pass: result.pass, model: result.model })
-    if (!result.answered) return { reason: 'model_unusable' }
+    byPage[n] = result.findings.map((f) => ({
+      ...f,
+      pass: result.pass,
+      model: result.model
+    }))
     return { count: result.findings.length }
   }
   const home = homeUrl(domain)
   if (!home) skip(`https://${domain || 'unknown'}/`, 'home', 'no_domain')
+  else if (!ask) skip(home, 'home', 'no_model')
   else {
     const first = await fetcher.fetch(home)
     if (!first.ok) skip(home, 'home', first.failure)
     else {
       const homePage = readPage(first.html, first.url, 'home')
       const outcome = await read(homePage, 0)
-      run.pages.push(
-        'count' in outcome
-          ? {
-              url: homePage.url,
-              kind: 'home',
-              state: 'read',
-              findings: outcome.count
-            }
-          : {
-              url: homePage.url,
-              kind: 'home',
-              state: 'skipped',
-              reason: outcome.reason
-            }
-      )
+      if ('count' in outcome)
+        run.pages.push({
+          url: homePage.url,
+          kind: 'home',
+          state: 'read',
+          findings: outcome.count
+        })
+      else skip(homePage.url, 'home', outcome.reason)
       const rest = pagesToRead(homePage, domain)
       const outcomes = await inTurns(rest, parallelPages, async (target, n) => {
         if (now() > deadline) return { ...target, reason: 'time_up' }
@@ -144,7 +170,7 @@ export async function readBrandSite(
           n + 1
         )
         return 'count' in outcome
-          ? { ...target, count: outcome.count }
+          ? { ...target, url: fetched.url, count: outcome.count }
           : { ...target, reason: outcome.reason }
       })
       for (const o of outcomes)
@@ -161,7 +187,7 @@ export async function readBrandSite(
   // A fact repeated on every page (a footer line) is kept once: the first
   // page it was read on.
   const seen = new Set<string>()
-  const unique = findings.filter((f) => {
+  const unique = byPage.flat().filter((f) => {
     const quote = 'quote' in f.evidence ? f.evidence.quote : ''
     const key = `${f.topic}:${quote.toLowerCase()}`
     if (seen.has(key)) return false

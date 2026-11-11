@@ -141,6 +141,10 @@ begin
       jsonb_build_object('domain', d), auth.uid())
     on conflict (tenant_id, idempotency_key) do update set idempotency_key = excluded.idempotency_key
     returning id into j;
+  -- Today's read failed: asking again starts it again, with all its tries.
+  update public.job_runs set status = 'queued', attempt = 0, available_at = now(), failure_class = null, error_code = null,
+      lease_token = null, lease_until = null, updated_at = now()
+    where id = j and status in ('failed', 'cancelled');
   return j;
 end $$;
 
@@ -211,6 +215,72 @@ begin
   return jsonb_build_object('findings', n, 'pages', jsonb_array_length(pages));
 end $$;
 
+-- Site reads use live AI and the open internet, so the workspace jobs never
+-- take them (an owner's "Run jobs" or the sweep): only the onboarding
+-- readers' own run does, as the worker, with its calls capped to fit its
+-- route. The same claim as before otherwise (20260914090015).
+create or replace function public.claim_job(t uuid) returns setof public.job_runs
+language plpgsql security definer set search_path = '' as $$
+declare j public.job_runs;
+begin
+  if not private.worker_access(t) then raise exception 'Access denied' using errcode = '42501'; end if;
+  perform 1 from public.tenants where tenants.id = t for update;
+  if not private.worker_access(t) then raise exception 'Access denied' using errcode = '42501'; end if;
+  update public.job_runs set status = case when attempt >= 4 then 'failed' else 'retry_wait' end, lease_token = null, lease_until = null,
+      available_at = now(), error_code = 'stale_lease'
+    where tenant_id = t and status in ('leased','running') and lease_until < now()
+      and kind not in ('email.rewrite','email.import','brand.read_site');
+  select * into j from public.job_runs
+    where tenant_id = t and status in ('queued','retry_wait') and attempt < 4 and available_at <= now()
+      and kind not in ('email.rewrite','email.import','brand.read_site')
+    order by available_at, created_at for update skip locked limit 1;
+  if not found then return; end if;
+  return query update public.job_runs set status = 'running', attempt = attempt + 1, lease_token = gen_random_uuid(),
+      lease_until = now() + interval '90 seconds', updated_at = now()
+    where id = j.id returning *;
+end $$;
+
+-- The site reads waiting, across active workspaces (the readers' run asks
+-- first, so an idle run is one small request).
+create or replace function public.site_readings_waiting() returns integer
+language sql stable security definer set search_path = '' as $$
+  select case when coalesce(auth.role(), '') <> 'service_role' then null else (
+    select count(*)::integer from public.job_runs j join public.tenants t on t.id = j.tenant_id and t.status = 'active'
+      where j.kind = 'brand.read_site'
+        and ((j.status in ('queued','retry_wait') and j.attempt < 4 and j.available_at <= now())
+          or (j.status in ('leased','running') and j.lease_until < now()))) end;
+$$;
+
+-- The next site read due, across active workspaces, leased to the worker
+-- for 90 seconds. A read whose lease ran out is tried again (or failed
+-- after its fourth try) first. Locks: the tenant first, then the job.
+create or replace function public.claim_site_reading() returns setof public.job_runs
+language plpgsql security definer set search_path = '' as $$
+declare candidate public.job_runs; j public.job_runs;
+begin
+  if coalesce(auth.role(), '') <> 'service_role' then raise exception 'Access denied' using errcode = '42501'; end if;
+  update public.job_runs set status = case when attempt >= 4 then 'failed' else 'retry_wait' end, lease_token = null, lease_until = null,
+      available_at = now(), error_code = 'stale_lease', updated_at = now()
+    where kind = 'brand.read_site' and status in ('leased','running') and lease_until < now();
+  select r.* into candidate from public.job_runs r join public.tenants t on t.id = r.tenant_id and t.status = 'active'
+    where r.kind = 'brand.read_site' and r.status in ('queued','retry_wait') and r.attempt < 4 and r.available_at <= now()
+    order by r.available_at, r.created_at limit 1;
+  if candidate.id is null then return; end if;
+  perform 1 from public.tenants where id = candidate.tenant_id and status = 'active' for update;
+  if not found then return; end if;
+  select * into j from public.job_runs
+    where id = candidate.id and status in ('queued','retry_wait') and attempt < 4 and available_at <= now()
+    for update skip locked;
+  if j.id is null then return; end if;
+  return query update public.job_runs set status = 'running', attempt = attempt + 1, lease_token = gen_random_uuid(),
+      lease_until = now() + interval '90 seconds', updated_at = now()
+    where id = j.id returning *;
+end $$;
+
+revoke all on function public.site_readings_waiting() from public, anon, authenticated;
+revoke all on function public.claim_site_reading() from public, anon, authenticated;
+grant execute on function public.site_readings_waiting() to service_role;
+grant execute on function public.claim_site_reading() to service_role;
 revoke all on function public.start_site_reading(uuid) from public, anon;
 grant execute on function public.start_site_reading(uuid) to authenticated;
 revoke all on function public.record_site_findings(uuid, uuid, jsonb, jsonb, boolean) from public, anon, authenticated;

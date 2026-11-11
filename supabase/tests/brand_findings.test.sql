@@ -1,5 +1,5 @@
 begin;
-select plan(76);
+select plan(83);
 
 -- ONB-101: onboarding findings and the Site reader's job. Owner ...01 and
 -- staff ...05 are in workspace 101 (cedar-lane.example); owner ...04 runs
@@ -185,6 +185,30 @@ select is((select statement from public.brand_findings where tenant_id='00000000
 select is((select count(*)::int from public.brand_findings where tenant_id='00000000-0000-4000-8000-000000000102' and superseded_at is null),1,
   'and the other workspace''s findings are untouched');
 reset role;
+
+-- Site reads are never taken by the workspace jobs (an owner's "Run jobs"
+-- or the sweep), only by the readers' run, as the worker.
+select ok(not bool_or(has_function_privilege(r, f, 'execute')),'browser roles cannot claim or count site reads')
+  from unnest(array['anon','authenticated']) r,
+       unnest(array['public.claim_site_reading()','public.site_readings_waiting()']) f;
+select set_config('test.r1',pg_temp.job('00000000-0000-4000-8000-000000000101','brand.read_site:test:r1','cedar-lane.example'),true);
+set local role service_role;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+select ok(not exists (select 1 from generate_series(1,10) g, lateral public.claim_job('00000000-0000-4000-8000-000000000101') c
+    where c.kind = 'brand.read_site'),'the workspace jobs never take a site read');
+select ok(public.site_readings_waiting() >= 1,'the readers'' run sees the reads waiting');
+select is((select kind||'/'||status from public.claim_site_reading()),'brand.read_site/running','and takes the next one as the worker');
+select isnt((select lease_until < now() and status = 'running' from public.job_runs where id = current_setting('test.job5')::uuid),true,
+  'a read whose lease ran out is taken back');
+reset role;
+update public.job_runs set status = 'failed', attempt = 4 where id = current_setting('test.job')::uuid;
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select is(public.start_site_reading('00000000-0000-4000-8000-000000000101')::text,current_setting('test.job'),
+  'asking again after a failed read the same day');
+reset role;
+select is((select status||'/'||attempt from public.job_runs where id = current_setting('test.job')::uuid),'queued/0',
+  'starts it again with all its tries');
 
 -- Members read their own workspace's findings.
 set local role authenticated;

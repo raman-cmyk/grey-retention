@@ -14,7 +14,6 @@ import {
 import { generateFixtureCopy } from '@/features/ai/fixture-copy'
 import { onboardingJobKinds, runOnboardingJob } from '@/features/assets/worker'
 import { planningJobKinds, runPlanningJob } from '@/features/planning/worker'
-import { runSiteReadingJob } from '@/features/onboarding/site/live'
 import { PersistedFixtureDeliveryProvider } from './fixture-delivery'
 export async function runFixtureJobs(
   db: SupabaseClient<Database>,
@@ -80,9 +79,6 @@ export async function runFixtureJobs(
         await runReferenceJob(db, job)
       } else if (onboardingJobKinds.includes(job.kind)) {
         await runOnboardingJob(db, job)
-      } else if (job.kind === 'brand.read_site') {
-        // ONB-101: the brand's own website (the sample site by default).
-        await runSiteReadingJob(db, job)
       } else if (job.kind === 'copy.generate') {
         const campaignResult = await db
           .from('campaigns')

@@ -16,7 +16,7 @@ export type ReadPage = {
   links: { href: string; text: string }[]
 }
 
-/** Most words kept per page (the agent reads at most this). */
+/** Most characters of text kept per page (the agent reads at most this). */
 export const maxPageText = 12_000
 /** Most pages read per site, the home page included. */
 export const maxPages = 8
@@ -92,9 +92,11 @@ export function readPage(
   let language = 'en'
   const parts: string[] = []
   const links: ReadPage['links'] = []
+  // The title and description come from the page's head only (an icon's
+  // own <title> in the body is not the page's).
   const head = (n: Node) => {
     for (const c of children(n)) {
-      if (!isElement(c)) continue
+      if (!isElement(c) || c.tagName === 'body') continue
       if (c.tagName === 'html') {
         const lang = attr(c, 'lang')?.slice(0, 2).toLowerCase()
         if (lang && /^[a-z]{2}$/.test(lang)) language = lang
@@ -167,6 +169,7 @@ export function pagesToRead(
   const found: { url: string; kind: SitePageKind }[] = []
   const candidates = home.links.flatMap((link) => {
     try {
+      if (link.href.length > 400) return []
       const url = new URL(link.href, home.url)
       if (url.protocol !== 'https:' || !hosts.has(url.hostname)) return []
       url.hash = ''

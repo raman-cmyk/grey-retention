@@ -138,8 +138,10 @@ describe('readSitePage', () => {
       model: 'fake'
     })
     const read = await readSitePage(input, ask, 'site-page:returns:1')
-    expect(read).toMatchObject({ pass: 'sample', model: null })
-    expect(read.findings.map((f) => f.topic)).toContain('returns')
+    expect(read).toMatchObject({ answered: true, pass: 'sample', model: null })
+    expect(read.answered && read.findings.map((f) => f.topic)).toContain(
+      'returns'
+    )
     expect(ask.mock.calls[0]).toEqual([
       siteReader,
       input,
@@ -177,19 +179,86 @@ describe('readSitePage', () => {
       model: 'gemini-2.5-flash',
       dropped: 1
     })
-    expect(read.findings.map((f) => [f.topic, f.value])).toEqual([
-      ['returns', { days: 30 }]
-    ])
+    expect(
+      read.answered && read.findings.map((f) => [f.topic, f.value])
+    ).toEqual([['returns', { days: 30 }]])
   })
 
-  it('leaves a page without findings on an unreadable or refused answer, and throws a failure worth another try', async () => {
-    for (const run of [
-      { ok: false, code: 'invalid_output' } as AiRun,
-      { ok: false, code: 'refused' } as AiRun,
-      gemini({ nonsense: true })
-    ])
+  it('drops a value whose numbers are not in its quote, a quote of a stray word, and fills in who a claim is about', () => {
+    const product = page('/products/field-overshirt', 'product')
+    const shipping = page('/pages/shipping', 'shipping')
+    const raw = (over: Record<string, unknown>) => ({
+      topic: 'free_shipping' as const,
+      statement: 'Free shipping.',
+      quote: 'Free shipping on orders over $75.',
+      confidence: 0.9,
+      kind: 'over' as const,
+      amount: 75,
+      currency: 'USD',
+      ...over
+    })
+    expect(checkedFindings(shipping, [raw({ amount: 7500 })]).kept).toEqual([])
+    expect(checkedFindings(shipping, [raw({ quote: '$75' })]).kept).toEqual([])
+    // A value off by rounding is the quote's value, to the cent.
+    expect(
+      checkedFindings(shipping, [raw({ amount: 74.999 })]).kept.map(
+        (f) => f.value
+      )
+    ).toEqual([{ kind: 'over', amount: 75, currency: 'USD' }])
+    expect(
+      checkedFindings(shipping, [
+        raw({
+          topic: 'delivery_days',
+          quote: 'Delivery takes 3–5 business days in the United States.',
+          min: 3,
+          max: 7
+        })
+      ]).kept
+    ).toEqual([])
+    expect(
+      checkedFindings(page('/pages/faq', 'faq'), [
+        raw({
+          topic: 'guarantee',
+          quote:
+            'Every piece is covered by our 1-year guarantee against defects.',
+          days: 365
+        })
+      ]).kept.map((f) => f.value)
+    ).toEqual([{ days: 365 }])
+    expect(
+      checkedFindings(product, [
+        raw({
+          topic: 'claim',
+          quote: 'The most comfortable overshirt you will ever wear.',
+          subject: undefined
+        })
+      ]).kept.map((f) => f.value)
+    ).toEqual([{ subject: 'product' }])
+  })
+
+  it('reads prices with thousands separators', () => {
+    const big = readPage(
+      '<p>The Cabin Sofa — $1,299.00</p><p>The Lounge Chair — $649.00</p>',
+      'https://shop.example/products/sofa',
+      'product'
+    )
+    expect(
+      checkedFindings(big, sampleFindings(big))
+        .kept.filter((f) => f.topic === 'price_band')
+        .map((f) => f.value)
+    ).toEqual([{ min: 649, max: 1299, currency: 'USD' }])
+  })
+
+  it('leaves a page unread on an unreadable, refused or cut-off answer, and throws a failure worth another try', async () => {
+    for (const [run, reason] of [
+      [{ ok: false, code: 'invalid_output' }, 'model_unusable'],
+      [{ ok: false, code: 'refused' }, 'model_refused'],
+      [{ ok: false, code: 'incomplete' }, 'answer_too_long'],
+      [gemini({ nonsense: true }), 'model_unusable']
+    ] as [AiRun, string][])
       expect(await readSitePage(input, askWith(run), 'k')).toMatchObject({
-        findings: []
+        answered: false,
+        reason
       })
     await expect(
       readSitePage(input, askWith({ ok: false, code: 'rate_limited' }), 'k')

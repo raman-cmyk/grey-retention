@@ -6247,6 +6247,35 @@ export type Database = {
           subject_key: string
         }[]
       }
+      claim_site_reading: {
+        Args: never
+        Returns: {
+          attempt: number
+          available_at: string
+          campaign_id: string | null
+          checkpoint: Json
+          created_at: string
+          created_by: string
+          error_code: string | null
+          failure_class: string | null
+          id: string
+          idempotency_key: string
+          input: Json
+          kind: string
+          lease_token: string | null
+          lease_until: string | null
+          max_attempts: number
+          status: string
+          tenant_id: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: '*'
+          to: 'job_runs'
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       complete_asset_import: {
         Args: { import_id: string; t: string }
         Returns: undefined
@@ -7166,6 +7195,7 @@ export type Database = {
         Args: { candidate: string; observed_at: string; t: string }
         Returns: undefined
       }
+      site_readings_waiting: { Args: never; Returns: number }
       start_site_reading: { Args: { t: string }; Returns: string }
       submit_design: {
         Args: {

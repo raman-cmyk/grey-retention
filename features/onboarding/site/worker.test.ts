@@ -52,7 +52,7 @@ describe('readBrandSite', () => {
     const { db, calls } = database()
     const run = await readBrandSite(db, job, {
       fetcher: sampleSiteFetcher,
-      ask: sampleAsk
+      askFor: () => sampleAsk
     })
     const args = recorded(calls)
     expect(
@@ -101,7 +101,10 @@ describe('readBrandSite', () => {
           : sample.fetch(url)
     }
     const { db, calls } = database()
-    await readBrandSite(db, job, { fetcher: () => fetcher, ask: sampleAsk })
+    await readBrandSite(db, job, {
+      fetcher: () => fetcher,
+      askFor: () => sampleAsk
+    })
     const args = recorded(calls)
     expect(args.pages).toContainEqual({
       url: 'https://cedar-lane.example/pages/returns',
@@ -118,7 +121,7 @@ describe('readBrandSite', () => {
     const down = database()
     await readBrandSite(down.db, jobFor('shop.com'), {
       fetcher: sampleSiteFetcher,
-      ask: sampleAsk
+      askFor: () => sampleAsk
     })
     expect(recorded(down.calls)).toMatchObject({
       findings: [],
@@ -134,7 +137,7 @@ describe('readBrandSite', () => {
     const none = database()
     await readBrandSite(none.db, jobFor(''), {
       fetcher: sampleSiteFetcher,
-      ask: sampleAsk
+      askFor: () => sampleAsk
     })
     expect(recorded(none.calls).pages).toEqual([
       expect.objectContaining({ state: 'skipped', reason: 'no_domain' })
@@ -156,7 +159,7 @@ describe('readBrandSite', () => {
     const { db, calls } = database()
     await readBrandSite(db, job, {
       fetcher: () => fetcher,
-      ask: sampleAsk,
+      askFor: () => sampleAsk,
       now: () => now
     })
     const pages = recorded(calls).pages
@@ -170,7 +173,10 @@ describe('readBrandSite', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {})
     const junk: Ask = async () => ({ ok: false, code: 'invalid_output' })
     const { db, calls } = database()
-    await readBrandSite(db, job, { fetcher: sampleSiteFetcher, ask: junk })
+    await readBrandSite(db, job, {
+      fetcher: sampleSiteFetcher,
+      askFor: () => junk
+    })
     const args = recorded(calls)
     expect(args.findings).toEqual([])
     expect(
@@ -180,13 +186,73 @@ describe('readBrandSite', () => {
     ).toBe(true)
   })
 
+  it('reads no fact from a live site when no model is set up, never guessing from a real page', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const fetch = vi.fn()
+    const live: SiteFetcher = { live: true, fetch }
+    const { db, calls } = database()
+    await readBrandSite(db, jobFor('shop.com'), {
+      fetcher: () => live,
+      askFor: (isLive) => (isLive ? null : sampleAsk)
+    })
+    expect(fetch).not.toHaveBeenCalled()
+    expect(recorded(calls)).toMatchObject({
+      findings: [],
+      live: true,
+      pages: [{ kind: 'home', state: 'skipped', reason: 'no_model' }]
+    })
+  })
+
+  it('starts no model call without the time it may take, and says why a cut-off answer was skipped', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    let now = 0
+    const sample = sampleSiteFetcher('cedar-lane.example')
+    const fetcher: SiteFetcher = {
+      live: false,
+      fetch: async (url) => {
+        if (url !== 'https://cedar-lane.example/') now = siteRunMs - 5_000
+        return sample.fetch(url)
+      }
+    }
+    const tooLong: Ask = async () => ({ ok: false, code: 'incomplete' })
+    const { db, calls } = database()
+    await readBrandSite(db, job, {
+      fetcher: () => fetcher,
+      askFor: () => tooLong,
+      callMs: 10_000,
+      now: () => now
+    })
+    const pages = recorded(calls).pages
+    expect(pages[0]).toMatchObject({
+      kind: 'home',
+      state: 'skipped',
+      reason: 'answer_too_long'
+    })
+    expect(pages.slice(1).every((p) => p.reason === 'time_up')).toBe(true)
+  })
+
   it('fails the job, storing nothing, when the model is down, so the earlier findings stay', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {})
     const down: Ask = async () => ({ ok: false, code: 'unavailable' })
     const { db, calls } = database()
     await expect(
-      readBrandSite(db, job, { fetcher: sampleSiteFetcher, ask: down })
+      readBrandSite(db, job, { fetcher: sampleSiteFetcher, askFor: () => down })
     ).rejects.toMatchObject({ code: 'unavailable' })
     expect(calls.map((c) => c.name)).not.toContain('record_site_findings')
+  })
+
+  it('fails the job when the findings cannot be stored', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { db } = database()
+    ;(db.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: null,
+      error: { code: 'PT409', message: 'Lease unavailable' }
+    })
+    await expect(
+      readBrandSite(db, job, {
+        fetcher: sampleSiteFetcher,
+        askFor: () => sampleAsk
+      })
+    ).rejects.toMatchObject({ code: 'PT409' })
   })
 })

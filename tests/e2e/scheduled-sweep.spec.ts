@@ -593,7 +593,7 @@ test('INB-004 an admin works the inbox queue and keeps the brand directory', asy
   await adminPage.close()
 })
 
-test('ONB-101 the owner starts a site read and the sweep stores what the sample site says', async ({
+test('ONB-101 the owner starts a site read and the readers run stores what the sample site says', async ({
   request
 }) => {
   requireLocal()
@@ -608,7 +608,28 @@ test('ONB-101 the owner starts a site read and the sweep stores what the sample 
   expect(
     (await owner.db.rpc('start_site_reading', { t: owner.tenant })).data
   ).toBe(started.data)
+  // The sweep (and an owner's "Run jobs") never takes a site read.
   await drain(request, secret)
+  const waiting = await serviceClient()
+    .from('job_runs')
+    .select('status')
+    .eq('id', started.data as string)
+    .single()
+  expect(waiting.data).toEqual({ status: 'queued' })
+  // The onboarding readers' run does: it asks first, then reads.
+  const readers = (query = '') =>
+    request.get(`/api/internal/onboarding/readers${query}`, {
+      headers: { authorization: `Bearer ${secret}` }
+    })
+  expect((await request.get('/api/internal/onboarding/readers')).status()).toBe(
+    401
+  )
+  const peek = await readers('?peek=1')
+  expect(peek.status()).toBe(200)
+  expect((await peek.json()).waiting).toBeGreaterThanOrEqual(1)
+  const ran = await readers()
+  expect(ran.status()).toBe(200)
+  expect(await ran.json()).toMatchObject({ state: 'done', failed: 0 })
   const job = await serviceClient()
     .from('job_runs')
     .select('status,checkpoint')

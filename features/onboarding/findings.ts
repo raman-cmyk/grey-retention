@@ -106,7 +106,10 @@ export const sourceTopics: Record<FindingSource, readonly FindingTopic[]> = {
 
 export const evidenceSchema = z.union([
   z.object({
-    url: z.url().max(500),
+    url: z
+      .url()
+      .max(500)
+      .refine((u) => u.startsWith('https://'), 'https only'),
     /** Words exactly as the page shows them. */
     quote: z.string().min(1).max(300),
     page: z.enum(sitePageKinds).optional()

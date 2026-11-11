@@ -186,6 +186,8 @@ type FetcherOptions = {
   userAgent?: string
   /** Content types accepted (any by default), e.g. only HTML pages. */
   types?: RegExp
+  /** Schemes allowed on the link and every redirect (http and https). */
+  protocols?: ('https:' | 'http:')[]
   /**
    * Hosts the link and every redirect may reach (any public host by
    * default): a hop elsewhere is blocked, never opened.
@@ -207,9 +209,10 @@ export function createImageFetcher(options: FetcherOptions = {}): ImageFetcher {
     userAgent: options.userAgent ?? 'Mozilla/5.0 (compatible; ImageFetch/1.0)'
   }
   const allowHost = options.allowHost ?? (() => true)
+  const protocols: string[] = options.protocols ?? ['https:', 'http:']
   const lookup = safeLookup(options.resolve ?? systemResolve, isReserved)
   const allowed = (url: URL) => {
-    if (url.protocol !== 'https:' && url.protocol !== 'http:') return false
+    if (!protocols.includes(url.protocol)) return false
     if (url.username || url.password) return false
     const port = url.port || (url.protocol === 'https:' ? '443' : '80')
     if (!ports.includes(port)) return false
