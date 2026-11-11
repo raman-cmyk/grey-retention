@@ -53,6 +53,28 @@ test('STR-003 owner plans the next 15 days and picks an offer', async ({
   // Only the ticked offer runs.
   await expect(page.getByText(/% off with CANDLE10$/)).toHaveCount(0)
 
+  // EML-004 part 2: "Create email" on the first planned email builds it and
+  // puts it into Klaviyo as a draft (the fake pusher: a sample draft).
+  await page.getByRole('button', { name: 'Create email' }).first().click()
+  await expect(
+    page.getByText('Sample draft (not in Klaviyo)').first()
+  ).toBeVisible({
+    timeout: 30_000
+  })
+  await expect(page.getByText(/nothing was sent to it/).first()).toBeVisible()
+  await page.getByRole('link', { name: 'See the email' }).first().click()
+  await expect(page).toHaveURL(/\/plan\/email\/[0-9a-f-]{36}$/)
+  await expect(
+    page.getByRole('heading', { name: 'Your email', level: 1 })
+  ).toBeVisible()
+  await expect(page.getByText(/this is a sample draft/)).toBeVisible()
+  await expect(
+    page.getByText(/The AI was not used for this email/)
+  ).toBeVisible()
+  await expect(page.locator('iframe[title^="The email: "]')).toBeVisible()
+  await page.getByRole('link', { name: 'Back to the plan' }).click()
+  await expect(page).toHaveURL(/\/plan$/)
+
   // Reloading keeps the plan; a new plan can start.
   await page.reload()
   await expect(

@@ -11,9 +11,11 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { runFixtureJobs } from '@/features/integrations/worker'
 import { runInboxStep } from '@/features/inbox/step'
 import { runStrategyRuns } from '@/features/strategy/worker'
+import { runEmailBuilds } from '@/features/email-build/worker'
 
 /** Time the sweep gives to plan steps before the workspace jobs. */
 const planBudgetMs = 5_000
+const emailBudgetMs = 5_000
 import { scheduleLimits } from '@/features/cron/scheduler'
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -61,12 +63,23 @@ export async function GET(request: NextRequest) {
     })
     return { ran: 0 }
   })
+  // "Create email" steps (EML-004 part 2): the code-only build and the
+  // fake draft pusher, at most 5 s; a failure stays queued for the next run.
+  const emails = await runEmailBuilds(db, {
+    deadline: Date.now() + emailBudgetMs
+  }).catch((error) => {
+    logger.error('Email build steps could not run', {
+      code: (error as { code?: string }).code ?? 'email_build_error'
+    })
+    return { ran: 0 }
+  })
   if (!scheduledDispatchAllowed(process.env.ADAPTER_MODE))
     return NextResponse.json(
       {
         error: 'Scheduled jobs run only with sample providers in this build.',
         inbox,
-        plans
+        plans,
+        emails
       },
       { status: 503, headers: noStore }
     )
@@ -81,7 +94,7 @@ export async function GET(request: NextRequest) {
     })
     logger.info('Scheduled job run finished', run)
     return NextResponse.json(
-      { live: false, ...run, inbox, plans },
+      { live: false, ...run, inbox, plans, emails },
       { headers: noStore }
     )
   } catch (error) {

@@ -2912,6 +2912,91 @@ export type Database = {
           }
         ]
       }
+      email_builds: {
+        Row: {
+          attempts: number
+          created_at: string
+          created_by: string
+          email: Json | null
+          error_code: string | null
+          id: string
+          klaviyo_campaign_id: string | null
+          lease_token: string | null
+          lease_until: string | null
+          not_before: string | null
+          push_key: string
+          run_id: string
+          sample_draft: boolean
+          slot: number
+          state: string
+          tenant_id: string
+          updated_at: string
+          waits: number
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          created_by: string
+          email?: Json | null
+          error_code?: string | null
+          id?: string
+          klaviyo_campaign_id?: string | null
+          lease_token?: string | null
+          lease_until?: string | null
+          not_before?: string | null
+          push_key?: string
+          run_id: string
+          sample_draft?: boolean
+          slot: number
+          state?: string
+          tenant_id: string
+          updated_at?: string
+          waits?: number
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          created_by?: string
+          email?: Json | null
+          error_code?: string | null
+          id?: string
+          klaviyo_campaign_id?: string | null
+          lease_token?: string | null
+          lease_until?: string | null
+          not_before?: string | null
+          push_key?: string
+          run_id?: string
+          sample_draft?: boolean
+          slot?: number
+          state?: string
+          tenant_id?: string
+          updated_at?: string
+          waits?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'email_builds_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_builds_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_builds_tenant_id_run_id_fkey'
+            columns: ['tenant_id', 'run_id']
+            isOneToOne: false
+            referencedRelation: 'strategy_runs'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       email_file_imports: {
         Row: {
           attachment_count: number | null
@@ -6450,6 +6535,22 @@ export type Database = {
         Returns: undefined
       }
       check_pending_subscriptions: { Args: never; Returns: number }
+      claim_email_build: {
+        Args: { target?: string }
+        Returns: {
+          email: Json
+          id: string
+          lease_token: string
+          planned: Json
+          push_key: string
+          run_id: string
+          slot: number
+          start_on: string
+          state: string
+          tenant_id: string
+          timezone: string
+        }[]
+      }
       claim_email_file_import: {
         Args: { import: string; t: string }
         Returns: {
@@ -6652,6 +6753,10 @@ export type Database = {
         }
         Returns: string
       }
+      create_email_build: {
+        Args: { run: string; slot: number; t: string }
+        Returns: string
+      }
       create_email_result: {
         Args: {
           import_id: string
@@ -6828,6 +6933,16 @@ export type Database = {
         Args: { failure: Json; job: string; lease: string }
         Returns: string
       }
+      fail_email_step: {
+        Args: {
+          build: string
+          code: string
+          final?: boolean
+          lease: string
+          retry_after_seconds?: number
+        }
+        Returns: string
+      }
       fail_job: {
         Args: { failure: string; job: string; lease: string }
         Returns: undefined
@@ -6868,6 +6983,10 @@ export type Database = {
         Args: { job: string; lease: string }
         Returns: undefined
       }
+      finish_email_build: {
+        Args: { build: string; lease: string; result: Json }
+        Returns: undefined
+      }
       finish_email_file_import: {
         Args: { job: string; lease: string; output: Json }
         Returns: string
@@ -6875,6 +6994,15 @@ export type Database = {
       finish_email_generation: {
         Args: { job: string; lease: string; output: Json; usage: Json }
         Returns: number
+      }
+      finish_email_push: {
+        Args: {
+          build: string
+          campaign: string
+          lease: string
+          sample: boolean
+        }
+        Returns: undefined
       }
       finish_health_check: {
         Args: { job: string; lease: string }

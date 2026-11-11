@@ -1,10 +1,11 @@
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { Notice, Panel } from '@/components/ui/workspace'
 import { Pill } from '@/components/ui/pill'
-import type { PlanRun } from './load'
+import type { EmailBuildView, PlanRun } from './load'
 import type { StoredPlan, StoredPulse } from './stored'
 import { pickOffers, startPlan } from './actions'
 import { PlanProgress } from './progress'
+import { CreateEmailButton } from './create-email'
 
 export type { PlanRun }
 
@@ -83,7 +84,15 @@ export function PlanView({
   if (run.state === 'offers_ready' && run.pulse)
     return <OfferStep run={run} pulse={run.pulse} owner={owner} />
   if (run.state === 'planned' && run.plan)
-    return <PlannedDays plan={run.plan} owner={owner} />
+    return (
+      <PlannedDays
+        plan={run.plan}
+        owner={owner}
+        run={run.id}
+        builds={run.builds}
+        today={run.today}
+      />
+    )
   return (
     <Panel title="Your next 15 days">
       <div className="mb-4">
@@ -179,7 +188,90 @@ function OfferStep({
   )
 }
 
-function PlannedDays({ plan, owner }: { plan: StoredPlan; owner: boolean }) {
+/** One planned email's "Create email" state (EML-004 part 2, D17). */
+function EmailStatus({
+  build,
+  owner,
+  run,
+  slot,
+  passed
+}: {
+  build: EmailBuildView | undefined
+  owner: boolean
+  run: string
+  slot: number
+  /** The email's day has passed (store time). */
+  passed: boolean
+}) {
+  if (!build || build.state === 'failed')
+    return (
+      <div className="mt-3 space-y-2">
+        {build && (
+          <p role="alert" className="text-sm text-[var(--danger-ink)]">
+            We could not create this email.
+            {build.reason ? ` ${build.reason}` : ''}
+          </p>
+        )}
+        {passed ? (
+          <p className="text-sm text-[var(--text-muted)]">
+            This day has passed.
+          </p>
+        ) : owner ? (
+          <CreateEmailButton
+            run={run}
+            slot={slot}
+            label={build ? 'Try again' : 'Create email'}
+          />
+        ) : null}
+      </div>
+    )
+  if (build.state !== 'drafted')
+    return (
+      <div className="mt-3">
+        <PlanProgress
+          message={
+            build.state === 'build_queued'
+              ? 'Creating your email…'
+              : 'Putting your email into Klaviyo as a draft…'
+          }
+        />
+      </div>
+    )
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+      {build.sampleDraft ? (
+        <>
+          <Pill tone="info">Sample draft (not in Klaviyo)</Pill>
+          <span className="text-[var(--text-muted)]">
+            Klaviyo is not connected yet, so nothing was sent to it.
+          </span>
+        </>
+      ) : (
+        <Pill tone="success">In Klaviyo as a draft</Pill>
+      )}
+      <a
+        className="font-medium underline underline-offset-2"
+        href={`/plan/email/${build.id}`}
+      >
+        See the email
+      </a>
+    </div>
+  )
+}
+
+function PlannedDays({
+  plan,
+  owner,
+  run,
+  builds,
+  today
+}: {
+  plan: StoredPlan
+  owner: boolean
+  run: string
+  builds: Record<number, EmailBuildView>
+  today: string
+}) {
   const fromFacts =
     plan.source.brief === 'code' && plan.source.planner === 'code'
   return (
@@ -199,7 +291,7 @@ function PlannedDays({ plan, owner }: { plan: StoredPlan; owner: boolean }) {
         ))}
         {plan.slots.length ? (
           <ol className="space-y-4">
-            {plan.slots.map((s) => (
+            {plan.slots.map((s, i) => (
               <li
                 key={`${s.date}-${s.time}-${s.audience.id}`}
                 className="rounded-lg border border-[var(--line)] p-4"
@@ -243,6 +335,13 @@ function PlannedDays({ plan, owner }: { plan: StoredPlan; owner: boolean }) {
                     ))}
                   </ul>
                 )}
+                <EmailStatus
+                  build={builds[i]}
+                  owner={owner}
+                  run={run}
+                  slot={i}
+                  passed={s.date < today}
+                />
               </li>
             ))}
           </ol>

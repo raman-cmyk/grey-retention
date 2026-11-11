@@ -16,7 +16,38 @@ export type PlanRun = {
   /** Checked when read back; null when missing or of a broken shape. */
   pulse: StoredPulse | null
   plan: StoredPlan | null
+  /** "Create email" builds (EML-004 part 2), the latest per planned email. */
+  builds: Record<number, EmailBuildView>
+  /** Today in store time: no email is created for a day that has passed. */
+  today: string
 }
+
+export type EmailBuildView = {
+  id: string
+  state: 'build_queued' | 'push_queued' | 'drafted' | 'failed'
+  /** The draft came from the fake pusher: no Klaviyo call was made. */
+  sampleDraft: boolean
+  /** Why it failed, in plain words, when the reason is known. */
+  reason: string | null
+}
+
+/** Plain words for the failures the owner can act on. */
+const failureWords: Record<string, string> = {
+  copy_failed: 'Its words did not pass the checks.',
+  slot_time_invalid: 'Its send time does not exist in your time zone.',
+  klaviyo_auth: 'Klaviyo did not accept the connection.',
+  klaviyo_rejected: 'Klaviyo or the launch check refused it.',
+  klaviyo_rate_limited: 'Klaviyo was busy for too long.',
+  day_passed: 'Its day passed before it was ready.',
+  planned_email_invalid: 'This planned email cannot be built. Plan again.'
+}
+
+const buildStates = [
+  'build_queued',
+  'push_queued',
+  'drafted',
+  'failed'
+] as const
 
 const states = [
   'pulse_queued',
@@ -54,6 +85,29 @@ export async function latestPlanRun(
   if (!row) return { ok: true, run: null }
   const pulse = storedPulse.safeParse(row.pulse)
   const plan = storedPlan.safeParse(row.plan)
+  const builds: Record<number, EmailBuildView> = {}
+  if (row.state === 'planned') {
+    const found = await db
+      .from('email_builds')
+      .select('id,slot,state,sample_draft,error_code')
+      .eq('tenant_id', tenantId)
+      .eq('run_id', row.id)
+      .order('created_at', { ascending: false })
+    if (found.error) return { ok: false }
+    for (const b of found.data)
+      if (!(b.slot in builds))
+        builds[b.slot] = {
+          id: b.id,
+          state: (buildStates as readonly string[]).includes(b.state)
+            ? (b.state as EmailBuildView['state'])
+            : 'failed',
+          sampleDraft: b.sample_draft,
+          reason:
+            b.state === 'failed' && b.error_code
+              ? (failureWords[b.error_code] ?? null)
+              : null
+        }
+  }
   return {
     ok: true,
     run: {
@@ -64,7 +118,9 @@ export async function latestPlanRun(
       startOn: row.start_on,
       stale: row.start_on <= storeToday(timezone, now),
       pulse: pulse.success ? pulse.data : null,
-      plan: plan.success ? plan.data : null
+      plan: plan.success ? plan.data : null,
+      builds,
+      today: storeToday(timezone, now)
     }
   }
 }
