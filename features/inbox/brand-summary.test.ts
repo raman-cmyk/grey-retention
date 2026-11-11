@@ -5,7 +5,7 @@ import type { EmailFacts } from './facts'
 
 const now = Date.parse('2026-11-07T12:00:00Z')
 const facts = (over: Partial<EmailFacts>): EmailFacts => ({
-  version: 1,
+  version: 2,
   subject: 'Subject',
   preview: null,
   offer: { kind: 'none', value: null, code: null },
