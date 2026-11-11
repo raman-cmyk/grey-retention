@@ -13,6 +13,7 @@ import { codeSectionPlan, seedVariants } from './sections'
 import { lockContent, type ChangeKey } from './content'
 import { codeFindings } from './inspect'
 import { designA } from './design'
+import type { Draft } from '@/features/assembly/assemble'
 import type { OfferSource } from '@/features/offers/source'
 import { offersAt, type Store } from './ports'
 
@@ -91,16 +92,19 @@ const dayName = (date: string) =>
 const typeName = (type: PlannedEmail['emailType']) =>
   type.charAt(0).toUpperCase() + type.slice(1)
 
-/** Builds one planned email on the code-only path. Never throws for bad data. */
-export async function buildEmail(
+/**
+ * The locked draft of one planned email on the code-only path: sections,
+ * locked content and plain copy that passed every code check, before any
+ * drawing. "Create email" draws it with A; the A-vs-B test (EML-005) draws
+ * the same draft both ways. Never throws for bad data.
+ */
+export async function lockedDraft(
   input: { planned: PlannedEmail; store: Store; offers: OfferSource },
-  ctx: {
-    tenantId: string
-    callerKey: string
-    campaignId?: string | null
-    fallbacks: FallbackLog
-  }
-): Promise<BuildResult> {
+  ctx: BuildCtx
+): Promise<
+  | { ok: true; draft: Draft; sendAt: string; changes: ChangeKey[] }
+  | { ok: false; code: 'slot_time_invalid' | 'copy_failed' }
+> {
   const { planned, store, offers } = input
   // The planned local time, as an instant (the earlier one on a DST fold).
   const sendAt = localTimeCandidates(
@@ -178,9 +182,39 @@ export async function buildEmail(
     })
     return { ok: false, code: 'copy_failed' }
   }
+  return {
+    ok: true,
+    draft: plain.draft,
+    sendAt,
+    changes: [...new Set(locked.changes.map((c): ChangeKey => c.key))].slice(
+      0,
+      40
+    )
+  }
+}
+
+type BuildCtx = {
+  tenantId: string
+  callerKey: string
+  campaignId?: string | null
+  fallbacks: FallbackLog
+}
+
+/**
+ * The owner's "Create email": the locked draft (`lockedDraft`), drawn with
+ * coded design A.
+ */
+export async function buildEmail(
+  input: { planned: PlannedEmail; store: Store; offers: OfferSource },
+  ctx: BuildCtx
+): Promise<BuildResult> {
+  const { planned, store } = input
+  const made = await lockedDraft(input, ctx)
+  if (!made.ok) return made
+  const { draft, sendAt } = made
   let html: string
   try {
-    html = designA(plain.draft, store.brand).html
+    html = designA(draft, store.brand).html
   } catch {
     return { ok: false, code: 'render_failed' }
   }
@@ -190,19 +224,16 @@ export async function buildEmail(
       sample: store.sample,
       ai: false,
       name: `${dayName(planned.date)} · ${typeName(planned.emailType)}`,
-      subject: plain.draft.subject,
-      preheader: plain.draft.preheader,
+      subject: draft.subject,
+      preheader: draft.preheader,
       html,
       approach: 'A',
       copy: 'plain',
       plannedSendAt: sendAt,
       audienceId: planned.audience.id,
-      productIds: plain.draft.productIds,
-      code: plain.draft.code,
-      changes: [...new Set(locked.changes.map((c): ChangeKey => c.key))].slice(
-        0,
-        40
-      )
+      productIds: draft.productIds,
+      code: draft.code,
+      changes: made.changes
     }
   }
 }
