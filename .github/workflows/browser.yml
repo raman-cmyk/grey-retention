@@ -55,10 +55,12 @@ jobs:
       # only optional fonts, and the Ubuntu mirror sometimes fails to resolve.
       # A truly missing library still fails loudly when the journeys launch.
       - name: Install browser system packages (best effort)
-        timeout-minutes: 10
+        # A timeout or failure here never fails the job.
+        continue-on-error: true
+        timeout-minutes: 6
         run: |
-          for attempt in 1 2 3; do
-            if sudo apt-get -o Acquire::Retries=3 update && pnpm exec playwright install-deps chromium; then
+          for attempt in 1 2; do
+            if sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 update && pnpm exec playwright install-deps chromium; then
               exit 0
             fi
             echo "Attempt $attempt failed; retrying in 20 seconds."

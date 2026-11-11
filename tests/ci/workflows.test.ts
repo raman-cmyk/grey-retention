@@ -205,13 +205,19 @@ describe('CI workflows', () => {
       const text = read(name)
       expect(text).not.toContain('playwright install --with-deps')
       expect(text).toContain('pnpm exec playwright install chromium')
-      expect(text).toContain('apt-get -o Acquire::Retries=3 update')
+      expect(text).toContain(
+        'apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 update'
+      )
+      // A timeout or failure in that step never fails the job.
+      expect(text).toMatch(
+        /continue-on-error: true\n\s+timeout-minutes: [56]\n/
+      )
       expect(text).toContain('pnpm exec playwright install-deps chromium')
       expect(text).toContain(
         "::warning::apt unavailable; using the runner's preinstalled libraries"
       )
     }
-    expect(read('browser.yml')).toMatch(/for attempt in 1 2 3; do/)
+    expect(read('browser.yml')).toMatch(/for attempt in 1 2; do/)
   })
 
   it('keeps a failed browser run debuggable', () => {
