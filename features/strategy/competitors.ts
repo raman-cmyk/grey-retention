@@ -1,10 +1,10 @@
 import { z } from 'zod'
-import type { AgentDefinition, AiCall, RunLog } from '@/features/agents/runtime'
-import { runAgent } from '@/features/agents/runtime'
-import type { MemoryStore } from '@/features/agents/memory'
+import type { AgentDefinition } from '@/features/agents/runtime'
 import type { FallbackLog } from '@/features/fallback/log'
 import { keyPart } from '@/features/fallback/entry'
 import { pulseDays } from './pulse'
+import { failedWords, tryAgent, type AgentCtx } from './retry'
+import { statedFact } from './words'
 
 /**
  * STR-002, the Competitor mapper (AGENT_MAP.md §3, decision D20): what
@@ -27,18 +27,64 @@ export const minBrands = 2
 
 export type BrandSize = 'small' | 'medium' | 'large'
 
-/** One competitor email, as the classifier labelled it (CI-001). */
-export type LibraryEmail = {
-  id: string
+/**
+ * The labels the mapper accepts, closed lists so that no competitor name,
+ * subject or phrase can travel in a label (D18: types, timing, offers and
+ * angles only). CI-001's Email classifier maps its labels onto these; an
+ * email with any other label is left out.
+ */
+export const competitorEmailTypes = [
+  'launch',
+  'new arrivals',
+  'bestseller',
+  'sale',
+  'offer',
+  'story',
+  'gift guide',
+  'restock',
+  'reminder',
+  'education',
+  'newsletter',
+  'event'
+] as const
+export const competitorOfferTypes = [
+  'no offer',
+  'percent off',
+  'money off',
+  'free shipping',
+  'gift with purchase',
+  'bundle',
+  'free sample',
+  'loyalty points'
+] as const
+export const competitorAngles = [
+  'urgency',
+  'gifting',
+  'newness',
+  'social proof',
+  'education',
+  'founder story',
+  'seasonal',
+  'value',
+  'exclusivity',
+  'community',
+  'self care',
+  'sustainability'
+] as const
+
+export const libraryEmail = z.object({
+  id: z.string().min(1).max(120),
   /** An opaque brand id; the name never leaves the library. */
-  brandId: string
-  industry: string
-  brandSize: BrandSize
-  sentOn: string
-  emailType: string
-  offerType: string
-  angle: string
-}
+  brandId: z.string().min(1).max(120),
+  industry: z.string().trim().min(1).max(60),
+  brandSize: z.enum(['small', 'medium', 'large']),
+  sentOn: z.iso.date(),
+  emailType: z.enum(competitorEmailTypes),
+  offerType: z.enum(competitorOfferTypes),
+  angle: z.enum(competitorAngles)
+})
+/** One competitor email, as the classifier labelled it (CI-001). */
+export type LibraryEmail = z.infer<typeof libraryEmail>
 
 export type DateKind = 'holiday' | 'sale' | 'event'
 export type NamedDate = { date: string; name: string; kind: DateKind }
@@ -91,13 +137,18 @@ const before = (k: number, what: string) =>
 /** The emails that count: same industry, same size, in the lookback. */
 export function pickEvidence(input: MapperInput) {
   const from = addDays(input.start, -lookbackDays)
-  return input.library.filter(
-    (e) =>
-      e.industry === input.industry &&
-      e.brandSize === input.brandSize &&
-      e.sentOn >= from &&
-      e.sentOn < input.start
-  )
+  return input.library
+    .flatMap((row) => {
+      const r = libraryEmail.safeParse(row)
+      return r.success ? [r.data] : []
+    })
+    .filter(
+      (e) =>
+        e.industry === input.industry &&
+        e.brandSize === input.brandSize &&
+        e.sentOn >= from &&
+        e.sentOn < input.start
+    )
 }
 
 /** Each email placed on our 15 days, with the patterns counted (code). */
@@ -253,9 +304,10 @@ export function checkMoves(answer: MapperAnswer, patterns: Pattern[]) {
     else if (seen.has(m.patternId))
       problems.push(`"${m.patternId}" is listed twice.`)
     seen.add(m.patternId)
-    if (/[\d%$€£“”"]/.test(m.move))
+    const stated = /[“”"«»]/.test(m.move) ? 'a quote' : statedFact(m.move)
+    if (stated)
       problems.push(
-        `The move for "${m.patternId}" writes a number, date or quote; code adds those.`
+        `The move for "${m.patternId}" writes ${stated}; code adds counts and dates.`
       )
   }
   return problems
@@ -288,112 +340,120 @@ export function codeMoves(patterns: Pattern[]): CompetitorMove[] {
   }))
 }
 
-export const mapperTries = 3
+/** The mapper's input; a bad top level is a caller bug and throws. */
+export const mapperInput = z.object({
+  industry: z.string().trim().min(1).max(60),
+  brandSize: z.enum(['small', 'medium', 'large']),
+  start: z.iso.date(),
+  ourDates: z.array(z.unknown()),
+  pastDates: z.array(z.unknown()),
+  library: z.array(z.unknown())
+})
+const namedDate = z.object({
+  date: z.iso.date(),
+  name: z.string().trim().min(1).max(80),
+  kind: z.enum(['holiday', 'sale', 'event'])
+})
+
+/** Checks the mapper's input: bad dates and library rows are left out. */
+export function readMapperInput(raw: unknown): MapperInput {
+  const top = mapperInput.parse(raw)
+  const dates = (list: unknown[]) =>
+    list.flatMap((d) => {
+      const r = namedDate.safeParse(d)
+      return r.success ? [r.data] : []
+    })
+  return {
+    ...top,
+    ourDates: dates(top.ourDates),
+    pastDates: dates(top.pastDates),
+    // Rows are checked again, one by one, in pickEvidence.
+    library: top.library as LibraryEmail[]
+  }
+}
 
 /**
- * Runs the Competitor mapper: up to `mapperTries` agent answers checked by
- * code, then the code-only moves with one fallback entry (D16). With no
- * patterns there is nothing to map and no agent call.
+ * Runs the Competitor mapper: up to 3 agent answers checked by code, then
+ * the code-only moves with one fallback entry (D16). With no patterns there
+ * is nothing to map and no agent call.
  */
 export async function runCompetitorMapper(
   input: MapperInput,
-  ctx: {
-    tenantId: string
-    callerKey: string
-    memory: MemoryStore
-    log: RunLog
-    ai: AiCall
-    fallbacks: FallbackLog
-    now?: string
-  }
+  ctx: Omit<AgentCtx, 'industry'> & { fallbacks: FallbackLog }
 ): Promise<{
   moves: CompetitorMove[]
   patterns: Pattern[]
   source: 'agent' | 'code' | 'none'
   tries: number
+  fallbackRecorded: boolean | null
 }> {
   const patterns = mapPatterns(input)
-  if (!patterns.length) return { moves: [], patterns, source: 'none', tries: 0 }
-  const byId = new Map(patterns.map((p) => [p.id, p]))
-  let problems: string[] = []
-  let reasonCode = 'mapper_check_failed'
-  let lastRun: string | undefined
-  let tries = 0
-  while (tries < mapperTries) {
-    tries++
-    const result = await runAgent(
-      competitorMapperAgent,
-      {
-        industry: input.industry,
-        brandSize: input.brandSize,
-        start: input.start,
-        patterns: patterns.map((p) => ({
-          id: p.id,
-          day: p.day,
-          timing: p.timing,
-          emailType: p.emailType,
-          offerType: p.offerType,
-          angle: p.angle,
-          brands: p.brands,
-          ofBrands: p.ofBrands
-        })),
-        problems
-      },
-      {
-        tenantId: ctx.tenantId,
-        industry: input.industry,
-        callerKey: ctx.callerKey,
-        memory: ctx.memory,
-        log: ctx.log,
-        ai: ctx.ai,
-        now: ctx.now
-      }
-    )
-    lastRun = result.runId
-    if (!result.ok) {
-      if (result.code !== 'invalid_output') {
-        reasonCode = 'mapper_agent_failed'
-        break
-      }
-      reasonCode = 'mapper_answer_invalid'
-      problems = ['The answer did not match the required JSON shape.']
-      continue
+  if (!patterns.length)
+    return {
+      moves: [],
+      patterns,
+      source: 'none',
+      tries: 0,
+      fallbackRecorded: null
     }
-    problems = checkMoves(result.output, patterns)
-    if (!problems.length)
-      return {
-        moves: result.output.moves.map((m) => {
-          const p = byId.get(m.patternId)!
-          return {
-            day: p.day,
-            move: moveText(p, m.move),
-            patternId: p.id,
-            emailIds: p.emailIds,
-            confidence: share(p)
-          }
-        }),
-        patterns,
-        source: 'agent',
-        tries
-      }
-    reasonCode = 'mapper_check_failed'
-  }
-  await ctx.fallbacks.record({
+  const byId = new Map(patterns.map((p) => [p.id, p]))
+  const result = await tryAgent(
+    competitorMapperAgent,
+    (problems) => ({
+      industry: input.industry,
+      brandSize: input.brandSize,
+      start: input.start,
+      patterns: patterns.map((p) => ({
+        id: p.id,
+        day: p.day,
+        timing: p.timing,
+        emailType: p.emailType,
+        offerType: p.offerType,
+        angle: p.angle,
+        brands: p.brands,
+        ofBrands: p.ofBrands
+      })),
+      problems
+    }),
+    (answer) => checkMoves(answer, patterns),
+    { ...ctx, industry: input.industry }
+  )
+  if (result.ok)
+    return {
+      moves: result.output.moves.map((m) => {
+        const p = byId.get(m.patternId)!
+        return {
+          day: p.day,
+          move: moveText(p, m.move),
+          patternId: p.id,
+          emailIds: p.emailIds,
+          confidence: share(p)
+        }
+      }),
+      patterns,
+      source: 'agent',
+      tries: result.tries,
+      fallbackRecorded: null
+    }
+  const logged = await ctx.fallbacks.record({
     tenantId: ctx.tenantId,
     campaignId: null,
     agent: competitorMapperAgent.name,
-    reasonCode,
-    reason:
-      reasonCode === 'mapper_agent_failed'
-        ? 'The Competitor mapper could not answer (AI unavailable or the allowance is used up).'
-        : `The Competitor mapper answer failed the check ${tries === 1 ? 'once' : `${tries} times`}.`,
+    reasonCode: `mapper_${result.reasonCode}`,
+    reason: `The Competitor mapper ${failedWords[result.reasonCode]}.`,
     fallback: 'Used the strongest competitor pattern for each day instead.',
-    attempts: tries,
+    attempts: result.tries,
     detail: {
       patterns: patterns.length,
-      ...(lastRun ? { runId: lastRun } : {})
+      ...(result.runId ? { runId: result.runId } : {})
     },
     dedupeKey: `competitor-mapper:${keyPart(ctx.callerKey)}`
   })
-  return { moves: codeMoves(patterns), patterns, source: 'code', tries }
+  return {
+    moves: codeMoves(patterns),
+    patterns,
+    source: 'code',
+    tries: result.tries,
+    fallbackRecorded: logged.ok
+  }
 }

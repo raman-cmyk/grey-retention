@@ -117,9 +117,9 @@ export function sampleCompetitors(start: string) {
     id: string,
     brandId: string,
     sentOn: string,
-    emailType: string,
-    offerType: string,
-    angle: string,
+    emailType: Email['emailType'],
+    offerType: Email['offerType'],
+    angle: Email['angle'],
     over: Partial<Email> = {}
   ): Email => ({
     id,

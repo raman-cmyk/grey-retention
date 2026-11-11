@@ -10,10 +10,11 @@ import {
   gatherEvidence,
   offerPick,
   offersToPlan,
-  pulseTries,
+  readPulseInput,
   runBrandPulse,
   type PulseAnswer
 } from './pulse'
+import { agentTries } from './retry'
 import { sampleStore } from './sample'
 
 const tenantId = '00000000-0000-4000-8000-000000000101'
@@ -144,7 +145,7 @@ describe('the facts check (code)', () => {
   const g = gatherEvidence(store)
 
   it('passes a good answer', () => {
-    expect(checkPulseAnswer(good, g.evidence)).toEqual([])
+    expect(checkPulseAnswer(good, g)).toEqual([])
   })
 
   it('names each problem exactly', () => {
@@ -159,18 +160,37 @@ describe('the facts check (code)', () => {
           ],
           summary: 'Run 25% off all week.'
         },
-        g.evidence
+        g
       )
     ).toEqual([
       '"offer:FREESHIP" is not one of the evidence ids.',
-      'The reason for "offer:CANDLE10" writes a number, percentage or code; point at the fact instead.',
+      'The reason for "offer:CANDLE10" writes a number or a money sign; point at the fact instead.',
       '"offer:CANDLE10" is listed twice.',
-      'The reason for "launch:p-oak-tray" writes a number, percentage or code; point at the fact instead.',
-      'The summary writes a number, percentage, date or code; use plain words.'
+      'The reason for "launch:p-oak-tray" writes a number or a money sign; point at the fact instead.',
+      'The summary writes a number or a money sign; use plain words.'
     ])
   })
 
-  it('refuses promoting a product that is out of stock', () => {
+  it('refuses facts written in words: numbers, offers, days and months', () => {
+    const say = (why: string) =>
+      checkPulseAnswer(
+        {
+          highlights: [{ evidenceId: 'launch:p-oak-tray', why }],
+          summary: 'A launch and a candle offer lead the fortnight.'
+        },
+        g
+      )
+    expect(say('Twenty percent off the tray.')).toEqual([
+      'The reason for "launch:p-oak-tray" writes "twenty"; point at the fact instead.'
+    ])
+    expect(say('Half price on Friday.')[0]).toContain('"half"')
+    expect(say('Offer free shipping with it.')[0]).toContain('"free shipping"')
+    expect(say('Lead with it in November.')[0]).toContain('"november"')
+    // Ordinary words that only contain a number word are fine.
+    expect(say('Someone will love this new tray.')).toEqual([])
+  })
+
+  it('never offers an out-of-stock launch, and refuses one if named', () => {
     const soldOut = gatherEvidence({
       ...store,
       products: [
@@ -190,9 +210,17 @@ describe('the facts check (code)', () => {
           highlights: [{ evidenceId: 'launch:p-x', why: 'A new product.' }],
           summary: 'A launch leads the fortnight, with nothing else planned.'
         },
-        soldOut.evidence
+        {
+          ...soldOut,
+          evidence: [{ id: 'launch:p-x', kind: 'launch', fact: 'X' }]
+        }
       )
     ).toEqual(['"launch:p-x" is out of stock; do not promote it.'])
+    expect(
+      soldOut.evidence
+        .filter((e) => ['launch', 'bestseller', 'stock'].includes(e.kind))
+        .map((e) => e.id)
+    ).toEqual(['stock:p-x'])
   })
 })
 
@@ -231,7 +259,7 @@ describe('running the Brand pulse', () => {
     expect(result).toMatchObject({ tries: 2, fallbackRecorded: null })
     const second = JSON.parse(ai.mock.calls[1][0].request.user)
     expect(second.fix_these_problems_from_your_last_answer).toEqual([
-      'The summary writes a number, percentage, date or code; use plain words.'
+      'The summary writes a number or a money sign; use plain words.'
     ])
   })
 
@@ -262,7 +290,7 @@ describe('running the Brand pulse', () => {
 
   it('falls back to the facts alone after the last try, and logs it once', async () => {
     const bad = { ...good, summary: 'Save 25% now.' }
-    const ai = reply(...Array.from({ length: pulseTries }, () => bad))
+    const ai = reply(...Array.from({ length: agentTries }, () => bad))
     const { ctx, fallbacks } = context(ai)
     const result = await runBrandPulse(store, ctx)
     expect(result).toMatchObject({ tries: 3, fallbackRecorded: true })
@@ -273,7 +301,7 @@ describe('running the Brand pulse', () => {
       expect.objectContaining({
         agent: 'brand-pulse',
         reasonCode: 'pulse_check_failed',
-        reason: 'The Brand pulse answer failed the facts check 3 times.',
+        reason: 'The Brand pulse kept failing the facts check.',
         fallback: 'Built the pulse from the store facts alone.',
         attempts: 3,
         dedupeKey: 'brand-pulse:plan-run-1'
@@ -375,5 +403,55 @@ describe('the owner’s offer pick', () => {
       offerPick.safeParse({ mode: 'auto', offers: ['offer:X'] }).success
     ).toBe(false)
     expect(offerPick.safeParse({ mode: 'all' }).success).toBe(false)
+  })
+})
+
+describe('reading the store data', () => {
+  it('leaves out bad rows and counts them, but never a bad brand or start', () => {
+    const { input, skipped } = readPulseInput({
+      ...store,
+      codes: [
+        ...store.codes,
+        { code: 'BROKEN', percent: Number.NaN, expiresOn: null },
+        { code: 'has space', percent: 10, expiresOn: null }
+      ],
+      dates: [...store.dates, { date: '2026-11-1', name: 'Bad', kind: 'event' }]
+    })
+    expect(skipped).toBe(3)
+    expect(input.codes.map((c) => c.code)).toEqual(
+      store.codes.map((c) => c.code)
+    )
+    expect(() => readPulseInput({ ...store, start: '16/11/2026' })).toThrow()
+    expect(() =>
+      readPulseInput({
+        ...store,
+        brand: { ...store.brand, maxDiscountPercent: 120 }
+      })
+    ).toThrow()
+  })
+
+  it('keeps each offer’s real last day, even after the 15 days', () => {
+    const g = gatherEvidence({
+      ...store,
+      codes: [{ code: 'LATE10', percent: 10, expiresOn: '2026-12-20' }]
+    })
+    expect(g.offers[0].until).toBe('2026-12-20')
+    expect(g.evidence[0].fact).toBe('10% off with LATE10.')
+  })
+
+  it('works across a month and a year end', () => {
+    const g = gatherEvidence({
+      ...store,
+      start: '2026-12-25',
+      dates: [
+        { date: '2026-12-31', name: 'New year’s eve', kind: 'event' },
+        { date: '2027-01-08', name: 'Last day', kind: 'event' },
+        { date: '2027-01-09', name: 'Outside', kind: 'event' }
+      ]
+    })
+    expect(g.end).toBe('2027-01-08')
+    expect(
+      g.evidence.filter((e) => e.kind === 'date').map((e) => e.id)
+    ).toEqual(['date:2026-12-31:1', 'date:2027-01-08:2'])
   })
 })
