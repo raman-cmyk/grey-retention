@@ -60,13 +60,14 @@ describe('the plan’s offer days', () => {
     const late = pulseCodes(offers, '2026-11-20', zone)
     expect(late.codes.map((c) => c.code)).toEqual(['SETTINGS', 'FOREVER'])
     expect(late.leftOut).toEqual([
+      // Ends at midnight on the 19th: its last day is the 18th.
       {
         code: 'MIDNIGHT',
-        why: 'It ends on 2026-11-19, before an email in these 15 days could use it.'
+        why: 'Its last day is 2026-11-18, too early for an email in these 15 days.'
       },
       {
         code: 'AFTERNOON',
-        why: 'It ends on 2026-11-19, before an email in these 15 days could use it.'
+        why: 'Its last day is 2026-11-19, too early for an email in these 15 days.'
       }
     ])
   })

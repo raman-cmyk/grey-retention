@@ -93,7 +93,8 @@ export function pulseCodes(
     if (expiresOn !== null && expiresOn < start)
       leftOut.push({
         code: c.code,
-        why: `It ends on ${localDateTime(c.expiresAt!, timezone).slice(0, 10)}, before an email in these 15 days could use it.`
+        // Its last day: the store date of its last working second.
+        why: `Its last day is ${localDateTime(new Date(Date.parse(c.expiresAt!) - 1000), timezone).slice(0, 10)}, too early for an email in these 15 days.`
       })
     else codes.push({ code: c.code, percent: c.percent, expiresOn })
   }
