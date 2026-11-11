@@ -171,8 +171,10 @@ export const sampleAsk: Ask = async () => ({
 
 /**
  * The live `Ask`: MEM-001's `runAgent` with the shared memory, the run log
- * and the metered AI call, for platform work (no client: `tenantId: null`,
- * the platform's daily budget, GEM-003). The tier is the call's purpose.
+ * and the metered AI call. Platform work by default (no client: `tenantId:
+ * null`, the platform's daily budget, GEM-003); with `tenantId`, work for
+ * that workspace, on its own budget (the onboarding readers). The tier is
+ * the call's purpose.
  * Which provider answered is read from the AI call itself, so a fake
  * answer still means "use the sample rules".
  */
@@ -180,6 +182,7 @@ export function agentAsk(ctx: {
   ai: AiCall
   memory: MemoryStore
   log: RunLog
+  tenantId?: string | null
 }): Ask {
   return async (def, input, call) => {
     const seen: { provider?: 'gemini' | 'fake'; model?: string } = {}
@@ -192,7 +195,7 @@ export function agentAsk(ctx: {
       return result
     }
     const result = await runAgent(def, input, {
-      tenantId: null,
+      tenantId: ctx.tenantId ?? null,
       industry: call.industry,
       callerKey: call.callerKey,
       memory: ctx.memory,

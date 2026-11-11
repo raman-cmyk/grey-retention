@@ -89,7 +89,8 @@ function hop(
   maxBytes: number,
   deadline: number,
   lookup: Lookup,
-  headers: { accept: string; userAgent: string }
+  headers: { accept: string; userAgent: string },
+  types?: RegExp
 ): Promise<Hop> {
   return new Promise((resolve) => {
     const client = url.protocol === 'https:' ? https : http
@@ -130,6 +131,11 @@ function hop(
             : fail({ ok: false, failure: 'broken' })
         }
         if (status !== 200) return fail({ ok: false, failure: 'broken' })
+        if (
+          types &&
+          !types.test(String(response.headers['content-type'] ?? ''))
+        )
+          return fail({ ok: false, failure: 'broken' })
         if (Number(response.headers['content-length'] ?? 0) > maxBytes)
           return fail({ ok: false, failure: 'too_large' })
         const chunks: Buffer[] = []
@@ -178,6 +184,8 @@ type FetcherOptions = {
   accept?: string
   /** Who asks (a neutral name by default). */
   userAgent?: string
+  /** Content types accepted (any by default), e.g. only HTML pages. */
+  types?: RegExp
   /**
    * Hosts the link and every redirect may reach (any public host by
    * default): a hop elsewhere is blocked, never opened.
@@ -221,7 +229,14 @@ export function createImageFetcher(options: FetcherOptions = {}): ImageFetcher {
       }
       for (let redirects = 0; ; redirects++) {
         if (!allowed(url)) return { ok: false, failure: 'blocked' }
-        const next = await hop(url, maxBytes, deadline, lookup, headers)
+        const next = await hop(
+          url,
+          maxBytes,
+          deadline,
+          lookup,
+          headers,
+          options.types
+        )
         if (next.kind === 'done') return next.result
         if (redirects === 3) return { ok: false, failure: 'broken' }
         url = new URL(next.to)
