@@ -1506,5 +1506,6 @@ Append entries using this exact shape:
 - Changed contracts: `AiProviderRequest.maxOutputTokens` now means the room for the answer. For Gemini 2.5 with a `reasoningEffort`, the provider adds the thinking budget on top (`geminiOutputTokens`: low +1,024, medium +4,096; capped at 65,536), because 2.5 counts thinking as output and a cut-off inside the thinking came back as `incomplete` (no answer, no retry). The cost reservation in `runAi` uses the same number. 2.5 Pro never gets a budget below 128 (it cannot switch thinking off). Agents keep `maxOutputTokens` at the answer size; lane A's `outputLimit` (EML-001) can go back to the answer size only.
 - Migrations: none.
 - Verification run: `vitest run lib/providers features/ai features/agents features/strategy features/intelligence` (176 pass); eslint and tsc clean for the changed files.
-- Known issues: with no `reasoningEffort`, 2.5 Flash and Pro think by their own default and nothing is added; every current agent sets an effort.
+- Models that decide their own thinking (any 3.x model, and 2.5 Flash or Pro with no `reasoningEffort`) get a fixed 4,096 tokens of thinking room on top of the answer; 2.5 Flash-Lite with no effort does not think and gets none. The total never exceeds 65,536, so an answer room near that cap is trimmed.
+- Known issues: none.
 - Next consumer: lanes A and B (every AgentDefinition).
