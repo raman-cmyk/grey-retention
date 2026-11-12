@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
 import { ProviderFault } from '@/features/integrations/failures'
-import type { Ask } from '@/features/intelligence/passes'
+import { TagError, type Ask } from '@/features/intelligence/passes'
 import {
   ownAds,
   type AdLibrary,
@@ -163,12 +163,21 @@ export async function readBrandAds(
       else if (now() + callMs > deadline)
         logger.info('Ads analyst not asked', { reason: 'time_up' })
       else {
-        const analysis = await analyseAds(
-          brand.data.brand_name,
-          ads,
-          ask,
-          `ads:${job.id}`
-        )
+        let analysis: Awaited<ReturnType<typeof analyseAds>>
+        try {
+          analysis = await analyseAds(
+            brand.data.brand_name,
+            ads,
+            ask,
+            `ads:${job.id}`
+          )
+        } catch (error) {
+          // On the last try an AI outage leaves the ads without words:
+          // what code counted is stored all the same.
+          if (!(error instanceof TagError) || (job.attempt ?? 0) < lastTry)
+            throw error
+          analysis = { answered: false, reason: 'model_unavailable' }
+        }
         if (!analysis.answered)
           logger.info('Ads analyst answer left out', {
             reason: analysis.reason
