@@ -7386,6 +7386,18 @@ export type Database = {
         }
         Returns: undefined
       }
+      record_review_findings: {
+        Args: {
+          findings: Json
+          job: string
+          lease: string
+          live: boolean
+          pages: Json
+          posts: Json
+          summary: Json
+        }
+        Returns: Json
+      }
       record_section_tags: {
         Args: {
           job: string
@@ -7765,6 +7777,7 @@ export type Database = {
       start_ads_reading: { Args: { t: string }; Returns: string }
       start_catalog_reading: { Args: { t: string }; Returns: string }
       start_history_reading: { Args: { t: string }; Returns: string }
+      start_reviews_reading: { Args: { t: string }; Returns: string }
       start_site_reading: { Args: { t: string }; Returns: string }
       start_strategy_run: { Args: { t: string }; Returns: string }
       submit_design: {

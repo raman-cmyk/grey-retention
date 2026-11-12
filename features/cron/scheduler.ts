@@ -24,8 +24,8 @@ export const scheduleLimits = {
 
 /**
  * Paid AI rewrites and uploaded-file imports have their own leases and resume
- * paths (the owner's result/progress page); site, catalog, history and ads
- * reads (ONB-101..104) have the onboarding readers' run. The sweep never dispatches them, so it cannot
+ * paths (the owner's result/progress page); site, catalog, history, ads
+ * and reviews reads (ONB-101..105) have the onboarding readers' run. The sweep never dispatches them, so it cannot
  * start or retry anything that costs real AI money.
  */
 export const separatelyDispatchedKinds = [
@@ -34,7 +34,8 @@ export const separatelyDispatchedKinds = [
   'brand.read_site',
   'brand.read_catalog',
   'brand.read_history',
-  'brand.read_ads'
+  'brand.read_ads',
+  'brand.read_reviews'
 ]
 
 export type ScheduledRun = {
