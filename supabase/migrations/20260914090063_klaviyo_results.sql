@@ -291,10 +291,17 @@ begin
     new_pulls := coalesce((patch->>'pulls')::integer, e.pulls);
     next_at := (patch->>'next_check_at')::timestamptz;
     new_final := case when jsonb_typeof(patch->'final') = 'boolean' then (patch->>'final')::boolean else false end;
-    planned_day := coalesce((e.planned->>'date')::date, today);
   exception when others then
     raise exception 'Invalid result' using errcode = '23514';
   end;
+  -- The planned day matters only to a stale outcome (read only for one).
+  if new_status = 'stale' then
+    begin
+      planned_day := coalesce((e.planned->>'date')::date, today);
+    exception when others then
+      raise exception 'Invalid result' using errcode = '23514';
+    end;
+  end if;
   if new_status not in ('draft', 'scheduled', 'sending', 'sent', 'cancelled', 'deleted', 'stale')
     or (patch ? 'status' and jsonb_typeof(patch->'status') <> 'string')
     -- Nothing comes back from sent, cancelled or deleted (any can be deleted).

@@ -252,10 +252,9 @@ export function afterStatus(
       dueAt
     }
   }
+  const scheduledFor = read.sendTime ?? read.firstSendTime ?? null
   const laterSend =
-    status === 'scheduled' &&
-    !!read.sendTime &&
-    !longPastDay(read.sendTime, now)
+    status === 'scheduled' && !!scheduledFor && !longPastDay(scheduledFor, now)
   if (
     (was === 'draft' || was === 'scheduled') &&
     (status === 'draft' || status === 'scheduled') &&
@@ -411,7 +410,9 @@ export function resultsPatch(
   for (const c of read.clicks ?? []) {
     const url = keptUrl(c.url)
     if (!url) continue
-    const key = `${c.variationId ?? ''}\n${url}`
+    const variation =
+      c.variationId && variationId.test(c.variationId) ? c.variationId : null
+    const key = `${variation ?? ''}\n${url}`
     const was = merged.get(key)
     merged.set(
       key,
@@ -421,7 +422,7 @@ export function resultsPatch(
             clicks: was.clicks + c.clicks,
             unique: was.unique + c.unique
           }
-        : { ...c, url }
+        : { ...c, variationId: variation, url }
     )
   }
   const clicks: StoredClick[] = []

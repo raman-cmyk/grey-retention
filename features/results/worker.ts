@@ -65,8 +65,12 @@ export const resultsBatch = 40
 export const maxClaims = 5
 /** No new claim, workspace or Klaviyo request starts after this much of the run. */
 export const resultsBudgetMs = 35_000
-/** Klaviyo requests kept back in a workspace for its results questions. */
-const resultsReserve = 4
+/**
+ * Klaviyo requests kept back in a workspace for its results questions
+ * once an email is due (the metrics and the report; clicks not read in
+ * time keep the earlier ones).
+ */
+const resultsReserve = 2
 /** The least time between two click questions (Klaviyo allows 3 a second). */
 export const clickGapMs = 350
 
@@ -271,7 +275,10 @@ export async function runEmailResults(
             attributionOpen: t < Date.parse(sentAt) + attributionMs,
             sendStrategy: 'static',
             sentAtFrom: row.sent_at
-              ? 'send_time'
+              ? sentAtFromOf(
+                  read as Extract<StatusRead, { found: true }>,
+                  row.sent_at
+                )
               : sendTimeOf(read, t, ctx.builtAt).from,
             clicksBy: 'message',
             botsLeftOut: 0,
@@ -495,10 +502,24 @@ export async function runEmailResults(
         }
         const clicksFrom = new Date(Date.parse(d.sentAt) - dayMs)
         const clicksTo = new Date(now() + hourMs)
-        const clicked = report.rows.reduce(
-          (n, r) => n + (r.statistics.clicks_unique ?? 0),
-          0
-        )
+        // People clicked, as the report says (or, not reported, the last read).
+        const clicked = (
+          report.rows.length
+            ? report.rows.map((r) => r.statistics)
+            : (Array.isArray(d.row.results) ? d.row.results : []).map(
+                (r) =>
+                  ((r as { statistics?: Record<string, number> } | null)
+                    ?.statistics ?? {}) as Record<string, number>
+              )
+        ).reduce((n, st) => n + (st.clicks_unique ?? 0), 0)
+        // The key that found clicks last time first, then the other.
+        const byMessage = [d.row.message_id!, 'message'] as const
+        const byCampaign = [d.row.campaign_id, 'campaign'] as const
+        const keys =
+          (d.row.context as { clicksBy?: unknown } | null)?.clicksBy ===
+          'campaign'
+            ? [byCampaign, byMessage]
+            : [byMessage, byCampaign]
         let clicks: LinkClicks[] = []
         let clicksRead = false
         let clicksComplete = !!metrics.clickedEmail && metrics.complete
@@ -506,11 +527,9 @@ export async function runEmailResults(
         let bots = 0
         if (metrics.clickedEmail && !clicksStopped) {
           // By the message, else (none found though people clicked) by the campaign.
-          for (const [key, by] of [
-            [d.row.message_id!, 'message'],
-            [d.row.campaign_id, 'campaign']
-          ] as const) {
-            if (by === 'campaign' && (clicks.length || !clicked)) break
+          for (const [index, [key, by]] of keys.entries()) {
+            // The other key only when none came though people clicked.
+            if (index > 0 && (clicks.length || !clicked)) break
             try {
               const gap = lastClick + clickGapMs - now()
               if (gap > 0) await wait(gap)
@@ -553,7 +572,11 @@ export async function runEmailResults(
               break
             }
           }
-          if (clicked > 0 && !clicks.length) clicksComplete = false
+          if (clicked > 0 && !clicks.length) {
+            // None found though people clicked: the earlier clicks stand.
+            clicksComplete = false
+            clicksRead = false
+          }
         } else clicksComplete = false
         await saveDue(
           d,
@@ -605,6 +628,8 @@ export async function runEmailResults(
         for (const d of due)
           if (!done.has(d.row.build_id)) {
             done.add(d.row.build_id)
+            // Its read waits for the next run.
+            run.deferred++
             await save(d.row, d.patch)
           }
         run.deferred += live.filter((r) => !done.has(r.build_id)).length

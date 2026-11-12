@@ -402,6 +402,67 @@ describe('the hourly results run', () => {
     ).toEqual(['equals($message,"MsgR01")', 'equals($message,"CmpR01")'])
   })
 
+  it('keeps the earlier clicks when none come though people clicked, asking first by the key that worked', async () => {
+    const earlier = [
+      {
+        variation: 'VarA01',
+        design: 'A',
+        url: 'https://cedar.example/p/1',
+        section: 0,
+        block: 'hero_product',
+        clicks: 3,
+        unique: 3
+      }
+    ]
+    const asked: { path: string; body: unknown }[] = []
+    const { db, saved } = database([
+      [
+        sent({
+          sent_at: iso(now - 2 * dayMs - 13 * hourMs),
+          pulls: 1,
+          results_at: iso(now - dayMs - 13 * hourMs),
+          results: [
+            {
+              variation: 'VarA01',
+              name: 'Design A',
+              design: 'A',
+              statistics: { clicks_unique: 3 }
+            }
+          ],
+          clicks: earlier,
+          context: { clicksBy: 'campaign' }
+        })
+      ]
+    ])
+    // Not reported, and no clicks by either key.
+    await run(
+      db,
+      live(
+        recordedResultsTransport({
+          rest: account('Sent', iso(now - 3 * dayMs)).transport,
+          variations: [],
+          clicks: [],
+          asked
+        })
+      )
+    )
+    expect(saved[0]!.patch).toMatchObject({
+      pulls: 2,
+      clicks: earlier,
+      complete: false,
+      context: { resultsKept: true, clicksKept: true }
+    })
+    expect(
+      asked
+        .filter((q) => q.path === '/api/metric-aggregates')
+        .map(
+          (q) =>
+            (q.body as { data: { attributes: { filter: string[] } } }).data
+              .attributes.filter[2]
+        )
+    ).toEqual(['equals($message,"CmpR01")', 'equals($message,"MsgR01")'])
+  })
+
   it('says an A/B draft read without its two designs apart is not whole', async () => {
     const a = account('Sent', iso(now - dayMs - hourMs))
     const { db, saved } = database([[row()]])
@@ -759,42 +820,78 @@ describe('the hourly results run', () => {
   })
 
   it('reads the due results with the time it kept, leaving the other statuses for the next run', async () => {
-    // Each Klaviyo request takes a second.
+    // Each Klaviyo request takes 400 ms, as live: each at most 6 s, 35 s in all.
     let t = now
     const sentAt = iso(now - dayMs - hourMs)
-    const results = recordedResultsTransport({
+    const sentAccount = recordedResultsTransport({
       rest: account('Sent', sentAt).transport,
       variations,
       clicks
     })
-    const slow: KlaviyoTransport = async (request) => {
-      t += 1_000
-      if (request.url.includes('MsgR02') || request.url.includes('MsgR03'))
-        return account('Draft').transport({
+    const draftAccount = account('Draft').transport
+    const transport: KlaviyoTransport = async (request) => {
+      t += 400
+      if (/MsgD\d+/.test(request.url))
+        return draftAccount({
           ...request,
-          url: request.url.replace(/MsgR0[23]/, 'MsgR01')
+          url: request.url.replace(/MsgD\d+/, 'MsgR01')
         })
-      return results(request)
+      return sentAccount(request)
     }
-    const { db, saved } = database([
-      [
-        row({ build_id: 'b2', message_id: 'MsgR02' }),
-        sent(),
-        row({ build_id: 'b3', message_id: 'MsgR03' })
-      ]
+    const rows = [1, 2, 3, 4].flatMap((w) => [
+      sent({ tenant_id: `t${w}`, build_id: `b${w}-0` }),
+      ...Array.from({ length: 9 }, (_, n) =>
+        row({
+          tenant_id: `t${w}`,
+          build_id: `b${w}-${n + 1}`,
+          message_id: `MsgD${n + 1}`
+        })
+      )
     ])
-    const result = await run(db, live(slow), {
+    const { db, saved } = database([rows])
+    const result = await runEmailResults(db, {
+      sourceFor: live(transport),
       now: () => t,
-      deadline: now + 6_500
+      deadline: now + 35_000,
+      callMs: 6_000,
+      wait: async () => {}
     })
-    // The sent email first, then one draft; time is kept for its results.
-    expect(
-      saved.map((s) => [s.build, s.patch.pulls ?? s.patch.status])
-    ).toEqual([
-      ['b2', 'draft'],
-      ['b1', 1]
+    // Every due read is read; few statuses wait for the next run.
+    expect(saved.filter((s) => s.patch.pulls === 1)).toHaveLength(4)
+    expect(result.deferred).toBeLessThanOrEqual(6)
+    expect(result.checked + result.deferred).toBe(40)
+  })
+
+  it('stops claiming once a batch was not finished in time, leaving its unread checks unsaved', async () => {
+    let t = now
+    const sentAt = iso(now - dayMs - hourMs)
+    const transport: KlaviyoTransport = async (request) => {
+      if (request.url.includes('/api/metrics'))
+        return {
+          status: 429,
+          headers: { 'retry-after': '30' },
+          body: '{"errors":[{"code":"throttled"}]}'
+        }
+      t += 1_000
+      return account('Sent', sentAt).transport(request)
+    }
+    const { db, saved, claims } = database([
+      [sent(), row({ build_id: 'b2', status: 'scheduled' })],
+      [row({ build_id: 'b3' })]
     ])
-    expect(result).toMatchObject({ pulled: 1, deferred: 1 })
+    const result = await run(db, live(transport), {
+      now: () => t,
+      deadline: now + 3_500,
+      limit: 2
+    })
+    // b2's status was not read (no time kept for it): left for the next run,
+    // never paused by the account's rate limit that came after.
+    expect(saved.map((s) => [s.build, s.patch.paused])).toEqual([
+      ['b1', 'rate_limited']
+    ])
+    expect(result.deferred).toBe(1)
+    // Time was left for a claim, but the batch was not finished.
+    expect(claims).toEqual([2])
   })
 
   it('keeps what the status reads said when no time is left for the results', async () => {
@@ -806,11 +903,17 @@ describe('the hourly results run', () => {
       })(request)
     }
     const { db, saved } = database([[row({ status: 'scheduled' })]])
-    await run(db, live(slow), { now: () => t, deadline: now + 1_500 })
+    const result = await run(db, live(slow), {
+      now: () => t,
+      deadline: now + 1_500
+    })
     expect(saved[0]!.patch).toMatchObject({
       status: 'sent',
-      sent_at: iso(now - dayMs - hourMs)
+      sent_at: iso(now - dayMs - hourMs),
+      next_check_at: iso(now + 1_000)
     })
+    // Its read waits for the next run.
+    expect(result.deferred).toBe(1)
     expect(saved[0]!.patch).not.toHaveProperty('pulls')
   })
 

@@ -584,6 +584,49 @@ describe('a read that could not read everything', () => {
     ])
   })
 
+  it('counts a link once when only a variation id it cannot keep told the rows apart', () => {
+    const patch = resultsPatch(
+      row({ status: 'sent', sent_at: sentAt }),
+      sentAt,
+      {
+        results: [],
+        clicks: [
+          {
+            variationId: 'a b',
+            url: 'https://x.example/p/1',
+            clicks: 1,
+            unique: 1
+          },
+          {
+            variationId: 'c d',
+            url: 'https://x.example/p/1',
+            clicks: 2,
+            unique: 2
+          }
+        ],
+        complete: true,
+        templates: [],
+        sections: [],
+        context: {}
+      },
+      now
+    )
+    expect(patch.clicks!.map((c) => [c.variation, c.clicks])).toEqual([
+      [null, 3]
+    ])
+  })
+
+  it('follows a send scheduled later by per-variation times only', () => {
+    const old = row({ status: 'scheduled', planned: { date: '2026-11-01' } })
+    expect(
+      afterStatus(
+        old,
+        { ...seen('scheduled', null), firstSendTime: '2026-11-25T09:00:00Z' },
+        Date.parse('2026-11-17T00:00:01Z')
+      ).patch.status
+    ).toBe('scheduled')
+  })
+
   it('never calls an email that was sending stale', () => {
     const r = row({ status: 'sending', planned: { date: '2026-10-01' } })
     expect(afterStatus(r, seen('draft'), now).patch.status).toBe('draft')

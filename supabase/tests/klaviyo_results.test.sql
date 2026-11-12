@@ -1,5 +1,5 @@
 begin;
-select plan(145);
+select plan(146);
 
 -- LRN-001: the results of every email we put into Klaviyo. Workspace 101
 -- (owner ...01, staff ...05; a synthetic brand) and workspace 102 (owner
@@ -395,6 +395,13 @@ set local role service_role;
 select pg_temp.as_worker();
 select throws_ok(format($$select pg_temp.save('206', '{"status":"stale","final":true,"next_check_at":%s}')$$, pg_temp.next()),
   '23514',null,'a planned day that is not a day is refused as such');
+select lives_ok(format($$select pg_temp.save('206', '{"status":"draft","next_check_at":%s}')$$, pg_temp.next()),
+  'but every other outcome of that email is still saved');
+reset role;
+select pg_temp.due('206');
+set local role service_role;
+select pg_temp.as_worker();
+do $$ begin perform public.claim_klaviyo_results(10); end $$;
 reset role;
 update public.klaviyo_email_results set planned = planned || '{"date":"2000-01-01"}' where build_id = pg_temp.b('206');
 set local role service_role;
