@@ -104,6 +104,31 @@ export const topicValues = {
   angle: z.object({}).strict(),
   /** What the ads show and how (in words). */
   creative: z.object({}).strict(),
+  /** What customers love, in their reviews and comments (in words). */
+  review_theme: z.object({}).strict(),
+  /** What customers worry about or complain of (in words). */
+  objection: z.object({}).strict(),
+  /** A phrase customers use, quoted as the evidence (in words). */
+  customer_words: z.object({}).strict(),
+  /**
+   * A real review an email may quote (ONB-105): its author as shown, the
+   * page it is on, its stars and day when known; its exact words are the
+   * evidence's quote.
+   */
+  quotable_review: z
+    .object({
+      author: z.string().min(1).max(80),
+      url: z
+        .url()
+        .max(500)
+        .refine((u) => u.startsWith('https://'), 'https only'),
+      rating: z.number().int().min(1).max(5).optional(),
+      date: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional()
+    })
+    .strict(),
   /** Where a live ad sends people: a page on the brand's own site. */
   landing_page: z
     .object({
@@ -146,8 +171,24 @@ export const sourceTopics: Record<FindingSource, readonly FindingTopic[]> = {
     'creative',
     'landing_page'
   ],
-  reviews: ['review_platform', 'claim', 'audience'],
-  social: ['audience', 'tone', 'claim', 'offering']
+  reviews: [
+    'review_platform',
+    'claim',
+    'audience',
+    'review_theme',
+    'objection',
+    'customer_words',
+    'quotable_review'
+  ],
+  social: [
+    'audience',
+    'tone',
+    'claim',
+    'offering',
+    'review_theme',
+    'objection',
+    'customer_words'
+  ]
 }
 
 export const evidenceSchema = z.union([
