@@ -8,7 +8,7 @@ import type {
 } from '@/lib/providers/review-source'
 import { findingInput, type FindingInput } from '../findings'
 import { fold } from '../site/pages'
-import { asWritten, plain } from '../words'
+import { asWritten, claims, plain } from '../words'
 
 /** The Reviews + social reader's prompt version. */
 export const reviewsReaderVersion = 'reviews-v1'
@@ -171,6 +171,10 @@ export function checkedCustomerFindings(
     const quote =
       asked.length < minQuote ? null : asWritten([first.text], asked)
     if (!quote || !plain(f.statement)) continue
+    // Never a person's details; customers' own words, reused in copy,
+    // never a claim either.
+    if (personal.test(quote)) continue
+    if (f.topic === 'customer_words' && claims.test(quote)) continue
     const finding = findingInput.safeParse({
       topic: f.topic,
       statement: fold(f.statement).slice(0, 300),
@@ -191,7 +195,13 @@ export function checkedCustomerFindings(
 /** Reviews an email may quote, at most. */
 export const maxQuotable = 5
 /** A link, an address, a handle or a phone number: never quoted. */
-const personal = /https?:\/\/|www\.|\S+@\S+\.\S+|@\w{2,}|\+?\d[\d\s().-]{7,}\d/i
+const personal =
+  /https?:\/\/|www\.|\S+@\S+\.\S+|@\w{2,}|\+?\d[\d\s().-]{7,}\d|\b\d{1,5}\s+(?:[a-z]+\s+){0,3}(?:street|st|road|rd|avenue|ave|lane|ln|drive|dr|boulevard|blvd|way|court|ct)\b/i
+/** Left over from a page's markup: never quoted. */
+const markup = /[<>]|&(?:#\d+|#x[0-9a-f]+|[a-z]{2,8});/i
+/** A name that is no one's. */
+const noName =
+  /^(?:anonymous|anon|verified (?:buyer|customer|reviewer)|customer|guest|a customer|shopper|user)$/i
 
 /**
  * The reviews an email may quote, chosen by code: a real review read on
@@ -207,10 +217,13 @@ export function quotableReviews(reviews: ReadReview[]): CustomerFinding[] {
       ({ r, text, author }) =>
         author.length >= 1 &&
         author.length <= 80 &&
+        !noName.test(author) &&
         !personal.test(author) &&
         text.length >= 20 &&
         text.length <= 300 &&
         !personal.test(text) &&
+        !markup.test(text) &&
+        !r.ratingUnclear &&
         (r.rating === null || r.rating >= 4)
     )
     .sort(
@@ -239,7 +252,10 @@ export function quotableReviews(reviews: ReadReview[]): CustomerFinding[] {
     })
 }
 
-/** The review apps the pages show, with their rating where given. */
+/**
+ * The review apps the pages load (by name only: a page's rating is one
+ * product's, never the app's).
+ */
 export function platformFindings(
   platforms: PlatformRating[]
 ): CustomerFinding[] {
@@ -247,13 +263,8 @@ export function platformFindings(
     const finding = findingInput.safeParse({
       topic: 'review_platform',
       statement: `Product pages show reviews from ${p.name}.`,
-      value: {
-        name: p.name,
-        // The page's own data: not checked with the platform.
-        verified: false,
-        ...(p.rating !== null ? { rating: p.rating } : {}),
-        ...(p.count !== null ? { count: p.count } : {})
-      },
+      // The page's own data: not checked with the platform.
+      value: { name: p.name, verified: false },
       evidence: { ref: `review-data:${p.url}`.slice(0, 200) },
       confidence: 0.8
     })

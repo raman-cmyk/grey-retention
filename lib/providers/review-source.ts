@@ -18,8 +18,10 @@ export type ReadReview = {
   /** The name the review shows, as shown. */
   author: string
   text: string
-  /** Stars, 1 to 5, when the review gives them. */
+  /** Stars, 1 to 5 (scaled from the review's own scale), when it gives them. */
   rating: number | null
+  /** True when the review gives stars that could not be read (never quoted). */
+  ratingUnclear: boolean
   /** The day it was written (YYYY-MM-DD), when known. */
   date: string | null
   /** The brand's own page it was read on. */
@@ -27,11 +29,12 @@ export type ReadReview = {
   product: string | null
 }
 
-/** A review platform's rating on the brand's pages (Judge.me, Yotpo…). */
+/**
+ * A review app the brand's pages show (Judge.me, Yotpo…), named once on
+ * the page. Its rating is not kept: a page's rating is one product's.
+ */
 export type PlatformRating = {
   name: string
-  rating: number | null
-  count: number | null
   url: string
 }
 
@@ -40,13 +43,18 @@ export type ReviewAnswer =
       ok: true
       reviews: ReadReview[]
       platforms: PlatformRating[]
-      /** The pages read (whether or not they had reviews). */
+      /** The pages read (whether or not they had reviews), each once. */
       pages: string[]
+      /** False when a page meant to be read was not (cut off, unreadable). */
+      complete: boolean
     }
   | {
       ok: false
-      /** `not_set_up`: nothing reads this brand; `unavailable`: try later. */
-      code: 'not_set_up' | 'unavailable'
+      /**
+       * `not_set_up`: nothing reads this brand; `no_pages`: no product
+       * page was found to read; `unavailable`: try later.
+       */
+      code: 'not_set_up' | 'no_pages' | 'unavailable'
     }
 
 export type SocialComment = {
@@ -99,7 +107,13 @@ export function sampleReviews(domain: string): ReviewAnswer {
   const knit = page('/products/weekend-knit')
   const shirt = page('/products/field-overshirt')
   if (host.startsWith('quiet'))
-    return { ok: true, reviews: [], platforms: [], pages: [knit, shirt] }
+    return {
+      ok: true,
+      reviews: [],
+      platforms: [],
+      pages: [knit, shirt],
+      complete: true
+    }
   const review = (
     n: number,
     over: Partial<ReadReview> & Pick<ReadReview, 'text'>
@@ -107,6 +121,7 @@ export function sampleReviews(domain: string): ReviewAnswer {
     id: `r${n}`,
     author: 'Maya R.',
     rating: 5,
+    ratingUnclear: false,
     date: '2026-10-0' + n,
     url: knit,
     product: 'Weekend Knit',
@@ -115,7 +130,8 @@ export function sampleReviews(domain: string): ReviewAnswer {
   return {
     ok: true,
     pages: [knit, shirt],
-    platforms: [{ name: 'Judge.me', rating: 4.8, count: 212, url: knit }],
+    complete: true,
+    platforms: [{ name: 'Judge.me', url: knit }],
     reviews: [
       review(1, {
         text: 'So soft and warm, and it does not itch at all. I wear it every weekend.'

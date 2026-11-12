@@ -13,7 +13,11 @@ const escaped = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
  * texts, whitespace and case aside; null when no one text says it.
  */
 export function asWritten(texts: string[], quote: string): string | null {
-  const pattern = new RegExp(escaped(fold(quote)), 'i')
+  // Whole words only: never a quote starting or ending inside a word.
+  const pattern = new RegExp(
+    `(?<![\\p{L}\\p{N}])${escaped(fold(quote))}(?![\\p{L}\\p{N}])`,
+    'iu'
+  )
   for (const field of texts.map(fold)) {
     const found = pattern.exec(field)
     if (found) return found[0]

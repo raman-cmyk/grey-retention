@@ -1,5 +1,5 @@
 begin;
-select plan(68);
+select plan(83);
 
 -- ONB-105: reviews reads and their findings. Owner ...01 and staff ...05 are
 -- in workspace 101 (a synthetic brand, cedar-lane.example); owner ...04
@@ -65,6 +65,8 @@ select ok(not bool_or(private.finding_value_ok('quotable_review',v)),'and nothin
   from unnest(array['{"url":"https://cedar-lane.example/p"}','{"author":" ","url":"https://cedar-lane.example/p"}',
     '{"author":"Maya","url":"http://cedar-lane.example/p"}','{"author":"Maya","url":"https://cedar-lane.example/p","rating":4.5}',
     '{"author":"Maya","url":"https://cedar-lane.example/p","rating":6}','{"author":"Maya","url":"https://cedar-lane.example/p","date":"Oct 1"}',
+    '{"author":"Maya","url":"https://cedar-lane.example/p","date":"2026-13-45"}','{"author":"Maya","url":"https://cedar-lane.example/p","date":"2026-02-30"}',
+    '{"author":"\t\n","url":"https://cedar-lane.example/p"}',
     '{"author":"Maya","url":"https://cedar-lane.example/p","text":"x"}']::jsonb[]) v;
 select ok(private.finding_value_ok('review_theme','{}') and private.finding_value_ok('objection','{}')
   and private.finding_value_ok('customer_words','{}') and not private.finding_value_ok('objection','{"x":1}')
@@ -110,7 +112,7 @@ select is((select status||'/'||attempt from public.job_runs where id=current_set
 -- Only the onboarding readers' run takes it, as the worker.
 set local role service_role;
 select pg_temp.as_worker();
-select is((select count(*)::integer from public.claim_job('00000000-0000-4000-8000-000000000101') where kind='brand.read_reviews'),0,
+select is((select count(*)::integer from public.claim_job('00000000-0000-4000-8000-000000000101')),0,
   'the workspace jobs never take a reviews read');
 select is(public.source_readings_waiting(),2,'the readers'' run sees the reviews reads waiting');
 select is((select kind from public.claim_source_reading()),'brand.read_reviews','and takes one');
@@ -164,7 +166,13 @@ select throws_ok(format('select pg_temp.record(jsonb_build_array(%L::jsonb))', f
     pg_temp.q(jsonb_build_object('pass','code')),
     pg_temp.q(jsonb_build_object('evidence',jsonb_build_object('ref','review-data:'||pg_temp.page()))),
     pg_temp.w(jsonb_build_object('note','x')),
-    pg_temp.w(jsonb_build_object('confidence',2))]::jsonb[]) f;
+    pg_temp.w(jsonb_build_object('confidence',2)),
+    -- A review app's rating cites the review data of a page read here, only.
+    pg_temp.q(jsonb_build_object('topic','review_platform','value',jsonb_build_object('name','Judge.me','verified',false),
+      'evidence',jsonb_build_object('ref','review-data:'||pg_temp.page('/products/other')))),
+    pg_temp.q(jsonb_build_object('topic','review_platform','value',jsonb_build_object('name','Judge.me','verified',false))),
+    pg_temp.q(jsonb_build_object('topic','review_platform','value',jsonb_build_object('name','Judge.me','verified',false),
+      'evidence',jsonb_build_object('ref','review-data:'||pg_temp.page(),'quote','x')))]::jsonb[]) f;
 select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.q()),summary => pg_temp.s('none','ready'))$$,'23514',null,
   'findings only for a source that was read');
 select throws_ok($$select pg_temp.record(live => true)$$,'23514',null,'a sample read is never stored as live');
@@ -181,9 +189,10 @@ select throws_ok($$insert into public.brand_findings(tenant_id,run_id,source,top
   values ('00000000-0000-4000-8000-000000000101',current_setting('test.job')::uuid,'reviews','performance','What made money.',
     '{"ref":"x"}',0.5,'sample')$$,'23514',
   'new row for relation "brand_findings" violates check constraint "brand_findings_reviews_topics"','reviews state only what reviews can');
-select throws_ok($$insert into public.brand_findings(tenant_id,run_id,source,topic,statement,evidence,confidence,pass)
+select throws_ok($$insert into public.brand_findings(tenant_id,run_id,source,topic,statement,value,evidence,confidence,pass)
   values ('00000000-0000-4000-8000-000000000101',current_setting('test.job')::uuid,'social','quotable_review','A review.',
-    '{"ref":"x"}',0.5,'sample')$$,'23514',null,'social comments are never quotable reviews');
+    '{"author":"Maya","url":"https://www.instagram.com/p/1/"}','{"ref":"x"}',0.5,'sample')$$,'23514',
+  'new row for relation "brand_findings" violates check constraint "brand_findings_social_topics"','social comments are never quotable reviews');
 
 -- Members read them; another workspace does not.
 set local role authenticated;
@@ -218,13 +227,53 @@ select is((select count(*)::integer from public.brand_findings where run_id=curr
 select is(pg_temp.current('reviews'),2,'and the newer read''s review findings stay');
 reset role;
 
+-- A newer read that skipped its reviews makes no older read late for
+-- reviews: only for the source it read.
+select set_config('test.newest',pg_temp.job('00000000-0000-4000-8000-000000000101','newest',age => '-2 hours'),true);
+select set_config('test.later',pg_temp.job('00000000-0000-4000-8000-000000000101','later',age => '-1 hour'),true);
+select pg_temp.lease(current_setting('test.newest'));
+select pg_temp.lease(current_setting('test.later'));
+set local role service_role;
+select pg_temp.as_worker();
+select lives_ok($$select pg_temp.record(jsonb_build_array(pg_temp.w()),'[]',
+  '["https://www.instagram.com/p/SAMPLE01/"]',jsonb_build_object('reviews',jsonb_build_object('state','skipped'),
+  'social',jsonb_build_object('state','ready'),'analysis','done'),current_setting('test.newest'))$$,
+  'the newest read skips its reviews and reads the comments');
+select is(pg_temp.record(job => current_setting('test.later')),
+  '{"findings": 2, "newerSocial": true, "newerReviews": false}'::jsonb,'a read before it finishing late');
+select is((select count(*)::integer from public.brand_findings where run_id=current_setting('test.later')::uuid
+  and source='reviews' and superseded_at is null),1,'has its review findings current');
+select is(pg_temp.current('reviews'),1,'in place of the earlier ones');
+select is((select count(*)::integer from public.brand_findings where run_id=current_setting('test.later')::uuid
+  and source='social' and superseded_at is not null),1,'and its social findings kept already replaced');
+reset role;
+
+-- An expired reviews read: the workspace jobs leave it; the readers' run
+-- takes it back.
+select set_config('test.stale',pg_temp.job('00000000-0000-4000-8000-000000000101','stale'),true);
+update public.job_runs set status='running', attempt=1, lease_token=gen_random_uuid(), lease_until=now()-interval '1 minute',
+    available_at=now()-interval '1 hour'
+  where id=current_setting('test.stale')::uuid;
+set local role service_role;
+select pg_temp.as_worker();
+select is((select count(*)::integer from public.claim_job('00000000-0000-4000-8000-000000000101')),0,'the workspace jobs');
+select is((select status from public.job_runs where id=current_setting('test.stale')::uuid),'running',
+  'never touch a reviews read whose lease ran out');
+select ok(exists (select 1 from public.claim_source_reading() c where c.id=current_setting('test.stale')::uuid),
+  'the readers'' run takes it back');
+reset role;
+
 -- A real brand: never the samples; its read clears sample findings.
 select set_config('test.fake',pg_temp.job('00000000-0000-4000-8000-000000000102','fake',domain => 'north-studio.com'),true);
 select pg_temp.lease(current_setting('test.fake'));
 select pg_temp.lease(current_setting('test.real'));
 insert into public.brand_findings(tenant_id,run_id,source,topic,statement,evidence,confidence,pass)
   values ('00000000-0000-4000-8000-000000000102',current_setting('test.real')::uuid,'reviews','review_theme','From the samples.',
-    '{"url":"https://north-studio.com/p","quote":"Sample words."}',0.5,'sample');
+    '{"url":"https://north-studio.com/p","quote":"Sample words."}',0.5,'sample'),
+    ('00000000-0000-4000-8000-000000000102',current_setting('test.real')::uuid,'social','review_theme','From the sample comments.',
+    '{"url":"https://www.instagram.com/p/1/","quote":"Sample words."}',0.5,'sample'),
+    ('00000000-0000-4000-8000-000000000102',current_setting('test.real')::uuid,'social','objection','Read for real.',
+    '{"url":"https://www.instagram.com/p/1/","quote":"Real words."}',0.5,'model');
 set local role service_role;
 select pg_temp.as_worker();
 select throws_ok($$select pg_temp.record('[]','[]','[]',pg_temp.s('skipped','skipped','skipped'),current_setting('test.fake'))$$,
@@ -241,7 +290,17 @@ select throws_ok(format('select pg_temp.record(jsonb_build_array(%L::jsonb),''["
       'model','gemini-2.5-flash'), '{"reviews":{"state":"ready"},"social":{"state":"skipped"},"analysis":"skipped"}'),
     (jsonb_build_object('source','reviews','topic','objection','statement','Runs large.','value','{}'::jsonb,
       'evidence',jsonb_build_object('url','https://shop.north-studio.com/p','quote','runs large'),'confidence',0.7,'pass','code',
-      'model',null), null)) x(f, sm);
+      'model',null), null),
+    -- A quotable review or a review app is code's, never a model's.
+    (pg_temp.q(jsonb_build_object('pass','model','model','gemini-2.5-flash','value',
+      jsonb_build_object('author','A','url','https://shop.north-studio.com/p'),
+      'evidence',jsonb_build_object('url','https://shop.north-studio.com/p','quote','Lovely.'))), null),
+    (jsonb_build_object('source','reviews','topic','review_platform','statement','Judge.me.','value',
+      jsonb_build_object('name','Judge.me','verified',false),'evidence',jsonb_build_object('ref','review-data:https://shop.north-studio.com/p'),
+      'confidence',0.8,'pass','model','model','gemini-2.5-flash'), null),
+    -- Sample findings on a live read.
+    (pg_temp.q(jsonb_build_object('value',jsonb_build_object('author','A','url','https://shop.north-studio.com/p'),
+      'evidence',jsonb_build_object('url','https://shop.north-studio.com/p','quote','Lovely.'))), null)) x(f, sm);
 select is(pg_temp.record(jsonb_build_array(pg_temp.q(jsonb_build_object('pass','code','value',
     jsonb_build_object('author','A','url','https://shop.north-studio.com/p'),
     'evidence',jsonb_build_object('url','https://shop.north-studio.com/p','quote','Lovely.'))),
@@ -252,7 +311,9 @@ select is(pg_temp.record(jsonb_build_array(pg_temp.q(jsonb_build_object('pass','
   current_setting('test.real'),true)->>'findings','2',
   'a real brand''s own page (a subdomain): code''s quotable review and the model''s words');
 select is((select count(*)::integer from public.brand_findings where tenant_id='00000000-0000-4000-8000-000000000102'
-  and pass='sample' and superseded_at is null),0,'and no sample finding stays');
+  and pass='sample' and superseded_at is null),0,'and no sample finding stays, the skipped source''s too');
+select is((select count(*)::integer from public.brand_findings where tenant_id='00000000-0000-4000-8000-000000000102'
+  and source='social' and pass='model' and superseded_at is null),1,'while the skipped source''s real findings stay');
 reset role;
 
 select * from finish();

@@ -8,6 +8,7 @@ import {
   sampleReviewSource,
   sampleSocialSource,
   socialSourceFor,
+  type ReviewAnswer,
   type ReviewSource,
   type SocialSource
 } from '@/lib/providers/review-source'
@@ -40,6 +41,7 @@ function database(
     const c: Record<string, unknown> = {
       select: () => c,
       eq: () => c,
+      is: () => c,
       not: () => c,
       order: () => c,
       limit: () => c,
@@ -262,6 +264,135 @@ describe('readBrandReviews', () => {
     expect(recorded(calls).summary.reviews).toEqual({
       state: 'skipped',
       reason: 'reviews_unavailable'
+    })
+  })
+
+  it('says a source read only in part, or with no product page, is skipped, replacing nothing', async () => {
+    const cases: [ReviewAnswer, string][] = [
+      [
+        { ok: true, reviews: [], platforms: [], pages: [], complete: false },
+        'reviews_partial'
+      ],
+      [{ ok: false, code: 'no_pages' }, 'reviews_no_pages']
+    ]
+    for (const [answer, reason] of cases) {
+      const { db, calls } = database()
+      await readBrandReviews(db, jobFor(), {
+        reviews: () => ({ live: false, reviews: async () => answer }),
+        social: () => sampleSocialSource,
+        askFor: () => sampleAsk
+      })
+      expect(recorded(calls).summary.reviews).toEqual({
+        state: 'skipped',
+        reason
+      })
+      expect(recorded(calls).pages).toEqual([])
+    }
+  })
+
+  it('says a source the reader did not look at is skipped, not none', async () => {
+    const page = 'https://cedar-lane.example/products/weekend-knit'
+    const { db, calls } = database()
+    await readBrandReviews(db, jobFor(), {
+      reviews: () => ({
+        live: false,
+        reviews: async () => ({
+          ok: true,
+          // Read, but none an email may quote.
+          reviews: [
+            {
+              id: 'r1',
+              author: 'Maya R.',
+              text: 'It is fine, a little thin for the price.',
+              rating: 3,
+              ratingUnclear: false,
+              date: null,
+              url: page,
+              product: null
+            }
+          ],
+          platforms: [],
+          pages: [page],
+          complete: true
+        })
+      }),
+      social: () => sampleSocialSource,
+      askFor: () => null
+    })
+    expect(recorded(calls)).toMatchObject({
+      findings: [],
+      pages: [],
+      posts: [],
+      summary: {
+        reviews: { state: 'skipped', reason: 'not_analysed' },
+        social: { state: 'skipped', reason: 'not_analysed' },
+        analysis: 'skipped'
+      }
+    })
+  })
+
+  it('keeps comments on public posts only, at most 30 posts', async () => {
+    const post = (n: number) => `https://www.instagram.com/p/POST${n}/`
+    const { db, calls } = database()
+    const run = await readBrandReviews(db, jobFor(), {
+      reviews: () => sampleReviewSource,
+      social: () => ({
+        live: false,
+        comments: async () => ({
+          ok: true,
+          comments: [
+            {
+              id: 'c0',
+              platform: 'instagram' as const,
+              url: 'https://evil.example/p/1',
+              author: 'A',
+              text: 'Lovely.'
+            },
+            ...Array.from({ length: 40 }, (_, n) => ({
+              id: `c${n + 1}`,
+              platform: 'instagram' as const,
+              url: post(n),
+              author: 'A',
+              text: 'Lovely.'
+            }))
+          ]
+        })
+      }),
+      askFor: () => sampleAsk
+    })
+    expect(recorded(calls).posts).toEqual(
+      Array.from({ length: 30 }, (_, n) => post(n))
+    )
+    expect(run.read.comments).toBe(30)
+  })
+
+  it('tries again on an AI outage, and on the last try stores what code chose', async () => {
+    const outage = askWith({ ok: false, code: 'rate_limited' })
+    const first = database()
+    await expect(
+      readBrandReviews(first.db, jobFor(), {
+        ...samples,
+        askFor: () => outage
+      })
+    ).rejects.toMatchObject({ name: 'TagError' })
+    expect(first.calls).toEqual([])
+    const last = database()
+    const run = await readBrandReviews(
+      last.db,
+      jobFor('cedar-lane.example', 'sample', 4),
+      { ...samples, askFor: () => outage }
+    )
+    expect(run.analysis).toBe('skipped')
+    expect(recorded(last.calls).findings.map((f) => f.topic)).toEqual([
+      'quotable_review',
+      'quotable_review',
+      'quotable_review',
+      'review_platform'
+    ])
+    expect(recorded(last.calls).summary).toEqual({
+      reviews: { state: 'ready' },
+      social: { state: 'skipped', reason: 'not_analysed' },
+      analysis: 'skipped'
     })
   })
 

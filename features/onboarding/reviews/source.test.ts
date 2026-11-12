@@ -16,7 +16,9 @@ const withReview = (author: string) =>
   })}</script></html>`
 function fetcher(
   pages: Record<string, string | null>,
-  delays: Record<string, number> = {}
+  delays: Record<string, number> = {},
+  /** Where an address leads (a redirect). */
+  leads: Record<string, string> = {}
 ) {
   const asked: string[] = []
   const site: SiteFetcher = {
@@ -26,12 +28,13 @@ function fetcher(
       if (delays[url]) await new Promise((r) => setTimeout(r, delays[url]))
       const html = pages[url]
       return html
-        ? { ok: true, url, html }
+        ? { ok: true, url: leads[url] ?? url, html }
         : { ok: false, failure: 'not_found' }
     }
   }
   return { site, asked }
 }
+const ask = { brandName: 'C', domain }
 const time = { now: () => 0, deadline: 60_000 }
 const env = (vars: Record<string, string>) =>
   vars as unknown as NodeJS.ProcessEnv
@@ -58,6 +61,78 @@ describe('the reviews on the brand’s own product pages', () => {
       ['r5', 'A6']
     ])
     expect(answer.ok && answer.pages).toHaveLength(5)
+    // A page missed: the read is not complete.
+    expect(answer.ok && answer.complete).toBe(false)
+  })
+
+  it('is complete when every page asked for is read', async () => {
+    const { site } = fetcher({ [product(1)]: '<html></html>' })
+    expect(
+      await siteReviewSource(site, domain, [product(1)], time).reviews(ask)
+    ).toEqual({
+      ok: true,
+      reviews: [],
+      platforms: [],
+      pages: [product(1)],
+      complete: true
+    })
+  })
+
+  it('asks only the brand’s own https pages', async () => {
+    const own = product(1)
+    const { site, asked } = fetcher({ [own]: withReview('A') })
+    await siteReviewSource(
+      site,
+      domain,
+      [
+        'http://cedar-lane.example/products/a',
+        'https://cedar-lane.example:8443/products/b',
+        'https://evil.example/products/c',
+        'https://user:pw@cedar-lane.example/products/d',
+        `https://${domain}/${'x'.repeat(500)}`,
+        own
+      ],
+      time
+    ).reviews(ask)
+    expect(asked).toEqual([own])
+  })
+
+  it('keeps each page reached once, and a review shown on every page once', async () => {
+    const { site } = fetcher(
+      {
+        [product(1)]: withReview('A'),
+        [product(2)]: withReview('A'),
+        [product(3)]: withReview('A')
+      },
+      {},
+      // Two addresses that lead to one page; one that leads off the site.
+      { [product(2)]: product(1), [product(3)]: 'https://evil.example/p' }
+    )
+    const answer = await siteReviewSource(
+      site,
+      domain,
+      [product(1), product(2), product(3)],
+      time
+    ).reviews(ask)
+    expect(answer.ok && answer.pages).toEqual([product(1)])
+    expect(answer.ok && answer.reviews.map((r) => r.author)).toEqual(['A'])
+  })
+
+  it('names each review app once', async () => {
+    const app = '<script src="https://cdn.judge.me/w.js"></script>'
+    const { site } = fetcher({
+      [product(1)]: withReview('A') + app,
+      [product(2)]: withReview('B') + app
+    })
+    const answer = await siteReviewSource(
+      site,
+      domain,
+      [product(1), product(2)],
+      time
+    ).reviews(ask)
+    expect(answer.ok && answer.platforms).toEqual([
+      { name: 'Judge.me', url: product(1) }
+    ])
   })
 
   it('finds the product pages from the home page when the catalog has none', async () => {
@@ -72,6 +147,45 @@ describe('the reviews on the brand’s own product pages', () => {
     })
     expect(asked).toEqual([home, product(1)])
     expect(answer.ok && answer.reviews[0]?.author).toBe('Maya')
+  })
+
+  it('falls back to the home page when no catalog page can be read', async () => {
+    const home = `https://${domain}/`
+    const { site, asked } = fetcher({
+      [home]: `<html><body><a href="/products/p2">Knit</a></body></html>`,
+      [product(2)]: withReview('Maya')
+    })
+    const answer = await siteReviewSource(
+      site,
+      domain,
+      [product(1)],
+      time
+    ).reviews(ask)
+    expect(asked).toEqual([product(1), home, product(2)])
+    expect(answer.ok && answer.reviews[0]?.author).toBe('Maya')
+  })
+
+  it('says so when the site links to no product page', async () => {
+    const home = `https://${domain}/`
+    const { site } = fetcher({
+      [home]: `<html><body><a href="/about">About</a></body></html>`
+    })
+    expect(await siteReviewSource(site, domain, [], time).reviews(ask)).toEqual(
+      { ok: false, code: 'no_pages' }
+    )
+  })
+
+  it('starts no page once the read is called off', async () => {
+    const { site, asked } = fetcher({ [product(1)]: withReview('A') })
+    const abort = new AbortController()
+    abort.abort()
+    expect(
+      await siteReviewSource(site, domain, [product(1)], time).reviews({
+        ...ask,
+        signal: abort.signal
+      })
+    ).toEqual({ ok: false, code: 'unavailable' })
+    expect(asked).toEqual([])
   })
 
   it('is unavailable when no page can be read, and starts no page without time for it', async () => {

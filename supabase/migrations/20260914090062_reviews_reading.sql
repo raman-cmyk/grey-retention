@@ -85,10 +85,18 @@ begin
       return coalesce(jsonb_typeof(v->'url') = 'string' and length(v->>'url') <= 500
         and private.https_host(v->>'url') is not null and v - 'url' = '{}'::jsonb, false);
     when 'quotable_review' then
-      return coalesce(jsonb_typeof(v->'author') = 'string' and length(btrim(v->>'author')) between 1 and 80
+      -- A day, when given, is a real one.
+      if v ? 'date' then
+        if jsonb_typeof(v->'date') is distinct from 'string' or v->>'date' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then return false; end if;
+        begin
+          if to_char(to_date(v->>'date', 'YYYY-MM-DD'), 'YYYY-MM-DD') <> v->>'date' then return false; end if;
+        exception when others then
+          return false;
+        end;
+      end if;
+      return coalesce(jsonb_typeof(v->'author') = 'string' and v->>'author' ~ '[^[:space:]]' and length(v->>'author') <= 80
         and jsonb_typeof(v->'url') = 'string' and length(v->>'url') <= 500 and private.https_host(v->>'url') is not null
         and (not v ? 'rating' or (jsonb_typeof(v->'rating') = 'number' and v->>'rating' ~ '^[1-5]$'))
-        and (not v ? 'date' or (jsonb_typeof(v->'date') = 'string' and v->>'date' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))
         and v - 'author' - 'url' - 'rating' - 'date' = '{}'::jsonb, false);
     when 'shipping', 'offering', 'audience', 'tone', 'contact', 'performance', 'angle', 'creative', 'review_theme', 'objection',
       'customer_words' then

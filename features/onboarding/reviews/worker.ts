@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
 import { ProviderFault } from '@/features/integrations/failures'
-import type { Ask } from '@/features/intelligence/passes'
+import { TagError, type Ask } from '@/features/intelligence/passes'
 import {
   maxComments,
   type ReadReview,
@@ -13,7 +13,7 @@ import {
   type SocialComment,
   type SocialSource
 } from '@/lib/providers/review-source'
-import { maxReviewPages } from './source'
+import { maxReviewPages, pageOk } from './source'
 import {
   analyseCustomers,
   platformFindings,
@@ -76,12 +76,39 @@ async function inTime<A>(
   }
 }
 
-/** The brand's own product pages in the catalog, bestsellers first. */
-async function catalogPages(db: Db, tenantId: string): Promise<string[]> {
+/** Public posts the database keeps a comment's from, at most. */
+const maxPosts = 30
+const postHosts = new Set([
+  'instagram.com',
+  'www.instagram.com',
+  'facebook.com',
+  'www.facebook.com',
+  'm.facebook.com',
+  'tiktok.com',
+  'www.tiktok.com'
+])
+/** A public post the database keeps: https on a social host, at most 500 characters. */
+function postOk(url: string) {
+  if (url.length > 500) return false
+  try {
+    const u = new URL(url)
+    return u.protocol === 'https:' && !u.port && postHosts.has(u.hostname)
+  } catch {
+    return false
+  }
+}
+
+/** The brand's own product pages in the catalog (still sold), bestsellers first. */
+async function catalogPages(
+  db: Db,
+  tenantId: string,
+  domain: string
+): Promise<string[]> {
   const { data, error } = await db
     .from('products')
     .select('url')
     .eq('tenant_id', tenantId)
+    .is('retired_at', null)
     .not('url', 'is', null)
     .order('units_90d', { ascending: false, nullsFirst: false })
     .limit(maxReviewPages * 2)
@@ -90,9 +117,7 @@ async function catalogPages(db: Db, tenantId: string): Promise<string[]> {
     ...new Set(
       (data ?? [])
         .map((p) => p.url)
-        .filter(
-          (u): u is string => typeof u === 'string' && u.startsWith('https://')
-        )
+        .filter((u): u is string => typeof u === 'string' && pageOk(u, domain))
     )
   ].slice(0, maxReviewPages)
 }
@@ -139,7 +164,7 @@ export async function readBrandReviews(
   const reviewSource = deps.reviews(
     mode,
     domain,
-    mode === 'live' ? await catalogPages(db, job.tenant_id) : [],
+    mode === 'live' ? await catalogPages(db, job.tenant_id, domain) : [],
     { now, deadline: now() + reviewsSourceMs }
   )
   const socialSource = deps.social(mode)
@@ -164,18 +189,30 @@ export async function readBrandReviews(
   }
   const skipped = (code: string, what: string): SourceState => ({
     state: 'skipped',
-    reason: `${what}_${code === 'unavailable' ? 'unavailable' : 'not_set_up'}`
+    reason: `${what}_${code}`
   })
   const reviews: ReadReview[] = reviewed.ok ? reviewed.reviews : []
-  const comments: SocialComment[] = commented.ok
-    ? commented.comments.slice(0, maxComments)
-    : []
+  // Comments on a post the database keeps: at most 60, on at most 30 posts.
+  const posts: string[] = []
+  const comments: SocialComment[] = []
+  for (const c of commented.ok ? commented.comments : []) {
+    if (comments.length >= maxComments) break
+    if (!postOk(c.url)) continue
+    if (!posts.includes(c.url)) {
+      if (posts.length >= maxPosts) continue
+      posts.push(c.url)
+    }
+    comments.push(c)
+  }
   const pages = reviewed.ok ? reviewed.pages : []
   const run: ReviewsRun = {
     reviews: reviewed.ok
-      ? {
-          state: reviews.length || reviewed.platforms.length ? 'ready' : 'none'
-        }
+      ? reviews.length || reviewed.platforms.length
+        ? { state: 'ready' }
+        : // Nothing there only when every page meant to be read was read.
+          reviewed.complete
+          ? { state: 'none' }
+          : { state: 'skipped', reason: 'reviews_partial' }
       : skipped(reviewed.code, 'reviews'),
     social: commented.ok
       ? { state: comments.length ? 'ready' : 'none' }
@@ -202,13 +239,22 @@ export async function readBrandReviews(
     else if (now() + callMs > deadline)
       logger.info('Reviews reader not asked', { reason: 'time_up' })
     else {
-      const analysis = await analyseCustomers(
-        brand.data.brand_name,
-        reviews,
-        comments,
-        ask,
-        `reviews:${job.id}`
-      )
+      let analysis: Awaited<ReturnType<typeof analyseCustomers>>
+      try {
+        analysis = await analyseCustomers(
+          brand.data.brand_name,
+          reviews,
+          comments,
+          ask,
+          `reviews:${job.id}`
+        )
+      } catch (error) {
+        // On the last try an AI outage leaves the reviews without words:
+        // what code chose is stored all the same.
+        if (!(error instanceof TagError) || (job.attempt ?? 0) < lastTry)
+          throw error
+        analysis = { answered: false, reason: 'model_unavailable' }
+      }
       if (!analysis.answered)
         logger.info('Reviews reader answer left out', {
           reason: analysis.reason
@@ -221,13 +267,17 @@ export async function readBrandReviews(
       }
     }
   }
-  // A source read with nothing to say is none: its earlier findings go.
+  // A source read with nothing said of it: none when the reader looked
+  // (its earlier findings go), else skipped (not looked at: nothing goes).
   for (const source of ['reviews', 'social'] as const)
     if (
       run[source].state === 'ready' &&
       !findings.some((f) => f.source === source)
     )
-      run[source] = { state: 'none' }
+      run[source] =
+        run.analysis === 'done'
+          ? { state: 'none' }
+          : { state: 'skipped', reason: 'not_analysed' }
   run.findings = findings.length
   const recorded = await db.rpc('record_review_findings', {
     job: job.id,
@@ -242,8 +292,9 @@ export async function readBrandReviews(
       pass: f.pass,
       model: f.model
     })) as unknown as Json,
-    pages: pages as unknown as Json,
-    posts: [...new Set(comments.map((c) => c.url))] as unknown as Json,
+    // What a skipped source read is not stored: it replaces nothing.
+    pages: (run.reviews.state === 'skipped' ? [] : pages) as unknown as Json,
+    posts: (run.social.state === 'skipped' ? [] : posts) as unknown as Json,
     summary: {
       reviews: run.reviews,
       social: run.social,

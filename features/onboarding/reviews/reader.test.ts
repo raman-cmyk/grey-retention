@@ -90,7 +90,15 @@ describe('the reviews an email may quote (chosen by code)', () => {
       { text: 'Lovely knit, see more at https://other.example/deal' },
       { text: 'Lovely knit, write to me at maya@example.com please' },
       { text: 'Lovely knit, follow me on @maya.layers for more' },
-      { text: 'Lovely knit, call me at +1 555 123 4567 today' }
+      { text: 'Lovely knit, call me at +1 555 123 4567 today' },
+      { text: 'Lovely knit, send another to 12 Elm Street please' },
+      // A name that is no one's.
+      { author: 'Verified Buyer' },
+      { author: 'anonymous' },
+      { author: '   ' },
+      // Left over from the page's markup.
+      { text: 'Lovely knit &amp; so warm, I wear it daily' },
+      { text: 'Lovely knit <b>so warm</b>, I wear it daily' }
     ])
       expect(quotableReviews([review(over)]), JSON.stringify(over)).toEqual([])
     expect(
@@ -100,17 +108,30 @@ describe('the reviews an email may quote (chosen by code)', () => {
     ).toHaveLength(maxQuotable)
   })
 
-  it('names the review app the pages show, with its rating, citing the page’s review data', () => {
-    expect(platformFindings(platforms)).toMatchObject([
+  it('names the review app the pages show, by name only, citing the page’s review data', () => {
+    expect(platformFindings(platforms)).toEqual([
       {
         topic: 'review_platform',
-        value: { name: 'Judge.me', verified: false, rating: 4.8, count: 212 },
+        statement: 'Product pages show reviews from Judge.me.',
+        value: { name: 'Judge.me', verified: false },
         evidence: {
           ref: 'review-data:https://cedar-lane.example/products/weekend-knit'
         },
+        confidence: 0.8,
         source: 'reviews'
       }
     ])
+  })
+
+  it('quotes a review with no stars given, but never one whose stars are unclear', () => {
+    expect(quotableReviews([review({ rating: null })])[0]?.value).toEqual({
+      author: 'Maya R.',
+      url: 'https://cedar-lane.example/products/weekend-knit',
+      date: '2026-10-01'
+    })
+    expect(
+      quotableReviews([review({ rating: null, ratingUnclear: true })])
+    ).toEqual([])
   })
 })
 
@@ -172,11 +193,40 @@ describe('what the reader says about customers', () => {
       // Words from another review than the first cited.
       raw({ ids: ['r2'], quote: 'it does not itch at all' }),
       raw({ statement: 'Customers give it 5 stars.' }),
-      raw({ statement: 'Customers call it the best knit in the world.' })
+      raw({ statement: 'Customers call it the best knit in the world.' }),
+      // Part of a word is not the review's words.
+      raw({ quote: 'oes not itch at al' })
     ]
     const { kept, dropped } = checkedCustomerFindings(reviews, comments, cases)
     expect(kept).toEqual([])
     expect(dropped).toBe(cases.length)
+  })
+})
+
+describe('the words the reader quotes', () => {
+  it('keeps a quote as the review writes it', () => {
+    const { kept } = checkedCustomerFindings(reviews, comments, [
+      raw({ quote: 'IT DOES NOT ITCH  AT ALL' })
+    ])
+    expect(kept.map((f) => 'quote' in f.evidence && f.evidence.quote)).toEqual([
+      'it does not itch at all'
+    ])
+  })
+
+  it('never quotes a person’s details, nor a claim as customers’ words', () => {
+    const own = [
+      review({
+        id: 'r1',
+        text: 'Lovely knit, write to me at maya@example.com, it feels so natural and soft on the skin.'
+      })
+    ]
+    const { kept } = checkedCustomerFindings(own, comments, [
+      raw({ quote: 'write to me at maya@example.com' }),
+      raw({ topic: 'customer_words', quote: 'so natural and soft' }),
+      // The same words as a theme (the statement is checked, not the quote).
+      raw({ quote: 'so natural and soft' })
+    ])
+    expect(kept.map((f) => f.topic)).toEqual(['review_theme'])
   })
 })
 
