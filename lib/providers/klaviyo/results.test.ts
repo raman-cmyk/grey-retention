@@ -423,6 +423,54 @@ describe('the reads LRN-001 shares', () => {
     })
     account.messages.get('MsgR01')!.sendTime = 'soon'
     expect((await readDraft(c, 'MsgR01'))!.sendTime).toBeNull()
+    // Fields read only as hints never make the answer unreadable, whatever
+    // their shape.
+    for (const extra of [
+      { send_options: { send_times: [] }, tracking_options: [] },
+      {
+        send_options: {
+          send_times: [{ datetime: '2026-11-02T17:00:00Z', is_local: true }],
+          send_strategy: 'Static!'
+        },
+        tracking_options: {
+          tracking_params: [{ name: 'ref' }, 7, { name: '' }]
+        }
+      },
+      { send_options: 'later', tracking_options: null }
+    ]) {
+      const raw = account.transport
+      const read = await readDraft(
+        client(async (request) => {
+          const answer = await raw(request)
+          const body = JSON.parse(answer.body)
+          Object.assign(body.data.attributes.definition, extra)
+          return { ...answer, body: JSON.stringify(body) }
+        }),
+        'MsgR01'
+      )
+      expect(read).not.toBeNull()
+    }
+    const listed = await readDraft(
+      client(async (request) => {
+        const answer = await account.transport(request)
+        const body = JSON.parse(answer.body)
+        body.data.attributes.definition.send_options = {
+          send_times: [
+            { datetime: '2026-11-02T17:00:00Z' },
+            { datetime: '2026-11-02T16:00:00Z' }
+          ]
+        }
+        body.data.attributes.definition.tracking_options = {
+          tracking_params: [{ type: 'static', name: 'ref', value: 'nl' }]
+        }
+        return { ...answer, body: JSON.stringify(body) }
+      }),
+      'MsgR01'
+    )
+    expect(listed).toMatchObject({
+      firstSendTime: '2026-11-02T16:00:00.000Z',
+      trackingParams: ['ref']
+    })
   })
 
   it('posts only Klaviyo’s report questions, never anything else', async () => {

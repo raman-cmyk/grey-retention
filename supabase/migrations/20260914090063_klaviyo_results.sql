@@ -77,10 +77,11 @@ create table public.klaviyo_email_results (
   check (pulls = 0 or status in ('sent', 'deleted')),
   check (not final or status in ('sent', 'cancelled', 'deleted', 'stale')),
   check (not final or status <> 'sent' or pulls = 3 or paused is not null),
+  check (status <> 'stale' or final),
   check (sample or message_id is not null)
 );
 create index klaviyo_email_results_due on public.klaviyo_email_results (next_check_at) where not final;
--- Drafted builds, newest first, for meeting the drafts made since.
+-- Drafted builds by when they were drafted, for meeting the drafts made since.
 create index email_builds_drafted on public.email_builds (updated_at, id) where state = 'drafted';
 
 alter table public.klaviyo_email_results enable row level security;
@@ -106,8 +107,8 @@ returns boolean language sql immutable set search_path = '' as $$
     and (jsonb_typeof(r->'variation') is distinct from 'string' or r->>'variation' ~ '^[A-Za-z0-9_-]{1,64}$')
     and coalesce(jsonb_typeof(r->'name'), 'null') in ('string', 'null')
     and (jsonb_typeof(r->'name') is distinct from 'string' or length(r->>'name') between 1 and 120)
-    and coalesce(r->>'design', 'none') in ('A', 'B', 'none')
     and coalesce(jsonb_typeof(r->'design'), 'null') in ('string', 'null')
+    and (jsonb_typeof(r->'design') is distinct from 'string' or r->>'design' in ('A', 'B'))
     and jsonb_typeof(r->'statistics') = 'object'
     and not exists (select 1 from jsonb_each(r->'statistics') s
       where s.key not in ('recipients', 'delivered', 'opens_unique', 'open_rate', 'clicks_unique', 'click_rate',
@@ -126,8 +127,8 @@ returns boolean language sql immutable set search_path = '' as $$
     and c - 'variation' - 'design' - 'url' - 'section' - 'block' - 'clicks' - 'unique' = '{}'::jsonb
     and coalesce(jsonb_typeof(c->'variation'), 'null') in ('string', 'null')
     and (jsonb_typeof(c->'variation') is distinct from 'string' or c->>'variation' ~ '^[A-Za-z0-9_-]{1,64}$')
-    and coalesce(c->>'design', 'none') in ('A', 'B', 'none')
     and coalesce(jsonb_typeof(c->'design'), 'null') in ('string', 'null')
+    and (jsonb_typeof(c->'design') is distinct from 'string' or c->>'design' in ('A', 'B'))
     and jsonb_typeof(c->'url') = 'string' and length(c->>'url') between 1 and 2000 and c->>'url' ~* '^https?://'
     and coalesce(jsonb_typeof(c->'section'), 'null') in ('number', 'null')
     and (jsonb_typeof(c->'section') is distinct from 'number'
@@ -136,7 +137,9 @@ returns boolean language sql immutable set search_path = '' as $$
     and (jsonb_typeof(c->'block') is distinct from 'string' or c->>'block' ~ '^[a-z][a-z_]{1,39}$')
     and ((c->'section') is null or jsonb_typeof(c->'section') = 'null') = ((c->'block') is null or jsonb_typeof(c->'block') = 'null')
     and jsonb_typeof(c->'clicks') = 'number' and (c->>'clicks') ~ '^\d{1,9}$'
-    and jsonb_typeof(c->'unique') = 'number' and (c->>'unique') ~ '^\d{1,9}$', false);
+    and jsonb_typeof(c->'unique') = 'number' and (c->>'unique') ~ '^\d{1,9}$'
+    -- Unique clickers are never more than the clicks.
+    and (c->>'unique')::bigint <= (c->>'clicks')::bigint, false);
 $$;
 revoke all on function private.klaviyo_click_ok(jsonb) from public, anon, authenticated;
 
@@ -145,17 +148,20 @@ create or replace function private.klaviyo_context_ok(c jsonb)
 returns boolean language sql immutable set search_path = '' as $$
   select coalesce(jsonb_typeof(c) = 'object' and octet_length(c::text) <= 4000
     and c - 'reportFrom' - 'reportTo' - 'clicksFrom' - 'clicksTo' - 'currency' - 'conversion' - 'attributionOpen'
-      - 'sendStrategy' - 'sentAtFrom' - 'abSplit' - 'clicksBy' - 'botsLeftOut' - 'reported' = '{}'::jsonb
+      - 'sendStrategy' - 'sentAtFrom' - 'abSplit' - 'clicksBy' - 'botsLeftOut' - 'reported' - 'resultsKept'
+      - 'clicksKept' = '{}'::jsonb
     and not exists (select 1 from jsonb_each(c) e where
       (e.key in ('reportFrom', 'reportTo', 'clicksFrom', 'clicksTo')
         and (jsonb_typeof(e.value) <> 'string' or e.value #>> '{}' !~ '^\d{4}-\d{2}-\d{2}T[0-9:.]{8,15}Z$'))
       or (e.key = 'currency' and jsonb_typeof(e.value) <> 'null' and coalesce(e.value #>> '{}', '') !~ '^[A-Z]{3}$')
-      or (e.key = 'conversion' and coalesce(e.value #>> '{}', 'none') not in ('placed_order', 'clicked_email', 'none'))
-      or (e.key in ('attributionOpen', 'reported') and jsonb_typeof(e.value) <> 'boolean')
+      or (e.key = 'conversion' and jsonb_typeof(e.value) <> 'null'
+        and coalesce(e.value #>> '{}', '') not in ('placed_order', 'clicked_email'))
+      or (e.key in ('attributionOpen', 'reported', 'resultsKept', 'clicksKept') and jsonb_typeof(e.value) <> 'boolean')
       or (e.key = 'abSplit' and jsonb_typeof(e.value) not in ('boolean', 'null'))
       or (e.key = 'sendStrategy' and jsonb_typeof(e.value) <> 'null' and coalesce(e.value #>> '{}', '') !~ '^[a-z_]{1,40}$')
       or (e.key = 'sentAtFrom' and coalesce(e.value #>> '{}', '') not in ('send_time', 'send_times', 'first_seen'))
-      or (e.key = 'clicksBy' and coalesce(e.value #>> '{}', 'none') not in ('message', 'campaign', 'none'))
+      or (e.key = 'clicksBy' and jsonb_typeof(e.value) <> 'null'
+        and coalesce(e.value #>> '{}', '') not in ('message', 'campaign'))
       or (e.key = 'botsLeftOut' and (jsonb_typeof(e.value) <> 'number' or e.value #>> '{}' !~ '^\d{1,9}$'))), false);
 $$;
 revoke all on function private.klaviyo_context_ok(jsonb) from public, anon, authenticated;
@@ -258,6 +264,7 @@ declare
   allowed constant text[] := array['status', 'changed', 'sent_at', 'pulls', 'results', 'clicks', 'complete',
     'context', 'final', 'paused', 'next_check_at'];
   new_status text; new_sent timestamptz; new_pulls integer; new_final boolean; next_at timestamptz;
+  planned_day date;
   today date := (now() at time zone 'UTC')::date;
 begin
   if coalesce(auth.role(), '') <> 'service_role' then raise exception 'Access denied' using errcode = '42501'; end if;
@@ -284,6 +291,7 @@ begin
     new_pulls := coalesce((patch->>'pulls')::integer, e.pulls);
     next_at := (patch->>'next_check_at')::timestamptz;
     new_final := case when jsonb_typeof(patch->'final') = 'boolean' then (patch->>'final')::boolean else false end;
+    planned_day := coalesce((e.planned->>'date')::date, today);
   exception when others then
     raise exception 'Invalid result' using errcode = '23514';
   end;
@@ -291,8 +299,8 @@ begin
     or (patch ? 'status' and jsonb_typeof(patch->'status') <> 'string')
     -- Nothing comes back from sent, cancelled or deleted (any can be deleted).
     or (e.status in ('sent', 'cancelled', 'deleted') and new_status <> e.status and new_status <> 'deleted')
-    or (new_status = 'stale' and (e.status not in ('draft', 'scheduled')
-      or coalesce((e.planned->>'date')::date, today) >= today - 14))
+    -- Stale ends it: only a draft or a scheduled email long past its day.
+    or (new_status = 'stale' and (e.status not in ('draft', 'scheduled') or planned_day >= today - 14 or not new_final))
     -- The send time: set only with the sent status, a real time after the
     -- email was built and not ahead of now, and once known it stays.
     or (patch ? 'sent_at' and (new_status <> 'sent' or e.sent_at is not null))

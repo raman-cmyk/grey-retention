@@ -440,14 +440,32 @@ describe('the hourly results run', () => {
       paused: 'klaviyo_not_reported',
       next_check_at: iso(now + hourMs)
     })
-    const late = database([[sent({ sent_at: iso(now - dayMs - 13 * hourMs) })]])
+    const before = [
+      {
+        variation: 'VarA01',
+        name: 'Design A',
+        design: 'A',
+        statistics: { recipients: 7 }
+      }
+    ]
+    const late = database([
+      [
+        sent({
+          sent_at: iso(now - 2 * dayMs - 13 * hourMs),
+          pulls: 1,
+          results_at: iso(now - dayMs - 13 * hourMs),
+          results: before
+        })
+      ]
+    ])
     const t = now
     await run(late.db, live(transport()), { now: () => t })
+    // Not reported after waiting: saved as not whole, the earlier results kept.
     expect(late.saved[0]!.patch).toMatchObject({
-      pulls: 1,
-      results: [],
+      pulls: 2,
+      results: before,
       complete: false,
-      context: { reported: false }
+      context: { reported: false, resultsKept: true }
     })
   })
 
@@ -560,13 +578,70 @@ describe('the hourly results run', () => {
             body: '{"errors":[{"code":"throttled"}]}'
           }
         : results(request)
-    const { db, saved } = database([[row()]])
+    const earlier = [
+      {
+        variation: 'VarA01',
+        design: 'A',
+        url: 'https://cedar.example/p/1',
+        section: 0,
+        block: 'hero_product',
+        clicks: 3,
+        unique: 3
+      }
+    ]
+    const { db, saved } = database([
+      [
+        sent({
+          sent_at: iso(now - 3 * dayMs - hourMs),
+          pulls: 2,
+          results_at: iso(now - dayMs - hourMs),
+          clicks: earlier
+        })
+      ]
+    ])
     await run(db, live(busyClicks))
+    // The third read ends it with the clicks read the day before.
     expect(saved[0]!.patch).toMatchObject({
-      pulls: 1,
-      clicks: [],
+      pulls: 3,
+      final: true,
+      clicks: earlier,
       complete: false,
+      context: { clicksKept: true },
       results: [{ design: 'A' }, { design: 'B' }]
+    })
+  })
+
+  it('puts due reads back when the report cannot be read, then saves them keeping what was read before', async () => {
+    const sentAt = iso(now - dayMs - hourMs)
+    const odd = (): KlaviyoTransport => {
+      const rest = recordedResultsTransport({
+        rest: account('Sent', sentAt).transport,
+        clicks
+      })
+      return async (request) =>
+        request.url.includes('campaign-values-reports')
+          ? {
+              status: 400,
+              headers: {},
+              body: '{"errors":[{"code":"invalid"}]}'
+            }
+          : rest(request)
+    }
+    const early = database([[row()]])
+    await run(early.db, live(odd()))
+    expect(early.saved[0]!.patch).toEqual({
+      status: 'sent',
+      sent_at: sentAt,
+      paused: 'klaviyo_answer',
+      next_check_at: iso(now + hourMs)
+    })
+    const late = database([[sent({ sent_at: iso(now - dayMs - 13 * hourMs) })]])
+    await run(late.db, live(odd()))
+    expect(late.saved[0]!.patch).toMatchObject({
+      pulls: 1,
+      results: [],
+      complete: false,
+      context: { reported: false, resultsKept: true, clicksKept: true }
     })
   })
 
@@ -594,8 +669,24 @@ describe('the hourly results run', () => {
         row(),
         // A draft long past its day: stale.
         row({ build_id: 'b2', planned: { date: '2026-10-01' } }),
-        // Sent, unread for ten days: closed, saying why.
-        sent({ build_id: 'b3', sent_at: iso(now - 11 * dayMs) })
+        // Sent, unread for ten days since we met it: closed, saying why.
+        sent({
+          build_id: 'b3',
+          sent_at: iso(now - 11 * dayMs),
+          created_at: iso(now - 12 * dayMs)
+        }),
+        // Sent long ago but met only lately: not yet.
+        sent({
+          build_id: 'b4',
+          sent_at: iso(now - 11 * dayMs),
+          created_at: iso(now - dayMs)
+        }),
+        // Scheduled, long past its day: the owner may have moved it later.
+        row({
+          build_id: 'b5',
+          status: 'scheduled',
+          planned: { date: '2026-10-20' }
+        })
       ]
     ])
     await run(db, async () => ({ kind: 'off', reason: 'klaviyo_off' }))
@@ -610,7 +701,9 @@ describe('the hourly results run', () => {
           next_check_at: iso(now)
         }
       ],
-      ['b3', { final: true, paused: 'klaviyo_off', next_check_at: iso(now) }]
+      ['b3', { final: true, paused: 'klaviyo_off', next_check_at: iso(now) }],
+      ['b4', { paused: 'klaviyo_off', next_check_at: iso(now + 6 * hourMs) }],
+      ['b5', { paused: 'klaviyo_off', next_check_at: iso(now + 6 * hourMs) }]
     ])
   })
 
@@ -665,21 +758,70 @@ describe('the hourly results run', () => {
     })
   })
 
-  it('keeps time for the results questions, and starts nothing past its time', async () => {
-    const transport = vi.fn(account().transport)
-    const tight = database([[row()]])
-    // Room for one request, not for one plus the results questions.
-    const result = await run(tight.db, live(transport), {
-      deadline: now + 3_000
+  it('reads the due results with the time it kept, leaving the other statuses for the next run', async () => {
+    // Each Klaviyo request takes a second.
+    let t = now
+    const sentAt = iso(now - dayMs - hourMs)
+    const results = recordedResultsTransport({
+      rest: account('Sent', sentAt).transport,
+      variations,
+      clicks
     })
-    expect(transport).not.toHaveBeenCalled()
-    expect(tight.saved).toEqual([])
-    expect(result.deferred).toBe(1)
+    const slow: KlaviyoTransport = async (request) => {
+      t += 1_000
+      if (request.url.includes('MsgR02') || request.url.includes('MsgR03'))
+        return account('Draft').transport({
+          ...request,
+          url: request.url.replace(/MsgR0[23]/, 'MsgR01')
+        })
+      return results(request)
+    }
+    const { db, saved } = database([
+      [
+        row({ build_id: 'b2', message_id: 'MsgR02' }),
+        sent(),
+        row({ build_id: 'b3', message_id: 'MsgR03' })
+      ]
+    ])
+    const result = await run(db, live(slow), {
+      now: () => t,
+      deadline: now + 6_500
+    })
+    // The sent email first, then one draft; time is kept for its results.
+    expect(
+      saved.map((s) => [s.build, s.patch.pulls ?? s.patch.status])
+    ).toEqual([
+      ['b2', 'draft'],
+      ['b1', 1]
+    ])
+    expect(result).toMatchObject({ pulled: 1, deferred: 1 })
+  })
+
+  it('keeps what the status reads said when no time is left for the results', async () => {
+    let t = now
+    const slow: KlaviyoTransport = async (request) => {
+      t += 1_000
+      return recordedResultsTransport({
+        rest: account('Sent', iso(now - dayMs - hourMs)).transport
+      })(request)
+    }
+    const { db, saved } = database([[row({ status: 'scheduled' })]])
+    await run(db, live(slow), { now: () => t, deadline: now + 1_500 })
+    expect(saved[0]!.patch).toMatchObject({
+      status: 'sent',
+      sent_at: iso(now - dayMs - hourMs)
+    })
+    expect(saved[0]!.patch).not.toHaveProperty('pulls')
+  })
+
+  it('starts nothing past its time', async () => {
+    const transport = vi.fn(account().transport)
     const past = database([[row()]])
     expect(
       (await run(past.db, live(transport), { deadline: now - 1 })).deferred
     ).toBe(0)
     expect(past.claims).toEqual([])
+    expect(transport).not.toHaveBeenCalled()
   })
 
   it('claims again while full batches come back and time is left', async () => {

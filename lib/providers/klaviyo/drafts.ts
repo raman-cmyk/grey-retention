@@ -27,24 +27,37 @@ const gone = (error: unknown) =>
   error.kind === 'rejected' &&
   (error.details.status === 404 || error.details.status === 410)
 const stamp = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, 'Z')
-/** The earliest time among Klaviyo's per-variation send times. */
-const earliest = (times: Record<string, unknown> | null | undefined) => {
-  const found = Object.values(times ?? {})
-    .map((v) =>
-      isoTime(
-        typeof v === 'string'
-          ? v
-          : v && typeof v === 'object' && 'datetime' in v
-            ? String((v as { datetime: unknown }).datetime)
-            : null
-      )
-    )
+const field = (v: unknown, key: string): unknown =>
+  v && typeof v === 'object' && !Array.isArray(v)
+    ? (v as Record<string, unknown>)[key]
+    : undefined
+/**
+ * The earliest time among Klaviyo's per-variation send times, whatever
+ * their shape (keyed by variation, or a list of `{ datetime }`); null when
+ * none can be read. Only a hint: never a reason to refuse the answer.
+ */
+const earliest = (times: unknown) => {
+  const values = times && typeof times === 'object' ? Object.values(times) : []
+  const found = values
+    .map((v) => {
+      const t = typeof v === 'string' ? v : field(v, 'datetime')
+      return isoTime(typeof t === 'string' ? t : null)
+    })
     .filter((t): t is string => t !== null)
     .sort()
   return found[0] ?? null
 }
-const plainWord = (v: string | null | undefined) =>
-  v && /^[a-z_]{1,40}$/.test(v) ? v : null
+const plainWord = (v: unknown) =>
+  typeof v === 'string' && /^[a-z_]{1,40}$/.test(v) ? v : null
+/** The names of the tracking parameters, whatever shape the list comes in. */
+const paramNames = (params: unknown) =>
+  (Array.isArray(params) ? params : [])
+    .map((p) => field(p, 'name'))
+    .filter(
+      (n): n is string =>
+        typeof n === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(n)
+    )
+    .slice(0, 20)
 /** A time Klaviyo gave, as ISO; null when it gave none or not a time. */
 const isoTime = (v: string | null | undefined) =>
   v && z.iso.datetime({ offset: true }).safeParse(v).success
@@ -542,22 +555,9 @@ export async function readDraft(
             ab_test: z
               .object({ winner_percentage: z.number().int().nullish() })
               .nullish(),
-            send_options: z
-              .object({
-                send_time: z.string().nullish(),
-                send_times: z.record(z.string(), z.unknown()).nullish(),
-                send_strategy: z.string().nullish()
-              })
-              .passthrough()
-              .nullish(),
-            tracking_options: z
-              .object({
-                tracking_params: z
-                  .array(z.object({ name: z.unknown() }).passthrough())
-                  .nullish()
-              })
-              .passthrough()
-              .nullish()
+            // Read leniently: hints only, never a reason to refuse the answer.
+            send_options: z.unknown().optional(),
+            tracking_options: z.unknown().optional()
           })
         }),
         relationships: z.object({
@@ -605,24 +605,25 @@ export async function readDraft(
   )
   return {
     status: answer.data.attributes.definition.status.toLowerCase(),
-    sendTime: isoTime(
-      answer.data.attributes.definition.send_options?.send_time
-    ),
+    sendTime: (() => {
+      const t = field(
+        answer.data.attributes.definition.send_options,
+        'send_time'
+      )
+      return isoTime(typeof t === 'string' ? t : null)
+    })(),
     firstSendTime: earliest(
-      answer.data.attributes.definition.send_options?.send_times
+      field(answer.data.attributes.definition.send_options, 'send_times')
     ),
     sendStrategy: plainWord(
-      answer.data.attributes.definition.send_options?.send_strategy
+      field(answer.data.attributes.definition.send_options, 'send_strategy')
     ),
-    trackingParams: (
-      answer.data.attributes.definition.tracking_options?.tracking_params ?? []
-    )
-      .map((p) => p.name)
-      .filter(
-        (n): n is string =>
-          typeof n === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(n)
+    trackingParams: paramNames(
+      field(
+        answer.data.attributes.definition.tracking_options,
+        'tracking_params'
       )
-      .slice(0, 20),
+    ),
     campaignId,
     description: campaign.data.attributes.definition.description ?? null,
     winnerPercentage:

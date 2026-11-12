@@ -215,6 +215,7 @@ export async function runEmailResults(
 
   for (let claims = 0; claims < maxClaims; claims++) {
     if (now() + callMs > deps.deadline) break
+    const deferredBefore = run.deferred
     const claimed = await db.rpc('claim_klaviyo_results', {
       lim: deps.limit ?? resultsBatch
     })
@@ -240,6 +241,8 @@ export async function runEmailResults(
       }
       await readLive(source, live)
     }
+    // A batch not finished in time, or not full: no more claims.
+    if (run.deferred > deferredBefore) break
     if (rows.length < (deps.limit ?? resultsBatch)) break
   }
   return run
@@ -267,7 +270,9 @@ export async function runEmailResults(
             conversion: 'placed_order',
             attributionOpen: t < Date.parse(sentAt) + attributionMs,
             sendStrategy: 'static',
-            sentAtFrom: 'send_time',
+            sentAtFrom: row.sent_at
+              ? 'send_time'
+              : sendTimeOf(read, t, ctx.builtAt).from,
             clicksBy: 'message',
             botsLeftOut: 0,
             reported: true
@@ -318,8 +323,9 @@ export async function runEmailResults(
     /** A read saved without parts Klaviyo did not give (they wait no longer). */
     const saveDue = async (
       d: Due,
-      results: VariationResult[],
-      clicks: LinkClicks[],
+      /** null: not read this time (the earlier ones are kept). */
+      results: VariationResult[] | null,
+      clicks: LinkClicks[] | null,
       complete: boolean,
       readContext: ReadContext
     ) => {
@@ -351,12 +357,25 @@ export async function runEmailResults(
       for (const row of ordered) {
         let draft: Awaited<ReturnType<typeof readDraft>>
         try {
-          // Time is kept back for the results questions.
+          // Time is kept back for the results questions of the emails due.
           draft = await timed(
             () => readDraft(client, row.message_id!),
-            resultsReserve
+            due.length ? resultsReserve : 0
           )
         } catch (error) {
+          if (error instanceof TimeUp) {
+            // No more status reads: the ones not read wait for the next
+            // run (leased until then); the due ones are read now.
+            for (const r of ordered)
+              if (
+                !done.has(r.build_id) &&
+                !due.some((d) => d.row.build_id === r.build_id)
+              ) {
+                done.add(r.build_id)
+                run.deferred++
+              }
+            break
+          }
           if (!(error instanceof KlaviyoError) || stopsAccount(error))
             throw error
           // This email's answer only: logged, looked at again later.
@@ -442,7 +461,7 @@ export async function runEmailResults(
           })
           for (const d of part) {
             if (now() > d.dueAt + reportGraceMs)
-              await saveDue(d, [], [], false, {
+              await saveDue(d, null, null, false, {
                 conversion,
                 currency: source.currency,
                 reported: false
@@ -481,6 +500,7 @@ export async function runEmailResults(
           0
         )
         let clicks: LinkClicks[] = []
+        let clicksRead = false
         let clicksComplete = !!metrics.clickedEmail && metrics.complete
         let clicksBy: ReadContext['clicksBy'] = null
         let bots = 0
@@ -499,8 +519,10 @@ export async function runEmailResults(
                   from: clicksFrom,
                   to: clicksTo
                 })
-              )
-              lastClick = now()
+              ).finally(() => {
+                lastClick = now()
+              })
+              clicksRead = true
               clicks = read.rows
               bots += read.bots
               clicksComplete &&= read.complete
@@ -512,9 +534,10 @@ export async function runEmailResults(
               )
                 throw error
               if (error instanceof TimeUp) {
-                // Out of time: the results stand, the clicks are not whole.
+                // Out of time: the results stand, the earlier clicks are kept.
                 clicksStopped = true
                 clicksComplete = false
+                clicksRead = false
                 break
               }
               // The results stand; the clicks are not whole this time.
@@ -523,6 +546,8 @@ export async function runEmailResults(
                 status: error.details.status ?? 0
               })
               clicksComplete = false
+              // A part not read keeps the earlier clicks.
+              clicksRead = false
               if (error.kind === 'rate_limited' || stopsAccount(error))
                 clicksStopped = true
               break
@@ -532,21 +557,24 @@ export async function runEmailResults(
         } else clicksComplete = false
         await saveDue(
           d,
-          report.rows.map((r) =>
-            metrics.placedOrder
-              ? r
-              : {
-                  ...r,
-                  statistics: Object.fromEntries(
-                    Object.entries(r.statistics).filter(
-                      ([k]) =>
-                        !k.startsWith('conversion') &&
-                        k !== 'revenue_per_recipient'
-                    )
-                  )
-                }
-          ),
-          clicks,
+          // Not reported (after waiting): the earlier results are kept.
+          !report.rows.length
+            ? null
+            : report.rows.map((r) =>
+                metrics.placedOrder
+                  ? r
+                  : {
+                      ...r,
+                      statistics: Object.fromEntries(
+                        Object.entries(r.statistics).filter(
+                          ([k]) =>
+                            !k.startsWith('conversion') &&
+                            k !== 'revenue_per_recipient'
+                        )
+                      )
+                    }
+              ),
+          clicksRead ? clicks : null,
           report.complete &&
             report.rows.length > 0 &&
             clicksComplete &&
@@ -572,7 +600,13 @@ export async function runEmailResults(
       }
     } catch (error) {
       if (error instanceof TimeUp) {
-        // Left leased: the next run looks again.
+        // Out of time for the results: what each status read said is
+        // kept, and the read is due again at the next run.
+        for (const d of due)
+          if (!done.has(d.row.build_id)) {
+            done.add(d.row.build_id)
+            await save(d.row, d.patch)
+          }
         run.deferred += live.filter((r) => !done.has(r.build_id)).length
         return
       }

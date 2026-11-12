@@ -41,6 +41,9 @@ export type ReadContext = {
   botsLeftOut?: number
   /** The report had this campaign. */
   reported?: boolean
+  /** This read could not read the results (or clicks): the earlier ones are kept. */
+  resultsKept?: boolean
+  clicksKept?: boolean
 }
 
 /** What `save_klaviyo_result` takes. */
@@ -135,14 +138,20 @@ export function statusOf(
 }
 
 /** A day so long past that an email planned for it (or due then) is stale. */
-function longPastDay(day: string | null | undefined, now: number) {
+function longPastDay(
+  day: string | null | undefined,
+  now: number,
+  days = staleAfterDays
+) {
   if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(day)) return false
   // A day's margin for the store's timezone (the database checks it in UTC).
-  return (
-    Date.parse(`${day.slice(0, 10)}T00:00:00Z`) + (staleAfterDays + 1) * dayMs <
-    now
-  )
+  return Date.parse(`${day.slice(0, 10)}T00:00:00Z`) + (days + 1) * dayMs < now
 }
+/**
+ * How long past its day a scheduled email Klaviyo cannot be read for is
+ * given up on (the owner may have moved it later: unknown until read).
+ */
+export const scheduledGiveUpDays = 45
 const plannedDay = (row: ResultRow) =>
   (row.planned as { date?: unknown }).date as string | undefined
 
@@ -248,6 +257,7 @@ export function afterStatus(
     !!read.sendTime &&
     !longPastDay(read.sendTime, now)
   if (
+    (was === 'draft' || was === 'scheduled') &&
     (status === 'draft' || status === 'scheduled') &&
     longPastDay(plannedDay(row), now) &&
     // A send the owner scheduled later than planned is still followed.
@@ -283,11 +293,16 @@ export function pausedPatch(
   waitMs: number,
   patch?: ResultPatch
 ): ResultPatch {
-  const status = patch?.status ?? (row.status as EmailStatus)
+  const was = row.status as EmailStatus
+  const status = patch?.status ?? was
   const sentAt = patch?.sent_at ?? row.sent_at
   if (
-    (status === 'draft' || status === 'scheduled') &&
-    longPastDay(plannedDay(row), now)
+    (was === 'draft' &&
+      status === 'draft' &&
+      longPastDay(plannedDay(row), now)) ||
+    (was === 'scheduled' &&
+      status === 'scheduled' &&
+      longPastDay(plannedDay(row), now, scheduledGiveUpDays))
   )
     return {
       ...patch,
@@ -296,7 +311,13 @@ export function pausedPatch(
       paused: reason,
       next_check_at: iso(now)
     }
-  if (status === 'sent' && sentAt && now > Date.parse(sentAt) + giveUpAfterMs)
+  // Counted from the send, or from when we first met the email if later.
+  if (
+    status === 'sent' &&
+    sentAt &&
+    now >
+      Math.max(Date.parse(sentAt), Date.parse(row.created_at)) + giveUpAfterMs
+  )
     return { ...patch, final: true, paused: reason, next_check_at: iso(now) }
   return {
     ...patch,
@@ -339,8 +360,10 @@ export function resultsPatch(
   row: ResultRow,
   sentAt: string,
   read: {
-    results: VariationResult[]
-    clicks: LinkClicks[]
+    /** null: not read this time (the earlier results are kept). */
+    results: VariationResult[] | null
+    /** null: not read this time (the earlier clicks are kept). */
+    clicks: LinkClicks[] | null
     complete: boolean
     templates: Template[]
     sections: EmailSection[]
@@ -351,7 +374,16 @@ export function resultsPatch(
 ): ResultPatch {
   const pulls = row.pulls + 1
   const final = pulls >= pullsAfterSend
-  const results: StoredResult[] = read.results.slice(0, maxResults).map((r) => {
+  const kept = {
+    results: Array.isArray(row.results)
+      ? (row.results as unknown as StoredResult[])
+      : [],
+    clicks: Array.isArray(row.clicks)
+      ? (row.clicks as unknown as StoredClick[])
+      : []
+  }
+  const readResults = read.results ?? []
+  const results: StoredResult[] = readResults.slice(0, maxResults).map((r) => {
     const name = r.variationName ? cut(r.variationName, 120) || null : null
     return {
       variation:
@@ -369,13 +401,34 @@ export function resultsPatch(
       )
     }
   })
-  const designs = new Map(results.map((r) => [r.variation, r.design] as const))
+  const designs = new Map(
+    (read.results ? results : kept.results).map(
+      (r) => [r.variation, r.design] as const
+    )
+  )
+  // One row per variation and address once the clicker's own token is out.
+  const merged = new Map<string, LinkClicks>()
+  for (const c of read.clicks ?? []) {
+    const url = keptUrl(c.url)
+    if (!url) continue
+    const key = `${c.variationId ?? ''}\n${url}`
+    const was = merged.get(key)
+    merged.set(
+      key,
+      was
+        ? {
+            ...was,
+            clicks: was.clicks + c.clicks,
+            unique: was.unique + c.unique
+          }
+        : { ...c, url }
+    )
+  }
   const clicks: StoredClick[] = []
   let bytes = 2
   let cutShort = false
-  for (const c of read.clicks) {
-    const url = keptUrl(c.url)
-    if (!url) continue
+  for (const c of merged.values()) {
+    const url = c.url
     if (clicks.length >= maxClicks) {
       cutShort = true
       break
@@ -391,7 +444,7 @@ export function resultsPatch(
       section: at?.section ?? null,
       block: at?.block ?? null,
       clicks: whole(c.clicks),
-      unique: whole(c.unique)
+      unique: Math.min(whole(c.unique), whole(c.clicks))
     }
     const size = Buffer.byteLength(JSON.stringify(click)) + 1
     if (bytes + size > maxClickBytes) {
@@ -402,21 +455,29 @@ export function resultsPatch(
     clicks.push(click)
   }
   const planned = (row.planned as { designs?: unknown }).designs
+  const stored = read.results ? results : kept.results
   const abSplit =
     planned === 'both'
-      ? ['A', 'B'].every((d) => results.some((r) => r.design === d))
+      ? ['A', 'B'].every((d) => stored.some((r) => r.design === d))
       : null
   return {
     status: 'sent',
     pulls,
-    results,
-    clicks,
+    results: stored,
+    clicks: read.clicks ? clicks : kept.clicks,
     complete:
       read.complete &&
+      !!read.results &&
+      !!read.clicks &&
       !cutShort &&
-      read.results.length <= maxResults &&
+      readResults.length <= maxResults &&
       abSplit !== false,
-    context: { ...read.context, abSplit },
+    context: {
+      ...read.context,
+      abSplit,
+      ...(read.results ? {} : { resultsKept: true }),
+      ...(read.clicks ? {} : { clicksKept: true })
+    },
     final,
     next_check_at: iso(
       final

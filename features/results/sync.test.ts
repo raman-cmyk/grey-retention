@@ -377,9 +377,43 @@ describe('what the database can keep', () => {
       paused: 'klaviyo_off',
       next_check_at: iso(now)
     })
+    // A scheduled email is given more time: the owner may have moved it.
     expect(
       pausedPatch(
-        row({ status: 'sent', sent_at: iso(now - 11 * dayMs) }),
+        row({ status: 'scheduled', planned: { date: '2026-10-20' } }),
+        'klaviyo_off',
+        now,
+        hourMs
+      ).status
+    ).toBeUndefined()
+    expect(
+      pausedPatch(
+        row({ status: 'scheduled', planned: { date: '2026-09-01' } }),
+        'klaviyo_off',
+        now,
+        hourMs
+      )
+    ).toMatchObject({ status: 'stale', final: true })
+    // Counted from when we met it, if later than the send.
+    expect(
+      pausedPatch(
+        row({
+          status: 'sent',
+          sent_at: iso(now - 11 * dayMs),
+          created_at: iso(now - dayMs)
+        }),
+        'klaviyo_key_rejected',
+        now,
+        hourMs
+      ).final
+    ).toBeUndefined()
+    expect(
+      pausedPatch(
+        row({
+          status: 'sent',
+          sent_at: iso(now - 11 * dayMs),
+          created_at: iso(now - 12 * dayMs)
+        }),
         'klaviyo_key_rejected',
         now,
         hourMs
@@ -455,5 +489,103 @@ describe('what the database can keep', () => {
       section: 0,
       block: 'hero_product'
     })
+  })
+})
+
+describe('a read that could not read everything', () => {
+  const sentAt = iso(now - 3 * dayMs)
+  const earlier = row({
+    status: 'sent',
+    sent_at: sentAt,
+    pulls: 2,
+    results: [
+      {
+        variation: 'VarA01',
+        name: 'Design A',
+        design: 'A',
+        statistics: { recipients: 9 }
+      }
+    ],
+    clicks: [
+      {
+        variation: 'VarA01',
+        design: 'A',
+        url: 'https://shop.example/p/1',
+        section: 0,
+        block: 'hero_product',
+        clicks: 3,
+        unique: 3
+      }
+    ]
+  })
+
+  it('keeps the earlier results and clicks, and says so', () => {
+    const patch = resultsPatch(
+      earlier,
+      sentAt,
+      {
+        results: null,
+        clicks: null,
+        complete: true,
+        templates: [],
+        sections: [],
+        context: { reported: false }
+      },
+      now
+    )
+    expect(patch).toMatchObject({
+      pulls: 3,
+      final: true,
+      complete: false,
+      results: earlier.results,
+      clicks: earlier.clicks,
+      context: { resultsKept: true, clicksKept: true }
+    })
+  })
+
+  it('counts a link once when only the clicker’s token told the rows apart', () => {
+    const patch = resultsPatch(
+      row({ status: 'sent', sent_at: sentAt }),
+      sentAt,
+      {
+        results: [],
+        clicks: [
+          {
+            variationId: 'V1',
+            url: 'https://x.example/p/1?_kx=AAA',
+            clicks: 1,
+            unique: 1
+          },
+          {
+            variationId: 'V1',
+            url: 'https://x.example/p/1?_kx=BBB',
+            clicks: 2,
+            unique: 1
+          },
+          {
+            variationId: 'V2',
+            url: 'https://x.example/p/1?_kx=CCC',
+            clicks: 1,
+            unique: 1
+          }
+        ],
+        complete: true,
+        templates: [],
+        sections: [],
+        context: {}
+      },
+      now
+    )
+    expect(
+      patch.clicks!.map((c) => [c.variation, c.url, c.clicks, c.unique])
+    ).toEqual([
+      ['V1', 'https://x.example/p/1', 3, 2],
+      ['V2', 'https://x.example/p/1', 1, 1]
+    ])
+  })
+
+  it('never calls an email that was sending stale', () => {
+    const r = row({ status: 'sending', planned: { date: '2026-10-01' } })
+    expect(afterStatus(r, seen('draft'), now).patch.status).toBe('draft')
   })
 })

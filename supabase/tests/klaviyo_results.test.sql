@@ -1,5 +1,5 @@
 begin;
-select plan(131);
+select plan(145);
 
 -- LRN-001: the results of every email we put into Klaviyo. Workspace 101
 -- (owner ...01, staff ...05; a synthetic brand) and workspace 102 (owner
@@ -29,7 +29,9 @@ select is((select count(*)::integer from pg_proc p join pg_namespace n on n.oid 
 -- Plans and builds. 101: b201 a live draft built five days ago (its push
 -- drafted, with its message), b202 a sample draft, b203 a live draft whose
 -- push never finished, b205 still building, b207 a live draft built twelve
--- days ago, b208 a live draft whose plan slot is too large to keep. 102 (a
+-- days ago, b208 a live draft whose plan slot is too large to keep, b210
+-- a live draft drafted 31 days ago, b211 one with a subject too long to
+-- keep, b212 a live draft built five days ago. 102 (a
 -- real brand, no brand profile): b204 a sample draft (in no Klaviyo
 -- account), b206 a live draft.
 update public.brand_profiles set synthetic = false where tenant_id = '00000000-0000-4000-8000-000000000102';
@@ -45,7 +47,10 @@ insert into public.strategy_runs (id, tenant_id, start_on, state, pulse, offer_p
      jsonb_build_object('date', to_char(current_date, 'YYYY-MM-DD'), 'time', '18:00', 'emailType', 'story'),
      jsonb_build_object('date', to_char(current_date - 12, 'YYYY-MM-DD'), 'time', '18:00', 'emailType', 'story'),
      jsonb_build_object('date', to_char(current_date, 'YYYY-MM-DD'), 'time', '18:00', 'emailType', 'story',
-       'angle', repeat('x', 16000)))),
+       'angle', repeat('x', 16000)),
+     jsonb_build_object('date', to_char(current_date, 'YYYY-MM-DD'), 'time', '18:00', 'emailType', 'story'),
+     jsonb_build_object('date', to_char(current_date, 'YYYY-MM-DD'), 'time', '18:00', 'emailType', 'story'),
+     jsonb_build_object('date', to_char(current_date, 'YYYY-MM-DD'), 'time', '18:00', 'emailType', 'story'))),
    '00000000-0000-4000-8000-000000000001'),
   ('00000000-0000-4000-8000-00000000e102','00000000-0000-4000-8000-000000000102',current_date,'planned','{"offers":[]}','{"mode":"auto"}',
    '{"slots":[{"date":"2099-01-01","time":"10:00","emailType":"launch"},{"date":"2099-01-02","time":"10:00","emailType":"offer"}]}',
@@ -67,11 +72,25 @@ insert into public.email_builds (id, tenant_id, run_id, slot, push_key, state, e
    now() - interval '12 days'),
   ('00000000-0000-4000-8000-00000000b208','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',5,
    '00000000-0000-4000-8000-00000000c208','drafted','{"html":""}','CmpR08',false,'00000000-0000-4000-8000-000000000001',now()),
+  ('00000000-0000-4000-8000-00000000b211','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',7,
+   '00000000-0000-4000-8000-00000000c211','drafted',jsonb_build_object('html','','subject',repeat('s', 201)),'CmpR11',false,
+   '00000000-0000-4000-8000-000000000001',now()),
+  ('00000000-0000-4000-8000-00000000b212','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',8,
+   '00000000-0000-4000-8000-00000000c212','drafted','{"html":""}','CmpR12',false,'00000000-0000-4000-8000-000000000001',
+   now() - interval '5 days'),
   ('00000000-0000-4000-8000-00000000b204','00000000-0000-4000-8000-000000000102','00000000-0000-4000-8000-00000000e102',0,
    '00000000-0000-4000-8000-00000000c204','drafted','{"html":""}','sample-draft-x',true,'00000000-0000-4000-8000-000000000004',now()),
   ('00000000-0000-4000-8000-00000000b206','00000000-0000-4000-8000-000000000102','00000000-0000-4000-8000-00000000e102',1,
    '00000000-0000-4000-8000-00000000c206','drafted','{"html":""}','CmpR06',false,'00000000-0000-4000-8000-000000000004',now());
+insert into public.email_builds (id, tenant_id, run_id, slot, push_key, state, email, klaviyo_campaign_id, sample_draft, created_by,
+    created_at, updated_at) values
+  ('00000000-0000-4000-8000-00000000b210','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',6,
+   '00000000-0000-4000-8000-00000000c210','drafted','{"html":""}','CmpR10',false,'00000000-0000-4000-8000-000000000001',
+   now() - interval '31 days', now() - interval '31 days');
 insert into public.klaviyo_draft_pushes (tenant_id, push_key, state, campaign_id, message_id, designs) values
+  ('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000c210','drafted','CmpR10','MsgR10','A'),
+  ('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000c211','drafted','CmpR11','MsgR11','A'),
+  ('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000c212','drafted','CmpR12','MsgR12','A'),
   ('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000c201','drafted','CmpR01','MsgR01','both'),
   ('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000c203','started','CmpR03',null,null),
   ('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000c207','drafted','CmpR07','Msg_R-07','A'),
@@ -126,15 +145,16 @@ select throws_ok($$select public.claim_klaviyo_results(101)$$,'23514',null,'and 
 -- The drafts it meets: a live one with its message (also with _ or - in
 -- its id, also in a workspace with no brand profile), a synthetic brand's
 -- sample; never a push not finished, a build not drafted, a real brand's
--- sample, or a draft too large to keep (nor is that one counted waiting).
-select is(public.klaviyo_results_waiting(), 4, 'four drafts wait to be met');
+-- sample, a draft too large to keep or drafted over 30 days ago (nor are
+-- those counted waiting).
+select is(public.klaviyo_results_waiting(), 5, 'five drafts wait to be met');
 select is((select count(*)::integer from public.claim_klaviyo_results(2)), 2, 'a claim takes at most what it asks for');
-select is((select count(*)::integer from public.klaviyo_email_results), 4, 'and meets every draft waiting');
-select is((select count(*)::integer from public.claim_klaviyo_results(10)), 2, 'the next claim takes the ones left');
+select is((select count(*)::integer from public.klaviyo_email_results), 5, 'and meets every draft waiting');
+select is((select count(*)::integer from public.claim_klaviyo_results(10)), 3, 'the next claim takes the ones left');
 select is((select count(*)::integer from public.claim_klaviyo_results(10)), 0, 'a leased check is not taken twice');
 select is(public.klaviyo_results_waiting(), 0, 'nothing waits while all are leased, nor the draft too large');
 select is((select array_agg(build_id order by build_id) from public.klaviyo_email_results),
-  array[pg_temp.b('201'), pg_temp.b('202'), pg_temp.b('206'), pg_temp.b('207')],
+  array[pg_temp.b('201'), pg_temp.b('202'), pg_temp.b('206'), pg_temp.b('207'), pg_temp.b('212')],
   'the live drafts and the synthetic sample, nothing else');
 select is((select row(sample, campaign_id, message_id, status, pulls, final, context)::text from public.klaviyo_email_results
   where build_id = pg_temp.b('201')), '(f,CmpR01,MsgR01,draft,0,f,{})', 'a live draft starts as a draft with its message');
@@ -258,6 +278,10 @@ select throws_ok(format('select pg_temp.save(%L, %L)', '201', x),'23514',null,'r
     format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{},"clicks":[],"results":[{"variation":"VarA01","name":"Design A","design":"A","statistics":{"recipients":"9"}}]}', pg_temp.next()),
     format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{},"clicks":[],"results":[{"variation":"Var A/1","name":"Design A","design":"A","statistics":{}}]}', pg_temp.next()),
     format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{},"clicks":[],"results":[{"variation":"VarA01","name":"Design A","design":"C","statistics":{}}]}', pg_temp.next()),
+    format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{},"clicks":[],"results":[{"variation":"VarA01","name":"Design A","design":"none","statistics":{}}]}', pg_temp.next()),
+    format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{"conversion":"none"},"clicks":[],"results":[]}', pg_temp.next()),
+    format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{"clicksBy":"none"},"clicks":[],"results":[]}', pg_temp.next()),
+    format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{"resultsKept":"yes"},"clicks":[],"results":[]}', pg_temp.next()),
     format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{},"clicks":[],"results":[{"variation":"VarA01","name":"","design":"A","statistics":{}}]}', pg_temp.next()),
     format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{},"clicks":[],"results":[{"variation":"VarA01","statistics":{},"extra":1}]}', pg_temp.next()),
     format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{},"clicks":[],"results":%s}', pg_temp.next(),
@@ -268,6 +292,8 @@ select throws_ok(format('select pg_temp.save(%L, %L)', '201', x),'23514',null,'r
     format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{},"results":[],"clicks":[{"variation":null,"url":"https://x.example/a","section":1,"block":null,"clicks":1,"unique":1}]}', pg_temp.next()),
     format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{},"results":[],"clicks":[{"variation":null,"url":"https://x.example/a","section":1,"block":"Hero","clicks":1,"unique":1}]}', pg_temp.next()),
     format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{},"results":[],"clicks":[{"variation":null,"design":"C","url":"https://x.example/a","section":null,"block":null,"clicks":1,"unique":1}]}', pg_temp.next()),
+    format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{},"results":[],"clicks":[{"variation":null,"design":"none","url":"https://x.example/a","section":null,"block":null,"clicks":1,"unique":1}]}', pg_temp.next()),
+    format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{},"results":[],"clicks":[{"variation":null,"url":"https://x.example/a","section":null,"block":null,"clicks":1,"unique":2}]}', pg_temp.next()),
     format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{},"results":[],"clicks":[{"variation":null,"url":"https://x.example/a","section":null,"block":null,"clicks":-1,"unique":1}]}', pg_temp.next()),
     format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{},"results":[],"clicks":[{"variation":null,"url":"https://x.example/a","section":null,"block":null,"clicks":1.5,"unique":1}]}', pg_temp.next()),
     format('{"next_check_at":%s,"pulls":1,"complete":true,"context":{},"results":[],"clicks":%s}', pg_temp.next(),
@@ -302,21 +328,44 @@ reset role;
 update public.klaviyo_email_results set results_at = now() - interval '24 hours' where build_id = pg_temp.b('201');
 set local role service_role;
 select pg_temp.as_worker();
-select lives_ok(format('select pg_temp.save(%L, %L)', '201', pg_temp.read(2)),'the second read, a day after the first');
+select lives_ok(format('select pg_temp.save(%L, %L)', '201',
+  format('{"pulls":2,"results":[],"clicks":[],"complete":false,"context":{"reported":false,"resultsKept":true,"clicksKept":true},"next_check_at":%s}',
+    pg_temp.next(24))),'the second read, a day after the first, keeping what was read before');
 
--- Deleted in Klaviyo after a read: the end, its reads kept.
+-- The third read ends it, and only then.
 reset role;
-select pg_temp.due('201');
+update public.klaviyo_email_results set results_at = now() - interval '24 hours', next_check_at = now() - interval '1 second'
+  where build_id = pg_temp.b('201');
 set local role service_role;
 select pg_temp.as_worker();
 do $$ begin perform public.claim_klaviyo_results(10); end $$;
-select lives_ok(format($$select pg_temp.save('201', '{"status":"deleted","final":true,"next_check_at":%s}')$$, pg_temp.next(0)),
-  'a sent email deleted after its reads ends');
-select is((select row(status, pulls, sent_at is not null, final)::text from public.klaviyo_email_results
-  where build_id = pg_temp.b('201')), '(deleted,2,t,t)', 'with its send time and reads kept');
-select is((select count(*)::integer from public.claim_klaviyo_results(10)), 0, 'an ended check is never taken again');
+select throws_ok(format('select pg_temp.save(%L, %L)', '201', pg_temp.read(3)),'23514',null,'the third read must end it');
+select lives_ok(format('select pg_temp.save(%L, %L)', '201', pg_temp.read(3, ',"final":true')),'the third read ends it');
+select is((select row(status, pulls, final)::text from public.klaviyo_email_results where build_id = pg_temp.b('201')),
+  '(sent,3,t)', 'sent, read three times, ended');
+select is(public.klaviyo_results_waiting(), 0, 'an ended check is not counted waiting');
+select is((select count(*)::integer from public.claim_klaviyo_results(10)), 0, 'nor taken again');
 select throws_ok(format($$select public.save_klaviyo_result(%L, %L, '{"next_check_at":%s}')$$,
   pg_temp.b('201'), gen_random_uuid(), pg_temp.next()),'PT409',null,'nor saved again');
+
+-- Deleted in Klaviyo after a read: the end, its read kept.
+select lives_ok(format($$select pg_temp.save('212', '{"status":"sent","sent_at":%s,"next_check_at":%s}')$$,
+  pg_temp.ago(25), pg_temp.next(0)),'another email sent a day ago');
+reset role;
+select pg_temp.due('212');
+set local role service_role;
+select pg_temp.as_worker();
+do $$ begin perform public.claim_klaviyo_results(10); end $$;
+select lives_ok(format('select pg_temp.save(%L, %L)', '212', pg_temp.read(1)),'its first read');
+reset role;
+select pg_temp.due('212');
+set local role service_role;
+select pg_temp.as_worker();
+do $$ begin perform public.claim_klaviyo_results(10); end $$;
+select lives_ok(format($$select pg_temp.save('212', '{"status":"deleted","final":true,"next_check_at":%s}')$$, pg_temp.next(0)),
+  'a sent email deleted after a read ends');
+select is((select row(status, pulls, sent_at is not null, final)::text from public.klaviyo_email_results
+  where build_id = pg_temp.b('212')), '(deleted,1,t,t)', 'with its send time and read kept');
 
 -- A sent email unread for ten days is closed, saying why; not sooner.
 select lives_ok(format($$select pg_temp.save('207', '{"status":"sent","sent_at":%s,"next_check_at":%s}')$$,
@@ -341,12 +390,20 @@ select lives_ok(format($$select pg_temp.save('207', '{"final":true,"paused":"kla
 select lives_ok(format($$select pg_temp.save('202', '{"status":"cancelled","final":true,"next_check_at":%s}')$$, pg_temp.next()),
   'a cancelled email ends');
 reset role;
+update public.klaviyo_email_results set planned = planned || '{"date":"not-a-date"}' where build_id = pg_temp.b('206');
+set local role service_role;
+select pg_temp.as_worker();
+select throws_ok(format($$select pg_temp.save('206', '{"status":"stale","final":true,"next_check_at":%s}')$$, pg_temp.next()),
+  '23514',null,'a planned day that is not a day is refused as such');
+reset role;
 update public.klaviyo_email_results set planned = planned || '{"date":"2000-01-01"}' where build_id = pg_temp.b('206');
 set local role service_role;
 select pg_temp.as_worker();
+select throws_ok(format($$select pg_temp.save('206', '{"status":"stale","next_check_at":%s}')$$, pg_temp.next()),
+  '23514',null,'stale must end it');
 select lives_ok(format($$select pg_temp.save('206', '{"status":"stale","final":true,"next_check_at":%s}')$$, pg_temp.next()),
   'a draft two weeks past its day is stale');
-select is((select array_agg(status order by build_id)::text from public.klaviyo_email_results), '{deleted,cancelled,stale,sent}',
+select is((select array_agg(status order by build_id)::text from public.klaviyo_email_results), '{sent,cancelled,stale,sent,deleted}',
   'each ended as it was saved');
 
 -- A paused workspace: its drafts are not met, its checks not taken, its
@@ -380,9 +437,9 @@ update public.tenants set status = 'active' where id = '00000000-0000-4000-8000-
 -- with no membership and anonymous visitors do not.
 set local role authenticated;
 select pg_temp.as_member('00000000-0000-4000-8000-000000000001');
-select is((select count(*)::integer from public.klaviyo_email_results), 3, 'the owner reads the workspace''s results');
+select is((select count(*)::integer from public.klaviyo_email_results), 4, 'the owner reads the workspace''s results');
 select pg_temp.as_member('00000000-0000-4000-8000-000000000005');
-select is((select count(*)::integer from public.klaviyo_email_results), 3, 'its staff read them too');
+select is((select count(*)::integer from public.klaviyo_email_results), 4, 'its staff read them too');
 select pg_temp.as_member('00000000-0000-4000-8000-000000000004');
 select is((select array_agg(build_id order by build_id)::text from public.klaviyo_email_results),
   array[pg_temp.b('206'), pg_temp.b('209')]::text, 'another workspace''s owner reads only theirs');
