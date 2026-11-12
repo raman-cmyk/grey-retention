@@ -364,6 +364,17 @@ describe('readBrandAds', () => {
     )
   })
 
+  it('stores what code counts when the AI fails in a way no try will mend', async () => {
+    const ads = sampleAds('cedar-lane.example')
+    const { db, calls } = database()
+    const run = await readBrandAds(db, jobFor(), {
+      library: () => library({ ok: true, ads }),
+      askFor: () => askWith({ ok: false, code: 'provider_account' })
+    })
+    expect(run.analysis).toBe('skipped')
+    expect(recorded(calls).findings.length).toBeGreaterThan(0)
+  })
+
   it('fails the job when the findings cannot be stored', async () => {
     const { db } = database({ code: 'PT409' })
     await expect(

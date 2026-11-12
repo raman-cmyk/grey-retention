@@ -172,9 +172,13 @@ export async function readBrandAds(
             `ads:${job.id}`
           )
         } catch (error) {
-          // On the last try an AI outage leaves the ads without words:
-          // what code counted is stored all the same.
-          if (!(error instanceof TagError) || (job.attempt ?? 0) < lastTry)
+          // An AI failure no try will mend (no model set up, the account
+          // refused), or an outage on the last try, leaves the ads without
+          // words: what code counted is stored all the same.
+          if (
+            !(error instanceof TagError) ||
+            (error.retryable && (job.attempt ?? 0) < lastTry)
+          )
             throw error
           analysis = { answered: false, reason: 'model_unavailable' }
         }
