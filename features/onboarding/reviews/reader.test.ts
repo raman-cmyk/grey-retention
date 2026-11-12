@@ -96,9 +96,13 @@ describe('the reviews an email may quote (chosen by code)', () => {
       { author: 'Verified Buyer' },
       { author: 'anonymous' },
       { author: '   ' },
+      { author: 'Amazon Customer' },
+      { author: 'Verified Purchaser' },
+      { author: 'Anonymous User' },
       // Left over from the page's markup.
       { text: 'Lovely knit &amp; so warm, I wear it daily' },
-      { text: 'Lovely knit <b>so warm</b>, I wear it daily' }
+      { text: 'Lovely knit <b>so warm</b>, I wear it daily' },
+      { author: 'Maya &amp; Jo' }
     ])
       expect(quotableReviews([review(over)]), JSON.stringify(over)).toEqual([])
     expect(
@@ -121,6 +125,17 @@ describe('the reviews an email may quote (chosen by code)', () => {
         source: 'reviews'
       }
     ])
+  })
+
+  it('quotes ordinary words with numbers that are no address', () => {
+    for (const text of [
+      'Five stars, 5 stars all the way, I love it',
+      'I have worn it 100 times on the way to work',
+      'Got 2 for the way home, lovely and warm',
+      'My 3 st bernards love lying on it',
+      'Took 4 of them on road trips, all lovely'
+    ])
+      expect(quotableReviews([review({ text })]), text).toHaveLength(1)
   })
 
   it('quotes a review with no stars given, but never one whose stars are unclear', () => {
@@ -211,6 +226,17 @@ describe('the words the reader quotes', () => {
     expect(kept.map((f) => 'quote' in f.evidence && f.evidence.quote)).toEqual([
       'it does not itch at all'
     ])
+  })
+
+  it('never quotes markup or half of a character pair', () => {
+    const own = [
+      review({ id: 'r1', text: 'So soft &lt;br&gt; and warm 😀 all winter' })
+    ]
+    const { kept } = checkedCustomerFindings(own, comments, [
+      raw({ quote: 'So soft &lt;br&gt; and' }),
+      raw({ quote: 'and warm \uD83D' })
+    ])
+    expect(kept).toEqual([])
   })
 
   it('never quotes a person’s details, nor a claim as customers’ words', () => {

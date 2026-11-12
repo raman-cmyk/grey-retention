@@ -8,7 +8,7 @@ import type {
 } from '@/lib/providers/review-source'
 import { findingInput, type FindingInput } from '../findings'
 import { fold } from '../site/pages'
-import { asWritten, claims, plain } from '../words'
+import { asWritten, claims, plain, wellFormed } from '../words'
 
 /** The Reviews + social reader's prompt version. */
 export const reviewsReaderVersion = 'reviews-v1'
@@ -171,8 +171,11 @@ export function checkedCustomerFindings(
     const quote =
       asked.length < minQuote ? null : asWritten([first.text], asked)
     if (!quote || !plain(f.statement)) continue
-    // Never a person's details; customers' own words, reused in copy,
+    // Whole characters only (never half of an emoji pair), no markup and
+    // never a person's details; customers' own words, reused in copy,
     // never a claim either.
+    if (wellFormed(quote) !== quote || markup.test(quote)) continue
+    if (wellFormed(f.statement) !== f.statement) continue
     if (personal.test(quote)) continue
     if (f.topic === 'customer_words' && claims.test(quote)) continue
     const finding = findingInput.safeParse({
@@ -196,12 +199,12 @@ export function checkedCustomerFindings(
 export const maxQuotable = 5
 /** A link, an address, a handle or a phone number: never quoted. */
 const personal =
-  /https?:\/\/|www\.|\S+@\S+\.\S+|@\w{2,}|\+?\d[\d\s().-]{7,}\d|\b\d{1,5}\s+(?:[a-z]+\s+){0,3}(?:street|st|road|rd|avenue|ave|lane|ln|drive|dr|boulevard|blvd|way|court|ct)\b/i
+  /https?:\/\/|www\.|\S+@\S+\.\S+|@\w{2,}|\+?\d[\d\s().-]{7,}\d|\b\d{1,5}\s+(?:[a-z]+\s+){0,2}(?:street|road|avenue|ave|lane|drive|boulevard|blvd)\b/i
 /** Left over from a page's markup: never quoted. */
 const markup = /[<>]|&(?:#\d+|#x[0-9a-f]+|[a-z]{2,8});/i
 /** A name that is no one's. */
 const noName =
-  /^(?:anonymous|anon|verified (?:buyer|customer|reviewer)|customer|guest|a customer|shopper|user)$/i
+  /^(?:anonymous(?: (?:user|customer|buyer|reviewer))?|anon|(?:verified|store|amazon|valued|happy) (?:buyer|customer|reviewer|purchaser|owner)|verified|customer|guest|a customer|shopper|user|n\/a|none)$/i
 
 /**
  * The reviews an email may quote, chosen by code: a real review read on
@@ -219,6 +222,7 @@ export function quotableReviews(reviews: ReadReview[]): CustomerFinding[] {
         author.length <= 80 &&
         !noName.test(author) &&
         !personal.test(author) &&
+        !markup.test(author) &&
         text.length >= 20 &&
         text.length <= 300 &&
         !personal.test(text) &&

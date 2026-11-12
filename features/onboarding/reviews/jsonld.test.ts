@@ -151,6 +151,68 @@ describe('the review data a product page publishes', () => {
     ])
   })
 
+  it('reads every kind of product and leaves out a review naming the shop among its items', () => {
+    const found = pageReviews(
+      page([
+        {
+          '@type': 'IndividualProduct',
+          name: 'Knit, one of a kind',
+          review: { author: 'A', reviewBody: 'One.' }
+        },
+        {
+          '@type': 'ProductModel',
+          review: { author: 'B', reviewBody: 'Two.' }
+        },
+        {
+          '@type': 'Review',
+          author: 'C',
+          reviewBody: 'Three.',
+          itemReviewed: [{ '@type': 'Organization', name: 'Cedar Lane' }]
+        },
+        {
+          '@type': 'Review',
+          author: 'D',
+          reviewBody: 'Four.',
+          itemReviewed: [{ name: 'Weekend Knit' }]
+        }
+      ]),
+      url,
+      now
+    )
+    expect(found.reviews.map((r) => [r.author, r.product])).toEqual([
+      ['A', 'Knit, one of a kind'],
+      ['B', null],
+      ['D', 'Weekend Knit']
+    ])
+  })
+
+  it('never keeps half of a character pair, from an entity or a cut', () => {
+    const found = pageReviews(
+      page([
+        product([
+          {
+            author: 'Ann',
+            reviewBody: 'Love the colour &#xD83D; and the fit too'
+          },
+          { author: `${'a'.repeat(79)}😀`, reviewBody: 'Fine.' },
+          { author: 'Bo', reviewBody: 'Escaped \ud83d half.' }
+        ])
+      ]).replace('Escaped \\ud83d', 'Escaped \ud83d'),
+      url,
+      now
+    )
+    const broken =
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
+    for (const r of found.reviews) {
+      expect(broken.test(r.text), r.text).toBe(false)
+      expect(broken.test(r.author), r.author).toBe(false)
+    }
+    expect(found.reviews[0]?.text).toBe(
+      'Love the colour \uFFFD and the fit too'
+    )
+    expect(found.reviews[1]?.author).toBe(`${'a'.repeat(79)}\uFFFD`)
+  })
+
   it('leaves out reviews of the shop itself and reads a repeated review once', () => {
     const same = { author: 'Maya R.', reviewBody: 'So soft.' }
     const found = pageReviews(
@@ -180,6 +242,9 @@ describe('the review data a product page publishes', () => {
     expect(stars(9)).toEqual([null, true])
     expect(stars(0)).toEqual([null, true])
     expect(stars('great')).toEqual([null, true])
+    // Only a plain decimal: "0x5" is no five.
+    expect(stars('0x5')).toEqual([null, true])
+    expect(stars(' 4.5 ')).toEqual([5, false])
     expect(stars(3, { bestRating: 1 })).toEqual([null, true])
     // No stars given at all is not unclear.
     expect(
@@ -277,6 +342,17 @@ describe('the words a reader sees', () => {
     )
     expect(fold('<b>Nice</b><br/>fit')).toBe('Nice fit')
     expect(fold('I <3 it, size < 10')).toBe('I <3 it, size < 10')
+    // Each half of a character pair written as an entity is no character
+    // (as a browser shows it), and a raw half is replaced too.
+    expect(fold('&#xD83D;&#xDE00; and &#128512;')).toBe('\uFFFD\uFFFD and 😀')
+    expect(fold('a \uD83D b')).toBe('a \uFFFD b')
+    // Only HTML's own tags: text between two signs stays.
+    expect(fold('S<M and M>L fit')).toBe('S<M and M>L fit')
+    expect(fold('<p class="x">Nice</p><span>fit</span>')).toBe('Nice fit')
+    // HTML's Latin-1 names, each with its own capitals.
+    expect(fold('Tr&egrave;s belle qualit&eacute; &Eacute;t&eacute;')).toBe(
+      'Très belle qualité Été'
+    )
     expect(fold('So​ soft\u0007\n\n here')).toBe('So soft here')
   })
 })

@@ -87,14 +87,24 @@ const postHosts = new Set([
   'tiktok.com',
   'www.tiktok.com'
 ])
-/** A public post the database keeps: https on a social host, at most 500 characters. */
-function postOk(url: string) {
-  if (url.length > 500) return false
+/**
+ * A public post's address as the database keeps it (https on a social
+ * host, no port or user, at most 500 characters), written the one way a
+ * browser writes it; null for any other.
+ */
+function postUrl(url: string): string | null {
   try {
     const u = new URL(url)
-    return u.protocol === 'https:' && !u.port && postHosts.has(u.hostname)
+    return u.protocol === 'https:' &&
+      !u.port &&
+      !u.username &&
+      !u.password &&
+      postHosts.has(u.hostname) &&
+      u.href.length <= 500
+      ? u.href
+      : null
   } catch {
-    return false
+    return null
   }
 }
 
@@ -197,12 +207,13 @@ export async function readBrandReviews(
   const comments: SocialComment[] = []
   for (const c of commented.ok ? commented.comments : []) {
     if (comments.length >= maxComments) break
-    if (!postOk(c.url)) continue
-    if (!posts.includes(c.url)) {
+    const url = postUrl(c.url)
+    if (!url) continue
+    if (!posts.includes(url)) {
       if (posts.length >= maxPosts) continue
-      posts.push(c.url)
+      posts.push(url)
     }
-    comments.push(c)
+    comments.push({ ...c, url })
   }
   const pages = reviewed.ok ? reviewed.pages : []
   const run: ReviewsRun = {
@@ -249,9 +260,13 @@ export async function readBrandReviews(
           `reviews:${job.id}`
         )
       } catch (error) {
-        // On the last try an AI outage leaves the reviews without words:
-        // what code chose is stored all the same.
-        if (!(error instanceof TagError) || (job.attempt ?? 0) < lastTry)
+        // An AI failure no try will mend (no model set up, the account
+        // refused), or an outage on the last try, leaves the reviews
+        // without words: what code chose is stored all the same.
+        if (
+          !(error instanceof TagError) ||
+          (error.retryable && (job.attempt ?? 0) < lastTry)
+        )
           throw error
         analysis = { answered: false, reason: 'model_unavailable' }
       }
@@ -267,17 +282,21 @@ export async function readBrandReviews(
       }
     }
   }
-  // A source read with nothing said of it: none when the reader looked
-  // (its earlier findings go), else skipped (not looked at: nothing goes).
+  // A source read with nothing said of it: none when the reader looked at
+  // all of it (its earlier findings go); else skipped (nothing goes): not
+  // looked at, or reviews read only in part (the pages missed may hold
+  // the earlier findings).
   for (const source of ['reviews', 'social'] as const)
     if (
       run[source].state === 'ready' &&
       !findings.some((f) => f.source === source)
     )
       run[source] =
-        run.analysis === 'done'
-          ? { state: 'none' }
-          : { state: 'skipped', reason: 'not_analysed' }
+        run.analysis !== 'done'
+          ? { state: 'skipped', reason: 'not_analysed' }
+          : source === 'reviews' && !(reviewed.ok && reviewed.complete)
+            ? { state: 'skipped', reason: 'reviews_partial' }
+            : { state: 'none' }
   run.findings = findings.length
   const recorded = await db.rpc('record_review_findings', {
     job: job.id,

@@ -115,7 +115,10 @@ export function siteReviewSource(
           .filter((u) => pageOk(u, domain))
           .slice(0, maxReviewPages)
         if (!urls.length) return { ok: false, code: 'no_pages' }
-        ;({ read, missed } = await fetchAll(fetcher, urls, time, signal))
+        // Catalog pages missed stay missed: the read is not whole.
+        const fallback = await fetchAll(fetcher, urls, time, signal)
+        read = fallback.read
+        missed += fallback.missed
         if (!read.length) return { ok: false, code: 'unavailable' }
       }
       const pages: string[] = []

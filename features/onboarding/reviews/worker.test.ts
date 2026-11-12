@@ -331,6 +331,105 @@ describe('readBrandReviews', () => {
     })
   })
 
+  it('never says none for reviews read in part, even when the reader looked', async () => {
+    const page = 'https://cedar-lane.example/products/weekend-knit'
+    const { db, calls } = database()
+    await readBrandReviews(db, jobFor(), {
+      reviews: () => ({
+        live: false,
+        reviews: async () => ({
+          ok: true,
+          reviews: [
+            {
+              id: 'r1',
+              author: 'Maya R.',
+              text: 'It is fine, a little thin for the price.',
+              rating: 3,
+              ratingUnclear: false,
+              date: null,
+              url: page,
+              product: null
+            }
+          ],
+          platforms: [],
+          pages: [page],
+          complete: false
+        })
+      }),
+      social: () => sampleSocialSource,
+      // The model answers, but its one finding does not hold up.
+      askFor: () =>
+        askWith({
+          ok: true,
+          provider: 'gemini',
+          model: 'gemini-2.5-flash',
+          content: {
+            findings: [
+              {
+                topic: 'objection',
+                statement: 'Some find it thin.',
+                from: 'reviews',
+                ids: ['r1'],
+                quote: 'words that are not in the review',
+                confidence: 0.7
+              }
+            ]
+          }
+        })
+    })
+    expect(recorded(calls).summary).toEqual({
+      reviews: { state: 'skipped', reason: 'reviews_partial' },
+      social: { state: 'none' },
+      analysis: 'done'
+    })
+    expect(recorded(calls).pages).toEqual([])
+  })
+
+  it('stores a post’s address the one way the database checks it, never one with a user', async () => {
+    const { db, calls } = database()
+    const run = await readBrandReviews(db, jobFor(), {
+      reviews: () => sampleReviewSource,
+      social: () => ({
+        live: false,
+        comments: async () => ({
+          ok: true,
+          comments: [
+            'https://www.instagram.com:443/p/A/',
+            'HTTPS://www.instagram.com/p/B/',
+            'https://www.instagram.com\\p\\C',
+            'https://user@www.instagram.com/p/D/',
+            'https://www.instagram.com:8443/p/E/'
+          ].map((url, n) => ({
+            id: `c${n + 1}`,
+            platform: 'instagram' as const,
+            url,
+            author: 'A',
+            text: 'Lovely.'
+          }))
+        })
+      }),
+      askFor: () => sampleAsk
+    })
+    expect(recorded(calls).posts).toEqual([
+      'https://www.instagram.com/p/A/',
+      'https://www.instagram.com/p/B/',
+      'https://www.instagram.com/p/C'
+    ])
+    expect(run.read.comments).toBe(3)
+  })
+
+  it('stores what code chose when the AI fails in a way no try will mend', async () => {
+    const { db, calls } = database()
+    const run = await readBrandReviews(db, jobFor(), {
+      ...samples,
+      askFor: () => askWith({ ok: false, code: 'provider_account' })
+    })
+    expect(run.analysis).toBe('skipped')
+    expect(recorded(calls).findings.map((f) => f.topic)).toContain(
+      'quotable_review'
+    )
+  })
+
   it('keeps comments on public posts only, at most 30 posts', async () => {
     const post = (n: number) => `https://www.instagram.com/p/POST${n}/`
     const { db, calls } = database()

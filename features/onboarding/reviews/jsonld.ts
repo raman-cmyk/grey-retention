@@ -4,6 +4,7 @@ import {
   type PlatformRating,
   type ReadReview
 } from '@/lib/providers/review-source'
+import { wellFormed } from '../words'
 
 /**
  * The reviews a product page publishes as structured data (schema.org
@@ -44,8 +45,15 @@ const types = (v: Record<string, Json>) =>
     .flat()
     .filter((t): t is string => typeof t === 'string')
     .map((t) => t.replace(/^https?:\/\/schema\.org\//i, ''))
+const productTypes = new Set([
+  'Product',
+  'ProductGroup',
+  'ProductModel',
+  'IndividualProduct',
+  'SomeProducts'
+])
 const isProduct = (v: Record<string, Json>) =>
-  types(v).some((t) => t === 'Product' || t === 'ProductGroup')
+  types(v).some((t) => productTypes.has(t))
 const text = (v: Json) =>
   typeof v === 'string'
     ? v
@@ -55,20 +63,30 @@ const text = (v: Json) =>
         ? v.name
         : ''
 
+/** HTML's Latin-1 entities (&nbsp; to &yuml;, U+00A0 to U+00FF), by name. */
+const latin1 =
+  'nbsp iexcl cent pound curren yen brvbar sect uml copy ordf laquo not shy reg macr deg plusmn sup2 sup3 acute micro para middot cedil sup1 ordm raquo frac14 frac12 frac34 iquest Agrave Aacute Acirc Atilde Auml Aring AElig Ccedil Egrave Eacute Ecirc Euml Igrave Iacute Icirc Iuml ETH Ntilde Ograve Oacute Ocirc Otilde Ouml times Oslash Ugrave Uacute Ucirc Uuml Yacute THORN szlig agrave aacute acirc atilde auml aring aelig ccedil egrave eacute ecirc euml igrave iacute icirc iuml eth ntilde ograve oacute ocirc otilde ouml divide oslash ugrave uacute ucirc uuml yacute thorn yuml'.split(
+    ' '
+  )
 const named: Record<string, string> = {
+  ...Object.fromEntries(
+    latin1.map((name, i) => [name, String.fromCodePoint(0xa0 + i)])
+  ),
+  nbsp: ' ',
   amp: '&',
   lt: '<',
   gt: '>',
   quot: '"',
   apos: "'",
-  nbsp: ' ',
   rsquo: '’',
   lsquo: '‘',
   rdquo: '”',
   ldquo: '“',
   hellip: '…',
   ndash: '–',
-  mdash: '—'
+  mdash: '—',
+  euro: '€',
+  trade: '™'
 }
 /** Every entity decoded once (so `&amp;quot;` stays `&quot;`). */
 const decoded = (s: string) =>
@@ -80,26 +98,36 @@ const decoded = (s: string) =>
           code[1] === 'x' || code[1] === 'X'
             ? parseInt(code.slice(2), 16)
             : parseInt(code.slice(1), 10)
+        // Half of a character pair is no character: shown as a browser does.
+        if (n >= 0xd800 && n <= 0xdfff) return '\uFFFD'
         return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : all
       }
-      return named[code.toLowerCase()] ?? all
+      return named[code] ?? named[code.toLowerCase()] ?? all
     }
   )
+/** The tags a review's words may carry (anything else is text, "S<M and M>L"). */
+const tags =
+  /<\/?(?:a|abbr|b|big|blockquote|br|center|cite|code|div|em|font|h[1-6]|hr|i|img|li|mark|ol|p|pre|q|s|small|span|strike|strong|sub|sup|table|tbody|td|th|thead|tr|u|ul)(?:\s[^<>]*)?\/?>/gi
 /**
- * The words a reader sees: entities decoded, whole tags taken out (`<br>`
+ * The words a reader sees: entities decoded, HTML tags taken out (`<br>`
  * becomes a space; text such as "I <3 it" is kept), hidden characters out,
- * one space.
+ * one space, no broken character pair.
  */
 export const fold = (s: string) =>
-  decoded(s)
-    .replace(/<\/?[a-z][a-z0-9-]*(?:\s[^<>]*)?\/?>/gi, ' ')
+  wellFormed(decoded(s))
+    .replace(tags, ' ')
     .replace(/[\u0000-\u001f\u007f​-‏‪-‮⁠-⁤﻿]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 
+/** A number, or a plain decimal written as text ("4.5", never "0x5"). */
 const number = (v: Json) => {
   const n =
-    typeof v === 'number' ? v : typeof v === 'string' ? Number(v.trim()) : NaN
+    typeof v === 'number'
+      ? v
+      : typeof v === 'string' && /^\s*\d+(?:\.\d+)?\s*$/.test(v)
+        ? Number(v)
+        : NaN
   return Number.isFinite(n) ? n : null
 }
 /** A real day, not after tomorrow (YYYY-MM-DD), else null. */
@@ -204,14 +232,14 @@ export function pageReviews(
   const add = (r: Record<string, Json>, product: string | null) => {
     const words = fold(text(r.reviewBody) || text(r.description))
     if (!words) return
-    const author = fold(text(r.author)).slice(0, 80)
+    const author = wellFormed(fold(text(r.author)).slice(0, 80))
     const key = `${author.toLowerCase()}\n${words.toLowerCase()}`
     if (seen.has(key)) return
     seen.add(key)
     const { rating, unclear } = stars(r)
     reviews.push({
       author,
-      text: words.slice(0, maxReviewText),
+      text: wellFormed(words.slice(0, maxReviewText)),
       rating,
       ratingUnclear: unclear,
       date: day(r.datePublished, now),
@@ -228,13 +256,15 @@ export function pageReviews(
     }
     for (const o of objects(data)) {
       if (isProduct(o)) {
-        const name = fold(text(o.name)).slice(0, 120) || null
+        const name = wellFormed(fold(text(o.name)).slice(0, 120)) || null
         for (const r of [o.review].flat()) if (isObj(r)) add(r, name)
       } else if (types(o).includes('Review')) {
-        const item = isObj(o.itemReviewed) ? o.itemReviewed : null
-        // Only a review of a product (or of nothing named, on a product page).
-        if (item && types(item).length && !isProduct(item)) continue
-        add(o, item ? fold(text(item)).slice(0, 120) || null : null)
+        const items = [o.itemReviewed].flat().filter(isObj)
+        // Only a review of a product (or of nothing typed, on a product
+        // page): never one that says it is of a shop or a company.
+        if (items.some((i) => types(i).length && !isProduct(i))) continue
+        const item = items[0] ?? o.itemReviewed
+        add(o, wellFormed(fold(text(item)).slice(0, 120)) || null)
       }
     }
   }

@@ -165,6 +165,21 @@ describe('the reviews on the brand’s own product pages', () => {
     expect(answer.ok && answer.reviews[0]?.author).toBe('Maya')
   })
 
+  it('is not complete when the catalog’s pages failed and the home page’s were read', async () => {
+    const home = `https://${domain}/`
+    const { site } = fetcher({
+      [home]: `<html><body><a href="/products/p2">Knit</a></body></html>`,
+      [product(2)]: withReview('Maya')
+    })
+    const answer = await siteReviewSource(
+      site,
+      domain,
+      [product(1)],
+      time
+    ).reviews(ask)
+    expect(answer.ok && answer.complete).toBe(false)
+  })
+
   it('says so when the site links to no product page', async () => {
     const home = `https://${domain}/`
     const { site } = fetcher({
