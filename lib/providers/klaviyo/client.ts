@@ -21,6 +21,7 @@ export type KlaviyoScope =
   | 'campaigns:read'
   | 'catalogs:read'
   | 'events:read'
+  | 'flows:read'
   | 'lists:read'
   | 'metrics:read'
   | 'profiles:read'
@@ -126,6 +127,9 @@ async function capped(response: Response, limit: number) {
   return Buffer.concat(chunks).toString('utf8')
 }
 
+/** The only addresses `query` POSTs to: Klaviyo's report questions. */
+const reportPaths = /^\/api\/(campaign|flow)-values-reports\/?$/
+
 /** Waits at most this long inside one call for a short rate limit. */
 const shortWaitSeconds = 10
 /** A private API key, and nothing else, ever goes into the header. */
@@ -190,6 +194,11 @@ export type KlaviyoClient = {
     body: Record<string, unknown> | null,
     scope: KlaviyoScope
   ): Promise<unknown>
+  /**
+   * A report query (Klaviyo's reporting endpoints take a POST with the
+   * question in the body; nothing is written): `path` on Klaviyo's host.
+   */
+  query(path: string, body: unknown, scope: KlaviyoScope): Promise<unknown>
 }
 
 /**
@@ -308,6 +317,20 @@ export function klaviyoClient(
       return send(url, scope, {
         method,
         body: body === null ? undefined : JSON.stringify(body)
+      })
+    },
+    query: async (path, body, scope) => {
+      // Only Klaviyo's report questions (drafts are changed by write).
+      const url = new URL(path, klaviyoHost)
+      if (
+        !reportPaths.test(url.pathname) ||
+        body === undefined ||
+        body === null
+      )
+        throw new KlaviyoError('rejected', { endpoint: url.pathname })
+      return send(url, scope, {
+        method: 'POST',
+        body: JSON.stringify(body)
       })
     }
   }

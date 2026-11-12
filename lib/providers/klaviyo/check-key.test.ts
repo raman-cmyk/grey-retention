@@ -115,7 +115,8 @@ describe('probeKlaviyoKey', () => {
       '/api/metrics': { maxPage: null, fields: ['name'] },
       '/api/segments': { maxPage: 10, fields: ['name'] },
       '/api/templates': { maxPage: 10, fields: ['name'] },
-      '/api/images': { maxPage: 100, fields: ['name'] }
+      '/api/images': { maxPage: 100, fields: ['name'] },
+      '/api/flows': { maxPage: 50, fields: ['name'] }
     }
     for (const probe of Object.values(probes)) {
       const url = new URL(probe, 'https://a.klaviyo.com')

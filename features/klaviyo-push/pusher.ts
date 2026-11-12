@@ -225,7 +225,8 @@ function timed(
     write: (method, path, body, scope) => (
       check(),
       client.write(method, path, body, scope)
-    )
+    ),
+    query: (path, body, scope) => (check(), client.query(path, body, scope))
   }
 }
 

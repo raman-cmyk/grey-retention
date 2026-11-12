@@ -296,7 +296,7 @@ describe('connectKlaviyo with live Klaviyo (KLV-001)', () => {
     )
     expect(result.message).toMatch(/^Klaviyo connected: Cedar Goods\./)
     // One read-only GET per scope, only to Klaviyo, never following a redirect.
-    expect(sent).toHaveLength(9)
+    expect(sent).toHaveLength(10)
     for (const { url, init } of sent) {
       expect(url.startsWith('https://a.klaviyo.com/api/')).toBe(true)
       expect(init).toMatchObject({ method: 'GET', redirect: 'error' })
@@ -322,7 +322,7 @@ describe('connectKlaviyo with live Klaviyo (KLV-001)', () => {
     expect((await connectKlaviyo({}, form({ apiKey: key }))).error).toMatch(
       /slow down/
     )
-    expect(sent).toHaveLength(9)
+    expect(sent).toHaveLength(10)
     expect(rpc).not.toHaveBeenCalledWith(
       'connect_klaviyo_live',
       expect.anything()

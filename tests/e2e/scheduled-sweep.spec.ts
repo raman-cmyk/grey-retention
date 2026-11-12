@@ -790,3 +790,95 @@ test('ONB-102 the owner starts a catalog read and the readers run stores the cle
     ).data
   ).toEqual([])
 })
+
+test('ONB-103 the owner starts a history read and the readers run stores what the sample account sent', async ({
+  request
+}) => {
+  requireLocal()
+  const accounts = localAccounts()
+  const secret = localSecret()
+  const owner = await signIn(accounts.owner!.email, accounts.owner!.password)
+  expect(
+    (
+      await owner.db.rpc('set_fixture_connection', {
+        t: owner.tenant,
+        provider: 'klaviyo',
+        status: 'connected'
+      })
+    ).error
+  ).toBeNull()
+  const started = await owner.db.rpc('start_history_reading', {
+    t: owner.tenant
+  })
+  expect(started.error).toBeNull()
+  // The sweep never takes a history read; the readers' run does.
+  await drain(request, secret)
+  const waiting = await serviceClient()
+    .from('job_runs')
+    .select('status')
+    .eq('id', started.data as string)
+    .single()
+  expect(waiting.data).toEqual({ status: 'queued' })
+  const ran = await request.get('/api/internal/onboarding/readers', {
+    headers: { authorization: `Bearer ${secret}` }
+  })
+  expect(ran.status()).toBe(200)
+  expect(await ran.json()).toMatchObject({ state: 'done', failed: 0 })
+  const job = await serviceClient()
+    .from('job_runs')
+    .select('status,checkpoint')
+    .eq('id', started.data as string)
+    .single()
+  expect(job.data).toMatchObject({
+    status: 'succeeded',
+    checkpoint: { state: 'ready', sent: 10, scheduled: 2, live: false }
+  })
+  // The sample account's history: what it sent, what is scheduled, flows
+  // and audiences, read by the owner.
+  const history = await owner.db
+    .from('klaviyo_history')
+    .select('state,sent,scheduled,flows,audiences,flows_read,live,snapshot')
+    .eq('tenant_id', owner.tenant)
+    .single()
+  expect(history.error).toBeNull()
+  expect(history.data).toMatchObject({
+    state: 'ready',
+    sent: 10,
+    scheduled: 2,
+    flows: 3,
+    audiences: 5,
+    flows_read: true,
+    live: false
+  })
+  const snapshot = history.data!.snapshot as {
+    sent: { subject: string | null }[]
+    scheduled: { audienceIds: string[] }[]
+  }
+  expect(snapshot.sent[0]!.subject).toBe('New: the Field Overshirt in sand')
+  expect(snapshot.scheduled.map((s) => s.audienceIds)).toEqual([
+    ['SegEng90'],
+    ['SegVIP']
+  ])
+  const findings = await owner.db
+    .from('brand_findings')
+    .select('topic,pass')
+    .eq('tenant_id', owner.tenant)
+    .eq('source', 'klaviyo_history')
+    .is('superseded_at', null)
+  expect(findings.data!.map((f) => f.topic).sort()).toEqual([
+    'audience',
+    'performance',
+    'performance'
+  ])
+  expect(findings.data!.every((f) => f.pass === 'sample')).toBe(true)
+  // Another workspace reads none of it.
+  const other = await signIn(accounts.other!.email, accounts.other!.password)
+  expect(
+    (
+      await other.db
+        .from('klaviyo_history')
+        .select('state')
+        .eq('tenant_id', owner.tenant)
+    ).data
+  ).toEqual([])
+})
