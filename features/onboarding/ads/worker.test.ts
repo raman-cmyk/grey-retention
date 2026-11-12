@@ -336,6 +336,34 @@ describe('readBrandAds', () => {
     })
   })
 
+  it('tries again on an AI outage, and on the last try stores what code counts', async () => {
+    const ads = sampleAds('cedar-lane.example')
+    const outage = askWith({ ok: false, code: 'rate_limited' })
+    const first = database()
+    await expect(
+      readBrandAds(first.db, jobFor(), {
+        library: () => library({ ok: true, ads }),
+        askFor: () => outage
+      })
+    ).rejects.toMatchObject({ name: 'TagError' })
+    expect(first.calls).toEqual([])
+    const last = database()
+    const run = await readBrandAds(
+      last.db,
+      jobFor('cedar-lane.example', 'sample', 4),
+      { library: () => library({ ok: true, ads }), askFor: () => outage }
+    )
+    expect(run.analysis).toBe('skipped')
+    expect(recorded(last.calls).summary).toEqual({
+      state: 'ready',
+      analysis: 'skipped'
+    })
+    expect(recorded(last.calls).findings.length).toBeGreaterThan(0)
+    expect(recorded(last.calls).findings.every((f) => f.pass === 'code')).toBe(
+      true
+    )
+  })
+
   it('fails the job when the findings cannot be stored', async () => {
     const { db } = database({ code: 'PT409' })
     await expect(
