@@ -7228,6 +7228,17 @@ export type Database = {
         Args: { actual: number; reservation: string; t: string }
         Returns: undefined
       }
+      record_ad_findings: {
+        Args: {
+          ads: Json
+          findings: Json
+          job: string
+          lease: string
+          live: boolean
+          summary: Json
+        }
+        Returns: Json
+      }
       record_agent_run: { Args: { run: Json }; Returns: string }
       record_asset_upload: {
         Args: {
@@ -7751,6 +7762,7 @@ export type Database = {
       }
       site_readings_waiting: { Args: never; Returns: number }
       source_readings_waiting: { Args: never; Returns: number }
+      start_ads_reading: { Args: { t: string }; Returns: string }
       start_catalog_reading: { Args: { t: string }; Returns: string }
       start_history_reading: { Args: { t: string }; Returns: string }
       start_site_reading: { Args: { t: string }; Returns: string }
