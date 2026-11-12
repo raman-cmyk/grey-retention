@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderEmail } from '@/features/blocks/render'
 import { sampleBlocks, sampleBrand } from '@/features/blocks/samples'
-import { emailSections, linkKey, sectionOf } from './sections'
+import { emailSections, keptUrl, linkKey, sectionOf } from './sections'
 
 describe('the sections of an email we built', () => {
   it('reads each coded block in order with the links it holds', () => {
@@ -65,5 +65,17 @@ describe('the sections of an email we built', () => {
     expect(linkKey('http://shop.example/')).toBe('shop.example')
     expect(linkKey('{% unsubscribe %}')).toBeNull()
     expect(linkKey('javascript:alert(1)')).toBeNull()
+    // The account's own tracking parameters, when named.
+    expect(linkKey('https://shop.example/p?ref=nl&size=m', ['ref'])).toBe(
+      'shop.example/p?size=m'
+    )
+  })
+
+  it('never keeps the parameters that name the person who clicked', () => {
+    expect(
+      keptUrl('https://shop.example/p?_kx=person.abc&utm_source=klaviyo&_ke=x')
+    ).toBe('https://shop.example/p?utm_source=klaviyo')
+    expect(keptUrl('mailto:a@b.example')).toBeNull()
+    expect(keptUrl(`https://shop.example/${'x'.repeat(2_000)}`)).toBeNull()
   })
 })

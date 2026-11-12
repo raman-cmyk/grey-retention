@@ -3,12 +3,16 @@ import { describe, expect, it } from 'vitest'
 import { emailSections } from './sections'
 import {
   afterStatus,
+  cut,
   dayMs,
   designOf,
   hourMs,
+  pausedPatch,
+  pullDueAt,
   resultsPatch,
   sampleResults,
   sampleStatus,
+  sendTimeOf,
   statusOf,
   type ResultRow
 } from './sync'
@@ -38,6 +42,7 @@ const row = (over: Partial<ResultRow> = {}): ResultRow => ({
   clicks: [],
   results_at: null,
   complete: true,
+  context: {},
   final: false,
   paused: null,
   lease_token: 'lease',
@@ -55,7 +60,7 @@ const seen = (
 describe('a status check', () => {
   it('looks at a draft or a scheduled email again in an hour', () => {
     for (const s of ['draft', 'Scheduled', 'sending'])
-      expect(afterStatus(row(), seen(s), now)).toEqual({
+      expect(afterStatus(row(), seen(s), now)).toMatchObject({
         patch: {
           status: statusOf(s)!,
           next_check_at: iso(now + hourMs)
@@ -92,7 +97,8 @@ describe('a status check', () => {
         sent_at: iso(sentAt),
         next_check_at: iso(sentAt + dayMs)
       },
-      pullDue: false
+      pullDue: false,
+      dueAt: sentAt + dayMs
     })
     // A day on: the first read is due.
     const sent = row({ status: 'sent', sent_at: iso(sentAt) })
@@ -182,7 +188,8 @@ describe('a results read', () => {
         ],
         complete: true,
         templates,
-        sections
+        sections,
+        context: { reported: true }
       },
       now
     )
@@ -200,6 +207,7 @@ describe('a results read', () => {
       clicks: [
         {
           variation: 'VarB01',
+          design: 'B',
           url: 'https://shop.example/p/2?utm_source=klaviyo',
           section: 1,
           block: 'product_grid',
@@ -208,6 +216,7 @@ describe('a results read', () => {
         },
         {
           variation: 'VarB01',
+          design: 'B',
           url: 'https://manage.kmail-lists.com/u',
           section: null,
           block: null,
@@ -216,6 +225,7 @@ describe('a results read', () => {
         }
       ],
       complete: true,
+      context: { reported: true, abSplit: null },
       final: false,
       next_check_at: iso(Date.parse(sentAt) + 2 * dayMs)
     })
@@ -225,7 +235,14 @@ describe('a results read', () => {
     const patch = resultsPatch(
       row({ status: 'sent', sent_at: sentAt, pulls: 2 }),
       sentAt,
-      { results: [], clicks: [], complete: true, templates, sections },
+      {
+        results: [],
+        clicks: [],
+        complete: true,
+        templates,
+        sections,
+        context: {}
+      },
       now
     )
     expect(patch).toMatchObject({ pulls: 3, final: true })
@@ -254,6 +271,7 @@ describe('a synthetic brand’s sample draft', () => {
       found: true,
       status: 'draft',
       sendTime: '2026-11-18T18:00:00.000Z',
+      sendStrategy: 'static',
       changed: false
     })
     expect(sampleStatus(sample, now)).toMatchObject({
@@ -282,5 +300,160 @@ describe('a synthetic brand’s sample draft', () => {
       sampleResults({ ...sample, build_id: 'b2' }, sections).results[0]!
         .statistics.recipients
     ).not.toBe(days[0]!.results[0]!.statistics.recipients)
+  })
+})
+
+describe('what the database can keep', () => {
+  it('cuts text by whole characters, never half an emoji, never a control character', () => {
+    expect(cut(`${'x'.repeat(119)}😀`, 120)).toBe(`${'x'.repeat(119)}😀`)
+    expect(cut(`${'x'.repeat(119)}😀`, 119)).toBe('x'.repeat(119))
+    expect(cut('Design \uD83D A', 20)).toBe('Design � A')
+    expect(cut('Design\u0000A', 20)).toBe('Design A')
+  })
+
+  it('reads Klaviyo’s other ways of saying cancelled', () => {
+    expect(statusOf('Cancelled: No Recipients')).toBe('cancelled')
+    expect(statusOf('canceled')).toBe('cancelled')
+    expect(statusOf(null)).toBeNull()
+    expect(statusOf('Variations Sent')).toBeNull()
+  })
+
+  it('takes the send time from Klaviyo, or its earliest per-variation time, else when first seen', () => {
+    const built = now - 3 * dayMs
+    expect(sendTimeOf(seen('sent', iso(now - hourMs)), now, built)).toEqual({
+      at: now - hourMs,
+      from: 'send_time'
+    })
+    expect(
+      sendTimeOf(
+        { ...seen('sent', null), firstSendTime: iso(now - 2 * hourMs) },
+        now,
+        built
+      )
+    ).toEqual({ at: now - 2 * hourMs, from: 'send_times' })
+    // Ahead of now, or before the email was built: not believed.
+    for (const t of [iso(now + hourMs), iso(built - dayMs)])
+      expect(sendTimeOf(seen('sent', t), now, built)).toEqual({
+        at: now,
+        from: 'first_seen'
+      })
+  })
+
+  it('follows a send the owner scheduled later than planned', () => {
+    const old = row({ status: 'scheduled', planned: { date: '2026-11-01' } })
+    const at = Date.parse('2026-11-17T00:00:01Z')
+    expect(
+      afterStatus(old, seen('scheduled', '2026-11-20T09:00:00Z'), at).patch
+        .status
+    ).toBe('scheduled')
+    expect(
+      afterStatus(old, seen('scheduled', '2026-11-01T09:00:00Z'), at).patch
+        .status
+    ).toBe('stale')
+  })
+
+  it('reads results a day after the last read, whatever the send time', () => {
+    const r = row({
+      status: 'sent',
+      sent_at: iso(now - 5 * dayMs),
+      pulls: 1,
+      results_at: iso(now - 2 * hourMs)
+    })
+    expect(pullDueAt(r, r.sent_at!)).toBe(now - 2 * hourMs + dayMs)
+    expect(afterStatus(r, seen('sent'), now).pullDue).toBe(false)
+  })
+
+  it('ends a check there is no point in when Klaviyo cannot be read', () => {
+    expect(
+      pausedPatch(
+        row({ planned: { date: '2026-10-01' } }),
+        'klaviyo_off',
+        now,
+        hourMs
+      )
+    ).toEqual({
+      status: 'stale',
+      final: true,
+      paused: 'klaviyo_off',
+      next_check_at: iso(now)
+    })
+    expect(
+      pausedPatch(
+        row({ status: 'sent', sent_at: iso(now - 11 * dayMs) }),
+        'klaviyo_key_rejected',
+        now,
+        hourMs
+      )
+    ).toEqual({
+      final: true,
+      paused: 'klaviyo_key_rejected',
+      next_check_at: iso(now)
+    })
+    // Else back later, never more than a week on.
+    expect(pausedPatch(row(), 'rate_limited', now, 30 * dayMs)).toEqual({
+      paused: 'rate_limited',
+      next_check_at: iso(now + 7 * dayMs)
+    })
+  })
+
+  it('keeps clicks within what a row can hold, never the clicker’s own token', () => {
+    const many = Array.from({ length: 200 }, (_, i) => ({
+      variationId: 'VarA01',
+      url: `https://shop.example/${'p'.repeat(1_000)}/${i}?_kx=token.${i}`,
+      clicks: 1,
+      unique: 1
+    }))
+    const sentAt = iso(now - dayMs)
+    const patch = resultsPatch(
+      row({ status: 'sent', sent_at: sentAt }),
+      sentAt,
+      {
+        results: [],
+        clicks: many,
+        complete: true,
+        templates: [],
+        sections: [],
+        context: {}
+      },
+      now
+    )
+    expect(Buffer.byteLength(JSON.stringify(patch.clicks))).toBeLessThanOrEqual(
+      150_000
+    )
+    expect(patch.clicks!.length).toBeLessThan(200)
+    expect(patch.clicks!.some((c) => c.url.includes('_kx'))).toBe(false)
+    expect(patch.complete).toBe(false)
+  })
+
+  it('finds a click’s section with the account’s own tracking parameters left out', () => {
+    const sections = emailSections(
+      '<table><tr data-block="hero_product"><td><a href="https://shop.example/p/1">A</a></td></tr></table>'
+    )
+    const sentAt = iso(now - dayMs)
+    const patch = resultsPatch(
+      row({ status: 'sent', sent_at: sentAt }),
+      sentAt,
+      {
+        results: [],
+        clicks: [
+          {
+            variationId: 'VarA01',
+            url: 'https://shop.example/p/1?ref=newsletter&utm_source=klaviyo',
+            clicks: 3,
+            unique: 3
+          }
+        ],
+        complete: true,
+        templates: [],
+        sections,
+        trackingParams: ['ref'],
+        context: {}
+      },
+      now
+    )
+    expect(patch.clicks![0]).toMatchObject({
+      section: 0,
+      block: 'hero_product'
+    })
   })
 })

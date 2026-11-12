@@ -4357,6 +4357,7 @@ export type Database = {
           checked_at: string | null
           clicks: Json
           complete: boolean
+          context: Json
           created_at: string
           final: boolean
           lease_token: string | null
@@ -4383,6 +4384,7 @@ export type Database = {
           checked_at?: string | null
           clicks?: Json
           complete?: boolean
+          context?: Json
           created_at?: string
           final?: boolean
           lease_token?: string | null
@@ -4409,6 +4411,7 @@ export type Database = {
           checked_at?: string | null
           clicks?: Json
           complete?: boolean
+          context?: Json
           created_at?: string
           final?: boolean
           lease_token?: string | null
@@ -6860,6 +6863,7 @@ export type Database = {
           checked_at: string | null
           clicks: Json
           complete: boolean
+          context: Json
           created_at: string
           final: boolean
           lease_token: string | null

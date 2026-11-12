@@ -30,6 +30,8 @@ export type RecordedClick = {
   messageId: string
   variationId: string
   url: string
+  /** Klaviyo counted it as a bot's click. */
+  bot?: boolean
   /** Per day. */
   count: number[]
   unique: number[]
@@ -56,7 +58,13 @@ const groupings = new Set([
   'variation',
   'variation_name'
 ])
-const aggregateBy = new Set(['$message', '$variation', 'URL', 'Campaign Name'])
+const aggregateBy = new Set([
+  '$message',
+  '$variation',
+  'URL',
+  'Campaign Name',
+  'Bot Click'
+])
 const time =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
 const filterTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?$/
@@ -71,6 +79,13 @@ export function recordedResultsTransport(options: {
   more?: boolean
   /** Questions asked, as their parsed bodies. */
   asked?: { path: string; body: unknown }[]
+  /**
+   * What Klaviyo keys a click's `$message` by: the campaign message id (by
+   * default) or the campaign id (as some accounts report it).
+   */
+  clicksKeyedBy?: 'message' | 'campaign'
+  /** Report rows give the campaign id as their message id too. */
+  reportMessageIsCampaign?: boolean
 }): KlaviyoTransport {
   const metrics = [
     {
@@ -132,7 +147,9 @@ export function recordedResultsTransport(options: {
         .map((v) => ({
           groupings: {
             campaign_id: v.campaignId,
-            campaign_message_id: v.messageId,
+            campaign_message_id: options.reportMessageIsCampaign
+              ? v.campaignId
+              : v.messageId,
             ...(a.group_by.includes('variation')
               ? { variation: v.variationId }
               : {}),
@@ -175,8 +192,12 @@ export function recordedResultsTransport(options: {
         .map((f) => /^less-than\(datetime,(.+)\)$/.exec(f)?.[1])
         .find(Boolean)
       const message = filters
-        .map((f) => /^equals\(\$message,"([A-Za-z0-9]+)"\)$/.exec(f)?.[1])
+        .map((f) => /^equals\(\$message,"([A-Za-z0-9_-]+)"\)$/.exec(f)?.[1])
         .find(Boolean)
+      // Klaviyo's guide: one filter besides the date range.
+      const others = filters.filter(
+        (f) => !/^(?:greater-or-equal|less-than)\(datetime,/.test(f)
+      )
       if (
         body?.data?.type !== 'metric-aggregate' ||
         !metrics.some((m) => m.id === a?.metric_id) ||
@@ -191,14 +212,28 @@ export function recordedResultsTransport(options: {
         !to ||
         !filterTime.test(from) ||
         !filterTime.test(to) ||
-        !message
+        !message ||
+        others.length !== 1
       )
         return refused(400)
+      const keyOf = (c: RecordedClick) =>
+        options.clicksKeyedBy === 'campaign'
+          ? (options.variations ?? []).find((v) => v.messageId === c.messageId)
+              ?.campaignId
+          : c.messageId
       const rows = (options.clicks ?? [])
-        .filter((c) => c.messageId === message)
+        .filter((c) => keyOf(c) === message)
         .map((c) => ({
           dimensions: a.by.map((b: string) =>
-            b === '$variation' ? c.variationId : b === 'URL' ? c.url : null
+            b === '$variation'
+              ? c.variationId
+              : b === 'URL'
+                ? c.url
+                : b === 'Bot Click'
+                  ? c.bot
+                    ? 'true'
+                    : 'false'
+                  : null
           ),
           measurements: { count: c.count, unique: c.unique }
         }))
@@ -206,7 +241,8 @@ export function recordedResultsTransport(options: {
         data: {
           type: 'metric-aggregate',
           id: 'agg1',
-          attributes: { dates: [from], data: rows }
+          attributes: { dates: [from], data: rows },
+          links: { self: 'https://a.klaviyo.com/api/metric-aggregates' }
         },
         links: {
           next: options.more

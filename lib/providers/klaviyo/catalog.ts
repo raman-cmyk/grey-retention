@@ -336,7 +336,13 @@ export async function findStoreMetrics(
   return {
     placedOrder: pick('Placed Order'),
     viewedProduct: pick('Viewed Product'),
-    clickedEmail: pick('Clicked Email'),
+    // Klaviyo's own Clicked Email, never one another integration sends.
+    clickedEmail:
+      read.records.find(
+        (m) =>
+          m.attributes.name === 'Clicked Email' &&
+          (m.attributes.integration?.name ?? '').toLowerCase() === 'klaviyo'
+      )?.id ?? null,
     complete: read.complete && read.skipped === 0
   }
 }

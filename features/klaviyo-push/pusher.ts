@@ -1,6 +1,6 @@
 import 'server-only'
-import { createHash } from 'node:crypto'
 import { logger } from '@/lib/logger'
+import { fingerprints, norm, seen } from './fingerprints'
 import {
   KlaviyoError,
   type KlaviyoClient
@@ -196,19 +196,6 @@ function designsOf(input: DraftInput): Design[] {
   return [a, b]
 }
 
-/** Text as Klaviyo may keep it: trimmed, each run of spaces as one. */
-const norm = (s: string | null | undefined) =>
-  (s ?? '').trim().replace(/\s+/g, ' ')
-/** One variation's fingerprint: what a reader sees of it (subject, preview). */
-const seen = (v: { subject: string | null; preview: string | null }) =>
-  createHash('sha256')
-    .update(JSON.stringify([norm(v.subject), norm(v.preview)]))
-    .digest('hex')
-    .slice(0, 16)
-/** A draft's variations as one fingerprint list (LRN-001 compares it too). */
-export const fingerprints = (
-  vs: { subject: string | null; preview: string | null }[]
-) => [...new Set(vs.map(seen))].sort().join(',')
 const setOf = (s: string | null) => new Set(s ? s.split(',') : [])
 
 /** The client, refusing to start a request that might not end in time. */

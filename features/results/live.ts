@@ -28,7 +28,7 @@ export async function resultsSourceFor(
   if (!revisionOk(env)) return { kind: 'off', reason: 'klaviyo_revision' }
   const connection = await db
     .from('workspace_connections')
-    .select('mode,status')
+    .select('mode,status,account_currency')
     .eq('tenant_id', tenantId)
     .eq('provider', 'klaviyo')
     .maybeSingle()
@@ -41,9 +41,11 @@ export async function resultsSourceFor(
   const key = await db.rpc('klaviyo_api_key', { t: tenantId })
   if (key.error) throw key.error
   if (!key.data) return { kind: 'off', reason: 'klaviyo_no_key' }
+  const currency = connection.data.account_currency
   return {
     kind: 'live',
-    client: klaviyoClient(key.data, { maxWaits: 0, timeoutMs: klaviyoCallMs })
+    client: klaviyoClient(key.data, { maxWaits: 0, timeoutMs: klaviyoCallMs }),
+    currency: currency && /^[A-Z]{3}$/.test(currency) ? currency : null
   }
 }
 

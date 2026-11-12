@@ -28,14 +28,18 @@ export type EmailSection = {
 const maxSections = 60
 const blockName = /^[a-z][a-z_]{1,39}$/
 
+/** Parameters Klaviyo adds to a clicked link (tracking, the clicker's own). */
+const added = /^(?:utm_|_kx$|_ke$|kl_)/i
+
 /**
  * An address written one way, so the link we wrote and the one Klaviyo
  * recorded (with its tracking parameters added) compare equal: http(s)
- * only, host in small letters, no `utm_*` or Klaviyo parameters, no
- * fragment, no trailing slash; null for anything else (`mailto:`, a
- * Klaviyo tag such as `{% unsubscribe %}`).
+ * only, host in small letters, no `utm_*`, Klaviyo or account tracking
+ * parameters (`extra`, as the message names them), no fragment, no
+ * trailing slash; null for anything else (`mailto:`, a Klaviyo tag such
+ * as `{% unsubscribe %}`).
  */
-export function linkKey(url: string): string | null {
+export function linkKey(url: string, extra: string[] = []): string | null {
   let u: URL
   try {
     u = new URL(url.trim())
@@ -44,7 +48,7 @@ export function linkKey(url: string): string | null {
   }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
   for (const name of [...u.searchParams.keys()])
-    if (/^(?:utm_|_kx$|_ke$|kl_)/i.test(name)) u.searchParams.delete(name)
+    if (added.test(name) || extra.includes(name)) u.searchParams.delete(name)
   u.searchParams.sort()
   u.hash = ''
   const path = u.pathname.replace(/\/+$/, '')
@@ -81,15 +85,35 @@ export function emailSections(html: string): EmailSection[] {
 }
 
 /**
+ * A clicked address as it is kept: never with the parameters that name
+ * the person who clicked (Klaviyo's `_kx`, `_ke`); null for one that is
+ * not an http(s) address of at most 2,000 characters.
+ */
+export function keptUrl(url: string): string | null {
+  let u: URL
+  try {
+    u = new URL(url.trim())
+  } catch {
+    return null
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
+  for (const name of [...u.searchParams.keys()])
+    if (/^_k[xe]$/i.test(name)) u.searchParams.delete(name)
+  const kept = u.toString()
+  return kept.length <= 2_000 ? kept : null
+}
+
+/**
  * The section a clicked address came from: the one section that holds it;
  * none when no section does (Klaviyo's own links) or several do (the same
  * product linked twice: the click cannot be told apart).
  */
 export function sectionOf(
   sections: EmailSection[],
-  url: string
+  url: string,
+  extra: string[] = []
 ): { section: number; block: string } | null {
-  const key = linkKey(url)
+  const key = linkKey(url, extra)
   if (!key) return null
   const holding = sections.filter((s) => s.links.includes(key))
   return holding.length === 1

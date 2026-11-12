@@ -12,7 +12,8 @@ import { reportRows } from './history'
  * campaign of an account (at most 100).
  */
 
-const kid = /^[A-Za-z0-9]{1,64}$/
+/** Klaviyo's ids (as PSH-001 stores them). */
+const kid = /^[A-Za-z0-9_-]{1,64}$/
 const invalid = (endpoint: string) =>
   new KlaviyoError('invalid_response', { endpoint })
 
@@ -153,17 +154,23 @@ const total = (values: (number | null)[] | undefined) =>
     0
   )
 
+/** Klaviyo's `Bot Click` dimension says yes. */
+const isBot = (v: string | null | undefined) =>
+  /^(?:true|yes|1)$/i.test((v ?? '').trim())
+
 /**
- * One email message's link clicks from `from` to `to`, per variation and
- * address (Klaviyo's Clicked Email metric). Addresses longer than 2,000
- * characters and rows beyond `maxLinkRows` are left out.
+ * One email's link clicks from `from` to `to`, per variation and address
+ * (Klaviyo's Clicked Email metric, by its `$message`: the campaign message
+ * id, or the campaign id where Klaviyo keys it so). Clicks Klaviyo counts
+ * as a bot's are left out (and counted), as are addresses longer than
+ * 2,000 characters and rows beyond `maxLinkRows`.
  */
 export async function readLinkClicks(
   client: KlaviyoClient,
   clickedMetricId: string,
   messageId: string,
   window: { from: Date; to: Date }
-): Promise<{ rows: LinkClicks[]; complete: boolean }> {
+): Promise<{ rows: LinkClicks[]; complete: boolean; bots: number }> {
   if (
     !kid.test(clickedMetricId) ||
     !kid.test(messageId) ||
@@ -180,7 +187,7 @@ export async function readLinkClicks(
             metric_id: clickedMetricId,
             measurements: ['count', 'unique'],
             interval: 'day',
-            by: ['$variation', 'URL'],
+            by: ['$variation', 'URL', 'Bot Click'],
             filter: [
               `greater-or-equal(datetime,${filterTime(window.from)})`,
               `less-than(datetime,${filterTime(window.to)})`,
@@ -197,8 +204,13 @@ export async function readLinkClicks(
   if (!parsed.success) throw invalid(metricAggregatesPath)
   const rows: LinkClicks[] = []
   let complete = !parsed.data.links?.next
+  let bots = 0
   for (const r of parsed.data.data.attributes.data) {
-    const [variation, url] = r.dimensions
+    const [variation, url, bot] = r.dimensions
+    if (isBot(bot)) {
+      bots += Math.round(total(r.measurements.count))
+      continue
+    }
     if (!url || url.length > 2_000) continue
     if (rows.length >= maxLinkRows) {
       complete = false
@@ -211,5 +223,5 @@ export async function readLinkClicks(
       unique: Math.round(total(r.measurements.unique))
     })
   }
-  return { rows, complete }
+  return { rows, complete, bots }
 }

@@ -274,7 +274,8 @@ describe('the link clicks of one email, against recorded answers', () => {
           unique: 4
         }
       ],
-      complete: true
+      complete: true,
+      bots: 0
     })
     expect(asked[0]).toEqual({
       path: '/api/metric-aggregates',
@@ -285,7 +286,7 @@ describe('the link clicks of one email, against recorded answers', () => {
             metric_id: 'ClkEml',
             measurements: ['count', 'unique'],
             interval: 'day',
-            by: ['$variation', 'URL'],
+            by: ['$variation', 'URL', 'Bot Click'],
             filter: [
               'greater-or-equal(datetime,2026-11-01T00:00:00)',
               'less-than(datetime,2026-11-05T00:00:00)',
@@ -321,6 +322,24 @@ describe('the link clicks of one email, against recorded answers', () => {
     expect(read.complete).toBe(false)
   })
 
+  it('leaves out and counts the clicks Klaviyo says were a bot’s, and takes ids as PSH-001 stores them', async () => {
+    const read = await readLinkClicks(
+      client(
+        recordedResultsTransport({
+          clicks: [
+            { ...clicks[0]!, messageId: 'Msg_R-01' },
+            { ...clicks[1]!, messageId: 'Msg_R-01', bot: true }
+          ]
+        })
+      ),
+      'ClkEml',
+      'Msg_R-01',
+      window
+    )
+    expect(read.rows.map((r) => r.url)).toEqual([clicks[0]!.url])
+    expect(read.bots).toBe(4)
+  })
+
   it('never asks for an id that is not one', async () => {
     const transport = vi.fn(recordedResultsTransport({ clicks }))
     for (const call of [
@@ -337,6 +356,34 @@ describe('the reads LRN-001 shares', () => {
     expect(
       await findStoreMetrics(client(recordedResultsTransport({})), () => true)
     ).toMatchObject({ placedOrder: 'PlcdOr', clickedEmail: 'ClkEml' })
+  })
+
+  it('takes Klaviyo’s own Clicked Email, never one another integration sends', async () => {
+    const metrics =
+      (list: unknown[]): KlaviyoTransport =>
+      async () => ({
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ data: list, links: { next: null } })
+      })
+    const other = {
+      type: 'metric',
+      id: 'OthClk',
+      attributes: { name: 'Clicked Email', integration: { name: 'Zapier' } }
+    }
+    const own = {
+      type: 'metric',
+      id: 'ClkEml',
+      attributes: { name: 'Clicked Email', integration: { name: 'Klaviyo' } }
+    }
+    expect(
+      (await findStoreMetrics(client(metrics([other, own])), () => true))
+        .clickedEmail
+    ).toBe('ClkEml')
+    expect(
+      (await findStoreMetrics(client(metrics([other])), () => true))
+        .clickedEmail
+    ).toBeNull()
   })
 
   it('reads a draft’s send time once Klaviyo has one', async () => {

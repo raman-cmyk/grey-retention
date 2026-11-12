@@ -2,7 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
-import { fingerprints } from '@/features/klaviyo-push/pusher'
+import { fingerprints } from '@/features/klaviyo-push/fingerprints'
 import { findStoreMetrics } from '@/lib/providers/klaviyo/catalog'
 import {
   KlaviyoError,
@@ -16,15 +16,20 @@ import {
   type LinkClicks,
   type VariationResult
 } from '@/lib/providers/klaviyo/results'
-import { emailSections, type EmailSection } from './sections'
+import { emailSections } from './sections'
 import {
   afterStatus,
+  attributionMs,
   dayMs,
   hourMs,
   pauseMs,
+  pausedPatch,
+  reportGraceMs,
   resultsPatch,
   sampleResults,
   sampleStatus,
+  sendTimeOf,
+  type ReadContext,
   type ResultPatch,
   type ResultRow,
   type StatusRead
@@ -33,32 +38,41 @@ import {
 type Db = SupabaseClient<Database>
 
 /**
- * Where a workspace's pushed emails are read: its live Klaviyo account, or
- * nowhere for now (logged and looked at again later, D16).
+ * Where a workspace's pushed emails are read: its live Klaviyo account
+ * (with its currency, when KLV-001 read it), or nowhere for now (logged
+ * and looked at again later, D16).
  */
 export type ResultsSource =
-  { kind: 'live'; client: KlaviyoClient } | { kind: 'off'; reason: string }
+  | { kind: 'live'; client: KlaviyoClient; currency: string | null }
+  | { kind: 'off'; reason: string }
 
 export type ResultsRun = {
-  state: 'done' | 'failed'
+  state: 'done'
   /** Emails looked at and saved. */
   checked: number
   /** Results reads saved. */
   pulled: number
-  /** Checks that could not read Klaviyo (put back for later). */
+  /** Checks that could not read Klaviyo (put back for later, or ended). */
   paused: number
-  /** Workspaces left for the next run (out of time). */
+  /** Checks left for the next run (out of time). */
   deferred: number
-  code?: string
+  /** Checks whose outcome could not be saved (logged; tried next run). */
+  failed: number
 }
 
-/** Checks claimed per run, and the most one run starts. */
+/** Checks claimed at a time, and claims per run at most. */
 export const resultsBatch = 40
-/** No new workspace is started after this much of the run. */
+export const maxClaims = 5
+/** No new claim, workspace or Klaviyo request starts after this much of the run. */
 export const resultsBudgetMs = 35_000
+/** Klaviyo requests kept back in a workspace for its results questions. */
+const resultsReserve = 4
+/** The least time between two click questions (Klaviyo allows 3 a second). */
+export const clickGapMs = 350
 
 type Context = {
   html: string
+  builtAt: number
   templates: { approach?: unknown; variation?: unknown; deleted?: unknown }[]
   written: string | null
 }
@@ -70,7 +84,7 @@ async function contexts(
 ): Promise<Map<string, Context>> {
   const builds = await db
     .from('email_builds')
-    .select('id,push_key,email')
+    .select('id,push_key,created_at,html:email->>html')
     .in(
       'id',
       rows.map((r) => r.build_id)
@@ -90,9 +104,11 @@ async function contexts(
     const push = pushes.data?.find(
       (p) => p.push_key === build?.push_key && p.tenant_id === row.tenant_id
     )
-    const html = (build?.email as { html?: unknown } | null)?.html
+    const html = (build as { html?: unknown } | undefined)?.html
+    const builtAt = Date.parse(build?.created_at ?? row.created_at)
     found.set(row.build_id, {
       html: typeof html === 'string' ? html : '',
+      builtAt: Number.isFinite(builtAt) ? builtAt : Date.parse(row.created_at),
       templates: Array.isArray(push?.templates)
         ? (push.templates as Context['templates'])
         : [],
@@ -119,43 +135,55 @@ const waitFor = (reason: string, error?: KlaviyoError) =>
         pauseMs.rate_limited,
         (error?.details.retryAfterSeconds ?? 60) * 1000
       )
-    : reason === 'klaviyo_unavailable'
-      ? pauseMs.klaviyo_unavailable
-      : reason === 'klaviyo_answer'
-        ? pauseMs.klaviyo_answer
-        : pauseMs.default
+    : reason in pauseMs
+      ? pauseMs[reason as keyof typeof pauseMs]
+      : pauseMs.default
 
-/** A failure that stops every check of the workspace (not one email's). */
-const stopsAccount = (reason: string) => reason !== 'klaviyo_answer'
+/** A failure that stops every check of the account (not one email's). */
+const stopsAccount = (error: KlaviyoError) =>
+  pauseOf(error) !== 'klaviyo_answer'
 
+class TimeUp extends Error {
+  constructor() {
+    super('time_up')
+  }
+}
+
+const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms))
+
+/**
+ * The hourly results run: claims due checks (again while time is left),
+ * and for each workspace looks at its emails in Klaviyo (a synthetic
+ * brand's sample drafts in code), then asks for the due results at once.
+ * One check that cannot be saved is logged and left for the next run;
+ * it never stops the others.
+ */
 export async function runEmailResults(
   db: Db,
   deps: {
     sourceFor: (tenantId: string) => Promise<ResultsSource>
     now?: () => number
-    /** No new workspace or Klaviyo request starts past this time. */
+    /** No new claim, workspace or Klaviyo request starts past this time. */
     deadline: number
     /** The longest one Klaviyo request may take. */
     callMs?: number
     limit?: number
+    wait?: (ms: number) => Promise<void>
   }
 ): Promise<ResultsRun> {
   const now = deps.now ?? Date.now
   const callMs = deps.callMs ?? 6_000
+  const wait = deps.wait ?? sleep
   const run: ResultsRun = {
     state: 'done',
     checked: 0,
     pulled: 0,
     paused: 0,
-    deferred: 0
+    deferred: 0,
+    failed: 0
   }
-  const claimed = await db.rpc('claim_klaviyo_results', {
-    lim: deps.limit ?? resultsBatch
-  })
-  if (claimed.error) throw claimed.error
-  const rows = (claimed.data ?? []) as ResultRow[]
-  if (!rows.length) return run
-  const context = await contexts(db, rows)
+  let context = new Map<string, Context>()
+
   const save = async (row: ResultRow, patch: ResultPatch) => {
     const saved = await db.rpc('save_klaviyo_result', {
       build: row.build_id,
@@ -163,81 +191,117 @@ export async function runEmailResults(
       patch: patch as unknown as Json
     })
     if (saved.error) {
-      // A lease that ran out: the next run looks at it again.
-      if (saved.error.code === 'PT409') {
-        logger.warn('Email result not saved', { code: 'lease_lost' })
-        return false
-      }
-      throw saved.error
+      // Logged and left: its lease runs out and the next run looks again.
+      run.failed++
+      logger.warn('Email result not saved', {
+        code:
+          saved.error.code === 'PT409'
+            ? 'lease_lost'
+            : (saved.error.code ?? 'save_failed')
+      })
+      return false
     }
     run.checked++
     if (patch.pulls !== undefined && patch.pulls > row.pulls) run.pulled++
     if (patch.paused) run.paused++
     return true
   }
-  const pause = (row: ResultRow, reason: string, error?: KlaviyoError) =>
-    save(row, {
-      paused: reason,
-      next_check_at: new Date(now() + waitFor(reason, error)).toISOString()
-    })
+  const pause = (
+    row: ResultRow,
+    reason: string,
+    error?: KlaviyoError,
+    patch?: ResultPatch
+  ) => save(row, pausedPatch(row, reason, now(), waitFor(reason, error), patch))
 
-  const tenants = [...new Set(rows.map((r) => r.tenant_id))]
-  for (const tenantId of tenants) {
-    const own = rows.filter((r) => r.tenant_id === tenantId)
-    if (now() >= deps.deadline) {
-      // Left leased: picked up again once the lease runs out.
-      run.deferred++
-      continue
+  for (let claims = 0; claims < maxClaims; claims++) {
+    if (now() + callMs > deps.deadline) break
+    const claimed = await db.rpc('claim_klaviyo_results', {
+      lim: deps.limit ?? resultsBatch
+    })
+    if (claimed.error) throw claimed.error
+    const rows = (claimed.data ?? []) as ResultRow[]
+    if (!rows.length) break
+    context = await contexts(db, rows)
+    for (const tenantId of [...new Set(rows.map((r) => r.tenant_id))]) {
+      const own = rows.filter((r) => r.tenant_id === tenantId)
+      if (now() >= deps.deadline) {
+        // Left leased: picked up again once the lease runs out.
+        run.deferred += own.length
+        continue
+      }
+      for (const row of own.filter((r) => r.sample)) await readSample(row)
+      const live = own.filter((r) => !r.sample)
+      if (!live.length) continue
+      const source = await deps.sourceFor(tenantId)
+      if (source.kind === 'off') {
+        logger.info('Email results not read', { reason: source.reason })
+        for (const row of live) await pause(row, source.reason)
+        continue
+      }
+      await readLive(source, live)
     }
-    // A synthetic brand's sample drafts: no Klaviyo call.
-    for (const row of own.filter((r) => r.sample)) {
-      const t = now()
-      const sections = emailSections(context.get(row.build_id)!.html)
-      const checked = afterStatus(row, sampleStatus(row, t), t)
-      const sentAt = checked.patch.sent_at ?? row.sent_at
-      const patch =
-        checked.pullDue && sentAt
-          ? {
-              ...checked.patch,
-              ...resultsPatch(
-                row,
-                sentAt,
-                {
-                  ...sampleResults(row, sections),
-                  templates: [],
-                  sections
-                },
-                t
-              )
-            }
-          : checked.patch
-      await save(row, patch)
-    }
-    const live = own.filter((r) => !r.sample)
-    if (!live.length) continue
-    const source = await deps.sourceFor(tenantId)
-    if (source.kind === 'off') {
-      logger.info('Email results not read', { reason: source.reason })
-      for (const row of live) await pause(row, source.reason)
-      continue
-    }
-    await readLive(source.client, live)
+    if (rows.length < (deps.limit ?? resultsBatch)) break
   }
   return run
 
+  /** A synthetic brand's sample draft: no Klaviyo call. */
+  async function readSample(row: ResultRow) {
+    const t = now()
+    const ctx = context.get(row.build_id)!
+    const sections = emailSections(ctx.html)
+    const read = sampleStatus(row, t)
+    const checked = afterStatus(row, read, t, ctx.builtAt)
+    const sentAt = checked.patch.sent_at ?? row.sent_at
+    if (!checked.pullDue || !sentAt) return save(row, checked.patch)
+    const sample = sampleResults(row, sections)
+    return save(row, {
+      ...checked.patch,
+      ...resultsPatch(
+        row,
+        sentAt,
+        {
+          ...sample,
+          templates: [],
+          sections,
+          context: {
+            conversion: 'placed_order',
+            attributionOpen: t < Date.parse(sentAt) + attributionMs,
+            sendStrategy: 'static',
+            sentAtFrom: 'send_time',
+            clicksBy: 'message',
+            botsLeftOut: 0,
+            reported: true
+          }
+        },
+        t
+      )
+    })
+  }
+
   /** One workspace's live emails: each one's status, then the due results at once. */
-  async function readLive(client: KlaviyoClient, live: ResultRow[]) {
+  async function readLive(
+    source: Extract<ResultsSource, { kind: 'live' }>,
+    live: ResultRow[]
+  ) {
+    const client = source.client
     const done = new Set<string>()
-    const timed = <T>(call: () => Promise<T>) => {
-      if (now() + callMs > deps.deadline) throw new TimeUp()
+    const timed = <T>(call: () => Promise<T>, reserve = 0) => {
+      if (now() + callMs * (1 + reserve) > deps.deadline) throw new TimeUp()
       return call()
     }
-    const stop = async (error: unknown) => {
-      if (error instanceof TimeUp) {
-        run.deferred++
-        return
-      }
-      if (!(error instanceof KlaviyoError)) throw error
+    type Due = {
+      row: ResultRow
+      patch: ResultPatch
+      sentAt: string
+      dueAt: number
+      read: Extract<StatusRead, { found: true }>
+      trackingParams: string[]
+    }
+    const due: Due[] = []
+    const patchOf = (row: ResultRow) =>
+      due.find((d) => d.row.build_id === row.build_id)?.patch
+    /** Every check of the account not saved yet, put back with what was seen. */
+    const stopAll = async (error: KlaviyoError) => {
       const reason = pauseOf(error)
       logger.warn('Email results paused', {
         reason,
@@ -248,30 +312,53 @@ export async function runEmailResults(
       for (const row of live)
         if (!done.has(row.build_id)) {
           done.add(row.build_id)
-          await pause(row, reason, error)
+          await pause(row, reason, error, patchOf(row))
         }
     }
-    const due: { row: ResultRow; patch: ResultPatch; sentAt: string }[] = []
+    /** A read saved without parts Klaviyo did not give (they wait no longer). */
+    const saveDue = async (
+      d: Due,
+      results: VariationResult[],
+      clicks: LinkClicks[],
+      complete: boolean,
+      readContext: ReadContext
+    ) => {
+      const ctx = context.get(d.row.build_id)!
+      done.add(d.row.build_id)
+      await save(d.row, {
+        ...d.patch,
+        ...resultsPatch(
+          d.row,
+          d.sentAt,
+          {
+            results,
+            clicks,
+            complete,
+            templates: ctx.templates,
+            sections: emailSections(ctx.html),
+            trackingParams: d.trackingParams,
+            context: readContext
+          },
+          now()
+        )
+      })
+    }
+    // Sent emails first: their results are what is due.
+    const ordered = [...live].sort(
+      (a, b) => Number(b.status === 'sent') - Number(a.status === 'sent')
+    )
     try {
-      for (const row of live) {
-        let read: StatusRead
+      for (const row of ordered) {
+        let draft: Awaited<ReturnType<typeof readDraft>>
         try {
-          const draft = await timed(() => readDraft(client, row.message_id!))
-          const written = context.get(row.build_id)!.written
-          read = draft
-            ? {
-                found: true,
-                status: draft.status,
-                sendTime: draft.sendTime,
-                changed:
-                  draft.campaignId !== row.campaign_id ||
-                  (written !== null &&
-                    fingerprints(draft.variations) !== written)
-              }
-            : { found: false }
+          // Time is kept back for the results questions.
+          draft = await timed(
+            () => readDraft(client, row.message_id!),
+            resultsReserve
+          )
         } catch (error) {
-          if (!(error instanceof KlaviyoError)) throw error
-          if (stopsAccount(pauseOf(error))) throw error
+          if (!(error instanceof KlaviyoError) || stopsAccount(error))
+            throw error
           // This email's answer only: logged, looked at again later.
           logger.warn('Email status unreadable', {
             endpoint: error.details.endpoint,
@@ -281,10 +368,31 @@ export async function runEmailResults(
           await pause(row, 'klaviyo_answer', error)
           continue
         }
-        const checked = afterStatus(row, read, now())
+        const ctx = context.get(row.build_id)!
+        const read: StatusRead = draft
+          ? {
+              found: true,
+              status: draft.status,
+              sendTime: draft.sendTime,
+              firstSendTime: draft.firstSendTime,
+              sendStrategy: draft.sendStrategy,
+              changed:
+                draft.campaignId !== row.campaign_id ||
+                (ctx.written !== null &&
+                  fingerprints(draft.variations) !== ctx.written)
+            }
+          : { found: false }
+        const checked = afterStatus(row, read, now(), ctx.builtAt)
         const sentAt = checked.patch.sent_at ?? row.sent_at
-        if (checked.pullDue && sentAt)
-          due.push({ row, patch: checked.patch, sentAt })
+        if (checked.pullDue && sentAt && read.found)
+          due.push({
+            row,
+            patch: checked.patch,
+            sentAt,
+            dueAt: checked.dueAt,
+            read,
+            trackingParams: draft?.trackingParams ?? []
+          })
         else {
           done.add(row.build_id)
           await save(row, checked.patch)
@@ -297,48 +405,134 @@ export async function runEmailResults(
       if (!metrics.placedOrder && !metrics.clickedEmail) {
         for (const d of due) {
           done.add(d.row.build_id)
-          await pause(d.row, 'klaviyo_no_metrics')
+          await pause(d.row, 'klaviyo_no_metrics', undefined, d.patch)
         }
         return
       }
       // Without a Placed Order metric the counts are read, never orders.
-      const conversion = metrics.placedOrder ?? metrics.clickedEmail!
-      const results: VariationResult[] = []
-      let complete = true
+      const conversion = metrics.placedOrder ? 'placed_order' : 'clicked_email'
+      const conversionId = metrics.placedOrder ?? metrics.clickedEmail!
+      const reportTo = new Date(now() + dayMs)
+      const reported = new Map<
+        string,
+        { rows: VariationResult[]; complete: boolean; from: Date }
+      >()
       for (let i = 0; i < due.length; i += maxReportCampaigns) {
         const part = due.slice(i, i + maxReportCampaigns)
-        const from = Math.min(...part.map((d) => Date.parse(d.sentAt))) - dayMs
-        const read = await timed(() =>
-          readCampaignResults(
-            client,
-            conversion,
-            [...new Set(part.map((d) => d.row.campaign_id))],
-            { from: new Date(from), to: new Date(now() + dayMs) }
-          )
+        const from = new Date(
+          Math.min(...part.map((d) => Date.parse(d.sentAt))) - dayMs
         )
-        results.push(...read.rows)
-        complete &&= read.complete
-      }
-      for (const d of due) {
-        let clicks: LinkClicks[] = []
-        let clicksComplete = true
-        if (metrics.clickedEmail) {
-          const read = await timed(() =>
-            readLinkClicks(client, metrics.clickedEmail!, d.row.message_id!, {
-              from: new Date(Date.parse(d.sentAt) - hourMs),
-              to: new Date(now() + hourMs)
-            })
+        let read: Awaited<ReturnType<typeof readCampaignResults>>
+        try {
+          read = await timed(() =>
+            readCampaignResults(
+              client,
+              conversionId,
+              [...new Set(part.map((d) => d.row.campaign_id))],
+              { from, to: reportTo }
+            )
           )
-          clicks = read.rows
-          clicksComplete = read.complete
+        } catch (error) {
+          if (!(error instanceof KlaviyoError) || stopsAccount(error))
+            throw error
+          // An answer we cannot read: these reads wait, at most half a day.
+          logger.warn('Email results report unreadable', {
+            endpoint: error.details.endpoint,
+            status: error.details.status ?? 0
+          })
+          for (const d of part) {
+            if (now() > d.dueAt + reportGraceMs)
+              await saveDue(d, [], [], false, {
+                conversion,
+                currency: source.currency,
+                reported: false
+              })
+            else {
+              done.add(d.row.build_id)
+              await pause(d.row, 'klaviyo_answer', error, d.patch)
+            }
+          }
+          continue
         }
-        const own = results
-          .filter(
-            (r) =>
-              r.campaignId === d.row.campaign_id &&
-              r.messageId === d.row.message_id
-          )
-          .map((r) =>
+        for (const d of part)
+          reported.set(d.row.build_id, {
+            // Matched on the campaign: Klaviyo may give its own id as the
+            // message's (our drafts have one message each).
+            rows: read.rows.filter((r) => r.campaignId === d.row.campaign_id),
+            complete: read.complete,
+            from
+          })
+      }
+      let clicksStopped = false
+      let lastClick = 0
+      for (const d of due) {
+        const report = reported.get(d.row.build_id)
+        if (!report) continue
+        // Not reported yet: waited for, at most half a day, then saved as not whole.
+        if (!report.rows.length && now() <= d.dueAt + reportGraceMs) {
+          done.add(d.row.build_id)
+          await pause(d.row, 'klaviyo_not_reported', undefined, d.patch)
+          continue
+        }
+        const clicksFrom = new Date(Date.parse(d.sentAt) - dayMs)
+        const clicksTo = new Date(now() + hourMs)
+        const clicked = report.rows.reduce(
+          (n, r) => n + (r.statistics.clicks_unique ?? 0),
+          0
+        )
+        let clicks: LinkClicks[] = []
+        let clicksComplete = !!metrics.clickedEmail && metrics.complete
+        let clicksBy: ReadContext['clicksBy'] = null
+        let bots = 0
+        if (metrics.clickedEmail && !clicksStopped) {
+          // By the message, else (none found though people clicked) by the campaign.
+          for (const [key, by] of [
+            [d.row.message_id!, 'message'],
+            [d.row.campaign_id, 'campaign']
+          ] as const) {
+            if (by === 'campaign' && (clicks.length || !clicked)) break
+            try {
+              const gap = lastClick + clickGapMs - now()
+              if (gap > 0) await wait(gap)
+              const read = await timed(() =>
+                readLinkClicks(client, metrics.clickedEmail!, key, {
+                  from: clicksFrom,
+                  to: clicksTo
+                })
+              )
+              lastClick = now()
+              clicks = read.rows
+              bots += read.bots
+              clicksComplete &&= read.complete
+              if (read.rows.length) clicksBy = by
+            } catch (error) {
+              if (
+                !(error instanceof KlaviyoError) &&
+                !(error instanceof TimeUp)
+              )
+                throw error
+              if (error instanceof TimeUp) {
+                // Out of time: the results stand, the clicks are not whole.
+                clicksStopped = true
+                clicksComplete = false
+                break
+              }
+              // The results stand; the clicks are not whole this time.
+              logger.warn('Email clicks unreadable', {
+                endpoint: error.details.endpoint,
+                status: error.details.status ?? 0
+              })
+              clicksComplete = false
+              if (error.kind === 'rate_limited' || stopsAccount(error))
+                clicksStopped = true
+              break
+            }
+          }
+          if (clicked > 0 && !clicks.length) clicksComplete = false
+        } else clicksComplete = false
+        await saveDue(
+          d,
+          report.rows.map((r) =>
             metrics.placedOrder
               ? r
               : {
@@ -351,34 +545,53 @@ export async function runEmailResults(
                     )
                   )
                 }
-          )
-        const ctx = context.get(d.row.build_id)!
-        const sections: EmailSection[] = emailSections(ctx.html)
-        done.add(d.row.build_id)
-        await save(d.row, {
-          ...d.patch,
-          ...resultsPatch(
-            d.row,
-            d.sentAt,
-            {
-              results: own,
-              clicks,
-              complete: complete && clicksComplete && !!metrics.placedOrder,
-              templates: ctx.templates,
-              sections
-            },
-            now()
-          )
-        })
+          ),
+          clicks,
+          report.complete &&
+            report.rows.length > 0 &&
+            clicksComplete &&
+            !!metrics.placedOrder,
+          {
+            reportFrom: report.from.toISOString(),
+            reportTo: reportTo.toISOString(),
+            clicksFrom: clicksFrom.toISOString(),
+            clicksTo: clicksTo.toISOString(),
+            currency: source.currency,
+            conversion,
+            attributionOpen: now() < Date.parse(d.sentAt) + attributionMs,
+            sendStrategy: d.read.sendStrategy ?? null,
+            sentAtFrom: d.row.sent_at
+              ? sentAtFromOf(d.read, d.row.sent_at)
+              : sendTimeOf(d.read, now(), context.get(d.row.build_id)!.builtAt)
+                  .from,
+            clicksBy,
+            botsLeftOut: Math.min(999_999_999, bots),
+            reported: report.rows.length > 0
+          }
+        )
       }
     } catch (error) {
-      await stop(error)
+      if (error instanceof TimeUp) {
+        // Left leased: the next run looks again.
+        run.deferred += live.filter((r) => !done.has(r.build_id)).length
+        return
+      }
+      if (!(error instanceof KlaviyoError)) throw error
+      await stopAll(error)
     }
   }
 }
 
-class TimeUp extends Error {
-  constructor() {
-    super('time_up')
-  }
+/** Where a send time saved earlier came from, as far as this read tells. */
+function sentAtFromOf(
+  read: Extract<StatusRead, { found: true }>,
+  sentAt: string
+): NonNullable<ReadContext['sentAtFrom']> {
+  const same = (t: string | null | undefined) =>
+    !!t && Date.parse(t) === Date.parse(sentAt)
+  return same(read.sendTime)
+    ? 'send_time'
+    : same(read.firstSendTime)
+      ? 'send_times'
+      : 'first_seen'
 }

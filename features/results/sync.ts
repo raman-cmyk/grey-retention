@@ -5,18 +5,43 @@ import type {
   ResultStatistic,
   VariationResult
 } from '@/lib/providers/klaviyo/results'
-import { sectionOf, type EmailSection } from './sections'
+import { keptUrl, sectionOf, type EmailSection } from './sections'
 
 /**
  * What one check of a pushed email means (LRN-001), as code with no
  * Klaviyo or database in it: the status Klaviyo shows, when the email is
- * next looked at, and its results once a day for three days after the send.
+ * next looked at, its results once a day for three days after the send,
+ * and when to stop trying.
  */
 
 export type ResultRow =
   Database['public']['Tables']['klaviyo_email_results']['Row']
 export type EmailStatus =
   'draft' | 'scheduled' | 'sending' | 'sent' | 'cancelled' | 'deleted' | 'stale'
+
+/** How a read was made (`save_klaviyo_result` checks each key). */
+export type ReadContext = {
+  reportFrom?: string
+  reportTo?: string
+  clicksFrom?: string
+  clicksTo?: string
+  /** The account's currency for `conversion_value`, when known. */
+  currency?: string | null
+  /** The metric orders were counted on (`clicked_email`: no orders). */
+  conversion?: 'placed_order' | 'clicked_email' | null
+  /** The read came before Klaviyo's 5-day attribution window closed. */
+  attributionOpen?: boolean
+  sendStrategy?: string | null
+  sentAtFrom?: 'send_time' | 'send_times' | 'first_seen'
+  /** Both of our designs were read apart (null: one design only). */
+  abSplit?: boolean | null
+  /** What Klaviyo keyed the clicks by (null: none found). */
+  clicksBy?: 'message' | 'campaign' | null
+  /** Clicks Klaviyo counted as bots' and left out. */
+  botsLeftOut?: number
+  /** The report had this campaign. */
+  reported?: boolean
+}
 
 /** What `save_klaviyo_result` takes. */
 export type ResultPatch = {
@@ -27,6 +52,7 @@ export type ResultPatch = {
   results?: StoredResult[]
   clicks?: StoredClick[]
   complete?: boolean
+  context?: ReadContext
   final?: boolean
   paused?: string | null
   next_check_at: string
@@ -39,10 +65,12 @@ export type StoredResult = {
 }
 export type StoredClick = {
   variation: string | null
+  design: 'A' | 'B' | null
   url: string
   section: number | null
   block: string | null
   clicks: number
+  /** Each day's unique clickers, added up (two days, counted twice). */
   unique: number
 }
 
@@ -52,15 +80,40 @@ export const dayMs = 24 * hourMs
 export const pullsAfterSend = 3
 /** A draft never sent is looked at until this many days after its day. */
 export const staleAfterDays = 14
+/** A sent email whose results cannot be read is given up on after this. */
+export const giveUpAfterMs = 10 * dayMs + hourMs
+/** Klaviyo's attribution window for orders (ONB-103 uses the same). */
+export const attributionMs = 5 * dayMs
+/** A due read Klaviyo has not reported is waited for this long. */
+export const reportGraceMs = 12 * hourMs
 /** How long a check waits after Klaviyo could not be read. */
 export const pauseMs = {
   rate_limited: 60_000,
   klaviyo_unavailable: hourMs,
   klaviyo_answer: hourMs,
-  default: 6 * hourMs
+  klaviyo_not_reported: hourMs,
+  default: 6 * hourMs,
+  /** Never longer (the database allows 8 days). */
+  most: 7 * dayMs
 }
 
 const iso = (ms: number) => new Date(ms).toISOString()
+
+/**
+ * At most `n` characters, never half of a character pair (an emoji), no
+ * control characters: text the database stores.
+ */
+export function cut(s: string, n: number) {
+  return Array.from(s.replace(/[\u0000-\u001f\u007f]/g, ' '))
+    .slice(0, n)
+    .join('')
+    .replace(
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+      '�'
+    )
+    .trim()
+}
+
 const statuses = new Set<EmailStatus>([
   'draft',
   'scheduled',
@@ -69,24 +122,39 @@ const statuses = new Set<EmailStatus>([
   'cancelled'
 ])
 
-/** Klaviyo's status as ours; null for one Klaviyo may add later. */
-export function statusOf(klaviyo: string): EmailStatus | null {
-  const s = klaviyo.toLowerCase() as EmailStatus
-  return statuses.has(s) ? s : null
+/**
+ * Klaviyo's status as ours ("Cancelled: No Recipients" is cancelled); null
+ * for one Klaviyo may add later.
+ */
+export function statusOf(
+  klaviyo: string | null | undefined
+): EmailStatus | null {
+  const s = (klaviyo ?? '').trim().toLowerCase()
+  if (/^cancel/.test(s)) return 'cancelled'
+  return statuses.has(s as EmailStatus) ? (s as EmailStatus) : null
 }
 
-/** The email's planned day (store time) is so long past that a draft is stale. */
-function longPast(row: ResultRow, now: number) {
-  const date = (row.planned as { date?: unknown }).date
-  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date))
-    return false
-  // A day's margin for the store's timezone (the database checks the same).
-  return Date.parse(`${date}T00:00:00Z`) + (staleAfterDays + 1) * dayMs < now
+/** A day so long past that an email planned for it (or due then) is stale. */
+function longPastDay(day: string | null | undefined, now: number) {
+  if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(day)) return false
+  // A day's margin for the store's timezone (the database checks it in UTC).
+  return (
+    Date.parse(`${day.slice(0, 10)}T00:00:00Z`) + (staleAfterDays + 1) * dayMs <
+    now
+  )
 }
+const plannedDay = (row: ResultRow) =>
+  (row.planned as { date?: unknown }).date as string | undefined
 
-/** When the next results read is due (a day after the send, then each day). */
-export const pullDueAt = (sentAt: string, pulls: number) =>
-  Date.parse(sentAt) + (pulls + 1) * dayMs
+/** When the next results read is due: a day after the send, then each day. */
+export function pullDueAt(row: ResultRow, sentAt: string) {
+  return Math.max(
+    Date.parse(sentAt) + (row.pulls + 1) * dayMs,
+    // And a day after the last read (taken up to 10 minutes early, as the
+    // database allows).
+    row.results_at ? Date.parse(row.results_at) + dayMs : 0
+  )
+}
 
 export type StatusRead =
   | { found: false }
@@ -95,6 +163,9 @@ export type StatusRead =
       status: string
       /** When Klaviyo sent (or will send) it, ISO. */
       sendTime: string | null
+      /** The earliest per-variation send time, when it gives no one time. */
+      firstSendTime?: string | null
+      sendStrategy?: string | null
       /** Its variations no longer match what we last wrote. */
       changed: boolean
     }
@@ -103,23 +174,48 @@ export type Checked = {
   patch: ResultPatch
   /** A results read is due now (sent, fewer than three reads). */
   pullDue: boolean
+  /** When it was (or is) due. */
+  dueAt: number
+}
+
+/** Where a sent email's send time comes from. */
+export function sendTimeOf(
+  read: StatusRead,
+  now: number,
+  builtAt: number
+): { at: number; from: 'send_time' | 'send_times' | 'first_seen' } {
+  if (!read.found) return { at: now, from: 'first_seen' }
+  for (const [value, from] of [
+    [read.sendTime, 'send_time'],
+    [read.firstSendTime, 'send_times']
+  ] as const) {
+    const at = value ? Date.parse(value) : NaN
+    // Klaviyo's time, never ahead of now nor before the email was built.
+    if (Number.isFinite(at) && at <= now && at >= builtAt - 30 * 60_000)
+      return { at, from }
+  }
+  return { at: now, from: 'first_seen' }
 }
 
 /**
  * The outcome of a status check. Nothing comes back from sent, cancelled
  * or deleted (a sent email Klaviyo still shows stays sent); a status
  * Klaviyo may add later keeps the one we had. A draft or a scheduled email
- * is looked at again in an hour; a draft long past its day is stale.
+ * is looked at again in an hour; one long past its day (and, scheduled,
+ * past its send time) is stale. A sent email's send time is Klaviyo's (or
+ * the earliest of its per-variation times), else when it was first seen.
  */
 export function afterStatus(
   row: ResultRow,
   read: StatusRead,
-  now: number
+  now: number,
+  builtAt: number = Date.parse(row.created_at)
 ): Checked {
   if (!read.found)
     return {
       patch: { status: 'deleted', final: true, next_check_at: iso(now) },
-      pullDue: false
+      pullDue: false,
+      dueAt: now
     }
   const seen = statusOf(read.status)
   const was = row.status as EmailStatus
@@ -130,25 +226,33 @@ export function afterStatus(
   if (status === 'cancelled')
     return {
       patch: { status, ...changed, final: true, next_check_at: iso(now) },
-      pullDue: false
+      pullDue: false,
+      dueAt: now
     }
   if (status === 'sent') {
-    const sendTime = read.sendTime ? Date.parse(read.sendTime) : NaN
-    const sentAt =
-      row.sent_at ??
-      iso(Number.isFinite(sendTime) ? Math.min(sendTime, now) : now)
-    const due = pullDueAt(sentAt, row.pulls)
+    const sentAt = row.sent_at ?? iso(sendTimeOf(read, now, builtAt).at)
+    const dueAt = pullDueAt(row, sentAt)
     return {
       patch: {
         status,
         ...changed,
         ...(row.sent_at ? {} : { sent_at: sentAt }),
-        next_check_at: iso(Math.max(due, now))
+        next_check_at: iso(Math.min(Math.max(dueAt, now), now + pauseMs.most))
       },
-      pullDue: row.pulls < pullsAfterSend && due <= now + 10 * 60_000
+      pullDue: row.pulls < pullsAfterSend && dueAt <= now + 10 * 60_000,
+      dueAt
     }
   }
-  if ((status === 'draft' || status === 'scheduled') && longPast(row, now))
+  const laterSend =
+    status === 'scheduled' &&
+    !!read.sendTime &&
+    !longPastDay(read.sendTime, now)
+  if (
+    (status === 'draft' || status === 'scheduled') &&
+    longPastDay(plannedDay(row), now) &&
+    // A send the owner scheduled later than planned is still followed.
+    !laterSend
+  )
     return {
       patch: {
         status: 'stale',
@@ -156,17 +260,56 @@ export function afterStatus(
         final: true,
         next_check_at: iso(now)
       },
-      pullDue: false
+      pullDue: false,
+      dueAt: now
     }
   return {
     patch: { status, ...changed, next_check_at: iso(now + hourMs) },
-    pullDue: false
+    pullDue: false,
+    dueAt: now
   }
 }
 
+/**
+ * A check that could not read Klaviyo: put back for later, or ended when
+ * there is no point any more (a draft long past its day is stale; a sent
+ * email unread for ten days is closed, saying why). `patch` is what the
+ * status read already said, kept.
+ */
+export function pausedPatch(
+  row: ResultRow,
+  reason: string,
+  now: number,
+  waitMs: number,
+  patch?: ResultPatch
+): ResultPatch {
+  const status = patch?.status ?? (row.status as EmailStatus)
+  const sentAt = patch?.sent_at ?? row.sent_at
+  if (
+    (status === 'draft' || status === 'scheduled') &&
+    longPastDay(plannedDay(row), now)
+  )
+    return {
+      ...patch,
+      status: 'stale',
+      final: true,
+      paused: reason,
+      next_check_at: iso(now)
+    }
+  if (status === 'sent' && sentAt && now > Date.parse(sentAt) + giveUpAfterMs)
+    return { ...patch, final: true, paused: reason, next_check_at: iso(now) }
+  return {
+    ...patch,
+    paused: reason,
+    next_check_at: iso(now + Math.min(Math.max(waitMs, 60_000), pauseMs.most))
+  }
+}
+
+type Template = { approach?: unknown; variation?: unknown; deleted?: unknown }
+
 /** Our design of a variation: the template we put on it, else its name. */
 export function designOf(
-  templates: { approach?: unknown; variation?: unknown; deleted?: unknown }[],
+  templates: Template[],
   variationId: string | null,
   name: string | null
 ): 'A' | 'B' | null {
@@ -180,9 +323,18 @@ export function designOf(
 
 const maxResults = 8
 const maxClicks = 200
+/** The clicks one row keeps, in bytes (the database allows 200,000). */
+const maxClickBytes = 150_000
 const variationId = /^[A-Za-z0-9_-]{1,64}$/
+const whole = (n: number) => Math.min(999_999_999, Math.max(0, Math.round(n)))
 
-/** One results read, as the row stores it (`save_klaviyo_result` checks it). */
+/**
+ * One results read, as the row stores it (`save_klaviyo_result` checks
+ * it): each variation's counts under our design, each address's clicks
+ * under its section (the clicker's own parameters left out), what the row
+ * can hold and no more. Not complete when Klaviyo had more, a part was
+ * not read, or the two designs of an A/B draft were not read apart.
+ */
 export function resultsPatch(
   row: ResultRow,
   sentAt: string,
@@ -190,20 +342,22 @@ export function resultsPatch(
     results: VariationResult[]
     clicks: LinkClicks[]
     complete: boolean
-    templates: { approach?: unknown; variation?: unknown; deleted?: unknown }[]
+    templates: Template[]
     sections: EmailSection[]
+    trackingParams?: string[]
+    context: ReadContext
   },
   now: number
 ): ResultPatch {
   const pulls = row.pulls + 1
   const final = pulls >= pullsAfterSend
-  const results: StoredResult[] = read.results
-    .slice(0, maxResults)
-    .map((r) => ({
+  const results: StoredResult[] = read.results.slice(0, maxResults).map((r) => {
+    const name = r.variationName ? cut(r.variationName, 120) || null : null
+    return {
       variation:
         r.variationId && variationId.test(r.variationId) ? r.variationId : null,
-      name: r.variationName?.slice(0, 120) || null,
-      design: designOf(read.templates, r.variationId, r.variationName),
+      name,
+      design: designOf(read.templates, r.variationId, name),
       statistics: Object.fromEntries(
         Object.entries(r.statistics).filter(
           ([k, v]) =>
@@ -213,24 +367,45 @@ export function resultsPatch(
             (!k.endsWith('_rate') || v <= 1)
         )
       )
-    }))
-  const clicks: StoredClick[] = read.clicks
-    .filter((c) => /^https?:\/\//i.test(c.url) && c.url.length <= 2_000)
-    .slice(0, maxClicks)
-    .map((c) => {
-      const at = sectionOf(read.sections, c.url)
-      return {
-        variation:
-          c.variationId && variationId.test(c.variationId)
-            ? c.variationId
-            : null,
-        url: c.url,
-        section: at?.section ?? null,
-        block: at?.block ?? null,
-        clicks: Math.min(999_999_999, Math.max(0, Math.round(c.clicks))),
-        unique: Math.min(999_999_999, Math.max(0, Math.round(c.unique)))
-      }
-    })
+    }
+  })
+  const designs = new Map(results.map((r) => [r.variation, r.design] as const))
+  const clicks: StoredClick[] = []
+  let bytes = 2
+  let cutShort = false
+  for (const c of read.clicks) {
+    const url = keptUrl(c.url)
+    if (!url) continue
+    if (clicks.length >= maxClicks) {
+      cutShort = true
+      break
+    }
+    const at = sectionOf(read.sections, c.url, read.trackingParams)
+    const variation =
+      c.variationId && variationId.test(c.variationId) ? c.variationId : null
+    const click: StoredClick = {
+      variation,
+      design:
+        designs.get(variation) ?? designOf(read.templates, variation, null),
+      url,
+      section: at?.section ?? null,
+      block: at?.block ?? null,
+      clicks: whole(c.clicks),
+      unique: whole(c.unique)
+    }
+    const size = Buffer.byteLength(JSON.stringify(click)) + 1
+    if (bytes + size > maxClickBytes) {
+      cutShort = true
+      break
+    }
+    bytes += size
+    clicks.push(click)
+  }
+  const planned = (row.planned as { designs?: unknown }).designs
+  const abSplit =
+    planned === 'both'
+      ? ['A', 'B'].every((d) => results.some((r) => r.design === d))
+      : null
   return {
     status: 'sent',
     pulls,
@@ -238,10 +413,19 @@ export function resultsPatch(
     clicks,
     complete:
       read.complete &&
+      !cutShort &&
       read.results.length <= maxResults &&
-      read.clicks.length <= maxClicks,
+      abSplit !== false,
+    context: { ...read.context, abSplit },
     final,
-    next_check_at: iso(final ? now : Math.max(pullDueAt(sentAt, pulls), now))
+    next_check_at: iso(
+      final
+        ? now
+        : Math.min(
+            Math.max(Date.parse(sentAt) + (pulls + 1) * dayMs, now + dayMs),
+            now + pauseMs.most
+          )
+    )
   }
 }
 
@@ -264,19 +448,13 @@ export function sampleStatus(row: ResultRow, now: number): StatusRead {
   )
   if (!Number.isFinite(planned))
     return { found: true, status: 'draft', sendTime: null, changed: false }
-  return planned <= now
-    ? {
-        found: true,
-        status: 'sent',
-        sendTime: new Date(planned).toISOString(),
-        changed: false
-      }
-    : {
-        found: true,
-        status: 'draft',
-        sendTime: new Date(planned).toISOString(),
-        changed: false
-      }
+  return {
+    found: true,
+    status: planned <= now ? 'sent' : 'draft',
+    sendTime: new Date(planned).toISOString(),
+    sendStrategy: 'static',
+    changed: false
+  }
 }
 
 export const sampleVariation = 'sample-design-a'
