@@ -276,6 +276,8 @@ const metricRecord = z.object({
 export type StoreMetrics = {
   placedOrder: string | null
   viewedProduct: string | null
+  /** Klaviyo's own Clicked Email metric (a campaign's link clicks, LRN-001). */
+  clickedEmail: string | null
   /** False when not every page of metrics was read. */
   complete: boolean
 }
@@ -334,6 +336,7 @@ export async function findStoreMetrics(
   return {
     placedOrder: pick('Placed Order'),
     viewedProduct: pick('Viewed Product'),
+    clickedEmail: pick('Clicked Email'),
     complete: read.complete && read.skipped === 0
   }
 }

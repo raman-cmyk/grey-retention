@@ -78,6 +78,8 @@ type Message = {
   campaignId: string
   name: string
   status: string
+  /** When it is (or was) sent, once the owner schedules it in Klaviyo. */
+  sendTime?: string | null
   winnerPercentage: number | null
   variationIds: string[]
 }
@@ -594,7 +596,8 @@ export function fakeDraftAccount(
               ab_test:
                 m.winnerPercentage === null
                   ? null
-                  : { winner_percentage: m.winnerPercentage }
+                  : { winner_percentage: m.winnerPercentage },
+              ...(m.sendTime ? { send_options: { send_time: m.sendTime } } : {})
             }
           },
           ...(account.faults.dropRelationships

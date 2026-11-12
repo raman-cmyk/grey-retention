@@ -405,7 +405,7 @@ const reportAnswer = z.object({
   links: z.object({ next: z.string().nullish() }).partial().nullish()
 })
 
-function reportRows(body: unknown, endpoint: string): ReportRead {
+export function reportRows(body: unknown, endpoint: string): ReportRead {
   const parsed = reportAnswer.safeParse(body)
   if (!parsed.success) throw new KlaviyoError('invalid_response', { endpoint })
   return {

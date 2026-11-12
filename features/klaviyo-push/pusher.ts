@@ -205,7 +205,8 @@ const seen = (v: { subject: string | null; preview: string | null }) =>
     .update(JSON.stringify([norm(v.subject), norm(v.preview)]))
     .digest('hex')
     .slice(0, 16)
-const fingerprints = (
+/** A draft's variations as one fingerprint list (LRN-001 compares it too). */
+export const fingerprints = (
   vs: { subject: string | null; preview: string | null }[]
 ) => [...new Set(vs.map(seen))].sort().join(',')
 const setOf = (s: string | null) => new Set(s ? s.split(',') : [])

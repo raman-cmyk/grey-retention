@@ -4349,6 +4349,102 @@ export type Database = {
           }
         ]
       }
+      klaviyo_email_results: {
+        Row: {
+          build_id: string
+          campaign_id: string
+          changed: boolean
+          checked_at: string | null
+          clicks: Json
+          complete: boolean
+          created_at: string
+          final: boolean
+          lease_token: string | null
+          lease_until: string | null
+          message_id: string | null
+          next_check_at: string
+          paused: string | null
+          planned: Json
+          pulls: number
+          results: Json
+          results_at: string | null
+          run_id: string
+          sample: boolean
+          sent_at: string | null
+          slot: number
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          build_id: string
+          campaign_id: string
+          changed?: boolean
+          checked_at?: string | null
+          clicks?: Json
+          complete?: boolean
+          created_at?: string
+          final?: boolean
+          lease_token?: string | null
+          lease_until?: string | null
+          message_id?: string | null
+          next_check_at?: string
+          paused?: string | null
+          planned: Json
+          pulls?: number
+          results?: Json
+          results_at?: string | null
+          run_id: string
+          sample: boolean
+          sent_at?: string | null
+          slot: number
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          build_id?: string
+          campaign_id?: string
+          changed?: boolean
+          checked_at?: string | null
+          clicks?: Json
+          complete?: boolean
+          created_at?: string
+          final?: boolean
+          lease_token?: string | null
+          lease_until?: string | null
+          message_id?: string | null
+          next_check_at?: string
+          paused?: string | null
+          planned?: Json
+          pulls?: number
+          results?: Json
+          results_at?: string | null
+          run_id?: string
+          sample?: boolean
+          sent_at?: string | null
+          slot?: number
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'klaviyo_email_results_tenant_id_build_id_fkey'
+            columns: ['tenant_id', 'build_id']
+            isOneToOne: true
+            referencedRelation: 'email_builds'
+            referencedColumns: ['tenant_id', 'id']
+          },
+          {
+            foreignKeyName: 'klaviyo_email_results_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       klaviyo_history: {
         Row: {
           audiences: number
@@ -6755,6 +6851,41 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      claim_klaviyo_results: {
+        Args: { lim?: number }
+        Returns: {
+          build_id: string
+          campaign_id: string
+          changed: boolean
+          checked_at: string | null
+          clicks: Json
+          complete: boolean
+          created_at: string
+          final: boolean
+          lease_token: string | null
+          lease_until: string | null
+          message_id: string | null
+          next_check_at: string
+          paused: string | null
+          planned: Json
+          pulls: number
+          results: Json
+          results_at: string | null
+          run_id: string
+          sample: boolean
+          sent_at: string | null
+          slot: number
+          status: string
+          tenant_id: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: '*'
+          to: 'klaviyo_email_results'
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       claim_platform_job: {
         Args: { kinds: string[]; subject?: string }
         Returns: {
@@ -7261,6 +7392,7 @@ export type Database = {
         Returns: string
       }
       klaviyo_api_key: { Args: { t: string }; Returns: string }
+      klaviyo_results_waiting: { Args: never; Returns: number }
       my_pending_invites: {
         Args: never
         Returns: {
@@ -7735,6 +7867,10 @@ export type Database = {
       }
       save_klaviyo_push: {
         Args: { build: string; lease: string; step: Json }
+        Returns: undefined
+      }
+      save_klaviyo_result: {
+        Args: { build: string; lease: string; patch: Json }
         Returns: undefined
       }
       save_l2_simulation_policy: {

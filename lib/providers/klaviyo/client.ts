@@ -127,8 +127,12 @@ async function capped(response: Response, limit: number) {
   return Buffer.concat(chunks).toString('utf8')
 }
 
-/** The only addresses `query` POSTs to: Klaviyo's report questions. */
-const reportPaths = /^\/api\/(campaign|flow)-values-reports\/?$/
+/**
+ * The only addresses `query` POSTs to: Klaviyo's report questions (the
+ * campaign and flow reports, and a metric's counts). Each only reads.
+ */
+const reportPaths =
+  /^\/api\/(?:(?:campaign|flow)-values-reports|metric-aggregates)\/?$/
 
 /** Waits at most this long inside one call for a short rate limit. */
 const shortWaitSeconds = 10

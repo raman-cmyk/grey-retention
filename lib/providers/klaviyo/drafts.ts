@@ -27,6 +27,11 @@ const gone = (error: unknown) =>
   error.kind === 'rejected' &&
   (error.details.status === 404 || error.details.status === 410)
 const stamp = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, 'Z')
+/** A time Klaviyo gave, as ISO; null when it gave none or not a time. */
+const isoTime = (v: string | null | undefined) =>
+  v && z.iso.datetime({ offset: true }).safeParse(v).success
+    ? new Date(v).toISOString()
+    : null
 
 /** One design's content on a variation. */
 export type VariationContent = {
@@ -449,6 +454,8 @@ export type DraftVariation = {
 export type DraftRead = {
   /** draft, scheduled, sending, sent or cancelled. */
   status: string
+  /** When it is (or was) sent, ISO; null while Klaviyo has no time for it. */
+  sendTime: string | null
   campaignId: string
   description: string | null
   /** The share that gets a winner (0: everyone in the even test); null when none. */
@@ -457,7 +464,7 @@ export type DraftRead = {
 }
 
 const messagePath = (id: string) =>
-  `/api/campaign-messages/${kid.parse(id)}?fields[campaign-message]=definition.status,definition.ab_test` +
+  `/api/campaign-messages/${kid.parse(id)}?fields[campaign-message]=definition.status,definition.ab_test,definition.send_options.send_time` +
   '&include=campaign,campaign-variations&fields[campaign]=definition.name,definition.description' +
   '&fields[campaign-variation]=definition.name,definition.details'
 
@@ -507,6 +514,10 @@ export async function readDraft(
             status: z.string(),
             ab_test: z
               .object({ winner_percentage: z.number().int().nullish() })
+              .nullish(),
+            send_options: z
+              .object({ send_time: z.string().nullish() })
+              .passthrough()
               .nullish()
           })
         }),
@@ -555,6 +566,9 @@ export async function readDraft(
   )
   return {
     status: answer.data.attributes.definition.status.toLowerCase(),
+    sendTime: isoTime(
+      answer.data.attributes.definition.send_options?.send_time
+    ),
     campaignId,
     description: campaign.data.attributes.definition.description ?? null,
     winnerPercentage:
