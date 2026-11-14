@@ -17,6 +17,7 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - Klaviyo only, no designer workflow and client-owned content remain. **Superseded 11 Nov 2026:** no weekly approval and no human loop (D16, D17); the owner starts planning and email creation, and created emails land in Klaviyo as drafts.
 - 11 Nov 2026: the agent plan v3 in [AGENT_MAP.md](AGENT_MAP.md) is the build plan (decisions D16–D24 in BUILD_BRIEF.md).
 - 15 Nov 2026: design quality is the moat. Designed emails go through a design studio (designed in web code, rendered to images, interactive parts live); text emails are their own format (D25, D26 in AGENT_MAP.md). Next: a design proof of 5 rebuilt Inspiration emails before the A vs B test.
+- 15 Nov 2026: after the test run, the owner picked 61 of 128 proposed additions (D27). The full list, by stage, is in [AGENT_MAP.md](AGENT_MAP.md#owner-picked-additions-15-november-2026-d27).
 
 ## Hard design rules and current scope
 
@@ -39,7 +40,8 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 | PLAN-SEG-001     | Carry approved audiences and exposure constraints through strategy, calendar, QA, weekly approval and results     | Not started                                                       |
 | VERIFY-BASE-001  | Reconcile merged code, applied migrations, deployment and live-provider readiness before feature claims           | Not independently verified in this documentation task             |
 | AGENT-V3-001     | Agent plan v3 (AGENT_MAP.md): competitor tagging, brand onboarding team, 15-day strategy, 3-layer email, learning | Plan written 11 Nov; lanes restarted on it                        |
-| EML-AB-001       | Test layer 3: A coded blocks vs B designed hero + coded body, 10 emails each for one brand                        | Not started; owner picks the default                              |
+| EML-AB-001       | Test layer 3: A coded blocks vs B designed sections (design studio), one Klaviyo draft per email with A and B     | Not started; owner picks the default                              |
+| PICKS-1115       | Build the 61 owner-picked additions (AGENT_MAP.md, D27), plus the resumable build job (#81) they need             | Approved 15 Nov; not started                                      |
 | MEM-DONT-001     | Do's and don'ts memory from results, inspector rejections and owner edits                                         | Not started                                                       |
 
 ## Research follow-ups
