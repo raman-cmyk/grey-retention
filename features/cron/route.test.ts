@@ -20,6 +20,8 @@ const emails = vi.hoisted(() => ({
   runEmailBuilds: vi.fn(async () => ({ ran: 2 }))
 }))
 vi.mock('@/features/email-build/worker', () => emails)
+const push = vi.hoisted(() => ({ draftPusherFor: vi.fn(() => ({})) }))
+vi.mock('@/features/klaviyo-push/live', () => push)
 
 import { GET } from '@/app/api/internal/jobs/route'
 
@@ -125,6 +127,45 @@ describe('GET /api/internal/jobs (scheduled sweep)', () => {
       {},
       { limits: { budgetMs: 25_000 } }
     )
+  })
+
+  it('leaves the workspace jobs for the next run when the earlier steps used the minute', async () => {
+    let t = 1_000_000
+    vi.spyOn(Date, 'now').mockImplementation(() => t)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    emails.runEmailBuilds.mockImplementationOnce(async () => {
+      // A live push making an unsafe A/B draft safe ran past its end.
+      t += 52_000
+      return { ran: 1 }
+    })
+    const response = await GET(request(`Bearer ${secret}`))
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      live: false,
+      skipped: 'out_of_time',
+      emails: { ran: 1 }
+    })
+    expect(scheduler.runScheduledJobs).not.toHaveBeenCalled()
+  })
+
+  it('gives each Klaviyo push its own window from the email step, never past 45 s into the minute', async () => {
+    for (const [inboxMs, end] of [
+      [2_000, 27_000],
+      [28_000, 45_000]
+    ] as const) {
+      let t = 1_000_000
+      vi.spyOn(Date, 'now').mockImplementation(() => t)
+      inbox.runInboxStep.mockImplementationOnce(async () => {
+        t += inboxMs
+        return { transport: 'fake', ready: true, synthetic: true, run: {} }
+      })
+      push.draftPusherFor.mockClear()
+      await GET(request(`Bearer ${secret}`))
+      expect(push.draftPusherFor).toHaveBeenCalledWith(
+        {},
+        { budgetMs: 25_000, deadline: 1_000_000 + end }
+      )
+    }
   })
 
   it('runs the sweep and returns only counts', async () => {

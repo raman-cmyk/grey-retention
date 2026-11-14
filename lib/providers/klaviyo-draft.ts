@@ -17,9 +17,12 @@
  * 4. A `sample` email (built from the sample store) never reaches a real
  *    Klaviyo account: a live adapter answers `rejected` for it.
  *
- * Before it creates the draft it uploads the pictures to Klaviyo (VISION
- * rule 11) and runs the launch check (QAG-001 `runReleaseQa`); a failed
- * check comes back as `rejected` with the failing check ids.
+ * The live pusher (PSH-001) moves the pictures into Klaviyo (VISION rule
+ * 11) and checks the HTML it sends (pictures, footer tags, size); a failed
+ * check comes back as `rejected` with the failing check ids. The launch
+ * check on the content (QAG-001 `runReleaseQa`: links, code, products,
+ * copy, dates) is the build's to run before it asks for the push; it is not
+ * wired yet, and must be before the owner's write switch is turned on.
  */
 export type DraftInput = {
   tenantId: string
@@ -35,10 +38,39 @@ export type DraftInput = {
   audienceId: string
   /** Built from the sample store: never for a real Klaviyo account. */
   sample: boolean
+  /**
+   * An A/B design test (EML-005): exactly two, A first, with the same
+   * subject, preheader and audience. They go into ONE draft campaign with
+   * two variations sent to half the audience each and no winner picked
+   * (the owner still schedules it). Without it the draft has `html` only.
+   */
+  variations?: { approach: 'A' | 'B'; html: string }[]
+  /**
+   * The build's push lease (PSH-001): the live pusher saves each step it
+   * makes in Klaviyo under it, so a run that lost its lease saves nothing
+   * and two runs never both make a draft. The fake ignores it.
+   */
+  lease?: { build: string; token: string }
+  /**
+   * The build's content checks (QAG-001 `runReleaseQa`: links, code,
+   * products, copy, dates) passed on this email. The live pusher refuses an
+   * email without it (`release_qa`).
+   */
+  contentChecked?: boolean
 }
 
 export type DraftResult =
-  | { ok: true; campaignId: string; sample: boolean }
+  | {
+      ok: true
+      campaignId: string
+      sample: boolean
+      /**
+       * Which designs went in: both, or A only when Klaviyo refused an even
+       * test (the draft then has one variation; alternate the designs
+       * across emails instead). Absent when no variations were asked.
+       */
+      designs?: 'both' | 'A'
+    }
   | {
       ok: false
       code: 'auth' | 'rate_limited' | 'unavailable' | 'rejected'
@@ -51,17 +83,31 @@ export interface DraftPusher {
   createDraft(input: DraftInput): Promise<DraftResult>
 }
 
-/** The fake pusher: no Klaviyo call; the same key gives the same id. */
-export function fakeDraftPusher(): DraftPusher & { calls: DraftInput[] } {
+/**
+ * The fake pusher: no Klaviyo call; the same key gives the same id. Like
+ * the live one it refuses variations that are not exactly A then B, and
+ * `designs: 'A'` makes it answer as if Klaviyo refused the even test (to
+ * test alternating the designs).
+ */
+export function fakeDraftPusher(
+  options: { designs?: 'both' | 'A' } = {}
+): DraftPusher & { calls: DraftInput[] } {
   const calls: DraftInput[] = []
   return {
     calls,
     async createDraft(input) {
       calls.push(input)
+      const v = input.variations
+      if (
+        v &&
+        (v.length !== 2 || v[0]!.approach !== 'A' || v[1]!.approach !== 'B')
+      )
+        return { ok: false, code: 'rejected', checks: ['variations'] }
       return {
         ok: true,
         campaignId: `sample-draft-${input.idempotencyKey}`,
-        sample: true
+        sample: true,
+        ...(v ? { designs: options.designs ?? 'both' } : {})
       }
     }
   }
