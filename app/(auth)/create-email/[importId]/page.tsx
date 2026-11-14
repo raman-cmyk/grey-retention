@@ -4,6 +4,9 @@ import type { Route } from 'next'
 import { z } from 'zod'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { ChooseOutcome } from '@/features/email-generation/choose'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Create email' }
 
 export default async function CreateEmailPage({
   params,

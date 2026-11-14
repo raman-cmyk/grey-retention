@@ -5,6 +5,9 @@ import { CampaignEditor } from '@/features/campaigns/editor'
 import { plannerView } from '@/features/planner/load'
 import { Planner } from '@/features/planner/planner'
 import { PlanningPanel } from '@/features/planning/panels'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Campaigns' }
 
 export default async function CampaignAgentPage({
   searchParams

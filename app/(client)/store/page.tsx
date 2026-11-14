@@ -1,4 +1,7 @@
 import { redirect } from 'next/navigation'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Store' }
 
 /**
  * The Store tab showed Shopify orders and customers. v2 is Klaviyo only

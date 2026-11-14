@@ -10,6 +10,9 @@ import {
   loadKlaviyo,
   NotConnected
 } from '@/features/klaviyo-detail/parts'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Metric' }
 
 export default async function MetricPage({
   params,

@@ -107,10 +107,27 @@ export async function acceptInvite(
   const db = await createClient()
   if (!db) return { error: 'Sign in to accept your invitation.' }
   const r = await db.rpc('accept_team_invite', { invite: id.data })
+  // BAS-005: an expired or cancelled invite (23514, raised only by its
+  // expiry check), and someone the workspace removed (PT409), are told what
+  // to do; anything else as before.
+  if (r.error?.code === '23514')
+    return {
+      error:
+        'This invitation has expired or was cancelled. Ask the workspace for a new one.'
+    }
+  if (r.error?.code === 'PT409')
+    return { error: 'Ask the workspace to reactivate you.' }
   if (r.error || !r.data)
     return {
       error: 'Invitation is unavailable for your verified account email.'
     }
+  // An invite accepted before answers again with its workspace, also for
+  // someone removed since: only a workspace they can open is opened.
+  const opened = await db.rpc('resolve_client_context', {
+    requested_tenant_id: r.data
+  })
+  if (opened.error || !opened.data?.[0])
+    return { error: 'Ask the workspace to reactivate you.' }
   ;(await cookies()).set(activeTenantCookieName, r.data, {
     httpOnly: true,
     sameSite: 'lax',

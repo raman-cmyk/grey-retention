@@ -1,4 +1,7 @@
 import { SignInPanel } from '@/components/auth/sign-in-panel'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Sign in' }
 
 export default function ClientLoginPage() {
   return (

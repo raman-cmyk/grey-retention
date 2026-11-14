@@ -17,6 +17,9 @@ import { CampaignEditor } from '@/features/campaigns/editor'
 import { WorkflowNavigation } from '@/features/campaigns/workflow-navigation'
 import { approveCalendar, addNote } from '@/features/campaigns/actions'
 import { PastedSourcePanel } from '@/features/references/pasted-provenance'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Campaign' }
 export default async function CampaignPage({
   params
 }: {

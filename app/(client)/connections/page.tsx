@@ -17,6 +17,9 @@ import {
   type ConnectionView
 } from '@/features/connections/board'
 import type { Database } from '@/lib/supabase/database.types'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Connections' }
 
 type Row = Database['public']['Tables']['workspace_connections']['Row']
 // Older hosted databases may not have the display columns yet (migration

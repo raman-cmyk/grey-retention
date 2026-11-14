@@ -2,6 +2,9 @@ import { notFound } from 'next/navigation'
 import { z } from 'zod'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { EmailResultView } from '@/features/email-generation/result-view'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Email results' }
 
 export default async function EmailResultPage({
   params,

@@ -12,6 +12,9 @@ import { FileImportList } from '@/features/email-import/recent'
 import { UploadEmailForm } from '@/features/email-import/upload-form'
 import { pastedReferences } from '@/features/references/pasted-data'
 import { PastedReferenceForm } from '@/features/references/pasted-form'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Import a reference email' }
 
 export default async function ImportReferencePage({
   searchParams

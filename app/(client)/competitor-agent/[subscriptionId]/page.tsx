@@ -3,6 +3,9 @@ import { notFound } from 'next/navigation'
 import { z } from 'zod'
 import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
 import { referenceWorkspace } from '@/features/references/data'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Competitor' }
 export default async function CompetitorProfile({
   params
 }: {

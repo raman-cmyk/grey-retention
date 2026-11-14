@@ -21,6 +21,9 @@ import {
   liveEmailsLine,
   triggerWords
 } from '@/features/klaviyo-detail/words'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Flow' }
 
 export default async function FlowPage({
   params,
