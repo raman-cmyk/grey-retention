@@ -75,6 +75,8 @@ describe('the catalog read, against recorded Klaviyo answers', () => {
     expect(await findStoreMetrics(client(transport), always)).toEqual({
       placedOrder: 'PlcdOr',
       viewedProduct: 'VwdPrd',
+      // The recorded store has no Clicked Email metric (LRN-001's own does).
+      clickedEmail: null,
       complete: true
     })
     expect(transport.calls).toEqual([`GET ${metricsPath}`])
