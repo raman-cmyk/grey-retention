@@ -6,6 +6,12 @@ import {
   validChatId,
   validMessageCursor
 } from '@/features/gros/panel'
+import type { Metadata } from 'next'
+import { defaultBrandPresentation } from '@/lib/branding/presentation'
+
+export const metadata: Metadata = {
+  title: `Ask ${defaultBrandPresentation.assistantName}`
+}
 export default async function GrosPage({
   searchParams
 }: {

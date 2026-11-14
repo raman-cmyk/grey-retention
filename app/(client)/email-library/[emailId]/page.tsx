@@ -6,6 +6,9 @@ import { z } from 'zod'
 import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
 import { referenceEmailDetail } from '@/features/references/data'
 import { microSchema } from '@/features/references/intelligence'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Reference email' }
 export default async function EmailPreview({
   params
 }: {

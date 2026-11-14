@@ -12,6 +12,9 @@ import { TextField } from '@/components/ui/text-field'
 import { referenceWorkspace } from '@/features/references/data'
 import { referenceAction } from '@/features/references/actions'
 import { PlaybookPanel, ReferenceJobs } from '@/features/references/panels'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Competitors' }
 export default async function CompetitorAgentPage() {
   const { data, context, error } = await referenceWorkspace(),
     owner = context.tenantRole === 'owner'

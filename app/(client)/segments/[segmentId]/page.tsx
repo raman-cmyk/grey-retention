@@ -14,6 +14,9 @@ import {
   loadKlaviyo,
   NotConnected
 } from '@/features/klaviyo-detail/parts'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Segment' }
 
 export default async function SegmentPage({
   params,
