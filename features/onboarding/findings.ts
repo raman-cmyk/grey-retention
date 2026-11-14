@@ -78,7 +78,41 @@ export const topicValues = {
   tone: z.object({}).strict(),
   contact: z.object({}).strict(),
   /** What made money, in words (the Klaviyo historian, ONB-103). */
-  performance: z.object({}).strict()
+  performance: z.object({}).strict(),
+  /**
+   * An offer a live ad runs (the Ads analyst, ONB-104): a percentage or an
+   * amount off, a gift or a bundle; free shipping is its own topic.
+   */
+  promotion: z.discriminatedUnion('kind', [
+    z
+      .object({
+        kind: z.literal('percent_off'),
+        percent: z.number().int().min(1).max(90)
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal('amount_off'),
+        amount: amount.positive(),
+        currency
+      })
+      .strict(),
+    z.object({ kind: z.literal('gift') }).strict(),
+    z.object({ kind: z.literal('bundle') }).strict()
+  ]),
+  /** Why the ads say to buy (in words). */
+  angle: z.object({}).strict(),
+  /** What the ads show and how (in words). */
+  creative: z.object({}).strict(),
+  /** Where a live ad sends people: a page on the brand's own site. */
+  landing_page: z
+    .object({
+      url: z
+        .url()
+        .max(500)
+        .refine((u) => u.startsWith('https://'), 'https only')
+    })
+    .strict()
 } as const
 export type FindingTopic = keyof typeof topicValues
 export const findingTopics = Object.keys(topicValues) as FindingTopic[]
@@ -101,7 +135,17 @@ export const sourceTopics: Record<FindingSource, readonly FindingTopic[]> = {
   ],
   catalog: ['locale', 'price_band', 'offering', 'claim'],
   klaviyo_history: ['offering', 'audience', 'tone', 'claim', 'performance'],
-  ads: ['offering', 'audience', 'tone', 'claim', 'free_shipping'],
+  ads: [
+    'offering',
+    'audience',
+    'tone',
+    'claim',
+    'free_shipping',
+    'promotion',
+    'angle',
+    'creative',
+    'landing_page'
+  ],
   reviews: ['review_platform', 'claim', 'audience'],
   social: ['audience', 'tone', 'claim', 'offering']
 }
