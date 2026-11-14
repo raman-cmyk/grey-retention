@@ -4269,6 +4269,89 @@ export type Database = {
           }
         ]
       }
+      klaviyo_draft_pushes: {
+        Row: {
+          ab: string | null
+          audience_id: string | null
+          campaign_id: string | null
+          checks: Json
+          create_started_at: string | null
+          created_at: string
+          delete_answered_at: string | null
+          designs: string | null
+          fallback: string | null
+          images: Json
+          message_id: string | null
+          message_started_at: string | null
+          push_key: string
+          reason: string | null
+          shown: string | null
+          state: string
+          target: string | null
+          template_started_at: string | null
+          templates: Json
+          tenant_id: string
+          updated_at: string
+          written: string | null
+        }
+        Insert: {
+          ab?: string | null
+          audience_id?: string | null
+          campaign_id?: string | null
+          checks?: Json
+          create_started_at?: string | null
+          created_at?: string
+          delete_answered_at?: string | null
+          designs?: string | null
+          fallback?: string | null
+          images?: Json
+          message_id?: string | null
+          message_started_at?: string | null
+          push_key: string
+          reason?: string | null
+          shown?: string | null
+          state?: string
+          target?: string | null
+          template_started_at?: string | null
+          templates?: Json
+          tenant_id: string
+          updated_at?: string
+          written?: string | null
+        }
+        Update: {
+          ab?: string | null
+          audience_id?: string | null
+          campaign_id?: string | null
+          checks?: Json
+          create_started_at?: string | null
+          created_at?: string
+          delete_answered_at?: string | null
+          designs?: string | null
+          fallback?: string | null
+          images?: Json
+          message_id?: string | null
+          message_started_at?: string | null
+          push_key?: string
+          reason?: string | null
+          shown?: string | null
+          state?: string
+          target?: string | null
+          template_started_at?: string | null
+          templates?: Json
+          tenant_id?: string
+          updated_at?: string
+          written?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'klaviyo_draft_pushes_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       klaviyo_history: {
         Row: {
           audiences: number
@@ -7228,6 +7311,17 @@ export type Database = {
         Args: { actual: number; reservation: string; t: string }
         Returns: undefined
       }
+      record_ad_findings: {
+        Args: {
+          ads: Json
+          findings: Json
+          job: string
+          lease: string
+          live: boolean
+          summary: Json
+        }
+        Returns: Json
+      }
       record_agent_run: { Args: { run: Json }; Returns: string }
       record_asset_upload: {
         Args: {
@@ -7374,6 +7468,18 @@ export type Database = {
           section: string
         }
         Returns: undefined
+      }
+      record_review_findings: {
+        Args: {
+          findings: Json
+          job: string
+          lease: string
+          live: boolean
+          pages: Json
+          posts: Json
+          summary: Json
+        }
+        Returns: Json
       }
       record_section_tags: {
         Args: {
@@ -7653,6 +7759,10 @@ export type Database = {
         }
         Returns: Json
       }
+      save_klaviyo_push: {
+        Args: { build: string; lease: string; step: Json }
+        Returns: undefined
+      }
       save_l2_simulation_policy: {
         Args: {
           enabled: boolean
@@ -7751,8 +7861,10 @@ export type Database = {
       }
       site_readings_waiting: { Args: never; Returns: number }
       source_readings_waiting: { Args: never; Returns: number }
+      start_ads_reading: { Args: { t: string }; Returns: string }
       start_catalog_reading: { Args: { t: string }; Returns: string }
       start_history_reading: { Args: { t: string }; Returns: string }
+      start_reviews_reading: { Args: { t: string }; Returns: string }
       start_site_reading: { Args: { t: string }; Returns: string }
       start_strategy_run: { Args: { t: string }; Returns: string }
       submit_design: {

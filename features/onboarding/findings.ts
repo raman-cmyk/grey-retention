@@ -78,7 +78,66 @@ export const topicValues = {
   tone: z.object({}).strict(),
   contact: z.object({}).strict(),
   /** What made money, in words (the Klaviyo historian, ONB-103). */
-  performance: z.object({}).strict()
+  performance: z.object({}).strict(),
+  /**
+   * An offer a live ad runs (the Ads analyst, ONB-104): a percentage or an
+   * amount off, a gift or a bundle; free shipping is its own topic.
+   */
+  promotion: z.discriminatedUnion('kind', [
+    z
+      .object({
+        kind: z.literal('percent_off'),
+        percent: z.number().int().min(1).max(90)
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal('amount_off'),
+        amount: amount.positive(),
+        currency
+      })
+      .strict(),
+    z.object({ kind: z.literal('gift') }).strict(),
+    z.object({ kind: z.literal('bundle') }).strict()
+  ]),
+  /** Why the ads say to buy (in words). */
+  angle: z.object({}).strict(),
+  /** What the ads show and how (in words). */
+  creative: z.object({}).strict(),
+  /** What customers love, in their reviews and comments (in words). */
+  review_theme: z.object({}).strict(),
+  /** What customers worry about or complain of (in words). */
+  objection: z.object({}).strict(),
+  /** A phrase customers use, quoted as the evidence (in words). */
+  customer_words: z.object({}).strict(),
+  /**
+   * A real review an email may quote (ONB-105): its author as shown, the
+   * page it is on, its stars and day when known; its exact words are the
+   * evidence's quote.
+   */
+  quotable_review: z
+    .object({
+      author: z.string().min(1).max(80),
+      url: z
+        .url()
+        .max(500)
+        .refine((u) => u.startsWith('https://'), 'https only'),
+      rating: z.number().int().min(1).max(5).optional(),
+      date: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional()
+    })
+    .strict(),
+  /** Where a live ad sends people: a page on the brand's own site. */
+  landing_page: z
+    .object({
+      url: z
+        .url()
+        .max(500)
+        .refine((u) => u.startsWith('https://'), 'https only')
+    })
+    .strict()
 } as const
 export type FindingTopic = keyof typeof topicValues
 export const findingTopics = Object.keys(topicValues) as FindingTopic[]
@@ -101,9 +160,35 @@ export const sourceTopics: Record<FindingSource, readonly FindingTopic[]> = {
   ],
   catalog: ['locale', 'price_band', 'offering', 'claim'],
   klaviyo_history: ['offering', 'audience', 'tone', 'claim', 'performance'],
-  ads: ['offering', 'audience', 'tone', 'claim', 'free_shipping'],
-  reviews: ['review_platform', 'claim', 'audience'],
-  social: ['audience', 'tone', 'claim', 'offering']
+  ads: [
+    'offering',
+    'audience',
+    'tone',
+    'claim',
+    'free_shipping',
+    'promotion',
+    'angle',
+    'creative',
+    'landing_page'
+  ],
+  reviews: [
+    'review_platform',
+    'claim',
+    'audience',
+    'review_theme',
+    'objection',
+    'customer_words',
+    'quotable_review'
+  ],
+  social: [
+    'audience',
+    'tone',
+    'claim',
+    'offering',
+    'review_theme',
+    'objection',
+    'customer_words'
+  ]
 }
 
 export const evidenceSchema = z.union([
