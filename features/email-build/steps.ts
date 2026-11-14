@@ -13,15 +13,15 @@ import {
 } from './build'
 import type { LockedContent } from './content'
 import type { Store } from './ports'
+import { buildSteps, type BuildStep } from './step-names'
 
 /**
- * REL-081: the build steps of "Create email", in order (the push follows).
- * The job runs one step per claim and saves its output
+ * REL-081: the build steps of "Create email" (`buildSteps`, the push
+ * follows). The job runs one step per claim and saves its output
  * (`finish_email_step`), so a step that fails is tried again on its own,
  * from the saved steps before it.
  */
-export const buildSteps = ['sections', 'content', 'copy', 'design'] as const
-export type BuildStep = (typeof buildSteps)[number]
+export { buildSteps, type BuildStep }
 
 /**
  * Each step must end well under a minute (the job's time limit). The
@@ -36,6 +36,8 @@ export const stepBudgetMs = 50_000
 // over with fresh store data.
 const sectionsSaved = z.looseObject({
   sendAt: z.iso.datetime({ offset: true }),
+  timezone: z.string().min(1),
+  sample: z.boolean(),
   rules: z.looseObject({
     maxDiscountPercent: z.number().min(0).max(100),
     codes: z
@@ -48,7 +50,7 @@ const sectionsSaved = z.looseObject({
       )
       .max(200)
   }),
-  sections: z.looseObject({
+  layout: z.looseObject({
     sections: z
       .array(
         z.looseObject({
@@ -97,15 +99,17 @@ export type StepResult =
         | 'render_failed'
         | 'step_progress_invalid'
         | 'step_unknown'
+        | 'store_changed'
     }
 
 const unreadable = { ok: false, code: 'step_progress_invalid' } as const
 
 /**
  * Runs one build step from the steps saved before it. The store is read
- * fresh for each step; the send time and offer rules are the ones the
- * first step saved, so an email never mixes two versions of Settings.
- * Never throws for bad data.
+ * fresh for each step; the send time, offer rules and timezone are the
+ * ones the first step saved, so an email never mixes two versions of
+ * Settings, and a store that changed between sample and real data starts
+ * over ("Try again"). Never throws for bad data.
  */
 export async function runBuildStep(
   step: string,
@@ -117,51 +121,43 @@ export async function runBuildStep(
   },
   ctx: BuildCtx
 ): Promise<StepResult> {
+  if (!(buildSteps as readonly string[]).includes(step))
+    return { ok: false, code: 'step_unknown' }
   const progress = progressSaved.safeParse(input.progress)
   if (!progress.success) return unreadable
-  const saved = progress.data
   const { planned, store } = input
-  switch (step) {
-    case 'sections': {
-      const made = await sectionsStep(input, ctx)
-      return made.ok
-        ? { ok: true, done: 'sections', output: made.output }
-        : made
-    }
-    case 'content': {
-      const sections = sectionsSaved.safeParse(saved.sections)
-      if (!sections.success) return unreadable
-      const locked = await contentStep(
-        {
-          planned,
-          store,
-          sections: sections.data as unknown as SectionsOutput
-        },
-        ctx
-      )
-      return { ok: true, done: 'content', output: locked }
-    }
-    case 'copy': {
-      const locked = contentSaved.safeParse(saved.content)
-      if (!locked.success) return unreadable
-      const made = await copyStep(
-        { store, locked: locked.data as unknown as LockedContent },
-        ctx
-      )
-      return made.ok ? { ok: true, done: 'copy', output: made.output } : made
-    }
-    case 'design': {
-      const sections = sectionsSaved.safeParse(saved.sections)
-      const copy = copySaved.safeParse(saved.copy)
-      if (!sections.success || !copy.success) return unreadable
-      const made = designStep({
-        planned,
-        store,
-        sendAt: sections.data.sendAt,
-        copy: copy.data as unknown as CopyOutput
-      })
-      return made.ok ? { ok: true, done: 'design', email: made.email } : made
-    }
+  if (step === 'sections') {
+    const made = await sectionsStep(input, ctx)
+    return made.ok ? { ok: true, done: 'sections', output: made.output } : made
   }
-  return { ok: false, code: 'step_unknown' }
+  const parsed = sectionsSaved.safeParse(progress.data.sections)
+  if (!parsed.success) return unreadable
+  const sections = parsed.data as unknown as SectionsOutput
+  if (sections.sample !== store.sample)
+    return { ok: false, code: 'store_changed' }
+  if (step === 'content')
+    return {
+      ok: true,
+      done: 'content',
+      output: await contentStep({ planned, store, sections }, ctx)
+    }
+  if (step === 'copy') {
+    const locked = contentSaved.safeParse(progress.data.content)
+    if (!locked.success) return unreadable
+    const made = await copyStep(
+      { store, locked: locked.data as unknown as LockedContent },
+      ctx
+    )
+    return made.ok ? { ok: true, done: 'copy', output: made.output } : made
+  }
+  const copy = copySaved.safeParse(progress.data.copy)
+  if (!copy.success) return unreadable
+  const made = designStep({
+    planned,
+    store,
+    sendAt: sections.sendAt,
+    sample: sections.sample,
+    copy: copy.data as unknown as CopyOutput
+  })
+  return made.ok ? { ok: true, done: 'design', email: made.email } : made
 }

@@ -101,9 +101,13 @@ const typeName = (type: PlannedEmail['emailType']) =>
 export type SectionsOutput = {
   /** The planned local time, as an instant. */
   sendAt: string
+  /** The workspace's timezone then: every later step shows dates in it. */
+  timezone: string
+  /** Built from the sample store: a later step on real data starts over. */
+  sample: boolean
   /** DSC-001: the max and the codes still working when this email sends. */
   rules: { maxDiscountPercent: number; codes: DiscountCode[] }
-  sections: SectionPlan
+  layout: SectionPlan
 }
 export type CopyOutput = { draft: Draft; changes: ChangeKey[] }
 
@@ -112,13 +116,13 @@ type StepInput = { planned: PlannedEmail; store: Store }
 /** What the Content locker and the copy write into, from the saved rules. */
 const assemblyFor = (
   store: Store,
-  saved: Pick<SectionsOutput, 'sendAt' | 'rules'>
+  saved: Pick<SectionsOutput, 'sendAt' | 'rules' | 'timezone'>
 ): Omit<AssemblyInput, 'brief'> => ({
   products: store.products,
   codes: saved.rules.codes,
   maxDiscountPercent: saved.rules.maxDiscountPercent,
   sendAt: saved.sendAt,
-  timezone: store.timezone,
+  timezone: saved.timezone,
   facts: store.facts
 })
 
@@ -143,14 +147,14 @@ export async function sectionsStep(
     codes: [...read.codes]
   }
   const allowed = allowedBlockTypes({
-    ...assemblyFor(store, { sendAt, rules }),
+    ...assemblyFor(store, { sendAt, rules, timezone: store.timezone }),
     brief: {
       campaignType: planned.emailType,
       goal: planned.angle,
       ...(planned.offer ? { offerCode: planned.offer.code } : {})
     }
   })
-  const sections = codeSectionPlan({
+  const layout = codeSectionPlan({
     mode: 'scratch',
     industry: store.industry,
     slot: {
@@ -162,7 +166,16 @@ export async function sectionsStep(
     allowed,
     library: seedVariants
   })
-  return { ok: true, output: { sendAt, rules, sections } }
+  return {
+    ok: true,
+    output: {
+      sendAt,
+      timezone: store.timezone,
+      sample: store.sample,
+      rules,
+      layout
+    }
+  }
 }
 
 /** Step 2: products, prices, the offer, its code, pictures and links locked. */
@@ -174,7 +187,7 @@ export async function contentStep(
   return lockContent(
     {
       slot: planned,
-      sections: sections.sections,
+      sections: sections.layout,
       store: assemblyFor(store, sections),
       site: store.brand.site
     },
@@ -235,9 +248,9 @@ export async function copyStep(
 
 /** Step 4: the copy drawn with coded design A, as the email to store. */
 export function designStep(
-  input: StepInput & { sendAt: string; copy: CopyOutput }
+  input: StepInput & { sendAt: string; sample: boolean; copy: CopyOutput }
 ): BuildResult {
-  const { planned, store, sendAt, copy } = input
+  const { planned, store, sendAt, sample, copy } = input
   const { draft } = copy
   let html: string
   try {
@@ -248,7 +261,7 @@ export function designStep(
   return {
     ok: true,
     email: {
-      sample: store.sample,
+      sample,
       ai: false,
       name: `${dayName(planned.date)} · ${typeName(planned.emailType)}`,
       subject: draft.subject,
@@ -307,6 +320,7 @@ export async function buildEmail(
   return designStep({
     ...input,
     sendAt: made.sendAt,
+    sample: input.store.sample,
     copy: { draft: made.draft, changes: made.changes }
   })
 }

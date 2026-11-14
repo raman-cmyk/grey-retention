@@ -82,7 +82,11 @@ export async function runEmailBuilds(
       final: boolean,
       retryAfterSeconds?: number
     ) => {
-      logger.error('Email build step failed', { build: job.id, code })
+      logger.error('Email build step failed', {
+        build: job.id,
+        step: job.step,
+        code
+      })
       const failed = await db.rpc('fail_email_step', {
         build: job.id,
         lease: job.lease_token,
@@ -122,6 +126,12 @@ export async function runEmailBuilds(
           ...(await stores.read(job.tenant_id)),
           timezone: job.timezone
         }
+        // A claim without a known step (the app deployed before the
+        // migration, for a few minutes) is tried again, not failed.
+        if (!(buildSteps as readonly string[]).includes(job.step ?? '')) {
+          await fail('step_unknown', false)
+          continue
+        }
         const started = now()
         const step = await runBuildStep(
           job.step,
@@ -132,11 +142,12 @@ export async function runEmailBuilds(
             fallbacks
           }
         )
-        if (now() - started > stepBudgetMs)
+        const took = now() - started
+        if (took > stepBudgetMs)
           logger.warn('Email build step ran long', {
             build: job.id,
             step: job.step,
-            ms: now() - started
+            ms: took
           })
         if (!step.ok) {
           await fail(step.code, true)

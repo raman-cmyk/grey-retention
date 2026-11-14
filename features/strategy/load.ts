@@ -1,4 +1,5 @@
 import 'server-only'
+import { allSteps } from '@/features/email-build/step-names'
 import { createClient } from '@/lib/supabase/server'
 import {
   storedPlan,
@@ -26,7 +27,7 @@ export type EmailBuildView = {
   id: string
   state: 'build_queued' | 'push_queued' | 'drafted' | 'failed'
   /** How far it got (REL-081): the step it runs next, or stopped at. */
-  step: (typeof buildSteps)[number]
+  step: (typeof allSteps)[number]
   /** The draft came from the fake pusher: no Klaviyo call was made. */
   sampleDraft: boolean
   /** Why it failed, in plain words, when the reason is known. */
@@ -42,9 +43,13 @@ const failureWords: Record<string, string> = {
   klaviyo_rate_limited: 'Klaviyo was busy for too long.',
   day_passed: 'Its day passed before it was ready.',
   planned_email_invalid: 'This planned email cannot be built. Plan again.',
-  step_progress_invalid: 'The app was updated while this email was being made.',
-  step_unknown: 'The app was updated while this email was being made.',
-  step_output_invalid: 'One of its steps made too much to save.'
+  step_progress_invalid:
+    'The app was updated while this email was being made. Try again.',
+  step_unknown:
+    'The app was updated while this email was being made. Try again.',
+  step_output_invalid: 'It came out too large to save.',
+  store_changed:
+    'Your store data changed while this email was being made. Try again.'
 }
 
 const buildStates = [
@@ -53,8 +58,6 @@ const buildStates = [
   'drafted',
   'failed'
 ] as const
-
-const buildSteps = ['sections', 'content', 'copy', 'design', 'push'] as const
 
 const states = [
   'pulse_queued',
@@ -108,7 +111,7 @@ export async function latestPlanRun(
           state: (buildStates as readonly string[]).includes(b.state)
             ? (b.state as EmailBuildView['state'])
             : 'failed',
-          step: (buildSteps as readonly string[]).includes(b.step)
+          step: (allSteps as readonly string[]).includes(b.step)
             ? (b.step as EmailBuildView['step'])
             : 'sections',
           sampleDraft: b.sample_draft,

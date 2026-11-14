@@ -10,7 +10,12 @@ import {
   type DraftPusher,
   type DraftResult
 } from '@/lib/providers/klaviyo-draft'
-import { sampleOffers, sampleStoreFrom, sampleStoreSource } from './ports'
+import {
+  sampleOffers,
+  sampleOffersFrom,
+  sampleStoreFrom,
+  sampleStoreSource
+} from './ports'
 
 const tenant = '00000000-0000-4000-8000-000000000101'
 const inDays = (n: number) => {
@@ -229,29 +234,56 @@ describe('saved steps (REL-081)', () => {
       expect(JSON.parse(JSON.stringify(output))).toEqual(output)
   })
 
-  it('resumes at a saved step with the offers the first step saved, and makes the same email', async () => {
-    const { saved, email } = await fullRun()
-    // Settings are not read again after the first step.
-    const offers = { offers: vi.fn(sampleOffers.offers) }
-    const { db, calls } = fakeDb([
-      step({
-        step: 'copy',
-        progress: { sections: saved.sections, content: saved.content }
-      })
-    ])
+  it('resumes with the send time, offers and timezone the first step saved, and makes the same email as a straight build', async () => {
+    // An offer email: the sample's CANDLE10, 10% off (the sample max is 20%).
+    const offerEmail: PlannedEmail = {
+      ...planned,
+      emailType: 'offer',
+      offer: { id: 'offer:CANDLE10', code: 'CANDLE10', percent: 10 }
+    }
+    const first = fakeDb([step({ planned: offerEmail })])
+    await runEmailBuilds(first.db, { limit: 1, fallbacks: memoryFallbackLog() })
+    const sections = first.calls.find((c) => c.fn === 'finish_email_step')!.args
+      .output
+    // Then the owner saves a 5% max and moves the workspace to another
+    // timezone, and the build goes on at its content step.
+    const { db, calls } = fakeDb(
+      [
+        step({
+          planned: offerEmail,
+          step: 'content',
+          progress: { sections },
+          timezone: 'Pacific/Kiritimati'
+        })
+      ],
+      {},
+      {
+        brand_offers: [{ max_discount_percent: 5, revision: 1 }],
+        discount_codes: []
+      }
+    )
     expect(
-      await runEmailBuilds(db, { offers, fallbacks: memoryFallbackLog() })
-    ).toEqual({ ran: 2 })
-    expect(offers.offers).not.toHaveBeenCalled()
-    expect(
-      calls.filter((c) => c.fn === 'finish_email_step').map((c) => c.args.done)
-    ).toEqual(['copy'])
-    expect(
-      calls.find((c) => c.fn === 'finish_email_build')!.args.result
-    ).toEqual(email)
+      await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+    ).toEqual({ ran: 3 })
+    const straight = await buildEmail(
+      {
+        planned: offerEmail,
+        store: {
+          ...(await sampleStoreFrom(inDays(1)).read(tenant)),
+          timezone: 'Asia/Kathmandu'
+        },
+        offers: sampleOffersFrom(inDays(1))
+      },
+      { tenantId: tenant, callerKey: 'x', fallbacks: memoryFallbackLog() }
+    )
+    if (!straight.ok) throw new Error('straight build failed')
+    const email = calls.find((c) => c.fn === 'finish_email_build')!.args
+      .result as BuiltEmail
+    expect(email).toEqual(straight.email)
+    expect(email.code).toBe('CANDLE10')
   })
 
-  it('saves a step before the next one fails, so the retry starts there', async () => {
+  it('saves a step before the next one fails, and the retry starts at the failed step', async () => {
     let reads = 0
     const sample = sampleStoreFrom(inDays(1))
     const { db, calls } = fakeDb([step()])
@@ -264,13 +296,42 @@ describe('saved steps (REL-081)', () => {
       },
       fallbacks: memoryFallbackLog()
     })
-    expect(
-      calls.filter((c) => c.fn === 'finish_email_step').map((c) => c.args.done)
-    ).toEqual(['sections'])
+    const saved = calls.filter((c) => c.fn === 'finish_email_step')
+    expect(saved.map((c) => c.args.done)).toEqual(['sections'])
     expect(failure(calls)).toMatchObject({ code: 'step_error', final: false })
+    // The next claim brings the saved step: the build goes on from there.
+    const retry = fakeDb([
+      step({ step: 'content', progress: { sections: saved[0].args.output } })
+    ])
+    await runEmailBuilds(retry.db, { fallbacks: memoryFallbackLog() })
+    expect(
+      retry.calls
+        .filter((c) => c.fn === 'finish_email_step')
+        .map((c) => c.args.done)
+    ).toEqual(['content', 'copy'])
+    expect(retry.calls.some((c) => c.fn === 'finish_email_build')).toBe(true)
   })
 
-  it('fails at once for a saved step that cannot be read, or a step it does not know', async () => {
+  it('tries a step again when its save is lost, and a step it does not know (an app newer than the database)', async () => {
+    for (const error of [{ code: 'PT409' }, {}]) {
+      const { db, calls } = fakeDb([step()], {
+        finish_email_step: error as never
+      })
+      await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+      expect(failure(calls)).toMatchObject({ code: 'step_error', final: false })
+    }
+    for (const s of [step({ step: 'review' }), step({ step: undefined })]) {
+      const { db, calls } = fakeDb([s])
+      await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+      expect(failure(calls)).toMatchObject({
+        code: 'step_unknown',
+        final: false
+      })
+    }
+  })
+
+  it('fails at once for a saved step that cannot be read, or a store that changed between sample and real data', async () => {
+    const { saved } = await fullRun()
     for (const [s, code] of [
       [step({ step: 'design', progress: {} }), 'step_progress_invalid'],
       [
@@ -278,7 +339,15 @@ describe('saved steps (REL-081)', () => {
         'step_progress_invalid'
       ],
       [step({ step: 'content', progress: null }), 'step_progress_invalid'],
-      [step({ step: 'review' }), 'step_unknown']
+      [
+        step({
+          step: 'copy',
+          progress: {
+            sections: { ...(saved.sections as object), sample: false }
+          }
+        }),
+        'store_changed'
+      ]
     ] as const) {
       const { db, calls } = fakeDb([s])
       await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
