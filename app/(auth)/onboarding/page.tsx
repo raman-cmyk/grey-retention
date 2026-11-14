@@ -1,5 +1,8 @@
 import { InvitationPanel } from '@/features/operations/panels'
 import { WorkspaceForm } from '@/components/auth/workspace-form'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Set up your workspace' }
 
 export default function OnboardingPage() {
   return (

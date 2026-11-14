@@ -12,6 +12,9 @@ import {
   NotConnected,
   smallLabel
 } from '@/features/klaviyo-detail/parts'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Flow message' }
 
 export default async function FlowMessagePage({
   params

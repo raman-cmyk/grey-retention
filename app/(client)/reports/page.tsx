@@ -1,5 +1,8 @@
 import { PageHeading } from '@/components/ui/workspace'
 import { ReportingPanel } from '@/features/reporting/panel'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Results & learning' }
 export default function ReportsPage() {
   return (
     <div className="mx-auto max-w-6xl">

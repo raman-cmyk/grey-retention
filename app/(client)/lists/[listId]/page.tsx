@@ -13,6 +13,9 @@ import {
   NotConnected
 } from '@/features/klaviyo-detail/parts'
 import { optInWords } from '@/features/klaviyo-detail/words'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'List' }
 
 export default async function ListPage({
   params,
