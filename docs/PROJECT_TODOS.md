@@ -16,6 +16,7 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - Completely rethink UI/UX in Figma. Supersede current UI and old-app parity; preserve useful underlying functionality.
 - Klaviyo only, no designer workflow and client-owned content remain. **Superseded 11 Nov 2026:** no weekly approval and no human loop (D16, D17); the owner starts planning and email creation, and created emails land in Klaviyo as drafts.
 - 11 Nov 2026: the agent plan v3 in [AGENT_MAP.md](AGENT_MAP.md) is the build plan (decisions D16–D24 in BUILD_BRIEF.md).
+- 15 Nov 2026: design quality is the moat. Designed emails go through a design studio (designed in web code, rendered to images, interactive parts live); text emails are their own format (D25, D26 in AGENT_MAP.md). Next: a design proof of 5 rebuilt Inspiration emails before the A vs B test.
 
 ## Hard design rules and current scope
 
