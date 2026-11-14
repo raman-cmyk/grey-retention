@@ -39,9 +39,14 @@ export async function proxy(request: NextRequest) {
     !refreshed.authenticated &&
     !publicAuthRoutes.has(request.nextUrl.pathname)
   ) {
-    return NextResponse.redirect(
-      new URL(loginPath(request.nextUrl.pathname), request.url)
-    )
+    const login = new URL(loginPath(request.nextUrl.pathname), request.url)
+    // A page opened (not a form sent) is opened again after signing in.
+    if (request.method === 'GET' || request.method === 'HEAD')
+      login.searchParams.set(
+        'next',
+        `${request.nextUrl.pathname}${request.nextUrl.search}`
+      )
+    return NextResponse.redirect(login)
   }
   return refreshed.response
 }
