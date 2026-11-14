@@ -9,6 +9,7 @@ import { requireRequestContext } from '@/features/auth/application/request-conte
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { logger } from '@/lib/logger'
+import { draftPusherFor } from '@/features/klaviyo-push/live'
 import { runEmailBuilds } from './worker'
 
 export type CreateEmailState = { error?: string }
@@ -22,9 +23,12 @@ function buildSoon(build: string) {
     const service = createServiceClient()
     if (!service) return
     try {
+      // The fake draft pusher unless the owner's write switch is on
+      // (KLAVIYO_DRAFT_PUSH=live with KLAVIYO_MODE=live, PSH-001).
       await runEmailBuilds(service, {
         build,
-        deadline: Date.now() + clickBudgetMs
+        deadline: Date.now() + clickBudgetMs,
+        pusher: draftPusherFor(service)
       })
     } catch (error) {
       logger.error('Email build could not start', {

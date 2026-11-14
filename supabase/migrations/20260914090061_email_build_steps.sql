@@ -37,6 +37,9 @@ declare
   saved jsonb;
 begin
   select * into b from private.leased_email_build(build, lease, 'build_queued');
+  if done is null or done not in ('sections', 'content', 'copy', 'design') then
+    raise exception 'Unknown build step' using errcode = '22023';
+  end if;
   next_step := case done when 'sections' then 'content' when 'content' then 'copy' when 'copy' then 'design' end;
   if next_step is null or b.step is distinct from done then
     raise exception 'This is not the build''s next step' using errcode = 'PT409';

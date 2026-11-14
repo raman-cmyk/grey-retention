@@ -1,5 +1,5 @@
 begin;
-select plan(35);
+select plan(41);
 
 -- REL-081: "Create email" runs as saved steps. Workspace 101: owner ...01.
 select ok(not has_function_privilege('authenticated','public.finish_email_step(uuid,uuid,text,jsonb)','execute'),'members cannot finish a step');
@@ -7,6 +7,7 @@ select ok(not has_function_privilege('anon','public.finish_email_step(uuid,uuid,
 select ok(has_function_privilege('service_role','public.finish_email_step(uuid,uuid,text,jsonb)','execute'),'jobs finish steps');
 select ok(not has_function_privilege('authenticated','public.claim_email_build(uuid)','execute'),'members still cannot claim a build');
 select ok(has_function_privilege('service_role','public.claim_email_build(uuid)','execute'),'jobs still claim builds');
+select ok(not has_function_privilege('anon','public.claim_email_build(uuid)','execute'),'nor can anyone signed out, after the claim was made again');
 
 create function pg_temp.later(build uuid, minutes int) returns void language sql as $$
   update public.email_builds set updated_at = updated_at - make_interval(mins => minutes),
@@ -42,7 +43,9 @@ select set_config('test.claim',(select c.step || ' ' || c.progress::text || ' ' 
 select is(split_part(current_setting('test.claim'),' ',1) || ' ' || split_part(current_setting('test.claim'),' ',2),'sections {}','the claim brings the step to run and what is saved');
 select set_config('test.lease',split_part(current_setting('test.claim'),' ',3),true);
 select throws_ok($$select public.finish_email_step(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'content','{}')$$,'PT409','This is not the build''s next step','a step cannot be skipped');
-select throws_ok($$select public.finish_email_step(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'design','{}')$$,'PT409',null,'nor finished by a name that is not a saved step');
+select throws_ok($$select public.finish_email_step(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'design','{}')$$,'PT409',null,'nor the design step finished as a saved step');
+select throws_ok($$select public.finish_email_step(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'bogus','{}')$$,'22023','Unknown build step','a step it does not know is refused');
+select throws_ok($$select public.finish_email_step(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'sections',null)$$,'22023',null,'a step needs its output');
 select throws_ok($$select public.finish_email_build(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'{"subject":"s","preheader":"p","html":"<p>x</p>"}')$$,'PT409','This is not the build''s next step','an email is not built before its design step');
 select throws_ok($$select public.finish_email_step(current_setting('test.build')::uuid,gen_random_uuid(),'sections','{}')$$,'PT409','Lease unavailable','a wrong lease cannot finish a step');
 select throws_ok($$select public.finish_email_step(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'sections','[1]')$$,'22023',null,'a step''s output is an object');
@@ -87,7 +90,10 @@ select lives_ok($$select public.finish_email_build(current_setting('test.build')
 reset role;
 select is((select state || ':' || step || ':' || attempts from public.email_builds where id=current_setting('test.build')::uuid),'push_queued:push:0','the push is its own step');
 set local role service_role;
-select throws_ok($$select public.finish_email_step(current_setting('test.build')::uuid,(select c.lease_token from public.claim_email_build(current_setting('test.build')::uuid) c),'copy','{}')$$,
+select set_config('test.claim',(select c.id || ' ' || c.step || ' ' || c.lease_token from public.claim_email_build() c),true);
+select is(split_part(current_setting('test.claim'),' ',1) || ' ' || split_part(current_setting('test.claim'),' ',2),current_setting('test.build') || ' push',
+  'a push goes before an older new build');
+select throws_ok($$select public.finish_email_step(current_setting('test.build')::uuid,split_part(current_setting('test.claim'),' ',3)::uuid,'copy','{}')$$,
   'PT409','Lease unavailable','a pushing build has no build step to finish');
 reset role;
 
@@ -101,8 +107,21 @@ set local role authenticated;
 select is((select count(*) from public.email_builds where id=current_setting('test.second')::uuid),0::bigint,'another workspace cannot read it');
 reset role;
 
+-- A step whose lease ran out cannot be saved.
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+set local role service_role;
+select set_config('test.lease',(select c.lease_token from public.claim_email_build(current_setting('test.second')::uuid) c)::text,true);
+reset role;
+update public.email_builds set lease_until = now() - interval '1 second' where id = current_setting('test.second')::uuid;
+set local role service_role;
+select throws_ok($$select public.finish_email_step(current_setting('test.second')::uuid,current_setting('test.lease')::uuid,'sections','{}')$$,
+  'PT409','Lease unavailable','a step whose lease ran out cannot be saved');
+reset role;
+select is((select step || ':' || progress::text from public.email_builds where id=current_setting('test.second')::uuid),'sections:{}','and nothing is saved');
+
 -- A step that fails for good fails the build; "Try again" starts at the first step.
-update public.email_builds set progress = '{"sections":{}}', step = 'content' where id = current_setting('test.second')::uuid;
+update public.email_builds set progress = '{"sections":{}}', step = 'content', lease_token = null, lease_until = null, attempts = 0
+  where id = current_setting('test.second')::uuid;
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
 set local role service_role;
 select is(public.fail_email_step(current_setting('test.second')::uuid,(select c.lease_token from public.claim_email_build(current_setting('test.second')::uuid) c),'copy_failed',true),'failed','a final failure fails the build at its step');
