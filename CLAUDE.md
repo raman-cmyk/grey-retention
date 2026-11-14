@@ -88,7 +88,7 @@ Use `/new-migration <domain> <short_name>` to get the next number. **D24:** choo
 - **Slash commands** (`.claude/commands/`): `/start-task <ID>` picks up a ledger task and plans it · `/verify [quick|full]` runs the right gates · `/new-migration <domain> <name>` creates a correctly numbered migration · `/handoff <ID>` updates the ledger · `/explain-for-owner <thing>` writes a plain-English summary for Raman.
 - **Subagents** (`.claude/agents/`): `code-reviewer` (run before every PR), `rls-migration-reviewer` (any change under `supabase/`), `klaviyo-integration` (provider adapters, sync jobs, webhooks).
 - **Hooks**: edited files are auto-formatted with Prettier; edits to committed migrations, generated types, `.env*` and `.audit/` are blocked.
-- **Session env** forces `ADAPTER_MODE=fake` and `AI_DEFAULT_PROVIDER=fake`, so anything Claude starts stays on fake providers even if `.env.local` says otherwise.
+- **Session env** forces `ADAPTER_MODE=fake`, `AI_DEFAULT_PROVIDER=fake`, `KLAVIYO_MODE=fake` and `KLAVIYO_DRAFT_PUSH=off`, so anything Claude starts stays on fake providers and never reads or writes a real Klaviyo account, even if `.env.local` says otherwise.
 - **Permissions**: no approval prompts. Checks, local Supabase commands (including `supabase:reset`), `git push`, PR create/merge and dependency changes are allowed; force-push, `supabase db push`/`link` and Vercel commands stay denied.
 - Personal overrides go in `.claude/settings.local.json` or `CLAUDE.local.md` (both git-ignored).
 
