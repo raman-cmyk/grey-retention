@@ -931,8 +931,11 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
         same &&
         norm(v.subject) === norm(input.subject) &&
         norm(v.preview) === norm(input.preheader)
-      )
+      ) {
+        // Changed by an earlier run whose read back never came: recorded now.
+        if (shownOf(p.shown)[v.id]?.writing) await record([v], { strict: true })
         continue
+      }
       // A change may reset the even test: two designs are checked again.
       if (wanted.length === 2 && p.ab !== 'pending')
         await save({ ab: 'pending' })
@@ -971,7 +974,7 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
       // What it shows now, recorded at once, so a later failure never
       // leaves it unchecked. Still the template replaced: Klaviyo has not
       // caught up (it stays marked; the next run looks again).
-      const now = await readDraft(client, messageId)
+      const now = await whilePending(() => readDraft(client, messageId))
       const shows = now?.variations.find((x) => x.id === v.id)
       if (!shows || (t && shows.templateId === v.templateId)) throw new Wait()
       await record([shows], { strict: true })

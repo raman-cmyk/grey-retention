@@ -636,6 +636,41 @@ describe('the live Klaviyo draft push', () => {
     )
   })
 
+  it('records a design whose change landed and whose read back never came', async () => {
+    // The second push's change to design A lands but reads back stale; the
+    // third, with the same content, is refused on design B.
+    const { account, pusher } = setup({
+      staleTemplateRead: true,
+      refuseUpdate: 2
+    })
+    expect((await pusher.createDraft(ab())).ok).toBe(true)
+    const two = (a: string, b: string) =>
+      ab({
+        variations: [
+          { approach: 'A', html: page(a, [hero]) },
+          { approach: 'B', html: page(b, [knit]) }
+        ]
+      })
+    expect(await pusher.createDraft(two('A2', 'B2'))).toMatchObject({
+      ok: false,
+      code: 'rate_limited'
+    })
+    expect((await pusher.createDraft(two('A2', 'B2'))).ok).toBe(false)
+    const a = variationsOf(account).find((v) => v.name === 'Design A')!
+    const copy = account.templates.get(a.templateId!)!
+    expect(copy.html).toContain('<h1>A2</h1>')
+    copy.html = copy.html.replace(
+      '<h1>A2</h1>',
+      '<h1>The owner wrote this</h1>'
+    )
+    expect(await pusher.createDraft(two('A3', 'B3'))).toEqual({
+      ok: false,
+      code: 'rejected',
+      checks: ['externally_modified']
+    })
+    expect(copy.html).toContain('The owner wrote this')
+  })
+
   it('never overwrites a template the owner put on a design while Klaviyo was busy', async () => {
     const { account, pusher } = setup()
     expect((await pusher.createDraft(input())).ok).toBe(true)
