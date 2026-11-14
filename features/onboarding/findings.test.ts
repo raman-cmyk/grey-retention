@@ -14,7 +14,7 @@ import {
 const migrations = path.join(process.cwd(), 'supabase/migrations')
 // The findings migrations in order: a later one may widen a list.
 const sql = readdirSync(migrations)
-  .filter((f) => /_(brand_findings|klaviyo_history)\.sql$/.test(f))
+  .filter((f) => /_(brand_findings|klaviyo_history|ads_reading)\.sql$/.test(f))
   .sort()
   .map((f) => readFileSync(path.join(migrations, f), 'utf8'))
   .join('\n')
@@ -55,6 +55,9 @@ describe('the findings contract', () => {
     expect(
       listIn(/check \(source <> 'klaviyo_history' or topic in \(([^)]+)\)/)
     ).toEqual([...sourceTopics.klaviyo_history])
+    expect(listIn(/check \(source <> 'ads' or topic in \(([^)]+)\)/)).toEqual([
+      ...sourceTopics.ads
+    ])
     for (const topic of findingTopics)
       expect(sql, topic).toMatch(new RegExp(`'${topic}'`))
   })
@@ -80,7 +83,16 @@ describe('the findings contract', () => {
         { name: 'Judge.me', verified: true, rating: 4.8, count: 1200 }
       ],
       shipping: [{}],
-      tone: [{}]
+      tone: [{}],
+      promotion: [
+        { kind: 'percent_off', percent: 20 },
+        { kind: 'amount_off', amount: 10, currency: 'USD' },
+        { kind: 'gift' },
+        { kind: 'bundle' }
+      ],
+      angle: [{}],
+      creative: [{}],
+      landing_page: [{ url: 'https://cedar-lane.example/collections/knitwear' }]
     }
     const bad: Record<string, unknown[]> = {
       free_shipping: [
@@ -98,7 +110,17 @@ describe('the findings contract', () => {
       price_band: [{ min: 120, max: 89, currency: 'USD' }],
       claim: [{ subject: 'everyone' }, {}],
       review_platform: [{ name: 'Judge.me' }],
-      shipping: [{ days: 3 }]
+      shipping: [{ days: 3 }],
+      promotion: [
+        { kind: 'percent_off' },
+        { kind: 'percent_off', percent: 95 },
+        { kind: 'percent_off', percent: 12.5 },
+        { kind: 'amount_off', amount: 10 },
+        { kind: 'free_shipping' },
+        { kind: 'gift', percent: 10 }
+      ],
+      angle: [{ why: 'gifts' }],
+      landing_page: [{ url: 'http://cedar-lane.example/' }, { url: 'nope' }, {}]
     }
     for (const [topic, values] of Object.entries(good))
       for (const v of values)

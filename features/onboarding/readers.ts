@@ -3,6 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
 import { classifyFailure } from '@/features/integrations/failures'
+import { runAdsReadingJob } from './ads/live'
+import { adsRunMs } from './ads/worker'
 import { runCatalogReadingJob } from './catalog/live'
 import { catalogRunMs } from './catalog/worker'
 import { runHistoryReadingJob } from './history/live'
@@ -23,7 +25,12 @@ type Job = Database['public']['Tables']['job_runs']['Row']
  * The longest one source read takes: no page or model call starts without
  * the time it may take, so a read ends by its own limit.
  */
-export const sourceRunMs = Math.max(siteRunMs, catalogRunMs, historyRunMs)
+export const sourceRunMs = Math.max(
+  siteRunMs,
+  catalogRunMs,
+  historyRunMs,
+  adsRunMs
+)
 export { dbMarginMs, readersRunMs, siteCallTimeoutMs }
 
 export type ReadersRun =
@@ -31,8 +38,8 @@ export type ReadersRun =
   | { state: 'failed'; code: string }
 
 /**
- * One read by its kind: the website (ONB-101), the catalog (ONB-102) or
- * what the brand already sent (ONB-103).
+ * One read by its kind: the website (ONB-101), the catalog (ONB-102),
+ * what the brand already sent (ONB-103) or its live ads (ONB-104).
  */
 export async function runSourceReadingJob(
   db: Db,
@@ -47,13 +54,17 @@ export async function runSourceReadingJob(
     const reading = await runHistoryReadingJob(db, job, env)
     return reading.outcome
   }
+  if (job.kind === 'brand.read_ads') {
+    await runAdsReadingJob(db, job, env)
+    return 'read'
+  }
   await runSiteReadingJob(db, job, env)
   return 'read'
 }
 
 /**
  * The onboarding readers' run: the source reads waiting across the
- * workspaces (site, catalog and history), one after another, as the worker. A read
+ * workspaces (site, catalog, history and ads), one after another, as the worker. A read
  * is taken only while `readersRunMs` has not passed; each takes at most
  * `sourceRunMs`, so the run ends inside its route's 60 seconds. A read
  * that fails is recorded on its job (tried again later, at most four
