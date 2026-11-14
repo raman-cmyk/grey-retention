@@ -2,6 +2,16 @@
 
 This file is the durable cross-task memory. Every implementation task must update only its own row and append a handoff entry. Never mark an item complete without verification evidence.
 
+## Blocked, needs Raman
+
+Work that waits for the owner's decision or OK (master handoff: ask Raman only for these). Each line says what is waiting and what happens after the OK. The rest of the queue goes on meanwhile.
+
+- **The first real Klaviyo call** (LRN-001, PSH-001). Everything is built and tested against Klaviyo's published API, behind `KLAVIYO_MODE=live` and `KLAVIYO_DRAFT_PUSH=live` (both off). Asked: one read-only call to a real account, to confirm the report and click ids LRN-001 reads; then the first real draft (PSH-001's list of things to check is in its handoff).
+- **The Meta Ad Library route** (ONB-104). The live reader needs Meta's official Ad Library API (an app and a token: a new service), or the owner's own ad account later. Until then a synthetic brand reads sample ads and a real brand's ads are not read.
+- **Privacy policy and terms** (section 8). The pages and the link from sign-up are built once Raman supplies the text.
+- **Deleting an account or a whole workspace** (section 8). The server side can be built; what is kept (results, drafts in Klaviyo) and how long, and every real deletion, wait for Raman.
+- **The hosted project's sign-in limits** (BAS-004). They are set in its Supabase dashboard, which touching needs Raman's OK (or Raman checks Authentication → Rate Limits there).
+
 ## Current state
 
 | ID            | Workstream                                     | Depends on       | Status      | Owner/task                   | Verification                                                                                                                       | Notes                                                                                                                             |
