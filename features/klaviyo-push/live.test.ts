@@ -87,6 +87,28 @@ describe('the pusher "Create email" uses', () => {
     expect(rpc).toHaveBeenCalledWith('klaviyo_api_key', { t: input.tenantId })
   })
 
+  it('refuses a real email planned for a sample audience once the switch is on, before any Klaviyo call', async () => {
+    const { db, rpc } = database({ klaviyo_api_key: { data: 'pk_x' } })
+    const fetch = vi.spyOn(globalThis, 'fetch')
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const pusher = draftPusherFor(db, {
+      env: { KLAVIYO_MODE: 'live', KLAVIYO_DRAFT_PUSH: 'live' }
+    })
+    for (const audienceId of ['sample-engaged', 'SAMPLE_vip'])
+      expect(await pusher.createDraft({ ...input, audienceId })).toEqual({
+        ok: false,
+        code: 'rejected',
+        checks: ['audience']
+      })
+    expect(fetch).not.toHaveBeenCalled()
+    expect(rpc).toHaveBeenCalledWith('save_klaviyo_push', {
+      build: ref.build,
+      lease: ref.lease,
+      step: { state: 'refused', reason: 'audience_not_in_klaviyo' }
+    })
+    fetch.mockRestore()
+  })
+
   it('reads no key at another API revision: a server setting, tried again', async () => {
     const { db, rpc } = database({ klaviyo_api_key: { data: 'pk_x' } })
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -108,7 +130,8 @@ describe('the push steps in the database', () => {
       campaignId: 'Cmp1',
       messageId: 'Msg1',
       images: { 'https://cedar.example/a.jpg': 'https://img.example/a.jpg' },
-      designs: null
+      designs: null,
+      shown: null
     })
     expect(rpc).toHaveBeenCalledWith('save_klaviyo_push', {
       build: ref.build,
@@ -117,7 +140,8 @@ describe('the push steps in the database', () => {
         campaign_id: 'Cmp1',
         message_id: 'Msg1',
         images: { 'https://cedar.example/a.jpg': 'https://img.example/a.jpg' },
-        designs: null
+        designs: null,
+        shown: null
       }
     })
   })
@@ -135,7 +159,8 @@ describe('the push steps in the database', () => {
       designs: 'A',
       fallback: null,
       reason: null,
-      written: 'b'.repeat(64)
+      written: 'b'.repeat(64),
+      shown: 'c'.repeat(16)
     }
     expect(
       await databasePushStore(
@@ -151,7 +176,8 @@ describe('the push steps in the database', () => {
       designs: 'A',
       fallback: null,
       reason: null,
-      written: 'b'.repeat(64)
+      written: 'b'.repeat(64),
+      shown: 'c'.repeat(16)
     })
     expect(await databasePushStore(database({}).db).load(ref)).toBeNull()
   })

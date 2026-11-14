@@ -59,6 +59,10 @@ create table public.klaviyo_draft_pushes (
   -- Klaviyo and is never overwritten.
   written text check (written is null or written ~ '^[a-f0-9]{16}(,[a-f0-9]{16}){0,7}$'),
   target text check (target is null or target ~ '^[a-f0-9]{16}(,[a-f0-9]{16}){0,7}$'),
+  -- What each variation showed when a push last left it: "variation:template:fingerprint",
+  -- ":w" added while we change it. Other HTML in that template later (the owner edited
+  -- the design in Klaviyo) makes a later push leave the draft alone.
+  shown text check (shown is null or shown ~ '^[A-Za-z0-9_-]{1,64}:[A-Za-z0-9_-]{1,64}:[a-f0-9]{16}(:w)?(,[A-Za-z0-9_-]{1,64}:[A-Za-z0-9_-]{1,64}:[a-f0-9]{16}(:w)?){0,7}$'),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   primary key (tenant_id, push_key),
@@ -89,10 +93,10 @@ returns void language plpgsql security definer set search_path = '' as $$
 declare
   allowed constant text[] := array['state', 'images', 'templates', 'campaign_id', 'message_id', 'create_started_at',
     'message_started_at', 'template_started_at', 'delete_answered_at', 'audience_id', 'designs', 'fallback', 'ab',
-    'checks', 'reason', 'written', 'target'];
+    'checks', 'reason', 'written', 'target', 'shown'];
   texts constant text[] := array['state', 'campaign_id', 'message_id', 'create_started_at', 'message_started_at',
     'template_started_at', 'delete_answered_at', 'audience_id', 'designs', 'fallback', 'ab', 'reason', 'written',
-    'target'];
+    'target', 'shown'];
   t uuid; key uuid; cur public.klaviyo_draft_pushes;
 begin
   if coalesce(auth.role(), '') <> 'service_role' then raise exception 'Access denied' using errcode = '42501'; end if;
@@ -138,6 +142,7 @@ begin
     or (step ? 'fallback' and step->'fallback' <> 'null'::jsonb and step->>'fallback' !~ '^[a-z][a-z_]{1,39}$')
     or (step ? 'reason' and step->'reason' <> 'null'::jsonb and step->>'reason' !~ '^[a-z][a-z_]{1,39}$')
     or (step ? 'written' and step->'written' <> 'null'::jsonb and step->>'written' !~ '^[a-f0-9]{16}(,[a-f0-9]{16}){0,7}$')
+    or (step ? 'shown' and step->'shown' <> 'null'::jsonb and step->>'shown' !~ '^[A-Za-z0-9_-]{1,64}:[A-Za-z0-9_-]{1,64}:[a-f0-9]{16}(:w)?(,[A-Za-z0-9_-]{1,64}:[A-Za-z0-9_-]{1,64}:[a-f0-9]{16}(:w)?){0,7}$')
     or (step ? 'checks' and (jsonb_typeof(step->'checks') <> 'array' or jsonb_array_length(step->'checks') > 6
       or octet_length((step->'checks')::text) > 20000
       or exists (select 1 from jsonb_array_elements(step->'checks') x
@@ -188,6 +193,7 @@ begin
       checks = case when step ? 'checks' then step->'checks' else p.checks end,
       reason = case when step ? 'reason' then step->>'reason' else p.reason end,
       written = case when step ? 'written' then step->>'written' else p.written end,
+      shown = case when step ? 'shown' then step->>'shown' else p.shown end,
       updated_at = now()
     where p.tenant_id = t and p.push_key = key;
 end $$;

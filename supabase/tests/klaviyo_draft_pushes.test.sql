@@ -1,5 +1,5 @@
 begin;
-select plan(79);
+select plan(90);
 
 -- PSH-001: the live push's steps. Workspace 101: owner ...01, staff ...05.
 -- Workspace 102: owner ...04.
@@ -97,6 +97,11 @@ select throws_ok(format('select pg_temp.save(%L)', x),'23514',null,'refused step
     '{"checks":[{"id":"images","pass":true,"problems":[],"extra":1}]}',
     '{"written":"abc"}',
     '{"target":"abc"}',
+    '{"shown":"abc"}',
+    '{"shown":12}',
+    '{"shown":"VarA:dddddddddddddddd"}',
+    '{"shown":"Var A:TplA:dddddddddddddddd"}',
+    '{"shown":"VarA:TplA:dddddddddddddddd:x"}',
     '{"ab":"maybe"}',
     '{"audience_id":"a b"}',
     '{"template_started_at":"soon"}',
@@ -153,6 +158,16 @@ select lives_ok($$select pg_temp.save(jsonb_build_object('designs','A','fallback
 select throws_ok($$select pg_temp.save('{"designs":"both"}')$$,'PT409',null,'design A stays design A');
 select lives_ok($$select pg_temp.save(jsonb_build_object('state','drafted','designs','A','written',repeat('b',16),'reason',null))$$,
   'then the draft is ready');
+select lives_ok(format('select pg_temp.save(%L::jsonb)', jsonb_build_object('shown','VarA:TplA:'||repeat('d',16)||',VarB:TplB:'||repeat('e',16)||':w')),
+  'with what its designs show in Klaviyo');
+select is((select shown from public.klaviyo_draft_pushes where push_key='00000000-0000-4000-8000-00000000c101'),
+  'VarA:TplA:'||repeat('d',16)||',VarB:TplB:'||repeat('e',16)||':w','kept to know an owner''s edit later');
+select lives_ok($$select pg_temp.save('{"target":null,"written":null}')$$,'a fingerprint saved as null clears it');
+select ok((select target is null and written is null and shown = 'VarA:TplA:'||repeat('d',16)||',VarB:TplB:'||repeat('e',16)||':w'
+  from public.klaviyo_draft_pushes where push_key='00000000-0000-4000-8000-00000000c101'),'those two cleared, what the draft shows kept');
+select lives_ok($$select pg_temp.save('{"shown":null}')$$,'cleared while a later push writes');
+select is((select shown from public.klaviyo_draft_pushes where push_key='00000000-0000-4000-8000-00000000c101'),
+  null,'and gone');
 reset role;
 select results_eq($$select state, (select count(*) from jsonb_object_keys(images))::integer, campaign_id, message_id, designs, fallback
     from public.klaviyo_draft_pushes where push_key='00000000-0000-4000-8000-00000000c101'$$,

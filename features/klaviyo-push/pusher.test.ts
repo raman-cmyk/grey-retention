@@ -73,7 +73,8 @@ function memoryStore() {
     ab: null,
     reason: null,
     written: null,
-    target: null
+    target: null,
+    shown: null
   }
   const store: PushStore = {
     async load({ tenantId: t, key: k }) {
@@ -496,6 +497,243 @@ describe('the live Klaviyo draft push', () => {
     expect(variation!.subject).toBe('The owner wrote this')
   })
 
+  it('never overwrites a design the owner changed in Klaviyo’s editor', async () => {
+    const { account, memory, pusher } = setup()
+    expect((await pusher.createDraft(input())).ok).toBe(true)
+    expect(memory.row()?.shown).toMatch(/^Var\w+:TplCopy\w+:[a-f0-9]{16}$/)
+    const [variation] = variationsOf(account)
+    const copy = account.templates.get(variation!.templateId!)!
+    copy.html = copy.html.replace('<h1>A</h1>', '<h1>The owner wrote this</h1>')
+    const before = writes(account).length
+    // "Try again" with a new design: the owner's design stays.
+    expect(
+      await pusher.createDraft(input({ html: page('A2', [hero]) }))
+    ).toEqual({ ok: false, code: 'rejected', checks: ['externally_modified'] })
+    expect(writes(account)).toHaveLength(before)
+    expect(variationsOf(account)[0]!.templateId).toBe(variation!.templateId)
+    expect(copy.html).toContain('The owner wrote this')
+    expect(memory.row()?.reason).toBe('externally_modified')
+  })
+
+  it('updates its own draft again when Klaviyo’s copy of a design is not ours byte for byte', async () => {
+    const { account, memory, pusher } = setup({ changesCopies: true })
+    expect((await pusher.createDraft(input())).ok).toBe(true)
+    const first = memory.row()?.shown
+    const next = input({ html: page('A2', [hero]) })
+    for (let n = 0; n < 2; n++)
+      expect(await pusher.createDraft(next)).toEqual({
+        ok: true,
+        campaignId: only(account.campaigns)[0],
+        sample: false
+      })
+    const [variation] = variationsOf(account)
+    expect(account.templates.get(variation!.templateId!)!.html).toContain(
+      '<h1>A2</h1>'
+    )
+    expect(memory.row()?.shown).not.toBe(first)
+  })
+
+  it('does not take its own new design, stopped half way, for the owner’s', async () => {
+    // The second push's second variation update is refused: design A is
+    // already new in Klaviyo when the push stops.
+    const { account, pusher } = setup({ refuseUpdate: 2 })
+    expect((await pusher.createDraft(ab())).ok).toBe(true)
+    const update = ab({
+      variations: [
+        { approach: 'A', html: page('A2', [hero]) },
+        { approach: 'B', html: page('B2', [knit]) }
+      ]
+    })
+    expect((await pusher.createDraft(update)).ok).toBe(false)
+    expect(await pusher.createDraft(update)).toMatchObject({
+      ok: true,
+      designs: 'both'
+    })
+    const html = variationsOf(account).map(
+      (v) => account.templates.get(v.templateId!)!.html
+    )
+    expect(html.some((h) => h.includes('<h1>A2</h1>'))).toBe(true)
+    expect(html.some((h) => h.includes('<h1>B2</h1>'))).toBe(true)
+  })
+
+  it('never overwrites the owner’s edit of a design its stopped push did not reach', async () => {
+    // The second push changes design A, then Klaviyo refuses design B.
+    const { account, pusher } = setup({ refuseUpdate: 2 })
+    expect((await pusher.createDraft(ab())).ok).toBe(true)
+    const update = ab({
+      variations: [
+        { approach: 'A', html: page('A2', [hero]) },
+        { approach: 'B', html: page('B2', [knit]) }
+      ]
+    })
+    expect((await pusher.createDraft(update)).ok).toBe(false)
+    // The owner then edits design B in Klaviyo.
+    const b = variationsOf(account).find((v) => v.name === 'Design B')!
+    const copy = account.templates.get(b.templateId!)!
+    copy.html = copy.html.replace('<h1>B</h1>', '<h1>The owner wrote this</h1>')
+    expect(await pusher.createDraft(update)).toEqual({
+      ok: false,
+      code: 'rejected',
+      checks: ['externally_modified']
+    })
+    expect(account.templates.get(b.templateId!)!.html).toContain(
+      'The owner wrote this'
+    )
+  })
+
+  it('never overwrites a template the owner put on a design its stopped push did not reach', async () => {
+    const { account, pusher } = setup({ refuseUpdate: 2 })
+    expect((await pusher.createDraft(ab())).ok).toBe(true)
+    const update = ab({
+      variations: [
+        { approach: 'A', html: page('A2', [hero]) },
+        { approach: 'B', html: page('B2', [knit]) }
+      ]
+    })
+    expect((await pusher.createDraft(update)).ok).toBe(false)
+    account.templates.set('TplOwner', {
+      name: 'Owner',
+      html: page('Owner', []),
+      created: '2026-11-11T12:00:00Z'
+    })
+    const b = variationsOf(account).find((v) => v.name === 'Design B')!
+    b.templateId = 'TplOwner'
+    expect(await pusher.createDraft(update)).toEqual({
+      ok: false,
+      code: 'rejected',
+      checks: ['externally_modified']
+    })
+    expect(b.templateId).toBe('TplOwner')
+  })
+
+  it('never overwrites the owner’s edit of a design its stopped push did change', async () => {
+    // The second push changes design A, then Klaviyo refuses design B.
+    const { account, pusher } = setup({ refuseUpdate: 2 })
+    expect((await pusher.createDraft(ab())).ok).toBe(true)
+    const two = (a: string, b: string) =>
+      ab({
+        variations: [
+          { approach: 'A', html: page(a, [hero]) },
+          { approach: 'B', html: page(b, [knit]) }
+        ]
+      })
+    expect((await pusher.createDraft(two('A2', 'B2'))).ok).toBe(false)
+    // The owner then edits the new design A in Klaviyo; "Try again" has new content.
+    const a = variationsOf(account).find((v) => v.name === 'Design A')!
+    const copy = account.templates.get(a.templateId!)!
+    expect(copy.html).toContain('<h1>A2</h1>')
+    copy.html = copy.html.replace(
+      '<h1>A2</h1>',
+      '<h1>The owner wrote this</h1>'
+    )
+    expect(await pusher.createDraft(two('A3', 'B3'))).toEqual({
+      ok: false,
+      code: 'rejected',
+      checks: ['externally_modified']
+    })
+    expect(account.templates.get(a.templateId!)!.html).toContain(
+      'The owner wrote this'
+    )
+  })
+
+  it('never overwrites a template the owner put on a design while Klaviyo was busy', async () => {
+    const { account, pusher } = setup()
+    expect((await pusher.createDraft(input())).ok).toBe(true)
+    // The change is not sent: Klaviyo asks to wait.
+    account.faults.rateLimit = '/api/campaign-variations/'
+    const next = input({ html: page('A2', [hero]) })
+    expect((await pusher.createDraft(next)).ok).toBe(false)
+    account.templates.set('TplOwner', {
+      name: 'Owner',
+      html: page('Owner', []),
+      created: '2026-11-11T12:00:00Z'
+    })
+    const [variation] = variationsOf(account)
+    variation!.templateId = 'TplOwner'
+    expect(await pusher.createDraft(next)).toEqual({
+      ok: false,
+      code: 'rejected',
+      checks: ['externally_modified']
+    })
+    expect(variation!.templateId).toBe('TplOwner')
+  })
+
+  it('checks a draft it made even when its first push stopped before the end', async () => {
+    const clock = { now: Date.parse('2026-11-11T12:00:00Z'), perCall: 2_500 }
+    const { account, memory, pusher } = setup({}, { clock, budgetMs: 28_000 })
+    expect(await pusher.createDraft(input())).toMatchObject({
+      ok: false,
+      code: 'rate_limited'
+    })
+    expect(account.messages.size).toBe(1)
+    expect(memory.row()?.state).toBe('started')
+    expect(memory.row()?.shown).toMatch(/^Var\w+:TplCopy\w+:[a-f0-9]{16}$/)
+    const [variation] = variationsOf(account)
+    const copy = account.templates.get(variation!.templateId!)!
+    copy.html = copy.html.replace('<h1>A</h1>', '<h1>The owner wrote this</h1>')
+    clock.now += 60 * 60_000
+    expect(
+      await pusher.createDraft(input({ html: page('A2', [hero]) }))
+    ).toEqual({ ok: false, code: 'rejected', checks: ['externally_modified'] })
+    expect(copy.html).toContain('The owner wrote this')
+  })
+
+  it('is not done until it knows what its draft shows', async () => {
+    const { account, memory, pusher } = setup({ copyReadGone: true })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(await pusher.createDraft(input())).toMatchObject({
+      ok: false,
+      code: 'rate_limited'
+    })
+    expect(memory.row()?.state).toBe('started')
+    account.faults.copyReadGone = false
+    expect((await pusher.createDraft(input())).ok).toBe(true)
+    expect(memory.row()?.shown).toMatch(/^Var\w+:TplCopy\w+:[a-f0-9]{16}$/)
+  })
+
+  it('never overwrites a template the owner put on a design in Klaviyo', async () => {
+    const { account, pusher } = setup()
+    expect((await pusher.createDraft(input())).ok).toBe(true)
+    account.templates.set('TplOwner', {
+      name: 'Owner',
+      html: page('Owner', []),
+      created: '2026-11-11T12:00:00Z'
+    })
+    const [variation] = variationsOf(account)
+    variation!.templateId = 'TplOwner'
+    expect(
+      await pusher.createDraft(input({ html: page('A2', [hero]) }))
+    ).toEqual({ ok: false, code: 'rejected', checks: ['externally_modified'] })
+    expect(variation!.templateId).toBe('TplOwner')
+  })
+
+  it('waits for Klaviyo to show its new design before taking what it shows', async () => {
+    const { account, memory, pusher } = setup({ staleTemplateRead: true })
+    expect((await pusher.createDraft(input())).ok).toBe(true)
+    const next = input({ html: page('A2', [hero]) })
+    // The read after the change still shows the old design: not taken.
+    expect(await pusher.createDraft(next)).toEqual({
+      ok: false,
+      code: 'rate_limited',
+      retryAfterSeconds: 30
+    })
+    expect((await pusher.createDraft(next)).ok).toBe(true)
+    const [variation] = variationsOf(account)
+    expect(memory.row()?.shown).toContain(`${variation!.templateId}:`)
+    // And it is no false alarm on the next push.
+    expect((await pusher.createDraft(next)).ok).toBe(true)
+  })
+
+  it('refuses a sample audience before any Klaviyo request, also for a draft made before', async () => {
+    const { account, pusher } = setup()
+    expect((await pusher.createDraft(input())).ok).toBe(true)
+    const calls = account.calls.length
+    expect(
+      await pusher.createDraft(input({ audienceId: 'sample-engaged' }))
+    ).toEqual({ ok: false, code: 'rejected', checks: ['audience'] })
+    expect(account.calls).toHaveLength(calls)
+  })
+
   it('does not take its own update stopped half way for a change in Klaviyo', async () => {
     const { account, pusher } = setup()
     await pusher.createDraft(ab())
@@ -681,8 +919,11 @@ describe('pushing the same email again (what the reviews found)', () => {
   })
 
   it('keeps a finished draft finished when cleaning up a template fails', async () => {
-    const { account, pusher } = setup({ outage: '/api/templates/' })
+    const { account, pusher } = setup({ outage: 'DELETE /api/templates/' })
     expect(await pusher.createDraft(input())).toMatchObject({ ok: true })
+    expect(
+      account.calls.filter((c) => c.startsWith('DELETE /api/templates/'))
+    ).toHaveLength(1)
     expect(account.campaigns.size).toBe(1)
   })
 })
