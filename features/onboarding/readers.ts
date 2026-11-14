@@ -5,6 +5,8 @@ import { logger } from '@/lib/logger'
 import { classifyFailure } from '@/features/integrations/failures'
 import { runCatalogReadingJob } from './catalog/live'
 import { catalogRunMs } from './catalog/worker'
+import { runHistoryReadingJob } from './history/live'
+import { historyRunMs } from './history/worker'
 import {
   dbMarginMs,
   jobFailure,
@@ -21,14 +23,17 @@ type Job = Database['public']['Tables']['job_runs']['Row']
  * The longest one source read takes: no page or model call starts without
  * the time it may take, so a read ends by its own limit.
  */
-export const sourceRunMs = Math.max(siteRunMs, catalogRunMs)
+export const sourceRunMs = Math.max(siteRunMs, catalogRunMs, historyRunMs)
 export { dbMarginMs, readersRunMs, siteCallTimeoutMs }
 
 export type ReadersRun =
   | { state: 'done'; reads: number; failed: number; paused: number }
   | { state: 'failed'; code: string }
 
-/** One read by its kind: the website (ONB-101) or the catalog (ONB-102). */
+/**
+ * One read by its kind: the website (ONB-101), the catalog (ONB-102) or
+ * what the brand already sent (ONB-103).
+ */
 export async function runSourceReadingJob(
   db: Db,
   job: Job,
@@ -38,13 +43,17 @@ export async function runSourceReadingJob(
     const reading = await runCatalogReadingJob(db, job, env)
     return reading.outcome
   }
+  if (job.kind === 'brand.read_history') {
+    const reading = await runHistoryReadingJob(db, job, env)
+    return reading.outcome
+  }
   await runSiteReadingJob(db, job, env)
   return 'read'
 }
 
 /**
  * The onboarding readers' run: the source reads waiting across the
- * workspaces (site and catalog), one after another, as the worker. A read
+ * workspaces (site, catalog and history), one after another, as the worker. A read
  * is taken only while `readersRunMs` has not passed; each takes at most
  * `sourceRunMs`, so the run ends inside its route's 60 seconds. A read
  * that fails is recorded on its job (tried again later, at most four
