@@ -171,3 +171,36 @@ async function connectLive(form: FormData): Promise<FormResult> {
   }
   return result
 }
+
+const notOwner = 'Ask your workspace owner to disconnect Klaviyo.'
+
+/**
+ * Disconnect Klaviyo (BAS-009), the owner's choice: the connection says
+ * disconnected, a live key is deleted with its secret (the database's
+ * `forget_klaviyo_key`), and nothing reads Klaviyo until it is connected
+ * again. Drafts already in Klaviyo stay there.
+ */
+export async function disconnectKlaviyo(): Promise<FormResult> {
+  const context = await requireRequestContext('client')
+  if (context.tenantRole !== 'owner') return { error: notOwner }
+  const db = await createClient()
+  if (!db || process.env.AUTH_MODE === 'demo')
+    return { error: 'Please sign in again to disconnect Klaviyo.' }
+  const done = await db.rpc('set_fixture_connection', {
+    t: context.tenantId,
+    provider: 'klaviyo',
+    status: 'disconnected'
+  })
+  if (done.error)
+    return {
+      error:
+        done.error.code === '42501'
+          ? notOwner
+          : 'We could not disconnect Klaviyo. Nothing was changed. Try again.'
+    }
+  revalidatePath('/connections')
+  return {
+    message:
+      'Klaviyo is disconnected. Nothing reads it until you connect it again; drafts already in Klaviyo stay there.'
+  }
+}
