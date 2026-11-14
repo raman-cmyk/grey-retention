@@ -3,6 +3,8 @@
   "env": {
     "ADAPTER_MODE": "fake",
     "AI_DEFAULT_PROVIDER": "fake",
+    "KLAVIYO_MODE": "fake",
+    "KLAVIYO_DRAFT_PUSH": "off",
     "NEXT_TELEMETRY_DISABLED": "1"
   },
   "permissions": {
