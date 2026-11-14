@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
+import { discountCap, type DiscountLimit } from './cap'
 
 /**
  * The owner's offer limits (DSC-001): the max discount any email may offer
@@ -16,8 +17,17 @@ export type DiscountCode = {
 }
 
 export type Offers = {
-  /** null: the owner has not set one yet, so emails offer no discount. */
+  /**
+   * null: the owner has not set one yet, so emails offer no discount.
+   * Already capped by the margin floor (PLN-039), so agents use it as is.
+   */
   maxDiscountPercent: number | null
+  /**
+   * Which owner setting sets `maxDiscountPercent` (PLN-039): their max
+   * discount, or the margin floor when that allows less. null or absent
+   * when there is no max discount (or the source does not know).
+   */
+  limitedBy?: DiscountLimit | null
   /** Active codes that still work at the time asked about, sorted by code. */
   codes: DiscountCode[]
 }
@@ -25,6 +35,16 @@ export type Offers = {
 export interface OfferSource {
   /** `at`: the moment the email sends (codes must still work then). */
   offers(tenantId: string, at?: string): Promise<Offers | null>
+}
+
+/** Everything the owner saved about offers, as Settings reads it. */
+export type ManagedOffers = {
+  maxDiscountPercent: number | null
+  /** PLN-039: both set, or both null. */
+  grossMarginPercent: number | null
+  marginFloorPercent: number | null
+  revision: number
+  codes: ManagedCode[]
 }
 
 /** A code the owner manages in Settings. */
@@ -84,16 +104,14 @@ export class SupabaseOfferSource implements OfferSource {
   }
 
   /** Everything Settings shows, or null when it cannot be read. */
-  async managed(tenantId: string): Promise<{
-    maxDiscountPercent: number | null
-    revision: number
-    codes: ManagedCode[]
-  } | null> {
+  async managed(tenantId: string): Promise<ManagedOffers | null> {
     if (!uuid.test(tenantId)) return null
     const [offers, codes] = await Promise.all([
       this.db
         .from('brand_offers')
-        .select('max_discount_percent,revision')
+        .select(
+          'max_discount_percent,gross_margin_percent,margin_floor_percent,revision'
+        )
         .eq('tenant_id', tenantId),
       this.db
         .from('discount_codes')
@@ -105,6 +123,8 @@ export class SupabaseOfferSource implements OfferSource {
     const row = offers.data[0]
     return {
       maxDiscountPercent: row ? Number(row.max_discount_percent) : null,
+      grossMarginPercent: wholeOrNull(row?.gross_margin_percent),
+      marginFloorPercent: wholeOrNull(row?.margin_floor_percent),
       revision: row ? Number(row.revision) : 0,
       codes: codes.data
         .map((r) => toCode(r, Date.now()))
@@ -115,13 +135,29 @@ export class SupabaseOfferSource implements OfferSource {
 
   async offers(tenantId: string, at = new Date().toISOString()) {
     const managed = await this.managed(tenantId)
-    if (!managed) return null
-    const when = Date.parse(at)
-    return {
-      maxDiscountPercent: managed.maxDiscountPercent,
-      codes: managed.codes
-        .filter((c) => c.expiresAt === null || Date.parse(c.expiresAt) > when)
-        .map(({ code, percent, expiresAt }) => ({ code, percent, expiresAt }))
-    }
+    return managed ? offersFrom(managed, at) : null
+  }
+}
+
+const wholeOrNull = (value: unknown) =>
+  value === null || value === undefined || !Number.isInteger(Number(value))
+    ? null
+    : Number(value)
+
+/**
+ * What agents read from what the owner saved: the max discount capped by
+ * the margin floor (PLN-039), and the codes that still work at `at`.
+ */
+export function offersFrom(
+  managed: Pick<ManagedOffers, 'maxDiscountPercent' | 'codes'> &
+    Partial<Pick<ManagedOffers, 'grossMarginPercent' | 'marginFloorPercent'>>,
+  at = new Date().toISOString()
+): Offers {
+  const when = Date.parse(at)
+  return {
+    ...discountCap(managed),
+    codes: managed.codes
+      .filter((c) => c.expiresAt === null || Date.parse(c.expiresAt) > when)
+      .map(({ code, percent, expiresAt }) => ({ code, percent, expiresAt }))
   }
 }

@@ -34,11 +34,26 @@ select throws_ok($$delete from public.discount_codes$$,'42501',null,'no direct d
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000006","role":"authenticated"}',true);
 select is(public.set_max_discount('00000000-0000-4000-8000-000000000101',15,2),3,'an admin lowers the max discount');
 
+-- PLN-039: the margin floor, below the gross margin, after the max discount (the admin is signed in).
+select is(public.set_margin_floor('00000000-0000-4000-8000-000000000101',60,30,3),4,'a 60% margin with a 30% floor');
+select is((select (gross_margin_percent, margin_floor_percent)::text from public.brand_offers),'(60,30)','reads them back');
+select throws_ok($$select public.set_margin_floor('00000000-0000-4000-8000-000000000101',60,35,3)$$,'PT409',null,'a stale margin floor is a conflict');
+select throws_ok($$select public.set_margin_floor('00000000-0000-4000-8000-000000000101',40,40,4)$$,'23514',null,'the floor must be below the margin');
+select throws_ok($$select public.set_margin_floor('00000000-0000-4000-8000-000000000101',60,null,4)$$,'23514',null,'both numbers, or neither');
+select throws_ok($$select public.set_margin_floor('00000000-0000-4000-8000-000000000101',100,30,4)$$,'23514',null,'a margin of 1 to 99');
+select throws_ok($$select public.set_margin_floor('00000000-0000-4000-8000-000000000101',60,-1,4)$$,'23514',null,'a floor of 0 or more');
+select throws_ok($$update public.brand_offers set margin_floor_percent=10$$,'42501',null,'no direct update of the floor');
+select is(public.set_margin_floor('00000000-0000-4000-8000-000000000101',null,null,4),5,'it can be cleared');
+select is((select (gross_margin_percent is null and margin_floor_percent is null) from public.brand_offers),true,'cleared');
+select is(public.set_margin_floor('00000000-0000-4000-8000-000000000101',60,30,5),6,'and set again');
+select is(public.set_max_discount('00000000-0000-4000-8000-000000000101',15,6),7,'the max discount keeps the same revision line');
+
 -- Staff read but cannot change.
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000005","role":"authenticated"}',true);
 select is((select max_discount_percent from public.brand_offers),15,'staff read the max discount');
 select is((select count(*) from public.discount_codes where status='active'),2::bigint,'staff read the codes');
 select throws_ok($$select public.set_max_discount('00000000-0000-4000-8000-000000000101',50,3)$$,'42501',null,'staff cannot change the max discount');
+select throws_ok($$select public.set_margin_floor('00000000-0000-4000-8000-000000000101',60,10,7)$$,'42501',null,'staff cannot change the margin floor');
 select throws_ok($$select public.add_discount_code('00000000-0000-4000-8000-000000000101','STAFF50',50,null)$$,'42501',null,'staff cannot add a code');
 select throws_ok($$select public.retire_discount_code((select id from public.discount_codes where status='active' limit 1))$$,'42501',null,'staff cannot retire a code');
 
@@ -46,6 +61,8 @@ select throws_ok($$select public.retire_discount_code((select id from public.dis
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
 select is((select count(*) from public.brand_offers)+(select count(*) from public.discount_codes),0::bigint,'another brand sees nothing');
 select throws_ok($$select public.set_max_discount('00000000-0000-4000-8000-000000000101',90,3)$$,'42501',null,'another brand cannot change the max discount');
+select throws_ok($$select public.set_margin_floor('00000000-0000-4000-8000-000000000101',60,10,7)$$,'42501',null,'another brand cannot change the margin floor');
+select throws_ok($$select public.set_margin_floor('00000000-0000-4000-8000-000000000102',60,30,0)$$,'PT409',null,'a margin floor needs a max discount first');
 select throws_ok($$select public.add_discount_code('00000000-0000-4000-8000-000000000101','THEIRS90',90,null)$$,'42501',null,'another brand cannot add a code');
 reset role;
 select set_config('test.active_code',(select id::text from public.discount_codes where status='active' limit 1),true);
@@ -67,6 +84,7 @@ select is((select count(*) from public.discount_codes where status='active'),2::
 select throws_ok($$insert into public.discount_codes(tenant_id,code,percent) values('00000000-0000-4000-8000-000000000101','WORKER50',50)$$,'42501',null,'the worker cannot insert a code');
 select throws_ok($$update public.brand_offers set max_discount_percent=90$$,'42501',null,'the worker cannot change the max discount');
 select throws_ok($$select public.set_max_discount('00000000-0000-4000-8000-000000000101',90,3)$$,'42501',null,'the worker cannot call the owner commands');
+select throws_ok($$select public.set_margin_floor('00000000-0000-4000-8000-000000000101',60,10,7)$$,'42501',null,'the worker cannot set the margin floor');
 
 -- An ended code is retired when the next code is added, freeing its spelling and its place.
 reset role;
@@ -92,6 +110,7 @@ set local role anon;
 select throws_ok($$select count(*) from public.discount_codes$$,'42501',null,'anonymous callers cannot read codes');
 select throws_ok($$select count(*) from public.brand_offers$$,'42501',null,'anonymous callers cannot read the max discount');
 select throws_ok($$select public.set_max_discount('00000000-0000-4000-8000-000000000101',10,3)$$,'42501',null,'anonymous callers are refused');
+select throws_ok($$select public.set_margin_floor('00000000-0000-4000-8000-000000000101',60,10,7)$$,'42501',null,'anonymous callers cannot set the margin floor');
 
 select * from finish();
 rollback;
