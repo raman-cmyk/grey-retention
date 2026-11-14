@@ -62,6 +62,23 @@ const landingBySurface: Record<AuthSurface, Route> = {
   designer: '/designer/dashboard'
 }
 
+type AuthError = { code?: string; status?: number } | null
+/** Supabase Auth's own limits (BAS-004): sign-ins, sign-ups and emails. */
+const tooMany = (error: AuthError) =>
+  error?.status === 429 ||
+  error?.code === 'over_email_send_rate_limit' ||
+  error?.code === 'over_request_rate_limit'
+const tooManyAttempts: AuthActionState = {
+  status: 'error',
+  message: 'Too many attempts. Wait a few minutes, then try again.'
+}
+/** Supabase Auth not reached at all (auth-js answers status 0). */
+const unreachable = (error: AuthError) => error?.status === 0
+const notReached: AuthActionState = {
+  status: 'error',
+  message: 'We could not reach the sign-in service. Try again in a few minutes.'
+}
+
 function unavailable(): AuthActionState {
   return {
     status: 'error',
@@ -85,6 +102,8 @@ export async function signIn(
   const supabase = await createClient()
   if (!supabase) return unavailable()
   const { error } = await supabase.auth.signInWithPassword(parsed.data)
+  if (tooMany(error)) return tooManyAttempts
+  if (unreachable(error)) return notReached
   if (error) {
     return { status: 'error', message: 'Email or password is incorrect.' }
   }
@@ -118,6 +137,8 @@ export async function requestPasswordReset(
       redirectTo: `${clientEnvironment.NEXT_PUBLIC_APP_URL}/auth/callback?next=/reset-password`
     }
   )
+  if (tooMany(error)) return tooManyAttempts
+  if (unreachable(error)) return notReached
   if (error)
     return { status: 'error', message: 'Reset request failed. Try again.' }
   return {
@@ -141,18 +162,14 @@ export async function signUp(
     password: parsed.data.password,
     options: { data: { full_name: parsed.data.name } }
   })
+  if (tooMany(error)) return tooManyAttempts
+  if (unreachable(error)) return notReached
   if (error) return { status: 'error', message: 'Account creation failed.' }
   return {
     status: 'success',
     message: 'Account created. Check your email to confirm access.'
   }
 }
-
-type AuthError = { code?: string; status?: number } | null
-const tooManyEmails = (error: AuthError) =>
-  error?.status === 429 ||
-  error?.code === 'over_email_send_rate_limit' ||
-  error?.code === 'over_request_rate_limit'
 
 /**
  * Sends the sign-up confirmation email again (BAS-001). An address that is
@@ -176,7 +193,7 @@ export async function resendConfirmation(
     type: 'signup',
     email: parsed.data.email
   })
-  if (tooManyEmails(error))
+  if (tooMany(error))
     return {
       status: 'error',
       message: 'Too many emails. Wait a few minutes, then try again.'
@@ -211,6 +228,8 @@ export async function updatePassword(
   const { error } = await supabase.auth.updateUser({
     password: parsed.data.password
   })
+  if (tooMany(error)) return tooManyAttempts
+  if (unreachable(error)) return notReached
   if (error)
     return { status: 'error', message: 'Password could not be updated.' }
   return {

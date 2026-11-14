@@ -14,7 +14,11 @@ import {
 const migrations = path.join(process.cwd(), 'supabase/migrations')
 // The findings migrations in order: a later one may widen a list.
 const sql = readdirSync(migrations)
-  .filter((f) => /_(brand_findings|klaviyo_history|ads_reading)\.sql$/.test(f))
+  .filter((f) =>
+    /_(brand_findings|klaviyo_history|ads_reading|reviews_reading)\.sql$/.test(
+      f
+    )
+  )
   .sort()
   .map((f) => readFileSync(path.join(migrations, f), 'utf8'))
   .join('\n')
@@ -58,6 +62,12 @@ describe('the findings contract', () => {
     expect(listIn(/check \(source <> 'ads' or topic in \(([^)]+)\)/)).toEqual([
       ...sourceTopics.ads
     ])
+    for (const source of ['reviews', 'social'] as const)
+      expect(
+        listIn(
+          new RegExp(`check \\(source <> '${source}' or topic in \\(([^)]+)\\)`)
+        )
+      ).toEqual([...sourceTopics[source]])
     for (const topic of findingTopics)
       expect(sql, topic).toMatch(new RegExp(`'${topic}'`))
   })
@@ -92,7 +102,21 @@ describe('the findings contract', () => {
       ],
       angle: [{}],
       creative: [{}],
-      landing_page: [{ url: 'https://cedar-lane.example/collections/knitwear' }]
+      landing_page: [
+        { url: 'https://cedar-lane.example/collections/knitwear' }
+      ],
+      review_theme: [{}],
+      objection: [{}],
+      customer_words: [{}],
+      quotable_review: [
+        { author: 'Maya R.', url: 'https://cedar-lane.example/products/knit' },
+        {
+          author: 'Maya R.',
+          url: 'https://cedar-lane.example/products/knit',
+          rating: 5,
+          date: '2026-10-01'
+        }
+      ]
     }
     const bad: Record<string, unknown[]> = {
       free_shipping: [
@@ -120,7 +144,20 @@ describe('the findings contract', () => {
         { kind: 'gift', percent: 10 }
       ],
       angle: [{ why: 'gifts' }],
-      landing_page: [{ url: 'http://cedar-lane.example/' }, { url: 'nope' }, {}]
+      landing_page: [
+        { url: 'http://cedar-lane.example/' },
+        { url: 'nope' },
+        {}
+      ],
+      objection: [{ why: 'size' }],
+      quotable_review: [
+        { url: 'https://cedar-lane.example/p' },
+        { author: '', url: 'https://cedar-lane.example/p' },
+        { author: 'Maya', url: 'http://cedar-lane.example/p' },
+        { author: 'Maya', url: 'https://cedar-lane.example/p', rating: 4.5 },
+        { author: 'Maya', url: 'https://cedar-lane.example/p', date: 'Oct 1' },
+        { author: 'Maya', url: 'https://cedar-lane.example/p', text: 'x' }
+      ]
     }
     for (const [topic, values] of Object.entries(good))
       for (const v of values)
