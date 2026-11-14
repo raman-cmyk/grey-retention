@@ -9,7 +9,8 @@ import {
 import { SupabaseOfferSource, type OfferSource } from '@/features/offers/source'
 import { databaseFallbackLog, type FallbackLog } from '@/features/fallback/log'
 import { stepCode } from '@/features/strategy/worker'
-import { buildEmail, builtEmail, plannedEmail } from './build'
+import { builtEmail, plannedEmail } from './build'
+import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import {
   ownerOrSampleOffers,
   sampleOffersFrom,
@@ -24,15 +25,18 @@ type Db = SupabaseClient<Database>
 export const maxEmailBytes = 290_000
 
 /**
- * Runs waiting "Create email" steps (EML-004 part 2). Each step is claimed
- * with a lease (`claim_email_build`), so overlapping calls never run one
- * step twice. The build step makes the email on the code-only path (no
- * AI, `buildEmail`) in the workspace's one brand timezone, checks it and
- * stores it; the push step hands it to the `DraftPusher` with the planned
- * email's push key, so a retried push or a "Try again" never makes a second
- * draft. A step that throws is tried again a minute later, at most 3
- * times; a busy Klaviyo waits as long as it asks; bad data, a refused
- * draft and a stored email of the wrong shape fail at once.
+ * Runs waiting "Create email" steps (EML-004 part 2, REL-081). Each step is
+ * claimed with a lease (`claim_email_build`), so overlapping calls never
+ * run one step twice. A build is four saved steps on the code-only path
+ * (no AI, `runBuildStep`): sections, content, copy and design, in the
+ * workspace's one brand timezone; each step's output is saved
+ * (`finish_email_step`) before the next is claimed, and the design step
+ * checks and stores the email. The push step hands it to the `DraftPusher`
+ * with the planned email's push key, so a retried push or a "Try again"
+ * never makes a second draft. A step that throws is tried again a minute
+ * later, from the saved steps before it, at most 3 times; a busy Klaviyo
+ * waits as long as it asks; bad data, a refused draft and a stored email or
+ * step of the wrong shape fail at once.
  */
 export async function runEmailBuilds(
   db: Db,
@@ -49,7 +53,7 @@ export async function runEmailBuilds(
     saved?: SavedOffers
     pusher?: DraftPusher
     fallbacks?: FallbackLog
-    /** Run only this build (the owner's click): its build, then its push. */
+    /** Run only this build (the owner's click): its steps, then its push. */
     build?: string
     /** Steps to run at most; the deadline bounds the sweep. */
     limit?: number
@@ -62,7 +66,7 @@ export async function runEmailBuilds(
   const fallbacks = deps.fallbacks ?? databaseFallbackLog(db)
   const saved = deps.saved ?? new SupabaseOfferSource(db)
   const now = deps.now ?? Date.now
-  const limit = deps.build ? 2 : (deps.limit ?? 10)
+  const limit = deps.build ? buildSteps.length + 1 : (deps.limit ?? 25)
   let ran = 0
   for (let n = 0; n < limit; n++) {
     if (deps.deadline && now() > deps.deadline) break
@@ -118,19 +122,45 @@ export async function runEmailBuilds(
           ...(await stores.read(job.tenant_id)),
           timezone: job.timezone
         }
-        const built = await buildEmail(
-          { planned: planned.data, store, offers },
+        const started = now()
+        const step = await runBuildStep(
+          job.step,
+          { planned: planned.data, store, offers, progress: job.progress },
           {
             tenantId: job.tenant_id,
             callerKey: `email-build:${job.id}`,
             fallbacks
           }
         )
-        if (!built.ok) {
-          await fail(built.code, true)
+        if (now() - started > stepBudgetMs)
+          logger.warn('Email build step ran long', {
+            build: job.id,
+            step: job.step,
+            ms: now() - started
+          })
+        if (!step.ok) {
+          await fail(step.code, true)
           continue
         }
-        const email = builtEmail.safeParse(built.email)
+        if (step.done !== 'design') {
+          // Saved before the next step is claimed: a retry starts here.
+          const kept = await db.rpc('finish_email_step', {
+            build: job.id,
+            lease: job.lease_token,
+            done: step.done,
+            output: step.output as never
+          })
+          if (kept.error) {
+            if (refused(kept.error)) {
+              await fail('step_output_invalid', true)
+              continue
+            }
+            throw kept.error
+          }
+          ran++
+          continue
+        }
+        const email = builtEmail.safeParse(step.email)
         if (!email.success) {
           await fail('built_email_invalid', true)
           continue

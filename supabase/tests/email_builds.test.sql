@@ -81,6 +81,8 @@ select throws_ok($$select public.finish_email_push(current_setting('test.build')
 reset role;
 
 -- A job builds the email: leases are exact, the planned email comes along.
+-- (Its sections, content and copy steps are tested in email_build_steps.)
+update public.email_builds set step = 'design' where id = current_setting('test.build')::uuid;
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
 set local role service_role;
 select throws_ok($$select public.finish_email_build(current_setting('test.build')::uuid,null,'{}')$$,'PT409','Lease unavailable','an unclaimed build cannot be finished');
@@ -177,6 +179,7 @@ select set_config('test.third',public.create_email_build('00000000-0000-4000-800
 reset role;
 select isnt((select push_key from public.email_builds where id=current_setting('test.third')::uuid),
   (select push_key from public.email_builds where id=current_setting('test.final')::uuid),'a build that never reached the push gets a new key');
+update public.email_builds set step = 'design' where id = current_setting('test.third')::uuid;
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
 set local role service_role;
 select set_config('test.lease',pg_temp.claim(current_setting('test.third')::uuid)::text,true);
@@ -206,9 +209,9 @@ reset role;
 select is((select state || ':' || error_code from public.email_builds where id=current_setting('test.fourth')::uuid),'failed:step_timed_out','it fails as timed out');
 
 -- Klaviyo's 20th wait fails the step, and a wait is at most a day.
-insert into public.email_builds (id, tenant_id, run_id, slot, state, email, waits, created_by)
+insert into public.email_builds (id, tenant_id, run_id, slot, state, step, email, waits, created_by)
   values ('00000000-0000-4000-8000-00000000b001','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e001',1,
-          'push_queued','{"subject":"s","preheader":"p","html":"<p>x</p>"}',19,'00000000-0000-4000-8000-000000000001');
+          'push_queued','push','{"subject":"s","preheader":"p","html":"<p>x</p>"}',19,'00000000-0000-4000-8000-000000000001');
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
 set local role service_role;
 select throws_ok($$select public.fail_email_step('00000000-0000-4000-8000-00000000b001',gen_random_uuid(),'rate_limited',false,86401)$$,'22023',null,'a wait is at most a day');

@@ -63,8 +63,9 @@ export async function GET(request: NextRequest) {
     })
     return { ran: 0 }
   })
-  // "Create email" steps (EML-004 part 2): the code-only build and the
-  // fake draft pusher, at most 5 s; a failure stays queued for the next run.
+  // "Create email" steps (EML-004 part 2, REL-081): the saved steps of the
+  // code-only build and the fake draft pusher, furthest first, at most 5 s;
+  // a failure stays queued for the next run.
   const emails = await runEmailBuilds(db, {
     deadline: Date.now() + emailBudgetMs
   }).catch((error) => {

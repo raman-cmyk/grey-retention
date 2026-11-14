@@ -124,6 +124,7 @@ describe('the Plan next 15 days screen', () => {
     const build = (state: string, sampleDraft = false) => ({
       id: '00000000-0000-4000-8000-0000000000bb',
       state: state as 'drafted',
+      step: (state === 'build_queued' ? 'copy' : 'push') as 'push',
       sampleDraft,
       reason: null
     })

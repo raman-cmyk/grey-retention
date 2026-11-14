@@ -2924,11 +2924,13 @@ export type Database = {
           lease_token: string | null
           lease_until: string | null
           not_before: string | null
+          progress: Json
           push_key: string
           run_id: string
           sample_draft: boolean
           slot: number
           state: string
+          step: string
           tenant_id: string
           updated_at: string
           waits: number
@@ -2944,11 +2946,13 @@ export type Database = {
           lease_token?: string | null
           lease_until?: string | null
           not_before?: string | null
+          progress?: Json
           push_key?: string
           run_id: string
           sample_draft?: boolean
           slot: number
           state?: string
+          step?: string
           tenant_id: string
           updated_at?: string
           waits?: number
@@ -2964,11 +2968,13 @@ export type Database = {
           lease_token?: string | null
           lease_until?: string | null
           not_before?: string | null
+          progress?: Json
           push_key?: string
           run_id?: string
           sample_draft?: boolean
           slot?: number
           state?: string
+          step?: string
           tenant_id?: string
           updated_at?: string
           waits?: number
@@ -6608,11 +6614,13 @@ export type Database = {
           id: string
           lease_token: string
           planned: Json
+          progress: Json
           push_key: string
           run_id: string
           slot: number
           start_on: string
           state: string
+          step: string
           tenant_id: string
           timezone: string
         }[]
@@ -7069,6 +7077,10 @@ export type Database = {
           sample: boolean
         }
         Returns: undefined
+      }
+      finish_email_step: {
+        Args: { build: string; done: string; lease: string; output: Json }
+        Returns: string
       }
       finish_health_check: {
         Args: { job: string; lease: string }

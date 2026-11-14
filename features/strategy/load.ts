@@ -25,6 +25,8 @@ export type PlanRun = {
 export type EmailBuildView = {
   id: string
   state: 'build_queued' | 'push_queued' | 'drafted' | 'failed'
+  /** How far it got (REL-081): the step it runs next, or stopped at. */
+  step: (typeof buildSteps)[number]
   /** The draft came from the fake pusher: no Klaviyo call was made. */
   sampleDraft: boolean
   /** Why it failed, in plain words, when the reason is known. */
@@ -39,7 +41,10 @@ const failureWords: Record<string, string> = {
   klaviyo_rejected: 'Klaviyo or the launch check refused it.',
   klaviyo_rate_limited: 'Klaviyo was busy for too long.',
   day_passed: 'Its day passed before it was ready.',
-  planned_email_invalid: 'This planned email cannot be built. Plan again.'
+  planned_email_invalid: 'This planned email cannot be built. Plan again.',
+  step_progress_invalid: 'The app was updated while this email was being made.',
+  step_unknown: 'The app was updated while this email was being made.',
+  step_output_invalid: 'One of its steps made too much to save.'
 }
 
 const buildStates = [
@@ -48,6 +53,8 @@ const buildStates = [
   'drafted',
   'failed'
 ] as const
+
+const buildSteps = ['sections', 'content', 'copy', 'design', 'push'] as const
 
 const states = [
   'pulse_queued',
@@ -89,7 +96,7 @@ export async function latestPlanRun(
   if (row.state === 'planned') {
     const found = await db
       .from('email_builds')
-      .select('id,slot,state,sample_draft,error_code')
+      .select('id,slot,state,step,sample_draft,error_code')
       .eq('tenant_id', tenantId)
       .eq('run_id', row.id)
       .order('created_at', { ascending: false })
@@ -101,6 +108,9 @@ export async function latestPlanRun(
           state: (buildStates as readonly string[]).includes(b.state)
             ? (b.state as EmailBuildView['state'])
             : 'failed',
+          step: (buildSteps as readonly string[]).includes(b.step)
+            ? (b.step as EmailBuildView['step'])
+            : 'sections',
           sampleDraft: b.sample_draft,
           reason:
             b.state === 'failed' && b.error_code

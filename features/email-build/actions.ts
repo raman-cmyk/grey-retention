@@ -13,13 +13,19 @@ import { runEmailBuilds } from './worker'
 
 export type CreateEmailState = { error?: string }
 
+/** Time the click gives this email's steps; the cron sweep runs the rest. */
+const clickBudgetMs = 40_000
+
 /** Builds this email right after the reply; the cron picks up the rest. */
 function buildSoon(build: string) {
   after(async () => {
     const service = createServiceClient()
     if (!service) return
     try {
-      await runEmailBuilds(service, { build })
+      await runEmailBuilds(service, {
+        build,
+        deadline: Date.now() + clickBudgetMs
+      })
     } catch (error) {
       logger.error('Email build could not start', {
         code: (error as { code?: string }).code ?? 'email_build_error'
