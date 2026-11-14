@@ -148,6 +148,56 @@ export async function signUp(
   }
 }
 
+type AuthError = { code?: string; status?: number } | null
+const tooManyEmails = (error: AuthError) =>
+  error?.status === 429 ||
+  error?.code === 'over_email_send_rate_limit' ||
+  error?.code === 'over_request_rate_limit'
+
+/**
+ * Sends the sign-up confirmation email again (BAS-001). An address that is
+ * unknown, already confirmed or waiting gets the same answer. Only a
+ * sign-up still waiting to be confirmed can hit Supabase's email limit or
+ * its email server failing (as on Supabase's own public endpoint, which
+ * anyone can call with the app's public key); those are said plainly.
+ * Supabase's own email limit is the limit; nothing else changes.
+ */
+export async function resendConfirmation(
+  _state: AuthActionState,
+  formData: FormData
+): Promise<AuthActionState> {
+  const parsed = emailSchema.safeParse(Object.fromEntries(formData))
+  if (!parsed.success) {
+    return { status: 'error', fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+  const supabase = await createClient()
+  if (!supabase) return unavailable()
+  const { error } = await supabase.auth.resend({
+    type: 'signup',
+    email: parsed.data.email
+  })
+  if (tooManyEmails(error))
+    return {
+      status: 'error',
+      message: 'Too many emails. Wait a few minutes, then try again.'
+    }
+  // Supabase not reached (status 0) or failing; an address it refuses
+  // gets the same answer as one it sent to.
+  if (
+    error &&
+    (error.status === undefined || error.status === 0 || error.status >= 500)
+  )
+    return {
+      status: 'error',
+      message: 'We could not send the email. Try again in a few minutes.'
+    }
+  return {
+    status: 'success',
+    message:
+      'If that address is waiting to be confirmed, a new email is on its way.'
+  }
+}
+
 export async function updatePassword(
   _state: AuthActionState,
   formData: FormData
