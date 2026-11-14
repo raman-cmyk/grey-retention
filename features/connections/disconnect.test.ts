@@ -28,7 +28,7 @@ describe('disconnecting Klaviyo', () => {
   it('disconnects the workspace’s Klaviyo for the owner', async () => {
     expect(await disconnectKlaviyo()).toEqual({
       message:
-        'Klaviyo is disconnected. Nothing reads it until you connect it again; drafts already in Klaviyo stay there.'
+        'Klaviyo is disconnected: nothing new reads it until you connect it again (an email already going into Klaviyo may still finish in the next minute). Drafts already in Klaviyo stay there. The key is deleted here; it still works in Klaviyo until you delete it there.'
     })
     expect(rpc).toHaveBeenCalledWith('set_fixture_connection', {
       t: tenant,
@@ -36,6 +36,7 @@ describe('disconnecting Klaviyo', () => {
       status: 'disconnected'
     })
     expect(revalidatePath).toHaveBeenCalledWith('/connections')
+    expect(revalidatePath).toHaveBeenCalledWith('/dashboard')
   })
 
   it.each(['admin', 'staff'])('is refused to %s', async (tenantRole) => {

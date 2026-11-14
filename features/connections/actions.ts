@@ -199,8 +199,9 @@ export async function disconnectKlaviyo(): Promise<FormResult> {
           : 'We could not disconnect Klaviyo. Nothing was changed. Try again.'
     }
   revalidatePath('/connections')
+  revalidatePath('/dashboard')
   return {
     message:
-      'Klaviyo is disconnected. Nothing reads it until you connect it again; drafts already in Klaviyo stay there.'
+      'Klaviyo is disconnected: nothing new reads it until you connect it again (an email already going into Klaviyo may still finish in the next minute). Drafts already in Klaviyo stay there. The key is deleted here; it still works in Klaviyo until you delete it there.'
   }
 }
