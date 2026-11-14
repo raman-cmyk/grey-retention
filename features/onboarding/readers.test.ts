@@ -5,7 +5,8 @@ vi.mock('server-only', () => ({}))
 const jobs = vi.hoisted(() => ({
   site: vi.fn(async () => ({})),
   catalog: vi.fn(async () => ({ outcome: 'paused', reason: 'rate_limited' })),
-  history: vi.fn(async () => ({ outcome: 'read' }))
+  history: vi.fn(async () => ({ outcome: 'read' })),
+  ads: vi.fn(async () => ({ state: 'ready' }))
 }))
 vi.mock('./site/live', async (actual) => ({
   ...(await actual<typeof import('./site/live')>()),
@@ -13,8 +14,10 @@ vi.mock('./site/live', async (actual) => ({
 }))
 vi.mock('./catalog/live', () => ({ runCatalogReadingJob: jobs.catalog }))
 vi.mock('./history/live', () => ({ runHistoryReadingJob: jobs.history }))
+vi.mock('./ads/live', () => ({ runAdsReadingJob: jobs.ads }))
 import { TagError } from '@/features/intelligence/passes'
 import { catalogRunMs, klaviyoCallMs } from './catalog/worker'
+import { adsRunMs, libraryMs } from './ads/worker'
 import { historyRunMs } from './history/worker'
 import {
   dbMarginMs,
@@ -104,18 +107,21 @@ describe('the readers run fits its route', () => {
     // request or model call without the time it may take, so it ends by
     // sourceRunMs; one capped Gemini call is counted again as a margin,
     // then the database work.
-    expect(sourceRunMs).toBe(Math.max(siteRunMs, catalogRunMs, historyRunMs))
+    expect(sourceRunMs).toBe(
+      Math.max(siteRunMs, catalogRunMs, historyRunMs, adsRunMs)
+    )
     expect(
       readersRunMs + sourceRunMs + siteCallTimeoutMs + dbMarginMs
     ).toBeLessThanOrEqual(60_000)
     expect(pageTimeoutMs + siteCallTimeoutMs).toBeLessThan(siteRunMs)
     expect(klaviyoCallMs + siteCallTimeoutMs).toBeLessThan(catalogRunMs)
     expect(klaviyoCallMs + siteCallTimeoutMs).toBeLessThan(historyRunMs)
+    expect(libraryMs + siteCallTimeoutMs).toBeLessThan(adsRunMs)
   })
 })
 
 describe('runSourceReadingJob', () => {
-  it('reads each kind of job as its own source: a site, a catalog, a history', async () => {
+  it('reads each kind of job as its own source: a site, a catalog, a history, ads', async () => {
     const db = {} as Parameters<typeof runSourceReadingJob>[0]
     const job = (kind: string) =>
       ({ id: 'j', kind }) as Parameters<typeof runSourceReadingJob>[1]
@@ -129,5 +135,7 @@ describe('runSourceReadingJob', () => {
       'read'
     )
     expect(jobs.history).toHaveBeenCalledOnce()
+    expect(await runSourceReadingJob(db, job('brand.read_ads'))).toBe('read')
+    expect(jobs.ads).toHaveBeenCalledOnce()
   })
 })
