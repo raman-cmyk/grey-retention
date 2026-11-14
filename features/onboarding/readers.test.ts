@@ -6,7 +6,8 @@ const jobs = vi.hoisted(() => ({
   site: vi.fn(async () => ({})),
   catalog: vi.fn(async () => ({ outcome: 'paused', reason: 'rate_limited' })),
   history: vi.fn(async () => ({ outcome: 'read' })),
-  ads: vi.fn(async () => ({ state: 'ready' }))
+  ads: vi.fn(async () => ({ state: 'ready' })),
+  reviews: vi.fn(async () => ({ analysis: 'done' }))
 }))
 vi.mock('./site/live', async (actual) => ({
   ...(await actual<typeof import('./site/live')>()),
@@ -15,10 +16,12 @@ vi.mock('./site/live', async (actual) => ({
 vi.mock('./catalog/live', () => ({ runCatalogReadingJob: jobs.catalog }))
 vi.mock('./history/live', () => ({ runHistoryReadingJob: jobs.history }))
 vi.mock('./ads/live', () => ({ runAdsReadingJob: jobs.ads }))
+vi.mock('./reviews/live', () => ({ runReviewsReadingJob: jobs.reviews }))
 import { TagError } from '@/features/intelligence/passes'
 import { catalogRunMs, klaviyoCallMs } from './catalog/worker'
 import { adsRunMs, libraryMs } from './ads/worker'
 import { historyRunMs } from './history/worker'
+import { reviewsRunMs, reviewsSourceMs, socialSourceMs } from './reviews/worker'
 import {
   dbMarginMs,
   readersRunMs,
@@ -108,7 +111,7 @@ describe('the readers run fits its route', () => {
     // sourceRunMs; one capped Gemini call is counted again as a margin,
     // then the database work.
     expect(sourceRunMs).toBe(
-      Math.max(siteRunMs, catalogRunMs, historyRunMs, adsRunMs)
+      Math.max(siteRunMs, catalogRunMs, historyRunMs, adsRunMs, reviewsRunMs)
     )
     expect(
       readersRunMs + sourceRunMs + siteCallTimeoutMs + dbMarginMs
@@ -117,11 +120,14 @@ describe('the readers run fits its route', () => {
     expect(klaviyoCallMs + siteCallTimeoutMs).toBeLessThan(catalogRunMs)
     expect(klaviyoCallMs + siteCallTimeoutMs).toBeLessThan(historyRunMs)
     expect(libraryMs + siteCallTimeoutMs).toBeLessThan(adsRunMs)
+    expect(
+      Math.max(reviewsSourceMs, socialSourceMs) + siteCallTimeoutMs
+    ).toBeLessThan(reviewsRunMs)
   })
 })
 
 describe('runSourceReadingJob', () => {
-  it('reads each kind of job as its own source: a site, a catalog, a history, ads', async () => {
+  it('reads each kind of job as its own source: a site, a catalog, a history, ads, reviews', async () => {
     const db = {} as Parameters<typeof runSourceReadingJob>[0]
     const job = (kind: string) =>
       ({ id: 'j', kind }) as Parameters<typeof runSourceReadingJob>[1]
@@ -137,5 +143,9 @@ describe('runSourceReadingJob', () => {
     expect(jobs.history).toHaveBeenCalledOnce()
     expect(await runSourceReadingJob(db, job('brand.read_ads'))).toBe('read')
     expect(jobs.ads).toHaveBeenCalledOnce()
+    expect(await runSourceReadingJob(db, job('brand.read_reviews'))).toBe(
+      'read'
+    )
+    expect(jobs.reviews).toHaveBeenCalledOnce()
   })
 })

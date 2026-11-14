@@ -1,0 +1,62 @@
+name: Klaviyo results
+
+# The hourly results sync (LRN-001): for every email we put into Klaviyo,
+# its status (draft, scheduled, sent, cancelled, deleted, changed outside
+# the app), then its results once a day for three days after the send. It
+# only reads Klaviyo, and only a workspace connected live while the owner's
+# KLAVIYO_MODE=live is on; a synthetic brand's sample drafts get sample
+# results. It first asks how many checks are due, so an idle run is one
+# small request.
+#
+# Off until turned on, exactly like the scheduled jobs
+# (docs/SCHEDULED_JOBS_RUNBOOK.md): the same CRON_SECRET repository secret
+# and the same SCHEDULED_JOBS_ENABLED=true repository variable. It prints
+# counts only, never a link or the secret.
+on:
+  schedule:
+    - cron: '44 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: klaviyo-results
+  cancel-in-progress: false
+
+jobs:
+  results:
+    if: vars.SCHEDULED_JOBS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      APP_URL: https://grey-retention-app.vercel.app
+    steps:
+      - name: Check pushed emails
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::Add the CRON_SECRET repository secret (see docs/SCHEDULED_JOBS_RUNBOOK.md)."
+            exit 1
+          fi
+          # The header goes through stdin so the secret never appears in the
+          # process list; GitHub also masks it in the log. HTTPS only.
+          call() {
+            printf 'header = "Authorization: Bearer %s"\n' "$CRON_SECRET" |
+              curl --config - --proto '=https' --silent --show-error --max-time 75 \
+                --output "$2" --write-out '%{http_code}' "$APP_URL/api/internal/klaviyo/results$1"
+          }
+          status=$(call '?peek=1' peek.json) || status=000
+          if [ "$status" != "200" ]; then
+            echo "::error::The app returned HTTP $status."
+            exit 1
+          fi
+          waiting=$(jq -r '.waiting // 0' peek.json)
+          echo "Checks due: $waiting"
+          if [ "$waiting" = "0" ]; then exit 0; fi
+          status=$(call '' run.json) || status=000
+          jq -c '{state, checked, pulled, paused, deferred, code}' run.json 2>/dev/null || true
+          if [ "$status" != "200" ]; then
+            echo "::error::The app returned HTTP $status."
+            exit 1
+          fi
