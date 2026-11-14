@@ -1,7 +1,6 @@
 import { z } from 'zod'
 import type { AgentDefinition } from '@/features/agents/runtime'
 import { TagError, type Ask } from '@/features/intelligence/passes'
-import { statedFact } from '@/features/strategy/words'
 import {
   adLibraryUrl,
   type AdMedia,
@@ -9,6 +8,7 @@ import {
 } from '@/lib/providers/ad-library'
 import { findingInput, type FindingInput } from '../findings'
 import { fold } from '../site/pages'
+import { asWritten, plain } from '../words'
 
 /** The Ads analyst's prompt version. */
 export const adsAnalystVersion = 'ads-v1'
@@ -165,22 +165,11 @@ export function analystInput(brand: string, ads: LibraryAd[]): AdsAnalystInput {
 export const minQuote = 12
 
 /** What an ad says, each text on its own (a quote is from one of them). */
-const fieldsOf = (ad: LibraryAd) =>
-  [...ad.texts, ...ad.titles, ...ad.descriptions].map(fold)
-const escaped = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-/**
- * The quote as the ad writes it (its own capitals) from one of its texts,
- * whitespace and case aside; null when the ad does not say it.
- */
-function asWritten(ad: LibraryAd, quote: string): string | null {
-  const pattern = new RegExp(escaped(quote), 'i')
-  for (const field of fieldsOf(ad)) {
-    const found = pattern.exec(field)
-    if (found) return found[0]
-  }
-  return null
-}
+const fieldsOf = (ad: LibraryAd) => [
+  ...ad.texts,
+  ...ad.titles,
+  ...ad.descriptions
+]
 
 /** The currencies each money sign may stand for. */
 const signs: Record<string, string[]> = {
@@ -224,13 +213,6 @@ const named = (
     (m) =>
       Math.abs(m.amount - amount) < 0.005 && m.currencies.includes(currency)
   )
-
-/** Words that make a claim the ads would have to prove. */
-const claims =
-  /\b(best|in the world|#1|number one|leading|award|guarantee|cheapest|finest|perfect|organic|natural|hand-?made|sustainab\w*|eco|vegan|cruelty|plastic|recycled|certified|clinical\w*|proven|non-toxic|toxic|safe|healthy|cure|heal\w*)\b/i
-
-/** A sentence with no number, price, date or claim (the shared check). */
-const plain = (s: string) => statedFact(s) === null && !claims.test(s)
 
 /**
  * The topic's value from the model's flat fields, each offer said by the
@@ -331,7 +313,8 @@ export function checkedAdFindings(
     const first = byId.get(f.adIds[0]!)
     if (!first || f.adIds.some((id) => !byId.has(id))) continue
     const asked = fold(f.quote)
-    const quote = asked.length < minQuote ? null : asWritten(first, asked)
+    const quote =
+      asked.length < minQuote ? null : asWritten(fieldsOf(first), asked)
     if (!quote) continue
     const value = valueOf(f, quote)
     if (!value) continue

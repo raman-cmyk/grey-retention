@@ -5,6 +5,8 @@ import { logger } from '@/lib/logger'
 import { classifyFailure } from '@/features/integrations/failures'
 import { runAdsReadingJob } from './ads/live'
 import { adsRunMs } from './ads/worker'
+import { runReviewsReadingJob } from './reviews/live'
+import { reviewsRunMs } from './reviews/worker'
 import { runCatalogReadingJob } from './catalog/live'
 import { catalogRunMs } from './catalog/worker'
 import { runHistoryReadingJob } from './history/live'
@@ -29,7 +31,8 @@ export const sourceRunMs = Math.max(
   siteRunMs,
   catalogRunMs,
   historyRunMs,
-  adsRunMs
+  adsRunMs,
+  reviewsRunMs
 )
 export { dbMarginMs, readersRunMs, siteCallTimeoutMs }
 
@@ -39,7 +42,8 @@ export type ReadersRun =
 
 /**
  * One read by its kind: the website (ONB-101), the catalog (ONB-102),
- * what the brand already sent (ONB-103) or its live ads (ONB-104).
+ * what the brand already sent (ONB-103), its live ads (ONB-104) or what
+ * customers say (ONB-105).
  */
 export async function runSourceReadingJob(
   db: Db,
@@ -58,13 +62,17 @@ export async function runSourceReadingJob(
     await runAdsReadingJob(db, job, env)
     return 'read'
   }
+  if (job.kind === 'brand.read_reviews') {
+    await runReviewsReadingJob(db, job, env)
+    return 'read'
+  }
   await runSiteReadingJob(db, job, env)
   return 'read'
 }
 
 /**
  * The onboarding readers' run: the source reads waiting across the
- * workspaces (site, catalog, history and ads), one after another, as the worker. A read
+ * workspaces (site, catalog, history, ads and reviews), one after another, as the worker. A read
  * is taken only while `readersRunMs` has not passed; each takes at most
  * `sourceRunMs`, so the run ends inside its route's 60 seconds. A read
  * that fails is recorded on its job (tried again later, at most four
