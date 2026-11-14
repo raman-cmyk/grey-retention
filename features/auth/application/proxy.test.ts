@@ -7,7 +7,7 @@ vi.mock('@/lib/supabase/proxy', () => ({
   refreshAuthSession: (request: NextRequest) => refreshAuthSession(request)
 }))
 
-import { proxy } from './proxy'
+import { proxy } from '@/proxy'
 
 const open = (path: string, method = 'GET') =>
   proxy(new NextRequest(new URL(path, 'https://app.example'), { method }))
