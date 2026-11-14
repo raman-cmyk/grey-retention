@@ -10,6 +10,9 @@ import {
   NextCampaignCard,
   RevenueCard
 } from '@/features/dashboard/sections'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Dashboard' }
 
 /**
  * Dashboard (docs/UI_REBUILD_SPEC.md §3, behaviour from

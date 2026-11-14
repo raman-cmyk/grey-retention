@@ -1,4 +1,7 @@
 import { PlaceholderPage } from '@/components/shell/placeholder-page'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Clients' }
 
 export default function AdminClientsPage() {
   return (

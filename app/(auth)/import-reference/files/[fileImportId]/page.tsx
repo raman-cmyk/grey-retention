@@ -14,6 +14,9 @@ import {
   retryable
 } from '@/features/email-import/limits'
 import { FileImportProgress } from '@/features/email-import/progress'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Imported file' }
 
 export default async function FileImportPage({
   params
