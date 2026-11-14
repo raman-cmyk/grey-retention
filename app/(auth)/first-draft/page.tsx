@@ -6,6 +6,9 @@ import { Notice } from '@/components/ui/workspace'
 import { firstDraftWorkspace } from '@/features/drafts/data'
 import { FirstDraftForm } from '@/features/drafts/form'
 import { plannerBack } from '@/features/planner/back'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Your first draft' }
 
 export default async function FirstDraftPage({
   searchParams

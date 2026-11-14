@@ -1,6 +1,9 @@
 import { PageHeading } from '@/components/ui/workspace'
 import { OperatorPanel } from '@/features/operations/panels'
 import { FallbackLogPanel } from '@/features/fallback/panel'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Operations' }
 export default function Page() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
