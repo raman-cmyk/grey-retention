@@ -126,15 +126,9 @@ export async function runEmailBuilds(
           ...(await stores.read(job.tenant_id)),
           timezone: job.timezone
         }
-        // A claim without a known step (the app deployed before the
-        // migration, for a few minutes) is tried again, not failed.
-        if (!(buildSteps as readonly string[]).includes(job.step ?? '')) {
-          await fail('step_unknown', false)
-          continue
-        }
         const started = now()
         const step = await runBuildStep(
-          job.step,
+          job.step ?? '',
           { planned: planned.data, store, offers, progress: job.progress },
           {
             tenantId: job.tenant_id,
@@ -150,7 +144,10 @@ export async function runEmailBuilds(
             ms: took
           })
         if (!step.ok) {
-          await fail(step.code, true)
+          // A claim without a known step (the app went live before the
+          // migration) is tried again, 3 tries a minute apart, then fails
+          // as `step_unknown` ("Try again"); every other code at once.
+          await fail(step.code, step.code !== 'step_unknown')
           continue
         }
         if (step.done !== 'design') {

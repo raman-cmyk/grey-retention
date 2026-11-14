@@ -92,7 +92,10 @@ export type StepResult =
   | { ok: true; done: 'design'; email: BuiltEmail }
   | {
       ok: false
-      /** Short codes for the build's error column; all final. */
+      /**
+       * Short codes for the build's error column; all final but
+       * `step_unknown` (an app newer than its database), tried again.
+       */
       code:
         | 'slot_time_invalid'
         | 'copy_failed'

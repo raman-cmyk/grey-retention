@@ -97,12 +97,25 @@ export async function latestPlanRun(
   const plan = storedPlan.safeParse(row.plan)
   const builds: Record<number, EmailBuildView> = {}
   if (row.state === 'planned') {
-    const found = await db
+    const read = (columns: string) =>
+      db
+        .from('email_builds')
+        .select(columns)
+        .eq('tenant_id', tenantId)
+        .eq('run_id', row.id)
+        .order('created_at', { ascending: false })
+    let found = await db
       .from('email_builds')
       .select('id,slot,state,step,sample_draft,error_code')
       .eq('tenant_id', tenantId)
       .eq('run_id', row.id)
       .order('created_at', { ascending: false })
+    // The app can go live minutes before the migration that adds `step`
+    // (REL-081, 42703 = no such column): the plan still loads, without it.
+    if (found.error?.code === '42703')
+      found = (await read(
+        'id,slot,state,sample_draft,error_code'
+      )) as unknown as typeof found
     if (found.error) return { ok: false }
     for (const b of found.data)
       if (!(b.slot in builds))
