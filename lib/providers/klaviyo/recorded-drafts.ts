@@ -23,7 +23,7 @@ export type DraftFaults = {
   loseTemplate?: boolean
   /** One request to this path prefix answers 429 (Retry-After 30), once. */
   rateLimit?: string
-  /** One request to this path prefix answers 503, once. */
+  /** One request to this path prefix ("DELETE /api/..." for one method) answers 503, once. */
   outage?: string
   /** Deleting a variation is refused (400). */
   deleteVariation?: 'refused'
@@ -62,6 +62,10 @@ export type DraftFaults = {
   dropCreateIds?: boolean
   /** Klaviyo's copy of a template is not the same HTML as ours. */
   changesCopies?: boolean
+  /** Klaviyo's copies of templates cannot be read yet (404). */
+  copyReadGone?: boolean
+  /** The first message read after a variation gets a new template still shows the old one. */
+  staleTemplateRead?: boolean
   /** The seconds a rate-limited answer asks to wait (30). */
   retryAfter?: number
 }
@@ -178,6 +182,8 @@ export function fakeDraftAccount(
     faults: { copiesTemplates: true, ...options.faults }
   }
   const once = new Set<string>()
+  /** Variations whose next read shows the template they had (`staleTemplateRead`). */
+  const stale = new Map<string, string | null>()
   const firstTime = (key: string) => {
     if (once.has(key)) return false
     once.add(key)
@@ -267,7 +273,13 @@ export function fakeDraftAccount(
           ...refused(429, 'throttled'),
           headers: { 'retry-after': String(account.faults.retryAfter ?? 30) }
         }
-    if (account.faults.outage && path.startsWith(account.faults.outage))
+    const outage = account.faults.outage
+    if (
+      outage &&
+      (/^[A-Z]+ /.test(outage) ? `${request.method} ${path}` : path).startsWith(
+        outage
+      )
+    )
       if (firstTime(`outage ${account.faults.outage}`)) return refused(503)
     let data: Obj | undefined
     if (request.body)
@@ -335,7 +347,11 @@ export function fakeDraftAccount(
     const template = path.match(/^\/api\/templates\/([^/]+)$/)
     if (template && request.method === 'GET') {
       const t = account.templates.get(template[1]!)
-      if (!t) return refused(404, 'not_found')
+      if (
+        !t ||
+        (account.faults.copyReadGone && template[1]!.startsWith('TplCopy'))
+      )
+        return refused(404, 'not_found')
       return json(200, {
         data: {
           type: 'template',
@@ -624,6 +640,8 @@ export function fakeDraftAccount(
           },
           ...listed.map((vid) => {
             const v = account.variations.get(vid)!
+            const templateId = stale.has(vid) ? stale.get(vid)! : v.templateId
+            stale.delete(vid)
             return {
               type: 'campaign-variation',
               id: vid,
@@ -634,7 +652,7 @@ export function fakeDraftAccount(
                     channel: 'email',
                     subject: v.subject,
                     preview_text: v.preview,
-                    template_id: v.templateId
+                    template_id: templateId
                   }
                 }
               }
@@ -678,8 +696,11 @@ export function fakeDraftAccount(
         if (str(details.subject)) v.subject = kept(details.subject as string)
         if (str(details.preview_text))
           v.preview = kept(details.preview_text as string)
-        if (str(details.template_id))
+        if (str(details.template_id)) {
+          if (account.faults.staleTemplateRead)
+            stale.set(variation[1]!, v.templateId)
           v.templateId = keepTemplate(details.template_id as string)
+        }
         if (account.faults.resetTestOnUpdate && m.variationIds.length > 1)
           m.winnerPercentage = 20
         return json(200, {

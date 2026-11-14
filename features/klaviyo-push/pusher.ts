@@ -30,6 +30,7 @@ import type {
   DraftResult
 } from '@/lib/providers/klaviyo-draft'
 import {
+  audienceOk,
   finalChecks,
   htmlHash,
   imageSources,
@@ -64,8 +65,8 @@ import {
  * lease), so a push that stops goes on where it was and never makes a
  * second picture, template, campaign or message. The same key again
  * updates the draft to this content; a draft the owner scheduled, sent,
- * deleted or changed in Klaviyo (a subject, a preview, the A/B test, its
- * mark) is never touched (`rejected`).
+ * deleted or changed in Klaviyo (a subject, a preview, a design, the A/B
+ * test, its mark) is never touched (`rejected`).
  *
  * It never throws: Klaviyo's answers become the port's codes.
  */
@@ -102,6 +103,13 @@ export type PushProgress = {
   /** Fingerprints of the variations after our last write, and where we take them. */
   written: string | null
   target: string | null
+  /**
+   * What each variation showed when a push last left it (`shownOf`): its
+   * template (Klaviyo's copy) and that HTML's fingerprint, marked while we
+   * change it. Other HTML in that template later is the owner's edit in
+   * Klaviyo, never overwritten.
+   */
+  shown: string | null
 }
 export type PushStep = Partial<
   Omit<PushProgress, 'images'> & {
@@ -149,7 +157,8 @@ const empty: PushProgress = {
   ab: null,
   reason: null,
   written: null,
-  target: null
+  target: null,
+  shown: null
 }
 
 /**
@@ -197,6 +206,37 @@ function designsOf(input: DraftInput): Design[] {
 }
 
 const setOf = (s: string | null) => new Set(s ? s.split(',') : [])
+
+/**
+ * `shown` read: per variation, the template on it (Klaviyo's copy), a
+ * fingerprint of that template's HTML as Klaviyo keeps it (not always byte
+ * for byte what we sent), and whether we were changing it (`w`).
+ */
+type Shown = Record<
+  string,
+  { template: string; html: string; writing: boolean }
+>
+const shownOf = (s: string | null): Shown =>
+  Object.fromEntries(
+    (s ? s.split(',') : []).map((entry) => {
+      const [variation, template, html, w] = entry.split(':')
+      return [variation!, { template: template!, html: html!, writing: !!w }]
+    })
+  )
+const shownText = (m: Shown) =>
+  Object.keys(m)
+    .sort()
+    .map((v) => {
+      const { template, html, writing } = m[v]!
+      return `${v}:${template}:${html}${writing ? ':w' : ''}`
+    })
+    .join(',') || null
+/** A template's HTML as Klaviyo keeps it, fingerprinted; null without one. */
+async function htmlSeen(client: KlaviyoClient, templateId: string | null) {
+  if (!templateId) return null
+  const html = await templateHtml(client, templateId)
+  return html === null ? null : htmlHash(html).slice(0, 16)
+}
 
 /** The client, refusing to start a request that might not end in time. */
 function timed(
@@ -322,6 +362,8 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
   )
   // Checked before Klaviyo is called at all.
   if (input.sample) throw new Refused('sample_email', ['sample'])
+  if (!audienceOk(input.audienceId))
+    throw new Refused('audience_not_in_klaviyo', ['audience'])
   const ref = refOf(input)
   if (!ref) throw new Refused('no_push_lease', ['lease'])
 
@@ -499,6 +541,23 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
       read.winnerPercentage !== 0
     )
       return close(read)
+    // A design the owner changed in Klaviyo: other HTML in the template a
+    // variation showed, or another template that we were not putting on.
+    const was = shownOf(p.shown)
+    for (const v of read.variations) {
+      const w = was[v.id]
+      if (!w) continue
+      const ours =
+        v.templateId === w.template
+          ? (await htmlSeen(client, v.templateId)) === w.html
+          : w.writing
+      if (ours) continue
+      logger.warn('Klaviyo push: a design was changed in Klaviyo', {
+        build: ref.build,
+        variation: v.id
+      })
+      return close(read)
+    }
   } else if (p.campaignId && !parts) {
     parts = await campaignParts(client, p.campaignId)
     if (!parts) {
@@ -620,6 +679,37 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
             : x
       )
     })
+  /**
+   * What these variations show now, saved as checked (`shown`): `fresh`
+   * keeps only them. `strict` waits when one shows no template Klaviyo has
+   * (it may not have caught up); otherwise that one, or one Klaviyo fails
+   * to show, is left out (recorded later).
+   */
+  const record = async (
+    vs: DraftRead['variations'],
+    { strict = false, fresh = false } = {}
+  ) => {
+    const m: Shown = fresh ? {} : shownOf(p.shown)
+    for (const v of vs) {
+      // Not strict: one Klaviyo cannot show now is recorded later.
+      const html = strict
+        ? await htmlSeen(client, v.templateId)
+        : await htmlSeen(client, v.templateId).catch((error: unknown) => {
+            if (error instanceof KlaviyoError) return null
+            throw error
+          })
+      if (html && v.templateId)
+        m[v.id] = { template: v.templateId, html, writing: false }
+      else if (strict) {
+        logger.error('Klaviyo push: a design shown could not be read', {
+          build: ref.build,
+          variation: v.id
+        })
+        throw new Wait()
+      }
+    }
+    await save({ shown: shownText(m) })
+  }
   const content = (i: number, templateId: string): VariationContent => ({
     name: designName(wanted[i]!.approach),
     subject: input.subject,
@@ -781,6 +871,9 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
       if (p.fallback) wanted.splice(1)
       await save({ written: fingerprints(read.variations) })
     }
+    // A message made or taken over: checked from now on, should a later
+    // step fail for good.
+    if (read) await record(read.variations)
   }
   if (!read)
     throw new KlaviyoError('invalid_response', {
@@ -815,6 +908,8 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     ])
   })
   let wrote = false
+  /** Each variation given a new template, and the template it showed. */
+  const assigned = new Map<string, string | null>()
   try {
     for (const [i, v] of [a, b].entries()) {
       if (!v || i >= wanted.length) continue
@@ -824,17 +919,53 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
         same &&
         norm(v.subject) === norm(input.subject) &&
         norm(v.preview) === norm(input.preheader)
-      )
+      ) {
+        // Changed by an earlier run whose read back never came: recorded now.
+        if (shownOf(p.shown)[v.id]?.writing) await record([v], { strict: true })
         continue
+      }
       // A change may reset the even test: two designs are checked again.
       if (wanted.length === 2 && p.ab !== 'pending')
         await save({ ab: 'pending' })
       // The same design: the template the variation shows (Klaviyo's copy)
       // is kept; a new design gets its own template.
       const t = same && v.templateId ? null : await templateFor(i)
-      await updateVariation(client, v.id, content(i, t?.id ?? v.templateId!))
-      if (t) await applied(t, v.id)
+      // Marked as being changed just before: until it is recorded again, a
+      // later push takes another template on it for ours (never other HTML
+      // in the same one).
+      const marks = shownOf(p.shown)
+      const mark = marks[v.id]
+      if (mark && !mark.writing)
+        await save({
+          shown: shownText({ ...marks, [v.id]: { ...mark, writing: true } })
+        })
+      try {
+        await updateVariation(client, v.id, content(i, t?.id ?? v.templateId!))
+      } catch (error) {
+        // Not sent, or refused: it still shows what was marked.
+        const notMade =
+          error instanceof TimeUp ||
+          (error instanceof KlaviyoError &&
+            error.kind !== 'unavailable' &&
+            error.kind !== 'invalid_response')
+        if (mark && notMade)
+          await save({
+            shown: shownText({ ...shownOf(p.shown), [v.id]: mark })
+          }).catch(() => undefined)
+        throw error
+      }
+      if (t) {
+        assigned.set(v.id, v.templateId)
+        await applied(t, v.id)
+      }
       wrote = true
+      // What it shows now, recorded at once, so a later failure never
+      // leaves it unchecked. Still the template replaced: Klaviyo has not
+      // caught up (it stays marked; the next run looks again).
+      const now = await whilePending(() => readDraft(client, messageId))
+      const shows = now?.variations.find((x) => x.id === v.id)
+      if (!shows || (t && shows.templateId === v.templateId)) throw new Wait()
+      await record([shows], { strict: true })
     }
   } catch (error) {
     // Stopped half way on a two-design draft: made safe before the answer
@@ -846,6 +977,13 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
   if (wrote) {
     const after = await whilePending(() => readDraft(client, messageId))
     if (!after) throw new Wait()
+    // Still the template replaced: Klaviyo has not caught up yet.
+    if (
+      after.variations.some(
+        (v) => assigned.has(v.id) && v.templateId === assigned.get(v.id)
+      )
+    )
+      throw new Wait()
     read = after
     if (p.ab === 'pending') read = await settle(read)
     if (p.fallback) wanted.splice(1)
@@ -880,6 +1018,11 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     if (!gone || shown) kept.push({ ...t, deleted: gone })
   }
 
+  // What each variation shows now, to know an owner's edit later. A push
+  // with no time left for it stops here; the next run, with nothing left to
+  // write, takes it.
+  if (left() < read.variations.length * callMs) throw new TimeUp()
+  await record(read.variations, { strict: true, fresh: true })
   await save({
     state: 'drafted',
     templates: kept,

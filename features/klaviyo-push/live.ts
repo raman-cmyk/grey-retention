@@ -29,7 +29,7 @@ export function databasePushStore(db: Db): PushStore {
       const { data, error } = await db
         .from('klaviyo_draft_pushes')
         .select(
-          'state,images,templates,campaign_id,message_id,create_started_at,message_started_at,template_started_at,delete_answered_at,audience_id,designs,fallback,ab,reason,written,target'
+          'state,images,templates,campaign_id,message_id,create_started_at,message_started_at,template_started_at,delete_answered_at,audience_id,designs,fallback,ab,reason,written,target,shown'
         )
         .eq('tenant_id', tenantId)
         .eq('push_key', key)
@@ -52,7 +52,8 @@ export function databasePushStore(db: Db): PushStore {
         designs: data.designs as PushProgress['designs'],
         fallback: data.fallback,
         reason: data.reason,
-        written: data.written
+        written: data.written,
+        shown: data.shown
       }
     },
     async save({ build, lease }, step: PushStep) {
@@ -74,7 +75,8 @@ export function databasePushStore(db: Db): PushStore {
         ['fallback', 'fallback'],
         ['checks', 'checks'],
         ['reason', 'reason'],
-        ['written', 'written']
+        ['written', 'written'],
+        ['shown', 'shown']
       ]
       for (const [from, to] of names)
         if (from in step) row[to] = step[from] ?? null

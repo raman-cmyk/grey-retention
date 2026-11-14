@@ -4285,6 +4285,7 @@ export type Database = {
           message_started_at: string | null
           push_key: string
           reason: string | null
+          shown: string | null
           state: string
           target: string | null
           template_started_at: string | null
@@ -4308,6 +4309,7 @@ export type Database = {
           message_started_at?: string | null
           push_key: string
           reason?: string | null
+          shown?: string | null
           state?: string
           target?: string | null
           template_started_at?: string | null
@@ -4331,6 +4333,7 @@ export type Database = {
           message_started_at?: string | null
           push_key?: string
           reason?: string | null
+          shown?: string | null
           state?: string
           target?: string | null
           template_started_at?: string | null

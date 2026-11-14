@@ -73,6 +73,10 @@ export function footerProblems(html: string) {
 
 const klaviyoId = /^[A-Za-z0-9_-]{1,64}$/
 
+/** A Klaviyo list or segment id, never the sample store's own audiences. */
+export const audienceOk = (audienceId: string) =>
+  klaviyoId.test(audienceId) && !/^sample/i.test(audienceId)
+
 /**
  * What stops a push before Klaviyo is called at all: an audience that is
  * not a Klaviyo id (the sample's), the footer tags, Gmail's size, and
@@ -82,7 +86,7 @@ export function preflight(
   htmls: string[],
   audienceId: string
 ): { reason: string; check: string } | null {
-  if (!klaviyoId.test(audienceId) || /^sample/i.test(audienceId))
+  if (!audienceOk(audienceId))
     return { reason: 'audience_not_in_klaviyo', check: 'audience' }
   if (htmls.some((h) => footerProblems(h).length))
     return { reason: 'footer_missing', check: 'footer' }

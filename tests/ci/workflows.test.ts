@@ -200,6 +200,26 @@ describe('CI workflows', () => {
     }
   })
 
+  it('installs browser system packages best effort, so a mirror outage is not a failed run', () => {
+    for (const name of ['browser.yml', 'inbox-screenshots.yml']) {
+      const text = read(name)
+      expect(text).not.toContain('playwright install --with-deps')
+      expect(text).toContain('pnpm exec playwright install chromium')
+      expect(text).toContain(
+        'apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 update'
+      )
+      // A timeout or failure in that step never fails the job.
+      expect(text).toMatch(
+        /continue-on-error: true\n\s+timeout-minutes: [56]\n/
+      )
+      expect(text).toContain('pnpm exec playwright install-deps chromium')
+      expect(text).toContain(
+        "::warning::apt unavailable; using the runner's preinstalled libraries"
+      )
+    }
+    expect(read('browser.yml')).toMatch(/for attempt in 1 2; do/)
+  })
+
   it('keeps a failed browser run debuggable', () => {
     const browser = read('browser.yml')
     // A step limit below the job limit turns a slow run into a failure, so
