@@ -1,5 +1,8 @@
 import { SignInPanel } from '@/components/auth/sign-in-panel'
 import { safeNext } from '@/features/auth/domain/next'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Sign in' }
 
 export default async function ClientLoginPage({
   searchParams

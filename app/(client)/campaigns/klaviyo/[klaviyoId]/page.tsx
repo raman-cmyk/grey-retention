@@ -21,6 +21,9 @@ import {
   percent,
   strategyWords
 } from '@/features/klaviyo-detail/words'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Klaviyo campaign' }
 
 function Chips({
   title,

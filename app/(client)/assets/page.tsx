@@ -13,6 +13,9 @@ import { onboardingWorkspace } from '@/features/onboarding/data'
 import { onboardingAction } from '@/features/onboarding/actions'
 import { importAssets } from '@/features/assets/actions'
 import { ReadinessPanel, SetupJobs } from '@/features/onboarding/panels'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Assets' }
 export default async function AssetsPage({
   searchParams
 }: {

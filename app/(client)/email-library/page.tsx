@@ -4,6 +4,9 @@ import { TextLink } from '@/components/ui/text-link'
 import Link from 'next/link'
 import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
 import { referenceWorkspace } from '@/features/references/data'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Templates & references' }
 export default async function EmailLibrary() {
   const { data, context, error } = await referenceWorkspace()
   const owner = context.tenantRole === 'owner'

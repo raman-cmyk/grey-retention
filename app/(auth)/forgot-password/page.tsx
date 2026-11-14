@@ -1,5 +1,8 @@
 import Link from 'next/link'
 import { ResetRequestForm } from '@/components/auth/reset-request-form'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Forgot password' }
 
 export default function ForgotPasswordPage() {
   return (
