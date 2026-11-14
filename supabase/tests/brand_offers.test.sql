@@ -38,6 +38,7 @@ select is(public.set_max_discount('00000000-0000-4000-8000-000000000101',15,2),3
 select is(public.set_margin_floor('00000000-0000-4000-8000-000000000101',60,30,3),4,'a 60% margin with a 30% floor');
 select is((select (gross_margin_percent, margin_floor_percent)::text from public.brand_offers),'(60,30)','reads them back');
 select throws_ok($$select public.set_margin_floor('00000000-0000-4000-8000-000000000101',60,35,3)$$,'PT409',null,'a stale margin floor is a conflict');
+select throws_ok($$select public.set_margin_floor('00000000-0000-4000-8000-000000000101',60,35,null)$$,'PT409',null,'no revision is a conflict too');
 select throws_ok($$select public.set_margin_floor('00000000-0000-4000-8000-000000000101',40,40,4)$$,'23514',null,'the floor must be below the margin');
 select throws_ok($$select public.set_margin_floor('00000000-0000-4000-8000-000000000101',60,null,4)$$,'23514',null,'both numbers, or neither');
 select throws_ok($$select public.set_margin_floor('00000000-0000-4000-8000-000000000101',100,30,4)$$,'23514',null,'a margin of 1 to 99');
@@ -75,6 +76,7 @@ select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-00000000
 select is((select count(*) from public.discount_codes where status='active'),2::bigint,'an operator reads the codes');
 select throws_ok($$select public.set_max_discount('00000000-0000-4000-8000-000000000101',90,3)$$,'42501',null,'an operator cannot change the max discount');
 select throws_ok($$select public.add_discount_code('00000000-0000-4000-8000-000000000101','OPS90',90,null)$$,'42501',null,'an operator cannot add a code');
+select throws_ok($$select public.set_margin_floor('00000000-0000-4000-8000-000000000101',60,10,7)$$,'42501',null,'an operator cannot set the margin floor');
 
 -- The worker reads, but never writes directly or calls the owner commands.
 reset role;

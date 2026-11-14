@@ -44,3 +44,25 @@ end $$;
 
 revoke all on function public.set_margin_floor(uuid, integer, integer, integer) from public, anon, service_role;
 grant execute on function public.set_margin_floor(uuid, integer, integer, integer) to authenticated;
+
+-- Who changed the margin floor goes in the change history (BAS-006), like
+-- the max discount: only a real change, stamped with clock_timestamp().
+create or replace function private.record_margin_floor_change() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if new.gross_margin_percent is not distinct from old.gross_margin_percent
+    and new.margin_floor_percent is not distinct from old.margin_floor_percent then
+    return null;
+  end if;
+  insert into public.workspace_events (tenant_id, actor_id, kind, detail, created_at)
+  values (new.tenant_id, auth.uid(), 'margin_floor_changed',
+    jsonb_build_object('from_margin', old.gross_margin_percent, 'from_floor', old.margin_floor_percent,
+      'to_margin', new.gross_margin_percent, 'to_floor', new.margin_floor_percent), clock_timestamp());
+  return null;
+end $$;
+
+revoke all on function private.record_margin_floor_change() from public, anon, authenticated, service_role;
+
+create trigger brand_offers_margin_recorded
+  after update of gross_margin_percent, margin_floor_percent on public.brand_offers
+  for each row execute function private.record_margin_floor_change();

@@ -1,5 +1,5 @@
 begin;
-select plan(23);
+select plan(28);
 
 -- Workspace 101: owner ...01, staff ...05. Workspace 102: owner ...04.
 -- What is recorded for 101 from here on.
@@ -17,7 +17,8 @@ select ok(not has_function_privilege('authenticated','private.record_offer_limit
   and not has_function_privilege('authenticated','private.record_discount_code_change()','execute')
   and not has_function_privilege('authenticated','private.record_klaviyo_connection_change()','execute')
   and not has_function_privilege('authenticated','private.record_klaviyo_key_change()','execute')
-  and not has_function_privilege('service_role','private.record_klaviyo_key_change()','execute'),'the recorders are not callable');
+  and not has_function_privilege('service_role','private.record_klaviyo_key_change()','execute')
+  and not has_function_privilege('authenticated','private.record_margin_floor_change()','execute'),'the recorders are not callable');
 
 -- The owner changes the max discount twice, then sets the same value.
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
@@ -31,6 +32,20 @@ select is((select count(*) from pg_temp.events('max_discount_changed') e where e
 select is((select count(*) from pg_temp.events('max_discount_changed') e where e.created_at >= (select at from seen_from)),2::bigint,'twice: setting the same value again records nothing');
 select is((select count(*) from pg_temp.events('max_discount_changed') e where e.detail->>'from' = '20' and e.detail->>'to' = '25'),1::bigint,'from and to');
 select is((select actor_id from pg_temp.events('max_discount_changed') e where e.detail->>'to' = '25'),'00000000-0000-4000-8000-000000000001'::uuid,'and who did it');
+
+-- PLN-039: the margin floor set, set the same again, changed, then removed.
+set local role authenticated;
+select set_config('test.rev',public.set_margin_floor('00000000-0000-4000-8000-000000000101',60,30,current_setting('test.rev')::integer)::text,true);
+select set_config('test.rev',public.set_margin_floor('00000000-0000-4000-8000-000000000101',60,30,current_setting('test.rev')::integer)::text,true);
+select set_config('test.rev',public.set_margin_floor('00000000-0000-4000-8000-000000000101',55,25,current_setting('test.rev')::integer)::text,true);
+select set_config('test.rev',public.set_margin_floor('00000000-0000-4000-8000-000000000101',null,null,current_setting('test.rev')::integer)::text,true);
+reset role;
+select is((select count(*) from pg_temp.events('margin_floor_changed') e where e.created_at >= (select at from seen_from)),3::bigint,'three margin changes: the same values again record nothing');
+select is((select detail::text from pg_temp.events('margin_floor_changed') e where e.detail->>'to_floor' = '25'),
+  '{"to_floor": 25, "to_margin": 55, "from_floor": 30, "from_margin": 60}','from and to');
+select is((select count(*) from pg_temp.events('margin_floor_changed') e where e.detail->>'to_margin' is null and e.detail->>'from_margin' = '55'),1::bigint,'removing it is recorded');
+select is((select actor_id from pg_temp.events('margin_floor_changed') e where e.detail->>'to_floor' = '30'),'00000000-0000-4000-8000-000000000001'::uuid,'and who did it');
+select is((select count(*) from pg_temp.events('max_discount_changed') e where e.created_at >= (select at from seen_from)),2::bigint,'a margin change is not a max discount change');
 
 -- A code added, then retired by hand.
 set local role authenticated;
