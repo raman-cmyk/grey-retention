@@ -1,7 +1,7 @@
 import 'server-only'
 import { z } from 'zod'
 import { probes } from './check-key'
-import { KlaviyoError, type KlaviyoClient } from './client'
+import { KlaviyoError, type KlaviyoClient, type KlaviyoScope } from './client'
 
 /**
  * Reads of a Klaviyo account's catalog and store events (ONB-102), with the
@@ -101,7 +101,7 @@ const httpsUrl = (value: unknown) => {
   }
 }
 const pageLinks = z.object({ next: z.string().nullish() }).partial().nullish()
-const page = z.object({
+export const page = z.object({
   data: z.array(z.unknown()),
   included: z.array(z.unknown()).optional(),
   links: pageLinks
@@ -161,10 +161,10 @@ function shortId(id: string, externalId: string | null | undefined) {
 }
 
 /** Follows `links.next` while allowed; parses each page's records. */
-async function readPages<T>(
+export async function readPages<T>(
   client: KlaviyoClient,
   first: string,
-  scope: 'catalogs:read' | 'events:read' | 'metrics:read',
+  scope: KlaviyoScope,
   maxPages: number,
   more: MorePages,
   parse: (body: z.infer<typeof page>) => { records: T[]; skipped: number }
