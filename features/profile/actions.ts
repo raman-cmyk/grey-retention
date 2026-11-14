@@ -2,6 +2,8 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireRequestContext } from '@/features/auth/application/request-context'
+import { clientEnvironment } from '@/lib/env/client'
+import { logger } from '@/lib/logger'
 import { createClient } from '@/lib/supabase/server'
 import { createStatelessClient } from '@/lib/supabase/stateless'
 import { PASSWORD_MAX_BYTES, PASSWORD_MIN } from './rules'
@@ -120,6 +122,38 @@ const tooManyResult: ProfileResult = {
 }
 
 /**
+ * The signed-in user's current password, checked with a separate client
+ * that keeps no session (so the signed-in session is untouched). Null when
+ * it is right; else the answer to give.
+ */
+async function wrongPassword(
+  user: { id: string; email: string },
+  password: string
+): Promise<ProfileResult | null> {
+  const checker = createStatelessClient()
+  if (!checker) return signedOut
+  const verified = await checker.auth.signInWithPassword({
+    email: user.email,
+    password
+  })
+  await checker.auth.signOut({ scope: 'local' }).catch(() => undefined)
+  if (tooMany(verified.error)) return tooManyResult
+  if (verified.error?.code === 'invalid_credentials')
+    return {
+      status: 'error',
+      message: checkFields,
+      fieldErrors: { current: 'That is not your current password.' }
+    }
+  if (verified.error || verified.data.user?.id !== user.id)
+    return {
+      status: 'error',
+      message:
+        'We could not check your current password. Nothing was changed. Try again.'
+    }
+  return null
+}
+
+/**
  * Checks the current password first, with a separate client that keeps no
  * session (so the signed-in session is untouched), then sets the new one.
  * This guards the form; it is not a security boundary while Supabase
@@ -137,26 +171,11 @@ export async function changePassword(
     confirm: form.get('confirm') ?? ''
   })
   if (!parsed.success) return invalid(parsed.error.issues)
-  const checker = createStatelessClient()
-  if (!checker) return signedOut
-  const verified = await checker.auth.signInWithPassword({
-    email: current.user.email,
-    password: parsed.data.current
-  })
-  await checker.auth.signOut({ scope: 'local' }).catch(() => undefined)
-  if (tooMany(verified.error)) return tooManyResult
-  if (verified.error?.code === 'invalid_credentials')
-    return {
-      status: 'error',
-      message: checkFields,
-      fieldErrors: { current: 'That is not your current password.' }
-    }
-  if (verified.error || verified.data.user?.id !== current.user.id)
-    return {
-      status: 'error',
-      message:
-        'We could not check your current password. Nothing was changed. Try again.'
-    }
+  const wrong = await wrongPassword(
+    { id: current.user.id, email: current.user.email },
+    parsed.data.current
+  )
+  if (wrong) return wrong
   const updated = await current.db.auth.updateUser({
     password: parsed.data.next
   })
@@ -184,4 +203,82 @@ export async function changePassword(
         'We could not change your password. Your old password still works.'
     }
   return { status: 'success', message: 'Password updated.' }
+}
+
+const emailChange = z.object({
+  email: z
+    .email('Enter a valid email address.')
+    .trim()
+    .toLowerCase()
+    .max(254, 'Use at most 254 characters.'),
+  current: z
+    .string()
+    .min(1, 'Enter your current password.')
+    .max(1000, 'That is not your current password.')
+})
+
+/**
+ * Starts a change of the signed-in user's email (BAS-002). The current
+ * password is checked first, then Supabase Auth sends a link to the new
+ * address (and, with its "secure email change", one to the old address
+ * too). The email changes only once the links are clicked; they come back
+ * to the profile page. An address another account uses gets the same
+ * answer here (Supabase's own API tells a signed-in caller, so this hides
+ * nothing from someone who calls it directly).
+ */
+export async function changeEmail(
+  _state: ProfileResult,
+  form: FormData
+): Promise<ProfileResult> {
+  const current = await session()
+  if (!current || !current.user.email) return signedOut
+  const parsed = emailChange.safeParse({
+    email: form.get('email') ?? '',
+    current: form.get('current') ?? ''
+  })
+  if (!parsed.success) return invalid(parsed.error.issues)
+  if (parsed.data.email === current.user.email.toLowerCase())
+    return {
+      status: 'error',
+      message: checkFields,
+      fieldErrors: { email: 'This is already your email.' }
+    }
+  const wrong = await wrongPassword(
+    { id: current.user.id, email: current.user.email },
+    parsed.data.current
+  )
+  if (wrong) return wrong
+  const updated = await current.db.auth.updateUser(
+    { email: parsed.data.email },
+    {
+      emailRedirectTo: `${clientEnvironment.NEXT_PUBLIC_APP_URL}/auth/callback?next=/profile`
+    }
+  )
+  const error = updated.error as
+    (AuthError & { name?: string }) | null | undefined
+  if (tooMany(error ?? null) || error?.code === 'over_email_send_rate_limit')
+    return tooManyResult
+  if (error?.name === 'AuthSessionMissingError') return signedOut
+  // An address in use, or one Supabase refuses, gets the same answer as
+  // one it sent to. Anything else (not reached, failing, any other
+  // refusal) is said plainly and logged.
+  if (
+    error &&
+    error.code !== 'email_exists' &&
+    error.code !== 'email_address_invalid'
+  ) {
+    logger.warn('Email change could not start', {
+      code: error.code ?? 'none',
+      status: error.status ?? 0
+    })
+    return {
+      status: 'error',
+      message:
+        'We could not start the change. Your email stays the same. Try again.'
+    }
+  }
+  return {
+    status: 'success',
+    message: `If ${parsed.data.email} can be used, a link to confirm it is on its way there, and one may come to ${current.user.email}: click each link you get. Your email stays ${current.user.email} until then.`
+  }
 }

@@ -1,5 +1,5 @@
 begin;
-select plan(57);
+select plan(67);
 
 -- Workspace 101: owner ...01, staff ...05, manager ...06. Workspace 102: owner ...04.
 delete from public.tenant_invites where tenant_id in ('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000102');
@@ -116,6 +116,38 @@ select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-00000000
 select throws_ok($$select public.accept_team_invite(current_setting('test.late')::uuid)$$,'23514','Invite revoked or expired','a cancelled invite cannot be accepted');
 reset role;
 select is((select count(*) from public.tenant_memberships where tenant_id = '00000000-0000-4000-8000-000000000101' and profile_id = '00000000-0000-4000-8000-000000000004'),0::bigint,'and grants no membership');
+
+-- BAS-005: an expired invite is not offered and cannot be accepted.
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select set_config('test.old',public.invite_team('00000000-0000-4000-8000-000000000101','other-owner@grey-retention.test','admin')::text,true);
+reset role;
+update public.tenant_invites set created_at = now() - interval '9 days', expires_at = now() - interval '1 day'
+  where id = current_setting('test.old')::uuid;
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
+select is((select count(*) from public.my_pending_invites() where id = current_setting('test.old')::uuid),0::bigint,'an expired invite is not offered');
+select throws_ok($$select public.accept_team_invite(current_setting('test.old')::uuid)$$,'23514','Invite revoked or expired','an expired invite cannot be accepted');
+
+-- A used invite, used again, grants nothing new.
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select set_config('test.fresh',public.invite_team('00000000-0000-4000-8000-000000000101','other-owner@grey-retention.test','admin')::text,true);
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
+select is((select count(*) from public.my_pending_invites() where id = current_setting('test.fresh')::uuid),1::bigint,'an open invite is offered');
+select is(public.accept_team_invite(current_setting('test.fresh')::uuid),'00000000-0000-4000-8000-000000000101'::uuid,'the invited person accepts');
+select is(public.accept_team_invite(current_setting('test.fresh')::uuid),'00000000-0000-4000-8000-000000000101'::uuid,'accepting the same invite again changes nothing');
+select is((select count(*) from public.my_pending_invites() where id = current_setting('test.fresh')::uuid),0::bigint,'an accepted invite is no longer offered');
+reset role;
+select is((select count(*) from public.tenant_memberships where tenant_id = '00000000-0000-4000-8000-000000000101' and profile_id = '00000000-0000-4000-8000-000000000004'),1::bigint,'one membership, not two');
+select set_config('test.joined',(select id::text from public.tenant_memberships where tenant_id = '00000000-0000-4000-8000-000000000101' and profile_id = '00000000-0000-4000-8000-000000000004'),true);
+select set_config('test.joined_at',(select updated_at::text from public.tenant_memberships where id = current_setting('test.joined')::uuid),true);
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select lives_ok($$select public.change_team_member('00000000-0000-4000-8000-000000000101',current_setting('test.joined')::uuid,current_setting('test.joined_at')::timestamptz,'admin','inactive')$$,'the owner removes them');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
+select lives_ok($$select public.accept_team_invite(current_setting('test.fresh')::uuid)$$,'the old invite, used again after the removal');
+reset role;
+select is((select status::text from public.tenant_memberships where id = current_setting('test.joined')::uuid),'inactive','does not let them back in');
 
 select * from finish();
 rollback;

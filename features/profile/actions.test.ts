@@ -9,7 +9,7 @@ vi.mock('@/features/auth/application/request-context', () => auth)
 vi.mock('@/lib/supabase/server', () => server)
 vi.mock('@/lib/supabase/stateless', () => stateless)
 
-import { changePassword, updateAccount } from './actions'
+import { changeEmail, changePassword, updateAccount } from './actions'
 
 const user = { id: 'user-1', email: 'owner@example.com' }
 function form(values: Record<string, string>) {
@@ -274,5 +274,129 @@ describe('changePassword', () => {
       'NEXT_REDIRECT'
     )
     expect(signIn).not.toHaveBeenCalled()
+  })
+})
+
+describe('changeEmail', () => {
+  const good = { email: 'New.Owner@Example.com', current: 'old-password' }
+  const sent = {
+    status: 'success',
+    message:
+      'If new.owner@example.com can be used, a link to confirm it is on its way there, and one may come to owner@example.com: click each link you get. Your email stays owner@example.com until then.'
+  }
+
+  it('checks the current password, then asks Supabase to confirm the new address', async () => {
+    expect(await changeEmail({}, form(good))).toEqual(sent)
+    expect(signIn).toHaveBeenCalledWith({
+      email: user.email,
+      password: 'old-password'
+    })
+    expect(signOut).toHaveBeenCalledWith({ scope: 'local' })
+    expect(updateUser).toHaveBeenCalledWith(
+      { email: 'new.owner@example.com' },
+      {
+        emailRedirectTo: expect.stringMatching(
+          /\/auth\/callback\?next=\/profile$/
+        )
+      }
+    )
+    expect(signIn.mock.invocationCallOrder[0]).toBeLessThan(
+      updateUser.mock.invocationCallOrder[0]!
+    )
+  })
+
+  it.each([
+    [
+      { ...good, email: 'not-an-address' },
+      'email',
+      'Enter a valid email address.'
+    ],
+    [
+      { ...good, email: 'OWNER@example.com' },
+      'email',
+      'This is already your email.'
+    ],
+    [{ ...good, current: '' }, 'current', 'Enter your current password.']
+  ])(
+    'shows an inline error before changing anything',
+    async (values, field, message) => {
+      const result = await changeEmail({}, form(values))
+      expect(result.fieldErrors?.[field]).toBe(message)
+      expect(result.message).toBe('Check the fields marked below.')
+      expect(signIn).not.toHaveBeenCalled()
+      expect(updateUser).not.toHaveBeenCalled()
+    }
+  )
+
+  it('refuses a wrong current password without changing anything', async () => {
+    signIn.mockResolvedValueOnce({
+      data: { user: null },
+      error: { code: 'invalid_credentials', status: 400 }
+    })
+    expect((await changeEmail({}, form(good))).fieldErrors?.current).toBe(
+      'That is not your current password.'
+    )
+    expect(updateUser).not.toHaveBeenCalled()
+  })
+
+  it('gives the same answer for an address another account uses', async () => {
+    for (const error of [
+      { code: 'email_exists', status: 422 },
+      { code: 'email_address_invalid', status: 400 }
+    ]) {
+      updateUser.mockResolvedValueOnce({ error })
+      expect(await changeEmail({}, form(good))).toEqual(sent)
+    }
+  })
+
+  it('asks to wait at Supabase’s limits', async () => {
+    for (const error of [
+      { code: 'over_email_send_rate_limit', status: 429 },
+      { code: 'over_email_send_rate_limit' },
+      { code: 'over_request_rate_limit' }
+    ]) {
+      updateUser.mockResolvedValueOnce({ error })
+      expect((await changeEmail({}, form(good))).message).toBe(
+        'Too many attempts. Wait a few minutes, then try again.'
+      )
+    }
+  })
+
+  it('says plainly when the change could not start', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    for (const error of [
+      { code: 'unexpected_failure', status: 500 },
+      // Supabase not reached: auth-js answers status 0.
+      { name: 'AuthRetryableFetchError', status: 0 },
+      // A refusal that is not about the address: nothing was sent.
+      { code: 'email_address_not_authorized', status: 400 },
+      {}
+    ]) {
+      updateUser.mockResolvedValueOnce({ error })
+      expect(await changeEmail({}, form(good))).toEqual({
+        status: 'error',
+        message:
+          'We could not start the change. Your email stays the same. Try again.'
+      })
+    }
+  })
+
+  it('asks to sign in again when Supabase has no session for the change', async () => {
+    updateUser.mockResolvedValueOnce({
+      error: { name: 'AuthSessionMissingError', status: 400 }
+    })
+    expect(await changeEmail({}, form(good))).toEqual({
+      status: 'error',
+      message: 'Please sign in again.'
+    })
+  })
+
+  it('asks a signed-out visitor to sign in again', async () => {
+    getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
+    expect(await changeEmail({}, form(good))).toEqual({
+      status: 'error',
+      message: 'Please sign in again.'
+    })
+    expect(updateUser).not.toHaveBeenCalled()
   })
 })
