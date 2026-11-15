@@ -265,7 +265,8 @@ export async function launch(chromium) {
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const base = (process.env.APP_URL ?? '').replace(/\/+$/, '')
-  const secret = process.env.CRON_SECRET ?? ''
+  // CI-005: a pasted secret's line break is not part of it.
+  const secret = (process.env.CRON_SECRET ?? '').trim()
   if (!/^https?:\/\//.test(base) || secret.length < 32) {
     console.error('Set APP_URL and CRON_SECRET (see the script header).')
     process.exit(1)

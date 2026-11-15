@@ -272,7 +272,11 @@ describe('CI workflows', () => {
     expect(text).not.toContain('pnpm install')
     expect(text).toContain('/api/internal/onboarding/readers')
     // It asks first and stops when nothing is waiting.
-    expect(text.indexOf("call '?peek=1'")).toBeLessThan(text.indexOf("call ''"))
+    const peek = text.indexOf('call /api/internal/onboarding/readers?peek=1 ')
+    expect(peek).toBeGreaterThan(-1)
+    expect(peek).toBeLessThan(
+      text.indexOf('call /api/internal/onboarding/readers run.json ')
+    )
     expect(text).toContain('if [ "$waiting" = "0" ]; then exit 0; fi')
     expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(1)
   })
@@ -287,7 +291,11 @@ describe('CI workflows', () => {
     expect(text).not.toContain('actions/checkout')
     expect(text).not.toContain('pnpm install')
     expect(text).toContain('/api/internal/klaviyo/results')
-    expect(text.indexOf("call '?peek=1'")).toBeLessThan(text.indexOf("call ''"))
+    const peek = text.indexOf('call /api/internal/klaviyo/results?peek=1 ')
+    expect(peek).toBeGreaterThan(-1)
+    expect(peek).toBeLessThan(
+      text.indexOf('call /api/internal/klaviyo/results run.json ')
+    )
     expect(text).toContain('if [ "$waiting" = "0" ]; then exit 0; fi')
     expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(1)
   })
@@ -304,5 +312,33 @@ describe('CI workflows', () => {
     expect(text).not.toContain('pnpm install')
     expect(text).toContain('/api/internal/inbox/tags')
     expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(1)
+  })
+  it('tries each scheduled call once more after 2 minutes and says the app’s error (CI-005)', () => {
+    const scheduled = [
+      ['scheduled-jobs.yml', 7],
+      ['onboarding-readers.yml', 8],
+      ['inbox-tagging.yml', 6],
+      ['inbox-screenshots.yml', 18],
+      ['klaviyo-results.yml', 8]
+    ] as const
+    for (const [name, minutes] of scheduled) {
+      const text = read(name)
+      // The secret is trimmed and sent through stdin, never as a curl
+      // config line (a pasted line break broke every call).
+      expect(text, name).not.toContain('--config -')
+      expect(text, name).toContain("tr -d '\\r\\n'")
+      expect(text, name).toContain(
+        'printf \'Authorization: Bearer %s\\n\' "$secret" |'
+      )
+      expect(text, name).toContain("curl -H @- --proto '=https'")
+      // Two tries, 2 minutes apart; red only when both fail, with the reason.
+      expect(text, name).toContain('for try in 1 2; do')
+      expect(text, name).toContain('sleep 120')
+      expect(text, name).toContain('.error // .code // .message // empty')
+      expect(text, name).toContain('on both tries.')
+      expect(text, name).toMatch(
+        new RegExp(`\\n {4}timeout-minutes: ${minutes}\\n`)
+      )
+    }
   })
 })

@@ -28,7 +28,8 @@ jobs:
   screenshots:
     if: vars.SCHEDULED_JOBS_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The first call may be tried twice, 2 minutes apart (CI-005).
+    timeout-minutes: 18
     env:
       APP_URL: https://grey-retention-app.vercel.app
     steps:
@@ -41,16 +42,33 @@ jobs:
             echo "::error::Add the CRON_SECRET repository secret (see docs/SCHEDULED_JOBS_RUNBOOK.md)."
             exit 1
           fi
-          # The header goes through stdin so the secret never appears in the
-          # process list; GitHub also masks it in the log. HTTPS only.
-          status=$(printf 'header = "Authorization: Bearer %s"\n' "$CRON_SECRET" |
-            curl --config - --proto '=https' --silent --show-error --max-time 30 \
-              --output peek.json --write-out '%{http_code}' \
-              "$APP_URL/api/internal/inbox/screenshots?peek=1") || status=000
-          if [ "$status" != "200" ]; then
-            echo "::error::The app returned HTTP $status."
-            exit 1
-          fi
+          # CI-005: the secret without stray spaces or line breaks (a pasted
+          # line break stopped every call), sent through stdin (-H @-) so it
+          # never appears in the process list; GitHub also masks it. HTTPS
+          # only. A call with no answer or an error is tried once more after
+          # 2 minutes; the run fails only when both tries fail, and says the
+          # app's own error. call PATH FILE SECONDS
+          secret=$(printf '%s' "$CRON_SECRET" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          call() {
+            local try status reason
+            for try in 1 2; do
+              rm -f "$2"
+              status=$(printf 'Authorization: Bearer %s\n' "$secret" |
+                curl -H @- --proto '=https' --silent --show-error --max-time "$3" \
+                  --output "$2" --write-out '%{http_code}' "$APP_URL$1") || status=000
+              if [ "$status" = "200" ]; then return 0; fi
+              reason=$(jq -r '.error // .code // .message // empty' "$2" 2>/dev/null | tr -d '\r\n' | head -c 300)
+              if [ -z "$reason" ] && [ -s "$2" ]; then reason=$(tr -d '\r\n' < "$2" | head -c 300); fi
+              if [ "$try" = 1 ]; then
+                echo "::warning::The app returned HTTP $status${reason:+ ($reason)}. Trying again in 2 minutes."
+                sleep 120
+              else
+                echo "::error::The app returned HTTP $status${reason:+ ($reason)} on both tries."
+              fi
+            done
+            return 1
+          }
+          call /api/internal/inbox/screenshots?peek=1 peek.json 30 || exit 1
           waiting=$(jq -r '.waiting // 0' peek.json)
           echo "Screenshots waiting: $waiting"
           echo "waiting=$waiting" >> "$GITHUB_OUTPUT"
