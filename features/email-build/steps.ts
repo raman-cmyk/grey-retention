@@ -1,7 +1,9 @@
 import { z } from 'zod'
 import type { OfferSource } from '@/features/offers/source'
 import {
+  codeWorksNow,
   contentStep,
+  shownOffer,
   copyStep,
   designStep,
   sectionsStep,
@@ -123,6 +125,7 @@ export type StepResult =
         | 'subject_taken'
         | 'copy_failed'
         | 'render_failed'
+        | 'offer_unsafe'
         | 'step_progress_invalid'
         | 'step_unknown'
         | 'store_changed'
@@ -191,12 +194,27 @@ export async function runBuildStep(
   const copy = copySaved.safeParse(progress.data.copy)
   if (!copy.success) return unreadable
   const content = progress.data.content as { source?: unknown } | undefined
+  // REL-OFF: the code also works with Settings now (switched off, or the
+  // max lowered, since the first step); `designStep` checks what is drawn.
+  const code = (copy.data as unknown as CopyOutput).draft.code
+  if (code !== null) {
+    const now = await codeWorksNow(
+      code,
+      input.offers,
+      ctx.tenantId,
+      sections.sendAt,
+      shownOffer(code, sections.rules)
+    )
+    if (now === 'unreadable') return { ok: false, code: 'offers_unreadable' }
+    if (now === 'unsafe') return { ok: false, code: 'offer_unsafe' }
+  }
   const made = designStep({
     planned,
     store,
     sendAt: sections.sendAt,
     sample: sections.sample,
     copy: copy.data as unknown as CopyOutput,
+    rules: sections.rules,
     ai: sections.layout.source === 'agent' || content?.source === 'agent'
   })
   return made.ok ? { ok: true, done: 'design', email: made.email } : made
