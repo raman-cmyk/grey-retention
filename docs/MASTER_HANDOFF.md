@@ -109,7 +109,7 @@ Rules that keep the loop alive:
 
 Ask one question in plain words, and keep working on other tasks while you wait.
 
-1. Turning on anything live: `AI_DEFAULT_PROVIDER`, `KLAVIYO_MODE=live`, `KLAVIYO_DRAFT_PUSH=live`, `SITE_READER_MODE=live`, `ADS_READER_MODE=live`, `SCHEDULED_JOBS_ENABLED`, sending email, or paid AI beyond the $0.50 a day Gemini cap he approved.
+1. Turning on anything live: `AI_DEFAULT_PROVIDER`, `KLAVIYO_MODE=live`, `KLAVIYO_DRAFT_PUSH=live`, `SITE_READER_MODE=live`, `ADS_READER_MODE=live`, `SCHEDULED_JOBS_ENABLED`, `EMAIL_BUILD_AGENTS=on` (it makes "Create email" call real AI and charges the workspace's own AI allowance), sending email, or paid AI beyond the $0.50 a day Gemini cap he approved.
 2. The first real Klaviyo draft, and any call to a real Klaviyo account, even read-only.
 3. Deleting or rewriting production data, or a migration that drops a table or column that holds data.
 4. Changing a product rule in `docs/VISION.md` or a decision D1 to D27.
