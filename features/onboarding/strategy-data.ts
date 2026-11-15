@@ -9,6 +9,11 @@ import {
   listCatalog,
   type CatalogEntry
 } from '@/features/onboarding/catalog/read'
+import {
+  applyCorrections,
+  listCorrections,
+  type Correction
+} from '@/features/onboarding/brand-book-corrections'
 import { listFindings, type Finding } from '@/features/onboarding/findings'
 import { industryInWords } from '@/features/onboarding/industry'
 import {
@@ -53,6 +58,8 @@ export type OnboardedParts = {
   catalog: CatalogEntry[]
   history: StoredHistory | null
   findings: Finding[]
+  /** ONB-057c: the owner's corrections (what the brand sells). */
+  corrections?: readonly Correction[]
   keyDates: KeyDate[]
 }
 
@@ -64,20 +71,42 @@ const day = (iso: string | null, timezone: string) =>
 const cut = (text: string, max: number) =>
   Array.from(text.trim()).slice(0, max).join('')
 
+const lineKey = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase()
+
 /**
- * The brand's industry from its surest "offering" finding: `key` on the
- * fixed industry list (what the agents and their industry rules use), and
- * `words`, the finding's own words (what key dates are matched on). A
- * finding from the sample rules is not used for a live history.
+ * The brand's industry from what it sells: `key` on the fixed industry
+ * list (what the agents and their industry rules use), and `words`, the
+ * line it comes from (what key dates are matched on). The owner's own
+ * lines come first, then the readers' surest, as he corrected them
+ * (ONB-058); the planner and "Create email" read it the same way
+ * (ONB-057c). A finding from the sample rules is not used for a live
+ * history.
  */
 export function industryFrom(
   findings: readonly Finding[],
-  { live = false }: { live?: boolean } = {}
+  {
+    live = false,
+    corrections = []
+  }: { live?: boolean; corrections?: readonly Correction[] } = {}
 ): { key: Industry; words: string } {
   const offering = findings
     .filter((f) => f.topic === 'offering' && !(live && f.pass === 'sample'))
-    .sort((a, b) => b.confidence - a.confidence)[0]
-  const words = offering ? offering.statement.trim() : ''
+    .sort((a, b) => b.confidence - a.confidence)
+    .map((f) => f.statement.trim())
+  const own = corrections.filter((c) => c.section === 'offering')
+  const lines = own.length
+    ? (applyCorrections({ observed: { offering } }, own).observed?.offering ??
+      [])
+    : offering
+  const added = new Set(
+    own.flatMap((c) =>
+      c.action === 'add' && c.value ? [lineKey(c.value)] : []
+    )
+  )
+  const words =
+    lines.find((l) => added.has(lineKey(l))) ??
+    lines.find((l) => !added.has(lineKey(l))) ??
+    ''
   return { key: industryInWords(words) ?? 'other', words }
 }
 
@@ -108,7 +137,10 @@ export function strategyFrom(
     days: planDays
   })
   if (fromHistory.audiences.length === 0) return null
-  const industry = industryFrom(parts.findings, { live: history.live }).key
+  const industry = industryFrom(parts.findings, {
+    live: history.live,
+    corrections: parts.corrections
+  }).key
   // The catalog read keeps at most 500 products; best sellers first.
   const products = [...catalog].sort(
     (a, b) =>
@@ -226,8 +258,9 @@ export function onboardedStrategyData(
         synthetic: !history.live
       })
       if (catalog.length === 0) return fallback.load({ tenantId, start })
-      const [findings, profile] = await Promise.all([
+      const [findings, corrections, profile] = await Promise.all([
         listFindings(db, tenantId, { topic: 'offering' }),
+        listCorrections(db, tenantId),
         db
           .from('brand_profiles')
           .select('brand_name')
@@ -240,7 +273,10 @@ export function onboardedStrategyData(
         timezone,
         from: start,
         days: planDays,
-        industry: industryFrom(findings, { live: history.live }).words
+        industry: industryFrom(findings, {
+          live: history.live,
+          corrections
+        }).words
       })
       // A failed read (holidays, the owner's own days) is tried again, never
       // planned without: a plan missing Black Friday would say nothing.
@@ -255,6 +291,7 @@ export function onboardedStrategyData(
           catalog,
           history,
           findings,
+          corrections,
           keyDates: keyDates.dates
         },
         start,
