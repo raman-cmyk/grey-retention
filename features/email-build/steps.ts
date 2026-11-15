@@ -182,7 +182,8 @@ export function storeFingerprint(store: Store) {
  * fresh for each step; the send time, offer rules and timezone are the
  * ones the first step saved, so an email never mixes two versions of
  * Settings, and a store that changed between sample and real data starts
- * over ("Try again"). Never throws for bad data.
+ * over ("Try again"), as does one read again with other data since the
+ * first step (REL-STO, `storeFingerprint`). Never throws for bad data.
  */
 export async function runBuildStep(
   step: string,

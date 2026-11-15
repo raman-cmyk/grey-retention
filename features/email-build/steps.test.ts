@@ -66,7 +66,7 @@ describe('the store a build started from (REL-STO)', () => {
   })
 
   it.each(['content', 'copy', 'design'] as const)(
-    'the %s step starts over on other store data: a price, a new product, a sold-out one, the brand',
+    'the %s step starts over on other store data: a price, a new product, a sold-out one, the brand, the facts, the industry',
     async (step) => {
       const progress = await savedUpTo(step)
       const s = await store()
@@ -85,7 +85,9 @@ describe('the store a build started from (REL-STO)', () => {
             p.id === 'p-cedar-candle' ? { ...p, featurable: false } : p
           )
         },
-        { ...s, brand: { ...s.brand, accent: '#000000' } }
+        { ...s, brand: { ...s.brand, accent: '#000000' } },
+        { ...s, facts: { ...s.facts, returnDays: 30 } },
+        { ...s, industry: 'skincare' }
       ])
         expect(await run(step, changed, progress)).toEqual({
           ok: false,
