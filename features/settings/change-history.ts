@@ -8,6 +8,7 @@ import type { Database } from '@/lib/supabase/database.types'
  */
 export const changeKinds = [
   'max_discount_changed',
+  'revenue_goal_set',
   'margin_floor_changed',
   'discount_code_added',
   'discount_code_retired',
@@ -22,6 +23,38 @@ type Detail = Record<string, unknown>
 const text = (v: unknown) => (typeof v === 'string' ? v : null)
 const percent = (v: unknown) =>
   typeof v === 'number' && Number.isFinite(v) ? `${v}%` : null
+
+/** "$20,000" from a stored amount (a number or numeric text) and its currency. */
+function money(amount: unknown, currency: unknown) {
+  const value = typeof amount === 'string' ? Number(amount) : amount
+  if (
+    typeof value !== 'number' ||
+    !Number.isFinite(value) ||
+    typeof currency !== 'string' ||
+    !/^[A-Z]{3}$/.test(currency)
+  )
+    return null
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: Number.isInteger(value) ? 0 : 2
+    }).format(value)
+  } catch {
+    return null
+  }
+}
+
+/** "November 2026" from "2026-11-01". */
+function monthName(value: unknown) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-01$/.test(value)) return null
+  const [y, m] = value.split('-').map(Number) as [number, number]
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'UTC',
+    month: 'long',
+    year: 'numeric'
+  }).format(new Date(Date.UTC(y, m - 1, 1)))
+}
 
 /** A code's last day, as the store's calendar shows it ("30 Nov 2026"). */
 function dayIn(iso: string, timeZone: string) {
@@ -55,6 +88,17 @@ export function changeText(
     return from
       ? `Max discount changed from ${from} to ${to}`
       : `Max discount set to ${to}`
+  }
+  if (kind === 'revenue_goal_set') {
+    const month = monthName(detail.month)
+    if (!month) return null
+    const to = money(detail.to_amount, detail.to_currency)
+    const was = money(detail.from_amount, detail.from_currency)
+    if (to)
+      return was
+        ? `Revenue goal for ${month} changed to ${to} (was ${was})`
+        : `Revenue goal for ${month} set to ${to}`
+    return was ? `Revenue goal for ${month} removed (was ${was})` : null
   }
   if (kind === 'margin_floor_changed') {
     const floor = percent(detail.to_floor)

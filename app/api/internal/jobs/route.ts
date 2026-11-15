@@ -77,13 +77,13 @@ export async function GET(request: NextRequest) {
     })
     return { ran: 0 }
   })
-  // "Create email" steps (EML-004 part 2): the code-only build and the
-  // draft push (the fake one unless the owner's write switch,
-  // KLAVIYO_DRAFT_PUSH=live with KLAVIYO_MODE=live, is on: PSH-001),
-  // claimed for at most 5 s, each live push at most 25 s, its requests
-  // inside 25 s from this step's start and none started past 45 s into the
-  // route (making an unsafe A/B draft safe may add a few 6 s requests); a
-  // failure stays queued for the next run.
+  // "Create email" steps (EML-004 part 2, REL-081): the saved steps of the
+  // code-only build (furthest first) and the draft push (the fake one
+  // unless the owner's write switch, KLAVIYO_DRAFT_PUSH=live with
+  // KLAVIYO_MODE=live, is on: PSH-001), claimed for at most 5 s, each live
+  // push at most 25 s, its requests inside 25 s from this step's start and
+  // none started past 45 s into the route (making an unsafe A/B draft safe
+  // may add a few 6 s requests); a failure stays queued for the next run.
   const emailStart = Date.now()
   const emails = await runEmailBuilds(db, {
     deadline: emailStart + emailBudgetMs,

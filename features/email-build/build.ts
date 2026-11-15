@@ -9,12 +9,12 @@ import {
 } from '@/features/assembly/inputs'
 import { assembleLockedPlain } from '@/features/assembly/modes'
 import { localTimeCandidates } from '@/lib/local-time'
-import { codeSectionPlan, seedVariants } from './sections'
-import { lockContent, type ChangeKey } from './content'
+import { codeSectionPlan, seedVariants, type SectionPlan } from './sections'
+import { lockContent, type ChangeKey, type LockedContent } from './content'
 import { codeFindings } from './inspect'
 import { designA } from './design'
 import type { Draft } from '@/features/assembly/assemble'
-import type { OfferSource } from '@/features/offers/source'
+import type { DiscountCode, OfferSource } from '@/features/offers/source'
 import { offersAt, type Store } from './ports'
 
 /**
@@ -93,17 +93,46 @@ const typeName = (type: PlannedEmail['emailType']) =>
   type.charAt(0).toUpperCase() + type.slice(1)
 
 /**
- * The locked draft of one planned email on the code-only path: sections,
- * locked content and plain copy that passed every code check, before any
- * drawing. "Create email" draws it with A; the A-vs-B test (EML-005) draws
- * the same draft both ways. Never throws for bad data.
+ * REL-081: "Create email" runs as saved steps, each its own short job:
+ * sections, content, copy, design (then the push). Each step's output is
+ * saved before the next starts, so a failed step is tried again on its
+ * own, from the saved steps before it. All outputs are plain JSON.
  */
-export async function lockedDraft(
-  input: { planned: PlannedEmail; store: Store; offers: OfferSource },
+export type SectionsOutput = {
+  /** The planned local time, as an instant. */
+  sendAt: string
+  /** The workspace's timezone then: every later step shows dates in it. */
+  timezone: string
+  /** Built from the sample store: a later step on real data starts over. */
+  sample: boolean
+  /** DSC-001: the max and the codes still working when this email sends. */
+  rules: { maxDiscountPercent: number; codes: DiscountCode[] }
+  layout: SectionPlan
+}
+export type CopyOutput = { draft: Draft; changes: ChangeKey[] }
+
+type StepInput = { planned: PlannedEmail; store: Store }
+
+/** What the Content locker and the copy write into, from the saved rules. */
+const assemblyFor = (
+  store: Store,
+  saved: Pick<SectionsOutput, 'sendAt' | 'rules' | 'timezone'>
+): Omit<AssemblyInput, 'brief'> => ({
+  products: store.products,
+  codes: saved.rules.codes,
+  maxDiscountPercent: saved.rules.maxDiscountPercent,
+  sendAt: saved.sendAt,
+  timezone: saved.timezone,
+  facts: store.facts
+})
+
+/** Step 1: the send time, the offer rules at that time, and the sections. */
+export async function sectionsStep(
+  input: StepInput & { offers: OfferSource },
   ctx: BuildCtx
 ): Promise<
-  | { ok: true; draft: Draft; sendAt: string; changes: ChangeKey[] }
-  | { ok: false; code: 'slot_time_invalid' | 'copy_failed' }
+  | { ok: true; output: SectionsOutput }
+  | { ok: false; code: 'slot_time_invalid' }
 > {
   const { planned, store, offers } = input
   // The planned local time, as an instant (the earlier one on a DST fold).
@@ -112,25 +141,20 @@ export async function lockedDraft(
     store.timezone
   )[0]
   if (!sendAt) return { ok: false, code: 'slot_time_invalid' }
-  // DSC-001: the max and the codes still working when this email sends.
-  const rules = await offersAt(offers, ctx.tenantId, sendAt)
-  const assembly: Omit<AssemblyInput, 'brief'> = {
-    products: store.products,
-    codes: rules.codes,
-    maxDiscountPercent: rules.maxDiscountPercent,
-    sendAt,
-    timezone: store.timezone,
-    facts: store.facts
+  const read = await offersAt(offers, ctx.tenantId, sendAt)
+  const rules = {
+    maxDiscountPercent: read.maxDiscountPercent,
+    codes: [...read.codes]
   }
   const allowed = allowedBlockTypes({
-    ...assembly,
+    ...assemblyFor(store, { sendAt, rules, timezone: store.timezone }),
     brief: {
       campaignType: planned.emailType,
       goal: planned.angle,
       ...(planned.offer ? { offerCode: planned.offer.code } : {})
     }
   })
-  const sections = codeSectionPlan({
+  const layout = codeSectionPlan({
     mode: 'scratch',
     industry: store.industry,
     slot: {
@@ -142,11 +166,29 @@ export async function lockedDraft(
     allowed,
     library: seedVariants
   })
-  const locked = await lockContent(
+  return {
+    ok: true,
+    output: {
+      sendAt,
+      timezone: store.timezone,
+      sample: store.sample,
+      rules,
+      layout
+    }
+  }
+}
+
+/** Step 2: products, prices, the offer, its code, pictures and links locked. */
+export async function contentStep(
+  input: StepInput & { sections: SectionsOutput },
+  ctx: BuildCtx
+): Promise<LockedContent> {
+  const { planned, store, sections } = input
+  return lockContent(
     {
       slot: planned,
-      sections,
-      store: assembly,
+      sections: sections.layout,
+      store: assemblyFor(store, sections),
       site: store.brand.site
     },
     {
@@ -157,6 +199,16 @@ export async function lockedDraft(
       ai: noAi
     }
   )
+}
+
+/** Step 3: plain facts-only copy that must pass every code check. */
+export async function copyStep(
+  input: { store: Store; locked: LockedContent },
+  ctx: BuildCtx
+): Promise<
+  { ok: true; output: CopyOutput } | { ok: false; code: 'copy_failed' }
+> {
+  const { store, locked } = input
   const steps = locked.sections.map((s) => ({
     type: s.family,
     reason: s.purpose
@@ -184,34 +236,22 @@ export async function lockedDraft(
   }
   return {
     ok: true,
-    draft: plain.draft,
-    sendAt,
-    changes: [...new Set(locked.changes.map((c): ChangeKey => c.key))].slice(
-      0,
-      40
-    )
+    output: {
+      draft: plain.draft,
+      changes: [...new Set(locked.changes.map((c): ChangeKey => c.key))].slice(
+        0,
+        40
+      )
+    }
   }
 }
 
-type BuildCtx = {
-  tenantId: string
-  callerKey: string
-  campaignId?: string | null
-  fallbacks: FallbackLog
-}
-
-/**
- * The owner's "Create email": the locked draft (`lockedDraft`), drawn with
- * coded design A.
- */
-export async function buildEmail(
-  input: { planned: PlannedEmail; store: Store; offers: OfferSource },
-  ctx: BuildCtx
-): Promise<BuildResult> {
-  const { planned, store } = input
-  const made = await lockedDraft(input, ctx)
-  if (!made.ok) return made
-  const { draft, sendAt } = made
+/** Step 4: the copy drawn with coded design A, as the email to store. */
+export function designStep(
+  input: StepInput & { sendAt: string; sample: boolean; copy: CopyOutput }
+): BuildResult {
+  const { planned, store, sendAt, sample, copy } = input
+  const { draft } = copy
   let html: string
   try {
     html = designA(draft, store.brand).html
@@ -221,7 +261,7 @@ export async function buildEmail(
   return {
     ok: true,
     email: {
-      sample: store.sample,
+      sample,
       ai: false,
       name: `${dayName(planned.date)} · ${typeName(planned.emailType)}`,
       subject: draft.subject,
@@ -233,7 +273,54 @@ export async function buildEmail(
       audienceId: planned.audience.id,
       productIds: draft.productIds,
       code: draft.code,
-      changes: made.changes
+      changes: copy.changes
     }
   }
+}
+
+/**
+ * The locked draft of one planned email on the code-only path: the first
+ * three steps at once, before any drawing. The A-vs-B test (EML-005) draws
+ * the same draft both ways. Never throws for bad data.
+ */
+export async function lockedDraft(
+  input: StepInput & { offers: OfferSource },
+  ctx: BuildCtx
+): Promise<
+  | { ok: true; draft: Draft; sendAt: string; changes: ChangeKey[] }
+  | { ok: false; code: 'slot_time_invalid' | 'copy_failed' }
+> {
+  const sections = await sectionsStep(input, ctx)
+  if (!sections.ok) return sections
+  const locked = await contentStep({ ...input, sections: sections.output }, ctx)
+  const copy = await copyStep({ store: input.store, locked }, ctx)
+  if (!copy.ok) return copy
+  return {
+    ok: true,
+    draft: copy.output.draft,
+    sendAt: sections.output.sendAt,
+    changes: copy.output.changes
+  }
+}
+
+export type BuildCtx = {
+  tenantId: string
+  callerKey: string
+  campaignId?: string | null
+  fallbacks: FallbackLog
+}
+
+/** All four build steps at once (tests and tools; the job saves each). */
+export async function buildEmail(
+  input: StepInput & { offers: OfferSource },
+  ctx: BuildCtx
+): Promise<BuildResult> {
+  const made = await lockedDraft(input, ctx)
+  if (!made.ok) return made
+  return designStep({
+    ...input,
+    sendAt: made.sendAt,
+    sample: input.store.sample,
+    copy: { draft: made.draft, changes: made.changes }
+  })
 }
