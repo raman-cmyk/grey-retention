@@ -9,8 +9,10 @@ import {
 import { SupabaseOfferSource, type OfferSource } from '@/features/offers/source'
 import { databaseFallbackLog, type FallbackLog } from '@/features/fallback/log'
 import { stepCode } from '@/features/strategy/worker'
-import { builtEmail, plannedEmail } from './build'
+import { builtEmail, plannedEmail, type BuildAgents } from './build'
+import { buildAgentsFor } from './agents'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
+import { maxStepSaves, roundSteps } from './step-names'
 import { buildCode, type BuildFailureCode } from './failure-words'
 import {
   ownerOrSampleOffers,
@@ -54,6 +56,11 @@ export async function runEmailBuilds(
     saved?: SavedOffers
     pusher?: DraftPusher
     fallbacks?: FallbackLog
+    /**
+     * Default: `buildAgentsFor(db)`: the agents when a live model is set up,
+     * else null (the code-only path, nothing metered). REL-AI part 2.
+     */
+    agents?: BuildAgents | null
     /** Run only this build (the owner's click): its steps, then its push. */
     build?: string
     /** Steps to run at most; the deadline bounds the sweep. */
@@ -71,16 +78,33 @@ export async function runEmailBuilds(
     )
   const saved = deps.saved ?? new SupabaseOfferSource(db)
   const now = deps.now ?? Date.now
-  const limit = deps.build ? buildSteps.length + 1 : (deps.limit ?? 25)
+  const agents = deps.agents === undefined ? buildAgentsFor(db) : deps.agents
+  // The owner's click: every step, every save of the steps with rounds
+  // (REL-AI part 2b) and the push. Its deadline, not this count, ends it.
+  const limit = deps.build
+    ? buildSteps.length + 1 + roundSteps.length * maxStepSaves
+    : (deps.limit ?? 25)
   let ran = 0
-  for (let n = 0; n < limit; n++) {
-    if (deps.deadline && now() > deps.deadline) break
-    const claimed = await db.rpc(
-      'claim_email_build',
-      deps.build ? { target: deps.build } : {}
-    )
+  /**
+   * The build this run just moved on (REL-AI part 2b): the database leaves
+   * it to this job for 30 seconds, so the sweep claims it by name next and
+   * takes it through its steps in one run, as the click does.
+   */
+  let moved: string | undefined
+  const claim = async (target?: string) => {
+    const claimed = await db.rpc('claim_email_build', target ? { target } : {})
     if (claimed.error) throw claimed.error
-    const job = claimed.data?.[0]
+    return claimed.data?.[0]
+  }
+  for (let n = 0; n < limit; n++) {
+    // An agent step can take most of a step's budget (3 tries of 15 s):
+    // with the agents on, a new step is claimed only while a whole step
+    // still fits before the deadline (REL-AI part 2).
+    if (deps.deadline && now() + (agents ? stepBudgetMs : 0) > deps.deadline)
+      break
+    let job = await claim(deps.build ?? moved)
+    if (!job && !deps.build && moved) job = await claim()
+    moved = undefined
     if (!job) break
     const fail = async (
       code: BuildFailureCode,
@@ -147,7 +171,8 @@ export async function runEmailBuilds(
           {
             tenantId: job.tenant_id,
             callerKey: `email-build:${job.id}`,
-            fallbacks
+            fallbacks,
+            agents
           }
         )
         const took = now() - started
@@ -165,6 +190,36 @@ export async function runEmailBuilds(
             step.code,
             step.code !== 'step_unknown' && step.code !== 'offers_unreadable'
           )
+          continue
+        }
+        if ('saved' in step) {
+          // A step saves only its own rounds (the database would refuse).
+          if (step.saved !== job.step) {
+            await fail('step_output_invalid', true)
+            continue
+          }
+          // REL-AI part 2b: the step ran what fitted in its time; its rounds
+          // are saved and the claim ends, its try given back. The click
+          // claims it again at once and goes on from them.
+          const kept = await db.rpc('save_email_round', {
+            build: job.id,
+            lease: job.lease_token,
+            step: step.saved,
+            work: step.work as never
+          })
+          if (kept.error) {
+            if (refused(kept.error)) {
+              // The 17th save: the step kept stopping before it finished.
+              const many =
+                (kept.error as { details?: string }).details ===
+                'too_many_rounds'
+              await fail(many ? 'step_timed_out' : 'step_output_invalid', true)
+              continue
+            }
+            throw kept.error
+          }
+          moved = job.id
+          ran++
           continue
         }
         if (step.done !== 'design') {
@@ -192,6 +247,7 @@ export async function runEmailBuilds(
             }
             throw kept.error
           }
+          moved = job.id
           ran++
           continue
         }
@@ -253,6 +309,7 @@ export async function runEmailBuilds(
         })
         if (done.error) throw done.error
       }
+      moved = job.id
       ran++
     } catch (error) {
       // Only codes with plain words are stored (REL-084); the log keeps it.

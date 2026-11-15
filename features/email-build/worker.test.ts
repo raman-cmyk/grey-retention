@@ -2,6 +2,8 @@
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
 import { memoryFallbackLog } from '@/features/fallback/log'
+import { InMemoryMemoryStore } from '@/features/agents/memory'
+import { InMemoryRunLog, type AiCall } from '@/features/agents/runtime'
 import { logger } from '@/lib/logger'
 import { runEmailBuilds } from './worker'
 import { buildEmail, type BuiltEmail, type PlannedEmail } from './build'
@@ -59,7 +61,9 @@ function fakeDb(
     calls.push({ fn, args })
     if (fail[fn]) return { data: null, error: fail[fn] }
     if (fn === 'claim_email_build') {
-      const next = queue.shift()
+      // The owner's click claims only its own build.
+      const at = args.target ? queue.findIndex((s) => s.id === args.target) : 0
+      const next = at >= 0 ? queue.splice(at, 1)[0] : undefined
       if (next) claimed = next
       return { data: next ? [next] : [], error: null }
     }
@@ -207,8 +211,9 @@ describe('building and pushing (code-only, fake pusher)', () => {
         fallbacks: memoryFallbackLog()
       })
     ).toEqual({ ran: 5 })
+    // Four steps and the push, then nothing more of its own to claim.
     expect(calls.filter((c) => c.fn === 'claim_email_build')).toEqual(
-      Array.from({ length: 5 }, () => ({
+      Array.from({ length: 6 }, () => ({
         fn: 'claim_email_build',
         args: { target: 'build-1' }
       }))
@@ -224,21 +229,21 @@ describe('building and pushing (code-only, fake pusher)', () => {
   })
 })
 
-describe('saved steps (REL-081)', () => {
-  /** A whole build, with each step's saved output and the stored email. */
-  const fullRun = async () => {
-    const { db, calls } = fakeDb([step()])
-    await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
-    const saved = Object.fromEntries(
-      calls
-        .filter((c) => c.fn === 'finish_email_step')
-        .map((c) => [c.args.done as string, c.args.output])
-    )
-    const email = calls.find((c) => c.fn === 'finish_email_build')!.args
-      .result as BuiltEmail
-    return { saved, email }
-  }
+/** A whole build, with each step's saved output and the stored email. */
+const fullRun = async () => {
+  const { db, calls } = fakeDb([step()])
+  await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+  const saved = Object.fromEntries(
+    calls
+      .filter((c) => c.fn === 'finish_email_step')
+      .map((c) => [c.args.done as string, c.args.output])
+  )
+  const email = calls.find((c) => c.fn === 'finish_email_build')!.args
+    .result as BuiltEmail
+  return { saved, email }
+}
 
+describe('saved steps (REL-081)', () => {
   it('saves each step as plain data', async () => {
     const { saved } = await fullRun()
     expect(Object.keys(saved)).toEqual(['sections', 'content', 'copy'])
@@ -496,6 +501,112 @@ describe('saved steps (REL-081)', () => {
       expect.objectContaining({ build: 'build-1', step: 'sections' })
     )
     warn.mockRestore()
+  })
+})
+
+describe('the agent path (REL-AI part 2)', () => {
+  const answer = (content: unknown) =>
+    ({
+      ok: true,
+      content,
+      provider: 'gemini',
+      model: 'test',
+      costMicro: 0,
+      inputTokens: 1,
+      outputTokens: 1,
+      settled: true
+    }) as const
+  const agentsWith = (ai: AiCall) => ({
+    memory: new InMemoryMemoryStore(),
+    log: new InMemoryRunLog(),
+    ai
+  })
+  const built = (calls: Call[]) =>
+    calls.find((c) => c.fn === 'finish_email_build')!.args.result as BuiltEmail
+
+  it('stays on code by default, even with a Gemini key, while the owner’s switch is off', async () => {
+    vi.stubEnv('GEMINI_API_KEY', 'k')
+    vi.stubEnv('AI_DEFAULT_PROVIDER', '')
+    vi.stubEnv('EMAIL_BUILD_AGENTS', 'off')
+    try {
+      const { db, calls } = fakeDb([step()])
+      await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+      const sections = calls.find(
+        (c) => c.fn === 'finish_email_step' && c.args.done === 'sections'
+      )!.args.output as { layout: { source: string } }
+      expect(sections.layout.source).toBe('code')
+      expect(built(calls).ai).toBe(false)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('with the agents on, starts a step only while a whole step fits before the deadline', async () => {
+    const ai = vi.fn<AiCall>(async () => ({ ok: false, code: 'cap_reached' }))
+    const { db, calls } = fakeDb([step()])
+    let clock = 0
+    await runEmailBuilds(db, {
+      agents: agentsWith(ai),
+      deadline: 40_000,
+      now: () => clock,
+      fallbacks: memoryFallbackLog()
+    })
+    // 40 s left is less than a whole step: nothing is claimed.
+    expect(calls.some((c) => c.fn === 'claim_email_build')).toBe(false)
+    clock = 0
+    const roomy = fakeDb([step()])
+    await runEmailBuilds(roomy.db, {
+      agents: agentsWith(ai),
+      deadline: 60_000,
+      limit: 1,
+      now: () => clock,
+      fallbacks: memoryFallbackLog()
+    })
+    expect(roomy.calls.some((c) => c.fn === 'claim_email_build')).toBe(true)
+  })
+
+  it('uses the Section planner’s plan when the agents are on, and says the email was made with AI', async () => {
+    const { saved } = await fullRun()
+    const plan = (
+      saved.sections as {
+        layout: { sections: { variantId: string; purpose: string }[] }
+      }
+    ).layout.sections.map((s) => ({
+      variantId: s.variantId,
+      purpose: s.purpose
+    }))
+    let first = true
+    const ai = vi.fn<AiCall>(async () => {
+      if (!first) return { ok: false, code: 'cap_reached' }
+      first = false
+      return answer({ sections: plan })
+    })
+    const { db, calls } = fakeDb([step()])
+    await runEmailBuilds(db, {
+      agents: agentsWith(ai),
+      fallbacks: memoryFallbackLog()
+    })
+    expect(ai.mock.calls[0][0]).toMatchObject({
+      tenantId: tenant,
+      purpose: 'copy'
+    })
+    const sections = calls.find(
+      (c) => c.fn === 'finish_email_step' && c.args.done === 'sections'
+    )!.args.output as { layout: { source: string } }
+    expect(sections.layout.source).toBe('agent')
+    expect(built(calls).ai).toBe(true)
+  })
+
+  it('still builds on code’s choices, logged, when the agents cannot answer', async () => {
+    const ai = vi.fn<AiCall>(async () => ({ ok: false, code: 'cap_reached' }))
+    const fallbacks = memoryFallbackLog()
+    const { db, calls } = fakeDb([step()])
+    await runEmailBuilds(db, { agents: agentsWith(ai), fallbacks })
+    expect(ai).toHaveBeenCalled()
+    expect(built(calls)).toMatchObject({ ai: false, copy: 'plain' })
+    expect(
+      fallbacks.entries().some((e) => e.reasonCode.startsWith('sections_'))
+    ).toBe(true)
   })
 })
 

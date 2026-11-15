@@ -13,7 +13,7 @@ import {
 } from './build'
 import type { LockedContent } from './content'
 import type { Store } from './ports'
-import { buildSteps, type BuildStep } from './step-names'
+import { buildSteps, type BuildStep, type RoundStep } from './step-names'
 
 /**
  * REL-081: the build steps of "Create email" (`buildSteps`, the push
@@ -90,6 +90,11 @@ const progressSaved = z.looseObject({})
 export type StepResult =
   | { ok: true; done: Exclude<BuildStep, 'design'>; output: object }
   | { ok: true; done: 'design'; email: BuiltEmail }
+  /**
+   * REL-AI part 2b: the step ran what fitted in its time and saves its
+   * rounds so far; the next claim goes on from them.
+   */
+  | { ok: true; saved: RoundStep; work: object }
   | {
       ok: false
       /**
@@ -164,12 +169,14 @@ export async function runBuildStep(
   }
   const copy = copySaved.safeParse(progress.data.copy)
   if (!copy.success) return unreadable
+  const content = progress.data.content as { source?: unknown } | undefined
   const made = designStep({
     planned,
     store,
     sendAt: sections.sendAt,
     sample: sections.sample,
-    copy: copy.data as unknown as CopyOutput
+    copy: copy.data as unknown as CopyOutput,
+    ai: sections.layout.source === 'agent' || content?.source === 'agent'
   })
   return made.ok ? { ok: true, done: 'design', email: made.email } : made
 }

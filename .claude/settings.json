@@ -5,6 +5,7 @@
     "AI_DEFAULT_PROVIDER": "fake",
     "KLAVIYO_MODE": "fake",
     "KLAVIYO_DRAFT_PUSH": "off",
+    "EMAIL_BUILD_AGENTS": "off",
     "NEXT_TELEMETRY_DISABLED": "1"
   },
   "permissions": {
