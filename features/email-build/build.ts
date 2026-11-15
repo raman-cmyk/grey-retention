@@ -22,7 +22,7 @@ import {
 import { lockContent, type ChangeKey, type LockedContent } from './content'
 import { codeFindings } from './inspect'
 import { designA } from './design'
-import type { Draft } from '@/features/assembly/assemble'
+import { hiddenChars, type Draft } from '@/features/assembly/assemble'
 import type { DiscountCode, OfferSource } from '@/features/offers/source'
 import { offersAt, type Store } from './ports'
 
@@ -253,8 +253,7 @@ export const subjectKey = (subject: string) =>
   subject.replace(/\s+/g, ' ').trim().toLowerCase()
 
 // Control, zero-width and direction characters: never in a subject.
-const hidden =
-  /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g
+const hidden = new RegExp(hiddenChars.source, 'g')
 
 /**
  * Store text (a product title, the brand name) as it may stand in a

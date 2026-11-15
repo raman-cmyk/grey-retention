@@ -2,8 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 
 /**
- * The workspace's record of who changed the offer limits and Klaviyo
- * (BAS-006), recorded by the database as it happens. Team changes have
+ * The workspace's record of who changed the offer limits, Klaviyo and the
+ * Brand book (BAS-006, ONB-058), recorded by the database as it happens. Team changes have
  * their own list on the Team page (`teamPage`).
  */
 export const changeKinds = [
@@ -14,8 +14,71 @@ export const changeKinds = [
   'discount_code_retired',
   'klaviyo_connection_changed',
   'klaviyo_key_saved',
-  'klaviyo_key_refused'
+  'klaviyo_key_refused',
+  'brand_book_corrected',
+  'brand_book_correction_withdrawn'
 ] as const
+
+/** What a Brand book line was about, in plain words (ONB-058). */
+const bookLines = new Map([
+  ['offering', 'what the brand sells'],
+  ['customers.who', "the brand's customers"],
+  ['customers.love', 'what customers love'],
+  ['customers.worries', 'what customers worry about'],
+  ['voice', "the brand's voice"],
+  ['marketing', "the brand's marketing"]
+])
+/** A Brand book fact: its name, and what the owner set it to in words. */
+const bookFacts = new Map<string, [string, (v: string) => string | null]>([
+  [
+    'facts.freeShipping',
+    [
+      'free shipping',
+      (v) =>
+        v === 'always'
+          ? 'free shipping on every order'
+          : v === 'never'
+            ? 'no free shipping'
+            : /^over \d/.test(v)
+              ? `free shipping ${v}`
+              : null
+    ]
+  ],
+  [
+    'facts.returnDays',
+    [
+      'return policy',
+      (v) =>
+        v === '0'
+          ? 'no returns'
+          : /^\d+$/.test(v)
+            ? `returns within ${v} days`
+            : null
+    ]
+  ],
+  [
+    'facts.guaranteeDays',
+    [
+      'money-back guarantee',
+      (v) =>
+        v === '0'
+          ? 'no money-back guarantee'
+          : /^\d+$/.test(v)
+            ? `a ${v}-day money-back guarantee`
+            : null
+    ]
+  ],
+  [
+    'facts.deliveryDays',
+    [
+      'delivery time',
+      (v) =>
+        /^\d+-\d+$/.test(v)
+          ? `delivery in ${v.replace('-', ' to ')} days`
+          : null
+    ]
+  ]
+])
 
 export type Change = { id: string; text: string; by: string; at: string }
 
@@ -81,6 +144,35 @@ export function changeText(
   detail: Detail,
   timeZone = 'UTC'
 ): string | null {
+  if (
+    kind === 'brand_book_corrected' ||
+    kind === 'brand_book_correction_withdrawn'
+  ) {
+    const section = text(detail.section) ?? ''
+    const fact = bookFacts.get(section)
+    const about = bookLines.get(section)
+    if (!fact && !about) return null
+    if (kind === 'brand_book_correction_withdrawn')
+      return fact
+        ? `Brand book: change to the ${fact[0]} undone`
+        : `Brand book: change about ${about} undone`
+    const action = text(detail.action)
+    if (fact) {
+      if (action === 'remove') return `Brand book: ${fact[0]} removed`
+      const set =
+        action === 'replace' ? fact[1](text(detail.value) ?? '') : null
+      return set ? `Brand book: ${set}` : null
+    }
+    const did =
+      action === 'add'
+        ? 'added'
+        : action === 'remove'
+          ? 'removed'
+          : action === 'replace'
+            ? 'changed'
+            : null
+    return did ? `Brand book: line about ${about} ${did}` : null
+  }
   if (kind === 'max_discount_changed') {
     const to = percent(detail.to)
     if (!to) return null

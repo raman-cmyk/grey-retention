@@ -892,6 +892,23 @@ describe('the writer request', () => {
     expect(data.products).toHaveLength(maxProducts)
   })
 
+  it('tells the writer the brand’s banned words before it writes (REL-AI part 2b)', () => {
+    const request = writerRequest(
+      input({
+        facts: {
+          ...unknownFacts,
+          bannedPhrases: ['cheap', ' miracle\ncure ', 'x']
+        }
+      }),
+      ['header_logo', 'text', 'footer']
+    )
+    expect(request.system).toMatch(/"bannedWords"/)
+    const data = JSON.parse(request.user.replace(/^Data \(JSON\): /, ''))
+    expect(data.bannedWords).toEqual(['cheap', 'miracle cure'])
+    const none = writerRequest(input(), ['header_logo', 'text', 'footer'])
+    expect(none.user).not.toMatch(/bannedWords/)
+  })
+
   it('carries the last failed checks and a strategy note as data', async () => {
     const run = live(said(['Everyday care.']))
     await assembleEmail(news(), brand, run, {
