@@ -4,10 +4,10 @@ import type { Finding } from '@/features/onboarding/findings'
 import {
   customerWords,
   customerWordsData,
-  customerWordsRule,
   maxCustomerWords,
   maxPhraseLength
 } from './customer-words'
+import { customerWordsKey, customerWordsRule } from './customer-words-rule'
 
 const facts: BrandFacts = {
   freeShipping: null,
@@ -103,16 +103,56 @@ describe('customerWords (ONB-061)', () => {
       'cleared my skin in a week',
       'cleared up the redness',
       'no more frizz',
-      'changed my mornings'
+      'changed my mornings',
+      'soothes eczema',
+      'calms breakouts',
+      'helps reduce redness',
+      'life changing serum',
+      'a total game changer',
+      'works wonders',
+      'softer hair after one wash',
+      'acne gone in days',
+      'glowing skin in days',
+      'visibly smoother skin',
+      'the only tee that fits',
+      'better than any other brand',
+      'like no other',
+      'nothing compares',
+      'best purchase',
+      'softer than cashmere',
+      'our kids live in these',
+      'we bought three'
     ])
       expect([quote, phrases([said(quote)])]).toEqual([quote, []])
     // An -est word that ranks nothing is fine.
     expect(phrases([said('an honest price')])).toEqual(['an honest price'])
   })
 
+  it('never passes on a rating, even when the brand’s reviews are verified', () => {
+    const verified = { ...facts, reviewsVerified: true }
+    for (const quote of [
+      'rated 5 stars',
+      '5 stars all round',
+      '10/10',
+      '★★★★★'
+    ])
+      expect([quote, phrases([said(quote)], { facts: verified })]).toEqual([
+        quote,
+        []
+      ])
+  })
+
   it('never passes on a name, except the brand’s and its products’', () => {
     expect(phrases([said('thanks Sarah for the help!')])).toEqual([])
     expect(phrases([said('a gift Emma loved')])).toEqual([])
+    for (const quote of [
+      'Sarah was so helpful',
+      'Emma loves hers',
+      'thanks sarah!',
+      'shout out to jess',
+      'thanks (Sarah) for the help'
+    ])
+      expect([quote, phrases([said(quote)])]).toEqual([quote, []])
     expect(
       phrases([said('the Linen Shirt goes with everything')], {
         names: ['Linen Shirt', 'Linen & Co']
@@ -185,6 +225,7 @@ describe('customerWords (ONB-061)', () => {
       "'til the end of time"
     ])
     expect(phrases([said('"soft as butter"')])).toEqual(['soft as butter'])
+    expect(phrases([said("'til the kids'")])).toEqual(["'til the kids'"])
   })
 
   it('passes on at most eight', () => {
@@ -208,6 +249,7 @@ describe('customerWordsData and customerWordsRule (ONB-061)', () => {
     })
     expect(customerWordsData(words)).toEqual(['so comfy', 'fits true to size'])
     expect(customerWordsRule).toMatch(/never quote them/)
+    expect(customerWordsRule.startsWith(`${customerWordsKey} are`)).toBe(true)
     expect(customerWordsRule).not.toMatch(/so comfy/)
   })
 })

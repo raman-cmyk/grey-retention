@@ -14,13 +14,17 @@ import type { Finding } from '@/features/onboarding/findings'
  *   brand's real facts (no shipping, returns, guarantee, delivery or
  *   percent beyond them, no social proof, results, timings, founder story,
  *   banned phrase or general claim);
- * - never the customer speaking ("my go-to", "I love it"), a superlative
- *   ("the softest tee"), a before-and-after ("cleared my skin") or a name
+ * - never the customer or a family speaking ("my go-to", "our kids love
+ *   it"), a superlative, ranking or comparison ("the softest tee", "the only
+ *   one", "softer than"), an effect on the body ("soothes eczema", "softer
+ *   hair after one wash", "a game changer"), a rating ("5 stars") or a name
  *   other than the brand's or its products';
  * - short, sure, each once, the surest first, at most 8.
  *
- * The writer gets the phrases as data and one fixed rule
- * (`customerWordsRule`): borrow their words and tone, never quote them.
+ * The writer gets the phrases as data (under `customerWordsKey`) and one
+ * fixed rule (`customerWordsRule`, in `customer-words-rule.ts`, which has no
+ * imports): borrow their words and tone, never quote them. Over-blocking is
+ * the safer mistake here: an honest phrase left out costs nothing.
  */
 
 /** At most this many phrases go to the writer. */
@@ -29,10 +33,6 @@ export const maxCustomerWords = 8
 export const maxPhraseLength = 80
 /** Findings at least this sure are used. */
 export const minConfidence = 0.5
-
-/** The writer's rule for the phrases (it goes with the rules, not the data). */
-export const customerWordsRule =
-  "customerWords are phrases real customers use. Borrow their words and tone where they fit; never quote them, never put them in a customer's mouth, and never turn them into a promise about results, speed or being the best."
 
 export type CustomerPhrase = {
   /** The customer's exact words. */
@@ -45,14 +45,20 @@ export type CustomerPhrase = {
   confidence: number
 }
 
-/** The customer speaking: never the brand's voice. */
+/** The customer or a family speaking: never the brand's voice. */
 const firstPerson =
-  /\b(?:i|i'm|i’m|i've|i’ve|i'd|i’d|i'll|i’ll|me|my|mine|myself)\b/i
-/** A before-and-after or a body change: a results claim in the brand's mouth. */
+  /\b(?:i|i'm|i’m|i've|i’ve|i'd|i’d|i'll|i’ll|me|my|mine|myself|we|we're|we’re|we've|we’ve|us|our|ours|ourselves)\b/i
+/** An effect on the body, a before-and-after or a change: a results claim. */
 const results =
-  /\b(?:clear(?:s|ed)?|cure[sd]?|heal(?:s|ed)?|fix(?:es|ed)?|transform(?:s|ed)?|chang(?:es|ed)|lost|gain(?:s|ed)?|reduc(?:es|ed)|eras(?:es|ed)|remov(?:es|ed)|eliminat(?:es|ed)|revers(?:es|ed)|stopp?(?:s|ed)|prevent(?:s|ed)|saved|no more)\b/i
-/** Ranking words: a superlative the brand cannot back. */
-const ranking = /\b(?:most|least|ever|unlike any|nothing (?:else|like it))\b/i
+  /\b(?:clear\w*|cure[sd]?|curing|heal\w*|fix\w*|transform\w*|chang\w*|lost|gain\w*|reduc\w*|eras\w*|remov\w*|eliminat\w*|revers\w*|stop\w*|prevent\w*|sooth\w*|calm\w*|repair\w*|relie\w*|saved|gone|no more|works? wonders|game[- ]?changer|life[- ]?chang\w*|visibl[ey]|glow\w*|(?:in|within|after) (?:a |one |two |three |just )?(?:few )?(?:days?|weeks?|months?|wash(?:es)?|uses?|nights?))\b/i
+/** What it does to the body: never in the brand's mouth from a review. */
+const body =
+  /\b(?:skin|hair|scalp|acne|spots?|blemish\w*|pores?|redness|breakouts?|wrinkles?|lines|frizz|dandruff|eczema|psoriasis|rosacea|scars?|itch\w*|rash\w*|pain|aches?|sleep|anxiety|stress|energy|weight|fat|joints?|digestion|bloat\w*|gut|immune|immunity)\b/i
+/** Ranking or comparing: a claim the brand cannot back. */
+const ranking =
+  /\b(?:best|worst|most|least|ever|only|better|worse|unbeatable|unrivall?ed|unmatched|holy grail|unlike any|like no other|nothing (?:else|like it|compares)|compares? to|than any|\w+er than)\b/i
+/** One customer's rating: never the store's. */
+const rating = /\bstars?\b|\brated\b|\b\d+(?:\.\d+)?\s*\/\s*\d+\b|★/i
 /** Words ending in -est that rank nothing. */
 const plainEst = new Set([
   'honest',
@@ -87,27 +93,39 @@ const superlative = (text: string) =>
     .split(/[^\p{L}]+/u)
     .some((w) => w.length >= 5 && w.endsWith('est') && !plainEst.has(w))
 
-/** A capitalised word after the first, other than "I" and the allowed names. */
+/** Thanking or asking for someone names them, whatever the case. */
+const thanking =
+  /\b(?:thanks?|thank you|cheers|shout ?out to|ask for)\s+\p{L}/iu
+/** A capitalised first word doing something is someone's name. */
+const someoneDid =
+  /^\p{Lu}\p{Ll}+\s+(?:was|is|has|had|loves?|loved|helped|made|got|said|says|did|does)\b/u
+
+/**
+ * Someone's name: a capitalised word after the first (punctuation around it
+ * ignored), a first word doing something, or thanks to someone; never "I"
+ * or one of the allowed names (the brand's and its products').
+ */
 function namesSomeone(text: string, names: readonly string[]) {
   let rest = text
   for (const name of [...names].sort((a, b) => b.length - a.length))
     if (name.trim().length > 1) rest = rest.split(name.trim()).join(' ')
-  const words = rest.split(/\s+/).filter(Boolean)
+  if (thanking.test(rest) || someoneDid.test(rest.trim())) return true
+  const words = rest
+    .split(/\s+/)
+    .map((w) => w.replace(/^[^\p{L}\p{N}]+/u, ''))
+    .filter(Boolean)
   return words
     .slice(1)
     .some((w) => /^\p{Lu}/u.test(w) && !/^I(?:'|’|$)/.test(w))
 }
 
-/** The customer's words, without a pair of quote marks around them. */
+/**
+ * The customer's words, without a pair of double quote marks around them
+ * (single ones are left: they may be the words' own apostrophes).
+ */
 function unquoted(text: string) {
   const t = text.trim()
-  const pairs: Record<string, string> = {
-    '"': '"',
-    '“': '”',
-    '«': '»',
-    '‘': '’',
-    "'": "'"
-  }
+  const pairs: Record<string, string> = { '"': '"', '“': '”', '«': '»' }
   const close = pairs[t[0] ?? '']
   return close && t.length > 1 && t.endsWith(close) ? t.slice(1, -1).trim() : t
 }
@@ -122,7 +140,10 @@ const inside = (text: string, phrase: string) =>
   ` ${fold(text)} `.includes(` ${fold(phrase)} `)
 
 /** Whether copy QA and the writer's checks pass the phrase as a line of copy. */
-function passesChecks(phrase: string, facts: BrandFacts) {
+function passesChecks(phrase: string, brandFacts: BrandFacts) {
+  // A customer's phrase never carries a rating or a count, even when the
+  // brand's reviews are verified.
+  const facts = { ...brandFacts, reviewsVerified: false }
   const qa = checkCopy({
     draft: { subject: '', preview: '', blocks: [{ id: 'w', text: phrase }] },
     facts,
@@ -158,8 +179,9 @@ function passesChecks(phrase: string, facts: BrandFacts) {
  * characters with a letter, passing every check above with the brand's
  * `facts` (its banned list included); `names` are the brand's and its
  * products' (a capitalised word other than these may be someone's name).
- * Each once (a phrase holding a surer or shorter one is left out), the
- * surest first, reviews before comments, then the shorter.
+ * Each once (of two phrases where one holds the other, the one first in
+ * order is kept), the surest first, reviews before comments, then the
+ * shorter.
  */
 export function customerWords(
   findings: readonly Finding[],
@@ -187,7 +209,9 @@ export function customerWords(
     if (
       firstPerson.test(phrase) ||
       results.test(phrase) ||
+      body.test(phrase) ||
       ranking.test(phrase) ||
+      rating.test(phrase) ||
       superlative(phrase) ||
       namesSomeone(phrase, options.names ?? []) ||
       !passesChecks(phrase, options.facts)
