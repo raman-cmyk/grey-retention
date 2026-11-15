@@ -1,5 +1,6 @@
 import { parseFragment, type DefaultTreeAdapterTypes as T } from 'parse5'
 import { z } from 'zod'
+import { readCss } from './css'
 
 /**
  * DST-001 (D25, AGENT_MAP §4 layer 3): a designed section. The Section
@@ -111,12 +112,6 @@ export function srcsetUrls(value: string) {
   return urls
 }
 
-/** Every `url(...)` in some CSS or an attribute. */
-const cssUrls = (text: string) =>
-  [...text.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/gi)].map(
-    (m) => (m[1] ?? m[2] ?? m[3] ?? '').trim()
-  )
-
 type Found = { problems: string[]; urls: string[] }
 
 function checkCss(
@@ -127,7 +122,11 @@ function checkCss(
 ) {
   if (badCss.test(css))
     f.problems.push(`The section’s ${where} load or run something.`)
-  for (const url of cssUrls(css))
+  // DST-003a: links read as the browser reads them (a `url(` inside a
+  // string is not one); styles that cannot be read for sure are refused.
+  const read = readCss(css, where !== 'styles')
+  if (read.unread) f.problems.push(...read.problems)
+  for (const url of read.urls)
     if (!sameDocument.test(url)) {
       f.urls.push(url)
       if (!allowedUrl(url, hosts))
