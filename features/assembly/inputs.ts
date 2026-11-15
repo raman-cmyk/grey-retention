@@ -93,6 +93,12 @@ export type AssemblyInput = {
   /** The store's IANA timezone, for every date the email shows. */
   timezone: string
   facts: BrandFacts
+  /**
+   * ONB-061: phrases the store's customers use, already checked like copy
+   * (lane B's `customerWords`). The writer may borrow their words and tone
+   * (`customerWordsRule`); every check still judges what it writes.
+   */
+  customerWords?: readonly string[]
   confirmed?: {
     reviews?: readonly ConfirmedReview[]
     customerPhotos?: readonly ConfirmedPhoto[]
