@@ -260,7 +260,7 @@ describe('the design step with the studio (DST-006c part 2a)', () => {
     expect(brief.words).not.toHaveProperty('eyebrow')
   })
 
-  it('draws the blocks in the storyboard’s order when it names every section once', async () => {
+  it('keeps layer 1’s order, the one the copy was checked in, whatever the storyboard’s', async () => {
     const moved = {
       ...storyboard,
       sections: [
@@ -274,15 +274,13 @@ describe('the design step with the studio (DST-006c part 2a)', () => {
     const out = (await studioDesignStep(
       input(first.work),
       ports({}, [drawn])
-    )) as {
-      blocks: Block[]
-    }
+    )) as { blocks: Block[] }
     expect(out.blocks.map((b) => b.type)).toEqual([
       'header_logo',
-      'footer',
-      'hero_product'
+      'hero_product',
+      'footer'
     ])
-    expect(out.blocks[2]!.content).toHaveProperty('picture')
+    expect(out.blocks[1]!.content).toHaveProperty('picture')
   })
 
   it('keeps the build’s limits from work it cannot read, and goes on as a JSON round trip', async () => {

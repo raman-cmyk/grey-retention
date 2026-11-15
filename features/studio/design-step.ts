@@ -151,25 +151,11 @@ function backgroundOf(tone: string, brand: BlockBrand) {
 }
 
 /**
- * The storyboard's order for the blocks, when it names every section once
- * (Scratch lets the Art director reorder them); else layer 1's.
- */
-function inOrder(storyboard: Storyboard | null, blocks: Block[]) {
-  const order = (storyboard?.sections ?? []).map(
-    (b) => Number(/^s(\d+)$/.exec(b.id)?.[1] ?? 0) - 1
-  )
-  const once =
-    order.length === blocks.length &&
-    new Set(order).size === order.length &&
-    order.every((i) => i >= 0 && i < blocks.length)
-  return once ? order.map((i) => blocks[i]!) : blocks
-}
-
-/**
  * One claim of the design step with the studio. The storyboard is made on
  * the first claim and kept; an email the storyboard designs nothing in is
  * drawn coded, and one whose layer 1 and draft disagree is drawn coded and
- * logged. The blocks come back in the storyboard's order.
+ * logged. The blocks keep layer 1's order, the one the copy was checked
+ * in (the Art director's order in Scratch is DST-006e).
  */
 export async function studioDesignStep(
   input: StudioStepInput,
@@ -210,8 +196,7 @@ export async function studioDesignStep(
     if (brief) designed.push({ i, brief })
     else await ports.coded(board.id, 'not_designable')
   }
-  if (!designed.length)
-    return { blocks: inOrder(storyboard, coded.blocks), pictures: 0 }
+  if (!designed.length) return coded
   const out = await studioRound(
     designed.map((d) => d.brief),
     rounds,
@@ -254,5 +239,5 @@ export async function studioDesignStep(
       pictures++
     } else await ports.coded(s.id, 'picture_unusable')
   }
-  return { blocks: inOrder(storyboard, blocks), pictures }
+  return { blocks, pictures }
 }
