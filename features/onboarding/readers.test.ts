@@ -23,8 +23,10 @@ import { adsRunMs, libraryMs } from './ads/worker'
 import { historyRunMs } from './history/worker'
 import { reviewsRunMs, reviewsSourceMs, socialSourceMs } from './reviews/worker'
 import {
+  bookMs,
   dbMarginMs,
   readersRunMs,
+  routeMs,
   runSourceReadingJob,
   runSourceReadings,
   siteCallTimeoutMs,
@@ -90,6 +92,54 @@ describe('runSourceReadings', () => {
       }
     )
     expect(read).toHaveBeenCalledOnce()
+  })
+
+  it('writes the Brand book after a read, never after a pause or a failure', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { db } = database(['j1', 'j2', 'j3'])
+    const read = vi.fn(async (_db: unknown, j: { id: string }) => {
+      if (j.id === 'j2') throw new TagError('unavailable')
+      return j.id === 'j3' ? ('paused' as const) : ('read' as const)
+    })
+    const book = vi.fn(async () => 1)
+    await runSourceReadings(db, { read, book })
+    expect(book).toHaveBeenCalledOnce()
+    expect(book).toHaveBeenCalledWith(db, 't1')
+  })
+
+  it('writes no Brand book that would not end inside the route, and goes on when one fails', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let now = 0
+    const late = database(['j1'])
+    const book = vi.fn(async () => 1)
+    await runSourceReadings(late.db, {
+      book,
+      now: () => now,
+      read: async () => {
+        now = routeMs - bookMs - dbMarginMs + 1
+        return 'read' as const
+      }
+    })
+    expect(book).not.toHaveBeenCalled()
+    const failing = database(['j1', 'j2'])
+    const broken = vi.fn(async () => {
+      throw Object.assign(new Error('down'), { code: '42501' })
+    })
+    expect(
+      await runSourceReadings(failing.db, {
+        book: broken,
+        read: async () => 'read' as const
+      })
+    ).toMatchObject({ state: 'done', reads: 2 })
+    expect(broken).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves time for a Brand book inside the route', () => {
+    expect(
+      readersRunMs + sourceRunMs + siteCallTimeoutMs + dbMarginMs
+    ).toBeLessThanOrEqual(routeMs)
+    expect(bookMs + dbMarginMs).toBeLessThan(routeMs - readersRunMs)
   })
 
   it('never throws: a claim that fails is reported with its code', async () => {

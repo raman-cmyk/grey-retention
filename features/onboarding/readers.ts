@@ -2,6 +2,11 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
+import { workspaceTimezone } from '@/features/strategy/offers'
+import { writeBrandBook } from './brand-book'
+import { listCatalog } from './catalog/read'
+import { listFindings } from './findings'
+import { readKlaviyoHistory } from './history/read'
 import { classifyFailure } from '@/features/integrations/failures'
 import { runAdsReadingJob } from './ads/live'
 import { adsRunMs } from './ads/worker'
@@ -35,6 +40,19 @@ export const sourceRunMs = Math.max(
   reviewsRunMs
 )
 export { dbMarginMs, readersRunMs, siteCallTimeoutMs }
+/** The route's own limit (`maxDuration`). */
+export const routeMs = 60_000
+/** The longest a Brand book write may take (a few small reads, one save). */
+export const bookMs = 4_000
+
+/** The Brand book from the workspace's own reads (the worker's client). */
+const writeOnboardedBrandBook = (db: Db, tenantId: string) =>
+  writeBrandBook(db, tenantId, {
+    findings: (d, t) => listFindings(d, t),
+    catalog: (d, t) => listCatalog(d, t),
+    history: readKlaviyoHistory,
+    timezone: workspaceTimezone
+  })
 
 export type ReadersRun =
   | { state: 'done'; reads: number; failed: number; paused: number }
@@ -86,6 +104,8 @@ export async function runSourceReadings(
     budgetMs?: number
     now?: () => number
     read?: (db: Db, job: Job) => Promise<'read' | 'paused'>
+    /** Rewrites a workspace's Brand book (ONB-106b) after its reads. */
+    book?: (db: Db, tenantId: string) => Promise<unknown>
   } = {}
 ): Promise<ReadersRun> {
   const now = options.now ?? Date.now
@@ -93,6 +113,7 @@ export async function runSourceReadings(
   const read =
     options.read ?? ((d: Db, j: Job) => runSourceReadingJob(d, j, options.env))
   const run = { state: 'done' as const, reads: 0, failed: 0, paused: 0 }
+  const book = options.book ?? writeOnboardedBrandBook
   try {
     while (now() - started < (options.budgetMs ?? readersRunMs)) {
       const claimed = await db.rpc('claim_source_reading')
@@ -101,7 +122,18 @@ export async function runSourceReadings(
       if (!job) break
       try {
         if ((await read(db, job)) === 'paused') run.paused++
-        else run.reads++
+        else {
+          run.reads++
+          // What the readers found, put together right after a read (D19),
+          // only when it still ends inside the route with the database
+          // margin; otherwise the next read of the workspace writes it.
+          if (now() - started + bookMs + dbMarginMs <= routeMs)
+            await book(db, job.tenant_id).catch((error: unknown) =>
+              logger.warn('Brand book not written', {
+                code: (error as { code?: string })?.code ?? 'brand_book_error'
+              })
+            )
+        }
       } catch (error) {
         run.failed++
         const failed = await db.rpc('fail_job', {
