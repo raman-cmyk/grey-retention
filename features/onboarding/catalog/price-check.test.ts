@@ -9,19 +9,23 @@ import {
 } from './price-check'
 
 let n = 0
+const money = (amount: number, currency: string) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount)
 const entry = (
   amount: number,
   over: Partial<CatalogEntry> = {}
 ): CatalogEntry => {
   n++
+  const currency = over.currency ?? 'USD'
   return {
     id: `p${n}`,
     externalId: `k${n}`,
     title: `Shirt ${n}`,
     url: `https://shop.example/p/${n}`,
-    price: '$' + amount.toFixed(2),
+    // As `listCatalog` formats it.
+    price: money(amount, currency),
     amount,
-    currency: 'USD',
+    currency,
     compareAt: null,
     image: null,
     featurable: true,
@@ -48,6 +52,8 @@ const site = (
     confidence: 0.9,
     ...over
   }) as unknown as Finding
+const band = (min: number, max: number, currency = 'USD', over = {}) =>
+  site('price_band', { min, max, currency }, over)
 
 describe('priceSuspects (ONB-063)', () => {
   it('flags a price far above or below the store’s usual one', () => {
@@ -59,7 +65,7 @@ describe('priceSuspects (ONB-063)', () => {
       [cheap.id, 'far_below']
     ])
     expect(suspects[0]!.words).toBe(
-      '"Linen shirt" costs $8900.00, far more than your other products (most are around $89.00). Check its price in Klaviyo.'
+      '"Linen shirt" costs $8,900.00, far more than your other products (most are around $89.00). Check its price in your store.'
     )
     expect(suspects[1]!.words).toContain('far less')
   })
@@ -78,13 +84,31 @@ describe('priceSuspects (ONB-063)', () => {
       priceSuspects([entry(10), entry(20), entry(30), entry(9000)])
     ).toEqual([])
   })
+
+  it('never names a price the owner confirmed, or a product no email shows', () => {
+    const ring = entry(5000, { title: 'Diamond ring' })
+    const draft = entry(9000, { hiddenReason: 'unpublished' })
+    const products = [...store(), ring, draft]
+    expect(priceSuspects(products).map((s) => s.id)).toEqual([ring.id])
+    expect(priceSuspects(products, { confirmed: [ring.id] })).toEqual([])
+  })
+
+  it('judges the store’s main currency only', () => {
+    const left = [
+      entry(2000, { currency: 'JPY' }),
+      entry(3000, { currency: 'JPY' })
+    ]
+    const check = catalogPriceCheck([...store(), ...left], [])
+    expect(check).toMatchObject({ usual: 89, currency: { catalog: 'USD' } })
+    expect(check.suspects).toEqual([])
+  })
 })
 
 describe('catalogPriceCheck (ONB-063)', () => {
   it('passes a catalog that matches the website', () => {
     const check = catalogPriceCheck(store(), [
       site('locale', { language: 'en', currency: 'USD' }),
-      site('price_band', { min: 40, max: 150, currency: 'USD' })
+      band(40, 150)
     ])
     expect(check).toMatchObject({
       usual: 89,
@@ -97,22 +121,61 @@ describe('catalogPriceCheck (ONB-063)', () => {
 
   it('catches a whole catalog in cents, and features none of it', () => {
     const cents = [6000, 7500, 8900, 8900, 9500, 12000].map((a) => entry(a))
-    const check = catalogPriceCheck(cents, [
-      site('price_band', { min: 40, max: 150, currency: 'USD' })
-    ])
-    expect(check.scale).toBe('off')
+    const check = catalogPriceCheck(cents, [band(40, 150)])
+    expect(check.scale).toBe('too_high')
     expect(check.suspects).toEqual([])
     expect(check.words).toEqual([
-      'Your Klaviyo prices (most around $8,900.00) do not match your website ($40.00 to $150.00). They may be in cents. Check your Klaviyo catalog before emails show prices.'
+      'Your product prices (most around $8,900.00) are far higher than on your website ($40.00 to $150.00). They may be typed in cents. Check the prices in your store before emails show them.'
     ])
     expect(withSanePrices(cents, check)).toEqual([])
+  })
+
+  it('catches prices far too low, without talking of cents', () => {
+    const low = [0.6, 0.75, 0.89, 0.89, 0.95].map((a) => entry(a))
+    const check = catalogPriceCheck(low, [band(40, 150)])
+    expect(check.scale).toBe('too_low')
+    expect(check.words[0]).toBe(
+      'Your product prices (most around $0.89) are far lower than on your website ($40.00 to $150.00). Check the prices in your store before emails show them.'
+    )
+    expect(withSanePrices(low, check)).toEqual([])
+  })
+
+  it('never talks of cents for a currency without them', () => {
+    const yen = [450000, 460000, 470000].map((a) =>
+      entry(a, { currency: 'JPY' })
+    )
+    const check = catalogPriceCheck(yen, [band(4000, 9000, 'JPY')])
+    expect(check.scale).toBe('too_high')
+    expect(check.words[0]).not.toContain('cents')
+    expect(check.words[0]).toContain('¥460,000')
+  })
+
+  it('checks a small catalog against the website too', () => {
+    const check = catalogPriceCheck([entry(8900)], [band(40, 150)])
+    expect(check.scale).toBe('too_high')
+  })
+
+  it('takes every price the website showed, so one odd page decides nothing', () => {
+    const small = [8, 10, 12, 12, 15].map((a) => entry(a))
+    // A gift card page ($10 to $500) and the home page ($8 to $15).
+    const giftCard = catalogPriceCheck(small, [
+      band(10, 500, 'USD', { confidence: 0.95 }),
+      band(8, 15)
+    ])
+    expect(giftCard.scale).toBe('ok')
+    expect(withSanePrices(small, giftCard)).toEqual(small)
+    // One $5 product page in a $90 to $150 store.
+    const big = [90, 110, 120, 130, 150].map((a) => entry(a))
+    expect(catalogPriceCheck(big, [band(5, 5), band(90, 150)]).scale).toBe('ok')
+    // A range of nothing is no range.
+    expect(catalogPriceCheck(big, [band(0, 0)]).scale).toBe('unknown')
   })
 
   it('says when the website shows another currency, without hiding products', () => {
     const products = store()
     const check = catalogPriceCheck(products, [
       site('locale', { language: 'de', currency: 'EUR' }),
-      site('price_band', { min: 1, max: 5, currency: 'EUR' })
+      band(1, 5, 'EUR')
     ])
     expect(check.currency).toEqual({
       catalog: 'USD',
@@ -122,19 +185,30 @@ describe('catalogPriceCheck (ONB-063)', () => {
     // Ranges in two currencies are never compared.
     expect(check.scale).toBe('unknown')
     expect(check.words).toEqual([
-      'Your website shows prices in EUR, but your Klaviyo catalog is in USD. Emails use the Klaviyo prices.'
+      "Your website shows prices in EUR, but your product catalog is in USD. Emails use the catalog's prices."
     ])
     expect(withSanePrices(products, check)).toEqual(products)
+  })
+
+  it('never calls "$" prices another currency', () => {
+    const cad = [60, 75, 89, 89, 95].map((a) => entry(a, { currency: 'CAD' }))
+    const check = catalogPriceCheck(cad, [
+      site('locale', { language: 'en', currency: 'USD' }),
+      band(40, 150)
+    ])
+    expect(check.currency).toEqual({
+      catalog: 'CAD',
+      site: 'USD',
+      agrees: null
+    })
+    expect(check.scale).toBe('ok')
+    expect(check.words).toEqual([])
   })
 
   it('uses only sure findings from the website', () => {
     const check = catalogPriceCheck(store(), [
       site('locale', { language: 'de', currency: 'EUR' }, { confidence: 0.5 }),
-      site(
-        'price_band',
-        { min: 1, max: 2, currency: 'USD' },
-        { source: 'catalog' }
-      )
+      band(1, 2, 'USD', { source: 'catalog' })
     ])
     expect(check).toMatchObject({
       currency: { site: null, agrees: null },
@@ -167,6 +241,8 @@ describe('catalogPriceCheck (ONB-063)', () => {
     expect(withSanePrices(products, check).map((p) => p.id)).toEqual(
       products.filter((p) => p !== typo).map((p) => p.id)
     )
+    const sure = catalogPriceCheck(products, [], { confirmed: [typo.id] })
+    expect(withSanePrices(products, sure)).toEqual(products)
   })
 
   it('knows nothing about an empty catalog', () => {
