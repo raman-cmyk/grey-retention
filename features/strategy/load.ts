@@ -1,4 +1,5 @@
 import 'server-only'
+import { allSteps } from '@/features/email-build/step-names'
 import { createClient } from '@/lib/supabase/server'
 import {
   storedPlan,
@@ -25,6 +26,8 @@ export type PlanRun = {
 export type EmailBuildView = {
   id: string
   state: 'build_queued' | 'push_queued' | 'drafted' | 'failed'
+  /** How far it got (REL-081): the step it runs next, or stopped at. */
+  step: (typeof allSteps)[number]
   /** The draft came from the fake pusher: no Klaviyo call was made. */
   sampleDraft: boolean
   /** Why it failed, in plain words, when the reason is known. */
@@ -39,7 +42,14 @@ const failureWords: Record<string, string> = {
   klaviyo_rejected: 'Klaviyo or the launch check refused it.',
   klaviyo_rate_limited: 'Klaviyo was busy for too long.',
   day_passed: 'Its day passed before it was ready.',
-  planned_email_invalid: 'This planned email cannot be built. Plan again.'
+  planned_email_invalid: 'This planned email cannot be built. Plan again.',
+  step_progress_invalid:
+    'The app was updated while this email was being made. Try again.',
+  step_unknown:
+    'The app was updated while this email was being made. Try again.',
+  step_output_invalid: 'It came out too large to save.',
+  store_changed:
+    'Your store data changed while this email was being made. Try again.'
 }
 
 const buildStates = [
@@ -87,12 +97,25 @@ export async function latestPlanRun(
   const plan = storedPlan.safeParse(row.plan)
   const builds: Record<number, EmailBuildView> = {}
   if (row.state === 'planned') {
-    const found = await db
+    const read = (columns: string) =>
+      db
+        .from('email_builds')
+        .select(columns)
+        .eq('tenant_id', tenantId)
+        .eq('run_id', row.id)
+        .order('created_at', { ascending: false })
+    let found = await db
       .from('email_builds')
-      .select('id,slot,state,sample_draft,error_code')
+      .select('id,slot,state,step,sample_draft,error_code')
       .eq('tenant_id', tenantId)
       .eq('run_id', row.id)
       .order('created_at', { ascending: false })
+    // The app can go live minutes before the migration that adds `step`
+    // (REL-081, 42703 = no such column): the plan still loads, without it.
+    if (found.error?.code === '42703')
+      found = (await read(
+        'id,slot,state,sample_draft,error_code'
+      )) as unknown as typeof found
     if (found.error) return { ok: false }
     for (const b of found.data)
       if (!(b.slot in builds))
@@ -101,6 +124,9 @@ export async function latestPlanRun(
           state: (buildStates as readonly string[]).includes(b.state)
             ? (b.state as EmailBuildView['state'])
             : 'failed',
+          step: (allSteps as readonly string[]).includes(b.step)
+            ? (b.step as EmailBuildView['step'])
+            : 'sections',
           sampleDraft: b.sample_draft,
           reason:
             b.state === 'failed' && b.error_code

@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
 import { memoryFallbackLog } from '@/features/fallback/log'
+import { logger } from '@/lib/logger'
 import { runEmailBuilds } from './worker'
 import { buildEmail, type BuiltEmail, type PlannedEmail } from './build'
 import {
@@ -9,7 +10,12 @@ import {
   type DraftPusher,
   type DraftResult
 } from '@/lib/providers/klaviyo-draft'
-import { sampleOffers, sampleStoreSource } from './ports'
+import {
+  sampleOffers,
+  sampleOffersFrom,
+  sampleStoreFrom,
+  sampleStoreSource
+} from './ports'
 
 const tenant = '00000000-0000-4000-8000-000000000101'
 const inDays = (n: number) => {
@@ -34,8 +40,10 @@ type Saved = {
 }
 /**
  * A database that hands out the given steps, then nothing, and records
- * calls. `saved` is what the owner saved in Settings (DSC-001's tables, read
- * by the real `SupabaseOfferSource`); 'error' makes that read fail.
+ * calls. A saved build step hands out the same build at its next step,
+ * with the output saved (as `finish_email_step` does). `saved` is what the
+ * owner saved in Settings (DSC-001's tables, read by the real
+ * `SupabaseOfferSource`); 'error' makes that read fail.
  */
 function fakeDb(
   steps: Record<string, unknown>[],
@@ -43,13 +51,28 @@ function fakeDb(
   saved: Saved | 'error' = {}
 ) {
   const queue = [...steps]
+  let claimed: Record<string, unknown> = {}
   const calls: Call[] = []
   const rpc = vi.fn(async (fn: string, args: Record<string, unknown> = {}) => {
     calls.push({ fn, args })
     if (fail[fn]) return { data: null, error: fail[fn] }
     if (fn === 'claim_email_build') {
       const next = queue.shift()
+      if (next) claimed = next
       return { data: next ? [next] : [], error: null }
+    }
+    if (fn === 'finish_email_step') {
+      const order = ['sections', 'content', 'copy', 'design']
+      const done = String(args.done)
+      queue.unshift({
+        ...claimed,
+        step: order[order.indexOf(done) + 1],
+        progress: {
+          ...(claimed.progress as object),
+          [done]: JSON.parse(JSON.stringify(args.output))
+        }
+      })
+      return { data: order[order.indexOf(done) + 1], error: null }
     }
     return { data: fn === 'fail_email_step' ? 'retry' : null, error: null }
   })
@@ -73,6 +96,8 @@ const step = (over: Record<string, unknown> = {}) => ({
   id: 'build-1',
   tenant_id: tenant,
   state: 'build_queued',
+  step: 'sections',
+  progress: {},
   run_id: 'run-1',
   slot: 0,
   planned,
@@ -99,11 +124,14 @@ const failure = (calls: Call[]) =>
   calls.find((c) => c.fn === 'fail_email_step')?.args
 
 describe('building and pushing (code-only, fake pusher)', () => {
-  it('builds the email and stores it for the push', async () => {
+  it('builds the email in four saved steps and stores it for the push', async () => {
     const { db, calls } = fakeDb([step()])
     expect(
       await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
-    ).toEqual({ ran: 1 })
+    ).toEqual({ ran: 4 })
+    expect(
+      calls.filter((c) => c.fn === 'finish_email_step').map((c) => c.args.done)
+    ).toEqual(['sections', 'content', 'copy'])
     const finish = calls.find((c) => c.fn === 'finish_email_build')!
     expect(finish.args).toMatchObject({ build: 'build-1', lease: 'lease-1' })
     expect(finish.args.result).toMatchObject({
@@ -132,7 +160,9 @@ describe('building and pushing (code-only, fake pusher)', () => {
   it('pushes a built email as a draft, keyed by the planned email’s push key', async () => {
     const pusher = fakeDraftPusher()
     const email = await built()
-    const { db, calls } = fakeDb([step({ state: 'push_queued', email })])
+    const { db, calls } = fakeDb([
+      step({ state: 'push_queued', step: 'push', email })
+    ])
     expect(await runEmailBuilds(db, { pusher })).toEqual({ ran: 1 })
     expect(pusher.calls).toEqual([
       expect.objectContaining({
@@ -156,18 +186,21 @@ describe('building and pushing (code-only, fake pusher)', () => {
     const email = await built()
     const { db, calls } = fakeDb([
       step(),
-      step({ state: 'push_queued', email })
+      step({ state: 'push_queued', step: 'push', email }),
+      step({ id: 'build-2' })
     ])
     expect(
       await runEmailBuilds(db, {
         build: 'build-1',
         fallbacks: memoryFallbackLog()
       })
-    ).toEqual({ ran: 2 })
-    expect(calls.filter((c) => c.fn === 'claim_email_build')).toEqual([
-      { fn: 'claim_email_build', args: { target: 'build-1' } },
-      { fn: 'claim_email_build', args: { target: 'build-1' } }
-    ])
+    ).toEqual({ ran: 5 })
+    expect(calls.filter((c) => c.fn === 'claim_email_build')).toEqual(
+      Array.from({ length: 5 }, () => ({
+        fn: 'claim_email_build',
+        args: { target: 'build-1' }
+      }))
+    )
   })
 
   it('stops at its deadline', async () => {
@@ -176,6 +209,177 @@ describe('building and pushing (code-only, fake pusher)', () => {
       await runEmailBuilds(db, { deadline: 1000, now: () => 2000 })
     ).toEqual({ ran: 0 })
     expect(calls).toEqual([])
+  })
+})
+
+describe('saved steps (REL-081)', () => {
+  /** A whole build, with each step's saved output and the stored email. */
+  const fullRun = async () => {
+    const { db, calls } = fakeDb([step()])
+    await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+    const saved = Object.fromEntries(
+      calls
+        .filter((c) => c.fn === 'finish_email_step')
+        .map((c) => [c.args.done as string, c.args.output])
+    )
+    const email = calls.find((c) => c.fn === 'finish_email_build')!.args
+      .result as BuiltEmail
+    return { saved, email }
+  }
+
+  it('saves each step as plain data', async () => {
+    const { saved } = await fullRun()
+    expect(Object.keys(saved)).toEqual(['sections', 'content', 'copy'])
+    for (const output of Object.values(saved))
+      expect(JSON.parse(JSON.stringify(output))).toEqual(output)
+  })
+
+  it('resumes with the send time, offers and timezone the first step saved, and makes the same email as a straight build', async () => {
+    // An offer email: the sample's CANDLE10, 10% off (the sample max is 20%).
+    const offerEmail: PlannedEmail = {
+      ...planned,
+      emailType: 'offer',
+      offer: { id: 'offer:CANDLE10', code: 'CANDLE10', percent: 10 }
+    }
+    const first = fakeDb([step({ planned: offerEmail })])
+    await runEmailBuilds(first.db, { limit: 1, fallbacks: memoryFallbackLog() })
+    const sections = first.calls.find((c) => c.fn === 'finish_email_step')!.args
+      .output
+    // Then the owner saves a 5% max and moves the workspace to another
+    // timezone, and the build goes on at its content step.
+    const { db, calls } = fakeDb(
+      [
+        step({
+          planned: offerEmail,
+          step: 'content',
+          progress: { sections },
+          timezone: 'Pacific/Kiritimati'
+        })
+      ],
+      {},
+      {
+        brand_offers: [{ max_discount_percent: 5, revision: 1 }],
+        discount_codes: []
+      }
+    )
+    expect(
+      await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+    ).toEqual({ ran: 3 })
+    const straight = await buildEmail(
+      {
+        planned: offerEmail,
+        store: {
+          ...(await sampleStoreFrom(inDays(1)).read(tenant)),
+          timezone: 'Asia/Kathmandu'
+        },
+        offers: sampleOffersFrom(inDays(1))
+      },
+      { tenantId: tenant, callerKey: 'x', fallbacks: memoryFallbackLog() }
+    )
+    if (!straight.ok) throw new Error('straight build failed')
+    const email = calls.find((c) => c.fn === 'finish_email_build')!.args
+      .result as BuiltEmail
+    expect(email).toEqual(straight.email)
+    expect(email.code).toBe('CANDLE10')
+  })
+
+  it('saves a step before the next one fails, and the retry starts at the failed step', async () => {
+    let reads = 0
+    const sample = sampleStoreFrom(inDays(1))
+    const { db, calls } = fakeDb([step()])
+    await runEmailBuilds(db, {
+      stores: {
+        read: async (t) => {
+          if (++reads > 1) throw new Error('down')
+          return sample.read(t)
+        }
+      },
+      fallbacks: memoryFallbackLog()
+    })
+    const saved = calls.filter((c) => c.fn === 'finish_email_step')
+    expect(saved.map((c) => c.args.done)).toEqual(['sections'])
+    expect(failure(calls)).toMatchObject({ code: 'step_error', final: false })
+    // The next claim brings the saved step: the build goes on from there.
+    const retry = fakeDb([
+      step({ step: 'content', progress: { sections: saved[0].args.output } })
+    ])
+    await runEmailBuilds(retry.db, { fallbacks: memoryFallbackLog() })
+    expect(
+      retry.calls
+        .filter((c) => c.fn === 'finish_email_step')
+        .map((c) => c.args.done)
+    ).toEqual(['content', 'copy'])
+    expect(retry.calls.some((c) => c.fn === 'finish_email_build')).toBe(true)
+  })
+
+  it('tries a step again when its save is lost, and a step it does not know (an app newer than the database)', async () => {
+    for (const error of [{ code: 'PT409' }, {}]) {
+      const { db, calls } = fakeDb([step()], {
+        finish_email_step: error as never
+      })
+      await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+      expect(failure(calls)).toMatchObject({ code: 'step_error', final: false })
+    }
+    for (const s of [step({ step: 'review' }), step({ step: undefined })]) {
+      const { db, calls } = fakeDb([s])
+      await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+      expect(failure(calls)).toMatchObject({
+        code: 'step_unknown',
+        final: false
+      })
+    }
+  })
+
+  it('fails at once for a saved step that cannot be read, or a store that changed between sample and real data', async () => {
+    const { saved } = await fullRun()
+    for (const [s, code] of [
+      [step({ step: 'design', progress: {} }), 'step_progress_invalid'],
+      [
+        step({ step: 'copy', progress: { content: { sections: 'x' } } }),
+        'step_progress_invalid'
+      ],
+      [step({ step: 'content', progress: null }), 'step_progress_invalid'],
+      [
+        step({
+          step: 'copy',
+          progress: {
+            sections: { ...(saved.sections as object), sample: false }
+          }
+        }),
+        'store_changed'
+      ]
+    ] as const) {
+      const { db, calls } = fakeDb([s])
+      await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+      expect(failure(calls), code).toMatchObject({ code, final: true })
+    }
+  })
+
+  it('fails at once when the database refuses a step’s output', async () => {
+    const { db, calls } = fakeDb([step()], {
+      finish_email_step: { code: '22023' }
+    })
+    await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+    expect(failure(calls)).toMatchObject({
+      code: 'step_output_invalid',
+      final: true
+    })
+  })
+
+  it('logs a step that runs past its time budget', async () => {
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+    let clock = 0
+    const { db } = fakeDb([step()])
+    await runEmailBuilds(db, {
+      limit: 1,
+      now: () => (clock += 60_000),
+      fallbacks: memoryFallbackLog()
+    })
+    expect(warn).toHaveBeenCalledWith(
+      'Email build step ran long',
+      expect.objectContaining({ build: 'build-1', step: 'sections' })
+    )
+    warn.mockRestore()
   })
 })
 
@@ -264,7 +468,9 @@ describe('failed steps', () => {
       ]
     ] as [DraftResult, Record<string, unknown>][]) {
       const pusher: DraftPusher = { createDraft: async () => result }
-      const { db, calls } = fakeDb([step({ state: 'push_queued', email })])
+      const { db, calls } = fakeDb([
+        step({ state: 'push_queued', step: 'push', email })
+      ])
       await runEmailBuilds(db, { pusher })
       expect(failure(calls)).toEqual({
         build: 'build-1',
@@ -284,7 +490,9 @@ describe('failed steps', () => {
       code: 'step_error',
       final: false
     })
-    const two = fakeDb([step({ state: 'push_queued', email: await built() })])
+    const two = fakeDb([
+      step({ state: 'push_queued', step: 'push', email: await built() })
+    ])
     await runEmailBuilds(two.db, {
       pusher: {
         createDraft: async () => {
@@ -302,7 +510,7 @@ describe('failed steps', () => {
     const cases = [
       [step({ planned: { date: 'soon' } }), 'planned_email_invalid'],
       [
-        step({ state: 'push_queued', email: { subject: 's' } }),
+        step({ state: 'push_queued', step: 'push', email: { subject: 's' } }),
         'built_email_invalid'
       ],
       [
@@ -329,9 +537,12 @@ describe('failed steps', () => {
       final: true
     })
     const pusher = fakeDraftPusher()
-    const two = fakeDb([step({ state: 'push_queued', email: await built() })], {
-      finish_email_push: { code: 'PT409' }
-    })
+    const two = fakeDb(
+      [step({ state: 'push_queued', step: 'push', email: await built() })],
+      {
+        finish_email_push: { code: 'PT409' }
+      }
+    )
     await runEmailBuilds(two.db, { pusher })
     expect(failure(two.calls)).toMatchObject({ final: false })
     expect(pusher.calls[0].idempotencyKey).toBe('key-1')

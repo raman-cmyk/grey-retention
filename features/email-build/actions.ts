@@ -14,6 +14,9 @@ import { runEmailBuilds } from './worker'
 
 export type CreateEmailState = { error?: string }
 
+/** Time the click gives this email's steps; the cron sweep runs the rest. */
+const clickBudgetMs = 40_000
+
 /** Builds this email right after the reply; the cron picks up the rest. */
 function buildSoon(build: string) {
   after(async () => {
@@ -22,7 +25,11 @@ function buildSoon(build: string) {
     try {
       // The fake draft pusher unless the owner's write switch is on
       // (KLAVIYO_DRAFT_PUSH=live with KLAVIYO_MODE=live, PSH-001).
-      await runEmailBuilds(service, { build, pusher: draftPusherFor(service) })
+      await runEmailBuilds(service, {
+        build,
+        deadline: Date.now() + clickBudgetMs,
+        pusher: draftPusherFor(service)
+      })
     } catch (error) {
       logger.error('Email build could not start', {
         code: (error as { code?: string }).code ?? 'email_build_error'
