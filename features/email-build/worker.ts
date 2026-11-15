@@ -243,6 +243,7 @@ export async function runEmailBuilds(
                     agents,
                     fallbacks,
                     callerKey: `email-build:${job.id}`,
+                    industry: store.industry ?? null,
                     until,
                     now
                   })
@@ -289,13 +290,14 @@ export async function runEmailBuilds(
               })
               continue
             }
-            // The seventh wait (the pictures kept not coming), the wrong
-            // step or refused work: final, with its reason.
+            // The seventh wait (the pictures kept not coming): tried again,
+            // the next claim draws it coded (D16). The wrong step or refused
+            // work: final, with its reason.
             await fail(
               wait.reason === 'too_many'
                 ? 'step_timed_out'
                 : 'step_output_invalid',
-              true
+              wait.reason !== 'too_many'
             )
             continue
           }

@@ -33,9 +33,22 @@ const callSlackMs = 2_000
  */
 export const pictureLinkSeconds = 365 * 24 * 60 * 60
 
-/** A storage tag as stored (`"abc"`) or as read (`abc`), compared alike. */
-const tagOf = (etag: string | undefined | null) =>
-  (etag ?? '').replace(/^W\//, '').replace(/^"|"$/g, '')
+/** A storage tag as stored (`"abc"`) or as read (`abc`), compared alike; never empty. */
+const tagOf = (etag: string | undefined | null) => {
+  const tag = (etag ?? '').replace(/^"|"$/g, '')
+  return tag ? tag : null
+}
+/**
+ * A storage answer: a missing object is null (the picture is gone); any
+ * other error throws (storage or the network down: the step is tried
+ * again, never coded for it).
+ */
+function stored<T>(answer: { data: T | null; error: unknown }): T | null {
+  if (!answer.error) return answer.data
+  const e = answer.error as { statusCode?: string | number; status?: number }
+  if (String(e.statusCode ?? e.status ?? '') === '404') return null
+  throw answer.error
+}
 
 export function studioPortsFor(
   db: Db,
@@ -46,12 +59,15 @@ export function studioPortsFor(
     agents: BuildAgents
     fallbacks: FallbackLog
     callerKey: string
+    /** The store's industry, for the agents' do's and don'ts. */
+    industry: string | null
     until: number
     now: () => number
   }
 ): StudioStepPorts {
   const ctx = {
     tenantId: input.tenant,
+    industry: input.industry,
     callerKey: input.callerKey,
     memory: input.agents.memory,
     log: input.agents.log,
@@ -63,8 +79,9 @@ export function studioPortsFor(
   const files = () => db.storage.from(bucket)
   /** The render's stored file, only while its tag is the one recorded. */
   const tagged = async (render: Extract<BuildRender, { state: 'drawn' }>) => {
-    const info = await files().info(render.path)
-    return !info.error && tagOf(info.data?.etag) === tagOf(render.etag)
+    const info = stored(await files().info(render.path))
+    const tag = tagOf(info?.etag)
+    return tag !== null && tag === tagOf(render.etag)
   }
   return {
     storyboard: (board) => storyboardFor(board, ctx),
@@ -83,13 +100,13 @@ export function studioPortsFor(
       buildRenders(db, { tenant: input.tenant, build: input.build }),
     async picture(render, section) {
       if (!(await tagged(render))) return null
-      const file = await files().download(render.path)
-      if (file.error || !file.data) return null
+      const file = stored(await files().download(render.path))
+      if (!file) return null
       // Changed while it was read: not the picture the browser drew.
       if (!(await tagged(render))) return null
       return {
         id: section,
-        bytes: new Uint8Array(await file.data.arrayBuffer()),
+        bytes: new Uint8Array(await file.arrayBuffer()),
         contentType: 'image/jpeg',
         width: renderWidth,
         height: render.height * renderScale
@@ -114,8 +131,8 @@ export function studioPortsFor(
         drawn.path,
         pictureLinkSeconds
       )
-      const url = signed.data?.signedUrl
-      if (signed.error || !url) return null
+      const url = stored(signed)?.signedUrl
+      if (!url) return null
       try {
         return new URL(url).protocol === 'https:' ? url : null
       } catch {
@@ -127,12 +144,12 @@ export function studioPortsFor(
         tenantId: input.tenant,
         campaignId: null,
         agent: 'design-studio',
-        reasonCode: `studio_${reason}`,
+        reasonCode: reason.startsWith('studio_') ? reason : `studio_${reason}`,
         reason: codedReasons[reason],
         fallback: 'Drew the section as its coded block.',
         attempts: 1,
         detail: { section },
-        dedupeKey: `design-studio:${keyPart(input.callerKey)}:${keyPart(section)}`
+        dedupeKey: `design-studio:${keyPart(input.callerKey)}:${keyPart(section)}:${reason}`
       })
     },
     fits,

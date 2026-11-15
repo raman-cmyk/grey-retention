@@ -164,7 +164,9 @@ export function goldenProblems(brief: GoldenBrief, run: GoldenRun): string[] {
   // DST-006c: a hero the design studio drew holds its words in its
   // picture and its alt text: read as words the email shows.
   const pictured = [...body.matchAll(/<img\b[^>]*>/gi)].flatMap(([tag]) =>
-    /\bsrc="[^"]*\/studio-renders\//.test(tag)
+    /\ssrc="https:\/\/[^"/]+\/storage\/v1\/object\/sign\/studio-renders\//.test(
+      tag
+    )
       ? [drawnText(/\balt="([^"]*)"/.exec(tag)?.[1] ?? '')]
       : []
   )

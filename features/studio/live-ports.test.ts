@@ -58,8 +58,10 @@ function storage(
       calls.push(['info', path])
       const tag = tags.length > 1 ? tags.shift() : tags[0]
       return tag === null
-        ? { data: null, error: { message: 'x' } }
-        : { data: { etag: tag }, error: null }
+        ? { data: null, error: { statusCode: '404', message: 'Not found' } }
+        : tag === 'down'
+          ? { data: null, error: { statusCode: '500', message: 'down' } }
+          : { data: { etag: tag }, error: null }
     }),
     download: vi.fn(async (path: string) => {
       calls.push(['download', path])
@@ -69,7 +71,7 @@ function storage(
           : options.download
       return bytes
         ? { data: new Blob([bytes as Uint8Array<ArrayBuffer>]), error: null }
-        : { data: null, error: { message: 'x' } }
+        : { data: null, error: { statusCode: '404', message: 'Not found' } }
     }),
     createSignedUrl: vi.fn(async (path: string, seconds: number) => {
       calls.push(['sign', path, seconds])
@@ -79,7 +81,7 @@ function storage(
           : options.signed
       return url
         ? { data: { signedUrl: url }, error: null }
-        : { data: null, error: { message: 'x' } }
+        : { data: null, error: { statusCode: '404', message: 'Not found' } }
     })
   }
   return {
@@ -111,6 +113,7 @@ const ports = (
       },
       fallbacks,
       callerKey: `email-build:${build}`,
+      industry: 'home',
       until: over.until ?? 100_000,
       now: over.now ?? (() => 0)
     })
@@ -143,13 +146,21 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
       storage({ tags: ['abc', 'changed'] })
     ])
       expect(await ports(s).ports.picture(drawn, 's2')).toBeNull()
-    // A tag read as W/"abc" or "abc" is the same tag.
+    // A tag read as "abc" is the same tag; a weak or an empty one is not.
     expect(
-      await ports(storage({ tags: ['W/"abc"', '"abc"'] })).ports.picture(
+      await ports(storage({ tags: ['"abc"', 'abc'] })).ports.picture(
         drawn,
         's2'
       )
     ).not.toBeNull()
+    for (const tag of ['W/"abc"', '""'])
+      expect(
+        await ports(storage({ tags: [tag] })).ports.picture(drawn, 's2')
+      ).toBeNull()
+    // Storage down: it throws (the step is tried again), never coded.
+    await expect(
+      ports(storage({ tags: ['down'] })).ports.picture(drawn, 's2')
+    ).rejects.toMatchObject({ statusCode: '500' })
   })
 
   it('signs a year-long https link only for a picture of this build still drawn as recorded', async () => {
@@ -168,6 +179,9 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
       { id: render, key: 'k', state: 'queued' }
     ])
     expect(await ports(storage()).ports.sign(drawn)).toBeNull()
+    // The database down: it throws, never an unlinked hero.
+    reads.buildRenders.mockRejectedValueOnce(new Error('down'))
+    await expect(ports(storage()).ports.sign(drawn)).rejects.toThrow('down')
     // Drawn again since (another tag): not the picture the studio saw.
     reads.buildRenders.mockResolvedValue([{ ...drawn, etag: '"new"' }])
     expect(await ports(storage()).ports.sign(drawn)).toBeNull()
@@ -204,6 +218,7 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
     await p.storyboard({ mode: 'scratch', slot: {} as never, sections: [] })
     expect(agents.storyboardFor.mock.calls[0]![1]).toMatchObject({
       tenantId: tenant,
+      industry: 'home',
       callerKey: `email-build:${build}`,
       ai,
       fallbacks

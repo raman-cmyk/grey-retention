@@ -296,7 +296,9 @@ export async function runBuildStep(
         sections: (locked ?? []).map((s) => ({
           family: s.family,
           purpose: s.purpose,
-          products: (s.products ?? []).map((p) => ({ title: p.title }))
+          products: (Array.isArray(s.products) ? s.products : []).flatMap(
+            (p) => (typeof p?.title === 'string' ? [{ title: p.title }] : [])
+          )
         })),
         blocks: drawn.draft.blocks,
         brand: store.brand,
@@ -320,7 +322,7 @@ export async function runBuildStep(
       campaignId: ctx.campaignId ?? null,
       agent: 'design-studio',
       reasonCode: 'studio_not_finished',
-      reason: 'The design studio did not finish in time.',
+      reason: 'The design studio stopped before it finished.',
       fallback: 'Drew the email with its coded blocks.',
       attempts: 1,
       detail: {},
