@@ -9,8 +9,9 @@ import type { EmailType } from '@/features/strategy/plan'
 import { failedWords, tryAgent, type AgentCtx } from '@/features/strategy/retry'
 
 /**
- * DST-002 (D25, AGENT_MAP §4 layer 3, step 1; owner pick #7): the Art
- * director storyboards the whole email before any section is designed:
+ * DST-002a (D25, AGENT_MAP §4 layer 3, step 1; owner pick #7): the
+ * storyboard of a designed email, before any section is designed (the Art
+ * director, DST-002, writes it; code checks it and has its own):
  * the light and dark rhythm, the white space, one focus per section and
  * where the products go, for an email about 1,800 to 2,400 px tall at 600
  * wide. Code checks the storyboard; one that keeps failing becomes code's
@@ -106,7 +107,8 @@ export type StoryboardInput = {
   reference?: { family: BlockType; tone: Tone; height: number }[]
 }
 
-const answer = z.strictObject({
+/** A storyboard's shape (the Art director's answer, checked by zod). */
+export const storyboardShape = z.strictObject({
   sections: z
     .array(
       z.strictObject({
@@ -123,7 +125,9 @@ const answer = z.strictObject({
     .min(1)
     .max(16)
 })
-export type Storyboard = z.infer<typeof answer> & { source: 'agent' | 'code' }
+export type Storyboard = z.infer<typeof storyboardShape> & {
+  source: 'agent' | 'code'
+}
 export type StoryboardSection = Storyboard['sections'][number]
 
 /** One line, describing the design only: no price, percent, code or link. */
@@ -390,7 +394,7 @@ const liveHeights = Object.entries(live)
 
 export const artDirectorAgent: AgentDefinition<
   StoryTask,
-  z.infer<typeof answer>
+  z.infer<typeof storyboardShape>
 > = {
   name: 'art-director',
   version: '2026-11-15.2',
@@ -468,7 +472,7 @@ export const artDirectorAgent: AgentDefinition<
       required: ['sections']
     }
   },
-  output: answer,
+  output: storyboardShape,
   maxOutputTokens: 3_000,
   temperature: 0.5,
   reasoningEffort: 'medium'
