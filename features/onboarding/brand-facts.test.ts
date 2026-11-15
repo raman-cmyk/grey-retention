@@ -5,7 +5,7 @@ import { copyFacts, trueFacts } from './brand-facts'
 const found = (
   topic: string,
   value: Record<string, unknown>,
-  over: Record<string, unknown> = {},
+  { quote, ...over }: Record<string, unknown> = {},
   page: string | null = null
 ) =>
   ({
@@ -15,7 +15,7 @@ const found = (
     statement: `${topic} statement`,
     evidence: {
       url: 'https://shop.example/page',
-      quote: `${topic} quote`,
+      quote: typeof quote === 'string' ? quote : `${topic} quote`,
       ...(page ? { page } : {})
     },
     confidence: 0.9,
@@ -28,7 +28,7 @@ const over = (amount: number, currency = 'USD') => ({
   currency
 })
 const usd = { live: true, currency: 'USD' }
-const moneyBack = { statement: 'A 60-day money-back guarantee.' }
+const moneyBack = { quote: 'Try it for 60 days with our money-back guarantee.' }
 
 describe('trueFacts (ONB-106a)', () => {
   it('reads each fact from one source', () => {
@@ -56,7 +56,7 @@ describe('trueFacts (ONB-106a)', () => {
       returnDays: { value: 30, conflict: false, fromPolicyPage: true },
       guaranteeDays: { value: 60, conflict: false, fromPolicyPage: true },
       delivery: [
-        { region: null, min: 2, max: 5, businessDays: false, conflict: false }
+        { region: null, min: 2, max: 5, businessDays: true, conflict: false }
       ],
       reviewsVerified: true,
       conflicts: []
@@ -149,29 +149,44 @@ describe('trueFacts (ONB-106a)', () => {
     expect(euros.conflicts).toMatchObject([
       { topic: 'free_shipping', reason: 'other_currency' }
     ])
+    const unknown = trueFacts([found('free_shipping', over(50))], {
+      live: true,
+      currency: null
+    })
+    expect(unknown.freeShipping).toBeNull()
+    expect(unknown.conflicts).toMatchObject([{ reason: 'unknown_currency' }])
+    // The store's currency in lower case is the same currency.
     expect(
       trueFacts([found('free_shipping', over(50))], {
         live: true,
-        currency: null
-      }).freeShipping
-    ).toBeNull()
+        currency: 'usd'
+      }).freeShipping?.value
+    ).toEqual(over(50))
   })
 
-  it('counts only a money-back guarantee, never a warranty', () => {
+  it('counts only a money-back guarantee in the page’s own words, never a warranty', () => {
+    const guarantee = (quote: string, statement = 'A guarantee.') =>
+      trueFacts([found('guarantee', { days: 365 }, { quote, statement })], usd)
+        .guaranteeDays
     expect(
-      trueFacts(
-        [
-          found(
-            'guarantee',
-            { days: 365 },
-            {
-              statement:
-                'Every piece is covered by our 1-year guarantee against defects.'
-            }
-          )
-        ],
-        usd
-      ).guaranteeDays
+      guarantee(
+        'Every piece is covered by our 1-year guarantee against defects.'
+      )
+    ).toBeNull()
+    expect(
+      guarantee(
+        'Our 1-year guarantee: if a piece is faulty we repair, replace or refund it.'
+      )
+    ).toBeNull()
+    expect(
+      guarantee('Return any unworn item within 30 days for a full refund.')
+    ).toBeNull()
+    // The reader's own sentence never makes a warranty a money-back one.
+    expect(
+      guarantee(
+        'Every piece is covered by our 1-year guarantee against defects.',
+        'A 1-year satisfaction guarantee.'
+      )
     ).toBeNull()
     expect(
       trueFacts([found('guarantee', { days: 30 }, moneyBack)], usd)
@@ -206,7 +221,7 @@ describe('trueFacts (ONB-106a)', () => {
         region: 'International',
         min: 7,
         max: 21,
-        businessDays: false,
+        businessDays: true,
         conflict: false
       }
     ])
@@ -280,8 +295,12 @@ describe('copyFacts (ONB-106a)', () => {
       reviewsVerified: false
     })
     expect(
-      copyFacts(trueFacts([found('free_shipping', { kind: 'always' })], usd))
-        .freeShipping
+      copyFacts(
+        trueFacts(
+          [found('free_shipping', { kind: 'always' }, {}, 'shipping')],
+          usd
+        )
+      ).freeShipping
     ).toBe('always')
     expect(copyFacts(trueFacts([], usd)).freeShipping).toBeNull()
   })
@@ -334,6 +353,23 @@ describe('copyFacts (ONB-106a)', () => {
     expect(policy.freeShipping).toBe('never')
   })
 
+  it('never takes a banner’s free shipping as the policy', () => {
+    const banner = copyFacts(
+      trueFacts(
+        [
+          found(
+            'free_shipping',
+            { kind: 'always' },
+            { quote: 'Free shipping on all orders this weekend only!' },
+            'home'
+          )
+        ],
+        usd
+      )
+    )
+    expect(banner.freeShipping).toBeNull()
+  })
+
   it('gives delivery only for everyone, in calendar days', () => {
     const regional = copyFacts(
       trueFacts(
@@ -355,5 +391,43 @@ describe('copyFacts (ONB-106a)', () => {
       )
     )
     expect(business.deliveryDays).toEqual({ min: 3, max: 7 })
+    // The reader counts business days unless the page says calendar days.
+    const plain = copyFacts(
+      trueFacts(
+        [
+          found(
+            'delivery_days',
+            { min: 3, max: 5 },
+            { quote: 'Delivery: 3-5 days' }
+          )
+        ],
+        usd
+      )
+    )
+    expect(plain.deliveryDays).toEqual({ min: 3, max: 7 })
+    const calendarDays = copyFacts(
+      trueFacts(
+        [
+          found(
+            'delivery_days',
+            { min: 3, max: 5 },
+            { quote: 'Delivery takes 3 to 5 calendar days.' }
+          )
+        ],
+        usd
+      )
+    )
+    expect(calendarDays.deliveryDays).toEqual({ min: 3, max: 5 })
+    // Never faster than the slowest region.
+    const both = copyFacts(
+      trueFacts(
+        [
+          found('delivery_days', { min: 3, max: 5 }),
+          found('delivery_days', { min: 10, max: 20, region: 'International' })
+        ],
+        usd
+      )
+    )
+    expect(both.deliveryDays).toEqual({ min: 3, max: 28 })
   })
 })

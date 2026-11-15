@@ -41,8 +41,12 @@ export type FactTopic =
 
 export type FactConflict = {
   topic: FactTopic
-  /** `disagree`: sources say different things; `other_currency`: an amount in another currency than the store's. */
-  reason: 'disagree' | 'other_currency'
+  /**
+   * `disagree`: sources say different things; `other_currency`: an amount
+   * in another currency than the store's; `unknown_currency`: an amount
+   * while the store's currency is not known.
+   */
+  reason: 'disagree' | 'other_currency' | 'unknown_currency'
   /** What each source said, in its own plain sentence, and where. */
   said: {
     source: FindingSource
@@ -92,9 +96,14 @@ const policyPages: Record<FactTopic, readonly SitePageKind[]> = {
   delivery_days: ['shipping']
 }
 
+/** A money-back guarantee in the page's own words (never the reader's). */
 const moneyBack =
-  /money[- ]back|refund|satisfaction|your money|full price back|risk[- ]free/i
-const business = /\b(?:business|working)\s+days?\b/i
+  /money[- ]back|satisfaction guarantee|your money back|risk[- ]free/i
+/** A warranty or a repair, never a money-back guarantee. */
+const warranty = /defect|faulty|repair|replac|warrant/i
+/** The site reader counts business days unless the page says calendar days. */
+const calendarDays = /\bcalendar\s+days?\b/i
+const quoteOf = (f: Finding) => ('quote' in f.evidence ? f.evidence.quote : '')
 
 type Sure<T extends FactTopic> = { finding: Finding; value: Value<T> }
 
@@ -157,16 +166,17 @@ export function trueFacts(
   }
 
   // Free shipping: the site's standing policy, never an ad's offer.
+  const store = currency?.trim().toUpperCase() || null
   const shipping = sure(findings, 'free_shipping', live).filter(
     (s) => s.finding.source !== 'ads'
   )
   const foreign = shipping.filter(
-    (s) => s.value.kind === 'over' && s.value.currency !== currency
+    (s) => s.value.kind === 'over' && s.value.currency !== store
   )
   if (foreign.length)
     conflicts.push({
       topic: 'free_shipping',
-      reason: 'other_currency',
+      reason: store ? 'other_currency' : 'unknown_currency',
       said: said(foreign)
     })
   let freeShipping: Fact<FreeShipping> | null = null
@@ -198,11 +208,13 @@ export function trueFacts(
         )
       : null
   const returnDays = days('returns', sure(findings, 'returns', live))
-  // Only a money-back guarantee, never a warranty against defects.
+  // Only a money-back guarantee, in the page's own words, never a
+  // warranty against defects.
   const guaranteeDays = days(
     'guarantee',
-    sure(findings, 'guarantee', live).filter((s) =>
-      moneyBack.test(evidenceText(s.finding))
+    sure(findings, 'guarantee', live).filter(
+      (s) =>
+        moneyBack.test(quoteOf(s.finding)) && !warranty.test(quoteOf(s.finding))
     )
   )
 
@@ -229,7 +241,9 @@ export function trueFacts(
       region: all[0]!.value.region ?? null,
       min: Math.max(...all.map((s) => s.value.min)),
       max: Math.max(...all.map((s) => s.value.max)),
-      businessDays: all.some((s) => business.test(evidenceText(s.finding))),
+      businessDays: !all.every((s) =>
+        calendarDays.test(evidenceText(s.finding))
+      ),
       conflict
     }
   })
@@ -269,9 +283,11 @@ export function copyFacts(
     bannedPhrases = []
   }: { approvedClaims?: string[]; bannedPhrases?: string[] } = {}
 ): BrandFacts {
+  // Free shipping only from the shipping page: a banner's "this weekend
+  // only" is an offer, not the policy.
   const shipping = facts.freeShipping
   const freeShipping: BrandFacts['freeShipping'] =
-    shipping === null
+    shipping === null || !shipping.fromPolicyPage
       ? null
       : shipping.value.kind === 'never'
         ? negativeOk(shipping)
@@ -282,11 +298,18 @@ export function copyFacts(
           : 'always'
   const days = (f: Fact<number> | null) =>
     f === null ? null : f.value === 0 && !negativeOk(f) ? null : f.value
-  // Only a window for everyone: one region's time is not every subscriber's.
+  // A window for everyone, never faster than the slowest region: copy QA
+  // allows no promise faster than the slowest confirmed case.
   const everyone = facts.delivery.find((w) => w.region === null)
+  const deliveryDays = everyone
+    ? {
+        min: calendar(everyone).min,
+        max: Math.max(...facts.delivery.map((w) => calendar(w).max))
+      }
+    : null
   return {
     freeShipping,
-    deliveryDays: everyone ? calendar(everyone) : null,
+    deliveryDays,
     returnDays: days(facts.returnDays),
     guaranteeDays: days(facts.guaranteeDays),
     approvedClaims,
