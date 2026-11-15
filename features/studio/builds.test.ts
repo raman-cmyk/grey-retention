@@ -129,6 +129,23 @@ describe('the design studio’s job (DST-006b)', () => {
   })
 })
 
+describe('the design studio’s job when a build throws (DST-006b)', () => {
+  it('stops claiming, and says so', async () => {
+    worker.runEmailBuilds.mockRejectedValueOnce(
+      Object.assign(new Error('down'), { code: 'XX000' })
+    )
+    const d = database()
+    await expect(
+      runStudioBuilds(db(d), {
+        deadline: Date.now() + 60_000,
+        env: env(on),
+        agents
+      })
+    ).rejects.toMatchObject({ code: 'XX000' })
+    expect(d.calls).toEqual([['claim_studio_build', {}]])
+  })
+})
+
 describe('the design studio’s route (DST-006b)', () => {
   const secret = 's'.repeat(40)
   const req = (headers: Record<string, string> = {}) =>

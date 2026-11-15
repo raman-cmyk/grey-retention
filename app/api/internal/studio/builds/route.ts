@@ -6,8 +6,12 @@ import { logger } from '@/lib/logger'
 import { createServiceClient } from '@/lib/supabase/service'
 export const runtime = 'nodejs'
 export const maxDuration = 120
-/** Claims stop here; a step started before ends inside the 120 s. */
-const budgetMs = 60_000
+/**
+ * The steps' deadline, as the click's 110 s inside 120: a step is claimed
+ * only while a whole one (50 s) still fits before it, so every step ends
+ * inside the route's time.
+ */
+const budgetMs = 105_000
 const noStore = { 'cache-control': 'no-store' }
 
 /**

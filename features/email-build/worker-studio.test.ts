@@ -16,8 +16,10 @@ vi.mock('./steps', async (original) => ({
   runBuildStep: runStep
 }))
 import { memoryFallbackLog } from '@/features/fallback/log'
+import { fakeDraftPusher } from '@/lib/providers/klaviyo-draft'
 import { runEmailBuilds } from './worker'
-import type { PlannedEmail } from './build'
+import { buildEmail, type PlannedEmail } from './build'
+import { sampleOffers, sampleStoreSource } from './ports'
 
 /**
  * DST-006b: a design step that waits for its pictures, and the design
@@ -46,8 +48,14 @@ type Call = { fn: string; args: Record<string, unknown> }
  * nothing claims it again here; `wait` answers the wait with this error.
  */
 function fakeDb(
-  options: { step?: string; wait?: { code: string; details?: string } } = {}
+  options: {
+    step?: string
+    wait?: { code: string; details?: string }
+    /** After `finish_email_build`, the claim by name hands out the push. */
+    push?: boolean
+  } = {}
 ) {
+  let built: unknown = null
   const first = {
     id: 'build-1',
     tenant_id: tenant,
@@ -66,7 +74,24 @@ function fakeDb(
   const calls: Call[] = []
   const rpc = vi.fn(async (fn: string, args: Record<string, unknown> = {}) => {
     calls.push({ fn, args })
-    if (fn === 'claim_email_build') return { data: [], error: null }
+    if (fn === 'claim_email_build') {
+      if (!options.push || !built) return { data: [], error: null }
+      const email = built
+      built = null
+      return {
+        data: [
+          {
+            ...first,
+            state: 'push_queued',
+            step: 'push',
+            email,
+            lease_token: 'lease-2'
+          }
+        ],
+        error: null
+      }
+    }
+    if (fn === 'finish_email_build') built = args.result
     if (fn === 'wait_email_round')
       return options.wait
         ? { data: null, error: options.wait }
@@ -168,5 +193,84 @@ describe('a design step waiting for its pictures (DST-006b)', () => {
       code: 'step_output_invalid',
       final: true
     })
+  })
+
+  it('goes on as the click does once the claimed step finishes: the push, by name', async () => {
+    const made = await buildEmail(
+      {
+        planned,
+        store: await sampleStoreSource.read(tenant),
+        offers: sampleOffers
+      },
+      { tenantId: tenant, callerKey: 'x', fallbacks: memoryFallbackLog() }
+    )
+    if (!made.ok) throw new Error('sample build failed')
+    runStep.mockResolvedValueOnce({
+      ok: true,
+      done: 'design',
+      email: made.email
+    })
+    const d = fakeDb({ push: true })
+    const pusher = fakeDraftPusher()
+    expect(
+      await runEmailBuilds(d.db, {
+        agents: null,
+        fallbacks: memoryFallbackLog(),
+        first: d.first,
+        pusher
+      })
+    ).toEqual({ ran: 2 })
+    expect(d.calls.map((c) => c.fn)).toEqual([
+      'finish_email_build',
+      'claim_email_build',
+      'finish_email_push',
+      'claim_email_build'
+    ])
+    // Only this build, by name, under its own leases.
+    expect(named(d.calls, 'claim_email_build').map((c) => c.args)).toEqual([
+      { target: 'build-1' },
+      { target: 'build-1' }
+    ])
+    expect(pusher.calls).toHaveLength(1)
+    expect(pusher.calls[0]).toMatchObject({
+      idempotencyKey: 'key-1',
+      lease: { build: 'build-1', token: 'lease-2' }
+    })
+  })
+
+  it('fails the step with its reason when the build is not on its design step', async () => {
+    runStep.mockResolvedValueOnce(waits)
+    const d = fakeDb({ wait: { code: 'PT409', details: 'not_design_step' } })
+    await run(d)
+    expect(named(d.calls, 'fail_email_step')[0].args).toMatchObject({
+      code: 'step_output_invalid',
+      final: true
+    })
+  })
+
+  it('tries the step again later when the wait cannot be saved', async () => {
+    runStep.mockResolvedValueOnce(waits)
+    const d = fakeDb({ wait: { code: 'XX000' } })
+    await run(d)
+    expect(named(d.calls, 'fail_email_step')[0].args).toMatchObject({
+      lease: 'lease-1',
+      final: false
+    })
+    // A wait whose time is not a number is never sent.
+    runStep.mockResolvedValueOnce({ ...waits, seconds: Number.NaN })
+    const bad = fakeDb()
+    await run(bad)
+    expect(named(bad.calls, 'wait_email_round')).toEqual([])
+    expect(named(bad.calls, 'fail_email_step')[0].args).toMatchObject({
+      final: false
+    })
+  })
+
+  it('runs a claimed build alone: never with another build named', async () => {
+    const d = fakeDb()
+    await expect(
+      runEmailBuilds(d.db, { agents: null, build: 'build-2', first: d.first })
+    ).rejects.toThrow('A claimed build runs alone')
+    expect(d.calls).toEqual([])
   })
 })

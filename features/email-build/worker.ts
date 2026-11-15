@@ -44,7 +44,10 @@ type ClaimedBuild = NonNullable<Awaited<ReturnType<typeof claimWaitingDesign>>>
  * never makes a second draft. A step that throws is tried again a minute
  * later, from the saved steps before it, at most 3 times; a busy Klaviyo
  * waits as long as it asks; bad data, a refused draft and a stored email or
- * step of the wrong shape fail at once.
+ * step of the wrong shape fail at once. DST-006b: a design step may wait for
+ * its pictures (`waiting`, saved with `wait_email_round`), and the design
+ * studio's job hands in a build it claimed already (`first`), which runs
+ * alone, as the click's build does.
  */
 export async function runEmailBuilds(
   db: Db,
@@ -96,7 +99,11 @@ export async function runEmailBuilds(
   const agents = deps.agents === undefined ? buildAgentsFor(db) : deps.agents
   // The owner's click: every step, every save of the steps with rounds
   // (REL-AI part 2b) and the push. Its deadline, not this count, ends it.
-  const limit = deps.build
+  // DST-006b: a build claimed already is the only build this run runs.
+  if (deps.first && deps.build !== undefined && deps.build !== deps.first.id)
+    throw new Error('A claimed build runs alone')
+  const only = deps.build ?? deps.first?.id
+  const limit = only
     ? buildSteps.length + 1 + roundSteps.length * maxStepSaves
     : (deps.limit ?? 25)
   let ran = 0
@@ -123,9 +130,9 @@ export async function runEmailBuilds(
     )
       break
     // A build claimed already runs first: its lease is this job's.
-    let job = first ?? (await claim(deps.build ?? moved))
+    let job = first ?? (await claim(only ?? moved))
     first = undefined
-    if (!job && !deps.build && moved) job = await claim()
+    if (!job && !only && moved) job = await claim()
     moved = undefined
     if (!job) break
     const fail = async (
@@ -259,7 +266,8 @@ export async function runEmailBuilds(
               })
               continue
             }
-            // The seventh wait: the pictures kept not coming.
+            // The seventh wait (the pictures kept not coming), the wrong
+            // step or refused work: final, with its reason.
             await fail(
               wait.reason === 'too_many'
                 ? 'step_timed_out'

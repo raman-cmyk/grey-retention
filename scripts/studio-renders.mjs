@@ -22,8 +22,9 @@ import { renderSection } from './section-render.mjs'
 
 /**
  * Sections drawn per run at most, and the run's time: with the setup
- * before it (the peek and its retry, installing Chromium) and one last
- * section, a run ends well inside the job's 18 minutes.
+ * before it (the peek and its retry, installing Chromium), one last
+ * section and the designs carried on after (`carryOnMs`), a run ends
+ * inside the job's 18 minutes.
  */
 export const perRun = 24
 export const runBudgetMs = 8 * 60_000
@@ -189,18 +190,25 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   }
   const { chromium } = await import('@playwright/test')
   const browser = await launch(chromium)
-  try {
-    await run({ base, secret, browser })
-    await carryOn({ base, secret })
-  } catch (error) {
-    // Never the secret, even inside an error's words.
-    const words = String(error?.message ?? error)
+  // Never the secret, even inside an error's words.
+  const words = (error) =>
+    String(error?.message ?? error)
       .split(secret)
       .join('[secret]')
       .slice(0, 300)
-    console.error(`Render run stopped: ${words}`)
+  try {
+    await run({ base, secret, browser })
+  } catch (error) {
+    console.error(`Render run stopped: ${words(error)}`)
     process.exitCode = 1
   } finally {
     await browser.close()
+  }
+  // The pictures drawn before a stop still carry their designs on.
+  try {
+    await carryOn({ base, secret })
+  } catch (error) {
+    console.error(`Designs not carried on: ${words(error)}`)
+    process.exitCode = 1
   }
 }

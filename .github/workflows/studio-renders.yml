@@ -11,8 +11,10 @@ name: Studio renders
 # Off until turned on, exactly like the scheduled jobs
 # (docs/SCHEDULED_JOBS_RUNBOOK.md): the same CRON_SECRET repository secret
 # and the same SCHEDULED_JOBS_ENABLED=true repository variable. When nothing
-# is waiting, a run stops after one small request. Every 10 minutes: a build
-# waits for its pictures (public repository: Actions minutes are free).
+# is waiting to draw, a run makes two small requests: the peek, and the
+# designs whose pictures are in carry on (DST-006b; with the design studio
+# off, that answers at once). Every 10 minutes: a build waits for its
+# pictures (public repository: Actions minutes are free).
 on:
   schedule:
     # Every 10 minutes, away from the sweeps (minutes 3 and 33) and the inbox
@@ -31,7 +33,7 @@ jobs:
   renders:
     if: vars.SCHEDULED_JOBS_ENABLED == 'true'
     runs-on: ubuntu-latest
-    # The first call may be tried twice, 2 minutes apart (CI-005).
+    # Each call may be tried twice, 2 minutes apart (CI-005).
     timeout-minutes: 18
     env:
       APP_URL: https://grey-retention-app.vercel.app
@@ -81,7 +83,7 @@ jobs:
           # drawn earlier go on now (after drawing, the script does this).
           if [ "$waiting" = "0" ]; then
             call '/api/internal/studio/builds' builds.json 130 || exit 1
-            echo "Designs carried on: $(jq -r '.builds // 0' builds.json)"
+            jq -r 'if .off == true then "Design studio off." else "Designs carried on: \(.builds | numbers // 0)." end' builds.json
           fi
       - if: steps.peek.outputs.waiting != '0'
         uses: actions/checkout@v4
