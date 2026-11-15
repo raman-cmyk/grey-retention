@@ -85,6 +85,10 @@ end $$;
 revoke all on function public.correct_brand_book(uuid, text, text, text, text) from public, anon, service_role;
 grant execute on function public.correct_brand_book(uuid, text, text, text, text) to authenticated;
 
+-- The cap counts a workspace's live corrections without reading the
+-- withdrawn ones (every change leaves one).
+create index brand_book_corrections_live on public.brand_book_corrections (tenant_id)
+  where withdrawn_at is null;
 create index brand_book_corrections_made on public.brand_book_corrections (created_at);
 create index brand_book_corrections_withdrawn on public.brand_book_corrections (withdrawn_at)
   where withdrawn_at is not null;
