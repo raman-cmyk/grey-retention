@@ -178,6 +178,10 @@ describe('runAgent', () => {
     expect(call.request.system).toContain('Tag the email section.')
     expect(call.request.system).toContain("DON'T: Do not lead with a discount")
     expect(call.request.system).toContain('Brand book (version 3)')
+    // ONB-106b: only the facts and the owner's are confirmed.
+    expect(call.request.system).toContain(
+      '"observed" is what was seen on the brand\'s own pages, emails and reviews: use it for tone and ideas, never state it as a fact.'
+    )
     expect(call.request).toMatchObject({
       responseKind: 'json',
       maxOutputTokens: 200,

@@ -109,8 +109,22 @@ export function brandBookBlock(book: BrandBook | null) {
   let text = JSON.stringify(book.content)
   if (text.length > maxBrandBookChars)
     text = `${text.slice(0, maxBrandBookChars)}…(truncated)`
-  return `Brand book (version ${book.version}). These are the brand's confirmed facts; never contradict them:\n${text}`
+  return `${brandBookHeader(book.version)}\n${text}`
 }
+
+/**
+ * How an agent reads the Brand book (ONB-106b, agreed with lane A): only
+ * `facts` and `owner` are confirmed; what the readers observed and what is
+ * unclear are never stated as facts.
+ */
+export const brandBookHeader = (version: number) =>
+  [
+    `Brand book (version ${version}).`,
+    '"facts" and "owner" are confirmed: never contradict them.',
+    '"observed" is what was seen on the brand\'s own pages, emails and reviews: use it for tone and ideas, never state it as a fact.',
+    '"unclear" lists what is not known: never make a claim about it.',
+    '"avoid" lists words and claims the brand never uses.'
+  ].join(' ')
 
 /** Test and local double. */
 export class InMemoryMemoryStore implements MemoryStore {
