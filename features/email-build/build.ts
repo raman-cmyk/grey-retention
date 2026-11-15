@@ -89,6 +89,15 @@ export const builtEmail = z.object({
   audienceId: z.string(),
   productIds: z.array(z.string()).max(12),
   code: z.string().nullable(),
+  /**
+   * REL-OFF: the code's percent and end as the email shows them, so the
+   * push checks Settings still give exactly that. Missing on emails built
+   * before it.
+   */
+  offer: z
+    .object({ percent: z.number(), expiresAt: z.string().nullable() })
+    .nullable()
+    .optional(),
   /** Planned content the Content locker replaced with safer choices. */
   changes: z.array(z.string()).max(40)
 })
@@ -104,6 +113,7 @@ export type BuildResult =
         | 'offers_unreadable'
         | 'copy_failed'
         | 'subject_taken'
+        | 'offer_unsafe'
         | 'render_failed'
     }
 
@@ -159,6 +169,104 @@ const assemblyFor = (
   timezone: saved.timezone,
   facts: store.facts
 })
+
+/**
+ * REL-OFF: a code the email may carry: one of the saved working codes, a
+ * whole percent from 1 to the max, still working when the email sends.
+ * The Content locker locks only such a code and the copy checks hold the
+ * email to it; this is the last check before the email is stored.
+ */
+export function codeWorks(
+  code: string,
+  rules: SectionsOutput['rules'],
+  sendAt: string
+) {
+  const wanted = codeKey(code)
+  const found = rules.codes.find((c) => codeKey(c.code) === wanted)
+  if (
+    !found ||
+    !Number.isInteger(found.percent) ||
+    found.percent < 1 ||
+    found.percent > Math.min(100, rules.maxDiscountPercent)
+  )
+    return false
+  const ends = found.expiresAt === null ? null : Date.parse(found.expiresAt)
+  return ends === null || (Number.isFinite(ends) && ends > Date.parse(sendAt))
+}
+
+const codeKey = (code: string) => code.trim().toUpperCase()
+
+/**
+ * REL-OFF: the offer the email shows is exactly a working one: no offer
+ * section without a code, and with a code (`codeWorks`) every offer
+ * section shows that code at its own percent. What is drawn, not only
+ * what the draft says.
+ */
+export function offerShown(
+  draft: Draft,
+  rules: SectionsOutput['rules'],
+  sendAt: string
+) {
+  const banners = draft.blocks.filter((b) => b.type === 'offer_banner')
+  if (draft.code === null) return banners.length === 0
+  if (!banners.length || !codeWorks(draft.code, rules, sendAt)) return false
+  const wanted = codeKey(draft.code)
+  const found = rules.codes.find((c) => codeKey(c.code) === wanted)!
+  return banners.every((b) => {
+    const c = b.content as { code?: unknown; headline?: unknown }
+    return (
+      typeof c.code === 'string' &&
+      codeKey(c.code) === wanted &&
+      c.headline === `${found.percent}% off`
+    )
+  })
+}
+
+/**
+ * REL-OFF: the code against the owner's Settings now, not only as the
+ * first step saved them: a code switched off or a max lowered since never
+ * reaches Klaviyo. `unreadable` when Settings could not be read (tried
+ * again).
+ */
+export async function codeWorksNow(
+  code: string,
+  offers: OfferSource,
+  tenantId: string,
+  sendAt: string,
+  /**
+   * The percent and end the email shows: a code removed and added again
+   * at another percent or end since is refused too (the email would say
+   * what the code no longer gives).
+   */
+  shown?: { percent: number; expiresAt: string | null } | null
+): Promise<'ok' | 'unsafe' | 'unreadable'> {
+  const read = await offers.offers(tenantId, sendAt).catch(() => null)
+  if (!read) return 'unreadable'
+  const rules = {
+    maxDiscountPercent: read.maxDiscountPercent ?? 0,
+    codes: [...read.codes]
+  }
+  if (!codeWorks(code, rules, sendAt)) return 'unsafe'
+  if (!shown) return 'ok'
+  const now = rules.codes.find((c) => codeKey(c.code) === codeKey(code))!
+  return now.percent === shown.percent &&
+    sameEnd(now.expiresAt, shown.expiresAt)
+    ? 'ok'
+    : 'unsafe'
+}
+
+const sameEnd = (a: string | null, b: string | null) =>
+  a === null || b === null ? a === b : Date.parse(a) === Date.parse(b)
+
+/** The percent and end of the code an email carries, from its saved rules. */
+export function shownOffer(
+  code: string | null,
+  rules: SectionsOutput['rules']
+) {
+  if (code === null) return null
+  const found = rules.codes.find((c) => codeKey(c.code) === codeKey(code))
+  return found ? { percent: found.percent, expiresAt: found.expiresAt } : null
+}
 
 /** Step 1: the send time, the offer rules at that time, and the sections. */
 export async function sectionsStep(
@@ -518,12 +626,17 @@ export function designStep(
     sendAt: string
     sample: boolean
     copy: CopyOutput
+    /** The offer rules the first step saved (REL-OFF). */
+    rules: SectionsOutput['rules']
     /** An agent made part of it (REL-AI part 2): the screen says so. */
     ai?: boolean
   }
 ): BuildResult {
   const { planned, store, sendAt, sample, copy } = input
   const { draft } = copy
+  // REL-OFF: a wrong code never reaches Klaviyo, whatever went wrong before.
+  if (!offerShown(draft, input.rules, sendAt))
+    return { ok: false, code: 'offer_unsafe' }
   let html: string
   try {
     html = designA(draft, store.brand).html
@@ -545,6 +658,7 @@ export function designStep(
       audienceId: planned.audience.id,
       productIds: draft.productIds,
       code: draft.code,
+      offer: shownOffer(draft.code, input.rules),
       changes: copy.changes
     }
   }
@@ -572,6 +686,8 @@ export async function lockedDraft(
       ai: boolean
       /** The Copywriter's words (REL-AI part 2b). */
       written: boolean
+      /** The offer rules the first step saved (REL-OFF). */
+      rules: SectionsOutput['rules']
     }
   | {
       ok: false
@@ -580,6 +696,7 @@ export async function lockedDraft(
         | 'offers_unreadable'
         | 'copy_failed'
         | 'subject_taken'
+        | 'offer_unsafe'
     }
 > {
   const sections = await sectionsStep(input, ctx)
@@ -592,10 +709,20 @@ export async function lockedDraft(
   )
   if (!copy.ok) return copy
   if (!('output' in copy)) throw new Error('Copy paused without a time')
+  // REL-OFF: the A-vs-B test draws this draft itself: the same last check.
+  if (
+    !offerShown(
+      copy.output.draft,
+      sections.output.rules,
+      sections.output.sendAt
+    )
+  )
+    return { ok: false, code: 'offer_unsafe' }
   return {
     ok: true,
     draft: copy.output.draft,
     sendAt: sections.output.sendAt,
+    rules: sections.output.rules,
     changes: copy.output.changes,
     written: copy.output.written === true,
     ai:
@@ -640,6 +767,7 @@ export async function buildEmail(
   return designStep({
     ...input,
     sendAt: made.sendAt,
+    rules: made.rules,
     sample: input.store.sample,
     ai: made.ai,
     copy: { draft: made.draft, changes: made.changes, written: made.written }

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { memoryFallbackLog } from '@/features/fallback/log'
-import { builtEmail, buildEmail, type PlannedEmail } from './build'
+import { builtEmail, buildEmail, codeWorks, type PlannedEmail } from './build'
 import { fakeDraftPusher } from '@/lib/providers/klaviyo-draft'
 import {
   endOfLocalDay,
@@ -440,5 +440,34 @@ describe('one plan, one subject per email (REL-AI)', () => {
     )
     expect(r.ok).toBe(false)
     if (!r.ok) expect(['subject_taken', 'copy_failed']).toContain(r.code)
+  })
+})
+
+describe('a code an email may carry (REL-OFF)', () => {
+  const rules = (over: Record<string, unknown> = {}) => ({
+    maxDiscountPercent: 20,
+    codes: [{ code: 'CANDLE10', percent: 10, expiresAt: null, ...over }]
+  })
+  const at = '2026-11-17T10:00:00Z'
+  it('is one of the working codes, whatever its case and spacing', () => {
+    expect(codeWorks('CANDLE10', rules(), at)).toBe(true)
+    expect(codeWorks('candle10', rules(), at)).toBe(true)
+    expect(codeWorks(' CANDLE10 ', rules(), at)).toBe(true)
+    expect(codeWorks('OTHER', rules(), at)).toBe(false)
+  })
+  it('is a whole percent from 1 to the max', () => {
+    expect(codeWorks('CANDLE10', rules({ percent: 0 }), at)).toBe(false)
+    expect(codeWorks('CANDLE10', rules({ percent: 12.5 }), at)).toBe(false)
+    expect(codeWorks('CANDLE10', rules({ percent: 25 }), at)).toBe(false)
+    expect(codeWorks('CANDLE10', rules({ percent: 20 }), at)).toBe(true)
+  })
+  it('still works when the email sends', () => {
+    expect(
+      codeWorks('CANDLE10', rules({ expiresAt: '2026-11-17T09:59:59Z' }), at)
+    ).toBe(false)
+    expect(
+      codeWorks('CANDLE10', rules({ expiresAt: '2026-11-17T10:00:01Z' }), at)
+    ).toBe(true)
+    expect(codeWorks('CANDLE10', rules({ expiresAt: 'soon' }), at)).toBe(false)
   })
 })

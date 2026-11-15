@@ -15,6 +15,7 @@ const buildCodes = [
   'copy_failed',
   'subject_taken',
   'render_failed',
+  'offer_unsafe',
   'built_email_invalid',
   'email_too_large',
   'step_output_invalid',
