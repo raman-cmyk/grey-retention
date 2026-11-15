@@ -4,6 +4,7 @@ import {
   defaultBannedClaims,
   type BrandFacts
 } from '@/features/copy-qa/check'
+import { industries } from '@/features/intelligence/taxonomy'
 import {
   claimReason,
   claimsSafety,
@@ -23,7 +24,7 @@ const facts: BrandFacts = {
 }
 const keys = (industry: string | null) =>
   claimsSafety(industry).groups.map((g) => g.key)
-const qa = (text: string, f: BrandFacts) =>
+const qa = (text: string, f: BrandFacts, productNames: string[] = []) =>
   checkCopy({
     draft: {
       subject: 'New this week',
@@ -33,40 +34,65 @@ const qa = (text: string, f: BrandFacts) =>
     facts: f,
     maxDiscountPercent: null,
     codes: [],
-    productNames: ['Detox Green Tea'],
+    productNames,
     sendAt: '2026-11-20T15:00:00.000Z'
   }).failures.filter((x) => x.rule === 'banned_phrase')
 
 describe('claimsSafety (ONB-062)', () => {
-  it('gives each industry its own groups, and every brand the green words', () => {
+  it('gives every industry the green words, and its own groups', () => {
+    for (const industry of industries)
+      expect(keys(industry)[0], industry).toBe('green')
     expect(keys('skincare')).toEqual(['green', 'medical_beauty'])
+    expect(keys('beauty_tools')).toEqual(['green', 'medical_beauty', 'germs'])
     expect(keys('supplements')).toEqual(['green', 'health', 'weight'])
-    expect(keys('pet')).toEqual(['green', 'pests', 'pet_health'])
-    expect(keys('baby')).toEqual(['green', 'germs', 'baby_safety'])
+    expect(keys('fitness')).toEqual([
+      'green',
+      'health',
+      'weight_promises',
+      'germs'
+    ])
     expect(keys('food_drink')).toEqual([
       'green',
       'health',
       'weight',
       'drink_health'
     ])
+    expect(keys('pet')).toEqual(['green', 'pests', 'pet_health'])
+    expect(keys('baby')).toEqual(['green', 'germs', 'baby_safety'])
     expect(keys('jewelry')).toEqual(['green', 'jewelry'])
+    expect(keys('accessories')).toEqual(['green', 'germs', 'toughness'])
+    expect(keys('electronics')).toEqual(['green', 'germs', 'toughness'])
+    expect(keys('home')).toEqual(['green', 'germs', 'pests'])
     expect(keys('other')).toEqual(['green'])
     expect(keys(null)).toEqual(['green'])
-    expect(claimsSafety('  ').industry).toBeNull()
   })
 
-  it('reads the brand’s industry in its own words', () => {
-    expect(claimsSafety('Vitamin C serums for dry skin').industry).toBe(
-      'skincare'
-    )
-    expect(claimsSafety('Dog treats and toys').industry).toBe('pet')
-    expect(claimsSafety('CBD gummies').industry).toBe('wellness')
-    expect(claimsSafety('BEAUTY_TOOLS').industry).toBe('beauty_tools')
-    expect(claimsSafety('Mystery boxes').industry).toBe('other')
+  it('reads the brand’s industry in its own words, every industry it names', () => {
+    expect(claimsSafety('Detox teas').industries).toEqual(['food_drink'])
+    expect(keys('Detox teas')).toContain('drink_health')
+    expect(
+      claimsSafety(
+        'Organic cotton baby sleepwear and swaddles, gentle on sensitive skin'
+      ).industries
+    ).toEqual(['baby', 'skincare', 'apparel'])
+    expect(keys('Pet accessories')).toEqual([
+      'green',
+      'germs',
+      'pests',
+      'pet_health',
+      'toughness'
+    ])
+    expect(claimsSafety('Things that make dogs happy').industries).toEqual([
+      'pet'
+    ])
+    expect(claimsSafety('Office chairs').industries).toEqual(['home'])
+    expect(claimsSafety('Mineral sunscreen').industries).toEqual(['skincare'])
+    expect(claimsSafety('Massage guns').industries).toEqual(['wellness'])
+    expect(claimsSafety('Mystery boxes').industries).toEqual([])
   })
 
   it('lists each phrase once, never one copy QA already blocks', () => {
-    for (const industry of ['skincare', 'supplements', 'baby', 'accessories']) {
+    for (const industry of industries) {
       const phrases = claimsSafetyPhrases(industry)
       expect(new Set(phrases).size).toBe(phrases.length)
       for (const p of phrases) {
@@ -91,48 +117,96 @@ describe('withClaimsSafety (ONB-062)', () => {
     expect(
       qa('Our balm clears acne overnight.', skin).map((f) => f.excerpt)
     ).toEqual([expect.stringContaining('clears acne')])
-    expect(qa('Gentle on eczema-prone skin.', skin)).toHaveLength(1)
+    expect(qa('It clears eczema in a week.', skin)).toHaveLength(1)
     expect(
       qa('Our balm clears acne overnight.', withClaimsSafety(facts, 'apparel'))
     ).toEqual([])
-    const tea = withClaimsSafety(facts, 'food_drink')
+    const tea = withClaimsSafety(facts, 'Detox teas')
     expect(qa('It boosts immunity all winter.', tea)).toHaveLength(1)
+    expect(
+      qa('Lose weight fast with our plan.', withClaimsSafety(facts, 'fitness'))
+    ).toHaveLength(1)
   })
 
   it('leaves ordinary copy alone', () => {
-    const pet = withClaimsSafety(facts, 'pet')
-    const food = withClaimsSafety(facts, 'food_drink')
-    for (const text of [
+    const everyone = [
       'Treat yourself this weekend.',
-      'New dog treats your pup will love.',
       'Our new green dress is here.',
-      'A calm, sustainable routine starts here.'
-    ]) {
-      expect(qa(text, pet)).toEqual([])
-      expect(qa(text, food)).toEqual([])
-    }
-    // A product's own name is not read as a claim.
-    expect(
-      qa('Meet the Detox Green Tea.', withClaimsSafety(facts, 'supplements'))
-    ).toEqual([])
+      'A calm, sustainable routine starts here.',
+      'A gift that lasts forever.'
+    ]
+    for (const industry of industries)
+      for (const text of everyone)
+        expect([
+          industry,
+          text,
+          qa(text, withClaimsSafety(facts, industry))
+        ]).toEqual([industry, text, []])
+    const own: [string, string[]][] = [
+      [
+        'fitness',
+        [
+          'Ten fat-burning moves you can do at home.',
+          'Burn fat and build strength with our kettlebells.'
+        ]
+      ],
+      [
+        'pet',
+        [
+          'New dog treats your pup will love.',
+          'Calming treats anxiety-prone pups adore.'
+        ]
+      ],
+      ['baby', ['Our silicone teether brings gentle teething relief.']],
+      ['jewelry', ['Hypoallergenic, nickel-free earrings for sensitive ears.']],
+      [
+        'skincare',
+        ['Gentle on eczema-prone skin.', 'Hypoallergenic and fragrance-free.']
+      ],
+      ['beauty_tools', ['Made from soft, medical-grade silicone.']]
+    ]
+    for (const [industry, lines] of own)
+      for (const text of lines)
+        expect([text, qa(text, withClaimsSafety(facts, industry))]).toEqual([
+          text,
+          []
+        ])
   })
 
-  it('keeps the brand’s own words first and lets an approved claim through', () => {
+  it('never reads a product’s own name as a claim', () => {
+    const shop = withClaimsSafety(facts, 'accessories')
+    const text = 'Meet the Eco-Friendly Tote.'
+    expect(qa(text, shop, ['Eco-Friendly Tote'])).toEqual([])
+    expect(qa(text, shop)).toHaveLength(1)
+  })
+
+  it('keeps the brand’s own words first and lets an approved claim through in any spelling', () => {
     const own = withClaimsSafety(
       {
         ...facts,
         bannedPhrases: ['cheap', 'Eco-friendly'],
-        approvedClaims: ['Certified carbon neutral since 2024']
+        approvedClaims: ['Our shipping is carbon neutral', 'Non-toxic paint']
       },
       'skincare'
     )
     expect(own.bannedPhrases.slice(0, 2)).toEqual(['cheap', 'Eco-friendly'])
     expect(own.bannedPhrases).not.toContain('eco-friendly')
-    expect(own.bannedPhrases).not.toContain('carbon neutral')
-    expect(own.bannedPhrases).toContain('carbon-neutral')
+    expect(own.bannedPhrases).toContain('eco friendly')
+    for (const released of [
+      'carbon neutral',
+      'carbon-neutral',
+      'non-toxic',
+      'nontoxic'
+    ])
+      expect(own.bannedPhrases).not.toContain(released)
     expect(own.bannedPhrases).toContain('clears acne')
-    expect(own.approvedClaims).toEqual(['Certified carbon neutral since 2024'])
-    // Whole words only: "non-toxic" is not inside an approved "nontoxicity".
+    expect(qa('Carbon-neutral shipping on every order.', own)).toEqual([])
+    expect(qa('A nontoxic finish.', own)).toEqual([])
+    expect(own.approvedClaims).toEqual([
+      'Our shipping is carbon neutral',
+      'Non-toxic paint'
+    ])
+    // Whole words only: "nontoxicity" approves nothing.
     expect(
       withClaimsSafety(
         { ...facts, approvedClaims: ['Tested for nontoxicity'] },
@@ -141,7 +215,7 @@ describe('withClaimsSafety (ONB-062)', () => {
     ).toContain('nontoxic')
   })
 
-  it('stays within copy QA’s limit of 200', () => {
+  it('fills only what is left of the 200, never cutting the brand’s own words', () => {
     const many = Array.from({ length: 195 }, (_, i) => `word ${i}`)
     const out = withClaimsSafety(
       { ...facts, bannedPhrases: many },
@@ -153,6 +227,6 @@ describe('withClaimsSafety (ONB-062)', () => {
     expect(
       withClaimsSafety({ ...facts, bannedPhrases: full }, 'skincare')
         .bannedPhrases
-    ).toEqual(full.slice(0, maxBannedPhrases))
+    ).toEqual(full)
   })
 })

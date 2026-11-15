@@ -1,6 +1,6 @@
 import { defaultBannedClaims, type BrandFacts } from '@/features/copy-qa/check'
-import { industryOf } from '@/features/intelligence/classifier'
-import { industries, type Industry } from '@/features/intelligence/taxonomy'
+import type { Industry } from '@/features/intelligence/taxonomy'
+import { industriesInWords } from './industry'
 
 /**
  * Claims safety list (owner pick #62, ONB-062): words to avoid by industry.
@@ -9,9 +9,13 @@ import { industries, type Industry } from '@/features/intelligence/taxonomy'
  * such as a medicine claim for skincare or a pesticide claim for pet care.
  * Each group says why in plain words, for the owner and the Brand book.
  *
- * Phrases are matched as whole words, case-insensitively, by copy QA (and the
- * writer is told to avoid them), so each one is specific enough not to catch
- * ordinary copy: never "treat" (a treat, treat yourself) or "green" (a colour).
+ * Phrases are matched as whole words, case-insensitively, by copy QA, so
+ * each one is specific enough not to catch ordinary copy: never "treat" (a
+ * treat, treat yourself) or "green" (a colour), a condition only with a verb
+ * ("clears eczema", never "eczema-prone skin"). The writer sees the banned
+ * list only when a draft failed (assembly's fix hints and the Brand
+ * inspector): putting it in the writer's first brief is ONB-057b's (an
+ * integration note for lane A's `writerData`).
  */
 
 export type ClaimGroupKey =
@@ -19,6 +23,7 @@ export type ClaimGroupKey =
   | 'medical_beauty'
   | 'health'
   | 'weight'
+  | 'weight_promises'
   | 'germs'
   | 'pests'
   | 'pet_health'
@@ -35,13 +40,15 @@ export type ClaimGroup = {
 }
 
 export type ClaimsSafety = {
-  /** The industry the list is for; null when the brand's is not known. */
-  industry: Industry | null
+  /** Every industry named in the brand's words, most first; empty when unknown. */
+  industries: Industry[]
   groups: ClaimGroup[]
 }
 
-/** Copy QA and the writer take at most this many banned phrases. */
+/** The assembly input takes at most this many banned phrases (`inputs.ts`). */
 export const maxBannedPhrases = 200
+
+const conditions = ['eczema', 'psoriasis', 'rosacea', 'dermatitis']
 
 const groups: (ClaimGroup & { for: Industry[] | 'all' })[] = [
   {
@@ -82,10 +89,13 @@ const groups: (ClaimGroup & { for: Industry[] | 'all' })[] = [
       'clears acne',
       'heals acne',
       'acne treatment',
-      'eczema',
-      'psoriasis',
-      'rosacea',
-      'dermatitis',
+      ...conditions.flatMap((c) => [
+        `treats ${c}`,
+        `clears ${c}`,
+        `heals ${c}`,
+        `${c} relief`,
+        `${c} treatment`
+      ]),
       'heals skin',
       'heals your skin',
       'repairs damaged skin',
@@ -104,10 +114,14 @@ const groups: (ClaimGroup & { for: Industry[] | 'all' })[] = [
       'prevents hair loss',
       'botox alternative',
       'better than botox',
-      'medical grade',
-      'medical-grade',
+      // A material may be medical-grade; results and skincare may not.
+      'medical-grade skincare',
+      'medical grade skincare',
+      'medical-grade results',
+      'medical grade results',
       'prescription strength',
-      'hypoallergenic',
+      '100% hypoallergenic',
+      'completely hypoallergenic',
       'dermatologist approved',
       'dermatologist tested'
     ]
@@ -153,7 +167,8 @@ const groups: (ClaimGroup & { for: Industry[] | 'all' })[] = [
   },
   {
     key: 'weight',
-    for: ['supplements', 'wellness', 'fitness', 'food_drink'],
+    // Not fitness: "fat-burning moves" is ordinary exercise copy.
+    for: ['supplements', 'wellness', 'food_drink'],
     reason:
       'Weight-loss and fat-burning promises need proof most brands cannot show.',
     phrases: [
@@ -170,6 +185,20 @@ const groups: (ClaimGroup & { for: Industry[] | 'all' })[] = [
       'speeds up metabolism',
       'appetite suppressant',
       'suppresses appetite'
+    ]
+  },
+  {
+    key: 'weight_promises',
+    for: ['fitness'],
+    reason:
+      'Promises of fast or certain weight loss need proof most brands cannot show.',
+    phrases: [
+      'lose weight fast',
+      'guaranteed weight loss',
+      'rapid weight loss',
+      'melts fat',
+      'fat burner',
+      'appetite suppressant'
     ]
   },
   {
@@ -231,9 +260,10 @@ const groups: (ClaimGroup & { for: Industry[] | 'all' })[] = [
       'veterinarian recommended',
       'vet approved',
       'vet-approved',
-      'treats arthritis',
+      // Never "treats ...": in pet copy treats are the product.
+      'relieves arthritis',
       'prevents arthritis',
-      'treats anxiety',
+      'arthritis relief',
       'relieves anxiety'
     ]
   },
@@ -247,13 +277,11 @@ const groups: (ClaimGroup & { for: Industry[] | 'all' })[] = [
       'pediatrician approved',
       'paediatrician recommended',
       'prevents colic',
-      'teething relief',
       'prevents sids',
       'reduces the risk of sids',
       '100% safe',
       'completely safe',
-      'totally safe',
-      'hypoallergenic'
+      'totally safe'
     ]
   },
   {
@@ -279,19 +307,17 @@ const groups: (ClaimGroup & { for: Industry[] | 'all' })[] = [
       'military-grade',
       'unbreakable',
       'indestructible',
-      'lasts forever',
       'never breaks'
     ]
   },
   {
     key: 'jewelry',
-    for: ['jewelry', 'accessories'],
+    for: ['jewelry'],
     reason: 'Sourcing and skin-safety promises for jewelry need proof.',
     phrases: [
       'conflict-free',
       'conflict free',
       'ethically sourced',
-      'hypoallergenic',
       'never tarnishes',
       'will never tarnish',
       'tarnish-proof',
@@ -302,28 +328,19 @@ const groups: (ClaimGroup & { for: Industry[] | 'all' })[] = [
 
 const general = new Set(defaultBannedClaims.map((p) => p.toLowerCase()))
 
-function industryFrom(industry: string | null): Industry | null {
-  const words = (industry ?? '').trim().toLowerCase()
-  if (!words) return null
-  if ((industries as readonly string[]).includes(words))
-    return words as Industry
-  return industryOf(words)
-}
-
 /**
  * The risky claims for a brand's industry: the fixed list's value
- * (`skincare`) or the brand's own words ("Vitamin C serums"). An unknown
- * industry gets the groups every brand shares. A phrase already on copy
- * QA's general list is left out, so nothing is checked twice.
+ * (`skincare`) or the brand's own words ("Pet accessories" gets the pet and
+ * the accessories groups). An unknown industry gets the groups every brand
+ * shares. A phrase already on copy QA's general list is left out, so
+ * nothing is checked twice.
  */
 export function claimsSafety(industry: string | null): ClaimsSafety {
-  const found = industryFrom(industry)
+  const found = industriesInWords(industry)
   return {
-    industry: found,
+    industries: found,
     groups: groups
-      .filter(
-        (g) => g.for === 'all' || (found !== null && g.for.includes(found))
-      )
+      .filter((g) => g.for === 'all' || g.for.some((i) => found.includes(i)))
       .map(({ key, reason, phrases }) => ({
         key,
         reason,
@@ -356,31 +373,46 @@ export function claimReason(phrase: string, industry: string | null) {
 
 /**
  * The brand facts with the industry's risky claims added to the banned
- * list. The brand's own banned words come first and are kept; a phrase is
- * not added when a claim the brand stands behind contains it (a brand that
- * approved "certified carbon neutral" may say it), when the brand already
- * bans it, or past copy QA's limit of 200.
+ * list. The brand's own banned words are all kept, first; the list fills
+ * what is left of the 200. A phrase is not added when the brand already
+ * bans it, or when a claim the brand stands behind contains it in any
+ * spelling: a brand that approved "carbon neutral shipping" may also write
+ * "carbon-neutral" (copy QA masks only the approved words themselves).
  */
 export function withClaimsSafety(
   facts: BrandFacts,
   industry: string | null
 ): BrandFacts {
-  const own = facts.bannedPhrases.slice(0, maxBannedPhrases)
+  const own = facts.bannedPhrases
   const banned = new Set(own.map((p) => p.trim().toLowerCase()))
-  const approved = facts.approvedClaims.map((c) => c.toLowerCase())
-  const added = claimsSafetyPhrases(industry).filter(
-    (p) => !banned.has(p) && !approved.some((c) => containsPhrase(c, p))
+  const phrases = claimsSafetyPhrases(industry)
+  const released = new Set(
+    phrases
+      .filter((p) => facts.approvedClaims.some((c) => anySpelling(p).test(c)))
+      .map(spellingKey)
+  )
+  const added = phrases.filter(
+    (p) => !banned.has(p) && !released.has(spellingKey(p))
   )
   return {
     ...facts,
-    bannedPhrases: [...own, ...added].slice(0, maxBannedPhrases)
+    bannedPhrases: [
+      ...own,
+      ...added.slice(0, Math.max(0, maxBannedPhrases - own.length))
+    ]
   }
 }
 
-/** Whole-word containment, the way copy QA matches a phrase. */
-function containsPhrase(text: string, phrase: string) {
-  const p = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** One key for "carbon neutral", "carbon-neutral" and "carbonneutral". */
+const spellingKey = (phrase: string) => phrase.replace(/[-\s]+/g, '')
+
+/** The phrase as whole words, a space or hyphen optional between parts. */
+function anySpelling(phrase: string) {
+  const p = phrase
+    .split(/[-\s]+/)
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('[-\\s]?')
   const left = /^\w/.test(phrase) ? '\\b' : ''
   const right = /\w$/.test(phrase) ? '\\b' : ''
-  return new RegExp(`${left}${p}${right}`, 'i').test(text)
+  return new RegExp(`${left}${p}${right}`, 'i')
 }
