@@ -51,7 +51,12 @@ export type SectionLabel = {
  * 'label', request }, { ledger })`.
  */
 export type AiRun =
-  | { ok: true; content: unknown; provider: 'gemini' | 'fake'; model: string }
+  | {
+      ok: true
+      content: unknown
+      provider: 'gemini' | 'openai' | 'fake'
+      model: string
+    }
   | { ok: false; code: string; retryAfterSeconds?: number }
 export type RunAi = (
   request: Omit<AiProviderRequest, 'model' | 'timeoutMs'>

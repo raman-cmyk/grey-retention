@@ -2,7 +2,14 @@
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
 import { runAi } from './run'
-import { aiAvailability, aiSetup } from './setup'
+import {
+  aiAvailability,
+  aiSetup,
+  aiTakesPictures,
+  cappedAiEnv,
+  openAiBaseUrl
+} from './setup'
+import { estimateMicro } from '@/features/email-generation/pricing'
 import { InMemoryBudgetLedger, SupabaseBudgetLedger } from './budget-ledger'
 import { geminiEstimateMicro } from '@/lib/providers/gemini-pricing'
 
@@ -503,5 +510,213 @@ describe('runAi platform work', () => {
     expect(result).toMatchObject({ ok: true, costMicro: 58 })
     expect(ledger.spentMicro(null)).toBe(58)
     expect(ledger.spentMicro(tenantId)).toBe(0)
+  })
+})
+
+describe('the second provider (REL-PRV, off by default)', () => {
+  const openai = (over: Record<string, string> = {}) =>
+    env({ AI_V2_PROVIDER: 'openai', OPENAI_API_KEY: 'test-key', ...over })
+  const answer = (over: Record<string, unknown> = {}) =>
+    new Response(
+      JSON.stringify({
+        id: 'resp_1',
+        model: 'gpt-6-luna',
+        status: 'completed',
+        usage: { input_tokens: 1000, output_tokens: 100 },
+        output: [
+          {
+            type: 'message',
+            content: [{ type: 'output_text', text: '{"block":"hero_product"}' }]
+          }
+        ],
+        ...over
+      }),
+      { status: 200 }
+    )
+  const call = (
+    fetch: ReturnType<typeof vi.fn>,
+    over: Partial<typeof request> & Record<string, unknown> = {}
+  ) => {
+    const ledger = new InMemoryBudgetLedger(1_000_000)
+    return {
+      ledger,
+      result: runAi(
+        {
+          tenantId,
+          callerKey: 'label:openai',
+          purpose: 'label',
+          request: { ...request, ...over }
+        },
+        {
+          ledger,
+          env: openai(),
+          fetch: fetch as unknown as typeof globalThis.fetch
+        }
+      )
+    }
+  }
+  const sentBody = (fetch: ReturnType<typeof vi.fn>) =>
+    JSON.parse(String((fetch.mock.calls[0] as [string, RequestInit])[1].body))
+
+  it('is chosen only by its own switch: never by an OpenAI key, nor by an older AI_DEFAULT_PROVIDER value', () => {
+    expect(aiSetup('copy', env({ OPENAI_API_KEY: 'k' }))).toMatchObject({
+      provider: 'fake',
+      reason: 'missing_key'
+    })
+    for (const value of ['openai', 'gemini', 'anthropic'])
+      expect(
+        aiSetup(
+          'copy',
+          env({
+            AI_DEFAULT_PROVIDER: value,
+            OPENAI_API_KEY: 'k',
+            GEMINI_API_KEY: 'g'
+          })
+        ),
+        value
+      ).toMatchObject({ provider: 'gemini' })
+    expect(aiSetup('copy', openai())).toMatchObject({
+      ready: true,
+      provider: 'openai',
+      model: 'gpt-6.1-terra',
+      baseUrl: openAiBaseUrl
+    })
+    // Forcing the fake always wins (tests and Claude sessions).
+    expect(
+      aiSetup('copy', openai({ AI_DEFAULT_PROVIDER: 'fake' }))
+    ).toMatchObject({ provider: 'fake', reason: 'fake_selected' })
+    // Its address is fixed: a configured one is never used.
+    expect(
+      aiSetup(
+        'copy',
+        openai({ OPENAI_BASE_URL: 'https://proxy.example.com/v1' })
+      )
+    ).toMatchObject({ baseUrl: openAiBaseUrl })
+  })
+
+  it('answers with the fake without its key, and fails closed on an unpriced model', () => {
+    expect(aiSetup('copy', env({ AI_V2_PROVIDER: 'openai' }))).toMatchObject({
+      provider: 'fake',
+      reason: 'missing_key'
+    })
+    expect(aiSetup('label', openai())).toMatchObject({ model: 'gpt-6-luna' })
+    expect(
+      aiSetup('plan', openai({ OPENAI_PLAN_MODEL: 'gpt-6-luna' }))
+    ).toMatchObject({ model: 'gpt-6-luna' })
+    expect(
+      aiSetup('copy', openai({ OPENAI_COPY_MODEL: 'gpt-unpriced' }))
+    ).toEqual({ ready: false, provider: 'openai', reason: 'unsupported_model' })
+    expect(aiAvailability('copy', openai())).toEqual({
+      live: true,
+      provider: 'openai',
+      model: 'gpt-6.1-terra',
+      reason: null
+    })
+    expect(aiTakesPictures('label', openai())).toBe(false)
+    expect(aiTakesPictures('label', live)).toBe(true)
+  })
+
+  it('caps every provider’s call time for a job', () => {
+    const capped = cappedAiEnv(
+      'label',
+      openai({ OPENAI_TIMEOUT_MS: '90000', GEMINI_TIMEOUT_MS: '90000' }),
+      10_000
+    )
+    expect(capped.OPENAI_TIMEOUT_MS).toBe('10000')
+    expect(capped.GEMINI_TIMEOUT_MS).toBe('10000')
+    expect(aiSetup('label', capped)).toMatchObject({ timeoutMs: 10_000 })
+  })
+
+  it('sends a call to its official address with the body it priced, and records the real cost', async () => {
+    const fetch = vi.fn(async () => answer())
+    const { ledger, result } = call(fetch, { reasoningEffort: 'low' })
+    await result
+    const [sentUrl, sentInit] = (
+      fetch.mock.calls as unknown as [string, RequestInit][]
+    )[0]
+    expect(sentUrl).toBe(`${openAiBaseUrl}/responses`)
+    expect((sentInit.headers as Record<string, string>).authorization).toBe(
+      'Bearer test-key'
+    )
+    const body = sentBody(fetch)
+    // Answer room plus thinking room; schemas as a guide; the standard tier.
+    expect(body).toMatchObject({
+      max_output_tokens: request.maxOutputTokens + 1_024,
+      service_tier: 'default',
+      text: { format: { strict: false } }
+    })
+    // 1,000 input at $0.10/M + 100 output at $0.50/M = 100 + 50 micro-USD.
+    expect(await result).toMatchObject({
+      ok: true,
+      provider: 'openai',
+      model: 'gpt-6-luna',
+      costMicro: 150,
+      content: { block: 'hero_product' }
+    })
+    expect(ledger.spentMicro(tenantId)).toBe(150)
+    const reserved = [...ledger.reservations.values()][0]
+    expect(reserved.estimateMicro).toBe(
+      estimateMicro(
+        'gpt-6-luna',
+        String(sentInit.body),
+        request.maxOutputTokens + 1_024
+      )
+    )
+  })
+
+  it('settles what its failures cost: nothing when refused, the usage when cut short, the ceiling when unknown', async () => {
+    const busy = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ error: { code: 'rate_limit_exceeded' } }),
+          { status: 429, headers: { 'retry-after': '20' } }
+        )
+    )
+    const one = call(busy)
+    expect(await one.result).toMatchObject({ ok: false, code: 'rate_limited' })
+    expect(one.ledger.spentMicro(tenantId)).toBe(0)
+
+    const cut = vi.fn(async () =>
+      answer({
+        status: 'incomplete',
+        incomplete_details: { reason: 'max_output_tokens' },
+        usage: { input_tokens: 1000, output_tokens: 200 }
+      })
+    )
+    const two = call(cut)
+    expect(await two.result).toMatchObject({ ok: false, code: 'incomplete' })
+    // 1,000 input at $0.10/M + 200 output at $0.50/M = 100 + 100.
+    expect(two.ledger.spentMicro(tenantId)).toBe(200)
+
+    const down = vi.fn(async () => new Response('oops', { status: 500 }))
+    const three = call(down)
+    expect(await three.result).toMatchObject({ ok: false })
+    const estimate = [...three.ledger.reservations.values()][0].estimateMicro
+    expect(three.ledger.spentMicro(tenantId)).toBe(estimate)
+  })
+
+  it('refuses before reserving or sending: pictures, a request too large, no answer shape', async () => {
+    for (const [over, diagnostic] of [
+      [
+        {
+          images: [
+            { mediaType: 'image/png', base64: 'iVBORw0KGgoAAAANSUhEUg==' }
+          ]
+        },
+        'images_unsupported'
+      ],
+      [{ user: 'x'.repeat(260_000) }, 'request_too_large'],
+      [{ schema: undefined }, 'schema_required']
+    ] as const) {
+      const fetch = vi.fn()
+      const { ledger, result } = call(fetch, over as never)
+      expect(await result, diagnostic).toMatchObject({
+        ok: false,
+        code: 'rejected_request',
+        diagnostic
+      })
+      expect(fetch).not.toHaveBeenCalled()
+      expect(ledger.reservations.size).toBe(0)
+    }
   })
 })
