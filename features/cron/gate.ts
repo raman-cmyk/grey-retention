@@ -1,12 +1,17 @@
 import { timingSafeEqual } from 'node:crypto'
+/**
+ * The scheduler's call carries the shared secret. Spaces and line breaks
+ * at either end of either copy are ignored (CI-005: a pasted secret's
+ * trailing line break stopped every scheduled call).
+ */
 export function cronAuthorized(
   header: string | null,
   secret: string | undefined
 ) {
-  if (!secret || secret.length < 32 || !header?.startsWith('Bearer '))
-    return false
-  const provided = Buffer.from(header.slice(7)),
-    expected = Buffer.from(secret)
+  const want = secret?.trim()
+  if (!want || want.length < 32 || !header?.startsWith('Bearer ')) return false
+  const provided = Buffer.from(header.slice(7).trim()),
+    expected = Buffer.from(want)
   return (
     provided.length === expected.length && timingSafeEqual(provided, expected)
   )

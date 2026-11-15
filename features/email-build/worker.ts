@@ -9,6 +9,7 @@ import {
 import { SupabaseOfferSource, type OfferSource } from '@/features/offers/source'
 import { databaseFallbackLog, type FallbackLog } from '@/features/fallback/log'
 import { stepCode } from '@/features/strategy/worker'
+import { inPlanWindow } from '@/features/strategy/dates'
 import { planStore, storeForPlan } from '@/features/onboarding/store-source'
 import { planOfferSource } from '@/features/strategy/offers'
 import {
@@ -149,6 +150,11 @@ export async function runEmailBuilds(
         const planned = plannedEmail.safeParse(job.planned)
         if (!planned.success) {
           await fail('planned_email_invalid', true)
+          continue
+        }
+        // REL-DAT: an email outside its plan's 15 days is never made.
+        if (!inPlanWindow(planned.data.date, job.start_on)) {
+          await fail('slot_outside_plan', true)
           continue
         }
         // ONB-057b: the store the plan was made from: the sample store's
