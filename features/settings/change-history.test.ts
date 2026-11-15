@@ -5,6 +5,51 @@ describe('a recorded change in plain words', () => {
   it.each([
     ['max_discount_changed', { from: null, to: 20 }, 'Max discount set to 20%'],
     [
+      'brand_book_corrected',
+      { section: 'voice', action: 'replace' },
+      "Brand book: line about the brand's voice changed"
+    ],
+    [
+      'brand_book_corrected',
+      { section: 'customers.love', action: 'add' },
+      'Brand book: line about what customers love added'
+    ],
+    [
+      'brand_book_corrected',
+      { section: 'facts.returnDays', action: 'replace', value: '30' },
+      'Brand book: returns within 30 days'
+    ],
+    [
+      'brand_book_corrected',
+      { section: 'facts.returnDays', action: 'replace', value: '0' },
+      'Brand book: no returns'
+    ],
+    [
+      'brand_book_corrected',
+      { section: 'facts.freeShipping', action: 'replace', value: 'over 75' },
+      'Brand book: free shipping over 75'
+    ],
+    [
+      'brand_book_corrected',
+      { section: 'facts.deliveryDays', action: 'replace', value: '3-7' },
+      'Brand book: delivery in 3 to 7 days'
+    ],
+    [
+      'brand_book_corrected',
+      { section: 'facts.guaranteeDays', action: 'remove' },
+      'Brand book: money-back guarantee removed'
+    ],
+    [
+      'brand_book_correction_withdrawn',
+      { section: 'marketing', action: 'remove' },
+      "Brand book: change about the brand's marketing undone"
+    ],
+    [
+      'brand_book_correction_withdrawn',
+      { section: 'facts.returnDays', action: 'replace' },
+      'Brand book: change to the return policy undone'
+    ],
+    [
       'max_discount_changed',
       { from: 20, to: 25 },
       'Max discount changed from 20% to 25%'
@@ -135,6 +180,25 @@ describe('a recorded change in plain words', () => {
     expect(changeText('revenue_goal_set', { month: '2026-11-01' })).toBeNull()
     expect(changeText('margin_floor_changed', { to_floor: 30 })).toBeNull()
     expect(changeText('discount_code_added', {})).toBeNull()
+    expect(
+      changeText('brand_book_corrected', {
+        section: 'constructor',
+        action: 'add'
+      })
+    ).toBeNull()
+    expect(
+      changeText('brand_book_corrected', {
+        section: 'voice',
+        action: 'rewrite'
+      })
+    ).toBeNull()
+    expect(
+      changeText('brand_book_corrected', {
+        section: 'facts.returnDays',
+        action: 'replace',
+        value: 'two weeks'
+      })
+    ).toBeNull()
     expect(
       changeText('klaviyo_connection_changed', { to_status: 'odd' })
     ).toBeNull()
