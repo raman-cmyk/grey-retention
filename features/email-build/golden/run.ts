@@ -53,7 +53,10 @@ export async function runGolden(
       result,
       store: await goldenStore(brief.store),
       sections: s ? { rules: s.rules, sendAt: s.sendAt } : null,
-      fallbacks: deps.fallbacks.entries()
+      fallbacks: deps.fallbacks.entries(),
+      saves: Object.values(
+        (progress.work ?? {}) as Record<string, { saves?: number }>
+      ).reduce((n, w) => n + (w.saves ?? 0), 0)
     }
   }
   const planned = plannedEmail.safeParse(brief.planned)

@@ -26,6 +26,8 @@ export type GoldenRun = {
   /** The offer rules and send time the first step saved. */
   sections: Pick<SectionsOutput, 'rules' | 'sendAt'> | null
   fallbacks: readonly FallbackEntry[]
+  /** How often a step saved its rounds (REL-AI part 2b) before it ended. */
+  saves?: number
 }
 
 /** Text a broken template or a model's filler would leave behind. */
