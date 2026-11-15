@@ -451,6 +451,26 @@ describe('saved steps (REL-081)', () => {
     expect(['subject_taken', 'copy_failed']).toContain(failure(calls)!.code)
   })
 
+  it('tries the copy step again when the database finds its subject taken by another email of the plan (REL-AI1b)', async () => {
+    const { saved } = await fullRun()
+    const { db, calls } = fakeDb(
+      [
+        step({
+          step: 'copy',
+          progress: { sections: saved.sections, content: saved.content }
+        })
+      ],
+      {
+        finish_email_step: { code: 'PT409', details: 'subject_taken' } as never
+      }
+    )
+    await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+    expect(failure(calls)).toMatchObject({
+      code: 'subject_taken',
+      final: false
+    })
+  })
+
   it('fails at once when the database refuses a step’s output', async () => {
     const { db, calls } = fakeDb([step()], {
       finish_email_step: { code: '22023' }
