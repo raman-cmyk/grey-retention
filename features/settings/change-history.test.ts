@@ -10,6 +10,21 @@ describe('a recorded change in plain words', () => {
       'Max discount changed from 20% to 25%'
     ],
     [
+      'margin_floor_changed',
+      { from_margin: null, from_floor: null, to_margin: 60, to_floor: 30 },
+      'Margin floor set to 30% on a 60% margin'
+    ],
+    [
+      'margin_floor_changed',
+      { from_margin: 60, from_floor: 30, to_margin: 55, to_floor: 0 },
+      'Margin floor changed to 0% on a 55% margin (was 30% on 60%)'
+    ],
+    [
+      'margin_floor_changed',
+      { from_margin: 55, from_floor: 25, to_margin: null, to_floor: null },
+      'Margin floor removed'
+    ],
+    [
       'discount_code_added',
       { code: 'WELCOME10', percent: 10, expires_at: null },
       'Code WELCOME10 added (10% off)'
@@ -83,6 +98,7 @@ describe('a recorded change in plain words', () => {
 
   it('explains nothing it cannot read', () => {
     expect(changeText('max_discount_changed', { to: 'lots' })).toBeNull()
+    expect(changeText('margin_floor_changed', { to_floor: 30 })).toBeNull()
     expect(changeText('discount_code_added', {})).toBeNull()
     expect(
       changeText('klaviyo_connection_changed', { to_status: 'odd' })

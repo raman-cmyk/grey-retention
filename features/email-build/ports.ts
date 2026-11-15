@@ -6,7 +6,11 @@ import {
   type CatalogProduct,
   type DiscountCode
 } from '@/features/assembly/inputs'
-import type { OfferSource, SupabaseOfferSource } from '@/features/offers/source'
+import {
+  offersFrom,
+  type OfferSource,
+  type SupabaseOfferSource
+} from '@/features/offers/source'
 import { sampleStore } from '@/features/strategy/sample'
 import { localTimeCandidates } from '@/lib/local-time'
 
@@ -126,14 +130,9 @@ export const ownerOrSampleOffers = (
     if (!managed) return null
     if (managed.maxDiscountPercent === null && managed.codes.length === 0)
       return sample.offers(tenantId, at)
-    const sends = at ? Date.parse(at) : Date.now()
-    return {
-      // No max saved yet means no discount, whatever codes exist (DSC-001).
-      maxDiscountPercent: managed.maxDiscountPercent,
-      codes: managed.codes
-        .filter((c) => c.expiresAt === null || Date.parse(c.expiresAt) > sends)
-        .map(({ code, percent, expiresAt }) => ({ code, percent, expiresAt }))
-    }
+    // No max saved yet means no discount, whatever codes exist (DSC-001);
+    // the margin floor caps the rest (PLN-039).
+    return offersFrom(managed, at)
   }
 })
 
