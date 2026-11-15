@@ -292,6 +292,16 @@ describe('the design studio’s rounds (DST-006c)', () => {
           ]
         },
         'too_many_pictures'
+      ],
+      [
+        {
+          request: [
+            Object.assign(new Error('A render loads from https origins only'), {
+              code: '22023'
+            })
+          ]
+        },
+        'not_drawable'
       ]
     ] as const) {
       const p = ports(answers as never)
@@ -367,6 +377,15 @@ describe('the design studio’s rounds (DST-006c)', () => {
       reason: 'studio_timed_out'
     })
     expect(last.coded).toHaveBeenCalledWith('s2', 'studio_timed_out')
+    // A picture that failed the critic is never designed again with no
+    // wait left for its next picture.
+    const failed = ports({ renders: [drawn(1)], critique: [fail()] })
+    const out2 = await studioRound([brief('s2')], spent, failed)
+    expect(doneOf(out2).sections[0]).toMatchObject({
+      reason: 'studio_timed_out'
+    })
+    expect(failed.design).not.toHaveBeenCalled()
+    expect(failed.request).not.toHaveBeenCalled()
   })
 
   it('reads its work beside the database’s save count, and starts over for another brief, keeping the build’s limits', async () => {

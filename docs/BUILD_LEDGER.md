@@ -2639,7 +2639,7 @@ Append entries using this exact shape:
 - Changed contracts: see Global decision DST-006c. New `features/studio/rounds.ts`; nothing calls it yet.
 - Migrations: none.
 - Verification run: format, lint with no warnings, typecheck, all unit tests, build. code-reviewer: its blocking items fixed (only a section that cannot be drawn or the picture limit is coded, every other request error throws; the ledger), and its should-fix items (the brief digest, unreadable work keeps the build's limits, no design without a picture left, room for the critic's 3 tries, the picture checked to be the section's, the 6 waits counted, the 45 minutes recorded).
-- Known issues: the Section designer's next round gets the critic's problems but not its last design (each call starts afresh); giving it the last design is a DST-003 follow-up. A step that throws after asking for a picture is tried again and designs again (a new render under a new key, within the 12).
+- Known issues: the Section designer's next round gets the critic's problems but not its last design (each call starts afresh); giving it the last design is a DST-003 follow-up. Part 2 must size the studio step's time so the critic's 3 tries fit at the start of a claim (`fits(3)`, about 47 s of the step's 50 s today), and build briefs in a fixed key order (their digest is of their JSON). Re-check fixes: every other 22023 from the database is `not_drawable`; no design with no wait left. A step that throws after asking for a picture is tried again and designs again (a new render under a new key, within the 12).
 - Next consumer: DST-006c part 2.
 
 ### 2026-11-15 — DST-006b part 2 — the design studio's job

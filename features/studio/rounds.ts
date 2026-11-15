@@ -212,8 +212,12 @@ export function startWork(
 function refusal(error: unknown): CodedReason | null {
   if (error instanceof SectionNotDrawable) return 'not_drawable'
   const e = error as { code?: string; details?: string; message?: string }
-  if (e?.code === '22023' && e.details === 'too_many_renders')
-    return 'too_many_pictures'
+  if (e?.code === '22023')
+    // The database's fixed answers about the section: its picture limit,
+    // or a key, size or origin it refuses (a retry never passes).
+    return e.details === 'too_many_renders'
+      ? 'too_many_pictures'
+      : 'not_drawable'
   // The same key with another section (a design made again after a lost
   // claim): that design cannot be drawn under its round's key.
   if (e?.code === 'PT409' && e.message === "This key is another section's")
@@ -305,7 +309,8 @@ export async function studioRound(
       delete s.alt
     }
     if (s.state !== 'design') continue
-    if (ports.now() >= work.until) {
+    // Out of time, or no wait left for the picture it would ask for.
+    if (ports.now() >= work.until || work.waits >= studioWaits.perStep) {
       await code(s, 'studio_timed_out')
       continue
     }
