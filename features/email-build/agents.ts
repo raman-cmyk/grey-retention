@@ -12,8 +12,10 @@ import type { BuildAgents } from './build'
 
 /**
  * REL-AI part 2: "Create email" on the agent path. Each model call is
- * capped at this, so a step with its 3 tries stays well inside its
- * 60-second budget (`stepBudgetMs`).
+ * capped at this, so a step with its 3 tries (about 46 to 48 s at worst,
+ * with its database calls) stays inside the 50-second step budget
+ * (`stepBudgetMs`); the job starts an agent step only while a whole step
+ * fits before its deadline.
  */
 export const agentCallMs = 15_000
 
@@ -38,14 +40,15 @@ export const emailAgentsOn = (env: NodeJS.ProcessEnv) =>
  * off, or no live model is set up (the fake), the build stays on the code
  * path and nothing is metered or logged, as the inbox and onboarding
  * readers do without a model. With both on, MEM-001's agents run through
- * the metered `runAi` on the workspace's own budget (its daily cap), with
- * the shared memory and the run log.
+ * the metered `runAi`, charged to the workspace's own AI allowance
+ * (`reserve_ai_usage`), with the shared do's and don'ts and the run log.
  */
 export function buildAgentsFor(
   db: SupabaseClient<Database>,
   env: NodeJS.ProcessEnv = process.env
 ): BuildAgents | null {
-  if (!emailAgentsOn(env) || aiSetup('copy', env).provider === 'fake')
+  const setup = aiSetup('copy', env)
+  if (!emailAgentsOn(env) || setup.provider === 'fake' || !setup.ready)
     return null
   const capped = agentEnv(env)
   const ledger = new SupabaseBudgetLedger(db)

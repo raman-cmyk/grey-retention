@@ -27,12 +27,13 @@ import type { DiscountCode, OfferSource } from '@/features/offers/source'
 import { offersAt, type Store } from './ports'
 
 /**
- * EML-004 part 2: one planned email, built from start to finish. This part
- * is the code-only path (like STR-003 part 2's plan): the safe section
- * layout, products placed in plan order, plain facts-only copy that must
- * pass every code check, and coded blocks (approach A). No AI is called.
- * The agents (EML-001..004) take over once live AI is switched on with the
- * owner's OK and the job has its own time limit and a longer lease.
+ * EML-004 part 2: one planned email, built from start to finish: the safe
+ * section layout, products placed in plan order, plain facts-only copy
+ * that must pass every code check, and coded blocks (approach A), with no
+ * AI. REL-AI part 2: with the owner's switch on and a live model
+ * (`BuildCtx.agents`), the Section planner and the Content locker choose
+ * the sections and place the products (each checked, else code, logged);
+ * the copy and the design follow in parts 2b and 2c.
  */
 
 /** The planned email this build is for (a slot of STR-003's stored plan). */
@@ -441,7 +442,14 @@ export async function lockedDraft(
   },
   ctx: BuildCtx
 ): Promise<
-  | { ok: true; draft: Draft; sendAt: string; changes: ChangeKey[] }
+  | {
+      ok: true
+      draft: Draft
+      sendAt: string
+      changes: ChangeKey[]
+      /** An agent's plan or placement was used (REL-AI part 2). */
+      ai: boolean
+    }
   | {
       ok: false
       code:
@@ -463,7 +471,8 @@ export async function lockedDraft(
     ok: true,
     draft: copy.output.draft,
     sendAt: sections.output.sendAt,
-    changes: copy.output.changes
+    changes: copy.output.changes,
+    ai: sections.output.layout.source === 'agent' || locked.source === 'agent'
   }
 }
 
@@ -494,6 +503,7 @@ export async function buildEmail(
     ...input,
     sendAt: made.sendAt,
     sample: input.store.sample,
+    ai: made.ai,
     copy: { draft: made.draft, changes: made.changes }
   })
 }

@@ -81,7 +81,11 @@ export async function runEmailBuilds(
   const limit = deps.build ? buildSteps.length + 1 : (deps.limit ?? 25)
   let ran = 0
   for (let n = 0; n < limit; n++) {
-    if (deps.deadline && now() > deps.deadline) break
+    // An agent step can take most of a step's budget (3 tries of 15 s):
+    // with the agents on, a new step is claimed only while a whole step
+    // still fits before the deadline (REL-AI part 2).
+    if (deps.deadline && now() + (agents ? stepBudgetMs : 0) > deps.deadline)
+      break
     const claimed = await db.rpc(
       'claim_email_build',
       deps.build ? { target: deps.build } : {}

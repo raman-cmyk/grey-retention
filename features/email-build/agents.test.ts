@@ -1,6 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
+const { runAi } = vi.hoisted(() => ({
+  runAi: vi.fn(async () => ({ ok: false as const, code: 'cap_reached' }))
+}))
+vi.mock('@/features/ai/run', () => ({ runAi }))
 import { agentCallMs, agentEnv, buildAgentsFor, emailAgentsOn } from './agents'
 
 const db = { rpc: () => null, from: () => null } as never
@@ -44,5 +48,28 @@ describe('the agents switch for "Create email" (REL-AI part 2)', () => {
           .GEMINI_TIMEOUT_MS
       )
     ).toBeLessThanOrEqual(agentCallMs)
+  })
+
+  it('sends every agent call through runAi with the capped timeout, on the workspace', async () => {
+    const agents = buildAgentsFor(
+      db,
+      env({
+        EMAIL_BUILD_AGENTS: 'on',
+        GEMINI_API_KEY: 'k',
+        GEMINI_TIMEOUT_MS: '60000'
+      })
+    )!
+    await agents.ai({
+      tenantId: '00000000-0000-4000-8000-000000000101',
+      callerKey: 'email-build:b1',
+      purpose: 'copy',
+      request: { system: 's', user: 'u' } as never
+    })
+    const [call, opts] = runAi.mock.calls[0] as unknown as [
+      { tenantId: string },
+      { env: NodeJS.ProcessEnv }
+    ]
+    expect(call.tenantId).toBe('00000000-0000-4000-8000-000000000101')
+    expect(Number(opts.env.GEMINI_TIMEOUT_MS)).toBeLessThanOrEqual(agentCallMs)
   })
 })

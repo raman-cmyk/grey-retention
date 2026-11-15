@@ -521,12 +521,45 @@ describe('the agent path (REL-AI part 2)', () => {
   const built = (calls: Call[]) =>
     calls.find((c) => c.fn === 'finish_email_build')!.args.result as BuiltEmail
 
-  it('asks no model when the agents are off', async () => {
-    const ai = vi.fn<AiCall>()
+  it('stays on code by default, even with a Gemini key, while the owner’s switch is off', async () => {
+    vi.stubEnv('GEMINI_API_KEY', 'k')
+    vi.stubEnv('AI_DEFAULT_PROVIDER', '')
+    vi.stubEnv('EMAIL_BUILD_AGENTS', 'off')
+    try {
+      const { db, calls } = fakeDb([step()])
+      await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+      const sections = calls.find(
+        (c) => c.fn === 'finish_email_step' && c.args.done === 'sections'
+      )!.args.output as { layout: { source: string } }
+      expect(sections.layout.source).toBe('code')
+      expect(built(calls).ai).toBe(false)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('with the agents on, starts a step only while a whole step fits before the deadline', async () => {
+    const ai = vi.fn<AiCall>(async () => ({ ok: false, code: 'cap_reached' }))
     const { db, calls } = fakeDb([step()])
-    await runEmailBuilds(db, { agents: null, fallbacks: memoryFallbackLog() })
-    expect(ai).not.toHaveBeenCalled()
-    expect(built(calls).ai).toBe(false)
+    let clock = 0
+    await runEmailBuilds(db, {
+      agents: agentsWith(ai),
+      deadline: 40_000,
+      now: () => clock,
+      fallbacks: memoryFallbackLog()
+    })
+    // 40 s left is less than a whole step: nothing is claimed.
+    expect(calls.some((c) => c.fn === 'claim_email_build')).toBe(false)
+    clock = 0
+    const roomy = fakeDb([step()])
+    await runEmailBuilds(roomy.db, {
+      agents: agentsWith(ai),
+      deadline: 60_000,
+      limit: 1,
+      now: () => clock,
+      fallbacks: memoryFallbackLog()
+    })
+    expect(roomy.calls.some((c) => c.fn === 'claim_email_build')).toBe(true)
   })
 
   it('uses the Section planner’s plan when the agents are on, and says the email was made with AI', async () => {
