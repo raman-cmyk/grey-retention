@@ -2,6 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
+import { cappedAiEnv } from '@/features/ai/setup'
 import { inboxTagging } from '@/features/intelligence/live'
 import { labelInboxEmails, type LabelRun } from './label'
 import { liveVariantMs, makeInboxVariants, type VariantRun } from './variants'
@@ -53,15 +54,8 @@ export async function runTagging(
   const label = options.label ?? labelInboxEmails
   const place = options.variants ?? makeInboxVariants
   const base = options.env ?? process.env
-  const configured = Number(base.GEMINI_TIMEOUT_MS)
-  const env = {
-    ...base,
-    GEMINI_TIMEOUT_MS: String(
-      Number.isFinite(configured) && configured > 0
-        ? Math.min(configured, tagCallTimeoutMs)
-        : tagCallTimeoutMs
-    )
-  } as NodeJS.ProcessEnv
+  // Every call capped, whichever provider answers (REL-PRV).
+  const env = cappedAiEnv('label', base, tagCallTimeoutMs)
   try {
     const { ask, pictures, batchMs } = inboxTagging(db, env)
     const deadline = started + (options.budgetMs ?? tagRunMs)

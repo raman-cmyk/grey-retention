@@ -504,3 +504,16 @@ describe('the last check of the discount code (REL-OFF)', () => {
     expect(await design(progress)).toEqual({ ok: false, code: 'offer_unsafe' })
   })
 })
+
+describe('a build that started in time (REL-DAT)', () => {
+  it('finishes its later steps even after the send time', async () => {
+    const late = { clock: () => Date.parse('2099-01-01T00:00:00Z') }
+    const progress = await savedSteps()
+    const copy = await runBuildStep(
+      'copy',
+      { planned, store: await store(), offers: sampleOffers, progress },
+      ctxWith(null, late)
+    )
+    expect(copy).toMatchObject({ ok: true, done: 'copy' })
+  })
+})

@@ -10,8 +10,8 @@ import type { BuildAgents } from './build'
  * metered by the build's `ai` (the workspace's own allowance) and is in
  * the run log. Assembly builds the request (instructions, the store's data
  * as untrusted JSON, the answer shape); `assembleLocked` checks the answer.
- * The build has agents only with a live model (`buildAgentsFor`), so an
- * answer is a live one.
+ * The build has agents only with a live model (`buildAgentsFor`); the
+ * answer says which provider gave it.
  */
 export const copywriterVersion = '2026-11-15.1'
 
@@ -49,7 +49,7 @@ export function copywriterRun(
       return {
         ok: true,
         content: result.output,
-        provider: 'gemini',
+        provider: result.provider,
         model: 'copywriter'
       }
     return {

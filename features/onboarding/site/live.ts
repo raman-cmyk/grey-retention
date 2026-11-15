@@ -7,7 +7,7 @@ import {
 } from '@/features/agents/supabase-stores'
 import { SupabaseBudgetLedger } from '@/features/ai/budget-ledger'
 import { runAi } from '@/features/ai/run'
-import { aiSetup } from '@/features/ai/setup'
+import { aiSetup, cappedAiEnv } from '@/features/ai/setup'
 import { ProviderFault } from '@/features/integrations/failures'
 import {
   agentAsk,
@@ -53,12 +53,8 @@ export function jobFailure(error: unknown): unknown {
  * uses its default) is read back, so the cap always holds.
  */
 export function cappedEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const setup = aiSetup('review', env)
-  const used = 'timeoutMs' in setup ? setup.timeoutMs : siteCallTimeoutMs
-  return {
-    ...env,
-    GEMINI_TIMEOUT_MS: String(Math.min(used, siteCallTimeoutMs))
-  } as NodeJS.ProcessEnv
+  // Whichever provider answers (REL-PRV).
+  return cappedAiEnv('review', env, siteCallTimeoutMs)
 }
 
 /**

@@ -110,6 +110,7 @@ export type BuildResult =
       /** Short codes for the build's error column. */
       code:
         | 'slot_time_invalid'
+        | 'send_time_passed'
         | 'offers_unreadable'
         | 'copy_failed'
         | 'subject_taken'
@@ -274,7 +275,10 @@ export async function sectionsStep(
   ctx: BuildCtx
 ): Promise<
   | { ok: true; output: SectionsOutput }
-  | { ok: false; code: 'slot_time_invalid' | 'offers_unreadable' }
+  | {
+      ok: false
+      code: 'slot_time_invalid' | 'send_time_passed' | 'offers_unreadable'
+    }
 > {
   const { planned, store, offers } = input
   // The planned local time, as an instant (the earlier one on a DST fold).
@@ -283,6 +287,10 @@ export async function sectionsStep(
     store.timezone
   )[0]
   if (!sendAt) return { ok: false, code: 'slot_time_invalid' }
+  // REL-DAT: an email whose send time has passed is never made (its day
+  // may be today: "Create email" accepts today's emails).
+  if (Date.parse(sendAt) <= (ctx.clock ?? Date.now)())
+    return { ok: false, code: 'send_time_passed' }
   // A planned offer needs the saved offers: a read that failed is tried
   // again (REL-084), never built as "no discount" with the wrong reason.
   // An email without an offer goes on with none.
@@ -693,6 +701,7 @@ export async function lockedDraft(
       ok: false
       code:
         | 'slot_time_invalid'
+        | 'send_time_passed'
         | 'offers_unreadable'
         | 'copy_failed'
         | 'subject_taken'
@@ -753,7 +762,10 @@ export type BuildCtx = {
    * time limit (tests and tools).
    */
   until?: number
-  /** The clock for `until` (ms since epoch); default `Date.now`. */
+  /**
+   * The wall clock (ms since epoch; default `Date.now`): for `until`, and
+   * for refusing a send time that has passed (REL-DAT).
+   */
   clock?: () => number
 }
 

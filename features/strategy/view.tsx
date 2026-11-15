@@ -91,6 +91,7 @@ export function PlanView({
         run={run.id}
         builds={run.builds}
         today={run.today}
+        sendPassed={run.sendPassed}
       />
     )
   return (
@@ -200,7 +201,7 @@ function EmailStatus({
   owner: boolean
   run: string
   slot: number
-  /** The email's day has passed (store time). */
+  /** The email's send time has passed (store time; REL-DAT). */
   passed: boolean
 }) {
   if (!build || build.state === 'failed')
@@ -214,7 +215,7 @@ function EmailStatus({
         )}
         {passed ? (
           <p className="text-sm text-[var(--text-muted)]">
-            This day has passed.
+            Its send time has passed.
           </p>
         ) : owner ? (
           <CreateEmailButton
@@ -264,13 +265,16 @@ function PlannedDays({
   owner,
   run,
   builds,
-  today
+  today,
+  sendPassed
 }: {
   plan: StoredPlan
   owner: boolean
   run: string
   builds: Record<number, EmailBuildView>
   today: string
+  /** REL-DAT: per planned email, its send time has passed. */
+  sendPassed?: boolean[]
 }) {
   const fromFacts =
     plan.source.brief === 'code' && plan.source.planner === 'code'
@@ -340,7 +344,7 @@ function PlannedDays({
                   owner={owner}
                   run={run}
                   slot={i}
-                  passed={s.date < today}
+                  passed={sendPassed?.[i] ?? s.date < today}
                 />
               </li>
             ))}

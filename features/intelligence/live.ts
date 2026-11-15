@@ -7,7 +7,7 @@ import {
 } from '@/features/agents/supabase-stores'
 import { SupabaseBudgetLedger } from '@/features/ai/budget-ledger'
 import { runAi } from '@/features/ai/run'
-import { aiSetup } from '@/features/ai/setup'
+import { aiSetup, aiTakesPictures } from '@/features/ai/setup'
 import { liveBatchMs } from '@/features/inbox/label'
 import { agentAsk, sampleAsk, type Ask } from './passes'
 
@@ -31,7 +31,8 @@ export function inboxTagging(
       memory: new SupabaseMemoryStore(db),
       log: new SupabaseRunLog(db)
     }),
-    pictures: true,
+    // Pictures only for a provider that takes them (REL-PRV).
+    pictures: aiTakesPictures('label', env),
     batchMs: liveBatchMs
   }
 }
