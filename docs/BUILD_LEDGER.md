@@ -2049,11 +2049,11 @@ Append entries using this exact shape:
 ### 2026-11-15 — REL-AI part 1 — one subject per email in a plan
 
 - Status: review
-- Branch/worktree: `claude/rel-ai-unique-subjects` (issue #435), stacked on REL-084 (#434) until it lands.
+- Branch/worktree: `claude/rel-ai-unique-subjects` (issue #435), from main after REL-084 (#434) landed.
 - Commit(s): see the REL-AI part 1 pull request.
 - Changed contracts: see Global decision REL-AI part 1. `copyStep`, `lockedDraft` and `buildEmail` take optional `taken` subjects and can return `subject_taken`; `runBuildStep` takes `taken`; new `uniqueSubject` and `subjectKey`; `buildFailureWords` gains `subject_taken`.
 - Migrations: none.
-- Verification run: format, lint with no warnings, typecheck, all unit tests 2,443 (8 new: six emails of one plan, fourteen alike on one day, hostile store text, a brand with template tags, the worker passing the plan's subjects, the plan read's filters, its error, subject_taken final).
+- Verification run: format, lint with no warnings, typecheck, all unit tests 2,480 on the merge with main (8 new: six emails of one plan, fourteen alike on one day, hostile store text, a brand with template tags, the worker passing the plan's subjects, the plan read's filters, its error, subject_taken final).
 - Known issues: two copy steps of one plan running at the same moment (the owner clicks Create on two emails back to back: each click runs its own build) can both pick the same free subject; REL-AI1b adds the database guard, needed before part 2. The agents' copy (part 2) needs the same rule.
 - Next consumer: REL-AI part 2 (the agent path).
 
