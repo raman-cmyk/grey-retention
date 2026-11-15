@@ -2,40 +2,56 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { BrandFacts } from '@/features/copy-qa/check'
 import type { Database } from '@/lib/supabase/database.types'
 import type { Industry } from '@/features/intelligence/taxonomy'
-import { copyFacts, trueFacts, type FactTopic } from './brand-facts'
+import {
+  copyFacts,
+  minConfidence,
+  trueFacts,
+  type FactTopic
+} from './brand-facts'
 import type { CatalogEntry } from './catalog/read'
 import { claimsSafety } from './claims-safety'
 import type { Finding, FindingSource, FindingTopic } from './findings'
 import type { StoredHistory } from './history/read'
 import { industryInWords } from './industry'
+import { plain } from './words'
 
 /**
  * The Brand book (ONB-106b, AGENT_MAP §0 and §2, D19): what the agents
  * know about the brand, put together in code from what the onboarding
- * readers found. Every agent that uses the Brand book reads it as "the
- * brand's confirmed facts; never contradict them" (`brandBookBlock`), so:
+ * readers found. Two kinds of content, kept apart:
  *
- * - `facts` holds only what is true under every source (`copyFacts`);
- * - what the sources disagree on is in `unclear`, never stated;
- * - everything else is the readers' own plain sentences, the surest few
- *   per topic, never a number or claim they did not check.
+ * - **confirmed**: `facts`, only what is true under every source
+ *   (`copyFacts`), and `owner`, the brand profile the owner approved;
+ *   `unclear` names the topics the sources disagree on, with one rule:
+ *   make no claim about them (never their sentences);
+ * - **observed**: what the readers saw, in their own plain sentences (no
+ *   number and no claim, the shared `plain` check), the surest three per
+ *   topic, never a dated ad offer (those are the Brand pulse's, with end
+ *   dates), and the sending habits only from a full Klaviyo read.
  *
- * Small on purpose: an agent's prompt takes at most 8,000 characters of it.
- * The strategist's own summary (AI) is ONB-106c; the owner corrects lines
- * on the Brand book review page (#58).
+ * The same inputs always give the same book (ties ordered by source and
+ * words), so a new version is saved only when something changed. At most
+ * `maxBookChars` characters: an agent's prompt takes at most 8,000. A real
+ * brand never gets a sample book. The strategist's own summary (AI) is
+ * ONB-106c; the owner corrects lines through ONB-058.
  */
 
-export const brandBookSchema = 1
+export const brandBookSchema = 2
 /** Who wrote a version (`brand_books.written_by`). */
-export const brandBookAuthor = 'brand-book@1'
+export const brandBookAuthor = 'brand-book@2'
+/** Leaves room in an agent's 8,000-character Brand book block. */
+export const maxBookChars = 7_000
 
 const perTopic = 3
 const maxTitles = 8
 const maxAudiences = 10
+const unclearRule = 'Sources disagree: make no claim about it.'
+
+export type BookFacts = Omit<BrandFacts, 'approvedClaims' | 'bannedPhrases'>
 
 export type BrandBookContent = {
   schema: typeof brandBookSchema
-  /** True when it rests on sample data, not the brand's own. */
+  /** True when it rests on sample data (only ever saved for a sample brand). */
   sample: boolean
   brand: {
     name: string | null
@@ -44,28 +60,26 @@ export type BrandBookContent = {
     timezone: string
     currency: string | null
   }
-  facts: Omit<BrandFacts, 'approvedClaims' | 'bannedPhrases'>
-  /** What the sources disagree on: never state it until the owner says. */
-  unclear: { topic: FactTopic; said: string[] }[]
-  offering: string[]
-  customers: {
-    who: string[]
-    love: string[]
-    worries: string[]
+  /** Confirmed: true under every source. */
+  facts: BookFacts
+  /** Confirmed: the brand profile the owner approved, when he did. */
+  owner: { positioning: string; voice: string; prohibitions: string } | null
+  /** Topics the sources disagree on: never state them. */
+  unclear: { topic: FactTopic; rule: string }[]
+  /** What the readers saw: not confirmed, never stated as a fact. */
+  observed: {
+    offering: string[]
+    customers: { who: string[]; love: string[]; worries: string[] }
+    voice: string[]
+    /** Angles in its ads and what made money in its emails. */
+    marketing: string[]
+    sending: {
+      sendsPerWeek: number
+      usualSendTime: string | null
+      audiences: string[]
+    } | null
   }
-  voice: string[]
-  /** Offers and angles seen in the brand's own ads and emails. */
-  marketing: string[]
-  products: {
-    count: number
-    bestsellers: string[]
-    newArrivals: string[]
-  }
-  sending: {
-    sendsPerWeek: number
-    usualSendTime: string | null
-    audiences: string[]
-  } | null
+  products: { count: number; bestsellers: string[]; newArrivals: string[] }
   /** Why some claims are off limits for this kind of brand (ONB-062). */
   avoid: string[]
   sources: FindingSource[]
@@ -79,30 +93,35 @@ export type BrandBookParts = {
   findings: readonly Finding[]
   catalog: readonly CatalogEntry[]
   history: StoredHistory | null
+  /** The catalog read's own count and whether it was live. */
+  catalogStatus: { featurable: number; live: boolean } | null
+  /** The approved brand profile's words, when approved. */
+  owner: BrandBookContent['owner']
 }
 
-/** The surest statements of the topics, at most `perTopic`, each once. */
+const bySureness = (a: Finding, b: Finding) =>
+  b.confidence - a.confidence ||
+  a.source.localeCompare(b.source) ||
+  a.statement.localeCompare(b.statement)
+
+/** The surest plain statements of the topics, at most `perTopic`, each once. */
 function statements(
   findings: readonly Finding[],
   topics: readonly FindingTopic[],
-  live: boolean
+  max = perTopic
 ) {
   const seen = new Set<string>()
   return findings
-    .filter(
-      (f) =>
-        topics.includes(f.topic) &&
-        f.confidence >= 0.6 &&
-        !(live && f.pass === 'sample')
-    )
-    .sort((a, b) => b.confidence - a.confidence)
+    .filter((f) => topics.includes(f.topic) && plain(f.statement))
+    .sort(bySureness)
     .flatMap((f) => {
-      const key = f.statement.trim().toLowerCase()
+      const text = f.statement.trim()
+      const key = text.toLowerCase()
       if (seen.has(key)) return []
       seen.add(key)
-      return [f.statement.trim()]
+      return [text]
     })
-    .slice(0, perTopic)
+    .slice(0, max)
 }
 
 const site = (domain: string | null) => {
@@ -110,33 +129,47 @@ const site = (domain: string | null) => {
   return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(d) ? `https://${d}` : null
 }
 
+/** Drops the least needed observed lines until the book fits. */
+function fit(book: BrandBookContent): BrandBookContent {
+  const size = () => JSON.stringify(book).length
+  const lists = [
+    book.observed.marketing,
+    book.observed.customers.worries,
+    book.observed.voice,
+    book.observed.customers.love,
+    book.observed.customers.who,
+    book.products.newArrivals,
+    book.products.bestsellers,
+    book.observed.offering
+  ]
+  for (const list of lists)
+    while (size() > maxBookChars && list.length) list.pop()
+  if (size() > maxBookChars && book.observed.sending)
+    book.observed.sending.audiences = []
+  return book
+}
+
 /** The Brand book from the readers' findings, the catalog and the history. */
 export function brandBookFrom(parts: BrandBookParts): BrandBookContent {
-  // A workspace read for real never takes a sample-rules finding.
+  // Read for real when any reader read the brand's own data.
   const live =
     parts.history?.live === true ||
-    parts.findings.some((f) => f.pass === 'model')
+    parts.catalogStatus?.live === true ||
+    parts.findings.some((f) => f.pass !== 'sample')
+  const used = parts.findings.filter(
+    (f) => f.confidence >= minConfidence && !(live && f.pass === 'sample')
+  )
   const facts = trueFacts(parts.findings, { live, currency: parts.currency })
   const copy = copyFacts(facts)
-  // Only the facts: the brand's claims and banned words live elsewhere.
-  const safe = {
-    freeShipping: copy.freeShipping,
-    deliveryDays: copy.deliveryDays,
-    returnDays: copy.returnDays,
-    guaranteeDays: copy.guaranteeDays,
-    reviewsVerified: copy.reviewsVerified
-  }
-  const offering = statements(parts.findings, ['offering'], live)
-  const industryWords = offering[0] ?? ''
+  const offering = statements(used, ['offering'])
+  // The industry from every offering sentence, not just the first.
+  const industryWords = statements(used, ['offering'], 20).join('. ')
   const featurable = parts.catalog.filter((p) => p.featurable)
-  const used = parts.findings.filter((f) => !(live && f.pass === 'sample'))
   const history = parts.history
-  return {
+  const full = history?.state === 'ready' && history.complete
+  return fit({
     schema: brandBookSchema,
-    sample:
-      !live ||
-      used.some((f) => f.pass === 'sample') ||
-      (history !== null && !history.live),
+    sample: !live,
     brand: {
       name: parts.brandName?.trim() || null,
       site: site(parts.domain),
@@ -144,25 +177,42 @@ export function brandBookFrom(parts: BrandBookParts): BrandBookContent {
       timezone: parts.timezone,
       currency: parts.currency
     },
-    facts: safe,
-    unclear: facts.conflicts.map((c) => ({
-      topic: c.topic,
-      said: [...new Set(c.said.map((s) => s.statement))].slice(0, perTopic)
-    })),
-    offering,
-    customers: {
-      who: statements(parts.findings, ['audience'], live),
-      love: statements(parts.findings, ['review_theme'], live),
-      worries: statements(parts.findings, ['objection'], live)
+    facts: {
+      freeShipping: copy.freeShipping,
+      deliveryDays: copy.deliveryDays,
+      returnDays: copy.returnDays,
+      guaranteeDays: copy.guaranteeDays,
+      reviewsVerified: copy.reviewsVerified
     },
-    voice: statements(parts.findings, ['tone'], live),
-    marketing: statements(
-      parts.findings,
-      ['promotion', 'angle', 'performance'],
-      live
-    ),
+    owner: parts.owner,
+    unclear: [...new Set(facts.conflicts.map((c) => c.topic))]
+      .sort()
+      .map((topic) => ({ topic, rule: unclearRule })),
+    observed: {
+      offering,
+      customers: {
+        who: statements(used, ['audience']),
+        love: statements(used, ['review_theme']),
+        worries: statements(used, ['objection'])
+      },
+      voice: statements(used, ['tone']),
+      // Never `promotion`: an ad's offer is dated (the Brand pulse's).
+      marketing: statements(used, ['angle', 'performance']),
+      sending:
+        history && full
+          ? {
+              sendsPerWeek: history.history.sendsPerWeek,
+              usualSendTime: history.history.usualSendTime,
+              audiences: history.history.audiences
+                .filter((a) => a.active && !a.excludedOnly)
+                .map((a) => a.name)
+                .sort()
+                .slice(0, maxAudiences)
+            }
+          : null
+    },
     products: {
-      count: featurable.length,
+      count: parts.catalogStatus?.featurable ?? featurable.length,
       bestsellers: featurable
         .filter((p) => p.bestsellerRank !== null)
         .sort((a, b) => a.bestsellerRank! - b.bestsellerRank!)
@@ -170,23 +220,17 @@ export function brandBookFrom(parts: BrandBookParts): BrandBookContent {
         .map((p) => p.title),
       newArrivals: featurable
         .filter((p) => p.newArrival)
+        .sort(
+          (a, b) =>
+            (b.launchedAt ?? '').localeCompare(a.launchedAt ?? '') ||
+            a.title.localeCompare(b.title)
+        )
         .slice(0, maxTitles)
         .map((p) => p.title)
     },
-    sending:
-      history && history.state !== 'empty'
-        ? {
-            sendsPerWeek: history.history.sendsPerWeek,
-            usualSendTime: history.history.usualSendTime,
-            audiences: history.history.audiences
-              .filter((a) => a.active && !a.excludedOnly)
-              .slice(0, maxAudiences)
-              .map((a) => a.name)
-          }
-        : null,
     avoid: claimsSafety(industryWords).groups.map((g) => g.reason),
     sources: [...new Set(used.map((f) => f.source))].sort()
-  }
+  })
 }
 
 type Db = SupabaseClient<Database>
@@ -234,9 +278,32 @@ export async function saveBrandBook(
   return saved.data as number
 }
 
+async function profileOf(db: Db, tenantId: string) {
+  const { data, error } = await db
+    .from('brand_profiles')
+    .select(
+      'brand_name,domain,synthetic,voice,positioning,prohibitions,revision,approved_revision'
+    )
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+async function catalogStatusOf(db: Db, tenantId: string) {
+  const { data, error } = await db
+    .from('catalog_status')
+    .select('currency,featurable,live')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
 /**
  * Reads the workspace's findings, catalog, history and profile, and saves
- * the Brand book when it changed. A failed read throws (the caller logs).
+ * the Brand book when it changed. A real brand with only sample data gets
+ * none (an agent would read it as the brand's). A failed read throws.
  */
 export async function writeBrandBook(
   db: Db,
@@ -254,30 +321,105 @@ export async function writeBrandBook(
       reads.catalog(db, tenantId),
       reads.history(db, tenantId),
       reads.timezone(db, tenantId),
-      db
-        .from('brand_profiles')
-        .select('brand_name,domain')
-        .eq('tenant_id', tenantId)
-        .maybeSingle(),
-      db
-        .from('catalog_status')
-        .select('currency')
-        .eq('tenant_id', tenantId)
-        .maybeSingle()
+      profileOf(db, tenantId),
+      catalogStatusOf(db, tenantId)
     ])
-  if (profile.error) throw profile.error
-  if (status.error) throw status.error
-  return saveBrandBook(
-    db,
-    tenantId,
-    brandBookFrom({
-      brandName: profile.data?.brand_name ?? null,
-      domain: profile.data?.domain ?? null,
-      timezone,
-      currency: status.data?.currency ?? null,
-      findings,
-      catalog,
-      history
-    })
-  )
+  const approved =
+    profile !== null &&
+    profile.approved_revision !== null &&
+    profile.approved_revision === profile.revision
+  const book = brandBookFrom({
+    brandName: profile?.brand_name ?? null,
+    domain: profile?.domain ?? null,
+    timezone,
+    currency: status?.currency ?? null,
+    findings,
+    catalog,
+    history,
+    catalogStatus: status
+      ? { featurable: status.featurable, live: status.live }
+      : null,
+    owner: approved
+      ? {
+          positioning: profile.positioning,
+          voice: profile.voice,
+          prohibitions: profile.prohibitions
+        }
+      : null
+  })
+  if (book.sample && profile?.synthetic !== true) return null
+  return saveBrandBook(db, tenantId, book)
+}
+
+/** The onboarding readers' jobs (a read that finished changes the book). */
+const readerKinds = [
+  'brand.read_site',
+  'brand.read_catalog',
+  'brand.read_history',
+  'brand.read_ads',
+  'brand.read_reviews'
+]
+
+/**
+ * Workspaces whose newest finished read (since `since`) is newer than
+ * their newest Brand book: a write that was skipped or failed is caught up
+ * by the next readers' run. At most `limit`, newest reads first.
+ */
+export async function staleBooks(
+  db: Db,
+  { since, limit = 5 }: { since: string; limit?: number }
+): Promise<string[]> {
+  const reads = await db
+    .from('job_runs')
+    .select('tenant_id,updated_at')
+    .in('kind', readerKinds)
+    .eq('status', 'succeeded')
+    .gte('updated_at', since)
+    .order('updated_at', { ascending: false })
+    .limit(200)
+  if (reads.error) throw reads.error
+  const newest = new Map<string, string>()
+  for (const r of reads.data ?? [])
+    if (!newest.has(r.tenant_id)) newest.set(r.tenant_id, r.updated_at)
+  if (!newest.size) return []
+  const books = await db
+    .from('brand_books')
+    .select('tenant_id,created_at')
+    .in('tenant_id', [...newest.keys()])
+    .order('created_at', { ascending: false })
+    .limit(1000)
+  if (books.error) throw books.error
+  const written = new Map<string, string>()
+  for (const b of books.data ?? [])
+    if (!written.has(b.tenant_id)) written.set(b.tenant_id, b.created_at)
+  return [...newest]
+    .filter(
+      ([t, at]) =>
+        !written.has(t) || Date.parse(written.get(t)!) < Date.parse(at)
+    )
+    .map(([t]) => t)
+    .slice(0, limit)
+}
+
+/** Waits at most `ms` for a write; the route must end in time. */
+export async function within<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              Object.assign(new Error('brand_book_timeout'), {
+                code: 'brand_book_timeout'
+              })
+            ),
+          ms
+        )
+      })
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
 }
