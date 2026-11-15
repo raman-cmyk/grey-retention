@@ -45,7 +45,7 @@ const textOf = (n: Node): string =>
     : children(n).map(textOf).join('')
 
 /** The words of names and labels: `siteLogo-white@2x.png` is site, logo, white, 2x, png. */
-const words = (...texts: (string | null)[]) =>
+export const words = (...texts: (string | null)[]) =>
   texts
     .filter((t): t is string => t !== null)
     .join(' ')
@@ -67,7 +67,7 @@ const lightWords = new Set([
 ])
 const darkWords = new Set(['black'])
 /** Boxes whose pictures are other brands' logos or icons, never the brand's. */
-const otherBrands = new Set([
+export const otherBrands: ReadonlySet<string> = new Set([
   'press',
   'partner',
   'partners',
@@ -90,7 +90,7 @@ const otherBrands = new Set([
 ])
 
 /** The page's own parts: their words never mark a box of other brands. */
-const landmarks = new Set(['html', 'body', 'header', 'nav', 'main', 'footer'])
+export const landmarks: ReadonlySet<string> = new Set(['html', 'body', 'header', 'nav', 'main', 'footer'])
 
 /**
  * What a logo's own file name or label says about its ink. `brand` words
@@ -107,11 +107,11 @@ export function inkHint(
 }
 
 /** Named "logo" as a word (not "logout", not a box of "logos"). */
-const namedLogo = (...texts: (string | null)[]) =>
+export const namedLogo = (...texts: (string | null)[]) =>
   words(...texts).includes('logo')
 
 /** An absolute https link from a page's own words, or null. */
-function absolute(src: string | null, page: string) {
+export function absolute(src: string | null, page: string) {
   const s = src?.trim()
   if (!s || s.startsWith('data:')) return null
   try {
@@ -128,7 +128,7 @@ function absolute(src: string | null, page: string) {
 }
 
 /** The largest picture of a `srcset` (entries end at a comma and a space). */
-function largestOfSet(set: string | null) {
+export function largestOfSet(set: string | null) {
   if (!set) return null
   let best: { url: string; size: number } | null = null
   for (const entry of set.split(/,\s+/)) {
