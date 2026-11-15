@@ -1,7 +1,12 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { readCss } from './css'
-import { sectionProblems, sectionUrls, type DesignedSection } from './section'
+import {
+  sectionDocument,
+  sectionProblems,
+  sectionUrls,
+  type DesignedSection
+} from './section'
 
 const photo = 'https://cdn.shop.example/images/tray.jpg'
 
@@ -106,6 +111,55 @@ describe('the section format reads links with it (DST-001a, DST-003a)', () => {
     expect(sectionUrls(section(css), ['cdn.shop.example'])).toContain(
       'https://evil.example/x.png'
     )
+  })
+
+  it.each([
+    ['h1::before{content:"20% OFF"}', /content/],
+    ['p::before{content:attr(title)}', /content/],
+    ['ol{counter-reset:n}li::before{content:counter(n) ". "}', /counter-reset/],
+    ['p{display:block list-item}', /display: block list-item/],
+    ['p{-webkit-text-fill-color:red}', /-webkit-text-fill-color/],
+    ['ul{list-style:decimal inside}', /list-style: decimal inside/]
+  ])('refuses styles that draw words: %s', (css, problem) => {
+    expect(
+      sectionProblems(section(css), ['cdn.shop.example']).join(' ')
+    ).toMatch(problem)
+  })
+
+  it.each([
+    ['display:block list-item', /display: block list-item/],
+    ['-webkit-text-fill-color:red', /-webkit-text-fill-color/],
+    ['list-style:decimal inside', /list-style: decimal inside/]
+  ])('refuses them in an inline style too: %s', (style, problem) => {
+    const inline: DesignedSection = {
+      ...section(''),
+      html: `<img src="${photo}" alt=""><p style="${style}">Hi</p>`
+    }
+    expect(sectionProblems(inline, ['cdn.shop.example']).join(' ')).toMatch(
+      problem
+    )
+  })
+
+  it('takes a retina picture name, tables, no list markers and SVG gradients', () => {
+    const hosts = ['cdn.shop.example']
+    expect(
+      sectionProblems(
+        {
+          ...section(
+            'p{background-image:url("https://cdn.shop.example/hero@2x.jpg")}.t{display:table-cell}ul{list-style:none}'
+          ),
+          html: `<img src="${photo}" alt=""><svg viewBox="0 0 10 10"><defs><linearGradient id="g"><stop offset="0" stop-color="#fff"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/></svg>`
+        },
+        hosts
+      )
+    ).toEqual([])
+    expect(readCss('p{color:red}@media x{}').problems).toEqual([
+      'The styles use an at-rule, which a picture never needs.'
+    ])
+  })
+
+  it('the page it draws turns list markers off', () => {
+    expect(sectionDocument(section(''))).toContain('li{list-style:none}')
   })
 
   it('refuses styles it cannot read for sure', () => {

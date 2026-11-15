@@ -122,10 +122,11 @@ function checkCss(
 ) {
   if (badCss.test(css))
     f.problems.push(`The section’s ${where} load or run something.`)
-  // DST-003a: links read as the browser reads them (a `url(` inside a
-  // string is not one); styles that cannot be read for sure are refused.
+  // DST-003a: styles read as the browser reads them (a `url(` inside a
+  // string is not one), and only what draws no words. An attribute's value
+  // (an SVG `url(#id)`) is read for its links only.
   const read = readCss(css, where !== 'styles')
-  if (read.unread) f.problems.push(...read.problems)
+  if (read.unread || where !== 'attributes') f.problems.push(...read.problems)
   for (const url of read.urls)
     if (!sameDocument.test(url)) {
       f.urls.push(url)
@@ -270,5 +271,5 @@ export function sectionDocument(section: DesignedSection) {
         `@font-face{font-family:"${font.family}";src:url("${new URL(font.url).href}");font-weight:${font.weight ?? 400};font-style:${font.italic ? 'italic' : 'normal'};font-display:block}`
     )
     .join('')
-  return `<!doctype html><html><head><meta charset="utf-8"><style>${faces}html,body{margin:0;padding:0;background:#ffffff}#gr-section{position:relative;width:${sectionWidth}px;height:${section.height}px;overflow:hidden}${section.css}</style></head><body><div id="gr-section">${section.html}</div></body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${faces}html,body{margin:0;padding:0;background:#ffffff}li{list-style:none}#gr-section{position:relative;width:${sectionWidth}px;height:${section.height}px;overflow:hidden}${section.css}</style></head><body><div id="gr-section">${section.html}</div></body></html>`
 }

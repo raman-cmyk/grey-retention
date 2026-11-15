@@ -45,9 +45,8 @@ const properties = new Set(
   font-variation-settings font-feature-settings line-height letter-spacing word-spacing
   text-align text-transform text-decoration text-decoration-color text-decoration-thickness
   text-underline-offset text-shadow text-wrap white-space vertical-align
-  fill fill-opacity stroke stroke-width stroke-opacity stop-color stop-opacity content`.split(
-    /\s+/
-  )
+  fill fill-opacity stroke stroke-width stroke-opacity stop-color stop-opacity content
+  list-style list-style-type`.split(/\s+/)
 )
 /** Properties whose value may hold a string: font names and font tags. */
 const stringProperties = new Set([
@@ -60,7 +59,7 @@ const stringProperties = new Set([
 const emptyContent = new Set(['""', "''", 'none', 'normal'])
 /** `display` values (no `list-item`: it draws a number or marker). */
 const displays = new Set(
-  'block inline inline-block flex inline-flex grid inline-grid flow-root contents'.split(
+  'block inline inline-block flex inline-flex grid inline-grid flow-root contents table inline-table table-row table-cell table-row-group table-header-group table-footer-group table-column table-column-group table-caption'.split(
     ' '
   )
 )
@@ -93,9 +92,11 @@ export function readCss(css: string, inline = false): ReadCss {
     return out
   }
   if (css.includes('/*')) return refuse('Leave comments out of the styles.')
-  if (/[\\<@]/.test(css))
+  // An escape or a "<" anywhere (inside a string too: the styles go into a
+  // <style> element); an at-rule is refused where it starts, below.
+  if (/[\\<]/.test(css))
     return refuse(
-      'The styles use an escape, an at-rule or a "<", which a picture never needs.'
+      'The styles use an escape or a "<", which a picture never needs.'
     )
   // One pass: strings and links become placeholders, then braces and semicolons cut.
   const strings: string[] = []
@@ -142,6 +143,13 @@ export function readCss(css: string, inline = false): ReadCss {
         : out.problems.push(
             'The styles draw words (content): only an empty content is a decoration; put every word in the markup.'
           )
+    if (
+      (property === 'list-style' || property === 'list-style-type') &&
+      value.toLowerCase() !== 'none'
+    )
+      return out.problems.push(
+        `${property}: ${name(value)} draws markers or numbers; only none.`
+      )
     if (/"\d+"/.test(value) && !stringProperties.has(property))
       out.problems.push(
         `The ${property} style has words in quotes: only font names may.`
@@ -197,6 +205,8 @@ export function readCss(css: string, inline = false): ReadCss {
       i = j
       continue
     }
+    if (c === '@')
+      return refuse('The styles use an at-rule, which a picture never needs.')
     if (c === '(') depth++
     else if (c === ')' && --depth < 0)
       return refuse('The styles close a bracket they never opened.')
