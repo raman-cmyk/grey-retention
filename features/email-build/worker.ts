@@ -131,10 +131,19 @@ export async function runEmailBuilds(
           ...(await stores.read(job.tenant_id)),
           timezone: job.timezone
         }
+        // REL-AI: the copy step skips the subjects of the plan's other emails.
+        const taken =
+          job.step === 'copy' ? await planSubjects(db, job) : undefined
         const started = now()
         const step = await runBuildStep(
           job.step ?? '',
-          { planned: planned.data, store, offers, progress: job.progress },
+          {
+            planned: planned.data,
+            store,
+            offers,
+            progress: job.progress,
+            taken
+          },
           {
             tenantId: job.tenant_id,
             callerKey: `email-build:${job.id}`,
@@ -244,4 +253,32 @@ export async function runEmailBuilds(
     }
   }
   return { ran }
+}
+
+/**
+ * The subjects the plan's other planned emails already have (REL-AI): a
+ * stored email's, or a saved copy step's. A failed build's subject is
+ * free again, and so is this email's own (its "Try again").
+ */
+async function planSubjects(
+  db: Db,
+  job: { tenant_id: string; run_id: string; slot: number }
+): Promise<string[]> {
+  const { data, error } = await db
+    .from('email_builds')
+    .select(
+      'slot,state,built:email->>subject,saved:progress->copy->draft->>subject'
+    )
+    .eq('tenant_id', job.tenant_id)
+    .eq('run_id', job.run_id)
+    .neq('slot', job.slot)
+    .neq('state', 'failed')
+  if (error) throw error
+  const rows = (data ?? []) as unknown as {
+    built: string | null
+    saved: string | null
+  }[]
+  return rows.flatMap((r) =>
+    [r.built, r.saved].filter((x): x is string => typeof x === 'string')
+  )
 }

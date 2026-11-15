@@ -37,6 +37,8 @@ type Call = { fn: string; args: Record<string, unknown> }
 type Saved = {
   brand_offers?: Record<string, unknown>[]
   discount_codes?: Record<string, unknown>[]
+  /** The plan's other builds' subjects (REL-AI). */
+  email_builds?: Record<string, unknown>[]
 }
 /**
  * A database that hands out the given steps, then nothing, and records
@@ -78,11 +80,12 @@ function fakeDb(
   })
   const from = (table: keyof Saved) => {
     const result =
-      saved === 'error'
+      saved === 'error' && table !== 'email_builds'
         ? { data: null, error: { code: 'PGRST000' } }
-        : { data: saved[table] ?? [], error: null }
+        : { data: (saved !== 'error' && saved[table]) || [], error: null }
     const query = {
       eq: () => query,
+      neq: () => query,
       then: (
         done: (r: typeof result) => unknown,
         failed: (e: unknown) => unknown
@@ -368,6 +371,25 @@ describe('saved steps (REL-081)', () => {
       expect.objectContaining({ code: 'something_new' })
     )
     error.mockRestore()
+  })
+
+  it('gives the copy step the plan’s other subjects, so this email’s differs (REL-AI)', async () => {
+    const { saved } = await fullRun()
+    const own = (saved.copy as { draft: { subject: string } }).draft.subject
+    const { db, calls } = fakeDb(
+      [
+        step({
+          step: 'copy',
+          progress: { sections: saved.sections, content: saved.content }
+        })
+      ],
+      {},
+      { email_builds: [{ built: own, saved: null }] }
+    )
+    await runEmailBuilds(db, { limit: 1, fallbacks: memoryFallbackLog() })
+    const copy = calls.find((c) => c.fn === 'finish_email_step')!.args
+      .output as { draft: { subject: string } }
+    expect(copy.draft.subject).not.toBe(own)
   })
 
   it('fails at once when the database refuses a step’s output', async () => {
