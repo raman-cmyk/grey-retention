@@ -5,6 +5,8 @@ import { latestPlanRun } from '@/features/strategy/load'
 import { PlanView } from '@/features/strategy/view'
 
 export const metadata: Metadata = { title: 'Plan next 15 days' }
+// The "Create email" click builds the email after its reply (REL-AI part 2).
+export const maxDuration = 120
 
 export default async function PlanPage() {
   const context = await requireRequestContext('client')
