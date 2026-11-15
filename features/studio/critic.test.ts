@@ -55,7 +55,8 @@ const tens: Critique['scores'] = {
 }
 const good: Critique = {
   scores: tens,
-  words: ['JUST IN', 'MEET THE CEDAR TRAY', 'Hand-finished, made to last.'],
+  texts: ['JUST IN', 'MEET THE CEDAR TRAY', 'Hand-finished, made to last.'],
+  photoText: [],
   fixes: []
 }
 const image: RenderedSection = {
@@ -93,19 +94,63 @@ const ctx = (ai: AiCall) => {
 describe('the words the critic reads (DST-004a)', () => {
   it.each([
     [['Just in', 'Meet the cedar tray']],
-    // Read in capitals, a hyphen and a space lost, lines split differently.
-    [['MEET THE', 'CEDAR TRAY', 'HANDFINISHED MADE TO LAST']],
-    [['Meet thecedar tray', 'Grove & Co', 'Cedar tray']]
+    // Capitals, a lost hyphen, a space lost or added inside a phrase.
+    [['MEET THE CEDAR TRAY', 'HANDFINISHED, MADE TO LAST']],
+    [['Meet thecedar tray', 'Grove & Co', 'Cedar tray']],
+    [['Meet the ce dar tray']],
+    // Side by side: blocks in any order.
+    [['CEDAR TRAY', 'Meet the cedar tray', 'Just in']],
+    // A headline the critic split into two blocks.
+    [['MEET THE', 'CEDAR TRAY']],
+    // Lone dashes and bullets are decoration.
+    [['Just in —', '• Meet the cedar tray']]
   ])('the copy, however it is read: %j', (read) => {
     expect(readsAsCopy(read, brief)).toEqual({ ok: true, headline: true })
   })
 
+  const offer = {
+    ...brief,
+    words: {
+      eyebrow: 'Up to 20% off',
+      headline: 'Meet the cedar tray',
+      sub: 'Now 2.5x stronger'
+    }
+  }
   it.each([
-    [['Meet the cedar tray', 'SALE 50% OFF'], 'SALE 50% OFF'],
-    [['TRAY CEDAR THE MEET'], 'TRAY CEDAR THE MEET'],
-    [['Meet the cedar tray', '$24'], '$24']
-  ])('words that are not the copy: %j', (read, stray) => {
-    expect(readsAsCopy(read, brief)).toEqual({ ok: false, stray })
+    [['Meet the cedar tray', 'SALE 50% OFF'], 'sale 50% off'],
+    [['TRAY CEDAR THE MEET'], 'tray cedar the meet'],
+    [['Meet the cedar tray', 'Up to $20 off'], 'up to $20 off'],
+    [['Meet the cedar tray', 'Up to -20 off'], 'up to -20 off'],
+    [['Meet the cedar tray', 'Now 25x stronger'], 'now 25x stronger'],
+    [['Meet the cedar tray', '★★★★★'], '★★★★★'],
+    [['Meet the cedar tray', '🔥'], '🔥']
+  ])('words that are not the copy, every mark counted: %j', (read, stray) => {
+    expect(readsAsCopy(read, offer)).toEqual({ ok: false, stray })
+  })
+
+  it('never joins two phrases into one word', () => {
+    const top = {
+      ...brief,
+      words: { headline: 'Top 10', sub: '0 plastic, all cedar' }
+    }
+    expect(readsAsCopy(['Top 10', '0 plastic, all cedar'], top)).toEqual({
+      ok: true,
+      headline: true
+    })
+    expect(readsAsCopy(['Top 100 plastic, all cedar'], top)).toMatchObject({
+      ok: false
+    })
+  })
+
+  it('folds case as capitals do', () => {
+    const german = {
+      ...brief,
+      words: { headline: 'Die neue Straße' }
+    }
+    expect(readsAsCopy(['DIE NEUE STRASSE'], german)).toEqual({
+      ok: true,
+      headline: true
+    })
   })
 
   it('knows when the headline is not readable', () => {
@@ -119,7 +164,7 @@ describe('the words the critic reads (DST-004a)', () => {
 
 describe('the critic’s verdict (DST-004a)', () => {
   it('passes a section that scores 8 or more everywhere and shows only the copy', () => {
-    expect(criticProblems(good, brief)).toEqual({
+    expect(criticProblems(good, brief, false)).toEqual({
       pass: true,
       scores: tens,
       problems: []
@@ -133,7 +178,8 @@ describe('the critic’s verdict (DST-004a)', () => {
         scores: { ...tens, contrast: 6 },
         fixes: ['Make the short line white on the dark panel.']
       },
-      brief
+      brief,
+      false
     )
     expect(verdict).toEqual({
       pass: false,
@@ -145,22 +191,50 @@ describe('the critic’s verdict (DST-004a)', () => {
     })
   })
 
-  it('words that are not the copy fail, whatever the scores', () => {
+  it('words that are not the copy fail, whatever the scores, and with low scores every problem is kept', () => {
     expect(
       criticProblems(
-        { ...good, words: ['MEET THE CEDAR TRAY', 'CODE SAVE20'] },
-        brief
+        { ...good, texts: ['MEET THE CEDAR TRAY', 'CODE SAVE20'] },
+        brief,
+        false
       )
     ).toMatchObject({
       pass: false,
       problems: [
-        'The picture shows “CODE SAVE20”, which is not the copy: draw only the words given.'
+        'The picture shows “code save20”, which is not the copy: draw only the words given.'
       ]
     })
     expect(
-      criticProblems({ ...good, words: ['Just in'] }, brief).problems
+      criticProblems({ ...good, texts: ['Just in'] }, brief, false).problems
     ).toEqual([
       'The headline cannot be read in the picture: draw it whole, large and clear.'
+    ])
+    const worst = criticProblems(
+      {
+        scores: {
+          hierarchy: 1,
+          spacing: 1,
+          contrast: 1,
+          alignment: 1,
+          product: 1,
+          phone: 1
+        },
+        texts: ['SALE'],
+        photoText: [],
+        fixes: ['a1', 'b1', 'c1', 'd1', 'e1', 'f1'].map((f) => `Fix ${f}.`)
+      },
+      brief,
+      false
+    )
+    expect(worst.problems).toHaveLength(13)
+    expect(worst.problems.at(-1)).toBe('Fix f1.')
+  })
+
+  it('leaves out the photo’s own print only when the critic had the photo', () => {
+    const printed = { ...good, photoText: ['100% FSC OAK'] }
+    expect(criticProblems(printed, brief, true).pass).toBe(true)
+    expect(criticProblems(printed, brief, false).problems).toEqual([
+      'The picture shows “100% fsc oak”, which is not the copy: draw only the words given.'
     ])
   })
 })
@@ -184,16 +258,26 @@ describe('the Design critic (DST-004a)', () => {
         problems: []
       })
     ).toEqual([picture, reference])
+    const photo = { mediaType: 'image/jpeg' as const, base64: 'BBBB' }
+    expect(
+      designCriticAgent.images!({
+        brief,
+        image: picture,
+        reference,
+        photo,
+        problems: []
+      })
+    ).toEqual([picture, reference, photo])
     const task = JSON.parse(
-      designCriticAgent.task({ brief, image: picture, problems: [] })
+      designCriticAgent.task({ brief, image: picture, photo, problems: [] })
     )
     expect(task).toMatchObject({
       mode: 'scratch',
       section: { kind: 'hero_product', tone: 'dark', imagery: 'product' },
-      pictures: ['the section as drawn']
+      pictures: ['the section as drawn', 'the original photo']
     })
     expect(designCriticAgent.purpose).toBe('review')
-    expect(designCriticAgent.instructions).toMatch(/every word or line of text/)
+    expect(designCriticAgent.instructions).toMatch(/never read or repeat/)
   })
 
   it('gives its verdict, and the drawn picture goes with the call', async () => {
@@ -211,6 +295,75 @@ describe('the Design critic (DST-004a)', () => {
     expect(ai.mock.calls[0][0].callerKey).toBe('design-critic:email-build:b1')
     expect(ai.mock.calls[0][0].request.images).toEqual([pictureOf(image)])
     expect(fallbacks.entries()).toEqual([])
+  })
+
+  it('asks again after a wrong shape, with the problem sent back, and takes a later answer', async () => {
+    const ai = vi
+      .fn<AiCall>()
+      .mockResolvedValueOnce(ok({ scores: tens }))
+      .mockResolvedValueOnce(ok(good))
+    const { ctx: c } = ctx(ai)
+    expect(await critiqueSection({ brief, image }, c)).toMatchObject({
+      pass: true
+    })
+    expect(
+      JSON.parse(ai.mock.calls[1][0].request.user)
+        .fix_these_problems_from_your_last_answer
+    ).toEqual(['The answer did not match the required JSON shape.'])
+  })
+
+  it('in Copy mode sends the reference and the photo, and takes the photo’s print', async () => {
+    const reference = { mediaType: 'image/jpeg' as const, base64: 'AAAA' }
+    const photo = { mediaType: 'image/jpeg' as const, base64: 'BBBB' }
+    const ai = vi.fn<AiCall>(async () =>
+      ok({ ...good, photoText: ['GROVE OAK 100%'] })
+    )
+    const { ctx: c } = ctx(ai)
+    expect(
+      await critiqueSection(
+        { brief: { ...brief, mode: 'copy' }, image, reference, photo },
+        c
+      )
+    ).toMatchObject({ pass: true })
+    expect(ai.mock.calls[0][0].request.images).toEqual([
+      pictureOf(image),
+      reference,
+      photo
+    ])
+  })
+
+  it('takes no time limit from the caller', async () => {
+    const ai = vi
+      .fn<AiCall>()
+      .mockResolvedValueOnce(ok({ scores: tens }))
+      .mockResolvedValueOnce(ok(good))
+    const { ctx: c, fallbacks } = ctx(ai)
+    const withFits = { ...c, fits: () => false }
+    expect(await critiqueSection({ brief, image }, withFits)).toMatchObject({
+      pass: true
+    })
+    expect(ai).toHaveBeenCalledTimes(2)
+    expect(fallbacks.entries()).toEqual([])
+  })
+
+  it('refuses a picture of another section, or one too large', async () => {
+    const { ctx: c } = ctx(vi.fn<AiCall>())
+    await expect(
+      critiqueSection({ brief, image: { ...image, id: 's3' } }, c)
+    ).rejects.toThrow('another section')
+    await expect(
+      critiqueSection(
+        {
+          brief,
+          image,
+          reference: {
+            mediaType: 'image/jpeg',
+            base64: 'A'.repeat(4 * 1024 * 1024 + 4)
+          }
+        },
+        c
+      )
+    ).rejects.toThrow('too large')
   })
 
   it('no verdict, logged, when it answers in the wrong shape or not at all', async () => {
@@ -232,7 +385,12 @@ describe('the Design critic (DST-004a)', () => {
     expect(await critiqueSection({ brief, image }, down.ctx)).toBeNull()
     expect(down.fallbacks.entries()[0]).toMatchObject({
       reasonCode: 'critic_agent_failed',
-      attempts: 1
+      reason:
+        'The Design critic could not answer (AI unavailable or the allowance is used up).',
+      attempts: 1,
+      detail: { section: 's2', runId: expect.any(String) }
     })
+    // Fixed words only: never the copy.
+    expect(JSON.stringify(down.fallbacks.entries())).not.toMatch(/cedar/i)
   })
 })
