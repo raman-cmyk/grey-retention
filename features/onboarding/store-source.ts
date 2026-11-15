@@ -1,7 +1,11 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { brandFromKit } from '@/features/blocks/brand'
-import type { Store, StoreSource } from '@/features/email-build/ports'
+import {
+  sampleStoreFrom,
+  type Store,
+  type StoreSource
+} from '@/features/email-build/ports'
 import {
   applyCorrections,
   correctedFacts,
@@ -27,9 +31,10 @@ import type { Industry } from '@/features/intelligence/taxonomy'
 import type { Database } from '@/lib/supabase/database.types'
 
 /**
- * The store "Create email" builds from (ONB-057b part 2): the workspace's
- * own once its catalog has been read at all, else `fallback` (the sample
- * store, for a workspace never read).
+ * The store "Create email" builds from (ONB-057b part 2): the store its
+ * plan was made from (`storeForPlan`). A plan made from the sample builds
+ * on the sample store (marked sample: never pushed to a real account); a
+ * plan made from the workspace's own data builds on its own store:
  *
  * - Products: the catalog's featurable ones with a photo, only the fake
  *   Klaviyo's while it was read fake and never once it is read live, and
@@ -62,9 +67,6 @@ export type OwnStoreParts = {
   findings: readonly Finding[]
   corrections: readonly Correction[]
 }
-
-/** Whether the catalog has been read at all (ready, empty or paused): from then on the store is the workspace's own. */
-export const catalogRead = (status: { state: string } | null) => status !== null
 
 const hostname =
   /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/
@@ -137,22 +139,54 @@ export function storeFrom(parts: OwnStoreParts): Store {
   }
 }
 
-/** The workspace's own store, or `fallback` until its catalog is read. Reads with the worker's client. */
-export function onboardedStoreSource(
+/** Which store a plan was made from (`strategy_runs.plan`). */
+export type PlanStore = { own: boolean; sample: boolean }
+
+/**
+ * The store the email's plan was made from. A plan saved before the flags,
+ * or not found, counts as made from the sample store. Throws on a failed
+ * read.
+ */
+export async function planStore(
   db: Db,
-  { fallback }: { fallback: StoreSource }
-): StoreSource {
+  job: { tenant_id: string; run_id: string }
+): Promise<PlanStore> {
+  const { data, error } = await db
+    .from('strategy_runs')
+    .select('own:plan->own,sample:plan->sample')
+    .eq('tenant_id', job.tenant_id)
+    .eq('id', job.run_id)
+    .maybeSingle()
+  if (error) throw error
+  return { own: data?.own === true, sample: data?.sample !== false }
+}
+
+/** The store to build from: the one the plan was made from. */
+export const storeForPlan = (
+  db: Db,
+  plan: PlanStore,
+  start: string
+): StoreSource => (plan.own ? ownStoreSource(db) : sampleStoreFrom(start))
+
+/**
+ * The workspace's own store. Reads with the worker's client. A workspace
+ * whose catalog was never read has none: `plan_store_changed` (planning
+ * again makes a plan from the sample store).
+ */
+export function ownStoreSource(db: Db): StoreSource {
   return {
     async read(tenantId) {
       // The catalog's state first: no other read until there is a store.
       const status = await db
         .from('catalog_status')
-        .select('state,live,currency')
+        .select('live,currency')
         .eq('tenant_id', tenantId)
         .maybeSingle()
       if (status.error) throw status.error
-      if (!status.data || !catalogRead(status.data))
-        return fallback.read(tenantId)
+      if (!status.data)
+        throw Object.assign(new Error('plan_store_changed'), {
+          code: 'plan_store_changed'
+        })
       const { live, currency } = status.data
       const [timezone, catalog, findings, corrections, profile, kit] =
         await Promise.all([
@@ -185,23 +219,4 @@ export function onboardedStoreSource(
       })
     }
   }
-}
-
-/**
- * Whether the plan an email belongs to was made from the sample store
- * (`strategy_runs.plan.sample`). A plan saved before the flag, or not
- * found, counts as the sample's. Throws on a failed read.
- */
-export async function planWasSample(
-  db: Db,
-  job: { tenant_id: string; run_id: string }
-): Promise<boolean> {
-  const { data, error } = await db
-    .from('strategy_runs')
-    .select('sample:plan->sample')
-    .eq('tenant_id', job.tenant_id)
-    .eq('id', job.run_id)
-    .maybeSingle()
-  if (error) throw error
-  return data?.sample !== false
 }

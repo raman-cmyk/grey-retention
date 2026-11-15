@@ -1,6 +1,15 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
+// ONB-057b: the plan made from the sample store, built on the sample store.
+vi.mock('@/features/onboarding/store-source', async () => {
+  const { sampleStoreFrom } = await import('./ports')
+  return {
+    planStore: async () => ({ own: false, sample: true }),
+    storeForPlan: (_db: unknown, _plan: unknown, start: string) =>
+      sampleStoreFrom(start)
+  }
+})
 const runStep = vi.hoisted(() => vi.fn())
 vi.mock('./steps', async (original) => ({
   ...(await original<typeof import('./steps')>()),

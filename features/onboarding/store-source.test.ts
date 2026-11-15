@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { StoreSource } from '@/features/email-build/ports'
 import type { Correction } from '@/features/onboarding/brand-book-corrections'
 import type { CatalogEntry } from '@/features/onboarding/catalog/read'
 import { claimsSafetyPhrases } from '@/features/onboarding/claims-safety'
@@ -29,10 +28,10 @@ vi.mock('@/features/onboarding/brand-book-corrections', async (real) => ({
 }))
 
 const {
-  catalogRead,
   correctedIndustry,
-  onboardedStoreSource,
-  planWasSample,
+  ownStoreSource,
+  planStore,
+  storeForPlan,
   storeFrom
 } = await import('./store-source')
 
@@ -312,14 +311,6 @@ describe('storeFrom (ONB-057b part 2)', () => {
   })
 })
 
-describe('catalogRead (ONB-057b part 2)', () => {
-  it('is the workspace’s own store once the catalog was read, whatever it found', () => {
-    for (const state of ['ready', 'empty', 'paused'])
-      expect(catalogRead({ state })).toBe(true)
-    expect(catalogRead(null)).toBe(false)
-  })
-})
-
 type Answer = { data: unknown; error: unknown }
 function fakeDb(answers: Record<string, Answer>) {
   const asked: [string, ...unknown[]][] = []
@@ -335,13 +326,9 @@ function fakeDb(answers: Record<string, Answer>) {
 }
 const failed = { data: null, error: { code: 'PGRST000' } }
 
-describe('onboardedStoreSource (ONB-057b part 2)', () => {
-  const fallback = () => {
-    const read = vi.fn(async () => ({ sample: true }) as never)
-    return { source: { read } satisfies StoreSource, read }
-  }
+describe('ownStoreSource (ONB-057b part 2)', () => {
   const status = (over: Record<string, unknown> = {}): Answer => ({
-    data: { state: 'ready', live: true, currency: 'USD', ...over },
+    data: { live: true, currency: 'USD', ...over },
     error: null
   })
   const own = {
@@ -352,28 +339,12 @@ describe('onboardedStoreSource (ONB-057b part 2)', () => {
     brand_kits: { data: parts().kit, error: null }
   }
 
-  it('uses the sample only for a workspace whose catalog was never read, reading nothing else', async () => {
-    const { db, asked } = fakeDb({})
-    const sample = fallback()
-    reads.catalog.mockClear()
-    await expect(
-      onboardedStoreSource(db, { fallback: sample.source }).read(tenantId)
-    ).resolves.toEqual({ sample: true })
-    expect(sample.read).toHaveBeenCalledWith(tenantId)
-    expect(asked.every(([table]) => table === 'catalog_status')).toBe(true)
-    expect(reads.catalog).not.toHaveBeenCalled()
-  })
-
-  it('reads the workspace’s own store once the catalog was read', async () => {
+  it('reads the workspace’s own store, only its own rows', async () => {
     reads.catalog.mockResolvedValueOnce([...parts().catalog])
     reads.findings.mockResolvedValueOnce([...parts().findings])
     reads.corrections.mockResolvedValueOnce([correction({})])
     const { db, asked } = fakeDb({ catalog_status: status(), ...own })
-    const sample = fallback()
-    const store = await onboardedStoreSource(db, {
-      fallback: sample.source
-    }).read(tenantId)
-    expect(sample.read).not.toHaveBeenCalled()
+    const store = await ownStoreSource(db).read(tenantId)
     expect(store).toMatchObject({
       sample: false,
       industry: 'supplements',
@@ -388,7 +359,6 @@ describe('onboardedStoreSource (ONB-057b part 2)', () => {
     })
     expect(reads.findings).toHaveBeenCalledWith(db, tenantId)
     expect(reads.corrections).toHaveBeenCalledWith(db, tenantId)
-    // Every read is this workspace's.
     expect(asked.filter((a) => a[1] === 'eq')).toEqual([
       ['catalog_status', 'eq', 'tenant_id', tenantId],
       ['brand_profiles', 'eq', 'tenant_id', tenantId],
@@ -396,23 +366,9 @@ describe('onboardedStoreSource (ONB-057b part 2)', () => {
     ])
   })
 
-  it('stays the workspace’s own when a later read paused or found nothing, never the sample', async () => {
-    for (const state of ['paused', 'empty']) {
-      const sample = fallback()
-      const store = await onboardedStoreSource(
-        fakeDb({ catalog_status: status({ state }), ...own }).db,
-        { fallback: sample.source }
-      ).read(tenantId)
-      expect(sample.read).not.toHaveBeenCalled()
-      expect(store.sample).toBe(false)
-    }
-  })
-
   it('reads only the fake Klaviyo’s products while the catalog was read fake', async () => {
     const { db } = fakeDb({ catalog_status: status({ live: false }) })
-    const store = await onboardedStoreSource(db, {
-      fallback: fallback().source
-    }).read(tenantId)
+    const store = await ownStoreSource(db).read(tenantId)
     expect(store.sample).toBe(true)
     expect(reads.catalog).toHaveBeenLastCalledWith(db, tenantId, {
       featurableOnly: true,
@@ -422,46 +378,90 @@ describe('onboardedStoreSource (ONB-057b part 2)', () => {
     expect(store.brand).toMatchObject({ name: 'Your brand', site: '' })
   })
 
-  it('throws a read that fails, never falling back to the sample', async () => {
+  it('has no store for a workspace whose catalog was never read, reading nothing else', async () => {
+    reads.catalog.mockClear()
+    const { db, asked } = fakeDb({})
+    await expect(ownStoreSource(db).read(tenantId)).rejects.toMatchObject({
+      code: 'plan_store_changed'
+    })
+    expect(asked.every(([table]) => table === 'catalog_status')).toBe(true)
+    expect(reads.catalog).not.toHaveBeenCalled()
+  })
+
+  it('throws a read that fails', async () => {
     for (const answers of [
       { catalog_status: failed } as Record<string, Answer>,
       { catalog_status: status(), brand_profiles: failed },
       { catalog_status: status(), brand_kits: failed }
-    ]) {
-      const sample = fallback()
+    ])
       await expect(
-        onboardedStoreSource(fakeDb(answers).db, {
-          fallback: sample.source
-        }).read(tenantId)
+        ownStoreSource(fakeDb(answers).db).read(tenantId)
       ).rejects.toMatchObject({ code: 'PGRST000' })
-      expect(sample.read).not.toHaveBeenCalled()
-    }
     reads.corrections.mockRejectedValueOnce({ code: 'too_many_corrections' })
     await expect(
-      onboardedStoreSource(fakeDb({ catalog_status: status() }).db, {
-        fallback: fallback().source
-      }).read(tenantId)
+      ownStoreSource(fakeDb({ catalog_status: status() }).db).read(tenantId)
     ).rejects.toMatchObject({ code: 'too_many_corrections' })
   })
 })
 
-describe('planWasSample (ONB-057b part 2)', () => {
+describe('storeForPlan (ONB-057b part 2)', () => {
+  it('builds a plan made from the sample on the sample store, whatever the catalog', async () => {
+    const { db, asked } = fakeDb({
+      catalog_status: { data: { live: true, currency: 'USD' }, error: null }
+    })
+    const store = await storeForPlan(
+      db,
+      { own: false, sample: true },
+      '2026-11-16'
+    ).read(tenantId)
+    expect(store.sample).toBe(true)
+    expect(store.products.length).toBeGreaterThan(0)
+    expect(asked).toEqual([])
+  })
+
+  it('builds a plan made from the workspace’s own data on its own store', async () => {
+    const { db, asked } = fakeDb({
+      catalog_status: { data: { live: true, currency: 'USD' }, error: null }
+    })
+    const store = await storeForPlan(
+      db,
+      { own: true, sample: false },
+      '2026-11-16'
+    ).read(tenantId)
+    expect(store.sample).toBe(false)
+    expect(asked[0]).toEqual(['catalog_status', 'live,currency'])
+  })
+})
+
+describe('planStore (ONB-057b part 2)', () => {
   const job = { tenant_id: tenantId, run_id: 'run-1' }
-  it('reads this workspace’s plan, and counts a plan without the flag as the sample’s', async () => {
-    const plan = (sample: unknown) =>
-      fakeDb({ strategy_runs: { data: { sample }, error: null } })
-    expect(await planWasSample(plan(false).db, job)).toBe(false)
-    expect(await planWasSample(plan(true).db, job)).toBe(true)
-    expect(await planWasSample(plan(null).db, job)).toBe(true)
+  it('reads this workspace’s plan, and counts a plan without the flags as the sample store’s', async () => {
+    const plan = (data: unknown) =>
+      fakeDb({ strategy_runs: { data, error: null } }).db
+    expect(await planStore(plan({ own: true, sample: false }), job)).toEqual({
+      own: true,
+      sample: false
+    })
+    expect(await planStore(plan({ own: true, sample: true }), job)).toEqual({
+      own: true,
+      sample: true
+    })
+    expect(await planStore(plan({ own: null, sample: null }), job)).toEqual({
+      own: false,
+      sample: true
+    })
     const missing = fakeDb({})
-    expect(await planWasSample(missing.db, job)).toBe(true)
+    expect(await planStore(missing.db, job)).toEqual({
+      own: false,
+      sample: true
+    })
     expect(missing.asked).toEqual([
-      ['strategy_runs', 'sample:plan->sample'],
+      ['strategy_runs', 'own:plan->own,sample:plan->sample'],
       ['strategy_runs', 'eq', 'tenant_id', tenantId],
       ['strategy_runs', 'eq', 'id', 'run-1']
     ])
     await expect(
-      planWasSample(fakeDb({ strategy_runs: failed }).db, job)
+      planStore(fakeDb({ strategy_runs: failed }).db, job)
     ).rejects.toMatchObject({ code: 'PGRST000' })
   })
 })

@@ -9,17 +9,14 @@ import {
 import { SupabaseOfferSource, type OfferSource } from '@/features/offers/source'
 import { databaseFallbackLog, type FallbackLog } from '@/features/fallback/log'
 import { stepCode } from '@/features/strategy/worker'
-import {
-  onboardedStoreSource,
-  planWasSample
-} from '@/features/onboarding/store-source'
+import { planStore, storeForPlan } from '@/features/onboarding/store-source'
 import { planOfferSource } from '@/features/strategy/offers'
 import { builtEmail, plannedEmail, type BuildAgents } from './build'
 import { buildAgentsFor } from './agents'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { maxStepSaves, roundSteps } from './step-names'
 import { buildCode, type BuildFailureCode } from './failure-words'
-import { sampleStoreFrom, type SavedOffers, type StoreSource } from './ports'
+import { type SavedOffers, type StoreSource } from './ports'
 
 type Db = SupabaseClient<Database>
 
@@ -44,8 +41,8 @@ export async function runEmailBuilds(
   db: Db,
   deps: {
     /**
-     * Default: the workspace's own store once its catalog is read
-     * (ONB-057b), else the sample store from the plan's first day.
+     * Default: the store the plan was made from (ONB-057b): the
+     * workspace's own, or the sample store from the plan's first day.
      */
     stores?: StoreSource
     /**
@@ -149,18 +146,18 @@ export async function runEmailBuilds(
           await fail('planned_email_invalid', true)
           continue
         }
-        const stores =
-          deps.stores ??
-          onboardedStoreSource(db, { fallback: sampleStoreFrom(job.start_on) })
+        // ONB-057b: the store the plan was made from: the sample store's
+        // plan builds on the sample store, the workspace's own on its own.
+        const plan = await planStore(db, job)
+        const stores = deps.stores ?? storeForPlan(db, plan, job.start_on)
         // The workspace's one brand timezone is "store time" everywhere.
         const store = {
           ...(await stores.read(job.tenant_id)),
           timezone: job.timezone
         }
-        // ONB-057b: a plan made from the sample is never built on the
-        // workspace's own store (its audiences and codes are the sample's),
-        // nor a plan of its own on the sample. Planning again helps.
-        if ((await planWasSample(db, job)) !== store.sample) {
+        // Its own store read another way since (live then, fake now, or
+        // back): planning again makes a plan from the store as it is.
+        if (store.sample !== plan.sample) {
           await fail('plan_store_changed', true)
           continue
         }
