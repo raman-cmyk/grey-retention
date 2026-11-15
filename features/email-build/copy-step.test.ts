@@ -166,6 +166,81 @@ describe('the copy step with the agents (REL-AI part 2b)', () => {
     )
   })
 
+  it('gives the Copywriter the customers’ own words from the saved steps, not from the store read now (ONB-061)', async () => {
+    const own = {
+      ...(await store()),
+      customerWords: ['smells like a forest', 'cosy evenings']
+    }
+    const copyFrom = async (
+      saved: Awaited<ReturnType<typeof store>>,
+      now: Awaited<ReturnType<typeof store>>
+    ) => {
+      const ai = model()
+      const result = await runBuildStep(
+        'copy',
+        {
+          planned,
+          store: now,
+          offers: sampleOffers,
+          progress: await savedSteps(saved)
+        },
+        ctxWith(agentsWith(ai))
+      )
+      expect(result).toMatchObject({ ok: true, done: 'copy' })
+      return JSON.parse(
+        userOf(ai, 'copywriter').replace(/^Data \(JSON\): /, '')
+      ) as Record<string, unknown>
+    }
+    // Saved with the phrases, read now without: the saved ones.
+    expect((await copyFrom(own, await store())).customerWords).toEqual([
+      'smells like a forest',
+      'cosy evenings'
+    ])
+    // Saved without (a build from before), read now with: none.
+    expect(await copyFrom(await store(), own)).not.toHaveProperty(
+      'customerWords'
+    )
+  })
+
+  it('still judges what the Copywriter writes when it echoes a customer phrase that breaks a rule', async () => {
+    const own = {
+      ...(await store()),
+      customerWords: ['free shipping on every order']
+    }
+    // The preview line, which every email has, borrows it word for word.
+    const echoes = (system: string, n: number) => ({
+      ...writes(system, n),
+      preheader: 'Free shipping on every order.'
+    })
+    let n = 0
+    const ai = model({
+      writer: () => {
+        const sys = ai.mock.calls.at(-1)![0].request.system
+        return answer(echoes(sys, ++n))
+      }
+    })
+    const fallbacks = memoryFallbackLog()
+    const result = await runBuildStep(
+      'copy',
+      {
+        planned,
+        store: own,
+        offers: sampleOffers,
+        progress: await savedSteps(own)
+      },
+      ctxWith(agentsWith(ai), { fallbacks })
+    )
+    expect(result).toMatchObject({ ok: true, done: 'copy' })
+    if (!result.ok || !('output' in result)) return
+    // Every rewrite still had the claim: plain copy, with the reason.
+    expect(result.output).not.toHaveProperty('written')
+    expect(JSON.stringify(result.output)).not.toMatch(/free shipping/i)
+    expect(
+      fallbacks.entries().find((e) => e.agent === 'copy-inspectors')
+    ).toMatchObject({ reasonCode: 'copy_plain_fallback' })
+    expect(userOf(ai, 'copywriter', 1)).toMatch(/shipping/i)
+  })
+
   it('sends a subject another email of the plan has back to the Copywriter', async () => {
     const ai = model()
     const result = await buildEmail(

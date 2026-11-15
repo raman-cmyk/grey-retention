@@ -13,7 +13,7 @@ import type { BuildAgents } from './build'
  * The build has agents only with a live model (`buildAgentsFor`); the
  * answer says which provider gave it.
  */
-export const copywriterVersion = '2026-11-15.1'
+export const copywriterVersion = '2026-11-15.2'
 
 export function copywriterRun(
   agents: BuildAgents,
