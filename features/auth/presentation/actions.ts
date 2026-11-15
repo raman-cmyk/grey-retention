@@ -15,6 +15,7 @@ import type {
   AuthSurface,
   WorkspaceActionState
 } from '../domain/types'
+import { safeNext } from '../domain/next'
 
 const credentialsSchema = z.object({
   email: z.email('Enter a valid email address.').trim().toLowerCase(),
@@ -110,7 +111,9 @@ export async function signIn(
   if (surface === 'client' && !(await resolveRequestContext('client'))) {
     redirect('/onboarding' as Route)
   }
-  redirect(landingBySurface[surface])
+  // Back to the page the session ran out on, when it is a safe one.
+  const next = safeNext(surface, formData.get('next'))
+  redirect((next as Route | null) ?? landingBySurface[surface])
 }
 
 export async function signOut() {
