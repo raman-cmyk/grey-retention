@@ -4,7 +4,13 @@ import type { Browser } from '@playwright/test'
 
 const draw = vi.hoisted(() => ({ renderSection: vi.fn() }))
 vi.mock('./section-render.mjs', () => draw)
-import { perRun, run, runBudgetMs } from './studio-renders.mjs'
+import {
+  carryOn,
+  carryOnMs,
+  perRun,
+  run,
+  runBudgetMs
+} from './studio-renders.mjs'
 
 const secret = 's'.repeat(40)
 const base = 'https://app.test'
@@ -225,5 +231,42 @@ describe('the section browser job (DST-001c)', () => {
     expect(
       (await run({ base, secret, browser, log: quiet, now })).drawn
     ).toBeLessThan(5)
+  })
+
+  it('then carries on the designs waiting for their pictures, logging a count only (DST-006b)', async () => {
+    for (const [answer, line, builds] of [
+      [{ off: false, builds: 2, ran: 3 }, 'Designs carried on: 2.', 2],
+      [{ off: true, builds: 0, ran: 0 }, 'Design studio off.', 0],
+      [{ builds: 'many' }, 'Designs carried on: 0.', 0]
+    ] as const) {
+      const seen: { url: string; init: RequestInit }[] = []
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string, init: RequestInit) => {
+          seen.push({ url, init })
+          return Response.json(answer)
+        })
+      )
+      const log = vi.fn()
+      expect(await carryOn({ base, secret, log })).toBe(builds)
+      expect(seen.map((c) => [c.init.method ?? 'GET', c.url])).toEqual([
+        ['GET', `${base}/api/internal/studio/builds`]
+      ])
+      expect(seen[0].init).toMatchObject({
+        redirect: 'error',
+        headers: { authorization: `Bearer ${secret}` }
+      })
+      expect(log.mock.calls).toEqual(counts(line))
+      vi.unstubAllGlobals()
+    }
+    // The studio's job runs up to 2 minutes; an app error is the run's error.
+    expect(carryOnMs).toBeGreaterThan(120_000)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({}, { status: 500 }))
+    )
+    await expect(carryOn({ base, secret, log: quiet })).rejects.toThrow(
+      'The app answered 500.'
+    )
   })
 })

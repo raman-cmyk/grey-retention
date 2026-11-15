@@ -116,6 +116,12 @@ export type StepResult =
    * rounds so far; the next claim goes on from them.
    */
   | { ok: true; saved: RoundStep; work: object }
+  /**
+   * DST-006b: the design step asked for its sections to be drawn and waits
+   * for the pictures, at most `seconds` (then the sweep draws coded
+   * blocks); the design studio's job claims it again when they are there.
+   */
+  | { ok: true; waiting: 'design'; work: object; seconds: number }
   | {
       ok: false
       /**

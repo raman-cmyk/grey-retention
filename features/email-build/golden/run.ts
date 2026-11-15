@@ -85,6 +85,10 @@ export async function runGolden(
         }
       )
       if (!made.ok) return done(made)
+      // The golden set runs without the design studio: a step that waits
+      // for pictures is wrong here (DST-006c adds the fake round trip).
+      if ('waiting' in made)
+        return done({ ok: false, code: 'step_output_invalid' })
       if ('saved' in made) {
         // As the job: rounds saved for another step are a broken output.
         if (made.saved !== step)

@@ -22,3 +22,9 @@ export function run(input: {
   log?: (line: string) => void
   now?: () => number
 }): Promise<{ drawn: number; failed: number; lost: number }>
+export const carryOnMs: number
+export function carryOn(input: {
+  base: string
+  secret: string
+  log?: (line: string) => void
+}): Promise<number>

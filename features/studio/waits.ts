@@ -23,8 +23,9 @@ type Db = SupabaseClient<Database>
  * needs the agents on (`EMAIL_BUILD_AGENTS=on` and a live model), as its
  * agents are paid AI.
  */
-export const designStudioOn = (env: { DESIGN_STUDIO?: string }) =>
-  env.DESIGN_STUDIO?.trim() === 'on'
+export const designStudioOn = (
+  env: Readonly<Record<string, string | undefined>>
+) => env.DESIGN_STUDIO?.trim() === 'on'
 
 /**
  * The database's limits (`wait_email_round`, `request_section_render`),
