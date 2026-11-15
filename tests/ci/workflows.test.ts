@@ -269,6 +269,27 @@ describe('CI workflows', () => {
     // The secret only reaches the steps that call the app.
     expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(2)
   })
+  it('keeps the studio render workflow opt-in, HTTPS-only and cheap when idle (DST-001c)', () => {
+    const text = read('studio-renders.yml')
+    expect(text).toContain("if: vars.SCHEDULED_JOBS_ENABLED == 'true'")
+    expect(text).toContain("--proto '=https'")
+    expect(text).toMatch(/\npermissions:\n {2}contents: read\n/)
+    const crons = [...text.matchAll(/- cron: '([^']+)'/g)].map((m) => m[1]!)
+    expect(crons).toEqual(['5-55/10 * * * *'])
+    expect(text).toContain('/api/internal/studio/renders?peek=1')
+    expect(text).toContain('node scripts/studio-renders.mjs')
+    // Nothing is checked out or installed until the app says work is waiting.
+    const steps = `\n${text.split('\n    steps:\n')[1]!}`
+      .split(/\n {6}- /)
+      .slice(1)
+    expect(steps[0]).toContain('?peek=1')
+    for (const step of steps.slice(1))
+      expect(step).toContain("if: steps.peek.outputs.waiting != '0'")
+    // The secret only reaches the steps that call the app; no artifacts (a
+    // public repository's logs and artifacts are public).
+    expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(2)
+    expect(text).not.toContain('upload-artifact')
+  })
   it('keeps the onboarding readers workflow opt-in, HTTPS-only and one small request when idle', () => {
     const text = read('onboarding-readers.yml')
     expect(text).toContain("if: vars.SCHEDULED_JOBS_ENABLED == 'true'")
@@ -327,7 +348,8 @@ describe('CI workflows', () => {
       ['onboarding-readers.yml', 10],
       ['inbox-tagging.yml', 6],
       ['inbox-screenshots.yml', 18],
-      ['klaviyo-results.yml', 10]
+      ['klaviyo-results.yml', 10],
+      ['studio-renders.yml', 18]
     ] as const
     for (const [name, minutes] of scheduled) {
       const text = read(name)
