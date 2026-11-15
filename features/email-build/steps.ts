@@ -83,8 +83,23 @@ const copySaved = z.looseObject({
     productIds: z.array(z.string()),
     code: z.string().nullable()
   }),
-  changes: z.array(z.string()).max(40)
+  changes: z.array(z.string()).max(40),
+  written: z.boolean().optional()
 })
+/** A step's saved rounds (REL-AI part 2b), read by the step itself. */
+const roundsOf = (progress: Record<string, unknown>, step: string) => {
+  const work = progress.work
+  const mine =
+    work && typeof work === 'object'
+      ? (work as Record<string, unknown>)[step]
+      : undefined
+  if (!mine || typeof mine !== 'object') return { work: undefined, saves: 0 }
+  const saves = (mine as { saves?: unknown }).saves
+  return {
+    work: mine,
+    saves: typeof saves === 'number' && Number.isInteger(saves) ? saves : 0
+  }
+}
 const progressSaved = z.looseObject({})
 
 export type StepResult =
@@ -157,15 +172,21 @@ export async function runBuildStep(
   if (step === 'copy') {
     const locked = contentSaved.safeParse(progress.data.content)
     if (!locked.success) return unreadable
+    const rounds = roundsOf(progress.data, 'copy')
     const made = await copyStep(
       {
         store,
         locked: locked.data as unknown as LockedContent,
-        taken: input.taken
+        taken: input.taken,
+        work: rounds.work,
+        saves: rounds.saves
       },
       ctx
     )
-    return made.ok ? { ok: true, done: 'copy', output: made.output } : made
+    if (!made.ok) return made
+    return 'work' in made
+      ? { ok: true, saved: 'copy', work: made.work }
+      : { ok: true, done: 'copy', output: made.output }
   }
   const copy = copySaved.safeParse(progress.data.copy)
   if (!copy.success) return unreadable

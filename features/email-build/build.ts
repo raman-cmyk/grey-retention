@@ -6,12 +6,12 @@ import {
   type RunLog
 } from '@/features/agents/runtime'
 import type { FallbackLog } from '@/features/fallback/log'
-import { keyPart } from '@/features/fallback/entry'
+import { assemblyFallback, keyPart } from '@/features/fallback/entry'
 import {
   allowedBlockTypes,
   type AssemblyInput
 } from '@/features/assembly/inputs'
-import { assembleLockedPlain } from '@/features/assembly/modes'
+import { assembleLocked, assembleLockedPlain } from '@/features/assembly/modes'
 import { localTimeCandidates } from '@/lib/local-time'
 import {
   codeSectionPlan,
@@ -20,9 +20,21 @@ import {
   type SectionPlan
 } from './sections'
 import { lockContent, type ChangeKey, type LockedContent } from './content'
-import { codeFindings } from './inspect'
+import {
+  codeFindings,
+  copyRounds,
+  copyWork,
+  type CopyWork,
+  type Finding
+} from './inspect'
+import { copywriterRun } from './copywriter'
+import { agentCallMs, maxStepSaves } from './step-names'
 import { designA } from './design'
-import { hiddenChars, type Draft } from '@/features/assembly/assemble'
+import {
+  AssemblyError,
+  hiddenChars,
+  type Draft
+} from '@/features/assembly/assemble'
 import type { DiscountCode, OfferSource } from '@/features/offers/source'
 import { offersAt, type Store } from './ports'
 
@@ -33,7 +45,9 @@ import { offersAt, type Store } from './ports'
  * AI. REL-AI part 2: with the owner's switch on and a live model
  * (`BuildCtx.agents`), the Section planner and the Content locker choose
  * the sections and place the products (each checked, else code, logged);
- * the copy and the design follow in parts 2b and 2c.
+ * the Copywriter writes the words, and the Brand and Email inspectors
+ * check them (part 2b), in rounds saved between claims; the design follows
+ * in part 2c.
  */
 
 /** The planned email this build is for (a slot of STR-003's stored plan). */
@@ -124,7 +138,12 @@ export type SectionsOutput = {
   rules: { maxDiscountPercent: number; codes: DiscountCode[] }
   layout: SectionPlan
 }
-export type CopyOutput = { draft: Draft; changes: ChangeKey[] }
+export type CopyOutput = {
+  draft: Draft
+  changes: ChangeKey[]
+  /** The Copywriter's words passed every check (REL-AI part 2b). */
+  written?: boolean
+}
 
 type StepInput = { planned: PlannedEmail; store: Store }
 
@@ -318,17 +337,49 @@ export function uniqueSubject(
   return null
 }
 
-/** Step 3: plain facts-only copy that must pass every code check. */
+/** A model call ends this long after it starts, with its database calls. */
+const callSlackMs = 2_000
+
+/** REL-AI: a subject another email of the plan has goes back to the writer. */
+const takenSubject =
+  (taken: ReadonlySet<string>) =>
+  (draft: Draft): Finding[] =>
+    taken.has(subjectKey(draft.subject))
+      ? [
+          {
+            by: 'code',
+            rule: 'subject_taken',
+            field: 'subject',
+            reason:
+              'Another email in this plan already has this subject: write a different one.'
+          }
+        ]
+      : []
+
+/**
+ * Step 3: the words. On the code-only path, plain facts-only copy that
+ * must pass every code check. With the agents (REL-AI part 2b), the
+ * Copywriter writes into the locked sections and the code checks, the
+ * Brand inspector and the Email inspector judge each draft, up to 3
+ * rewrites, then plain copy (`copyRounds`). A claim starts a model call
+ * only while it fits before `ctx.until`; otherwise the rounds so far come
+ * back as `work`, saved by the job, and the next claim goes on from them.
+ */
 export async function copyStep(
   input: {
     store: Store
     locked: LockedContent
     /** Subjects the plan's other emails use (REL-AI). */
     taken?: readonly string[]
+    /** The rounds an earlier claim saved (REL-AI part 2b). */
+    work?: unknown
+    /** How often this step has saved its rounds. */
+    saves?: number
   },
   ctx: BuildCtx
 ): Promise<
   | { ok: true; output: CopyOutput }
+  | { ok: true; work: CopyWork }
   | { ok: false; code: 'copy_failed' | 'subject_taken' }
 > {
   const { store, locked } = input
@@ -336,6 +387,88 @@ export async function copyStep(
     type: s.family,
     reason: s.purpose
   }))
+  const taken = new Set((input.taken ?? []).map(subjectKey))
+  const changes = [
+    ...new Set(locked.changes.map((c): ChangeKey => c.key))
+  ].slice(0, 40)
+  if (ctx.agents) {
+    const agents = ctx.agents
+    const saved = copyWork.safeParse(input.work)
+    const now = ctx.clock ?? Date.now
+    const until = ctx.until
+    const rounds = copyRounds(
+      {
+        locked,
+        brandName: store.brand.name,
+        write: (feedback) =>
+          assembleLocked(
+            locked.input,
+            store.brand,
+            copywriterRun(agents, {
+              tenantId: ctx.tenantId,
+              callerKey: ctx.callerKey,
+              industry: store.industry
+            }),
+            steps,
+            feedback
+          ),
+        plain: () => assembleLockedPlain(locked.input, store.brand, steps),
+        checks: takenSubject(taken),
+        // Saved by an older app in another shape: the rounds start over.
+        ...(saved.success ? { work: saved.data as unknown as CopyWork } : {}),
+        ...(until !== undefined
+          ? { fits: () => now() + agentCallMs + callSlackMs <= until }
+          : {}),
+        // The database takes no more saves: out of time means plain copy.
+        last: (input.saves ?? 0) >= maxStepSaves
+      },
+      {
+        tenantId: ctx.tenantId,
+        callerKey: ctx.callerKey,
+        campaignId: ctx.campaignId ?? null,
+        industry: store.industry,
+        memory: agents.memory,
+        log: agents.log,
+        ai: agents.ai,
+        fallbacks: ctx.fallbacks
+      }
+    )
+    // The Content locker locks only what the brief can show, so the
+    // Copywriter's own checks of it fail only on a bug: plain copy, logged.
+    const made = await rounds.catch(async (error: unknown) => {
+      if (!(error instanceof AssemblyError)) throw error
+      await ctx.fallbacks.record(
+        assemblyFallback({
+          tenantId: ctx.tenantId,
+          campaignId: ctx.campaignId ?? null,
+          subject: ctx.callerKey,
+          revision: 0,
+          error,
+          fallback: 'Used plain copy: the facts only, in the locked sections.'
+        })
+      )
+      return null
+    })
+    if (made?.status === 'paused') return { ok: true, work: made.work }
+    if (made?.status === 'passed')
+      return { ok: true, output: { draft: made.draft, changes, written: true } }
+    if (made?.status === 'failed') return { ok: false, code: 'copy_failed' }
+    // A busy AI: no job runs the agents later (the sweep has none), so the
+    // email gets plain copy now, with the reason, not later without one.
+    if (made?.status === 'retry')
+      await ctx.fallbacks.record({
+        tenantId: ctx.tenantId,
+        campaignId: ctx.campaignId ?? null,
+        agent: 'copy-inspectors',
+        reasonCode: 'copy_ai_busy',
+        reason: 'The AI was busy or could not be reached.',
+        fallback: 'Used plain copy: the facts only, in the locked sections.',
+        attempts: Math.min(made.rounds.length + 1, 10),
+        detail: { code: made.code.slice(0, 40) },
+        dedupeKey: `copy-inspectors:busy:${keyPart(ctx.callerKey)}`
+      })
+    // Plain copy (logged by the rounds, or above), its subject made free.
+  }
   const plain = assembleLockedPlain(locked.input, store.brand, steps)
   const findings =
     plain.status === 'sample'
@@ -357,12 +490,7 @@ export async function copyStep(
     })
     return { ok: false, code: 'copy_failed' }
   }
-  const subject = uniqueSubject(
-    plain,
-    locked,
-    store.brand.name,
-    new Set((input.taken ?? []).map(subjectKey))
-  )
+  const subject = uniqueSubject(plain, locked, store.brand.name, taken)
   if (!subject) {
     await ctx.fallbacks.record({
       tenantId: ctx.tenantId,
@@ -380,13 +508,7 @@ export async function copyStep(
   }
   return {
     ok: true,
-    output: {
-      draft: { ...plain.draft, subject },
-      changes: [...new Set(locked.changes.map((c): ChangeKey => c.key))].slice(
-        0,
-        40
-      )
-    }
+    output: { draft: { ...plain.draft, subject }, changes }
   }
 }
 
@@ -412,13 +534,13 @@ export function designStep(
     ok: true,
     email: {
       sample,
-      ai: input.ai ?? false,
+      ai: (input.ai ?? false) || copy.written === true,
       name: `${dayName(planned.date)} · ${typeName(planned.emailType)}`,
       subject: draft.subject,
       preheader: draft.preheader,
       html,
       approach: 'A',
-      copy: 'plain',
+      copy: copy.written ? 'written' : 'plain',
       plannedSendAt: sendAt,
       audienceId: planned.audience.id,
       productIds: draft.productIds,
@@ -446,8 +568,10 @@ export async function lockedDraft(
       draft: Draft
       sendAt: string
       changes: ChangeKey[]
-      /** An agent's plan or placement was used (REL-AI part 2). */
+      /** An agent's plan, placement or words were used (REL-AI part 2). */
       ai: boolean
+      /** The Copywriter's words (REL-AI part 2b). */
+      written: boolean
     }
   | {
       ok: false
@@ -461,24 +585,31 @@ export async function lockedDraft(
   const sections = await sectionsStep(input, ctx)
   if (!sections.ok) return sections
   const locked = await contentStep({ ...input, sections: sections.output }, ctx)
+  // No time limit here (`ctx.until`): the rounds run to their end.
   const copy = await copyStep(
     { store: input.store, locked, taken: input.taken },
-    ctx
+    { ...ctx, until: undefined }
   )
   if (!copy.ok) return copy
+  if (!('output' in copy)) throw new Error('Copy paused without a time')
   return {
     ok: true,
     draft: copy.output.draft,
     sendAt: sections.output.sendAt,
     changes: copy.output.changes,
-    ai: sections.output.layout.source === 'agent' || locked.source === 'agent'
+    written: copy.output.written === true,
+    ai:
+      sections.output.layout.source === 'agent' ||
+      locked.source === 'agent' ||
+      copy.output.written === true
   }
 }
 
 /**
  * The agents a build step may ask (REL-AI part 2), or none for the
  * code-only path. Built by `buildAgentsFor` (`./agents`): the metered AI
- * call, the shared memory and the run log.
+ * call, the shared memory and the run log. Only with a live model: the
+ * Copywriter treats every answer through `ai` as a live one.
  */
 export type BuildAgents = { memory: MemoryStore; log: RunLog; ai: AiCall }
 
@@ -489,6 +620,14 @@ export type BuildCtx = {
   fallbacks: FallbackLog
   /** Null or missing: the code-only path (no AI call). */
   agents?: BuildAgents | null
+  /**
+   * When this claim must end (ms since epoch; REL-AI part 2b): a step with
+   * rounds starts a model call only while one fits before it. Missing: no
+   * time limit (tests and tools).
+   */
+  until?: number
+  /** The clock for `until` (ms since epoch); default `Date.now`. */
+  clock?: () => number
 }
 
 /** All four build steps at once (tests and tools; the job saves each). */
@@ -503,6 +642,6 @@ export async function buildEmail(
     sendAt: made.sendAt,
     sample: input.store.sample,
     ai: made.ai,
-    copy: { draft: made.draft, changes: made.changes }
+    copy: { draft: made.draft, changes: made.changes, written: made.written }
   })
 }
