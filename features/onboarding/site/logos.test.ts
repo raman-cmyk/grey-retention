@@ -224,7 +224,11 @@ describe('logoCandidates (ONB-060a)', () => {
 
   it('takes the brand’s name and web address out of the hints, and reads a locale’s home link', () => {
     const html = `<header class="site-header site-header--social"><a href="/en-gb"><img src="/img/white-fox.webp" alt="White Fox"></a></header>`
-    expect(logoCandidates(html, page, { brand: 'White Fox' })).toEqual([
+    expect(
+      logoCandidates(html, 'https://shop.example/en-gb/collections', {
+        brand: 'White Fox'
+      })
+    ).toEqual([
       {
         url: 'https://shop.example/img/white-fox.webp',
         hint: null,
@@ -243,6 +247,11 @@ describe('logoCandidates (ONB-060a)', () => {
         'https://white-fox.example/'
       )[0]?.hint
     ).toBeNull()
+  })
+
+  it('never takes another language’s home link, a flag, for the logo', () => {
+    const html = `<header><a href="/ja"><img src="/flags/jp.png" alt="日本語"></a><a href="/fr-ca/"><img src="/flags/ca.png"></a></header>`
+    expect(logoCandidates(html, page)).toEqual([])
   })
 
   it('finds nothing for a page whose address cannot be read', () => {
@@ -468,6 +477,25 @@ describe('hostile pictures (ONB-060a)', () => {
         '<svg><path fill="#111" d="M0 0"/>' + '<mask id="m">'.repeat(40_000)
       )
     )
+    // Many clip tags, closed or not whole names, are read in one pass.
+    for (const unit of ['<clipPath/>', '<clipPath/><maskx']) {
+      const many = time(
+        new TextEncoder().encode(
+          '<svg><path fill="#111" d="M0 0"/>' + unit.repeat(40_000)
+        )
+      )
+      expect(many.tone).toEqual({ tone: 'dark', boxed: false })
+      expect(many.ms).toBeLessThan(500)
+    }
+    // A letter that grows when lowercased never moves the cut: the clip's
+    // white stays out.
+    expect(
+      logoTone(
+        svg(
+          `<text>${'İ'.repeat(60)}</text><path fill="#111" d="M0 0"/><clipPath id="c"><rect fill="white"/><rect fill="#fff"/></clipPath>`
+        )
+      )
+    ).toEqual({ tone: 'dark', boxed: false })
     // An unclosed mask ends what is drawn; what came before still counts.
     expect(opened.tone).toEqual({ tone: 'dark', boxed: false })
     expect(opened.ms).toBeLessThan(500)

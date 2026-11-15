@@ -196,6 +196,10 @@ export function logoCandidates(
   }
   const doc = parse(html.slice(0, 2_000_000))
   const brandWords = new Set(words(brand, host))
+  const locale =
+    /^\/([a-z]{2}(?:-[a-z]{2})?)(?:\/|$)/i
+      .exec(new URL(page).pathname)?.[1]
+      ?.toLowerCase() ?? null
   const found: LogoCandidate[] = []
   const add = (
     url: string | null,
@@ -228,11 +232,11 @@ export function logoCandidates(
     if (!href) return false
     try {
       const u = new URL(href, page)
-      // The home page, or a locale's home (`/en-gb`).
-      return (
-        u.origin === origin &&
-        /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/?)?$/i.test(u.pathname)
-      )
+      if (u.origin !== origin) return false
+      const path = u.pathname.toLowerCase().replace(/\/+$/, '')
+      // The home page, or the home of the page's own locale (`/en-gb` on
+      // an `/en-gb/…` page): never another language's (a flag is no logo).
+      return path === '' || (locale !== null && path === `/${locale}`)
     } catch {
       return false
     }
@@ -359,40 +363,47 @@ function startsAsSvg(text: string) {
 }
 
 /**
- * An SVG without its clip and mask shapes (they only cut what is drawn).
- * Scanned left to right: an unclosed one ends the drawing there.
+ * An SVG, in lowercase (its colours are read so), without its clip and
+ * mask shapes (they only cut what is drawn). One pass left to right: each
+ * tag's next match is remembered, so no text is searched twice. An
+ * unclosed one ends the drawing there.
  */
 function withoutClips(svg: string) {
-  const lower = svg.toLowerCase()
+  const s = svg.toLowerCase()
+  type Tag = '<clippath' | '<mask'
+  const ahead: Record<Tag, number> = {
+    '<clippath': -1,
+    '<mask': -1
+  }
+  /** The next whole `tag` at or after `from` (not `<masking`), or Infinity. */
+  const nextOf = (tag: Tag, from: number) => {
+    if (ahead[tag] >= from) return ahead[tag]
+    let at = s.indexOf(tag, from)
+    while (at >= 0 && !/[\s>/]/.test(s[at + tag.length] ?? '>'))
+      at = s.indexOf(tag, at + 1)
+    ahead[tag] = at < 0 ? Infinity : at
+    return ahead[tag]
+  }
   let out = ''
   let i = 0
-  const next = (from: number) => {
-    let best = -1
-    for (const tag of ['<clippath', '<mask']) {
-      let at = lower.indexOf(tag, from)
-      // A whole tag name, not `<masking`.
-      while (at >= 0 && !/[\s>/]/.test(lower[at + tag.length] ?? '>'))
-        at = lower.indexOf(tag, at + 1)
-      if (at >= 0 && (best < 0 || at < best)) best = at
-    }
-    return best
-  }
-  while (i < svg.length) {
-    const open = next(i)
-    if (open < 0) return out + svg.slice(i)
-    out += svg.slice(i, open)
-    const tag = lower.startsWith('<clippath', open) ? 'clippath' : 'mask'
-    const head = lower.indexOf('>', open)
+  while (i < s.length) {
+    const clip = nextOf('<clippath', i)
+    const mask = nextOf('<mask', i)
+    const open = Math.min(clip, mask)
+    if (open === Infinity) return out + s.slice(i)
+    out += s.slice(i, open)
+    const tag = open === clip ? 'clippath' : 'mask'
+    const head = s.indexOf('>', open)
     if (head < 0) return out
     // `<mask … />` closes itself.
-    if (lower[head - 1] === '/') {
+    if (s[head - 1] === '/') {
       i = head + 1
       continue
     }
-    const close = lower.indexOf(`</${tag}`, head)
+    const close = s.indexOf(`</${tag}`, head)
     if (close < 0) return out
-    const end = lower.indexOf('>', close)
-    i = end < 0 ? svg.length : end + 1
+    const end = s.indexOf('>', close)
+    i = end < 0 ? s.length : end + 1
   }
   return out
 }
