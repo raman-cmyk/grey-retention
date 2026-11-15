@@ -8,6 +8,7 @@ import {
   trueFacts,
   type FactTopic
 } from './brand-facts'
+import { applyCorrections, type Correction } from './brand-book-corrections'
 import type { CatalogEntry } from './catalog/read'
 import { claimsSafety } from './claims-safety'
 import type { Finding, FindingSource, FindingTopic } from './findings'
@@ -83,6 +84,11 @@ export type BrandBookContent = {
   /** Why some claims are off limits for this kind of brand (ONB-062). */
   avoid: string[]
   sources: FindingSource[]
+  /**
+   * ONB-058: the sections the owner corrected (his facts are in `facts`,
+   * his lines in `observed`). Absent when he corrected nothing.
+   */
+  corrected?: string[]
 }
 
 export type BrandBookParts = {
@@ -129,28 +135,46 @@ const site = (domain: string | null) => {
   return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(d) ? `https://${d}` : null
 }
 
-/** Drops the least needed observed lines until the book fits. */
-function fit(book: BrandBookContent): BrandBookContent {
+/** A line whatever its case and spacing (as ONB-058 matches it). */
+const lineKey = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase()
+const ownKey = (section: string, text: string) => `${section} ${lineKey(text)}`
+
+/**
+ * Drops the least needed observed lines until the book fits: the readers'
+ * first (their audience names last of theirs), the owner's own lines
+ * (`keep`: `section line` keys, ONB-058) only after them.
+ */
+function fit(
+  book: BrandBookContent,
+  keep: ReadonlySet<string> = new Set()
+): BrandBookContent {
   const size = () => JSON.stringify(book).length
-  const lists = [
-    book.observed.marketing,
-    book.observed.customers.worries,
-    book.observed.voice,
-    book.observed.customers.love,
-    book.observed.customers.who,
-    book.products.newArrivals,
-    book.products.bestsellers,
-    book.observed.offering
+  const lists: [string, string[]][] = [
+    ['marketing', book.observed.marketing],
+    ['customers.worries', book.observed.customers.worries],
+    ['voice', book.observed.voice],
+    ['customers.love', book.observed.customers.love],
+    ['customers.who', book.observed.customers.who],
+    ['', book.products.newArrivals],
+    ['', book.products.bestsellers],
+    ['offering', book.observed.offering]
   ]
-  for (const list of lists)
-    while (size() > maxBookChars && list.length) list.pop()
+  for (const [section, list] of lists)
+    for (let i = list.length - 1; i >= 0 && size() > maxBookChars; i--)
+      if (!keep.has(ownKey(section, list[i]!))) list.splice(i, 1)
   if (size() > maxBookChars && book.observed.sending)
     book.observed.sending.audiences = []
+  for (const [, list] of lists)
+    while (size() > maxBookChars && list.length) list.pop()
   return book
 }
 
 /** The Brand book from the readers' findings, the catalog and the history. */
-export function brandBookFrom(parts: BrandBookParts): BrandBookContent {
+export const brandBookFrom = (parts: BrandBookParts): BrandBookContent =>
+  fit(bookFrom(parts))
+
+/** The book before it is cut to size. */
+function bookFrom(parts: BrandBookParts): BrandBookContent {
   // Read for real when any reader read the brand's own data.
   const live =
     parts.history?.live === true ||
@@ -167,7 +191,7 @@ export function brandBookFrom(parts: BrandBookParts): BrandBookContent {
   const featurable = parts.catalog.filter((p) => p.featurable)
   const history = parts.history
   const full = history?.state === 'ready' && history.complete
-  return fit({
+  return {
     schema: brandBookSchema,
     sample: !live,
     brand: {
@@ -230,7 +254,7 @@ export function brandBookFrom(parts: BrandBookParts): BrandBookContent {
     },
     avoid: claimsSafety(industryWords).groups.map((g) => g.reason),
     sources: [...new Set(used.map((f) => f.source))].sort()
-  })
+  }
 }
 
 type Db = SupabaseClient<Database>
@@ -313,22 +337,26 @@ export async function writeBrandBook(
     catalog: (db: Db, t: string) => Promise<CatalogEntry[]>
     history: (db: Db, t: string) => Promise<StoredHistory | null>
     timezone: (db: Db, t: string) => Promise<string>
+    /** ONB-058: the owner's live corrections, oldest first. */
+    corrections: (db: Db, t: string) => Promise<Correction[]>
   }
 ): Promise<number | null> {
-  const [findings, catalog, history, timezone, profile, status] =
+  const [findings, catalog, history, timezone, profile, status, corrections] =
     await Promise.all([
       reads.findings(db, tenantId),
       reads.catalog(db, tenantId),
       reads.history(db, tenantId),
       reads.timezone(db, tenantId),
       profileOf(db, tenantId),
-      catalogStatusOf(db, tenantId)
+      catalogStatusOf(db, tenantId),
+      reads.corrections(db, tenantId)
     ])
   const approved =
     profile !== null &&
     profile.approved_revision !== null &&
     profile.approved_revision === profile.revision
-  const book = brandBookFrom({
+  // Cut to size once, after the owner's corrections (ONB-058b).
+  const book = bookFrom({
     brandName: profile?.brand_name ?? null,
     domain: profile?.domain ?? null,
     timezone,
@@ -348,8 +376,38 @@ export async function writeBrandBook(
       : null
   })
   if (book.sample && profile?.synthetic !== true) return null
-  return saveBrandBook(db, tenantId, book)
+  return saveBrandBook(db, tenantId, withCorrections(book, corrections))
 }
+
+/**
+ * The book with the owner's corrections (ONB-058), cut to size: his facts
+ * confirmed and no longer unclear, his lines in place of the readers'; cut,
+ * the readers' lines go first. The book given is never changed.
+ */
+export function withCorrections(
+  book: BrandBookContent,
+  corrections: readonly Correction[]
+): BrandBookContent {
+  const corrected = corrections.length
+    ? applyCorrections(book, corrections)
+    : null
+  // Nothing he named is in this book (yet): the book as it is, cut to size.
+  if (!corrected || !corrected.corrected.length)
+    return fit(structuredClone(book))
+  const own = new Set(
+    corrections.flatMap((c) =>
+      !c.section.startsWith('facts.') && c.action !== 'remove' && c.value
+        ? [ownKey(c.section, c.value)]
+        : []
+    )
+  )
+  return fit(corrected, own)
+}
+
+/** Rows of corrections made, and of corrections taken back, read per run (small rows). */
+const changesRead = 1000
+/** Workspaces whose books are looked up per run (newest changes first). */
+const workspacesChecked = 100
 
 /** The onboarding readers' jobs (a read that finished changes the book). */
 const readerKinds = [
@@ -361,9 +419,10 @@ const readerKinds = [
 ]
 
 /**
- * Workspaces whose newest finished read (since `since`) is newer than
- * their newest Brand book: a write that was skipped or failed is caught up
- * by the next readers' run. At most `limit`, newest reads first.
+ * Workspaces whose newest finished read, or the owner's newest correction
+ * made or taken back (ONB-058), since `since`, is newer than their newest
+ * Brand book: a write that was skipped or failed is caught up by the next
+ * readers' run. At most `limit`, newest first.
  */
 export async function staleBooks(
   db: Db,
@@ -378,21 +437,47 @@ export async function staleBooks(
     .order('updated_at', { ascending: false })
     .limit(200)
   if (reads.error) throw reads.error
+  const changes = (column: 'created_at' | 'withdrawn_at') =>
+    db
+      .from('brand_book_corrections')
+      .select(`tenant_id,at:${column}`)
+      .gte(column, since)
+      .order(column, { ascending: false })
+      .limit(changesRead)
+  const [made, withdrawn] = await Promise.all([
+    changes('created_at'),
+    changes('withdrawn_at')
+  ])
+  if (made.error) throw made.error
+  if (withdrawn.error) throw withdrawn.error
   const newest = new Map<string, string>()
-  for (const r of reads.data ?? [])
-    if (!newest.has(r.tenant_id)) newest.set(r.tenant_id, r.updated_at)
+  const seen = (tenant: string, at: string | null) => {
+    if (!at) return
+    const was = newest.get(tenant)
+    if (!was || Date.parse(at) > Date.parse(was)) newest.set(tenant, at)
+  }
+  for (const r of reads.data ?? []) seen(r.tenant_id, r.updated_at)
+  for (const c of [...(made.data ?? []), ...(withdrawn.data ?? [])])
+    seen(c.tenant_id, c.at)
   if (!newest.size) return []
+  // The newest changed workspaces only: a short request, the slots to fill.
+  const changed = [...newest]
+    .sort((a, b) => Date.parse(b[1]) - Date.parse(a[1]))
+    .slice(0, workspacesChecked)
   const books = await db
     .from('brand_books')
     .select('tenant_id,created_at')
-    .in('tenant_id', [...newest.keys()])
+    .in(
+      'tenant_id',
+      changed.map(([t]) => t)
+    )
     .order('created_at', { ascending: false })
     .limit(1000)
   if (books.error) throw books.error
   const written = new Map<string, string>()
   for (const b of books.data ?? [])
     if (!written.has(b.tenant_id)) written.set(b.tenant_id, b.created_at)
-  return [...newest]
+  return changed
     .filter(
       ([t, at]) =>
         !written.has(t) || Date.parse(written.get(t)!) < Date.parse(at)
