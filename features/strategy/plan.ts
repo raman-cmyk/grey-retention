@@ -1085,9 +1085,14 @@ export function unusedOffersNote(
 ) {
   const left = offers.map((o) => o.code).filter((c) => !used.has(c))
   if (!left.length) return null
-  const named = left.slice(0, 10).join(', ')
-  const more = left.length > 10 ? ` and ${left.length - 10} more` : ''
-  return `${left.length === 1 ? 'This offer is' : 'These offers are'} not in these 15 days: ${named}${more}.`
+  // At most ten codes, and the note within a stored note's 600 characters.
+  let shown = Math.min(left.length, 10)
+  const note = (n: number) => {
+    const more = left.length > n ? ` and ${left.length - n} more` : ''
+    return `${left.length === 1 ? 'This offer is' : 'These offers are'} not in these 15 days: ${left.slice(0, n).join(', ')}${more}.`
+  }
+  while (shown > 1 && note(shown).length > 600) shown--
+  return note(shown).slice(0, 600)
 }
 
 /** The plan as it is saved and shown: facts, prices and codes from code. */

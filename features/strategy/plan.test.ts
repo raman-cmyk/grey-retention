@@ -502,6 +502,8 @@ describe('planning the next 15 days', () => {
     ])
     // The last round had only the rule problem: one email dropped.
     expect(plan.dropped).toBe(1)
+    // REL-084: the owner reads why, in fixed words.
+    expect(plan.notes[0]).toMatch(/^One planned email was left out: /)
     expect(plan.slots.map((s) => s.date)).not.toContain('2026-11-25')
     expect(fallbacks.entries()).toEqual([
       expect.objectContaining({
