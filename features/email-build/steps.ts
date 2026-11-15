@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { OfferSource } from '@/features/offers/source'
 import {
+  codeWorks,
   contentStep,
   copyStep,
   designStep,
@@ -123,6 +124,7 @@ export type StepResult =
         | 'subject_taken'
         | 'copy_failed'
         | 'render_failed'
+        | 'offer_unsafe'
         | 'step_progress_invalid'
         | 'step_unknown'
         | 'store_changed'
@@ -191,6 +193,10 @@ export async function runBuildStep(
   const copy = copySaved.safeParse(progress.data.copy)
   if (!copy.success) return unreadable
   const content = progress.data.content as { source?: unknown } | undefined
+  // REL-OFF: a wrong code never reaches Klaviyo, whatever went wrong before.
+  const code = (copy.data as unknown as CopyOutput).draft.code
+  if (code !== null && !codeWorks(code, sections.rules, sections.sendAt))
+    return { ok: false, code: 'offer_unsafe' }
   const made = designStep({
     planned,
     store,

@@ -160,6 +160,30 @@ const assemblyFor = (
   facts: store.facts
 })
 
+/**
+ * REL-OFF: a code the email may carry: one of the saved working codes, a
+ * whole percent from 1 to the max, still working when the email sends.
+ * The Content locker locks only such a code and the copy checks hold the
+ * email to it; this is the last check before the email is stored.
+ */
+export function codeWorks(
+  code: string,
+  rules: SectionsOutput['rules'],
+  sendAt: string
+) {
+  const wanted = code.trim().toUpperCase()
+  const found = rules.codes.find((c) => c.code.trim().toUpperCase() === wanted)
+  if (
+    !found ||
+    !Number.isInteger(found.percent) ||
+    found.percent < 1 ||
+    found.percent > Math.min(100, rules.maxDiscountPercent)
+  )
+    return false
+  const ends = found.expiresAt === null ? null : Date.parse(found.expiresAt)
+  return ends === null || (Number.isFinite(ends) && ends > Date.parse(sendAt))
+}
+
 /** Step 1: the send time, the offer rules at that time, and the sections. */
 export async function sectionsStep(
   input: StepInput & { offers: OfferSource },

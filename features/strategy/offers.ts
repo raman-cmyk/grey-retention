@@ -169,6 +169,47 @@ export function offerEmailsThatFail<
 }
 
 /**
+ * REL-OFF: the safe fallback for an offer that would not work when its
+ * email sends (above the max, not one of the working codes, or ended):
+ * that email keeps its day without the offer. `dropped` are the emails as
+ * planned, with the offer they lost. A guard: the plan's last send days
+ * normally ensure every offer works.
+ */
+export function withoutUnusableOffers<
+  S extends Parameters<typeof offerWorksAt>[0]
+>(
+  slots: readonly S[],
+  offers: PlanOffers,
+  timezone: string
+): { slots: S[]; dropped: S[] } {
+  const dropped = offerEmailsThatFail(slots, offers, timezone)
+  return {
+    slots: slots.map((s) => (dropped.includes(s) ? { ...s, offer: null } : s)),
+    dropped
+  }
+}
+
+const shortDay = (date: string) =>
+  new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC'
+  }).format(new Date(`${date}T00:00:00Z`))
+
+/** The plan's note for offers left out of their emails, or null. */
+export function droppedOffersNote(
+  dropped: readonly Parameters<typeof offerWorksAt>[0][]
+) {
+  const named = dropped
+    .slice(0, 10)
+    .flatMap((s) => (s.offer ? [`${s.offer.code} on ${shortDay(s.date)}`] : []))
+  if (!named.length) return null
+  const more = dropped.length > 10 ? ` and ${dropped.length - 10} more` : ''
+  return `Left out of their emails because they would not work on that day (above your max, not one of your codes, or ended): ${named.join(', ')}${more}. Those emails go out without a discount.`
+}
+
+/**
  * One plain note for the picked offers that no longer work with Settings
  * (at most ten codes named, so the note stays short), or null.
  */

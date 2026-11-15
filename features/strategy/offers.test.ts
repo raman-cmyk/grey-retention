@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import {
+  droppedOffersNote,
   lastSendDay,
   leftOutNote,
   offerEmailsThatFail,
@@ -9,6 +10,7 @@ import {
   pulseCodes,
   readPlanOffers,
   stillUsable,
+  withoutUnusableOffers,
   type PlanOffers
 } from './offers'
 
@@ -121,6 +123,35 @@ describe('the guard and the note', () => {
       { date: '2026-11-19', time: '10:00', offer: null }
     ]
     expect(offerEmailsThatFail(slots, offers, zone)).toEqual([slots[1]])
+  })
+
+  it('leave an offer that would not work out of its email, which keeps its day (REL-OFF)', () => {
+    const slots = [
+      slot('2026-11-20', '21:00', 'SETTINGS'),
+      slot('2026-11-19', '15:00', 'AFTERNOON'),
+      slot('2026-11-17', '10:00', 'CANDLE10'),
+      slot('2026-11-18', '10:00', 'FOREVER', 20),
+      { date: '2026-11-19', time: '10:00', offer: null }
+    ]
+    const capped = { ...offers, maxDiscountPercent: 15 }
+    const { slots: kept, dropped } = withoutUnusableOffers(slots, capped, zone)
+    expect(dropped).toEqual([slots[1], slots[2], slots[3]])
+    expect(kept.map((s) => s.offer?.code ?? null)).toEqual([
+      'SETTINGS',
+      null,
+      null,
+      null,
+      null
+    ])
+    expect(kept.map((s) => s.date)).toEqual(slots.map((s) => s.date))
+    expect(droppedOffersNote(dropped)).toBe(
+      'Left out of their emails because they would not work on that day (above your max, not one of your codes, or ended): AFTERNOON on Thu 19 Nov, CANDLE10 on Tue 17 Nov, FOREVER on Wed 18 Nov. Those emails go out without a discount.'
+    )
+    expect(withoutUnusableOffers(slots.slice(0, 1), offers, zone)).toEqual({
+      slots: slots.slice(0, 1),
+      dropped: []
+    })
+    expect(droppedOffersNote([])).toBeNull()
   })
 
   it('name the left-out codes in one short note', () => {

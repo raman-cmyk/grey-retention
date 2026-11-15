@@ -17,12 +17,13 @@ import { storedPulse } from './stored'
 import { SupabaseOfferSource } from '@/features/offers/source'
 import type { SavedOffers } from '@/features/email-build/ports'
 import {
+  droppedOffersNote,
   leftOutNote,
-  offerEmailsThatFail,
   planOfferSource,
   pulseCodes,
   readPlanOffers,
   stillUsable,
+  withoutUnusableOffers,
   workspaceTimezone,
   type PlanOffers
 } from './offers'
@@ -202,14 +203,33 @@ export async function runStrategyRuns(
           offers: usable,
           moves: codeMoves(mapPatterns(mapper))
         })
-        // Every offer email works at its own send time, as "Create email"
-        // will check it (a guard: the plan's last send days ensure it).
-        if (offerEmailsThatFail(made.slots, offers, timezone).length)
-          throw final('plan_offer_unusable')
+        // REL-OFF: every offer email works at its own send time, as "Create
+        // email" will check it. One that would not (a guard: the plan's last
+        // send days ensure it) keeps its day without the offer, named in the
+        // plan's notes and logged; the plan itself goes on.
+        const checked = withoutUnusableOffers(made.slots, offers, timezone)
+        const dropNote = droppedOffersNote(checked.dropped)
+        if (checked.dropped.length)
+          await fallbacks.record({
+            tenantId: run.tenant_id,
+            campaignId: null,
+            agent: 'plan-offers',
+            reasonCode: 'offer_unusable',
+            reason: `${checked.dropped.length} planned ${checked.dropped.length === 1 ? 'offer' : 'offers'} would not work on the day of ${checked.dropped.length === 1 ? 'its email' : 'their emails'}.`,
+            fallback: 'Those emails keep their day without a discount.',
+            attempts: 1,
+            detail: {
+              codes: checked.dropped
+                .flatMap((s) => (s.offer ? [s.offer.code] : []))
+                .slice(0, 10)
+            },
+            dedupeKey: `plan-offers:${keyPart(run.id)}:unusable`
+          })
         const note = unreadable
           ? `${unreadableWords} this plan has no offers. Start again to plan with them.`
           : leftOutNote(leftOut)
         // REL-084: an offer the owner picked that no email uses is named.
+        // Offers left out above are named once, in their own note.
         const unused =
           pick.data.mode === 'picked'
             ? unusedOffersNote(
@@ -221,9 +241,11 @@ export async function runStrategyRuns(
             : null
         const plan = {
           ...made,
+          slots: checked.slots,
           notes: [
             ...(note ? [note] : []),
             ...made.notes,
+            ...(dropNote ? [dropNote] : []),
             ...(unused ? [unused] : [])
           ].slice(0, 10)
         }

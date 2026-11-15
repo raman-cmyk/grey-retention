@@ -14,6 +14,8 @@ export const buildFailureWords = {
   subject_taken:
     'Every subject it could use is used by another email in this plan. Plan again for new emails.',
   render_failed: 'Its design could not be drawn.',
+  offer_unsafe:
+    'Its discount code was not one of your working codes within your max discount. Try again.',
   built_email_invalid: 'The finished email was not complete.',
   email_too_large: 'It came out too large to save.',
   step_output_invalid: 'One of its steps could not be saved.',
