@@ -6,6 +6,7 @@ import { keyPart } from '@/features/fallback/entry'
 import { imageUrlSchema, type Block } from '@/features/blocks/catalog'
 import type { BlockBrand } from '@/features/blocks/brand'
 import { renderEmail } from '@/features/blocks/render'
+import { previewFooterTags } from '@/features/blocks/klaviyo-tags'
 import type { Draft } from '@/features/assembly/assemble'
 import { failedWords, tryAgent, type AgentCtx } from '@/features/strategy/retry'
 
@@ -282,7 +283,11 @@ export function visualFindings(
   }))
 }
 
-/** Approach A: the draft's blocks as coded HTML. */
+/**
+ * Approach A: the draft's blocks as coded HTML, as Klaviyo gets it (REL-FTR):
+ * the footer has Klaviyo's tags and every picture is an https link.
+ * Screens and screenshots show it through `previewFooterTags`.
+ */
 export function designA(draft: Draft, brand: BlockBrand) {
   return {
     blocks: draft.blocks,
@@ -290,7 +295,8 @@ export function designA(draft: Draft, brand: BlockBrand) {
       blocks: draft.blocks,
       brand,
       subject: draft.subject,
-      preheader: draft.preheader
+      preheader: draft.preheader,
+      mode: 'klaviyo'
     })
   }
 }
@@ -310,7 +316,7 @@ export function designedPictureOk(url: string) {
   }
 }
 
-/** Approach B: the designed picture in the hero; every word stays text. */
+/** Approach B: the designed picture in the hero; every word stays text (for Klaviyo, as A). */
 export function designB(draft: Draft, brand: BlockBrand, picture: string) {
   const at = heroIndex(draft)
   if (at < 0) throw new Error('Approach B needs a product hero.')
@@ -325,7 +331,8 @@ export function designB(draft: Draft, brand: BlockBrand, picture: string) {
       blocks,
       brand,
       subject: draft.subject,
-      preheader: draft.preheader
+      preheader: draft.preheader,
+      mode: 'klaviyo'
     })
   }
 }
@@ -375,7 +382,8 @@ export async function look(
 ): Promise<Look> {
   let pictures: Screenshots
   try {
-    pictures = await shots.capture(design.html)
+    // What a reader sees: Klaviyo fills the footer's tags when it sends.
+    pictures = await shots.capture(previewFooterTags(design.html, brand.name))
   } catch {
     return {
       findings: [
