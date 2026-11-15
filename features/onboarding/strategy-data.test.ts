@@ -541,6 +541,7 @@ describe('onboardedStrategyData (ONB-057a)', () => {
     reads.keyDates.mockResolvedValue(null)
     await expect(load()).resolves.toBe(sampleAnswer)
     expect(reads.findings).not.toHaveBeenCalled()
+    expect(reads.corrections).not.toHaveBeenCalled()
     expect(reads.keyDates).not.toHaveBeenCalled()
     expect(profileEq).not.toHaveBeenCalled()
     reads.history.mockResolvedValue(stored())
