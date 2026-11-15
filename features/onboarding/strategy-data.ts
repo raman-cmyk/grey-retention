@@ -1,3 +1,4 @@
+import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   planningKeyDates,
@@ -15,7 +16,11 @@ import {
   type StoredHistory
 } from '@/features/onboarding/history/read'
 import { sampleStrategyData, type StrategyData } from '@/features/strategy/data'
+import { addDays } from '@/features/strategy/pulse'
 import { workspaceTimezone } from '@/features/strategy/offers'
+import { industryOf } from '@/features/intelligence/classifier'
+import type { Industry } from '@/features/intelligence/taxonomy'
+import { localDateTime } from '@/lib/local-time'
 import type { Database } from '@/lib/supabase/database.types'
 
 /**
@@ -26,14 +31,18 @@ import type { Database } from '@/lib/supabase/database.types'
  * already planned, past results), brand findings (ONB-101), key dates
  * (PLN-034) and brand name. The worker adds the owner's offers itself.
  *
- * Until there is enough to plan a real store (a catalog, a history and at
- * least one audience to send to), it hands back the sample store, exactly
- * as today. It says `sample: false` only when the history was read live
- * from Klaviyo. A read that fails throws, so the step is tried again.
+ * Until there is enough to plan a real store, it hands back the sample
+ * store, exactly as today: products emails may feature, and a Klaviyo
+ * history that is ready, read in full (sent, scheduled, audiences) and
+ * read in the last `historyFreshDays`, with at least one audience to send
+ * to. A stale history would miss campaigns scheduled since, which the
+ * weekly cap and the same-day rules must see. It says `sample: false` only
+ * when the history was read live from Klaviyo. A read that fails, the key
+ * dates' included, throws, so the step is tried again.
  */
 export const planDays = 15
-/** The most products handed to the pulse and the plan (the plan takes 5,000). */
-const maxProducts = 500
+/** How old a history may be and still be planned from. */
+export const historyFreshDays = 3
 const fallbackSendTime = '10:00'
 
 export type OnboardedParts = {
@@ -45,18 +54,38 @@ export type OnboardedParts = {
   keyDates: KeyDate[]
 }
 
-const day = (iso: string | null) =>
-  iso && /^\d{4}-\d{2}-\d{2}/.test(iso) ? iso.slice(0, 10) : null
+/** The store's own date of a moment (a launch at 02:00 UTC may be the day before). */
+const day = (iso: string | null, timezone: string) =>
+  iso && !Number.isNaN(Date.parse(iso))
+    ? localDateTime(iso, timezone).slice(0, 10)
+    : null
 const cut = (text: string, max: number) =>
   Array.from(text.trim()).slice(0, max).join('')
 
-/** What the industry is called, from the "offering" finding, else "other". */
-export function industryFrom(findings: readonly Finding[]) {
+/**
+ * The brand's industry from its surest "offering" finding: `key` on the
+ * fixed industry list (what the agents and their industry rules use), and
+ * `words`, the finding's own words (what key dates are matched on). A
+ * finding from the sample rules is not used for a live history.
+ */
+export function industryFrom(
+  findings: readonly Finding[],
+  { live = false }: { live?: boolean } = {}
+): { key: Industry; words: string } {
   const offering = findings
-    .filter((f) => f.topic === 'offering')
+    .filter((f) => f.topic === 'offering' && !(live && f.pass === 'sample'))
     .sort((a, b) => b.confidence - a.confidence)[0]
-  const text = offering ? cut(offering.statement, 60) : ''
-  return text.length > 0 ? text : 'other'
+  const words = offering ? offering.statement.trim() : ''
+  return { key: industryOf(words) ?? 'other', words }
+}
+
+/** Whether a stored history can be planned from on `now`. */
+export function historyUsable(history: StoredHistory | null, now: Date) {
+  if (!history || history.state !== 'ready' || !history.complete) return false
+  const { parts } = history.history
+  if (!parts.sent || !parts.scheduled || !parts.audiences) return false
+  const age = now.getTime() - Date.parse(history.readAt)
+  return age >= -60_000 && age <= historyFreshDays * 86_400_000
 }
 
 /**
@@ -65,29 +94,30 @@ export function industryFrom(findings: readonly Finding[]) {
  */
 export function strategyFrom(
   parts: OnboardedParts,
-  start: string
+  start: string,
+  now = new Date()
 ): Awaited<ReturnType<StrategyData['load']>> | null {
   const { history } = parts
-  if (!history || history.state === 'empty' || parts.catalog.length === 0)
+  const catalog = parts.catalog.filter((p) => p.featurable)
+  if (!history || !historyUsable(history, now) || catalog.length === 0)
     return null
   const fromHistory = planFromHistory(history.history, {
     start,
     days: planDays
   })
   if (fromHistory.audiences.length === 0) return null
-  const industry = industryFrom(parts.findings)
-  const products = [...parts.catalog]
-    .sort(
-      (a, b) =>
-        (a.bestsellerRank ?? Infinity) - (b.bestsellerRank ?? Infinity) ||
-        b.unitsSold30d - a.unitsSold30d ||
-        a.title.localeCompare(b.title)
-    )
-    .slice(0, maxProducts)
+  const industry = industryFrom(parts.findings, { live: history.live }).key
+  // The catalog read keeps at most 500 products; best sellers first.
+  const products = [...catalog].sort(
+    (a, b) =>
+      (a.bestsellerRank ?? Infinity) - (b.bestsellerRank ?? Infinity) ||
+      b.unitsSold30d - a.unitsSold30d ||
+      a.title.localeCompare(b.title)
+  )
   const currency =
     products.find((p) => /^[A-Z]{3}$/.test(p.currency))?.currency ??
     history.history.currency
-  const datesInWindow = parts.keyDates
+  const last = addDays(start, planDays - 1)
   return {
     sample: !history.live,
     pulse: {
@@ -105,23 +135,26 @@ export function strategyFrom(
         id: p.id,
         title: cut(p.title, 200),
         price: p.amount,
-        launchedOn: day(p.launchedAt),
+        launchedOn: day(p.launchedAt, parts.timezone),
         unitsSold30d: p.unitsSold30d,
         stock: p.stock
       })),
       results: fromHistory.results,
-      dates: toPulseDates(datesInWindow)
+      dates: toPulseDates(parts.keyDates)
     },
     mapper: {
       // No reader of the competitor library yet: the step finds no moves.
-      industry: 'other',
+      industry,
       brandSize: 'unknown',
       start,
-      ourDates: datesInWindow.map((k) => ({
-        date: k.date,
-        name: cut(k.name, 80),
-        kind: k.kind
-      })),
+      // Named dates in our 15 days only.
+      ourDates: parts.keyDates
+        .filter((k) => k.date >= start && k.date <= last)
+        .map((k) => ({
+          date: k.date,
+          name: cut(k.name, 80),
+          kind: k.kind
+        })),
       pastDates: [],
       library: []
     },
@@ -130,7 +163,7 @@ export function strategyFrom(
       sendsPerWeek: fromHistory.sendsPerWeek,
       sendTime: fromHistory.sendTime ?? fallbackSendTime,
       products: products.map((p) => {
-        const launched = day(p.launchedAt)
+        const launched = day(p.launchedAt, parts.timezone)
         return {
           id: p.id,
           title: cut(p.title, 200),
@@ -154,14 +187,17 @@ type Db = SupabaseClient<Database>
  */
 export function onboardedStrategyData(
   db: Db,
-  { fallback = sampleStrategyData }: { fallback?: StrategyData } = {}
+  {
+    fallback = sampleStrategyData,
+    now = () => new Date()
+  }: { fallback?: StrategyData; now?: () => Date } = {}
 ): StrategyData {
   return {
     async load({ tenantId, start }) {
       const [timezone, catalog, history, findings, profile] = await Promise.all(
         [
           workspaceTimezone(db, tenantId),
-          listCatalog(db, tenantId),
+          listCatalog(db, tenantId, { featurableOnly: true }),
           readKlaviyoHistory(db, tenantId),
           listFindings(db, tenantId, { topic: 'offering' }),
           db
@@ -172,14 +208,19 @@ export function onboardedStrategyData(
         ]
       )
       if (profile.error) throw profile.error
-      const industry = industryFrom(findings)
       const keyDates = await planningKeyDates(db, {
         tenantId,
         timezone,
         from: start,
         days: planDays,
-        industry
+        industry: industryFrom(findings, { live: history?.live ?? false }).words
       })
+      // A failed read (holidays, the owner's own days) is tried again, never
+      // planned without: a plan missing Black Friday would say nothing.
+      if (!keyDates)
+        throw Object.assign(new Error('key_dates_unreadable'), {
+          code: 'key_dates_unreadable'
+        })
       const own = strategyFrom(
         {
           brandName: profile.data?.brand_name ?? null,
@@ -187,10 +228,10 @@ export function onboardedStrategyData(
           catalog,
           history,
           findings,
-          // Key dates are a help, not a need: a failed read plans without them.
-          keyDates: keyDates?.dates ?? []
+          keyDates: keyDates.dates
         },
-        start
+        start,
+        now()
       )
       return own ?? fallback.load({ tenantId, start })
     }
