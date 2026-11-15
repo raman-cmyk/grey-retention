@@ -21,7 +21,7 @@ describe('strategic segment rules (SEG-STRATEGY-001)', () => {
   it('accepts a sound segment and says it in one sentence', () => {
     expect(checkSegment(vip)).toEqual({ ok: true, segment: vip, warnings: [] })
     expect(describeSegment(vip)).toBe(
-      'People who opened or clicked an email in the last 90 days, and placed at least 2 orders in the last 180 days, but not people who joined in the last 7 days.'
+      'People who opened or clicked an email in the last 90 days and placed at least 2 orders in the last 180 days, but not people who joined in the last 7 days.'
     )
     expect(
       describeSegment(
@@ -36,7 +36,7 @@ describe('strategic segment rules (SEG-STRATEGY-001)', () => {
         'AUD'
       )
     ).toBe(
-      'People who spent at least A$500 ever, and live in Australia or New Zealand, but not people who have not ordered in the last 365 days.'
+      'People who have spent at least A$500 in all and live in Australia or New Zealand, but not people who have not ordered in the last 365 days.'
     )
   })
 
@@ -75,7 +75,7 @@ describe('strategic segment rules (SEG-STRATEGY-001)', () => {
     expect(lapsedAndRecent).toEqual({
       ok: false,
       problems: [
-        '“placed an order in the last 90 days” and “have not ordered in the last 180 days” cannot both be true, so nobody matches.'
+        '“people who placed an order in the last 90 days” and “people who have not ordered in the last 180 days” cannot both be true, so nobody matches.'
       ]
     })
     // Lapsed customers are fine: ordered at some time, not in the last 90 days.
@@ -140,19 +140,111 @@ describe('strategic segment rules (SEG-STRATEGY-001)', () => {
     ).toBe(true)
   })
 
-  it('warns when a segment is close to everyone', () => {
+  it('warns when a segment is wider than engaged in the last 180 days', () => {
+    const warning =
+      'This segment has no rule for opening or clicking in the last 180 days, so it may reach people who have not read an email in a long time.'
+    for (const include of [
+      [{ kind: 'country', countries: ['AU'] }],
+      [{ kind: 'joined', withinDays: 365 }],
+      [{ kind: 'engaged', action: 'opened', withinDays: 365 }],
+      [{ kind: 'purchased', atLeast: 1, withinDays: null }]
+    ])
+      expect(
+        checkSegment({ name: 'Wide', include, exclude: [] })
+      ).toMatchObject({
+        ok: true,
+        warnings: [warning]
+      })
+    expect(checkSegment(vip)).toMatchObject({ warnings: [] })
+  })
+
+  it('refuses more segments that leave nobody', () => {
+    const nobody = (include: unknown[], exclude: unknown[]) =>
+      checkSegment({ name: 'Nobody', include, exclude }).ok
+    // Anyone who spent money placed an order.
+    expect(
+      nobody(
+        [{ kind: 'spent', atLeast: 500, withinDays: 365 }],
+        [{ kind: 'purchased', atLeast: 1, withinDays: null }]
+      )
+    ).toBe(false)
+    expect(
+      nobody(
+        [{ kind: 'spent', atLeast: 500, withinDays: 365 }],
+        [{ kind: 'spent', atLeast: 100, withinDays: null }]
+      )
+    ).toBe(false)
+    // Two exclusions that together cover everyone.
+    expect(
+      nobody(
+        [{ kind: 'engaged', action: 'opened', withinDays: 90 }],
+        [
+          { kind: 'purchased', atLeast: 1, withinDays: 90 },
+          { kind: 'not_purchased', withinDays: 90 }
+        ]
+      )
+    ).toBe(false)
+    // Countries: what is left after every country rule.
+    expect(
+      nobody(
+        [{ kind: 'country', countries: ['US', 'CA'] }],
+        [
+          { kind: 'country', countries: ['US'] },
+          { kind: 'country', countries: ['CA'] }
+        ]
+      )
+    ).toBe(false)
+    expect(
+      nobody(
+        [
+          { kind: 'country', countries: ['US', 'CA'] },
+          { kind: 'country', countries: ['CA', 'GB'] },
+          { kind: 'country', countries: ['GB', 'US'] }
+        ],
+        []
+      )
+    ).toBe(false)
+    // Never ordered, and ordered at some time, cannot both hold.
+    expect(
+      nobody(
+        [
+          { kind: 'not_purchased', withinDays: null },
+          { kind: 'purchased', atLeast: 1, withinDays: null }
+        ],
+        []
+      )
+    ).toBe(false)
+    // A first-order segment: people who never ordered.
     expect(
       checkSegment({
-        name: 'Australia',
-        include: [{ kind: 'country', countries: ['AU'] }],
+        name: 'Never ordered',
+        include: [
+          { kind: 'engaged', action: 'opened', withinDays: 90 },
+          { kind: 'not_purchased', withinDays: null }
+        ],
         exclude: []
       })
-    ).toMatchObject({
-      ok: true,
-      warnings: [
-        'This segment has no engagement, purchase or sign-up rule, so it is close to everyone on the list.'
-      ]
-    })
+    ).toMatchObject({ ok: true })
+  })
+
+  it('takes real country codes only, and names them well', () => {
+    for (const code of ['UK', 'EU', 'ZZ', 'XX', 'EZ'])
+      expect(
+        checkSegment({
+          ...vip,
+          include: [...vip.include, { kind: 'country', countries: [code] }]
+        }).ok,
+        code
+      ).toBe(false)
+    expect(
+      describeSegment({
+        name: 'Abroad',
+        include: [{ kind: 'country', countries: ['US', 'GB', 'NL'] }],
+        exclude: []
+      })
+    ).toBe(
+      'People who live in the United States, the United Kingdom or the Netherlands.'
+    )
   })
 
   it('lists the Klaviyo data a segment reads, and what an account lacks', () => {
@@ -165,6 +257,19 @@ describe('strategic segment rules (SEG-STRATEGY-001)', () => {
     expect(missingMetrics(vip, ['Opened Email', 'Clicked Email'])).toEqual([
       'Placed Order'
     ])
+    // "Opened or clicked" works with either metric.
+    expect(
+      missingMetrics(defaultEngagedSegment({ engaged90: 5000, list: 10000 }), [
+        'Opened Email',
+        'Placed Order'
+      ])
+    ).toEqual([])
+    expect(
+      missingMetrics(
+        defaultEngagedSegment({ engaged90: 5000, list: 10000 }),
+        []
+      )
+    ).toEqual(['Opened Email', 'Clicked Email'])
     expect(
       segmentNeeds({
         name: 'Clickers abroad',
@@ -192,6 +297,10 @@ describe('strategic segment rules (SEG-STRATEGY-001)', () => {
       'Engaged 180 days'
     )
     expect(defaultEngagedSegment({ engaged90: null, list: null }).name).toBe(
+      'Engaged 90 days'
+    )
+    // Exactly 1,000 people and exactly 20% keep 90 (VISION: under either).
+    expect(defaultEngagedSegment({ engaged90: 1000, list: 5000 }).name).toBe(
       'Engaged 90 days'
     )
     expect(
