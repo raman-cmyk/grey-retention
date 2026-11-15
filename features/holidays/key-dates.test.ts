@@ -1,7 +1,19 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
-import { keyDates, planningKeyDates, toPulseDates } from './key-dates'
+import type { DateKind } from '@/features/strategy/competitors'
+import {
+  keyDates,
+  planningKeyDates,
+  toPulseDates,
+  type KeyDateKind
+} from './key-dates'
 import type { HolidayCountry } from './platform'
+
+// The competitor step matches dates by the same kinds (compile-time check).
+const sameKinds: [KeyDateKind, DateKind] = ['sale', 'sale']
+void sameKinds
+const kindsMatch = (k: KeyDateKind): DateKind => k
+void kindsMatch
 
 const names = (
   country: HolidayCountry,
@@ -191,7 +203,94 @@ describe('keyDates (PLN-034)', () => {
       dates
     )
     expect(keyDates({ country: 'US', from: '1 March' })).toEqual([])
+    expect(keyDates({ country: 'US', from: '2027-02-30' })).toEqual([])
+    expect(keyDates({ country: 'US', from: '2027-03-01', days: 1e9 })).toEqual(
+      []
+    )
     expect(keyDates({ country: 'US', from: '2027-03-01', days: 0 })).toEqual([])
+  })
+
+  it('never gives a pet brand a chocolate day, and reads words whole', () => {
+    const industry = (text: string, from = '2027-07-01', days = 62) =>
+      keyDates({ country: 'US', from, days, industry: text })
+        .filter((k) => k.source === 'industry')
+        .map((k) => k.name)
+    expect(industry('Dog treats')).not.toContain('World Chocolate Day')
+    expect(industry('Pet treats and chocolate-free snacks')).not.toContain(
+      'World Chocolate Day'
+    )
+    expect(industry('Artisan chocolate')).toEqual(['World Chocolate Day'])
+    for (const text of [
+      'Puppet theatre',
+      'Kitten heels shoes',
+      'Cat-eye sunglasses',
+      'Hot dogs',
+      'Art deco-style lamps',
+      'Home fragrance category'
+    ])
+      expect(industry(text, '2027-04-01')).toEqual([])
+    expect(industry('Eco-friendly cleaning', '2027-04-15', 30)).toEqual([
+      'Earth Day'
+    ])
+    expect(industry('Matcha and teaware', '2027-05-15')).toEqual([
+      'International Tea Day'
+    ])
+  })
+
+  it('keeps the owner’s notes when their entry is a calendar date', () => {
+    const [black] = keyDates({
+      country: 'US',
+      from: '2026-11-20',
+      own: [
+        {
+          name: 'black friday',
+          date: '2026-11-27',
+          kind: 'event',
+          repeatsAnnually: false,
+          notes: 'Members early access'
+        }
+      ]
+    }).filter((k) => k.date === '2026-11-27')
+    expect(black).toEqual({
+      date: '2026-11-27',
+      name: 'black friday',
+      kind: 'sale',
+      source: 'own',
+      leadDays: 7,
+      emailsFrom: '2026-11-20',
+      notes: 'Members early access'
+    })
+    // A plain keyboard apostrophe is the same day.
+    expect(
+      keyDates({
+        country: 'US',
+        from: '2027-05-01',
+        own: [
+          {
+            name: "Mother's  Day",
+            date: '2027-05-09',
+            kind: 'holiday',
+            repeatsAnnually: false,
+            notes: ''
+          }
+        ]
+      }).filter((k) => k.date === '2027-05-09')
+    ).toHaveLength(1)
+  })
+
+  it('treats Boxing Day as a sale day where it is a public holiday', () => {
+    expect(names('GB', '2026-12-15')).toContain(
+      '2026-12-26 Boxing Day (sale, from 2026-12-21)'
+    )
+  })
+
+  it('plans across the new year', () => {
+    expect(names('US', '2026-12-25')).toEqual([
+      '2026-12-25 Christmas Day (holiday, from 2026-12-25)',
+      '2026-12-26 Boxing Day (sale, from 2026-12-25)',
+      '2026-12-31 New Year’s Eve (holiday, from 2026-12-28)',
+      '2027-01-01 New Year’s Day (holiday, from 2026-12-29)'
+    ])
   })
 
   it('maps to the planner’s date rows', () => {
@@ -221,6 +320,10 @@ function fakeDb(
       }),
       order: vi.fn(() => chain),
       limit: vi.fn(async () => holidays),
+      or: vi.fn((filter: string) => {
+        asked.push(`${table} or ${filter}`)
+        return chain
+      }),
       maybeSingle: vi.fn(async () => preference)
     }
     return chain
@@ -258,8 +361,36 @@ describe('planningKeyDates (PLN-034)', () => {
     ])
     expect(asked).toEqual([
       `holidays.tenant_id=${tenant}`,
+      'holidays or repeats_annually.eq.true,event_date.gte.2027-06-20',
       `holiday_preferences.tenant_id=${tenant}`
     ])
+  })
+
+  it('passes the window and the industry on', async () => {
+    const { db } = fakeDb(
+      { data: [], error: null },
+      { data: { country: 'US' }, error: null }
+    )
+    const read = await planningKeyDates(db, {
+      tenantId: tenant,
+      timezone: 'UTC',
+      from: '2027-08-01',
+      days: 30,
+      industry: 'Pet supplies'
+    })
+    expect(read?.dates.map((k) => k.name)).toEqual([
+      'International Cat Day',
+      'International Dog Day'
+    ])
+    for (const days of [0, 63, 1.5])
+      expect(
+        await planningKeyDates(db, {
+          tenantId: tenant,
+          timezone: 'UTC',
+          from: '2027-08-01',
+          days
+        })
+      ).toBeNull()
   })
 
   it('guesses the country from the timezone when none is saved', async () => {

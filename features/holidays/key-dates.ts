@@ -151,40 +151,57 @@ const day = (name: string, on: (y: number) => string): Extra => ({
   on
 })
 /**
- * Industry days, matched from the brand's industry in words. Well-known
- * fixed days only; an industry that matches none simply gets none.
+ * Whole words (not part of a longer word or a hyphenated one), so
+ * "category" is not "cat", "puppet" is not "puppy" and "cat-eye" is not a
+ * cat. `not`: phrases that look like a match but are not ("hot dogs").
+ */
+const words = (list: string, not?: string) =>
+  new RegExp(
+    `${not ? `^(?!.*\\b(?:${not})\\b)` : ''}.*(?<![\\w-])(?:${list})(?![\\w-])`,
+    'i'
+  )
+const pets = words(
+  'pets?|petcare|dogs?|puppy|puppies|cats?|kittens?|canine|feline',
+  'hot dogs?|kitten heels?'
+)
+
+/**
+ * Industry days, matched from the brand's industry in words (English).
+ * Well-known fixed days only; an industry that matches none gets none.
+ * `unless`: never for these brands (chocolate is poison to pets).
  */
 const industryDays: {
   match: RegExp
+  unless?: RegExp
   days: Extra[]
   only?: HolidayCountry[]
 }[] = [
   {
-    match: /\bpets?\b|\bdogs?\b|\bcats?\b|pupp|kitten/i,
+    match: pets,
     days: [
       day('International Cat Day', fixed(8, 8)),
       day('International Dog Day', fixed(8, 26))
     ]
   },
+  { match: pets, only: ['US'], days: [day('National Pet Day', fixed(4, 11))] },
   {
-    match: /\bpets?\b|\bdogs?\b|\bcats?\b|pupp|kitten/i,
-    only: ['US'],
-    days: [day('National Pet Day', fixed(4, 11))]
-  },
-  {
-    match: /chocolate|confection|sweets|candy|bakery|dessert|treats/i,
+    match: words(
+      'chocolates?|chocolatier|confectionery|confections?|sweets|candy|candies|bakery|bakeries|desserts?|patisserie'
+    ),
+    unless: pets,
     days: [day('World Chocolate Day', fixed(7, 7))]
   },
   {
-    match: /coffee|\btea\b|\bteas\b|caf[eé]/i,
+    match: words('coffee|espresso|teas?|matcha|teaware|cafe|café'),
     days: [
       day('International Tea Day', fixed(5, 21)),
       day('International Coffee Day', fixed(10, 1))
     ]
   },
   {
-    match:
-      /fitness|yoga|wellness|wellbeing|well-being|health|supplement|\bgym\b|activewear|athleisure/i,
+    match: words(
+      'fitness|yoga|wellness|wellbeing|well-being|health|supplements?|gym|activewear|athleisure'
+    ),
     days: [
       day('World Health Day', fixed(4, 7)),
       day('International Day of Yoga', fixed(6, 21)),
@@ -192,8 +209,10 @@ const industryDays: {
     ]
   },
   {
-    match:
-      /\beco\b|eco-|sustainab|organic|outdoor|garden|\bplants?\b|zero[- ]?waste|refill/i,
+    match: new RegExp(
+      `${words('eco|sustainable|sustainability|organic|outdoors?|garden|gardening|plants?|zero[- ]?waste|refills?|refillable').source}|(?<![\\w-])eco-`,
+      'i'
+    ),
     days: [
       day('Earth Day', fixed(4, 22)),
       day('World Environment Day', fixed(6, 5))
@@ -206,8 +225,11 @@ const leadByName: [RegExp, number][] = [
   [/^Christmas Day$/, 14],
   [/^(Valentine’s Day|Mother’s Day|Father’s Day)/, 10],
   [/^(Hanukkah begins|Diwali|Lunar New Year)$/, 10],
-  [/^Black Friday$/, 7]
+  [/^Black Friday$/, 7],
+  // A public holiday in GB, AU, CA and NZ, and their biggest sale day.
+  [/^Boxing Day$/, 5]
 ]
+const saleByName = /^Boxing Day$/
 const leadByCategory: Record<HolidayCategory, number> = {
   commercial: 5,
   cultural: 3,
@@ -218,11 +240,24 @@ const kindByCategory: Record<HolidayCategory, KeyDateKind> = {
   cultural: 'holiday',
   civic: 'holiday'
 }
-/** The longest lead above: how far past the window to look. */
-const longestLead = 14
+/** How far past the window to look for calendar dates: the longest lead. */
+const longestLead = Math.max(
+  ...leadByName.map(([, lead]) => lead),
+  ...Object.values(leadByCategory)
+)
 const ownLead = 3
+/** The longest window asked for (a month and a bit). */
+export const keyDatesMaxDays = 62
 
-const validDay = /^\d{4}-\d{2}-\d{2}$/
+/** A real calendar day, YYYY-MM-DD. */
+const realDay = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const [y, m, d] = value.split('-').map(Number) as [number, number, number]
+  return iso(addDays({ y, m, d }, 0)) === value
+}
+/** One date once: the same day and name, whatever the apostrophes or spaces. */
+const sameKey = (date: string, name: string) =>
+  `${date} ${name.toLowerCase().replace(/[‘’`]/g, "'").replace(/\s+/g, ' ').trim()}`
 
 /**
  * The key dates for the window `from` (the first day, YYYY-MM-DD in the
@@ -241,7 +276,13 @@ export function keyDates({
   industry?: string
   own?: OwnDate[]
 }): KeyDate[] {
-  if (!validDay.test(from) || !Number.isInteger(days) || days < 1) return []
+  if (
+    !realDay(from) ||
+    !Number.isInteger(days) ||
+    days < 1 ||
+    days > keyDatesMaxDays
+  )
+    return []
   const [y, m, d] = from.split('-').map(Number) as [number, number, number]
   const start = { y, m, d }
   const end = iso(addDays(start, days))
@@ -257,8 +298,20 @@ export function keyDates({
     const [dy, dm, dd] = date.split('-').map(Number) as [number, number, number]
     const first = iso(addDays({ y: dy, m: dm, d: dd }, -leadDays))
     if (date < from || first >= end) return
-    const key = `${date} ${name.toLowerCase()}`
-    if (found.has(key)) return
+    const key = sameKey(date, name)
+    const earlier = found.get(key)
+    // The owner's own entry with a calendar date's name keeps the
+    // calendar's kind and lead, and adds the owner's name and notes.
+    if (earlier) {
+      if (source === 'own')
+        found.set(key, {
+          ...earlier,
+          name,
+          source,
+          ...(notes ? { notes } : {})
+        })
+      return
+    }
     found.set(key, {
       date,
       name,
@@ -277,7 +330,8 @@ export function keyDates({
     const lead =
       leadByName.find(([name]) => name.test(h.name))?.[1] ??
       leadByCategory[h.category]
-    add(h.date, h.name, kindByCategory[h.category], 'calendar', lead)
+    const kind = saleByName.test(h.name) ? 'sale' : kindByCategory[h.category]
+    add(h.date, h.name, kind, 'calendar', lead)
   }
   const extras = [
     ...(financialYear[country] ?? []),
@@ -286,6 +340,7 @@ export function keyDates({
       .filter(
         (group) =>
           group.match.test(industry) &&
+          !group.unless?.test(industry) &&
           (!group.only || group.only.includes(country))
       )
       .flatMap((group) => group.days)
@@ -294,7 +349,7 @@ export function keyDates({
     for (const year of [y, y + 1])
       add(extra.on(year), extra.name, extra.kind, extra.source, extra.lead)
   for (const entry of own) {
-    if (!validDay.test(entry.date)) continue
+    if (!realDay(entry.date)) continue
     const date = entry.repeatsAnnually
       ? nextOccurrence(entry.date, from)
       : entry.date
@@ -305,11 +360,17 @@ export function keyDates({
   )
 }
 
-/** The planner's date rows (`pulse.ts` `dates`): a sale is an event there. */
+/**
+ * The planner's date rows (`pulse.ts` `dates`): a sale is an event there.
+ * Lane A: the pulse keeps dates inside the 15 days only (`gatherEvidence`)
+ * and its rows have no lead, so a date whose emails start inside the
+ * window but falls after it (Christmas, planning from 1 December) needs
+ * the pulse widened, or `emailsFrom` passed another way.
+ */
 export const toPulseDates = (dates: KeyDate[]) =>
   dates.map((k) => ({
     date: k.date,
-    name: k.name.slice(0, 80),
+    name: Array.from(k.name).slice(0, 80).join(''),
     kind: k.kind === 'sale' ? ('event' as const) : k.kind
   }))
 
@@ -337,13 +398,25 @@ export async function planningKeyDates(
   countrySource: 'saved' | 'guess'
   dates: KeyDate[]
 } | null> {
-  if (!uuid.test(input.tenantId) || !validDay.test(input.from)) return null
+  const days = input.days ?? 15
+  if (
+    !uuid.test(input.tenantId) ||
+    !realDay(input.from) ||
+    !Number.isInteger(days) ||
+    days < 1 ||
+    days > keyDatesMaxDays
+  )
+    return null
   const read = async () =>
     Promise.all([
       db
         .from('holidays')
         .select('name,event_date,kind,repeats_annually,notes')
         .eq('tenant_id', input.tenantId)
+        // Only entries that can still come up: yearly ones, and one-off
+        // ones from the window's first day (so old ones never crowd out
+        // new ones under the limit).
+        .or(`repeats_annually.eq.true,event_date.gte.${input.from}`)
         .order('event_date')
         .limit(ownLimit),
       db
@@ -365,7 +438,7 @@ export async function planningKeyDates(
     dates: keyDates({
       country,
       from: input.from,
-      days: input.days,
+      days,
       industry: input.industry,
       own: (rows.data ?? []).map((r) => ({
         name: r.name,

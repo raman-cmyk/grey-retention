@@ -12,12 +12,12 @@ update public.tenants set timezone = 'Asia/Kathmandu' where id = '00000000-0000-
 select ok(not has_table_privilege('authenticated','public.holidays','insert,update,delete,truncate'),'members cannot write holidays directly');
 select ok(not has_table_privilege('anon','public.holidays','select,insert,update,delete,truncate'),'anon has no holiday access');
 -- PLN-034: the planner's worker reads the owner's dates and country, and writes neither.
-select ok(not has_table_privilege('service_role','public.holidays','insert,update,delete,truncate'),'service role cannot write holidays');
+select ok(not has_table_privilege('service_role','public.holidays','insert,update,delete,truncate,references,trigger,maintain'),'service role cannot write holidays');
 select ok(has_table_privilege('service_role','public.holidays','select'),'service role reads holidays for planning');
 select ok(has_table_privilege('authenticated','public.holidays','select'),'members can read holidays (RLS decides which)');
 select ok(not has_table_privilege('anon','public.holiday_preferences','select'),'anon cannot read the country');
 select ok(not has_table_privilege('authenticated','public.holiday_preferences','insert,update,delete,truncate'),'members cannot write the country directly');
-select ok(not has_table_privilege('service_role','public.holiday_preferences','insert,update,delete,truncate'),'service role cannot write the country');
+select ok(not has_table_privilege('service_role','public.holiday_preferences','insert,update,delete,truncate,references,trigger,maintain'),'service role cannot write the country');
 select ok(has_table_privilege('service_role','public.holiday_preferences','select'),'service role reads the country for planning');
 select ok(not has_function_privilege('anon','public.save_holiday(uuid,uuid,integer,text,date,text,boolean,text)','execute'),'anon cannot save');
 select ok(not has_function_privilege('service_role','public.delete_holiday(uuid,uuid,integer)','execute'),'service role cannot delete');
