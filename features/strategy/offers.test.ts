@@ -5,6 +5,7 @@ import {
   leftOutNote,
   offerEmailsThatFail,
   offerWorksAt,
+  planOfferSource,
   pulseCodes,
   readPlanOffers,
   stillUsable,
@@ -172,6 +173,46 @@ describe('picked offers at the plan step', () => {
         zone
       ).leftOut
     ).toEqual(['forever', 'GONE'])
+  })
+})
+
+describe('the margin floor (PLN-039)', () => {
+  it('leaves out a code between the margin cap and the owner’s max', async () => {
+    const owned = (code: string, percent: number) => ({
+      id: code,
+      code,
+      percent,
+      expiresAt: null,
+      ended: false
+    })
+    // Max 50%, but a 60% margin with a 30% floor allows only 42%.
+    const source = planOfferSource(
+      {
+        managed: async () => ({
+          maxDiscountPercent: 50,
+          grossMarginPercent: 60,
+          marginFloorPercent: 30,
+          revision: 2,
+          codes: [owned('SALE45', 45), owned('OWNER10', 10)]
+        })
+      },
+      '2026-11-16'
+    )
+    const read = await readPlanOffers(source, tenant, '2026-11-16', zone)
+    expect(read.maxDiscountPercent).toBe(42)
+    const picked = [
+      { id: 'offer:SALE45', code: 'SALE45', percent: 45, until: null },
+      { id: 'offer:OWNER10', code: 'OWNER10', percent: 10, until: null }
+    ]
+    expect(stillUsable(picked, read, '2026-11-16', zone)).toEqual({
+      usable: [
+        { id: 'offer:OWNER10', code: 'OWNER10', percent: 10, until: null }
+      ],
+      leftOut: ['SALE45']
+    })
+    expect(
+      offerWorksAt(slot('2026-11-17', '10:00', 'SALE45', 45), read, zone)
+    ).toBe(false)
   })
 })
 
