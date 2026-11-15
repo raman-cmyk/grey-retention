@@ -7278,6 +7278,24 @@ export type Database = {
           tenant_id: string
         }[]
       }
+      claim_studio_build: {
+        Args: { target?: string }
+        Returns: {
+          email: Json
+          id: string
+          lease_token: string
+          planned: Json
+          progress: Json
+          push_key: string
+          run_id: string
+          slot: number
+          start_on: string
+          state: string
+          step: string
+          tenant_id: string
+          timezone: string
+        }[]
+      }
       complete_asset_import: {
         Args: { import_id: string; t: string }
         Returns: undefined
@@ -8455,6 +8473,10 @@ export type Database = {
       use_klaviyo_timezone: {
         Args: { expected: string; expected_zone: string; t: string }
         Returns: undefined
+      }
+      wait_email_round: {
+        Args: { build: string; lease: string; seconds: number; work: Json }
+        Returns: number
       }
       withdraw_brand_book_correction: {
         Args: { correction: string; t: string }
