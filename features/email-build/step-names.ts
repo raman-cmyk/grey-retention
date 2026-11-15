@@ -13,5 +13,8 @@ export const allSteps = [...buildSteps, 'push'] as const
 export const roundSteps = ['copy', 'design'] as const
 export type RoundStep = (typeof roundSteps)[number]
 
-/** A step saves at most this many times (the database refuses more). */
+/**
+ * A step saves at most this many times: `save_email_round` refuses more
+ * (its own 16, in migration `email_step_rounds`; change both together).
+ */
 export const maxStepSaves = 16

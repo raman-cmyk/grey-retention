@@ -7,8 +7,12 @@ vi.mock('./steps', async (original) => ({
   runBuildStep: runStep
 }))
 import { memoryFallbackLog } from '@/features/fallback/log'
+import { InMemoryMemoryStore } from '@/features/agents/memory'
+import { InMemoryRunLog } from '@/features/agents/runtime'
 import { runEmailBuilds } from './worker'
-import { buildSteps, maxStepSaves } from './step-names'
+import { buildEmail, type BuildAgents, type PlannedEmail } from './build'
+import { maxStepSaves } from './step-names'
+import { sampleOffers, sampleStoreSource } from './ports'
 
 /**
  * REL-AI part 2b: a step that saves its rounds (`save_email_round`). The
@@ -20,60 +24,87 @@ const inDays = (n: number) => {
   d.setUTCDate(d.getUTCDate() + n)
   return d.toISOString().slice(0, 10)
 }
-const job = (over: Record<string, unknown> = {}) => ({
-  id: 'build-1',
-  tenant_id: tenant,
-  state: 'build_queued',
-  step: 'copy',
-  progress: { sections: {}, content: {} },
-  run_id: 'run-1',
-  slot: 0,
-  planned: {
-    date: inDays(2),
-    time: '10:00',
-    emailType: 'launch',
-    angle: 'Meet the linen throw',
-    products: [{ id: 'p-linen-throw', title: 'Linen throw' }],
-    offer: null,
-    audience: { id: 'sample-engaged', label: 'Engaged subscribers (sample)' }
-  },
-  email: null,
-  push_key: 'key-1',
-  timezone: 'Asia/Kathmandu',
-  start_on: inDays(1),
-  lease_token: 'lease-1',
-  ...over
-})
+const planned: PlannedEmail = {
+  date: inDays(2),
+  time: '10:00',
+  emailType: 'launch',
+  angle: 'Meet the linen throw',
+  products: [{ id: 'p-linen-throw', title: 'Linen throw' }],
+  offer: null,
+  audience: { id: 'sample-engaged', label: 'Engaged subscribers (sample)' }
+}
+const order = ['sections', 'content', 'copy', 'design']
 
 type Call = { fn: string; args: Record<string, unknown> }
 /**
- * A database that hands out one build. Saving its rounds hands the same
- * step out again with the work kept (as `save_email_round` does);
- * finishing the copy step ends it.
+ * A database with one build, as the real one keeps it: each claim gets a
+ * new lease; a save keeps the work and lets the step be claimed again (the
+ * 17th save is refused); a finished step moves on; a failure ends the
+ * build here (its next try would wait a minute).
  */
-function fakeDb(fail: Record<string, { code: string }> = {}) {
-  let current: Record<string, unknown> | null = job()
+function fakeDb(
+  start = 'copy',
+  fail: Record<string, { code: string; details?: string }> = {}
+) {
+  let build: Record<string, unknown> | null = {
+    id: 'build-1',
+    tenant_id: tenant,
+    state: 'build_queued',
+    step: start,
+    progress: Object.fromEntries(
+      order.slice(0, order.indexOf(start)).map((s) => [s, {}])
+    ),
+    run_id: 'run-1',
+    slot: 0,
+    planned,
+    email: null,
+    push_key: 'key-1',
+    timezone: 'Asia/Kathmandu',
+    start_on: inDays(1)
+  }
+  let leases = 0
+  let leased = false
+  let saves = 0
   const calls: Call[] = []
+  const set = (over: Record<string, unknown>) => {
+    build = { ...build, ...over }
+    leased = false
+  }
   const rpc = vi.fn(async (fn: string, args: Record<string, unknown> = {}) => {
     calls.push({ fn, args })
     if (fail[fn]) return { data: null, error: fail[fn] }
     if (fn === 'claim_email_build') {
-      const next = current
-      current = null
-      return { data: next ? [next] : [], error: null }
+      if (!build || leased) return { data: [], error: null }
+      leased = true
+      return { data: [{ ...build, lease_token: `lease-${++leases}` }] }
     }
+    const progress = (build?.progress ?? {}) as Record<string, unknown>
     if (fn === 'save_email_round') {
-      const last = calls.filter((c) => c.fn === 'save_email_round').length
-      current = job({
+      if (++saves > maxStepSaves)
+        return {
+          data: null,
+          error: { code: '22023', details: 'too_many_rounds' }
+        }
+      set({
         progress: {
-          sections: {},
-          content: {},
-          work: { copy: { ...(args.work as object), saves: last } }
+          ...progress,
+          work: { [String(args.step)]: { ...(args.work as object), saves } }
         }
       })
-      return { data: last, error: null }
+      return { data: saves, error: null }
     }
-    return { data: fn === 'fail_email_step' ? 'retry' : 'design', error: null }
+    if (fn === 'finish_email_step') {
+      const done = String(args.done)
+      const next = order[order.indexOf(done) + 1]
+      set({ step: next, progress: { ...progress, [done]: args.output } })
+      return { data: next, error: null }
+    }
+    if (fn === 'finish_email_build') {
+      set({ state: 'push_queued', step: 'push', email: args.result })
+      return { data: null, error: null }
+    }
+    build = null
+    return { data: fn === 'fail_email_step' ? 'retry' : null, error: null }
   })
   const query: Record<string, unknown> = {
     select: () => query,
@@ -85,14 +116,15 @@ function fakeDb(fail: Record<string, { code: string }> = {}) {
   }
   return { db: { rpc, from: () => query } as never, calls }
 }
-const names = (calls: Call[]) => calls.map((c) => c.fn)
+const named = (calls: Call[], fn: string) => calls.filter((c) => c.fn === fn)
+const saveCopy = { ok: true, saved: 'copy', work: { round: 1 } }
 
 beforeEach(() => runStep.mockReset())
 
 describe('a step that saves its rounds (REL-AI part 2b)', () => {
   it('is claimed again at once and goes on from its saved rounds', async () => {
     runStep
-      .mockResolvedValueOnce({ ok: true, saved: 'copy', work: { round: 1 } })
+      .mockResolvedValueOnce(saveCopy)
       .mockResolvedValueOnce({ ok: true, done: 'copy', output: { draft: 1 } })
     const { db, calls } = fakeDb()
     await runEmailBuilds(db, {
@@ -100,42 +132,74 @@ describe('a step that saves its rounds (REL-AI part 2b)', () => {
       fallbacks: memoryFallbackLog(),
       build: 'build-1'
     })
-    expect(names(calls).filter((n) => n !== 'claim_email_build')).toEqual([
-      'save_email_round',
-      'finish_email_step'
-    ])
-    expect(calls.find((c) => c.fn === 'save_email_round')?.args).toEqual({
+    expect(named(calls, 'save_email_round')[0].args).toEqual({
       build: 'build-1',
       lease: 'lease-1',
       step: 'copy',
       work: { round: 1 }
     })
-    // The second claim's step sees the saved rounds.
+    // The second claim's step sees the saved rounds, under its own lease.
     expect(runStep.mock.calls[1][0]).toBe('copy')
     expect(runStep.mock.calls[1][1].progress.work.copy).toEqual({
       round: 1,
       saves: 1
     })
+    expect(named(calls, 'finish_email_step')[0].args).toMatchObject({
+      lease: 'lease-2',
+      done: 'copy'
+    })
   })
 
-  it('the owner’s click has room for every save of a step', async () => {
-    runStep.mockResolvedValue({ ok: true, saved: 'copy', work: { round: 1 } })
+  it('one click reaches the push with every save a step may make', async () => {
+    const built = await buildEmail(
+      {
+        planned,
+        store: await sampleStoreSource.read(tenant),
+        offers: sampleOffers
+      },
+      { tenantId: tenant, callerKey: 'x', fallbacks: memoryFallbackLog() }
+    )
+    if (!built.ok) throw new Error('sample build failed')
+    let copyClaims = 0
+    runStep.mockImplementation(async (step: string) => {
+      if (step === 'copy' && ++copyClaims <= maxStepSaves) return saveCopy
+      return step === 'design'
+        ? { ok: true, done: 'design', email: built.email }
+        : { ok: true, done: step, output: {} }
+    })
+    const { db, calls } = fakeDb('sections')
+    await runEmailBuilds(db, {
+      agents: null,
+      fallbacks: memoryFallbackLog(),
+      build: 'build-1'
+    })
+    expect(named(calls, 'save_email_round')).toHaveLength(maxStepSaves)
+    expect(named(calls, 'finish_email_push')).toHaveLength(1)
+    expect(named(calls, 'fail_email_step')).toEqual([])
+  })
+
+  it('the save the database refuses after the last one fails the build: it kept stopping', async () => {
+    runStep.mockResolvedValue(saveCopy)
     const { db, calls } = fakeDb()
     await runEmailBuilds(db, {
       agents: null,
       fallbacks: memoryFallbackLog(),
       build: 'build-1'
     })
-    expect(names(calls).filter((n) => n === 'save_email_round')).toHaveLength(
-      buildSteps.length + 1 + maxStepSaves
-    )
+    expect(named(calls, 'save_email_round')).toHaveLength(maxStepSaves + 1)
+    expect(named(calls, 'fail_email_step')[0].args).toMatchObject({
+      code: 'step_timed_out',
+      final: true
+    })
   })
 
-  it('a save the database refuses fails the build for good', async () => {
-    runStep.mockResolvedValueOnce({ ok: true, saved: 'copy', work: {} })
-    const { db, calls } = fakeDb({ save_email_round: { code: '22023' } })
+  it('another refused save fails the build for good', async () => {
+    runStep.mockResolvedValueOnce(saveCopy)
+    const { db, calls } = fakeDb('copy', {
+      save_email_round: { code: '22023' }
+    })
     await runEmailBuilds(db, { agents: null, fallbacks: memoryFallbackLog() })
-    expect(calls.find((c) => c.fn === 'fail_email_step')?.args).toMatchObject({
+    expect(named(calls, 'fail_email_step')[0].args).toMatchObject({
       build: 'build-1',
       code: 'step_output_invalid',
       final: true
@@ -143,12 +207,49 @@ describe('a step that saves its rounds (REL-AI part 2b)', () => {
   })
 
   it('a save that lost its lease is tried again', async () => {
-    runStep.mockResolvedValueOnce({ ok: true, saved: 'copy', work: {} })
-    const { db, calls } = fakeDb({ save_email_round: { code: 'PT409' } })
+    runStep.mockResolvedValueOnce(saveCopy)
+    const { db, calls } = fakeDb('copy', {
+      save_email_round: { code: 'PT409' }
+    })
     await runEmailBuilds(db, { agents: null, fallbacks: memoryFallbackLog() })
-    expect(calls.find((c) => c.fn === 'fail_email_step')?.args).toMatchObject({
+    expect(named(calls, 'fail_email_step')[0].args).toMatchObject({
       code: 'step_error',
       final: false
     })
+  })
+
+  it('rounds of another step are not saved', async () => {
+    runStep.mockResolvedValueOnce({ ok: true, saved: 'design', work: {} })
+    const { db, calls } = fakeDb()
+    await runEmailBuilds(db, { agents: null, fallbacks: memoryFallbackLog() })
+    expect(named(calls, 'save_email_round')).toEqual([])
+    expect(named(calls, 'fail_email_step')[0].args).toMatchObject({
+      code: 'step_output_invalid',
+      final: true
+    })
+  })
+
+  it('with the agents, the click claims again only while a whole step fits', async () => {
+    let now = 0
+    runStep.mockImplementation(async () => {
+      now += 30_000
+      return saveCopy
+    })
+    const agents: BuildAgents = {
+      memory: new InMemoryMemoryStore(),
+      log: new InMemoryRunLog(),
+      ai: async () => ({ ok: false, code: 'setup_required' })
+    }
+    const { db, calls } = fakeDb()
+    await runEmailBuilds(db, {
+      agents,
+      fallbacks: memoryFallbackLog(),
+      build: 'build-1',
+      deadline: 110_000,
+      now: () => now
+    })
+    // Claims at 0, 30 and 60 s; at 90 s a 50-second step no longer fits.
+    expect(named(calls, 'claim_email_build')).toHaveLength(3)
+    expect(named(calls, 'save_email_round')).toHaveLength(3)
   })
 })

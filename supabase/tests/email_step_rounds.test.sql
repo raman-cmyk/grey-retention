@@ -1,5 +1,5 @@
 begin;
-select plan(33);
+select plan(36);
 
 -- REL-AI part 2b: a build step saves its rounds and goes on in the next
 -- claim. Workspace 101: owner ...01, staff ...05; another workspace: ...04.
@@ -49,7 +49,12 @@ select is((select step || ':' || attempts || ':' || (lease_token is null)::text 
   from public.email_builds where id=current_setting('test.build')::uuid),
   'copy:0:true:{"round": 1, "saves": 1}:{"locked": true}','the build stays on its step with its try given back, its work and its saved steps');
 
--- The step is handed out again at once, with its work.
+-- The sweep leaves the step to the job that saved it for 30 seconds.
+set local role service_role;
+select is((select count(*) from public.claim_email_build() c),0::bigint,'the sweep does not take over a step that just saved its rounds');
+reset role;
+
+-- The owner's click is handed the step again at once, with its work.
 set local role service_role;
 select set_config('test.claim',(select c.step || ' ' || (c.progress->'work'->'copy'->>'round') || ' ' || c.lease_token from public.claim_email_build(current_setting('test.build')::uuid) c),true);
 select is(split_part(current_setting('test.claim'),' ',1) || ' ' || split_part(current_setting('test.claim'),' ',2),'copy 1','the next claim goes on from the saved round');
@@ -58,10 +63,18 @@ select is(public.save_email_round(current_setting('test.build')::uuid,current_se
 reset role;
 select is((select (progress->'work'->'copy')::text from public.email_builds where id=current_setting('test.build')::uuid),'{"round": 2, "saves": 2}','only the latest work is kept');
 
+-- Past the grace, the sweep takes it (the click has stopped).
+update public.email_builds set updated_at = now() - interval '31 seconds' where id = current_setting('test.build')::uuid;
+set local role service_role;
+select set_config('test.claim',(select c.id || ' ' || c.lease_token from public.claim_email_build() c),true);
+select is(split_part(current_setting('test.claim'),' ',1),current_setting('test.build'),'after 30 seconds the sweep takes the step');
+select is(public.save_email_round(current_setting('test.build')::uuid,split_part(current_setting('test.claim'),' ',2)::uuid,'copy','{"round":2}'),3,'and goes on from its rounds');
+reset role;
+
 -- Members see the work of their own email; another workspace sees nothing.
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000005","role":"authenticated"}',true);
 set local role authenticated;
-select is((select (progress->'work'->'copy'->>'saves') from public.email_builds where id=current_setting('test.build')::uuid),'2','staff read how far the step got');
+select is((select (progress->'work'->'copy'->>'saves') from public.email_builds where id=current_setting('test.build')::uuid),'3','staff read how far the step got');
 reset role;
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
 set local role authenticated;

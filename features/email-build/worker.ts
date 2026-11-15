@@ -12,7 +12,7 @@ import { stepCode } from '@/features/strategy/worker'
 import { builtEmail, plannedEmail, type BuildAgents } from './build'
 import { buildAgentsFor } from './agents'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
-import { maxStepSaves } from './step-names'
+import { maxStepSaves, roundSteps } from './step-names'
 import { buildCode, type BuildFailureCode } from './failure-words'
 import {
   ownerOrSampleOffers,
@@ -79,10 +79,10 @@ export async function runEmailBuilds(
   const saved = deps.saved ?? new SupabaseOfferSource(db)
   const now = deps.now ?? Date.now
   const agents = deps.agents === undefined ? buildAgentsFor(db) : deps.agents
-  // The owner's click: every step, the saved rounds of the agent steps
-  // (REL-AI part 2b) and the push.
+  // The owner's click: every step, every save of the steps with rounds
+  // (REL-AI part 2b) and the push. Its deadline, not this count, ends it.
   const limit = deps.build
-    ? buildSteps.length + 1 + maxStepSaves
+    ? buildSteps.length + 1 + roundSteps.length * maxStepSaves
     : (deps.limit ?? 25)
   let ran = 0
   for (let n = 0; n < limit; n++) {
@@ -185,9 +185,14 @@ export async function runEmailBuilds(
           continue
         }
         if ('saved' in step) {
+          // A step saves only its own rounds (the database would refuse).
+          if (step.saved !== job.step) {
+            await fail('step_output_invalid', true)
+            continue
+          }
           // REL-AI part 2b: the step ran what fitted in its time; its rounds
-          // are saved and the claim ends. The step is claimed again at once,
-          // with fresh tries, and goes on from them.
+          // are saved and the claim ends, its try given back. The click
+          // claims it again at once and goes on from them.
           const kept = await db.rpc('save_email_round', {
             build: job.id,
             lease: job.lease_token,
@@ -196,7 +201,11 @@ export async function runEmailBuilds(
           })
           if (kept.error) {
             if (refused(kept.error)) {
-              await fail('step_output_invalid', true)
+              // The 17th save: the step kept stopping before it finished.
+              const many =
+                (kept.error as { details?: string }).details ===
+                'too_many_rounds'
+              await fail(many ? 'step_timed_out' : 'step_output_invalid', true)
               continue
             }
             throw kept.error
