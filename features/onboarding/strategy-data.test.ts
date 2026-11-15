@@ -21,7 +21,14 @@ const reads = vi.hoisted(() => ({
   history: vi.fn(),
   findings: vi.fn(),
   keyDates: vi.fn(),
-  timezone: vi.fn()
+  timezone: vi.fn(),
+  corrections: vi.fn()
+}))
+vi.mock('@/features/onboarding/brand-book-corrections', async (original) => ({
+  ...(await original<
+    typeof import('@/features/onboarding/brand-book-corrections')
+  >()),
+  listCorrections: reads.corrections
 }))
 vi.mock('@/features/onboarding/catalog/read', () => ({
   listCatalog: reads.catalog
@@ -343,6 +350,55 @@ describe('industryFrom (ONB-057a)', () => {
     expect(industryFrom(findings).key).toBe('pet')
     expect(industryFrom(findings, { live: true }).key).toBe('home')
   })
+
+  it('reads what the brand sells as the owner corrected it, his own lines first (ONB-057c)', () => {
+    const findings = [
+      offering('Scented candles', 0.9),
+      offering('Dog treats', 0.5)
+    ]
+    const fix = (over: Record<string, unknown>) =>
+      ({
+        id: `c-${JSON.stringify(over)}`,
+        section: 'offering',
+        original: null,
+        action: 'add',
+        value: null,
+        createdAt: '2026-11-15T10:00:00Z',
+        ...over
+      }) as never
+    // His replacement of the surest line.
+    expect(
+      industryFrom(findings, {
+        corrections: [
+          fix({
+            original: 'scented  CANDLES',
+            action: 'replace',
+            value: 'Linen clothing for travel'
+          })
+        ]
+      })
+    ).toEqual({ key: 'apparel', words: 'Linen clothing for travel' })
+    // His removal: the next surest.
+    expect(
+      industryFrom(findings, {
+        corrections: [
+          fix({ original: 'Scented candles', action: 'remove', value: null })
+        ]
+      }).key
+    ).toBe('pet')
+    // His own added line comes first.
+    expect(
+      industryFrom(findings, {
+        corrections: [fix({ value: 'Vitamin supplements for runners' })]
+      })
+    ).toEqual({ key: 'supplements', words: 'Vitamin supplements for runners' })
+    // Corrections of other sections change nothing.
+    expect(
+      industryFrom(findings, {
+        corrections: [fix({ section: 'voice', value: 'Dog treats' })]
+      }).key
+    ).toBe('home')
+  })
 })
 
 describe('onboardedStrategyData (ONB-057a)', () => {
@@ -391,6 +447,7 @@ describe('onboardedStrategyData (ONB-057a)', () => {
     })
   beforeEach(() => {
     vi.clearAllMocks()
+    reads.corrections.mockResolvedValue([])
     catalogStatus = { data: { live: true }, error: null }
     reads.timezone.mockResolvedValue('America/New_York')
     reads.catalog.mockResolvedValue(parts().catalog)
@@ -429,6 +486,27 @@ describe('onboardedStrategyData (ONB-057a)', () => {
       // Key dates match the brand's own words.
       industry: 'Linen clothing for warm weather'
     })
+  })
+
+  it('plans from what the brand sells as the owner corrected it (ONB-057c)', async () => {
+    reads.corrections.mockResolvedValue([
+      {
+        id: 'c1',
+        section: 'offering',
+        original: 'Linen clothing for warm weather',
+        action: 'replace',
+        value: 'Scented candles for the home',
+        createdAt: '2026-11-15T10:00:00Z'
+      }
+    ])
+    const own = await load()
+    expect(reads.corrections).toHaveBeenCalledWith(expect.anything(), tenantId)
+    // Key dates match his words, and the plan takes his industry.
+    expect(reads.keyDates).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ industry: 'Scented candles for the home' })
+    )
+    expect(own.pulse).toMatchObject({ brand: { industry: 'home' } })
   })
 
   it('hands back the sample store until there is enough', async () => {
@@ -476,7 +554,8 @@ describe('onboardedStrategyData (ONB-057a)', () => {
       'timezone',
       'catalog',
       'history',
-      'findings'
+      'findings',
+      'corrections'
     ] as const) {
       reads[read].mockRejectedValueOnce(new Error(`${read} down`))
       await expect(load()).rejects.toThrow(`${read} down`)
