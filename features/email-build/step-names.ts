@@ -18,3 +18,10 @@ export type RoundStep = (typeof roundSteps)[number]
  * (its own 16, in migration `email_step_rounds`; change both together).
  */
 export const maxStepSaves = 16
+
+/**
+ * REL-AI part 2: each model call of a build step is capped at this
+ * (`agentEnv`). A step with rounds starts a call only while one still fits
+ * in its claim's time.
+ */
+export const agentCallMs = 15_000

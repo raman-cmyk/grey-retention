@@ -7,11 +7,20 @@ const supabase = vi.hoisted(() => ({ createClient: vi.fn() }))
 const after = vi.hoisted(() => vi.fn())
 vi.mock('@/features/auth/application/request-context', () => auth)
 vi.mock('@/lib/supabase/server', () => supabase)
-vi.mock('@/lib/supabase/service', () => ({ createServiceClient: () => null }))
+const service = vi.hoisted(() => ({ createServiceClient: vi.fn(() => null) }))
+vi.mock('@/lib/supabase/service', () => service)
+const stores = vi.hoisted(() => ({
+  ownStore: { load: async () => ({}) },
+  onboardedStrategyData: vi.fn()
+}))
+vi.mock('@/features/onboarding/strategy-data', () => ({
+  onboardedStrategyData: stores.onboardedStrategyData
+}))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }))
 vi.mock('next/server', () => ({ after }))
-vi.mock('./worker', () => ({ runStrategyRuns: vi.fn() }))
+const worker = vi.hoisted(() => ({ runStrategyRuns: vi.fn() }))
+vi.mock('./worker', () => worker)
 
 import { redirect } from 'next/navigation'
 import { pickOffers, startPlan } from './actions'
@@ -41,6 +50,21 @@ describe('starting a plan', () => {
     expect(rpc).toHaveBeenCalledWith('start_strategy_run', { t: tenantId })
     expect(after).toHaveBeenCalledOnce()
     expect(redirect).toHaveBeenCalledWith('/plan')
+  })
+
+  it('runs the first step from the workspace’s own store once onboarding read it (ONB-057b)', async () => {
+    const db = { service: true }
+    service.createServiceClient.mockReturnValue(db as never)
+    stores.onboardedStrategyData.mockReturnValue(stores.ownStore)
+    rpc.mockResolvedValue({ data: run, error: null })
+    await startPlan()
+    const step = after.mock.calls[0]?.[0] as () => Promise<void>
+    await step()
+    expect(stores.onboardedStrategyData).toHaveBeenCalledWith(db)
+    expect(worker.runStrategyRuns).toHaveBeenCalledWith(db, {
+      run,
+      data: stores.ownStore
+    })
   })
 
   it('is the owner’s only', async () => {
