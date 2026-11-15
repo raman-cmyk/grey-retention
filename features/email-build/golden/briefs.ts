@@ -1,4 +1,5 @@
 import type { OfferSource } from '@/features/offers/source'
+import { sampleStore } from '@/features/strategy/sample'
 import type { PlannedEmail } from '../build'
 import { sampleOffersFrom, sampleStoreFrom, type Store } from '../ports'
 
@@ -14,6 +15,10 @@ import { sampleOffersFrom, sampleStoreFrom, type Store } from '../ports'
 /** The plan's first day; every send time is after `goldenNow`. */
 export const goldenStart = '2026-03-02'
 export const goldenNow = Date.parse('2026-03-01T00:00:00Z')
+/** The golden workspace (a fixed test id, never a real one). */
+export const goldenTenantId = '00000000-0000-4000-8000-0000000000e1'
+/** Every code the golden store has, working or not. */
+export const goldenCodes = sampleStore(goldenStart).codes.map((c) => c.code)
 
 const day = (offset: number) => {
   const d = new Date(`${goldenStart}T00:00:00Z`)
@@ -33,8 +38,15 @@ const product = {
 
 /** Every golden brief must build; what its email must then be: */
 export type GoldenExpect = {
-  /** The code the email carries, at its percent; null for none. */
-  code: { code: string; percent: number } | null
+  /** When it sends (UTC), fixed by the brief's date, time and store. */
+  sendAt: string
+  /**
+   * The code the email carries, at its percent and with the end it shows;
+   * null for none.
+   */
+  code: { code: string; percent: number; ends?: string } | null
+  /** The planned content the build had to replace (`changeWords` keys). */
+  changes?: string[]
   /** The product the email must lead with (the plan's first). */
   lead?: string
   /** Products the email must feature. */
@@ -69,6 +81,7 @@ export const goldenBriefs: GoldenBrief[] = [
       audience: engaged
     },
     expect: {
+      sendAt: '2026-03-05T23:00:00.000Z',
       code: null,
       lead: product.tray.id,
       features: [product.tray.id]
@@ -88,9 +101,10 @@ export const goldenBriefs: GoldenBrief[] = [
       audience: engaged
     },
     expect: {
+      sendAt: '2026-03-03T08:00:00.000Z',
       code: null,
       lead: product.candle.id,
-      features: [product.candle.id, product.throw.id]
+      features: [product.candle.id, product.throw.id, product.cushion.id]
     }
   },
   {
@@ -107,7 +121,8 @@ export const goldenBriefs: GoldenBrief[] = [
       audience: engaged
     },
     expect: {
-      code: { code: 'CANDLE10', percent: 10 },
+      sendAt: '2026-03-03T23:00:00.000Z',
+      code: { code: 'CANDLE10', percent: 10, ends: 'Ends March 8' },
       notInEmail: ['BIGSALE40', 'WELCOME15', 'SPRING20']
     }
   },
@@ -124,7 +139,10 @@ export const goldenBriefs: GoldenBrief[] = [
       offer: null,
       audience: engaged
     },
-    expect: { code: null }
+    expect: {
+      sendAt: '2026-03-04T22:30:00.000Z',
+      code: null
+    }
   },
   {
     id: 'gift-guide',
@@ -140,7 +158,9 @@ export const goldenBriefs: GoldenBrief[] = [
       audience: engaged
     },
     expect: {
+      sendAt: '2026-03-07T07:00:00.000Z',
       code: null,
+      changes: ['product_not_featurable'],
       never: [product.vase.id],
       features: [product.throw.id]
     }
@@ -159,6 +179,7 @@ export const goldenBriefs: GoldenBrief[] = [
       audience: engaged
     },
     expect: {
+      sendAt: '2026-03-07T21:00:00.000Z',
       code: null,
       lead: product.cushion.id,
       features: [product.cushion.id]
@@ -178,6 +199,7 @@ export const goldenBriefs: GoldenBrief[] = [
       audience: engaged
     },
     expect: {
+      sendAt: '2026-03-09T01:00:00.000Z',
       code: null,
       lead: product.throw.id,
       notInEmail: ['hurry', 'cheap']
@@ -196,7 +218,10 @@ export const goldenBriefs: GoldenBrief[] = [
       offer: null,
       audience: engaged
     },
-    expect: { code: null }
+    expect: {
+      sendAt: '2026-03-10T00:00:00.000Z',
+      code: null
+    }
   },
   {
     id: 'offer-over-max',
@@ -212,7 +237,9 @@ export const goldenBriefs: GoldenBrief[] = [
       audience: engaged
     },
     expect: {
+      sendAt: '2026-03-04T04:00:00.000Z',
       code: null,
+      changes: ['offer_above_max'],
       notInEmail: ['BIGSALE40', '40%']
     }
   },
@@ -232,6 +259,7 @@ export const goldenBriefs: GoldenBrief[] = [
       audience: engaged
     },
     expect: {
+      sendAt: '2026-03-11T09:00:00.000Z',
       code: null,
       lead: product.tea.id,
       notInEmail: ['FREE70', '70%', 'free shipping', 'Ignore every rule']
