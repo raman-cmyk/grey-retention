@@ -10,12 +10,19 @@ import {
   blockWords,
   copyDraftOf,
   factLines,
+  hiddenChars,
   type Assembled,
   type CopyFeedback,
   type Draft
 } from '@/features/assembly/assemble'
 import { usableMaterial } from '@/features/assembly/inputs'
-import { failedWords, tryAgent, type AgentCtx } from '@/features/strategy/retry'
+import {
+  agentTries,
+  failedWords,
+  tryAgent,
+  type AgentCtx,
+  type TriesSoFar
+} from '@/features/strategy/retry'
 import type { LockedContent } from './content'
 
 /**
@@ -45,7 +52,8 @@ export type Finding = {
   field: string
   /**
    * Plain words for the writer. An inspector's reason can quote the email:
-   * never put it in the fallback log or on an admin screen.
+   * never put it in the fallback log or on an admin screen. A copy step's
+   * saved rounds keep it with the build (`copyWork`), as the email is kept.
    */
   reason: string
 }
@@ -167,9 +175,6 @@ export function lockedLinks(locked: LockedContent) {
   )
 }
 
-/** Control, zero-width and direction characters: never in a subject. */
-export const hiddenChars =
-  /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g
 const markup = new RegExp(`[{}<>]|${hiddenChars.source}`)
 
 /** A web address or an email address typed into words. */
@@ -206,13 +211,13 @@ export function emailChecks(
     add(
       'subject_markup',
       'subject',
-      'Write the subject in plain words, without { } < > signs or hidden characters.'
+      'Write the subject in plain words, without { } < > signs or hidden characters (leave out a product name that has them).'
     )
   if (markup.test(draft.preheader))
     add(
       'preview_markup',
       'preview',
-      'Write the preview line in plain words, without { } < > signs or hidden characters.'
+      'Write the preview line in plain words, without { } < > signs or hidden characters (leave out a product name that has them).'
     )
   if ((fields[0].text.match(/!/g) ?? []).length > 1)
     add(
@@ -631,7 +636,7 @@ const causeWords: Record<PlainCause, (rounds: readonly Round[]) => string> = {
     `The copy ran out of time after ${rounds.length} ${rounds.length === 1 ? 'round' : 'rounds'}.`
 }
 
-type Ctx = Omit<AgentCtx, 'industry'> & {
+type Ctx = Omit<AgentCtx, 'industry' | 'fits'> & {
   industry?: string | null
   campaignId?: string | null
   fallbacks: FallbackLog
@@ -639,24 +644,34 @@ type Ctx = Omit<AgentCtx, 'industry'> & {
 
 /**
  * Runs one inspector; a give-up is logged once and skips it after.
- * `paused`: out of time before a later try (`fits`); it runs again from
- * its first try in the next claim.
+ * `paused`: out of time between its tries (`fits`); the next claim goes on
+ * from them (`from`), so no try is paid twice.
  */
 async function inspect(
   def: AgentDefinition<InspectTask, InspectorAnswer>,
   task: Omit<InspectTask, 'problems'>,
   ctx: Ctx,
   skipped: Set<string>,
-  fits?: () => boolean
-): Promise<Finding[] | 'paused'> {
+  fits?: () => boolean,
+  from?: TriesSoFar
+): Promise<Finding[] | { paused: TriesSoFar }> {
   if (skipped.has(def.name)) return []
   const result = await tryAgent(
     def,
     (problems) => ({ ...task, problems }),
     (a) => checkInspection(a, task.draft, task.locked, task.brandName),
-    { ...ctx, industry: ctx.industry ?? null, ...(fits ? { fits } : {}) }
+    { ...ctx, industry: ctx.industry ?? null, ...(fits ? { fits } : {}) },
+    from
   )
-  if (!result.ok && result.paused) return 'paused'
+  if (!result.ok && result.paused && result.reasonCode !== 'agent_failed')
+    return {
+      paused: {
+        tries: result.tries,
+        // Code's own words about the last answer (never the email's).
+        problems: result.problems.slice(0, 10).map((p) => p.slice(0, 300)),
+        reasonCode: result.reasonCode
+      }
+    }
   if (result.ok)
     return result.output.problems.map((p) => ({
       by: def.name as Finding['by'],
@@ -693,26 +708,36 @@ const finding = z.object({
   by: z.enum(['code', 'brand-inspector', 'email-inspector']),
   rule: z.string().max(60),
   field: z.string().max(60),
-  reason: z.string().max(600)
+  reason: z.string().max(700)
 })
-const findings = z.array(finding).max(40)
+const findings = z.array(finding).max(20)
 
 /**
  * REL-AI part 2b: the copy step's rounds so far, saved between claims
  * (`save_email_round`), so a claim that runs out of time goes on in the
- * next one instead of starting over. Plain JSON, a few kB: the last two
- * rounds keep their findings (the writer's feedback); older rounds only
- * count. Never prompt text or a raw model answer.
+ * next one instead of starting over. Plain JSON, at most `workBudgetBytes`.
+ *
+ * It holds the rounds' findings (code's reasons, and the inspectors'
+ * reasons and suggested words, which can quote the email), the inspectors
+ * that gave up, which drafts were judged in which round, and a draft that
+ * passed code while the inspectors judge it, with the next inspector's
+ * tries so far. No prompt and no raw model answer. It is kept with the
+ * build, so the workspace's members and platform operators can read it,
+ * as they read the email itself.
  */
 export const copyWork = z.object({
   rounds: z.array(z.object({ findings })).max(rewriteRounds + 1),
   /** Inspectors that gave up: the next rounds use the code checks only. */
   skipped: z.array(z.string().max(40)).max(2),
-  /** Verdicts already paid for, by draft. */
+  /** Verdicts already paid for: a draft and the round with its findings. */
   judged: z
-    .array(z.object({ key: z.string().max(64), findings }))
+    .array(
+      z.object({
+        key: z.string().max(64),
+        round: z.number().int().min(0).max(rewriteRounds)
+      })
+    )
     .max(rewriteRounds + 1),
-  /** A draft that passed code, while the inspectors judge it. */
   pending: z
     .object({
       draft: z.looseObject({
@@ -724,19 +749,28 @@ export const copyWork = z.object({
       }),
       key: z.string().max(64),
       findings,
-      next: z.enum(['brand-inspector', 'email-inspector'])
+      next: z.enum(['brand-inspector', 'email-inspector']),
+      tries: z
+        .object({
+          tries: z.number().int().min(0).max(agentTries),
+          problems: z.array(z.string().max(300)).max(10),
+          reasonCode: z.enum(['answer_invalid', 'check_failed'])
+        })
+        .optional()
     })
     .nullable()
 })
 export type CopyWork = {
   rounds: Round[]
   skipped: string[]
-  judged: { key: string; findings: Finding[] }[]
+  judged: { key: string; round: number }[]
   pending: {
     draft: Draft
     key: string
     findings: Finding[]
     next: 'brand-inspector' | 'email-inspector'
+    /** The next inspector's tries so far, when a claim stopped between them. */
+    tries?: TriesSoFar
   } | null
 }
 export const freshWork = (): CopyWork => ({
@@ -746,43 +780,63 @@ export const freshWork = (): CopyWork => ({
   pending: null
 })
 
-/** At most 12 findings a round, each reason at most 300 characters. */
-const kept = (list: readonly Finding[]): Finding[] =>
-  list.slice(0, 12).map((f) => ({
+/** The saved work stays well inside the database's 64 kB for one step. */
+export const workBudgetBytes = 40_000
+const bytes = (value: unknown) =>
+  new TextEncoder().encode(JSON.stringify(value)).length
+
+const clipped = (list: readonly Finding[], n: number, length: number) =>
+  list.slice(0, n).map((f) => ({
     by: f.by,
     rule: f.rule.slice(0, 60),
     field: f.field.slice(0, 60),
-    reason: f.reason.slice(0, 300)
+    reason: f.reason.slice(0, length)
   }))
 
-/** The work as it is saved: only the last two rounds' findings. */
-const savedWork = (work: CopyWork): CopyWork => {
-  const last = work.rounds.length - 2
-  return {
-    ...work,
-    rounds: work.rounds.map((r, i) => (i < last ? { findings: [] } : r)),
-    judged: work.judged.slice(-2)
+/**
+ * The work as it is saved. Normally all of it (20 findings a round, as
+ * many as the writer's feedback takes), so going on gives the same email as
+ * one straight run. Only when that is too large: the last two rounds'
+ * findings (the feedback), then fewer and shorter ones. Null when even the
+ * smallest form does not fit (a huge draft): the step then writes plain
+ * words instead.
+ */
+function savedWork(work: CopyWork): CopyWork | null {
+  const shapes = [
+    { from: 0, n: 20, length: 700 },
+    { from: work.rounds.length - 2, n: 20, length: 300 },
+    { from: work.rounds.length - 2, n: 12, length: 160 },
+    { from: work.rounds.length - 1, n: 6, length: 120 }
+  ]
+  for (const { from, n, length } of shapes) {
+    const shaped: CopyWork = {
+      rounds: work.rounds.map((r, i) => ({
+        findings: i < from ? [] : clipped(r.findings, n, length)
+      })),
+      skipped: work.skipped,
+      // A verdict counts only while its round keeps its findings.
+      judged: work.judged.filter((j) => j.round >= from),
+      pending: work.pending && {
+        ...work.pending,
+        findings: clipped(work.pending.findings, n, length)
+      }
+    }
+    if (bytes(shaped) <= workBudgetBytes) return shaped
   }
+  return null
+}
+
+/** Saved work read back: verdicts only for rounds it has. */
+const restored = (work: CopyWork | undefined): CopyWork => {
+  if (!work) return freshWork()
+  const copy = structuredClone(work)
+  copy.judged = copy.judged.filter(
+    (j) => j.round < copy.rounds.length && copy.rounds[j.round].findings.length
+  )
+  return copy
 }
 
 export type Paused = { status: 'paused'; work: CopyWork }
-
-/**
- * Writes, checks and fixes one email's copy. `write` is the Copywriter on
- * the locked sections (`assembleLocked`), `plain` the code-written fallback
- * (`assembleLockedPlain`). Returns `retry` when the AI is busy or down.
- * Throws `AssemblyError` (the brief cannot be built; the job records it
- * with `assemblyFallback`) and any bug.
- */
-export async function writeAndInspect(
-  input: CopyRoundsInput,
-  ctx: Ctx
-): Promise<InspectedCopy> {
-  const result = await copyRounds({ ...input, fits: undefined }, ctx)
-  // Without a time limit the rounds never pause.
-  if (result.status === 'paused') throw new Error('Copy paused without a time')
-  return result
-}
 
 type CopyRoundsInput = {
   locked: LockedContent
@@ -804,44 +858,79 @@ type CopyRoundsInput = {
 }
 
 /**
+ * Writes, checks and fixes one email's copy. `write` is the Copywriter on
+ * the locked sections (`assembleLocked`), `plain` the code-written fallback
+ * (`assembleLockedPlain`). Returns `retry` when the AI is busy or down.
+ * Throws `AssemblyError` (the brief cannot be built; the job records it
+ * with `assemblyFallback`) and any bug.
+ */
+export async function writeAndInspect(
+  input: Omit<CopyRoundsInput, 'work' | 'fits' | 'last'>,
+  ctx: Ctx
+): Promise<InspectedCopy> {
+  const result = await copyRounds(input, ctx)
+  // Without a time limit the rounds never pause.
+  if (result.status === 'paused') throw new Error('Copy paused without a time')
+  return result
+}
+
+/**
  * `writeAndInspect` in rounds that can stop and go on (REL-AI part 2b).
  *
- * Each round, code checks first (assembly's own checks, copy QA from
- * ASM-002, the price, link and inbox checks, and `checks`); code is the
- * final word. Only a draft that passes code goes to the Brand inspector,
- * then the Email inspector. Every problem goes back to the Copywriter with
- * its exact reason. After the first write and 3 rewrites, the email falls
- * back to plain copy (facts only), logged.
+ * Each round, code checks first (`checks`, then assembly's own checks, copy
+ * QA from ASM-002, the price, link and inbox checks); code is the final
+ * word. Only a draft that passes code goes to the Brand inspector, then the
+ * Email inspector. Every problem goes back to the Copywriter with its exact
+ * reason. After the first write and 3 rewrites, the email falls back to
+ * plain copy (facts only), logged.
  *
  * Before each model call, `fits` says whether it still fits in this
  * claim's time; if not, the rounds so far come back as `paused` (saved by
- * the job), and the next claim goes on from them (`work`). An AI that is
- * busy after this claim already did some work pauses too, so paid work is
- * never thrown away.
+ * the job), and the next claim goes on from them (`work`), an inspector
+ * from its tries so far. A busy AI after this claim did some work pauses
+ * too, so paid work is kept; with nothing done, or in the last claim, it
+ * is `retry` (the job waits as the AI asks). A saved draft is checked by
+ * code again first: the plan's other subjects may have changed.
  */
 export async function copyRounds(
   input: CopyRoundsInput,
   ctx: Ctx
 ): Promise<InspectedCopy | Paused> {
   const { locked, brandName } = input
+  const limited = input.fits !== undefined
   const fits = input.fits ?? (() => true)
-  const work: CopyWork = structuredClone(input.work ?? freshWork())
+  const work = restored(input.work)
   const skipped = new Set(work.skipped)
   let cause: PlainCause = 'rewrites_failed'
   let progressed = false
-  const pause = (): Paused => ({
-    status: 'paused',
-    work: savedWork({ ...work, skipped: [...skipped] })
-  })
-  /** Out of time: saved, or plain copy in the step's last claim. */
-  const outOfTime = () => {
-    if (!input.last) return pause()
-    cause = 'out_of_time'
-    return null
+  /** The rounds to save, or null: plain copy (last claim, or too large). */
+  const pause = (): Paused | null => {
+    if (input.last) return null
+    const saved = savedWork({ ...work, skipped: [...skipped] })
+    return saved ? { status: 'paused', work: saved } : null
   }
-  const done = (findings: Finding[]) => {
-    work.rounds.push({ findings: kept(findings) })
+  const done = (list: Finding[]) => {
+    work.rounds.push({ findings: list })
     progressed = true
+  }
+  // `checks` first, so a long list of other reasons never hides them.
+  const codeOf = (assembled: Exclude<Assembled, { status: 'sample' }>) => [
+    ...(input.checks?.(assembled.draft) ?? []),
+    ...codeFindings(assembled, locked, brandName)
+  ]
+  if (work.pending) {
+    let again: Finding[] | null
+    try {
+      again = codeOf({ status: 'ready', draft: work.pending.draft })
+    } catch {
+      again = null
+    }
+    // A saved draft that no longer reads is written again.
+    if (again === null) work.pending = null
+    else if (again.length) {
+      work.pending = null
+      done(again)
+    }
   }
   // The last two rounds' reasons, so a fix for one never undoes another.
   const nextFeedback = () =>
@@ -849,8 +938,9 @@ export async function copyRounds(
   rounds: while (work.rounds.length <= rewriteRounds) {
     if (!work.pending) {
       if (!fits()) {
-        const stop = outOfTime()
-        if (stop) return stop
+        const paused = pause()
+        if (paused) return paused
+        cause = 'out_of_time'
         break
       }
       let assembled: Assembled
@@ -859,7 +949,8 @@ export async function copyRounds(
       } catch (error) {
         if (!(error instanceof AiRunError)) throw error
         if (transient.has(error.code)) {
-          if (progressed) return pause()
+          const paused = limited && progressed ? pause() : null
+          if (paused) return paused
           return {
             status: 'retry',
             rounds: work.rounds,
@@ -892,10 +983,7 @@ export async function copyRounds(
         cause = 'no_live_writer'
         break
       }
-      const code = [
-        ...codeFindings(assembled, locked, brandName),
-        ...(input.checks?.(assembled.draft) ?? [])
-      ]
+      const code = codeOf(assembled)
       if (code.length) {
         done(code)
         continue
@@ -904,13 +992,7 @@ export async function copyRounds(
       const key = fingerprint(assembled.draft)
       const seen = work.judged.find((j) => j.key === key)
       if (seen) {
-        done(seen.findings)
-        if (!seen.findings.length)
-          return {
-            status: 'passed',
-            draft: assembled.draft,
-            rounds: work.rounds
-          }
+        done(work.rounds[seen.round].findings)
         continue
       }
       work.pending = {
@@ -927,23 +1009,35 @@ export async function copyRounds(
       if (pending.next !== def.name) continue
       if (!skipped.has(def.name)) {
         if (!fits()) {
-          const stop = outOfTime()
-          if (stop) return stop
+          const paused = pause()
+          if (paused) return paused
+          cause = 'out_of_time'
           break rounds
         }
-        const found = await inspect(def, task, ctx, skipped, fits)
-        if (found === 'paused') {
-          const stop = outOfTime()
-          if (stop) return stop
-          break rounds
-        }
-        pending.findings = kept([...pending.findings, ...found])
+        const found = await inspect(
+          def,
+          task,
+          ctx,
+          skipped,
+          limited ? fits : undefined,
+          pending.tries
+        )
         progressed = true
+        if (!Array.isArray(found)) {
+          pending.tries = found.paused
+          const paused = pause()
+          if (paused) return paused
+          cause = 'out_of_time'
+          break rounds
+        }
+        pending.tries = undefined
+        pending.findings = [...pending.findings, ...found]
       }
       if (def.name === 'brand-inspector') pending.next = 'email-inspector'
     }
     work.pending = null
-    work.judged.push({ key: pending.key, findings: pending.findings })
+    if (pending.findings.length)
+      work.judged.push({ key: pending.key, round: work.rounds.length })
     done(pending.findings)
     if (!pending.findings.length)
       return { status: 'passed', draft: pending.draft, rounds: work.rounds }

@@ -25,6 +25,7 @@ import {
   emailInspectorAgent,
   priceChecks,
   rewriteRounds,
+  workBudgetBytes,
   writeAndInspect,
   type CopyWork,
   type Finding
@@ -417,6 +418,38 @@ describe('the fix loop', () => {
     expect(fallbacks.entries()).toEqual([])
   })
 
+  it('asks the job to try again later when the AI gets busy after a round too', async () => {
+    const locked = await lock()
+    let calls = 0
+    const busy = vi.fn(async (feedback: CopyFeedback[]): Promise<Assembled> => {
+      if (calls++ === 0)
+        return assembleLocked(
+          locked.input,
+          brand,
+          writer(
+            words({
+              subject: 'ACT NOW!!! Miracle candle deal',
+              preheader: 'ACT NOW!!! Miracle candle deal'
+            })
+          ),
+          sectionsOf(locked),
+          feedback
+        )
+      throw new AiRunError('rate_limited', 30)
+    })
+    const { ctx } = context(inspectors())
+    const result = await writeAndInspect(
+      { ...build(locked, writer()), write: busy },
+      ctx
+    )
+    expect(result).toMatchObject({
+      status: 'retry',
+      code: 'rate_limited',
+      retryAfterSeconds: 30
+    })
+    expect(result.rounds).toHaveLength(1)
+  })
+
   it('gives a wrong-shape answer’s exact problems to the next try', async () => {
     const locked = await lock()
     let calls = 0
@@ -799,7 +832,7 @@ describe('rounds saved between claims (REL-AI part 2b)', () => {
     expect(ai.mock.calls.map((c) => c[0].purpose)).toEqual(['review', 'label'])
   })
 
-  it('an inspector out of time between its tries waits for the next claim, never skipped or logged', async () => {
+  it('an inspector out of time between its tries goes on from them in the next claim, never skipped or logged', async () => {
     const locked = await lock()
     const wrongQuote = {
       problems: [
@@ -818,16 +851,147 @@ describe('rounds saved between claims (REL-AI part 2b)', () => {
       ctx
     )
     if (first.status !== 'paused') throw new Error('expected a pause')
-    expect(first.work.pending?.next).toBe('brand-inspector')
+    expect(first.work.pending).toMatchObject({
+      next: 'brand-inspector',
+      tries: { tries: 1, reasonCode: 'check_failed' }
+    })
     expect(first.work.skipped).toEqual([])
     expect(fallbacks.entries()).toEqual([])
-    // The next claim asks the Brand inspector again, from its first try.
     const next = await copyRounds(
       { ...build(locked, writer()), work: stored(first.work) },
       ctx
     )
     expect(next.status).toBe('passed')
+    // Its second try, with the first try's problems: nothing asked twice.
     expect(ai).toHaveBeenCalledTimes(3)
+    expect(ai.mock.calls[1][0].request.user).toContain(
+      'fix_these_problems_from_your_last_answer'
+    )
+  })
+
+  it('an inspector that gave up stays skipped in the next claims', async () => {
+    const locked = await lock()
+    const problem = {
+      problems: [
+        {
+          field: 'subject',
+          quote: 'Your favourite candle',
+          reason: 'Say which candle in plain words.',
+          fix: 'The cedar one'
+        }
+      ]
+    }
+    const ai = inspectors('refused', problem, { problems: [] })
+    const run = writer(words(), words({ subject: 'Slow evenings, 10% off' }))
+    const { ctx, fallbacks } = context(ai)
+    const first = await copyRounds(
+      { ...build(locked, run), fits: budget(2) },
+      ctx
+    )
+    if (first.status !== 'paused') throw new Error('expected a pause')
+    expect(first.work.skipped).toEqual(['brand-inspector'])
+    const next = await copyRounds(
+      { ...build(locked, run), work: stored(first.work) },
+      ctx
+    )
+    expect(next.status).toBe('passed')
+    expect(ai.mock.calls.map((c) => c[0].purpose)).toEqual([
+      'review',
+      'label',
+      'label'
+    ])
+    expect(
+      fallbacks.entries().filter((e) => e.agent === 'brand-inspector')
+    ).toHaveLength(1)
+  })
+
+  it('reuses a verdict paid for before the save when the writer repeats a draft', async () => {
+    const locked = await lock()
+    const problem = {
+      problems: [
+        {
+          field: 'subject',
+          quote: 'Your favourite candle',
+          reason: 'Say which candle in plain words.',
+          fix: 'The cedar one'
+        }
+      ]
+    }
+    const ai = inspectors(problem, { problems: [] }, { problems: [] })
+    const run = writer(
+      words(),
+      words(),
+      words({ subject: 'Slow evenings, 10% off' })
+    )
+    const { ctx } = context(ai)
+    const first = await copyRounds(
+      { ...build(locked, run), fits: budget(3) },
+      ctx
+    )
+    if (first.status !== 'paused') throw new Error('expected a pause')
+    const next = await copyRounds(
+      { ...build(locked, run), work: stored(first.work) },
+      ctx
+    )
+    if (next.status !== 'passed') throw new Error('expected a pass')
+    expect(next.rounds.map((r) => r.findings.length)).toEqual([1, 1, 0])
+    // Two inspectors for the first draft, two for the last: none again.
+    expect(ai).toHaveBeenCalledTimes(4)
+  })
+
+  it('checks a saved draft by code again first: the plan’s other subjects may have changed', async () => {
+    const locked = await lock()
+    const ai = inspectors()
+    const { ctx } = context(ai)
+    const run = writer(words(), words({ subject: 'Slow evenings, 10% off' }))
+    const first = await copyRounds(
+      { ...build(locked, run), fits: budget(2) },
+      ctx
+    )
+    if (first.status !== 'paused') throw new Error('expected a pause')
+    const taken: Finding = {
+      by: 'code',
+      rule: 'subject_taken',
+      field: 'subject',
+      reason: 'Another email in this plan already has this subject.'
+    }
+    const next = await copyRounds(
+      {
+        ...build(locked, run),
+        work: stored(first.work),
+        checks: (d) => (d.subject === words().subject ? [taken] : [])
+      },
+      ctx
+    )
+    expect(next).toMatchObject({ status: 'passed' })
+    if (next.status !== 'passed') return
+    expect(next.draft.subject).toBe('Slow evenings, 10% off')
+    expect(next.rounds[0].findings.map((f) => f.rule)).toEqual([
+      'subject_taken'
+    ])
+  })
+
+  it('goes on after four rounds to the same result as a straight run', async () => {
+    const locked = await lock()
+    const answers = [spammy, spammy, spammy, words()]
+    const once = await writeAndInspect(
+      build(locked, writer(...answers)),
+      context(inspectors()).ctx
+    )
+    const run = writer(...answers)
+    const { ctx } = context(inspectors())
+    let work: CopyWork | undefined
+    let result
+    for (let claim = 0; claim < 10; claim++) {
+      result = await copyRounds(
+        { ...build(locked, run), work, fits: budget(1) },
+        ctx
+      )
+      if (result.status !== 'paused') break
+      work = stored(result.work)
+    }
+    expect(result).toEqual(once)
+    expect(once.rounds).toHaveLength(4)
   })
 
   it('in its last claim, out of time means plain copy, logged', async () => {
@@ -879,22 +1043,57 @@ describe('rounds saved between claims (REL-AI part 2b)', () => {
       code: 'rate_limited',
       retryAfterSeconds: 20
     })
+    // In the step's last claim nothing more is saved: the job waits.
+    const last = await copyRounds(
+      { ...build(locked, writer(spammy)), fits: () => true, last: true },
+      ctx
+    )
+    expect(last).toMatchObject({ status: 'plain', cause: 'rewrites_failed' })
+    const lastBusy = await copyRounds(
+      {
+        ...build(locked, run),
+        work: stored(first.work),
+        fits: () => true,
+        last: true
+      },
+      ctx
+    )
+    expect(lastBusy).toMatchObject({ status: 'retry', code: 'rate_limited' })
   })
 
-  it('keeps only the last two rounds’ reasons, and its work reads back', async () => {
+  it('keeps every round when it can, and stays under its byte budget with long reasons in any script', async () => {
     const locked = await lock()
-    const { ctx } = context(inspectors())
-    const result = await copyRounds(
+    const plainCase = await copyRounds(
       { ...build(locked, writer(spammy)), fits: budget(3) },
+      context(inspectors()).ctx
+    )
+    if (plainCase.status !== 'paused') throw new Error('expected a pause')
+    expect(
+      stored(plainCase.work).rounds.every((r) => r.findings.length > 0)
+    ).toBe(true)
+    // Ten long problems from each inspector, every round, in two-byte letters.
+    const heavy = {
+      problems: Array.from({ length: 10 }, () => ({
+        field: 'subject',
+        quote: 'Your favourite',
+        reason: `${'é'.repeat(295)}.`,
+        fix: 'ü'.repeat(295)
+      }))
+    }
+    const { ctx } = context(inspectors(heavy, heavy))
+    const result = await copyRounds(
+      { ...build(locked, writer(words())), fits: budget(5) },
       ctx
     )
     if (result.status !== 'paused') throw new Error('expected a pause')
     const work = stored(result.work)
+    expect(
+      new TextEncoder().encode(JSON.stringify(work)).length
+    ).toBeLessThanOrEqual(workBudgetBytes)
     expect(work.rounds).toHaveLength(3)
-    expect(work.rounds[0].findings).toEqual([])
+    // The writer still gets the last two rounds' reasons.
     expect(work.rounds[2].findings.length).toBeGreaterThan(0)
-    expect(work.rounds[2].findings.length).toBeLessThanOrEqual(12)
-    expect(JSON.stringify(work).length).toBeLessThan(64_000)
+    expect(work.rounds[1].findings.length).toBeGreaterThan(0)
   })
 
   it('sends a draft the extra checks refuse back to the writer with the reason', async () => {
