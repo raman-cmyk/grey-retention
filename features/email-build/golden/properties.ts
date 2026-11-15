@@ -38,8 +38,14 @@ const junk = [
   /\bnull\b/
 ]
 const markup = /[<>]|\{\{|\{%|%\}|\}\}/
-/** Klaviyo's own footer tags: the only template tags an email may carry. */
-const klaviyoTag = /\{\{\s*organization\.\w+\s*\}\}|\{%[^%]*%\}/g
+const templateTag = /\{\{|\{%|%\}|\}\}/
+/**
+ * Klaviyo's five footer tags (`klaviyoFooterTags`): the only template tags
+ * an email may carry. Any other (`{% coupon_code %}`, `{% if %}`) Klaviyo
+ * would run.
+ */
+const footerTag =
+  /\{\{\s*organization\.(?:name|full_address)\s*\}\}|\{%\s*(?:unsubscribe|manage_preferences|web_view)\b[^%]*%\}/g
 
 const named: Record<string, string> = {
   amp: '&',
@@ -50,12 +56,21 @@ const named: Record<string, string> = {
   gt: '>',
   rarr: '→',
   middot: '·',
-  zwnj: ''
+  zwnj: '',
+  percnt: '%',
+  euro: '€',
+  pound: '£'
 }
 
-/** What a reader sees: the visible text, entities read, one space. */
-export function visibleText(html: string) {
+/**
+ * What a reader sees: the visible text (no comments, styles or tags),
+ * entities read, tabs and line breaks as spaces before hidden characters
+ * go (so two words never join), one space, compatible forms (a fullwidth
+ * "％" is "%").
+ */
+export function drawnText(html: string) {
   return html
+    .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
@@ -63,8 +78,10 @@ export function visibleText(html: string) {
       String.fromCodePoint(parseInt(n, 16))
     )
     .replace(/&([a-z]+);/gi, (m, name: string) => named[name] ?? m)
+    .replace(/\s+/g, ' ')
     .replace(new RegExp(hiddenChars.source, 'g'), '')
-    .replace(/͏/g, '')
+    .replace(/\u034f/g, '')
+    .normalize('NFKC')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -108,6 +125,13 @@ function lineProblems(name: string, value: string, max: number) {
   return out
 }
 
+/** The free-shipping threshold, as the email may print it. */
+function shippingAmounts(store: Store) {
+  const s = store.facts.freeShipping
+  if (!s || typeof s !== 'object') return []
+  return ['$', '€', '£'].flatMap((c) => [`${c}${s.over}.00`, `${c}${s.over}`])
+}
+
 export function goldenProblems(brief: GoldenBrief, run: GoldenRun): string[] {
   const { expect } = brief
   const problems: string[] = []
@@ -131,8 +155,11 @@ export function goldenProblems(brief: GoldenBrief, run: GoldenRun): string[] {
   const { email, draft } = run.result
   const { store } = run
   const html = email.html
-  const drawn = visibleText(html)
-  const words = drawn.replace(klaviyoTag, ' ')
+  // The footer's tags taken out of the HTML itself, before entities are
+  // read: an escaped tag in the words is still a tag to the reader.
+  const body = html.replace(footerTag, ' ')
+  const drawn = drawnText(html)
+  const words = drawnText(body)
   const seen = `${email.subject}\n${email.preheader}\n${words}`
   const featured = email.productIds.flatMap((id) => {
     const p = store.products.find((x) => x.id === id)
@@ -147,10 +174,16 @@ export function goldenProblems(brief: GoldenBrief, run: GoldenRun): string[] {
   ]
     .filter(Boolean)
     .sort((a, b) => b.length - a.length)
-  const own = storeText.reduce(
-    (t, s) => t.replace(new RegExp(escapeRe(s), 'gi'), ' '),
-    seen
-  )
+  const mask = (text: string) =>
+    storeText.reduce(
+      (t, s) => t.replace(new RegExp(escapeRe(s), 'gi'), ' '),
+      text
+    )
+  // For the percent and price scans, also a shipping threshold the facts
+  // state ("Free shipping over $150"); the copy checks judge that claim.
+  const own = [...shippingAmounts(store)]
+    .sort((a, b) => b.length - a.length)
+    .reduce((t, s) => t.replace(new RegExp(escapeRe(s), 'g'), ' '), mask(seen))
 
   // The lines in the inbox.
   problems.push(...lineProblems('subject', email.subject, 80))
@@ -159,8 +192,10 @@ export function goldenProblems(brief: GoldenBrief, run: GoldenRun): string[] {
     problems.push('The stored subject or preview is not the checked one.')
   for (const j of junk)
     if (j.test(words)) problems.push(`The email has "${j.source}" in it.`)
-  if (markup.test(words))
-    problems.push('The email shows markup or a template tag.')
+  if (templateTag.test(words)) problems.push('The email shows a template tag.')
+  // Klaviyo runs a tag from its opener (CSS may close two rules with "}}").
+  if (/\{\{|\{%/.test(body.replace(/<!--[\s\S]*?-->/g, ' ')))
+    problems.push('It has a template tag Klaviyo would run.')
 
   // What it says, as drafted and as drawn: the facts, banned words, codes.
   const rules = run.sections?.rules
@@ -176,9 +211,17 @@ export function goldenProblems(brief: GoldenBrief, run: GoldenRun): string[] {
       (f) => `Copy check (${f.rule}) on ${where}${f.field}: ${f.reason}`
     )
   problems.push(...qa(copyDraftOf(draft), ''))
+  // Block by block, as drawn, so words of two blocks never join.
   problems.push(
     ...qa(
-      { subject: '', preview: '', blocks: [{ id: 'all', text: own }] },
+      {
+        subject: '',
+        preview: '',
+        blocks: body
+          .split(/(?=<tr\b[^>]*\sdata-block=)/i)
+          .map((part, i) => ({ id: `drawn-${i}`, text: mask(drawnText(part)) }))
+          .filter((b) => b.text.trim())
+      },
       'the drawn email, '
     )
   )
@@ -191,11 +234,21 @@ export function goldenProblems(brief: GoldenBrief, run: GoldenRun): string[] {
 
   // The offer: exactly the expected code at its percent; every percent
   // and price the email prints is that offer's or a featured product's.
-  const percents = [...own.matchAll(/(\d+(?:[.,]\d+)?)\s*%/g)].map((m) =>
-    Number(m[1].replace(',', '.'))
+  const percents = [
+    ...own.matchAll(/(\d+(?:[.,]\d+)?)\s*(?:%|percent\b|per\s+cent\b)/gi)
+  ].map((m) => Number(m[1].replace(',', '.')))
+  // Prices left in: "Save $39.00" is money off a featured product too.
+  if (
+    /[$€£]\s?\d[\d.,]*\s*off(?![-\w])/i.test(seen) ||
+    /\bsave\s+(?:up\s+to\s+)?[$€£]\s?\d/i.test(seen)
   )
-  if (/[$€£]\s?\d[\d.,]*\s*off(?![-\w])/i.test(own))
     problems.push('It promises money off.')
+  if (
+    /\bhalf[- ]price\b|\bbuy\s+(?:one|1)\b[^.]{0,20}\b(?:get|for)\b|\bbogo\b/i.test(
+      own
+    )
+  )
+    problems.push('It promises a deal that is not the offer.')
   if (expect.code === null) {
     if (email.code !== null) problems.push(`It carries ${email.code}.`)
     if (percents.length) problems.push(`It shows ${percents[0]}%.`)
@@ -205,14 +258,19 @@ export function goldenProblems(brief: GoldenBrief, run: GoldenRun): string[] {
       problems.push(`It carries ${email.code}, not ${code}.`)
     if (email.offer?.percent !== percent)
       problems.push(`Its stored offer is not ${percent}% off.`)
-    if (!html.toUpperCase().includes(code.toUpperCase()))
-      problems.push(`The code ${code} is not shown.`)
+    if (!says(drawn, code)) problems.push(`The code ${code} is not shown.`)
     if (!new RegExp(`(?<!\\d)${percent}\\s*% off`, 'i').test(own))
       problems.push(`It does not show ${percent}% off.`)
     for (const p of new Set(percents))
       if (p !== percent) problems.push(`It shows ${p}%, not ${percent}%.`)
     if (ends && !drawn.includes(ends))
       problems.push(`It does not say "${ends}".`)
+    // No other end date for the offer.
+    const day = ends?.replace(/^Ends\s+/, '')
+    for (const m of words.matchAll(
+      /\b(?:ends?|until|through|expires?)\s+(?:on\s+)?((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}|\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December))\b/gi
+    ))
+      if (m[1] !== day) problems.push(`It also says "${m[0]}".`)
   }
   const shown = `${html}\n${seen}`
   for (const c of codes)
@@ -239,7 +297,8 @@ export function goldenProblems(brief: GoldenBrief, run: GoldenRun): string[] {
     problems.push(`It leads with ${email.productIds[0]}, not ${expect.lead}.`)
   for (const id of expect.features ?? [])
     if (!email.productIds.includes(id)) problems.push(`It leaves out ${id}.`)
-  for (const id of expect.never ?? []) {
+  const soldOut = store.products.filter((p) => !p.featurable).map((p) => p.id)
+  for (const id of new Set([...soldOut, ...(expect.never ?? [])])) {
     const p = byId.get(id)
     if (
       email.productIds.includes(id) ||
@@ -254,7 +313,8 @@ export function goldenProblems(brief: GoldenBrief, run: GoldenRun): string[] {
 
   // The email itself, as the push checks it (the five footer tags, size,
   // pictures it can import), linked only to the store, safe to draw.
-  problems.push(...footerProblems(html))
+  // As the push checks them, and not hidden in a comment.
+  problems.push(...footerProblems(html.replace(/<!--[\s\S]*?-->/g, ' ')))
   const stop = preflight([html], 'GoldenList1')
   if (stop) problems.push(`The push would refuse it: ${stop.reason}.`)
   if (!links.length) problems.push('It has no link to the store.')
@@ -262,8 +322,9 @@ export function goldenProblems(brief: GoldenBrief, run: GoldenRun): string[] {
     if (!/^https:\/\//i.test(href) || !sameHost(href, store.brand.site))
       problems.push(`It links to ${href}, not the store.`)
   for (const img of html.match(/<img\b[^>]*>/gi) ?? []) {
-    const alt = /\salt\s*=\s*"([^"]*)"/i.exec(img)
-    if (!alt || !alt[1].trim()) problems.push('An image has no alt text.')
+    const alt = /\salt\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(img)
+    if (!alt || !(alt[1] ?? alt[2]).trim())
+      problems.push('An image has no alt text.')
   }
   if (/<script\b/i.test(html) || /<[^>]*\son[a-z]+\s*=/i.test(html))
     problems.push('It has a script or an event handler.')

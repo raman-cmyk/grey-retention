@@ -75,7 +75,8 @@ describe('the golden set (REL-EVL)', () => {
     const tz = process.env.TZ
     afterEach(() => {
       vi.useRealTimers()
-      process.env.TZ = tz
+      if (tz === undefined) delete process.env.TZ
+      else process.env.TZ = tz
     })
 
     it.each([
@@ -85,8 +86,13 @@ describe('the golden set (REL-EVL)', () => {
       const first = await results()
       vi.useFakeTimers({ now: new Date(now), toFake: ['Date'] })
       process.env.TZ = zone
+      // The zone really moved (this test runs in its own process).
+      expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe(zone)
       const again = await runPlan()
-      again.forEach((r, i) => expect(r.run.result).toEqual(first[i].run.result))
+      again.forEach((r, i) => {
+        expect(r.run.result).toEqual(first[i].run.result)
+        expect(r.run.fallbacks).toEqual(first[i].run.fallbacks)
+      })
     })
   })
 })
@@ -259,34 +265,123 @@ describe('the golden properties catch a worse email', () => {
     )
   })
 
-  it('the push’s checks: the five footer tags, size, pictures; links off the store; alt text; scripts; "&"', async () => {
+  it('the push’s checks: the five footer tags (not in a comment), size', async () => {
     expect(
       await spoiled('odd-names', (b) => {
         swap(b, '{% manage_preferences "Preferences" %}', 'Preferences')
         swap(b, '{% web_view "View in browser" %}', 'View')
         swap(b, '{{ organization.name }}', 'Us')
-        addToBody(
-          b,
-          '<a href="https://other.example/">Night & Day</a><img src="http://cedar-lane.example/a.jpg" alt=""><script></script><p onclick="x">x</p>'
-        )
       })
     ).toEqual(
       expect.arrayContaining([
         'The preferences link is missing.',
         'The "view in browser" link is missing.',
         'The brand name is missing.',
-        'The push would refuse it: footer_missing.',
-        'It links to https://other.example/, not the store.',
-        'An image has no alt text.',
-        'It has an unescaped "&".',
-        'It has a script or an event handler.'
+        'The push would refuse it: footer_missing.'
       ])
     )
+    expect(
+      await spoiled('launch', (b) =>
+        swap(
+          b,
+          '{% unsubscribe "Unsubscribe" %}',
+          '<!-- {% unsubscribe "Unsubscribe" %} -->'
+        )
+      )
+    ).toContain('The unsubscribe link is missing.')
     expect(
       await spoiled('story', (b) =>
         addToBody(b, `<p>${'a'.repeat(110 * 1024)}</p>`)
       )
     ).toContain('The push would refuse it: too_big_for_gmail.')
+  })
+
+  it('pictures Klaviyo cannot import, no alt text, links off the store, a script, an event handler, "&"', async () => {
+    expect(
+      await spoiled('launch', (b) =>
+        addToBody(b, '<img src="http://cedar-lane.example/a.jpg" alt="A">')
+      )
+    ).toContain('The push would refuse it: image_not_importable.')
+    expect(
+      await spoiled('launch', (b) =>
+        addToBody(b, '<img src="https://cedar-lane.example/a.jpg" alt="">')
+      )
+    ).toContain('An image has no alt text.')
+    expect(
+      await spoiled('launch', (b) =>
+        addToBody(b, '<a href="https://other.example/">Night & Day</a>')
+      )
+    ).toEqual(
+      expect.arrayContaining([
+        'It links to https://other.example/, not the store.',
+        'It has an unescaped "&".'
+      ])
+    )
+    expect(
+      await spoiled('launch', (b) => addToBody(b, '<script></script>'))
+    ).toContain('It has a script or an event handler.')
+    expect(
+      await spoiled('launch', (b) => addToBody(b, '<p onclick="x">Hi</p>'))
+    ).toContain('It has a script or an event handler.')
+  })
+
+  it('template tags other than the footer’s: run by Klaviyo, or shown to the reader', async () => {
+    expect(
+      await spoiled('offer', (b) =>
+        addToBody(b, '<p>{% coupon_code "WINTER50" %}</p>')
+      )
+    ).toContain('It has a template tag Klaviyo would run.')
+    expect(
+      await spoiled('launch', (b) =>
+        addToBody(b, '<p>&#123;% if person.first_name %&#125;Hi</p>')
+      )
+    ).toContain('The email shows a template tag.')
+  })
+
+  it('more offers it may not make: percent in words, half price, money off a price, another end date, a code only in a link', async () => {
+    expect(
+      await spoiled('launch', (b) =>
+        addToBody(b, '<p>Take 40 percent off. Half price today.</p>')
+      )
+    ).toEqual(
+      expect.arrayContaining([
+        'It shows 40%.',
+        'It promises a deal that is not the offer.'
+      ])
+    )
+    expect(
+      await spoiled('offer', (b) =>
+        addToBody(b, '<p>Save $39.00 on the candle. Offer ends March 20.</p>')
+      )
+    ).toEqual(
+      expect.arrayContaining([
+        'It promises money off.',
+        'It also says "ends March 20".'
+      ])
+    )
+    expect(
+      await spoiled('offer', (b) => {
+        swap(b, 'break-all">CANDLE10<', 'break-all">your code<')
+        addToBody(b, '<a href="https://cedar-lane.example/?c=CANDLE10">x</a>')
+      })
+    ).toContain('The code CANDLE10 is not shown.')
+  })
+
+  it('a sold-out product in any email, by link, picture or name; banned words split by a line break', async () => {
+    expect(
+      await spoiled('bestseller', (b) =>
+        addToBody(
+          b,
+          '<a href="https://cedar-lane.example/products/p-stone-vase">See it</a>'
+        )
+      )
+    ).toContain('It features p-stone-vase.')
+    expect(
+      await spoiled('launch', (b) => addToBody(b, '<p>A stone vase</p>'))
+    ).toContain('It features p-stone-vase.')
+    expect(
+      await spoiled('reminder-facts', (b) => addToBody(b, '<p>so\ncheap</p>'))
+    ).toContain('The email says "cheap".')
   })
 
   it('not what the screen says: the sample flag, the AI, the send time, the audience, the changes', async () => {
@@ -330,6 +425,25 @@ describe('the golden properties catch a worse email', () => {
           'https://www.cedar-lane.example/products/p-oak-tray?utm_source=klaviyo"'
         )
       )
+    ).toEqual([])
+  })
+  it('legit words pass: a shipping threshold the facts state, words of two blocks, a heart, alt in single quotes', async () => {
+    expect(
+      await spoiled('reminder-facts', (b) =>
+        addToBody(b, '<p>Free shipping on orders over $150.</p>')
+      )
+    ).toEqual([])
+    expect(
+      await spoiled('launch', (b) => {
+        addToBody(
+          b,
+          '<tr data-block="cta"><td>Get it</td></tr><tr data-block="text"><td>By the fire, slow evenings.</td></tr>'
+        )
+        addToBody(
+          b,
+          '<tr data-block="x"><td>We &lt;3 slow mornings</td></tr><img src="https://cedar-lane.example/images/p-oak-tray.jpg" alt=\'Oak tray\'>'
+        )
+      })
     ).toEqual([])
   })
 })
