@@ -37,6 +37,8 @@ type Call = { fn: string; args: Record<string, unknown> }
 type Saved = {
   brand_offers?: Record<string, unknown>[]
   discount_codes?: Record<string, unknown>[]
+  /** The plan's other builds' subjects (REL-AI). */
+  email_builds?: Record<string, unknown>[]
 }
 /**
  * A database that hands out the given steps, then nothing, and records
@@ -78,17 +80,27 @@ function fakeDb(
   })
   const from = (table: keyof Saved) => {
     const result =
-      saved === 'error'
+      (saved === 'error' && table !== 'email_builds') ||
+      (table === 'email_builds' && fail.email_builds)
         ? { data: null, error: { code: 'PGRST000' } }
-        : { data: saved[table] ?? [], error: null }
-    const query = {
-      eq: () => query,
+        : { data: (saved !== 'error' && saved[table]) || [], error: null }
+    const read =
+      (method: string) =>
+      (...args: unknown[]) => {
+        if (table === 'email_builds')
+          calls.push({ fn: `email_builds.${method}`, args: { args } })
+        return query
+      }
+    const query: Record<string, unknown> = {
+      eq: read('eq'),
+      neq: read('neq'),
+      or: read('or'),
       then: (
         done: (r: typeof result) => unknown,
         failed: (e: unknown) => unknown
       ) => Promise.resolve(result).then(done, failed)
     }
-    return { select: () => query }
+    return { select: read('select') }
   }
   return { db: { rpc, from } as never, calls }
 }
@@ -368,6 +380,75 @@ describe('saved steps (REL-081)', () => {
       expect.objectContaining({ code: 'something_new' })
     )
     error.mockRestore()
+  })
+
+  it('gives the copy step the plan’s other subjects, so this email’s differs (REL-AI)', async () => {
+    const { saved } = await fullRun()
+    const own = (saved.copy as { draft: { subject: string } }).draft.subject
+    const { db, calls } = fakeDb(
+      [
+        step({
+          step: 'copy',
+          progress: { sections: saved.sections, content: saved.content }
+        })
+      ],
+      {},
+      { email_builds: [{ built: own, saved: null }] }
+    )
+    await runEmailBuilds(db, { limit: 1, fallbacks: memoryFallbackLog() })
+    const copy = calls.find((c) => c.fn === 'finish_email_step')!.args
+      .output as { draft: { subject: string } }
+    expect(copy.draft.subject).not.toBe(own)
+  })
+
+  it('reads the plan’s other subjects once, at the copy step, from this plan only (REL-AI)', async () => {
+    const { db, calls } = fakeDb([step()])
+    await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+    expect(
+      calls
+        .filter((c) => c.fn.startsWith('email_builds.'))
+        .map((c) => [c.fn, ...(c.args.args as unknown[])])
+    ).toEqual([
+      [
+        'email_builds.select',
+        'built:email->>subject,saved:progress->copy->draft->>subject'
+      ],
+      ['email_builds.eq', 'tenant_id', tenant],
+      ['email_builds.eq', 'run_id', 'run-1'],
+      ['email_builds.neq', 'slot', 0],
+      ['email_builds.or', 'state.neq.failed,email.not.is.null']
+    ])
+  })
+
+  it('tries the copy step again when the plan’s subjects cannot be read', async () => {
+    const { saved } = await fullRun()
+    const { db, calls } = fakeDb(
+      [
+        step({
+          step: 'copy',
+          progress: { sections: saved.sections, content: saved.content }
+        })
+      ],
+      { email_builds: { code: 'PGRST000' } }
+    )
+    await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+    expect(failure(calls)).toMatchObject({ code: 'step_error', final: false })
+  })
+
+  it('fails at once when every subject it could use is taken (planning again helps, not a retry)', async () => {
+    const { db, calls } = fakeDb([step()])
+    const sample = sampleStoreFrom(inDays(1))
+    await runEmailBuilds(db, {
+      stores: {
+        read: async (t) => {
+          const s = await sample.read(t)
+          return { ...s, brand: { ...s.brand, name: 'Shop {{ x }}' } }
+        }
+      },
+      fallbacks: memoryFallbackLog()
+    })
+    expect(failure(calls)).toMatchObject({ final: true })
+    expect(['subject_taken', 'copy_failed']).toContain(failure(calls)!.code)
   })
 
   it('fails at once when the database refuses a step’s output', async () => {

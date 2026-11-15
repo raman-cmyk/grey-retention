@@ -300,3 +300,121 @@ describe('the ports', () => {
     })
   })
 })
+
+describe('one plan, one subject per email (REL-AI)', () => {
+  const store = () => sampleStoreSource.read(tenantId)
+  /** Builds the planned emails in order, as "Create email" would. */
+  const buildAll = async (list: PlannedEmail[]) => {
+    const fallbacks = memoryFallbackLog()
+    const taken: string[] = []
+    const results = []
+    for (const [i, p] of list.entries()) {
+      const r = await buildEmail(
+        { planned: p, store: await store(), offers: sampleOffers, taken },
+        { tenantId, callerKey: `email-build:b${i}`, fallbacks }
+      )
+      if (r.ok) taken.push(r.email.subject)
+      results.push(r)
+    }
+    return { results, taken, fallbacks }
+  }
+
+  it('never gives two emails in one plan the same subject, and each still passes the checks', async () => {
+    const plan: PlannedEmail[] = [
+      planned({ emailType: 'story', offer: null, date: inDays(2) }),
+      planned({ emailType: 'story', offer: null, date: inDays(3) }),
+      planned({ emailType: 'bestseller', offer: null, date: inDays(4) }),
+      planned({ date: inDays(5) }),
+      planned({ emailType: 'reminder', offer: null, date: inDays(6) }),
+      planned({ emailType: 'education', offer: null, date: inDays(7) })
+    ]
+    const { results, taken } = await buildAll(plan)
+    expect(results.every((r) => r.ok)).toBe(true)
+    expect(new Set(taken.map((t) => t.toLowerCase())).size).toBe(plan.length)
+    for (const t of taken) expect(t.length).toBeLessThanOrEqual(60)
+  })
+
+  it('stops, with its reason, rather than reuse a subject when every one it could use is taken', async () => {
+    // Alike and on one day, so even the send-day subjects run out.
+    const same = Array.from({ length: 14 }, (_, i) =>
+      planned({
+        emailType: 'story',
+        offer: null,
+        products: [{ id: 'p-cedar-candle', title: 'Cedar candle' }],
+        date: inDays(2),
+        time: `${String(8 + (i % 12)).padStart(2, '0')}:00`
+      })
+    )
+    const { results, taken, fallbacks } = await buildAll(same)
+    expect(new Set(taken.map((t) => t.toLowerCase())).size).toBe(taken.length)
+    const stopped = results.filter((r) => !r.ok)
+    expect(stopped.length).toBeGreaterThan(0)
+    expect(stopped.every((r) => !r.ok && r.code === 'subject_taken')).toBe(true)
+    expect(
+      fallbacks.entries().some((e) => e.reasonCode === 'subject_taken')
+    ).toBe(true)
+  })
+
+  it('keeps template tags and hidden characters in store text out of a subject', async () => {
+    const base = await store()
+    const hostile = {
+      ...base,
+      products: base.products.map((p) =>
+        p.id === 'p-linen-throw'
+          ? { ...p, title: 'Linen {{ person.email }} throw' }
+          : p.id === 'p-cedar-candle'
+            ? { ...p, title: 'Cedar\u202E candle\u200B' }
+            : p
+      )
+    }
+    const bestseller = planned({
+      emailType: 'bestseller',
+      offer: null,
+      products: [
+        { id: 'p-linen-throw', title: 'Linen throw' },
+        { id: 'p-cedar-candle', title: 'Cedar candle' }
+      ]
+    })
+    const fallbacks = memoryFallbackLog()
+    const first = await buildEmail(
+      { planned: bestseller, store: hostile, offers: sampleOffers },
+      { tenantId, callerKey: 'email-build:h1', fallbacks }
+    )
+    if (!first.ok) throw new Error('first build failed')
+    // Its own subject is taken, so it picks from the product titles.
+    const second = await buildEmail(
+      {
+        planned: bestseller,
+        store: hostile,
+        offers: sampleOffers,
+        taken: [first.email.subject.toUpperCase()]
+      },
+      { tenantId, callerKey: 'email-build:h2', fallbacks }
+    )
+    expect(second.ok).toBe(true)
+    if (!second.ok) return
+    expect(second.email.subject.toLowerCase()).not.toBe(
+      first.email.subject.toLowerCase()
+    )
+    expect(second.email.subject).not.toMatch(/[{}<>\u200B\u202E]/)
+  })
+
+  it('stops rather than put a brand name with template tags in a new subject', async () => {
+    const base = await store()
+    const odd = { ...base, brand: { ...base.brand, name: 'Shop {{ x }}' } }
+    const r = await buildEmail(
+      {
+        planned: planned({ emailType: 'story', offer: null }),
+        store: odd,
+        offers: sampleOffers
+      },
+      {
+        tenantId,
+        callerKey: 'email-build:o1',
+        fallbacks: memoryFallbackLog()
+      }
+    )
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(['subject_taken', 'copy_failed']).toContain(r.code)
+  })
+})

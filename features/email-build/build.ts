@@ -79,6 +79,7 @@ export type BuildResult =
         | 'slot_time_invalid'
         | 'offers_unreadable'
         | 'copy_failed'
+        | 'subject_taken'
         | 'render_failed'
     }
 
@@ -214,12 +215,89 @@ export async function contentStep(
   )
 }
 
+/** Subjects compared the way an inbox shows them: case and spacing aside. */
+export const subjectKey = (subject: string) =>
+  subject.replace(/\s+/g, ' ').trim().toLowerCase()
+
+// Control, zero-width and direction characters: never in a subject.
+const hidden =
+  /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g
+
+/**
+ * Store text (a product title, the brand name) as it may stand in a
+ * subject: hidden characters dropped, spacing made single; null when it
+ * holds anything a template or an inbox could read as markup (`{` `}` `<`
+ * `>`), since the copy checks mask product titles and cannot judge them.
+ */
+export function subjectText(text: string) {
+  const clean = text.replace(hidden, '').replace(/\s+/g, ' ').trim()
+  return clean && !/[{}<>]/.test(clean) ? clean : null
+}
+
+/**
+ * REL-AI: two emails in one plan never share a subject. The subjects the
+ * plan's other emails already use (`taken`) are skipped: the plain copy's
+ * own subject when it is free, else the first of a few fixed, facts-only
+ * subjects (the locked products' titles, the brand name and the send day,
+ * never a claim, price or code) that is free, safe store text
+ * (`subjectText`) and passes every code check. Null when none.
+ */
+export function uniqueSubject(
+  plain: Parameters<typeof codeFindings>[0],
+  locked: LockedContent,
+  brandName: string,
+  taken: ReadonlySet<string>
+): string | null {
+  const free = (subject: string) => !taken.has(subjectKey(subject))
+  const own = plain.draft.subject
+  if (free(own) && subjectText(own) === own.replace(/\s+/g, ' ').trim())
+    return own
+  const brand = subjectText(brandName)
+  if (!brand) return null
+  const titles = [
+    ...new Set(
+      locked.sections.flatMap((s) =>
+        s.products.flatMap((p) => subjectText(p.title) ?? [])
+      )
+    )
+  ]
+  const day = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'long',
+    timeZone: locked.input.timezone
+  }).format(new Date(locked.input.sendAt))
+  const candidates = [
+    ...titles.map((t) => `${t} from ${brand}`),
+    ...titles,
+    `More from ${brand}`,
+    `A note from ${brand}`,
+    `This week at ${brand}`,
+    `Inside ${brand}`,
+    `From the ${brand} shop`,
+    `${brand} this ${day}`,
+    `A ${day} note from ${brand}`,
+    ...titles.map((t) => `${brand}: ${t}`)
+  ].filter((c) => c.length <= 60)
+  for (const subject of candidates) {
+    if (!free(subject)) continue
+    const draft = { ...plain.draft, subject }
+    if (!codeFindings({ ...plain, draft }, locked, brandName).length)
+      return subject
+  }
+  return null
+}
+
 /** Step 3: plain facts-only copy that must pass every code check. */
 export async function copyStep(
-  input: { store: Store; locked: LockedContent },
+  input: {
+    store: Store
+    locked: LockedContent
+    /** Subjects the plan's other emails use (REL-AI). */
+    taken?: readonly string[]
+  },
   ctx: BuildCtx
 ): Promise<
-  { ok: true; output: CopyOutput } | { ok: false; code: 'copy_failed' }
+  | { ok: true; output: CopyOutput }
+  | { ok: false; code: 'copy_failed' | 'subject_taken' }
 > {
   const { store, locked } = input
   const steps = locked.sections.map((s) => ({
@@ -247,10 +325,31 @@ export async function copyStep(
     })
     return { ok: false, code: 'copy_failed' }
   }
+  const subject = uniqueSubject(
+    plain,
+    locked,
+    store.brand.name,
+    new Set((input.taken ?? []).map(subjectKey))
+  )
+  if (!subject) {
+    await ctx.fallbacks.record({
+      tenantId: ctx.tenantId,
+      campaignId: ctx.campaignId ?? null,
+      agent: 'email-build',
+      reasonCode: 'subject_taken',
+      reason:
+        'Every subject it could use is used by another email in this plan.',
+      fallback: 'No email was built; planning again gives new emails.',
+      attempts: 1,
+      detail: { taken: Math.min(input.taken?.length ?? 0, 40) },
+      dedupeKey: `email-build:subject:${keyPart(ctx.callerKey)}`
+    })
+    return { ok: false, code: 'subject_taken' }
+  }
   return {
     ok: true,
     output: {
-      draft: plain.draft,
+      draft: { ...plain.draft, subject },
       changes: [...new Set(locked.changes.map((c): ChangeKey => c.key))].slice(
         0,
         40
@@ -297,19 +396,30 @@ export function designStep(
  * the same draft both ways. Never throws for bad data.
  */
 export async function lockedDraft(
-  input: StepInput & { offers: OfferSource },
+  input: StepInput & {
+    offers: OfferSource
+    /** Subjects the plan's other emails use (REL-AI). */
+    taken?: readonly string[]
+  },
   ctx: BuildCtx
 ): Promise<
   | { ok: true; draft: Draft; sendAt: string; changes: ChangeKey[] }
   | {
       ok: false
-      code: 'slot_time_invalid' | 'offers_unreadable' | 'copy_failed'
+      code:
+        | 'slot_time_invalid'
+        | 'offers_unreadable'
+        | 'copy_failed'
+        | 'subject_taken'
     }
 > {
   const sections = await sectionsStep(input, ctx)
   if (!sections.ok) return sections
   const locked = await contentStep({ ...input, sections: sections.output }, ctx)
-  const copy = await copyStep({ store: input.store, locked }, ctx)
+  const copy = await copyStep(
+    { store: input.store, locked, taken: input.taken },
+    ctx
+  )
   if (!copy.ok) return copy
   return {
     ok: true,
@@ -328,7 +438,7 @@ export type BuildCtx = {
 
 /** All four build steps at once (tests and tools; the job saves each). */
 export async function buildEmail(
-  input: StepInput & { offers: OfferSource },
+  input: StepInput & { offers: OfferSource; taken?: readonly string[] },
   ctx: BuildCtx
 ): Promise<BuildResult> {
   const made = await lockedDraft(input, ctx)
