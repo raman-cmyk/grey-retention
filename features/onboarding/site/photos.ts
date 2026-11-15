@@ -158,8 +158,14 @@ const ipv4 = /^\d{1,3}(?:\.\d{1,3}){3}$/
 /** A host every subscriber can reach: a public name, never a private one. */
 const publicHost = (host: string) =>
   host.includes('.') &&
+  !host.endsWith('.') &&
   !ipv4.test(host) &&
-  !/(?:^|\.)(?:localhost|local|internal|intranet|lan|home|corp)$/i.test(host)
+  !/(?:^|\.)(?:localhost|local|internal|intranet|lan|home|corp|test|example|invalid|onion)$/i.test(
+    host
+  ) &&
+  // Pictures served by Instagram or Facebook are not the brand's files,
+  // and their addresses expire.
+  !/(?:^|\.)(?:cdninstagram\.com|fbcdn\.net)$/i.test(host)
 
 /**
  * An address the library keeps and an email can show: https on the
@@ -184,11 +190,15 @@ export function emailPhotoUrl(url: string): boolean {
   if (!publicHost(u.hostname) || !/\.(?:jpe?g|png)$/i.test(u.pathname))
     return false
   // Another format asked for in the address: `?format=webp`, `/f_webp/`.
-  for (const name of ['format', 'fm']) {
+  for (const name of ['format', 'fm', 'fmt', 'output']) {
     const v = u.searchParams.get(name)
     if (v !== null && !/^(?:jpe?g|pjpg|png)$/i.test(v)) return false
   }
-  return !/\/f_(?!auto|jpe?g|png)[a-z0-9]+[,/]/i.test(u.pathname)
+  return (
+    !/\/f_(?!auto|jpe?g|png)[a-z0-9]+[,/]/i.test(u.pathname) &&
+    // Cloudflare's `/cdn-cgi/image/format=webp,…/`.
+    !/[/,](?:format|fm|fmt)=(?!auto|jpe?g|png)[a-z0-9]+/i.test(u.pathname)
+  )
 }
 
 const sizeSuffix =
@@ -226,7 +236,7 @@ const productTypes =
  * `ImageObject` (its `contentUrl` or `url`, whichever is an address), or
  * a reference to one elsewhere in the data (`{"@id": …}`).
  */
-function schemaImages(json: unknown): string[] {
+function schemaImages(json: unknown): { images: string[]; logos: string[] } {
   const ids = new Map<string, string>()
   const linkOf = (o: Record<string, unknown>) =>
     [o.contentUrl, o.url].find((v): v is string => typeof v === 'string')
@@ -266,7 +276,12 @@ function schemaImages(json: unknown): string[] {
     if (types.some((t) => typeof t === 'string' && productTypes.test(t)))
       pictures(o.image)
   })
-  return out
+  const images = out.splice(0)
+  // Logos (an organisation's, a brand's, a store's), so no photo is one.
+  visit(json, (o) => {
+    if ('logo' in o) pictures(o.logo)
+  })
+  return { images, logos: out }
 }
 
 /** A description cut to `maxAlt` characters, never inside one. */
@@ -297,17 +312,29 @@ export function sitePhotos(
     return []
   }
   const host = site.hostname.replace(/^www\./, '')
+  // The site's own name: `cedarlane` in `shop.cedarlane.com` or `cedarlane.co.uk`.
+  const labels = host.split('.')
+  const siteName =
+    labels.length > 2 && /^(?:co|com|org|net)$/.test(labels.at(-2) ?? '')
+      ? labels.at(-3)
+      : labels.at(-2)
   const brandWords = new Set([
     ...words(brand.slice(0, 120)),
     words(brand.slice(0, 120)).join(''),
-    host.split('.')[0] ?? ''
+    siteName ?? ''
   ])
   brandWords.delete('')
   const pageKind: PhotoKind = kind === 'product' ? 'product' : 'lifestyle'
   const found: SitePhoto[] = []
+  const count = { page: 0, sure: 0 }
 
   /** Whether a picture's own name, label or description says it is no brand photo. */
-  const notAPhoto = (url: string, alt: string | null, labels: string[]) => {
+  const notAPhoto = (
+    url: string,
+    alt: string | null,
+    labels: string[],
+    from: SitePhoto['from']
+  ) => {
     const file = words(new URL(url).pathname.slice(-maxAttr))
     const named = words(...labels)
     if (
@@ -319,16 +346,12 @@ export function sitePhotos(
     // Brand words never count ("Icon Apparel" is a name).
     if ([...file, ...named].some((w) => notPhotos.has(w) && !brandWords.has(w)))
       return true
-    // A file, or a description, naming only the brand is its wordmark.
-    const onlyBrand = (all: string[]) => {
-      const meaning = all.filter((w) => !noise.test(w))
-      return meaning.length > 0 && meaning.every((w) => brandWords.has(w))
-    }
+    // A file naming only the brand is its wordmark (a product's own
+    // pictures may be named for a brand named for its product).
+    if (from === 'schema') return false
     const name = new URL(url).pathname.split('/').pop() ?? ''
-    return (
-      onlyBrand(words(name.slice(-maxAttr))) ||
-      onlyBrand(words(alt?.slice(0, maxAttr) ?? null))
-    )
+    const meaning = words(name.slice(-maxAttr)).filter((w) => !noise.test(w))
+    return meaning.length > 0 && meaning.every((w) => brandWords.has(w))
   }
   const add = (
     url: string | null,
@@ -337,11 +360,15 @@ export function sitePhotos(
     alt: string | null = null,
     labels: string[] = []
   ) => {
-    if (found.length >= maxFound || !url || !emailPhotoUrl(url)) return
-    if (notAPhoto(url, alt, labels)) return
+    // Page pictures and the surer ones (structured data, share) each
+    // have their own cap, so the surest are never crowded out.
+    const counted = from === 'page' ? 'page' : 'sure'
+    if (count[counted] >= maxFound || !url || !emailPhotoUrl(url)) return
+    if (notAPhoto(url, alt, labels, from)) return
+    count[counted]++
     found.push({ url, alt: altText(alt), kind: photoKind, page: kind, from })
   }
-  /** The real address of a picture: its largest size first, never a lazy placeholder. */
+  /** The real address of a picture or source: its largest size first, never a lazy stand-in. */
   const addressOf = (c: T.Element) => {
     for (const s of [
       largestOfSet(attr(c, 'srcset')),
@@ -367,12 +394,11 @@ export function sitePhotos(
     ['width', 'height'].some((a) => {
       const v = short(c, a)
       if (v === null || v.includes('%')) return false
-      const n = Number.parseInt(v, 10)
-      return Number.isFinite(n) && n < minPhotoSide
+      const n = Number(v.trim().replace(/px$/i, ''))
+      return v.trim() !== '' && Number.isFinite(n) && n < minPhotoSide
     })
   const hidden = (c: T.Element) =>
     c.attrs.some((a) => a.name === 'hidden') ||
-    attr(c, 'aria-hidden') === 'true' ||
     /display\s*:\s*none|visibility\s*:\s*hidden/i.test(short(c, 'style') ?? '')
   const labelsOf = (c: T.Element) =>
     [short(c, 'class'), short(c, 'id'), short(c, 'aria-label')].filter(
@@ -391,6 +417,24 @@ export function sitePhotos(
       return false
     }
   }
+  /** A link to the brand's home page (or its locale's): a logo's link. */
+  const homeLink = (href: string | null) => {
+    if (!href) return false
+    try {
+      const u = new URL(href.slice(0, maxAttr), page)
+      return (
+        u.hostname.replace(/^www\./, '') === host &&
+        /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/?)?$/i.test(u.pathname)
+      )
+    } catch {
+      return false
+    }
+  }
+  /** Addresses that are the brand's logo: no photo is one of them. */
+  const logoKeys = new Set<string>()
+  const logo = (url: string | null) => {
+    if (url && emailPhotoUrl(url)) logoKeys.add(photoKey(url))
+  }
   const picture = (
     c: T.Element,
     at: { product: boolean },
@@ -398,14 +442,7 @@ export function sitePhotos(
   ) => {
     if (hidden(c) || small(c)) return
     add(
-      sources
-        .map((s) =>
-          absolute(
-            largestOfSet(attr(s, 'srcset') ?? attr(s, 'data-srcset')),
-            page
-          )
-        )
-        .find((u) => u && emailPhotoUrl(u)) ?? addressOf(c),
+      sources.map(addressOf).find((u) => u !== null) ?? addressOf(c),
       'page',
       at.product ? 'product' : pageKind,
       attr(c, 'alt'),
@@ -413,27 +450,34 @@ export function sitePhotos(
     )
   }
 
-  type Place = { chrome: boolean; others: boolean; product: boolean }
+  type Place = {
+    chrome: boolean
+    others: boolean
+    product: boolean
+    home: boolean
+  }
   const doc = parse(html.slice(0, 2_000_000))
   // Walked with a list, not recursion: a page nested thousands deep is
   // still read.
   const stack: [T.ChildNode, Place][] = children(doc)
     .map((c): [T.ChildNode, Place] => [
       c,
-      { chrome: false, others: false, product: false }
+      { chrome: false, others: false, product: false, home: false }
     ])
     .reverse()
-  while (stack.length && found.length < maxFound) {
+  // Structured data is read to the end, even after `maxFound` pictures.
+  while (stack.length) {
     const [c, at] = stack.pop()!
     if (!isElement(c)) continue
     const tag = c.tagName
     if (tag === 'script') {
       if ((attr(c, 'type') ?? '').toLowerCase() === 'application/ld+json')
         try {
-          for (const u of schemaImages(
+          const { images, logos } = schemaImages(
             JSON.parse(textOf(c).slice(0, maxSchema))
-          ))
-            add(absolute(u, page), 'schema', 'product')
+          )
+          for (const u of logos) logo(absolute(u, page))
+          for (const u of images) add(absolute(u, page), 'schema', 'product')
         } catch {
           // Not readable structured data: the page's pictures still count.
         }
@@ -447,6 +491,12 @@ export function sitePhotos(
       ).toLowerCase()
       if (name === 'og:image' || name === 'twitter:image')
         add(absolute(attr(c, 'content'), page), 'share', pageKind)
+      if (name === 'og:logo' || short(c, 'itemprop') === 'logo')
+        logo(absolute(attr(c, 'content'), page))
+      continue
+    }
+    if (tag === 'link' && short(c, 'itemprop') === 'logo') {
+      logo(absolute(attr(c, 'href'), page))
       continue
     }
     if (
@@ -456,27 +506,47 @@ export function sitePhotos(
       continue
     const labels = labelsOf(c)
     const own = words(...labels)
+    const role = (short(c, 'role') ?? '').toLowerCase()
     const place: Place = {
       chrome:
-        at.chrome || tag === 'header' || tag === 'nav' || tag === 'footer',
+        at.chrome ||
+        tag === 'header' ||
+        tag === 'nav' ||
+        tag === 'footer' ||
+        ['banner', 'navigation', 'contentinfo'].includes(role) ||
+        // `site-header`, `shopify-section-header`, `page-footer`…
+        (own.some((w) => w === 'header' || w === 'footer') &&
+          own.some((w) =>
+            ['site', 'section', 'sections', 'page', 'main', 'global'].includes(
+              w
+            )
+          )),
       others:
         at.others ||
         (!landmarks.has(tag) &&
           (own.some((w) => notBrandBoxes.has(w)) ||
-            // "As featured in", "as seen on": press.
-            (own.some((w) => w === 'featured' || w === 'seen') &&
-              own.some((w) => w === 'in' || w === 'on')))),
+            // "As featured in", "as seen on": press (the words side by side).
+            labels.some((l) =>
+              /\b(?:featured|seen)[\s_-]+(?:in|on)\b/i.test(l)
+            ))),
       product:
         at.product ||
         (tag === 'a' && productLink(attr(c, 'href'))) ||
         (!landmarks.has(tag) &&
-          own.some((w) => w === 'product' || w === 'products'))
+          own.some((w) => w === 'product' || w === 'products')),
+      home: at.home || (tag === 'a' && homeLink(attr(c, 'href')))
     }
+    // A picture in the header's home link, or marked as the logo, is the
+    // brand's logo.
+    if (
+      (tag === 'img' || tag === 'source') &&
+      ((place.chrome && place.home) || short(c, 'itemprop') === 'logo')
+    )
+      logo(addressOf(c))
     // The header, menu, footer and boxes of other brands' pictures are
     // skipped; their structured data is still read.
     const skipped = place.chrome || place.others
     if (tag === 'picture') {
-      if (skipped) continue
       const kids = children(c).filter(isElement)
       const img = kids.find((k) => k.tagName === 'img')
       // Only the sources an email can show (a JPEG or PNG, or no type).
@@ -485,11 +555,20 @@ export function sitePhotos(
           k.tagName === 'source' &&
           /^(?:|image\/(?:jpe?g|png))$/i.test((short(k, 'type') ?? '').trim())
       )
+      if (
+        (place.chrome && place.home) ||
+        (img && short(img, 'itemprop') === 'logo')
+      ) {
+        if (img) logo(addressOf(img))
+        for (const k of kids) if (k.tagName === 'source') logo(addressOf(k))
+        continue
+      }
+      if (skipped) continue
       if (img) picture(img, place, sources)
       continue
     }
     if (tag === 'img') {
-      if (!skipped) picture(c, place, [])
+      if (!skipped && short(c, 'itemprop') !== 'logo') picture(c, place, [])
       continue
     }
     const kids = children(c)
@@ -502,6 +581,7 @@ export function sitePhotos(
   const best = new Map<string, SitePhoto>()
   for (const p of [...found].sort((a, b) => rank[a.from] - rank[b.from])) {
     const key = photoKey(p.url)
+    if (logoKeys.has(key)) continue
     const was = best.get(key)
     if (!was) best.set(key, p)
     else

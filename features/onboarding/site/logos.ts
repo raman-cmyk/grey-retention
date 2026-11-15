@@ -67,7 +67,7 @@ const lightWords = new Set([
 ])
 const darkWords = new Set(['black'])
 /** Boxes whose pictures are other brands' logos or icons, never the brand's. */
-export const otherBrands: ReadonlySet<string> = new Set([
+const otherBrands: ReadonlySet<string> = new Set([
   'press',
   'partner',
   'partners',
@@ -114,7 +114,7 @@ export function inkHint(
 }
 
 /** Named "logo" as a word (not "logout", not a box of "logos"). */
-export const namedLogo = (...texts: (string | null)[]) =>
+const namedLogo = (...texts: (string | null)[]) =>
   words(...texts).includes('logo')
 
 /** An absolute https link from a page's own words, or null. */

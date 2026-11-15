@@ -188,6 +188,85 @@ describe('sitePhotos (ONB-059a)', () => {
     ])
   })
 
+  it('never takes the brand’s logo, whatever its file is called', () => {
+    const html = `<head>
+      <meta property="og:image" content="${cdn}/CL_mark.png?v=17">
+      <meta property="og:logo" content="${cdn}/cl-2024.png">
+      <meta property="og:image" content="${cdn}/cl-2024.png">
+      <script type="application/ld+json">${JSON.stringify({
+        '@type': 'Organization',
+        logo: { '@type': 'ImageObject', url: `${cdn}/mark-black.png` }
+      })}</script></head><body>
+      <header><a href="/"><img src="${cdn}/CL_mark.png?v=17&width=300"></a></header>
+      <div class="site-header"><a href="/en-gb"><picture><source srcset="${cdn}/emblem.png 2x"><img src="${cdn}/emblem-small.png"></picture></a></div>
+      <main>
+        <img src="${cdn}/mark-black.png?width=600">
+        <img itemprop="logo" src="${cdn}/cl-2024b.png">
+        <img src="${cdn}/emblem.png">
+        <img src="${cdn}/trail.jpg">
+      </main></body>`
+    expect(urls(html)).toEqual([`${cdn}/trail.jpg`])
+  })
+
+  it('reads the page’s parts by their role and words, not only their tags', () => {
+    const html = `<body>
+      <div role="banner"><img src="${cdn}/b1.jpg"></div>
+      <div role="navigation"><img src="${cdn}/n1.jpg"></div>
+      <div id="shopify-section-sections--9__footer"><img src="${cdn}/f1.jpg"></div>
+      <main>
+        <li id="Slide-template--16__featured_collection-1" class="grid__item scroll-trigger animate--slide-in">
+          <img src="${cdn}/slide.jpg"></li>
+        <section class="featured-products fade-in"><img src="${cdn}/grid.jpg"></section>
+        <div class="as-seen-on"><img src="${cdn}/press.jpg"></div>
+        <a href="/products/x" aria-hidden="true" tabindex="-1"><img src="${cdn}/dup.jpg" width="1e3"></a>
+        <picture><source srcset="${cdn}/placeholder.png" data-srcset="${cdn}/real.jpg 1600w"><img src="${cdn}/real-small.jpg"></picture>
+      </main></body>`
+    expect(sitePhotos(html, home, 'home').map((p) => [p.url, p.kind])).toEqual([
+      [`${cdn}/slide.jpg`, 'lifestyle'],
+      [`${cdn}/grid.jpg`, 'product'],
+      [`${cdn}/dup.jpg`, 'product'],
+      [`${cdn}/real.jpg`, 'lifestyle']
+    ])
+  })
+
+  it('takes the site’s own name from its address, and a product’s pictures named for the brand', () => {
+    expect(
+      urls(
+        `<main><img src="${cdn}/shop.jpg" alt="Shop"></main>`,
+        'https://shop.cedarlane.com/'
+      )
+    ).toEqual([`${cdn}/shop.jpg`])
+    expect(
+      sitePhotos(
+        `<script type="application/ld+json">${JSON.stringify({
+          '@type': 'Product',
+          image: `${cdn}/trail-socks.jpg`
+        })}</script><main><img src="${cdn}/trailsocks.png"></main>`,
+        'https://trailsocks.com/products/x',
+        'product',
+        { brand: 'Trail Socks' }
+      ).map((p) => p.url)
+    ).toEqual([`${cdn}/trail-socks.jpg`])
+  })
+
+  it('reads the structured data after many pictures', () => {
+    const many = Array.from(
+      { length: 600 },
+      (_, i) => `<img src="${cdn}/p-${i}.jpg">`
+    ).join('')
+    const json = JSON.stringify({
+      '@type': 'Product',
+      image: `${cdn}/late.jpg`
+    })
+    expect(
+      urls(
+        `<main>${many}</main><script type="application/ld+json">${json}</script>`,
+        product,
+        'product'
+      )[0]
+    ).toBe(`${cdn}/late.jpg`)
+  })
+
   it('keeps only photos an email can show', () => {
     for (const url of [
       `${cdn}/a.jpg`,
@@ -214,6 +293,14 @@ describe('sitePhotos (ONB-059a)', () => {
       'https://localhost/g.jpg',
       'https://intranet/g.jpg',
       'https://shop.internal/g.jpg',
+      'https://localhost./g.jpg',
+      'https://intranet./g.jpg',
+      'https://shop.internal./g.jpg',
+      'https://shop.test/g.jpg',
+      'https://scontent-iad3-1.cdninstagram.com/v/t51/x.jpg?oe=6',
+      'https://site.example.com/cdn-cgi/image/format=webp,width=800/https://site.example.com/a.jpg',
+      'https://s7d1.scene7.com/is/image/brand/a.jpg?fmt=webp',
+      'https://images.brand.com/a.jpg?output=webp',
       `${cdn}/${'x'.repeat(1_000)}.jpg`
     ])
       expect(emailPhotoUrl(url), url).toBe(false)
