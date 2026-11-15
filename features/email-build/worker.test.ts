@@ -62,9 +62,7 @@ function fakeDb(
     if (fail[fn]) return { data: null, error: fail[fn] }
     if (fn === 'claim_email_build') {
       // The owner's click claims only its own build.
-      const at = args.target
-        ? queue.findIndex((s) => s.id === args.target)
-        : 0
+      const at = args.target ? queue.findIndex((s) => s.id === args.target) : 0
       const next = at >= 0 ? queue.splice(at, 1)[0] : undefined
       if (next) claimed = next
       return { data: next ? [next] : [], error: null }
