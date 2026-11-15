@@ -19,7 +19,16 @@ import {
   geminiEstimateMicro,
   type AiPurpose
 } from '@/lib/providers/gemini-pricing'
-import { aiSetup } from './setup'
+import {
+  OpenAiResponsesProvider,
+  responsesRequestBody
+} from '@/features/email-generation/openai'
+import {
+  costMicro as openAiCostMicro,
+  estimateMicro as openAiEstimateMicro,
+  maxRequestBytes as openAiMaxRequestBytes
+} from '@/features/email-generation/pricing'
+import { aiSetup, type AiSetup } from './setup'
 import type { BudgetFeature, BudgetLedger } from './budget-ledger'
 
 const purposeFeature: Record<AiPurpose, BudgetFeature> = {
@@ -33,7 +42,7 @@ export type AiRunResult =
   | {
       ok: true
       content: unknown
-      provider: 'gemini' | 'fake'
+      provider: 'gemini' | 'openai' | 'fake'
       model: string
       costMicro: number
       inputTokens: number
@@ -134,9 +143,12 @@ export async function runAi(
       settled: true
     }
   }
+  const live = liveProvider(setup, request, deps.fetch)
   let body: string
+  let estimate: number
   try {
-    body = geminiRequestBody(request)
+    body = live.body()
+    estimate = live.estimate(body)
   } catch (error) {
     if (error instanceof AiProviderError)
       return {
@@ -146,14 +158,6 @@ export async function runAi(
       }
     throw error
   }
-  const estimate = geminiEstimateMicro(
-    setup.model,
-    request.images?.length
-      ? geminiRequestBody({ ...request, images: [] })
-      : body,
-    geminiOutputTokens(request),
-    request.images?.length ?? 0
-  )
   const reservation = await deps.ledger.reserve({
     tenantId: input.tenantId,
     operationId: `ai:${input.purpose}:${valid.data.callerKey}:${randomUUID()}`,
@@ -161,10 +165,7 @@ export async function runAi(
     estimateMicro: estimate
   })
   if (!reservation.ok) return { ok: false, code: reservation.code }
-  const provider = new GeminiProvider({
-    apiKey: setup.apiKey,
-    fetch: deps.fetch
-  })
+  const provider = live.provider()
   let outcome:
     | { ok: true; response: AiProviderResponse; cost: number }
     | { ok: false; error: AiProviderError; cost: number }
@@ -173,7 +174,7 @@ export async function runAi(
     outcome = {
       ok: true,
       response,
-      cost: geminiCostMicro(setup.model, response)
+      cost: live.cost(response)
     }
   } catch (error) {
     // none: provably unbilled. usage: bill what was used. unknown (or an
@@ -187,7 +188,7 @@ export async function runAi(
               error.billing === 'none'
                 ? 0
                 : error.billing === 'usage' && error.details.usage
-                  ? geminiCostMicro(setup.model, error.details.usage)
+                  ? live.cost(error.details.usage)
                   : estimate
           }
         : {
@@ -220,7 +221,7 @@ export async function runAi(
   return {
     ok: true,
     content: outcome.response.content,
-    provider: 'gemini',
+    provider: setup.provider,
     model: setup.model,
     costMicro: outcome.cost,
     inputTokens: outcome.response.inputTokens,
@@ -228,5 +229,71 @@ export async function runAi(
     // false: the call was paid but not recorded; the reservation (at the
     // estimate) still counts against the cap until ops reconciles it.
     settled
+  }
+}
+
+type Usage = {
+  inputTokens: number
+  outputTokens: number
+  cachedInputTokens?: number
+}
+
+/**
+ * The live provider's request body, cost ceiling, adapter and real cost.
+ * REL-PRV: Gemini (D5) or, chosen by name, OpenAI's Responses API, both
+ * behind the same `AiProvider` contract and metered the same way.
+ */
+function liveProvider(
+  setup: Extract<AiSetup, { ready: true; provider: 'gemini' | 'openai' }>,
+  request: AiProviderRequest,
+  fetchImpl: typeof fetch | undefined
+): {
+  body: () => string
+  estimate: (body: string) => number
+  provider: () => AiProvider
+  cost: (usage: Usage) => number
+} {
+  if (setup.provider === 'openai') {
+    const model = setup.model
+    return {
+      body: () => {
+        // Its adapter sends text only: a call with pictures stays on Gemini.
+        if (request.images?.length)
+          throw new AiProviderError('rejected_request', 'none', {
+            diagnostic: 'images_unsupported'
+          })
+        const body = responsesRequestBody(request)
+        if (Buffer.byteLength(body, 'utf8') > openAiMaxRequestBytes)
+          throw new AiProviderError('rejected_request', 'none', {
+            diagnostic: 'request_too_large'
+          })
+        return body
+      },
+      estimate: (body) =>
+        openAiEstimateMicro(model, body, request.maxOutputTokens),
+      provider: () =>
+        new OpenAiResponsesProvider({
+          apiKey: setup.apiKey,
+          baseUrl: setup.baseUrl,
+          fetch: fetchImpl
+        }),
+      cost: (usage) => openAiCostMicro(model, usage)
+    }
+  }
+  const model = setup.model
+  return {
+    body: () => geminiRequestBody(request),
+    estimate: (body) =>
+      geminiEstimateMicro(
+        model,
+        request.images?.length
+          ? geminiRequestBody({ ...request, images: [] })
+          : body,
+        geminiOutputTokens(request),
+        request.images?.length ?? 0
+      ),
+    provider: () =>
+      new GeminiProvider({ apiKey: setup.apiKey, fetch: fetchImpl }),
+    cost: (usage) => geminiCostMicro(model, usage)
   }
 }

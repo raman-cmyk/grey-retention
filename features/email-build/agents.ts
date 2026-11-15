@@ -24,8 +24,11 @@ export { agentCallMs }
 /** The environment of a build step: every model call capped. */
 export function agentEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const setup = aiSetup('copy', env)
-  const used = 'timeoutMs' in setup ? setup.timeoutMs : agentCallMs
-  return { ...env, GEMINI_TIMEOUT_MS: String(Math.min(used, agentCallMs)) }
+  const used = String(
+    Math.min('timeoutMs' in setup ? setup.timeoutMs : agentCallMs, agentCallMs)
+  )
+  // Whichever provider answers (REL-PRV).
+  return { ...env, GEMINI_TIMEOUT_MS: used, OPENAI_TIMEOUT_MS: used }
 }
 
 /**

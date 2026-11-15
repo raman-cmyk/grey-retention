@@ -2,7 +2,9 @@
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
 import { runAi } from './run'
-import { aiAvailability, aiSetup } from './setup'
+import { aiAvailability, aiSetup, openAiBaseUrl } from './setup'
+import { estimateMicro } from '@/features/email-generation/pricing'
+import { responsesRequestBody } from '@/features/email-generation/openai'
 import { InMemoryBudgetLedger, SupabaseBudgetLedger } from './budget-ledger'
 import { geminiEstimateMicro } from '@/lib/providers/gemini-pricing'
 
@@ -503,5 +505,128 @@ describe('runAi platform work', () => {
     expect(result).toMatchObject({ ok: true, costMicro: 58 })
     expect(ledger.spentMicro(null)).toBe(58)
     expect(ledger.spentMicro(tenantId)).toBe(0)
+  })
+})
+
+describe('the second provider (REL-PRV, off by default)', () => {
+  const openai = (over: Record<string, string> = {}) =>
+    env({ AI_DEFAULT_PROVIDER: 'openai', OPENAI_API_KEY: 'test-key', ...over })
+  const openAiOk = () =>
+    new Response(
+      JSON.stringify({
+        id: 'resp_1',
+        model: 'gpt-6-luna',
+        status: 'completed',
+        usage: { input_tokens: 1000, output_tokens: 100 },
+        output: [
+          {
+            type: 'message',
+            content: [{ type: 'output_text', text: '{"block":"hero_product"}' }]
+          }
+        ]
+      }),
+      { status: 200 }
+    )
+
+  it('is never chosen by an OpenAI key alone, only by name', () => {
+    expect(aiSetup('copy', env({ OPENAI_API_KEY: 'k' }))).toMatchObject({
+      provider: 'fake',
+      reason: 'missing_key'
+    })
+    expect(
+      aiSetup('copy', env({ OPENAI_API_KEY: 'k', GEMINI_API_KEY: 'g' }))
+    ).toMatchObject({ provider: 'gemini' })
+    expect(aiSetup('copy', openai())).toMatchObject({
+      ready: true,
+      provider: 'openai',
+      model: 'gpt-6.1-terra',
+      baseUrl: openAiBaseUrl
+    })
+    // Forcing the fake always wins (tests and Claude sessions).
+    expect(
+      aiSetup('copy', openai({ AI_DEFAULT_PROVIDER: 'fake' }))
+    ).toMatchObject({ provider: 'fake', reason: 'fake_selected' })
+  })
+
+  it('answers with the fake without its key, and fails closed on an unpriced model', () => {
+    expect(
+      aiSetup('copy', env({ AI_DEFAULT_PROVIDER: 'openai' }))
+    ).toMatchObject({ provider: 'fake', reason: 'missing_key' })
+    expect(aiSetup('label', openai())).toMatchObject({ model: 'gpt-6-luna' })
+    expect(
+      aiSetup('plan', openai({ OPENAI_PLAN_MODEL: 'gpt-6-luna' }))
+    ).toMatchObject({ model: 'gpt-6-luna' })
+    expect(
+      aiSetup('copy', openai({ OPENAI_COPY_MODEL: 'gpt-unpriced' }))
+    ).toEqual({ ready: false, provider: 'openai', reason: 'unsupported_model' })
+    expect(aiAvailability('copy', openai())).toEqual({
+      live: true,
+      provider: 'openai',
+      model: 'gpt-6.1-terra',
+      reason: null
+    })
+  })
+
+  it('sends a call to its official address, reserves the ceiling and records the real cost', async () => {
+    const ledger = new InMemoryBudgetLedger(1_000_000)
+    const fetch = vi.fn(async () => openAiOk())
+    const result = await runAi(
+      { tenantId, callerKey: 'label:openai', purpose: 'label', request },
+      { ledger, env: openai(), fetch }
+    )
+    const [url, init] = (
+      fetch.mock.calls as unknown as [string, RequestInit][]
+    )[0]
+    expect(url).toBe(`${openAiBaseUrl}/responses`)
+    expect((init.headers as Record<string, string>).authorization).toBe(
+      'Bearer test-key'
+    )
+    // 1,000 input at $0.10/M + 100 output at $0.50/M = 100 + 50 micro-USD.
+    expect(result).toMatchObject({
+      ok: true,
+      provider: 'openai',
+      model: 'gpt-6-luna',
+      costMicro: 150,
+      content: { block: 'hero_product' }
+    })
+    expect(ledger.spentMicro(tenantId)).toBe(150)
+    const reserved = [...ledger.reservations.values()][0]
+    expect(reserved.estimateMicro).toBe(
+      estimateMicro(
+        'gpt-6-luna',
+        responsesRequestBody({
+          ...request,
+          model: 'gpt-6-luna',
+          timeoutMs: 60_000
+        }),
+        request.maxOutputTokens
+      )
+    )
+  })
+
+  it('refuses a call with pictures before reserving or sending (its adapter sends text only)', async () => {
+    const ledger = new InMemoryBudgetLedger(1_000_000)
+    const fetch = vi.fn()
+    const result = await runAi(
+      {
+        tenantId,
+        callerKey: 'label:pic',
+        purpose: 'label',
+        request: {
+          ...request,
+          images: [
+            { mediaType: 'image/png', base64: 'iVBORw0KGgoAAAANSUhEUg==' }
+          ]
+        }
+      },
+      { ledger, env: openai(), fetch }
+    )
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'rejected_request',
+      diagnostic: 'images_unsupported'
+    })
+    expect(fetch).not.toHaveBeenCalled()
+    expect(ledger.reservations.size).toBe(0)
   })
 })

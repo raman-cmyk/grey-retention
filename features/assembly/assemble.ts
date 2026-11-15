@@ -101,7 +101,12 @@ export class AssemblyError extends Error {
  * { ledger })`, so every call is metered against the client's allowance.
  */
 export type AiRun =
-  | { ok: true; content: unknown; provider: 'gemini' | 'fake'; model: string }
+  | {
+      ok: true
+      content: unknown
+      provider: 'gemini' | 'openai' | 'fake'
+      model: string
+    }
   | {
       ok: false
       code: string

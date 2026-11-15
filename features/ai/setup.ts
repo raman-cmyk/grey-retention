@@ -6,6 +6,24 @@ import {
   type AiPurpose,
   type GeminiModel
 } from '@/lib/providers/gemini-pricing'
+import {
+  isRewriteModel,
+  type RewriteModel
+} from '@/features/email-generation/pricing'
+
+/**
+ * REL-PRV: the second provider's model per purpose: only models in its
+ * price table (`rewriteModels`), so every call has a known cost ceiling.
+ */
+export const defaultOpenAiModels: Record<AiPurpose, RewriteModel> = {
+  label: 'gpt-6-luna',
+  copy: 'gpt-6.1-terra',
+  plan: 'gpt-6.1-terra',
+  review: 'gpt-6.1-terra'
+}
+
+/** The only OpenAI address v2 calls go to (no proxies in v2). */
+export const openAiBaseUrl = 'https://api.openai.com/v1'
 
 export type AiSetup =
   | {
@@ -22,7 +40,15 @@ export type AiSetup =
       reason: 'fake_selected' | 'missing_key'
       timeoutMs: number
     }
-  | { ready: false; provider: 'gemini'; reason: 'unsupported_model' }
+  | {
+      ready: true
+      provider: 'openai'
+      model: RewriteModel
+      apiKey: string
+      baseUrl: string
+      timeoutMs: number
+    }
+  | { ready: false; provider: 'gemini' | 'openai'; reason: 'unsupported_model' }
 
 const settings = z.object({
   AI_DEFAULT_PROVIDER: z.string().trim().optional(),
@@ -36,13 +62,26 @@ const settings = z.object({
     .int()
     .min(5_000)
     .max(120_000)
+    .catch(60_000),
+  OPENAI_API_KEY: z.string().trim().optional(),
+  OPENAI_LABEL_MODEL: z.string().trim().optional(),
+  OPENAI_COPY_MODEL: z.string().trim().optional(),
+  OPENAI_PLAN_MODEL: z.string().trim().optional(),
+  OPENAI_REVIEW_MODEL: z.string().trim().optional(),
+  OPENAI_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(5_000)
+    .max(120_000)
     .catch(60_000)
 })
 
 /**
  * Decision D5. Reads server-only settings on every call and never exposes the
  * key. An explicit AI_DEFAULT_PROVIDER=fake always wins (tests and Claude
- * sessions force it). Otherwise GEMINI_API_KEY, which the owner added for
+ * sessions force it). AI_DEFAULT_PROVIDER=openai picks the second provider
+ * (REL-PRV, off by default; with OPENAI_API_KEY, else the fake). Otherwise
+ * GEMINI_API_KEY, which the owner added for
  * decision D5, turns the live adapter on, and
  * without one the fake answers and callers say so. A configured model that
  * isn't in the price table fails closed instead of falling back to the fake.
@@ -58,7 +97,13 @@ export function aiSetup(
     GEMINI_COPY_MODEL: env.GEMINI_COPY_MODEL,
     GEMINI_PLAN_MODEL: env.GEMINI_PLAN_MODEL,
     GEMINI_REVIEW_MODEL: env.GEMINI_REVIEW_MODEL,
-    GEMINI_TIMEOUT_MS: env.GEMINI_TIMEOUT_MS
+    GEMINI_TIMEOUT_MS: env.GEMINI_TIMEOUT_MS,
+    OPENAI_API_KEY: env.OPENAI_API_KEY,
+    OPENAI_LABEL_MODEL: env.OPENAI_LABEL_MODEL,
+    OPENAI_COPY_MODEL: env.OPENAI_COPY_MODEL,
+    OPENAI_PLAN_MODEL: env.OPENAI_PLAN_MODEL,
+    OPENAI_REVIEW_MODEL: env.OPENAI_REVIEW_MODEL,
+    OPENAI_TIMEOUT_MS: env.OPENAI_TIMEOUT_MS
   })
   if (s.AI_DEFAULT_PROVIDER?.toLowerCase() === 'fake')
     return {
@@ -68,6 +113,35 @@ export function aiSetup(
       reason: 'fake_selected',
       timeoutMs: s.GEMINI_TIMEOUT_MS
     }
+  // REL-PRV: the second provider only when chosen by name (an OpenAI key
+  // alone, which the older email rewriting uses, never turns it on).
+  if (s.AI_DEFAULT_PROVIDER?.toLowerCase() === 'openai') {
+    if (!s.OPENAI_API_KEY)
+      return {
+        ready: true,
+        provider: 'fake',
+        model: 'fake',
+        reason: 'missing_key',
+        timeoutMs: s.OPENAI_TIMEOUT_MS
+      }
+    const model =
+      {
+        label: s.OPENAI_LABEL_MODEL,
+        copy: s.OPENAI_COPY_MODEL,
+        plan: s.OPENAI_PLAN_MODEL,
+        review: s.OPENAI_REVIEW_MODEL
+      }[purpose] || defaultOpenAiModels[purpose]
+    if (!isRewriteModel(model))
+      return { ready: false, provider: 'openai', reason: 'unsupported_model' }
+    return {
+      ready: true,
+      provider: 'openai',
+      model,
+      apiKey: s.OPENAI_API_KEY,
+      baseUrl: openAiBaseUrl,
+      timeoutMs: s.OPENAI_TIMEOUT_MS
+    }
+  }
   // Only the dedicated key turns Gemini on (the older GOOGLE_GENERATIVE_AI_KEY
   // may be left over from earlier work and must not start spending).
   const apiKey = s.GEMINI_API_KEY
@@ -110,10 +184,10 @@ export function aiAvailability(
       model: null,
       reason: setup.reason
     }
-  return setup.provider === 'gemini'
+  return setup.provider !== 'fake'
     ? {
         live: true as const,
-        provider: 'gemini' as const,
+        provider: setup.provider,
         model: setup.model,
         reason: null
       }
