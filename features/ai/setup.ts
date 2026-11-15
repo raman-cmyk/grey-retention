@@ -52,6 +52,7 @@ export type AiSetup =
 
 const settings = z.object({
   AI_DEFAULT_PROVIDER: z.string().trim().optional(),
+  AI_V2_PROVIDER: z.string().trim().optional(),
   GEMINI_API_KEY: z.string().trim().optional(),
   GEMINI_LABEL_MODEL: z.string().trim().optional(),
   GEMINI_COPY_MODEL: z.string().trim().optional(),
@@ -79,7 +80,7 @@ const settings = z.object({
 /**
  * Decision D5. Reads server-only settings on every call and never exposes the
  * key. An explicit AI_DEFAULT_PROVIDER=fake always wins (tests and Claude
- * sessions force it). AI_DEFAULT_PROVIDER=openai picks the second provider
+ * sessions force it). AI_V2_PROVIDER=openai picks the second provider
  * (REL-PRV, off by default; with OPENAI_API_KEY, else the fake). Otherwise
  * GEMINI_API_KEY, which the owner added for
  * decision D5, turns the live adapter on, and
@@ -92,6 +93,7 @@ export function aiSetup(
 ): AiSetup {
   const s = settings.parse({
     AI_DEFAULT_PROVIDER: env.AI_DEFAULT_PROVIDER,
+    AI_V2_PROVIDER: env.AI_V2_PROVIDER,
     GEMINI_API_KEY: env.GEMINI_API_KEY,
     GEMINI_LABEL_MODEL: env.GEMINI_LABEL_MODEL,
     GEMINI_COPY_MODEL: env.GEMINI_COPY_MODEL,
@@ -113,9 +115,11 @@ export function aiSetup(
       reason: 'fake_selected',
       timeoutMs: s.GEMINI_TIMEOUT_MS
     }
-  // REL-PRV: the second provider only when chosen by name (an OpenAI key
-  // alone, which the older email rewriting uses, never turns it on).
-  if (s.AI_DEFAULT_PROVIDER?.toLowerCase() === 'openai') {
+  // REL-PRV: the second provider only when chosen by its own new switch
+  // (AI_V2_PROVIDER=openai). An OpenAI key alone (the older email rewriting
+  // uses one) or a value of AI_DEFAULT_PROVIDER left from older work never
+  // turns it on.
+  if (s.AI_V2_PROVIDER?.toLowerCase() === 'openai') {
     if (!s.OPENAI_API_KEY)
       return {
         ready: true,
@@ -169,6 +173,32 @@ export function aiSetup(
     apiKey,
     timeoutMs: s.GEMINI_TIMEOUT_MS
   }
+}
+
+/**
+ * Whether this purpose's provider takes pictures (REL-PRV: the second
+ * provider's adapter sends text only). Callers that would send pictures
+ * leave them out when it does not.
+ */
+export const aiTakesPictures = (
+  purpose: AiPurpose,
+  env: NodeJS.ProcessEnv = process.env
+) => aiSetup(purpose, env).provider === 'gemini'
+
+/**
+ * The environment with every provider's call capped at `ms` (REL-PRV:
+ * Gemini's and the second provider's timeouts both). The timeout the
+ * setup really uses (it ignores a value it cannot take) is read back, so
+ * the cap always holds.
+ */
+export function cappedAiEnv(
+  purpose: AiPurpose,
+  env: NodeJS.ProcessEnv,
+  ms: number
+): NodeJS.ProcessEnv {
+  const setup = aiSetup(purpose, env)
+  const used = String(Math.min('timeoutMs' in setup ? setup.timeoutMs : ms, ms))
+  return { ...env, GEMINI_TIMEOUT_MS: used, OPENAI_TIMEOUT_MS: used }
 }
 
 /** Safe to render: no key material. `live` false means the fake answers. */

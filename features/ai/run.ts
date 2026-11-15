@@ -170,7 +170,7 @@ export async function runAi(
     | { ok: true; response: AiProviderResponse; cost: number }
     | { ok: false; error: AiProviderError; cost: number }
   try {
-    const response = await provider.generate(request)
+    const response = await provider.generate(live.request)
     outcome = {
       ok: true,
       response,
@@ -232,6 +232,13 @@ export async function runAi(
   }
 }
 
+/** Thinking room per effort, as Gemini's (`lib/providers/gemini.ts`). */
+const openAiThinkingRoom = { none: 0, low: 1_024, medium: 4_096 } as const
+/** The largest answer a v2 call may ask for (`runInput`). */
+const maxOutputTokens = 65_536
+/** How v2 calls are sent to the second provider (REL-PRV). */
+const openAiOptions = { strict: false, serviceTier: 'default' } as const
+
 type Usage = {
   inputTokens: number
   outputTokens: number
@@ -248,6 +255,8 @@ function liveProvider(
   request: AiProviderRequest,
   fetchImpl: typeof fetch | undefined
 ): {
+  /** The request as it is sent. */
+  request: AiProviderRequest
   body: () => string
   estimate: (body: string) => number
   provider: () => AiProvider
@@ -255,14 +264,28 @@ function liveProvider(
 } {
   if (setup.provider === 'openai') {
     const model = setup.model
+    // OpenAI counts its thinking inside `max_output_tokens`: the answer room
+    // asked for plus the same thinking room Gemini gets, so an answer is not
+    // cut short by its own thinking. The body and the ceiling use it alike.
+    const sent: AiProviderRequest = {
+      ...request,
+      maxOutputTokens: Math.min(
+        maxOutputTokens,
+        request.maxOutputTokens +
+          (request.reasoningEffort
+            ? openAiThinkingRoom[request.reasoningEffort]
+            : 0)
+      )
+    }
     return {
+      request: sent,
       body: () => {
         // Its adapter sends text only: a call with pictures stays on Gemini.
-        if (request.images?.length)
+        if (sent.images?.length)
           throw new AiProviderError('rejected_request', 'none', {
             diagnostic: 'images_unsupported'
           })
-        const body = responsesRequestBody(request)
+        const body = responsesRequestBody(sent, openAiOptions)
         if (Buffer.byteLength(body, 'utf8') > openAiMaxRequestBytes)
           throw new AiProviderError('rejected_request', 'none', {
             diagnostic: 'request_too_large'
@@ -270,18 +293,20 @@ function liveProvider(
         return body
       },
       estimate: (body) =>
-        openAiEstimateMicro(model, body, request.maxOutputTokens),
+        openAiEstimateMicro(model, body, sent.maxOutputTokens),
       provider: () =>
         new OpenAiResponsesProvider({
           apiKey: setup.apiKey,
           baseUrl: setup.baseUrl,
-          fetch: fetchImpl
+          fetch: fetchImpl,
+          options: openAiOptions
         }),
       cost: (usage) => openAiCostMicro(model, usage)
     }
   }
   const model = setup.model
   return {
+    request,
     body: () => geminiRequestBody(request),
     estimate: (body) =>
       geminiEstimateMicro(

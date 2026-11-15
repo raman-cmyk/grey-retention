@@ -51,7 +51,7 @@ describe('the agents switch for "Create email" (REL-AI part 2)', () => {
     // The second provider's calls are capped too (REL-PRV).
     const second = agentEnv(
       env({
-        AI_DEFAULT_PROVIDER: 'openai',
+        AI_V2_PROVIDER: 'openai',
         OPENAI_API_KEY: 'k',
         OPENAI_TIMEOUT_MS: '60000'
       })
@@ -62,7 +62,7 @@ describe('the agents switch for "Create email" (REL-AI part 2)', () => {
         db,
         env({
           EMAIL_BUILD_AGENTS: 'on',
-          AI_DEFAULT_PROVIDER: 'openai',
+          AI_V2_PROVIDER: 'openai',
           OPENAI_API_KEY: 'k'
         })
       )

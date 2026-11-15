@@ -219,7 +219,7 @@ export function agentAsk(ctx: {
     return {
       ok: true,
       content: result.output,
-      provider: 'gemini',
+      provider: seen.provider ?? 'gemini',
       model: seen.model ?? 'unknown'
     }
   }

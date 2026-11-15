@@ -31,4 +31,13 @@ describe('inboxTagging', () => {
     expect(live.ask).not.toBe(sampleAsk)
     expect(live).toMatchObject({ pictures: true, batchMs: liveBatchMs })
   })
+
+  it('sends no pictures to the second provider, which takes text only (REL-PRV)', () => {
+    const second = inboxTagging(db, {
+      AI_V2_PROVIDER: 'openai',
+      OPENAI_API_KEY: 'test-key'
+    } as unknown as NodeJS.ProcessEnv)
+    expect(second.ask).not.toBe(sampleAsk)
+    expect(second).toMatchObject({ pictures: false, batchMs: liveBatchMs })
+  })
 })
