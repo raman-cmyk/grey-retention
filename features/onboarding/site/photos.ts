@@ -207,7 +207,7 @@ const sizeSuffix =
   /_(?:\d+x\d*|\d*x\d+|pico|icon|thumb|small|compact|medium|large|grande|original|master)(?:_crop_[a-z]+)?(?:@\dx)?(?:\.progressive)?(?=\.(?:jpe?g|png)$)/i
 
 /** The same photo at another size is one photo (`?width=800`, `_400x`, `@2x`). */
-function photoKey(url: string) {
+export function photoKey(url: string) {
   const u = new URL(url)
   for (const p of ['width', 'height', 'crop', 'v']) u.searchParams.delete(p)
   const path = u.pathname

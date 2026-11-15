@@ -128,6 +128,7 @@ describe('readBrandSite keeps the logos (ONB-060b)', () => {
     })
     expect(calls.map((c) => c.name)).toEqual([
       'record_site_logos',
+      'record_site_photos',
       'record_site_findings'
     ])
     expect(calls[0]!.args).toEqual({
@@ -174,7 +175,10 @@ describe('readBrandSite keeps the logos (ONB-060b)', () => {
       fetcher: () => liveSite(async () => null),
       askFor: () => sampleAsk
     })
-    expect(down.calls.map((c) => c.name)).toEqual(['record_site_findings'])
+    expect(down.calls.map((c) => c.name)).toEqual([
+      'record_site_photos',
+      'record_site_findings'
+    ])
   })
 
   it('says none were kept when a newer read of the site already kept its own', async () => {
@@ -186,6 +190,7 @@ describe('readBrandSite keeps the logos (ONB-060b)', () => {
     })
     expect(calls.map((c) => c.name)).toEqual([
       'record_site_logos',
+      'record_site_photos',
       'record_site_findings'
     ])
     expect(run.logos).toBeUndefined()
@@ -200,6 +205,7 @@ describe('readBrandSite keeps the logos (ONB-060b)', () => {
     })
     expect(calls.map((c) => c.name)).toEqual([
       'record_site_logos',
+      'record_site_photos',
       'record_site_findings'
     ])
     expect(run.logos).toBeUndefined()

@@ -13,6 +13,7 @@ import {
 } from './fetch'
 import { logoCandidates, logoTone, pickLogos } from './logos'
 import { pagesToRead, readPage, type ReadPage } from './pages'
+import { photoKey, sitePhotos, type SitePhoto } from './photos'
 import { readSitePage } from './reader'
 
 type Db = SupabaseClient<Database>
@@ -39,9 +40,19 @@ export type SiteRun = {
   live: boolean
   /** Which logos were kept (ONB-060b); absent when none were looked for. */
   logos?: { onLight: boolean; onDark: boolean }
+  /** How many photos were kept (ONB-059b); absent when none were looked for. */
+  photos?: number
 }
 
 export type PickedLogos = { onLight: string | null; onDark: string | null }
+
+/** Most photos kept for a site (the database keeps no more). */
+export const maxSitePhotos = 200
+/**
+ * Largest page read for its photos: the parser is slow on huge pages, and
+ * its work cannot be cut off once started.
+ */
+const maxPhotoPage = 1_000_000
 
 /** Longest logo address kept (the database refuses longer ones). */
 const maxLogoUrl = 1_000
@@ -220,6 +231,35 @@ export async function readBrandSite(
     return { count: result.findings.length }
   }
   let logos: Promise<PickedLogos | null> | null = null
+  // Each live page's photos, in page order (ONB-059b); `looked` once any
+  // page could be read for them.
+  const photoPages: SitePhoto[][] = []
+  let looked = false
+  const photosOf = (
+    n: number,
+    page: { html: string; url: string },
+    kind: SitePageKind
+  ) => {
+    // Never at the expense of the findings: no parse without the time
+    // a model call may take.
+    if (
+      !fetcher.live ||
+      page.html.length > maxPhotoPage ||
+      now() + callMs > deadline
+    )
+      return
+    try {
+      photoPages[n] = sitePhotos(page.html, page.url, kind, {
+        brand: brand.data.brand_name
+      })
+      looked = true
+    } catch (error) {
+      logger.warn('Site photos unreadable', {
+        kind,
+        error: error instanceof Error ? error.name : 'unknown'
+      })
+    }
+  }
   const home = homeUrl(domain)
   if (!home) skip(`https://${domain || 'unknown'}/`, 'home', 'no_domain')
   else if (!ask) skip(home, 'home', 'no_model')
@@ -228,6 +268,7 @@ export async function readBrandSite(
     if (!first.ok) skip(home, 'home', first.failure)
     else {
       const homePage = readPage(first.html, first.url, 'home')
+      photosOf(0, first, 'home')
       // The logos are looked for while the other pages are read.
       const picture = fetcher.picture?.bind(fetcher)
       if (fetcher.live && picture)
@@ -252,6 +293,7 @@ export async function readBrandSite(
           return { ...target, reason: 'time_up' }
         const fetched = await fetcher.fetch(target.url)
         if (!fetched.ok) return { ...target, reason: fetched.failure }
+        photosOf(n + 1, fetched, target.kind)
         const outcome = await read(
           readPage(fetched.html, fetched.url, target.kind),
           n + 1
@@ -296,6 +338,35 @@ export async function readBrandSite(
     else if (kept.data === true)
       run.logos = { onLight: !!picked.onLight, onDark: !!picked.onDark }
   }
+  if (looked) {
+    // One set for the site: each photo once (at the size first found),
+    // pages in reading order, at most `maxSitePhotos`.
+    const seen = new Set<string>()
+    const photos = photoPages
+      .flat()
+      .filter((p) => {
+        const key = photoKey(p.url)
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .slice(0, maxSitePhotos)
+    const kept = await db.rpc('record_site_photos', {
+      job: job.id,
+      lease: job.lease_token!,
+      photos: photos.map((p) => ({
+        url: p.url,
+        kind: p.kind,
+        page: p.page,
+        alt: p.alt,
+        source: p.from
+      })) as unknown as Json
+    })
+    if (kept.error)
+      logger.warn('Site photos not kept', { code: kept.error.code })
+    // False: a newer read of the site already kept its own.
+    else if (kept.data === true) run.photos = photos.length
+  }
   const recorded = await db.rpc('record_site_findings', {
     job: job.id,
     lease: job.lease_token!,
@@ -319,7 +390,8 @@ export async function readBrandSite(
     dropped: run.dropped,
     live: run.live,
     logoOnLight: run.logos?.onLight ?? null,
-    logoOnDark: run.logos?.onDark ?? null
+    logoOnDark: run.logos?.onDark ?? null,
+    photos: run.photos ?? null
   })
   return run
 }
