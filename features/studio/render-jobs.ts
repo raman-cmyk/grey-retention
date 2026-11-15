@@ -10,6 +10,9 @@ import {
   type DesignedSection
 } from './section'
 import { maxSectionBytes } from './renderer'
+import { SectionNotDrawable } from './limits'
+
+export { SectionNotDrawable }
 
 /**
  * DST-001b: the render job. The email build's design step asks for a
@@ -53,13 +56,6 @@ export type RenderJob = {
    * a picture changed after that is caught before it is used (DST-006).
    */
   upload: string
-}
-
-/** A section that cannot be drawn: the caller's mistake, never queued. */
-export class SectionNotDrawable extends Error {
-  constructor(readonly problems: string[]) {
-    super('A section that cannot be drawn is never queued')
-  }
 }
 
 const hostOf = (origin: string) => new URL(origin).hostname

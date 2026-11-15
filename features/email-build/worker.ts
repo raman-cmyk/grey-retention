@@ -23,7 +23,9 @@ import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { maxStepSaves, roundSteps, maxEmailBytes } from './step-names'
 import { buildCode, type BuildFailureCode } from './failure-words'
 import { type SavedOffers, type StoreSource } from './ports'
+import { studioPortsFor } from '@/features/studio/live-ports'
 import {
+  designStudioOn,
   waitForPictures,
   type claimWaitingDesign
 } from '@/features/studio/waits'
@@ -81,6 +83,11 @@ export async function runEmailBuilds(
      * first, then its next steps as the click claims them.
      */
     first?: ClaimedBuild
+    /**
+     * DST-006c: the design studio in the design step. Default: the
+     * owner's switch (`DESIGN_STUDIO=on`); it runs only with the agents.
+     */
+    studio?: boolean
     /** Steps to run at most; the deadline bounds the sweep. */
     limit?: number
     /** Stop claiming after this time (ms since epoch). */
@@ -97,6 +104,7 @@ export async function runEmailBuilds(
   const saved = deps.saved ?? new SupabaseOfferSource(db)
   const now = deps.now ?? Date.now
   const agents = deps.agents === undefined ? buildAgentsFor(db) : deps.agents
+  const studio = deps.studio ?? designStudioOn(process.env)
   // The owner's click: every step, every save of the steps with rounds
   // (REL-AI part 2b) and the push. Its deadline, not this count, ends it.
   // DST-006b: a build claimed already is the only build this run runs.
@@ -201,6 +209,10 @@ export async function runEmailBuilds(
           deps.offers ??
           planOfferSource(saved, job.start_on, { sample: store.sample })
         const started = now()
+        const until = Math.min(
+          started + stepBudgetMs,
+          deps.deadline ?? Number.POSITIVE_INFINITY
+        )
         // REL-AI: the copy step skips the subjects of the plan's other emails.
         const taken =
           job.step === 'copy' ? await planSubjects(db, job) : undefined
@@ -220,11 +232,22 @@ export async function runEmailBuilds(
             agents,
             // A step with rounds starts a model call only while one fits in
             // this claim's budget and the job's deadline (REL-AI part 2b).
-            until: Math.min(
-              started + stepBudgetMs,
-              deps.deadline ?? Number.POSITIVE_INFINITY
-            ),
-            clock: now
+            until,
+            clock: now,
+            ...(studio && agents && job.step === 'design'
+              ? {
+                  studio: studioPortsFor(db, {
+                    tenant: job.tenant_id,
+                    build: job.id,
+                    lease: job.lease_token,
+                    agents,
+                    fallbacks,
+                    callerKey: `email-build:${job.id}`,
+                    until,
+                    now
+                  })
+                }
+              : {})
           }
         )
         const took = now() - started

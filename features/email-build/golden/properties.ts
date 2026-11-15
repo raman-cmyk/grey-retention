@@ -161,7 +161,14 @@ export function goldenProblems(brief: GoldenBrief, run: GoldenRun): string[] {
   // read: an escaped tag in the words is still a tag to the reader.
   const body = html.replace(footerTag, ' ')
   const drawn = drawnText(html)
-  const words = drawnText(body)
+  // DST-006c: a hero the design studio drew holds its words in its
+  // picture and its alt text: read as words the email shows.
+  const pictured = [...body.matchAll(/<img\b[^>]*>/gi)].flatMap(([tag]) =>
+    /\bsrc="[^"]*\/studio-renders\//.test(tag)
+      ? [drawnText(/\balt="([^"]*)"/.exec(tag)?.[1] ?? '')]
+      : []
+  )
+  const words = [drawnText(body), ...pictured].join(' ')
   const seen = `${email.subject}\n${email.preheader}\n${words}`
   const featured = email.productIds.flatMap((id) => {
     const p = store.products.find((x) => x.id === id)

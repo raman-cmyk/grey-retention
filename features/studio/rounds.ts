@@ -4,9 +4,9 @@ import type { TriesSoFar } from '@/features/strategy/retry'
 import type { Verdict } from './critic'
 import { briefHosts, type DesignedResult, type SectionBrief } from './designer'
 import { maxSectionBytes, type RenderedSection } from './renderer'
-import { SectionNotDrawable } from './render-jobs'
+import { SectionNotDrawable, studioWaits } from './limits'
 import type { DesignedSection } from './section'
-import { studioWaits, type BuildRender } from './waits'
+import type { BuildRender } from './waits'
 
 /**
  * DST-006c part 1: the design studio's rounds (D25, AGENT_MAP §4 layer 3,

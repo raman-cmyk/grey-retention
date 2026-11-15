@@ -249,6 +249,30 @@ describe('the golden properties catch a worse email', () => {
     )
   })
 
+  it('words held in a studio picture’s alt text, as the email shows them (DST-006c)', async () => {
+    const picture = (alt: string) =>
+      `<img src="https://db.example/storage/v1/object/sign/studio-renders/render/x.jpg?token=t" alt="${alt}" width="600">`
+    expect(
+      await spoiled('education', (b) =>
+        addToBody(b, picture('Hurry, cheap candles.'))
+      )
+    ).toEqual(
+      expect.arrayContaining([
+        'The email says "hurry".',
+        'The email says "cheap".'
+      ])
+    )
+    // Another picture's alt is a description, not the email's words.
+    expect(
+      await spoiled('education', (b) =>
+        addToBody(
+          b,
+          '<img src="https://cdn.shop.example/x.jpg" alt="Hurry, cheap candles.">'
+        )
+      )
+    ).not.toEqual(expect.arrayContaining(['The email says "cheap".']))
+  })
+
   it('the inbox lines: a template tag, hidden characters, filler, not the checked one', async () => {
     expect(
       await spoiled('story', (b) => {
