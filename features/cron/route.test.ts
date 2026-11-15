@@ -196,6 +196,13 @@ describe('GET /api/internal/jobs (scheduled sweep)', () => {
     })
     expect(scheduler.runScheduledJobs).toHaveBeenCalledOnce()
     expect(strategy.runStrategyRuns).toHaveBeenCalledOnce()
+    // Plans from the workspace's own store once onboarding read it (ONB-057b).
+    expect(strategy.runStrategyRuns).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        data: expect.objectContaining({ load: expect.any(Function) })
+      })
+    )
     expect(emails.runEmailBuilds).toHaveBeenCalledOnce()
     // The inbox is read first, then the workspace jobs.
     expect(inbox.runInboxStep.mock.invocationCallOrder[0]).toBeLessThan(
