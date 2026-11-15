@@ -128,6 +128,58 @@ describe('the words the critic reads (DST-004a)', () => {
     expect(readsAsCopy(read, offer)).toEqual({ ok: false, stray })
   })
 
+  const numbers = {
+    ...brief,
+    words: {
+      eyebrow: 'Save 10 – 20%',
+      headline: 'Meet the cedar tray',
+      sub: 'Ships in 2 – 3 days. Only .5 mm thin, sizes 6, 8, 10'
+    }
+  }
+  it.each([
+    'Ships in 23 days. Only .5 mm thin, sizes 6, 8, 10',
+    'Ships in 2 – 3 days. Only 5 mm thin, sizes 6, 8, 10',
+    'Ships in 2 – 3 days. Only .5 mm thin, sizes 68, 10',
+    'Ships in 2 3 days. Only .5 mm thin, sizes 6, 8, 10'
+  ])('never joins, splits or loses a number inside a phrase: %s', (sub) => {
+    expect(readsAsCopy(['Meet the cedar tray', sub], numbers)).toMatchObject({
+      ok: false
+    })
+    expect(
+      readsAsCopy(['Meet the cedar tray', 'Save 1020%'], numbers)
+    ).toMatchObject({ ok: false })
+  })
+
+  it.each([
+    // A word wrapped after its hyphen, spaces lost in a phrase, a logo.
+    [brief, ['Meet the cedar tray', 'Hand- finished, made to last']],
+    [brief, ['Meetthecedartray', 'GROVE&CO']],
+    [numbers, ['MEET THE CEDAR TRAY', numbers.words.sub]],
+    // A lone dash between two phrases is decoration.
+    [brief, ['Just in — Meet the cedar tray']]
+  ])('takes exact copy, however it is spaced: %#', (copy, read) => {
+    expect(readsAsCopy(read, copy)).toEqual({ ok: true, headline: true })
+  })
+
+  it('folds ẞ and ß as capitals print them, and one dash for all', () => {
+    for (const [copy, read] of [
+      ['Die neue Straße', 'DIE NEUE STRAẞE'],
+      ['DIE NEUE STRAẞE', 'Die neue Strasse'],
+      ['Save 10–20%', 'SAVE 10-20%'],
+      ['Up to −20%', 'Up to -20%']
+    ])
+      expect(
+        readsAsCopy([read], { ...brief, words: { headline: copy } })
+      ).toEqual({ ok: true, headline: true })
+    // A superscript is not a digit.
+    expect(
+      readsAsCopy(['Now 102 stronger'], {
+        ...brief,
+        words: { headline: 'Now 10² stronger' }
+      })
+    ).toMatchObject({ ok: false })
+  })
+
   it('never joins two phrases into one word', () => {
     const top = {
       ...brief,
@@ -233,6 +285,14 @@ describe('the critic’s verdict (DST-004a)', () => {
   it('leaves out the photo’s own print only when the critic had the photo', () => {
     const printed = { ...good, photoText: ['100% FSC OAK'] }
     expect(criticProblems(printed, brief, true).pass).toBe(true)
+    // Also when the critic lists it as drawn text too.
+    expect(
+      criticProblems(
+        { ...printed, texts: [...good.texts, '100% FSC OAK'] },
+        brief,
+        true
+      ).pass
+    ).toBe(true)
     expect(criticProblems(printed, brief, false).problems).toEqual([
       'The picture shows “100% fsc oak”, which is not the copy: draw only the words given.'
     ])
@@ -346,8 +406,11 @@ describe('the Design critic (DST-004a)', () => {
     expect(fallbacks.entries()).toEqual([])
   })
 
-  it('refuses a picture of another section, or one too large', async () => {
-    const { ctx: c } = ctx(vi.fn<AiCall>())
+  it('refuses a picture of another section or over 3 MB, and leaves out a reference or photo too large to send', async () => {
+    const ai = vi.fn<AiCall>(async () =>
+      ok({ ...good, photoText: ['100% FSC OAK'] })
+    )
+    const { ctx: c } = ctx(ai)
     await expect(
       critiqueSection({ brief, image: { ...image, id: 's3' } }, c)
     ).rejects.toThrow('another section')
@@ -355,15 +418,20 @@ describe('the Design critic (DST-004a)', () => {
       critiqueSection(
         {
           brief,
-          image,
-          reference: {
-            mediaType: 'image/jpeg',
-            base64: 'A'.repeat(4 * 1024 * 1024 + 4)
-          }
+          image: { ...image, bytes: new Uint8Array(3 * 1024 * 1024 + 3) }
         },
         c
       )
     ).rejects.toThrow('too large')
+    const huge = {
+      mediaType: 'image/jpeg' as const,
+      base64: 'A'.repeat(4 * 1024 * 1024 + 4)
+    }
+    // Without the photo, its print counts as drawn.
+    expect(
+      await critiqueSection({ brief, image, reference: huge, photo: huge }, c)
+    ).toMatchObject({ pass: false })
+    expect(ai.mock.calls[0][0].request.images).toEqual([pictureOf(image)])
   })
 
   it('no verdict, logged, when it answers in the wrong shape or not at all', async () => {
