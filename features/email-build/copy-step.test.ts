@@ -121,15 +121,16 @@ const ctxWith = (agents: BuildAgents | null, over: Partial<BuildCtx> = {}) => ({
 })
 const store = () => sampleStoreSource.read(tenantId)
 /** The sections and content steps, saved as the job keeps them. */
-const savedSteps = async () => {
+const savedSteps = async (from?: Awaited<ReturnType<typeof store>>) => {
   const ctx = ctxWith(null)
+  const s = from ?? (await store())
   const sections = await sectionsStep(
-    { planned, store: await store(), offers: sampleOffers },
+    { planned, store: s, offers: sampleOffers },
     ctx
   )
   if (!sections.ok) throw new Error('sections failed')
   const content = await contentStep(
-    { planned, store: await store(), sections: sections.output },
+    { planned, store: s, sections: sections.output },
     ctx
   )
   return JSON.parse(
@@ -221,7 +222,8 @@ describe('the copy step with the agents (REL-AI part 2b)', () => {
     ])
   })
 
-  it('a busy AI: the job waits as long as it asks', async () => {
+  it('a busy AI: plain copy now, with the reason (no later job would run the agents)', async () => {
+    const fallbacks = memoryFallbackLog()
     const result = await runBuildStep(
       'copy',
       {
@@ -239,14 +241,73 @@ describe('the copy step with the agents (REL-AI part 2b)', () => {
               retryAfterSeconds: 20
             })
           })
-        )
+        ),
+        { fallbacks }
       )
     )
-    expect(result).toEqual({
-      ok: false,
-      code: 'ai_unavailable',
-      retryAfterSeconds: 20
+    expect(result).toMatchObject({ ok: true, done: 'copy' })
+    if (!result.ok || !('output' in result)) return
+    expect(result.output).not.toHaveProperty('written')
+    expect(fallbacks.entries().map((e) => e.reasonCode)).toContain(
+      'copy_ai_busy'
+    )
+  })
+
+  it('in the step’s last claim (no saves left), out of time means plain copy, logged', async () => {
+    const fallbacks = memoryFallbackLog()
+    const clock = { t: 0, step: 40_000 }
+    const result = await runBuildStep(
+      'copy',
+      {
+        planned,
+        store: await store(),
+        offers: sampleOffers,
+        progress: {
+          ...(await savedSteps()),
+          work: { copy: { saves: 16 } }
+        }
+      },
+      ctxWith(agentsWith(model({ clock })), {
+        fallbacks,
+        until: 50_000,
+        clock: () => clock.t
+      })
+    )
+    expect(result).toMatchObject({ ok: true, done: 'copy' })
+    expect(
+      fallbacks.entries().find((e) => e.agent === 'copy-inspectors')
+    ).toMatchObject({
+      reasonCode: 'copy_plain_fallback',
+      detail: expect.objectContaining({ cause: 'out_of_time' })
     })
+  })
+
+  it('when every rewrite and plain copy fail, the build stops as copy_failed, logged once', async () => {
+    const fallbacks = memoryFallbackLog()
+    const store0 = await store()
+    // A banned word the writer's words and plain copy's subject both use.
+    const banned = {
+      ...store0,
+      facts: { ...store0.facts, bannedPhrases: ['from'] }
+    }
+    const result = await runBuildStep(
+      'copy',
+      {
+        planned,
+        store: banned,
+        offers: sampleOffers,
+        progress: await savedSteps(banned)
+      },
+      ctxWith(agentsWith(model()), { fallbacks })
+    )
+    expect(result).toEqual({ ok: false, code: 'copy_failed' })
+    expect(
+      fallbacks
+        .entries()
+        .filter(
+          (e) => e.agent === 'copy-inspectors' || e.agent === 'email-build'
+        )
+    ).toHaveLength(1)
   })
 
   it('without the agents (the sweep), saved rounds are left and the words are plain', async () => {

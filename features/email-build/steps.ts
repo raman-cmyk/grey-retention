@@ -114,21 +114,18 @@ export type StepResult =
       ok: false
       /**
        * Short codes for the build's error column; all final but
-       * `step_unknown` (an app newer than its database),
-       * `offers_unreadable` and `ai_unavailable` (the AI was busy; it may
-       * say how long to wait), tried again.
+       * `step_unknown` (an app newer than its database) and
+       * `offers_unreadable`, tried again.
        */
       code:
         | 'slot_time_invalid'
         | 'offers_unreadable'
         | 'subject_taken'
         | 'copy_failed'
-        | 'ai_unavailable'
         | 'render_failed'
         | 'step_progress_invalid'
         | 'step_unknown'
         | 'store_changed'
-      retryAfterSeconds?: number
     }
 
 const unreadable = { ok: false, code: 'step_progress_invalid' } as const

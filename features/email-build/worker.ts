@@ -192,14 +192,10 @@ export async function runEmailBuilds(
         if (!step.ok) {
           // A claim without a known step (the app went live before the
           // migration) and saved offers that could not be read are tried
-          // again, 3 tries a minute apart; a busy AI waits as long as it
-          // asks (REL-AI part 2b); every other code fails at once.
+          // again, 3 tries a minute apart; every other code fails at once.
           await fail(
             step.code,
-            step.code !== 'step_unknown' &&
-              step.code !== 'offers_unreadable' &&
-              step.code !== 'ai_unavailable',
-            step.retryAfterSeconds
+            step.code !== 'step_unknown' && step.code !== 'offers_unreadable'
           )
           continue
         }
