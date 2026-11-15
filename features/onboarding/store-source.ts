@@ -1,6 +1,8 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { logger } from '@/lib/logger'
 import { brandFromKit } from '@/features/blocks/brand'
+import { importable } from '@/features/klaviyo-push/html'
 import {
   sampleStoreFrom,
   type Store,
@@ -40,7 +42,9 @@ import type { Database } from '@/lib/supabase/database.types'
  *   without prices the check doubts (ONB-063: none when the catalog is on
  *   another scale from the website). A store with none left has none: it
  *   never gets the sample's.
- * - Brand: the brand kit's colours and fonts, the brand's name and site.
+ * - Brand: the brand kit's colours and fonts, the brand's name and site,
+ *   and its logos for light and dark sections when the Site reader kept
+ *   them from this same website (ONB-060b; none: the name is shown).
  * - Facts: only what every source agrees on (ONB-106a), the owner's own
  *   corrections on top (ONB-058), and the industry's risky claims banned
  *   (ONB-062). Anything unknown stays unknown, so copy QA refuses it.
@@ -59,6 +63,12 @@ export type OwnStoreParts = {
   brandName: string
   domain: string
   kit: { colors: string[]; fonts: string[] } | null
+  /** `brand_logos`: the site they were read from and the two pictures. */
+  logos?: {
+    domain: string
+    onLight: string | null
+    onDark: string | null
+  } | null
   timezone: string
   /** `catalog_status`: whether it was read live, and its currency. */
   status: { live: boolean; currency: string | null }
@@ -79,6 +89,10 @@ export const correctedIndustry = (
   findings: readonly Finding[],
   corrections: readonly Correction[]
 ): Industry => industryFrom(findings, { corrections }).key
+
+/** A kept logo an email can show (Klaviyo imports it), else none. */
+const emailLogo = (url: string | null | undefined) =>
+  url && importable(url) ? url : undefined
 
 /** The store, from its parts. Pure, for tests. */
 export function storeFrom(parts: OwnStoreParts): Store {
@@ -102,13 +116,22 @@ export function storeFrom(parts: OwnStoreParts): Store {
   )
   const name = parts.brandName.trim()
   const domain = parts.domain.trim().toLowerCase()
+  // Logos read from another website (the owner changed it) are not his.
+  const logos =
+    parts.logos &&
+    parts.logos.domain === domain.replace(/^www\./, '') &&
+    hostname.test(domain)
+      ? parts.logos
+      : null
   return {
     sample: !parts.status.live,
     brand: brandFromKit({
       name,
       site: hostname.test(domain) ? `https://${domain}` : '',
       colors: parts.kit?.colors ?? [],
-      fonts: parts.kit?.fonts ?? []
+      fonts: parts.kit?.fonts ?? [],
+      logo: emailLogo(logos?.onLight),
+      logoOnDark: emailLogo(logos?.onDark)
     }),
     industry,
     timezone: parts.timezone,
@@ -171,7 +194,7 @@ export function ownStoreSource(db: Db): StoreSource {
           code: 'plan_store_changed'
         })
       const { live, currency } = status.data
-      const [timezone, catalog, findings, corrections, profile, kit] =
+      const [timezone, catalog, findings, corrections, profile, kit, logos] =
         await Promise.all([
           workspaceTimezone(db, tenantId),
           listCatalog(db, tenantId, { featurableOnly: true, synthetic: !live }),
@@ -186,14 +209,30 @@ export function ownStoreSource(db: Db): StoreSource {
             .from('brand_kits')
             .select('colors,fonts')
             .eq('tenant_id', tenantId)
+            .maybeSingle(),
+          db
+            .from('brand_logos')
+            .select('domain,on_light,on_dark')
+            .eq('tenant_id', tenantId)
             .maybeSingle()
         ])
       if (profile.error) throw profile.error
       if (kit.error) throw kit.error
+      // The logos are optional: without them the email shows the name.
+      if (logos.error)
+        logger.warn('Brand logos unreadable', { code: logos.error.code })
       return storeFrom({
         brandName: profile.data?.brand_name ?? '',
         domain: profile.data?.domain ?? '',
         kit: kit.data,
+        logos:
+          logos.error || !logos.data
+            ? null
+            : {
+                domain: logos.data.domain,
+                onLight: logos.data.on_light,
+                onDark: logos.data.on_dark
+              },
         timezone,
         status: { live, currency },
         catalog,

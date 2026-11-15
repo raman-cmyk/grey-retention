@@ -2,6 +2,7 @@ import 'server-only'
 import { createImageFetcher } from '@/features/inbox/image-fetch'
 import type { ImageFetcher } from '@/lib/providers/image-fetch'
 import { siteHosts } from './fetch-hosts'
+import { maxLogoBytes } from './logos'
 import { samplePage } from './sample'
 
 export { homeUrl, siteHosts } from './fetch-hosts'
@@ -24,12 +25,33 @@ export type SitePageResult =
 export interface SiteFetcher {
   readonly live: boolean
   fetch(url: string): Promise<SitePageResult>
+  /**
+   * One logo picture's bytes, or null when it cannot be read (ONB-060b).
+   * Only the live reader has it: the sample site keeps no logo.
+   */
+  picture?(url: string): Promise<Uint8Array | null>
 }
 
 /** Largest page read. */
 export const maxPageBytes = 1_500_000
 /** Longest one page may take. */
 export const pageTimeoutMs = 6_000
+/** Longest one logo picture may take. */
+export const logoTimeoutMs = 3_000
+
+/**
+ * The guards for a logo picture: https on 443 (also on every redirect),
+ * any public host (a store's pictures are often on its platform's), only
+ * the picture types an email may show (PNG, JPEG, GIF: what Klaviyo
+ * imports), never a private address (the image fetcher's own).
+ */
+export const logoFetchOptions = {
+  ports: ['443'],
+  protocols: ['https:' as const],
+  accept: 'image/png,image/jpeg;q=0.9,image/gif;q=0.8',
+  types: /^\s*image\/(png|jpeg|gif)\b/i,
+  userAgent: 'Mozilla/5.0 (compatible; BrandReader/1.0)'
+}
 
 /**
  * The guards of the live reader for one brand: https only (also on every
@@ -47,15 +69,27 @@ export function siteFetchOptions(domain: string) {
   }
 }
 
-/** The live reader for one brand: https on 443, its own host only. */
+/**
+ * The live reader for one brand: pages over https on 443 from its own
+ * host only; logo pictures over https on 443 from any public host.
+ */
 export function liveSiteFetcher(
   domain: string,
-  fetcher?: ImageFetcher
+  fetcher?: ImageFetcher,
+  pictures?: ImageFetcher
 ): SiteFetcher {
   const hosts = siteHosts(domain)
   const http = fetcher ?? createImageFetcher(siteFetchOptions(domain))
+  const images = pictures ?? createImageFetcher(logoFetchOptions)
   return {
     live: true,
+    async picture(url) {
+      if (!url.startsWith('https://')) return null
+      const got = await images
+        .fetch(url, { maxBytes: maxLogoBytes, timeoutMs: logoTimeoutMs })
+        .catch(() => null)
+      return got?.ok ? got.bytes : null
+    },
     async fetch(url) {
       let parsed: URL
       try {

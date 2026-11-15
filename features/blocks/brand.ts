@@ -10,8 +10,10 @@ export type BlockBrand = {
   name: string
   /** The store link behind the logo. */
   site: string
-  /** The logo picture (https; Klaviyo-hosted when sent). */
+  /** The logo picture for light sections: dark ink (https; Klaviyo-hosted when sent). */
   logo?: string
+  /** The logo picture for dark sections: light ink (ONB-060b). */
+  logoOnDark?: string
   /** The brand font's family name, e.g. "Poppins". */
   font: string
   ink: string
@@ -128,6 +130,7 @@ export function brandFromKit(input: {
   colors: readonly string[]
   fonts: readonly string[]
   logo?: string
+  logoOnDark?: string
 }): BlockBrand {
   const colors = [
     ...new Set(
@@ -150,6 +153,7 @@ export function brandFromKit(input: {
     name: input.name.trim() || 'Your brand',
     site: input.site ?? '',
     logo: input.logo,
+    ...(input.logoOnDark ? { logoOnDark: input.logoOnDark } : {}),
     font: input.fonts[0] ?? '',
     ink,
     background,
