@@ -1,4 +1,4 @@
-import { factsSchema, summaryWindowDays } from './brand-summary'
+import { factsSchema, repeatedAt, summaryWindowDays } from './brand-summary'
 
 /**
  * CMP-048 (owner pick #48, D27): when and how often a competitor sends,
@@ -22,14 +22,25 @@ export const quietDaysFrom = 14
 
 export type SendTimeMap = {
   emails: number
-  /** Emails a week since the first week with an email (at least one week). */
+  windowDays: number
+  /**
+   * Emails a week since the first one in the window (at least a week), the
+   * same number as the brand summary's `perWeek`.
+   */
   perWeek: number
-  /** Each week from the first one with an email to this week, Monday first (0 when none). */
-  byWeek: { weekStart: string; emails: number }[]
+  /**
+   * Each week from the first one with an email to this week, Monday first
+   * (0 when none). `partial`: this week so far, or a first week the window
+   * cuts; leave it out of any average.
+   */
+  byWeek: { weekStart: string; emails: number; partial: boolean }[]
   /** Emails by day (Monday first) and local hour (0 to 23). */
   grid: number[][]
   byDay: { day: Weekday; emails: number }[]
-  /** Up to three day-and-hour slots seen at least twice, most first. */
+  /**
+   * Up to three day-and-hour slots seen at least twice, most first (ties:
+   * Monday first, then the earliest hour).
+   */
   usual: { day: Weekday; hour: number; emails: number }[]
   /** Days it never sends, from at least `quietDaysFrom` emails; else empty. */
   quietDays: Weekday[]
@@ -53,6 +64,13 @@ export function sendTimeMap(
     windowDays = summaryWindowDays
   }: { now: number; timezone: string; windowDays?: number }
 ): SendTimeMap | null {
+  if (
+    !Number.isFinite(now) ||
+    !Number.isInteger(windowDays) ||
+    windowDays < 1 ||
+    windowDays > 366
+  )
+    return null
   let local: Intl.DateTimeFormat
   try {
     local = new Intl.DateTimeFormat('en-US', {
@@ -83,7 +101,9 @@ export function sendTimeMap(
     const parsed = factsSchema.safeParse(r.facts)
     if (!parsed.success) return []
     const time = Date.parse(parsed.data.sentAt)
-    return Number.isNaN(time) || time < since || time > now ? [] : [at(time)]
+    return Number.isNaN(time) || time < since || time > now
+      ? []
+      : [{ ...at(time), time }]
   })
   if (!sends.length) return null
 
@@ -98,14 +118,19 @@ export function sendTimeMap(
   const first = sends.map(monday).sort()[0]!
   const counts = new Map<string, number>()
   for (const s of sends) counts.set(monday(s), (counts.get(monday(s)) ?? 0) + 1)
+  const windowStart = at(since).date
   const byWeek: SendTimeMap['byWeek'] = []
   for (let w = first; w <= thisWeek; w = addDays(w, 7))
-    byWeek.push({ weekStart: w, emails: counts.get(w) ?? 0 })
+    byWeek.push({
+      weekStart: w,
+      emails: counts.get(w) ?? 0,
+      partial: w === thisWeek || w < windowStart
+    })
   const usual = grid
     .flatMap((hours, d) =>
       hours.map((emails, hour) => ({ day: weekdays[d]!, hour, emails }))
     )
-    .filter((slot) => slot.emails >= 2)
+    .filter((slot) => slot.emails >= repeatedAt)
     .sort(
       (a, b) =>
         b.emails - a.emails ||
@@ -115,7 +140,14 @@ export function sendTimeMap(
     .slice(0, 3)
   return {
     emails: sends.length,
-    perWeek: Math.round((sends.length / Math.max(1, byWeek.length)) * 10) / 10,
+    windowDays,
+    perWeek:
+      Math.round(
+        (sends.length /
+          (Math.max(7, (now - Math.min(...sends.map((s) => s.time))) / dayMs) /
+            7)) *
+          10
+      ) / 10,
     byWeek,
     grid,
     byDay,

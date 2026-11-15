@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { brandSummary } from './brand-summary'
 import { sendTimeMap } from './send-times'
 
 const row = (sentAt: string) => ({
@@ -47,12 +48,77 @@ describe('sendTimeMap (CMP-048)', () => {
       sydney
     )!
     expect(map.byWeek).toEqual([
-      { weekStart: '2026-10-19', emails: 2 },
-      { weekStart: '2026-10-26', emails: 0 },
-      { weekStart: '2026-11-02', emails: 0 },
-      { weekStart: '2026-11-09', emails: 1 }
+      { weekStart: '2026-10-19', emails: 2, partial: false },
+      { weekStart: '2026-10-26', emails: 0, partial: false },
+      { weekStart: '2026-11-02', emails: 0, partial: false },
+      { weekStart: '2026-11-09', emails: 1, partial: true }
     ])
-    expect(map.perWeek).toBe(0.8)
+  })
+
+  it('gives the same emails a week as the brand summary, early in a week too', () => {
+    // Once a week on Tuesday at 10:00 UTC, read on Monday 16 November.
+    const rows = ['2026-10-20', '2026-10-27', '2026-11-03', '2026-11-10'].map(
+      (d) => row(`${d}T10:00:00Z`)
+    )
+    const monday = { now: Date.parse('2026-11-16T01:00:00Z'), timezone: 'UTC' }
+    const map = sendTimeMap(rows, monday)!
+    expect(map.perWeek).toBe(brandSummary(rows, monday)!.perWeek)
+    expect(map.byWeek.at(-1)).toEqual({
+      weekStart: '2026-11-16',
+      emails: 0,
+      partial: true
+    })
+    expect(map.windowDays).toBe(90)
+  })
+
+  it('marks a first week the window cuts as partial', () => {
+    const utcNow = { now: Date.parse('2026-11-15T12:00:00Z'), timezone: 'UTC' }
+    // 90 days before is Monday 17 August 12:00; an email that afternoon.
+    const map = sendTimeMap([row('2026-08-17T13:00:00Z')], utcNow)!
+    expect(map.byWeek[0]).toMatchObject({ weekStart: '2026-08-17' })
+    const cut = sendTimeMap([row('2026-08-19T13:00:00Z')], {
+      ...utcNow,
+      windowDays: 89
+    })!
+    expect(cut.byWeek[0]).toMatchObject({
+      weekStart: '2026-08-17',
+      partial: true
+    })
+  })
+
+  it('keeps weeks right across a clock change and the new year', () => {
+    // New York falls back on Sunday 1 November 2026.
+    const ny = sendTimeMap(
+      [row('2026-11-01T05:30:00Z'), row('2026-11-01T06:30:00Z')],
+      { now: Date.parse('2026-11-03T12:00:00Z'), timezone: 'America/New_York' }
+    )!
+    expect(ny.byWeek.map((w) => w.weekStart)).toEqual([
+      '2026-10-26',
+      '2026-11-02'
+    ])
+    expect(ny.byWeek[0]!.emails).toBe(2)
+    expect(ny.grid[6]![1]).toBe(2)
+    // Thursday 31 December and Saturday 2 January share a week.
+    const year = sendTimeMap(
+      [row('2026-12-31T12:00:00Z'), row('2027-01-02T12:00:00Z')],
+      { now: Date.parse('2027-01-04T12:00:00Z'), timezone: 'UTC' }
+    )!
+    expect(year.byWeek).toEqual([
+      { weekStart: '2026-12-28', emails: 2, partial: false },
+      { weekStart: '2027-01-04', emails: 0, partial: true }
+    ])
+  })
+
+  it('refuses a bad window or time', () => {
+    for (const bad of [
+      { windowDays: Number.NaN },
+      { windowDays: 0 },
+      { windowDays: 400 },
+      { now: Number.NaN }
+    ])
+      expect(
+        sendTimeMap([row('2026-11-12T03:00:00Z')], { ...sydney, ...bad })
+      ).toBeNull()
   })
 
   it('keeps to the window and skips rows it cannot read', () => {
