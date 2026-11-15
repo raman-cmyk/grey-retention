@@ -11,7 +11,10 @@ import {
   allowedBlockTypes,
   type AssemblyInput
 } from '@/features/assembly/inputs'
-import { assembleLockedPlain } from '@/features/assembly/modes'
+import {
+  assembleLocked,
+  assembleLockedPlain
+} from '@/features/assembly/modes'
 import { localTimeCandidates } from '@/lib/local-time'
 import {
   codeSectionPlan,
@@ -20,7 +23,16 @@ import {
   type SectionPlan
 } from './sections'
 import { lockContent, type ChangeKey, type LockedContent } from './content'
-import { codeFindings } from './inspect'
+import {
+  codeFindings,
+  copyRounds,
+  copyWork,
+  hiddenChars,
+  type CopyWork,
+  type Finding
+} from './inspect'
+import { copywriterRun } from './copywriter'
+import { agentCallMs, maxStepSaves } from './step-names'
 import { designA } from './design'
 import type { Draft } from '@/features/assembly/assemble'
 import type { DiscountCode, OfferSource } from '@/features/offers/source'
@@ -33,7 +45,9 @@ import { offersAt, type Store } from './ports'
  * AI. REL-AI part 2: with the owner's switch on and a live model
  * (`BuildCtx.agents`), the Section planner and the Content locker choose
  * the sections and place the products (each checked, else code, logged);
- * the copy and the design follow in parts 2b and 2c.
+ * the Copywriter writes the words, and the Brand and Email inspectors
+ * check them (part 2b), in rounds saved between claims; the design follows
+ * in part 2c.
  */
 
 /** The planned email this build is for (a slot of STR-003's stored plan). */
@@ -124,7 +138,12 @@ export type SectionsOutput = {
   rules: { maxDiscountPercent: number; codes: DiscountCode[] }
   layout: SectionPlan
 }
-export type CopyOutput = { draft: Draft; changes: ChangeKey[] }
+export type CopyOutput = {
+  draft: Draft
+  changes: ChangeKey[]
+  /** The Copywriter's words passed every check (REL-AI part 2b). */
+  written?: boolean
+}
 
 type StepInput = { planned: PlannedEmail; store: Store }
 
@@ -252,10 +271,6 @@ export async function contentStep(
 export const subjectKey = (subject: string) =>
   subject.replace(/\s+/g, ' ').trim().toLowerCase()
 
-// Control, zero-width and direction characters: never in a subject.
-const hidden =
-  /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g
-
 /**
  * Store text (a product title, the brand name) as it may stand in a
  * subject: hidden characters dropped, spacing made single; null when it
@@ -263,7 +278,7 @@ const hidden =
  * `>`), since the copy checks mask product titles and cannot judge them.
  */
 export function subjectText(text: string) {
-  const clean = text.replace(hidden, '').replace(/\s+/g, ' ').trim()
+  const clean = text.replace(hiddenChars, '').replace(/\s+/g, ' ').trim()
   return clean && !/[{}<>]/.test(clean) ? clean : null
 }
 
@@ -319,24 +334,120 @@ export function uniqueSubject(
   return null
 }
 
-/** Step 3: plain facts-only copy that must pass every code check. */
+/** A model call ends this long after it starts, with its database calls. */
+const callSlackMs = 2_000
+
+/** REL-AI: a subject another email of the plan has goes back to the writer. */
+const takenSubject =
+  (taken: ReadonlySet<string>) =>
+  (draft: Draft): Finding[] =>
+    taken.has(subjectKey(draft.subject))
+      ? [
+          {
+            by: 'code',
+            rule: 'subject_taken',
+            field: 'subject',
+            reason:
+              'Another email in this plan already has this subject: write a different one.'
+          }
+        ]
+      : []
+
+/**
+ * Step 3: the words. On the code-only path, plain facts-only copy that
+ * must pass every code check. With the agents (REL-AI part 2b), the
+ * Copywriter writes into the locked sections and the code checks, the
+ * Brand inspector and the Email inspector judge each draft, up to 3
+ * rewrites, then plain copy (`copyRounds`). A claim starts a model call
+ * only while it fits before `ctx.until`; otherwise the rounds so far come
+ * back as `work`, saved by the job, and the next claim goes on from them.
+ */
 export async function copyStep(
   input: {
     store: Store
     locked: LockedContent
     /** Subjects the plan's other emails use (REL-AI). */
     taken?: readonly string[]
+    /** The rounds an earlier claim saved (REL-AI part 2b). */
+    work?: unknown
+    /** How often this step has saved its rounds. */
+    saves?: number
   },
   ctx: BuildCtx
 ): Promise<
   | { ok: true; output: CopyOutput }
-  | { ok: false; code: 'copy_failed' | 'subject_taken' }
+  | { ok: true; work: CopyWork }
+  | {
+      ok: false
+      code: 'copy_failed' | 'subject_taken' | 'ai_unavailable'
+      retryAfterSeconds?: number
+    }
 > {
   const { store, locked } = input
   const steps = locked.sections.map((s) => ({
     type: s.family,
     reason: s.purpose
   }))
+  const taken = new Set((input.taken ?? []).map(subjectKey))
+  const changes = [
+    ...new Set(locked.changes.map((c): ChangeKey => c.key))
+  ].slice(0, 40)
+  if (ctx.agents) {
+    const agents = ctx.agents
+    const saved = copyWork.safeParse(input.work)
+    const now = ctx.now ?? Date.now
+    const until = ctx.until
+    const made = await copyRounds(
+      {
+        locked,
+        brandName: store.brand.name,
+        write: (feedback) =>
+          assembleLocked(
+            locked.input,
+            store.brand,
+            copywriterRun(agents, {
+              tenantId: ctx.tenantId,
+              callerKey: ctx.callerKey,
+              industry: store.industry
+            }),
+            steps,
+            feedback
+          ),
+        plain: () => assembleLockedPlain(locked.input, store.brand, steps),
+        checks: takenSubject(taken),
+        // Saved by an older app in another shape: the rounds start over.
+        ...(saved.success ? { work: saved.data as unknown as CopyWork } : {}),
+        ...(until !== undefined
+          ? { fits: () => now() + agentCallMs + callSlackMs <= until }
+          : {}),
+        // The database takes no more saves: out of time means plain copy.
+        last: (input.saves ?? 0) >= maxStepSaves
+      },
+      {
+        tenantId: ctx.tenantId,
+        callerKey: ctx.callerKey,
+        campaignId: ctx.campaignId ?? null,
+        industry: store.industry,
+        memory: agents.memory,
+        log: agents.log,
+        ai: agents.ai,
+        fallbacks: ctx.fallbacks
+      }
+    )
+    if (made.status === 'paused') return { ok: true, work: made.work }
+    if (made.status === 'passed')
+      return { ok: true, output: { draft: made.draft, changes, written: true } }
+    if (made.status === 'retry')
+      return {
+        ok: false,
+        code: 'ai_unavailable',
+        ...(made.retryAfterSeconds !== undefined
+          ? { retryAfterSeconds: made.retryAfterSeconds }
+          : {})
+      }
+    // Logged by the rounds; plain copy below (its subject made free).
+    if (made.status === 'failed') return { ok: false, code: 'copy_failed' }
+  }
   const plain = assembleLockedPlain(locked.input, store.brand, steps)
   const findings =
     plain.status === 'sample'
@@ -358,12 +469,7 @@ export async function copyStep(
     })
     return { ok: false, code: 'copy_failed' }
   }
-  const subject = uniqueSubject(
-    plain,
-    locked,
-    store.brand.name,
-    new Set((input.taken ?? []).map(subjectKey))
-  )
+  const subject = uniqueSubject(plain, locked, store.brand.name, taken)
   if (!subject) {
     await ctx.fallbacks.record({
       tenantId: ctx.tenantId,
@@ -381,13 +487,7 @@ export async function copyStep(
   }
   return {
     ok: true,
-    output: {
-      draft: { ...plain.draft, subject },
-      changes: [...new Set(locked.changes.map((c): ChangeKey => c.key))].slice(
-        0,
-        40
-      )
-    }
+    output: { draft: { ...plain.draft, subject }, changes }
   }
 }
 
@@ -413,13 +513,13 @@ export function designStep(
     ok: true,
     email: {
       sample,
-      ai: input.ai ?? false,
+      ai: (input.ai ?? false) || copy.written === true,
       name: `${dayName(planned.date)} · ${typeName(planned.emailType)}`,
       subject: draft.subject,
       preheader: draft.preheader,
       html,
       approach: 'A',
-      copy: 'plain',
+      copy: copy.written ? 'written' : 'plain',
       plannedSendAt: sendAt,
       audienceId: planned.audience.id,
       productIds: draft.productIds,
@@ -447,8 +547,10 @@ export async function lockedDraft(
       draft: Draft
       sendAt: string
       changes: ChangeKey[]
-      /** An agent's plan or placement was used (REL-AI part 2). */
+      /** An agent's plan, placement or words were used (REL-AI part 2). */
       ai: boolean
+      /** The Copywriter's words (REL-AI part 2b). */
+      written: boolean
     }
   | {
       ok: false
@@ -457,22 +559,29 @@ export async function lockedDraft(
         | 'offers_unreadable'
         | 'copy_failed'
         | 'subject_taken'
+        | 'ai_unavailable'
     }
 > {
   const sections = await sectionsStep(input, ctx)
   if (!sections.ok) return sections
   const locked = await contentStep({ ...input, sections: sections.output }, ctx)
+  // No time limit here (`ctx.until`): the rounds run to their end.
   const copy = await copyStep(
     { store: input.store, locked, taken: input.taken },
-    ctx
+    { ...ctx, until: undefined }
   )
   if (!copy.ok) return copy
+  if (!('output' in copy)) throw new Error('Copy paused without a time')
   return {
     ok: true,
     draft: copy.output.draft,
     sendAt: sections.output.sendAt,
     changes: copy.output.changes,
-    ai: sections.output.layout.source === 'agent' || locked.source === 'agent'
+    written: copy.output.written === true,
+    ai:
+      sections.output.layout.source === 'agent' ||
+      locked.source === 'agent' ||
+      copy.output.written === true
   }
 }
 
@@ -490,6 +599,13 @@ export type BuildCtx = {
   fallbacks: FallbackLog
   /** Null or missing: the code-only path (no AI call). */
   agents?: BuildAgents | null
+  /**
+   * When this claim must end (ms since epoch; REL-AI part 2b): a step with
+   * rounds starts a model call only while one fits before it. Missing: no
+   * time limit (tests and tools).
+   */
+  until?: number
+  now?: () => number
 }
 
 /** All four build steps at once (tests and tools; the job saves each). */
@@ -504,6 +620,6 @@ export async function buildEmail(
     sendAt: made.sendAt,
     sample: input.store.sample,
     ai: made.ai,
-    copy: { draft: made.draft, changes: made.changes }
+    copy: { draft: made.draft, changes: made.changes, written: made.written }
   })
 }

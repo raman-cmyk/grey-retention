@@ -14,6 +14,11 @@ export type AgentCtx = {
   log: RunLog
   ai: AiCall
   now?: string
+  /**
+   * REL-AI part 2b: false when one more model call would not fit in the
+   * step's time. A later try then waits for the next claim (`paused`).
+   */
+  fits?: () => boolean
 }
 
 export type TryResult<O> =
@@ -25,6 +30,8 @@ export type TryResult<O> =
       tries: number
       runId?: string
       problems: string[]
+      /** Stopped for time before a later try (`AgentCtx.fits`). */
+      paused?: true
     }
 
 /**
@@ -42,6 +49,15 @@ export async function tryAgent<T, O>(
   let runId: string | undefined
   let reasonCode: 'answer_invalid' | 'check_failed' = 'check_failed'
   for (let tries = 1; tries <= agentTries; tries++) {
+    if (tries > 1 && ctx.fits && !ctx.fits())
+      return {
+        ok: false,
+        reasonCode,
+        tries: tries - 1,
+        runId,
+        problems,
+        paused: true
+      }
     const result = await runAgent(def, task(problems), ctx)
     runId = result.runId
     if (!result.ok) {

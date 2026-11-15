@@ -9,15 +9,17 @@ import { SupabaseBudgetLedger } from '@/features/ai/budget-ledger'
 import { runAi } from '@/features/ai/run'
 import { aiSetup } from '@/features/ai/setup'
 import type { BuildAgents } from './build'
+import { agentCallMs } from './step-names'
 
 /**
  * REL-AI part 2: "Create email" on the agent path. Each model call is
- * capped at this, so a step with its 3 tries (about 46 to 48 s at worst,
- * with its database calls) stays inside the 50-second step budget
- * (`stepBudgetMs`); the job starts an agent step only while a whole step
- * fits before its deadline.
+ * capped at `agentCallMs` (15 s), so a step with its 3 tries (about 46 to
+ * 48 s at worst, with its database calls) stays inside the 50-second step
+ * budget (`stepBudgetMs`); the job starts an agent step only while a whole
+ * step fits before its deadline, and a step with rounds saves them when
+ * the next call would not fit (part 2b).
  */
-export const agentCallMs = 15_000
+export { agentCallMs }
 
 /** The environment of a build step: every model call capped. */
 export function agentEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
