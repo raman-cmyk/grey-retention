@@ -1,5 +1,5 @@
 begin;
-select plan(41);
+select plan(42);
 
 -- REL-081: "Create email" runs as saved steps. Workspace 101: owner ...01.
 select ok(not has_function_privilege('authenticated','public.finish_email_step(uuid,uuid,text,jsonb)','execute'),'members cannot finish a step');
@@ -56,8 +56,10 @@ reset role;
 select is((select step || ':' || attempts || ':' || (lease_token is null)::text || ':' || (progress->'sections'->>'sendAt') from public.email_builds where id=current_setting('test.build')::uuid),
   'content:0:true:2027-01-01T10:00:00Z','the next step has its own attempts, and the first step''s output is kept');
 
--- The next step is handed out at once; when it fails, only it is tried again.
+-- The next step is handed out at once to its own job (REL-AI part 2b: the
+-- sweep leaves it for 30 seconds); when it fails, only it is tried again.
 set local role service_role;
+select is((select count(*) from public.claim_email_build() c),0::bigint,'the sweep leaves a step that just moved on to its own job');
 select set_config('test.claim',(select c.step || ' ' || (c.progress ? 'sections')::text || ' ' || c.lease_token from public.claim_email_build(current_setting('test.build')::uuid) c),true);
 select is(split_part(current_setting('test.claim'),' ',1) || ' ' || split_part(current_setting('test.claim'),' ',2),'content true','the next step runs at once, with the saved step');
 select is(public.fail_email_step(current_setting('test.build')::uuid,split_part(current_setting('test.claim'),' ',3)::uuid,'store_unreadable'),'retry','a failed step is tried again');

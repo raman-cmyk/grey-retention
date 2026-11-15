@@ -39,7 +39,8 @@ type Call = { fn: string; args: Record<string, unknown> }
 /**
  * A database with one build, as the real one keeps it: each claim gets a
  * new lease; a save keeps the work and lets the step be claimed again (the
- * 17th save is refused); a finished step moves on; a failure ends the
+ * 17th save is refused); a finished step moves on; a step that just moved
+ * on or saved is claimed only by name for 30 seconds; a failure ends the
  * build here (its next try would wait a minute).
  */
 function fakeDb(
@@ -64,17 +65,20 @@ function fakeDb(
   }
   let leases = 0
   let leased = false
+  let moved = false
   let saves = 0
   const calls: Call[] = []
   const set = (over: Record<string, unknown>) => {
     build = { ...build, ...over }
     leased = false
+    moved = true
   }
   const rpc = vi.fn(async (fn: string, args: Record<string, unknown> = {}) => {
     calls.push({ fn, args })
     if (fail[fn]) return { data: null, error: fail[fn] }
     if (fn === 'claim_email_build') {
-      if (!build || leased) return { data: [], error: null }
+      if (!build || leased || (moved && !args.target))
+        return { data: [], error: null }
       leased = true
       return { data: [{ ...build, lease_token: `lease-${++leases}` }] }
     }
@@ -117,6 +121,18 @@ function fakeDb(
   return { db: { rpc, from: () => query } as never, calls }
 }
 const named = (calls: Call[], fn: string) => calls.filter((c) => c.fn === fn)
+const sampleEmail = async () => {
+  const built = await buildEmail(
+    {
+      planned,
+      store: await sampleStoreSource.read(tenant),
+      offers: sampleOffers
+    },
+    { tenantId: tenant, callerKey: 'x', fallbacks: memoryFallbackLog() }
+  )
+  if (!built.ok) throw new Error('sample build failed')
+  return built.email
+}
 const saveCopy = { ok: true, saved: 'copy', work: { round: 1 } }
 
 beforeEach(() => runStep.mockReset())
@@ -151,20 +167,12 @@ describe('a step that saves its rounds (REL-AI part 2b)', () => {
   })
 
   it('one click reaches the push with every save a step may make', async () => {
-    const built = await buildEmail(
-      {
-        planned,
-        store: await sampleStoreSource.read(tenant),
-        offers: sampleOffers
-      },
-      { tenantId: tenant, callerKey: 'x', fallbacks: memoryFallbackLog() }
-    )
-    if (!built.ok) throw new Error('sample build failed')
+    const built = await sampleEmail()
     let copyClaims = 0
     runStep.mockImplementation(async (step: string) => {
       if (step === 'copy' && ++copyClaims <= maxStepSaves) return saveCopy
       return step === 'design'
-        ? { ok: true, done: 'design', email: built.email }
+        ? { ok: true, done: 'design', email: built }
         : { ok: true, done: step, output: {} }
     })
     const { db, calls } = fakeDb('sections')
@@ -176,6 +184,29 @@ describe('a step that saves its rounds (REL-AI part 2b)', () => {
     expect(named(calls, 'save_email_round')).toHaveLength(maxStepSaves)
     expect(named(calls, 'finish_email_push')).toHaveLength(1)
     expect(named(calls, 'fail_email_step')).toEqual([])
+  })
+
+  it('the sweep takes a build it moved on through its steps by name, in one run', async () => {
+    const email = await sampleEmail()
+    runStep.mockImplementation(async (step: string) =>
+      step === 'copy' && runStep.mock.calls.length === 3
+        ? saveCopy
+        : step === 'design'
+          ? { ok: true, done: 'design', email }
+          : { ok: true, done: step, output: {} }
+    )
+    const { db, calls } = fakeDb('sections')
+    await runEmailBuilds(db, { agents: null, fallbacks: memoryFallbackLog() })
+    expect(named(calls, 'finish_email_push')).toHaveLength(1)
+    const claims = named(calls, 'claim_email_build').map((c) => c.args)
+    // The first claim is the sweep's; then the build it moved, by name (its
+    // content, copy twice, design, push, then drafted: nothing); then any
+    // other build.
+    expect(claims).toEqual([
+      {},
+      ...Array.from({ length: 6 }, () => ({ target: 'build-1' })),
+      {}
+    ])
   })
 
   it('the save the database refuses after the last one fails the build: it kept stopping', async () => {

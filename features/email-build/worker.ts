@@ -85,18 +85,26 @@ export async function runEmailBuilds(
     ? buildSteps.length + 1 + roundSteps.length * maxStepSaves
     : (deps.limit ?? 25)
   let ran = 0
+  /**
+   * The build this run just moved on (REL-AI part 2b): the database leaves
+   * it to this job for 30 seconds, so the sweep claims it by name next and
+   * takes it through its steps in one run, as the click does.
+   */
+  let moved: string | undefined
+  const claim = async (target?: string) => {
+    const claimed = await db.rpc('claim_email_build', target ? { target } : {})
+    if (claimed.error) throw claimed.error
+    return claimed.data?.[0]
+  }
   for (let n = 0; n < limit; n++) {
     // An agent step can take most of a step's budget (3 tries of 15 s):
     // with the agents on, a new step is claimed only while a whole step
     // still fits before the deadline (REL-AI part 2).
     if (deps.deadline && now() + (agents ? stepBudgetMs : 0) > deps.deadline)
       break
-    const claimed = await db.rpc(
-      'claim_email_build',
-      deps.build ? { target: deps.build } : {}
-    )
-    if (claimed.error) throw claimed.error
-    const job = claimed.data?.[0]
+    let job = await claim(deps.build ?? moved)
+    if (!job && !deps.build && moved) job = await claim()
+    moved = undefined
     if (!job) break
     const fail = async (
       code: BuildFailureCode,
@@ -210,6 +218,7 @@ export async function runEmailBuilds(
             }
             throw kept.error
           }
+          moved = job.id
           ran++
           continue
         }
@@ -238,6 +247,7 @@ export async function runEmailBuilds(
             }
             throw kept.error
           }
+          moved = job.id
           ran++
           continue
         }
@@ -299,6 +309,7 @@ export async function runEmailBuilds(
         })
         if (done.error) throw done.error
       }
+      moved = job.id
       ran++
     } catch (error) {
       // Only codes with plain words are stored (REL-084); the log keeps it.
