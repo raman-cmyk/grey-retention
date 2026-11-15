@@ -24,14 +24,13 @@ import {
   codeFindings,
   copyRounds,
   copyWork,
-  hiddenChars,
   type CopyWork,
   type Finding
 } from './inspect'
 import { copywriterRun } from './copywriter'
 import { agentCallMs, maxStepSaves } from './step-names'
 import { designA } from './design'
-import type { Draft } from '@/features/assembly/assemble'
+import { hiddenChars, type Draft } from '@/features/assembly/assemble'
 import type { DiscountCode, OfferSource } from '@/features/offers/source'
 import { offersAt, type Store } from './ports'
 
@@ -269,6 +268,9 @@ export async function contentStep(
 export const subjectKey = (subject: string) =>
   subject.replace(/\s+/g, ' ').trim().toLowerCase()
 
+// Control, zero-width and direction characters: never in a subject.
+const hidden = new RegExp(hiddenChars.source, 'g')
+
 /**
  * Store text (a product title, the brand name) as it may stand in a
  * subject: hidden characters dropped, spacing made single; null when it
@@ -276,7 +278,7 @@ export const subjectKey = (subject: string) =>
  * `>`), since the copy checks mask product titles and cannot judge them.
  */
 export function subjectText(text: string) {
-  const clean = text.replace(hiddenChars, '').replace(/\s+/g, ' ').trim()
+  const clean = text.replace(hidden, '').replace(/\s+/g, ' ').trim()
   return clean && !/[{}<>]/.test(clean) ? clean : null
 }
 
