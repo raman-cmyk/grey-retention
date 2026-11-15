@@ -2,6 +2,7 @@ import 'server-only'
 import { allSteps } from '@/features/email-build/step-names'
 import { buildReason } from '@/features/email-build/failure-words'
 import { planReason } from './failure-words'
+import { localTimeCandidates } from '@/lib/local-time'
 import { createClient } from '@/lib/supabase/server'
 import {
   storedPlan,
@@ -25,6 +26,21 @@ export type PlanRun = {
   builds: Record<number, EmailBuildView>
   /** Today in store time: no email is created for a day that has passed. */
   today: string
+  /**
+   * REL-DAT: per planned email (by slot), its send time has passed (store
+   * time), so "Create email" would be refused: the screen offers none.
+   */
+  sendPassed?: boolean[]
+}
+
+/** A planned email's send time has passed (a time the clock skips too). */
+export function sendTimePassed(
+  slot: { date: string; time: string },
+  timezone: string,
+  now: Date
+) {
+  const at = localTimeCandidates(`${slot.date}T${slot.time}`, timezone)[0]
+  return !at || Date.parse(at) <= now.getTime()
 }
 
 export type EmailBuildView = {
@@ -137,7 +153,10 @@ export async function latestPlanRun(
       pulse: pulse.success ? pulse.data : null,
       plan: plan.success ? plan.data : null,
       builds,
-      today: storeToday(timezone, now)
+      today: storeToday(timezone, now),
+      sendPassed: plan.success
+        ? plan.data.slots.map((s) => sendTimePassed(s, timezone, now))
+        : []
     }
   }
 }

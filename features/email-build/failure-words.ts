@@ -9,6 +9,9 @@ export const buildFailureWords = {
   // The build steps (EML-004 part 2, REL-081).
   planned_email_invalid: 'This planned email cannot be built. Plan again.',
   slot_time_invalid: 'Its send time does not exist in your time zone.',
+  send_time_passed:
+    'Its send time had passed before it was made. Plan again for new emails.',
+  slot_outside_plan: 'Its day is not one of its plan’s 15 days. Plan again.',
   offers_unreadable: 'Your saved offers could not be read. Try again.',
   copy_failed: 'Its words did not pass the checks.',
   subject_taken:
