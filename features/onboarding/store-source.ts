@@ -2,6 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { logger } from '@/lib/logger'
 import { brandFromKit } from '@/features/blocks/brand'
+import { importable } from '@/features/klaviyo-push/html'
 import {
   sampleStoreFrom,
   type Store,
@@ -89,6 +90,10 @@ export const correctedIndustry = (
   corrections: readonly Correction[]
 ): Industry => industryFrom(findings, { corrections }).key
 
+/** A kept logo an email can show (Klaviyo imports it), else none. */
+const emailLogo = (url: string | null | undefined) =>
+  url && importable(url) ? url : undefined
+
 /** The store, from its parts. Pure, for tests. */
 export function storeFrom(parts: OwnStoreParts): Store {
   // A live workspace never counts what the sample rules found.
@@ -125,8 +130,8 @@ export function storeFrom(parts: OwnStoreParts): Store {
       site: hostname.test(domain) ? `https://${domain}` : '',
       colors: parts.kit?.colors ?? [],
       fonts: parts.kit?.fonts ?? [],
-      logo: logos?.onLight ?? undefined,
-      logoOnDark: logos?.onDark ?? undefined
+      logo: emailLogo(logos?.onLight),
+      logoOnDark: emailLogo(logos?.onDark)
     }),
     industry,
     timezone: parts.timezone,

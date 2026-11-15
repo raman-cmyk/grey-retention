@@ -253,6 +253,18 @@ describe('findLogos (ONB-060b)', () => {
       expect(await findLogos(page, 'Cedar Lane', picture, clock)).toBeNull()
     // A GIF's ink cannot be measured: the header logo is taken for light
     // sections, and no guess is made for dark ones.
+    // (A share-tag logo alone is never taken: nothing to keep.)
+    expect(
+      await findLogos(
+        {
+          ...page,
+          html: '<meta property="og:logo" content="https://cdn.shopify.com/og-logo.jpg">'
+        },
+        'Cedar Lane',
+        async () => new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0]),
+        clock
+      )
+    ).toBeNull()
     expect(await findLogos(page, 'Cedar Lane', async () => gif, clock)).toEqual(
       { onLight: dark, onDark: null }
     )

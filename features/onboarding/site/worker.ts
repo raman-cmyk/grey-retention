@@ -95,7 +95,9 @@ export async function findLogos(
         })
     )
     const found = read.filter((f) => f !== null)
-    return found.length ? pickLogos(found) : null
+    const picked = pickLogos(found)
+    // Nothing to keep: the earlier logos stay.
+    return picked.onLight || picked.onDark ? picked : null
   } catch (error) {
     logger.warn('Site logos unreadable', {
       error: error instanceof Error ? error.name : 'unknown'

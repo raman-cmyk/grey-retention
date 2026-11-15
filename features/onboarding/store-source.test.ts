@@ -300,20 +300,28 @@ describe('storeFrom (ONB-057b part 2)', () => {
   it('shows the logos the Site reader kept from this same website (ONB-060b)', () => {
     const logos = {
       domain: 'shop.example',
-      onLight: 'https://cdn.example/logo-dark.svg',
+      onLight: 'https://cdn.example/logo-dark.png',
       onDark: 'https://cdn.example/logo-white.png'
     }
     expect(storeFrom(parts({ logos })).brand).toMatchObject({
-      logo: 'https://cdn.example/logo-dark.svg',
+      logo: 'https://cdn.example/logo-dark.png',
       logoOnDark: 'https://cdn.example/logo-white.png'
     })
     // Its www. address is the same website.
     expect(
       storeFrom(parts({ domain: 'www.shop.example', logos })).brand.logo
-    ).toBe('https://cdn.example/logo-dark.svg')
+    ).toBe('https://cdn.example/logo-dark.png')
     // Only one found: the other stays unset (the name is shown there).
     const light = storeFrom(parts({ logos: { ...logos, onDark: null } }))
     expect(light.brand.logoOnDark).toBeUndefined()
+    // A picture Klaviyo cannot import is never shown.
+    expect(
+      storeFrom(
+        parts({
+          logos: { ...logos, onLight: 'https://cdn.example/logo-dark.svg' }
+        })
+      ).brand.logo
+    ).toBeUndefined()
     // Read from the website before the owner changed it: none.
     for (const brand of [
       storeFrom(parts({ domain: 'new-shop.example', logos })).brand,
@@ -368,7 +376,7 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
     brand_logos: {
       data: {
         domain: 'shop.example',
-        on_light: 'https://cdn.example/logo.svg',
+        on_light: 'https://cdn.example/logo.png',
         on_dark: null
       },
       error: null
@@ -387,7 +395,7 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
       brand: {
         name: 'Cedar Lane',
         site: 'https://shop.example',
-        logo: 'https://cdn.example/logo.svg'
+        logo: 'https://cdn.example/logo.png'
       }
     })
     expect(store.brand.logoOnDark).toBeUndefined()
