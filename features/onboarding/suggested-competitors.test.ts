@@ -16,6 +16,7 @@ vi.mock('@/features/onboarding/brand-book-corrections', async (original) => ({
 
 const {
   brandIndustry,
+  hostOf,
   maxSuggestions,
   readCompetitorSuggestions,
   suggestCompetitors
@@ -41,8 +42,7 @@ const brand = (over: Partial<InboxBrand> = {}): InboxBrand => {
 const base = {
   industry: 'pet' as const,
   ownDomain: 'mystore.example',
-  live: true,
-  following: new Set<string>()
+  live: true
 }
 
 describe('brandIndustry (ONB-065a)', () => {
@@ -95,18 +95,27 @@ describe('suggestCompetitors (ONB-065a)', () => {
     ])
   })
 
-  it('never suggests the store itself, a brand it follows, one the inbox does not get, or the other kind', () => {
+  it('never suggests the store itself, one the inbox does not get, or the other kind', () => {
     const own = brand({ domain: 'WWW.MyStore.example' })
-    const followed = brand()
+    const shop = brand({ domain: 'shop.mystore.example' })
     const pending = brand({ subscriptionStatus: 'pending' })
     const sample = brand({ synthetic: true })
     const good = brand()
     const got = suggestCompetitors({
       ...base,
-      following: new Set([followed.id]),
-      brands: [own, followed, pending, sample, good]
+      brands: [own, shop, pending, sample, good]
     })
     expect(got.map((s) => s.captureId)).toEqual([good.id])
+    // Saved as a link, or with a shop subdomain: still its own website.
+    for (const ownDomain of [
+      'https://www.mystore.example/collections/all',
+      'shop.mystore.example'
+    ])
+      expect(
+        suggestCompetitors({ ...base, ownDomain, brands: [own, good] }).map(
+          (s) => s.captureId
+        )
+      ).toEqual([good.id])
     // The sample store gets only sample brands.
     expect(
       suggestCompetitors({
@@ -144,22 +153,50 @@ describe('suggestCompetitors (ONB-065a)', () => {
         ]
       })[0]?.reason
     ).toBe('Also a food and drink brand.')
+    // "an" before a vowel.
+    expect(
+      suggestCompetitors({
+        ...base,
+        industry: 'apparel',
+        brands: [
+          brand({ niche: 'Activewear basics', labelled: { apparel: 3 } })
+        ]
+      })[0]?.reason
+    ).toBe('Also an apparel brand, and sent 2 emails in the last 30 days.')
+    expect(
+      suggestCompetitors({
+        ...base,
+        industry: 'outdoor',
+        brands: [brand({ niche: 'Camping gear', recent: 0 })]
+      })[0]?.reason
+    ).toBe('Also an outdoor brand.')
+  })
+
+  it('reads a website from a bare domain or a link', () => {
+    expect(hostOf(' https://WWW.MyStore.com/shop?x=1 ')).toBe('mystore.com')
+    expect(hostOf('mystore.com:443')).toBe('mystore.com')
+    expect(hostOf('www.mystore.com')).toBe('mystore.com')
+    expect(hostOf('')).toBe('')
   })
 })
 
 describe('readCompetitorSuggestions (ONB-065a)', () => {
   const tenantId = '00000000-0000-4000-8000-000000000101'
-  function fakeDb(answers: Record<string, { data: unknown; error: unknown }>) {
-    const asked: [string, string, ...unknown[]][] = []
+  type Answer = { data: unknown; error: unknown }
+  function fakeDb(answers: Record<string, Answer>) {
+    const asked: [string, ...unknown[]][] = []
     const from = (table: string) => {
       const chain: Record<string, unknown> = {}
-      for (const op of ['select', 'eq', 'in', 'gte', 'order', 'limit'])
+      for (const op of ['select', 'eq'])
         chain[op] = (...a: unknown[]) => (asked.push([table, op, ...a]), chain)
       chain.maybeSingle = async () => answers[table]
-      chain.then = (done: (r: unknown) => unknown) => done(answers[table])
       return chain
     }
-    return { db: { from } as never, asked }
+    const rpc = async (name: string, args: unknown) => (
+      asked.push([name, args]),
+      answers[name]
+    )
+    return { db: { from, rpc } as never, asked }
   }
   const offering = {
     topic: 'offering',
@@ -168,116 +205,51 @@ describe('readCompetitorSuggestions (ONB-065a)', () => {
     pass: 'model',
     source: 'site'
   } as unknown as Finding
-
-  const brandRows = [
-    {
-      id: 'b1',
-      domain: 'bark.example',
-      brand_name: 'Bark Co',
-      niche: 'Dog treats',
-      synthetic: false,
-      subscription_status: 'subscribed',
-      last_received_at: '2026-11-14T10:00:00Z'
-    },
-    {
-      id: 'b2',
-      domain: 'wick.example',
-      brand_name: 'Wick',
-      niche: 'Scented candles',
-      synthetic: false,
-      subscription_status: 'subscribed',
-      last_received_at: '2026-11-13T10:00:00Z'
-    }
-  ]
-  const realStore = (
-    over: Record<string, { data: unknown; error: unknown }> = {}
-  ) =>
+  const row = (over: Record<string, unknown> = {}) => ({
+    id: 'b1',
+    domain: 'bark.example',
+    brand_name: 'Bark Co',
+    niche: 'Dog treats',
+    synthetic: false,
+    last_received_at: '2026-11-14T10:00:00Z',
+    recent: 3,
+    labels: {},
+    ...over
+  })
+  const store = (over: Record<string, Answer> = {}) =>
     fakeDb({
       brand_profiles: {
         data: { domain: 'mystore.example', synthetic: false },
         error: null
       },
-      competitor_subscriptions: { data: [], error: null },
-      competitor_captures: { data: brandRows, error: null },
-      competitor_emails: { data: [], error: null },
-      ...over
-    })
-
-  it('takes the store’s industry as the owner corrected it, and a real store ignores sample findings', async () => {
-    // The readers say dog treats; the owner says it sells candles.
-    reads.findings.mockResolvedValue([
-      offering,
-      { ...offering, statement: 'Scented candles', pass: 'sample' }
-    ])
-    reads.corrections.mockResolvedValue([
-      {
-        id: 'c1',
-        section: 'offering',
-        original: 'Dog treats and toys',
-        action: 'replace',
-        value: 'Hand-poured scented candles',
-        createdAt: '2026-11-15T09:00:00Z'
-      }
-    ])
-    const got = await readCompetitorSuggestions(realStore().db, tenantId)
-    expect(got.map((s) => [s.domain, s.industry])).toEqual([
-      ['wick.example', 'home']
-    ])
-    // Without his correction it is pet: the sample's candles do not count.
-    reads.corrections.mockResolvedValue([])
-    const plain = await readCompetitorSuggestions(realStore().db, tenantId)
-    expect(plain.map((s) => [s.domain, s.industry])).toEqual([
-      ['bark.example', 'pet']
-    ])
-  })
-
-  it('suggests nothing before the workspace has a brand profile', async () => {
-    reads.findings.mockResolvedValue([offering])
-    reads.corrections.mockResolvedValue([])
-    const { db } = realStore({ brand_profiles: { data: null, error: null } })
-    expect(await readCompetitorSuggestions(db, tenantId)).toEqual([])
-  })
-
-  it('reads the workspace’s own rows and the inbox’s brands and recent emails', async () => {
-    reads.findings.mockResolvedValue([offering])
-    reads.corrections.mockResolvedValue([])
-    const { db, asked } = fakeDb({
-      brand_profiles: {
-        data: { domain: 'mystore.example', synthetic: false },
-        error: null
-      },
-      competitor_subscriptions: {
-        data: [{ capture_id: 'b-followed' }],
-        error: null
-      },
-      competitor_captures: {
+      suggestable_inbox_brands: {
         data: [
-          {
-            id: 'b1',
-            domain: 'bark.example',
-            brand_name: 'Bark Co',
-            niche: 'Home goods',
-            synthetic: false,
-            subscription_status: 'subscribed',
-            last_received_at: '2026-11-14T10:00:00Z'
-          },
-          {
-            id: 'b-followed',
-            domain: 'followed.example',
-            brand_name: 'Followed',
-            niche: 'Dog treats',
-            synthetic: false,
-            subscription_status: 'subscribed',
-            last_received_at: '2026-11-14T10:00:00Z'
-          }
+          row(),
+          row({
+            id: 'b2',
+            domain: 'wick.example',
+            brand_name: 'Wick',
+            niche: 'Scented candles',
+            recent: 1
+          })
         ],
         error: null
       },
-      competitor_emails: {
+      ...over
+    })
+
+  it('reads the workspace’s own rows and asks the database for the inbox’s brands', async () => {
+    reads.findings.mockResolvedValue([offering])
+    reads.corrections.mockResolvedValue([])
+    const { db, asked } = store({
+      suggestable_inbox_brands: {
         data: [
-          { capture_id: 'b1', industry: 'pet' },
-          { capture_id: 'b1', industry: 'pet' },
-          { capture_id: 'b1', industry: null }
+          row({
+            niche: 'Home goods',
+            // Its emails say pet, whatever its niche says; unknown labels
+            // and odd counts are ignored.
+            labels: { pet: 2, unicorns: 9, home: 'x', baby: -1 }
+          })
         ],
         error: null
       }
@@ -285,7 +257,6 @@ describe('readCompetitorSuggestions (ONB-065a)', () => {
     const got = await readCompetitorSuggestions(db, tenantId, {
       now: new Date('2026-11-15T12:00:00Z')
     })
-    // Its emails say pet, whatever its niche says.
     expect(got).toEqual([
       {
         captureId: 'b1',
@@ -306,51 +277,89 @@ describe('readCompetitorSuggestions (ONB-065a)', () => {
       tenantId
     ])
     expect(asked).toContainEqual([
-      'competitor_subscriptions',
-      'eq',
-      'tenant_id',
-      tenantId
+      'suggestable_inbox_brands',
+      { t: tenantId, since: '2026-10-16T12:00:00.000Z' }
     ])
-    expect(asked).toContainEqual([
-      'competitor_captures',
-      'eq',
-      'subscription_status',
-      'subscribed'
+  })
+
+  it('takes the store’s industry as the owner corrected it, and a real store ignores sample findings', async () => {
+    // The readers say dog treats; the owner says it sells candles.
+    reads.findings.mockResolvedValue([
+      offering,
+      { ...offering, statement: 'Scented candles', pass: 'sample' }
     ])
-    expect(asked).toContainEqual([
-      'competitor_emails',
-      'gte',
-      'received_at',
-      '2026-10-16T12:00:00.000Z'
+    reads.corrections.mockResolvedValue([
+      {
+        id: 'c1',
+        section: 'offering',
+        original: 'Dog treats and toys',
+        action: 'replace',
+        value: 'Hand-poured scented candles',
+        createdAt: '2026-11-15T09:00:00Z'
+      }
     ])
+    const got = await readCompetitorSuggestions(store().db, tenantId)
+    expect(got.map((s) => [s.domain, s.industry])).toEqual([
+      ['wick.example', 'home']
+    ])
+    // Without his correction it is pet: the sample's candles do not count.
+    reads.corrections.mockResolvedValue([])
+    const plain = await readCompetitorSuggestions(store().db, tenantId)
+    expect(plain.map((s) => [s.domain, s.industry])).toEqual([
+      ['bark.example', 'pet']
+    ])
+  })
+
+  it('reads the sample store’s sample findings and sample brands', async () => {
+    reads.findings.mockResolvedValue([
+      { ...offering, statement: 'Scented candles', pass: 'sample' }
+    ])
+    reads.corrections.mockResolvedValue([])
+    const { db } = store({
+      brand_profiles: {
+        data: { domain: 'cedar-lane.example', synthetic: true },
+        error: null
+      },
+      suggestable_inbox_brands: {
+        data: [
+          row({
+            id: 's1',
+            domain: 'wick.example',
+            niche: 'Scented candles',
+            synthetic: true
+          }),
+          // A real brand never reaches a sample store.
+          row({ id: 'r1', domain: 'wick.com', niche: 'Scented candles' })
+        ],
+        error: null
+      }
+    })
+    const got = await readCompetitorSuggestions(db, tenantId)
+    expect(got.map((s) => s.captureId)).toEqual(['s1'])
+  })
+
+  it('suggests nothing before the workspace has a brand profile', async () => {
+    reads.findings.mockResolvedValue([offering])
+    reads.corrections.mockResolvedValue([])
+    const { db } = store({ brand_profiles: { data: null, error: null } })
+    expect(await readCompetitorSuggestions(db, tenantId)).toEqual([])
   })
 
   it('throws a read that fails', async () => {
     reads.findings.mockResolvedValue([offering])
     reads.corrections.mockResolvedValue([])
-    const ok = { data: [], error: null }
-    for (const table of [
-      'brand_profiles',
-      'competitor_subscriptions',
-      'competitor_captures'
-    ]) {
-      const answers: Record<string, { data: unknown; error: unknown }> = {
-        brand_profiles: {
-          data: { domain: 'mystore.example', synthetic: false },
-          error: null
-        },
-        competitor_subscriptions: ok,
-        competitor_captures: ok,
-        competitor_emails: ok
-      }
-      answers[table] = { data: null, error: { code: 'PGRST000' } }
+    const failed = { data: null, error: { code: 'PGRST000' } }
+    for (const table of ['brand_profiles', 'suggestable_inbox_brands'])
       await expect(
-        readCompetitorSuggestions(fakeDb(answers).db, tenantId)
+        readCompetitorSuggestions(store({ [table]: failed }).db, tenantId)
       ).rejects.toMatchObject({ code: 'PGRST000' })
-    }
-    reads.corrections.mockRejectedValue({ code: 'PGRST001' })
+    reads.corrections.mockRejectedValueOnce({ code: 'PGRST001' })
     await expect(
-      readCompetitorSuggestions(realStore().db, tenantId)
+      readCompetitorSuggestions(store().db, tenantId)
     ).rejects.toMatchObject({ code: 'PGRST001' })
+    reads.findings.mockRejectedValueOnce({ code: 'PGRST002' })
+    await expect(
+      readCompetitorSuggestions(store().db, tenantId)
+    ).rejects.toMatchObject({ code: 'PGRST002' })
   })
 })
