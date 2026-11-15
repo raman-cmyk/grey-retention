@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { brandBookHeader } from '@/features/agents/memory'
 import {
   brandBookAuthor,
   brandBookFrom,
@@ -173,6 +174,12 @@ describe('brandBookFrom (ONB-106b)', () => {
       sources: ['ads', 'reviews', 'site']
     })
     expect(book.avoid.length).toBeGreaterThan(0)
+    // The agents' header names the book's parts exactly (features/agents/memory.ts).
+    const header = brandBookHeader(2)
+    for (const part of ['facts', 'owner', 'observed', 'unclear', 'avoid']) {
+      expect(Object.keys(book)).toContain(part)
+      expect(header).toContain(`"${part}"`)
+    }
   })
 
   it('never takes a dated ad offer, or a sentence with a number or a claim', () => {
