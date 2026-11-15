@@ -71,7 +71,7 @@ select is(split_part(current_setting('test.claim'),' ',1),'content','the retry s
 select set_config('test.lease',split_part(current_setting('test.claim'),' ',2),true);
 select is(public.finish_email_step(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'content','{"locked":true}'),'copy','then it is saved');
 select set_config('test.lease',(select c.lease_token from public.claim_email_build(current_setting('test.build')::uuid) c)::text,true);
-select is(public.finish_email_step(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'copy','{"draft":{}}'),'design','and so is the copy');
+select is(public.finish_email_step(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'copy','{"draft":{"subject":"Hello"}}'),'design','and so is the copy');
 reset role;
 
 -- The furthest build is handed out first.
