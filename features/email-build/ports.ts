@@ -64,6 +64,12 @@ export type Store = {
   /** `featurable` comes from `featurableStock`: unknown stock is allowed. */
   products: CatalogProduct[]
   facts: BrandFacts
+  /**
+   * ONB-061: the customers' own words from reviews, already checked like
+   * copy (lane A carries them into the writer's data). Absent for the
+   * sample store.
+   */
+  customerWords?: string[]
 }
 
 /**

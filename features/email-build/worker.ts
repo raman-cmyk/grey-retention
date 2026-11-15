@@ -9,18 +9,14 @@ import {
 import { SupabaseOfferSource, type OfferSource } from '@/features/offers/source'
 import { databaseFallbackLog, type FallbackLog } from '@/features/fallback/log'
 import { stepCode } from '@/features/strategy/worker'
+import { planStore, storeForPlan } from '@/features/onboarding/store-source'
+import { planOfferSource } from '@/features/strategy/offers'
 import { builtEmail, plannedEmail, type BuildAgents } from './build'
 import { buildAgentsFor } from './agents'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { maxStepSaves, roundSteps } from './step-names'
 import { buildCode, type BuildFailureCode } from './failure-words'
-import {
-  ownerOrSampleOffers,
-  sampleOffersFrom,
-  sampleStoreFrom,
-  type SavedOffers,
-  type StoreSource
-} from './ports'
+import { type SavedOffers, type StoreSource } from './ports'
 
 type Db = SupabaseClient<Database>
 
@@ -44,12 +40,16 @@ export const maxEmailBytes = 290_000
 export async function runEmailBuilds(
   db: Db,
   deps: {
-    /** Default: the sample store from the plan's first day. */
+    /**
+     * Default: the store the plan was made from (ONB-057b): the
+     * workspace's own, or the sample store from the plan's first day.
+     */
     stores?: StoreSource
     /**
      * Default: what the owner saved in Settings (DSC-001, read with this
-     * service-role client), or the sample offers from the plan's first day
-     * when the owner has saved nothing (`ownerOrSampleOffers`).
+     * service-role client); when the owner has saved nothing, the sample
+     * offers from the plan's first day for the sample store only, none for
+     * the workspace's own (`planOfferSource`, ONB-057b).
      */
     offers?: OfferSource
     /** Default: DSC-001's `SupabaseOfferSource` on `db`. */
@@ -146,15 +146,26 @@ export async function runEmailBuilds(
           await fail('planned_email_invalid', true)
           continue
         }
-        const stores = deps.stores ?? sampleStoreFrom(job.start_on)
-        const offers =
-          deps.offers ??
-          ownerOrSampleOffers(saved, sampleOffersFrom(job.start_on))
+        // ONB-057b: the store the plan was made from: the sample store's
+        // plan builds on the sample store, the workspace's own on its own.
+        const plan = await planStore(db, job)
+        const stores = deps.stores ?? storeForPlan(db, plan, job.start_on)
         // The workspace's one brand timezone is "store time" everywhere.
         const store = {
           ...(await stores.read(job.tenant_id)),
           timezone: job.timezone
         }
+        // Its own store read another way since (live then, fake now, or
+        // back): planning again makes a plan from the store as it is.
+        if (store.sample !== plan.sample) {
+          await fail('plan_store_changed', true)
+          continue
+        }
+        // The owner's offers; when nothing is saved, the sample's only for
+        // the sample store, none for the workspace's own.
+        const offers =
+          deps.offers ??
+          planOfferSource(saved, job.start_on, { sample: store.sample })
         const started = now()
         // REL-AI: the copy step skips the subjects of the plan's other emails.
         const taken =
