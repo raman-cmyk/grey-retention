@@ -90,7 +90,14 @@ export const otherBrands: ReadonlySet<string> = new Set([
 ])
 
 /** The page's own parts: their words never mark a box of other brands. */
-export const landmarks: ReadonlySet<string> = new Set(['html', 'body', 'header', 'nav', 'main', 'footer'])
+export const landmarks: ReadonlySet<string> = new Set([
+  'html',
+  'body',
+  'header',
+  'nav',
+  'main',
+  'footer'
+])
 
 /**
  * What a logo's own file name or label says about its ink. `brand` words
