@@ -1,9 +1,9 @@
 begin;
-select plan(9);
+select plan(13);
 
 -- REL-084: a workspace's members read their own workspace's fallbacks.
--- Workspace 101: owner ...01, staff ...05, admin ...06. Workspace 102:
--- owner ...04. Platform admin ...02.
+-- Workspace 101: owner ...01, staff ...05. Workspace 102: owner ...04.
+-- Platform admin ...02; designer ...03.
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
 set local role service_role;
 select public.record_fallback('00000000-0000-4000-8000-000000000101',null,'email-build','copy_failed',
@@ -35,6 +35,38 @@ select is((select count(*) from public.agent_fallbacks where tenant_id='00000000
 select is((select count(*) from public.agent_fallbacks),1::bigint,'only its own');
 select throws_ok($$update public.agent_fallbacks set reason='x'$$,'42501',null,'members still cannot change the log');
 reset role;
+
+-- Someone outside the workspace (a designer) reads none of it.
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000003","role":"authenticated"}',true);
+set local role authenticated;
+select is((select count(*) from public.agent_fallbacks),0::bigint,'a designer reads no workspace''s fallbacks');
+reset role;
+
+-- An invited (not yet active) member reads nothing.
+update public.tenant_memberships set status='invited'
+  where tenant_id='00000000-0000-4000-8000-000000000101' and profile_id='00000000-0000-4000-8000-000000000005';
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000005","role":"authenticated"}',true);
+set local role authenticated;
+select is((select count(*) from public.agent_fallbacks),0::bigint,'an invited member reads nothing yet');
+reset role;
+update public.tenant_memberships set status='active'
+  where tenant_id='00000000-0000-4000-8000-000000000101' and profile_id='00000000-0000-4000-8000-000000000005';
+
+-- A paused workspace's members read nothing.
+update public.tenants set status='paused' where id='00000000-0000-4000-8000-000000000101';
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+set local role authenticated;
+select is((select count(*) from public.agent_fallbacks),0::bigint,'a paused workspace''s owner reads nothing');
+reset role;
+update public.tenants set status='active' where id='00000000-0000-4000-8000-000000000101';
+
+-- An account that was switched off reads nothing.
+update public.profiles set status='inactive' where id='00000000-0000-4000-8000-000000000001';
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+set local role authenticated;
+select is((select count(*) from public.agent_fallbacks),0::bigint,'a switched-off account reads nothing');
+reset role;
+update public.profiles set status='active' where id='00000000-0000-4000-8000-000000000001';
 
 -- A member the workspace removed reads nothing any more.
 update public.tenant_memberships set status='inactive'

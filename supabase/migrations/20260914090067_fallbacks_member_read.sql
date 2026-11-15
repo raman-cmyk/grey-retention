@@ -9,4 +9,4 @@
 -- The number is chosen at merge time (D24).
 
 create policy member_read on public.agent_fallbacks for select to authenticated
-  using (tenant_id is not null and (select private.is_active_member(tenant_id)));
+  using (tenant_id is not null and private.is_active_member(tenant_id));
