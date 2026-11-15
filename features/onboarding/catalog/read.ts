@@ -56,7 +56,11 @@ const money = (minor: number, currency: string) => {
 export async function listCatalog(
   db: SupabaseClient<Database>,
   tenantId: string,
-  options: { featurableOnly?: boolean } = {}
+  options: {
+    featurableOnly?: boolean
+    /** Only the fake Klaviyo's products (true) or only real ones (false). */
+    synthetic?: boolean
+  } = {}
 ): Promise<CatalogEntry[]> {
   let query = db
     .from('products')
@@ -70,6 +74,8 @@ export async function listCatalog(
     .order('title')
     .limit(500)
   if (options.featurableOnly) query = query.eq('featurable', true)
+  if (options.synthetic !== undefined)
+    query = query.eq('synthetic', options.synthetic)
   const { data, error } = await query
   if (error) throw error
   return (data ?? []).map((p) => {

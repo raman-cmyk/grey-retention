@@ -11,6 +11,12 @@ export type StrategyData = {
   load(input: { tenantId: string; start: string }): Promise<{
     /** True while this is the sample store, not the workspace's own. */
     sample: boolean
+    /**
+     * ONB-057b: true when made from the workspace's own data (its catalog
+     * and Klaviyo history, live or fake), absent for the sample store.
+     * "Create email" builds from the same store the plan was made from.
+     */
+    own?: boolean
     /** Raw store data for `readPulseInput` (checked there). */
     pulse: unknown
     /** Raw competitor data for `readMapperInput` (checked there). */
