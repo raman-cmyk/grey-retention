@@ -22,7 +22,8 @@ import { footerHtml } from './klaviyo-tags'
  * `bgcolor` attributes for Outlook, a white 600px container on the brand
  * background, one column under 620px, the brand font with a web-safe
  * fallback, no script, form, web font or external stylesheet, and all text
- * as live HTML. All text is escaped, including `{` and `}`, so copy can
+ * as live HTML (except a hero the design studio drew, DST-006a: its words
+ * are in its picture and its alt text). All text is escaped, including `{` and `}`, so copy can
  * never become a Klaviyo template tag. Every block is checked against its
  * schema again here, so stored content can never skip validation.
  *
@@ -178,10 +179,18 @@ function button(
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="${align}" style="margin:${align === 'center' ? '0 auto' : '0'}"><tr><td bgcolor="${colors.bg}" align="center" style="border-radius:${t.radius};background:${colors.bg};padding:14px 32px"><a href="${safeUrl(url)}" target="_blank" style="display:inline-block;font-family:${t.font};font-size:16px;line-height:20px;font-weight:700;color:${colors.fg};text-decoration:none">${escapeHtml(label)}</a></td></tr></table>`
 }
 
-function image(src: string, alt: string, width: number, ctx: Ctx, style = '') {
+function image(
+  src: string,
+  alt: string,
+  width: number,
+  ctx: Ctx,
+  style = '',
+  height?: number
+) {
   const url = safeImageUrl(src, ctx.mode)
   if (!url) return ''
-  return `<img src="${url}" alt="${escapeHtml(alt)}" width="${width}" style="display:block;width:100%;max-width:${width}px;height:auto;border:0;outline:none;text-decoration:none;margin:0 auto;${style}">`
+  const tall = height ? ` height="${height}"` : ''
+  return `<img src="${url}" alt="${escapeHtml(alt)}" width="${width}"${tall} style="display:block;width:100%;max-width:${width}px;height:auto;border:0;outline:none;text-decoration:none;margin:0 auto;${style}">`
 }
 
 const linked = (url: string, inner: string) =>
@@ -190,27 +199,33 @@ const linked = (url: string, inner: string) =>
 /**
  * DST-006a: a hero the design studio drew. The picture is the section
  * (its words drawn, and in its alt text), linked like the hero's photo,
- * full width with no padding; the button stays live HTML below it.
+ * full width with no padding, with its height so its space is kept while
+ * it loads; the button stays live HTML below it, on the section's
+ * background. With pictures off, the alt shows in the brand's font. Its
+ * headline is the email's first (`ctx.headlines`), so the next is an h2.
  */
 function studioHero(
   type: 'hero_product' | 'hero_image',
   c: {
-    picture?: { src: string; alt: string; height: number }
+    picture?: { src: string; alt: string; height: number; bg?: string }
     url: string
     cta: string
   },
   ctx: Ctx
 ) {
   const picture = c.picture!
+  const bg = picture.bg ? safeColor(picture.bg, WHITE) : undefined
+  ctx.headlines++
+  const alt = `font-family:${ctx.theme.font};font-size:18px;line-height:1.4;font-weight:700;color:${readableOn(ctx.theme.ink, bg ?? WHITE)};text-align:center`
   return (
     row(
       type,
-      linked(c.url, image(picture.src, picture.alt, EMAIL_WIDTH, ctx)),
-      {
-        padding: '0',
-        pad: false
-      }
-    ) + row(type, button(c.cta, c.url, ctx), { padding: '20px 24px 32px' })
+      linked(
+        c.url,
+        image(picture.src, picture.alt, EMAIL_WIDTH, ctx, alt, picture.height)
+      ),
+      { padding: '0', pad: false, bg }
+    ) + row(type, button(c.cta, c.url, ctx), { padding: '20px 24px 32px', bg })
   )
 }
 

@@ -15,6 +15,7 @@ import {
 } from './render'
 import { sampleBlocks, sampleBrand } from './samples'
 import type { BlockBrand } from './brand'
+import { designedHeight } from '@/features/studio/storyboard'
 
 const all = blockTypes.map((t) => sampleBlocks[t])
 const block = (type: Parameters<typeof parseBlock>[0], content: unknown) => {
@@ -366,30 +367,80 @@ describe('a hero the design studio drew (DST-006a)', () => {
     }
   )
 
-  it('takes only an https picture of a usable size, with its render', () => {
+  it('keeps the picture’s shape while it loads and its background behind the button', () => {
+    const base = sampleBlocks.hero_product.content as Record<string, unknown>
+    const html = renderBlock(
+      block('hero_product', {
+        ...base,
+        picture: { ...picture, bg: '#1f3a2e' }
+      }),
+      httpsBrand,
+      'klaviyo'
+    )
+    expect(html.match(/<img [^>]*>/)?.[0]).toContain('height="640"')
+    // Both rows (the picture and the button) on the section's background.
+    expect(html.match(/bgcolor="#1f3a2e"/g)).toHaveLength(2)
+    // With pictures off, the alt shows in the brand's font, readable.
+    expect(html.match(/<img [^>]*>/)?.[0]).toMatch(
+      /style="[^"]*font-family:[^"]*color:#(?:fff|ffffff)\b/i
+    )
+    // The eyebrow is in the picture too, and no heading is drawn.
+    const outside = html.replace(/ alt="[^"]*"/g, '')
+    if (base.eyebrow) expect(outside).not.toContain(String(base.eyebrow))
+    expect(html).not.toMatch(/<h[12]/)
+  })
+
+  it('counts as the email’s first headline: the next is an h2', () => {
+    const html = renderEmail({
+      blocks: [
+        sampleBlocks.header_logo,
+        block('hero_product', {
+          ...(sampleBlocks.hero_product.content as object),
+          picture
+        }),
+        sampleBlocks.offer_banner
+      ],
+      brand: httpsBrand,
+      mode: 'klaviyo'
+    })
+    expect(html).not.toMatch(/<h1/)
+    expect(html).toMatch(/<h2/)
+  })
+
+  it('takes only an https picture of a designed section’s size, with its render', () => {
     const base = sampleBlocks.hero_product.content as Record<string, unknown>
     for (const bad of [
       { ...picture, src: 'http://db.example/x.jpg' },
-      { ...picture, height: 20 },
+      { ...picture, src: 'data:image/png;base64,iVBORw0KGgo=' },
+      { ...picture, height: designedHeight.min - 1 },
+      { ...picture, height: designedHeight.max + 1 },
       { ...picture, render: 'not-a-render' },
+      { ...picture, bg: 'red' },
       { ...picture, extra: 1 }
     ])
       expect(parseBlock('hero_product', { ...base, picture: bad }).ok).toBe(
         false
       )
-    expect(parseBlock('hero_product', { ...base, picture }).ok).toBe(true)
+    for (const height of [designedHeight.min, designedHeight.max])
+      expect(
+        parseBlock('hero_product', { ...base, picture: { ...picture, height } })
+          .ok
+      ).toBe(true)
   })
 
-  it('escapes the alt text', () => {
+  it('escapes the alt text, braces too', () => {
     const base = sampleBlocks.hero_image.content as Record<string, unknown>
     const html = renderBlock(
       block('hero_image', {
         ...base,
-        picture: { ...picture, alt: 'Grove & Co "new" <tray>' }
+        picture: { ...picture, alt: 'Grove & Co "new" <tray> {{ first_name }}' }
       }),
       httpsBrand,
       'klaviyo'
     )
-    expect(html).toContain('alt="Grove &amp; Co &quot;new&quot; &lt;tray&gt;"')
+    expect(html).toContain(
+      'alt="Grove &amp; Co &quot;new&quot; &lt;tray&gt; &#123;&#123; first_name &#125;&#125;"'
+    )
+    expect(html).not.toMatch(/\{\{|\{%/)
   })
 })
