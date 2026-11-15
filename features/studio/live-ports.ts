@@ -1,4 +1,5 @@
 import 'server-only'
+import { createHash } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import type { BuildAgents } from '@/features/email-build/build'
@@ -184,9 +185,18 @@ export function studioPortsFor(
       if (!file) return null
       // Changed while it was read: not the picture the browser drew.
       if (!(await tagged(render))) return null
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      // A single upload's tag is its bytes' MD5: the bytes read are the
+      // tagged ones (a tag of another form is left to the checks above).
+      const tag = tagOf(render.etag) ?? ''
+      if (
+        /^[0-9a-f]{32}$/i.test(tag) &&
+        createHash('md5').update(bytes).digest('hex') !== tag.toLowerCase()
+      )
+        return null
       return {
         id: section,
-        bytes: new Uint8Array(await file.arrayBuffer()),
+        bytes,
         contentType: 'image/jpeg',
         width: renderWidth,
         height: render.height * renderScale

@@ -347,4 +347,70 @@ describe('a design step waiting for its pictures (DST-006b)', () => {
     })
     expect(runStep.mock.calls.at(-1)![2].studio).toBeUndefined()
   })
+
+  it('waits a studio design step that threw from its saved work, so the studio tries it again (DST-006e)', async () => {
+    const withAgents = {
+      memory: new InMemoryMemoryStore(),
+      log: new InMemoryRunLog(),
+      ai: vi.fn()
+    }
+    const go = (d: ReturnType<typeof fakeDb>) =>
+      runEmailBuilds(d.db, {
+        fallbacks: memoryFallbackLog(),
+        first: d.first,
+        studio: true,
+        agents: withAgents
+      })
+    runStep.mockRejectedValueOnce(new Error('storage down'))
+    const d = fakeDb()
+    await go(d)
+    expect(named(d.calls, 'wait_email_round')[0]!.args).toEqual({
+      build: 'build-1',
+      lease: 'lease-1',
+      work: { round: 1 },
+      seconds: 120
+    })
+    expect(named(d.calls, 'fail_email_step')).toEqual([])
+    // No wait left: it fails its try, and the sweep draws it coded.
+    runStep.mockRejectedValueOnce(new Error('storage down'))
+    const spent = fakeDb({ wait: { code: '22023', details: 'too_many_waits' } })
+    await go(spent)
+    expect(named(spent.calls, 'fail_email_step')[0]!.args).toMatchObject({
+      final: false
+    })
+    // Without the studio, a throw fails its try as before.
+    runStep.mockRejectedValueOnce(new Error('storage down'))
+    const plain = fakeDb()
+    await runEmailBuilds(plain.db, {
+      fallbacks: memoryFallbackLog(),
+      first: plain.first,
+      studio: false,
+      agents: withAgents
+    })
+    expect(named(plain.calls, 'wait_email_round')).toEqual([])
+    expect(named(plain.calls, 'fail_email_step')).toHaveLength(1)
+  })
+
+  it('tells the design step when the studio is on but this claim has no agents (DST-006e)', async () => {
+    vi.stubEnv('EMAIL_BUILD_AGENTS', 'on')
+    runStep.mockResolvedValueOnce(waits)
+    const d = fakeDb()
+    await runEmailBuilds(d.db, {
+      fallbacks: memoryFallbackLog(),
+      first: d.first,
+      studio: true,
+      agents: null
+    })
+    expect(runStep.mock.calls.at(-1)![2]).toMatchObject({ studioSkipped: true })
+    vi.unstubAllEnvs()
+    runStep.mockResolvedValueOnce(waits)
+    const off = fakeDb()
+    await runEmailBuilds(off.db, {
+      fallbacks: memoryFallbackLog(),
+      first: off.first,
+      studio: true,
+      agents: null
+    })
+    expect(runStep.mock.calls.at(-1)![2].studioSkipped).toBeUndefined()
+  })
 })

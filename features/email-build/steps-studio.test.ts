@@ -167,4 +167,27 @@ describe('the design step with the design studio (DST-006c part 2b)', () => {
     await step(store, progress, undefined, plain)
     expect(plain.entries()).toEqual([])
   })
+
+  it('says once when the studio had no time for the email (DST-006e)', async () => {
+    const { store, progress } = await beforeDesign()
+    const fallbacks = memoryFallbackLog()
+    const out = await runBuildStep(
+      'design',
+      { planned, store, offers: sampleOffersFrom(start), progress },
+      {
+        tenantId,
+        callerKey: 'email-build:b1',
+        fallbacks,
+        clock,
+        studioSkipped: true
+      }
+    )
+    expect(out).toMatchObject({ ok: true, done: 'design' })
+    expect(fallbacks.entries()).toEqual([
+      expect.objectContaining({
+        reasonCode: 'studio_no_time',
+        fallback: 'Drew the email with its coded blocks.'
+      })
+    ])
+  })
 })

@@ -260,7 +260,7 @@ describe('the design step with the studio (DST-006c part 2a)', () => {
     expect(brief.words).not.toHaveProperty('eyebrow')
   })
 
-  it('keeps layer 1’s order, the one the copy was checked in, whatever the storyboard’s', async () => {
+  it('keeps layer 1’s order, the one the copy was checked in: a storyboard that moves sections is replaced by code’s own', async () => {
     const moved = {
       ...storyboard,
       sections: [
@@ -270,17 +270,17 @@ describe('the design step with the studio (DST-006c part 2a)', () => {
       ]
     }
     const p = ports({ storyboard: vi.fn(async () => moved) })
-    const first = waitingOf(await studioDesignStep(input(), p))
-    const out = (await studioDesignStep(
-      input(first.work),
-      ports({}, [drawn])
-    )) as { blocks: Block[] }
-    expect(out.blocks.map((b) => b.type)).toEqual([
-      'header_logo',
-      'hero_product',
-      'footer'
-    ])
-    expect(out.blocks[1]!.content).toHaveProperty('picture')
+    const out = await studioDesignStep(input(), p)
+    expect(p.coded).toHaveBeenCalledWith('email', 'storyboard_reordered')
+    // Code's own storyboard keeps layer 1's order (or fits none: coded).
+    const saved =
+      'waiting' in out
+        ? (out.waiting.work as { studio: { storyboard: Storyboard | null } })
+            .studio.storyboard
+        : null
+    if (saved)
+      expect(saved.sections.map((s) => s.id)).toEqual(['s1', 's2', 's3'])
+    else expect(out).toEqual({ blocks, pictures: 0 })
   })
 
   it('keeps the build’s limits from work it cannot read, and goes on as a JSON round trip', async () => {

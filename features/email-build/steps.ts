@@ -215,6 +215,8 @@ export async function runBuildStep(
      * the design step draws coded blocks.
      */
     studio?: StudioStepPorts
+    /** DST-006e: the owner's studio is on but this claim cannot run it. */
+    studioSkipped?: boolean
   }
 ): Promise<StepResult> {
   if (!(buildSteps as readonly string[]).includes(step))
@@ -327,6 +329,18 @@ export async function runBuildStep(
       attempts: 1,
       detail: {},
       dedupeKey: `design-studio:${keyPart(ctx.callerKey)}:not-finished`
+    })
+  } else if (ctx.studioSkipped) {
+    await ctx.fallbacks.record({
+      tenantId: ctx.tenantId,
+      campaignId: ctx.campaignId ?? null,
+      agent: 'design-studio',
+      reasonCode: 'studio_no_time',
+      reason: 'The design studio had no time left for this email.',
+      fallback: 'Drew the email with its coded blocks.',
+      attempts: 1,
+      detail: {},
+      dedupeKey: `design-studio:${keyPart(ctx.callerKey)}:no-time`
     })
   }
   const made = designStep({

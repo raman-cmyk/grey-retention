@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
@@ -172,6 +173,21 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
       storage({ tags: ['abc', 'changed'] })
     ])
       expect(await ports(s).ports.picture(drawn, 's2')).toBeNull()
+    // A tag that is an MD5 must be the downloaded bytes' own.
+    const md5 = createHash('md5')
+      .update(new Uint8Array([1, 2, 3, 4]))
+      .digest('hex')
+    const own = { ...drawn, etag: `"${md5}"` }
+    expect(
+      await ports(storage({ tags: [md5, md5] })).ports.picture(own, 's2')
+    ).not.toBeNull()
+    const other = { ...drawn, etag: `"${'0'.repeat(32)}"` }
+    expect(
+      await ports(storage({ tags: ['0'.repeat(32)] })).ports.picture(
+        other,
+        's2'
+      )
+    ).toBeNull()
     // A tag read as "abc" is the same tag; a weak or an empty one is not.
     expect(
       await ports(storage({ tags: ['"abc"', 'abc'] })).ports.picture(
