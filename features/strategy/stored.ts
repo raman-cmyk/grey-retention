@@ -43,7 +43,9 @@ export const storedPulse = z.object({
   summary: words,
   source: z.enum(['agent', 'code']),
   /** True while the store data is the sample store (no reader yet). */
-  sample: z.boolean().optional()
+  sample: z.boolean().optional(),
+  /** ONB-057b: made from the workspace's own data, not the sample store. */
+  own: z.boolean().optional()
 })
 
 export const storedPlan = z.object({
@@ -87,7 +89,8 @@ export const storedPlan = z.object({
       })
     )
     .max(10),
-  sample: z.boolean().optional()
+  sample: z.boolean().optional(),
+  own: z.boolean().optional()
 })
 
 export type StoredPulse = z.infer<typeof storedPulse>

@@ -36,7 +36,7 @@ const noOffers: OfferSource = {
 export const planOfferSource = (
   saved: SavedOffers,
   start: string,
-  { sample = true }: { sample?: boolean } = {}
+  { sample }: { sample: boolean }
 ): OfferSource =>
   ownerOrSampleOffers(saved, sample ? sampleOffersFrom(start) : noOffers)
 
