@@ -1,26 +1,38 @@
-import { defaultBannedClaims } from '@/features/copy-qa/check'
+import { wordProblems } from '@/features/assembly/assemble'
+import { checkCopy, type BrandFacts } from '@/features/copy-qa/check'
 import type { Finding } from '@/features/onboarding/findings'
 
 /**
- * Customer words (owner pick #61, ONB-061): the phrases customers use in
- * their reviews and comments, reused in copy. The Reviews + social reader
- * (ONB-105) stores each as a `customer_words` finding whose evidence is the
- * customer's exact words, already checked: no link, address, handle or
- * phone number, and no claim. This picks the ones a writer may reuse:
- * short, sure, never one a banned phrase or a general claim is in, each
- * once, the surest first.
+ * Customer words (owner pick #61, ONB-061): the words customers use in
+ * their reviews and comments, for the writer to borrow. The Reviews +
+ * social reader (ONB-105) stores each as a `customer_words` finding whose
+ * evidence is the customer's exact words, free of links, addresses,
+ * handles and phone numbers. Review text is anyone's words, so this keeps
+ * only what any email could say as the brand:
  *
- * The writer uses them as the brand's own words ("the softest tee you'll
- * own"), never as a quote or with a customer's name: a quoted review is a
- * different thing (`quotable_review`, shown with its author and stars).
+ * - what copy QA and the writer's own word checks would pass with the
+ *   brand's real facts (no shipping, returns, guarantee, delivery or
+ *   percent beyond them, no social proof, results, timings, founder story,
+ *   banned phrase or general claim);
+ * - never the customer speaking ("my go-to", "I love it"), a superlative
+ *   ("the softest tee"), a before-and-after ("cleared my skin") or a name
+ *   other than the brand's or its products';
+ * - short, sure, each once, the surest first, at most 8.
+ *
+ * The writer gets the phrases as data and one fixed rule
+ * (`customerWordsRule`): borrow their words and tone, never quote them.
  */
 
 /** At most this many phrases go to the writer. */
 export const maxCustomerWords = 8
 /** A phrase, not a review: longer quotes are left for `quotable_review`. */
 export const maxPhraseLength = 80
-/** A finding surer than this is used. */
+/** Findings at least this sure are used. */
 export const minConfidence = 0.5
+
+/** The writer's rule for the phrases (it goes with the rules, not the data). */
+export const customerWordsRule =
+  "customerWords are phrases real customers use. Borrow their words and tone where they fit; never quote them, never put them in a customer's mouth, and never turn them into a promise about results, speed or being the best."
 
 export type CustomerPhrase = {
   /** The customer's exact words. */
@@ -33,52 +45,154 @@ export type CustomerPhrase = {
   confidence: number
 }
 
+/** The customer speaking: never the brand's voice. */
+const firstPerson =
+  /\b(?:i|i'm|i’m|i've|i’ve|i'd|i’d|i'll|i’ll|me|my|mine|myself)\b/i
+/** A before-and-after or a body change: a results claim in the brand's mouth. */
+const results =
+  /\b(?:clear(?:s|ed)?|cure[sd]?|heal(?:s|ed)?|fix(?:es|ed)?|transform(?:s|ed)?|chang(?:es|ed)|lost|gain(?:s|ed)?|reduc(?:es|ed)|eras(?:es|ed)|remov(?:es|ed)|eliminat(?:es|ed)|revers(?:es|ed)|stopp?(?:s|ed)|prevent(?:s|ed)|saved|no more)\b/i
+/** Ranking words: a superlative the brand cannot back. */
+const ranking = /\b(?:most|least|ever|unlike any|nothing (?:else|like it))\b/i
+/** Words ending in -est that rank nothing. */
+const plainEst = new Set([
+  'honest',
+  'interest',
+  'rest',
+  'test',
+  'guest',
+  'forest',
+  'west',
+  'chest',
+  'nest',
+  'quest',
+  'request',
+  'suggest',
+  'contest',
+  'harvest',
+  'modest',
+  'protest',
+  'digest',
+  'invest',
+  'earnest',
+  'manifest',
+  'crest',
+  'zest',
+  'vest',
+  'pest',
+  'fest'
+])
+const superlative = (text: string) =>
+  text
+    .toLowerCase()
+    .split(/[^\p{L}]+/u)
+    .some((w) => w.length >= 5 && w.endsWith('est') && !plainEst.has(w))
+
+/** A capitalised word after the first, other than "I" and the allowed names. */
+function namesSomeone(text: string, names: readonly string[]) {
+  let rest = text
+  for (const name of [...names].sort((a, b) => b.length - a.length))
+    if (name.trim().length > 1) rest = rest.split(name.trim()).join(' ')
+  const words = rest.split(/\s+/).filter(Boolean)
+  return words
+    .slice(1)
+    .some((w) => /^\p{Lu}/u.test(w) && !/^I(?:'|’|$)/.test(w))
+}
+
+/** The customer's words, without a pair of quote marks around them. */
+function unquoted(text: string) {
+  const t = text.trim()
+  const pairs: Record<string, string> = {
+    '"': '"',
+    '“': '”',
+    '«': '»',
+    '‘': '’',
+    "'": "'"
+  }
+  const close = pairs[t[0] ?? '']
+  return close && t.length > 1 && t.endsWith(close) ? t.slice(1, -1).trim() : t
+}
+
 const fold = (text: string) =>
   text
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ')
     .trim()
+/** One phrase inside another, as whole words. */
+const inside = (text: string, phrase: string) =>
+  ` ${fold(text)} `.includes(` ${fold(phrase)} `)
 
-/** The phrase as whole words inside a text, as copy QA matches it. */
-function holds(text: string, phrase: string) {
-  const p = fold(phrase)
-  return p.length > 0 && ` ${fold(text)} `.includes(` ${p} `)
+/** Whether copy QA and the writer's checks pass the phrase as a line of copy. */
+function passesChecks(phrase: string, facts: BrandFacts) {
+  const qa = checkCopy({
+    draft: { subject: '', preview: '', blocks: [{ id: 'w', text: phrase }] },
+    facts,
+    maxDiscountPercent: null,
+    codes: [],
+    productNames: [],
+    sendAt: '2026-01-01T00:00:00.000Z'
+  })
+  if (!qa.pass) return false
+  const written = wordProblems(
+    {
+      subject: '',
+      preheader: '',
+      blocks: [{ type: 'text', reason: '', words: { body: phrase } }]
+    },
+    {
+      brief: { campaignType: 'check', goal: 'check' },
+      products: [],
+      codes: [],
+      maxDiscountPercent: 0,
+      sendAt: '2026-01-01T00:00:00.000Z',
+      timezone: 'UTC',
+      facts
+    },
+    { productIds: [], offerShown: false }
+  )
+  return written.length === 0
 }
 
-/** The customer's words without the quote marks around them. */
-const unquoted = (text: string) =>
-  text
-    .trim()
-    .replace(/^["“”'‘’«»]+|["“”'‘’«»]+$/g, '')
-    .trim()
-
 /**
- * The phrases a writer may reuse: `customer_words` findings from reviews or
- * comments, at least `minConfidence` sure, at most `maxPhraseLength`
- * characters, none holding one of `banned` (the brand facts' banned list)
- * or a general claim, each once (a phrase inside a surer one is left out),
- * the surest first, reviews before comments, then the shorter.
- * A sample-rules finding is not used for a live workspace.
+ * The phrases a writer may borrow: `customer_words` findings from reviews
+ * or comments, at least `minConfidence` sure, 3 to `maxPhraseLength`
+ * characters with a letter, passing every check above with the brand's
+ * `facts` (its banned list included); `names` are the brand's and its
+ * products' (a capitalised word other than these may be someone's name).
+ * Each once (a phrase holding a surer or shorter one is left out), the
+ * surest first, reviews before comments, then the shorter.
  */
 export function customerWords(
   findings: readonly Finding[],
-  {
-    banned = [],
-    live = false,
-    max = maxCustomerWords
-  }: { banned?: readonly string[]; live?: boolean; max?: number } = {}
+  options: {
+    facts: BrandFacts
+    /** True for a workspace read live: a sample-rules finding never counts. */
+    live: boolean
+    names?: readonly string[]
+    max?: number
+  }
 ): CustomerPhrase[] {
-  const blocked = [...banned, ...defaultBannedClaims]
+  const max = Number.isInteger(options.max)
+    ? Math.min(Math.max(options.max!, 0), maxCustomerWords)
+    : maxCustomerWords
   const candidates = findings.flatMap((f): CustomerPhrase[] => {
     if (f.topic !== 'customer_words') return []
     if (f.source !== 'reviews' && f.source !== 'social') return []
-    if (f.confidence < minConfidence || (live && f.pass === 'sample')) return []
+    if (f.confidence < minConfidence) return []
+    if (options.live && f.pass === 'sample') return []
     if (!('quote' in f.evidence)) return []
     const phrase = unquoted(f.evidence.quote)
     const length = Array.from(phrase).length
     if (length < 3 || length > maxPhraseLength || !/\p{L}/u.test(phrase))
       return []
-    if (blocked.some((b) => holds(phrase, b))) return []
+    if (
+      firstPerson.test(phrase) ||
+      results.test(phrase) ||
+      ranking.test(phrase) ||
+      superlative(phrase) ||
+      namesSomeone(phrase, options.names ?? []) ||
+      !passesChecks(phrase, options.facts)
+    )
+      return []
     return [
       {
         phrase,
@@ -100,7 +214,7 @@ export function customerWords(
   for (const c of candidates) {
     if (kept.length >= max) break
     if (
-      kept.some((k) => holds(k.phrase, c.phrase) || holds(c.phrase, k.phrase))
+      kept.some((k) => inside(k.phrase, c.phrase) || inside(c.phrase, k.phrase))
     )
       continue
     kept.push(c)
@@ -108,12 +222,6 @@ export function customerWords(
   return kept
 }
 
-/**
- * One line for the writer's brief, or null when there are none. The words
- * are reused as the brand's own, never quoted or put in a customer's name.
- */
-export function customerWordsBrief(phrases: readonly CustomerPhrase[]) {
-  if (!phrases.length) return null
-  const list = phrases.map((p) => `"${p.phrase}"`).join(', ')
-  return `Words customers use about this brand: ${list}. Reuse them where they fit, as the brand's own words. Never present them as a quote or name a customer.`
-}
+/** What the writer's data gets: the phrases alone (JSON keeps them data). */
+export const customerWordsData = (phrases: readonly CustomerPhrase[]) =>
+  phrases.map((p) => p.phrase)
