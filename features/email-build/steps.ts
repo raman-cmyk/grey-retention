@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { OfferSource } from '@/features/offers/source'
 import {
@@ -40,6 +41,7 @@ const sectionsSaved = z.looseObject({
   sendAt: z.iso.datetime({ offset: true }),
   timezone: z.string().min(1),
   sample: z.boolean(),
+  store: z.string().optional(),
   rules: z.looseObject({
     maxDiscountPercent: z.number().min(0).max(100),
     codes: z
@@ -134,6 +136,47 @@ export type StepResult =
 
 const unreadable = { ok: false, code: 'step_progress_invalid' } as const
 
+/** JSON with every object's keys in order: the same data, the same text. */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+  if (value && typeof value === 'object')
+    return `{${Object.keys(value)
+      .sort()
+      .filter((k) => (value as Record<string, unknown>)[k] !== undefined)
+      .map(
+        (k) =>
+          `${JSON.stringify(k)}:${canonical((value as Record<string, unknown>)[k])}`
+      )
+      .join(',')}}`
+  return JSON.stringify(value) ?? 'null'
+}
+
+/**
+ * REL-STO: what the build's steps read from the store, as one short hash:
+ * the brand, the industry, the facts and the products (in id order, so a
+ * read that lists them in another order is the same store). Left out: the
+ * timezone and the customers' words, since later steps use the ones the
+ * steps before saved. A catalog read again between two steps with other
+ * products, prices or pictures gives another hash.
+ */
+export function storeFingerprint(store: Store) {
+  const products = [...store.products].sort((a, b) =>
+    a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+  )
+  return createHash('sha256')
+    .update(
+      canonical({
+        sample: store.sample,
+        brand: store.brand,
+        industry: store.industry,
+        facts: store.facts,
+        products
+      })
+    )
+    .digest('hex')
+    .slice(0, 32)
+}
+
 /**
  * Runs one build step from the steps saved before it. The store is read
  * fresh for each step; the send time, offer rules and timezone are the
@@ -160,12 +203,22 @@ export async function runBuildStep(
   const { planned, store } = input
   if (step === 'sections') {
     const made = await sectionsStep(input, ctx)
-    return made.ok ? { ok: true, done: 'sections', output: made.output } : made
+    return made.ok
+      ? {
+          ok: true,
+          done: 'sections',
+          output: { ...made.output, store: storeFingerprint(store) }
+        }
+      : made
   }
   const parsed = sectionsSaved.safeParse(progress.data.sections)
   if (!parsed.success) return unreadable
   const sections = parsed.data as unknown as SectionsOutput
-  if (sections.sample !== store.sample)
+  // REL-STO: the same store as the first step read, or start over.
+  if (
+    sections.sample !== store.sample ||
+    (sections.store !== undefined && sections.store !== storeFingerprint(store))
+  )
     return { ok: false, code: 'store_changed' }
   if (step === 'content')
     return {
