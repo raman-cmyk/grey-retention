@@ -4,15 +4,16 @@ import { parse, type DefaultTreeAdapterTypes as T } from 'parse5'
 /**
  * Light and dark logos (owner pick #60, ONB-060a): the logo candidates on
  * the brand's own pages, each one's ink read from its own pixels (PNG and
- * SVG) or its name, and the pick of one logo for light sections and one
- * for dark sections. Pure: the Site reader fetches the pages and pictures
- * (ONB-060b keeps the pick).
+ * SVG) or its own name, and the pick of one logo for light sections and
+ * one for dark sections. Pure: the Site reader fetches the pages and
+ * pictures (ONB-060b keeps the pick). Every picture is untrusted bytes:
+ * a bad one is "unknown", never an error.
  */
 
 export type LogoCandidate = {
   /** Absolute https. */
   url: string
-  /** What its name or label says about its ink, when it says. */
+  /** What its own file name or label says about its ink, when it says. */
   hint: 'light' | 'dark' | null
   /** Where it was found, surest first: structured data, the header, a named image, a tag. */
   from: 'schema' | 'header' | 'named' | 'meta'
@@ -27,9 +28,10 @@ export type LogoTone = {
 
 /** Most candidates kept per page. */
 export const maxCandidates = 6
-/** Largest picture read (bytes) and decoded (pixels). */
+/** Largest picture read (bytes), decoded (pixels) and on any side. */
 export const maxLogoBytes = 1_000_000
-export const maxLogoPixels = 4_000_000
+export const maxLogoPixels = 2_000_000
+export const maxLogoSide = 4_096
 
 type Node = T.ChildNode | T.ParentNode
 const isElement = (n: Node): n is T.Element => 'tagName' in n
@@ -42,6 +44,16 @@ const textOf = (n: Node): string =>
     ? (n as T.TextNode).value
     : children(n).map(textOf).join('')
 
+/** The words of names and labels: `siteLogo-white@2x.png` is site, logo, white, 2x, png. */
+const words = (...texts: (string | null)[]) =>
+  texts
+    .filter((t): t is string => t !== null)
+    .join(' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+
 const lightWords = new Set([
   'white',
   'light',
@@ -53,20 +65,40 @@ const lightWords = new Set([
   'knockout'
 ])
 const darkWords = new Set(['black', 'dark'])
+/** Boxes whose pictures are other brands' logos or icons, never the brand's. */
+const otherBrands = new Set([
+  'press',
+  'partner',
+  'partners',
+  'featured',
+  'seen',
+  'client',
+  'clients',
+  'brands',
+  'sponsor',
+  'sponsors',
+  'trust',
+  'badges',
+  'payment',
+  'payments',
+  'logos',
+  'awards',
+  'retailers',
+  'stockists',
+  'social'
+])
 
-/** What a logo's file name or label says about its ink. */
+/** What a logo's own file name or label says about its ink. */
 export function inkHint(...texts: (string | null)[]): LogoCandidate['hint'] {
-  const words = texts
-    .join(' ')
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-  if (words.some((w) => lightWords.has(w))) return 'light'
-  if (words.some((w) => darkWords.has(w))) return 'dark'
+  const w = words(...texts)
+  if (w.some((x) => lightWords.has(x))) return 'light'
+  if (w.some((x) => darkWords.has(x))) return 'dark'
   return null
 }
 
-const named = (...texts: (string | null)[]) =>
-  texts.some((t) => t !== null && /logo/i.test(t))
+/** Named "logo" as a word (not "logout", not a box of "logos"). */
+const namedLogo = (...texts: (string | null)[]) =>
+  words(...texts).includes('logo')
 
 /** An absolute https link from a page's own words, or null. */
 function absolute(src: string | null, page: string) {
@@ -85,9 +117,19 @@ function absolute(src: string | null, page: string) {
   }
 }
 
-/** The first picture of a `srcset`. */
-const firstOfSet = (set: string | null) =>
-  set?.split(',')[0]?.trim().split(/\s+/)[0] ?? null
+/** The largest picture of a `srcset` (entries end at a comma and a space). */
+function largestOfSet(set: string | null) {
+  if (!set) return null
+  let best: { url: string; size: number } | null = null
+  for (const entry of set.split(/,\s+/)) {
+    const [url, descriptor = '1x'] = entry.trim().split(/\s+/)
+    if (!url) continue
+    const size = parseFloat(descriptor) * (descriptor.endsWith('w') ? 1 : 1000)
+    if (!best || (Number.isFinite(size) && size > best.size))
+      best = { url, size: Number.isFinite(size) ? size : 0 }
+  }
+  return best?.url ?? null
+}
 
 /** Logos named in structured data (`Organization`, `Brand`, a store). */
 function schemaLogos(json: unknown, out: string[]) {
@@ -106,8 +148,8 @@ function schemaLogos(json: unknown, out: string[]) {
         t
       )
   )
-  if (brandLike) {
-    const logo = o.logo
+  if (!brandLike) return
+  for (const logo of ([] as unknown[]).concat(o.logo ?? [])) {
     const url =
       typeof logo === 'string'
         ? logo
@@ -126,20 +168,47 @@ const rank: Record<LogoCandidate['from'], number> = {
   meta: 3
 }
 
+/** Where the walk is: in the header, in a home link, in a box of other brands' logos. */
+type Place = { header: boolean; homeLink: boolean; others: boolean }
+
 /** The logo candidates on a page, surest first, each once. */
 export function logoCandidates(html: string, page: string): LogoCandidate[] {
   const doc = parse(html.slice(0, 2_000_000))
+  const origin = new URL(page).origin
   const found: LogoCandidate[] = []
   const add = (
-    src: string | null,
+    url: string | null,
     from: LogoCandidate['from'],
-    ...labels: (string | null)[]
+    ...own: (string | null)[]
   ) => {
-    const url = absolute(src, page)
     if (url)
-      found.push({ url, hint: inkHint(new URL(url).pathname, ...labels), from })
+      found.push({ url, hint: inkHint(new URL(url).pathname, ...own), from })
   }
-  const walk = (n: Node, inHeader: boolean, near: string[]) => {
+  /** The first of a picture's sources that is a usable link (a lazy picture's placeholder is not). */
+  const sourceOf = (c: T.Element) => {
+    for (const s of [
+      attr(c, 'src'),
+      attr(c, 'data-src'),
+      attr(c, 'data-lazy-src'),
+      attr(c, 'data-original'),
+      largestOfSet(attr(c, 'srcset')),
+      largestOfSet(attr(c, 'data-srcset'))
+    ]) {
+      const url = absolute(s, page)
+      if (url) return url
+    }
+    return null
+  }
+  const isHome = (href: string | null) => {
+    if (!href) return false
+    try {
+      const u = new URL(href, page)
+      return u.origin === origin && (u.pathname === '/' || u.pathname === '')
+    } catch {
+      return false
+    }
+  }
+  const walk = (n: Node, at: Place) => {
     for (const c of children(n)) {
       if (!isElement(c)) continue
       const tag = c.tagName
@@ -153,47 +222,54 @@ export function logoCandidates(html: string, page: string): LogoCandidate[] {
         } catch {
           // Not readable structured data: other candidates still count.
         }
-        for (const u of urls) add(u, 'schema')
+        for (const u of urls) add(absolute(u, page), 'schema')
         continue
       }
       const itemprop = (attr(c, 'itemprop') ?? '').toLowerCase()
       if (tag === 'meta') {
         const property = (attr(c, 'property') ?? '').toLowerCase()
         if (property === 'og:logo' || itemprop === 'logo')
-          add(attr(c, 'content'), 'meta')
+          add(absolute(attr(c, 'content'), page), 'meta')
         continue
       }
       if (tag === 'link' && itemprop === 'logo') {
-        add(attr(c, 'href'), 'meta')
+        add(absolute(attr(c, 'href'), page), 'meta')
         continue
       }
       const label = [attr(c, 'class'), attr(c, 'id'), attr(c, 'aria-label')]
       if (tag === 'img' || tag === 'source') {
-        const src =
-          attr(c, 'src') ??
-          attr(c, 'data-src') ??
-          firstOfSet(attr(c, 'srcset') ?? attr(c, 'data-srcset'))
-        const alt = attr(c, 'alt')
-        if (itemprop === 'logo') add(src, 'schema', alt, ...label, ...near)
-        else if (named(src, alt, ...label, ...near))
-          add(src, inHeader ? 'header' : 'named', alt, ...label, ...near)
+        if (at.others) continue
+        const src = sourceOf(c)
+        const own = [attr(c, 'alt'), ...label]
+        if (itemprop === 'logo') add(src, 'schema', ...own)
+        // Its own name says logo, or it is the picture of the home link
+        // in the header (the classic logo).
+        else if (
+          namedLogo(src && new URL(src).pathname, ...own) ||
+          (at.header && at.homeLink)
+        )
+          add(src, at.header ? 'header' : 'named', ...own)
         continue
       }
-      // A logo is often the picture inside a link or box named "logo".
-      const own = label.filter((l): l is string => l !== null)
-      walk(
-        c,
-        inHeader || tag === 'header' || tag === 'nav',
-        [...own, ...near].slice(0, 6)
-      )
+      walk(c, {
+        header: at.header || tag === 'header' || tag === 'nav',
+        homeLink: at.homeLink || (tag === 'a' && isHome(attr(c, 'href'))),
+        others: at.others || words(...label).some((w) => otherBrands.has(w))
+      })
     }
   }
-  walk(doc, false, [])
+  walk(doc, { header: false, homeLink: false, others: false })
   const best = new Map<string, LogoCandidate>()
   for (const f of found) {
     const was = best.get(f.url)
-    if (!was || rank[f.from] < rank[was.from])
-      best.set(f.url, { ...f, hint: f.hint ?? was?.hint ?? null })
+    if (!was) best.set(f.url, f)
+    else
+      best.set(
+        f.url,
+        rank[f.from] < rank[was.from]
+          ? { ...f, hint: f.hint ?? was.hint }
+          : { ...was, hint: was.hint ?? f.hint }
+      )
   }
   return [...best.values()]
     .sort((a, b) => rank[a.from] - rank[b.from])
@@ -221,8 +297,14 @@ export function logoTone(bytes: Uint8Array): LogoTone {
   if (bytes[0] === 0xff && bytes[1] === 0xd8)
     // A JPEG has no transparency: its background is part of it.
     return { tone: 'unknown', boxed: true }
-  const head = new TextDecoder().decode(bytes.subarray(0, 4096)).toLowerCase()
-  if (head.includes('<svg')) return svgTone(new TextDecoder().decode(bytes))
+  const text = new TextDecoder().decode(bytes)
+  // Only a file that is an SVG (a page with an icon in it is not).
+  if (
+    /^\s*(?:<\?xml[^>]*>\s*)?(?:(?:<!--[\s\S]{0,2000}?-->|<!doctype[^>]{0,500}>)\s*)*<svg[\s>]/i.test(
+      text.slice(0, 8_000)
+    )
+  )
+    return svgTone(text)
   return unknown
 }
 
@@ -237,43 +319,51 @@ const isPng = (b: Uint8Array) =>
   b[6] === 0x1a &&
   b[7] === 0x0a
 
-/** The pixels of a PNG (8-bit RGBA), or null when it cannot be read. */
+/**
+ * The pixels of a PNG (8-bit RGBA), or null when it cannot be read: a
+ * broken or short header, an interlaced or unknown kind, more than
+ * `maxLogoSide` on a side or `maxLogoPixels` in all. Unfiltered in place,
+ * so its memory is the inflated data and the pixels, nothing per row.
+ */
 export function decodePng(
   bytes: Uint8Array
 ): { width: number; height: number; rgba: Uint8Array } | null {
   if (!isPng(bytes)) return null
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   let at = 8
-  let width = 0
-  let height = 0
-  let depth = 0
-  let type = -1
-  let interlace = 0
+  let header: Uint8Array | null = null
   let palette: Uint8Array | null = null
   let alphas: Uint8Array | null = null
   const data: Uint8Array[] = []
-  while (at + 8 <= bytes.length) {
+  while (at + 12 <= bytes.length) {
     const length = view.getUint32(at)
+    if (length > bytes.length) return null
     const name = String.fromCharCode(...bytes.subarray(at + 4, at + 8))
     const body = bytes.subarray(at + 8, at + 8 + length)
     if (body.length !== length) return null
-    if (name === 'IHDR') {
-      width = view.getUint32(at + 8)
-      height = view.getUint32(at + 12)
-      depth = body[8]!
-      type = body[9]!
-      interlace = body[12]!
-    } else if (name === 'PLTE') palette = body
+    if (name === 'IHDR') header = body
+    else if (name === 'PLTE') palette = body
     else if (name === 'tRNS') alphas = body
     else if (name === 'IDAT') data.push(body)
     else if (name === 'IEND') break
     at += 12 + length
   }
-  const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[type]
+  if (!header || header.length < 13 || !data.length) return null
+  const h = new DataView(header.buffer, header.byteOffset, header.byteLength)
+  const width = h.getUint32(0)
+  const height = h.getUint32(4)
+  const depth = header[8]!
+  const type = header[9]!
+  const interlace = header[12]!
+  const channels = ({ 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 } as Record<number, number>)[
+    type
+  ]
   if (
     !channels ||
     !width ||
     !height ||
+    width > maxLogoSide ||
+    height > maxLogoSide ||
     width * height > maxLogoPixels ||
     interlace !== 0 ||
     ![1, 2, 4, 8, 16].includes(depth) ||
@@ -282,59 +372,60 @@ export function decodePng(
   )
     return null
   const rowBytes = Math.ceil((width * channels * depth) / 8)
+  const stride = rowBytes + 1
   let raw: Buffer
   try {
     raw = inflateSync(Buffer.concat(data), {
-      maxOutputLength: height * (rowBytes + 1)
+      maxOutputLength: height * stride
     })
   } catch {
     return null
   }
-  if (raw.length < height * (rowBytes + 1)) return null
+  if (raw.length < height * stride) return null
   const bpp = Math.max(1, (channels * depth) / 8)
-  const rows: Uint8Array[] = []
-  let prev = new Uint8Array(rowBytes)
+  // Unfiltered in place: each row's filter byte stays, its bytes become pixels.
   for (let y = 0; y < height; y++) {
-    const start = y * (rowBytes + 1)
-    const filter = raw[start]!
-    const row = Uint8Array.from(raw.subarray(start + 1, start + 1 + rowBytes))
+    const row = y * stride + 1
+    const up = row - stride
+    const filter = raw[row - 1]!
+    if (filter > 4) return null
+    if (filter === 0) continue
     for (let i = 0; i < rowBytes; i++) {
-      const left = i >= bpp ? row[i - bpp]! : 0
-      const up = prev[i]!
-      const corner = i >= bpp ? prev[i - bpp]! : 0
+      const left = i >= bpp ? raw[row + i - bpp]! : 0
+      const above = y > 0 ? raw[up + i]! : 0
+      const corner = y > 0 && i >= bpp ? raw[up + i - bpp]! : 0
       const add =
-        filter === 0
-          ? 0
-          : filter === 1
-            ? left
-            : filter === 2
-              ? up
-              : filter === 3
-                ? (left + up) >> 1
-                : filter === 4
-                  ? paeth(left, up, corner)
-                  : -1
-      if (add < 0) return null
-      row[i] = (row[i]! + add) & 0xff
+        filter === 1
+          ? left
+          : filter === 2
+            ? above
+            : filter === 3
+              ? (left + above) >> 1
+              : paeth(left, above, corner)
+      raw[row + i] = (raw[row + i]! + add) & 0xff
     }
-    rows.push(row)
-    prev = row
   }
-  const rgba = new Uint8Array(width * height * 4)
-  const sample = (row: Uint8Array, index: number) => {
-    if (depth === 8) return row[index]!
-    if (depth === 16) return row[index * 2]!
+  const sample = (row: number, index: number) => {
+    if (depth === 8) return raw[row + index]!
+    if (depth === 16) return raw[row + index * 2]!
     const bit = index * depth
-    const byte = row[bit >> 3]!
-    return (byte >> (8 - depth - (bit & 7))) & ((1 << depth) - 1)
+    return (
+      (raw[row + (bit >> 3)]! >> (8 - depth - (bit & 7))) & ((1 << depth) - 1)
+    )
   }
-  const scale = depth < 8 ? 255 / ((1 << depth) - 1) : 1
-  const same16 = (row: Uint8Array, index: number, want: number) =>
+  /** A sample at full precision, to compare with a tRNS colour. */
+  const exact = (row: number, index: number) =>
     depth === 16
-      ? row[index * 2]! * 256 + row[index * 2 + 1]! === want
-      : sample(row, index) === want
+      ? raw[row + index * 2]! * 256 + raw[row + index * 2 + 1]!
+      : sample(row, index)
+  const scale = depth < 8 ? 255 / ((1 << depth) - 1) : 1
+  const key = (i: number) =>
+    alphas && alphas.length >= i * 2 + 2
+      ? (alphas[i * 2]! << 8) | alphas[i * 2 + 1]!
+      : -1
+  const rgba = new Uint8Array(width * height * 4)
   for (let y = 0; y < height; y++) {
-    const row = rows[y]!
+    const row = y * stride + 1
     for (let x = 0; x < width; x++) {
       const o = (y * width + x) * 4
       let r: number, g: number, b: number
@@ -346,29 +437,21 @@ export function decodePng(
         b = palette![i * 3 + 2] ?? 0
         a = alphas && i < alphas.length ? alphas[i]! : 255
       } else if (type === 0 || type === 4) {
-        const v = sample(row, x * channels) * scale
-        r = g = b = v
+        r = g = b = sample(row, x * channels) * scale
         if (type === 4) a = sample(row, x * channels + 1)
-        else if (alphas && alphas.length >= 2) {
-          // The one grey that is see-through.
-          if (same16(row, x, (alphas[0]! << 8) | alphas[1]!)) a = 0
-        }
+        // The one grey that is see-through.
+        else if (exact(row, x) === key(0)) a = 0
       } else {
         r = sample(row, x * channels)
         g = sample(row, x * channels + 1)
         b = sample(row, x * channels + 2)
         if (type === 6) a = sample(row, x * channels + 3)
-        else if (alphas && alphas.length >= 6) {
-          const key = (i: number) =>
-            (alphas![i * 2]! << 8) | alphas![i * 2 + 1]!
-          const same = (c: number, k: number) =>
-            depth === 16
-              ? row[(x * channels + c) * 2]! * 256 +
-                  row[(x * channels + c) * 2 + 1]! ===
-                k
-              : sample(row, x * channels + c) === k
-          if (same(0, key(0)) && same(1, key(1)) && same(2, key(2))) a = 0
-        }
+        else if (
+          exact(row, x * 3) === key(0) &&
+          exact(row, x * 3 + 1) === key(1) &&
+          exact(row, x * 3 + 2) === key(2)
+        )
+          a = 0
       }
       rgba[o] = r
       rgba[o + 1] = g
@@ -394,27 +477,45 @@ function pngTone(bytes: Uint8Array): LogoTone | null {
   const png = decodePng(bytes)
   if (!png) return null
   const { width, height, rgba } = png
-  const total = width * height
-  const step = Math.max(1, Math.floor(total / 100_000))
+  const lum = (p: number) =>
+    luminance(rgba[p * 4]!, rgba[p * 4 + 1]!, rgba[p * 4 + 2]!)
+  // A grid of at most about 100,000 pixels, every row and column alike.
+  const stepX = Math.max(1, Math.ceil(width / 316))
+  const stepY = Math.max(1, Math.ceil(height / 316))
   let opaque = 0
   let counted = 0
   let sum = 0
-  for (let p = 0; p < total; p += step) {
-    counted++
-    const o = p * 4
-    if (rgba[o + 3]! < seen) continue
-    opaque++
-    sum += luminance(rgba[o]!, rgba[o + 1]!, rgba[o + 2]!)
-  }
+  for (let y = 0; y < height; y += stepY)
+    for (let x = 0; x < width; x += stepX) {
+      counted++
+      const p = y * width + x
+      if (rgba[p * 4 + 3]! < seen) continue
+      opaque++
+      sum += lum(p)
+    }
   if (!opaque) return unknown
   // Hardly any transparency: the logo carries its own background, and the
-  // box is what meets the section (its corners say its colour).
+  // box is what meets the section. Its colour is its visible edge (rounded
+  // see-through corners do not count).
   if (opaque / counted > 0.95) {
-    const corners = [0, width - 1, (height - 1) * width, total - 1].map((p) =>
-      luminance(rgba[p * 4]!, rgba[p * 4 + 1]!, rgba[p * 4 + 2]!)
-    )
-    const box = corners.reduce((a, b) => a + b, 0) / corners.length
-    return { tone: box >= lightInk ? 'dark' : 'light', boxed: true }
+    let edge = 0
+    let edges = 0
+    const look = (x: number, y: number) => {
+      const p = y * width + x
+      if (rgba[p * 4 + 3]! < seen) return
+      edge += lum(p)
+      edges++
+    }
+    for (let x = 0; x < width; x += stepX) {
+      look(x, 0)
+      look(x, height - 1)
+    }
+    for (let y = 0; y < height; y += stepY) {
+      look(0, y)
+      look(width - 1, y)
+    }
+    if (!edges) return unknown
+    return { tone: edge / edges >= lightInk ? 'dark' : 'light', boxed: true }
   }
   return { tone: sum / opaque >= lightInk ? 'light' : 'dark', boxed: false }
 }
@@ -456,9 +557,15 @@ function colour(value: string): [number, number, number] | null {
 }
 
 function svgTone(svg: string): LogoTone {
-  const text = svg.slice(0, maxLogoBytes)
+  // What is drawn: not the shapes that only clip or mask it.
+  const drawn = svg
+    .slice(0, maxLogoBytes)
+    .replace(/<(clipPath|mask)\b[\s\S]*?<\/\1\s*>/gi, '')
+  const shapes = /<(?:path|rect|circle|ellipse|polygon|polyline|line|text)\b/i
+  // A picture inside an SVG: its ink is not in the SVG.
+  if (/<image\b/i.test(drawn) && !shapes.test(drawn)) return unknown
   const values: string[] = []
-  for (const m of text.matchAll(
+  for (const m of drawn.matchAll(
     /\b(?:fill|stroke|stop-color)\s*(?:=\s*["']([^"']+)["']|:\s*([^;"'}]+))/gi
   ))
     values.push((m[1] ?? m[2] ?? '').trim())
@@ -476,9 +583,11 @@ function svgTone(svg: string): LogoTone {
 
 /**
  * The logo for light sections (dark ink) and for dark sections (light
- * ink), never the same picture. A measured ink wins over a name's; with
- * nothing known, the surest candidate is taken for light sections (a
- * site's own header logo), and dark sections get none rather than a guess.
+ * ink), never the same picture. A measured ink wins over a name's, and a
+ * see-through logo over a boxed one. With nothing known, the surest logo
+ * (not a tag's) is taken for light sections, unless every logo measured on
+ * the site is light ink (then its header logo is likely light too); dark
+ * sections get none rather than a guess.
  */
 export function pickLogos(
   found: readonly { candidate: LogoCandidate; tone: LogoTone | null }[]
@@ -487,13 +596,18 @@ export function pickLogos(
     f.tone && f.tone.tone !== 'unknown'
       ? f.tone.tone
       : (f.candidate.hint ?? 'unknown')
+  const best = (want: 'dark' | 'light', not?: string) =>
+    found.find(
+      (f) => ink(f) === want && !f.tone?.boxed && f.candidate.url !== not
+    ) ?? found.find((f) => ink(f) === want && f.candidate.url !== not)
+  const measuredLight = found.some((f) => f.tone?.tone === 'light')
+  const measuredDark = found.some((f) => f.tone?.tone === 'dark')
   const onLight =
-    found.find((f) => ink(f) === 'dark' && !f.tone?.boxed) ??
-    found.find((f) => ink(f) === 'dark') ??
-    found.find((f) => ink(f) === 'unknown' && f.candidate.from !== 'meta')
-  const onDark = found.find(
-    (f) => ink(f) === 'light' && f.candidate.url !== onLight?.candidate.url
-  )
+    best('dark') ??
+    (measuredLight && !measuredDark
+      ? undefined
+      : found.find((f) => ink(f) === 'unknown' && f.candidate.from !== 'meta'))
+  const onDark = best('light', onLight?.candidate.url)
   return {
     onLight: onLight?.candidate.url ?? null,
     onDark: onDark?.candidate.url ?? null
