@@ -1,10 +1,15 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { InMemoryMemoryStore } from '@/features/agents/memory'
+import { InMemoryRunLog, type AiCall } from '@/features/agents/runtime'
+import { memoryFallbackLog } from '@/features/fallback/log'
 import {
   designedFrom,
   designProblems,
+  designSection,
   readMarkup,
   sectionAlt,
+  sectionDesignerAgent,
   type DesignAnswer,
   type SectionBrief
 } from './designer'
@@ -58,6 +63,31 @@ const html = (body: string) => ({
   ...good,
   html: `<img src="${photo}" alt=""><h1>Meet the cedar tray</h1>${body}`
 })
+const ok = (content: unknown) => ({
+  ok: true as const,
+  content,
+  provider: 'gemini' as const,
+  model: 'test',
+  costMicro: 0,
+  inputTokens: 1,
+  outputTokens: 1,
+  settled: true
+})
+const ctx = (ai: AiCall) => {
+  const fallbacks = memoryFallbackLog()
+  return {
+    fallbacks,
+    ctx: {
+      tenantId: '00000000-0000-4000-8000-000000000101',
+      callerKey: 'email-build:b1',
+      memory: new InMemoryMemoryStore(),
+      log: new InMemoryRunLog(),
+      ai,
+      fallbacks
+    }
+  }
+}
+
 describe('the Section designer’s checks (DST-003b)', () => {
   it('a section drawn from the words and photo given passes, with the storyboard’s size and the words as its alt', () => {
     expect(designProblems(good, brief)).toEqual([])
@@ -381,5 +411,194 @@ describe('the Section designer’s checks (DST-003b)', () => {
     expect(
       designProblems({ ...good, css: '@import url(x.css);' }, brief)
     ).toContainEqual('The section’s styles load or run something.')
+  })
+})
+
+describe('the Section designer (DST-003)', () => {
+  it('gets the storyboard’s section, its words, photo, brand and font names', () => {
+    const task = JSON.parse(
+      sectionDesignerAgent.task({
+        brief: {
+          ...brief,
+          fonts: [{ family: 'Grove Serif', url: 'https://fonts.x/a.woff2' }]
+        },
+        problems: ['Draw the headline, whole.']
+      })
+    )
+    expect(task.section).toMatchObject({
+      kind: 'hero_product',
+      width: 600,
+      height: 640,
+      tone: 'dark',
+      imagery: 'product'
+    })
+    expect(task.words).toEqual(brief.words)
+    expect(task.photo).toEqual(brief.image)
+    expect(task.fonts).toEqual([
+      { family: 'Grove Serif', weight: 400, italic: false }
+    ])
+    expect(task.fix_these_problems_from_your_last_answer).toEqual([
+      'Draw the headline, whole.'
+    ])
+    expect(sectionDesignerAgent.purpose).toBe('plan')
+  })
+
+  it('its section is taken when it passes, after its problems are sent back', async () => {
+    const ai = vi
+      .fn<AiCall>()
+      .mockResolvedValueOnce(ok(html('<p>Shop now</p>')))
+      .mockResolvedValueOnce(ok(good))
+    const { ctx: c, fallbacks } = ctx(ai)
+    expect(await designSection(brief, c)).toEqual({
+      section: designedFrom(good, brief),
+      alt: 'Just in. Meet the cedar tray. Hand-finished, made to last.',
+      runId: 'run-2'
+    })
+    expect(ai).toHaveBeenCalledTimes(2)
+    expect(ai.mock.calls[0][0].callerKey).toBe(
+      'section-designer:email-build:b1'
+    )
+    expect(ai.mock.calls[1][0].request.user).toMatch(/draws “shop now”/)
+    expect(fallbacks.entries()).toEqual([])
+  })
+
+  it('a section that keeps failing, or gets no answer, is its coded block, logged', async () => {
+    const checks = ctx(vi.fn<AiCall>(async () => ok(html('<p>Shop now</p>'))))
+    expect(await designSection(brief, checks.ctx)).toBeNull()
+    expect(checks.fallbacks.entries()).toEqual([
+      expect.objectContaining({
+        agent: 'section-designer',
+        reasonCode: 'section_check_failed',
+        reason: 'The Section designer kept failing the section checks.',
+        fallback: 'Drew the section as its coded block.',
+        attempts: 3,
+        detail: expect.objectContaining({ section: 's2' })
+      })
+    ])
+    const shape = ctx(vi.fn<AiCall>(async () => ok({ html: '' })))
+    await designSection(brief, shape.ctx)
+    expect(shape.fallbacks.entries()[0].reasonCode).toBe(
+      'section_answer_invalid'
+    )
+    const down = ctx(
+      vi.fn<AiCall>(async () => ({ ok: false, code: 'cap_reached' }))
+    )
+    await designSection(brief, down.ctx)
+    expect(down.fallbacks.entries()[0]).toMatchObject({
+      reasonCode: 'section_agent_failed',
+      attempts: 1
+    })
+  })
+
+  it.each<[string, Partial<SectionBrief>]>([
+    ['a live section', { board: { ...brief.board, render: 'live' } }],
+    ['a section that is not a hero', { family: 'text' as never }],
+    ['no headline', { words: { headline: ' – ' } }],
+    ['a photo not on https', { image: { url: 'http://cdn.x/p.jpg' } }],
+    ['a photo with a port', { image: { url: 'https://cdn.x:8443/p.jpg' } }],
+    ['a photo with a password', { image: { url: 'https://a:b@cdn.x/p.jpg' } }],
+    [
+      'more web fonts than a section loads',
+      {
+        fonts: [1, 2, 3, 4, 5].map((n) => ({
+          family: `Grove ${n}`,
+          url: `https://fonts.x/${n}.woff2`
+        }))
+      }
+    ],
+    [
+      'a font not on https',
+      { fonts: [{ family: 'Grove', url: 'http://fonts.x/a.woff2' }] }
+    ],
+    ['a section too short to draw', { board: { ...brief.board, height: 20 } }],
+    [
+      'a headline with a hidden character',
+      { words: { headline: 'Meet\u200bthe tray' } }
+    ]
+  ])('is not asked for %s: the coded block, logged', async (_, change) => {
+    const ai = vi.fn<AiCall>()
+    const { ctx: c, fallbacks } = ctx(ai)
+    expect(await designSection({ ...brief, ...change }, c)).toBeNull()
+    expect(ai).not.toHaveBeenCalled()
+    expect(fallbacks.entries()).toEqual([
+      expect.objectContaining({
+        reasonCode: 'section_cannot_design',
+        attempts: 0,
+        dedupeKey: 'section-designer:email-build-b1:s2'
+      })
+    ])
+  })
+
+  it('pauses between tries when out of time, and the next claim goes on from them', async () => {
+    const first = ctx(vi.fn<AiCall>(async () => ok(html('<p>Shop now</p>'))))
+    const paused = await designSection(brief, {
+      ...first.ctx,
+      fits: () => false
+    })
+    expect(paused).toEqual({
+      paused: {
+        tries: 1,
+        problems: [expect.stringContaining('draws “shop now”')],
+        reasonCode: 'check_failed'
+      }
+    })
+    const next = ctx(vi.fn<AiCall>(async () => ok(good)))
+    const done = await designSection(
+      brief,
+      next.ctx,
+      (paused as { paused: never }).paused
+    )
+    expect(done).toMatchObject({ section: { id: 's2' } })
+    expect(next.ctx.ai).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(next.ctx.ai).mock.calls[0][0].request.user).toMatch(
+      /draws “shop now”/
+    )
+    expect(first.fallbacks.entries()).toEqual([])
+  })
+
+  it('a resumed run whose AI stops answering is logged once, as no answer', async () => {
+    const next = ctx(
+      vi.fn<AiCall>(async () => ({ ok: false, code: 'cap_reached' }))
+    )
+    expect(
+      await designSection(brief, next.ctx, {
+        tries: 1,
+        problems: ['Draw the headline, whole.'],
+        reasonCode: 'check_failed'
+      })
+    ).toBeNull()
+    expect(next.fallbacks.entries()).toEqual([
+      expect.objectContaining({
+        reasonCode: 'section_agent_failed',
+        attempts: 2
+      })
+    ])
+  })
+
+  it('a pause after a wrong shape keeps its reason, and a resumed run that keeps failing is logged once, with every try', async () => {
+    const first = ctx(vi.fn<AiCall>(async () => ok({ html: '' })))
+    const paused = await designSection(brief, {
+      ...first.ctx,
+      fits: () => false
+    })
+    expect(paused).toEqual({
+      paused: {
+        tries: 1,
+        problems: ['The answer did not match the required JSON shape.'],
+        reasonCode: 'answer_invalid'
+      }
+    })
+    const next = ctx(vi.fn<AiCall>(async () => ok(html('<p>Shop now</p>'))))
+    expect(
+      await designSection(brief, next.ctx, (paused as { paused: never }).paused)
+    ).toBeNull()
+    expect(next.ctx.ai).toHaveBeenCalledTimes(2)
+    expect(next.fallbacks.entries()).toEqual([
+      expect.objectContaining({
+        reasonCode: 'section_check_failed',
+        attempts: 3,
+        dedupeKey: 'section-designer:email-build-b1:s2'
+      })
+    ])
   })
 })
