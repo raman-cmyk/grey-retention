@@ -291,5 +291,10 @@ describe('a step that saves its rounds (REL-AI part 2b)', () => {
     // Claims at 0, 30 and 60 s; at 90 s a 50-second step no longer fits.
     expect(named(calls, 'claim_email_build')).toHaveLength(3)
     expect(named(calls, 'save_email_round')).toHaveLength(3)
+    // Each step gets its claim's end and the job's clock (REL-AI part 2b).
+    expect(runStep.mock.calls.map((c) => c[2].until)).toEqual([
+      50_000, 80_000, 110_000
+    ])
+    expect(runStep.mock.calls[0][2].clock()).toBe(now)
   })
 })

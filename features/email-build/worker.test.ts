@@ -676,6 +676,34 @@ describe('the agent path (REL-AI part 2)', () => {
     expect(built(calls).ai).toBe(true)
   })
 
+  it('gives a busy Copywriter’s email plain words now, with the reason, and passes the claim’s time (REL-AI part 2b)', async () => {
+    const { saved } = await fullRun()
+    const ai = vi.fn<AiCall>(async (call) =>
+      call.callerKey.startsWith('copywriter:')
+        ? { ok: false, code: 'rate_limited', retryAfterSeconds: 20 }
+        : { ok: false, code: 'setup_required' }
+    )
+    const fallbacks = memoryFallbackLog()
+    const { db, calls } = fakeDb([
+      step({
+        step: 'copy',
+        progress: { sections: saved.sections, content: saved.content }
+      })
+    ])
+    await runEmailBuilds(db, { agents: agentsWith(ai), fallbacks, limit: 1 })
+    expect(failure(calls)).toBeUndefined()
+    const copy = calls.find(
+      (c) => c.fn === 'finish_email_step' && c.args.done === 'copy'
+    )!.args.output as { written?: boolean }
+    expect(copy.written).toBeUndefined()
+    expect(
+      fallbacks.entries().find((e) => e.reasonCode === 'copy_ai_busy')
+    ).toMatchObject({
+      agent: 'copy-inspectors',
+      fallback: 'Used plain copy: the facts only, in the locked sections.'
+    })
+  })
+
   it('still builds on code’s choices, logged, when the agents cannot answer', async () => {
     const ai = vi.fn<AiCall>(async () => ({ ok: false, code: 'cap_reached' }))
     const fallbacks = memoryFallbackLog()
