@@ -13,7 +13,7 @@ describe('parseRevenueGoal (PLN-033a)', () => {
       amount: 20000,
       currency: 'USD'
     })
-    expect(read('20,000 AUD next month', aud)).toEqual({
+    expect(read('Goal: 20,000 AUD next month', aud)).toEqual({
       month: '2026-12-01',
       amount: 20000,
       currency: 'AUD'
@@ -38,47 +38,110 @@ describe('parseRevenueGoal (PLN-033a)', () => {
       amount: 8000,
       currency: 'GBP'
     })
+    expect(read('next month 20K.')?.month).toBe('2026-12-01')
+    expect(read('USD 20k')?.currency).toBe('USD')
+    expect(read('20k for Sept 2027')?.month).toBe('2027-09-01')
   })
 
   it('reads a plain $ as the store’s dollar, and a code says which', () => {
     expect(read('$20k', aud)?.currency).toBe('AUD')
     expect(
-      read('$20k', { currency: 'EUR', today: '2026-11-15' })?.currency
-    ).toBe('USD')
+      read('$20k', { currency: 'MXN', today: '2026-11-15' })?.currency
+    ).toBe('MXN')
     expect(read('$20k USD', aud)?.currency).toBe('USD')
     expect(read('AU$20k')?.currency).toBe('AUD')
     expect(read('nz$ 4,000')?.currency).toBe('NZD')
     expect(
       read('20k', { currency: 'GBP', today: '2026-11-15' })?.currency
     ).toBe('GBP')
+    expect(read('¥200000', { currency: 'JPY', today: '2026-11-15' })).toEqual({
+      month: '2026-11-01',
+      amount: 200000,
+      currency: 'JPY'
+    })
+    // Not sure which currency: refused.
+    for (const [text, currency] of [
+      ['$20k', 'EUR'],
+      ['¥20k', 'USD'],
+      ['$20k EUR', 'USD'],
+      ['£20k EUR', 'USD'],
+      ['¥20.5', 'JPY']
+    ])
+      expect(
+        read(text!, { currency: currency!, today: '2026-11-15' }),
+        text
+      ).toBeNull()
   })
 
-  it('a month name means its next time, never a past month', () => {
+  it('a month name is this year’s, or next year’s when close; never a guess', () => {
     expect(read('20k in November')?.month).toBe('2026-11-01')
-    expect(read('20k in October')?.month).toBe('2027-10-01')
+    expect(read('20k in April')?.month).toBe('2027-04-01')
+    // The month just gone (or far ahead without a year): refused.
+    expect(read('20k in October')).toBeNull()
+    expect(read('20k in June')).toBeNull()
+    expect(read('20k in June 2027')?.month).toBe('2027-06-01')
     expect(read('20k in October 2026')).toBeNull()
-    expect(read('20k for Sept')?.month).toBe('2027-09-01')
+    expect(read('20k in november 2029')).toBeNull()
+    // In December, January is next month.
+    const december = { currency: 'USD', today: '2026-12-10' }
+    expect(read('20k in january', december)?.month).toBe('2027-01-01')
+    expect(read('20k next month', december)?.month).toBe('2027-01-01')
+    expect(read('20k in december', december)?.month).toBe('2026-12-01')
   })
 
   it('refuses what it cannot read for sure', () => {
     for (const text of [
       '',
       'a lot this month',
+      'max discount 20% this month',
+      '20% off this month',
+      '20-30k',
+      '$20-25k',
+      '20k-30k',
+      '20k/30k',
+      '20k+5k',
       '20k or 30k',
-      '£20k EUR',
-      '$20k EUR',
+      '20.000',
+      '€1.500 for December',
+      '20 grand',
+      '20 thousands',
+      '20k CNY',
+      '20k euros',
+      '20k€',
+      '20k in AUD',
+      'I may want 20k',
+      'may be 20k',
+      'Jan said 20k',
+      '20k last month',
+      '20k next year',
+      '20k this year',
+      '20k for Q4',
+      '5k a day',
+      '20k in jan27',
+      'cancel the 20k goal',
+      "don't set 20k",
+      'about 20k',
+      'at least 20k',
+      '20k orders',
+      'I made 15k',
       '20k this month and next month',
       '20k in March and April',
       '0 this month',
       '2 billion',
+      '1.005',
       '20k 2027',
-      '3 bn',
       '12,34,567',
-      'x'.repeat(201)
+      'x'.repeat(121)
     ])
       expect(read(text), text).toBeNull()
     expect(
       parseRevenueGoal('$20k', { currency: 'USD', today: 'today' })
+    ).toBeNull()
+    expect(
+      parseRevenueGoal('20k next month', {
+        currency: 'USD',
+        today: '2026-13-01'
+      })
     ).toBeNull()
   })
 })
