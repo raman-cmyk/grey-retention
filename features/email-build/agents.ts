@@ -7,7 +7,7 @@ import {
 } from '@/features/agents/supabase-stores'
 import { SupabaseBudgetLedger } from '@/features/ai/budget-ledger'
 import { runAi } from '@/features/ai/run'
-import { aiSetup } from '@/features/ai/setup'
+import { aiSetup, cappedAiEnv } from '@/features/ai/setup'
 import type { BuildAgents } from './build'
 import { agentCallMs } from './step-names'
 
@@ -23,9 +23,7 @@ export { agentCallMs }
 
 /** The environment of a build step: every model call capped. */
 export function agentEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const setup = aiSetup('copy', env)
-  const used = 'timeoutMs' in setup ? setup.timeoutMs : agentCallMs
-  return { ...env, GEMINI_TIMEOUT_MS: String(Math.min(used, agentCallMs)) }
+  return cappedAiEnv('copy', env, agentCallMs)
 }
 
 /**

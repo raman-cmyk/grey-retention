@@ -9,7 +9,12 @@ import { confidentFrom, type Tagged, type TagPass } from './taxonomy'
 
 /** One agent call's answer, as the tagging agents need it. */
 export type AiRun =
-  | { ok: true; content: unknown; provider: 'gemini' | 'fake'; model: string }
+  | {
+      ok: true
+      content: unknown
+      provider: 'gemini' | 'openai' | 'fake'
+      model: string
+    }
   | { ok: false; code: string; retryAfterSeconds?: number }
 
 /**
@@ -185,7 +190,7 @@ export function agentAsk(ctx: {
   tenantId?: string | null
 }): Ask {
   return async (def, input, call) => {
-    const seen: { provider?: 'gemini' | 'fake'; model?: string } = {}
+    const seen: { provider?: 'gemini' | 'openai' | 'fake'; model?: string } = {}
     const ai: AiCall = async (request) => {
       const result = await ctx.ai(request)
       if (result.ok) {
@@ -214,7 +219,7 @@ export function agentAsk(ctx: {
     return {
       ok: true,
       content: result.output,
-      provider: 'gemini',
+      provider: seen.provider ?? 'gemini',
       model: seen.model ?? 'unknown'
     }
   }

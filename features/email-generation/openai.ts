@@ -41,8 +41,19 @@ const token = (value: unknown, max = 64) =>
       ? 'other'
       : ''
 
+/**
+ * How a request is sent. The email rewriting uses the defaults. The v2
+ * calls (REL-PRV) send their schemas as a guide (`strict: false`: code
+ * checks every answer itself; most v2 schemas are not written for strict
+ * mode) and ask for the standard tier, whose prices the cost ceiling uses.
+ */
+export type ResponsesOptions = { strict?: boolean; serviceTier?: 'default' }
+
 /** The exact JSON body sent; also the input to the cost ceiling. */
-export function responsesRequestBody(request: AiProviderRequest) {
+export function responsesRequestBody(
+  request: AiProviderRequest,
+  options: ResponsesOptions = {}
+) {
   if (!request.schema)
     throw new AiProviderError('rejected_request', 'none', {
       diagnostic: 'schema_required'
@@ -57,6 +68,7 @@ export function responsesRequestBody(request: AiProviderRequest) {
       : {}),
     // Pasted source and brand facts are not kept by the provider for retrieval.
     store: false,
+    ...(options.serviceTier ? { service_tier: options.serviceTier } : {}),
     ...(request.safetyIdentifier
       ? { safety_identifier: request.safetyIdentifier }
       : {}),
@@ -65,7 +77,7 @@ export function responsesRequestBody(request: AiProviderRequest) {
         type: 'json_schema',
         name: request.schema.name,
         schema: request.schema.definition,
-        strict: true
+        strict: options.strict ?? true
       }
     }
   })
@@ -137,11 +149,13 @@ export class OpenAiResponsesProvider implements AiProvider {
       apiKey: string
       baseUrl: string
       fetch?: typeof fetch
+      /** How requests are sent (REL-PRV); the defaults otherwise. */
+      options?: ResponsesOptions
     }
   ) {}
 
   async generate(request: AiProviderRequest): Promise<AiProviderResponse> {
-    const body = responsesRequestBody(request)
+    const body = responsesRequestBody(request, this.config.options)
     const started = Date.now()
     const controller = new AbortController()
     const timer = setTimeout(

@@ -83,7 +83,14 @@ export type AiCall = (input: {
 }) => Promise<AiRunResult>
 
 export type AgentResult<O> =
-  | { ok: true; output: O; runId: string; rules: MemoryRule[] }
+  | {
+      ok: true
+      output: O
+      runId: string
+      rules: MemoryRule[]
+      /** Which provider answered (REL-PRV). */
+      provider: 'gemini' | 'openai' | 'fake'
+    }
   | { ok: false; code: string; runId: string; retryAfterSeconds?: number }
 
 export function buildInstructions(
@@ -201,5 +208,11 @@ export async function runAgent<I, O>(
     detail: null,
     output: parsed.data
   })
-  return { ok: true, output: parsed.data, runId, rules }
+  return {
+    ok: true,
+    output: parsed.data,
+    runId,
+    rules,
+    provider: result.provider
+  }
 }
