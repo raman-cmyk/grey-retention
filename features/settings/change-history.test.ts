@@ -10,6 +10,33 @@ describe('a recorded change in plain words', () => {
       'Max discount changed from 20% to 25%'
     ],
     [
+      'revenue_goal_set',
+      { month: '2026-11-01', to_amount: 20000, to_currency: 'USD' },
+      'Revenue goal for November 2026 set to $20,000'
+    ],
+    [
+      'revenue_goal_set',
+      {
+        month: '2026-12-01',
+        from_amount: 20000,
+        from_currency: 'AUD',
+        to_amount: 22500.5,
+        to_currency: 'AUD'
+      },
+      'Revenue goal for December 2026 changed to A$22,500.50 (was A$20,000)'
+    ],
+    [
+      'revenue_goal_set',
+      {
+        month: '2026-11-01',
+        from_amount: 25000,
+        from_currency: 'GBP',
+        to_amount: null,
+        to_currency: null
+      },
+      'Revenue goal for November 2026 removed (was £25,000)'
+    ],
+    [
       'margin_floor_changed',
       { from_margin: null, from_floor: null, to_margin: 60, to_floor: 30 },
       'Margin floor set to 30% on a 60% margin'
@@ -98,6 +125,14 @@ describe('a recorded change in plain words', () => {
 
   it('explains nothing it cannot read', () => {
     expect(changeText('max_discount_changed', { to: 'lots' })).toBeNull()
+    expect(
+      changeText('revenue_goal_set', {
+        month: 'soon',
+        to_amount: 5,
+        to_currency: 'USD'
+      })
+    ).toBeNull()
+    expect(changeText('revenue_goal_set', { month: '2026-11-01' })).toBeNull()
     expect(changeText('margin_floor_changed', { to_floor: 30 })).toBeNull()
     expect(changeText('discount_code_added', {})).toBeNull()
     expect(

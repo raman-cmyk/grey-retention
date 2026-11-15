@@ -2930,11 +2930,13 @@ export type Database = {
           lease_token: string | null
           lease_until: string | null
           not_before: string | null
+          progress: Json
           push_key: string
           run_id: string
           sample_draft: boolean
           slot: number
           state: string
+          step: string
           tenant_id: string
           updated_at: string
           waits: number
@@ -2950,11 +2952,13 @@ export type Database = {
           lease_token?: string | null
           lease_until?: string | null
           not_before?: string | null
+          progress?: Json
           push_key?: string
           run_id: string
           sample_draft?: boolean
           slot: number
           state?: string
+          step?: string
           tenant_id: string
           updated_at?: string
           waits?: number
@@ -2970,11 +2974,13 @@ export type Database = {
           lease_token?: string | null
           lease_until?: string | null
           not_before?: string | null
+          progress?: Json
           push_key?: string
           run_id?: string
           sample_draft?: boolean
           slot?: number
           state?: string
+          step?: string
           tenant_id?: string
           updated_at?: string
           waits?: number
@@ -5972,6 +5978,51 @@ export type Database = {
           }
         ]
       }
+      revenue_goals: {
+        Row: {
+          amount: number | null
+          currency: string | null
+          month: string
+          revision: number
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          amount?: number | null
+          currency?: string | null
+          month: string
+          revision?: number
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          amount?: number | null
+          currency?: string | null
+          month?: string
+          revision?: number
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'revenue_goals_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'revenue_goals_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       segment_registry: {
         Row: {
           account_id: string
@@ -6796,11 +6847,13 @@ export type Database = {
           id: string
           lease_token: string
           planned: Json
+          progress: Json
           push_key: string
           run_id: string
           slot: number
           start_on: string
           state: string
+          step: string
           tenant_id: string
           timezone: string
         }[]
@@ -7293,6 +7346,10 @@ export type Database = {
           sample: boolean
         }
         Returns: undefined
+      }
+      finish_email_step: {
+        Args: { build: string; done: string; lease: string; output: Json }
+        Returns: string
       }
       finish_health_check: {
         Args: { job: string; lease: string }
@@ -7985,6 +8042,16 @@ export type Database = {
         Returns: undefined
       }
       set_platform_ai_daily_cap: { Args: { cap: number }; Returns: undefined }
+      set_revenue_goal: {
+        Args: {
+          expected_revision: number
+          goal_amount: number
+          goal_currency: string
+          goal_month: string
+          t: string
+        }
+        Returns: number
+      }
       settle_ai_usage: {
         Args: { actual: number; reservation: string; t: string }
         Returns: undefined
