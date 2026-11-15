@@ -59,6 +59,9 @@ describe('brandIndustry (ONB-065a)', () => {
     )
     expect(brandIndustry(brand({ labelled: { other: 5 } }))).toBe('pet')
     expect(brandIndustry(brand({ niche: null, labelled: {} }))).toBeNull()
+    // Whole words, as the store's own are read: never "hair" in "chairs".
+    expect(brandIndustry(brand({ niche: 'Pet accessories' }))).toBe('pet')
+    expect(brandIndustry(brand({ niche: 'Chairs' }))).not.toBe('haircare')
   })
 })
 
@@ -249,6 +252,16 @@ describe('readCompetitorSuggestions (ONB-065a)', () => {
             // Its emails say pet, whatever its niche says; unknown labels
             // and odd counts are ignored.
             labels: { pet: 2, unicorns: 9, home: 'x', baby: -1 }
+          }),
+          // A brand with no name, niche or email yet.
+          row({
+            id: 'b3',
+            domain: 'quiet.example',
+            brand_name: null,
+            niche: null,
+            last_received_at: null,
+            recent: 0,
+            labels: { pet: 2 }
           })
         ],
         error: null
@@ -264,6 +277,13 @@ describe('readCompetitorSuggestions (ONB-065a)', () => {
         name: 'Bark Co',
         industry: 'pet',
         reason: 'Also a pet brand, and sent 3 emails in the last 30 days.'
+      },
+      {
+        captureId: 'b3',
+        domain: 'quiet.example',
+        name: 'quiet.example',
+        industry: 'pet',
+        reason: 'Also a pet brand.'
       }
     ])
     expect(reads.findings).toHaveBeenCalledWith(db, tenantId, {

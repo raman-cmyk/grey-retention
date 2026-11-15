@@ -2,8 +2,8 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { listCorrections } from '@/features/onboarding/brand-book-corrections'
 import { listFindings } from '@/features/onboarding/findings'
+import { industryInWords } from '@/features/onboarding/industry'
 import { correctedIndustry } from '@/features/onboarding/store-source'
-import { industryOf } from '@/features/intelligence/classifier'
 import { industries, type Industry } from '@/features/intelligence/taxonomy'
 import type { Database } from '@/lib/supabase/database.types'
 
@@ -13,15 +13,17 @@ import type { Database } from '@/lib/supabase/database.types'
  * store, each with a plain reason. "Like" means the same industry. The
  * store's is read from what it sells as the owner corrected it
  * (`correctedIndustry`, as "Create email" reads it); a brand's, from the
- * label most of its emails carry, or else its niche's words (the words
- * the inbox's sample labeller reads). Brands sending lately come first.
+ * label most of its emails carry, or else its niche's words, read the way
+ * the store's own words are (`industryInWords`, whole words only), so the
+ * two sides agree. Brands sending lately come first.
  * The database gives only brands the inbox is subscribed to, of the
  * store's own kind (real or sample, from its brand profile), never one
  * the workspace follows or once followed (`suggestable_inbox_brands`);
- * here the store's own website is left out too. Not yet: "similar size"
- * (the store's own size is not known yet), following a real brand (the
- * follow command takes sample domains only) and signing the inbox up to
- * new brands (both wait for Raman).
+ * here the store's own website is left out too. For now only the sample
+ * store gets suggestions: who may see the inbox's real brands waits for
+ * Raman, with following a real brand (the follow command takes sample
+ * domains only) and signing the inbox up to new brands. Not yet: "similar
+ * size" (the store's own size is not known yet).
  */
 export const maxSuggestions = 10
 /** How far back "sending lately" looks. */
@@ -92,7 +94,7 @@ export function brandIndustry(brand: InboxBrand): Industry | null {
       )[0]
     if (top && top[1] * 2 > total) return top[0]
   }
-  return industryOf(brand.niche)
+  return industryInWords(brand.niche ?? '')
 }
 
 /** A time to sort by; none or unreadable sorts last. */
