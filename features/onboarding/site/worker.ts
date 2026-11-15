@@ -240,7 +240,14 @@ export async function readBrandSite(
     page: { html: string; url: string },
     kind: SitePageKind
   ) => {
-    if (!fetcher.live || page.html.length > maxPhotoPage) return
+    // Never at the expense of the findings: no parse without the time
+    // a model call may take.
+    if (
+      !fetcher.live ||
+      page.html.length > maxPhotoPage ||
+      now() + callMs > deadline
+    )
+      return
     try {
       photoPages[n] = sitePhotos(page.html, page.url, kind, {
         brand: brand.data.brand_name

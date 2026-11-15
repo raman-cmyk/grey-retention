@@ -2,6 +2,17 @@
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
+// A page whose photos cannot be read ("boom" in its HTML).
+vi.mock('./photos', async (original) => {
+  const real = await original<typeof import('./photos')>()
+  return {
+    ...real,
+    sitePhotos: (...args: Parameters<typeof real.sitePhotos>) => {
+      if (args[0].includes('boom')) throw new RangeError('too deep')
+      return real.sitePhotos(...args)
+    }
+  }
+})
 import { sampleAsk } from '@/features/intelligence/passes'
 import { sampleSiteFetcher, type SiteFetcher } from './fetch'
 import { maxSitePhotos, readBrandSite } from './worker'
@@ -156,30 +167,76 @@ describe('readBrandSite keeps the photos (ONB-059b)', () => {
     expect(photosOf(calls)).toBeUndefined()
   })
 
-  it(`keeps at most ${maxSitePhotos}`, async () => {
-    quiet()
-    const many = `<main>${Array.from(
-      { length: 30 },
-      (_, i) => `<img src="${cdn}/p-${i}.jpg">`
-    ).join('')}</main>`
+  /** A home page linking to all six other pages, each with `n` photos. */
+  const fullSite = (n = 30, extra: Record<string, string> = {}) => {
+    const paths = [
+      '/pages/shipping',
+      '/pages/returns',
+      '/pages/faq',
+      '/pages/about-us',
+      '/products/a',
+      '/products/b'
+    ]
+    const photos = (tag: string) =>
+      `<main>${Array.from({ length: n }, (_, j) => `<img src="${cdn}/${tag}-${j}.jpg">`).join('')}</main>`
     const pages: Record<string, string> = {
-      'https://cedarlane.com/': `${many}${Array.from(
-        { length: 7 },
-        (_, i) => `<a href="/products/p${i}">p</a>`
-      ).join('')}`
+      'https://cedarlane.com/': `${photos('home')}${paths.map((p) => `<a href="${p}">${p}</a>`).join('')}`
     }
-    for (let i = 0; i < 7; i++)
-      pages[`https://cedarlane.com/products/p${i}`] = `<main>${Array.from(
-        { length: 30 },
-        (_, j) => `<img src="${cdn}/q-${i}-${j}.jpg">`
-      ).join('')}</main>`
+    for (const p of paths)
+      pages[`https://cedarlane.com${p}`] = photos(p.split('/').pop()!)
+    return { ...pages, ...extra }
+  }
+
+  it(`keeps at most ${maxSitePhotos}, the first pages' first`, async () => {
+    quiet()
     const { db, calls } = database()
     await readBrandSite(db, job, {
-      fetcher: () => liveSite(pages),
+      fetcher: () => liveSite(fullSite()),
       askFor: () => sampleAsk
     })
-    expect(photosOf(calls)!.length).toBeLessThanOrEqual(maxSitePhotos)
-    expect(photosOf(calls)![0]!.url).toBe(`${cdn}/p-0.jpg`)
+    const photos = photosOf(calls)!
+    expect(photos).toHaveLength(maxSitePhotos)
+    expect(photos[0]!.url).toBe(`${cdn}/home-0.jpg`)
+    expect(photos.at(-1)!.url).toBe(`${cdn}/b-19.jpg`)
+  })
+
+  it('skips a page whose photos cannot be read, or which is too large, and keeps the rest', async () => {
+    const warn = quiet()
+    const { db, calls } = database()
+    await readBrandSite(db, job, {
+      fetcher: () =>
+        liveSite(
+          fullSite(2, {
+            'https://cedarlane.com/pages/faq': `<main><img src="${cdn}/boom.jpg"></main>`,
+            'https://cedarlane.com/pages/shipping': `<main><img src="${cdn}/big.jpg"></main>${' '.repeat(1_000_001)}`
+          })
+        ),
+      askFor: () => sampleAsk
+    })
+    const pages = new Set(photosOf(calls)!.map((p) => p.page))
+    expect([...pages].sort()).toEqual(['about', 'home', 'product', 'returns'])
+    expect(calls.map((c) => c.name)).toContain('record_site_findings')
+    expect(JSON.stringify(warn.mock.calls)).toContain('Site photos unreadable')
+  })
+
+  it('reads no photos without the time a model call may take', async () => {
+    quiet()
+    const { db, calls } = database()
+    let now = 0
+    await readBrandSite(db, job, {
+      fetcher: () => ({
+        ...liveSite(),
+        fetch: async (url) => {
+          // The home page arrives with too little time left.
+          now = 25_000
+          return liveSite().fetch(url)
+        }
+      }),
+      askFor: () => sampleAsk,
+      callMs: 10_000,
+      now: () => now
+    })
+    expect(photosOf(calls)).toBeUndefined()
   })
 
   it('still stores the findings when the photos cannot be kept, and says none were kept when a newer read won', async () => {

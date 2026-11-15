@@ -16,10 +16,27 @@ describe('photoLibrary (ONB-059b)', () => {
     expect(
       photoLibrary(
         [
-          { id: 'p1', title: 'Trail socks', image: `${cdn}/socks.jpg?v=3` },
-          { id: 'p2', title: ' ', image: `${cdn}/cap.png` },
-          { id: 'p3', title: 'No photo', image: null },
-          { id: 'p4', title: 'Fancy', image: `${cdn}/fancy.webp` }
+          {
+            id: 'p1',
+            title: 'Trail socks',
+            image: `${cdn}/socks.jpg?v=3`,
+            hiddenReason: null
+          },
+          { id: 'p2', title: ' ', image: `${cdn}/cap.png`, hiddenReason: null },
+          { id: 'p3', title: 'No photo', image: null, hiddenReason: null },
+          {
+            id: 'p4',
+            title: 'Fancy',
+            image: `${cdn}/fancy.webp`,
+            hiddenReason: null
+          },
+          // Not yet released: no email shows it, so no photo of it either.
+          {
+            id: 'p5',
+            title: 'Secret',
+            image: `${cdn}/secret.jpg`,
+            hiddenReason: 'unpublished'
+          }
         ],
         [
           {
@@ -81,7 +98,10 @@ describe('readPhotoLibrary (ONB-059b)', () => {
       data: { domain: 'https://www.Cedarlane.com/' },
       error: null
     },
-    brand_photo_sets: { data: { domain: 'cedarlane.com' }, error: null }
+    brand_photo_sets: {
+      data: { domain: 'cedarlane.com', run_id: 'run-1' },
+      error: null
+    }
   }
   function fakeDb(given: Record<string, Answer>) {
     const answers = { ...own, ...given }
@@ -105,7 +125,12 @@ describe('readPhotoLibrary (ONB-059b)', () => {
 
   it('reads the workspace’s own catalog, real or sample as it was read, and its site photos in order', async () => {
     reads.catalog.mockResolvedValue([
-      { id: 'p1', title: 'Socks', image: `${cdn}/socks.jpg` }
+      {
+        id: 'p1',
+        title: 'Socks',
+        image: `${cdn}/socks.jpg`,
+        hiddenReason: null
+      }
     ])
     const { db, asked } = fakeDb({
       catalog_status: { data: { live: true }, error: null },
@@ -120,6 +145,8 @@ describe('readPhotoLibrary (ONB-059b)', () => {
       synthetic: false
     })
     expect(asked).toContainEqual(['brand_photos', 'eq', 'tenant_id', tenantId])
+    // Only the photos of the set its website belongs to.
+    expect(asked).toContainEqual(['brand_photos', 'eq', 'run_id', 'run-1'])
     expect(asked).toContainEqual([
       'brand_photos',
       'order',
@@ -163,7 +190,7 @@ describe('readPhotoLibrary (ONB-059b)', () => {
             error: null
           },
           brand_photo_sets: {
-            data: kept === null ? null : { domain: kept },
+            data: kept === null ? null : { domain: kept, run_id: 'run-1' },
             error: null
           },
           brand_photos: site

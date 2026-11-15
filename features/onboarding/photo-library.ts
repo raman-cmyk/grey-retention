@@ -37,7 +37,10 @@ type Db = SupabaseClient<Database>
 
 /** The library, best first. Pure, for tests. */
 export function photoLibrary(
-  catalog: readonly Pick<CatalogEntry, 'id' | 'title' | 'image'>[],
+  catalog: readonly Pick<
+    CatalogEntry,
+    'id' | 'title' | 'image' | 'hiddenReason'
+  >[],
   site: readonly {
     url: string
     kind: string
@@ -47,7 +50,9 @@ export function photoLibrary(
 ): LibraryPhoto[] {
   const out = new Map<string, LibraryPhoto>()
   for (const p of catalog) {
-    if (!p.image || !emailPhotoUrl(p.image)) continue
+    // A product no email shows (unpublished, a duplicate, priced in
+    // another currency) gives no photo either.
+    if (p.hiddenReason || !p.image || !emailPhotoUrl(p.image)) continue
     const key = photoKey(p.image)
     if (out.has(key)) continue
     out.set(key, {
@@ -80,12 +85,16 @@ export function photoLibrary(
   return [...out.values()]
 }
 
-/** The workspace's photo library. A failed read throws. */
+/**
+ * The workspace's photo library. Called with the member's own client
+ * (row rules), or with the worker's after the caller checked the person
+ * may see this workspace. A failed read throws.
+ */
 export async function readPhotoLibrary(
   db: Db,
   tenantId: string
 ): Promise<LibraryPhoto[]> {
-  const [status, profile, set, site] = await Promise.all([
+  const [status, profile, set] = await Promise.all([
     db
       .from('catalog_status')
       .select('live')
@@ -98,17 +107,22 @@ export async function readPhotoLibrary(
       .maybeSingle(),
     db
       .from('brand_photo_sets')
-      .select('domain')
+      .select('domain,run_id')
       .eq('tenant_id', tenantId)
-      .maybeSingle(),
-    db
-      .from('brand_photos')
-      .select('url,kind,page,alt')
-      .eq('tenant_id', tenantId)
-      .order('position', { ascending: true })
-      .limit(200)
+      .maybeSingle()
   ])
-  for (const r of [status, profile, set, site]) if (r.error) throw r.error
+  for (const r of [status, profile, set]) if (r.error) throw r.error
+  // The set's own photos only: never a newer set's under an older website.
+  const site = set.data
+    ? await db
+        .from('brand_photos')
+        .select('url,kind,page,alt')
+        .eq('tenant_id', tenantId)
+        .eq('run_id', set.data.run_id)
+        .order('position', { ascending: true })
+        .limit(200)
+    : { data: [], error: null }
+  if (site.error) throw site.error
   const catalog = status.data
     ? await listCatalog(db, tenantId, { synthetic: !status.data.live })
     : []
