@@ -208,12 +208,47 @@ describe('logoCandidates (ONB-060a)', () => {
     ).toEqual([])
   })
 
-  it('reads ink words in its own names and labels', () => {
-    expect(inkHint('/logo-reversed.png')).toBe('light')
-    expect(inkHint('/LogoWhite.png')).toBe('light')
-    expect(inkHint('/logo_white_2x.png')).toBe('light')
-    expect(inkHint('/logo.png', 'Dark logo')).toBe('dark')
-    expect(inkHint('/darkness.png')).toBeNull()
+  it('reads only ink words in its own names and labels, never the brand’s name', () => {
+    expect(inkHint(['/logo-reversed.png'])).toBe('light')
+    expect(inkHint(['/LogoWhite.png'])).toBe('light')
+    expect(inkHint(['/logo_white_2x.png'])).toBe('light')
+    expect(inkHint(['/logo.png', 'Black logo'])).toBe('dark')
+    // "dark" and "light" may name a mode: the dark-mode logo is often white.
+    expect(inkHint(['/logo-dark.png'])).toBeNull()
+    expect(inkHint(['/logo-light.svg'])).toBeNull()
+    expect(inkHint(['/darkness.png'])).toBeNull()
+    expect(
+      inkHint(['/white-fox-logo.webp', 'White Fox'], new Set(['white', 'fox']))
+    ).toBeNull()
+  })
+
+  it('takes the brand’s name and web address out of the hints, and reads a locale’s home link', () => {
+    const html = `<header class="site-header site-header--social"><a href="/en-gb"><img src="/img/white-fox.webp" alt="White Fox"></a></header>`
+    expect(logoCandidates(html, page, { brand: 'White Fox' })).toEqual([
+      {
+        url: 'https://shop.example/img/white-fox.webp',
+        hint: null,
+        from: 'header'
+      }
+    ])
+    expect(
+      logoCandidates(
+        '<img class="logo" src="/img/logo-white.png">',
+        'https://whitefox.example/'
+      )[0]?.hint
+    ).toBe('light')
+    expect(
+      logoCandidates(
+        '<img class="logo" src="/img/white-logo.png">',
+        'https://white-fox.example/'
+      )[0]?.hint
+    ).toBeNull()
+  })
+
+  it('finds nothing for a page whose address cannot be read', () => {
+    expect(
+      logoCandidates('<img class="logo" src="/logo.png">', 'not a url')
+    ).toEqual([])
   })
 })
 
@@ -411,6 +446,31 @@ describe('logoTone (ONB-060a)', () => {
         )
       )
     ).toEqual({ tone: 'unknown', boxed: false })
+  })
+})
+
+describe('hostile pictures (ONB-060a)', () => {
+  it('reads them in a moment, whatever they hold', () => {
+    const time = (bytes: Uint8Array) => {
+      const started = Date.now()
+      const tone = logoTone(bytes)
+      return { tone, ms: Date.now() - started }
+    }
+    const comments = time(new TextEncoder().encode('<!---->'.repeat(28) + 'x'))
+    expect(comments.tone).toEqual({ tone: 'unknown', boxed: false })
+    expect(comments.ms).toBeLessThan(200)
+    const masks = time(
+      new TextEncoder().encode('<svg>' + '<mask'.repeat(40_000))
+    )
+    expect(masks.ms).toBeLessThan(500)
+    const opened = time(
+      new TextEncoder().encode(
+        '<svg><path fill="#111" d="M0 0"/>' + '<mask id="m">'.repeat(40_000)
+      )
+    )
+    // An unclosed mask ends what is drawn; what came before still counts.
+    expect(opened.tone).toEqual({ tone: 'dark', boxed: false })
+    expect(opened.ms).toBeLessThan(500)
   })
 })
 

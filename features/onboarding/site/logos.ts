@@ -54,9 +54,10 @@ const words = (...texts: (string | null)[]) =>
     .split(/[^a-z0-9]+/)
     .filter(Boolean)
 
+// Only words that say the ink: "light" and "dark" may name a light or
+// dark mode instead (a "logo-dark" is often the white logo for dark mode).
 const lightWords = new Set([
   'white',
-  'light',
   'inverse',
   'inverted',
   'reverse',
@@ -64,7 +65,7 @@ const lightWords = new Set([
   'negative',
   'knockout'
 ])
-const darkWords = new Set(['black', 'dark'])
+const darkWords = new Set(['black'])
 /** Boxes whose pictures are other brands' logos or icons, never the brand's. */
 const otherBrands = new Set([
   'press',
@@ -88,9 +89,18 @@ const otherBrands = new Set([
   'social'
 ])
 
-/** What a logo's own file name or label says about its ink. */
-export function inkHint(...texts: (string | null)[]): LogoCandidate['hint'] {
-  const w = words(...texts)
+/** The page's own parts: their words never mark a box of other brands. */
+const landmarks = new Set(['html', 'body', 'header', 'nav', 'main', 'footer'])
+
+/**
+ * What a logo's own file name or label says about its ink. `brand` words
+ * (the brand's name, its web address) never count: "White Fox" is a name.
+ */
+export function inkHint(
+  texts: readonly (string | null)[],
+  brand: ReadonlySet<string> = new Set()
+): LogoCandidate['hint'] {
+  const w = words(...texts).filter((x) => !brand.has(x))
   if (w.some((x) => lightWords.has(x))) return 'light'
   if (w.some((x) => darkWords.has(x))) return 'dark'
   return null
@@ -172,9 +182,20 @@ const rank: Record<LogoCandidate['from'], number> = {
 type Place = { header: boolean; homeLink: boolean; others: boolean }
 
 /** The logo candidates on a page, surest first, each once. */
-export function logoCandidates(html: string, page: string): LogoCandidate[] {
+export function logoCandidates(
+  html: string,
+  page: string,
+  { brand = '' }: { brand?: string } = {}
+): LogoCandidate[] {
+  let origin: string
+  let host: string
+  try {
+    ;({ origin, hostname: host } = new URL(page))
+  } catch {
+    return []
+  }
   const doc = parse(html.slice(0, 2_000_000))
-  const origin = new URL(page).origin
+  const brandWords = new Set(words(brand, host))
   const found: LogoCandidate[] = []
   const add = (
     url: string | null,
@@ -182,7 +203,11 @@ export function logoCandidates(html: string, page: string): LogoCandidate[] {
     ...own: (string | null)[]
   ) => {
     if (url)
-      found.push({ url, hint: inkHint(new URL(url).pathname, ...own), from })
+      found.push({
+        url,
+        hint: inkHint([new URL(url).pathname, ...own], brandWords),
+        from
+      })
   }
   /** The first of a picture's sources that is a usable link (a lazy picture's placeholder is not). */
   const sourceOf = (c: T.Element) => {
@@ -203,7 +228,11 @@ export function logoCandidates(html: string, page: string): LogoCandidate[] {
     if (!href) return false
     try {
       const u = new URL(href, page)
-      return u.origin === origin && (u.pathname === '/' || u.pathname === '')
+      // The home page, or a locale's home (`/en-gb`).
+      return (
+        u.origin === origin &&
+        /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/?)?$/i.test(u.pathname)
+      )
     } catch {
       return false
     }
@@ -254,7 +283,12 @@ export function logoCandidates(html: string, page: string): LogoCandidate[] {
       walk(c, {
         header: at.header || tag === 'header' || tag === 'nav',
         homeLink: at.homeLink || (tag === 'a' && isHome(attr(c, 'href'))),
-        others: at.others || words(...label).some((w) => otherBrands.has(w))
+        // A landmark's own words ("site-header--social") never hide the
+        // brand's logo: only a box inside one.
+        others:
+          at.others ||
+          (!landmarks.has(tag) &&
+            words(...label).some((w) => otherBrands.has(w)))
       })
     }
   }
@@ -299,13 +333,68 @@ export function logoTone(bytes: Uint8Array): LogoTone {
     return { tone: 'unknown', boxed: true }
   const text = new TextDecoder().decode(bytes)
   // Only a file that is an SVG (a page with an icon in it is not).
-  if (
-    /^\s*(?:<\?xml[^>]*>\s*)?(?:(?:<!--[\s\S]{0,2000}?-->|<!doctype[^>]{0,500}>)\s*)*<svg[\s>]/i.test(
-      text.slice(0, 8_000)
-    )
-  )
-    return svgTone(text)
-  return unknown
+  return startsAsSvg(text) ? svgTone(text) : unknown
+}
+
+/**
+ * Whether a text starts as an SVG: `<svg` after only an XML line,
+ * comments and a doctype. Scanned left to right, never a pattern that
+ * could take long on a hostile file.
+ */
+function startsAsSvg(text: string) {
+  const lower = text.slice(0, 8_000).toLowerCase()
+  let i = 0
+  for (;;) {
+    while (i < lower.length && /\s/.test(lower[i]!)) i++
+    const skip = (open: string, close: string) => {
+      if (!lower.startsWith(open, i)) return false
+      const end = lower.indexOf(close, i + open.length)
+      i = end < 0 ? lower.length : end + close.length
+      return true
+    }
+    if (skip('<?xml', '?>') || skip('<!--', '-->') || skip('<!doctype', '>'))
+      continue
+    return /^<svg[\s>]/.test(lower.slice(i, i + 5))
+  }
+}
+
+/**
+ * An SVG without its clip and mask shapes (they only cut what is drawn).
+ * Scanned left to right: an unclosed one ends the drawing there.
+ */
+function withoutClips(svg: string) {
+  const lower = svg.toLowerCase()
+  let out = ''
+  let i = 0
+  const next = (from: number) => {
+    let best = -1
+    for (const tag of ['<clippath', '<mask']) {
+      let at = lower.indexOf(tag, from)
+      // A whole tag name, not `<masking`.
+      while (at >= 0 && !/[\s>/]/.test(lower[at + tag.length] ?? '>'))
+        at = lower.indexOf(tag, at + 1)
+      if (at >= 0 && (best < 0 || at < best)) best = at
+    }
+    return best
+  }
+  while (i < svg.length) {
+    const open = next(i)
+    if (open < 0) return out + svg.slice(i)
+    out += svg.slice(i, open)
+    const tag = lower.startsWith('<clippath', open) ? 'clippath' : 'mask'
+    const head = lower.indexOf('>', open)
+    if (head < 0) return out
+    // `<mask … />` closes itself.
+    if (lower[head - 1] === '/') {
+      i = head + 1
+      continue
+    }
+    const close = lower.indexOf(`</${tag}`, head)
+    if (close < 0) return out
+    const end = lower.indexOf('>', close)
+    i = end < 0 ? svg.length : end + 1
+  }
+  return out
 }
 
 const isPng = (b: Uint8Array) =>
@@ -558,9 +647,7 @@ function colour(value: string): [number, number, number] | null {
 
 function svgTone(svg: string): LogoTone {
   // What is drawn: not the shapes that only clip or mask it.
-  const drawn = svg
-    .slice(0, maxLogoBytes)
-    .replace(/<(clipPath|mask)\b[\s\S]*?<\/\1\s*>/gi, '')
+  const drawn = withoutClips(svg.slice(0, maxLogoBytes))
   const shapes = /<(?:path|rect|circle|ellipse|polygon|polyline|line|text)\b/i
   // A picture inside an SVG: its ink is not in the SVG.
   if (/<image\b/i.test(drawn) && !shapes.test(drawn)) return unknown
