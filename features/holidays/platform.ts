@@ -52,8 +52,8 @@ export function countryFromTimezone(timezone: string): HolidayCountry {
   return 'INTL'
 }
 
-type Day = { y: number; m: number; d: number }
-const iso = ({ y, m, d }: Day) =>
+export type Day = { y: number; m: number; d: number }
+export const iso = ({ y, m, d }: Day) =>
   `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 const utc = ({ y, m, d }: Day) => new Date(Date.UTC(y, m - 1, d))
 const fromDate = (date: Date): Day => ({
@@ -61,11 +61,16 @@ const fromDate = (date: Date): Day => ({
   m: date.getUTCMonth() + 1,
   d: date.getUTCDate()
 })
-const addDays = (day: Day, days: number) =>
+export const addDays = (day: Day, days: number) =>
   fromDate(new Date(utc(day).getTime() + days * 86_400_000))
 
 /** The n-th weekday (0 = Sunday) of a month; n = -1 is the last one. */
-function nthWeekday(y: number, m: number, weekday: number, n: number): Day {
+export function nthWeekday(
+  y: number,
+  m: number,
+  weekday: number,
+  n: number
+): Day {
   if (n > 0) {
     const first = utc({ y, m, d: 1 }).getUTCDay()
     return { y, m, d: 1 + ((weekday - first + 7) % 7) + (n - 1) * 7 }
@@ -170,7 +175,7 @@ const moon = (name: string, category: HolidayCategory, key: string): Rule => ({
   on: (y) => lunar[key]?.[y] ?? null
 })
 /** US Thanksgiving: fourth Thursday of November; shopping days follow it. */
-const thanksgiving = (y: number) => nthWeekday(y, 11, 4, 4)
+export const thanksgiving = (y: number) => nthWeekday(y, 11, 4, 4)
 const afterThanksgiving = (name: string, days: number): Rule => ({
   name,
   category: 'commercial',
