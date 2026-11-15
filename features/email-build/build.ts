@@ -145,6 +145,12 @@ export type SectionsOutput = {
   timezone: string
   /** Built from the sample store: a later step on real data starts over. */
   sample: boolean
+  /**
+   * REL-STO: the store as this step read it (`storeFingerprint`, added by
+   * the job's step runner): a later step on other store data starts over.
+   * Missing on builds saved before it.
+   */
+  store?: string
   /** DSC-001: the max and the codes still working when this email sends. */
   rules: { maxDiscountPercent: number; codes: DiscountCode[] }
   layout: SectionPlan

@@ -91,7 +91,13 @@ export function industryFrom(
 ): { key: Industry; words: string } {
   const offering = findings
     .filter((f) => f.topic === 'offering' && !(live && f.pass === 'sample'))
-    .sort((a, b) => b.confidence - a.confidence)
+    // Equally sure lines by their words, so the read order never picks the
+    // industry (REL-STO: the same store gives the same email).
+    .sort(
+      (a, b) =>
+        b.confidence - a.confidence ||
+        (a.statement < b.statement ? -1 : a.statement > b.statement ? 1 : 0)
+    )
     .map((f) => f.statement.trim())
   const own = corrections.filter((c) => c.section === 'offering')
   const lines = own.length

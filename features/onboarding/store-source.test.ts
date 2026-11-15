@@ -127,6 +127,28 @@ const parts = (over: Partial<Parts> = {}): Parts => ({
   ...over
 })
 
+describe('the same store read again (REL-STO)', () => {
+  it('gives the same store, and so the same fingerprint, when its findings and catalog come back in another order', async () => {
+    const { storeFingerprint } = await import('@/features/email-build/steps')
+    // Two equally sure lines of what the brand sells: the read order must
+    // not pick the industry (nor its claims list).
+    const tied = [
+      sells('Hand-poured soy candles and home fragrance'),
+      sells('Organic skincare serums and face creams')
+    ]
+    const first = parts({ findings: [...tied, ...parts().findings] })
+    const again = parts({
+      findings: [...first.findings].reverse(),
+      catalog: [...first.catalog].reverse()
+    })
+    const a = storeFrom(first)
+    const b = storeFrom(again)
+    expect(b.industry).toBe(a.industry)
+    expect(b.facts).toEqual(a.facts)
+    expect(storeFingerprint(b)).toBe(storeFingerprint(a))
+  })
+})
+
 describe('storeFrom (ONB-057b part 2)', () => {
   it('builds from the store’s own products, brand, facts, industry and customer words', () => {
     const given = parts()
