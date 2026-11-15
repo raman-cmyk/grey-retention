@@ -255,6 +255,9 @@ export async function listFindings(
     .eq('tenant_id', tenantId)
     .is('superseded_at', null)
     .order('created_at', { ascending: false })
+    // A run's findings share one time: their id makes the order total, so
+    // two reads of the same findings give the same list (REL-STO).
+    .order('id', { ascending: true })
     .limit(500)
   if (filter.source) query = query.eq('source', filter.source)
   if (filter.topic) query = query.eq('topic', filter.topic)
