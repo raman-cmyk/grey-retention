@@ -172,7 +172,14 @@ export async function runEmailBuilds(
             tenantId: job.tenant_id,
             callerKey: `email-build:${job.id}`,
             fallbacks,
-            agents
+            agents,
+            // A step with rounds starts a model call only while one fits in
+            // this claim's budget and the job's deadline (REL-AI part 2b).
+            until: Math.min(
+              started + stepBudgetMs,
+              deps.deadline ?? Number.POSITIVE_INFINITY
+            ),
+            clock: now
           }
         )
         const took = now() - started
@@ -185,10 +192,14 @@ export async function runEmailBuilds(
         if (!step.ok) {
           // A claim without a known step (the app went live before the
           // migration) and saved offers that could not be read are tried
-          // again, 3 tries a minute apart; every other code fails at once.
+          // again, 3 tries a minute apart; a busy AI waits as long as it
+          // asks (REL-AI part 2b); every other code fails at once.
           await fail(
             step.code,
-            step.code !== 'step_unknown' && step.code !== 'offers_unreadable'
+            step.code !== 'step_unknown' &&
+              step.code !== 'offers_unreadable' &&
+              step.code !== 'ai_unavailable',
+            step.retryAfterSeconds
           )
           continue
         }

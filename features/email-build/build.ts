@@ -11,10 +11,7 @@ import {
   allowedBlockTypes,
   type AssemblyInput
 } from '@/features/assembly/inputs'
-import {
-  assembleLocked,
-  assembleLockedPlain
-} from '@/features/assembly/modes'
+import { assembleLocked, assembleLockedPlain } from '@/features/assembly/modes'
 import { localTimeCandidates } from '@/lib/local-time'
 import {
   codeSectionPlan,
@@ -104,6 +101,7 @@ export type BuildResult =
         | 'offers_unreadable'
         | 'copy_failed'
         | 'subject_taken'
+        | 'ai_unavailable'
         | 'render_failed'
     }
 
@@ -395,7 +393,7 @@ export async function copyStep(
   if (ctx.agents) {
     const agents = ctx.agents
     const saved = copyWork.safeParse(input.work)
-    const now = ctx.now ?? Date.now
+    const now = ctx.clock ?? Date.now
     const until = ctx.until
     const made = await copyRounds(
       {
@@ -605,7 +603,8 @@ export type BuildCtx = {
    * time limit (tests and tools).
    */
   until?: number
-  now?: () => number
+  /** The clock for `until` (ms since epoch); default `Date.now`. */
+  clock?: () => number
 }
 
 /** All four build steps at once (tests and tools; the job saves each). */

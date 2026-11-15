@@ -13,6 +13,7 @@ const buildCodes = [
   'slot_time_invalid',
   'offers_unreadable',
   'copy_failed',
+  'ai_unavailable',
   'subject_taken',
   'render_failed',
   'built_email_invalid',

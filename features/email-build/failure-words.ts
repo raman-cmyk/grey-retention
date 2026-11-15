@@ -11,6 +11,7 @@ export const buildFailureWords = {
   slot_time_invalid: 'Its send time does not exist in your time zone.',
   offers_unreadable: 'Your saved offers could not be read. Try again.',
   copy_failed: 'Its words did not pass the checks.',
+  ai_unavailable: 'The AI was busy or could not be reached. Try again later.',
   subject_taken:
     'Every subject it could use is used by another email in this plan. Plan again for new emails.',
   render_failed: 'Its design could not be drawn.',
