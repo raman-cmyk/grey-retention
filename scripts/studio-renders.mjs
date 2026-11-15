@@ -8,6 +8,9 @@
  * section's own origins, no redirect, no navigation), uploads the JPEG
  * through the section's signed link and reports the result.
  *
+ * Then the design steps waiting for their pictures go on (`carryOn`,
+ * DST-006b).
+ *
  * The repository is public, so its logs are: it prints counts only, never
  * a job, a page, a link or the secret, and Chromium gets no secret in its
  * environment.
@@ -19,8 +22,9 @@ import { renderSection } from './section-render.mjs'
 
 /**
  * Sections drawn per run at most, and the run's time: with the setup
- * before it (the peek and its retry, installing Chromium) and one last
- * section, a run ends well inside the job's 18 minutes.
+ * before it (the peek and its retry, installing Chromium), one last
+ * section and the designs carried on after (`carryOnMs`), a run ends
+ * inside the job's 18 minutes.
  */
 export const perRun = 24
 export const runBudgetMs = 8 * 60_000
@@ -31,12 +35,18 @@ const reportMs = 15_000
 /** What the browser may report; refusing a section is the app's decision. */
 const reasons = new Set(['timeout', 'failed', 'navigated', 'too_large'])
 
-async function call(base, secret, init = {}) {
-  const response = await fetch(`${base}/api/internal/studio/renders`, {
+async function call(
+  base,
+  secret,
+  init = {},
+  path = '/api/internal/studio/renders',
+  ms = 30_000
+) {
+  const response = await fetch(`${base}${path}`, {
     ...init,
     // The secret goes to the app only, never on through a redirect.
     redirect: 'error',
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(ms),
     headers: {
       authorization: `Bearer ${secret}`,
       'content-type': 'application/json',
@@ -137,6 +147,26 @@ export async function run({
 }
 
 /**
+ * DST-006b: after drawing, the design steps waiting for their pictures go
+ * on (`/api/internal/studio/builds`, the design studio's job, with the
+ * agents, only with the owner's switches on). It logs a count only.
+ */
+export async function carryOn({ base, secret, log = console.log }) {
+  const answer = await call(
+    base,
+    secret,
+    {},
+    '/api/internal/studio/builds',
+    carryOnMs
+  )
+  const builds = Number.isInteger(answer?.builds) ? answer.builds : 0
+  log(answer?.off ? 'Design studio off.' : `Designs carried on: ${builds}.`)
+  return builds
+}
+/** The design studio's job runs for up to 2 minutes. */
+export const carryOnMs = 130_000
+
+/**
  * Chromium draws pages built from strangers' words and pictures: it gets
  * no secret in its environment, and its own sandbox where the machine
  * allows one (as the inbox screenshots).
@@ -160,17 +190,25 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   }
   const { chromium } = await import('@playwright/test')
   const browser = await launch(chromium)
-  try {
-    await run({ base, secret, browser })
-  } catch (error) {
-    // Never the secret, even inside an error's words.
-    const words = String(error?.message ?? error)
+  // Never the secret, even inside an error's words.
+  const words = (error) =>
+    String(error?.message ?? error)
       .split(secret)
       .join('[secret]')
       .slice(0, 300)
-    console.error(`Render run stopped: ${words}`)
+  try {
+    await run({ base, secret, browser })
+  } catch (error) {
+    console.error(`Render run stopped: ${words(error)}`)
     process.exitCode = 1
   } finally {
     await browser.close()
+  }
+  // The pictures drawn before a stop still carry their designs on.
+  try {
+    await carryOn({ base, secret })
+  } catch (error) {
+    console.error(`Designs not carried on: ${words(error)}`)
+    process.exitCode = 1
   }
 }

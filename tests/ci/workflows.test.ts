@@ -283,6 +283,11 @@ describe('CI workflows', () => {
       .split(/\n {6}- /)
       .slice(1)
     expect(steps[0]).toContain('?peek=1')
+    // DST-006b: with nothing to draw, the peek itself carries the waiting
+    // designs on, before anything is checked out.
+    expect(steps[0]).toContain(
+      `if [ "$waiting" = "0" ]; then\n            call '/api/internal/studio/builds' builds.json 130 || exit 1`
+    )
     for (const step of steps.slice(1))
       expect(step).toContain("if: steps.peek.outputs.waiting != '0'")
     // The secret only reaches the steps that call the app; no artifacts (a

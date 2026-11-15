@@ -23,8 +23,14 @@ import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { maxStepSaves, roundSteps, maxEmailBytes } from './step-names'
 import { buildCode, type BuildFailureCode } from './failure-words'
 import { type SavedOffers, type StoreSource } from './ports'
+import {
+  waitForPictures,
+  type claimWaitingDesign
+} from '@/features/studio/waits'
 
 type Db = SupabaseClient<Database>
+/** A build claimed by the design studio (DST-006b), as `claim_email_build` returns one. */
+type ClaimedBuild = NonNullable<Awaited<ReturnType<typeof claimWaitingDesign>>>
 
 /**
  * Runs waiting "Create email" steps (EML-004 part 2, REL-081). Each step is
@@ -38,7 +44,10 @@ type Db = SupabaseClient<Database>
  * never makes a second draft. A step that throws is tried again a minute
  * later, from the saved steps before it, at most 3 times; a busy Klaviyo
  * waits as long as it asks; bad data, a refused draft and a stored email or
- * step of the wrong shape fail at once.
+ * step of the wrong shape fail at once. DST-006b: a design step may wait for
+ * its pictures (`waiting`, saved with `wait_email_round`), and the design
+ * studio's job hands in a build it claimed already (`first`), which runs
+ * alone, as the click's build does.
  */
 export async function runEmailBuilds(
   db: Db,
@@ -66,6 +75,12 @@ export async function runEmailBuilds(
     agents?: BuildAgents | null
     /** Run only this build (the owner's click): its steps, then its push. */
     build?: string
+    /**
+     * DST-006b: `build` already claimed (the design studio's claim of a
+     * design step waiting for its pictures, `claimWaitingDesign`): it runs
+     * first, then its next steps as the click claims them.
+     */
+    first?: ClaimedBuild
     /** Steps to run at most; the deadline bounds the sweep. */
     limit?: number
     /** Stop claiming after this time (ms since epoch). */
@@ -84,7 +99,11 @@ export async function runEmailBuilds(
   const agents = deps.agents === undefined ? buildAgentsFor(db) : deps.agents
   // The owner's click: every step, every save of the steps with rounds
   // (REL-AI part 2b) and the push. Its deadline, not this count, ends it.
-  const limit = deps.build
+  // DST-006b: a build claimed already is the only build this run runs.
+  if (deps.first && deps.build !== undefined && deps.build !== deps.first.id)
+    throw new Error('A claimed build runs alone')
+  const only = deps.build ?? deps.first?.id
+  const limit = only
     ? buildSteps.length + 1 + roundSteps.length * maxStepSaves
     : (deps.limit ?? 25)
   let ran = 0
@@ -94,6 +113,7 @@ export async function runEmailBuilds(
    * takes it through its steps in one run, as the click does.
    */
   let moved: string | undefined
+  let first = deps.first
   const claim = async (target?: string) => {
     const claimed = await db.rpc('claim_email_build', target ? { target } : {})
     if (claimed.error) throw claimed.error
@@ -103,10 +123,16 @@ export async function runEmailBuilds(
     // An agent step can take most of a step's budget (3 tries of 15 s):
     // with the agents on, a new step is claimed only while a whole step
     // still fits before the deadline (REL-AI part 2).
-    if (deps.deadline && now() + (agents ? stepBudgetMs : 0) > deps.deadline)
+    if (
+      !first &&
+      deps.deadline &&
+      now() + (agents ? stepBudgetMs : 0) > deps.deadline
+    )
       break
-    let job = await claim(deps.build ?? moved)
-    if (!job && !deps.build && moved) job = await claim()
+    // A build claimed already runs first: its lease is this job's.
+    let job = first ?? (await claim(only ?? moved))
+    first = undefined
+    if (!job && !only && moved) job = await claim()
     moved = undefined
     if (!job) break
     const fail = async (
@@ -216,6 +242,41 @@ export async function runEmailBuilds(
             step.code,
             step.code !== 'step_unknown' && step.code !== 'offers_unreadable'
           )
+          continue
+        }
+        if ('waiting' in step) {
+          // DST-006b: only the design step waits for its pictures; the claim
+          // ends, and the design studio's job claims it again when they
+          // are there (nothing else does before its time is up).
+          if (job.step !== 'design') {
+            await fail('step_output_invalid', true)
+            continue
+          }
+          const wait = await waitForPictures(db, {
+            build: job.id,
+            lease: job.lease_token,
+            work: step.work,
+            seconds: step.seconds
+          })
+          if (!wait.ok) {
+            if (wait.reason === 'lease') {
+              logger.warn('Email build step lost its lease', {
+                build: job.id,
+                step: job.step
+              })
+              continue
+            }
+            // The seventh wait (the pictures kept not coming), the wrong
+            // step or refused work: final, with its reason.
+            await fail(
+              wait.reason === 'too_many'
+                ? 'step_timed_out'
+                : 'step_output_invalid',
+              true
+            )
+            continue
+          }
+          ran++
           continue
         }
         if ('saved' in step) {
