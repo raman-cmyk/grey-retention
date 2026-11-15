@@ -19,11 +19,15 @@ import {
   brandInspectorAgent,
   checkInspection,
   codeFindings,
+  copyRounds,
+  copyWork,
   emailChecks,
   emailInspectorAgent,
   priceChecks,
   rewriteRounds,
-  writeAndInspect
+  writeAndInspect,
+  type CopyWork,
+  type Finding
 } from './inspect'
 
 const tenantId = '00000000-0000-4000-8000-000000000101'
@@ -523,6 +527,23 @@ describe('the fix loop', () => {
 })
 
 describe('the email checks (code)', () => {
+  it('keep template tags, markup and hidden characters out of the subject and preview (Klaviyo reads them)', async () => {
+    const locked = await lock()
+    const draft = await draftOf(locked)
+    const rules = (over: Partial<Draft>) =>
+      emailChecks({ ...draft, ...over }, locked, brand.name).map((f) => f.rule)
+    expect(rules({ subject: 'Hi {{ first_name }}, 10% off' })).toContain(
+      'subject_markup'
+    )
+    expect(rules({ subject: 'Cosy <b>evenings</b>' })).toContain(
+      'subject_markup'
+    )
+    expect(
+      rules({ preheader: 'Use your code on the candle\u200b this week.' })
+    ).toContain('preview_markup')
+    expect(rules({})).not.toContain('subject_markup')
+  })
+
   it('find two main buttons, an unlocked link and a picture without words', async () => {
     const locked = await lock()
     const draft = await draftOf(locked)
@@ -710,5 +731,192 @@ describe('the inspectors', () => {
     expect(brandInspectorAgent.instructions).toContain(
       'Judge only the words the writer wrote'
     )
+  })
+})
+
+describe('rounds saved between claims (REL-AI part 2b)', () => {
+  /** True for the first `n` checks: about `n` model calls start. */
+  const budget = (n: number) => {
+    let left = n
+    return () => left-- > 0
+  }
+  /** As the database keeps it: plain JSON, read back by the step. */
+  const stored = (work: CopyWork) =>
+    copyWork.parse(JSON.parse(JSON.stringify(work))) as unknown as CopyWork
+  const spammy = words({
+    subject: 'ACT NOW!!! Miracle candle deal',
+    preheader: 'ACT NOW!!! Miracle candle deal'
+  })
+
+  it('goes on from its saved rounds to the same email, and pays for no call twice', async () => {
+    const locked = await lock()
+    const straight = writer(spammy, words())
+    const straightAi = inspectors()
+    const once = await writeAndInspect(
+      build(locked, straight),
+      context(straightAi).ctx
+    )
+    expect(once.status).toBe('passed')
+
+    const run = writer(spammy, words())
+    const ai = inspectors()
+    const { ctx, fallbacks } = context(ai)
+    let work: CopyWork | undefined
+    let claims = 0
+    let result
+    do {
+      claims++
+      result = await copyRounds(
+        { ...build(locked, run), work, fits: budget(1) },
+        ctx
+      )
+      if (result.status === 'paused') work = stored(result.work)
+    } while (result.status === 'paused' && claims < 10)
+    // One call a claim: write, write, brand inspector, email inspector.
+    expect(claims).toBe(4)
+    expect(result).toEqual(once)
+    expect(run).toHaveBeenCalledTimes(straight.mock.calls.length)
+    expect(ai).toHaveBeenCalledTimes(straightAi.mock.calls.length)
+    expect(fallbacks.entries()).toEqual([])
+  })
+
+  it('saves between the two inspectors, and the next claim asks only the Email inspector', async () => {
+    const locked = await lock()
+    const ai = inspectors()
+    const { ctx } = context(ai)
+    const first = await copyRounds(
+      { ...build(locked, writer(words())), fits: budget(2) },
+      ctx
+    )
+    if (first.status !== 'paused') throw new Error('expected a pause')
+    expect(first.work.pending?.next).toBe('email-inspector')
+    expect(ai.mock.calls.map((c) => c[0].purpose)).toEqual(['review'])
+    const next = await copyRounds(
+      { ...build(locked, writer()), work: stored(first.work), fits: budget(9) },
+      ctx
+    )
+    expect(next.status).toBe('passed')
+    expect(ai.mock.calls.map((c) => c[0].purpose)).toEqual(['review', 'label'])
+  })
+
+  it('an inspector out of time between its tries waits for the next claim, never skipped or logged', async () => {
+    const locked = await lock()
+    const wrongQuote = {
+      problems: [
+        {
+          field: 'subject',
+          quote: 'words that are not there',
+          reason: 'This is not what the subject says.',
+          fix: ''
+        }
+      ]
+    }
+    const ai = inspectors(wrongQuote, { problems: [] }, { problems: [] })
+    const { ctx, fallbacks } = context(ai)
+    const first = await copyRounds(
+      { ...build(locked, writer(words())), fits: budget(2) },
+      ctx
+    )
+    if (first.status !== 'paused') throw new Error('expected a pause')
+    expect(first.work.pending?.next).toBe('brand-inspector')
+    expect(first.work.skipped).toEqual([])
+    expect(fallbacks.entries()).toEqual([])
+    // The next claim asks the Brand inspector again, from its first try.
+    const next = await copyRounds(
+      { ...build(locked, writer()), work: stored(first.work) },
+      ctx
+    )
+    expect(next.status).toBe('passed')
+    expect(ai).toHaveBeenCalledTimes(3)
+  })
+
+  it('in its last claim, out of time means plain copy, logged', async () => {
+    const locked = await lock()
+    const { ctx, fallbacks } = context(inspectors())
+    const first = await copyRounds(
+      { ...build(locked, writer(spammy)), fits: budget(1) },
+      ctx
+    )
+    if (first.status !== 'paused') throw new Error('expected a pause')
+    const last = await copyRounds(
+      {
+        ...build(locked, writer(spammy)),
+        work: stored(first.work),
+        fits: () => false,
+        last: true
+      },
+      ctx
+    )
+    expect(last).toMatchObject({ status: 'plain', cause: 'out_of_time' })
+    expect(fallbacks.entries()[0]).toMatchObject({
+      agent: 'copy-inspectors',
+      reasonCode: 'copy_plain_fallback',
+      reason: 'The copy ran out of time after 1 round.'
+    })
+  })
+
+  it('saves the work when the AI gets busy after this claim did some; with nothing done, the job waits', async () => {
+    const locked = await lock()
+    let calls = 0
+    const run = vi.fn<RunAi>(async () =>
+      calls++ === 0
+        ? live(spammy)
+        : { ok: false, code: 'rate_limited', retryAfterSeconds: 20 }
+    )
+    const { ctx } = context(inspectors())
+    const first = await copyRounds(
+      { ...build(locked, run), fits: () => true },
+      ctx
+    )
+    if (first.status !== 'paused') throw new Error('expected a pause')
+    expect(first.work.rounds).toHaveLength(1)
+    const next = await copyRounds(
+      { ...build(locked, run), work: stored(first.work), fits: () => true },
+      ctx
+    )
+    expect(next).toMatchObject({
+      status: 'retry',
+      code: 'rate_limited',
+      retryAfterSeconds: 20
+    })
+  })
+
+  it('keeps only the last two rounds’ reasons, and its work reads back', async () => {
+    const locked = await lock()
+    const { ctx } = context(inspectors())
+    const result = await copyRounds(
+      { ...build(locked, writer(spammy)), fits: budget(3) },
+      ctx
+    )
+    if (result.status !== 'paused') throw new Error('expected a pause')
+    const work = stored(result.work)
+    expect(work.rounds).toHaveLength(3)
+    expect(work.rounds[0].findings).toEqual([])
+    expect(work.rounds[2].findings.length).toBeGreaterThan(0)
+    expect(work.rounds[2].findings.length).toBeLessThanOrEqual(12)
+    expect(JSON.stringify(work).length).toBeLessThan(64_000)
+  })
+
+  it('sends a draft the extra checks refuse back to the writer with the reason', async () => {
+    const locked = await lock()
+    const taken: Finding = {
+      by: 'code',
+      rule: 'subject_taken',
+      field: 'subject',
+      reason: 'Another email in this plan already has this subject.'
+    }
+    const run = writer(words(), words({ subject: 'Slow evenings, 10% off' }))
+    const { ctx } = context(inspectors())
+    const result = await copyRounds(
+      {
+        ...build(locked, run),
+        checks: (d) => (d.subject === words().subject ? [taken] : [])
+      },
+      ctx
+    )
+    expect(result).toMatchObject({ status: 'passed' })
+    if (result.status !== 'passed') return
+    expect(result.draft.subject).toBe('Slow evenings, 10% off')
+    expect(userOf(run, 1)).toContain('Another email in this plan')
   })
 })
