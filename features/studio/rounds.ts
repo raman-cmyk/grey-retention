@@ -3,7 +3,8 @@ import { z } from 'zod'
 import type { TriesSoFar } from '@/features/strategy/retry'
 import type { Verdict } from './critic'
 import { briefHosts, type DesignedResult, type SectionBrief } from './designer'
-import type { RenderedSection } from './renderer'
+import { maxSectionBytes, type RenderedSection } from './renderer'
+import { SectionNotDrawable } from './render-jobs'
 import type { DesignedSection } from './section'
 import { studioWaits, type BuildRender } from './waits'
 
@@ -18,7 +19,9 @@ import { studioWaits, type BuildRender } from './waits'
  * reason. Between claims the work is kept in the design step's work
  * (`StudioWork`); a step out of time pauses, and one waiting for its
  * pictures waits (DST-006b) until they are drawn or `until`, after which
- * the sections still drawing are coded too.
+ * the sections still drawing are coded too. Each pause and wait is one of
+ * the design step's 6 waits (`wait_email_round`): before the last would
+ * be spent, what is unfinished is coded.
  *
  * Everything outside is a port (`StudioPorts`), so this runs with fakes in
  * tests and with the agents, the render job and storage in the build
@@ -27,8 +30,16 @@ import { studioWaits, type BuildRender } from './waits'
 
 /** Rounds a section gets at most. */
 export const maxRounds = 3
-/** The time a build gives its pictures, from its first round. */
-export const studioMs = 30 * 60_000
+/**
+ * The time a build gives its pictures, from its first round: the browser
+ * draws every 10 minutes (DST-001c), so 3 rounds take about 30 minutes,
+ * with room for a run that starts late.
+ */
+export const studioMs = 45 * 60_000
+/** Designed sections an email has at most (today one hero). */
+export const maxDesigned = 4
+/** Agent calls the critic may make (its answer tried 3 times). */
+const criticCalls = 3
 
 /** Why a section is its coded block: the log's reason codes (D16). */
 export const codedReasons = {
@@ -44,37 +55,66 @@ export const codedReasons = {
 } as const
 export type CodedReason = keyof typeof codedReasons
 
-const sectionState = z.strictObject({
-  id: z.string().min(1).max(40),
-  round: z.int().min(1).max(maxRounds),
-  state: z.enum(['design', 'drawing', 'done', 'coded']),
-  /** The critic's problems, for the next round's Section designer. */
-  problems: z.array(z.string().max(400)).max(20),
-  /** A design paused between its tries (DST-003). */
-  tries: z
-    .strictObject({
-      tries: z.int().min(0).max(3),
-      problems: z.array(z.string().max(2000)).max(20),
-      reasonCode: z.enum(['answer_invalid', 'check_failed'])
-    })
-    .optional(),
-  render: z.uuid().optional(),
-  alt: z.string().max(400).optional(),
-  /** CSS px at 600 wide. */
-  height: z.int().min(1).max(1600).optional(),
-  reason: z.enum(Object.keys(codedReasons) as [CodedReason]).optional()
-})
+/** At most `n` UTF-16 units, never half a character. */
+const cut = (text: string, n: number) =>
+  text.slice(0, n).replace(/[\uD800-\uDBFF]$/, '')
+
+const sectionState = z
+  .object({
+    id: z.string().min(1).max(40),
+    /** The brief it was designed for: another brief starts it over. */
+    brief: z.string().regex(/^[0-9a-f]{16}$/),
+    round: z.int().min(1).max(maxRounds),
+    state: z.enum(['design', 'drawing', 'done', 'coded']),
+    /** The critic's problems, for the next round's Section designer. */
+    problems: z.array(z.string().max(400)).max(20),
+    /** A design paused between its tries (DST-003). */
+    tries: z
+      .object({
+        tries: z.int().min(0).max(3),
+        problems: z.array(z.string().max(2000)).max(20),
+        reasonCode: z.enum(['answer_invalid', 'check_failed'])
+      })
+      .optional(),
+    render: z.uuid().optional(),
+    alt: z.string().min(1).max(400).optional(),
+    /** CSS px at 600 wide. */
+    height: z.int().min(1).max(1600).optional(),
+    reason: z.enum(Object.keys(codedReasons) as [CodedReason]).optional()
+  })
+  // Only the states the rounds make.
+  .refine((s) =>
+    s.state === 'design'
+      ? !s.render && !s.reason
+      : s.state === 'drawing'
+        ? !!s.render && !!s.alt && !s.reason
+        : s.state === 'done'
+          ? !!s.render && !!s.alt && !!s.height && !s.reason
+          : !!s.reason
+  )
 export type SectionState = z.infer<typeof sectionState>
 
-/** The studio's work between claims, inside the design step's work. */
-export const studioWork = z.strictObject({
+/**
+ * The studio's work between claims: the design step keeps it under its
+ * own key (unknown keys around it, as the database's save count, are
+ * left out when it is read).
+ */
+export const studioWork = z.object({
   /** Past this (ms since epoch), the sections still drawing are coded. */
   until: z.int().min(0),
   /** Pictures asked for so far (12 a build). */
   renders: z.int().min(0).max(studioWaits.renders),
-  sections: z.array(sectionState).max(4)
+  /** Pauses and waits so far (the design step's 6). */
+  waits: z.int().min(0).max(studioWaits.perStep),
+  sections: z.array(sectionState).max(maxDesigned)
 })
 export type StudioWork = z.infer<typeof studioWork>
+/** The build's limits a work carries, kept even when the rest is unreadable. */
+const budget = z.object({
+  until: z.int().min(0),
+  renders: z.int().min(0).max(studioWaits.renders),
+  waits: z.int().min(0).max(studioWaits.perStep)
+})
 
 type DrawnRender = Extract<BuildRender, { state: 'drawn' }>
 
@@ -84,35 +124,56 @@ export type StudioPorts = {
     brief: SectionBrief,
     from?: TriesSoFar
   ) => Promise<DesignedResult | { paused: TriesSoFar } | null>
-  /** Asks for a section to be drawn (`requestSectionRender`); throws when it cannot be. */
+  /**
+   * Asks for a section to be drawn (`requestSectionRender`): it throws
+   * `SectionNotDrawable` for a section that cannot be, the database's
+   * refusals (PT409, 22023) and anything else as they come.
+   */
   request: (input: {
     key: string
     section: DesignedSection
     hosts: string[]
   }) => Promise<string>
-  /** The build's pictures (`buildRenders`). */
+  /** The build's pictures, in its own workspace (`buildRenders`). */
   renders: () => Promise<BuildRender[]>
-  /** The stored picture, only when its tag is the one recorded; else null. */
-  picture: (render: DrawnRender) => Promise<RenderedSection | null>
+  /**
+   * The stored picture of `section`, only when its tag is the one
+   * recorded; else null.
+   */
+  picture: (
+    render: DrawnRender,
+    section: string
+  ) => Promise<RenderedSection | null>
   /** The Design critic's verdict (`critiqueSection`); null when it cannot answer. */
   critique: (
     brief: SectionBrief,
     image: RenderedSection
   ) => Promise<Verdict | null>
-  /** A section drawn as its coded block, with why (the fallback log). */
+  /**
+   * A section drawn as its coded block, with why: one line for the owner's
+   * log per section (the agents log their own failures as well).
+   */
   coded: (section: string, reason: CodedReason) => Promise<void>
-  /** Whether one more agent call fits in this claim. */
-  fits: () => boolean
+  /** Whether `calls` more agent calls (default 1) fit in this claim. */
+  fits: (calls?: number) => boolean
   now: () => number
 }
 
 export type RoundOutcome =
   /** Pictures were asked for: wait for them (`wait_email_round`). */
   | { wait: StudioWork; seconds: number }
-  /** Out of time in this claim: wait a minute and go on (never a save, DST-006b). */
-  | { paused: StudioWork }
+  /**
+   * Out of time in this claim: wait as for pictures (never a save,
+   * DST-006b). With none queued, the studio's next run takes it back at
+   * once; only past `seconds` may the sweep, which draws coded blocks.
+   */
+  | { paused: StudioWork; seconds: number }
   /** Every section is drawn and passed, or is its coded block. */
   | { done: StudioWork }
+
+/** A short digest of a brief: saved work for another brief starts over. */
+export const briefDigest = (brief: SectionBrief) =>
+  createHash('sha256').update(JSON.stringify(brief)).digest('hex').slice(0, 16)
 
 /** A render key the database takes: the section, its round, its design. */
 export function renderKey(id: string, round: number, section: DesignedSection) {
@@ -130,13 +191,16 @@ export function renderKey(id: string, round: number, section: DesignedSection) {
 /** The first work for these briefs: every section to design, round 1. */
 export function startWork(
   briefs: readonly SectionBrief[],
-  now: number
+  now: number,
+  kept?: { until: number; renders: number; waits: number }
 ): StudioWork {
   return {
-    until: now + studioMs,
-    renders: 0,
+    until: kept?.until ?? now + studioMs,
+    renders: kept?.renders ?? 0,
+    waits: kept?.waits ?? 0,
     sections: briefs.map((b) => ({
       id: b.board.id,
+      brief: briefDigest(b),
       round: 1,
       state: 'design',
       problems: []
@@ -144,29 +208,52 @@ export function startWork(
   }
 }
 
+/** A database refusal the rounds read as a reason, else null. */
+function refusal(error: unknown): CodedReason | null {
+  if (error instanceof SectionNotDrawable) return 'not_drawable'
+  const e = error as { code?: string; details?: string; message?: string }
+  if (e?.code === '22023' && e.details === 'too_many_renders')
+    return 'too_many_pictures'
+  // The same key with another section (a design made again after a lost
+  // claim): that design cannot be drawn under its round's key.
+  if (e?.code === 'PT409' && e.message === "This key is another section's")
+    return 'not_drawable'
+  return null
+}
+
 /**
  * One claim's share of the rounds: it goes as far as it can, then says
- * whether to wait for pictures, pause (out of time) or finish. `work` is
- * the saved work (null on the first claim); a saved work that does not
- * match the briefs starts over.
+ * whether to wait for pictures, pause (out of time) or finish. `saved` is
+ * the studio's saved work (none on the first claim). Work for other
+ * briefs starts over, keeping the build's time, pictures and waits; so
+ * does work that cannot be read. A port that throws (the claim's lease
+ * lost, the database or a network down) throws out of the round: the
+ * step is tried again from its saved work.
  */
 export async function studioRound(
   briefs: readonly SectionBrief[],
   saved: unknown,
   ports: StudioPorts
 ): Promise<RoundOutcome> {
+  if (briefs.length > maxDesigned)
+    throw new Error(`At most ${maxDesigned} designed sections`)
   const parsed = studioWork.safeParse(saved)
   const matches =
     parsed.success &&
     parsed.data.sections.length === briefs.length &&
-    parsed.data.sections.every((s, i) => s.id === briefs[i]!.board.id)
+    parsed.data.sections.every(
+      (s, i) =>
+        s.id === briefs[i]!.board.id && s.brief === briefDigest(briefs[i]!)
+    )
+  const kept = budget.safeParse(saved)
   const work: StudioWork = matches
     ? structuredClone(parsed.data)
-    : startWork(briefs, ports.now())
+    : startWork(briefs, ports.now(), kept.success ? kept.data : undefined)
   const code = async (s: SectionState, reason: CodedReason) => {
     s.state = 'coded'
     s.reason = reason
     delete s.tries
+    delete s.render
     await ports.coded(s.id, reason)
   }
   let renders: BuildRender[] | undefined
@@ -184,12 +271,16 @@ export async function studioRound(
         if (ports.now() >= work.until) await code(s, 'render_timed_out')
         continue
       }
-      if (!ports.fits()) {
+      if (!ports.fits(criticCalls)) {
         paused = true
         continue
       }
-      const picture = await ports.picture(render)
-      if (!picture) {
+      const picture = await ports.picture(render, s.id)
+      if (
+        !picture ||
+        picture.id !== s.id ||
+        picture.bytes.byteLength > maxSectionBytes
+      ) {
         await code(s, 'picture_unusable')
         continue
       }
@@ -209,13 +300,18 @@ export async function studioRound(
       }
       s.round++
       s.state = 'design'
-      s.problems = verdict.problems.slice(0, 20).map((p) => p.slice(0, 400))
+      s.problems = verdict.problems.slice(0, 20).map((p) => cut(p, 400))
       delete s.render
       delete s.alt
     }
     if (s.state !== 'design') continue
     if (ports.now() >= work.until) {
       await code(s, 'studio_timed_out')
+      continue
+    }
+    // No picture left: no design is paid for.
+    if (work.renders >= studioWaits.renders) {
+      await code(s, 'too_many_pictures')
       continue
     }
     if (!ports.fits()) {
@@ -238,10 +334,6 @@ export async function studioRound(
       await code(s, 'design_failed')
       continue
     }
-    if (work.renders >= studioWaits.renders) {
-      await code(s, 'too_many_pictures')
-      continue
-    }
     let render: string
     try {
       render = await ports.request({
@@ -249,33 +341,46 @@ export async function studioRound(
         section: made.section,
         hosts: briefHosts(brief)
       })
-    } catch {
-      await code(s, 'not_drawable')
+    } catch (error) {
+      const reason = refusal(error)
+      if (!reason) throw error
+      await code(s, reason)
       continue
     }
     work.renders++
     s.state = 'drawing'
     s.render = render
-    s.alt = made.alt
+    s.alt = cut(made.alt, 400)
   }
+  const waiting =
+    paused ||
+    work.sections.some((s) => s.state === 'design' || s.state === 'drawing')
+  if (!waiting) return { done: studioWork.parse(work) }
+  if (work.waits >= studioWaits.perStep) {
+    // No wait is left for this step: what is unfinished is coded now.
+    for (const s of work.sections)
+      if (s.state === 'design' || s.state === 'drawing')
+        await code(s, 'studio_timed_out')
+    return { done: studioWork.parse(work) }
+  }
+  // A pause and a wait both wait until the studio's time is up: the
+  // studio's job takes the step back as soon as no picture is queued.
+  work.waits++
+  const left = Math.ceil((work.until - ports.now()) / 1000)
+  const seconds = Math.min(
+    studioWaits.maxSeconds,
+    Math.max(studioWaits.minSeconds, left)
+  )
   if (paused || work.sections.some((s) => s.state === 'design'))
-    return { paused: work }
-  if (work.sections.some((s) => s.state === 'drawing')) {
-    const left = Math.ceil((work.until - ports.now()) / 1000)
-    return {
-      wait: work,
-      seconds: Math.min(
-        studioWaits.maxSeconds,
-        Math.max(studioWaits.minSeconds, left)
-      )
-    }
-  }
-  return { done: work }
+    return { paused: studioWork.parse(work), seconds }
+  return { wait: studioWork.parse(work), seconds }
 }
 
 /**
  * A section done, as its hero's studio picture (DST-006a), given the
- * picture's long-lived https link; null for any other section.
+ * picture's long-lived https link; null for any other section. The caller
+ * signs only a render `buildRenders` read as drawn in the build's own
+ * workspace, with its tag checked.
  */
 export function heroPicture(s: SectionState, src: string) {
   if (s.state !== 'done' || !s.render || !s.alt || !s.height) return null

@@ -4,7 +4,9 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
 import type { SectionBrief } from './designer'
 import type { RenderedSection } from './renderer'
+import { SectionNotDrawable } from './render-jobs'
 import {
+  briefDigest,
   heroPicture,
   maxRounds,
   renderKey,
@@ -104,27 +106,40 @@ function ports(
       return next
     }),
     renders: vi.fn(async () => answers.renders ?? []),
-    picture: vi.fn(async () => take(answers.picture, image)),
+    picture: vi.fn<StudioPorts['picture']>(async () =>
+      take(answers.picture, image)
+    ),
     critique: vi.fn(async () =>
       take(answers.critique, pass as unknown)
     ) as StudioPorts['critique'],
     coded: vi.fn(async () => {}),
-    fits: vi.fn(() => take(answers.fits, true)),
+    fits: vi.fn<StudioPorts['fits']>(() => take(answers.fits, true)),
     now: () => clock.t
   }
   return p
 }
+
+const waitOf = (out: unknown) => (out as { wait: StudioWork }).wait
+const doneOf = (out: unknown) => (out as { done: StudioWork }).done
+/** The work after a first claim: the section drawing its picture uuid(1). */
+const drawing = async (clock = { t: 1_000_000 }) =>
+  waitOf(await studioRound([brief('s2')], null, ports({}, clock)))
 
 describe('the design studio’s rounds (DST-006c)', () => {
   it('designs each section and asks for its picture, then waits for them', async () => {
     const p = ports({ design: [designed('s2'), designed('s4', 2)] })
     const out = await studioRound([brief('s2'), brief('s4')], null, p)
     expect(out).toMatchObject({ seconds: studioMs / 1000 })
-    const work = (out as { wait: StudioWork }).wait
-    expect(work).toMatchObject({ until: 1_000_000 + studioMs, renders: 2 })
+    const work = waitOf(out)
+    expect(work).toMatchObject({
+      until: 1_000_000 + studioMs,
+      renders: 2,
+      waits: 1
+    })
     expect(work.sections).toEqual([
       {
         id: 's2',
+        brief: briefDigest(brief('s2')),
         round: 1,
         state: 'drawing',
         problems: [],
@@ -133,6 +148,7 @@ describe('the design studio’s rounds (DST-006c)', () => {
       },
       {
         id: 's4',
+        brief: briefDigest(brief('s4')),
         round: 1,
         state: 'drawing',
         problems: [],
@@ -149,17 +165,13 @@ describe('the design studio’s rounds (DST-006c)', () => {
   })
 
   it('takes a picture that passes the critic, with its height, and the hero gets it', async () => {
-    const first = await studioRound([brief('s2')], null, ports())
     const p = ports({ renders: [drawn(1)] })
-    const out = await studioRound(
-      [brief('s2')],
-      (first as { wait: StudioWork }).wait,
-      p
-    )
-    const done = (out as { done: StudioWork }).done
+    const done = doneOf(await studioRound([brief('s2')], await drawing(), p))
     expect(done.sections[0]).toMatchObject({ state: 'done', height: 640 })
-    expect(p.picture).toHaveBeenCalledWith(drawn(1))
+    expect(p.picture).toHaveBeenCalledWith(drawn(1), 's2')
     expect(p.critique).toHaveBeenCalledWith(brief('s2'), image)
+    // The critic may try its answer 3 times: room for all of them first.
+    expect(p.fits).toHaveBeenCalledWith(3)
     expect(heroPicture(done.sections[0]!, 'https://db.example/x.jpg')).toEqual({
       src: 'https://db.example/x.jpg',
       alt: 'Meet the cedar tray',
@@ -170,24 +182,20 @@ describe('the design studio’s rounds (DST-006c)', () => {
   })
 
   it('sends the critic’s problems into the next round, then codes a section that fails its last', async () => {
-    let work: unknown = null
-    const p = ports()
-    work = ((await studioRound([brief('s2')], work, p)) as { wait: unknown })
-      .wait
+    let work: StudioWork = await drawing()
     for (let round = 1; round < maxRounds; round++) {
       const next = ports({
         renders: [{ ...drawn(round), id: uuid(round) }],
         critique: [fail(`Problem ${round}`)],
         request: [uuid(round + 1)]
       })
-      const out = await studioRound([brief('s2')], work, next)
-      work = (out as { wait: StudioWork }).wait
+      work = waitOf(await studioRound([brief('s2')], work, next))
       expect(next.design).toHaveBeenCalledWith(brief('s2'), {
         tries: 0,
         problems: [`Problem ${round}`],
         reasonCode: 'check_failed'
       })
-      expect((work as StudioWork).sections[0]).toMatchObject({
+      expect(work.sections[0]).toMatchObject({
         round: round + 1,
         state: 'drawing',
         render: uuid(round + 1)
@@ -198,7 +206,7 @@ describe('the design studio’s rounds (DST-006c)', () => {
       critique: [fail()]
     })
     const out = await studioRound([brief('s2')], work, last)
-    expect((out as { done: StudioWork }).done.sections[0]).toMatchObject({
+    expect(doneOf(out).sections[0]).toMatchObject({
       state: 'coded',
       reason: 'critic_failed'
     })
@@ -206,13 +214,8 @@ describe('the design studio’s rounds (DST-006c)', () => {
     expect(last.design).not.toHaveBeenCalled()
   })
 
-  it('codes a section whose picture failed, never came, changed, or the critic could not see', async () => {
-    const waiting = async (clock = { t: 1_000_000 }) =>
-      (
-        (await studioRound([brief('s2')], null, ports({}, clock))) as {
-          wait: StudioWork
-        }
-      ).wait
+  it('codes a section whose picture failed, is missing, was changed, is another’s, too large, or unseen', async () => {
+    const big = { ...image, bytes: new Uint8Array(3 * 1024 * 1024 + 1) }
     for (const [answers, reason] of [
       [
         { renders: [{ ...drawn(1), state: 'failed', failure: 'timeout' }] },
@@ -220,19 +223,26 @@ describe('the design studio’s rounds (DST-006c)', () => {
       ],
       [{ renders: [] }, 'render_failed'],
       [{ renders: [drawn(1)], picture: [null] }, 'picture_unusable'],
+      [
+        { renders: [drawn(1)], picture: [{ ...image, id: 's9' }] },
+        'picture_unusable'
+      ],
+      [{ renders: [drawn(1)], picture: [big] }, 'picture_unusable'],
       [{ renders: [drawn(1)], critique: [null] }, 'critic_unavailable']
     ] as const) {
       const p = ports(answers as never)
-      const out = await studioRound([brief('s2')], await waiting(), p)
-      expect((out as { done: StudioWork }).done.sections[0]).toMatchObject({
-        state: 'coded',
-        reason
-      })
+      const out = await studioRound([brief('s2')], await drawing(), p)
+      expect(doneOf(out).sections[0]).toMatchObject({ state: 'coded', reason })
       expect(p.coded).toHaveBeenCalledWith('s2', reason)
+      expect(p.critique).toHaveBeenCalledTimes(
+        reason === 'critic_unavailable' ? 1 : 0
+      )
     }
-    // Still queued: it waits until its time, then is coded.
+  })
+
+  it('waits for a picture still queued until its time, at least a minute, then codes it', async () => {
     const clock = { t: 1_000_000 }
-    const work = await waiting(clock)
+    const work = await drawing(clock)
     const queued: BuildRender = { id: uuid(1), key: 'k', state: 'queued' }
     clock.t += 60_000
     const early = await studioRound(
@@ -241,77 +251,167 @@ describe('the design studio’s rounds (DST-006c)', () => {
       ports({ renders: [queued] }, clock)
     )
     expect(early).toMatchObject({ seconds: (studioMs - 60_000) / 1000 })
+    expect(waitOf(early).waits).toBe(2)
+    clock.t = work.until - 10_000
+    expect(
+      await studioRound(
+        [brief('s2')],
+        work,
+        ports({ renders: [queued] }, clock)
+      )
+    ).toMatchObject({ seconds: 60 })
     clock.t = work.until
     const late = ports({ renders: [queued] }, clock)
     expect(
-      ((await studioRound([brief('s2')], work, late)) as { done: StudioWork })
-        .done.sections[0]
+      doneOf(await studioRound([brief('s2')], work, late)).sections[0]
     ).toMatchObject({ state: 'coded', reason: 'render_timed_out' })
   })
 
-  it('codes a section that cannot be designed or drawn, or has no picture left', async () => {
+  it('codes a section that cannot be designed or drawn, and pays for no design with no picture left', async () => {
     for (const [answers, reason] of [
       [{ design: [null] }, 'design_failed'],
-      [{ request: [new Error('not drawable')] }, 'not_drawable']
+      [{ request: [new SectionNotDrawable(['x'])] }, 'not_drawable'],
+      [
+        {
+          request: [
+            Object.assign(new Error('x'), {
+              code: 'PT409',
+              message: "This key is another section's"
+            })
+          ]
+        },
+        'not_drawable'
+      ],
+      [
+        {
+          request: [
+            Object.assign(new Error('x'), {
+              code: '22023',
+              details: 'too_many_renders'
+            })
+          ]
+        },
+        'too_many_pictures'
+      ]
     ] as const) {
       const p = ports(answers as never)
       const out = await studioRound([brief('s2')], null, p)
-      expect((out as { done: StudioWork }).done.sections[0]).toMatchObject({
-        state: 'coded',
-        reason
-      })
+      expect(doneOf(out).sections[0]).toMatchObject({ state: 'coded', reason })
     }
     const full = { ...startWork([brief('s2')], 1_000_000), renders: 12 }
     const p = ports()
     const out = await studioRound([brief('s2')], full, p)
-    expect((out as { done: StudioWork }).done.sections[0]).toMatchObject({
+    expect(doneOf(out).sections[0]).toMatchObject({
       reason: 'too_many_pictures'
     })
+    expect(p.design).not.toHaveBeenCalled()
     expect(p.request).not.toHaveBeenCalled()
   })
 
-  it('pauses when out of time, keeping a paused design’s tries for the next claim', async () => {
+  it('lets a lost claim or a database down throw, never coding the section', async () => {
+    for (const error of [
+      Object.assign(new Error('Lease unavailable'), { code: 'PT409' }),
+      new Error('fetch failed')
+    ]) {
+      const p = ports({ request: [error] })
+      await expect(studioRound([brief('s2')], null, p)).rejects.toBe(error)
+      expect(p.coded).not.toHaveBeenCalled()
+    }
+    const down = ports()
+    down.renders.mockRejectedValueOnce(new Error('down'))
+    await expect(
+      studioRound([brief('s2')], await drawing(), down)
+    ).rejects.toThrow('down')
+  })
+
+  it('pauses when out of time, keeping a paused design’s tries, and waits as for pictures', async () => {
     const tries = { tries: 2, problems: ['x'], reasonCode: 'check_failed' }
     const p = ports({ design: [{ paused: tries }] })
     const out = await studioRound([brief('s2')], null, p)
+    expect(out).toMatchObject({ seconds: studioMs / 1000 })
     const work = (out as { paused: StudioWork }).paused
     expect(work.sections[0]).toMatchObject({ state: 'design', tries })
     const next = ports()
     await studioRound([brief('s2')], work, next)
     expect(next.design).toHaveBeenCalledWith(brief('s2'), tries)
-    // No time at all: nothing is asked.
+    // No time for a design, or for the critic's tries: nothing is asked.
     const none = ports({ fits: [false] })
     expect(await studioRound([brief('s2')], null, none)).toHaveProperty(
       'paused'
     )
     expect(none.design).not.toHaveBeenCalled()
+    const busy = ports({ renders: [drawn(1)], fits: [false] })
+    expect(
+      await studioRound([brief('s2')], await drawing(), busy)
+    ).toHaveProperty('paused')
+    expect(busy.picture).not.toHaveBeenCalled()
+    expect(busy.critique).not.toHaveBeenCalled()
   })
 
-  it('codes what is left when the studio’s time is up', async () => {
+  it('codes what is left when the studio’s time or its waits are up', async () => {
     const clock = { t: 1_000_000 }
     const work = startWork([brief('s2')], clock.t)
     clock.t = work.until
     const p = ports({}, clock)
-    const out = await studioRound([brief('s2')], work, p)
-    expect((out as { done: StudioWork }).done.sections[0]).toMatchObject({
+    expect(
+      doneOf(await studioRound([brief('s2')], work, p)).sections[0]
+    ).toMatchObject({ reason: 'studio_timed_out' })
+    expect(p.design).not.toHaveBeenCalled()
+    // The design step's 6 waits are spent: nothing waits again.
+    const spent = { ...(await drawing()), waits: 6 }
+    const queued: BuildRender = { id: uuid(1), key: 'k', state: 'queued' }
+    const last = ports({ renders: [queued] })
+    const out = await studioRound([brief('s2')], spent, last)
+    expect(doneOf(out).sections[0]).toMatchObject({
+      state: 'coded',
       reason: 'studio_timed_out'
     })
-    expect(p.design).not.toHaveBeenCalled()
+    expect(last.coded).toHaveBeenCalledWith('s2', 'studio_timed_out')
   })
 
-  it('starts over from work that is not this storyboard’s', async () => {
-    for (const saved of [
-      { nonsense: true },
-      startWork([brief('s9')], 1),
-      { ...startWork([brief('s2')], 1), renders: 99 }
-    ]) {
+  it('reads its work beside the database’s save count, and starts over for another brief, keeping the build’s limits', async () => {
+    const work = await drawing()
+    const resumed = ports({ renders: [drawn(1)] })
+    await studioRound([brief('s2')], { ...work, saves: 3 }, resumed)
+    expect(resumed.design).not.toHaveBeenCalled()
+    expect(resumed.critique).toHaveBeenCalledTimes(1)
+    // Same id, another brief: it starts over within the same time,
+    // pictures and waits.
+    const other = {
+      ...brief('s2'),
+      board: { ...brief('s2').board, height: 800 }
+    }
+    const again = ports({ request: [uuid(7)] })
+    const out = waitOf(await studioRound([other], work, again))
+    expect(again.design).toHaveBeenCalledTimes(1)
+    expect(out).toMatchObject({ until: work.until, renders: 2, waits: 2 })
+    expect(out.sections[0]).toMatchObject({
+      brief: briefDigest(other),
+      render: uuid(7)
+    })
+    // Unreadable work starts over too.
+    for (const saved of [{ nonsense: true }, startWork([brief('s9')], 1)]) {
       const p = ports()
-      const out = await studioRound([brief('s2')], saved, p)
-      expect((out as { wait: StudioWork }).wait.until).toBe(
-        1_000_000 + studioMs
-      )
+      await studioRound([brief('s2')], saved, p)
       expect(p.design).toHaveBeenCalledTimes(1)
     }
+  })
+
+  it('refuses work no round makes, and more designed sections than an email has', async () => {
+    const work = await drawing()
+    for (const broken of [
+      { ...work.sections[0]!, state: 'done' },
+      { ...work.sections[0]!, state: 'coded' },
+      { ...work.sections[0]!, render: undefined }
+    ]) {
+      const p = ports()
+      await studioRound([brief('s2')], { ...work, sections: [broken] }, p)
+      // Read as unreadable: designed again from the start.
+      expect(p.design).toHaveBeenCalledTimes(1)
+    }
+    await expect(
+      studioRound(['s1', 's2', 's3', 's4', 's5'].map(brief), null, ports())
+    ).rejects.toThrow('At most 4 designed sections')
   })
 
   it('makes render keys the database takes, a new one for each design', () => {
@@ -327,5 +427,11 @@ describe('the design studio’s rounds (DST-006c)', () => {
   it('gives a hero picture only for a section done', () => {
     const s = startWork([brief('s2')], 1).sections[0]!
     expect(heroPicture(s, 'https://db.example/x.jpg')).toBeNull()
+    expect(
+      heroPicture(
+        { ...s, state: 'coded', reason: 'critic_failed' },
+        'https://db.example/x.jpg'
+      )
+    ).toBeNull()
   })
 })
