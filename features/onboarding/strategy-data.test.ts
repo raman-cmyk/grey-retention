@@ -301,6 +301,25 @@ describe('industryFrom (ONB-057a)', () => {
     expect(industryFrom([offering('Mystery boxes')]).key).toBe('other')
   })
 
+  it('reads whole sentences, never part of a word', () => {
+    const cases: [string, string][] = [
+      ['Sells menswear basics: overshirts, knitwear and bags.', 'apparel'],
+      ['A small shop offering organic dog treats and toys', 'pet'],
+      ['Handmade oak chairs and dining tables for the home', 'home'],
+      ['Scented soy candles for spring', 'home'],
+      [
+        'Specialty coffee beans, roasted fresh and shipped during the week',
+        'food_drink'
+      ],
+      ['Wireless earbuds and speakers that last all day', 'electronics']
+    ]
+    for (const [sentence, key] of cases)
+      expect([sentence, industryFrom([offering(sentence)]).key]).toEqual([
+        sentence,
+        key
+      ])
+  })
+
   it('never takes the sample rules’ finding for a live history', () => {
     const findings = [
       offering('Dog treats', 0.9, 'sample'),

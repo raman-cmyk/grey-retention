@@ -10,6 +10,7 @@ import {
   type CatalogEntry
 } from '@/features/onboarding/catalog/read'
 import { listFindings, type Finding } from '@/features/onboarding/findings'
+import { industryInWords } from '@/features/onboarding/industry'
 import {
   planFromHistory,
   readKlaviyoHistory,
@@ -18,7 +19,6 @@ import {
 import { sampleStrategyData, type StrategyData } from '@/features/strategy/data'
 import { addDays } from '@/features/strategy/pulse'
 import { workspaceTimezone } from '@/features/strategy/offers'
-import { industryOf } from '@/features/intelligence/classifier'
 import type { Industry } from '@/features/intelligence/taxonomy'
 import { localDateTime } from '@/lib/local-time'
 import type { Database } from '@/lib/supabase/database.types'
@@ -78,7 +78,7 @@ export function industryFrom(
     .filter((f) => f.topic === 'offering' && !(live && f.pass === 'sample'))
     .sort((a, b) => b.confidence - a.confidence)[0]
   const words = offering ? offering.statement.trim() : ''
-  return { key: industryOf(words) ?? 'other', words }
+  return { key: industryInWords(words) ?? 'other', words }
 }
 
 /** Whether a stored history can be planned from on `now`. */
