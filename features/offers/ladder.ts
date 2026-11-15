@@ -6,7 +6,10 @@
  * and on which days; the ladder decides which code each one carries.
  */
 
-/** The plan's offer shape (`Pulse['offers']`): `until` is the last day it works. */
+/**
+ * The plan's offer shape (`Pulse['offers'][number]`, kept in step by hand):
+ * `until` is the last day it works (YYYY-MM-DD, inclusive), null for no end.
+ */
 export type LadderOffer = {
   id: string
   code: string
@@ -17,89 +20,126 @@ export type LadderOffer = {
 /** Where a sale starts: the lowest code of at least this percent. */
 export const ladderStartPercent = 10
 
+const isoDay = /^\d{4}-\d{2}-\d{2}$/
 const validPercent = (p: number) => Number.isInteger(p) && p >= 1 && p <= 100
 const worksOn = (o: LadderOffer, date: string) =>
   o.until === null || o.until >= date
 
-/** Same percent: the one that lasts longest, then by code. */
+/** Same percent: the one that lasts longest, then by code (plain order). */
 const better = (a: LadderOffer, b: LadderOffer) =>
   a.until === b.until
-    ? a.code.localeCompare(b.code)
+    ? a.code < b.code
+      ? -1
+      : a.code > b.code
+        ? 1
+        : 0
     : a.until === null
       ? -1
       : b.until === null
         ? 1
-        : b.until.localeCompare(a.until)
+        : a.until > b.until
+          ? -1
+          : 1
 
 /**
- * A code for each offer email, in date order (earliest first). It starts
- * at the lowest code of at least `start` percent (or the lowest code when
- * all are below it) and steps up evenly toward the highest. The percent
- * never goes down, and a code is only used on a day it still works. When
- * no code works on a day without stepping down, that day gets null.
+ * A code for each offer email, returned in the order given (`index` is the
+ * position in `dates`). Emails on the same day get the same code. Over the
+ * offer days, earliest first, it starts at the lowest code of at least
+ * `start` percent (or the lowest code when all are below it) and steps up
+ * toward the highest, rounding the middle steps down (lower is safer). The
+ * percent never goes down, a code is only used on a day it still works,
+ * and it does not step up to a percent no code can hold on the later
+ * offer days. A day gets null only when no code works on it without
+ * stepping down; a `date` that is not YYYY-MM-DD gets null.
  *
- * Example: codes of 10%, 15% and 25% and three offer emails give 10%, 15%,
+ * Only codes that work on at least one of the offer days count.
+ *
+ * Example: codes of 10%, 15% and 25% over three offer days give 10%, 15%,
  * 25%; one offer email gets 10%.
  */
 export function offerLadder<O extends LadderOffer>(
   dates: readonly string[],
   offers: readonly O[],
   start = ladderStartPercent
-): { date: string; offer: O | null }[] {
-  const days = [...dates].sort()
-  const valid = offers.filter((o) => validPercent(o.percent))
-  const levels = [...new Set(valid.map((o) => o.percent))].sort((a, b) => a - b)
-  // From the lowest code of at least `start`, or every code when none is.
+): { index: number; date: string; offer: O | null }[] {
+  const days = [...new Set(dates.filter((d) => isoDay.test(d)))].sort()
+  const live = offers.filter(
+    (o) => validPercent(o.percent) && days.some((d) => worksOn(o, d))
+  )
+  const levels = [...new Set(live.map((o) => o.percent))].sort((a, b) => a - b)
   const first = levels.findIndex((p) => p >= start)
   const rungs = first >= 0 ? levels.slice(first) : levels
+  const lowest = rungs[0] ?? 0
+  const byDay = new Map<string, O | null>()
   let floor = 0
-  return days.map((date, i) => {
-    if (rungs.length === 0) return { date, offer: null }
-    const target =
+  days.forEach((date, i) => {
+    if (rungs.length === 0) return byDay.set(date, null)
+    const step =
       days.length === 1
-        ? rungs[0]!
-        : rungs[Math.round((i * (rungs.length - 1)) / (days.length - 1))]!
-    const usable = valid
+        ? 0
+        : Math.ceil((i * (rungs.length - 1)) / (days.length - 1) - 0.5)
+    const target = rungs[step]!
+    const later = days.slice(i + 1)
+    // Some code at this percent or more still works on every later day.
+    const holdable = (p: number) =>
+      later.every((d) => live.some((o) => o.percent >= p && worksOn(o, d)))
+    const today = live
       .filter(
-        (o) => o.percent >= rungs[0]! && o.percent >= floor && worksOn(o, date)
+        (o) => o.percent >= lowest && o.percent >= floor && worksOn(o, date)
       )
       .sort((a, b) => a.percent - b.percent || better(a, b))
-    const atOrBelow = usable.filter((o) => o.percent <= target)
-    const pick = atOrBelow.length
-      ? // The highest at or below the planned step, the longest-lasting of those.
-        atOrBelow
-          .filter((o) => o.percent === atOrBelow.at(-1)!.percent)
-          .sort(better)[0]!
-      : (usable[0] ?? null)
+    const highest = (list: O[]) => {
+      const top = list.at(-1)
+      return top
+        ? list.filter((o) => o.percent === top.percent).sort(better)[0]!
+        : null
+    }
+    const atOrBelow = today.filter((o) => o.percent <= target)
+    const pick =
+      highest(atOrBelow.filter((o) => holdable(o.percent))) ??
+      highest(atOrBelow) ??
+      today.find((o) => holdable(o.percent)) ??
+      today[0] ??
+      null
     if (pick) floor = pick.percent
-    return { date, offer: pick }
+    byDay.set(date, pick)
   })
+  return dates.map((date, index) => ({
+    index,
+    date,
+    offer: byDay.get(date) ?? null
+  }))
 }
 
 /**
  * For the plan's checks: the indexes (in the order given) of offer emails
- * whose percent is lower than an offer email on an earlier day. Emails on
- * the same day (different audiences) are not a step down.
+ * whose percent is lower than one sent earlier (by date, then local time
+ * when given). Emails sent at the same moment are not a step down. Pass
+ * offer emails already planned too, so a new plan does not step down from
+ * them.
  */
 export function ladderStepsDown(
-  slots: readonly { date: string; percent: number | null }[]
+  slots: readonly { date: string; time?: string; percent: number | null }[]
 ): number[] {
+  const at = (s: { date: string; time?: string }) => `${s.date}T${s.time ?? ''}`
   const order = slots
-    .map((s, index) => ({ ...s, index }))
+    .map((s, index) => ({ ...s, index, moment: at(s) }))
     .filter((s): s is typeof s & { percent: number } => s.percent !== null)
-    .sort((a, b) => a.date.localeCompare(b.date) || a.index - b.index)
+    .sort((a, b) =>
+      a.moment < b.moment ? -1 : a.moment > b.moment ? 1 : a.index - b.index
+    )
   const down: number[] = []
   let highestBefore = 0
-  let dayHighest = 0
-  let day = ''
+  let momentHighest = 0
+  let moment = ''
   for (const s of order) {
-    if (s.date !== day) {
-      highestBefore = Math.max(highestBefore, dayHighest)
-      dayHighest = 0
-      day = s.date
+    if (s.moment !== moment) {
+      highestBefore = Math.max(highestBefore, momentHighest)
+      momentHighest = 0
+      moment = s.moment
     }
     if (s.percent < highestBefore) down.push(s.index)
-    dayHighest = Math.max(dayHighest, s.percent)
+    momentHighest = Math.max(momentHighest, s.percent)
   }
   return down.sort((a, b) => a - b)
 }

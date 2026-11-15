@@ -12,42 +12,86 @@ const ladder = (dates: string[], offers: LadderOffer[], start?: number) =>
     (s) =>
       `${s.date} ${s.offer ? `${s.offer.code} ${s.offer.percent}%` : 'none'}`
   )
+const week = ['2026-11-17', '2026-11-24', '2026-12-01']
 
 describe('offerLadder (PLN-040)', () => {
-  it('steps up from 10% to the highest code over the window', () => {
+  it('steps up from 10% to the highest code, answering in the order given', () => {
     expect(ladder(['2026-11-24', '2026-11-17', '2026-11-20'], codes)).toEqual([
+      '2026-11-24 BIG25 25%',
       '2026-11-17 TEN 10%',
-      '2026-11-20 MID15 15%',
-      '2026-11-24 BIG25 25%'
+      '2026-11-20 MID15 15%'
     ])
+    expect(offerLadder(['2026-11-24', '2026-11-17'], codes)[0]).toMatchObject({
+      index: 0,
+      date: '2026-11-24'
+    })
   })
 
   it('gives one offer email the starting code, not the max', () => {
     expect(ladder(['2026-11-17'], codes)).toEqual(['2026-11-17 TEN 10%'])
   })
 
-  it('spreads fewer emails across the codes, and repeats a step for more', () => {
+  it('gives emails on the same day the same code', () => {
+    expect(
+      ladder(
+        ['2026-11-17', '2026-11-17'],
+        [offer('TEN', 10), offer('BIG25', 25)]
+      )
+    ).toEqual(['2026-11-17 TEN 10%', '2026-11-17 TEN 10%'])
+    expect(
+      ladder(
+        ['2026-11-17', '2026-11-17', '2026-11-24'],
+        [offer('TEN', 10), offer('BIG25', 25)]
+      )
+    ).toEqual([
+      '2026-11-17 TEN 10%',
+      '2026-11-17 TEN 10%',
+      '2026-11-24 BIG25 25%'
+    ])
+  })
+
+  it('rounds middle steps down, toward the smaller discount', () => {
+    expect(ladder(week, [offer('TEN', 10), offer('TWENTY', 20)])).toEqual([
+      '2026-11-17 TEN 10%',
+      '2026-11-24 TEN 10%',
+      '2026-12-01 TWENTY 20%'
+    ])
+    const four = [10, 15, 20, 25].map((p) => offer(`P${p}`, p))
+    expect(ladder(week, four)).toEqual([
+      '2026-11-17 P10 10%',
+      '2026-11-24 P15 15%',
+      '2026-12-01 P25 25%'
+    ])
+    // 5% is below the start; two emails go from 10% to the highest.
     const five = [5, 10, 15, 20, 25].map((p) => offer(`P${p}`, p))
-    // Starts at 10% (5% is below the start), ends at the highest.
     expect(ladder(['2026-11-17', '2026-11-24'], five)).toEqual([
       '2026-11-17 P10 10%',
       '2026-11-24 P25 25%'
     ])
+  })
+
+  it('does not step up to a code that ends before a later offer email', () => {
     expect(
-      ladder(
-        ['2026-11-17', '2026-11-19', '2026-11-21', '2026-11-23'],
-        [offer('TEN', 10), offer('TWENTY', 20)]
-      )
+      ladder(week, [offer('TEN', 10), offer('TWENTY', 20, '2026-11-24')])
     ).toEqual([
       '2026-11-17 TEN 10%',
-      '2026-11-19 TEN 10%',
-      '2026-11-21 TWENTY 20%',
-      '2026-11-23 TWENTY 20%'
+      '2026-11-24 TEN 10%',
+      '2026-12-01 TEN 10%'
+    ])
+    expect(
+      ladder(week, [
+        offer('TEN', 10),
+        offer('MID15', 15, '2026-11-24'),
+        offer('BIG25', 25, '2026-11-24')
+      ])
+    ).toEqual([
+      '2026-11-17 TEN 10%',
+      '2026-11-24 TEN 10%',
+      '2026-12-01 TEN 10%'
     ])
   })
 
-  it('uses a code only while it works, and never steps down', () => {
-    // The 15% code ends on the 19th: the 20th steps up to 25% instead.
+  it('steps up past a code that has ended', () => {
     expect(
       ladder(
         ['2026-11-17', '2026-11-20', '2026-11-24'],
@@ -62,14 +106,7 @@ describe('offerLadder (PLN-040)', () => {
       '2026-11-20 BIG25 25%',
       '2026-11-24 BIG25 25%'
     ])
-    // The 25% code has ended by the 24th: the last email stays at 10%.
-    expect(
-      ladder(
-        ['2026-11-17', '2026-11-24'],
-        [offer('TEN', 10), offer('BIG25', 25, '2026-11-18')]
-      )
-    ).toEqual(['2026-11-17 TEN 10%', '2026-11-24 TEN 10%'])
-    // Only lower codes, or none, work on the 24th: that day gets none.
+    // Nothing works on the 24th without stepping down: that day gets none.
     expect(
       ladder(
         ['2026-11-17', '2026-11-20', '2026-11-24'],
@@ -78,21 +115,36 @@ describe('offerLadder (PLN-040)', () => {
     ).toEqual(['2026-11-17 TEN 10%', '2026-11-20 MID15 15%', '2026-11-24 none'])
   })
 
-  it('starts at the lowest code when all are below 10%', () => {
+  it('counts only codes that work on an offer day', () => {
+    // BIG25 has ended by the only offer day: FIVE is the lowest code left.
+    expect(
+      ladder(
+        ['2026-11-24'],
+        [offer('FIVE', 5), offer('BIG25', 25, '2026-11-17')]
+      )
+    ).toEqual(['2026-11-24 FIVE 5%'])
+    expect(
+      ladder(
+        ['2026-11-24'],
+        [offer('EIGHT', 8), offer('TEN', 10, '2026-11-17')]
+      )
+    ).toEqual(['2026-11-24 EIGHT 8%'])
+  })
+
+  it('starts at the lowest code when all are below 10%, or at another start', () => {
     expect(
       ladder(
         ['2026-11-17', '2026-11-24'],
         [offer('EIGHT', 8), offer('FIVE', 5)]
       )
     ).toEqual(['2026-11-17 FIVE 5%', '2026-11-24 EIGHT 8%'])
-    // Another start.
     expect(ladder(['2026-11-17', '2026-11-24'], codes, 15)).toEqual([
       '2026-11-17 MID15 15%',
       '2026-11-24 BIG25 25%'
     ])
   })
 
-  it('picks the longest-lasting of codes with the same percent', () => {
+  it('picks the longest-lasting of codes with the same percent, then by code', () => {
     expect(
       ladder(
         ['2026-11-17'],
@@ -110,21 +162,25 @@ describe('offerLadder (PLN-040)', () => {
       )
     ).toEqual(['2026-11-17 B10 10%'])
     expect(
-      ladder(['2026-11-17'], [offer('ZED', 10), offer('ABC', 10)])
-    ).toEqual(['2026-11-17 ABC 10%'])
+      ladder(['2026-11-17'], [offer('SALE_10', 10), offer('SALE-10', 10)])
+    ).toEqual(['2026-11-17 SALE-10 10%'])
   })
 
-  it('gives none without usable codes, and ignores broken percents', () => {
+  it('gives none without usable codes or a real day', () => {
     expect(ladder(['2026-11-17'], [])).toEqual(['2026-11-17 none'])
     expect(
       ladder(['2026-11-17'], [offer('ZERO', 0), offer('HALF', 10.5)])
     ).toEqual(['2026-11-17 none'])
+    expect(ladder(['2026-11-17T09:00', '2026-11-17'], codes)).toEqual([
+      '2026-11-17T09:00 none',
+      '2026-11-17 TEN 10%'
+    ])
     expect(offerLadder([], codes)).toEqual([])
   })
 })
 
 describe('ladderStepsDown (PLN-040)', () => {
-  it('finds offer emails lower than one on an earlier day', () => {
+  it('finds offer emails lower than one sent earlier', () => {
     expect(
       ladderStepsDown([
         { date: '2026-11-24', percent: 10 },
@@ -135,21 +191,31 @@ describe('ladderStepsDown (PLN-040)', () => {
     ).toEqual([0])
   })
 
-  it('does not count emails on the same day, or a steady ladder', () => {
+  it('compares by time within a day; the same moment is not a step down', () => {
     expect(
       ladderStepsDown([
-        { date: '2026-11-17', percent: 25 },
-        { date: '2026-11-17', percent: 10 },
-        { date: '2026-11-20', percent: 25 }
+        { date: '2026-11-17', time: '09:00', percent: 25 },
+        { date: '2026-11-17', time: '18:00', percent: 10 }
       ])
-    ).toEqual([])
+    ).toEqual([1])
     expect(
       ladderStepsDown([
-        { date: '2026-11-17', percent: 25 },
-        { date: '2026-11-17', percent: 10 },
-        { date: '2026-11-20', percent: 15 }
+        { date: '2026-11-17', time: '10:00', percent: 25 },
+        { date: '2026-11-17', time: '10:00', percent: 10 },
+        { date: '2026-11-20', time: '10:00', percent: 15 },
+        { date: '2026-11-24', time: '10:00', percent: 25 }
       ])
     ).toEqual([2])
     expect(ladderStepsDown([])).toEqual([])
+  })
+
+  it('counts offer emails already planned', () => {
+    // An existing 25% email on the 18th, then the new plan's 10% on the 25th.
+    expect(
+      ladderStepsDown([
+        { date: '2026-11-18', time: '10:00', percent: 25 },
+        { date: '2026-11-25', time: '10:00', percent: 10 }
+      ])
+    ).toEqual([1])
   })
 })
