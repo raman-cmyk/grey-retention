@@ -1,9 +1,20 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
-// ONB-057b: the workspace's own store is tested on its own; here, the sample.
+// ONB-057b: the workspace's own store is tested on its own; here, its
+// sample fallback, and the plan made from the sample unless a test says.
+const storeSource = vi.hoisted(() => ({
+  made: [] as unknown[][],
+  planSample: vi.fn<(db: unknown, job: unknown) => Promise<boolean>>(
+    async () => true
+  )
+}))
 vi.mock('@/features/onboarding/store-source', () => ({
-  onboardedStoreSource: (_db: unknown, o: { fallback: unknown }) => o.fallback
+  onboardedStoreSource: (db: unknown, o: { fallback: unknown }) => {
+    storeSource.made.push([db, o])
+    return o.fallback
+  },
+  planWasSample: storeSource.planSample
 }))
 import { memoryFallbackLog } from '@/features/fallback/log'
 import { InMemoryMemoryStore } from '@/features/agents/memory'
@@ -299,6 +310,62 @@ describe('saved steps (REL-081)', () => {
       .result as BuiltEmail
     expect(email).toEqual(straight.email)
     expect(email.code).toBe('CANDLE10')
+  })
+
+  it('reads the workspace’s store with its own database, and checks the plan was made from it (ONB-057b)', async () => {
+    const { db } = fakeDb([step()])
+    storeSource.planSample.mockClear()
+    await runEmailBuilds(db, { limit: 1, fallbacks: memoryFallbackLog() })
+    expect(storeSource.made.at(-1)![0]).toBe(db)
+    expect(storeSource.planSample).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ tenant_id: tenant, run_id: 'run-1' })
+    )
+  })
+
+  it('fails at once when the plan was made from the sample and the store is the workspace’s own, or back (ONB-057b)', async () => {
+    const sample = sampleStoreFrom(inDays(1))
+    const own = {
+      read: async (t: string) => ({ ...(await sample.read(t)), sample: false })
+    }
+    for (const [stores, planSample] of [
+      [own, true],
+      [sample, false]
+    ] as const) {
+      storeSource.planSample.mockResolvedValueOnce(planSample)
+      const { db, calls } = fakeDb([step()])
+      await runEmailBuilds(db, { stores, fallbacks: memoryFallbackLog() })
+      expect(failure(calls)).toMatchObject({
+        code: 'plan_store_changed',
+        final: true
+      })
+      expect(calls.some((c) => c.fn === 'finish_email_step')).toBe(false)
+    }
+  })
+
+  it('never offers the sample’s codes on the workspace’s own store when nothing is saved (ONB-057b)', async () => {
+    const offerEmail: PlannedEmail = {
+      ...planned,
+      emailType: 'offer',
+      offer: { id: 'offer:CANDLE10', code: 'CANDLE10', percent: 10 }
+    }
+    const sample = sampleStoreFrom(inDays(1))
+    const rules = async (own: boolean) => {
+      storeSource.planSample.mockResolvedValueOnce(!own)
+      const { db, calls } = fakeDb([step({ planned: offerEmail })])
+      await runEmailBuilds(db, {
+        limit: 1,
+        stores: {
+          read: async (t) => ({ ...(await sample.read(t)), sample: !own })
+        },
+        fallbacks: memoryFallbackLog()
+      })
+      const saved = calls.find((c) => c.fn === 'finish_email_step')!.args
+        .output as { rules: { maxDiscountPercent: number; codes: unknown[] } }
+      return saved.rules
+    }
+    expect((await rules(false)).codes.length).toBeGreaterThan(0)
+    expect(await rules(true)).toEqual({ maxDiscountPercent: 0, codes: [] })
   })
 
   it('saves a step before the next one fails, and the retry starts at the failed step', async () => {

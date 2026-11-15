@@ -28,8 +28,13 @@ vi.mock('@/features/onboarding/brand-book-corrections', async (real) => ({
   listCorrections: reads.corrections
 }))
 
-const { catalogReady, onboardedStoreSource, storeFrom } =
-  await import('./store-source')
+const {
+  catalogRead,
+  correctedIndustry,
+  onboardedStoreSource,
+  planWasSample,
+  storeFrom
+} = await import('./store-source')
 
 const tenantId = '00000000-0000-4000-8000-000000000101'
 let n = 0
@@ -76,8 +81,23 @@ const found = (
     pass: 'model',
     ...over
   }) as unknown as Finding
+const sells = (statement: string, over: Record<string, unknown> = {}) =>
+  found('offering', {}, { statement, ...over })
+const said = (quote: string) =>
+  ({
+    topic: 'customer_words',
+    source: 'reviews',
+    statement: 'Customers say the fabric feels soft.',
+    value: {},
+    evidence: { url: 'https://shop.example/p/1', quote },
+    confidence: 0.8,
+    pass: 'model'
+  }) as unknown as Finding
+const band = (min: number, max: number, pass = 'model') =>
+  found('price_band', { min, max, currency: 'USD' }, { pass })
+let c = 0
 const correction = (over: Partial<Correction>): Correction => ({
-  id: 'c1',
+  id: `c${++c}`,
   section: 'facts.returnDays',
   original: null,
   action: 'replace',
@@ -85,7 +105,8 @@ const correction = (over: Partial<Correction>): Correction => ({
   createdAt: '2026-11-15T10:00:00Z',
   ...over
 })
-const parts = (over: Partial<Parameters<typeof storeFrom>[0]> = {}) => ({
+type Parts = Parameters<typeof storeFrom>[0]
+const parts = (over: Partial<Parts> = {}): Parts => ({
   brandName: 'Cedar Lane',
   domain: 'Shop.Example',
   kit: { colors: ['#ffffff', '#111111', '#2a6f4e'], fonts: ['Inter'] },
@@ -93,22 +114,24 @@ const parts = (over: Partial<Parameters<typeof storeFrom>[0]> = {}) => ({
   status: { live: true, currency: 'USD' },
   catalog: [60, 75, 89, 95].map((a) => entry(a)),
   findings: [
-    found('offering', {}, { statement: 'Vitamin supplements for runners' }),
+    sells('Vitamin supplements for runners'),
     found('returns', { days: 30 }, {}, 'returns'),
     found(
       'free_shipping',
       { kind: 'over', amount: 75, currency: 'USD' },
       {},
       'shipping'
-    )
+    ),
+    said('the fabric is so soft')
   ],
   corrections: [],
   ...over
 })
 
 describe('storeFrom (ONB-057b part 2)', () => {
-  it('builds from the store’s own products, brand, facts and industry', () => {
-    const store = storeFrom(parts())
+  it('builds from the store’s own products, brand, facts, industry and customer words', () => {
+    const given = parts()
+    const store = storeFrom(given)
     expect(store.sample).toBe(false)
     expect(store.industry).toBe('supplements')
     expect(store.timezone).toBe('Australia/Sydney')
@@ -120,16 +143,13 @@ describe('storeFrom (ONB-057b part 2)', () => {
       ink: '#111111',
       accent: '#2a6f4e'
     })
-    expect(store.products.map((p) => p.title)).toEqual([
-      'Shirt 1',
-      'Shirt 2',
-      'Shirt 3',
-      'Shirt 4'
-    ])
+    expect(store.products.map((p) => p.title)).toEqual(
+      given.catalog.map((e) => e.title)
+    )
     expect(store.products[0]).toMatchObject({
       price: '$60.00',
-      image: 'https://shop.example/i/1.jpg',
-      url: 'https://shop.example/p/1',
+      image: given.catalog[0]!.image,
+      url: given.catalog[0]!.url,
       featurable: true
     })
     expect(store.facts).toMatchObject({
@@ -142,6 +162,7 @@ describe('storeFrom (ONB-057b part 2)', () => {
     expect(store.facts.bannedPhrases).toEqual(
       expect.arrayContaining(claimsSafetyPhrases('supplements'))
     )
+    expect(store.customerWords).toEqual(['the fabric is so soft'])
   })
 
   it('lets the owner’s correction win over what the readers found', () => {
@@ -150,7 +171,6 @@ describe('storeFrom (ONB-057b part 2)', () => {
         corrections: [
           correction({}),
           correction({
-            id: 'c2',
             section: 'facts.freeShipping',
             action: 'remove',
             value: null
@@ -162,11 +182,54 @@ describe('storeFrom (ONB-057b part 2)', () => {
     expect(store.facts.freeShipping).toBeNull()
   })
 
+  it('takes the industry from what the brand sells as the owner corrected it', () => {
+    const findings = [
+      sells('Vitamin supplements for runners'),
+      sells('Linen clothing for travel', { confidence: 0.7 })
+    ]
+    const store = storeFrom(
+      parts({
+        findings,
+        corrections: [
+          correction({
+            section: 'offering',
+            original: 'vitamin  supplements for runners',
+            action: 'replace',
+            value: 'Linen dresses for summer'
+          })
+        ]
+      })
+    )
+    expect(correctedIndustry(findings, [])).toBe('supplements')
+    expect(store.industry).toBe('apparel')
+    // His own added line comes first; a removed line gives way to the next.
+    expect(
+      correctedIndustry(findings, [
+        correction({
+          section: 'offering',
+          action: 'add',
+          value: 'Linen clothing for travel and home.'
+        })
+      ])
+    ).toBe('apparel')
+    expect(
+      correctedIndustry(findings, [
+        correction({
+          section: 'offering',
+          original: 'Vitamin supplements for runners',
+          action: 'remove',
+          value: null
+        })
+      ])
+    ).toBe('apparel')
+    expect(correctedIndustry([], [])).toBe('other')
+  })
+
   it('leaves out products without a photo, or with a price the check doubts', () => {
     const catalog = [
       ...[60, 75, 89, 95, 99].map((a) => entry(a)),
       entry(89, { image: null }),
-      // Thirty times the usual price: a typo, never shown.
+      // A hundred times the usual price: a typo, never shown.
       entry(8900)
     ]
     const store = storeFrom(parts({ catalog }))
@@ -176,8 +239,6 @@ describe('storeFrom (ONB-057b part 2)', () => {
   })
 
   it('shows no prices at all when the catalog is on another scale from the website', () => {
-    const band = (min: number, max: number) =>
-      found('price_band', { min, max, currency: 'USD' })
     const store = storeFrom(
       parts({
         // The website sells at about a hundredth of the catalog's prices.
@@ -188,39 +249,53 @@ describe('storeFrom (ONB-057b part 2)', () => {
     expect(store.products).toEqual([])
   })
 
-  it('says it is the sample while the catalog came from the fake Klaviyo', () => {
+  it('never counts the sample rules’ findings for a live store, its prices included', () => {
     const store = storeFrom(
       parts({
-        status: { live: false, currency: 'USD' },
+        catalog: [6000, 7500, 8900, 9500, 9900].map((a) => entry(a)),
         findings: [
-          found(
-            'offering',
-            {},
-            { statement: 'Linen clothing for travel', pass: 'sample' }
-          )
-        ]
-      })
-    )
-    expect(store.sample).toBe(true)
-    // The sample rules' own finding counts while nothing was read live.
-    expect(store.industry).toBe('apparel')
-  })
-
-  it('never counts the sample rules’ findings for a live store', () => {
-    const store = storeFrom(
-      parts({
-        findings: [
-          found(
-            'offering',
-            {},
-            { statement: 'Linen clothing for travel', pass: 'sample' }
-          ),
-          found('returns', { days: 30 }, { pass: 'sample' }, 'returns')
+          sells('Linen clothing for travel', { pass: 'sample' }),
+          found('returns', { days: 30 }, { pass: 'sample' }, 'returns'),
+          // The sample's price levels would make this catalog look 100x off.
+          band(50, 90, 'sample'),
+          band(60, 100, 'sample')
         ]
       })
     )
     expect(store.industry).toBe('other')
     expect(store.facts.returnDays).toBeNull()
+    expect(store.products).toHaveLength(5)
+  })
+
+  it('says it is the sample while the catalog came from the fake Klaviyo', () => {
+    const fake = { live: false, currency: 'USD' }
+    const sampleOnly = storeFrom(
+      parts({
+        status: fake,
+        findings: [sells('Linen clothing for travel', { pass: 'sample' })]
+      })
+    )
+    expect(sampleOnly.sample).toBe(true)
+    // The sample rules' own finding counts while nothing was read live.
+    expect(sampleOnly.industry).toBe('apparel')
+    // A model's finding means a live read: the sample rules' no longer count.
+    const mixed = storeFrom(
+      parts({
+        status: fake,
+        findings: [
+          sells('Linen clothing for travel', { pass: 'sample' }),
+          sells('Vitamin supplements for runners', { confidence: 0.5 })
+        ]
+      })
+    )
+    expect(mixed.sample).toBe(true)
+    expect(mixed.industry).toBe('supplements')
+  })
+
+  it('uses no free-shipping amount when the store’s currency is not known', () => {
+    const store = storeFrom(parts({ status: { live: true, currency: null } }))
+    expect(store.facts.freeShipping).toBeNull()
+    expect(store.facts.returnDays).toBe(30)
   })
 
   it('has calm defaults for a brand with no kit, name or valid site', () => {
@@ -237,68 +312,63 @@ describe('storeFrom (ONB-057b part 2)', () => {
   })
 })
 
-describe('catalogReady (ONB-057b part 2)', () => {
-  it('is ready only for a finished read with products to feature', () => {
-    expect(catalogReady({ state: 'ready', featurable: 3 })).toBe(true)
-    expect(catalogReady({ state: 'ready', featurable: 0 })).toBe(false)
-    expect(catalogReady({ state: 'reading', featurable: 3 })).toBe(false)
-    expect(catalogReady(null)).toBe(false)
+describe('catalogRead (ONB-057b part 2)', () => {
+  it('is the workspace’s own store once the catalog was read, whatever it found', () => {
+    for (const state of ['ready', 'empty', 'paused'])
+      expect(catalogRead({ state })).toBe(true)
+    expect(catalogRead(null)).toBe(false)
   })
 })
 
-describe('onboardedStoreSource (ONB-057b part 2)', () => {
-  type Answer = { data: unknown; error: unknown }
-  function fakeDb(answers: Record<string, Answer>) {
-    const asked: [string, ...unknown[]][] = []
-    const from = (table: string) => {
-      const chain = {
-        select: (cols: string) => (asked.push([table, cols]), chain),
-        eq: (...a: unknown[]) => (asked.push([table, 'eq', ...a]), chain),
-        maybeSingle: async () => answers[table] ?? { data: null, error: null }
-      }
-      return chain
+type Answer = { data: unknown; error: unknown }
+function fakeDb(answers: Record<string, Answer>) {
+  const asked: [string, ...unknown[]][] = []
+  const from = (table: string) => {
+    const chain = {
+      select: (cols: string) => (asked.push([table, cols]), chain),
+      eq: (...a: unknown[]) => (asked.push([table, 'eq', ...a]), chain),
+      maybeSingle: async () => answers[table] ?? { data: null, error: null }
     }
-    return { db: { from } as never, asked }
+    return chain
   }
+  return { db: { from } as never, asked }
+}
+const failed = { data: null, error: { code: 'PGRST000' } }
+
+describe('onboardedStoreSource (ONB-057b part 2)', () => {
   const fallback = () => {
     const read = vi.fn(async () => ({ sample: true }) as never)
     return { source: { read } satisfies StoreSource, read }
   }
-  const ready = {
-    data: { state: 'ready', featurable: 4, live: true, currency: 'USD' },
+  const status = (over: Record<string, unknown> = {}): Answer => ({
+    data: { state: 'ready', live: true, currency: 'USD', ...over },
     error: null
+  })
+  const own = {
+    brand_profiles: {
+      data: { brand_name: 'Cedar Lane', domain: 'shop.example' },
+      error: null
+    },
+    brand_kits: { data: parts().kit, error: null }
   }
 
-  it('uses the sample until the catalog has been read, reading nothing else', async () => {
-    for (const status of [
-      { data: null, error: null },
-      { data: { ...ready.data, state: 'reading' }, error: null },
-      { data: { ...ready.data, featurable: 0 }, error: null }
-    ]) {
-      const { db, asked } = fakeDb({ catalog_status: status })
-      const sample = fallback()
-      reads.catalog.mockClear()
-      await expect(
-        onboardedStoreSource(db, { fallback: sample.source }).read(tenantId)
-      ).resolves.toEqual({ sample: true })
-      expect(sample.read).toHaveBeenCalledWith(tenantId)
-      expect(asked.every(([table]) => table === 'catalog_status')).toBe(true)
-      expect(reads.catalog).not.toHaveBeenCalled()
-    }
+  it('uses the sample only for a workspace whose catalog was never read, reading nothing else', async () => {
+    const { db, asked } = fakeDb({})
+    const sample = fallback()
+    reads.catalog.mockClear()
+    await expect(
+      onboardedStoreSource(db, { fallback: sample.source }).read(tenantId)
+    ).resolves.toEqual({ sample: true })
+    expect(sample.read).toHaveBeenCalledWith(tenantId)
+    expect(asked.every(([table]) => table === 'catalog_status')).toBe(true)
+    expect(reads.catalog).not.toHaveBeenCalled()
   })
 
-  it('reads the workspace’s own store once the catalog is ready', async () => {
+  it('reads the workspace’s own store once the catalog was read', async () => {
     reads.catalog.mockResolvedValueOnce([...parts().catalog])
     reads.findings.mockResolvedValueOnce([...parts().findings])
     reads.corrections.mockResolvedValueOnce([correction({})])
-    const { db, asked } = fakeDb({
-      catalog_status: ready,
-      brand_profiles: {
-        data: { brand_name: 'Cedar Lane', domain: 'shop.example' },
-        error: null
-      },
-      brand_kits: { data: parts().kit, error: null }
-    })
+    const { db, asked } = fakeDb({ catalog_status: status(), ...own })
     const sample = fallback()
     const store = await onboardedStoreSource(db, {
       fallback: sample.source
@@ -311,8 +381,10 @@ describe('onboardedStoreSource (ONB-057b part 2)', () => {
     })
     expect(store.facts.returnDays).toBe(60)
     expect(store.products).toHaveLength(4)
-    expect(reads.catalog).toHaveBeenCalledWith(db, tenantId, {
-      featurableOnly: true
+    // A live store never shows the fake Klaviyo's products.
+    expect(reads.catalog).toHaveBeenLastCalledWith(db, tenantId, {
+      featurableOnly: true,
+      synthetic: false
     })
     expect(reads.findings).toHaveBeenCalledWith(db, tenantId)
     expect(reads.corrections).toHaveBeenCalledWith(db, tenantId)
@@ -324,12 +396,37 @@ describe('onboardedStoreSource (ONB-057b part 2)', () => {
     ])
   })
 
+  it('stays the workspace’s own when a later read paused or found nothing, never the sample', async () => {
+    for (const state of ['paused', 'empty']) {
+      const sample = fallback()
+      const store = await onboardedStoreSource(
+        fakeDb({ catalog_status: status({ state }), ...own }).db,
+        { fallback: sample.source }
+      ).read(tenantId)
+      expect(sample.read).not.toHaveBeenCalled()
+      expect(store.sample).toBe(false)
+    }
+  })
+
+  it('reads only the fake Klaviyo’s products while the catalog was read fake', async () => {
+    const { db } = fakeDb({ catalog_status: status({ live: false }) })
+    const store = await onboardedStoreSource(db, {
+      fallback: fallback().source
+    }).read(tenantId)
+    expect(store.sample).toBe(true)
+    expect(reads.catalog).toHaveBeenLastCalledWith(db, tenantId, {
+      featurableOnly: true,
+      synthetic: true
+    })
+    // No brand rows yet: calm defaults.
+    expect(store.brand).toMatchObject({ name: 'Your brand', site: '' })
+  })
+
   it('throws a read that fails, never falling back to the sample', async () => {
-    const failed = { data: null, error: { code: 'PGRST000' } }
     for (const answers of [
       { catalog_status: failed } as Record<string, Answer>,
-      { catalog_status: ready, brand_profiles: failed },
-      { catalog_status: ready, brand_kits: failed }
+      { catalog_status: status(), brand_profiles: failed },
+      { catalog_status: status(), brand_kits: failed }
     ]) {
       const sample = fallback()
       await expect(
@@ -341,9 +438,30 @@ describe('onboardedStoreSource (ONB-057b part 2)', () => {
     }
     reads.corrections.mockRejectedValueOnce({ code: 'too_many_corrections' })
     await expect(
-      onboardedStoreSource(fakeDb({ catalog_status: ready }).db, {
+      onboardedStoreSource(fakeDb({ catalog_status: status() }).db, {
         fallback: fallback().source
       }).read(tenantId)
     ).rejects.toMatchObject({ code: 'too_many_corrections' })
+  })
+})
+
+describe('planWasSample (ONB-057b part 2)', () => {
+  const job = { tenant_id: tenantId, run_id: 'run-1' }
+  it('reads this workspace’s plan, and counts a plan without the flag as the sample’s', async () => {
+    const plan = (sample: unknown) =>
+      fakeDb({ strategy_runs: { data: { sample }, error: null } })
+    expect(await planWasSample(plan(false).db, job)).toBe(false)
+    expect(await planWasSample(plan(true).db, job)).toBe(true)
+    expect(await planWasSample(plan(null).db, job)).toBe(true)
+    const missing = fakeDb({})
+    expect(await planWasSample(missing.db, job)).toBe(true)
+    expect(missing.asked).toEqual([
+      ['strategy_runs', 'sample:plan->sample'],
+      ['strategy_runs', 'eq', 'tenant_id', tenantId],
+      ['strategy_runs', 'eq', 'id', 'run-1']
+    ])
+    await expect(
+      planWasSample(fakeDb({ strategy_runs: failed }).db, job)
+    ).rejects.toMatchObject({ code: 'PGRST000' })
   })
 })

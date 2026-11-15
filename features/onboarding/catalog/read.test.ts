@@ -89,6 +89,11 @@ describe('listCatalog', () => {
     const only = database([])
     await listCatalog(only.db, 'tenant-1', { featurableOnly: true })
     expect(only.ops).toContainEqual(['eq', ['featurable', true]])
+    expect(only.ops).not.toContainEqual(['eq', ['synthetic', false]])
+    // ONB-057b: a live store never shows the fake Klaviyo's products.
+    const real = database([])
+    await listCatalog(real.db, 'tenant-1', { synthetic: false })
+    expect(real.ops).toContainEqual(['eq', ['synthetic', false]])
   })
 
   it('formats money without minor units in such a currency, and throws a read error', async () => {

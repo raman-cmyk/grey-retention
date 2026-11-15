@@ -21,6 +21,7 @@ const buildCodes = [
   'step_progress_invalid',
   'step_unknown',
   'store_changed',
+  'plan_store_changed',
   'store_data_invalid',
   'day_passed',
   'step_timed_out',

@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { brandFromKit } from '@/features/blocks/brand'
 import type { Store, StoreSource } from '@/features/email-build/ports'
 import {
+  applyCorrections,
   correctedFacts,
   listCorrections,
   type Correction
@@ -18,29 +19,34 @@ import {
   type CatalogEntry
 } from '@/features/onboarding/catalog/read'
 import { withClaimsSafety } from '@/features/onboarding/claims-safety'
+import { customerWords } from '@/features/onboarding/customer-words'
 import { listFindings, type Finding } from '@/features/onboarding/findings'
-import { industryFrom } from '@/features/onboarding/strategy-data'
+import { industryInWords } from '@/features/onboarding/industry'
 import { workspaceTimezone } from '@/features/strategy/offers'
+import type { Industry } from '@/features/intelligence/taxonomy'
 import type { Database } from '@/lib/supabase/database.types'
 
 /**
  * The store "Create email" builds from (ONB-057b part 2): the workspace's
- * own once its catalog has been read, else `fallback` (the sample store).
+ * own once its catalog has been read at all, else `fallback` (the sample
+ * store, for a workspace never read).
  *
- * - Products: the catalog's featurable ones with a photo, without prices
- *   the check doubts (ONB-063: none when the catalog is on another scale
- *   from the website).
+ * - Products: the catalog's featurable ones with a photo, only the fake
+ *   Klaviyo's while it was read fake and never once it is read live, and
+ *   without prices the check doubts (ONB-063: none when the catalog is on
+ *   another scale from the website). A store with none left has none: it
+ *   never gets the sample's.
  * - Brand: the brand kit's colours and fonts, the brand's name and site.
  * - Facts: only what every source agrees on (ONB-106a), the owner's own
  *   corrections on top (ONB-058), and the industry's risky claims banned
  *   (ONB-062). Anything unknown stays unknown, so copy QA refuses it.
- * - Industry: the surest "offering" finding on the fixed list (ONB-062).
+ * - Industry: from what the brand sells, as the owner corrected it.
+ * - Customer words: the reviews' own phrases, checked like copy (ONB-061).
  *
- * The store is real whenever the catalog is, whatever the plan was built
- * from: the build takes its products from the store, and a step on real
- * data after one on the sample starts over (REL-AI). It is `sample` while
- * the catalog was read from the fake Klaviyo. A read that fails throws
- * (the step is tried again); it never turns a real store into the sample.
+ * It is `sample` while the catalog was read from the fake Klaviyo. A
+ * paused read (Klaviyo refused the key) keeps the last read's products. A
+ * read that fails throws (the step is tried again); it never turns the
+ * workspace's own store into the sample.
  */
 
 type Db = SupabaseClient<Database>
@@ -57,38 +63,64 @@ export type OwnStoreParts = {
   corrections: readonly Correction[]
 }
 
-/** Whether a catalog read can be built from: finished, with products to feature. */
-export const catalogReady = (
-  status: { state: string; featurable: number } | null
-) => status !== null && status.state === 'ready' && status.featurable > 0
+/** Whether the catalog has been read at all (ready, empty or paused): from then on the store is the workspace's own. */
+export const catalogRead = (status: { state: string } | null) => status !== null
 
 const hostname =
   /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/
+const key = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase()
+
+/**
+ * The industry from what the brand sells: the owner's own lines first,
+ * then the readers' surest, as he corrected them (ONB-058).
+ */
+export function correctedIndustry(
+  findings: readonly Finding[],
+  corrections: readonly Correction[]
+): Industry {
+  const offering = findings
+    .filter((f) => f.topic === 'offering')
+    .sort((a, b) => b.confidence - a.confidence)
+    .map((f) => f.statement.trim())
+  const own = corrections.filter((c) => c.section === 'offering')
+  const lines =
+    applyCorrections({ observed: { offering } }, own).observed?.offering ?? []
+  const added = new Set(
+    own.flatMap((c) => (c.action === 'add' && c.value ? [key(c.value)] : []))
+  )
+  const first =
+    lines.find((l) => added.has(key(l))) ??
+    lines.find((l) => !added.has(key(l))) ??
+    ''
+  return industryInWords(first) ?? 'other'
+}
 
 /** The store, from its parts. Pure, for tests. */
 export function storeFrom(parts: OwnStoreParts): Store {
   // A live workspace never counts what the sample rules found.
   const live =
     parts.status.live || parts.findings.some((f) => f.pass !== 'sample')
-  const industry = industryFrom(parts.findings, { live }).key
-  const check = catalogPriceCheck(parts.catalog, parts.findings, {
+  const findings = live
+    ? parts.findings.filter((f) => f.pass !== 'sample')
+    : parts.findings
+  const industry = correctedIndustry(findings, parts.corrections)
+  const check = catalogPriceCheck(parts.catalog, findings, {
     currency: parts.status.currency
   })
   const products = assemblyProducts(withSanePrices(parts.catalog, check))
   const facts = withClaimsSafety(
     correctedFacts(
-      copyFacts(
-        trueFacts(parts.findings, { live, currency: parts.status.currency })
-      ),
+      copyFacts(trueFacts(findings, { live, currency: parts.status.currency })),
       parts.corrections
     ),
     industry
   )
+  const name = parts.brandName.trim()
   const domain = parts.domain.trim().toLowerCase()
   return {
     sample: !parts.status.live,
     brand: brandFromKit({
-      name: parts.brandName,
+      name,
       site: hostname.test(domain) ? `https://${domain}` : '',
       colors: parts.kit?.colors ?? [],
       fonts: parts.kit?.fonts ?? []
@@ -96,7 +128,12 @@ export function storeFrom(parts: OwnStoreParts): Store {
     industry,
     timezone: parts.timezone,
     products,
-    facts
+    facts,
+    customerWords: customerWords(findings, {
+      facts,
+      live,
+      names: [name, ...products.map((p) => p.title)].filter(Boolean)
+    }).map((p) => p.phrase)
   }
 }
 
@@ -110,15 +147,17 @@ export function onboardedStoreSource(
       // The catalog's state first: no other read until there is a store.
       const status = await db
         .from('catalog_status')
-        .select('state,featurable,live,currency')
+        .select('state,live,currency')
         .eq('tenant_id', tenantId)
         .maybeSingle()
       if (status.error) throw status.error
-      if (!catalogReady(status.data)) return fallback.read(tenantId)
+      if (!status.data || !catalogRead(status.data))
+        return fallback.read(tenantId)
+      const { live, currency } = status.data
       const [timezone, catalog, findings, corrections, profile, kit] =
         await Promise.all([
           workspaceTimezone(db, tenantId),
-          listCatalog(db, tenantId, { featurableOnly: true }),
+          listCatalog(db, tenantId, { featurableOnly: true, synthetic: !live }),
           listFindings(db, tenantId),
           listCorrections(db, tenantId),
           db
@@ -139,14 +178,30 @@ export function onboardedStoreSource(
         domain: profile.data?.domain ?? '',
         kit: kit.data,
         timezone,
-        status: {
-          live: status.data!.live,
-          currency: status.data!.currency
-        },
+        status: { live, currency },
         catalog,
         findings,
         corrections
       })
     }
   }
+}
+
+/**
+ * Whether the plan an email belongs to was made from the sample store
+ * (`strategy_runs.plan.sample`). A plan saved before the flag, or not
+ * found, counts as the sample's. Throws on a failed read.
+ */
+export async function planWasSample(
+  db: Db,
+  job: { tenant_id: string; run_id: string }
+): Promise<boolean> {
+  const { data, error } = await db
+    .from('strategy_runs')
+    .select('sample:plan->sample')
+    .eq('tenant_id', job.tenant_id)
+    .eq('id', job.run_id)
+    .maybeSingle()
+  if (error) throw error
+  return data?.sample !== false
 }
