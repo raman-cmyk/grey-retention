@@ -268,12 +268,24 @@ const banned = (input: AssemblyInput) =>
     .filter((p) => p.length >= 2 && p.length <= 80)
     .slice(0, 30)
 
-/** ONB-061: at most this many customer phrases, each one short line. */
+/**
+ * ONB-061: at most this many customer phrases, each one short line. A
+ * phrase with a hidden character (other than a tab or line break) is
+ * dropped, never cleaned: lane B's filters judged it as it was, and
+ * cleaning could join a word they never saw ("be\u2066st" would become
+ * "best").
+ */
+export const maxWriterPhrases = 8
+export const maxWriterPhraseLength = 80
 const customerPhrases = (input: AssemblyInput) =>
-  (input.customerWords ?? [])
+  (Array.isArray(input.customerWords) ? input.customerWords : [])
+    .filter((p): p is string => typeof p === 'string')
+    // Tabs and line breaks split words for both lanes alike: one space.
+    .map((p) => p.replace(/[\t\n\r]+/g, ' '))
+    .filter((p) => !hiddenChars.test(p))
     .map((p) => oneLine(p, 200))
-    .filter((p) => p.length >= 3 && p.length <= 80)
-    .slice(0, 8)
+    .filter((p) => p.length >= 3 && p.length <= maxWriterPhraseLength)
+    .slice(0, maxWriterPhrases)
 
 /** The writer's rule for the customers' words, when it has some (ONB-061). */
 export const customerWordsRules = (input: AssemblyInput) =>

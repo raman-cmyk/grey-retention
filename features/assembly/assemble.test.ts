@@ -3,6 +3,10 @@ import {
   customerWordsKey,
   customerWordsRule
 } from '@/features/onboarding/customer-words-rule'
+import {
+  maxCustomerWords,
+  maxPhraseLength
+} from '@/features/onboarding/customer-words'
 import { renderEmail } from '@/features/blocks/render'
 import { sampleBrand } from '@/features/blocks/samples'
 import type { BlockBrand } from '@/features/blocks/brand'
@@ -16,6 +20,8 @@ import {
   endsText,
   maxBlocks,
   writerRequest,
+  maxWriterPhrases,
+  maxWriterPhraseLength,
   type RunAi
 } from './assemble'
 import {
@@ -933,9 +939,33 @@ describe('the writer request', () => {
       'cosy evenings',
       ...Array.from({ length: 6 }, (_, i) => `phrase ${i}`)
     ])
+    // Data only: never a phrase in the instructions.
+    expect(request.system).not.toContain('smells like a forest')
     const none = writerRequest(input(), ['header_logo', 'text', 'footer'])
     expect(none.user).not.toContain(customerWordsKey)
     expect(none.system).not.toContain(customerWordsRule)
+  })
+
+  it('drops a customer phrase with a hidden character, never cleans it into words lane B never judged', () => {
+    const request = writerRequest(
+      input({
+        customerWords: [
+          'the be\u2066st gift for a cosy night',
+          'm\u0085y go-to candle',
+          'a calm\u200b evening',
+          'warm and soft'
+        ]
+      }),
+      ['header_logo', 'text', 'footer']
+    )
+    const data = JSON.parse(request.user.replace(/^Data \(JSON\): /, ''))
+    expect(data[customerWordsKey]).toEqual(['warm and soft'])
+    expect(request.user).not.toMatch(/best gift|my go-to|calm evening/)
+  })
+
+  it('keeps lane B’s limits for the phrases (ONB-061)', () => {
+    expect(maxWriterPhrases).toBe(maxCustomerWords)
+    expect(maxWriterPhraseLength).toBe(maxPhraseLength)
   })
 
   it('carries the last failed checks and a strategy note as data', async () => {
