@@ -5978,6 +5978,51 @@ export type Database = {
           }
         ]
       }
+      revenue_goals: {
+        Row: {
+          amount: number | null
+          currency: string | null
+          month: string
+          revision: number
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          amount?: number | null
+          currency?: string | null
+          month: string
+          revision?: number
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          amount?: number | null
+          currency?: string | null
+          month?: string
+          revision?: number
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'revenue_goals_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'revenue_goals_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       segment_registry: {
         Row: {
           account_id: string
@@ -7997,6 +8042,16 @@ export type Database = {
         Returns: undefined
       }
       set_platform_ai_daily_cap: { Args: { cap: number }; Returns: undefined }
+      set_revenue_goal: {
+        Args: {
+          expected_revision: number
+          goal_amount: number
+          goal_currency: string
+          goal_month: string
+          t: string
+        }
+        Returns: number
+      }
       settle_ai_usage: {
         Args: { actual: number; reservation: string; t: string }
         Returns: undefined
