@@ -180,6 +180,16 @@ export async function runEmailBuilds(
               await fail('step_output_invalid', true)
               continue
             }
+            // REL-AI1b: another email of the plan saved this subject first
+            // (two clicks at once). Tried again, the copy step reads the
+            // plan's subjects afresh; after its tries it says why.
+            if (
+              kept.error.code === 'PT409' &&
+              (kept.error as { details?: string }).details === 'subject_taken'
+            ) {
+              await fail('subject_taken', false)
+              continue
+            }
             throw kept.error
           }
           ran++
