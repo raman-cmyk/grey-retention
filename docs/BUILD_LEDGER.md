@@ -1979,11 +1979,11 @@ Append entries using this exact shape:
 ### 2026-11-15 — REL-084 — never fail silently
 
 - Status: review
-- Branch/worktree: `claude/rel-084-plain-reasons` (issue #421), stacked on REL-081 (#400) until it lands.
+- Branch/worktree: `claude/rel-084-plain-reasons` (issue #421), from main after REL-081 (#400) landed.
 - Commit(s): see the REL-084 pull request.
 - Changed contracts: see Global decision REL-084. `PlanRun` gains `reason`; `EmailBuildView.reason` is never null for a failed build; `planOutput` takes the dropped problems and the skipped actions (the stored `dropped` count is unchanged); new `codeCalendar`, `ruleWords`, `droppedNote`, `unusedOffersNote` in the plan; `sectionsStep` can return `offers_unreadable` (tried again); the workers' `fail`/`final` take typed codes; `databaseFallbackLog` takes an optional `onLost`. `agent_fallbacks` gains the `member_read` policy (the old "an owner does not read the log" check now reads exactly their own entry).
-- Migrations: `fallbacks_member_read` (number at merge, D24; `090068` on this branch, after REL-081's `090067`).
-- Verification run: format, lint with no warnings, typecheck, all unit tests 2,432 (strategy 117, fallback 21, email-build updated); `supabase db reset` and `test:db` (fallbacks_member_read 13: owner, staff, another workspace, a designer, invited, paused workspace, switched-off account, removed member, platform admin; 2,680 in all).
+- Migrations: `fallbacks_member_read` (number at merge, D24; `090069` on this branch, after REL-081's `090067` and PLN-033a's `090068`).
+- Verification run: format, lint with no warnings, typecheck, all unit tests 2,435 (strategy 119, fallback 21, email-build updated); `next build` (main checkout); `supabase db reset` and `test:db` (fallbacks_member_read 13: owner, staff, another workspace, a designer, invited, paused workspace, switched-off account, removed member, platform admin; 2,680 in all).
 - Known issues: no screen shows the plan's failure reason or the fallback log yet (they wait for the page designs), and the log's lines are still worded for admins (agent keys such as `content-locker`; REL-084b: owner words by `reason_code` before a screen shows them). `klaviyo_rejected` covers about a dozen push refusals (PSH-001 keeps the exact one in `klaviyo_draft_pushes.reason`; REL-084c: show it). The agent path does not yet note a code-fallback calendar's skipped actions (it is not live). The code-only plan uses only the first chosen offer (`codeBrief`), now named in the note rather than silent.
 - Next consumer: the plan page and the email page designs; REL-AI (the agents' own fallbacks land in the same log).
 
