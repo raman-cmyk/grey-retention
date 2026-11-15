@@ -216,6 +216,74 @@ describe('the margin floor (PLN-039)', () => {
   })
 })
 
+describe('the plan’s offers when nothing is saved (ONB-057b)', () => {
+  const nothing = {
+    managed: async () => ({
+      maxDiscountPercent: null,
+      grossMarginPercent: null,
+      marginFloorPercent: null,
+      revision: 0,
+      codes: []
+    })
+  }
+  it('offers the sample’s codes only for the sample store', async () => {
+    const sample = await readPlanOffers(
+      planOfferSource(nothing, '2026-11-16'),
+      tenant,
+      '2026-11-16',
+      zone
+    )
+    expect(sample.codes.length).toBeGreaterThan(0)
+    const own = await readPlanOffers(
+      planOfferSource(nothing, '2026-11-16', { sample: false }),
+      tenant,
+      '2026-11-16',
+      zone
+    )
+    expect(own).toEqual({ maxDiscountPercent: 0, codes: [] })
+  })
+
+  it('uses what the owner saved for the own store, and throws when it cannot be read', async () => {
+    const saved = {
+      managed: async () => ({
+        maxDiscountPercent: 20,
+        grossMarginPercent: null,
+        marginFloorPercent: null,
+        revision: 1,
+        codes: [
+          {
+            id: 'c',
+            code: 'OWNER10',
+            percent: 10,
+            expiresAt: null,
+            ended: false
+          }
+        ]
+      })
+    }
+    const own = await readPlanOffers(
+      planOfferSource(saved, '2026-11-16', { sample: false }),
+      tenant,
+      '2026-11-16',
+      zone
+    )
+    expect(own.maxDiscountPercent).toBe(20)
+    expect(own.codes.map((c) => c.code)).toEqual(['OWNER10'])
+    await expect(
+      readPlanOffers(
+        planOfferSource(
+          { managed: async () => Promise.reject(new Error('down')) },
+          '2026-11-16',
+          { sample: false }
+        ),
+        tenant,
+        '2026-11-16',
+        zone
+      )
+    ).rejects.toBeTruthy()
+  })
+})
+
 describe('reading the plan’s offers', () => {
   it('reads them at the start of the first day, and throws to retry when it cannot', async () => {
     const asked: string[] = []

@@ -40,7 +40,9 @@ const planCodes = [
   'stored_pick_invalid',
   'pick_not_in_pulse',
   'plan_offer_unusable',
-  'offers_unreadable'
+  'offers_unreadable',
+  'key_dates_unreadable',
+  'store_changed'
 ]
 
 describe('plain words for every failure', () => {

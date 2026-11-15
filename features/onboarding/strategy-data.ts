@@ -196,31 +196,35 @@ export function onboardedStrategyData(
 ): StrategyData {
   return {
     async load({ tenantId, start }) {
-      const [timezone, catalog, history, findings, profile] = await Promise.all(
-        [
-          workspaceTimezone(db, tenantId),
-          listCatalog(db, tenantId, { featurableOnly: true }),
-          readKlaviyoHistory(db, tenantId),
-          listFindings(db, tenantId, { topic: 'offering' }),
-          db
-            .from('brand_profiles')
-            .select('brand_name')
-            .eq('tenant_id', tenantId)
-            .maybeSingle()
-        ]
-      )
+      // First what decides whether the workspace's own store can be
+      // planned at all; the sample store needs nothing more (a sample plan
+      // never waits on reads it does not use).
+      const [timezone, catalog, history] = await Promise.all([
+        workspaceTimezone(db, tenantId),
+        listCatalog(db, tenantId, { featurableOnly: true }),
+        readKlaviyoHistory(db, tenantId)
+      ])
+      const at = now()
+      if (!history || !historyUsable(history, at) || catalog.length === 0)
+        return fallback.load({ tenantId, start })
+      const [findings, profile] = await Promise.all([
+        listFindings(db, tenantId, { topic: 'offering' }),
+        db
+          .from('brand_profiles')
+          .select('brand_name')
+          .eq('tenant_id', tenantId)
+          .maybeSingle()
+      ])
       if (profile.error) throw profile.error
       const keyDates = await planningKeyDates(db, {
         tenantId,
         timezone,
         from: start,
         days: planDays,
-        industry: industryFrom(findings, { live: history?.live ?? false }).words
+        industry: industryFrom(findings, { live: history.live }).words
       })
       // A failed read (holidays, the owner's own days) is tried again, never
-      // planned without: a plan missing Black Friday would say nothing. It
-      // is checked before the fallback, so it also holds up a sample plan;
-      // the step's tries cover a short outage.
+      // planned without: a plan missing Black Friday would say nothing.
       if (!keyDates)
         throw Object.assign(new Error('key_dates_unreadable'), {
           code: 'key_dates_unreadable'
@@ -235,7 +239,7 @@ export function onboardedStrategyData(
           keyDates: keyDates.dates
         },
         start,
-        now()
+        at
       )
       return own ?? fallback.load({ tenantId, start })
     }

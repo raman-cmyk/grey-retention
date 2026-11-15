@@ -105,6 +105,21 @@ describe('running plan steps (the code-only path)', () => {
     expect(stored.offers.map((o) => o.code)).toEqual(['CANDLE10', 'WELCOME15'])
   })
 
+  it('lists no offers for the workspace’s own store when nothing is saved, never the sample’s (ONB-057b)', async () => {
+    const own = {
+      load: async (input: { tenantId: string; start: string }) => ({
+        ...(await sampleStrategyData.load(input)),
+        sample: false
+      })
+    }
+    const { db, calls } = fakeDb([run()])
+    await runStrategyRuns(db, { data: own })
+    const finish = calls.find((c) => c.fn === 'finish_strategy_pulse')!
+    const stored = finish.args.result as StoredPulse
+    expect(stored.sample).toBe(false)
+    expect(stored.offers).toEqual([])
+  })
+
   it('plans the 15 days with the owner’s pick', async () => {
     const { db, calls } = fakeDb([
       run({
@@ -474,6 +489,49 @@ describe('failed steps', () => {
       await runStrategyRuns(db, data ? { data } : {})
       expect(failure(calls), code).toMatchObject({ code, final: true })
     }
+  })
+
+  it('fail at once when the offers were listed from the sample and the plan would be real, or back (ONB-057b)', async () => {
+    const own = {
+      load: async (input: { tenantId: string; start: string }) => ({
+        ...(await sampleStrategyData.load(input)),
+        sample: false
+      })
+    }
+    const cases = [
+      [pulse, own],
+      [{ ...pulse, sample: false }, undefined],
+      // A pulse saved before the flag was the sample's.
+      [{ ...pulse, sample: undefined }, own]
+    ] as const
+    for (const [listed, data] of cases) {
+      const { db, calls } = fakeDb([
+        run({
+          state: 'plan_queued',
+          pulse: listed,
+          offer_pick: { mode: 'auto' }
+        })
+      ])
+      await runStrategyRuns(db, data ? { data } : {})
+      expect(failure(calls)).toEqual({
+        run: 'run-1',
+        lease: 'lease-1',
+        code: 'store_changed',
+        final: true
+      })
+      expect(calls.some((c) => c.fn === 'finish_strategy_plan')).toBe(false)
+    }
+    // The same store both times: planned.
+    const same = fakeDb([
+      run({
+        state: 'plan_queued',
+        pulse: { ...pulse, sample: false },
+        offer_pick: { mode: 'auto' }
+      })
+    ])
+    await runStrategyRuns(same.db, { data: own })
+    expect(failure(same.calls)).toBeUndefined()
+    expect(same.calls.some((c) => c.fn === 'finish_strategy_plan')).toBe(true)
   })
 
   it('treat bad store data as final, and a lost lease as a retry', async () => {
