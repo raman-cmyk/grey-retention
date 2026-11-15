@@ -163,6 +163,11 @@ export async function runStrategyRuns(
         const stored = storedPulse.safeParse(run.pulse)
         if (!stored.success || stored.data.start !== run.start_on)
           throw final('stored_pulse_invalid')
+        // ONB-057b: the offers were listed from one store and the plan would
+        // be made from the other (the readers finished in between). A pulse
+        // saved before the flag was the sample's.
+        if ((stored.data.sample ?? true) !== store.sample)
+          throw final('store_changed')
         const pick = offerPick.safeParse(run.offer_pick)
         if (!pick.success) throw final('stored_pick_invalid')
         const picked = offersToPlan(stored.data, pick.data)

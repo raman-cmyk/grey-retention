@@ -14,7 +14,11 @@ export const planFailureWords = {
   stored_pick_invalid: 'Your offer choice could not be read.',
   pick_not_in_pulse: 'An offer you picked was not in the list.',
   plan_offer_unusable: 'A planned offer would not work on its day.',
-  offers_unreadable: 'Your saved offers could not be read. Try again.'
+  offers_unreadable: 'Your saved offers could not be read. Try again.',
+  key_dates_unreadable:
+    'Holidays and your key dates could not be read. Try again.',
+  store_changed:
+    'Your store data changed while this plan was being made. Try again.'
 } as const satisfies Record<string, string>
 
 export type PlanFailureCode = keyof typeof planFailureWords
