@@ -9,6 +9,8 @@ import type { ImageFetcher } from '@/lib/providers/image-fetch'
 import {
   homeUrl,
   liveSiteFetcher,
+  logoFetchOptions,
+  logoTimeoutMs,
   maxPageBytes,
   pageTimeoutMs,
   sampleSiteFetcher,
@@ -103,6 +105,62 @@ describe('the live site reader', () => {
   })
 })
 
+describe('the logo pictures (ONB-060b)', () => {
+  it('reads a logo picture over https, from any public host, within its limits', async () => {
+    const bytes = new Uint8Array([60, 115, 118, 103])
+    const page = answering({ ok: false, failure: 'broken' })
+    const pictures = answering({ ok: true, bytes })
+    const site = liveSiteFetcher('shop.com', page.fetcher, pictures.fetcher)
+    expect(await site.picture!('https://cdn.shopify.com/logo.svg')).toBe(bytes)
+    expect(pictures.fetch).toHaveBeenCalledWith(
+      'https://cdn.shopify.com/logo.svg',
+      { maxBytes: 1_000_000, timeoutMs: logoTimeoutMs }
+    )
+    // Never through the page reader, which keeps to the brand's own host.
+    expect(page.fetch).not.toHaveBeenCalled()
+    expect(await site.picture!('http://cdn.shopify.com/logo.svg')).toBeNull()
+    expect(pictures.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('gives nothing for a picture it cannot read, never an error', async () => {
+    const page = answering({ ok: false, failure: 'broken' }).fetcher
+    for (const pictures of [
+      answering({ ok: false, failure: 'blocked' }).fetcher,
+      {
+        fetch: async () => {
+          throw new Error('socket hang up')
+        }
+      } as ImageFetcher
+    ])
+      expect(
+        await liveSiteFetcher('shop.com', page, pictures).picture!(
+          'https://cdn.shopify.com/logo.png'
+        )
+      ).toBeNull()
+  })
+
+  it('asks only for the pictures an email may show, over https on 443', () => {
+    expect(logoFetchOptions).toMatchObject({
+      ports: ['443'],
+      protocols: ['https:']
+    })
+    for (const type of ['image/png', 'image/jpeg; q=1', 'image/gif'])
+      expect(logoFetchOptions.types.test(type), type).toBe(true)
+    for (const type of [
+      'image/svg+xml',
+      'image/webp',
+      'text/html',
+      'application/json',
+      ''
+    ])
+      expect(logoFetchOptions.types.test(type), type).toBe(false)
+  })
+
+  it('has none for the sample site', () => {
+    expect(sampleSiteFetcher('cedar-lane.example').picture).toBeUndefined()
+  })
+})
+
 describe('the sample site reader', () => {
   it('serves the sample site for a synthetic brand and opens nothing', async () => {
     const site = sampleSiteFetcher('cedar-lane.example')
@@ -194,6 +252,30 @@ describe("the live reader's guards, against a real server", () => {
   const limits = { maxBytes: maxPageBytes, timeoutMs: 2_000 }
   const at = (path: string, host = 'shop.test') =>
     `http://${host}:${port}${path}`
+
+  it('reads a logo picture from any public host, never a private address or a page (ONB-060b)', async () => {
+    const pictures = createImageFetcher({
+      ...logoFetchOptions,
+      protocols: ['http:'],
+      ports: [port],
+      isReserved: (a) => a.startsWith('10.'),
+      resolve: (host, done) =>
+        host === 'other.test'
+          ? done(null, [{ address: '127.0.0.1', family: 4 }])
+          : done(null, [{ address: '10.0.0.9', family: 4 }])
+    })
+    const limits = { maxBytes: 1_000_000, timeoutMs: 2_000 }
+    expect(
+      await pictures.fetch(at('/logo.png', 'other.test'), limits)
+    ).toMatchObject({ ok: true })
+    expect(
+      await pictures.fetch(at('/logo.png', 'inside.shop.test'), limits)
+    ).toEqual({ ok: false, failure: 'blocked' })
+    expect(await pictures.fetch(at('/', 'other.test'), limits)).toEqual({
+      ok: false,
+      failure: 'broken'
+    })
+  })
 
   it('reads an HTML page of the brand, and nothing else', async () => {
     const site = fetcher(['http:'])

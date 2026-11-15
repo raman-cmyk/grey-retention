@@ -3,8 +3,15 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
 import type { Ask } from '@/features/intelligence/passes'
+import { importable } from '@/features/klaviyo-push/html'
 import type { FindingInput, SitePageKind } from '../findings'
-import { homeUrl, pageTimeoutMs, type SiteFetcher } from './fetch'
+import {
+  homeUrl,
+  logoTimeoutMs,
+  pageTimeoutMs,
+  type SiteFetcher
+} from './fetch'
+import { logoCandidates, logoTone, pickLogos } from './logos'
 import { pagesToRead, readPage, type ReadPage } from './pages'
 import { readSitePage } from './reader'
 
@@ -30,6 +37,73 @@ export type SiteRun = {
   findings: number
   dropped: number
   live: boolean
+  /** Which logos were kept (ONB-060b); absent when none were looked for. */
+  logos?: { onLight: boolean; onDark: boolean }
+}
+
+export type PickedLogos = { onLight: string | null; onDark: string | null }
+
+/** Longest logo address kept (the database refuses longer ones). */
+const maxLogoUrl = 1_000
+
+/**
+ * A logo address an email may show and the database keeps: https on the
+ * standard port, no name or password, a format Klaviyo imports (never an
+ * SVG or WebP), at most `maxLogoUrl` characters.
+ */
+export const keepableLogo = (url: string) =>
+  url.length <= maxLogoUrl &&
+  /^https:\/\/[^/:?#@]+(?:[/?#]|$)/.test(url) &&
+  importable(url)
+
+/** Whether a picture's own bytes are PNG, JPEG or GIF (what Klaviyo imports). */
+export function emailPicture(b: Uint8Array): boolean {
+  const starts = (...sig: number[]) =>
+    b.length > sig.length && sig.every((v, i) => b[i] === v)
+  return (
+    starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a) ||
+    starts(0xff, 0xd8, 0xff) ||
+    starts(0x47, 0x49, 0x46, 0x38)
+  )
+}
+
+/**
+ * The brand's logos on its home page (ONB-060b): each candidate an email
+ * could show is read (all at once, each within `logoTimeoutMs`, none
+ * started without that time left), its ink measured (a JPEG or GIF goes by
+ * its name), then the pick for light and for dark sections. Only pictures
+ * really read as PNG, JPEG or GIF are picked from, so an email never gets
+ * a picture that did not load or that Klaviyo cannot import. Null when no
+ * picture could be read (then nothing earlier is replaced). Never fails.
+ */
+export async function findLogos(
+  page: { html: string; url: string },
+  brand: string,
+  picture: (url: string) => Promise<Uint8Array | null>,
+  { now, deadline }: { now: () => number; deadline: number }
+): Promise<PickedLogos | null> {
+  try {
+    const read = await Promise.all(
+      logoCandidates(page.html, page.url, { brand })
+        .filter((candidate) => keepableLogo(candidate.url))
+        .map(async (candidate) => {
+          if (now() + logoTimeoutMs > deadline) return null
+          const bytes = await picture(candidate.url).catch(() => null)
+          return bytes && emailPicture(bytes)
+            ? { candidate, tone: logoTone(bytes) }
+            : null
+        })
+    )
+    const found = read.filter((f) => f !== null)
+    const picked = pickLogos(found)
+    // Nothing to keep: the earlier logos stay.
+    return picked.onLight || picked.onDark ? picked : null
+  } catch (error) {
+    logger.warn('Site logos unreadable', {
+      error: error instanceof Error ? error.name : 'unknown'
+    })
+    return null
+  }
 }
 
 /**
@@ -71,7 +145,9 @@ const maxUrl = 500
  * them all at once with the page each came from (`record_site_findings`,
  * which also finishes the job). A page that cannot be read in time, or at
  * all, is logged and skipped (D16). When no page could be read, nothing
- * earlier is replaced.
+ * earlier is replaced. A live read also keeps the logos of the home page
+ * (ONB-060b, `record_site_logos`, before the findings); logos that cannot
+ * be kept are logged, and the emails show the brand's name instead.
  */
 export async function readBrandSite(
   db: Db,
@@ -143,6 +219,7 @@ export async function readBrandSite(
     }))
     return { count: result.findings.length }
   }
+  let logos: Promise<PickedLogos | null> | null = null
   const home = homeUrl(domain)
   if (!home) skip(`https://${domain || 'unknown'}/`, 'home', 'no_domain')
   else if (!ask) skip(home, 'home', 'no_model')
@@ -151,6 +228,13 @@ export async function readBrandSite(
     if (!first.ok) skip(home, 'home', first.failure)
     else {
       const homePage = readPage(first.html, first.url, 'home')
+      // The logos are looked for while the other pages are read.
+      const picture = fetcher.picture?.bind(fetcher)
+      if (fetcher.live && picture)
+        logos = findLogos(first, brand.data.brand_name, picture, {
+          now,
+          deadline
+        })
       const outcome = await read(homePage, 0)
       if ('count' in outcome)
         run.pages.push({
@@ -198,6 +282,20 @@ export async function readBrandSite(
     return true
   })
   run.findings = unique.length
+  const picked = logos ? await logos : null
+  if (picked) {
+    const kept = await db.rpc('record_site_logos', {
+      job: job.id,
+      lease: job.lease_token!,
+      on_light: picked.onLight ?? undefined,
+      on_dark: picked.onDark ?? undefined
+    })
+    if (kept.error)
+      logger.warn('Site logos not kept', { code: kept.error.code })
+    // False: a newer read of the site already kept its own.
+    else if (kept.data === true)
+      run.logos = { onLight: !!picked.onLight, onDark: !!picked.onDark }
+  }
   const recorded = await db.rpc('record_site_findings', {
     job: job.id,
     lease: job.lease_token!,
@@ -219,7 +317,9 @@ export async function readBrandSite(
     read: run.pages.filter((p) => p.state === 'read').length,
     findings: run.findings,
     dropped: run.dropped,
-    live: run.live
+    live: run.live,
+    logoOnLight: run.logos?.onLight ?? null,
+    logoOnDark: run.logos?.onDark ?? null
   })
   return run
 }
