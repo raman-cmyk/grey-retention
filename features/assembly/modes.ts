@@ -21,6 +21,7 @@ import {
   writerData,
   writerGuide,
   writerRules,
+  customerWordsRules,
   writtenSchema,
   type Assembled,
   type CopyFeedback,
@@ -215,6 +216,7 @@ export function fixedWriterRequest(
       }`
     }),
     ...writerRules,
+    ...customerWordsRules(input),
     ...(keepAngle
       ? [`${strategyRule} Keep that structure, in the client's own voice.`]
       : []),

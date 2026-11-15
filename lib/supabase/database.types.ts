@@ -8226,6 +8226,19 @@ export type Database = {
         }
         Returns: string
       }
+      suggestable_inbox_brands: {
+        Args: { since: string; t: string }
+        Returns: {
+          brand_name: string
+          domain: string
+          id: string
+          labels: Json
+          last_received_at: string
+          niche: string
+          recent: number
+          synthetic: boolean
+        }[]
+      }
       team_members: {
         Args: { t: string }
         Returns: {

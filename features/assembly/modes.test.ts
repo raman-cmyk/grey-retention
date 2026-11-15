@@ -217,6 +217,23 @@ describe('the angle never reaches the email', () => {
   })
 })
 
+describe('the fixed sequence’s writer', () => {
+  it('gets the customers’ own words with their rule, and only when there are some (ONB-061)', () => {
+    const { steps } = layoutSequence(
+      competitor,
+      allowedBlockTypes(input(reviews)),
+      3
+    )
+    const words = { ...input(reviews), customerWords: ['soft as a cloud'] }
+    const request = fixedWriterRequest(words, steps, 'exact', undefined)
+    expect(dataOf(request.user).customerWords).toEqual(['soft as a cloud'])
+    expect(request.system).toMatch(/Borrow their words and tone/)
+    const none = fixedWriterRequest(input(reviews), steps, 'exact', undefined)
+    expect(none.user).not.toMatch(/customerWords/)
+    expect(none.system).not.toMatch(/Borrow their words/)
+  })
+})
+
 describe('Exact and Rebrand', () => {
   it('build the competitor sequence with the client’s own products', async () => {
     const draft = await assembleFromLayout(
