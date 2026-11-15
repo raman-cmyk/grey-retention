@@ -73,7 +73,9 @@ const contentSaved = z.looseObject({
     codes: z.array(z.looseObject({ code: z.string() })),
     maxDiscountPercent: z.number(),
     sendAt: z.string(),
-    timezone: z.string()
+    timezone: z.string(),
+    // ONB-061: the customers' words (REL-CW); missing before it.
+    customerWords: z.array(z.string()).max(40).optional()
   }),
   changes: z.array(z.looseObject({ key: z.string() }))
 })
