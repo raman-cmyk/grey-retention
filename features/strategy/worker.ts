@@ -99,7 +99,7 @@ export async function runStrategyRuns(
       let unreadable = false
       try {
         offers = await readPlanOffers(
-          planOfferSource(saved, run.start_on),
+          planOfferSource(saved, run.start_on, { sample: store.sample }),
           run.tenant_id,
           run.start_on,
           timezone
