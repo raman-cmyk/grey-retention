@@ -102,8 +102,12 @@ export function studioPortsFor(
           build: input.build
         })
       ).find(
+        // Read again: this build's, still drawn as the studio saw it.
         (r): r is Extract<BuildRender, { state: 'drawn' }> =>
-          r.id === render && r.state === 'drawn'
+          r.id === render.id &&
+          r.state === 'drawn' &&
+          r.path === render.path &&
+          r.etag === render.etag
       )
       if (!drawn || !(await tagged(drawn))) return null
       const signed = await files().createSignedUrl(

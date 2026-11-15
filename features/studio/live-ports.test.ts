@@ -155,7 +155,7 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
   it('signs a year-long https link only for a picture of this build still drawn as recorded', async () => {
     reads.buildRenders.mockResolvedValue([drawn])
     const s = storage()
-    expect(await ports(s).ports.sign(render)).toBe(
+    expect(await ports(s).ports.sign(drawn)).toBe(
       `https://db.example/storage/v1/object/sign/studio-renders/${drawn.path}?token=t`
     )
     expect(reads.buildRenders).toHaveBeenCalledWith(s.db, { tenant, build })
@@ -163,18 +163,21 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
     expect(pictureLinkSeconds).toBe(365 * 24 * 3600)
     // Not this build's, not drawn, changed, not signed, or not https.
     reads.buildRenders.mockResolvedValue([])
-    expect(await ports(storage()).ports.sign(render)).toBeNull()
+    expect(await ports(storage()).ports.sign(drawn)).toBeNull()
     reads.buildRenders.mockResolvedValue([
       { id: render, key: 'k', state: 'queued' }
     ])
-    expect(await ports(storage()).ports.sign(render)).toBeNull()
+    expect(await ports(storage()).ports.sign(drawn)).toBeNull()
+    // Drawn again since (another tag): not the picture the studio saw.
+    reads.buildRenders.mockResolvedValue([{ ...drawn, etag: '"new"' }])
+    expect(await ports(storage()).ports.sign(drawn)).toBeNull()
     reads.buildRenders.mockResolvedValue([drawn])
     for (const bad of [
       storage({ tags: ['changed'] }),
       storage({ signed: null }),
       storage({ signed: 'http://127.0.0.1:54321/x.jpg' })
     ])
-      expect(await ports(bad).ports.sign(render)).toBeNull()
+      expect(await ports(bad).ports.sign(drawn)).toBeNull()
   })
 
   it('asks for a picture under the build’s own lease, and reads this build’s pictures', async () => {
