@@ -1,6 +1,6 @@
 import { defaultBannedClaims, type BrandFacts } from '@/features/copy-qa/check'
 import type { Industry } from '@/features/intelligence/taxonomy'
-import { industriesInWords } from './industry'
+import { industryScores } from './industry'
 
 /**
  * Claims safety list (owner pick #62, ONB-062): words to avoid by industry.
@@ -40,7 +40,10 @@ export type ClaimGroup = {
 }
 
 export type ClaimsSafety = {
-  /** Every industry named in the brand's words, most first; empty when unknown. */
+  /**
+   * The industries the brand's words name, most first: those with at least
+   * half the words of the top one; empty when unknown.
+   */
   industries: Industry[]
   groups: ClaimGroup[]
 }
@@ -336,11 +339,25 @@ const general = new Set(defaultBannedClaims.map((p) => p.toLowerCase()))
  * nothing is checked twice.
  */
 export function claimsSafety(industry: string | null): ClaimsSafety {
-  const found = industriesInWords(industry)
+  const scores = industryScores(industry)
+  const top = scores[0]?.words ?? 0
+  // An industry named in passing ("massage balls" in a fitness shop) does
+  // not bring its groups.
+  const named = scores.filter((s) => s.words * 2 >= top)
+  const found = named.map((s) => s.industry)
+  const words = (i: Industry) => named.find((s) => s.industry === i)?.words ?? 0
+  // A fitness brand's copy says "fat-burning moves": the general weight
+  // group only when a supplement, wellness or food brand is named more.
+  const weightFor = Math.max(
+    words('supplements'),
+    words('wellness'),
+    words('food_drink')
+  )
   return {
     industries: found,
     groups: groups
       .filter((g) => g.for === 'all' || g.for.some((i) => found.includes(i)))
+      .filter((g) => g.key !== 'weight' || weightFor > words('fitness'))
       .map(({ key, reason, phrases }) => ({
         key,
         reason,
@@ -403,15 +420,15 @@ export function withClaimsSafety(
   }
 }
 
-/** One key for "carbon neutral", "carbon-neutral" and "carbonneutral". */
-const spellingKey = (phrase: string) => phrase.replace(/[-\s]+/g, '')
+/** One key for "carbon neutral", "carbon-neutral", "carbon–neutral" and "carbonneutral". */
+const spellingKey = (phrase: string) => phrase.replace(/[-–—\s]+/g, '')
 
-/** The phrase as whole words, a space or hyphen optional between parts. */
+/** The phrase as whole words, a space, hyphen or dash optional between parts. */
 function anySpelling(phrase: string) {
   const p = phrase
-    .split(/[-\s]+/)
+    .split(/[-–—\s]+/)
     .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    .join('[-\\s]?')
+    .join('[-–—\\s]?')
   const left = /^\w/.test(phrase) ? '\\b' : ''
   const right = /\w$/.test(phrase) ? '\\b' : ''
   return new RegExp(`${left}${p}${right}`, 'i')

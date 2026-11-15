@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { industriesInWords, industryInWords } from './industry'
+import { industriesInWords, industryInWords, industryScores } from './industry'
 
 describe('industryInWords (ONB-062)', () => {
   it('reads whole sentences, whole words only', () => {
@@ -58,6 +58,37 @@ describe('industryInWords (ONB-062)', () => {
     ]
     for (const [text, industry] of cases)
       expect([text, industryInWords(text)]).toEqual([text, industry])
+  })
+
+  it('knows the everyday words of small shops', () => {
+    const cases: [string, string][] = [
+      ['Natural face creams and body lotions', 'skincare'],
+      ['Handmade soaps', 'skincare'],
+      ['Body butter and lip balm', 'skincare'],
+      ['Natural flea and tick collars', 'pet'],
+      ['Silicone teethers', 'baby'],
+      ['Reusable cloth nappies', 'baby'],
+      ['Ceremonial matcha', 'food_drink'],
+      ['Glassware, dinnerware and drinkware', 'kitchen'],
+      ['Candies and sweets', 'food_drink'],
+      ['Hair dryers', 'beauty_tools'],
+      ['Beauty-tools for home', 'beauty_tools'],
+      ['Ring lights for creators', 'electronics']
+    ]
+    for (const [text, industry] of cases)
+      expect([text, industryInWords(text)]).toEqual([text, industry])
+  })
+
+  it('lets a two-word name use up both its words', () => {
+    expect(industriesInWords('Ice cream and sorbet')).toEqual(['food_drink'])
+    expect(industriesInWords('Hot dogs and buns')).toEqual(['food_drink'])
+    expect(industriesInWords('Smart home devices')).toEqual(['electronics'])
+    expect(industriesInWords('Sleep sacks and swaddles for babies')).toEqual([
+      'baby'
+    ])
+    expect(industryScores('Professional hair tools and straighteners')).toEqual(
+      [{ industry: 'beauty_tools', words: 3 }]
+    )
   })
 
   it('lists every industry named, most words first', () => {

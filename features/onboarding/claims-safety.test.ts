@@ -63,6 +63,12 @@ describe('claimsSafety (ONB-062)', () => {
     expect(keys('accessories')).toEqual(['green', 'germs', 'toughness'])
     expect(keys('electronics')).toEqual(['green', 'germs', 'toughness'])
     expect(keys('home')).toEqual(['green', 'germs', 'pests'])
+    expect(keys('apparel')).toEqual(['green', 'germs'])
+    expect(keys('beauty')).toEqual(['green', 'medical_beauty'])
+    expect(keys('haircare')).toEqual(['green', 'medical_beauty'])
+    expect(keys('wellness')).toEqual(['green', 'health', 'weight'])
+    expect(keys('kitchen')).toEqual(['green', 'germs', 'toughness'])
+    expect(keys('outdoor')).toEqual(['green', 'germs', 'pests', 'toughness'])
     expect(keys('other')).toEqual(['green'])
     expect(keys(null)).toEqual(['green'])
   })
@@ -89,6 +95,15 @@ describe('claimsSafety (ONB-062)', () => {
     expect(claimsSafety('Mineral sunscreen').industries).toEqual(['skincare'])
     expect(claimsSafety('Massage guns').industries).toEqual(['wellness'])
     expect(claimsSafety('Mystery boxes').industries).toEqual([])
+    expect(keys('Natural flea and tick collars')).toContain('pests')
+    expect(keys('Natural face creams and body lotions')).toContain(
+      'medical_beauty'
+    )
+    // A word in passing brings no groups: four clothes words, one "home".
+    expect(
+      claimsSafety('Linen shirts, dresses, trousers and jackets for the home')
+        .industries
+    ).toEqual(['apparel'])
   })
 
   it('lists each phrase once, never one copy QA already blocks', () => {
@@ -173,6 +188,24 @@ describe('withClaimsSafety (ONB-062)', () => {
         ])
   })
 
+  it('keeps exercise copy for a fitness brand that names wellness or food too', () => {
+    for (const niche of [
+      'Home fitness and wellness gear',
+      'Fitness equipment and recovery tools: kettlebells, dumbbells and massage balls',
+      'Yoga mats, gym gear and protein snacks'
+    ]) {
+      const fit = withClaimsSafety(facts, niche)
+      for (const text of [
+        'Ten fat-burning moves you can do at home.',
+        'Burn fat and build strength with our kettlebells.'
+      ])
+        expect([niche, text, qa(text, fit)]).toEqual([niche, text, []])
+      expect(qa('Lose weight fast with our plan.', fit)).toHaveLength(1)
+    }
+    // A supplement brand named more than fitness keeps the weight group.
+    expect(keys('Protein powders, vitamins and gym towels')).toContain('weight')
+  })
+
   it('never reads a product’s own name as a claim', () => {
     const shop = withClaimsSafety(facts, 'accessories')
     const text = 'Meet the Eco-Friendly Tote.'
@@ -206,6 +239,13 @@ describe('withClaimsSafety (ONB-062)', () => {
       'Our shipping is carbon neutral',
       'Non-toxic paint'
     ])
+    // A dash is a hyphen too.
+    const dashed = withClaimsSafety(
+      { ...facts, approvedClaims: ['Eco–friendly packaging'] },
+      null
+    )
+    expect(dashed.bannedPhrases).not.toContain('eco-friendly')
+    expect(dashed.bannedPhrases).not.toContain('eco friendly')
     // Whole words only: "nontoxicity" approves nothing.
     expect(
       withClaimsSafety(

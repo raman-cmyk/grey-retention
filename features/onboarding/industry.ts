@@ -39,6 +39,7 @@ const order: Industry[] = [
 
 const known: Record<Exclude<Industry, 'other'>, string[]> = {
   beauty_tools: [
+    'hair dryer',
     'hairdryer',
     'straightener',
     'curler',
@@ -53,6 +54,12 @@ const known: Record<Exclude<Industry, 'other'>, string[]> = {
   ],
   haircare: ['hair', 'haircare', 'shampoo', 'conditioner', 'scalp'],
   skincare: [
+    'body butter',
+    'lip balm',
+    'cream',
+    'lotion',
+    'balm',
+    'soap',
     'skin',
     'skincare',
     'serum',
@@ -178,6 +185,7 @@ const known: Record<Exclude<Industry, 'other'>, string[]> = {
     'tailoring'
   ],
   baby: [
+    'sleep sack',
     'baby',
     'babies',
     'kid',
@@ -187,14 +195,36 @@ const known: Record<Exclude<Industry, 'other'>, string[]> = {
     'toddler',
     'infant',
     'maternity',
-    'nursery'
+    'nursery',
+    'teether',
+    'diaper',
+    'nappy',
+    'swaddle',
+    'stroller',
+    'pacifier'
   ],
-  pet: ['pet', 'dog', 'cat', 'puppy', 'puppies', 'kitten', 'petcare'],
+  pet: [
+    'pet',
+    'dog',
+    'cat',
+    'puppy',
+    'kitten',
+    'petcare',
+    'flea',
+    'tick',
+    'collar',
+    'leash',
+    'litter'
+  ],
   kitchen: [
     'kitchen',
     'kitchenware',
     'cookware',
     'bakeware',
+    'glassware',
+    'dinnerware',
+    'tableware',
+    'drinkware',
     'cooking',
     'knife',
     'knives',
@@ -203,10 +233,14 @@ const known: Record<Exclude<Industry, 'other'>, string[]> = {
   ],
   food_drink: [
     'hot dog',
+    'ice cream',
     'food',
     'snack',
     'coffee',
     'tea',
+    'matcha',
+    'kombucha',
+    'sweets',
     'drink',
     'beverage',
     'wine',
@@ -260,6 +294,7 @@ const known: Record<Exclude<Industry, 'other'>, string[]> = {
   ],
   electronics: [
     'smart home',
+    'ring light',
     'electronics',
     'electronic',
     'tech',
@@ -286,18 +321,26 @@ for (const industry of order)
     map.set(phrase, [...(map.get(phrase) ?? []), industry])
   }
 
-/** The word, and its singular when it ends in -s or -es. */
+/** The word, and its singular when it ends in -s, -es or -ies. */
 const forms = (word: string) => [
   word,
   ...(word.length > 3 && word.endsWith('s') ? [word.slice(0, -1)] : []),
-  ...(word.length > 4 && word.endsWith('es') ? [word.slice(0, -2)] : [])
+  ...(word.length > 4 && word.endsWith('es') ? [word.slice(0, -2)] : []),
+  ...(word.length > 4 && word.endsWith('ies') ? [`${word.slice(0, -3)}y`] : [])
 ]
 
-export function industriesInWords(text: string | null): Industry[] {
+export type IndustryScore = { industry: Industry; words: number }
+
+/**
+ * How many of each industry's words the text has, most first (ties in
+ * `order`). A known two-word name counts twice and uses up both words, so
+ * "ice cream" is never also "cream" and "hair tools" never also "hair".
+ */
+export function industryScores(text: string | null): IndustryScore[] {
   const lower = (text ?? '').trim().toLowerCase()
   if (!lower) return []
   if ((industries as readonly string[]).includes(lower))
-    return lower === 'other' ? [] : [lower as Industry]
+    return lower === 'other' ? [] : [{ industry: lower as Industry, words: 1 }]
   const words = lower.split(/[^\p{L}\p{N}-]+/u).filter(Boolean)
   const score = new Map<Industry, number>()
   const add = (found: Industry[] | undefined, points: number) => {
@@ -306,11 +349,21 @@ export function industriesInWords(text: string | null): Industry[] {
   }
   for (let i = 0; i < words.length; i++) {
     const word = words[i]!
-    // A known two-word name counts twice: "hair tools" beats "hair".
-    if (i + 1 < words.length) {
-      const pair = `${word} ${words[i + 1]}`
-      const matched = forms(pair).find((f) => twoWords.has(f))
-      if (matched) add(twoWords.get(matched), 2)
+    const pair =
+      i + 1 < words.length
+        ? forms(`${word} ${words[i + 1]}`).find((f) => twoWords.has(f))
+        : undefined
+    if (pair) {
+      add(twoWords.get(pair), 2)
+      i++
+      continue
+    }
+    const joined = word.includes('-')
+      ? forms(word.replace(/-+/g, ' ')).find((f) => twoWords.has(f))
+      : undefined
+    if (joined) {
+      add(twoWords.get(joined), 2)
+      continue
     }
     const single = forms(word).find((f) => singleWords.has(f))
     if (single) add(singleWords.get(single), 1)
@@ -325,6 +378,11 @@ export function industriesInWords(text: string | null): Industry[] {
   return order
     .filter((industry) => (score.get(industry) ?? 0) > 0)
     .sort((a, b) => score.get(b)! - score.get(a)!)
+    .map((industry) => ({ industry, words: score.get(industry)! }))
+}
+
+export function industriesInWords(text: string | null): Industry[] {
+  return industryScores(text).map((s) => s.industry)
 }
 
 export function industryInWords(text: string | null): Industry | null {
