@@ -219,12 +219,28 @@ export async function contentStep(
 export const subjectKey = (subject: string) =>
   subject.replace(/\s+/g, ' ').trim().toLowerCase()
 
+// Control, zero-width and direction characters: never in a subject.
+const hidden =
+  /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g
+
+/**
+ * Store text (a product title, the brand name) as it may stand in a
+ * subject: hidden characters dropped, spacing made single; null when it
+ * holds anything a template or an inbox could read as markup (`{` `}` `<`
+ * `>`), since the copy checks mask product titles and cannot judge them.
+ */
+export function subjectText(text: string) {
+  const clean = text.replace(hidden, '').replace(/\s+/g, ' ').trim()
+  return clean && !/[{}<>]/.test(clean) ? clean : null
+}
+
 /**
  * REL-AI: two emails in one plan never share a subject. The subjects the
  * plan's other emails already use (`taken`) are skipped: the plain copy's
  * own subject when it is free, else the first of a few fixed, facts-only
- * subjects (the locked products' titles and the brand name, never a claim,
- * price or code) that is free and passes every code check. Null when none.
+ * subjects (the locked products' titles, the brand name and the send day,
+ * never a claim, price or code) that is free, safe store text
+ * (`subjectText`) and passes every code check. Null when none.
  */
 export function uniqueSubject(
   plain: Parameters<typeof codeFindings>[0],
@@ -233,11 +249,22 @@ export function uniqueSubject(
   taken: ReadonlySet<string>
 ): string | null {
   const free = (subject: string) => !taken.has(subjectKey(subject))
-  if (free(plain.draft.subject)) return plain.draft.subject
-  const brand = brandName.replace(/\s+/g, ' ').trim()
+  const own = plain.draft.subject
+  if (free(own) && subjectText(own) === own.replace(/\s+/g, ' ').trim())
+    return own
+  const brand = subjectText(brandName)
+  if (!brand) return null
   const titles = [
-    ...new Set(locked.sections.flatMap((s) => s.products.map((p) => p.title)))
+    ...new Set(
+      locked.sections.flatMap((s) =>
+        s.products.flatMap((p) => subjectText(p.title) ?? [])
+      )
+    )
   ]
+  const day = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'long',
+    timeZone: locked.input.timezone
+  }).format(new Date(locked.input.sendAt))
   const candidates = [
     ...titles.map((t) => `${t} from ${brand}`),
     ...titles,
@@ -246,6 +273,8 @@ export function uniqueSubject(
     `This week at ${brand}`,
     `Inside ${brand}`,
     `From the ${brand} shop`,
+    `${brand} this ${day}`,
+    `A ${day} note from ${brand}`,
     ...titles.map((t) => `${brand}: ${t}`)
   ].filter((c) => c.length <= 60)
   for (const subject of candidates) {
@@ -310,7 +339,7 @@ export async function copyStep(
       reasonCode: 'subject_taken',
       reason:
         'Every subject it could use is used by another email in this plan.',
-      fallback: 'No email was built; the owner can create it again.',
+      fallback: 'No email was built; planning again gives new emails.',
       attempts: 1,
       detail: { taken: Math.min(input.taken?.length ?? 0, 40) },
       dedupeKey: `email-build:subject:${keyPart(ctx.callerKey)}`

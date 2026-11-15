@@ -12,7 +12,7 @@ export const buildFailureWords = {
   offers_unreadable: 'Your saved offers could not be read. Try again.',
   copy_failed: 'Its words did not pass the checks.',
   subject_taken:
-    'Every subject it could use is used by another email in this plan.',
+    'Every subject it could use is used by another email in this plan. Plan again for new emails.',
   render_failed: 'Its design could not be drawn.',
   built_email_invalid: 'The finished email was not complete.',
   email_too_large: 'It came out too large to save.',
