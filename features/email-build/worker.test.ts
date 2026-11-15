@@ -76,7 +76,9 @@ function fakeDb(
     calls.push({ fn, args })
     if (fail[fn]) return { data: null, error: fail[fn] }
     if (fn === 'claim_email_build') {
-      const next = queue.shift()
+      // The owner's click claims only its own build.
+      const at = args.target ? queue.findIndex((s) => s.id === args.target) : 0
+      const next = at >= 0 ? queue.splice(at, 1)[0] : undefined
       if (next) claimed = next
       return { data: next ? [next] : [], error: null }
     }
@@ -224,8 +226,9 @@ describe('building and pushing (code-only, fake pusher)', () => {
         fallbacks: memoryFallbackLog()
       })
     ).toEqual({ ran: 5 })
+    // Four steps and the push, then nothing more of its own to claim.
     expect(calls.filter((c) => c.fn === 'claim_email_build')).toEqual(
-      Array.from({ length: 5 }, () => ({
+      Array.from({ length: 6 }, () => ({
         fn: 'claim_email_build',
         args: { target: 'build-1' }
       }))

@@ -196,7 +196,8 @@ describe('the margin floor (PLN-039)', () => {
           codes: [owned('SALE45', 45), owned('OWNER10', 10)]
         })
       },
-      '2026-11-16'
+      '2026-11-16',
+      { sample: true }
     )
     const read = await readPlanOffers(source, tenant, '2026-11-16', zone)
     expect(read.maxDiscountPercent).toBe(42)
@@ -228,7 +229,7 @@ describe('the plan’s offers when nothing is saved (ONB-057b)', () => {
   }
   it('offers the sample’s codes only for the sample store', async () => {
     const sample = await readPlanOffers(
-      planOfferSource(nothing, '2026-11-16'),
+      planOfferSource(nothing, '2026-11-16', { sample: true }),
       tenant,
       '2026-11-16',
       zone

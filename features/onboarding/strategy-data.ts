@@ -122,6 +122,7 @@ export function strategyFrom(
   const last = addDays(start, planDays - 1)
   return {
     sample: !history.live,
+    own: true,
     pulse: {
       brand: {
         name: cut(parts.brandName ?? '', 120) || 'Your store',
@@ -199,14 +200,32 @@ export function onboardedStrategyData(
       // First what decides whether the workspace's own store can be
       // planned at all; the sample store needs nothing more (a sample plan
       // never waits on reads it does not use).
-      const [timezone, catalog, history] = await Promise.all([
+      const [timezone, history, status] = await Promise.all([
         workspaceTimezone(db, tenantId),
-        listCatalog(db, tenantId, { featurableOnly: true }),
-        readKlaviyoHistory(db, tenantId)
+        readKlaviyoHistory(db, tenantId),
+        db
+          .from('catalog_status')
+          .select('live')
+          .eq('tenant_id', tenantId)
+          .maybeSingle()
       ])
+      if (status.error) throw status.error
       const at = now()
-      if (!history || !historyUsable(history, at) || catalog.length === 0)
+      // ONB-057b: the catalog and the history read the same way (both live
+      // or both fake), so "Create email" finds the very store planned from.
+      if (
+        !history ||
+        !historyUsable(history, at) ||
+        !status.data ||
+        status.data.live !== history.live
+      )
         return fallback.load({ tenantId, start })
+      // A live store never plans the fake Klaviyo's products.
+      const catalog = await listCatalog(db, tenantId, {
+        featurableOnly: true,
+        synthetic: !history.live
+      })
+      if (catalog.length === 0) return fallback.load({ tenantId, start })
       const [findings, profile] = await Promise.all([
         listFindings(db, tenantId, { topic: 'offering' }),
         db

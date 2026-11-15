@@ -8009,6 +8009,10 @@ export type Database = {
         }
         Returns: number
       }
+      save_email_round: {
+        Args: { build: string; lease: string; step: string; work: Json }
+        Returns: number
+      }
       save_holiday: {
         Args: {
           event_date: string

@@ -156,7 +156,11 @@ export async function runStrategyRuns(
         const done = await db.rpc('finish_strategy_pulse', {
           run: run.id,
           lease: run.lease_token,
-          result: { ...pulse, sample: store.sample } as never
+          result: {
+            ...pulse,
+            sample: store.sample,
+            own: store.own === true
+          } as never
         })
         if (done.error) throw done.error
       } else {
@@ -164,9 +168,12 @@ export async function runStrategyRuns(
         if (!stored.success || stored.data.start !== run.start_on)
           throw final('stored_pulse_invalid')
         // ONB-057b: the offers were listed from one store and the plan would
-        // be made from the other (the readers finished in between). A pulse
-        // saved before the flag was the sample's.
-        if ((stored.data.sample ?? true) !== store.sample)
+        // be made from another (the readers finished in between). A pulse
+        // saved before the flags was the sample store's.
+        if (
+          (stored.data.sample ?? true) !== store.sample ||
+          (stored.data.own ?? false) !== (store.own === true)
+        )
           throw final('store_changed')
         const pick = offerPick.safeParse(run.offer_pick)
         if (!pick.success) throw final('stored_pick_invalid')
@@ -235,7 +242,11 @@ export async function runStrategyRuns(
         const done = await db.rpc('finish_strategy_plan', {
           run: run.id,
           lease: run.lease_token,
-          result: { ...plan, sample: store.sample } as never
+          result: {
+            ...plan,
+            sample: store.sample,
+            own: store.own === true
+          } as never
         })
         if (done.error) throw done.error
       }
