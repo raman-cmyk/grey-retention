@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import { listCatalog, type CatalogEntry } from './catalog/read'
 import type { SitePageKind } from './findings'
+import { hostOf } from './suggested-competitors'
 import { emailPhotoUrl, photoKey, type PhotoKind } from './site/photos'
 
 /**
@@ -15,6 +16,8 @@ import { emailPhotoUrl, photoKey, type PhotoKind } from './site/photos'
  * when the catalog has none. While the catalog was read from the fake
  * Klaviyo, only its sample products count, never mixed with a real
  * store's; a workspace whose catalog was never read has only its site's.
+ * Site photos count only while they come from the workspace's current
+ * website (the owner may have changed it since).
  */
 
 export type LibraryPhoto = {
@@ -82,10 +85,20 @@ export async function readPhotoLibrary(
   db: Db,
   tenantId: string
 ): Promise<LibraryPhoto[]> {
-  const [status, site] = await Promise.all([
+  const [status, profile, set, site] = await Promise.all([
     db
       .from('catalog_status')
       .select('live')
+      .eq('tenant_id', tenantId)
+      .maybeSingle(),
+    db
+      .from('brand_profiles')
+      .select('domain')
+      .eq('tenant_id', tenantId)
+      .maybeSingle(),
+    db
+      .from('brand_photo_sets')
+      .select('domain')
       .eq('tenant_id', tenantId)
       .maybeSingle(),
     db
@@ -95,10 +108,11 @@ export async function readPhotoLibrary(
       .order('position', { ascending: true })
       .limit(200)
   ])
-  if (status.error) throw status.error
-  if (site.error) throw site.error
+  for (const r of [status, profile, set, site]) if (r.error) throw r.error
   const catalog = status.data
     ? await listCatalog(db, tenantId, { synthetic: !status.data.live })
     : []
-  return photoLibrary(catalog, site.data ?? [])
+  const current = hostOf(profile.data?.domain ?? '')
+  const sameSite = !!current && set.data?.domain === current
+  return photoLibrary(catalog, sameSite ? (site.data ?? []) : [])
 }

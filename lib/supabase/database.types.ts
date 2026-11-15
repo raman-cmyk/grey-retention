@@ -1033,6 +1033,42 @@ export type Database = {
           }
         ]
       }
+      brand_photo_sets: {
+        Row: {
+          domain: string
+          kept_at: string
+          run_id: string
+          tenant_id: string
+        }
+        Insert: {
+          domain: string
+          kept_at?: string
+          run_id: string
+          tenant_id: string
+        }
+        Update: {
+          domain?: string
+          kept_at?: string
+          run_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_photo_sets_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_photo_sets_tenant_id_run_id_fkey'
+            columns: ['tenant_id', 'run_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       brand_photos: {
         Row: {
           alt: string | null

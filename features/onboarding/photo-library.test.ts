@@ -75,7 +75,16 @@ describe('photoLibrary (ONB-059b)', () => {
 
 describe('readPhotoLibrary (ONB-059b)', () => {
   type Answer = { data: unknown; error: unknown }
-  function fakeDb(answers: Record<string, Answer>) {
+  /** The workspace's own website, and the set kept from it, unless a test says otherwise. */
+  const own: Record<string, Answer> = {
+    brand_profiles: {
+      data: { domain: 'https://www.Cedarlane.com/' },
+      error: null
+    },
+    brand_photo_sets: { data: { domain: 'cedarlane.com' }, error: null }
+  }
+  function fakeDb(given: Record<string, Answer>) {
+    const answers = { ...own, ...given }
     const asked: [string, ...unknown[]][] = []
     const from = (table: string) => {
       const chain: Record<string, unknown> = {}
@@ -138,6 +147,33 @@ describe('readPhotoLibrary (ONB-059b)', () => {
     )
   })
 
+  it('shows the site’s photos only while they come from the current website', async () => {
+    reads.catalog.mockResolvedValue([])
+    for (const [profile, kept, shown] of [
+      ['cedarlane.com', 'cedarlane.com', 1],
+      ['newshop.com', 'cedarlane.com', 0],
+      ['cedarlane.com', null, 0],
+      [null, 'cedarlane.com', 0]
+    ] as const) {
+      const got = await readPhotoLibrary(
+        fakeDb({
+          catalog_status: { data: null, error: null },
+          brand_profiles: {
+            data: profile === null ? null : { domain: profile },
+            error: null
+          },
+          brand_photo_sets: {
+            data: kept === null ? null : { domain: kept },
+            error: null
+          },
+          brand_photos: site
+        }).db,
+        tenantId
+      )
+      expect(got, `${profile} ${kept}`).toHaveLength(shown)
+    }
+  })
+
   it('has only the site’s photos while the catalog was never read, and throws a read that fails', async () => {
     reads.catalog.mockClear()
     const got = await readPhotoLibrary(
@@ -150,13 +186,16 @@ describe('readPhotoLibrary (ONB-059b)', () => {
     expect(got.map((p) => p.source)).toEqual(['site'])
     expect(reads.catalog).not.toHaveBeenCalled()
     const failed = { data: null, error: { code: 'PGRST000' } }
-    for (const answers of [
+    const cases: Record<string, Answer>[] = [
       { catalog_status: failed, brand_photos: site },
       {
         catalog_status: { data: { live: true }, error: null },
         brand_photos: failed
-      }
-    ])
+      },
+      { catalog_status: failed, brand_profiles: failed, brand_photos: site },
+      { catalog_status: failed, brand_photo_sets: failed, brand_photos: site }
+    ]
+    for (const answers of cases)
       await expect(
         readPhotoLibrary(fakeDb(answers).db, tenantId)
       ).rejects.toMatchObject({
