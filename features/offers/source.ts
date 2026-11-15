@@ -140,9 +140,7 @@ export class SupabaseOfferSource implements OfferSource {
 }
 
 const wholeOrNull = (value: unknown) =>
-  value === null || value === undefined || !Number.isInteger(Number(value))
-    ? null
-    : Number(value)
+  typeof value === 'number' && Number.isInteger(value) ? value : null
 
 /**
  * What agents read from what the owner saved: the max discount capped by

@@ -6,7 +6,7 @@
  * (1 - g) / (1 - d) <= 1 - f, so d <= 1 - (1 - g) / (1 - f).
  *
  * Example: a 60% margin with a 30% floor allows at most 42% off (42% leaves
- * 30.9% margin, 43% would leave 29.8%).
+ * 31.0% margin, 43% would leave 29.8%).
  */
 
 /** Which owner setting sets the discount agents may use. */
