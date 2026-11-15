@@ -2043,6 +2043,46 @@ Append entries using this exact shape:
 - Known issues: a stale history is not refreshed when the owner plans yet, and the app's own planned emails are not counted in `existing` (both later); the worker's comment about the store source (lane A's file) still says there is no reader.
 - Next consumer: part 2 (the email build's real store source).
 
+### 2026-11-15 — ONB-057b part 2 — "Create email" builds from the store its plan was made from
+
+- Status: review (part 2 of 2)
+- Branch/worktree: `claude/onb-057b2-store-source` (issue #455) from `main`, after part 1 (#456), ONB-106a and ONB-058 (#461).
+- Commit(s): see the ONB-057b part 2 pull request.
+- Changed contracts:
+  - New `features/onboarding/store-source.ts`: `storeFrom`, `ownStoreSource`, `storeForPlan`, `planStore`, `PlanStore`, `correctedIndustry`, `OwnStoreParts`. The own store has:
+    - the catalog's featurable products with a photo, only the fake Klaviyo's for a fake read and only real ones for a live read, without prices ONB-063's check doubts;
+    - the brand kit's colours and fonts with the brand's name and site;
+    - the facts as `withClaimsSafety(correctedFacts(copyFacts(trueFacts(...)), corrections), industry)`;
+    - the industry from what the brand sells, as the owner corrected it;
+    - the customers' own words (ONB-061).
+
+    A live store drops the sample rules' findings, its price check included. `sample` follows `catalog_status.live`, and a paused or empty read keeps the store.
+
+  - `features/email-build/worker.ts` (narrow edits in the build_queued block, agreed with lane A):
+    - `planStore(db, job)` reads the plan's `own` and `sample`;
+    - `stores` defaults to `storeForPlan` (a plan made from the sample builds on the sample store, an own plan on the own store);
+    - the store is read before the offers;
+    - `store.sample !== plan.sample` fails at once with the new build code `plan_store_changed` ("This plan was made from other store data. Plan next 15 days again.");
+    - offers default to `planOfferSource(saved, start, { sample: store.sample })`, so a real store never gets the sample's codes.
+  - `features/email-build/ports.ts`: `Store.customerWords?` (agreed with lane A, who carries it into the writer's data).
+  - `features/email-build/failure-words.ts`: `plan_store_changed`.
+  - Lane A's `worker.test.ts` and `worker-rounds.test.ts` mock the store source (sample plan, sample store), agreed with lane A.
+- Migrations: none.
+- Verification run: `prettier`, `eslint`, `tsc` clean; all unit tests pass (288 files, 2,667 tests).
+  - `features/onboarding/store-source.test.ts` (16): the own store's products, brand, facts, industry and customer words; the owner's corrections win; an offering correction changes the industry; photo-less and doubtful prices left out; no prices on another scale; the sample rules' findings never count for a live store, its prices included; sample while fake; no currency, no free-shipping amount; calm defaults; reads scoped to the workspace; fake products only for a fake read; no store without a catalog read; failed reads throw; a sample plan builds on the sample store, an own plan on the own store; the plan's flags (none means the sample's).
+  - `features/email-build/worker.test.ts`: builds from the plan's store, read with its own database; a store read another way since the plan fails at once; no sample codes on the own store when nothing is saved.
+  - `features/onboarding/catalog/read.test.ts`: the `synthetic` filter.
+  - Two code reviews: the first found sample codes on a real store and a sample plan built as real, the second a dead end between the planner's and the build's rules. All fixed; the third pass found it ready.
+- **Live switch:** none. With every switch off, every real workspace still plans and builds from the sample store, which says so. **For `KLAVIYO_MODE=live` (Raman's OK):** the store side is now ready. A live catalog and a fresh live history plan from the store's own data, and "Create email" builds that plan on the same store, with no sample codes or audiences.
+- Known issues:
+  - A catalog re-read between two steps of one build is not caught (only the sample flag is compared); lane A takes it as REL-DAT (the catalog run id in the sections output).
+  - The store reads at most 500 findings (the oldest drop).
+  - An own plan whose catalog row is missing is tried 3 times before `plan_store_changed`.
+  - The planner's industry does not yet use the owner's corrections.
+  - The owner's offering corrections match the readers' own statements (ONB-106b shows the same statements).
+  - The writer does not use `customerWords` until lane A's next PR.
+- Next consumer: lane A (`customerWords` into the writer's data; REL-DAT); the Brand book review page (#58).
+
 ### 2026-11-11 — RET-002 — hide weekly approval; email-build failures go to the fallback log
 
 - Status: review
