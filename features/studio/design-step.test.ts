@@ -144,13 +144,15 @@ describe('the design step with the studio (DST-006c part 2a)', () => {
     }
     expect(p.storyboard).not.toHaveBeenCalled()
     expect(p.design).not.toHaveBeenCalled()
-    expect(p.sign).toHaveBeenCalledWith(render)
+    expect(p.sign).toHaveBeenCalledWith(drawn)
     expect(out.pictures).toBe(1)
+    // On the section's background (a light section: the brand's page).
     expect((out.blocks[1]!.content as { picture?: unknown }).picture).toEqual({
       src: signed,
       alt: 'Just in. Meet the Washed Linen Throw.',
       height: 640,
-      render
+      render,
+      bg: sampleBrand.background
     })
     // The other blocks stay as they were.
     expect(out.blocks[0]).toBe(blocks[0])
@@ -187,14 +189,193 @@ describe('the design step with the studio (DST-006c part 2a)', () => {
     expect(p.design).not.toHaveBeenCalled()
   })
 
-  it('never storyboards an email whose layer 1 and draft disagree', async () => {
+  it('never storyboards an email whose layer 1 and draft disagree, and says so', async () => {
+    for (const sections of [
+      input().sections.slice(0, 2),
+      input().sections.map((s, i) =>
+        i === 1 ? { ...s, family: 'hero_image' as const } : s
+      )
+    ]) {
+      const p = ports()
+      const out = await studioDesignStep({ ...input(), sections }, p)
+      expect(out).toEqual({ blocks, pictures: 0 })
+      expect(p.storyboard).not.toHaveBeenCalled()
+      expect(p.coded).toHaveBeenCalledWith('email', 'layout_changed')
+    }
+  })
+
+  it('puts a dark hero’s picture on the brand’s dark colour', async () => {
+    const dark = {
+      ...storyboard,
+      sections: storyboard.sections.map((s) =>
+        s.render === 'designed' ? { ...s, tone: 'dark' as const } : s
+      )
+    }
+    const first = waitingOf(
+      await studioDesignStep(
+        input(),
+        ports({ storyboard: vi.fn(async () => dark) })
+      )
+    )
+    const out = (await studioDesignStep(
+      input(first.work),
+      ports({}, [drawn])
+    )) as { blocks: Block[] }
+    expect(
+      (out.blocks[1]!.content as { picture: { bg: string } }).picture.bg
+    ).toBe(sampleBrand.dark)
+  })
+
+  it('designs a photo hero from its own words and photo, with no product', async () => {
+    const photoHero = {
+      type: 'hero_image',
+      content: {
+        ...(sampleBlocks.hero_image.content as object),
+        image: photo
+      }
+    } as Block
     const p = ports()
-    const out = await studioDesignStep(
-      { ...input(), sections: input().sections.slice(0, 2) },
+    await studioDesignStep(
+      {
+        ...input(),
+        sections: [
+          sections[0],
+          { family: 'hero_image' as const, purpose: 'Leads', products: [] },
+          sections[2]
+        ].map((s) => ({ ...s, products: [...s.products] })),
+        blocks: [blocks[0]!, photoHero, blocks[2]!]
+      },
       p
     )
-    expect(out).toEqual({ blocks, pictures: 0 })
-    expect(p.storyboard).not.toHaveBeenCalled()
+    const brief = vi.mocked(p.design).mock.calls[0]![0]
+    expect(brief).toMatchObject({
+      family: 'hero_image',
+      words: {
+        headline: 'Slow mornings, made softer',
+        sub: 'The new linen collection is here, washed for a lived-in feel.'
+      },
+      image: { url: photo }
+    })
+    expect(brief).not.toHaveProperty('product')
+    expect(brief.words).not.toHaveProperty('eyebrow')
+  })
+
+  it('draws the blocks in the storyboard’s order when it names every section once', async () => {
+    const moved = {
+      ...storyboard,
+      sections: [
+        storyboard.sections[0]!,
+        storyboard.sections[2]!,
+        storyboard.sections[1]!
+      ]
+    }
+    const p = ports({ storyboard: vi.fn(async () => moved) })
+    const first = waitingOf(await studioDesignStep(input(), p))
+    const out = (await studioDesignStep(
+      input(first.work),
+      ports({}, [drawn])
+    )) as {
+      blocks: Block[]
+    }
+    expect(out.blocks.map((b) => b.type)).toEqual([
+      'header_logo',
+      'footer',
+      'hero_product'
+    ])
+    expect(out.blocks[2]!.content).toHaveProperty('picture')
+  })
+
+  it('keeps the build’s limits from work it cannot read, and goes on as a JSON round trip', async () => {
+    const first = waitingOf(await studioDesignStep(input(), ports()))
+    const stored = JSON.parse(JSON.stringify(first.work))
+    // Read back as the database returns it: the same work, no new storyboard.
+    const again = ports({}, [{ ...drawn, state: 'queued' } as BuildRender])
+    const out = await studioDesignStep(input(stored), again)
+    expect(again.storyboard).not.toHaveBeenCalled()
+    expect(again.design).not.toHaveBeenCalled()
+    expect(waitingOf(out).work).toMatchObject({
+      studio: { rounds: { waits: 2, renders: 1 } }
+    })
+    // A storyboard it cannot read: asked again, the rounds and their
+    // limits kept (the same storyboard goes on from them).
+    const broken = {
+      studio: { storyboard: { nonsense: true }, rounds: stored.studio.rounds }
+    }
+    const p = ports({}, [{ ...drawn, state: 'queued' } as BuildRender])
+    const next = waitingOf(await studioDesignStep(input(broken), p))
+    expect(p.storyboard).toHaveBeenCalledTimes(1)
+    expect(p.design).not.toHaveBeenCalled()
+    expect(next.work).toMatchObject({
+      studio: {
+        rounds: { until: stored.studio.rounds.until, renders: 1, waits: 2 }
+      }
+    })
+  })
+
+  it('pauses as it waits, keeping the storyboard and the rounds', async () => {
+    const p = ports({ fits: () => false })
+    const out = waitingOf(await studioDesignStep(input(), p))
+    expect(out.work).toMatchObject({
+      studio: { storyboard, rounds: { sections: [{ state: 'design' }] } }
+    })
+    expect(p.design).not.toHaveBeenCalled()
+  })
+
+  it('keeps a hero coded when its picture is not this build’s drawn one, or its block refuses it, or the critic fails it', async () => {
+    const first = waitingOf(await studioDesignStep(input(), ports()))
+    for (const [last, sign] of [
+      // Gone from the build's renders by the time it is linked.
+      [[], signed],
+      // Drawn again at another height since the critic saw it.
+      [[{ ...drawn, height: 800 }], signed],
+      // A link the hero's picture refuses.
+      [[drawn], 'http://insecure.example/x.jpg']
+    ] as const) {
+      const p = ports({ sign: vi.fn(async () => sign) })
+      vi.mocked(p.renders)
+        .mockResolvedValueOnce([drawn])
+        .mockResolvedValueOnce([...last])
+      const out = (await studioDesignStep(input(first.work), p)) as {
+        blocks: Block[]
+        pictures: number
+      }
+      expect(out.pictures).toBe(0)
+      expect(out.blocks[1]).toBe(hero)
+      expect(p.coded).toHaveBeenCalledWith('s2', 'picture_unusable')
+    }
+    const failing = ports(
+      {
+        critique: vi.fn(async () => ({
+          pass: false,
+          scores: {} as never,
+          problems: ['Larger.']
+        }))
+      },
+      [drawn]
+    )
+    // Its next round is asked for, under its own key.
+    expect(await studioDesignStep(input(first.work), failing)).toHaveProperty(
+      'waiting'
+    )
+  })
+
+  it('lets a port that throws throw: the step is tried again', async () => {
+    const p = ports({
+      storyboard: vi.fn(async () => {
+        throw new Error('down')
+      })
+    })
+    await expect(studioDesignStep(input(), p)).rejects.toThrow('down')
+  })
+
+  it('logs a designed hero it cannot design with, and draws it coded', async () => {
+    const inline = {
+      ...input(),
+      blocks: [blocks[0]!, sampleBlocks.hero_product, blocks[2]!] as Block[]
+    }
+    const p = ports()
+    expect(await studioDesignStep(inline, p)).toMatchObject({ pictures: 0 })
+    expect(p.coded).toHaveBeenCalledWith('s2', 'not_designable')
   })
 
   it('keeps the hero coded, logged, when its picture cannot be linked', async () => {

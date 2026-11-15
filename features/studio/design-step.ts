@@ -7,12 +7,8 @@ import {
 import type { BlockBrand } from '@/features/blocks/brand'
 import type { EmailType } from '@/features/strategy/plan'
 import type { SectionBrief } from './designer'
-import {
-  heroPicture,
-  studioRound,
-  studioWork,
-  type StudioPorts
-} from './rounds'
+import type { BuildRender } from './waits'
+import { heroPicture, studioRound, type StudioPorts } from './rounds'
 import {
   designable,
   storyboardShape,
@@ -50,10 +46,12 @@ export type StudioStepPorts = StudioPorts & {
   /** The Art director (`storyboardFor`): null when no storyboard fits. */
   storyboard: (input: StoryboardInput) => Promise<Storyboard | null>
   /**
-   * A long-lived https link to a drawn render of this build, its tag
-   * checked; null when it cannot be made.
+   * A long-lived https link to this drawn render of the build (read from
+   * `renders`), its tag checked; null when it cannot be made.
    */
-  sign: (render: string) => Promise<string | null>
+  sign: (
+    render: Extract<BuildRender, { state: 'drawn' }>
+  ) => Promise<string | null>
 }
 
 export type StudioStepOutcome =
@@ -133,18 +131,62 @@ function briefFor(
   }
 }
 
+/** Plain copy draws a steps or FAQ section as text (ASM-002). */
+const drawnAs = (family: BlockType, block: BlockType) =>
+  family === block ||
+  (block === 'text' && (family === 'steps' || family === 'faq'))
+
+/** The section's background, as the storyboard's tone gives it. */
+function backgroundOf(tone: string, brand: BlockBrand) {
+  const colour =
+    tone === 'dark'
+      ? brand.dark
+      : tone === 'accent'
+        ? brand.accent
+        : brand.background
+  return typeof colour === 'string' &&
+    /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(colour.trim())
+    ? colour.trim()
+    : undefined
+}
+
+/**
+ * The storyboard's order for the blocks, when it names every section once
+ * (Scratch lets the Art director reorder them); else layer 1's.
+ */
+function inOrder(storyboard: Storyboard | null, blocks: Block[]) {
+  const order = (storyboard?.sections ?? []).map(
+    (b) => Number(/^s(\d+)$/.exec(b.id)?.[1] ?? 0) - 1
+  )
+  const once =
+    order.length === blocks.length &&
+    new Set(order).size === order.length &&
+    order.every((i) => i >= 0 && i < blocks.length)
+  return once ? order.map((i) => blocks[i]!) : blocks
+}
+
 /**
  * One claim of the design step with the studio. The storyboard is made on
- * the first claim and kept; an email the storyboard designs nothing in,
- * or whose layer 1 and draft disagree, is drawn coded at once.
+ * the first claim and kept; an email the storyboard designs nothing in is
+ * drawn coded, and one whose layer 1 and draft disagree is drawn coded and
+ * logged. The blocks come back in the storyboard's order.
  */
 export async function studioDesignStep(
   input: StudioStepInput,
   ports: StudioStepPorts
 ): Promise<StudioStepOutcome> {
   const coded = { blocks: [...input.blocks], pictures: 0 }
-  if (input.sections.length !== input.blocks.length) return coded
+  if (
+    input.sections.length !== input.blocks.length ||
+    input.sections.some((s, i) => !drawnAs(s.family, input.blocks[i]!.type))
+  ) {
+    await ports.coded('email', 'layout_changed')
+    return coded
+  }
   const saved = savedStep.safeParse(input.saved)
+  // The build's limits are kept even when the rest of the work is not.
+  const rounds = (input.saved as { studio?: { rounds?: unknown } } | null)
+    ?.studio?.rounds
   let storyboard: Storyboard | null
   if (saved.success) {
     storyboard = saved.data.studio.storyboard
@@ -160,42 +202,57 @@ export async function studioDesignStep(
       }))
     })
   }
-  const designed = (storyboard?.sections ?? []).flatMap((board) => {
-    if (board.render !== 'designed') return []
+  const designed: { i: number; brief: SectionBrief }[] = []
+  for (const board of storyboard?.sections ?? []) {
+    if (board.render !== 'designed') continue
     const i = Number(/^s(\d+)$/.exec(board.id)?.[1] ?? 0) - 1
     const brief = i >= 0 ? briefFor(input, board, i) : null
-    return brief ? [{ i, brief }] : []
-  })
-  if (!designed.length) return coded
+    if (brief) designed.push({ i, brief })
+    else await ports.coded(board.id, 'not_designable')
+  }
+  if (!designed.length)
+    return { blocks: inOrder(storyboard, coded.blocks), pictures: 0 }
   const out = await studioRound(
     designed.map((d) => d.brief),
-    saved.success ? saved.data.studio.rounds : undefined,
+    rounds,
     ports
   )
   if ('wait' in out || 'paused' in out) {
-    const rounds = 'wait' in out ? out.wait : out.paused
+    const work = 'wait' in out ? out.wait : out.paused
     return {
       waiting: {
-        work: { studio: { storyboard, rounds } },
+        work: { studio: { storyboard, rounds: work } },
         seconds: out.seconds
       }
     }
   }
   const blocks = [...input.blocks]
   let pictures = 0
-  for (const [n, s] of studioWork.parse(out.done).sections.entries()) {
+  let renders: BuildRender[] | undefined
+  for (const s of out.done.sections) {
     if (s.state !== 'done' || !s.render) continue
-    const { i } = designed[n]!
-    const src = await ports.sign(s.render)
+    const d = designed.find((x) => x.brief.board.id === s.id)
+    if (!d) continue
+    // Only a picture this build's renders still hold as drawn, at its height.
+    renders ??= await ports.renders()
+    const drawn = renders.find(
+      (r): r is Extract<BuildRender, { state: 'drawn' }> =>
+        r.id === s.render && r.state === 'drawn' && r.height === s.height
+    )
+    const src = drawn ? await ports.sign(drawn) : null
     const picture = src ? heroPicture(s, src) : null
-    const block = blocks[i]!
+    const bg = backgroundOf(d.brief.board.tone, input.brand)
+    const block = blocks[d.i]!
     const parsed = picture
-      ? parseBlock(block.type, { ...(block.content as object), picture })
+      ? parseBlock(block.type, {
+          ...(block.content as object),
+          picture: { ...picture, ...(bg ? { bg } : {}) }
+        })
       : null
     if (parsed?.ok) {
-      blocks[i] = parsed.block
+      blocks[d.i] = parsed.block
       pictures++
     } else await ports.coded(s.id, 'picture_unusable')
   }
-  return { blocks, pictures }
+  return { blocks: inOrder(storyboard, blocks), pictures }
 }
