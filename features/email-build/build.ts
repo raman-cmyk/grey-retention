@@ -1,6 +1,10 @@
 import { z } from 'zod'
-import { InMemoryMemoryStore } from '@/features/agents/memory'
-import { InMemoryRunLog, type AiCall } from '@/features/agents/runtime'
+import { InMemoryMemoryStore, type MemoryStore } from '@/features/agents/memory'
+import {
+  InMemoryRunLog,
+  type AiCall,
+  type RunLog
+} from '@/features/agents/runtime'
 import type { FallbackLog } from '@/features/fallback/log'
 import { keyPart } from '@/features/fallback/entry'
 import {
@@ -9,7 +13,12 @@ import {
 } from '@/features/assembly/inputs'
 import { assembleLockedPlain } from '@/features/assembly/modes'
 import { localTimeCandidates } from '@/lib/local-time'
-import { codeSectionPlan, seedVariants, type SectionPlan } from './sections'
+import {
+  codeSectionPlan,
+  planSections,
+  seedVariants,
+  type SectionPlan
+} from './sections'
 import { lockContent, type ChangeKey, type LockedContent } from './content'
 import { codeFindings } from './inspect'
 import { designA } from './design'
@@ -168,8 +177,8 @@ export async function sectionsStep(
       ...(planned.offer ? { offerCode: planned.offer.code } : {})
     }
   })
-  const layout = codeSectionPlan({
-    mode: 'scratch',
+  const sectionInput = {
+    mode: 'scratch' as const,
     industry: store.industry,
     slot: {
       emailType: planned.emailType,
@@ -179,7 +188,19 @@ export async function sectionsStep(
     },
     allowed,
     library: seedVariants
-  })
+  }
+  // REL-AI part 2: the Section planner when the agents are on (it checks,
+  // retries and falls back to the safe plan itself, logged); else code.
+  const layout = ctx.agents
+    ? await planSections(sectionInput, {
+        tenantId: ctx.tenantId,
+        callerKey: ctx.callerKey,
+        memory: ctx.agents.memory,
+        log: ctx.agents.log,
+        ai: ctx.agents.ai,
+        fallbacks: ctx.fallbacks
+      })
+    : codeSectionPlan(sectionInput)
   return {
     ok: true,
     output: {
@@ -205,13 +226,24 @@ export async function contentStep(
       store: assemblyFor(store, sections),
       site: store.brand.site
     },
-    {
-      ...ctx,
-      agent: false,
-      memory: new InMemoryMemoryStore(),
-      log: new InMemoryRunLog(),
-      ai: noAi
-    }
+    // REL-AI part 2: the Content locker agent places the products when the
+    // agents are on (checked, retried, else code's placement, logged).
+    ctx.agents
+      ? {
+          ...ctx,
+          industry: store.industry,
+          agent: true,
+          memory: ctx.agents.memory,
+          log: ctx.agents.log,
+          ai: ctx.agents.ai
+        }
+      : {
+          ...ctx,
+          agent: false,
+          memory: new InMemoryMemoryStore(),
+          log: new InMemoryRunLog(),
+          ai: noAi
+        }
   )
 }
 
@@ -360,7 +392,13 @@ export async function copyStep(
 
 /** Step 4: the copy drawn with coded design A, as the email to store. */
 export function designStep(
-  input: StepInput & { sendAt: string; sample: boolean; copy: CopyOutput }
+  input: StepInput & {
+    sendAt: string
+    sample: boolean
+    copy: CopyOutput
+    /** An agent made part of it (REL-AI part 2): the screen says so. */
+    ai?: boolean
+  }
 ): BuildResult {
   const { planned, store, sendAt, sample, copy } = input
   const { draft } = copy
@@ -374,7 +412,7 @@ export function designStep(
     ok: true,
     email: {
       sample,
-      ai: false,
+      ai: input.ai ?? false,
       name: `${dayName(planned.date)} · ${typeName(planned.emailType)}`,
       subject: draft.subject,
       preheader: draft.preheader,
@@ -429,11 +467,20 @@ export async function lockedDraft(
   }
 }
 
+/**
+ * The agents a build step may ask (REL-AI part 2), or none for the
+ * code-only path. Built by `buildAgentsFor` (`./agents`): the metered AI
+ * call, the shared memory and the run log.
+ */
+export type BuildAgents = { memory: MemoryStore; log: RunLog; ai: AiCall }
+
 export type BuildCtx = {
   tenantId: string
   callerKey: string
   campaignId?: string | null
   fallbacks: FallbackLog
+  /** Null or missing: the code-only path (no AI call). */
+  agents?: BuildAgents | null
 }
 
 /** All four build steps at once (tests and tools; the job saves each). */

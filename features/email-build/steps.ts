@@ -164,12 +164,14 @@ export async function runBuildStep(
   }
   const copy = copySaved.safeParse(progress.data.copy)
   if (!copy.success) return unreadable
+  const content = progress.data.content as { source?: unknown } | undefined
   const made = designStep({
     planned,
     store,
     sendAt: sections.sendAt,
     sample: sections.sample,
-    copy: copy.data as unknown as CopyOutput
+    copy: copy.data as unknown as CopyOutput,
+    ai: sections.layout.source === 'agent' || content?.source === 'agent'
   })
   return made.ok ? { ok: true, done: 'design', email: made.email } : made
 }
