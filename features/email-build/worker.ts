@@ -9,7 +9,8 @@ import {
 import { SupabaseOfferSource, type OfferSource } from '@/features/offers/source'
 import { databaseFallbackLog, type FallbackLog } from '@/features/fallback/log'
 import { stepCode } from '@/features/strategy/worker'
-import { builtEmail, plannedEmail } from './build'
+import { builtEmail, plannedEmail, type BuildAgents } from './build'
+import { buildAgentsFor } from './agents'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { buildCode, type BuildFailureCode } from './failure-words'
 import {
@@ -54,6 +55,11 @@ export async function runEmailBuilds(
     saved?: SavedOffers
     pusher?: DraftPusher
     fallbacks?: FallbackLog
+    /**
+     * Default: `buildAgentsFor(db)`: the agents when a live model is set up,
+     * else null (the code-only path, nothing metered). REL-AI part 2.
+     */
+    agents?: BuildAgents | null
     /** Run only this build (the owner's click): its steps, then its push. */
     build?: string
     /** Steps to run at most; the deadline bounds the sweep. */
@@ -71,10 +77,15 @@ export async function runEmailBuilds(
     )
   const saved = deps.saved ?? new SupabaseOfferSource(db)
   const now = deps.now ?? Date.now
+  const agents = deps.agents === undefined ? buildAgentsFor(db) : deps.agents
   const limit = deps.build ? buildSteps.length + 1 : (deps.limit ?? 25)
   let ran = 0
   for (let n = 0; n < limit; n++) {
-    if (deps.deadline && now() > deps.deadline) break
+    // An agent step can take most of a step's budget (3 tries of 15 s):
+    // with the agents on, a new step is claimed only while a whole step
+    // still fits before the deadline (REL-AI part 2).
+    if (deps.deadline && now() + (agents ? stepBudgetMs : 0) > deps.deadline)
+      break
     const claimed = await db.rpc(
       'claim_email_build',
       deps.build ? { target: deps.build } : {}
@@ -147,7 +158,8 @@ export async function runEmailBuilds(
           {
             tenantId: job.tenant_id,
             callerKey: `email-build:${job.id}`,
-            fallbacks
+            fallbacks,
+            agents
           }
         )
         const took = now() - started

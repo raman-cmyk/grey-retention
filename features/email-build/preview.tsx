@@ -83,10 +83,11 @@ export async function BuiltEmailPreview({
               was sent to Klaviyo.
             </Notice>
           )}
-          {!e.ai && (
+          {e.copy === 'plain' && (
             <Notice>
-              The AI was not used for this email: it has plain words built from
-              your store&apos;s facts.
+              {e.ai
+                ? 'The AI chose its sections and products; its words are plain words built from your store’s facts.'
+                : 'The AI was not used for this email: it has plain words built from your store’s facts.'}
             </Notice>
           )}
           {changes.length > 0 && (

@@ -16,6 +16,8 @@ const serverEnvironmentSchema = z.object({
   KLAVIYO_MODE: z.string().optional(),
   /** The owner's switch for writing drafts into Klaviyo (PSH-001): `live`, with KLAVIYO_MODE=live. */
   KLAVIYO_DRAFT_PUSH: z.string().optional(),
+  /** `on` lets "Create email" ask the AI agents (REL-AI part 2), with a live model; the owner's switch, off by default. */
+  EMAIL_BUILD_AGENTS: z.string().optional(),
   /** `live` reads real brand websites (ONB-101); the owner's switch, off by default. */
   SITE_READER_MODE: z.string().optional(),
   AI_DEFAULT_PROVIDER: z.string().default('fake'),
