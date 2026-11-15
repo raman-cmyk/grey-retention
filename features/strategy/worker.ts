@@ -11,7 +11,7 @@ import {
   readPulseInput
 } from './pulse'
 import { codeMoves, mapPatterns, readMapperInput } from './competitors'
-import { samplePlan } from './plan'
+import { samplePlan, unusedOffersNote } from './plan'
 import { sampleStrategyData, type StrategyData } from './data'
 import { storedPulse } from './stored'
 import { SupabaseOfferSource } from '@/features/offers/source'
@@ -28,6 +28,7 @@ import {
 } from './offers'
 import { databaseFallbackLog, type FallbackLog } from '@/features/fallback/log'
 import { keyPart } from '@/features/fallback/entry'
+import { planCode, type PlanFailureCode } from './failure-words'
 
 type Db = SupabaseClient<Database>
 
@@ -71,7 +72,11 @@ export async function runStrategyRuns(
 ) {
   const data = deps.data ?? sampleStrategyData
   const saved = deps.saved ?? new SupabaseOfferSource(db)
-  const fallbacks = deps.fallbacks ?? databaseFallbackLog(db)
+  const fallbacks =
+    deps.fallbacks ??
+    databaseFallbackLog(db, (lost) =>
+      logger.warn('Fallback could not be recorded', lost)
+    )
   const now = deps.now ?? Date.now
   const limit = deps.run ? 1 : (deps.limit ?? 2)
   let ran = 0
@@ -204,9 +209,23 @@ export async function runStrategyRuns(
         const note = unreadable
           ? `${unreadableWords} this plan has no offers. Start again to plan with them.`
           : leftOutNote(leftOut)
+        // REL-084: an offer the owner picked that no email uses is named.
+        const unused =
+          pick.data.mode === 'picked'
+            ? unusedOffersNote(
+                usable,
+                new Set(
+                  made.slots.flatMap((s) => (s.offer ? [s.offer.code] : []))
+                )
+              )
+            : null
         const plan = {
           ...made,
-          notes: [...(note ? [note] : []), ...made.notes].slice(0, 10)
+          notes: [
+            ...(note ? [note] : []),
+            ...made.notes,
+            ...(unused ? [unused] : [])
+          ].slice(0, 10)
         }
         const done = await db.rpc('finish_strategy_plan', {
           run: run.id,
@@ -217,7 +236,11 @@ export async function runStrategyRuns(
       }
       ran++
     } catch (error) {
-      const code = stepCode(error)
+      // Only codes with plain words are stored (REL-084); the log keeps it.
+      const thrown = stepCode(error)
+      const code = planCode(thrown)
+      if (code !== thrown)
+        logger.error('Plan step threw', { run: run.id, code: thrown })
       const isFinal =
         (error as { final?: boolean })?.final === true ||
         code === 'store_data_invalid'
@@ -250,7 +273,7 @@ async function attemptsOf(db: Db, runId: string) {
 }
 
 /** A failure a retry cannot fix (bad stored or store data). */
-function final(code: string) {
+function final(code: PlanFailureCode) {
   return Object.assign(new Error(code), { code, final: true })
 }
 

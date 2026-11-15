@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
-import { fallbackEntry, type FallbackEntry } from './entry'
+import { clip, fallbackEntry, type FallbackEntry } from './entry'
 
 /**
  * Where jobs write fallbacks (D16). The database log is the real one; the
@@ -13,6 +13,25 @@ export type FallbackLog = {
     entry: FallbackEntry
   ): Promise<{ ok: true; id: string } | { ok: false; code: string }>
 }
+
+/**
+ * Long words are cut to the table's limits rather than lost (REL-084): a
+ * reason that joins many changes can run past 500 characters.
+ */
+function fitted(input: FallbackEntry) {
+  const e = input as Partial<FallbackEntry> | null
+  if (!e || typeof e !== 'object') return input
+  return {
+    ...e,
+    ...(typeof e.reason === 'string' ? { reason: clip(e.reason, 500) } : {}),
+    ...(typeof e.fallback === 'string'
+      ? { fallback: clip(e.fallback, 300) }
+      : {})
+  }
+}
+
+/** What a lost entry tells the server log: its keys, never its words. */
+export type LostFallback = { agent: string; reasonCode: string; code: string }
 
 /** `record_fallback` as it really is: workspace and campaign may be null. */
 export type RecordFallbackRpc = (
@@ -35,15 +54,31 @@ export type RecordFallbackRpc = (
  * (`createServiceClient()`), or a bare `record_fallback` caller in tests.
  */
 export function databaseFallbackLog(
-  db: SupabaseClient<Database> | { rpc: RecordFallbackRpc }
+  db: SupabaseClient<Database> | { rpc: RecordFallbackRpc },
+  /** Told about an entry that could not be recorded (REL-084). */
+  onLost: (lost: LostFallback) => void = () => {}
 ): FallbackLog {
+  const lost = (input: FallbackEntry, code: string) => {
+    const e = input as Partial<FallbackEntry>
+    try {
+      onLost({
+        agent: typeof e?.agent === 'string' ? e.agent.slice(0, 60) : '',
+        reasonCode:
+          typeof e?.reasonCode === 'string' ? e.reasonCode.slice(0, 60) : '',
+        code
+      })
+    } catch {
+      // Recording never throws.
+    }
+    return { ok: false as const, code }
+  }
   // The generated arguments say `string` for the workspace and campaign;
   // the command takes null for platform work and campaign-less emails.
   const rpc = db.rpc.bind(db) as unknown as RecordFallbackRpc
   return {
     async record(input) {
-      const parsed = fallbackEntry.safeParse(input)
-      if (!parsed.success) return { ok: false, code: 'invalid_entry' }
+      const parsed = fallbackEntry.safeParse(fitted(input))
+      if (!parsed.success) return lost(input, 'invalid_entry')
       const e = parsed.data
       try {
         const { data, error } = await rpc('record_fallback', {
@@ -58,10 +93,10 @@ export function databaseFallbackLog(
           dedupe: e.dedupeKey
         })
         if (error || typeof data !== 'string')
-          return { ok: false, code: error?.code ?? 'no_id' }
+          return lost(input, error?.code ?? 'no_id')
         return { ok: true, id: data }
       } catch {
-        return { ok: false, code: 'unavailable' }
+        return lost(input, 'unavailable')
       }
     }
   }
@@ -78,7 +113,7 @@ export function memoryFallbackLog() {
     entries: () => (FallbackEntry & { id: string; occurrences: number })[]
   } = {
     async record(input) {
-      const parsed = fallbackEntry.safeParse(input)
+      const parsed = fallbackEntry.safeParse(fitted(input))
       if (!parsed.success) return { ok: false, code: 'invalid_entry' }
       const e = parsed.data
       const key = `${e.tenantId ?? ''}|${e.dedupeKey}`

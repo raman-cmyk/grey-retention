@@ -51,6 +51,7 @@ const plan: StoredPlan = {
 const run = (over: Partial<PlanRun>): PlanRun => ({
   id: '00000000-0000-4000-8000-0000000000aa',
   state: 'planned',
+  reason: null,
   startOn: '2026-11-16',
   stale: false,
   pulse,
