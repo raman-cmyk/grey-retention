@@ -25,3 +25,6 @@ export const maxStepSaves = 16
  * in its claim's time.
  */
 export const agentCallMs = 15_000
+
+/** The stored email stays well inside the table's 300,000-byte limit. */
+export const maxEmailBytes = 290_000

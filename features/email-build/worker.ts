@@ -20,14 +20,11 @@ import {
 } from './build'
 import { buildAgentsFor } from './agents'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
-import { maxStepSaves, roundSteps } from './step-names'
+import { maxStepSaves, roundSteps, maxEmailBytes } from './step-names'
 import { buildCode, type BuildFailureCode } from './failure-words'
 import { type SavedOffers, type StoreSource } from './ports'
 
 type Db = SupabaseClient<Database>
-
-/** The stored email stays well inside the table's 300,000-byte limit. */
-export const maxEmailBytes = 290_000
 
 /**
  * Runs waiting "Create email" steps (EML-004 part 2, REL-081). Each step is

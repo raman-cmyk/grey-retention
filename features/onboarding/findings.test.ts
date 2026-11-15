@@ -256,6 +256,7 @@ describe('listFindings', () => {
         ['eq', 'tenant_id', 't1'],
         ['is', 'superseded_at', null],
         ['order', 'created_at', { ascending: false }],
+        ['order', 'id', { ascending: true }],
         ['eq', 'source', 'site'],
         ['eq', 'topic', 'returns'],
         ['gte', 'confidence', 0.6]
