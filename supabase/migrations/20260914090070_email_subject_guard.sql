@@ -64,7 +64,7 @@ begin
         and subject in (private.subject_key(o.email->>'subject'),
                         private.subject_key(o.progress->'copy'->'draft'->>'subject'))
     ) then
-      raise exception 'Another email in this plan has this subject' using errcode = 'PT409';
+      raise exception 'Another email in this plan has this subject' using errcode = 'PT409', detail = 'subject_taken';
     end if;
   end if;
   saved := b.progress || jsonb_build_object(done, output);

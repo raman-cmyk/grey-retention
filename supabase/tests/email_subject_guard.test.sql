@@ -1,5 +1,5 @@
 begin;
-select plan(11);
+select plan(12);
 
 -- REL-AI1b: two emails in one plan never save the same subject.
 -- Workspace 101: owner ...01. Workspace 102: owner ...04.
@@ -60,17 +60,27 @@ select is(pg_temp.save('00000000-0000-4000-8000-00000000c303','Gone'),'design','
 reset role;
 select is((select step from public.email_builds where id='00000000-0000-4000-8000-00000000c303'),'design','and it moved on');
 
--- A failed build that reached the push still holds its subject, but not
--- for its own email ("Try again").
-update public.email_builds set step = 'copy', progress = '{"sections":{},"content":{}}', attempts = 0
-  where id = '00000000-0000-4000-8000-00000000c303';
-set local role service_role;
-select is(pg_temp.save('00000000-0000-4000-8000-00000000c303','Drafted'),'design','an email''s own earlier draft does not block it');
-reset role;
+-- A failed build that reached the push still holds its subject (only it
+-- holds "Drafted" now), but not for its own email ("Try again").
 update public.email_builds set step = 'copy', progress = '{"sections":{},"content":{}}', attempts = 0
   where id = '00000000-0000-4000-8000-00000000c302';
 set local role service_role;
-select throws_ok($$select pg_temp.save('00000000-0000-4000-8000-00000000c302','Drafted')$$,'PT409',null,'but another email of the plan cannot take a subject it holds');
+select throws_ok($$select pg_temp.save('00000000-0000-4000-8000-00000000c302','Drafted')$$,'PT409',null,'another email of the plan cannot take the subject of a failed build that reached the push');
+reset role;
+update public.email_builds set attempts = 0, lease_token = null, lease_until = null where id = '00000000-0000-4000-8000-00000000c302';
+update public.email_builds set step = 'copy', progress = '{"sections":{},"content":{}}', attempts = 0
+  where id = '00000000-0000-4000-8000-00000000c303';
+set local role service_role;
+select is(pg_temp.save('00000000-0000-4000-8000-00000000c303','Drafted'),'design','but its own email may use it again');
+reset role;
+
+-- A drafted email from before the saved steps has its subject only in its
+-- stored email (no saved copy step): it still holds it.
+insert into public.email_builds (tenant_id, run_id, slot, state, step, progress, email, klaviyo_campaign_id, created_by) values
+  ('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e301',3,'drafted','push','{}',
+   '{"subject":"Old draft","preheader":"p","html":"<p>x</p>"}','camp-old','00000000-0000-4000-8000-000000000001');
+set local role service_role;
+select throws_ok($$select pg_temp.save('00000000-0000-4000-8000-00000000c302','old  DRAFT')$$,'PT409',null,'a drafted email holds the subject in its stored email');
 reset role;
 update public.email_builds set attempts = 0, lease_token = null, lease_until = null where id = '00000000-0000-4000-8000-00000000c302';
 set local role service_role;
