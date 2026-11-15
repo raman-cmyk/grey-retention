@@ -1,4 +1,5 @@
 import { developmentPolicy } from '@/features/workflow/domain/policy'
+import type { EmailType } from '@/features/strategy/plan'
 import type { ResultLine } from './read-model'
 
 /**
@@ -13,16 +14,18 @@ export const mixKinds = ['offer', 'story', 'education', 'product'] as const
 export type MixKind = (typeof mixKinds)[number]
 
 /** Each planned email type's kind; product emails are the rest of `emailTypes`. */
-const kindByType: Record<string, MixKind> = {
-  offer: 'offer',
-  story: 'story',
-  education: 'education',
-  launch: 'product',
-  bestseller: 'product',
-  'gift guide': 'product',
-  restock: 'product',
-  reminder: 'product'
-}
+const kindByType = new Map<string, MixKind>(
+  Object.entries({
+    offer: 'offer',
+    story: 'story',
+    education: 'education',
+    launch: 'product',
+    bestseller: 'product',
+    'gift guide': 'product',
+    restock: 'product',
+    reminder: 'product'
+  } satisfies Record<EmailType, MixKind>)
+)
 
 /** The mix before a brand has results: shares of the window's emails. */
 export const defaultMix: Readonly<Record<MixKind, number>> = Object.freeze({
@@ -33,17 +36,23 @@ export const defaultMix: Readonly<Record<MixKind, number>> = Object.freeze({
 })
 /** At most this share of emails carry an offer (the plan's offer share). */
 export const offerShareCap = developmentPolicy.discountCapPercent / 100
-/** A kind's results count half after this many emails, more after more. */
-const trustAfter = 5
-/** A kind's share moves at most this far from its default (as a fraction of it). */
+/** Emails that reached fewer people say too little to learn from (as `minRecipients` for A/B). */
+const minPeople = 100
+/** Each kind's rate leans toward the brand's average as if it had this many average emails more. */
+const priorEmails = 10
+/** No email counts for more than this many times the typical email (per person). */
+const outlierCap = 3
+/** A kind's weight moves at most this far from its default (before the shares are rescaled to 1). */
 const maxShift = 0.5
+/** Revenue is the measure when at least this share of counted emails had their orders read. */
+const revenueCoverage = 0.8
 
 export type EmailMix = {
-  /** Whole emails of each kind, adding up to `emails`. */
+  /** Whole emails of each kind, adding up to `emails` (all 0 for a bad count). */
   counts: Record<MixKind, number>
   /** Each kind's share before rounding (0 to 1, adding up to 1). */
   shares: Record<MixKind, number>
-  /** 'learned' when at least one usable email moved the mix. */
+  /** 'learned' when the brand's results moved the mix away from the default. */
   basis: 'default' | 'learned'
   /** How many emails it learned from. */
   learnedFrom: number
@@ -59,98 +68,154 @@ const zero = (): Record<MixKind, number> => ({
 })
 
 /** Shares that add up to 1, with offers at most `offerShareCap`. */
-function capOffers(shares: Record<MixKind, number>) {
-  const total = mixKinds.reduce((sum, k) => sum + shares[k], 0)
+function capOffers(weights: Record<MixKind, number>) {
+  const total = mixKinds.reduce((sum, k) => sum + weights[k], 0)
   const out = zero()
-  for (const k of mixKinds) out[k] = shares[k] / total
+  for (const k of mixKinds) out[k] = weights[k] / total
   if (out.offer > offerShareCap) {
     const rest = 1 - out.offer
     const spare = out.offer - offerShareCap
     out.offer = offerShareCap
     for (const k of mixKinds)
-      if (k !== 'offer')
-        out[k] += rest > 0 ? (out[k] / rest) * spare : spare / 3
+      if (k !== 'offer') out[k] += (out[k] / rest) * spare
   }
   return out
 }
 
-/** Whole emails by largest remainder; offers never above the cap. */
-function toCounts(shares: Record<MixKind, number>, emails: number) {
-  const counts = zero()
-  const exact = mixKinds.map((k) => ({ k, v: shares[k] * emails }))
-  for (const { k, v } of exact) counts[k] = Math.floor(v)
-  let left = emails - mixKinds.reduce((sum, k) => sum + counts[k], 0)
-  const order = [...exact].sort(
+/** Whole emails among `kinds` by largest remainder (ties in `mixKinds` order). */
+function largestRemainder(
+  shares: Record<MixKind, number>,
+  kinds: readonly MixKind[],
+  emails: number,
+  into: Record<MixKind, number>
+) {
+  const total = kinds.reduce((sum, k) => sum + shares[k], 0)
+  const exact = kinds.map((k) => ({
+    k,
+    v: total > 0 ? (shares[k] / total) * emails : emails / kinds.length
+  }))
+  for (const { k, v } of exact) into[k] = Math.floor(v)
+  let left = emails - kinds.reduce((sum, k) => sum + into[k], 0)
+  for (const { k } of [...exact].sort(
     (a, b) =>
       b.v - Math.floor(b.v) - (a.v - Math.floor(a.v)) ||
       mixKinds.indexOf(a.k) - mixKinds.indexOf(b.k)
-  )
-  for (const { k } of order) {
+  )) {
     if (left <= 0) break
-    counts[k] += 1
+    into[k] += 1
     left -= 1
   }
-  const maxOffers = Math.floor(emails * offerShareCap + 1e-9)
-  while (counts.offer > maxOffers) {
-    counts.offer -= 1
-    const next = order.find(({ k }) => k !== 'offer')!.k
-    counts[next] += 1
-  }
+}
+
+/** Whole emails: offers first (never above the caps), the rest shared by the other kinds. */
+function toCounts(
+  shares: Record<MixKind, number>,
+  emails: number,
+  maxOffers: number
+) {
+  const all = zero()
+  largestRemainder(shares, mixKinds, emails, all)
+  const offers = Math.min(
+    all.offer,
+    Math.floor(emails * offerShareCap + 1e-9),
+    maxOffers
+  )
+  const counts = zero()
+  counts.offer = offers
+  largestRemainder(
+    shares,
+    mixKinds.filter((k) => k !== 'offer'),
+    emails - offers,
+    counts
+  )
   return counts
+}
+
+const median = (values: number[]) => {
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2
+    ? sorted[mid]!
+    : (sorted[mid - 1]! + sorted[mid]!) / 2
 }
 
 /**
  * The mix for `emails` emails in the next 15 days, from this brand's
  * Results lines (`resultsReadModel`). Only sent, final, real (not sample)
- * emails with people reached count. "Earned more" is revenue per person
- * when every counted email's orders were read, else clicks per person.
+ * emails that reached at least 100 people count. "Earned more" is revenue
+ * per person when at least 80% of them had their orders read (measured
+ * over those), else clicks per person. Each kind's rate is pooled over its
+ * emails (no email worth more than three typical ones) and leans toward
+ * the brand's average until it has several emails.
+ *
+ * `maxOffers` (lane A): the offer emails the plan's rules allow in this
+ * window (weekly offer share per audience, 7 days between offers, saved
+ * offers at all); offers never go above it, nor above the 40% share.
  */
 export function emailMix(
   lines: readonly ResultLine[],
-  { emails }: { emails: number }
+  { emails, maxOffers = Infinity }: { emails: number; maxOffers?: number }
 ): EmailMix {
   const n = Number.isInteger(emails) && emails > 0 ? emails : 0
-  const usable = lines.flatMap((l) => {
-    const kind = l.emailType ? kindByType[l.emailType] : undefined
+  const offerLimit =
+    Number.isInteger(maxOffers) || maxOffers === Infinity
+      ? Math.max(0, maxOffers)
+      : 0
+  const counted = lines.flatMap((l) => {
+    const kind = l.emailType ? kindByType.get(l.emailType) : undefined
     const people = l.totals?.recipients ?? 0
     return kind &&
       l.status === 'sent' &&
       l.final &&
       !l.sample &&
       l.totals &&
-      people > 0
+      people >= minPeople
       ? [{ kind, totals: l.totals, people }]
       : []
   })
+  const withRevenue = counted.filter(
+    (u) => u.totals.revenue !== null && Number.isFinite(u.totals.revenue)
+  )
   const byRevenue =
-    usable.length > 0 && usable.every((u) => u.totals.revenue !== null)
-  const value = (u: (typeof usable)[number]) =>
-    (byRevenue ? u.totals.revenue! : u.totals.clicks) / u.people
-  const average =
-    usable.length > 0
-      ? usable.reduce((sum, u) => sum + value(u), 0) / usable.length
+    counted.length > 0 && withRevenue.length >= revenueCoverage * counted.length
+  const usable = (byRevenue ? withRevenue : counted).map((u) => ({
+    kind: u.kind,
+    people: u.people,
+    perPerson: (byRevenue ? u.totals.revenue! : u.totals.clicks) / u.people
+  }))
+  const typical = usable.length ? median(usable.map((u) => u.perPerson)) : 0
+  const capped = usable.map((u) => ({
+    ...u,
+    perPerson:
+      typical > 0 ? Math.min(u.perPerson, outlierCap * typical) : u.perPerson
+  }))
+  const pooled = (list: typeof capped) => {
+    const people = list.reduce((sum, u) => sum + u.people, 0)
+    return people > 0
+      ? list.reduce((sum, u) => sum + u.perPerson * u.people, 0) / people
       : 0
+  }
+  const average = pooled(capped)
   const weights = { ...defaultMix }
-  if (average > 0)
+  let moved = false
+  if (average > 0 && Number.isFinite(average))
     for (const k of mixKinds) {
-      const mine = usable.filter((u) => u.kind === k)
+      const mine = capped.filter((u) => u.kind === k)
       if (mine.length === 0) continue
-      const mean = mine.reduce((sum, u) => sum + value(u), 0) / mine.length
-      const trust = mine.length / (mine.length + trustAfter)
-      const shift = Math.max(
-        -maxShift,
-        Math.min(maxShift, trust * (mean / average - 1))
-      )
+      const rate =
+        (mine.length * pooled(mine) + priorEmails * average) /
+        (mine.length + priorEmails)
+      const shift = Math.max(-maxShift, Math.min(maxShift, rate / average - 1))
+      if (Math.abs(shift) > 1e-9) moved = true
       weights[k] = defaultMix[k] * (1 + shift)
     }
   const shares = capOffers(weights)
-  const learned = average > 0
   return {
-    counts: toCounts(shares, n),
+    counts: toCounts(shares, n, offerLimit),
     shares,
-    basis: learned ? 'learned' : 'default',
-    learnedFrom: learned ? usable.length : 0,
-    measure: learned
+    basis: moved ? 'learned' : 'default',
+    learnedFrom: moved ? capped.length : 0,
+    measure: moved
       ? byRevenue
         ? 'revenue_per_person'
         : 'clicks_per_person'

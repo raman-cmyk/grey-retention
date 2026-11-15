@@ -137,6 +137,73 @@ describe('emailMix (PLN-037)', () => {
     expect(mix.shares.education).toBeGreaterThan(defaultMix.education)
   })
 
+  it('does not let one big email or a tiny send swing the mix', () => {
+    const steady = [
+      ...many(10, () => sent('offer', 100)),
+      ...many(10, () => sent('education', 100)),
+      ...many(10, () => sent('launch', 100))
+    ]
+    const before = emailMix(steady, { emails: 9 })
+    // One story email with a single $5,000 order.
+    const big = emailMix([...steady, sent('story', 5000)], { emails: 9 })
+    expect(big.shares.story).toBeLessThan(0.25)
+    expect(big.counts.story).toBeLessThanOrEqual(2)
+    expect(big.counts).toEqual(before.counts)
+    // A story email sent to 3 people is not counted at all.
+    const tiny = emailMix([...steady, sent('story', 150, {}, 3)], { emails: 9 })
+    expect(tiny.learnedFrom).toBe(before.learnedFrom)
+  })
+
+  it('keeps revenue as the measure when a few emails’ orders were not read', () => {
+    const lines = [
+      ...many(15, () => sent('offer', 500, {}, 1000, 10)),
+      ...many(15, () => sent('education', 50, {}, 1000, 40)),
+      ...many(15, () => sent('story', 50, {}, 1000, 40))
+    ]
+    const before = emailMix(lines, { emails: 9 })
+    const after = emailMix([...lines, sent('launch', null)], { emails: 9 })
+    expect(after.measure).toBe('revenue_per_person')
+    expect(after.counts).toEqual(before.counts)
+  })
+
+  it('takes the offer limit the plan allows, and shares the freed emails fairly', () => {
+    expect(emailMix([], { emails: 9, maxOffers: 1 }).counts).toEqual({
+      offer: 1,
+      story: 2,
+      education: 2,
+      product: 4
+    })
+    expect(emailMix([], { emails: 6, maxOffers: 0 }).counts.offer).toBe(0)
+    // Two emails: the offer is cut by the 40% share; story and product share the rest.
+    expect(emailMix([], { emails: 2 }).counts).toEqual({
+      offer: 0,
+      story: 1,
+      education: 0,
+      product: 1
+    })
+  })
+
+  it('ignores unknown types, and a history that moves nothing stays the default', () => {
+    expect(
+      emailMix([sent('toString', 1000), sent('constructor', 1000)], {
+        emails: 6
+      })
+    ).toMatchObject({ basis: 'default', learnedFrom: 0 })
+    // Only offer emails, all alike: nothing to compare, nothing moves.
+    expect(
+      emailMix(
+        many(20, () => sent('offer', 100)),
+        { emails: 6 }
+      )
+    ).toMatchObject({ basis: 'default', learnedFrom: 0, counts: { offer: 2 } })
+    expect(emailMix([], { emails: 6.5 }).counts).toEqual({
+      offer: 0,
+      story: 0,
+      education: 0,
+      product: 0
+    })
+  })
+
   it('stays on the default when nothing earned anything', () => {
     expect(
       emailMix(
