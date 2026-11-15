@@ -37,7 +37,7 @@ You need one random secret and you put the **same value** in two places. Do not 
 ### Check it works
 
 - GitHub → Actions → **Scheduled jobs** → "Run workflow". The run log ends with a line like `{"live":false,"tenants":…}`. A red run shows the reason in the app's own words: the secret is missing, `401 (Unauthorized)` (the two secrets differ) or `503` (server setup).
-- **Retries (CI-005):** each of the six scheduled workflows (Scheduled jobs, Onboarding readers, Inbox tagging, Inbox screenshots, Klaviyo results, Studio renders) tries a call that gets no answer or an error once more after 2 minutes. A yellow "Trying again in 2 minutes" line is not a failure; the run is red only when both tries fail. Spaces and line breaks at either end of `CRON_SECRET` (an easy slip when pasting) are ignored in GitHub and in the app.
+- **Retries (CI-005):** each of the six scheduled workflows (Scheduled jobs, Onboarding readers, Inbox tagging, Inbox screenshots, Klaviyo results, Studio renders) tries its first call (Inbox screenshots and Studio renders: the check for waiting work) once more after 2 minutes when it gets no answer or an error. A yellow "Trying again in 2 minutes" line is not a failure; the run is red only when both tries fail. Spaces and line breaks at either end of `CRON_SECRET` (an easy slip when pasting) are ignored in GitHub and in the app.
 - **Failure emails are off** (owner, 15 Nov): check the Actions tab after a batch of merges. A yellow warning means some workspace visits stopped on an error; their jobs wait for the next run and the Vercel function logs show the error code.
 - Or queue some sample work (for example "Generate copy" on a campaign) and wait up to 30 minutes: the campaign moves on without pressing "Run fixture jobs".
 
@@ -70,7 +70,7 @@ A designed email has sections drawn as pictures (the design studio, D25). A serv
 
 - **When nothing is waiting**, a run makes one small request and stops, in a few seconds. Nothing asks for pictures until "Create email" uses the design studio (DST-006), so for now every run is idle.
 - **When sections are waiting**, it installs Chromium (about two minutes) and draws up to 24 sections per run, each with JavaScript off and only that section's own pictures and fonts allowed. Each picture is uploaded straight into the private `studio-renders` bucket.
-- **Its log shows counts only**, for example `Sections drawn: 3. Failed: 0.` The repository is public, so its logs are too: it never prints a section, a link or the secret.
+- **Its log shows counts only**, for example `Sections drawn: 3. Failed: 0. Not recorded: 0.` ("Not recorded": the app did not take the result; the section is drawn again once its lease runs out). A run stops after 8 minutes, or when the browser stops. The repository is public, so its logs are too: it never prints a section, a link or the secret.
 - **Cost:** the repository is public, so GitHub Actions minutes are free for it (the cost note above was written when it was private).
 - **Check it:** GitHub → Actions → **Studio renders** → "Run workflow".
 - **Pause it** with the same `SCHEDULED_JOBS_ENABLED` switch as the other jobs.

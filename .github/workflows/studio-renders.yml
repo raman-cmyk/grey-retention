@@ -15,7 +15,8 @@ name: Studio renders
 # waits for its pictures (public repository: Actions minutes are free).
 on:
   schedule:
-    # Every 10 minutes, away from the sweeps (minutes 3 and 33) and the inbox screenshots (18 and 48).
+    # Every 10 minutes, away from the sweeps (minutes 3 and 33) and the inbox
+    # screenshots (18 and 48); inbox tagging also runs at 25 and 55.
     - cron: '5-55/10 * * * *'
   workflow_dispatch:
 
@@ -78,6 +79,9 @@ jobs:
           echo "waiting=$waiting" >> "$GITHUB_OUTPUT"
       - if: steps.peek.outputs.waiting != '0'
         uses: actions/checkout@v4
+        with:
+          # The browser draws strangers' pages: no token left on the runner.
+          persist-credentials: false
       - if: steps.peek.outputs.waiting != '0'
         uses: pnpm/action-setup@v4
         with:

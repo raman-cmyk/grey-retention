@@ -13,6 +13,7 @@ export type RenderJob = {
 
 export const perRun: number
 export const runBudgetMs: number
+export const leaseMs: number
 export function launch(chromium: BrowserType): Promise<Browser>
 export function run(input: {
   base: string
@@ -20,4 +21,4 @@ export function run(input: {
   browser: Browser
   log?: (line: string) => void
   now?: () => number
-}): Promise<{ drawn: number; failed: number }>
+}): Promise<{ drawn: number; failed: number; lost: number }>
