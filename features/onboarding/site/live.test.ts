@@ -38,6 +38,16 @@ describe('cappedEnv and siteAsk', () => {
     expect(
       cappedEnv(env({ GEMINI_TIMEOUT_MS: '6000' })).GEMINI_TIMEOUT_MS
     ).toBe('6000')
+    // The second provider's calls too (REL-PRV).
+    expect(
+      cappedEnv(
+        env({
+          AI_V2_PROVIDER: 'openai',
+          OPENAI_API_KEY: 'k',
+          OPENAI_TIMEOUT_MS: '60000'
+        })
+      ).OPENAI_TIMEOUT_MS
+    ).toBe(String(siteCallTimeoutMs))
     // A value the AI setup cannot take (it would fall back to 60 s) is capped.
     for (const odd of ['4000', '7.5', 'soon'])
       expect(cappedEnv(env({ GEMINI_TIMEOUT_MS: odd })).GEMINI_TIMEOUT_MS).toBe(

@@ -48,6 +48,25 @@ describe('the agents switch for "Create email" (REL-AI part 2)', () => {
           .GEMINI_TIMEOUT_MS
       )
     ).toBeLessThanOrEqual(agentCallMs)
+    // The second provider's calls are capped too (REL-PRV).
+    const second = agentEnv(
+      env({
+        AI_V2_PROVIDER: 'openai',
+        OPENAI_API_KEY: 'k',
+        OPENAI_TIMEOUT_MS: '60000'
+      })
+    )
+    expect(Number(second.OPENAI_TIMEOUT_MS)).toBeLessThanOrEqual(agentCallMs)
+    expect(
+      buildAgentsFor(
+        db,
+        env({
+          EMAIL_BUILD_AGENTS: 'on',
+          AI_V2_PROVIDER: 'openai',
+          OPENAI_API_KEY: 'k'
+        })
+      )
+    ).not.toBeNull()
   })
 
   it('sends every agent call through runAi with the capped timeout, on the workspace', async () => {
