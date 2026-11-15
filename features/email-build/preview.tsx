@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { Notice, Panel } from '@/components/ui/workspace'
 import { Pill } from '@/components/ui/pill'
 import { createClient } from '@/lib/supabase/server'
+import { previewFooterTags } from '@/features/blocks/klaviyo-tags'
 import { previewHtml } from '@/features/email-generation/html'
 import { ScaledFrame } from '@/features/email-generation/scaled-frame'
 import { builtEmail } from './build'
@@ -100,10 +101,10 @@ export async function BuiltEmailPreview({
         </div>
       </Panel>
       <Panel title="The email">
-        {/* The project's safe preview: active content and outside loads removed, a strict CSP. */}
+        {/* The project's safe preview: active content and outside loads removed, a strict CSP; Klaviyo's footer tags shown as placeholders (REL-FTR). */}
         <ScaledFrame
           title={`The email: ${e.subject}`}
-          srcDoc={previewHtml(e.html).html}
+          srcDoc={previewHtml(previewFooterTags(e.html, null)).html}
           height={1400}
         />
       </Panel>

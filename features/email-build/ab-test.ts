@@ -137,6 +137,7 @@ export function deliverability(
 
 export type Drawing = {
   approach: Approach
+  /** As Klaviyo gets it: a screen shows it through `previewFooterTags` (REL-FTR). */
   html: string
   /** False when code found a problem first or the inspector gave up (e.g. no AI). */
   inspected: boolean
@@ -239,7 +240,14 @@ export async function runAbTest(
         bStatus,
         bSendable
       })
-    const aDesign = designA(made.draft, brand)
+    // REL-FTR: drawn for Klaviyo, which takes no inline picture.
+    let aDesign: ReturnType<typeof designA>
+    try {
+      aDesign = designA(made.draft, brand)
+    } catch {
+      skipped.push({ slot, code: 'render_failed' })
+      continue
+    }
     const a = drawing(
       'A',
       aDesign.html,
@@ -301,7 +309,13 @@ export async function runAbTest(
       pair(null, 'picture_failed')
       continue
     }
-    const bDesign = designB(made.draft, brand, picture.url)
+    let bDesign: ReturnType<typeof designB>
+    try {
+      bDesign = designB(made.draft, brand, picture.url)
+    } catch {
+      pair(null, 'picture_failed')
+      continue
+    }
     const bSeen = await look(
       'B',
       bDesign,
