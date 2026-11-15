@@ -19,9 +19,10 @@ export type FallbackLog = {
  * reason that joins many changes can run past 500 characters.
  */
 function fitted(input: FallbackEntry) {
-  const e = input as Partial<FallbackEntry>
+  const e = input as Partial<FallbackEntry> | null
+  if (!e || typeof e !== 'object') return input
   return {
-    ...input,
+    ...e,
     ...(typeof e.reason === 'string' ? { reason: clip(e.reason, 500) } : {}),
     ...(typeof e.fallback === 'string'
       ? { fallback: clip(e.fallback, 300) }

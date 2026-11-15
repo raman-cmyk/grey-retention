@@ -426,10 +426,7 @@ describe('planning the next 15 days', () => {
       critic: 'agent'
     })
     expect(plan.dropped).toBe(0)
-    // REL-084: the chosen offer no email uses is named.
-    expect(plan.notes).toEqual([
-      'This offer is not in these 15 days: WELCOME15.'
-    ])
+    expect(plan.notes).toEqual([])
     expect(plan.slots.map((s) => [s.date, s.emailType])).toEqual([
       ['2026-11-17', 'offer'],
       ['2026-11-18', 'story'],
@@ -654,7 +651,7 @@ describe('planning the next 15 days', () => {
     ).toBeLessThan(600)
   })
 
-  it('on the code-only plan, says why an email fit no day and which chosen offer is not used (REL-084)', () => {
+  it('on the code-only plan, says why an email fit no day, and can name a picked offer no email uses (REL-084)', () => {
     // Every day of the 15 is a day with no emails but the 20th.
     const days = Array.from({ length: 15 }, (_, i) => {
       const d = new Date(`${start}T00:00:00Z`)
@@ -669,14 +666,13 @@ describe('planning the next 15 days', () => {
     expect(plan.notes[0]).toMatch(
       /^\d planned emails were left out: .*(its day is a day with no emails|that audience already gets an email that day)/
     )
-    expect(plan.notes.join(' ')).toMatch(/not in these 15 days: /)
     expect(
       unusedOffersNote(
         Array.from({ length: 12 }, (_, i) => ({ code: `C${i}` })),
         new Set(['C0'])
       )
     ).toBe(
-      'These offers are not in these 15 days: C1, C2, C3, C4, C5, C6, C7, C8, C9, C10 and 1 more.'
+      'No email in these 15 days uses these offers: C1, C2, C3, C4, C5, C6, C7, C8, C9, C10 and 1 more.'
     )
     expect(unusedOffersNote([{ code: 'A' }], new Set(['A']))).toBeNull()
   })

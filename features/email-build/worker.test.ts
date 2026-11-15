@@ -355,6 +355,21 @@ describe('saved steps (REL-081)', () => {
     }
   })
 
+  it('stores a code it has no words for as step_error, and logs the code (REL-084)', async () => {
+    const error = vi.spyOn(logger, 'error').mockImplementation(() => {})
+    const { db, calls } = fakeDb([step()])
+    await runEmailBuilds(db, {
+      stores: { read: async () => Promise.reject({ code: 'something_new' }) },
+      fallbacks: memoryFallbackLog()
+    })
+    expect(failure(calls)).toMatchObject({ code: 'step_error', final: false })
+    expect(error).toHaveBeenCalledWith(
+      'Email build step threw',
+      expect.objectContaining({ code: 'something_new' })
+    )
+    error.mockRestore()
+  })
+
   it('fails at once when the database refuses a step’s output', async () => {
     const { db, calls } = fakeDb([step()], {
       finish_email_step: { code: '22023' }

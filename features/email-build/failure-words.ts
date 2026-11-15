@@ -27,7 +27,8 @@ export const buildFailureWords = {
   step_timed_out: 'One of its steps kept stopping before it finished.',
   step_error: 'Something went wrong while it was being made. Try again.',
   // The push into Klaviyo (DraftPusher).
-  klaviyo_auth: 'Klaviyo did not accept the connection. Check it in Settings.',
+  klaviyo_auth:
+    'Klaviyo did not accept the connection. Check it on the Connections page.',
   klaviyo_rejected: 'Klaviyo, or the last check before Klaviyo, refused it.',
   klaviyo_rate_limited: 'Klaviyo was busy for too long. Try again later.',
   klaviyo_unavailable: 'Klaviyo could not be reached. Try again later.'

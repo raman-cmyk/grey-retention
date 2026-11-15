@@ -94,6 +94,7 @@ describe('the plan read model', () => {
       'Something went wrong while it was being made. Try again.'
     )
     buildOver = {}
+    read = await latestPlanRun(run.id, 'UTC')
     expect(read.ok && read.run?.reason).toBeNull()
     runOver = { state: 'failed', error_code: 'out_of_date' }
     read = await latestPlanRun(run.id, 'UTC')

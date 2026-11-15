@@ -11,7 +11,7 @@ import {
   readPulseInput
 } from './pulse'
 import { codeMoves, mapPatterns, readMapperInput } from './competitors'
-import { samplePlan } from './plan'
+import { samplePlan, unusedOffersNote } from './plan'
 import { sampleStrategyData, type StrategyData } from './data'
 import { storedPulse } from './stored'
 import { SupabaseOfferSource } from '@/features/offers/source'
@@ -209,9 +209,23 @@ export async function runStrategyRuns(
         const note = unreadable
           ? `${unreadableWords} this plan has no offers. Start again to plan with them.`
           : leftOutNote(leftOut)
+        // REL-084: an offer the owner picked that no email uses is named.
+        const unused =
+          pick.data.mode === 'picked'
+            ? unusedOffersNote(
+                usable,
+                new Set(
+                  made.slots.flatMap((s) => (s.offer ? [s.offer.code] : []))
+                )
+              )
+            : null
         const plan = {
           ...made,
-          notes: [...(note ? [note] : []), ...made.notes].slice(0, 10)
+          notes: [
+            ...(note ? [note] : []),
+            ...made.notes,
+            ...(unused ? [unused] : [])
+          ].slice(0, 10)
         }
         const done = await db.rpc('finish_strategy_plan', {
           run: run.id,

@@ -1076,8 +1076,10 @@ export function droppedNote(dropped: readonly Problem[][]) {
 }
 
 /**
- * The chosen offers no email in the plan uses, named (REL-084): at most ten
- * codes, so the note stays short. Null when every offer is used.
+ * The offers the owner picked that no email in the plan uses, named
+ * (REL-084; the plan step adds it when the owner picked offers, not for
+ * "You choose"): at most ten codes, within a stored note's 600 characters.
+ * Null when every offer is used.
  */
 export function unusedOffersNote(
   offers: readonly { code: string }[],
@@ -1089,7 +1091,7 @@ export function unusedOffersNote(
   let shown = Math.min(left.length, 10)
   const note = (n: number) => {
     const more = left.length > n ? ` and ${left.length - n} more` : ''
-    return `${left.length === 1 ? 'This offer is' : 'These offers are'} not in these 15 days: ${left.slice(0, n).join(', ')}${more}.`
+    return `No email in these 15 days uses ${left.length === 1 ? 'this offer' : 'these offers'}: ${left.slice(0, n).join(', ')}${more}.`
   }
   while (shown > 1 && note(shown).length > 600) shown--
   return note(shown).slice(0, 600)
@@ -1147,13 +1149,6 @@ function planOutput(
     notes.push(
       `With ${input.sendsPerWeek} emails a week, an offer email would be more than ${offerSharePercent}% of the week, so no offer was planned. Choose more emails a week to run an offer.`
     )
-  else {
-    const unused = unusedOffersNote(
-      input.offers,
-      new Set(slotsOut.flatMap((s) => (s.offer ? [s.offer.code] : [])))
-    )
-    if (unused) notes.push(unused)
-  }
   return {
     start: from,
     end: to,
