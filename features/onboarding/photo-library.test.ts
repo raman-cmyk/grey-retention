@@ -1,0 +1,166 @@
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('server-only', () => ({}))
+const reads = vi.hoisted(() => ({ catalog: vi.fn() }))
+vi.mock('./catalog/read', async (original) => ({
+  ...(await original<typeof import('./catalog/read')>()),
+  listCatalog: reads.catalog
+}))
+const { photoLibrary, readPhotoLibrary } = await import('./photo-library')
+
+const cdn = 'https://cdn.shopify.com/s/files/1'
+const tenantId = '00000000-0000-4000-8000-000000000101'
+
+describe('photoLibrary (ONB-059b)', () => {
+  it('lists the catalog’s product pictures first, then the site’s photos, each once', () => {
+    expect(
+      photoLibrary(
+        [
+          { id: 'p1', title: 'Trail socks', image: `${cdn}/socks.jpg?v=3` },
+          { id: 'p2', title: ' ', image: `${cdn}/cap.png` },
+          { id: 'p3', title: 'No photo', image: null },
+          { id: 'p4', title: 'Fancy', image: `${cdn}/fancy.webp` }
+        ],
+        [
+          {
+            url: `${cdn}/runners.jpg`,
+            kind: 'lifestyle',
+            page: 'home',
+            alt: 'Runners at dawn'
+          },
+          // The catalog's own picture, at another size: listed once, as the catalog's.
+          {
+            url: `${cdn}/socks_800x.jpg`,
+            kind: 'product',
+            page: 'product',
+            alt: 'Socks, side'
+          },
+          {
+            url: `${cdn}/cap.png`,
+            kind: 'product',
+            page: 'home',
+            alt: 'Cedar cap'
+          },
+          { url: `${cdn}/odd.svg`, kind: 'lifestyle', page: 'home', alt: null }
+        ]
+      )
+    ).toEqual([
+      {
+        url: `${cdn}/socks.jpg?v=3`,
+        kind: 'product',
+        source: 'catalog',
+        alt: 'Trail socks',
+        page: null,
+        productId: 'p1'
+      },
+      {
+        url: `${cdn}/cap.png`,
+        kind: 'product',
+        source: 'catalog',
+        alt: 'Cedar cap',
+        page: null,
+        productId: 'p2'
+      },
+      {
+        url: `${cdn}/runners.jpg`,
+        kind: 'lifestyle',
+        source: 'site',
+        alt: 'Runners at dawn',
+        page: 'home',
+        productId: null
+      }
+    ])
+  })
+})
+
+describe('readPhotoLibrary (ONB-059b)', () => {
+  type Answer = { data: unknown; error: unknown }
+  function fakeDb(answers: Record<string, Answer>) {
+    const asked: [string, ...unknown[]][] = []
+    const from = (table: string) => {
+      const chain: Record<string, unknown> = {}
+      for (const op of ['select', 'eq', 'order', 'limit'])
+        chain[op] = (...a: unknown[]) => (asked.push([table, op, ...a]), chain)
+      chain.maybeSingle = async () => answers[table]
+      chain.then = (done: (r: unknown) => unknown) => done(answers[table])
+      return chain
+    }
+    return { db: { from } as never, asked }
+  }
+  const site = {
+    data: [
+      { url: `${cdn}/runners.jpg`, kind: 'lifestyle', page: 'home', alt: null }
+    ],
+    error: null
+  }
+
+  it('reads the workspace’s own catalog, real or sample as it was read, and its site photos in order', async () => {
+    reads.catalog.mockResolvedValue([
+      { id: 'p1', title: 'Socks', image: `${cdn}/socks.jpg` }
+    ])
+    const { db, asked } = fakeDb({
+      catalog_status: { data: { live: true }, error: null },
+      brand_photos: site
+    })
+    const got = await readPhotoLibrary(db, tenantId)
+    expect(got.map((p) => [p.url, p.source])).toEqual([
+      [`${cdn}/socks.jpg`, 'catalog'],
+      [`${cdn}/runners.jpg`, 'site']
+    ])
+    expect(reads.catalog).toHaveBeenLastCalledWith(db, tenantId, {
+      synthetic: false
+    })
+    expect(asked).toContainEqual(['brand_photos', 'eq', 'tenant_id', tenantId])
+    expect(asked).toContainEqual([
+      'brand_photos',
+      'order',
+      'position',
+      { ascending: true }
+    ])
+    expect(asked).toContainEqual([
+      'catalog_status',
+      'eq',
+      'tenant_id',
+      tenantId
+    ])
+    // Read from the fake Klaviyo: only its sample products.
+    await readPhotoLibrary(
+      fakeDb({
+        catalog_status: { data: { live: false }, error: null },
+        brand_photos: site
+      }).db,
+      tenantId
+    )
+    expect(reads.catalog).toHaveBeenLastCalledWith(
+      expect.anything(),
+      tenantId,
+      { synthetic: true }
+    )
+  })
+
+  it('has only the site’s photos while the catalog was never read, and throws a read that fails', async () => {
+    reads.catalog.mockClear()
+    const got = await readPhotoLibrary(
+      fakeDb({
+        catalog_status: { data: null, error: null },
+        brand_photos: site
+      }).db,
+      tenantId
+    )
+    expect(got.map((p) => p.source)).toEqual(['site'])
+    expect(reads.catalog).not.toHaveBeenCalled()
+    const failed = { data: null, error: { code: 'PGRST000' } }
+    for (const answers of [
+      { catalog_status: failed, brand_photos: site },
+      {
+        catalog_status: { data: { live: true }, error: null },
+        brand_photos: failed
+      }
+    ])
+      await expect(
+        readPhotoLibrary(fakeDb(answers).db, tenantId)
+      ).rejects.toMatchObject({
+        code: 'PGRST000'
+      })
+  })
+})

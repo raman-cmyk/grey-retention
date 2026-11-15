@@ -1033,6 +1033,60 @@ export type Database = {
           }
         ]
       }
+      brand_photos: {
+        Row: {
+          alt: string | null
+          created_at: string
+          id: string
+          kind: string
+          page: string
+          position: number
+          run_id: string
+          source: string
+          tenant_id: string
+          url: string
+        }
+        Insert: {
+          alt?: string | null
+          created_at?: string
+          id?: string
+          kind: string
+          page: string
+          position: number
+          run_id: string
+          source: string
+          tenant_id: string
+          url: string
+        }
+        Update: {
+          alt?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          page?: string
+          position?: number
+          run_id?: string
+          source?: string
+          tenant_id?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_photos_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_photos_tenant_id_run_id_fkey'
+            columns: ['tenant_id', 'run_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       brand_profile_sections: {
         Row: {
           content: Json
@@ -7812,6 +7866,10 @@ export type Database = {
           on_dark?: string
           on_light?: string
         }
+        Returns: boolean
+      }
+      record_site_photos: {
+        Args: { job: string; lease: string; photos: Json }
         Returns: boolean
       }
       recover_expired_usage: { Args: { t: string }; Returns: number }
