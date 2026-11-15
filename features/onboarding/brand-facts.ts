@@ -101,14 +101,15 @@ const moneyBack =
   /money[- ]back|satisfaction guarantee|your money back|risk[- ]free/i
 /** A warranty or a repair, never a money-back guarantee. */
 const warranty = /defect|faulty|repair|replac|warrant/i
+/** A dated offer, never the standing policy ("this weekend only"). */
+const datedOffer =
+  /\b(?:today|tonight|this (?:week|weekend|month)|weekend|only|ends?|until|limited|first order|code|sale|black friday|cyber|holiday)\b/i
 /** The site reader counts business days unless the page says calendar days. */
 const calendarDays = /\bcalendar\s+days?\b/i
 const quoteOf = (f: Finding) => ('quote' in f.evidence ? f.evidence.quote : '')
 
 type Sure<T extends FactTopic> = { finding: Finding; value: Value<T> }
 
-const evidenceText = (f: Finding) =>
-  `${f.statement} ${'quote' in f.evidence ? f.evidence.quote : ''}`
 const pageOf = (f: Finding) =>
   'page' in f.evidence ? (f.evidence.page ?? null) : null
 const urlOf = (f: Finding) => ('url' in f.evidence ? f.evidence.url : null)
@@ -167,8 +168,10 @@ export function trueFacts(
 
   // Free shipping: the site's standing policy, never an ad's offer.
   const store = currency?.trim().toUpperCase() || null
+  // A site-wide footer line is credited to the home page, so a positive
+  // free shipping counts from any page; a dated offer never does.
   const shipping = sure(findings, 'free_shipping', live).filter(
-    (s) => s.finding.source !== 'ads'
+    (s) => s.finding.source !== 'ads' && !datedOffer.test(quoteOf(s.finding))
   )
   const foreign = shipping.filter(
     (s) => s.value.kind === 'over' && s.value.currency !== store
@@ -241,9 +244,7 @@ export function trueFacts(
       region: all[0]!.value.region ?? null,
       min: Math.max(...all.map((s) => s.value.min)),
       max: Math.max(...all.map((s) => s.value.max)),
-      businessDays: !all.every((s) =>
-        calendarDays.test(evidenceText(s.finding))
-      ),
+      businessDays: !all.every((s) => calendarDays.test(quoteOf(s.finding))),
       conflict
     }
   })
@@ -283,11 +284,10 @@ export function copyFacts(
     bannedPhrases = []
   }: { approvedClaims?: string[]; bannedPhrases?: string[] } = {}
 ): BrandFacts {
-  // Free shipping only from the shipping page: a banner's "this weekend
-  // only" is an offer, not the policy.
+  // A dated offer never got here; "no free shipping" needs the shipping page.
   const shipping = facts.freeShipping
   const freeShipping: BrandFacts['freeShipping'] =
-    shipping === null || !shipping.fromPolicyPage
+    shipping === null
       ? null
       : shipping.value.kind === 'never'
         ? negativeOk(shipping)

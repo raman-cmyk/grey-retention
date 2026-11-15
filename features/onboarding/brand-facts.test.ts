@@ -353,6 +353,41 @@ describe('copyFacts (ONB-106a)', () => {
     expect(policy.freeShipping).toBe('never')
   })
 
+  it('takes the footer’s free shipping, credited to the home page', () => {
+    const footer = copyFacts(
+      trueFacts(
+        [
+          found(
+            'free_shipping',
+            over(75),
+            { quote: 'Free shipping on orders over $75.' },
+            'home'
+          )
+        ],
+        usd
+      )
+    )
+    expect(footer.freeShipping).toEqual({ over: 75 })
+  })
+
+  it('never takes a dated offer as the policy, on any page', () => {
+    for (const quote of [
+      'Free shipping on all orders this weekend only!',
+      'Free shipping on your first order',
+      'Free shipping with code SHIPFREE',
+      'Black Friday: free shipping on everything'
+    ])
+      expect([
+        quote,
+        copyFacts(
+          trueFacts(
+            [found('free_shipping', { kind: 'always' }, { quote }, 'shipping')],
+            usd
+          )
+        ).freeShipping
+      ]).toEqual([quote, null])
+  })
+
   it('never takes a banner’s free shipping as the policy', () => {
     const banner = copyFacts(
       trueFacts(
@@ -418,6 +453,23 @@ describe('copyFacts (ONB-106a)', () => {
       )
     )
     expect(calendarDays.deliveryDays).toEqual({ min: 3, max: 5 })
+    // Only the page's own words say calendar days, never the reader's.
+    const readerOnly = copyFacts(
+      trueFacts(
+        [
+          found(
+            'delivery_days',
+            { min: 3, max: 5 },
+            {
+              quote: 'Delivery: 3-5 days',
+              statement: 'Delivery takes 3 to 5 calendar days.'
+            }
+          )
+        ],
+        usd
+      )
+    )
+    expect(readerOnly.deliveryDays).toEqual({ min: 3, max: 7 })
     // Never faster than the slowest region.
     const both = copyFacts(
       trueFacts(
