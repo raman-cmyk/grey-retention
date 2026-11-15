@@ -12,7 +12,7 @@ import type { CatalogEntry } from './read'
  * - a product priced far from the rest of the store (a $8,900 shirt in a
  *   store of $89 shirts is usually a price typed in cents);
  * - a whole catalog on another scale from the website (its usual price far
- *   outside every price the website showed);
+ *   from the middle of the prices at least two of its pages showed);
  * - a website that shows another currency than the catalog.
  *
  * Pure and deterministic. Pass the whole catalog (`listCatalog` without
@@ -23,15 +23,21 @@ import type { CatalogEntry } from './read'
 
 /** How far from the store's usual price a product may be. */
 export const outlierFactor = 30
-/** How far outside the website's prices the catalog's usual price may be. */
+/** How far from the website's usual price the catalog's may be. */
 export const scaleFactor = 20
+/** Fewer pages with prices than this: the website's scale is not known. */
+export const minSitePages = 2
 /** Fewer priced products than this: no usual price to judge one by. */
 export const minPriced = 5
 /** Site findings at least this sure are used. */
 export const minConfidence = 0.7
 
-/** Currencies written with "$": a site read as USD may be any of them. */
-const dollars = new Set(['USD', 'CAD', 'AUD', 'NZD', 'SGD', 'HKD', 'MXN'])
+/**
+ * Currencies written with "$" and worth about as much as a US dollar (within
+ * `scaleFactor`): a site read as USD may be any of them. Not the pesos: a
+ * Mexican peso is about a twentieth of a dollar.
+ */
+const dollars = new Set(['USD', 'CAD', 'AUD', 'NZD', 'SGD', 'HKD'])
 const sameFamily = (a: string, b: string) =>
   a === b || (dollars.has(a) && dollars.has(b))
 
@@ -79,10 +85,11 @@ function median(values: number[]) {
 }
 
 /**
- * The store's own priced products in its main currency: no duplicates, no
- * free gifts, and none left in another currency by an earlier read.
+ * The store's own priced products in its currency (`currency`, the catalog
+ * read's, else the one most products are in): no duplicates, no free
+ * gifts, and none left in another currency by an earlier read.
  */
-function priced(entries: readonly CatalogEntry[]) {
+function priced(entries: readonly CatalogEntry[], currency?: string | null) {
   const list = entries.filter(
     (e) =>
       Number.isFinite(e.amount) &&
@@ -92,9 +99,11 @@ function priced(entries: readonly CatalogEntry[]) {
   const counts = new Map<string, number>()
   for (const e of list)
     counts.set(e.currency, (counts.get(e.currency) ?? 0) + 1)
-  const main = [...counts.entries()].sort(
-    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0])
-  )[0]?.[0]
+  const main =
+    currency ??
+    [...counts.entries()].sort(
+      (a, b) => b[1] - a[1] || a[0].localeCompare(b[0])
+    )[0]?.[0]
   return {
     currency: main ?? null,
     list: list.filter((e) => e.currency === main)
@@ -133,9 +142,12 @@ const unshowable = new Set(['unpublished', 'currency', 'duplicate', 'retired'])
  */
 export function priceSuspects(
   entries: readonly CatalogEntry[],
-  { confirmed = [] }: { confirmed?: readonly string[] } = {}
+  {
+    confirmed = [],
+    currency
+  }: { confirmed?: readonly string[]; currency?: string | null } = {}
 ): PriceSuspect[] {
-  const { list } = priced(entries)
+  const { list } = priced(entries, currency)
   if (list.length < minPriced) return []
   const usual = median(list.map((e) => e.amount))
   const sure = new Set(confirmed)
@@ -158,17 +170,19 @@ export function priceSuspects(
 }
 
 /**
- * The whole check: the catalog's own outliers, its usual price against
- * every price the website showed (all sure `price_band` findings in the
- * same currency, or one written "$", merged into one range), and the two
- * currencies.
+ * The whole check: the catalog's own outliers, its usual price against the
+ * website's (the middle of the price levels of every sure `price_band`
+ * finding in the same currency, or one written "$", each page's level the
+ * geometric middle of its range, needing `minSitePages` pages so one odd
+ * page decides nothing), and the two currencies. `currency` is the catalog
+ * read's (`catalog_status`), when known.
  */
 export function catalogPriceCheck(
   entries: readonly CatalogEntry[],
   findings: readonly Finding[],
-  options: { confirmed?: readonly string[] } = {}
+  options: { confirmed?: readonly string[]; currency?: string | null } = {}
 ): CatalogPriceCheck {
-  const { list, currency: catalogCurrency } = priced(entries)
+  const { list, currency: catalogCurrency } = priced(entries, options.currency)
   const usual = list.length ? median(list.map((e) => e.amount)) : null
   const allBands = siteValues(findings, 'price_band')
   const bands = allBands.filter(
@@ -187,26 +201,32 @@ export function catalogPriceCheck(
         : sameFamily(siteCurrency, catalogCurrency)
           ? null
           : false
-  const low = Math.min(...bands.map((b) => b.min))
-  const high = Math.max(...bands.map((b) => b.max))
+  // Prices spread on a multiplying scale: a page's level is the geometric
+  // middle of its range, and the website's the middle of its pages'.
+  const siteUsual =
+    bands.length >= minSitePages
+      ? median(bands.map((b) => (b.min > 0 ? Math.sqrt(b.min * b.max) : b.max)))
+      : null
   let scale: CatalogPriceCheck['scale'] = 'unknown'
-  if (usual !== null && bands.length)
+  if (usual !== null && siteUsual !== null)
     scale =
-      usual >= high * scaleFactor
+      usual >= siteUsual * scaleFactor
         ? 'too_high'
-        : usual * scaleFactor <= low
+        : usual * scaleFactor <= siteUsual
           ? 'too_low'
           : 'ok'
   const off = scale === 'too_high' || scale === 'too_low'
-  const suspects = off ? [] : priceSuspects(entries, options)
+  const suspects = off
+    ? []
+    : priceSuspects(entries, { ...options, currency: catalogCurrency })
   const words: string[] = []
-  if (off && usual !== null && catalogCurrency) {
+  if (off && usual !== null && siteUsual !== null && catalogCurrency) {
     const cents =
       scale === 'too_high' && minorUnits(catalogCurrency) > 1
         ? ' They may be typed in cents.'
         : ''
     words.push(
-      `Your product prices (most around ${format(usual, catalogCurrency)}) are far ${scale === 'too_high' ? 'higher' : 'lower'} than on your website (${format(low, catalogCurrency)} to ${format(high, catalogCurrency)}).${cents} Check the prices in your store before emails show them.`
+      `Your product prices (most around ${format(usual, catalogCurrency)}) are far ${scale === 'too_high' ? 'higher' : 'lower'} than on your website (most around ${format(siteUsual, catalogCurrency)}).${cents} Check the prices in your store before emails show them.`
     )
   }
   if (agrees === false)
@@ -225,9 +245,9 @@ export function catalogPriceCheck(
 
 /**
  * The products whose prices an email may show: none when the catalog is
- * on another scale from the website, else all but the suspects. A website
- * in another currency is only said (the orders decide the currency, and a
- * site may show the visitor's own).
+ * on another scale from the website, else those in the catalog's currency
+ * but the suspects. A website in another currency is only said (the
+ * orders decide the currency, and a site may show the visitor's own).
  */
 export function withSanePrices(
   entries: readonly CatalogEntry[],
@@ -235,5 +255,8 @@ export function withSanePrices(
 ): CatalogEntry[] {
   if (check.scale === 'too_high' || check.scale === 'too_low') return []
   const doubtful = new Set(check.suspects.map((s) => s.id))
-  return entries.filter((e) => !doubtful.has(e.id))
+  const currency = check.currency.catalog
+  return entries.filter(
+    (e) => !doubtful.has(e.id) && (currency === null || e.currency === currency)
+  )
 }

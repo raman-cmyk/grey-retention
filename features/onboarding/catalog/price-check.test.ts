@@ -54,6 +54,11 @@ const site = (
   }) as unknown as Finding
 const band = (min: number, max: number, currency = 'USD', over = {}) =>
   site('price_band', { min, max, currency }, over)
+/** Two pages whose price levels (geometric middles) are both 100. */
+const twoPages = (currency = 'USD') => [
+  band(50, 200, currency),
+  band(25, 400, currency)
+]
 
 describe('priceSuspects (ONB-063)', () => {
   it('flags a price far above or below the store’s usual one', () => {
@@ -108,7 +113,7 @@ describe('catalogPriceCheck (ONB-063)', () => {
   it('passes a catalog that matches the website', () => {
     const check = catalogPriceCheck(store(), [
       site('locale', { language: 'en', currency: 'USD' }),
-      band(40, 150)
+      ...twoPages()
     ])
     expect(check).toMatchObject({
       usual: 89,
@@ -121,21 +126,21 @@ describe('catalogPriceCheck (ONB-063)', () => {
 
   it('catches a whole catalog in cents, and features none of it', () => {
     const cents = [6000, 7500, 8900, 8900, 9500, 12000].map((a) => entry(a))
-    const check = catalogPriceCheck(cents, [band(40, 150)])
+    const check = catalogPriceCheck(cents, twoPages())
     expect(check.scale).toBe('too_high')
     expect(check.suspects).toEqual([])
     expect(check.words).toEqual([
-      'Your product prices (most around $8,900.00) are far higher than on your website ($40.00 to $150.00). They may be typed in cents. Check the prices in your store before emails show them.'
+      'Your product prices (most around $8,900.00) are far higher than on your website (most around $100.00). They may be typed in cents. Check the prices in your store before emails show them.'
     ])
     expect(withSanePrices(cents, check)).toEqual([])
   })
 
   it('catches prices far too low, without talking of cents', () => {
     const low = [0.6, 0.75, 0.89, 0.89, 0.95].map((a) => entry(a))
-    const check = catalogPriceCheck(low, [band(40, 150)])
+    const check = catalogPriceCheck(low, twoPages())
     expect(check.scale).toBe('too_low')
     expect(check.words[0]).toBe(
-      'Your product prices (most around $0.89) are far lower than on your website ($40.00 to $150.00). Check the prices in your store before emails show them.'
+      'Your product prices (most around $0.89) are far lower than on your website (most around $100.00). Check the prices in your store before emails show them.'
     )
     expect(withSanePrices(low, check)).toEqual([])
   })
@@ -144,14 +149,17 @@ describe('catalogPriceCheck (ONB-063)', () => {
     const yen = [450000, 460000, 470000].map((a) =>
       entry(a, { currency: 'JPY' })
     )
-    const check = catalogPriceCheck(yen, [band(4000, 9000, 'JPY')])
+    const check = catalogPriceCheck(yen, [
+      band(4000, 9000, 'JPY'),
+      band(3000, 12000, 'JPY')
+    ])
     expect(check.scale).toBe('too_high')
     expect(check.words[0]).not.toContain('cents')
     expect(check.words[0]).toContain('¥460,000')
   })
 
   it('checks a small catalog against the website too', () => {
-    const check = catalogPriceCheck([entry(8900)], [band(40, 150)])
+    const check = catalogPriceCheck([entry(8900)], twoPages())
     expect(check.scale).toBe('too_high')
   })
 
@@ -167,8 +175,16 @@ describe('catalogPriceCheck (ONB-063)', () => {
     // One $5 product page in a $90 to $150 store.
     const big = [90, 110, 120, 130, 150].map((a) => entry(a))
     expect(catalogPriceCheck(big, [band(5, 5), band(90, 150)]).scale).toBe('ok')
-    // A range of nothing is no range.
-    expect(catalogPriceCheck(big, [band(0, 0)]).scale).toBe('unknown')
+    // A range of nothing is no range, and one page alone decides nothing.
+    expect(catalogPriceCheck(big, [band(0, 0), band(90, 150)]).scale).toBe(
+      'unknown'
+    )
+    expect(catalogPriceCheck(big, [band(5, 5)]).scale).toBe('unknown')
+    // A catalog in cents is still caught next to a gift card page.
+    const cents = [6000, 7500, 8900, 8900, 9500].map((a) => entry(a))
+    expect(catalogPriceCheck(cents, [band(10, 500), band(8, 15)]).scale).toBe(
+      'too_high'
+    )
   })
 
   it('says when the website shows another currency, without hiding products', () => {
@@ -194,7 +210,7 @@ describe('catalogPriceCheck (ONB-063)', () => {
     const cad = [60, 75, 89, 89, 95].map((a) => entry(a, { currency: 'CAD' }))
     const check = catalogPriceCheck(cad, [
       site('locale', { language: 'en', currency: 'USD' }),
-      band(40, 150)
+      ...twoPages()
     ])
     expect(check.currency).toEqual({
       catalog: 'CAD',
@@ -203,6 +219,33 @@ describe('catalogPriceCheck (ONB-063)', () => {
     })
     expect(check.scale).toBe('ok')
     expect(check.words).toEqual([])
+  })
+
+  it('never compares pesos with dollars', () => {
+    const mxn = [899, 950, 999, 999, 1100].map((a) =>
+      entry(a, { currency: 'MXN' })
+    )
+    const check = catalogPriceCheck(mxn, [band(25, 45), band(30, 50)])
+    expect(check.scale).toBe('unknown')
+    expect(withSanePrices(mxn, check)).toEqual(mxn)
+  })
+
+  it('prices only products in the catalog’s currency, the store’s own when known', () => {
+    const current = store()
+    const left = [
+      entry(2000, { currency: 'JPY' }),
+      entry(3000, { currency: 'JPY' })
+    ]
+    const check = catalogPriceCheck([...current, ...left], [])
+    expect(withSanePrices([...current, ...left], check)).toEqual(current)
+    // More leftovers than current products: the catalog read's currency wins.
+    const euros = [10, 20, 30, 40].map((a) => entry(a, { currency: 'EUR' }))
+    const dollars = [60, 75, 89].map((a) => entry(a))
+    const own = catalogPriceCheck([...euros, ...dollars], [], {
+      currency: 'USD'
+    })
+    expect(own.currency.catalog).toBe('USD')
+    expect(withSanePrices([...euros, ...dollars], own)).toEqual(dollars)
   })
 
   it('uses only sure findings from the website', () => {
