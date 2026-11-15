@@ -51,7 +51,9 @@ export const codedReasons = {
   picture_unusable: 'The drawn picture could not be read, or was changed.',
   critic_unavailable: 'The Design critic could not look at the picture.',
   critic_failed: 'The picture still failed the critic after its last round.',
-  studio_timed_out: 'The design studio ran out of time.'
+  studio_timed_out: 'The design studio ran out of time.',
+  not_designable: 'The section had no https photo to design with.',
+  layout_changed: 'The email’s sections and its draft did not match.'
 } as const
 export type CodedReason = keyof typeof codedReasons
 
