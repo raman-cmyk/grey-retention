@@ -359,3 +359,148 @@ describe('the copy step with the agents (REL-AI part 2b)', () => {
     ).toMatchObject({ reasonCode: 'copy_plain_fallback' })
   })
 })
+
+describe('the last check of the discount code (REL-OFF)', () => {
+  /** Every step but the design, saved, with the copy's code changed. */
+  const savedCopy = async (code: string | null) => {
+    const progress = await savedSteps()
+    const copy = await runBuildStep(
+      'copy',
+      { planned, store: await store(), offers: sampleOffers, progress },
+      ctxWith(null)
+    )
+    if (!copy.ok || !('output' in copy)) throw new Error('copy failed')
+    const output = JSON.parse(JSON.stringify(copy.output))
+    output.draft.code = code
+    return { ...progress, copy: output } as Record<string, unknown>
+  }
+  const design = async (progress: Record<string, unknown>) =>
+    runBuildStep(
+      'design',
+      { planned, store: await store(), offers: sampleOffers, progress },
+      ctxWith(null)
+    )
+
+  it('stores an email whose code is a working one within the max', async () => {
+    const result = await design(await savedCopy('CANDLE10'))
+    expect(result).toMatchObject({ ok: true, done: 'design' })
+  })
+
+  it('never stores an email with a code that is not a working one, or above the max', async () => {
+    expect(await design(await savedCopy('NOT-A-CODE'))).toEqual({
+      ok: false,
+      code: 'offer_unsafe'
+    })
+    const progress = await savedCopy('CANDLE10')
+    const sections = progress.sections as {
+      rules: { maxDiscountPercent: number }
+    }
+    sections.rules.maxDiscountPercent = 5
+    expect(await design(progress)).toEqual({ ok: false, code: 'offer_unsafe' })
+  })
+
+  it('never stores an email whose code was switched off in Settings since the first step', async () => {
+    const progress = await savedCopy('CANDLE10')
+    const result = await runBuildStep(
+      'design',
+      {
+        planned,
+        store: await store(),
+        offers: { offers: async () => ({ maxDiscountPercent: 20, codes: [] }) },
+        progress
+      },
+      ctxWith(null)
+    )
+    expect(result).toEqual({ ok: false, code: 'offer_unsafe' })
+  })
+
+  it('never stores an email whose code was removed and added again at another percent or end', async () => {
+    const progress = await savedCopy('CANDLE10')
+    const sections = progress.sections as {
+      rules: {
+        codes: { code: string; percent: number; expiresAt: string | null }[]
+      }
+    }
+    const candle = sections.rules.codes.find((c) => c.code === 'CANDLE10')!
+    const again = async (over: Partial<typeof candle>) =>
+      runBuildStep(
+        'design',
+        {
+          planned,
+          store: await store(),
+          offers: {
+            offers: async () => ({
+              maxDiscountPercent: 20,
+              codes: [{ ...candle, ...over }]
+            })
+          },
+          progress
+        },
+        ctxWith(null)
+      )
+    expect(await again({ percent: 5 })).toEqual({
+      ok: false,
+      code: 'offer_unsafe'
+    })
+    expect(
+      await again({
+        expiresAt: new Date(Date.now() + 40 * 86_400_000).toISOString()
+      })
+    ).toEqual({ ok: false, code: 'offer_unsafe' })
+    const same = await again({})
+    expect(same).toMatchObject({ ok: true, done: 'design' })
+    if (!same.ok || !('email' in same)) return
+    expect(same.email.offer).toEqual({
+      percent: candle.percent,
+      expiresAt: candle.expiresAt
+    })
+  })
+
+  it('tries again when Settings cannot be read', async () => {
+    const result = await runBuildStep(
+      'design',
+      {
+        planned,
+        store: await store(),
+        offers: {
+          offers: async () => {
+            throw new Error('down')
+          }
+        },
+        progress: await savedCopy('CANDLE10')
+      },
+      ctxWith(null)
+    )
+    expect(result).toEqual({ ok: false, code: 'offers_unreadable' })
+  })
+
+  it('checks what is drawn: the offer section shows exactly that code at its percent', async () => {
+    const progress = await savedCopy('CANDLE10')
+    const copy = progress.copy as {
+      draft: { blocks: { type: string; content: Record<string, unknown> }[] }
+    }
+    const banner = copy.draft.blocks.find((b) => b.type === 'offer_banner')!
+    banner.content.headline = '50% off'
+    expect(await design(progress)).toEqual({ ok: false, code: 'offer_unsafe' })
+    banner.content.headline = '10% off'
+    banner.content.code = 'OTHER'
+    expect(await design(progress)).toEqual({ ok: false, code: 'offer_unsafe' })
+    // An offer section without a code, or a code without one.
+    const none = await savedCopy(null)
+    expect(await design(none)).toEqual({ ok: false, code: 'offer_unsafe' })
+    const bare = await savedCopy('CANDLE10')
+    const draft = (bare.copy as { draft: { blocks: { type: string }[] } }).draft
+    draft.blocks = draft.blocks.filter((b) => b.type !== 'offer_banner')
+    expect(await design(bare)).toEqual({ ok: false, code: 'offer_unsafe' })
+  })
+
+  it('never stores an email whose code ends before it sends', async () => {
+    const progress = await savedCopy('CANDLE10')
+    const sections = progress.sections as {
+      rules: { codes: { code: string; expiresAt: string | null }[] }
+    }
+    for (const c of sections.rules.codes)
+      if (c.code === 'CANDLE10') c.expiresAt = '2020-01-01T00:00:00Z'
+    expect(await design(progress)).toEqual({ ok: false, code: 'offer_unsafe' })
+  })
+})
