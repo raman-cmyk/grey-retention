@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
 
 const selects: string[] = []
@@ -51,6 +51,12 @@ vi.mock('@/lib/supabase/server', () => ({
 
 const { latestPlanRun } = await import('./load')
 
+beforeEach(() => {
+  missingStep = false
+  runOver = {}
+  buildOver = {}
+})
+
 describe('the plan read model', () => {
   it('says which step an email is on', async () => {
     missingStep = false
@@ -80,12 +86,12 @@ describe('the plan read model', () => {
     buildOver = { state: 'failed', error_code: 'klaviyo_unavailable' }
     let read = await latestPlanRun(run.id, 'UTC')
     expect(read.ok && read.run?.builds[0].reason).toBe(
-      'Klaviyo could not be reached.'
+      'Klaviyo could not be reached. Try again later.'
     )
     buildOver = { state: 'failed', error_code: 'something_new' }
     read = await latestPlanRun(run.id, 'UTC')
     expect(read.ok && read.run?.builds[0].reason).toBe(
-      'Something went wrong while it was being made.'
+      'Something went wrong while it was being made. Try again.'
     )
     buildOver = {}
     expect(read.ok && read.run?.reason).toBeNull()
@@ -96,5 +102,14 @@ describe('the plan read model', () => {
       reason: 'Its 15 days began before the plan was ready.'
     })
     runOver = {}
+  })
+
+  it('gives a reason to a build in a state it does not know (shown as failed)', async () => {
+    buildOver = { state: 'cancelled', error_code: null }
+    const read = await latestPlanRun(run.id, 'UTC')
+    expect(read.ok && read.run?.builds[0]).toMatchObject({
+      state: 'failed',
+      reason: 'Something went wrong while it was being made. Try again.'
+    })
   })
 })

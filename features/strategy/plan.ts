@@ -680,14 +680,34 @@ export function keepPassing(
 
 /** A plain calendar from the brief: one slot per action, where it fits. */
 export function codeSlots(input: PlanInput, brief: BriefAction[]): Slot[] {
+  return codeCalendar(input, brief).slots
+}
+
+/**
+ * `codeSlots`, and for each action that fits no day, why (REL-084): the
+ * calendar rules its days broke, the most common first, so a planned email
+ * that never fit is not silent either.
+ */
+export function codeCalendar(
+  input: PlanInput,
+  brief: BriefAction[]
+): { slots: Slot[]; skipped: Problem[][] } {
   const audience = input.audiences[0]
-  if (!audience) return []
+  if (!audience)
+    return {
+      slots: [],
+      skipped: brief.map(() => [
+        { rule: 'unknown_audience', text: 'there is no audience.' }
+      ])
+    }
   const products = new Map(input.products.map((p) => [p.id, p]))
   const fallbackProduct = input.products.find(
     (p) => p.inStock && !p.availableFrom
   )
   const slots: Slot[] = []
+  const skipped: Problem[][] = []
   brief.forEach((a, actionIndex) => {
+    const seen = new Map<CalendarRule | 'critic', Problem & { n: number }>()
     const launched = a.evidenceIds
       .map(launchProduct)
       .find((id) => id && products.get(id)?.inStock)
@@ -713,13 +733,24 @@ export function codeSlots(input: PlanInput, brief: BriefAction[]): Slot[] {
         audienceId: audience.id
       }
       const trial = [...slots, candidate]
-      if (!calendarProblems(trial, input, brief).size) {
+      const problems = calendarProblems(trial, input, brief)
+      if (!problems.size) {
         slots.push(candidate)
         return
       }
+      for (const p of problems.get(trial.length - 1) ??
+        [...problems.values()][0]) {
+        const had = seen.get(p.rule)
+        seen.set(p.rule, { ...p, n: (had?.n ?? 0) + 1 })
+      }
     }
+    skipped.push(
+      seen.size
+        ? [...seen.values()].sort((x, y) => y.n - x.n)
+        : [{ rule: 'outside_window', text: 'no day was left for it.' }]
+    )
   })
-  return slots
+  return { slots, skipped }
 }
 
 // --------------------------------------------------------------- critic
@@ -991,23 +1022,46 @@ export async function planFifteenDays(
   return planOutput(input, actions, kept, dropped, source)
 }
 
-/** The plan as it is saved and shown: facts, prices and codes from code. */
+/**
+ * Why a planned email was left out, in the owner's words (REL-084): fixed
+ * words per calendar rule, never the rule's own text (it can quote ids an
+ * agent wrote) and never the critic's AI words.
+ */
+export const ruleWords: Record<CalendarRule | 'critic', string> = {
+  unknown_action: 'it did not match a goal of this plan',
+  outside_window: 'no day in these 15 days fit it',
+  outside_action: 'no day fit the dates of its goal',
+  blackout: 'its day is a day with no emails',
+  unknown_product: 'its product is not in your catalog',
+  out_of_stock: 'its product is out of stock',
+  not_launched: 'its product is not out yet',
+  unknown_offer: 'its offer is not one you chose',
+  offer_ended: 'its offer ends before that day',
+  offer_type: 'its offer did not fit the email',
+  unknown_audience: 'there is no audience to send it to',
+  stated_fact: 'its idea stated a number your store has not confirmed',
+  send_time: 'its time is outside your send hours',
+  same_day: 'that audience already gets an email that day',
+  weekly_cap: 'that week already has as many emails as you chose',
+  audience_cap: 'that audience already gets enough emails that week',
+  offer_spacing: 'it was too close to another offer email',
+  offer_share: 'too many of that week’s emails carried an offer',
+  critic: 'the strategy check still found a problem'
+}
+
 /**
  * REL-084: one plain note for the planned emails that were left out, so a
- * dropped email is never silent: the calendar rule each one broke (code's
- * own words), at most three reasons named. The critic's problems are AI
- * words, so they are summed up, not quoted. Null when nothing was dropped.
+ * dropped email is never silent: the rule each one broke, in the owner's
+ * words (`ruleWords`), at most three reasons named. Null when none.
  */
 export function droppedNote(dropped: readonly Problem[][]) {
   if (!dropped.length) return null
   const reasons = [
     ...new Set(
-      dropped.map((list) => {
-        const rule = list.find((p) => p.rule !== 'critic')
-        return rule
-          ? rule.text.replace(/\.$/, '')
-          : 'the strategy check still found a problem with it'
-      })
+      dropped.map(
+        (list) =>
+          ruleWords[list.find((p) => p.rule !== 'critic')?.rule ?? 'critic']
+      )
     )
   ]
   const named = reasons.slice(0, 3).join('; ')
@@ -1021,12 +1075,30 @@ export function droppedNote(dropped: readonly Problem[][]) {
   return `${count} left out: ${named}${more}.`
 }
 
+/**
+ * The chosen offers no email in the plan uses, named (REL-084): at most ten
+ * codes, so the note stays short. Null when every offer is used.
+ */
+export function unusedOffersNote(
+  offers: readonly { code: string }[],
+  used: ReadonlySet<string>
+) {
+  const left = offers.map((o) => o.code).filter((c) => !used.has(c))
+  if (!left.length) return null
+  const named = left.slice(0, 10).join(', ')
+  const more = left.length > 10 ? ` and ${left.length - 10} more` : ''
+  return `${left.length === 1 ? 'This offer is' : 'These offers are'} not in these 15 days: ${named}${more}.`
+}
+
+/** The plan as it is saved and shown: facts, prices and codes from code. */
 function planOutput(
   input: PlanInput,
   actions: BriefAction[],
   kept: Slot[],
   dropped: readonly Problem[][],
-  source: FifteenDayPlan['source']
+  source: FifteenDayPlan['source'],
+  /** Actions that fit no day (the code calendar): noted, not counted. */
+  skipped: readonly Problem[][] = []
 ): FifteenDayPlan {
   const facts = planEvidence(input)
   const { from, to } = windowOf(input)
@@ -1060,7 +1132,7 @@ function planOutput(
       (a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)
     )
   const notes: string[] = []
-  const left = droppedNote(dropped)
+  const left = droppedNote([...skipped, ...dropped])
   if (left) notes.push(left)
   if (
     input.offers.length &&
@@ -1070,6 +1142,13 @@ function planOutput(
     notes.push(
       `With ${input.sendsPerWeek} emails a week, an offer email would be more than ${offerSharePercent}% of the week, so no offer was planned. Choose more emails a week to run an offer.`
     )
+  else {
+    const unused = unusedOffersNote(
+      input.offers,
+      new Set(slotsOut.flatMap((s) => (s.offer ? [s.offer.code] : [])))
+    )
+    if (unused) notes.push(unused)
+  }
   return {
     start: from,
     end: to,
@@ -1089,15 +1168,19 @@ function planOutput(
 export function samplePlan(raw: PlanInput): FifteenDayPlan {
   const input = readPlanInput(raw)
   const actions = codeBrief(input)
+  const calendar = codeCalendar(input, actions)
   const { kept, dropped } = keepPassing(
-    codeSlots(input, actions),
+    calendar.slots,
     new Map(),
     input,
     actions
   )
-  return planOutput(input, actions, kept, dropped, {
-    brief: 'code',
-    planner: 'code',
-    critic: 'skipped'
-  })
+  return planOutput(
+    input,
+    actions,
+    kept,
+    dropped,
+    { brief: 'code', planner: 'code', critic: 'skipped' },
+    calendar.skipped
+  )
 }

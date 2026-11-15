@@ -437,12 +437,25 @@ describe('the offers a build uses', () => {
     expect(email.html).toContain('CANDLE10')
   })
 
-  it('gives no discount, never the sample, when the saved offers cannot be read', async () => {
-    const email = await builtWith('error')
+  it('tries an offer email again, never with the sample or no discount, when the saved offers cannot be read (REL-084)', async () => {
+    const { db, calls } = fakeDb([offerStep()], {}, 'error')
+    await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+    // Its 3 tries (a minute apart) then fail it with plain words.
+    expect(failure(calls)).toMatchObject({
+      code: 'offers_unreadable',
+      final: false
+    })
+    expect(calls.some((c) => c.fn === 'finish_email_step')).toBe(false)
+    expect(calls.some((c) => c.fn === 'finish_email_build')).toBe(false)
+  })
+
+  it('makes an email without an offer even when the saved offers cannot be read', async () => {
+    const { db, calls } = fakeDb([step()], {}, 'error')
+    await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+    const email = calls.find((c) => c.fn === 'finish_email_build')!.args
+      .result as BuiltEmail
     expect(email.code).toBeNull()
     expect(email.html).not.toContain('CANDLE10')
-    // No codes at all were read (the sample would have CANDLE10).
-    expect(email.changes).toContain('offer_not_in_codes')
   })
 })
 

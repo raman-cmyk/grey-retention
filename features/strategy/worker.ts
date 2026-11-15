@@ -28,6 +28,7 @@ import {
 } from './offers'
 import { databaseFallbackLog, type FallbackLog } from '@/features/fallback/log'
 import { keyPart } from '@/features/fallback/entry'
+import { planCode, type PlanFailureCode } from './failure-words'
 
 type Db = SupabaseClient<Database>
 
@@ -71,7 +72,11 @@ export async function runStrategyRuns(
 ) {
   const data = deps.data ?? sampleStrategyData
   const saved = deps.saved ?? new SupabaseOfferSource(db)
-  const fallbacks = deps.fallbacks ?? databaseFallbackLog(db)
+  const fallbacks =
+    deps.fallbacks ??
+    databaseFallbackLog(db, (lost) =>
+      logger.warn('Fallback could not be recorded', lost)
+    )
   const now = deps.now ?? Date.now
   const limit = deps.run ? 1 : (deps.limit ?? 2)
   let ran = 0
@@ -217,7 +222,11 @@ export async function runStrategyRuns(
       }
       ran++
     } catch (error) {
-      const code = stepCode(error)
+      // Only codes with plain words are stored (REL-084); the log keeps it.
+      const thrown = stepCode(error)
+      const code = planCode(thrown)
+      if (code !== thrown)
+        logger.error('Plan step threw', { run: run.id, code: thrown })
       const isFinal =
         (error as { final?: boolean })?.final === true ||
         code === 'store_data_invalid'
@@ -250,7 +259,7 @@ async function attemptsOf(db: Db, runId: string) {
 }
 
 /** A failure a retry cannot fix (bad stored or store data). */
-function final(code: string) {
+function final(code: PlanFailureCode) {
   return Object.assign(new Error(code), { code, final: true })
 }
 

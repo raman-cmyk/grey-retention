@@ -1,6 +1,7 @@
 import 'server-only'
 import { allSteps } from '@/features/email-build/step-names'
-import { buildReason, planReason } from './failure-words'
+import { buildReason } from '@/features/email-build/failure-words'
+import { planReason } from './failure-words'
 import { createClient } from '@/lib/supabase/server'
 import {
   storedPlan,
@@ -102,20 +103,22 @@ export async function latestPlanRun(
         'id,slot,state,sample_draft,error_code'
       )) as unknown as typeof found
     if (found.error) return { ok: false }
-    for (const b of found.data)
-      if (!(b.slot in builds))
-        builds[b.slot] = {
-          id: b.id,
-          state: (buildStates as readonly string[]).includes(b.state)
-            ? (b.state as EmailBuildView['state'])
-            : 'failed',
-          step: (allSteps as readonly string[]).includes(b.step)
-            ? (b.step as EmailBuildView['step'])
-            : 'sections',
-          sampleDraft: b.sample_draft,
-          // REL-084: a failed build always says why, in plain words.
-          reason: b.state === 'failed' ? buildReason(b.error_code) : null
-        }
+    for (const b of found.data) {
+      if (b.slot in builds) continue
+      const state = (buildStates as readonly string[]).includes(b.state)
+        ? (b.state as EmailBuildView['state'])
+        : 'failed'
+      builds[b.slot] = {
+        id: b.id,
+        state,
+        step: (allSteps as readonly string[]).includes(b.step)
+          ? (b.step as EmailBuildView['step'])
+          : 'sections',
+        sampleDraft: b.sample_draft,
+        // REL-084: a failed build always says why, in plain words.
+        reason: state === 'failed' ? buildReason(b.error_code) : null
+      }
+    }
   }
   return {
     ok: true,

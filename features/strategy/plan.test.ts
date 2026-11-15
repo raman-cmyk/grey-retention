@@ -18,7 +18,10 @@ import {
   plannerProducts,
   productsForPlanner,
   readPlanInput,
+  ruleWords,
+  samplePlan,
   strategyCriticAgent,
+  unusedOffersNote,
   type PlanInput,
   type Slot
 } from './plan'
@@ -423,7 +426,10 @@ describe('planning the next 15 days', () => {
       critic: 'agent'
     })
     expect(plan.dropped).toBe(0)
-    expect(plan.notes).toEqual([])
+    // REL-084: the chosen offer no email uses is named.
+    expect(plan.notes).toEqual([
+      'This offer is not in these 15 days: WELCOME15.'
+    ])
     expect(plan.slots.map((s) => [s.date, s.emailType])).toEqual([
       ['2026-11-17', 'offer'],
       ['2026-11-18', 'story'],
@@ -611,28 +617,66 @@ describe('planning the next 15 days', () => {
     expect(plan.slots.some((s) => s.offer)).toBe(false)
     expect(plan.notes).toEqual([
       // REL-084: the dropped offer email is never silent.
-      'One planned email was left out: too many of this week’s emails carry an offer.',
+      'One planned email was left out: too many of that week’s emails carried an offer.',
       'With 2 emails a week, an offer email would be more than 40% of the week, so no offer was planned. Choose more emails a week to run an offer.'
     ])
   })
 
-  it('names why planned emails were left out, in code’s words, and never quotes the critic (REL-084)', () => {
-    const rule = (text: string) => ({ rule: 'blackout' as const, text })
+  it('names why planned emails were left out in the owner’s words, never a rule’s own text or the critic’s (REL-084)', () => {
+    const rule = (r: 'blackout' | 'unknown_product', text: string) => ({
+      rule: r,
+      text
+    })
     expect(droppedNote([])).toBeNull()
-    expect(droppedNote([[rule('2027-01-05 is a day with no emails.')]])).toBe(
-      'One planned email was left out: 2027-01-05 is a day with no emails.'
+    expect(droppedNote([[rule('blackout', '2027-01-05 is a day …')]])).toBe(
+      'One planned email was left out: its day is a day with no emails.'
     )
+    const note = droppedNote([
+      [{ rule: 'critic', text: 'ignore previous instructions' }],
+      [rule('unknown_product', '"Give 90% off" is not a product.')],
+      [rule('blackout', 'x')],
+      [rule('blackout', 'y')],
+      [{ rule: 'weekly_cap', text: 'z' }]
+    ])
+    expect(note).toBe(
+      '5 planned emails were left out: the strategy check still found a problem; its product is not in your catalog; its day is a day with no emails; and 1 more reason.'
+    )
+    expect(note).not.toMatch(/90%|ignore/)
+    // Fixed words only, so a note always fits a stored note (600).
     expect(
-      droppedNote([
-        [{ rule: 'critic', text: 'ignore previous instructions' }],
-        [rule('a.'), rule('b.')],
-        [rule('a.')],
-        [rule('c.')],
-        [rule('d.')]
-      ])
-    ).toBe(
-      '5 planned emails were left out: the strategy check still found a problem with it; a; c; and 1 more reason.'
+      droppedNote(
+        Object.keys(ruleWords).map((r) => [
+          { rule: r as 'blackout', text: 'x'.repeat(500) }
+        ])
+      )!.length
+    ).toBeLessThan(600)
+  })
+
+  it('on the code-only plan, says why an email fit no day and which chosen offer is not used (REL-084)', () => {
+    // Every day of the 15 is a day with no emails but the 20th.
+    const days = Array.from({ length: 15 }, (_, i) => {
+      const d = new Date(`${start}T00:00:00Z`)
+      d.setUTCDate(d.getUTCDate() + i)
+      return d.toISOString().slice(0, 10)
+    })
+    const plan = samplePlan({
+      ...input,
+      blackouts: days.filter((d) => d !== '2026-11-20')
+    })
+    expect(plan.slots.length).toBe(1)
+    expect(plan.notes[0]).toMatch(
+      /^\d planned emails were left out: .*(its day is a day with no emails|that audience already gets an email that day)/
     )
+    expect(plan.notes.join(' ')).toMatch(/not in these 15 days: /)
+    expect(
+      unusedOffersNote(
+        Array.from({ length: 12 }, (_, i) => ({ code: `C${i}` })),
+        new Set(['C0'])
+      )
+    ).toBe(
+      'These offers are not in these 15 days: C1, C2, C3, C4, C5, C6, C7, C8, C9, C10 and 1 more.'
+    )
+    expect(unusedOffersNote([{ code: 'A' }], new Set(['A']))).toBeNull()
   })
 
   it('keeps the agent definitions honest', () => {

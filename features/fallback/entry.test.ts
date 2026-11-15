@@ -300,6 +300,40 @@ describe('the logs', () => {
     expect(rpc).toHaveBeenCalledTimes(1)
   })
 
+  it('cut long words to fit instead of losing the entry, and log one that is lost (REL-084)', async () => {
+    const warn = vi.fn()
+    const rpc = vi.fn(async () => ({ data: 'id-1', error: null }))
+    const log = databaseFallbackLog({ rpc }, warn)
+    expect(
+      await log.record({
+        ...entry,
+        reason: 'a planned product changed; '.repeat(40),
+        fallback: 'used another product; '.repeat(30)
+      })
+    ).toEqual({ ok: true, id: 'id-1' })
+    const sent = (rpc.mock.calls[0] as unknown[])[1] as {
+      reason_text: string
+      fallback_text: string
+    }
+    expect(sent.reason_text.length).toBeLessThanOrEqual(500)
+    expect(sent.fallback_text.length).toBeLessThanOrEqual(300)
+    expect(warn).not.toHaveBeenCalled()
+    await log.record({ ...entry, agent: 'Bad agent' })
+    expect(warn).toHaveBeenCalledWith({
+      agent: 'Bad agent',
+      reasonCode: entry.reasonCode,
+      code: 'invalid_entry'
+    })
+    // A log that throws never breaks the job.
+    const broken = databaseFallbackLog({ rpc }, () => {
+      throw new Error('down')
+    })
+    expect(await broken.record({ ...entry, agent: 'Bad agent' })).toEqual({
+      ok: false,
+      code: 'invalid_entry'
+    })
+  })
+
   it('keep one entry per problem in memory, like the table', async () => {
     const log = memoryFallbackLog()
     const first = await log.record(entry)

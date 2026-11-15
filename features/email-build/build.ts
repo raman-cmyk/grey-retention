@@ -74,8 +74,12 @@ export type BuildResult =
   | { ok: true; email: BuiltEmail }
   | {
       ok: false
-      /** Short codes for the build's error column; all final. */
-      code: 'slot_time_invalid' | 'copy_failed' | 'render_failed'
+      /** Short codes for the build's error column. */
+      code:
+        | 'slot_time_invalid'
+        | 'offers_unreadable'
+        | 'copy_failed'
+        | 'render_failed'
     }
 
 /** No AI on the code-only path: any agent call would be a bug. */
@@ -132,7 +136,7 @@ export async function sectionsStep(
   ctx: BuildCtx
 ): Promise<
   | { ok: true; output: SectionsOutput }
-  | { ok: false; code: 'slot_time_invalid' }
+  | { ok: false; code: 'slot_time_invalid' | 'offers_unreadable' }
 > {
   const { planned, store, offers } = input
   // The planned local time, as an instant (the earlier one on a DST fold).
@@ -141,7 +145,16 @@ export async function sectionsStep(
     store.timezone
   )[0]
   if (!sendAt) return { ok: false, code: 'slot_time_invalid' }
-  const read = await offersAt(offers, ctx.tenantId, sendAt)
+  // A planned offer needs the saved offers: a read that failed is tried
+  // again (REL-084), never built as "no discount" with the wrong reason.
+  // An email without an offer goes on with none.
+  const saved = await offers.offers(ctx.tenantId, sendAt).catch(() => null)
+  if (!saved && planned.offer) return { ok: false, code: 'offers_unreadable' }
+  const read = await offersAt(
+    { offers: async () => saved },
+    ctx.tenantId,
+    sendAt
+  )
   const rules = {
     maxDiscountPercent: read.maxDiscountPercent,
     codes: [...read.codes]
@@ -288,7 +301,10 @@ export async function lockedDraft(
   ctx: BuildCtx
 ): Promise<
   | { ok: true; draft: Draft; sendAt: string; changes: ChangeKey[] }
-  | { ok: false; code: 'slot_time_invalid' | 'copy_failed' }
+  | {
+      ok: false
+      code: 'slot_time_invalid' | 'offers_unreadable' | 'copy_failed'
+    }
 > {
   const sections = await sectionsStep(input, ctx)
   if (!sections.ok) return sections
