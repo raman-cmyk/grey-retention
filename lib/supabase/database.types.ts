@@ -707,6 +707,57 @@ export type Database = {
         }
         Relationships: []
       }
+      brand_book_corrections: {
+        Row: {
+          action: string
+          created_at: string
+          created_by: string | null
+          id: string
+          original: string | null
+          section: string
+          tenant_id: string
+          value: string | null
+          withdrawn_at: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          original?: string | null
+          section: string
+          tenant_id: string
+          value?: string | null
+          withdrawn_at?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          original?: string | null
+          section?: string
+          tenant_id?: string
+          value?: string | null
+          withdrawn_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_book_corrections_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_book_corrections_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       brand_books: {
         Row: {
           content: Json
@@ -7083,6 +7134,16 @@ export type Database = {
         }
         Returns: undefined
       }
+      correct_brand_book: {
+        Args: {
+          book_action: string
+          book_original: string
+          book_section: string
+          book_value: string
+          t: string
+        }
+        Returns: string
+      }
       create_conversation: {
         Args: { t: string; title: string; visibility?: string }
         Returns: string
@@ -8151,6 +8212,10 @@ export type Database = {
       }
       use_klaviyo_timezone: {
         Args: { expected: string; expected_zone: string; t: string }
+        Returns: undefined
+      }
+      withdraw_brand_book_correction: {
+        Args: { correction: string; t: string }
         Returns: undefined
       }
     }

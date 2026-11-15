@@ -5,6 +5,31 @@ describe('a recorded change in plain words', () => {
   it.each([
     ['max_discount_changed', { from: null, to: 20 }, 'Max discount set to 20%'],
     [
+      'brand_book_corrected',
+      { section: 'voice', action: 'replace' },
+      'Brand book: changed a line about its voice'
+    ],
+    [
+      'brand_book_corrected',
+      { section: 'customers.love', action: 'add' },
+      'Brand book: added a line about what customers love'
+    ],
+    [
+      'brand_book_corrected',
+      { section: 'facts.returnDays', action: 'replace' },
+      'Brand book: returns set'
+    ],
+    [
+      'brand_book_corrected',
+      { section: 'facts.guaranteeDays', action: 'remove' },
+      'Brand book: the money-back guarantee cleared'
+    ],
+    [
+      'brand_book_correction_withdrawn',
+      { section: 'marketing', action: 'remove' },
+      'Brand book: a correction about its marketing was taken back'
+    ],
+    [
       'max_discount_changed',
       { from: 20, to: 25 },
       'Max discount changed from 20% to 25%'

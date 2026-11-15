@@ -2,8 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 
 /**
- * The workspace's record of who changed the offer limits and Klaviyo
- * (BAS-006), recorded by the database as it happens. Team changes have
+ * The workspace's record of who changed the offer limits, Klaviyo and the
+ * Brand book (BAS-006, ONB-058), recorded by the database as it happens. Team changes have
  * their own list on the Team page (`teamPage`).
  */
 export const changeKinds = [
@@ -14,8 +14,24 @@ export const changeKinds = [
   'discount_code_retired',
   'klaviyo_connection_changed',
   'klaviyo_key_saved',
-  'klaviyo_key_refused'
+  'klaviyo_key_refused',
+  'brand_book_corrected',
+  'brand_book_correction_withdrawn'
 ] as const
+
+/** What a Brand book correction was about, in plain words (ONB-058). */
+const bookSections: Record<string, string> = {
+  offering: 'what the brand sells',
+  'customers.who': 'who its customers are',
+  'customers.love': 'what customers love',
+  'customers.worries': 'what customers worry about',
+  voice: 'its voice',
+  marketing: 'its marketing',
+  'facts.freeShipping': 'free shipping',
+  'facts.returnDays': 'returns',
+  'facts.guaranteeDays': 'the money-back guarantee',
+  'facts.deliveryDays': 'the delivery time'
+}
 
 export type Change = { id: string; text: string; by: string; at: string }
 
@@ -81,6 +97,29 @@ export function changeText(
   detail: Detail,
   timeZone = 'UTC'
 ): string | null {
+  if (
+    kind === 'brand_book_corrected' ||
+    kind === 'brand_book_correction_withdrawn'
+  ) {
+    const section = text(detail.section)
+    const about = section ? bookSections[section] : undefined
+    if (!about) return null
+    if (kind === 'brand_book_correction_withdrawn')
+      return `Brand book: a correction about ${about} was taken back`
+    const fact = section!.startsWith('facts.')
+    const action = text(detail.action)
+    if (fact && action === 'replace') return `Brand book: ${about} set`
+    if (fact && action === 'remove') return `Brand book: ${about} cleared`
+    const did =
+      action === 'add'
+        ? 'added a line'
+        : action === 'remove'
+          ? 'removed a line'
+          : action === 'replace'
+            ? 'changed a line'
+            : null
+    return did ? `Brand book: ${did} about ${about}` : null
+  }
   if (kind === 'max_discount_changed') {
     const to = percent(detail.to)
     if (!to) return null
