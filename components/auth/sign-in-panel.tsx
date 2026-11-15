@@ -16,12 +16,15 @@ export function SignInPanel({
   title,
   description,
   surface,
-  resetHref = '/forgot-password'
+  resetHref = '/forgot-password',
+  next
 }: {
   title: string
   description: string
   surface: AuthSurface
   resetHref?: Route
+  /** The page to go back to after signing in (checked again on the server). */
+  next?: string | null
 }) {
   const [state, formAction, pending] = useActionState(
     signIn.bind(null, surface),
@@ -36,6 +39,7 @@ export function SignInPanel({
         {description}
       </p>
       <form action={formAction} className="mt-9 space-y-5">
+        {next ? <input type="hidden" name="next" value={next} /> : null}
         <label className="block">
           <span className="mb-2 block text-sm font-medium text-[var(--text)]">
             Email
