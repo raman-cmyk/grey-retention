@@ -8,15 +8,27 @@ import {
   saveBrandBook,
   staleBooks,
   within,
+  withCorrections,
   writeBrandBook,
   type BrandBookParts
 } from './brand-book'
+import type { Correction } from './brand-book-corrections'
 import type { CatalogEntry } from './catalog/read'
 import type { Finding } from './findings'
 import { historySnapshot, windowRead } from './history/facts'
 import type { StoredHistory } from './history/read'
 
 const tenantId = '00000000-0000-4000-8000-000000000101'
+let c = 0
+const correction = (over: Partial<Correction>): Correction => ({
+  id: `c${++c}`,
+  section: 'voice',
+  original: null,
+  action: 'add',
+  value: null,
+  createdAt: '2026-11-15T10:00:00Z',
+  ...over
+})
 const found = (
   topic: string,
   statement: string,
@@ -420,7 +432,8 @@ describe('writeBrandBook (ONB-106b)', () => {
     findings: vi.fn(async () => parts().findings as Finding[]),
     catalog: vi.fn(async () => parts().catalog as CatalogEntry[]),
     history: vi.fn(async () => history()),
-    timezone: vi.fn(async () => 'America/New_York')
+    timezone: vi.fn(async () => 'America/New_York'),
+    corrections: vi.fn(async () => [] as Correction[])
   })
   const profile = {
     brand_name: 'Linen & Co',
@@ -455,6 +468,39 @@ describe('writeBrandBook (ONB-106b)', () => {
     })
   })
 
+  it('saves the book with the owner’s corrections (ONB-058)', async () => {
+    const { db, rpc } = client({
+      profile,
+      status: { currency: 'USD', featurable: 3, live: true }
+    })
+    const r = {
+      ...reads(),
+      corrections: vi.fn(async () => [
+        correction({
+          section: 'voice',
+          original: 'calm and  plain.',
+          action: 'replace',
+          value: 'Warm and witty.'
+        }),
+        correction({
+          section: 'facts.returnDays',
+          action: 'replace',
+          value: '60'
+        })
+      ])
+    }
+    expect(await writeBrandBook(db, tenantId, r)).toBe(1)
+    expect(r.corrections).toHaveBeenCalledWith(db, tenantId)
+    const saved = rpc.mock.calls[0]![1] as {
+      content: { observed: { voice: string[] }; facts: { returnDays: number } }
+    }
+    expect(saved.content.observed.voice).toEqual(['Warm and witty.'])
+    expect(saved.content.facts.returnDays).toBe(60)
+    expect(saved.content).toMatchObject({
+      corrected: ['facts.returnDays', 'voice']
+    })
+  })
+
   it('never saves a sample book for a real brand, and an unapproved profile is not confirmed', async () => {
     const sampleReads = {
       ...reads(),
@@ -477,26 +523,96 @@ describe('writeBrandBook (ONB-106b)', () => {
     expect(saved.content).toMatchObject({ owner: null, sample: true })
   })
 
-  it('throws when the profile or the catalog read fails', async () => {
+  it('throws when the profile, the catalog or the corrections read fails', async () => {
     for (const table of ['brand_profiles', 'catalog_status'])
       await expect(
         writeBrandBook(client({ error: table }).db, tenantId, reads())
       ).rejects.toMatchObject({ code: '42501' })
+    const r = {
+      ...reads(),
+      corrections: vi.fn(async () => Promise.reject({ code: 'PGRST000' }))
+    }
+    const { db, rpc } = client({ profile })
+    await expect(writeBrandBook(db, tenantId, r)).rejects.toMatchObject({
+      code: 'PGRST000'
+    })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+})
+
+describe('withCorrections (ONB-058)', () => {
+  it('leaves a book he never corrected, or whose lines are gone, as it is', () => {
+    const book = brandBookFrom(parts())
+    expect(withCorrections(book, [])).toBe(book)
+    expect(
+      withCorrections(book, [
+        correction({
+          section: 'voice',
+          original: 'A line no reader found.',
+          action: 'remove'
+        })
+      ])
+    ).toBe(book)
+    expect(book).not.toHaveProperty('corrected')
+  })
+
+  it('makes his fact the confirmed one and takes it out of unclear', () => {
+    const book = brandBookFrom(
+      parts({ findings: [returns(30, 'returns'), returns(0, 'product')] })
+    )
+    expect(book.unclear.map((u) => u.topic)).toEqual(['returns'])
+    const own = withCorrections(book, [
+      correction({
+        section: 'facts.returnDays',
+        action: 'replace',
+        value: '30'
+      })
+    ])
+    expect(own.facts.returnDays).toBe(30)
+    expect(own.unclear).toEqual([])
+    expect(own.corrected).toEqual(['facts.returnDays'])
+    // The book given is not changed.
+    expect(book.facts.returnDays).toBeNull()
+  })
+
+  it('cuts the readers’ lines before his own when the book is too long', () => {
+    const long = (n: number) => `${'Reader line about linen '.repeat(10)}${n}.`
+    const book = brandBookFrom(parts())
+    book.observed.marketing = Array.from({ length: 60 }, (_, i) => long(i))
+    const mine = 'Our ads show real customers at home.'
+    const own = withCorrections(book, [
+      correction({ section: 'marketing', action: 'add', value: mine })
+    ])
+    expect(JSON.stringify(own).length).toBeLessThanOrEqual(maxBookChars)
+    expect(own.observed.marketing).toContain(mine)
+    expect(own.observed.marketing.length).toBeLessThan(61)
   })
 })
 
 describe('staleBooks and within (ONB-106b)', () => {
-  function client(reads: unknown[], books: unknown[]) {
+  function client(
+    reads: unknown[],
+    books: unknown[],
+    corrections: { made?: unknown[]; withdrawn?: unknown[] } = {}
+  ) {
     const db = {
       from: (table: string) => {
+        let cols = ''
         const chain = {
-          select: () => chain,
+          select: (c: string) => ((cols = c), chain),
           in: () => chain,
           eq: () => chain,
           gte: () => chain,
           order: () => chain,
           limit: async () => ({
-            data: table === 'job_runs' ? reads : books,
+            data:
+              table === 'job_runs'
+                ? reads
+                : table === 'brand_book_corrections'
+                  ? cols.includes('withdrawn_at')
+                    ? (corrections.withdrawn ?? [])
+                    : (corrections.made ?? [])
+                  : books,
             error: null
           })
         }
@@ -524,6 +640,28 @@ describe('staleBooks and within (ONB-106b)', () => {
       'c'
     ])
     expect(await staleBooks(client([], []), { since: 'x' })).toEqual([])
+  })
+
+  it('finds a book older than the owner’s newest correction, made or taken back (ONB-058)', async () => {
+    const db = client(
+      [],
+      [
+        { tenant_id: 'a', created_at: '2026-11-15T09:30:00Z' },
+        { tenant_id: 'b', created_at: '2026-11-15T09:30:00Z' },
+        { tenant_id: 'c', created_at: '2026-11-15T09:30:00Z' }
+      ],
+      {
+        made: [
+          { tenant_id: 'a', at: '2026-11-15T10:00:00Z' },
+          { tenant_id: 'b', at: '2026-11-15T09:00:00Z' }
+        ],
+        withdrawn: [{ tenant_id: 'c', at: '2026-11-15T11:00:00Z' }]
+      }
+    )
+    expect(await staleBooks(db, { since: '2026-11-13T00:00:00Z' })).toEqual([
+      'c',
+      'a'
+    ])
   })
 
   it('waits for a write at most so long', async () => {

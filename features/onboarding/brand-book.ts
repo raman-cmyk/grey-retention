@@ -8,6 +8,7 @@ import {
   trueFacts,
   type FactTopic
 } from './brand-facts'
+import { applyCorrections, type Correction } from './brand-book-corrections'
 import type { CatalogEntry } from './catalog/read'
 import { claimsSafety } from './claims-safety'
 import type { Finding, FindingSource, FindingTopic } from './findings'
@@ -83,6 +84,11 @@ export type BrandBookContent = {
   /** Why some claims are off limits for this kind of brand (ONB-062). */
   avoid: string[]
   sources: FindingSource[]
+  /**
+   * ONB-058: the sections the owner corrected (his facts are in `facts`,
+   * his lines in `observed`). Absent when he corrected nothing.
+   */
+  corrected?: string[]
 }
 
 export type BrandBookParts = {
@@ -129,8 +135,17 @@ const site = (domain: string | null) => {
   return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(d) ? `https://${d}` : null
 }
 
-/** Drops the least needed observed lines until the book fits. */
-function fit(book: BrandBookContent): BrandBookContent {
+/** A line whatever its case and spacing (as ONB-058 matches it). */
+const lineKey = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase()
+
+/**
+ * Drops the least needed observed lines until the book fits: the readers'
+ * first, the owner's own lines (`keep`, ONB-058) only after them.
+ */
+function fit(
+  book: BrandBookContent,
+  keep: ReadonlySet<string> = new Set()
+): BrandBookContent {
   const size = () => JSON.stringify(book).length
   const lists = [
     book.observed.marketing,
@@ -142,6 +157,11 @@ function fit(book: BrandBookContent): BrandBookContent {
     book.products.bestsellers,
     book.observed.offering
   ]
+  const readers = (list: string[]) => {
+    for (let i = list.length - 1; i >= 0 && size() > maxBookChars; i--)
+      if (!keep.has(lineKey(list[i]!))) list.splice(i, 1)
+  }
+  for (const list of lists) readers(list)
   for (const list of lists)
     while (size() > maxBookChars && list.length) list.pop()
   if (size() > maxBookChars && book.observed.sending)
@@ -313,16 +333,19 @@ export async function writeBrandBook(
     catalog: (db: Db, t: string) => Promise<CatalogEntry[]>
     history: (db: Db, t: string) => Promise<StoredHistory | null>
     timezone: (db: Db, t: string) => Promise<string>
+    /** ONB-058: the owner's live corrections, oldest first. */
+    corrections: (db: Db, t: string) => Promise<Correction[]>
   }
 ): Promise<number | null> {
-  const [findings, catalog, history, timezone, profile, status] =
+  const [findings, catalog, history, timezone, profile, status, corrections] =
     await Promise.all([
       reads.findings(db, tenantId),
       reads.catalog(db, tenantId),
       reads.history(db, tenantId),
       reads.timezone(db, tenantId),
       profileOf(db, tenantId),
-      catalogStatusOf(db, tenantId)
+      catalogStatusOf(db, tenantId),
+      reads.corrections(db, tenantId)
     ])
   const approved =
     profile !== null &&
@@ -348,7 +371,30 @@ export async function writeBrandBook(
       : null
   })
   if (book.sample && profile?.synthetic !== true) return null
-  return saveBrandBook(db, tenantId, book)
+  return saveBrandBook(db, tenantId, withCorrections(book, corrections))
+}
+
+/**
+ * The book with the owner's corrections (ONB-058): his facts confirmed and
+ * no longer unclear, his lines in place of the readers'. Cut to size, his
+ * own lines go last. A book he never corrected is unchanged.
+ */
+export function withCorrections(
+  book: BrandBookContent,
+  corrections: readonly Correction[]
+): BrandBookContent {
+  if (!corrections.length) return book
+  const corrected = applyCorrections(book, corrections)
+  // Nothing he named is in this book (yet): the book as it is.
+  if (!corrected.corrected.length) return book
+  const own = new Set(
+    corrections.flatMap((c) =>
+      !c.section.startsWith('facts.') && c.action !== 'remove' && c.value
+        ? [lineKey(c.value)]
+        : []
+    )
+  )
+  return fit(corrected, own)
 }
 
 /** The onboarding readers' jobs (a read that finished changes the book). */
@@ -361,9 +407,10 @@ const readerKinds = [
 ]
 
 /**
- * Workspaces whose newest finished read (since `since`) is newer than
- * their newest Brand book: a write that was skipped or failed is caught up
- * by the next readers' run. At most `limit`, newest reads first.
+ * Workspaces whose newest finished read, or the owner's newest correction
+ * made or taken back (ONB-058), since `since`, is newer than their newest
+ * Brand book: a write that was skipped or failed is caught up by the next
+ * readers' run. At most `limit`, newest first.
  */
 export async function staleBooks(
   db: Db,
@@ -378,9 +425,28 @@ export async function staleBooks(
     .order('updated_at', { ascending: false })
     .limit(200)
   if (reads.error) throw reads.error
+  const changes = (column: 'created_at' | 'withdrawn_at') =>
+    db
+      .from('brand_book_corrections')
+      .select(`tenant_id,at:${column}`)
+      .gte(column, since)
+      .order(column, { ascending: false })
+      .limit(200)
+  const [made, withdrawn] = await Promise.all([
+    changes('created_at'),
+    changes('withdrawn_at')
+  ])
+  if (made.error) throw made.error
+  if (withdrawn.error) throw withdrawn.error
   const newest = new Map<string, string>()
-  for (const r of reads.data ?? [])
-    if (!newest.has(r.tenant_id)) newest.set(r.tenant_id, r.updated_at)
+  const seen = (tenant: string, at: string | null) => {
+    if (!at) return
+    const was = newest.get(tenant)
+    if (!was || Date.parse(at) > Date.parse(was)) newest.set(tenant, at)
+  }
+  for (const r of reads.data ?? []) seen(r.tenant_id, r.updated_at)
+  for (const c of [...(made.data ?? []), ...(withdrawn.data ?? [])])
+    seen(c.tenant_id, c.at)
   if (!newest.size) return []
   const books = await db
     .from('brand_books')
@@ -393,6 +459,7 @@ export async function staleBooks(
   for (const b of books.data ?? [])
     if (!written.has(b.tenant_id)) written.set(b.tenant_id, b.created_at)
   return [...newest]
+    .sort((a, b) => Date.parse(b[1]) - Date.parse(a[1]))
     .filter(
       ([t, at]) =>
         !written.has(t) || Date.parse(written.get(t)!) < Date.parse(at)

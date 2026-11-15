@@ -4,6 +4,7 @@ import type { Database } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
 import { workspaceTimezone } from '@/features/strategy/offers'
 import { staleBooks, within, writeBrandBook } from './brand-book'
+import { listCorrections } from './brand-book-corrections'
 import { listCatalog } from './catalog/read'
 import { listFindings } from './findings'
 import { readKlaviyoHistory } from './history/read'
@@ -51,7 +52,8 @@ const writeOnboardedBrandBook = (db: Db, tenantId: string) =>
     findings: (d, t) => listFindings(d, t),
     catalog: (d, t) => listCatalog(d, t),
     history: readKlaviyoHistory,
-    timezone: workspaceTimezone
+    timezone: workspaceTimezone,
+    corrections: listCorrections
   })
 
 export type ReadersRun =
