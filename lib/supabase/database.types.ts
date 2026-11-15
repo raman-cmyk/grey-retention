@@ -714,6 +714,7 @@ export type Database = {
           created_by: string | null
           id: string
           original: string | null
+          replaced: boolean
           section: string
           tenant_id: string
           value: string | null
@@ -725,6 +726,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           original?: string | null
+          replaced?: boolean
           section: string
           tenant_id: string
           value?: string | null
@@ -736,6 +738,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           original?: string | null
+          replaced?: boolean
           section?: string
           tenant_id?: string
           value?: string | null

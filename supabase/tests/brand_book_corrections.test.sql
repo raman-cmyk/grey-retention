@@ -39,7 +39,29 @@ select throws_ok($$select public.withdraw_brand_book_correction('00000000-0000-4
   (select id from public.brand_book_corrections where section = 'marketing'))$$,'PT409',null,'taking it back twice is a conflict');
 select throws_ok($$select public.withdraw_brand_book_correction('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000ffff')$$,'PT409',null,'so is an unknown one');
 
+-- The same line whatever its case and spacing.
+select isnt(public.correct_brand_book('00000000-0000-4000-8000-000000000101','voice','  LOUD   and bold. ','replace','Plain and warm.'),null,'the same line in other case and spacing');
+select is((select count(*)::integer from public.brand_book_corrections where section = 'voice' and withdrawn_at is null),1,'withdraws the older correction');
+select is((select value from public.brand_book_corrections where section = 'voice' and withdrawn_at is null),'Plain and warm.','the newest one is live');
+select ok((select bool_and(replaced) from public.brand_book_corrections where section = 'voice' and withdrawn_at is not null),'replaced, not taken back');
+
+-- A line the owner added: changing it adds his new words, removing it takes it back.
+select isnt(public.correct_brand_book('00000000-0000-4000-8000-000000000101','offering','linen clothing MADE in portugal.','replace','Linen made in Porto.'),null,'he changes his own line');
+select is((select value from public.brand_book_corrections where section = 'offering' and withdrawn_at is null),'Linen made in Porto.','his new words are the added line');
+select is((select action from public.brand_book_corrections where section = 'offering' and withdrawn_at is null),'add','still an added line');
+select isnt(public.correct_brand_book('00000000-0000-4000-8000-000000000101','offering','Linen made in Porto.','remove',null),null,'he removes his own line');
+select is((select count(*)::integer from public.brand_book_corrections where section = 'offering' and withdrawn_at is null),0,'it is taken back');
+select isnt(public.correct_brand_book('00000000-0000-4000-8000-000000000101','offering',null,'add','Linen made in Porto.'),null,'and can be added again');
+
+-- At most 20 added lines per section.
+select lives_ok($$select public.correct_brand_book('00000000-0000-4000-8000-000000000101','customers.love',null,'add','Line ' || n) from generate_series(1,20) n$$,'twenty added lines');
+select throws_ok($$select public.correct_brand_book('00000000-0000-4000-8000-000000000101','customers.love',null,'add','One more')$$,'PT409',null,'not a twenty-first');
+
 -- Checks.
+select throws_ok($$select public.correct_brand_book('00000000-0000-4000-8000-000000000101','voice','Calm.',null,'x')$$,'23514',null,'an action is needed');
+select throws_ok($$select public.correct_brand_book('00000000-0000-4000-8000-000000000101','voice','Calm.','replace',E'\n\t ')$$,'23514',null,'blank words are no words');
+select throws_ok($$select public.correct_brand_book('00000000-0000-4000-8000-000000000101','facts.deliveryDays',null,'replace','3-95')$$,'23514',null,'delivery in at most 90 days');
+select throws_ok($$select public.correct_brand_book('00000000-0000-4000-8000-000000000101','facts.deliveryDays',null,'replace','0-0')$$,'23514',null,'and at least 1');
 select throws_ok($$select public.correct_brand_book('00000000-0000-4000-8000-000000000101','voice',null,'remove',null)$$,'23514',null,'a line to remove needs its words');
 select throws_ok($$select public.correct_brand_book('00000000-0000-4000-8000-000000000101','voice','Calm.','remove','x')$$,'23514',null,'removing takes no new words');
 select throws_ok($$select public.correct_brand_book('00000000-0000-4000-8000-000000000101','voice','Calm.','replace',null)$$,'23514',null,'replacing needs new words');
@@ -60,8 +82,12 @@ select throws_ok($$insert into public.brand_book_corrections (tenant_id, section
 
 -- The change history.
 reset role;
-select is((select count(*)::integer from public.workspace_events where tenant_id = '00000000-0000-4000-8000-000000000101' and kind = 'brand_book_corrected'),8,'each correction is in the change history');
-select is((select count(*)::integer from public.workspace_events where tenant_id = '00000000-0000-4000-8000-000000000101' and kind = 'brand_book_correction_withdrawn'),2,'and each one taken back, the replaced one included');
+select is((select count(*)::integer from public.workspace_events where tenant_id = '00000000-0000-4000-8000-000000000101' and kind = 'brand_book_corrected'),31,'each correction is in the change history');
+select is((select count(*)::integer from public.workspace_events where tenant_id = '00000000-0000-4000-8000-000000000101' and kind = 'brand_book_correction_withdrawn'),2,'and each one taken back, never one a newer correction replaced');
+select ok((select bool_and(e.actor_id = '00000000-0000-4000-8000-000000000001' and e.entity_id = c.id)
+  from public.workspace_events e join public.brand_book_corrections c on c.id = e.entity_id
+  where e.kind like 'brand_book_%'),'each names who did it and which correction');
+select is((select detail from public.workspace_events where kind = 'brand_book_corrected' and detail->>'section' = 'facts.returnDays'),'{"action": "replace", "section": "facts.returnDays", "value": "30"}'::jsonb,'a fact says its checked value');
 select is((select detail from public.workspace_events where kind = 'brand_book_corrected' order by created_at limit 1),'{"action": "replace", "section": "voice"}'::jsonb,'only the section and action, never the words');
 
 -- The admin may correct; staff, another workspace and the operator may not.
@@ -70,15 +96,28 @@ set local role authenticated;
 select isnt(public.correct_brand_book('00000000-0000-4000-8000-000000000101','customers.who',null,'add','Women who travel.'),null,'an admin corrects too');
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000005","role":"authenticated"}',true);
 select throws_ok($$select public.correct_brand_book('00000000-0000-4000-8000-000000000101','voice',null,'add','Fun.')$$,'42501',null,'staff cannot correct');
-select is((select count(*)::integer from public.brand_book_corrections),9,'staff read the corrections');
+select throws_ok($$select public.withdraw_brand_book_correction('00000000-0000-4000-8000-000000000101',
+  (select id from public.brand_book_corrections where withdrawn_at is null limit 1))$$,'42501',null,'nor take one back');
+select is((select count(*)::integer from public.brand_book_corrections),32,'staff read the corrections');
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
 select throws_ok($$select public.correct_brand_book('00000000-0000-4000-8000-000000000101','voice',null,'add','Fun.')$$,'42501',null,'another workspace cannot correct');
 select is((select count(*)::integer from public.brand_book_corrections),0,'nor read them');
 select throws_ok($$select public.withdraw_brand_book_correction('00000000-0000-4000-8000-000000000101',
   '00000000-0000-4000-8000-00000000ffff')$$,'42501',null,'nor take one back');
+reset role;
+create temp table other_live as select id from public.brand_book_corrections where tenant_id = '00000000-0000-4000-8000-000000000101' and withdrawn_at is null and section = 'voice';
+grant select on other_live to authenticated;
+set local role authenticated;
+select throws_ok($$select public.withdraw_brand_book_correction('00000000-0000-4000-8000-000000000102',(select id from other_live))$$,'PT409',null,'nor through its own workspace');
+select isnt(public.correct_brand_book('00000000-0000-4000-8000-000000000102','voice','Loud and bold.','replace','Its own words.'),null,'its own correction of the same words');
+reset role;
+select is((select count(*)::integer from public.brand_book_corrections where id = (select id from other_live) and withdrawn_at is null),1,'leaves the other workspace''s correction live');
+set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
 select throws_ok($$select public.correct_brand_book('00000000-0000-4000-8000-000000000101','voice',null,'add','Fun.')$$,'42501',null,'the operator cannot correct');
-select is((select count(*)::integer from public.brand_book_corrections),9,'but reads them');
+select throws_ok($$select public.withdraw_brand_book_correction('00000000-0000-4000-8000-000000000101',
+  (select id from public.brand_book_corrections where tenant_id = '00000000-0000-4000-8000-000000000101' and withdrawn_at is null limit 1))$$,'42501',null,'nor take one back');
+select is((select count(*)::integer from public.brand_book_corrections),33,'but reads them, every workspace''s');
 
 select * from finish();
 rollback;

@@ -19,19 +19,66 @@ export const changeKinds = [
   'brand_book_correction_withdrawn'
 ] as const
 
-/** What a Brand book correction was about, in plain words (ONB-058). */
-const bookSections: Record<string, string> = {
-  offering: 'what the brand sells',
-  'customers.who': 'who its customers are',
-  'customers.love': 'what customers love',
-  'customers.worries': 'what customers worry about',
-  voice: 'its voice',
-  marketing: 'its marketing',
-  'facts.freeShipping': 'free shipping',
-  'facts.returnDays': 'returns',
-  'facts.guaranteeDays': 'the money-back guarantee',
-  'facts.deliveryDays': 'the delivery time'
-}
+/** What a Brand book line was about, in plain words (ONB-058). */
+const bookLines = new Map([
+  ['offering', 'what the brand sells'],
+  ['customers.who', "the brand's customers"],
+  ['customers.love', 'what customers love'],
+  ['customers.worries', 'what customers worry about'],
+  ['voice', "the brand's voice"],
+  ['marketing', "the brand's marketing"]
+])
+/** A Brand book fact: its name, and what the owner set it to in words. */
+const bookFacts = new Map<string, [string, (v: string) => string | null]>([
+  [
+    'facts.freeShipping',
+    [
+      'free shipping',
+      (v) =>
+        v === 'always'
+          ? 'free shipping on every order'
+          : v === 'never'
+            ? 'no free shipping'
+            : /^over \d/.test(v)
+              ? `free shipping ${v}`
+              : null
+    ]
+  ],
+  [
+    'facts.returnDays',
+    [
+      'return policy',
+      (v) =>
+        v === '0'
+          ? 'no returns'
+          : /^\d+$/.test(v)
+            ? `returns within ${v} days`
+            : null
+    ]
+  ],
+  [
+    'facts.guaranteeDays',
+    [
+      'money-back guarantee',
+      (v) =>
+        v === '0'
+          ? 'no money-back guarantee'
+          : /^\d+$/.test(v)
+            ? `a ${v}-day money-back guarantee`
+            : null
+    ]
+  ],
+  [
+    'facts.deliveryDays',
+    [
+      'delivery time',
+      (v) =>
+        /^\d+-\d+$/.test(v)
+          ? `delivery in ${v.replace('-', ' to ')} days`
+          : null
+    ]
+  ]
+])
 
 export type Change = { id: string; text: string; by: string; at: string }
 
@@ -101,24 +148,30 @@ export function changeText(
     kind === 'brand_book_corrected' ||
     kind === 'brand_book_correction_withdrawn'
   ) {
-    const section = text(detail.section)
-    const about = section ? bookSections[section] : undefined
-    if (!about) return null
+    const section = text(detail.section) ?? ''
+    const fact = bookFacts.get(section)
+    const about = bookLines.get(section)
+    if (!fact && !about) return null
     if (kind === 'brand_book_correction_withdrawn')
-      return `Brand book: a correction about ${about} was taken back`
-    const fact = section!.startsWith('facts.')
+      return fact
+        ? `Brand book: change to the ${fact[0]} undone`
+        : `Brand book: change about ${about} undone`
     const action = text(detail.action)
-    if (fact && action === 'replace') return `Brand book: ${about} set`
-    if (fact && action === 'remove') return `Brand book: ${about} cleared`
+    if (fact) {
+      if (action === 'remove') return `Brand book: ${fact[0]} removed`
+      const set =
+        action === 'replace' ? fact[1](text(detail.value) ?? '') : null
+      return set ? `Brand book: ${set}` : null
+    }
     const did =
       action === 'add'
-        ? 'added a line'
+        ? 'added'
         : action === 'remove'
-          ? 'removed a line'
+          ? 'removed'
           : action === 'replace'
-            ? 'changed a line'
+            ? 'changed'
             : null
-    return did ? `Brand book: ${did} about ${about}` : null
+    return did ? `Brand book: line about ${about} ${did}` : null
   }
   if (kind === 'max_discount_changed') {
     const to = percent(detail.to)

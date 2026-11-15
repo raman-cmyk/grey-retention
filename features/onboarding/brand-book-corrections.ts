@@ -6,10 +6,12 @@ import type { Database } from '@/lib/supabase/database.types'
  * The owner's corrections of the Brand book (owner pick #58, ONB-058). The
  * owner (or an admin) removes a line, replaces it with his own words, adds
  * a line, or sets a fact (`correct_brand_book`); a correction names its
- * line by its words, so it holds when the book is written again. Applied
- * on top of what the readers found, the owner wins: his facts become the
- * confirmed ones (for copy QA too) and are no longer "unclear". Data only:
- * the review page waits for its approved design.
+ * line by its words (case and spacing aside), so it holds when the book is
+ * written again. Applied on top of what the readers found (ONB-106b's
+ * `observed` lines), the owner wins: his facts become the confirmed ones
+ * (for copy QA too) and are no longer "unclear". A correction reaches the
+ * agents when the book is next written (after a read). Data only: the
+ * review page waits for its approved design.
  */
 
 export const correctableSections = [
@@ -38,7 +40,13 @@ export type Correction = {
 
 type Db = SupabaseClient<Database>
 
-/** The workspace's live corrections, oldest first. Throws on a failed read. */
+/** More live corrections than a workspace can have (20 added lines a section, one per line). */
+const maxLive = 500
+
+/**
+ * The workspace's live corrections, oldest first. Throws on a failed read,
+ * and when there are more than it reads (never drops the newest).
+ */
 export async function listCorrections(
   db: Db,
   tenantId: string
@@ -49,8 +57,12 @@ export async function listCorrections(
     .eq('tenant_id', tenantId)
     .is('withdrawn_at', null)
     .order('created_at', { ascending: true })
-    .limit(500)
+    .limit(maxLive + 1)
   if (error) throw error
+  if ((data ?? []).length > maxLive)
+    throw Object.assign(new Error('too_many_corrections'), {
+      code: 'too_many_corrections'
+    })
   return (data ?? []).flatMap((r) =>
     (correctableSections as readonly string[]).includes(r.section) &&
     ['remove', 'replace', 'add'].includes(r.action)
@@ -113,32 +125,39 @@ const factTopic: Record<Fact, string> = {
 }
 
 /**
- * The owner's fact as copy QA holds it: free shipping `always`, `never` or
- * `over 75`; days a whole number; delivery `min-max`. Null for a removed
- * fact (nothing to state); undefined when the words do not fit.
+ * The owner's fact as copy QA holds it, exactly as the database takes it
+ * (`private.brand_fact_ok`): free shipping `always`, `never` or `over 75`
+ * (the store's currency); return and guarantee days a whole number from 0
+ * (`0`: none to offer); delivery `min-max` in calendar days for the
+ * slowest customer, 1 to 90. Null for a removed fact: unknown, so copy QA
+ * refuses every claim about it (to say there is none, set `0` or `never`).
+ * Undefined when the words do not fit.
  */
 export function factValue(
   fact: Fact,
   value: string | null
 ): BrandFacts[Fact] | undefined {
   if (value === null) return null
-  const v = value.trim().toLowerCase()
+  const v = value.trim()
   if (fact === 'freeShipping') {
     if (v === 'always' || v === 'never') return v
-    const over = /^over (\d{1,7}(?:\.\d{1,2})?)$/.exec(v)
+    const over = /^over ((?:0|[1-9]\d{0,6})(?:\.\d{1,2})?)$/.exec(v)
     return over ? { over: Number(over[1]) } : undefined
   }
   if (fact === 'deliveryDays') {
-    const window = /^(\d{1,2})-(\d{1,2})$/.exec(v)
+    const window = /^(0|[1-9]\d?)-([1-9]\d?)$/.exec(v)
     if (!window) return undefined
     const [min, max] = [Number(window[1]), Number(window[2])]
     return min <= max && max <= 90 ? { min, max } : undefined
   }
-  return /^\d{1,4}$/.test(v) && Number(v) <= 3650 ? Number(v) : undefined
+  return /^(?:0|[1-9]\d{0,3})$/.test(v) && Number(v) <= 3650
+    ? Number(v)
+    : undefined
 }
 
-const same = (a: string, b: string) =>
-  a.trim().toLowerCase() === b.trim().toLowerCase()
+/** The same line whatever its case and spacing (as the database keys it). */
+const line = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase()
+const same = (a: string, b: string) => line(a) === line(b)
 
 /** The owner's facts on top of the ones the readers found (copy QA's view). */
 export function correctedFacts(
@@ -155,14 +174,16 @@ export function correctedFacts(
   return out
 }
 
-/** A Brand book's correctable parts, whatever else it holds. */
+/** A Brand book's correctable parts (ONB-106b's shape), whatever else it holds. */
 export type CorrectableBook = {
   facts?: Partial<BrandFacts>
   unclear?: { topic: string }[]
-  offering?: string[]
-  customers?: { who?: string[]; love?: string[]; worries?: string[] }
-  voice?: string[]
-  marketing?: string[]
+  observed?: {
+    offering?: string[]
+    customers?: { who?: string[]; love?: string[]; worries?: string[] }
+    voice?: string[]
+    marketing?: string[]
+  }
   /** The sections the owner corrected. */
   corrected?: string[]
 }
@@ -192,19 +213,27 @@ export function applyCorrections<T extends CorrectableBook>(
       continue
     }
     const [head, sub] = c.section.split('.') as [string, string | undefined]
-    const holder = (
-      sub ? ((out as Record<string, unknown>)[head] ??= {}) : out
-    ) as Record<string, string[] | undefined>
+    const observed = (out.observed ??= {}) as Record<string, unknown>
+    const holder = (sub ? (observed[head] ??= {}) : observed) as Record<
+      string,
+      string[] | undefined
+    >
     const key = sub ?? head
     const lines = [...(holder[key] ?? [])]
     if (c.action === 'add') {
-      if (c.value && !lines.some((l) => same(l, c.value!))) lines.push(c.value)
+      if (!c.value || lines.some((l) => same(l, c.value!))) continue
+      lines.push(c.value)
     } else {
       const at = lines.findIndex(
         (l) => c.original !== null && same(l, c.original)
       )
       if (at === -1) continue
-      if (c.action === 'remove') lines.splice(at, 1)
+      // Never the same line twice: a replacement already there removes it.
+      if (
+        c.action === 'remove' ||
+        lines.some((l, i) => i !== at && same(l, c.value!))
+      )
+        lines.splice(at, 1)
       else lines[at] = c.value!
     }
     holder[key] = lines
