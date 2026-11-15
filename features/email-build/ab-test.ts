@@ -210,6 +210,7 @@ export async function runAbTest(
   const base = ctx.callerKey.slice(0, 80)
   const brand = input.store.brand
   const seen = new Set<number>()
+  const subjects: string[] = []
   for (const { slot, planned } of input.emails.slice(0, abTestSize)) {
     // One drawing per planned email: stars, results and logs key on the slot.
     if (seen.has(slot)) {
@@ -219,13 +220,15 @@ export async function runAbTest(
     seen.add(slot)
     const key = `${base}:${slot}`
     const made = await lockedDraft(
-      { planned, store: input.store, offers: input.offers },
+      { planned, store: input.store, offers: input.offers, taken: subjects },
       { ...ctx, callerKey: key }
     )
     if (!made.ok) {
       skipped.push({ slot, code: made.code })
       continue
     }
+    // One plan, one subject per email (REL-AI), as "Create email" does.
+    subjects.push(made.draft.subject)
     const pair = (b: Drawing | null, bStatus: BStatus, bSendable = false) =>
       pairs.push({
         slot,
