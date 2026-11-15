@@ -9,7 +9,12 @@ import {
 import { SupabaseOfferSource, type OfferSource } from '@/features/offers/source'
 import { databaseFallbackLog, type FallbackLog } from '@/features/fallback/log'
 import { stepCode } from '@/features/strategy/worker'
-import { builtEmail, plannedEmail, type BuildAgents } from './build'
+import {
+  builtEmail,
+  codeWorksNow,
+  plannedEmail,
+  type BuildAgents
+} from './build'
 import { buildAgentsFor } from './agents'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { maxStepSaves, roundSteps } from './step-names'
@@ -284,6 +289,24 @@ export async function runEmailBuilds(
         if (!email.success) {
           await fail('built_email_invalid', true)
           continue
+        }
+        // REL-OFF: the last gate before Klaviyo. A push can wait on Klaviyo
+        // for a long time: its code must still work with Settings now.
+        if (email.data.code !== null) {
+          const now = await codeWorksNow(
+            email.data.code,
+            deps.offers ??
+              ownerOrSampleOffers(saved, sampleOffersFrom(job.start_on)),
+            job.tenant_id,
+            email.data.plannedSendAt
+          )
+          if (now !== 'ok') {
+            await fail(
+              now === 'unsafe' ? 'offer_unsafe' : 'offers_unreadable',
+              now === 'unsafe'
+            )
+            continue
+          }
         }
         const pushed = await pusher.createDraft({
           tenantId: job.tenant_id,

@@ -10,7 +10,8 @@ import {
 import { validTimezone } from '@/lib/brand-time'
 import { localDateTime, localTimeCandidates } from '@/lib/local-time'
 import { addDays } from './pulse'
-import { sendHours } from './plan'
+import { sendHours, type PlannedSlot } from './plan'
+import { keyPart } from '@/features/fallback/entry'
 import type { StoredPulse } from './stored'
 
 /**
@@ -168,23 +169,42 @@ export function offerEmailsThatFail<
   return slots.filter((s) => !offerWorksAt(s, offers, timezone))
 }
 
+/** The plain story a planned email becomes when it loses its offer. */
+export const noOfferStory = {
+  angle: 'From the store, in its own words',
+  why: 'A note from the store. Its planned offer would not work on this day, so it goes out without a discount.'
+}
+
 /**
  * REL-OFF: the safe fallback for an offer that would not work when its
  * email sends (above the max, not one of the working codes, or ended):
- * that email keeps its day without the offer. `dropped` are the emails as
- * planned, with the offer they lost. A guard: the plan's last send days
+ * that email keeps its day, products and audience as a plain story
+ * without the offer (the plan's rules let only an "offer" email carry
+ * one), with no evidence about the offer. `dropped` are the emails as
+ * planned. A send time the store's clock skips is not an offer problem:
+ * such an email is left as it is. A guard: the plan's last send days
  * normally ensure every offer works.
  */
-export function withoutUnusableOffers<
-  S extends Parameters<typeof offerWorksAt>[0]
->(
-  slots: readonly S[],
+export function withoutUnusableOffers(
+  slots: readonly PlannedSlot[],
   offers: PlanOffers,
   timezone: string
-): { slots: S[]; dropped: S[] } {
-  const dropped = offerEmailsThatFail(slots, offers, timezone)
+): { slots: PlannedSlot[]; dropped: PlannedSlot[] } {
+  const dropped = offerEmailsThatFail(slots, offers, timezone).filter(
+    (s) => localTimeCandidates(`${s.date}T${s.time}`, timezone).length > 0
+  )
   return {
-    slots: slots.map((s) => (dropped.includes(s) ? { ...s, offer: null } : s)),
+    slots: slots.map((s) =>
+      dropped.includes(s)
+        ? {
+            ...s,
+            emailType: 'story' as const,
+            offer: null,
+            ...noOfferStory,
+            evidence: s.evidence.filter((e) => !e.id.startsWith('offer:'))
+          }
+        : s
+    ),
     dropped
   }
 }
@@ -198,15 +218,43 @@ const shortDay = (date: string) =>
   }).format(new Date(`${date}T00:00:00Z`))
 
 /** The plan's note for offers left out of their emails, or null. */
-export function droppedOffersNote(
-  dropped: readonly Parameters<typeof offerWorksAt>[0][]
-) {
+export function droppedOffersNote(dropped: readonly PlannedSlot[]) {
   const named = dropped
     .slice(0, 10)
     .flatMap((s) => (s.offer ? [`${s.offer.code} on ${shortDay(s.date)}`] : []))
   if (!named.length) return null
+  const one = dropped.length === 1
   const more = dropped.length > 10 ? ` and ${dropped.length - 10} more` : ''
-  return `Left out of their emails because they would not work on that day (above your max, not one of your codes, or ended): ${named.join(', ')}${more}. Those emails go out without a discount.`
+  const note = `Left out of ${one ? 'its email' : 'their emails'} because ${one ? 'it' : 'they'} would not work on that day (above your max, not one of your codes, or ended): ${named.join(', ')}${more}. ${one ? 'That email goes' : 'Those emails go'} out without a discount.`
+  // A stored note is at most 600 characters.
+  return note.length <= 600 ? note : `${note.slice(0, 599)}…`
+}
+
+/**
+ * The fallback log's entry for offers left out of a plan: counts and days
+ * only, never the codes (the log holds no client codes; the owner's plan
+ * note names them).
+ */
+export function droppedOffersEntry(input: {
+  tenantId: string
+  runId: string
+  dropped: readonly PlannedSlot[]
+}) {
+  const n = input.dropped.length
+  return {
+    tenantId: input.tenantId,
+    campaignId: null,
+    agent: 'plan-offers',
+    reasonCode: 'offer_unusable',
+    reason: `${n} planned ${n === 1 ? 'offer' : 'offers'} would not work on the day of ${n === 1 ? 'its email' : 'their emails'}.`,
+    fallback: `${n === 1 ? 'That email keeps its day' : 'Those emails keep their day'} as a plain story without a discount.`,
+    attempts: 1,
+    detail: {
+      count: n,
+      days: input.dropped.map((s) => s.date).slice(0, 10)
+    },
+    dedupeKey: `plan-offers:${keyPart(input.runId)}:unusable`
+  }
 }
 
 /**

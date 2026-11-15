@@ -399,6 +399,59 @@ describe('the last check of the discount code (REL-OFF)', () => {
     expect(await design(progress)).toEqual({ ok: false, code: 'offer_unsafe' })
   })
 
+  it('never stores an email whose code was switched off in Settings since the first step', async () => {
+    const progress = await savedCopy('CANDLE10')
+    const result = await runBuildStep(
+      'design',
+      {
+        planned,
+        store: await store(),
+        offers: { offers: async () => ({ maxDiscountPercent: 20, codes: [] }) },
+        progress
+      },
+      ctxWith(null)
+    )
+    expect(result).toEqual({ ok: false, code: 'offer_unsafe' })
+  })
+
+  it('tries again when Settings cannot be read', async () => {
+    const result = await runBuildStep(
+      'design',
+      {
+        planned,
+        store: await store(),
+        offers: {
+          offers: async () => {
+            throw new Error('down')
+          }
+        },
+        progress: await savedCopy('CANDLE10')
+      },
+      ctxWith(null)
+    )
+    expect(result).toEqual({ ok: false, code: 'offers_unreadable' })
+  })
+
+  it('checks what is drawn: the offer section shows exactly that code at its percent', async () => {
+    const progress = await savedCopy('CANDLE10')
+    const copy = progress.copy as {
+      draft: { blocks: { type: string; content: Record<string, unknown> }[] }
+    }
+    const banner = copy.draft.blocks.find((b) => b.type === 'offer_banner')!
+    banner.content.headline = '50% off'
+    expect(await design(progress)).toEqual({ ok: false, code: 'offer_unsafe' })
+    banner.content.headline = '10% off'
+    banner.content.code = 'OTHER'
+    expect(await design(progress)).toEqual({ ok: false, code: 'offer_unsafe' })
+    // An offer section without a code, or a code without one.
+    const none = await savedCopy(null)
+    expect(await design(none)).toEqual({ ok: false, code: 'offer_unsafe' })
+    const bare = await savedCopy('CANDLE10')
+    const draft = (bare.copy as { draft: { blocks: { type: string }[] } }).draft
+    draft.blocks = draft.blocks.filter((b) => b.type !== 'offer_banner')
+    expect(await design(bare)).toEqual({ ok: false, code: 'offer_unsafe' })
+  })
+
   it('never stores an email whose code ends before it sends', async () => {
     const progress = await savedCopy('CANDLE10')
     const sections = progress.sections as {

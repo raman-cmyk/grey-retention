@@ -262,8 +262,15 @@ describe('saved steps (REL-081)', () => {
     await runEmailBuilds(first.db, { limit: 1, fallbacks: memoryFallbackLog() })
     const sections = first.calls.find((c) => c.fn === 'finish_email_step')!.args
       .output
-    // Then the owner saves a 5% max and moves the workspace to another
-    // timezone, and the build goes on at its content step.
+    // Then the owner saves a 30% max (keeping the code) and moves the
+    // workspace to another timezone, and the build goes on at its content
+    // step: the email keeps the first step's rules and timezone.
+    const candle = {
+      id: '00000000-0000-4000-8000-0000000000c1',
+      code: 'CANDLE10',
+      percent: 10,
+      expires_at: null
+    }
     const { db, calls } = fakeDb(
       [
         step({
@@ -275,8 +282,8 @@ describe('saved steps (REL-081)', () => {
       ],
       {},
       {
-        brand_offers: [{ max_discount_percent: 5, revision: 1 }],
-        discount_codes: []
+        brand_offers: [{ max_discount_percent: 30, revision: 1 }],
+        discount_codes: [candle]
       }
     )
     expect(
@@ -298,6 +305,21 @@ describe('saved steps (REL-081)', () => {
       .result as BuiltEmail
     expect(email).toEqual(straight.email)
     expect(email.code).toBe('CANDLE10')
+    // REL-OFF: a 5% max saved halfway refuses the email instead (never two
+    // versions of Settings, and never a code above the max now).
+    const lowered = fakeDb(
+      [step({ planned: offerEmail, step: 'content', progress: { sections } })],
+      {},
+      {
+        brand_offers: [{ max_discount_percent: 5, revision: 1 }],
+        discount_codes: [candle]
+      }
+    )
+    await runEmailBuilds(lowered.db, { fallbacks: memoryFallbackLog() })
+    expect(failure(lowered.calls)).toMatchObject({
+      code: 'offer_unsafe',
+      final: true
+    })
   })
 
   it('saves a step before the next one fails, and the retry starts at the failed step', async () => {
@@ -715,6 +737,60 @@ describe('the offers a build uses', () => {
 })
 
 describe('failed steps', () => {
+  it('never push an email whose code no longer works with Settings, and try again when Settings cannot be read (REL-OFF)', async () => {
+    const email = { ...(await built()), code: 'CANDLE10' }
+    const createDraft = vi.fn<DraftPusher['createDraft']>()
+    const pusher: DraftPusher = { createDraft }
+    const switchedOff = fakeDb([
+      step({ state: 'push_queued', step: 'push', email })
+    ])
+    await runEmailBuilds(switchedOff.db, {
+      pusher,
+      offers: { offers: async () => ({ maxDiscountPercent: 20, codes: [] }) }
+    })
+    expect(failure(switchedOff.calls)).toMatchObject({
+      code: 'offer_unsafe',
+      final: true
+    })
+    const unreadable = fakeDb([
+      step({ state: 'push_queued', step: 'push', email })
+    ])
+    await runEmailBuilds(unreadable.db, {
+      pusher,
+      offers: {
+        offers: async () => {
+          throw new Error('down')
+        }
+      }
+    })
+    expect(failure(unreadable.calls)).toMatchObject({
+      code: 'offers_unreadable',
+      final: false
+    })
+    expect(createDraft).not.toHaveBeenCalled()
+  })
+
+  it('never store an email whose code is not a working one: final, and nothing is pushed (REL-OFF)', async () => {
+    const { saved } = await fullRun()
+    const copy = JSON.parse(JSON.stringify(saved.copy))
+    copy.draft.code = 'NOT-A-CODE'
+    const createDraft = vi.fn<DraftPusher['createDraft']>()
+    const { db, calls } = fakeDb([
+      step({
+        step: 'design',
+        progress: {
+          sections: saved.sections,
+          content: saved.content,
+          copy
+        }
+      })
+    ])
+    await runEmailBuilds(db, { pusher: { createDraft } })
+    expect(failure(calls)).toMatchObject({ code: 'offer_unsafe', final: true })
+    expect(calls.some((c) => c.fn === 'finish_email_build')).toBe(false)
+    expect(createDraft).not.toHaveBeenCalled()
+  })
+
   it('wait as long as a busy Klaviyo asks, and fail at once when it refuses', async () => {
     const email = await built()
     for (const [result, args] of [

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { OfferSource } from '@/features/offers/source'
 import {
-  codeWorks,
+  codeWorksNow,
   contentStep,
   copyStep,
   designStep,
@@ -193,16 +193,26 @@ export async function runBuildStep(
   const copy = copySaved.safeParse(progress.data.copy)
   if (!copy.success) return unreadable
   const content = progress.data.content as { source?: unknown } | undefined
-  // REL-OFF: a wrong code never reaches Klaviyo, whatever went wrong before.
+  // REL-OFF: the code also works with Settings now (switched off, or the
+  // max lowered, since the first step); `designStep` checks what is drawn.
   const code = (copy.data as unknown as CopyOutput).draft.code
-  if (code !== null && !codeWorks(code, sections.rules, sections.sendAt))
-    return { ok: false, code: 'offer_unsafe' }
+  if (code !== null) {
+    const now = await codeWorksNow(
+      code,
+      input.offers,
+      ctx.tenantId,
+      sections.sendAt
+    )
+    if (now === 'unreadable') return { ok: false, code: 'offers_unreadable' }
+    if (now === 'unsafe') return { ok: false, code: 'offer_unsafe' }
+  }
   const made = designStep({
     planned,
     store,
     sendAt: sections.sendAt,
     sample: sections.sample,
     copy: copy.data as unknown as CopyOutput,
+    rules: sections.rules,
     ai: sections.layout.source === 'agent' || content?.source === 'agent'
   })
   return made.ok ? { ok: true, done: 'design', email: made.email } : made

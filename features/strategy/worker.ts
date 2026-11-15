@@ -17,6 +17,7 @@ import { storedPulse } from './stored'
 import { SupabaseOfferSource } from '@/features/offers/source'
 import type { SavedOffers } from '@/features/email-build/ports'
 import {
+  droppedOffersEntry,
   droppedOffersNote,
   leftOutNote,
   planOfferSource,
@@ -210,21 +211,13 @@ export async function runStrategyRuns(
         const checked = withoutUnusableOffers(made.slots, offers, timezone)
         const dropNote = droppedOffersNote(checked.dropped)
         if (checked.dropped.length)
-          await fallbacks.record({
-            tenantId: run.tenant_id,
-            campaignId: null,
-            agent: 'plan-offers',
-            reasonCode: 'offer_unusable',
-            reason: `${checked.dropped.length} planned ${checked.dropped.length === 1 ? 'offer' : 'offers'} would not work on the day of ${checked.dropped.length === 1 ? 'its email' : 'their emails'}.`,
-            fallback: 'Those emails keep their day without a discount.',
-            attempts: 1,
-            detail: {
-              codes: checked.dropped
-                .flatMap((s) => (s.offer ? [s.offer.code] : []))
-                .slice(0, 10)
-            },
-            dedupeKey: `plan-offers:${keyPart(run.id)}:unusable`
-          })
+          await fallbacks.record(
+            droppedOffersEntry({
+              tenantId: run.tenant_id,
+              runId: run.id,
+              dropped: checked.dropped
+            })
+          )
         const note = unreadable
           ? `${unreadableWords} this plan has no offers. Start again to plan with them.`
           : leftOutNote(leftOut)

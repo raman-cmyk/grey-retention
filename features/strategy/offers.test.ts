@@ -1,6 +1,9 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
+import { fallbackEntry } from '@/features/fallback/entry'
+import type { PlannedSlot } from './plan'
 import {
+  droppedOffersEntry,
   droppedOffersNote,
   lastSendDay,
   leftOutNote,
@@ -10,6 +13,7 @@ import {
   pulseCodes,
   readPlanOffers,
   stillUsable,
+  noOfferStory,
   withoutUnusableOffers,
   type PlanOffers
 } from './offers'
@@ -125,33 +129,105 @@ describe('the guard and the note', () => {
     expect(offerEmailsThatFail(slots, offers, zone)).toEqual([slots[1]])
   })
 
-  it('leave an offer that would not work out of its email, which keeps its day (REL-OFF)', () => {
+  /** A whole planned email, as the plan stores it. */
+  const planned = (
+    date: string,
+    time: string,
+    code: string | null,
+    percent = 10
+  ): PlannedSlot => ({
+    date,
+    time,
+    emailType: code ? 'offer' : 'story',
+    angle: 'The candle people love, for less',
+    products: [{ id: 'p-candle', title: 'Cedar candle' }],
+    offer: code ? { id: `offer:${code}`, code, percent } : null,
+    audience: { id: 'engaged', label: 'Engaged subscribers' },
+    why: 'Run the offer the store chose for these days.',
+    evidence: [
+      ...(code
+        ? [{ id: `offer:${code}`, fact: `${code} gives ${percent}% off.` }]
+        : []),
+      { id: 'sales:candle', fact: 'Cedar candle sold best last month.' }
+    ]
+  })
+
+  it('make an email whose offer would not work a plain story without it, on the same day (REL-OFF)', () => {
     const slots = [
-      slot('2026-11-20', '21:00', 'SETTINGS'),
-      slot('2026-11-19', '15:00', 'AFTERNOON'),
-      slot('2026-11-17', '10:00', 'CANDLE10'),
-      slot('2026-11-18', '10:00', 'FOREVER', 20),
-      { date: '2026-11-19', time: '10:00', offer: null }
+      planned('2026-11-20', '21:00', 'SETTINGS'),
+      planned('2026-11-19', '15:00', 'AFTERNOON'),
+      planned('2026-11-17', '10:00', 'CANDLE10'),
+      planned('2026-11-18', '10:00', 'FOREVER', 20),
+      planned('2026-11-19', '10:00', null)
     ]
     const capped = { ...offers, maxDiscountPercent: 15 }
     const { slots: kept, dropped } = withoutUnusableOffers(slots, capped, zone)
     expect(dropped).toEqual([slots[1], slots[2], slots[3]])
-    expect(kept.map((s) => s.offer?.code ?? null)).toEqual([
-      'SETTINGS',
-      null,
-      null,
-      null,
-      null
-    ])
-    expect(kept.map((s) => s.date)).toEqual(slots.map((s) => s.date))
+    expect(kept[0]).toBe(slots[0])
+    expect(kept[4]).toBe(slots[4])
+    for (const s of kept.slice(1, 4))
+      expect(s).toMatchObject({
+        emailType: 'story',
+        offer: null,
+        angle: noOfferStory.angle,
+        why: noOfferStory.why,
+        evidence: [
+          { id: 'sales:candle', fact: 'Cedar candle sold best last month.' }
+        ],
+        products: [{ id: 'p-candle', title: 'Cedar candle' }],
+        audience: { id: 'engaged', label: 'Engaged subscribers' }
+      })
+    expect(kept.map((s) => [s.date, s.time])).toEqual(
+      slots.map((s) => [s.date, s.time])
+    )
     expect(droppedOffersNote(dropped)).toBe(
       'Left out of their emails because they would not work on that day (above your max, not one of your codes, or ended): AFTERNOON on Thu 19 Nov, CANDLE10 on Tue 17 Nov, FOREVER on Wed 18 Nov. Those emails go out without a discount.'
+    )
+    expect(droppedOffersNote(dropped.slice(0, 1))).toBe(
+      'Left out of its email because it would not work on that day (above your max, not one of your codes, or ended): AFTERNOON on Thu 19 Nov. That email goes out without a discount.'
     )
     expect(withoutUnusableOffers(slots.slice(0, 1), offers, zone)).toEqual({
       slots: slots.slice(0, 1),
       dropped: []
     })
     expect(droppedOffersNote([])).toBeNull()
+  })
+
+  it('leave an email whose send time the clock skips as it is (not an offer problem)', () => {
+    // Melbourne skips 2 to 3 am on 4 Oct 2026.
+    const skipped = planned('2026-10-04', '02:30', 'FOREVER')
+    expect(withoutUnusableOffers([skipped], offers, zone)).toEqual({
+      slots: [skipped],
+      dropped: []
+    })
+  })
+
+  it('name at most ten codes, within a stored note’s 600 characters', () => {
+    const many = Array.from({ length: 14 }, (_, i) =>
+      planned('2026-11-17', '10:00', `A-LONG-CODE-NAME-FOR-TESTING-${i + 1}`)
+    )
+    const note = droppedOffersNote(many)!
+    expect(note).toContain('and 4 more')
+    expect(note).not.toContain('TESTING-11')
+    expect(note.length).toBeLessThanOrEqual(600)
+  })
+
+  it('log counts and days only, never a code', () => {
+    const dropped = [
+      planned('2026-11-19', '15:00', 'AFTERNOON'),
+      planned('2026-11-17', '10:00', 'CANDLE10')
+    ]
+    const entry = droppedOffersEntry({
+      tenantId: tenant,
+      runId: 'run-1',
+      dropped
+    })
+    expect(fallbackEntry.parse(entry)).toMatchObject({
+      agent: 'plan-offers',
+      reasonCode: 'offer_unusable',
+      detail: { count: 2, days: ['2026-11-19', '2026-11-17'] }
+    })
+    expect(JSON.stringify(entry)).not.toMatch(/AFTERNOON|CANDLE10/)
   })
 
   it('name the left-out codes in one short note', () => {
