@@ -278,6 +278,10 @@ describe('CI workflows', () => {
     expect(crons).toEqual(['5-55/10 * * * *'])
     expect(text).toContain('/api/internal/studio/renders?peek=1')
     expect(text).toContain('node scripts/studio-renders.mjs')
+    // DST-006b: with nothing to draw, the waiting designs still go on.
+    expect(text).toContain(
+      `if [ "$waiting" = "0" ]; then\n            call '/api/internal/studio/builds' builds.json 130 || exit 1`
+    )
     // Nothing is checked out or installed until the app says work is waiting.
     const steps = `\n${text.split('\n    steps:\n')[1]!}`
       .split(/\n {6}- /)

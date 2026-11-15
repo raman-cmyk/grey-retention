@@ -77,6 +77,12 @@ jobs:
           waiting=$(jq -r '.waiting // 0' peek.json)
           echo "Sections waiting: $waiting"
           echo "waiting=$waiting" >> "$GITHUB_OUTPUT"
+          # DST-006b: with nothing to draw, the designs waiting for pictures
+          # drawn earlier go on now (after drawing, the script does this).
+          if [ "$waiting" = "0" ]; then
+            call '/api/internal/studio/builds' builds.json 130 || exit 1
+            echo "Designs carried on: $(jq -r '.builds // 0' builds.json)"
+          fi
       - if: steps.peek.outputs.waiting != '0'
         uses: actions/checkout@v4
         with:
