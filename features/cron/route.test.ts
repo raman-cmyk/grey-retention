@@ -16,6 +16,13 @@ const strategy = vi.hoisted(() => ({
   runStrategyRuns: vi.fn(async () => ({ ran: 1 }))
 }))
 vi.mock('@/features/strategy/worker', () => strategy)
+const stores = vi.hoisted(() => ({
+  ownStore: { load: async () => ({}) },
+  onboardedStrategyData: vi.fn()
+}))
+vi.mock('@/features/onboarding/strategy-data', () => ({
+  onboardedStrategyData: stores.onboardedStrategyData
+}))
 const emails = vi.hoisted(() => ({
   runEmailBuilds: vi.fn(async () => ({ ran: 2 }))
 }))
@@ -36,6 +43,7 @@ describe('GET /api/internal/jobs (scheduled sweep)', () => {
     vi.stubEnv('CRON_SECRET', secret)
     vi.stubEnv('ADAPTER_MODE', 'fake')
     service.createServiceClient.mockReturnValue({})
+    stores.onboardedStrategyData.mockReturnValue(stores.ownStore)
     inbox.runInboxStep.mockResolvedValue({
       transport: 'fake',
       ready: true,
@@ -197,11 +205,11 @@ describe('GET /api/internal/jobs (scheduled sweep)', () => {
     expect(scheduler.runScheduledJobs).toHaveBeenCalledOnce()
     expect(strategy.runStrategyRuns).toHaveBeenCalledOnce()
     // Plans from the workspace's own store once onboarding read it (ONB-057b).
+    const db = service.createServiceClient.mock.results.at(-1)?.value
+    expect(stores.onboardedStrategyData).toHaveBeenCalledWith(db)
     expect(strategy.runStrategyRuns).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        data: expect.objectContaining({ load: expect.any(Function) })
-      })
+      db,
+      expect.objectContaining({ data: stores.ownStore })
     )
     expect(emails.runEmailBuilds).toHaveBeenCalledOnce()
     // The inbox is read first, then the workspace jobs.

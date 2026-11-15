@@ -8,7 +8,12 @@ import {
 } from '@/features/onboarding/history/facts'
 import type { StoredHistory } from '@/features/onboarding/history/read'
 import { readMapperInput } from '@/features/strategy/competitors'
-import { readPulseInput } from '@/features/strategy/pulse'
+import { samplePlan } from '@/features/strategy/plan'
+import {
+  codePulse,
+  gatherEvidence,
+  readPulseInput
+} from '@/features/strategy/pulse'
 
 vi.mock('server-only', () => ({}))
 const reads = vi.hoisted(() => ({
@@ -193,6 +198,16 @@ describe('strategyFrom (ONB-057a)', () => {
       'Black Friday',
       'Winter sale'
     ])
+    // And its plan, as the plan step makes it (the pulse, no offers).
+    const pulseOut = codePulse(gatherEvidence(pulse.input))
+    const made = samplePlan({
+      ...own.plan,
+      start,
+      pulse: pulseOut,
+      offers: [],
+      moves: []
+    })
+    expect(made.slots.length).toBeGreaterThan(0)
     const mapper = readMapperInput(own.mapper)
     expect(mapper.industry).toBe('apparel')
     expect(mapper.ourDates).toEqual([
@@ -408,6 +423,19 @@ describe('onboardedStrategyData (ONB-057a)', () => {
     expect(sample.load).toHaveBeenCalledWith({ tenantId, start })
     reads.history.mockResolvedValue(stored({ readAt: '2026-10-01T00:00:00Z' }))
     await expect(load()).resolves.toBe(sampleAnswer)
+  })
+
+  it('needs no more reads, and never waits on key dates, for a sample plan', async () => {
+    reads.history.mockResolvedValue(stored({ readAt: '2026-10-01T00:00:00Z' }))
+    reads.keyDates.mockResolvedValue(null)
+    await expect(load()).resolves.toBe(sampleAnswer)
+    expect(reads.findings).not.toHaveBeenCalled()
+    expect(reads.keyDates).not.toHaveBeenCalled()
+    expect(profileEq).not.toHaveBeenCalled()
+    reads.history.mockResolvedValue(stored())
+    reads.catalog.mockResolvedValue([])
+    await expect(load()).resolves.toBe(sampleAnswer)
+    expect(reads.findings).not.toHaveBeenCalled()
   })
 
   it('throws when any read fails, so the step is tried again', async () => {
