@@ -1,5 +1,6 @@
 import 'server-only'
 import { allSteps } from '@/features/email-build/step-names'
+import { buildReason, planReason } from './failure-words'
 import { createClient } from '@/lib/supabase/server'
 import {
   storedPlan,
@@ -11,6 +12,8 @@ import {
 export type PlanRun = {
   id: string
   state: 'pulse_queued' | 'offers_ready' | 'plan_queued' | 'planned' | 'failed'
+  /** Why it failed, in plain words (REL-084); null unless failed. */
+  reason: string | null
   startOn: string
   /** The 15 days have begun (store time): only a new plan helps. */
   stale: boolean
@@ -30,26 +33,8 @@ export type EmailBuildView = {
   step: (typeof allSteps)[number]
   /** The draft came from the fake pusher: no Klaviyo call was made. */
   sampleDraft: boolean
-  /** Why it failed, in plain words, when the reason is known. */
+  /** Why it failed, in plain words (REL-084); null unless failed. */
   reason: string | null
-}
-
-/** Plain words for the failures the owner can act on. */
-const failureWords: Record<string, string> = {
-  copy_failed: 'Its words did not pass the checks.',
-  slot_time_invalid: 'Its send time does not exist in your time zone.',
-  klaviyo_auth: 'Klaviyo did not accept the connection.',
-  klaviyo_rejected: 'Klaviyo or the launch check refused it.',
-  klaviyo_rate_limited: 'Klaviyo was busy for too long.',
-  day_passed: 'Its day passed before it was ready.',
-  planned_email_invalid: 'This planned email cannot be built. Plan again.',
-  step_progress_invalid:
-    'The app was updated while this email was being made. Try again.',
-  step_unknown:
-    'The app was updated while this email was being made. Try again.',
-  step_output_invalid: 'It came out too large to save.',
-  store_changed:
-    'Your store data changed while this email was being made. Try again.'
 }
 
 const buildStates = [
@@ -86,7 +71,7 @@ export async function latestPlanRun(
   if (!db) return { ok: false }
   const { data, error } = await db
     .from('strategy_runs')
-    .select('id,state,start_on,pulse,plan')
+    .select('id,state,error_code,start_on,pulse,plan')
     .eq('tenant_id', tenantId)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -128,10 +113,8 @@ export async function latestPlanRun(
             ? (b.step as EmailBuildView['step'])
             : 'sections',
           sampleDraft: b.sample_draft,
-          reason:
-            b.state === 'failed' && b.error_code
-              ? (failureWords[b.error_code] ?? null)
-              : null
+          // REL-084: a failed build always says why, in plain words.
+          reason: b.state === 'failed' ? buildReason(b.error_code) : null
         }
   }
   return {
@@ -141,6 +124,11 @@ export async function latestPlanRun(
       state: (states as readonly string[]).includes(row.state)
         ? (row.state as PlanRun['state'])
         : 'failed',
+      reason:
+        row.state === 'failed' ||
+        !(states as readonly string[]).includes(row.state)
+          ? planReason(row.error_code)
+          : null,
       startOn: row.start_on,
       stale: row.start_on <= storeToday(timezone, now),
       pulse: pulse.success ? pulse.data : null,

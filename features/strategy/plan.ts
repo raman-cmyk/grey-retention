@@ -988,15 +988,44 @@ export async function planFifteenDays(
       { dropped: byCritic }
     )
 
-  return planOutput(input, actions, kept, dropped.length, source)
+  return planOutput(input, actions, kept, dropped, source)
 }
 
 /** The plan as it is saved and shown: facts, prices and codes from code. */
+/**
+ * REL-084: one plain note for the planned emails that were left out, so a
+ * dropped email is never silent: the calendar rule each one broke (code's
+ * own words), at most three reasons named. The critic's problems are AI
+ * words, so they are summed up, not quoted. Null when nothing was dropped.
+ */
+export function droppedNote(dropped: readonly Problem[][]) {
+  if (!dropped.length) return null
+  const reasons = [
+    ...new Set(
+      dropped.map((list) => {
+        const rule = list.find((p) => p.rule !== 'critic')
+        return rule
+          ? rule.text.replace(/\.$/, '')
+          : 'the strategy check still found a problem with it'
+      })
+    )
+  ]
+  const named = reasons.slice(0, 3).join('; ')
+  const extra = reasons.length - 3
+  const more =
+    extra > 0 ? `; and ${extra} more reason${extra === 1 ? '' : 's'}` : ''
+  const count =
+    dropped.length === 1
+      ? 'One planned email was'
+      : `${dropped.length} planned emails were`
+  return `${count} left out: ${named}${more}.`
+}
+
 function planOutput(
   input: PlanInput,
   actions: BriefAction[],
   kept: Slot[],
-  dropped: number,
+  dropped: readonly Problem[][],
   source: FifteenDayPlan['source']
 ): FifteenDayPlan {
   const facts = planEvidence(input)
@@ -1031,6 +1060,8 @@ function planOutput(
       (a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)
     )
   const notes: string[] = []
+  const left = droppedNote(dropped)
+  if (left) notes.push(left)
   if (
     input.offers.length &&
     !slotsOut.some((s) => s.offer) &&
@@ -1043,7 +1074,7 @@ function planOutput(
     start: from,
     end: to,
     brief: actions,
-    dropped,
+    dropped: dropped.length,
     notes,
     source,
     slots: slotsOut
@@ -1064,7 +1095,7 @@ export function samplePlan(raw: PlanInput): FifteenDayPlan {
     input,
     actions
   )
-  return planOutput(input, actions, kept, dropped.length, {
+  return planOutput(input, actions, kept, dropped, {
     brief: 'code',
     planner: 'code',
     critic: 'skipped'

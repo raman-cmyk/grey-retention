@@ -57,7 +57,7 @@ select throws_ok($$select public.record_fallback('00000000-0000-4000-8000-000000
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
 set local role authenticated;
 select throws_ok($$select public.record_fallback('00000000-0000-4000-8000-000000000101',null,'copy-check','copy_check_failed','Reason.','Fallback.',1,'{}','k9')$$,'42501',null,'an owner cannot write the log');
-select is((select count(*) from public.agent_fallbacks),0::bigint,'an owner does not read the log');
+select is((select count(*) from public.agent_fallbacks),1::bigint,'an owner reads only their own workspace''s entries (REL-084)');
 select throws_ok($$select * from public.admin_fallback_log()$$,'42501',null,'an owner cannot open the admin view');
 reset role;
 
