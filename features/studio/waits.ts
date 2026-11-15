@@ -18,8 +18,9 @@ type Db = SupabaseClient<Database>
 
 /**
  * The owner's switch for the design studio in "Create email": off unless
- * `DESIGN_STUDIO=on`, and only with the agents on (`EMAIL_BUILD_AGENTS=on`
- * and a live model): the studio's agents are paid AI.
+ * `DESIGN_STUDIO=on`. It checks this switch only: the studio's job also
+ * needs the agents on (`EMAIL_BUILD_AGENTS=on` and a live model), as its
+ * agents are paid AI.
  */
 export const designStudioOn = (env: { DESIGN_STUDIO?: string }) =>
   env.DESIGN_STUDIO?.trim() === 'on'
@@ -71,32 +72,17 @@ export async function waitForPictures(
 }
 
 /**
- * The waiting design steps, those waiting longest first: the ones the
- * studio's job tries to claim. Waiting is a design step that waited and has
- * a time (only `wait_email_round` sets one on a design step).
+ * Claims a waiting design step once every picture it asked for is drawn or
+ * failed (or its time is up): the named one, or else the one waiting
+ * longest that is ready, in an active workspace. It returns what
+ * `claim_email_build` returns; null when none is ready (one out of tries,
+ * or whose day passed, is failed on the way).
  */
-export async function waitingDesigns(db: Db, limit = 5): Promise<string[]> {
-  const { data, error } = await db
-    .from('email_builds')
-    .select('id')
-    .eq('state', 'build_queued')
-    .eq('step', 'design')
-    .gt('waits', 0)
-    .not('not_before', 'is', null)
-    .order('updated_at')
-    .limit(limit)
-  if (error) throw error
-  return (data ?? []).map((b) => b.id)
-}
-
-/**
- * Claims one waiting design step once every picture it asked for is drawn
- * or failed (or its time is up), with what `claim_email_build` returns;
- * null when it is not ready, leased, or failed (out of tries, its day
- * passed).
- */
-export async function claimWaitingDesign(db: Db, build: string) {
-  const { data, error } = await db.rpc('claim_studio_build', { target: build })
+export async function claimWaitingDesign(db: Db, build?: string) {
+  const { data, error } = await db.rpc(
+    'claim_studio_build',
+    build ? { target: build } : {}
+  )
   if (error) throw error
   return data?.[0] ?? null
 }

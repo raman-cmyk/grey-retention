@@ -1,5 +1,5 @@
 begin;
-select plan(39);
+select plan(47);
 
 -- DST-006b: the design step waits for its pictures, and the design
 -- studio's job claims it again when they are there. Workspace 101.
@@ -67,38 +67,67 @@ update public.email_builds set updated_at = now() - interval '2 minutes' where i
 set local role service_role;
 select is((select count(*) from public.claim_email_build(current_setting('test.build')::uuid) c),0::bigint,'the click does not take a waiting step');
 select is((select count(*) from public.claim_email_build() c),0::bigint,'nor does the sweep');
-select throws_ok($$select * from public.claim_studio_build(null)$$,'22023','Name the build to claim','the studio claims a named build only');
 reset role;
 
--- The studio claims it once every picture it asked for is drawn or failed.
+-- Another email waits longer, for a picture still queued.
+update public.email_builds set step = 'design', waits = 1, not_before = now() + interval '10 minutes', updated_at = now() - interval '5 minutes'
+  where id = current_setting('test.other')::uuid;
 insert into public.section_renders (tenant_id, build_id, section_key, section, origins) values
-  ('00000000-0000-4000-8000-000000000101',current_setting('test.build')::uuid,'s2-r1','{"id":"s2"}',array['https://cdn.example']);
+  ('00000000-0000-4000-8000-000000000101',current_setting('test.build')::uuid,'s2-r1','{"id":"s2"}',array['https://cdn.example']),
+  ('00000000-0000-4000-8000-000000000101',current_setting('test.other')::uuid,'s2-r1','{"id":"s2"}',array['https://cdn.example']);
 set local role service_role;
-select is((select count(*) from public.claim_studio_build(current_setting('test.build')::uuid) c),0::bigint,'not while a picture is still queued');
+select is((select count(*) from public.claim_studio_build(current_setting('test.build')::uuid) c),0::bigint,'the studio does not take a step while a picture is still queued');
+select is((select count(*) from public.claim_studio_build() c),0::bigint,'named or not');
 reset role;
+
+-- The studio claims one once every picture it asked for is drawn or failed:
+-- the one waiting longest that is ready.
 update public.section_renders set state = 'failed', failure = 'timeout', finished_at = now() where build_id = current_setting('test.build')::uuid;
 set local role service_role;
-select set_config('test.claim',(select c.step || ' ' || (c.progress->'work'->'design'->>'round') || ' ' || c.lease_token from public.claim_studio_build(current_setting('test.build')::uuid) c),true);
-select is(split_part(current_setting('test.claim'),' ',1) || ' ' || split_part(current_setting('test.claim'),' ',2),'design 1','then it is handed the step with its work');
+select set_config('test.claim',(select c.id || ' ' || (c.progress->'work'->'design'->>'round') || ' ' || c.lease_token from public.claim_studio_build() c),true);
+select is(split_part(current_setting('test.claim'),' ',1) || ' ' || split_part(current_setting('test.claim'),' ',2),current_setting('test.build') || ' 1','then the studio is handed the ready step, with its work');
 select set_config('test.lease',split_part(current_setting('test.claim'),' ',3),true);
 select is((select count(*) from public.claim_studio_build(current_setting('test.build')::uuid) c),0::bigint,'once: its lease holds it');
-select is(public.wait_email_round(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'{"round":2}',120),2,'its next round waits again');
+select is(public.wait_email_round(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'{"round":2}',600),2,'its next round waits again');
 reset role;
 
--- A step that saved a round is not waiting: the studio leaves it.
+-- Never for a paused workspace.
+update public.tenants set status = 'paused' where id = '00000000-0000-4000-8000-000000000101';
+update public.email_builds set updated_at = now() - interval '2 minutes' where id = current_setting('test.build')::uuid;
+set local role service_role;
+select is((select count(*) from public.claim_studio_build() c),0::bigint,'a paused workspace''s waiting step is not handed out');
+reset role;
+update public.tenants set status = 'active' where id = '00000000-0000-4000-8000-000000000101';
+
+-- A studio claim whose job stopped is taken again once its lease is out;
+-- the stopped claim waits for nothing.
+set local role service_role;
+select set_config('test.lease',(select c.lease_token from public.claim_studio_build(current_setting('test.build')::uuid) c)::text,true);
+reset role;
+update public.email_builds set lease_until = now() - interval '1 second', updated_at = now() - interval '6 minutes' where id = current_setting('test.build')::uuid;
+set local role service_role;
+select throws_ok($$select public.wait_email_round(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'{}',600)$$,'PT409','Lease unavailable','a claim whose lease ran out waits for nothing');
+select set_config('test.lease',(select c.lease_token from public.claim_studio_build(current_setting('test.build')::uuid) c)::text,true);
+select ok(current_setting('test.lease') <> '','the studio takes the step again');
+select is(public.wait_email_round(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'{"round":2}',600),3,'and it waits again');
+reset role;
+select is((select attempts from public.email_builds where id=current_setting('test.build')::uuid),1,'the stopped claim''s try still counts');
+
+-- Once its time is up the studio takes it even with a picture queued; a
+-- step that then saved a round is not waiting.
 update public.section_renders set state = 'queued', failure = null, finished_at = null where build_id = current_setting('test.build')::uuid;
 update public.email_builds set not_before = now() - interval '1 second', updated_at = now() - interval '2 minutes' where id = current_setting('test.build')::uuid;
 set local role service_role;
 select set_config('test.lease',(select c.lease_token from public.claim_studio_build(current_setting('test.build')::uuid) c)::text,true);
-select ok(current_setting('test.lease') <> '','once its time is up, the studio takes it even with a picture queued');
+select ok(current_setting('test.lease') <> '','once its time is up, the studio takes it');
 select is(public.save_email_round(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'design','{"round":3}'),2,'it saves a round');
 select is((select count(*) from public.claim_studio_build(current_setting('test.build')::uuid) c),0::bigint,'and is not waiting any more');
 reset role;
 
 -- Past its time, the sweep takes it (and draws coded blocks, in code).
-update public.email_builds set waits = 1, not_before = now() - interval '1 second', updated_at = now() - interval '2 minutes' where id = current_setting('test.build')::uuid;
+update public.email_builds set waits = 3, not_before = now() - interval '1 second', updated_at = now() - interval '2 minutes' where id = current_setting('test.build')::uuid;
 set local role service_role;
-select is((select c.id::text from public.claim_email_build() c),current_setting('test.build'),'past its time the sweep takes the step');
+select is((select c.id::text from public.claim_email_build(current_setting('test.build')::uuid) c),current_setting('test.build'),'past its time the click or the sweep takes the step');
 reset role;
 
 -- A design step waits at most 6 times.
@@ -106,29 +135,39 @@ update public.email_builds set waits = 6 where id = current_setting('test.build'
 select set_config('test.lease',(select lease_token::text from public.email_builds where id=current_setting('test.build')::uuid),true);
 set local role service_role;
 select throws_ok($$select public.wait_email_round(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'{}',600)$$,'22023','This step waited too often','the seventh wait is refused');
+-- A step asked to try again later (it sets a time and a wait too) is not
+-- waiting for pictures.
+select is(public.fail_email_step(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'ai_busy',false,300),'retry','the step is asked to try again in 5 minutes');
+reset role;
+update public.section_renders set state = 'failed', failure = 'timeout', finished_at = now() where build_id = current_setting('test.build')::uuid;
+update public.email_builds set updated_at = now() - interval '2 minutes' where id = current_setting('test.build')::uuid;
+set local role service_role;
+select is((select count(*) from public.claim_studio_build(current_setting('test.build')::uuid) c),0::bigint,'the studio leaves a step asked to try again later');
 reset role;
 
--- A studio claim whose lease ran out three times fails the step; a planned day that passed fails it too.
-update public.email_builds set waits = 1, attempts = 3, lease_token = null, lease_until = null, not_before = now() + interval '10 minutes',
+-- A studio claim of a step out of tries fails it; a planned day that passed fails it too.
+update public.email_builds set waits = 1, attempts = 3, error_code = null, lease_token = null, lease_until = null, not_before = now() + interval '10 minutes',
   updated_at = now() - interval '2 minutes' where id = current_setting('test.build')::uuid;
-update public.section_renders set state = 'failed', failure = 'timeout', finished_at = now() where build_id = current_setting('test.build')::uuid;
 set local role service_role;
 select is((select count(*) from public.claim_studio_build(current_setting('test.build')::uuid) c),0::bigint,'a step out of tries is not handed out');
 reset role;
 select is((select state || ':' || error_code from public.email_builds where id=current_setting('test.build')::uuid),'failed:step_timed_out','it fails');
 
-set local role service_role;
-select set_config('test.lease',(select c.lease_token from public.claim_email_build(current_setting('test.other')::uuid) c)::text,true);
-select lives_ok($$select public.finish_email_step(current_setting('test.other')::uuid,current_setting('test.lease')::uuid,'sections','{}')$$,'another email gets going');
-reset role;
-update public.email_builds set step = 'design', waits = 1, not_before = now() + interval '10 minutes', updated_at = now() - interval '2 minutes'
-  where id = current_setting('test.other')::uuid;
+update public.section_renders set state = 'failed', failure = 'timeout', finished_at = now() where build_id = current_setting('test.other')::uuid;
 update public.strategy_runs set plan = jsonb_set(plan, '{slots,1,date}', to_jsonb((current_setting('test.today')::date - 1)::text))
   where id = '00000000-0000-4000-8000-00000000e401';
 set local role service_role;
-select is((select count(*) from public.claim_studio_build(current_setting('test.other')::uuid) c),0::bigint,'an email whose day has passed is not handed out');
+select is((select count(*) from public.claim_studio_build() c),0::bigint,'an email whose day has passed is not handed out');
 reset role;
 select is((select state || ':' || error_code from public.email_builds where id=current_setting('test.other')::uuid),'failed:day_passed','it fails as the day passed');
+
+-- A push waiting for Klaviyo is not a design waiting for pictures.
+update public.email_builds set state = 'push_queued', step = 'push', email = '{"subject":"Hello"}', waits = 1, attempts = 0, error_code = null,
+  not_before = now() + interval '10 minutes', updated_at = now() - interval '2 minutes' where id = current_setting('test.build')::uuid;
+set local role service_role;
+select is((select count(*) from public.claim_studio_build(current_setting('test.build')::uuid) c),0::bigint,'the studio never takes a push');
+select throws_ok($$select public.wait_email_round(current_setting('test.build')::uuid,gen_random_uuid(),'{}',600)$$,'PT409','Lease unavailable','nor does a push wait for pictures');
+reset role;
 
 select * from finish();
 rollback;

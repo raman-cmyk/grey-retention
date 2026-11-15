@@ -7279,7 +7279,7 @@ export type Database = {
         }[]
       }
       claim_studio_build: {
-        Args: { target: string }
+        Args: { target?: string }
         Returns: {
           email: Json
           id: string

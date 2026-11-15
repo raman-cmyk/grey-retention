@@ -6,8 +6,7 @@ import {
   buildRenders,
   claimWaitingDesign,
   designStudioOn,
-  waitForPictures,
-  waitingDesigns
+  waitForPictures
 } from './waits'
 
 const build = '44444444-4444-4444-8444-444444444444'
@@ -82,29 +81,15 @@ describe('waiting for the pictures (DST-006b)', () => {
 })
 
 describe('finding and claiming a waiting design step (DST-006b)', () => {
-  it('lists waiting design steps, those waiting longest first', async () => {
-    const d = database({ data: [{ id: build }], error: null })
-    expect(await waitingDesigns(db(d), 3)).toEqual([build])
-    expect(d.calls).toEqual([
-      ['from', 'email_builds'],
-      ['select', 'id'],
-      ['eq', 'state', 'build_queued'],
-      ['eq', 'step', 'design'],
-      ['gt', 'waits', 0],
-      ['not', 'not_before', 'is', null],
-      ['order', 'updated_at'],
-      ['limit', 3]
-    ])
-    await expect(
-      waitingDesigns(db(database({ data: null, error: { code: 'XX000' } })))
-    ).rejects.toMatchObject({ code: 'XX000' })
-  })
-
-  it('claims a named step, or nothing when it is not ready', async () => {
+  it('claims a named step or the readiest, or nothing when none is ready', async () => {
     const claimed = { id: build, step: 'design', lease_token: lease }
     const d = database({ data: [claimed], error: null })
     expect(await claimWaitingDesign(db(d), build)).toEqual(claimed)
     expect(d.calls).toEqual([['rpc', 'claim_studio_build', { target: build }]])
+    // Unnamed: the one waiting longest that is ready.
+    const any = database({ data: [claimed], error: null })
+    expect(await claimWaitingDesign(db(any))).toEqual(claimed)
+    expect(any.calls).toEqual([['rpc', 'claim_studio_build', {}]])
     expect(
       await claimWaitingDesign(db(database({ data: [], error: null })), build)
     ).toBeNull()
