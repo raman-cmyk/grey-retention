@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { blockTypes, parseBlock, parseSpecBlock, type Block } from './catalog'
-import { klaviyoFooterTags } from './klaviyo-tags'
+import { klaviyoFooterTags, previewFooterTags } from './klaviyo-tags'
 import {
   BlockRenderError,
   GMAIL_CLIP_BYTES,
@@ -231,6 +231,15 @@ describe('the footer carries what Klaviyo requires', () => {
     ])
     for (const tag of Object.values(klaviyoFooterTags))
       expect(html).toContain(tag)
+  })
+
+  it('shows an email drawn for Klaviyo with the preview’s placeholders (REL-FTR)', () => {
+    const blocks = [sampleBlocks.text, sampleBlocks.footer]
+    const sent = renderEmail({ blocks, brand: httpsBrand, mode: 'klaviyo' })
+    const preview = renderEmail({ blocks, brand: httpsBrand })
+    expect(previewFooterTags(sent, httpsBrand.name)).toBe(preview)
+    expect(previewFooterTags(sent, null)).toContain('Your brand<br>')
+    expect(previewFooterTags(sent, null)).not.toMatch(/\{%|\{\{/)
   })
 
   it('never shows raw tags in our own preview', () => {

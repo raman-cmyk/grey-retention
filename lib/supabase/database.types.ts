@@ -946,6 +946,48 @@ export type Database = {
           }
         ]
       }
+      brand_logos: {
+        Row: {
+          domain: string
+          on_dark: string | null
+          on_light: string | null
+          read_at: string
+          run_id: string
+          tenant_id: string
+        }
+        Insert: {
+          domain: string
+          on_dark?: string | null
+          on_light?: string | null
+          read_at?: string
+          run_id: string
+          tenant_id: string
+        }
+        Update: {
+          domain?: string
+          on_dark?: string | null
+          on_light?: string | null
+          read_at?: string
+          run_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_logos_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_logos_tenant_id_run_id_fkey'
+            columns: ['tenant_id', 'run_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       brand_offers: {
         Row: {
           gross_margin_percent: number | null
@@ -7762,6 +7804,15 @@ export type Database = {
           pages: Json
         }
         Returns: Json
+      }
+      record_site_logos: {
+        Args: {
+          job: string
+          lease: string
+          on_dark?: string
+          on_light?: string
+        }
+        Returns: boolean
       }
       recover_expired_usage: { Args: { t: string }; Returns: number }
       refresh_catalog_stock: {
