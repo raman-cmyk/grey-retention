@@ -45,7 +45,7 @@ begin
   end if;
   select * into b from private.leased_email_build(build, lease, 'build_queued');
   if b.step is distinct from 'design' then
-    raise exception 'Only the design step waits for its pictures' using errcode = 'PT409';
+    raise exception 'Only the design step waits for its pictures' using errcode = 'PT409', detail = 'not_design_step';
   end if;
   if work is null or jsonb_typeof(work) <> 'object' then
     raise exception 'A step''s work is an object' using errcode = '22023';

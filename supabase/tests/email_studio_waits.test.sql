@@ -1,5 +1,5 @@
 begin;
-select plan(47);
+select plan(48);
 
 -- DST-006b: the design step waits for its pictures, and the design
 -- studio's job claims it again when they are there. Workspace 101.
@@ -81,8 +81,16 @@ select is((select count(*) from public.claim_studio_build() c),0::bigint,'named 
 reset role;
 
 -- The studio claims one once every picture it asked for is drawn or failed:
--- the one waiting longest that is ready.
-update public.section_renders set state = 'failed', failure = 'timeout', finished_at = now() where build_id = current_setting('test.build')::uuid;
+-- of two ready, the one waiting longest.
+update public.section_renders set state = 'failed', failure = 'timeout', finished_at = now()
+  where build_id in (current_setting('test.build')::uuid, current_setting('test.other')::uuid);
+set local role service_role;
+select is((select c.id::text from public.claim_studio_build() c),current_setting('test.other'),'of two ready, the one waiting longest comes first');
+reset role;
+-- That one is put back, with a picture queued again.
+update public.email_builds set lease_token = null, lease_until = null, attempts = 0, updated_at = now() - interval '5 minutes'
+  where id = current_setting('test.other')::uuid;
+update public.section_renders set state = 'queued', failure = null, finished_at = null where build_id = current_setting('test.other')::uuid;
 set local role service_role;
 select set_config('test.claim',(select c.id || ' ' || (c.progress->'work'->'design'->>'round') || ' ' || c.lease_token from public.claim_studio_build() c),true);
 select is(split_part(current_setting('test.claim'),' ',1) || ' ' || split_part(current_setting('test.claim'),' ',2),current_setting('test.build') || ' 1','then the studio is handed the ready step, with its work');
@@ -127,7 +135,7 @@ reset role;
 -- Past its time, the sweep takes it (and draws coded blocks, in code).
 update public.email_builds set waits = 3, not_before = now() - interval '1 second', updated_at = now() - interval '2 minutes' where id = current_setting('test.build')::uuid;
 set local role service_role;
-select is((select c.id::text from public.claim_email_build(current_setting('test.build')::uuid) c),current_setting('test.build'),'past its time the click or the sweep takes the step');
+select is((select c.id::text from public.claim_email_build() c),current_setting('test.build'),'past its time the sweep takes the step');
 reset role;
 
 -- A design step waits at most 6 times.
@@ -166,7 +174,12 @@ update public.email_builds set state = 'push_queued', step = 'push', email = '{"
   not_before = now() + interval '10 minutes', updated_at = now() - interval '2 minutes' where id = current_setting('test.build')::uuid;
 set local role service_role;
 select is((select count(*) from public.claim_studio_build(current_setting('test.build')::uuid) c),0::bigint,'the studio never takes a push');
-select throws_ok($$select public.wait_email_round(current_setting('test.build')::uuid,gen_random_uuid(),'{}',600)$$,'PT409','Lease unavailable','nor does a push wait for pictures');
+reset role;
+-- Nor does a push wait for pictures, even under its own lease.
+update public.email_builds set state = 'build_queued', not_before = null where id = current_setting('test.build')::uuid;
+set local role service_role;
+select set_config('test.lease',(select c.lease_token from public.claim_email_build(current_setting('test.build')::uuid) c)::text,true);
+select throws_ok($$select public.wait_email_round(current_setting('test.build')::uuid,current_setting('test.lease')::uuid,'{}',600)$$,'PT409','Only the design step waits for its pictures','nor does any step but design wait, under its own lease');
 reset role;
 
 select * from finish();

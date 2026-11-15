@@ -10,6 +10,7 @@ import {
 } from './waits'
 
 const build = '44444444-4444-4444-8444-444444444444'
+const tenant = '00000000-0000-4000-8000-000000000101'
 const lease = '22222222-2222-4222-8222-222222222222'
 const id = (n: number) => `3333333${n}-3333-4333-8333-333333333333`
 
@@ -59,10 +60,36 @@ describe('waiting for the pictures (DST-006b)', () => {
     ])
   })
 
-  it('says why it could not wait: the lease moved on, too many waits, refused work', async () => {
+  it('keeps the wait within 1 minute to 1 hour, and never sends a time that is not a number', async () => {
+    for (const [asked, sent] of [
+      [30, 60],
+      [5_000, 3_600]
+    ]) {
+      const d = database({ data: 1, error: null })
+      await wait(d, asked)
+      expect(d.calls[0][2]).toMatchObject({ seconds: sent })
+    }
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      const d = database({ data: 1, error: null })
+      await expect(wait(d, bad)).rejects.toThrow(
+        'A wait needs a number of seconds'
+      )
+      expect(d.calls).toEqual([])
+    }
+  })
+
+  it('says why it could not wait: the claim is gone, the wrong step, too many waits, refused work', async () => {
     expect(
       await wait(database({ data: null, error: { code: 'PT409' } }))
     ).toEqual({ ok: false, reason: 'lease' })
+    expect(
+      await wait(
+        database({
+          data: null,
+          error: { code: 'PT409', details: 'not_design_step' }
+        })
+      )
+    ).toEqual({ ok: false, reason: 'step' })
     expect(
       await wait(
         database({
@@ -90,6 +117,10 @@ describe('finding and claiming a waiting design step (DST-006b)', () => {
     const any = database({ data: [claimed], error: null })
     expect(await claimWaitingDesign(db(any))).toEqual(claimed)
     expect(any.calls).toEqual([['rpc', 'claim_studio_build', {}]])
+    // An empty name is a name, never "any".
+    const empty = database({ data: [], error: null })
+    await claimWaitingDesign(db(empty), '')
+    expect(empty.calls).toEqual([['rpc', 'claim_studio_build', { target: '' }]])
     expect(
       await claimWaitingDesign(db(database({ data: [], error: null })), build)
     ).toBeNull()
@@ -130,13 +161,14 @@ describe('reading a build’s pictures (DST-006b)', () => {
       ],
       error: null
     })
-    expect(await buildRenders(db(d), build)).toEqual([
+    expect(await buildRenders(db(d), { tenant, build })).toEqual([
       {
         id: id(1),
         key: 's2-r1',
         state: 'drawn',
         path: `render/${id(1)}.jpg`,
-        height: 640,
+        // CSS px: the picture is twice as tall.
+        height: 320,
         bytes: 120_000,
         etag: '"abc"'
       },
@@ -146,6 +178,7 @@ describe('reading a build’s pictures (DST-006b)', () => {
     expect(d.calls).toEqual([
       ['from', 'section_renders'],
       ['select', 'id,section_key,state,failure,path,height,bytes,etag'],
+      ['eq', 'tenant_id', tenant],
       ['eq', 'build_id', build],
       ['order', 'created_at'],
       ['order', 'id'],
@@ -153,27 +186,41 @@ describe('reading a build’s pictures (DST-006b)', () => {
     ])
   })
 
-  it('reads a row it cannot trust as failed, never as drawn', async () => {
+  it('reads a row it cannot trust as failed, never as drawn, and leaves out one it cannot read', async () => {
+    const drawn = {
+      state: 'drawn',
+      path: `render/${id(1)}.jpg`,
+      height: 640,
+      bytes: 1,
+      etag: 'e'
+    }
     const d = database({
       data: [
-        row(1, { state: 'drawn', path: null }),
-        row(2, { state: 'gone' }),
-        row(3, { state: 'failed', failure: null })
+        row(1, { ...drawn, path: null }),
+        row(2, { ...drawn, path: `render/${id(9)}.jpg` }),
+        row(3, { ...drawn, height: 641 }),
+        row(4, { state: 'failed', failure: null }),
+        row(5, { state: 'gone' }),
+        { id: 7, section_key: {} }
       ],
       error: null
     })
     expect(
-      (await buildRenders(db(d), build)).map((r) => [r.key, r.state])
+      (await buildRenders(db(d), { tenant, build })).map((r) => [
+        r.key,
+        r.state
+      ])
     ).toEqual([
       ['s2-r1', 'failed'],
       ['s2-r2', 'failed'],
-      ['s2-r3', 'failed']
+      ['s2-r3', 'failed'],
+      ['s2-r4', 'failed']
     ])
     await expect(
-      buildRenders(
-        db(database({ data: null, error: { code: 'XX000' } })),
+      buildRenders(db(database({ data: null, error: { code: 'XX000' } })), {
+        tenant,
         build
-      )
+      })
     ).rejects.toMatchObject({ code: 'XX000' })
   })
 })
