@@ -87,6 +87,9 @@ export async function GET(request: NextRequest) {
   const emailStart = Date.now()
   const emails = await runEmailBuilds(db, {
     deadline: emailStart + emailBudgetMs,
+    // The sweep has seconds, not a whole agent step: it builds with code
+    // only; the owner's click runs the agents (REL-AI part 2).
+    agents: null,
     pusher: draftPusherFor(db, {
       budgetMs: cronPushBudgetMs,
       deadline: Math.min(
