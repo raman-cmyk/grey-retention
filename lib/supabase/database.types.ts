@@ -6209,6 +6209,65 @@ export type Database = {
           }
         ]
       }
+      section_renders: {
+        Row: {
+          build_id: string
+          bytes: number | null
+          created_at: string
+          etag: string | null
+          failure: string | null
+          finished_at: string | null
+          height: number | null
+          id: string
+          origins: string[]
+          path: string | null
+          section: Json
+          section_key: string
+          state: string
+          tenant_id: string
+        }
+        Insert: {
+          build_id: string
+          bytes?: number | null
+          created_at?: string
+          etag?: string | null
+          failure?: string | null
+          finished_at?: string | null
+          height?: number | null
+          id?: string
+          origins: string[]
+          path?: string | null
+          section: Json
+          section_key: string
+          state?: string
+          tenant_id: string
+        }
+        Update: {
+          build_id?: string
+          bytes?: number | null
+          created_at?: string
+          etag?: string | null
+          failure?: string | null
+          finished_at?: string | null
+          height?: number | null
+          id?: string
+          origins?: string[]
+          path?: string | null
+          section?: Json
+          section_key?: string
+          state?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'section_renders_tenant_id_build_id_fkey'
+            columns: ['tenant_id', 'build_id']
+            isOneToOne: false
+            referencedRelation: 'email_builds'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       segment_registry: {
         Row: {
           account_id: string
@@ -7495,6 +7554,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      fail_section_render: {
+        Args: { failure: string; job: string; lease: string }
+        Returns: undefined
+      }
       fail_strategy_step: {
         Args: { code: string; final?: boolean; lease: string; run: string }
         Returns: string
@@ -7876,6 +7939,10 @@ export type Database = {
         }
         Returns: Json
       }
+      record_section_render: {
+        Args: { bytes: number; height: number; job: string; lease: string }
+        Returns: undefined
+      }
       record_section_tags: {
         Args: {
           job: string
@@ -7955,6 +8022,16 @@ export type Database = {
           expected_revision: number
           scheduled_at: string
           t: string
+        }
+        Returns: string
+      }
+      request_section_render: {
+        Args: {
+          build: string
+          lease: string
+          origins: string[]
+          section: Json
+          section_key: string
         }
         Returns: string
       }
