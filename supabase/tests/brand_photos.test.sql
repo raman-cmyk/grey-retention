@@ -31,9 +31,11 @@ update public.job_runs set lease_until = now() - interval '1 second' where id = 
 select ok(not bool_or(has_function_privilege(r,'public.record_site_photos(uuid,uuid,jsonb)','execute'))
   and has_function_privilege('service_role','public.record_site_photos(uuid,uuid,jsonb)','execute'),
   'only the worker keeps photos') from unnest(array['anon','authenticated']) r;
-select ok(not bool_or(has_table_privilege(r,'public.brand_photos',p)),'browser roles cannot write photos')
-  from unnest(array['anon','authenticated']) r, unnest(array['insert','update','delete','truncate','references','trigger']) p;
-select ok(not has_table_privilege('anon','public.brand_photos','select'),'anonymous visitors cannot read them');
+select ok(not bool_or(has_table_privilege(r,t,p)),'browser roles cannot write photos or their set')
+  from unnest(array['anon','authenticated']) r, unnest(array['insert','update','delete','truncate','references','trigger']) p,
+    unnest(array['public.brand_photos','public.brand_photo_sets']) t;
+select ok(not has_table_privilege('anon','public.brand_photos','select')
+  and not has_table_privilege('anon','public.brand_photo_sets','select'),'anonymous visitors cannot read them');
 
 -- Only the site read's own job, under its lease, with well-formed photos.
 set local role service_role;
