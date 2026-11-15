@@ -43,7 +43,7 @@ function liveSite(
   }
 }
 
-function database(fail?: string) {
+function database(fail?: string, kept = true) {
   const calls: { name: string; args: Record<string, unknown> }[] = []
   const chain = {
     select: () => chain,
@@ -61,7 +61,7 @@ function database(fail?: string) {
               data: null,
               error: { code: 'PT409', message: 'Lease unavailable' }
             }
-          : { data: true, error: null }
+          : { data: name === 'record_site_logos' ? kept : null, error: null }
       })
     } as unknown as Db
   }
@@ -114,6 +114,20 @@ describe('readBrandSite keeps the logos (ONB-060b)', () => {
     })
     expect(picture).not.toHaveBeenCalled()
     expect(calls.map((c) => c.name)).toEqual(['record_site_findings'])
+  })
+
+  it('says none were kept when a newer read of the site already kept its own', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { db, calls } = database(undefined, false)
+    const run = await readBrandSite(db, job, {
+      fetcher: () => liveSite(),
+      askFor: () => sampleAsk
+    })
+    expect(calls.map((c) => c.name)).toEqual([
+      'record_site_logos',
+      'record_site_findings'
+    ])
+    expect(run.logos).toBeUndefined()
   })
 
   it('still stores the findings when the logos cannot be kept (the emails show the name)', async () => {

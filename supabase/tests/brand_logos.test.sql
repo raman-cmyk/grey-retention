@@ -1,13 +1,14 @@
 begin;
-select plan(22);
+select plan(29);
 
 -- ONB-060b: the brand's two logos, kept by the Site reader's job. Owner
 -- ...01 and staff ...05 are in workspace 101 (cedar-lane.example); owner
 -- ...04 runs workspace 102.
-create function pg_temp.job(tenant text, key text, kind text default 'brand.read_site', age interval default '0') returns uuid
+create function pg_temp.job(tenant text, key text, kind text default 'brand.read_site', age interval default '0',
+  domain text default 'WWW.Cedar-Lane.example') returns uuid
 language sql as $$
   insert into public.job_runs(tenant_id,kind,idempotency_key,input,created_by,created_at,status,lease_token,lease_until)
-    values (tenant::uuid,kind,key,jsonb_build_object('domain','WWW.Cedar-Lane.example'),
+    values (tenant::uuid,kind,key,jsonb_build_object('domain',domain),
       (select profile_id from public.tenant_memberships where tenant_id=tenant::uuid and role='owner' limit 1), now()-age,
       'running','00000000-0000-4000-8000-00000000aaaa',now()+interval '1 minute')
     returning id
@@ -18,6 +19,9 @@ $$;
 select set_config('test.old',pg_temp.job('00000000-0000-4000-8000-000000000101','logos-old',age=>'1 hour')::text,true);
 select set_config('test.new',pg_temp.job('00000000-0000-4000-8000-000000000101','logos-new')::text,true);
 select set_config('test.other',pg_temp.job('00000000-0000-4000-8000-000000000101','logos-catalog','brand.read_catalog')::text,true);
+select set_config('test.nosite',pg_temp.job('00000000-0000-4000-8000-000000000101','logos-nosite',domain=>'localhost')::text,true);
+select set_config('test.expired',pg_temp.job('00000000-0000-4000-8000-000000000101','logos-expired')::text,true);
+update public.job_runs set lease_until = now() - interval '1 second' where id = current_setting('test.expired')::uuid;
 
 -- Grants.
 select ok(not bool_or(has_function_privilege(r,'public.record_site_logos(uuid,uuid,text,text)','execute'))
@@ -35,20 +39,32 @@ select throws_ok(format('select pg_temp.keep(%L,null,null)',current_setting('tes
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
 select throws_ok(format('select public.record_site_logos(%L,gen_random_uuid(),null,null)',current_setting('test.new')),
   'PT409',null,'a wrong lease keeps nothing');
+select throws_ok(format('select pg_temp.keep(%L,null,null)',current_setting('test.expired')),'PT409',null,
+  'a lease that ran out keeps nothing');
 select throws_ok(format('select pg_temp.keep(%L,null,null)',current_setting('test.other')),'23514',null,
   'another reader''s job cannot keep logos');
+select throws_ok(format('select pg_temp.keep(%L,null,null)',current_setting('test.nosite')),'23514',null,
+  'a job without a real website keeps nothing');
 select throws_ok(format('select pg_temp.keep(%L,%L,null)',current_setting('test.new'),u),'23514',null,'refused: '||left(u,40))
   from unnest(array['http://cdn.example/logo.png','https://cdn.example:8443/logo.png','https://a:b@cdn.example/logo.png',
-    'https://cdn.example/'||repeat('a',1000),'logo.png']) u;
+    'https://cdn.example/'||repeat('a',982),'logo.png']) u;
+select throws_ok(format('select pg_temp.keep(%L,null,%L)',current_setting('test.new'),'http://cdn.example/logo-white.png'),
+  '23514',null,'the dark-section logo is checked too');
 select throws_ok(format('select pg_temp.keep(%L,%L,%L)',current_setting('test.new'),'https://cdn.example/logo.png',
   'https://cdn.example/logo.png'),'23514',null,'never the same picture for both');
 
--- Kept, with the plain domain the job read; a logo may be on another host.
-select ok(pg_temp.keep(current_setting('test.new')::uuid,'https://cdn.example/files/logo-dark.svg',null),'the newest read keeps its logos');
+-- Kept, with the plain domain the job read; a logo may be on another host
+-- (exactly 1,000 characters is still kept).
+select ok(pg_temp.keep(current_setting('test.old')::uuid,'https://cdn.example/'||repeat('a',980),null),
+  'a read keeps its logos');
+select is((select run_id::text from public.brand_logos where tenant_id='00000000-0000-4000-8000-000000000101'),
+  current_setting('test.old'),'from that read');
+-- A newer read replaces them.
+select ok(pg_temp.keep(current_setting('test.new')::uuid,'https://cdn.example/files/logo-dark.svg',null),'the newer read keeps its logos');
 select is((select array[domain,on_light,coalesce(on_dark,'none'),run_id::text] from public.brand_logos
   where tenant_id='00000000-0000-4000-8000-000000000101'),
   array['cedar-lane.example','https://cdn.example/files/logo-dark.svg','none',current_setting('test.new')],
-  'one row for the workspace, from that read');
+  'still one row for the workspace, now from the newer read');
 -- An older read finishing later does not replace them.
 select ok(not pg_temp.keep(current_setting('test.old')::uuid,'https://cedar-lane.example/old.png',null),'an older read is too late');
 select is((select on_light from public.brand_logos where tenant_id='00000000-0000-4000-8000-000000000101'),
@@ -59,6 +75,10 @@ select is((select count(*)::integer from public.brand_logos where tenant_id='000
   and on_light is null and on_dark is null),1,'still one row, now without logos');
 select ok(pg_temp.keep(current_setting('test.new')::uuid,'https://cdn.example/dark.png','https://cdn.example/light.png'),
   'both logos');
+-- Once the read has stored its findings, its lease is gone.
+select public.record_site_findings(current_setting('test.new')::uuid,'00000000-0000-4000-8000-00000000aaaa','[]','[]',false);
+select throws_ok(format('select pg_temp.keep(%L,null,null)',current_setting('test.new')),'PT409',null,
+  'a finished read keeps nothing');
 reset role;
 
 -- The workspace's members read them; another workspace does not.
@@ -70,9 +90,12 @@ select is((select count(*)::integer from public.brand_logos),0,'another workspac
 reset role;
 
 -- A logo row always names its read, and a check keeps the pictures apart.
-select throws_ok($$insert into public.brand_logos(tenant_id,run_id,domain,on_light,on_dark)
-  values('00000000-0000-4000-8000-000000000102',gen_random_uuid(),'north-studio.example',null,null)$$,'23503',null,
+select throws_ok(format($$insert into public.brand_logos(tenant_id,run_id,domain,on_light,on_dark)
+  values('00000000-0000-4000-8000-000000000102',%L,'north-studio.example',null,null)$$,current_setting('test.old')),'23503',null,
   'a row needs a read of the same workspace');
+select throws_ok(format($$insert into public.brand_logos(tenant_id,run_id,domain,on_light,on_dark)
+  values('00000000-0000-4000-8000-000000000101',%L,'localhost',null,null)$$,current_setting('test.old')),'23514',null,
+  'a row needs a real website');
 
 select * from finish();
 rollback;

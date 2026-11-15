@@ -264,7 +264,9 @@ export async function readBrandSite(
     })
     if (kept.error)
       logger.warn('Site logos not kept', { code: kept.error.code })
-    else run.logos = { onLight: !!picked.onLight, onDark: !!picked.onDark }
+    // False: a newer read of the site already kept its own.
+    else if (kept.data === true)
+      run.logos = { onLight: !!picked.onLight, onDark: !!picked.onDark }
   }
   const recorded = await db.rpc('record_site_findings', {
     job: job.id,

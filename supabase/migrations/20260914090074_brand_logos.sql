@@ -9,7 +9,7 @@ create table public.brand_logos (
   tenant_id uuid primary key references public.tenants(id),
   run_id uuid not null,
   -- The site the logos were read from.
-  domain text not null check (domain = private.site_domain(domain)),
+  domain text not null check (coalesce(domain = private.site_domain(domain), false)),
   on_light text check (on_light is null or (length(on_light) <= 1000 and private.https_host(on_light) is not null)),
   on_dark text check (on_dark is null or (length(on_dark) <= 1000 and private.https_host(on_dark) is not null)),
   -- Never the same picture for both.
