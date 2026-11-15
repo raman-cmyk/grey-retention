@@ -56,6 +56,8 @@ export async function runStudioBuilds(
     const done = await runEmailBuilds(db, {
       build: job.id,
       first: job,
+      // Its own switch, as read here (never the process's again).
+      studio: true,
       agents,
       deadline: deps.deadline,
       pusher: deps.pusher,

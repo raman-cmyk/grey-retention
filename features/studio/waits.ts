@@ -3,6 +3,9 @@ import { z } from 'zod'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import { renderScale } from './renderer'
+import { studioWaits } from './limits'
+
+export { studioWaits }
 
 /**
  * DST-006b: the email build's design step waits for its pictures. It asks
@@ -26,19 +29,6 @@ type Db = SupabaseClient<Database>
 export const designStudioOn = (
   env: Readonly<Record<string, string | undefined>>
 ) => env.DESIGN_STUDIO?.trim() === 'on'
-
-/**
- * The database's limits (`wait_email_round`, `request_section_render`),
- * repeated here: the database refuses past them whatever these say.
- */
-export const studioWaits = {
-  minSeconds: 60,
-  maxSeconds: 3_600,
-  /** Waits per design step: the studio's rounds are 3 at most. */
-  perStep: 6,
-  /** Pictures per build. */
-  renders: 12
-}
 
 export type WaitResult =
   | { ok: true; waits: number }

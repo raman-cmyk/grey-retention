@@ -16,6 +16,8 @@ vi.mock('./steps', async (original) => ({
   runBuildStep: runStep
 }))
 import { memoryFallbackLog } from '@/features/fallback/log'
+import { InMemoryMemoryStore } from '@/features/agents/memory'
+import { InMemoryRunLog } from '@/features/agents/runtime'
 import { fakeDraftPusher } from '@/lib/providers/klaviyo-draft'
 import { runEmailBuilds } from './worker'
 import { buildEmail, type PlannedEmail } from './build'
@@ -160,13 +162,13 @@ describe('a design step waiting for its pictures (DST-006b)', () => {
     expect(named(d.calls, 'claim_email_build')).toEqual([])
   })
 
-  it('fails the build when the pictures kept not coming (the seventh wait)', async () => {
+  it('tries the step again when the pictures kept not coming (the seventh wait): the next claim draws it coded', async () => {
     runStep.mockResolvedValueOnce(waits)
     const d = fakeDb({ wait: { code: '22023', details: 'too_many_waits' } })
     await run(d)
     expect(named(d.calls, 'fail_email_step')[0].args).toMatchObject({
       code: 'step_timed_out',
-      final: true
+      final: false
     })
   })
 
@@ -272,5 +274,53 @@ describe('a design step waiting for its pictures (DST-006b)', () => {
       runEmailBuilds(d.db, { agents: null, build: 'build-2', first: d.first })
     ).rejects.toThrow('A claimed build runs alone')
     expect(d.calls).toEqual([])
+  })
+
+  it('gives the design step the studio’s ports only with the switch on and the agents (DST-006c)', async () => {
+    const withAgents = {
+      memory: new InMemoryMemoryStore(),
+      log: new InMemoryRunLog(),
+      ai: vi.fn()
+    }
+    for (const [options, given] of [
+      [{ studio: true, agents: withAgents }, true],
+      [{ studio: false, agents: withAgents }, false],
+      [{ studio: true, agents: null }, false]
+    ] as const) {
+      runStep.mockResolvedValueOnce(waits)
+      const d = fakeDb()
+      await runEmailBuilds(d.db, {
+        fallbacks: memoryFallbackLog(),
+        first: d.first,
+        ...options
+      })
+      expect(runStep.mock.calls.at(-1)![2].studio !== undefined).toBe(given)
+    }
+    // By default, the owner's switch decides.
+    for (const [value, given] of [
+      ['on', true],
+      ['', false]
+    ] as const) {
+      vi.stubEnv('DESIGN_STUDIO', value)
+      runStep.mockResolvedValueOnce(waits)
+      const d = fakeDb()
+      await runEmailBuilds(d.db, {
+        fallbacks: memoryFallbackLog(),
+        first: d.first,
+        agents: withAgents
+      })
+      expect(runStep.mock.calls.at(-1)![2].studio !== undefined).toBe(given)
+      vi.unstubAllEnvs()
+    }
+    // Never for another step.
+    runStep.mockResolvedValueOnce(waits)
+    const copy = fakeDb({ step: 'copy' })
+    await runEmailBuilds(copy.db, {
+      fallbacks: memoryFallbackLog(),
+      first: copy.first,
+      studio: true,
+      agents: withAgents
+    })
+    expect(runStep.mock.calls.at(-1)![2].studio).toBeUndefined()
   })
 })

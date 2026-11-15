@@ -15,6 +15,11 @@ import {
   type SectionsOutput
 } from './build'
 import type { LockedContent } from './content'
+import {
+  studioDesignStep,
+  type StudioStepPorts
+} from '@/features/studio/design-step'
+import { keyPart } from '@/features/fallback/entry'
 import type { Store } from './ports'
 import { buildSteps, type BuildStep, type RoundStep } from './step-names'
 
@@ -203,7 +208,14 @@ export async function runBuildStep(
     /** The copy step: subjects the plan's other emails use (REL-AI). */
     taken?: readonly string[]
   },
-  ctx: BuildCtx
+  ctx: BuildCtx & {
+    /**
+     * DST-006c: the design studio's ports for this claim, only with the
+     * owner's switch on and the agents (the worker gives them); without,
+     * the design step draws coded blocks.
+     */
+    studio?: StudioStepPorts
+  }
 ): Promise<StepResult> {
   if (!(buildSteps as readonly string[]).includes(step))
     return { ok: false, code: 'step_unknown' }
@@ -271,12 +283,58 @@ export async function runBuildStep(
     if (now === 'unreadable') return { ok: false, code: 'offers_unreadable' }
     if (now === 'unsafe') return { ok: false, code: 'offer_unsafe' }
   }
+  let drawn = copy.data as unknown as CopyOutput
+  const saved = roundsOf(progress.data, 'design').work as
+    { studio?: unknown } | undefined
+  if (ctx.studio) {
+    // DST-006c: the designed heroes from the studio, the rest coded.
+    const locked = (progress.data.content as LockedContent | undefined)
+      ?.sections
+    const studio = await studioDesignStep(
+      {
+        slot: { emailType: planned.emailType, angle: planned.angle },
+        sections: (locked ?? []).map((s) => ({
+          family: s.family,
+          purpose: s.purpose,
+          products: (Array.isArray(s.products) ? s.products : []).flatMap(
+            (p) => (typeof p?.title === 'string' ? [{ title: p.title }] : [])
+          )
+        })),
+        blocks: drawn.draft.blocks,
+        brand: store.brand,
+        saved
+      },
+      ctx.studio
+    )
+    if ('waiting' in studio)
+      return {
+        ok: true,
+        waiting: 'design',
+        work: studio.waiting.work,
+        seconds: studio.waiting.seconds
+      }
+    drawn = { ...drawn, draft: { ...drawn.draft, blocks: studio.blocks } }
+  } else if (saved?.studio) {
+    // The studio's work, past its time (or its switch turned off): the
+    // email is drawn coded, and the owner's log says so once (D16).
+    await ctx.fallbacks.record({
+      tenantId: ctx.tenantId,
+      campaignId: ctx.campaignId ?? null,
+      agent: 'design-studio',
+      reasonCode: 'studio_not_finished',
+      reason: 'The design studio stopped before it finished.',
+      fallback: 'Drew the email with its coded blocks.',
+      attempts: 1,
+      detail: {},
+      dedupeKey: `design-studio:${keyPart(ctx.callerKey)}:not-finished`
+    })
+  }
   const made = designStep({
     planned,
     store,
     sendAt: sections.sendAt,
     sample: sections.sample,
-    copy: copy.data as unknown as CopyOutput,
+    copy: drawn,
     rules: sections.rules,
     ai: sections.layout.source === 'agent' || content?.source === 'agent'
   })
