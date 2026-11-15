@@ -23,7 +23,11 @@ import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { maxStepSaves, roundSteps, maxEmailBytes } from './step-names'
 import { buildCode, type BuildFailureCode } from './failure-words'
 import { type SavedOffers, type StoreSource } from './ports'
-import { studioPortsFor } from '@/features/studio/live-ports'
+import { studioPortsFor, studioStepMs } from '@/features/studio/live-ports'
+import {
+  liveImageFetcher,
+  sampleImageFetcher
+} from '@/features/inbox/image-fetch'
 import {
   designStudioOn,
   waitForPictures,
@@ -209,8 +213,11 @@ export async function runEmailBuilds(
           deps.offers ??
           planOfferSource(saved, job.start_on, { sample: store.sample })
         const started = now()
+        // DST-006e: the studio's design step has longer (its critic's tries
+        // and the product's photo); the claims' own deadlines still bound it.
+        const studioStep = studio && agents && job.step === 'design'
         const until = Math.min(
-          started + stepBudgetMs,
+          started + (studioStep ? studioStepMs : stepBudgetMs),
           deps.deadline ?? Number.POSITIVE_INFINITY
         )
         // REL-AI: the copy step skips the subjects of the plan's other emails.
@@ -234,7 +241,7 @@ export async function runEmailBuilds(
             // this claim's budget and the job's deadline (REL-AI part 2b).
             until,
             clock: now,
-            ...(studio && agents && job.step === 'design'
+            ...(studioStep && agents
               ? {
                   studio: studioPortsFor(db, {
                     tenant: job.tenant_id,
@@ -244,6 +251,10 @@ export async function runEmailBuilds(
                     fallbacks,
                     callerKey: `email-build:${job.id}`,
                     industry: store.industry ?? null,
+                    // A sample store's photos are never fetched.
+                    photos: store.sample
+                      ? sampleImageFetcher
+                      : liveImageFetcher,
                     until,
                     now
                   })
