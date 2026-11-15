@@ -8,6 +8,7 @@ import type { Database } from '@/lib/supabase/database.types'
  */
 export const changeKinds = [
   'max_discount_changed',
+  'margin_floor_changed',
   'discount_code_added',
   'discount_code_retired',
   'klaviyo_connection_changed',
@@ -54,6 +55,19 @@ export function changeText(
     return from
       ? `Max discount changed from ${from} to ${to}`
       : `Max discount set to ${to}`
+  }
+  if (kind === 'margin_floor_changed') {
+    const floor = percent(detail.to_floor)
+    const margin = percent(detail.to_margin)
+    if (!floor || !margin)
+      return detail.to_floor === null && detail.to_margin === null
+        ? 'Margin floor removed'
+        : null
+    const was = percent(detail.from_floor)
+    const wasMargin = percent(detail.from_margin)
+    return was && wasMargin
+      ? `Margin floor changed to ${floor} on a ${margin} margin (was ${was} on ${wasMargin})`
+      : `Margin floor set to ${floor} on a ${margin} margin`
   }
   const code = text(detail.code)
   if (kind === 'discount_code_added' && code) {

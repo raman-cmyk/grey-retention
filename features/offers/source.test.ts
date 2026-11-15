@@ -51,6 +51,8 @@ describe('SupabaseOfferSource', () => {
     )
     expect(await new SupabaseOfferSource(db).managed(tenant)).toEqual({
       maxDiscountPercent: 20,
+      grossMarginPercent: null,
+      marginFloorPercent: null,
       revision: 3,
       codes: [
         {
@@ -87,6 +89,8 @@ describe('SupabaseOfferSource', () => {
     const { db } = fakeDb([], [])
     expect(await new SupabaseOfferSource(db).managed(tenant)).toEqual({
       maxDiscountPercent: null,
+      grossMarginPercent: null,
+      marginFloorPercent: null,
       revision: 0,
       codes: []
     })
@@ -117,9 +121,47 @@ describe('SupabaseOfferSource', () => {
       await new SupabaseOfferSource(db).offers(tenant, '2026-12-01T00:00:00Z')
     ).toEqual({
       maxDiscountPercent: 25,
+      limitedBy: 'max_discount',
       codes: [
         { code: 'LATER', percent: 15, expiresAt: '2026-12-20T00:00:00.000Z' }
       ]
+    })
+  })
+
+  it('caps the max discount at the margin floor, and says so (PLN-039)', async () => {
+    const source = (gross: number | null, floor: number | null) =>
+      new SupabaseOfferSource(
+        fakeDb(
+          [
+            {
+              max_discount_percent: 50,
+              gross_margin_percent: gross,
+              margin_floor_percent: floor,
+              revision: 2
+            }
+          ],
+          [code({})]
+        ).db
+      )
+    expect(await source(60, 30).managed(tenant)).toMatchObject({
+      maxDiscountPercent: 50,
+      grossMarginPercent: 60,
+      marginFloorPercent: 30
+    })
+    // Agents read 42%: a 60% margin with a 30% floor allows no more.
+    expect(await source(60, 30).offers(tenant)).toMatchObject({
+      maxDiscountPercent: 42,
+      limitedBy: 'margin_floor',
+      codes: [{ code: 'WELCOME15', percent: 15 }]
+    })
+    // A loose floor leaves the owner's max as the limit.
+    expect(await source(80, 10).offers(tenant)).toMatchObject({
+      maxDiscountPercent: 50,
+      limitedBy: 'max_discount'
+    })
+    expect(await source(null, null).offers(tenant)).toMatchObject({
+      maxDiscountPercent: 50,
+      limitedBy: 'max_discount'
     })
   })
 
