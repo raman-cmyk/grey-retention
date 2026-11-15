@@ -355,6 +355,21 @@ describe('saved steps (REL-081)', () => {
     }
   })
 
+  it('stores a code it has no words for as step_error, and logs the code (REL-084)', async () => {
+    const error = vi.spyOn(logger, 'error').mockImplementation(() => {})
+    const { db, calls } = fakeDb([step()])
+    await runEmailBuilds(db, {
+      stores: { read: async () => Promise.reject({ code: 'something_new' }) },
+      fallbacks: memoryFallbackLog()
+    })
+    expect(failure(calls)).toMatchObject({ code: 'step_error', final: false })
+    expect(error).toHaveBeenCalledWith(
+      'Email build step threw',
+      expect.objectContaining({ code: 'something_new' })
+    )
+    error.mockRestore()
+  })
+
   it('fails at once when the database refuses a step’s output', async () => {
     const { db, calls } = fakeDb([step()], {
       finish_email_step: { code: '22023' }
@@ -437,12 +452,25 @@ describe('the offers a build uses', () => {
     expect(email.html).toContain('CANDLE10')
   })
 
-  it('gives no discount, never the sample, when the saved offers cannot be read', async () => {
-    const email = await builtWith('error')
+  it('tries an offer email again, never with the sample or no discount, when the saved offers cannot be read (REL-084)', async () => {
+    const { db, calls } = fakeDb([offerStep()], {}, 'error')
+    await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+    // Its 3 tries (a minute apart) then fail it with plain words.
+    expect(failure(calls)).toMatchObject({
+      code: 'offers_unreadable',
+      final: false
+    })
+    expect(calls.some((c) => c.fn === 'finish_email_step')).toBe(false)
+    expect(calls.some((c) => c.fn === 'finish_email_build')).toBe(false)
+  })
+
+  it('makes an email without an offer even when the saved offers cannot be read', async () => {
+    const { db, calls } = fakeDb([step()], {}, 'error')
+    await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
+    const email = calls.find((c) => c.fn === 'finish_email_build')!.args
+      .result as BuiltEmail
     expect(email.code).toBeNull()
     expect(email.html).not.toContain('CANDLE10')
-    // No codes at all were read (the sample would have CANDLE10).
-    expect(email.changes).toContain('offer_not_in_codes')
   })
 })
 

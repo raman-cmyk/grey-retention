@@ -94,10 +94,12 @@ export type StepResult =
       ok: false
       /**
        * Short codes for the build's error column; all final but
-       * `step_unknown` (an app newer than its database), tried again.
+       * `step_unknown` (an app newer than its database) and
+       * `offers_unreadable`, tried again.
        */
       code:
         | 'slot_time_invalid'
+        | 'offers_unreadable'
         | 'copy_failed'
         | 'render_failed'
         | 'step_progress_invalid'

@@ -34,7 +34,7 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 | UX-RESET-003     | Prototype weekly plan → segment refinement → email review → approval, desktop and phone                           | Not started                                                       |
 | UX-RESET-004     | Define tokens, components, states and responsive behavior; map approved Figma components to code                  | Not started                                                       |
 | BLK-SCALE-001    | Define type/variant/template taxonomy, counting, provenance, deduplication and quality toward 2,000+ blocks       | Not started                                                       |
-| SEG-STRATEGY-001 | Define strategic segment rules using supported Klaviyo data, refresh behavior and exclusions                      | Not started                                                       |
+| SEG-STRATEGY-001 | Define strategic segment rules using supported Klaviyo data, refresh behavior and exclusions                      | Rule set proposed (#427); Klaviyo mapping is SEG-STRATEGY-001b    |
 | SEG-EXPOSURE-001 | Define frequency window/cap, overlap resolution, priorities and external-send accounting                          | Owner decisions and design required                               |
 | SEG-CHAT-001     | Design and build chat → explicit rules → estimated membership/overlap preview → approval                          | Not started                                                       |
 | CHAT-CORE-001    | Define central AI workspace context, tools, evidence, permissions and quality evaluation                          | Not started; no model chosen                                      |

@@ -11,6 +11,7 @@ import { databaseFallbackLog, type FallbackLog } from '@/features/fallback/log'
 import { stepCode } from '@/features/strategy/worker'
 import { builtEmail, plannedEmail } from './build'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
+import { buildCode, type BuildFailureCode } from './failure-words'
 import {
   ownerOrSampleOffers,
   sampleOffersFrom,
@@ -63,7 +64,11 @@ export async function runEmailBuilds(
   } = {}
 ) {
   const pusher = deps.pusher ?? fakeDraftPusher()
-  const fallbacks = deps.fallbacks ?? databaseFallbackLog(db)
+  const fallbacks =
+    deps.fallbacks ??
+    databaseFallbackLog(db, (lost) =>
+      logger.warn('Fallback could not be recorded', lost)
+    )
   const saved = deps.saved ?? new SupabaseOfferSource(db)
   const now = deps.now ?? Date.now
   const limit = deps.build ? buildSteps.length + 1 : (deps.limit ?? 25)
@@ -78,7 +83,7 @@ export async function runEmailBuilds(
     const job = claimed.data?.[0]
     if (!job) break
     const fail = async (
-      code: string,
+      code: BuildFailureCode,
       final: boolean,
       retryAfterSeconds?: number
     ) => {
@@ -145,9 +150,12 @@ export async function runEmailBuilds(
           })
         if (!step.ok) {
           // A claim without a known step (the app went live before the
-          // migration) is tried again, 3 tries a minute apart, then fails
-          // as `step_unknown` ("Try again"); every other code at once.
-          await fail(step.code, step.code !== 'step_unknown')
+          // migration) and saved offers that could not be read are tried
+          // again, 3 tries a minute apart; every other code fails at once.
+          await fail(
+            step.code,
+            step.code !== 'step_unknown' && step.code !== 'offers_unreadable'
+          )
           continue
         }
         if (step.done !== 'design') {
@@ -228,7 +236,11 @@ export async function runEmailBuilds(
       }
       ran++
     } catch (error) {
-      await fail(stepCode(error), false)
+      // Only codes with plain words are stored (REL-084); the log keeps it.
+      const code = stepCode(error)
+      if (buildCode(code) !== code)
+        logger.error('Email build step threw', { build: job.id, code })
+      await fail(buildCode(code), false)
     }
   }
   return { ran }

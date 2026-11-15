@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
+import { logger } from '@/lib/logger'
 import { runStrategyRuns, stepCode } from './worker'
 import { memoryFallbackLog } from '@/features/fallback/log'
 import { sampleStrategyData } from './data'
@@ -241,6 +242,29 @@ describe('the offers a plan uses (#379)', () => {
     )
   })
 
+  it('names a picked offer that no email uses, but not for "You choose" (REL-084)', async () => {
+    const stored = await pulseFor({})
+    const picked = await planFor(
+      stored,
+      {},
+      {
+        mode: 'picked',
+        offers: ['offer:CANDLE10', 'offer:WELCOME15']
+      }
+    )
+    const used = new Set(
+      picked.slots.flatMap((s: { offer: { code: string } | null }) =>
+        s.offer ? [s.offer.code] : []
+      )
+    )
+    expect(used.size).toBe(1)
+    expect(picked.notes.at(-1)).toMatch(
+      /^No email in these 15 days uses this offer: (CANDLE10|WELCOME15)\.$/
+    )
+    const auto = await planFor(stored, {}, { mode: 'auto' })
+    expect(auto.notes.join(' ')).not.toMatch(/No email in these 15 days/)
+  })
+
   it('reads only this workspace’s offers and timezone', async () => {
     const { db, reads } = fakeDb([run()], {}, own)
     await runStrategyRuns(db)
@@ -386,6 +410,21 @@ describe('the offers a plan uses (#379)', () => {
 })
 
 describe('failed steps', () => {
+  it('stores a code it has no words for as step_error, and logs the code (REL-084)', async () => {
+    const error = vi.spyOn(logger, 'error').mockImplementation(() => {})
+    const { db, calls } = fakeDb([run()])
+    const broken = {
+      load: async () => Promise.reject({ code: 'something_new' })
+    }
+    await runStrategyRuns(db, { data: broken })
+    expect(failure(calls)).toMatchObject({ code: 'step_error', final: false })
+    expect(error).toHaveBeenCalledWith(
+      'Plan step threw',
+      expect.objectContaining({ code: 'something_new' })
+    )
+    error.mockRestore()
+  })
+
   it('are tried again when the store cannot be read', async () => {
     const { db, calls } = fakeDb([run()])
     const broken = { load: async () => Promise.reject(new Error('down')) }

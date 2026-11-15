@@ -119,7 +119,9 @@ export type SavedOffers = Pick<SupabaseOfferSource, 'managed'>
  * saved max discount (a `brand_offers` row) or any active code, even while
  * the store is the sample store. Only when the owner has saved nothing do
  * the sample offers apply, so the sample plan's codes still match. A read
- * that fails is null, so `offersAt` gives no discount: never the sample.
+ * that fails is null, never the sample: an email without an offer then
+ * goes on with no discount, and an offer email's first step is tried again
+ * (`sectionsStep`, REL-084).
  */
 export const ownerOrSampleOffers = (
   saved: SavedOffers,
