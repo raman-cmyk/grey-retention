@@ -4,3 +4,14 @@ export type BuildStep = (typeof buildSteps)[number]
 
 /** Every step a build can be at, as `email_builds.step` stores it. */
 export const allSteps = [...buildSteps, 'push'] as const
+
+/**
+ * REL-AI part 2b: the steps whose agents make several model calls. Such a
+ * step runs only what fits in one claim's time, saves its rounds
+ * (`save_email_round`) and goes on from them in the next claim.
+ */
+export const roundSteps = ['copy', 'design'] as const
+export type RoundStep = (typeof roundSteps)[number]
+
+/** A step saves at most this many times (the database refuses more). */
+export const maxStepSaves = 16
