@@ -16,6 +16,12 @@ describe('fixture transport gates', () => {
     ] as const)
       expect(cronAuthorized(header, key)).toBe(false)
     expect(cronAuthorized(`Bearer ${secret}`, secret)).toBe(true)
+    // CI-005: spaces and line breaks at either end of either copy are ignored.
+    expect(cronAuthorized(`Bearer ${secret}`, `${secret}\n`)).toBe(true)
+    expect(cronAuthorized(`Bearer  ${secret} `, ` ${secret}\r\n`)).toBe(true)
+    expect(cronAuthorized(`Bearer ${secret}x`, `${secret}\n`)).toBe(false)
+    // Still at least 32 characters once trimmed.
+    expect(cronAuthorized('Bearer short', `short${' '.repeat(40)}`)).toBe(false)
   })
   it('denies real or unset mode and every non-loopback URL', () => {
     for (const [mode, url] of [

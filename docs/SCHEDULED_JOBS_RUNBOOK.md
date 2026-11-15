@@ -36,7 +36,9 @@ You need one random secret and you put the **same value** in two places. Do not 
 
 ### Check it works
 
-- GitHub → Actions → **Scheduled jobs** → "Run workflow". The run log ends with a line like `{"live":false,"tenants":…}`. A red run shows the reason: the secret is missing, `401` (the two secrets differ) or `503` (server setup). A yellow warning means some workspace visits stopped on an error; their jobs wait for the next run and the Vercel function logs show the error code.
+- GitHub → Actions → **Scheduled jobs** → "Run workflow". The run log ends with a line like `{"live":false,"tenants":…}`. A red run shows the reason in the app's own words: the secret is missing, `401 (Unauthorized)` (the two secrets differ) or `503` (server setup).
+- **Retries (CI-005):** each of the five scheduled workflows (Scheduled jobs, Onboarding readers, Inbox tagging, Inbox screenshots, Klaviyo results) tries a call that gets no answer or an error once more after 2 minutes. A yellow "Trying again in 2 minutes" line is not a failure; the run is red only when both tries fail. Spaces and line breaks at either end of `CRON_SECRET` (an easy slip when pasting) are ignored in GitHub and in the app.
+- **Failure emails are off** (owner, 15 Nov): check the Actions tab after a batch of merges. A yellow warning means some workspace visits stopped on an error; their jobs wait for the next run and the Vercel function logs show the error code.
 - Or queue some sample work (for example "Generate copy" on a campaign) and wait up to 30 minutes: the campaign moves on without pressing "Run fixture jobs".
 
 ### Pause or change
