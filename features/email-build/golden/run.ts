@@ -21,6 +21,8 @@ import type { GoldenRun } from './properties'
 
 /** What `save_email_round` takes for one step's work (its 64 kB). */
 const maxWorkBytes = 64_000
+/** What the database keeps of a build's saved steps in all (300 kB). */
+const maxProgressBytes = 300_000
 
 /**
  * REL-EVL: one golden brief, built the way the job builds it
@@ -84,6 +86,9 @@ export async function runGolden(
       )
       if (!made.ok) return done(made)
       if ('saved' in made) {
+        // As the job: rounds saved for another step are a broken output.
+        if (made.saved !== step)
+          return done({ ok: false, code: 'step_output_invalid' })
         // As `save_email_round`: the work merged in, its saves counted.
         const work = (progress.work ?? {}) as Record<string, { saves?: number }>
         const saves = (work[step]?.saves ?? 0) + 1
@@ -92,10 +97,14 @@ export async function runGolden(
         if (Buffer.byteLength(JSON.stringify(made.work)) > maxWorkBytes)
           return done({ ok: false, code: 'step_output_invalid' })
         progress.work = { ...work, [step]: { ...made.work, saves } }
+        if (Buffer.byteLength(JSON.stringify(progress)) > maxProgressBytes)
+          return done({ ok: false, code: 'step_output_invalid' })
         continue
       }
       if (made.done !== 'design') {
         progress[made.done] = JSON.parse(JSON.stringify(made.output))
+        if (Buffer.byteLength(JSON.stringify(progress)) > maxProgressBytes)
+          return done({ ok: false, code: 'step_output_invalid' })
         break
       }
       // As the job stores it: read back from JSON, then size-checked.

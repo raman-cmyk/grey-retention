@@ -26,8 +26,6 @@ import { type SavedOffers, type StoreSource } from './ports'
 
 type Db = SupabaseClient<Database>
 
-export { maxEmailBytes }
-
 /**
  * Runs waiting "Create email" steps (EML-004 part 2, REL-081). Each step is
  * claimed with a lease (`claim_email_build`), so overlapping calls never
