@@ -265,8 +265,9 @@ export async function launch(chromium) {
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const base = (process.env.APP_URL ?? '').replace(/\/+$/, '')
-  // CI-005: a pasted secret's line break is not part of it.
-  const secret = (process.env.CRON_SECRET ?? '').trim()
+  // CI-005: a pasted secret's line breaks are not part of it (as in the
+  // workflow's own call).
+  const secret = (process.env.CRON_SECRET ?? '').replace(/[\r\n]/g, '').trim()
   if (!/^https?:\/\//.test(base) || secret.length < 32) {
     console.error('Set APP_URL and CRON_SECRET (see the script header).')
     process.exit(1)
@@ -276,7 +277,13 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   try {
     await run({ base, secret, browser })
   } catch (error) {
-    console.error(`Screenshot run stopped: ${error.message}`)
+    // Never the secret, even inside an error's words (a header error
+    // quotes the header).
+    const words = String(error?.message ?? error)
+      .split(secret)
+      .join('[secret]')
+      .slice(0, 300)
+    console.error(`Screenshot run stopped: ${words}`)
     process.exitCode = 1
   } finally {
     await browser.close()

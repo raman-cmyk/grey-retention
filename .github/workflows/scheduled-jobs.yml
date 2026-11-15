@@ -10,7 +10,8 @@ name: Scheduled jobs
 # - repository variable SCHEDULED_JOBS_ENABLED=true turns the schedule on.
 #   Without it every run is skipped and uses no Actions minutes.
 #
-# Each enabled run uses about one Actions minute (GitHub rounds up per job),
+# Each enabled run uses about one Actions minute (GitHub rounds up per job;
+# a run whose call is tried again, 2 minutes later, uses about four),
 # so every 30 minutes is about 1,500 minutes a month (owner decision, to stay
 # inside the free allowance; every 10 minutes would be about 4,400).
 on:
@@ -37,10 +38,6 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           APP_URL: https://grey-retention-app.vercel.app
         run: |
-          if [ -z "$CRON_SECRET" ]; then
-            echo "::error::Add the CRON_SECRET repository secret (see docs/SCHEDULED_JOBS_RUNBOOK.md)."
-            exit 1
-          fi
           # CI-005: the secret without stray spaces or line breaks (a pasted
           # line break stopped every call), sent through stdin (-H @-) so it
           # never appears in the process list; GitHub also masks it. HTTPS
@@ -48,6 +45,12 @@ jobs:
           # 2 minutes; the run fails only when both tries fail, and says the
           # app's own error. call PATH FILE SECONDS
           secret=$(printf '%s' "$CRON_SECRET" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          if [ -z "$secret" ]; then
+            echo "::error::Add the CRON_SECRET repository secret (see docs/SCHEDULED_JOBS_RUNBOOK.md)."
+            exit 1
+          fi
+          # GitHub masks the stored value; the trimmed one is masked too.
+          echo "::add-mask::$secret"
           call() {
             local try status reason
             for try in 1 2; do
@@ -56,8 +59,8 @@ jobs:
                 curl -H @- --proto '=https' --silent --show-error --max-time "$3" \
                   --output "$2" --write-out '%{http_code}' "$APP_URL$1") || status=000
               if [ "$status" = "200" ]; then return 0; fi
-              reason=$(jq -r '.error // .code // .message // empty' "$2" 2>/dev/null | tr -d '\r\n' | head -c 300)
-              if [ -z "$reason" ] && [ -s "$2" ]; then reason=$(tr -d '\r\n' < "$2" | head -c 300); fi
+              reason=$(jq -r '.error // .code // .message // empty' "$2" 2>/dev/null | tr '\r\n' '  ' | sed 's/ *$//' | head -c 300)
+              if [ -z "$reason" ] && [ -s "$2" ]; then reason=$(tr '\r\n' '  ' < "$2" | sed 's/ *$//' | head -c 300); fi
               if [ "$try" = 1 ]; then
                 echo "::warning::The app returned HTTP $status${reason:+ ($reason)}. Trying again in 2 minutes."
                 sleep 120
@@ -67,7 +70,7 @@ jobs:
             done
             return 1
           }
-          call /api/internal/jobs response.json 90 || exit 1
+          call '/api/internal/jobs' response.json 90 || exit 1
           cat response.json
           echo
           failed=$(jq -r '.failed // 0' response.json)
