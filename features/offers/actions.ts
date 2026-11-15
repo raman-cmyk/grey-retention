@@ -109,7 +109,11 @@ export async function addDiscountCode(
   return { message: `Added ${code}. Agents can use it in new emails.` }
 }
 
-/** "Remove" next to a code. Emails already made keep their code. */
+/**
+ * "Remove" next to a code. Emails already in Klaviyo keep their code; an
+ * email still being made, or made and not yet in Klaviyo, stops with its
+ * reason instead (REL-OFF: it would carry a code that no longer works).
+ */
 export async function retireDiscountCode(
   _state: FormResult,
   form: FormData

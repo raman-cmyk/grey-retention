@@ -23,8 +23,10 @@ import { adsRunMs, libraryMs } from './ads/worker'
 import { historyRunMs } from './history/worker'
 import { reviewsRunMs, reviewsSourceMs, socialSourceMs } from './reviews/worker'
 import {
+  bookMs,
   dbMarginMs,
   readersRunMs,
+  routeMs,
   runSourceReadingJob,
   runSourceReadings,
   siteCallTimeoutMs,
@@ -34,6 +36,8 @@ import { pageTimeoutMs } from './site/fetch'
 import { siteRunMs } from './site/live'
 
 describe('runSourceReadings', () => {
+  // No Brand book work unless a test asks for it.
+  const noBooks = { book: async () => null, staleBooks: async () => [] }
   const job = (id: string) => ({
     id,
     lease_token: `lease-${id}`,
@@ -63,7 +67,7 @@ describe('runSourceReadings', () => {
       if (j.id === 'j2') throw new TagError('unavailable')
       return j.id === 'j3' ? ('paused' as const) : ('read' as const)
     })
-    expect(await runSourceReadings(db, { read })).toEqual({
+    expect(await runSourceReadings(db, { read, ...noBooks })).toEqual({
       state: 'done',
       reads: 1,
       failed: 1,
@@ -84,12 +88,99 @@ describe('runSourceReadings', () => {
       now += readersRunMs
       return 'read' as const
     })
-    expect(await runSourceReadings(db, { read, now: () => now })).toMatchObject(
-      {
-        reads: 1
-      }
-    )
+    expect(
+      await runSourceReadings(db, { read, now: () => now, ...noBooks })
+    ).toMatchObject({
+      reads: 1
+    })
     expect(read).toHaveBeenCalledOnce()
+  })
+
+  it('writes the Brand book after a read, never after a pause or a failure', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { db } = database(['j1', 'j2', 'j3'])
+    const read = vi.fn(async (_db: unknown, j: { id: string }) => {
+      if (j.id === 'j2') throw new TagError('unavailable')
+      return j.id === 'j3' ? ('paused' as const) : ('read' as const)
+    })
+    const book = vi.fn(async () => 1)
+    await runSourceReadings(db, { read, book, staleBooks: async () => [] })
+    expect(book).toHaveBeenCalledOnce()
+    expect(book).toHaveBeenCalledWith(db, 't1')
+  })
+
+  it('writes no Brand book that would not end inside the route, and goes on when one fails', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let now = 0
+    const late = database(['j1'])
+    const book = vi.fn(async () => 1)
+    await runSourceReadings(late.db, {
+      book,
+      staleBooks: async () => [],
+      now: () => now,
+      read: async () => {
+        now = routeMs - bookMs - dbMarginMs + 1
+        return 'read' as const
+      }
+    })
+    expect(book).not.toHaveBeenCalled()
+    const failing = database(['j1', 'j2'])
+    const broken = vi.fn(async () => {
+      throw Object.assign(new Error('down'), { code: '42501' })
+    })
+    expect(
+      await runSourceReadings(failing.db, {
+        book: broken,
+        staleBooks: async () => [],
+        read: async () => 'read' as const
+      })
+    ).toMatchObject({ state: 'done', reads: 2 })
+    expect(broken).toHaveBeenCalledTimes(2)
+  })
+
+  it('first writes the books a skipped write left behind, and never waits too long for one', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { db } = database(['j1'])
+    const order: string[] = []
+    const book = vi.fn(async (_db: unknown, t: string) => {
+      order.push(`book ${t}`)
+      // One write never answers: the run goes on after bookMs.
+      if (t === 'stuck') return new Promise(() => {})
+      return 1
+    })
+    const read = vi.fn(async () => {
+      order.push('read')
+      return 'read' as const
+    })
+    expect(
+      await runSourceReadings(db, {
+        read,
+        book,
+        bookMs: 20,
+        staleBooks: async () => ['stuck', 'old']
+      })
+    ).toMatchObject({ state: 'done', reads: 1 })
+    expect(order).toEqual(['book stuck', 'book old', 'read', 'book t1'])
+    // A stale-book check that fails changes nothing.
+    const again = database(['j1'])
+    expect(
+      await runSourceReadings(again.db, {
+        read: async () => 'read' as const,
+        book: async () => 1,
+        staleBooks: async () => {
+          throw new Error('down')
+        }
+      })
+    ).toMatchObject({ state: 'done', reads: 1 })
+  })
+
+  it('leaves time for a Brand book inside the route', () => {
+    expect(
+      readersRunMs + sourceRunMs + siteCallTimeoutMs + dbMarginMs
+    ).toBeLessThanOrEqual(routeMs)
+    expect(bookMs + dbMarginMs).toBeLessThan(routeMs - readersRunMs)
   })
 
   it('never throws: a claim that fails is reported with its code', async () => {
@@ -97,7 +188,7 @@ describe('runSourceReadings', () => {
     const db = {
       rpc: async () => ({ data: null, error: { code: 'PGRST301' } })
     } as unknown as Parameters<typeof runSourceReadings>[0]
-    expect(await runSourceReadings(db)).toEqual({
+    expect(await runSourceReadings(db, noBooks)).toEqual({
       state: 'failed',
       code: 'PGRST301'
     })

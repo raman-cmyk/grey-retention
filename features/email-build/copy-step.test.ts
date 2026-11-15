@@ -414,6 +414,48 @@ describe('the last check of the discount code (REL-OFF)', () => {
     expect(result).toEqual({ ok: false, code: 'offer_unsafe' })
   })
 
+  it('never stores an email whose code was removed and added again at another percent or end', async () => {
+    const progress = await savedCopy('CANDLE10')
+    const sections = progress.sections as {
+      rules: {
+        codes: { code: string; percent: number; expiresAt: string | null }[]
+      }
+    }
+    const candle = sections.rules.codes.find((c) => c.code === 'CANDLE10')!
+    const again = async (over: Partial<typeof candle>) =>
+      runBuildStep(
+        'design',
+        {
+          planned,
+          store: await store(),
+          offers: {
+            offers: async () => ({
+              maxDiscountPercent: 20,
+              codes: [{ ...candle, ...over }]
+            })
+          },
+          progress
+        },
+        ctxWith(null)
+      )
+    expect(await again({ percent: 5 })).toEqual({
+      ok: false,
+      code: 'offer_unsafe'
+    })
+    expect(
+      await again({
+        expiresAt: new Date(Date.now() + 40 * 86_400_000).toISOString()
+      })
+    ).toEqual({ ok: false, code: 'offer_unsafe' })
+    const same = await again({})
+    expect(same).toMatchObject({ ok: true, done: 'design' })
+    if (!same.ok || !('email' in same)) return
+    expect(same.email.offer).toEqual({
+      percent: candle.percent,
+      expiresAt: candle.expiresAt
+    })
+  })
+
   it('tries again when Settings cannot be read', async () => {
     const result = await runBuildStep(
       'design',

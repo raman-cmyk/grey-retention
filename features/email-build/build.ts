@@ -89,6 +89,15 @@ export const builtEmail = z.object({
   audienceId: z.string(),
   productIds: z.array(z.string()).max(12),
   code: z.string().nullable(),
+  /**
+   * REL-OFF: the code's percent and end as the email shows them, so the
+   * push checks Settings still give exactly that. Missing on emails built
+   * before it.
+   */
+  offer: z
+    .object({ percent: z.number(), expiresAt: z.string().nullable() })
+    .nullable()
+    .optional(),
   /** Planned content the Content locker replaced with safer choices. */
   changes: z.array(z.string()).max(40)
 })
@@ -224,20 +233,40 @@ export async function codeWorksNow(
   code: string,
   offers: OfferSource,
   tenantId: string,
-  sendAt: string
+  sendAt: string,
+  /**
+   * The percent and end the email shows: a code removed and added again
+   * at another percent or end since is refused too (the email would say
+   * what the code no longer gives).
+   */
+  shown?: { percent: number; expiresAt: string | null } | null
 ): Promise<'ok' | 'unsafe' | 'unreadable'> {
   const read = await offers.offers(tenantId, sendAt).catch(() => null)
   if (!read) return 'unreadable'
-  return codeWorks(
-    code,
-    {
-      maxDiscountPercent: read.maxDiscountPercent ?? 0,
-      codes: [...read.codes]
-    },
-    sendAt
-  )
+  const rules = {
+    maxDiscountPercent: read.maxDiscountPercent ?? 0,
+    codes: [...read.codes]
+  }
+  if (!codeWorks(code, rules, sendAt)) return 'unsafe'
+  if (!shown) return 'ok'
+  const now = rules.codes.find((c) => codeKey(c.code) === codeKey(code))!
+  return now.percent === shown.percent &&
+    sameEnd(now.expiresAt, shown.expiresAt)
     ? 'ok'
     : 'unsafe'
+}
+
+const sameEnd = (a: string | null, b: string | null) =>
+  a === null || b === null ? a === b : Date.parse(a) === Date.parse(b)
+
+/** The percent and end of the code an email carries, from its saved rules. */
+export function shownOffer(
+  code: string | null,
+  rules: SectionsOutput['rules']
+) {
+  if (code === null) return null
+  const found = rules.codes.find((c) => codeKey(c.code) === codeKey(code))
+  return found ? { percent: found.percent, expiresAt: found.expiresAt } : null
 }
 
 /** Step 1: the send time, the offer rules at that time, and the sections. */
@@ -637,6 +666,7 @@ export function designStep(
       audienceId: planned.audience.id,
       productIds: draft.productIds,
       code: draft.code,
+      offer: shownOffer(draft.code, input.rules),
       changes: copy.changes
     }
   }

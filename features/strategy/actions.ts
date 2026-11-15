@@ -9,6 +9,7 @@ import { requireRequestContext } from '@/features/auth/application/request-conte
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { logger } from '@/lib/logger'
+import { onboardedStrategyData } from '@/features/onboarding/strategy-data'
 import { runStrategyRuns } from './worker'
 
 export type PlanFormState = { error?: string }
@@ -21,7 +22,12 @@ function runSoon(run: string) {
     const service = createServiceClient()
     if (!service) return
     try {
-      await runStrategyRuns(service, { run })
+      // The workspace's own store once onboarding has read enough of it
+      // (ONB-057), else the sample store.
+      await runStrategyRuns(service, {
+        run,
+        data: onboardedStrategyData(service)
+      })
     } catch (error) {
       logger.error('Plan step could not start', {
         code: (error as { code?: string }).code ?? 'plan_step_error'
