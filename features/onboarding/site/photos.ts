@@ -197,7 +197,9 @@ export function emailPhotoUrl(url: string): boolean {
   return (
     !/\/f_(?!auto|jpe?g|png)[a-z0-9]+[,/]/i.test(u.pathname) &&
     // Cloudflare's `/cdn-cgi/image/format=webp,…/`.
-    !/[/,](?:format|fm|fmt)=(?!auto|jpe?g|png)[a-z0-9]+/i.test(u.pathname)
+    !/[/,](?:format|fm|fmt)=(?!(?:auto|jpe?g|pjpg|png)(?:[,/&]|$))[a-z0-9]+/i.test(
+      u.pathname
+    )
   )
 }
 
@@ -212,6 +214,11 @@ function photoKey(url: string) {
     .replace(sizeSuffix, '')
     .replace(/@\dx(?=\.(?:jpe?g|png)$)/i, '')
   return `${u.hostname}${path}${u.search}`
+}
+
+/** A logo's key: its photo key without the format, so its other formats match. */
+function logoKey(url: string) {
+  return photoKey(url).replace(/\.(?:jpe?g|png|svg|webp|gif|avif)(?=$|\?)/i, '')
 }
 
 /** How wide a size variant says it is; the original (no size) is the largest. */
@@ -433,8 +440,18 @@ export function sitePhotos(
   /** Addresses that are the brand's logo: no photo is one of them. */
   const logoKeys = new Set<string>()
   const logo = (url: string | null) => {
-    if (url && emailPhotoUrl(url)) logoKeys.add(photoKey(url))
+    if (url) logoKeys.add(logoKey(url))
   }
+  /** Any address of a logo picture (an SVG one too: its PNG copy is the same logo). */
+  const anyAddressOf = (c: T.Element) =>
+    [
+      largestOfSet(attr(c, 'srcset')),
+      largestOfSet(attr(c, 'data-srcset')),
+      attr(c, 'data-src'),
+      attr(c, 'src')
+    ]
+      .map((a) => absolute(a, page))
+      .find((u) => u !== null) ?? null
   const picture = (
     c: T.Element,
     at: { product: boolean },
@@ -538,11 +555,13 @@ export function sitePhotos(
     }
     // A picture in the header's home link, or marked as the logo, is the
     // brand's logo.
+    // A picture in a link to the home page (the header's, or a top bar's),
+    // or marked as the logo, is the brand's logo.
     if (
       (tag === 'img' || tag === 'source') &&
-      ((place.chrome && place.home) || short(c, 'itemprop') === 'logo')
+      (place.home || short(c, 'itemprop') === 'logo')
     )
-      logo(addressOf(c))
+      logo(anyAddressOf(c))
     // The header, menu, footer and boxes of other brands' pictures are
     // skipped; their structured data is still read.
     const skipped = place.chrome || place.others
@@ -555,12 +574,9 @@ export function sitePhotos(
           k.tagName === 'source' &&
           /^(?:|image\/(?:jpe?g|png))$/i.test((short(k, 'type') ?? '').trim())
       )
-      if (
-        (place.chrome && place.home) ||
-        (img && short(img, 'itemprop') === 'logo')
-      ) {
-        if (img) logo(addressOf(img))
-        for (const k of kids) if (k.tagName === 'source') logo(addressOf(k))
+      if (place.home || (img && short(img, 'itemprop') === 'logo')) {
+        if (img) logo(anyAddressOf(img))
+        for (const k of kids) if (k.tagName === 'source') logo(anyAddressOf(k))
         continue
       }
       if (skipped) continue
@@ -568,7 +584,8 @@ export function sitePhotos(
       continue
     }
     if (tag === 'img') {
-      if (!skipped && short(c, 'itemprop') !== 'logo') picture(c, place, [])
+      if (!skipped && !place.home && short(c, 'itemprop') !== 'logo')
+        picture(c, place, [])
       continue
     }
     const kids = children(c)
@@ -581,7 +598,7 @@ export function sitePhotos(
   const best = new Map<string, SitePhoto>()
   for (const p of [...found].sort((a, b) => rank[a.from] - rank[b.from])) {
     const key = photoKey(p.url)
-    if (logoKeys.has(key)) continue
+    if (logoKeys.has(logoKey(p.url))) continue
     const was = best.get(key)
     if (!was) best.set(key, p)
     else

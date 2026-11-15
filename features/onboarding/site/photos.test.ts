@@ -93,7 +93,7 @@ describe('sitePhotos (ONB-059a)', () => {
       <div class="card-wrapper product-card-wrapper"><div class="card__media"><img src="${cdn}/cap.jpg"></div>
         <a href="/products/cap">Cap</a></div>
       <a href="https://www.instagram.com/p/ABC123/"><img src="${cdn}/trail-tile.jpg"></a>
-      <a href="/?next=/products/x"><img src="${cdn}/meadow.jpg"></a>
+      <a href="/collections/all?next=/products/x"><img src="${cdn}/meadow.jpg"></a>
     </main></body>`
     expect(sitePhotos(html, home, 'home').map((p) => [p.url, p.kind])).toEqual([
       ['https://cedarlane.com/files/runners-at-dawn.jpg', 'lifestyle'],
@@ -206,6 +206,13 @@ describe('sitePhotos (ONB-059a)', () => {
         <img src="${cdn}/trail.jpg">
       </main></body>`
     expect(urls(html)).toEqual([`${cdn}/trail.jpg`])
+    // Its other format is the same logo, and a top bar's home link too.
+    expect(
+      urls(`<head><meta property="og:image" content="${cdn}/CL_mark.png"></head><body>
+        <header><a href="/"><img src="${cdn}/CL_mark.svg"></a></header>
+        <div class="topbar brand"><a href="/"><img src="${cdn}/emblem.png"></a></div>
+        <main><img src="${cdn}/emblem.png?width=900"><img src="${cdn}/trail.jpg"></main></body>`)
+    ).toEqual([`${cdn}/trail.jpg`])
   })
 
   it('reads the page’s parts by their role and words, not only their tags', () => {
@@ -272,7 +279,8 @@ describe('sitePhotos (ONB-059a)', () => {
       `${cdn}/a.jpg`,
       `${cdn}/b.JPEG`,
       `${cdn}/c.png?v=2`,
-      `https://res.cloudinary.com/x/image/upload/f_auto,q_80/d.jpg`
+      `https://res.cloudinary.com/x/image/upload/f_auto,q_80/d.jpg`,
+      'https://site.brand.com/cdn-cgi/image/format=pjpg,width=800/a.jpg'
     ])
       expect(emailPhotoUrl(url), url).toBe(true)
     for (const url of [
@@ -301,6 +309,7 @@ describe('sitePhotos (ONB-059a)', () => {
       'https://site.example.com/cdn-cgi/image/format=webp,width=800/https://site.example.com/a.jpg',
       'https://s7d1.scene7.com/is/image/brand/a.jpg?fmt=webp',
       'https://images.brand.com/a.jpg?output=webp',
+      'https://site.brand.com/cdn-cgi/image/format=jpegxl/a.jpg',
       `${cdn}/${'x'.repeat(1_000)}.jpg`
     ])
       expect(emailPhotoUrl(url), url).toBe(false)
