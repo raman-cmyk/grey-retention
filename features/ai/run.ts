@@ -232,8 +232,16 @@ export async function runAi(
   }
 }
 
-/** Thinking room per effort, as Gemini's (`lib/providers/gemini.ts`). */
-const openAiThinkingRoom = { none: 0, low: 1_024, medium: 4_096 } as const
+/**
+ * Thinking room per effort, as Gemini's (`lib/providers/gemini.ts`; no
+ * effort: the room kept when the model decides how much to think).
+ */
+const openAiThinkingRoom = {
+  none: 0,
+  low: 1_024,
+  medium: 4_096,
+  unset: 4_096
+} as const
 /** The largest answer a v2 call may ask for (`runInput`). */
 const maxOutputTokens = 65_536
 /** How v2 calls are sent to the second provider (REL-PRV). */
@@ -272,9 +280,7 @@ function liveProvider(
       maxOutputTokens: Math.min(
         maxOutputTokens,
         request.maxOutputTokens +
-          (request.reasoningEffort
-            ? openAiThinkingRoom[request.reasoningEffort]
-            : 0)
+          openAiThinkingRoom[request.reasoningEffort ?? 'unset']
       )
     }
     return {

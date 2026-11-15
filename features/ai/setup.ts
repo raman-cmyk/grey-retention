@@ -197,7 +197,11 @@ export function cappedAiEnv(
   ms: number
 ): NodeJS.ProcessEnv {
   const setup = aiSetup(purpose, env)
-  const used = String(Math.min('timeoutMs' in setup ? setup.timeoutMs : ms, ms))
+  // The setup takes 5 s at least; a smaller cap would be ignored.
+  const cap = Math.max(ms, 5_000)
+  const used = String(
+    Math.min('timeoutMs' in setup ? setup.timeoutMs : cap, cap)
+  )
   return { ...env, GEMINI_TIMEOUT_MS: used, OPENAI_TIMEOUT_MS: used }
 }
 
