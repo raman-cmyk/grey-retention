@@ -25,6 +25,8 @@ export const buildFailureWords = {
     'The app was updated while this email was being made. Try again.',
   store_changed:
     'Your store data changed while this email was being made. Try again.',
+  plan_store_changed:
+    'This plan was made from other store data. Plan next 15 days again.',
   store_data_invalid: 'Your store data could not be read. Try again.',
   // The job queue (claim_email_build).
   day_passed: 'Its day passed before it was ready.',
