@@ -9,9 +9,14 @@
 -- * The work is kept under progress->'work'->step; the build stays on the
 --   same step. The step's finished output is saved as before
 --   (`finish_email_step`).
--- * Saving ends the claim (the lease) and starts the step's tries afresh:
---   saved work is progress. Code bounds its own rounds; as a backstop, a
---   step saves at most 16 times (22023 after that).
+-- * Saving ends the claim (the lease) and gives back this claim's try, as
+--   a Klaviyo wait does: a step that had not failed is claimed again at
+--   once, and earlier failures (a lease that ran out, a taken subject)
+--   still count towards its 3 tries. Code bounds its own rounds; as a
+--   backstop, a step saves at most 16 times (22023, detail
+--   `too_many_rounds`, after that).
+-- * One step's work is at most 64 kB, so the steps' outputs still fit in
+--   the build's 300,000-byte progress.
 -- * Only jobs (service role) save, under a live lease, for the copy and
 --   design steps. "Try again" makes a new build, without the saved work.
 -- * The number is chosen at merge time (D24).
@@ -36,10 +41,13 @@ begin
   if work is null or jsonb_typeof(work) <> 'object' then
     raise exception 'A step''s work is an object' using errcode = '22023';
   end if;
+  if octet_length(work::text) > 64000 then
+    raise exception 'A step''s work is too large' using errcode = '22023';
+  end if;
   -- Only this command writes the count, always as a number.
   saves := coalesce((b.progress->'work'->step->>'saves')::integer, 0) + 1;
   if saves > 16 then
-    raise exception 'This step saved too many rounds' using errcode = '22023';
+    raise exception 'This step saved too many rounds' using errcode = '22023', detail = 'too_many_rounds';
   end if;
   saved := jsonb_set(
     b.progress, '{work}',
@@ -49,7 +57,7 @@ begin
     raise exception 'A step''s work is too large' using errcode = '22023';
   end if;
   update public.email_builds
-    set progress = saved, attempts = 0, waits = 0, error_code = null, not_before = null,
+    set progress = saved, attempts = greatest(b.attempts - 1, 0), not_before = null,
         lease_token = null, lease_until = null, updated_at = now()
     where id = build;
   return saves;
