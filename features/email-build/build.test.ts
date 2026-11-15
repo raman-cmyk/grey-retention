@@ -45,25 +45,29 @@ const build = async (p = planned()) => {
 }
 
 describe('building a planned email (code-only)', () => {
-  it('builds plain copy for a brand name with a hidden character, kept out of the subject and preview (REL-AI part 2b)', async () => {
-    const store = await sampleStoreSource.read(tenantId)
-    const result = await buildEmail(
-      {
-        planned: planned(),
-        store: {
-          ...store,
-          brand: { ...store.brand, name: 'Cedar\u200b Lane' }
+  it.each(['Cedar\u200b Lane', 'LUMA\u200b Home', 'Winner\u200b Candles'])(
+    'builds plain copy for the brand name %j (a hidden character), kept out of the subject and preview (REL-AI part 2b)',
+    async (name) => {
+      const store = await sampleStoreSource.read(tenantId)
+      const result = await buildEmail(
+        {
+          planned: planned(),
+          store: { ...store, brand: { ...store.brand, name } },
+          offers: sampleOffers
         },
-        offers: sampleOffers
-      },
-      { tenantId, callerKey: 'email-build:b1', fallbacks: memoryFallbackLog() }
-    )
-    expect(result.ok).toBe(true)
-    if (!result.ok) return
-    expect(result.email.subject).not.toMatch(/\u200b/)
-    expect(result.email.preheader).not.toMatch(/\u200b/)
-    expect(result.email.preheader).toContain('Cedar Lane')
-  })
+        {
+          tenantId,
+          callerKey: 'email-build:b1',
+          fallbacks: memoryFallbackLog()
+        }
+      )
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.email.subject).not.toMatch(/\u200b/)
+      expect(result.email.preheader).not.toMatch(/\u200b/)
+      expect(result.email.preheader).toContain(name.replace('\u200b', ''))
+    }
+  )
 
   it('builds a coded email from the sample store with the locked offer, and says what it is', async () => {
     const { result, fallbacks } = await build()

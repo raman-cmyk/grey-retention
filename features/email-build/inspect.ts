@@ -11,6 +11,7 @@ import {
   copyDraftOf,
   factLines,
   hiddenChars,
+  oneLine,
   type Assembled,
   type CopyFeedback,
   type Draft
@@ -96,31 +97,35 @@ export const phrase = (text: string, words: string) =>
 export function protectedText(locked: LockedContent, brandName: string) {
   const material = usableMaterial(locked.input)
   const offer = locked.offer
-  return [
-    brandName,
-    ...locked.input.products.map((p) => p.title),
-    ...(offer
-      ? [
-          offer.code,
-          `${offer.percent}% off`,
-          ...(offer.ends ? [offer.ends] : [])
-        ]
-      : []),
-    ...material.reviews.flatMap((r) => [r.quote, r.author]),
-    ...(material.founder
-      ? [
-          material.founder.name,
-          material.founder.role ?? '',
-          ...material.founder.note
-        ]
-      : []),
-    ...material.customerPhotos.map((p) => p.alt),
-    ...(material.founder?.photo ? [material.founder.photo.alt] : []),
-    ...(material.lifestylePhoto ? [material.lifestylePhoto.alt] : [])
-  ]
-    .map((t) => t.trim())
-    .filter((t) => t.length >= 2)
-    .sort((a, b) => b.length - a.length)
+  return (
+    [
+      brandName,
+      ...locked.input.products.map((p) => p.title),
+      ...(offer
+        ? [
+            offer.code,
+            `${offer.percent}% off`,
+            ...(offer.ends ? [offer.ends] : [])
+          ]
+        : []),
+      ...material.reviews.flatMap((r) => [r.quote, r.author]),
+      ...(material.founder
+        ? [
+            material.founder.name,
+            material.founder.role ?? '',
+            ...material.founder.note
+          ]
+        : []),
+      ...material.customerPhotos.map((p) => p.alt),
+      ...(material.founder?.photo ? [material.founder.photo.alt] : []),
+      ...(material.lifestylePhoto ? [material.lifestylePhoto.alt] : [])
+    ]
+      // As stored, and as the email shows it (`oneLine` drops hidden
+      // characters), so the checks never judge store text either way.
+      .flatMap((t) => [t.trim(), oneLine(t, 2_000)])
+      .filter((t, i, all) => t.length >= 2 && all.indexOf(t) === i)
+      .sort((a, b) => b.length - a.length)
+  )
 }
 
 /** The text with every store-owned phrase blanked out. */
@@ -578,6 +583,8 @@ export type PlainCause =
   | 'no_live_writer'
   /** The step's last claim ran out of time (REL-AI part 2b). */
   | 'out_of_time'
+  /** Its saved rounds would not fit in the build (a huge draft). */
+  | 'work_too_large'
 
 export type InspectedCopy =
   | { status: 'passed'; draft: Draft; rounds: Round[] }
@@ -633,7 +640,9 @@ const causeWords: Record<PlainCause, (rounds: readonly Round[]) => string> = {
     'The writer could not run: the AI allowance is used up or the AI is not set up.',
   no_live_writer: () => 'No live writer is switched on (sample mode).',
   out_of_time: (rounds) =>
-    `The copy ran out of time after ${rounds.length} ${rounds.length === 1 ? 'round' : 'rounds'}.`
+    `The copy ran out of time after ${rounds.length} ${rounds.length === 1 ? 'round' : 'rounds'}.`,
+  work_too_large: () =>
+    'The copy’s rounds grew too large to save between claims.'
 }
 
 type Ctx = Omit<AgentCtx, 'industry' | 'fits'> & {
@@ -660,7 +669,8 @@ async function inspect(
     def,
     (problems) => ({ ...task, problems }),
     (a) => checkInspection(a, task.draft, task.locked, task.brandName),
-    { ...ctx, industry: ctx.industry ?? null, ...(fits ? { fits } : {}) },
+    // Always this call's own `fits` (none without a time limit).
+    { ...ctx, industry: ctx.industry ?? null, fits },
     from
   )
   if (!result.ok && result.paused && result.reasonCode !== 'agent_failed')
@@ -668,7 +678,7 @@ async function inspect(
       paused: {
         tries: result.tries,
         // Code's own words about the last answer (never the email's).
-        problems: result.problems.slice(0, 10).map((p) => p.slice(0, 300)),
+        problems: result.problems.slice(0, 10).map((p) => cut(p, 300)),
         reasonCode: result.reasonCode
       }
     }
@@ -785,12 +795,16 @@ export const workBudgetBytes = 40_000
 const bytes = (value: unknown) =>
   new TextEncoder().encode(JSON.stringify(value)).length
 
+/** At most `n` UTF-16 units, never half a character (the database refuses one). */
+const cut = (text: string, n: number) =>
+  text.slice(0, n).replace(/[\uD800-\uDBFF]$/, '')
+
 const clipped = (list: readonly Finding[], n: number, length: number) =>
   list.slice(0, n).map((f) => ({
     by: f.by,
-    rule: f.rule.slice(0, 60),
-    field: f.field.slice(0, 60),
-    reason: f.reason.slice(0, length)
+    rule: cut(f.rule, 60),
+    field: cut(f.field, 60),
+    reason: cut(f.reason, length)
   }))
 
 /**
@@ -801,7 +815,7 @@ const clipped = (list: readonly Finding[], n: number, length: number) =>
  * smallest form does not fit (a huge draft): the step then writes plain
  * words instead.
  */
-function savedWork(work: CopyWork): CopyWork | null {
+export function savedWork(work: CopyWork): CopyWork | null {
   const shapes = [
     { from: 0, n: 20, length: 700 },
     { from: work.rounds.length - 2, n: 20, length: 300 },
@@ -868,7 +882,10 @@ export async function writeAndInspect(
   input: Omit<CopyRoundsInput, 'work' | 'fits' | 'last'>,
   ctx: Ctx
 ): Promise<InspectedCopy> {
-  const result = await copyRounds(input, ctx)
+  const result = await copyRounds(
+    { ...input, fits: undefined, work: undefined, last: undefined },
+    ctx
+  )
   // Without a time limit the rounds never pause.
   if (result.status === 'paused') throw new Error('Copy paused without a time')
   return result
@@ -903,12 +920,16 @@ export async function copyRounds(
   const skipped = new Set(work.skipped)
   let cause: PlainCause = 'rewrites_failed'
   let progressed = false
+  let tooLarge = false
   /** The rounds to save, or null: plain copy (last claim, or too large). */
   const pause = (): Paused | null => {
     if (input.last) return null
     const saved = savedWork({ ...work, skipped: [...skipped] })
+    if (!saved) tooLarge = true
     return saved ? { status: 'paused', work: saved } : null
   }
+  const stopped = (): PlainCause =>
+    tooLarge ? 'work_too_large' : 'out_of_time'
   const done = (list: Finding[]) => {
     work.rounds.push({ findings: list })
     progressed = true
@@ -928,8 +949,9 @@ export async function copyRounds(
     // A saved draft that no longer reads is written again.
     if (again === null) work.pending = null
     else if (again.length) {
+      // A round without a model call: not progress of this claim.
       work.pending = null
-      done(again)
+      work.rounds.push({ findings: again })
     }
   }
   // The last two rounds' reasons, so a fix for one never undoes another.
@@ -940,7 +962,7 @@ export async function copyRounds(
       if (!fits()) {
         const paused = pause()
         if (paused) return paused
-        cause = 'out_of_time'
+        cause = stopped()
         break
       }
       let assembled: Assembled
@@ -1011,7 +1033,7 @@ export async function copyRounds(
         if (!fits()) {
           const paused = pause()
           if (paused) return paused
-          cause = 'out_of_time'
+          cause = stopped()
           break rounds
         }
         const found = await inspect(
@@ -1027,7 +1049,7 @@ export async function copyRounds(
           pending.tries = found.paused
           const paused = pause()
           if (paused) return paused
-          cause = 'out_of_time'
+          cause = stopped()
           break rounds
         }
         pending.tries = undefined

@@ -25,6 +25,7 @@ import {
   emailInspectorAgent,
   priceChecks,
   rewriteRounds,
+  savedWork,
   workBudgetBytes,
   writeAndInspect,
   type CopyWork,
@@ -416,6 +417,26 @@ describe('the fix loop', () => {
       retryAfterSeconds: 30
     })
     expect(fallbacks.entries()).toEqual([])
+  })
+
+  it('never stops for time, even with a ctx that carries a time limit', async () => {
+    const locked = await lock()
+    const wrongQuote = {
+      problems: [
+        {
+          field: 'subject',
+          quote: 'words that are not there',
+          reason: 'This is not what the subject says.',
+          fix: ''
+        }
+      ]
+    }
+    const { ctx } = context(inspectors(wrongQuote, { problems: [] }))
+    const result = await writeAndInspect(build(locked, writer(words())), {
+      ...ctx,
+      fits: () => false
+    } as typeof ctx)
+    expect(result.status).toBe('passed')
   })
 
   it('asks the job to try again later when the AI gets busy after a round too', async () => {
@@ -1117,5 +1138,58 @@ describe('rounds saved between claims (REL-AI part 2b)', () => {
     if (result.status !== 'passed') return
     expect(result.draft.subject).toBe('Slow evenings, 10% off')
     expect(userOf(run, 1)).toContain('Another email in this plan')
+  })
+})
+
+describe('the saved work’s size (REL-AI part 2b)', () => {
+  const many = (reason: string) =>
+    Array.from({ length: 20 }, (_, i) => ({
+      by: 'brand-inspector' as const,
+      rule: 'brand-inspector',
+      field: `${i + 1}-text`,
+      reason
+    }))
+  it('cuts long reasons to fit, never through the middle of a character', () => {
+    const reason = `a${'😀'.repeat(400)}`
+    const work = savedWork({
+      rounds: [0, 1, 2].map(() => ({ findings: many(reason) })),
+      skipped: [],
+      judged: [],
+      pending: null
+    })
+    expect(work).not.toBeNull()
+    const text = JSON.stringify(work)
+    expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(
+      workBudgetBytes
+    )
+    for (const r of work!.rounds)
+      for (const f of r.findings)
+        expect(f.reason).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/)
+    expect(copyWork.safeParse(JSON.parse(text)).success).toBe(true)
+  })
+
+  it('gives up on a draft too large to save: the step writes plain copy instead', async () => {
+    const locked = await lock()
+    const draft = await draftOf(locked)
+    const huge = {
+      ...draft,
+      blocks: [
+        ...draft.blocks,
+        { type: 'text', content: { paras: ['é'.repeat(30_000)] } }
+      ] as Draft['blocks']
+    }
+    expect(
+      savedWork({
+        rounds: [],
+        skipped: [],
+        judged: [],
+        pending: {
+          draft: huge,
+          key: 'k',
+          findings: [],
+          next: 'brand-inspector'
+        }
+      })
+    ).toBeNull()
   })
 })
