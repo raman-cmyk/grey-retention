@@ -14,8 +14,12 @@ import { runEmailBuilds } from './worker'
 
 export type CreateEmailState = { error?: string }
 
-/** Time the click gives this email's steps; the cron sweep runs the rest. */
-const clickBudgetMs = 40_000
+/**
+ * Time the click gives this email's steps (the plan page allows 120 s);
+ * with the agents on, a step starts only while a whole step fits, and the
+ * cron sweep (code only) runs the rest.
+ */
+const clickBudgetMs = 110_000
 
 /** Builds this email right after the reply; the cron picks up the rest. */
 function buildSoon(build: string) {
