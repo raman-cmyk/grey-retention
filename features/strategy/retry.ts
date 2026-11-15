@@ -14,6 +14,21 @@ export type AgentCtx = {
   log: RunLog
   ai: AiCall
   now?: string
+  /**
+   * REL-AI part 2b: false when one more model call would not fit in the
+   * step's time. A later try then waits for the next claim (`paused`).
+   */
+  fits?: () => boolean
+}
+
+/**
+ * Where a `tryAgent` stopped for time (REL-AI part 2b): the next claim goes
+ * on from here, with the same problems, so no try is paid twice.
+ */
+export type TriesSoFar = {
+  tries: number
+  problems: string[]
+  reasonCode: 'answer_invalid' | 'check_failed'
 }
 
 export type TryResult<O> =
@@ -25,23 +40,42 @@ export type TryResult<O> =
       tries: number
       runId?: string
       problems: string[]
+      /**
+       * Stopped for time before a later try (`AgentCtx.fits`): not a
+       * failure. Pass `{ tries, problems, reasonCode }` back as `from`.
+       */
+      paused?: true
     }
 
 /**
  * Runs an agent until code's check passes: up to `agentTries` answers, each
  * retry told the exact problems with the last one. A refused call is not
- * retried (a cap or a provider stop does not change in a second).
+ * retried (a cap or a provider stop does not change in a second). `from`
+ * goes on from tries an earlier claim made (REL-AI part 2b).
  */
 export async function tryAgent<T, O>(
   def: AgentDefinition<T, O>,
   task: (problems: string[]) => T,
   check: (output: O) => string[],
-  ctx: AgentCtx
+  ctx: AgentCtx,
+  from?: TriesSoFar
 ): Promise<TryResult<O>> {
-  let problems: string[] = []
+  let problems: string[] = from?.problems ?? []
   let runId: string | undefined
-  let reasonCode: 'answer_invalid' | 'check_failed' = 'check_failed'
-  for (let tries = 1; tries <= agentTries; tries++) {
+  let reasonCode: 'answer_invalid' | 'check_failed' =
+    from?.reasonCode ?? 'check_failed'
+  const first = Math.min(Math.max(from?.tries ?? 0, 0), agentTries) + 1
+  for (let tries = first; tries <= agentTries; tries++) {
+    // The caller checks time before the first try of a claim.
+    if (tries > first && ctx.fits && !ctx.fits())
+      return {
+        ok: false,
+        reasonCode,
+        tries: tries - 1,
+        runId,
+        problems,
+        paused: true
+      }
     const result = await runAgent(def, task(problems), ctx)
     runId = result.runId
     if (!result.ok) {
