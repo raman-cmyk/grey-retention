@@ -16,11 +16,13 @@ import {
 export const renderScale = 2
 export const renderWidth = sectionWidth * renderScale
 /** A section's picture stays well under what Klaviyo takes for one image. */
-export const maxSectionBytes = 4 * 1024 * 1024
+export const maxSectionBytes = 3 * 1024 * 1024
 
 export type RenderedSection = {
   id: string
-  png: Uint8Array
+  /** The picture: JPEG from the browser, PNG from the fake. */
+  bytes: Uint8Array
+  contentType: 'image/jpeg' | 'image/png'
   /** Pixels: `renderWidth` wide, `renderScale` × the section's height. */
   width: number
   height: number
@@ -32,15 +34,16 @@ export type RenderResult =
       ok: false
       /**
        * `refused`: the section failed its checks (never drawn);
-       * `timeout`, `too_large`, `failed`: the browser could not draw it.
+       * `timeout`, `too_large`, `navigated`, `failed`: the browser could
+       * not draw it.
        */
-      reason: 'refused' | 'timeout' | 'too_large' | 'failed'
+      reason: 'refused' | 'timeout' | 'too_large' | 'navigated' | 'failed'
       problems?: string[]
     }
 
 export interface SectionRenderer {
   render(
-    section: DesignedSection,
+    section: unknown,
     /** Hostnames its pictures and fonts may come from. */
     hosts: readonly string[]
   ): Promise<RenderResult>
@@ -93,13 +96,20 @@ export const fakeSectionRenderer: SectionRenderer = {
   async render(section, hosts) {
     const problems = sectionProblems(section, hosts)
     if (problems.length) return { ok: false, reason: 'refused', problems }
+    const checked = section as DesignedSection
     // The page the browser would get; building it proves it can be built.
-    sectionDocument(section)
+    sectionDocument(checked)
     const width = renderWidth
-    const height = section.height * renderScale
+    const height = checked.height * renderScale
     return {
       ok: true,
-      image: { id: section.id, png: blankPng(width, height), width, height }
+      image: {
+        id: checked.id,
+        bytes: blankPng(width, height),
+        contentType: 'image/png',
+        width,
+        height
+      }
     }
   }
 }
