@@ -139,18 +139,20 @@ describe('the logo pictures (ONB-060b)', () => {
       ).toBeNull()
   })
 
-  it('asks for pictures only, over https on 443', () => {
+  it('asks only for the pictures an email may show, over https on 443', () => {
     expect(logoFetchOptions).toMatchObject({
       ports: ['443'],
       protocols: ['https:']
     })
-    for (const type of [
-      'image/png',
-      'image/svg+xml; charset=utf-8',
-      'image/webp'
-    ])
+    for (const type of ['image/png', 'image/jpeg; q=1', 'image/gif'])
       expect(logoFetchOptions.types.test(type), type).toBe(true)
-    for (const type of ['text/html', 'application/json', ''])
+    for (const type of [
+      'image/svg+xml',
+      'image/webp',
+      'text/html',
+      'application/json',
+      ''
+    ])
       expect(logoFetchOptions.types.test(type), type).toBe(false)
   })
 
@@ -250,6 +252,30 @@ describe("the live reader's guards, against a real server", () => {
   const limits = { maxBytes: maxPageBytes, timeoutMs: 2_000 }
   const at = (path: string, host = 'shop.test') =>
     `http://${host}:${port}${path}`
+
+  it('reads a logo picture from any public host, never a private address or a page (ONB-060b)', async () => {
+    const pictures = createImageFetcher({
+      ...logoFetchOptions,
+      protocols: ['http:'],
+      ports: [port],
+      isReserved: (a) => a.startsWith('10.'),
+      resolve: (host, done) =>
+        host === 'other.test'
+          ? done(null, [{ address: '127.0.0.1', family: 4 }])
+          : done(null, [{ address: '10.0.0.9', family: 4 }])
+    })
+    const limits = { maxBytes: 1_000_000, timeoutMs: 2_000 }
+    expect(
+      await pictures.fetch(at('/logo.png', 'other.test'), limits)
+    ).toMatchObject({ ok: true })
+    expect(
+      await pictures.fetch(at('/logo.png', 'inside.shop.test'), limits)
+    ).toEqual({ ok: false, failure: 'blocked' })
+    expect(await pictures.fetch(at('/', 'other.test'), limits)).toEqual({
+      ok: false,
+      failure: 'broken'
+    })
+  })
 
   it('reads an HTML page of the brand, and nothing else', async () => {
     const site = fetcher(['http:'])

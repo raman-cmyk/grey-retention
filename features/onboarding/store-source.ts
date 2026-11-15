@@ -1,5 +1,6 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { logger } from '@/lib/logger'
 import { brandFromKit } from '@/features/blocks/brand'
 import {
   sampleStoreFrom,
@@ -212,16 +213,21 @@ export function ownStoreSource(db: Db): StoreSource {
         ])
       if (profile.error) throw profile.error
       if (kit.error) throw kit.error
-      if (logos.error) throw logos.error
+      // The logos are optional: without them the email shows the name.
+      if (logos.error)
+        logger.warn('Brand logos unreadable', { code: logos.error.code })
       return storeFrom({
         brandName: profile.data?.brand_name ?? '',
         domain: profile.data?.domain ?? '',
         kit: kit.data,
-        logos: logos.data && {
-          domain: logos.data.domain,
-          onLight: logos.data.on_light,
-          onDark: logos.data.on_dark
-        },
+        logos:
+          logos.error || !logos.data
+            ? null
+            : {
+                domain: logos.data.domain,
+                onLight: logos.data.on_light,
+                onDark: logos.data.on_dark
+              },
         timezone,
         status: { live, currency },
         catalog,

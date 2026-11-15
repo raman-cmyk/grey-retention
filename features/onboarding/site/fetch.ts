@@ -41,14 +41,15 @@ export const logoTimeoutMs = 3_000
 
 /**
  * The guards for a logo picture: https on 443 (also on every redirect),
- * any public host (a store's pictures are often on its platform's), a
- * picture type only, never a private address (the image fetcher's own).
+ * any public host (a store's pictures are often on its platform's), only
+ * the picture types an email may show (PNG, JPEG, GIF: what Klaviyo
+ * imports), never a private address (the image fetcher's own).
  */
 export const logoFetchOptions = {
   ports: ['443'],
   protocols: ['https:' as const],
-  accept: 'image/svg+xml,image/png,image/*;q=0.8',
-  types: /^\s*image\/(png|svg\+xml|jpeg|webp|gif)\b/i,
+  accept: 'image/png,image/jpeg;q=0.9,image/gif;q=0.8',
+  types: /^\s*image\/(png|jpeg|gif)\b/i,
   userAgent: 'Mozilla/5.0 (compatible; BrandReader/1.0)'
 }
 

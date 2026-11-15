@@ -430,12 +430,27 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
     expect(reads.catalog).not.toHaveBeenCalled()
   })
 
+  it('shows the name when the logos cannot be read, never failing "Create email"', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    reads.catalog.mockResolvedValueOnce([...parts().catalog])
+    reads.findings.mockResolvedValueOnce([...parts().findings])
+    reads.corrections.mockResolvedValueOnce([])
+    const { db } = fakeDb({
+      catalog_status: status(),
+      ...own,
+      brand_logos: failed
+    })
+    const store = await ownStoreSource(db).read(tenantId)
+    expect(store.brand.logo).toBeUndefined()
+    expect(store.brand.name).toBe('Cedar Lane')
+    expect(JSON.stringify(warn.mock.calls)).toContain('Brand logos unreadable')
+  })
+
   it('throws a read that fails', async () => {
     for (const answers of [
       { catalog_status: failed } as Record<string, Answer>,
       { catalog_status: status(), brand_profiles: failed },
-      { catalog_status: status(), brand_kits: failed },
-      { catalog_status: status(), brand_logos: failed }
+      { catalog_status: status(), brand_kits: failed }
     ])
       await expect(
         ownStoreSource(fakeDb(answers).db).read(tenantId)

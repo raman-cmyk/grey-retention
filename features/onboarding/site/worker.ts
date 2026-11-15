@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
 import type { Ask } from '@/features/intelligence/passes'
+import { importable } from '@/features/klaviyo-push/html'
 import type { FindingInput, SitePageKind } from '../findings'
 import {
   homeUrl,
@@ -46,35 +47,60 @@ export type PickedLogos = { onLight: string | null; onDark: string | null }
 const maxLogoUrl = 1_000
 
 /**
- * The brand's logos on its home page (ONB-060b): each candidate's picture
- * read (all at once, each within `logoTimeoutMs`, none started without
- * that time left) and its ink measured, then the pick for light and for
- * dark sections. A picture that cannot be read counts as unknown ink;
- * this never fails.
+ * A logo address an email may show and the database keeps: https on the
+ * standard port, no name or password, a format Klaviyo imports (never an
+ * SVG or WebP), at most `maxLogoUrl` characters.
+ */
+export const keepableLogo = (url: string) =>
+  url.length <= maxLogoUrl &&
+  /^https:\/\/[^/:?#@]+(?:[/?#]|$)/.test(url) &&
+  importable(url)
+
+/** Whether a picture's own bytes are PNG, JPEG or GIF (what Klaviyo imports). */
+export function emailPicture(b: Uint8Array): boolean {
+  const starts = (...sig: number[]) =>
+    b.length > sig.length && sig.every((v, i) => b[i] === v)
+  return (
+    starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a) ||
+    starts(0xff, 0xd8, 0xff) ||
+    starts(0x47, 0x49, 0x46, 0x38)
+  )
+}
+
+/**
+ * The brand's logos on its home page (ONB-060b): each candidate an email
+ * could show is read (all at once, each within `logoTimeoutMs`, none
+ * started without that time left), its ink measured (a JPEG or GIF goes by
+ * its name), then the pick for light and for dark sections. Only pictures
+ * really read as PNG, JPEG or GIF are picked from, so an email never gets
+ * a picture that did not load or that Klaviyo cannot import. Null when no
+ * picture could be read (then nothing earlier is replaced). Never fails.
  */
 export async function findLogos(
   page: { html: string; url: string },
   brand: string,
   picture: (url: string) => Promise<Uint8Array | null>,
   { now, deadline }: { now: () => number; deadline: number }
-): Promise<PickedLogos> {
+): Promise<PickedLogos | null> {
   try {
-    const found = await Promise.all(
-      logoCandidates(page.html, page.url, { brand }).map(async (candidate) => {
-        if (now() + logoTimeoutMs > deadline) return { candidate, tone: null }
-        const bytes = await picture(candidate.url).catch(() => null)
-        return { candidate, tone: bytes ? logoTone(bytes) : null }
-      })
+    const read = await Promise.all(
+      logoCandidates(page.html, page.url, { brand })
+        .filter((candidate) => keepableLogo(candidate.url))
+        .map(async (candidate) => {
+          if (now() + logoTimeoutMs > deadline) return null
+          const bytes = await picture(candidate.url).catch(() => null)
+          return bytes && emailPicture(bytes)
+            ? { candidate, tone: logoTone(bytes) }
+            : null
+        })
     )
-    const { onLight, onDark } = pickLogos(found)
-    const fits = (url: string | null) =>
-      url && url.length <= maxLogoUrl ? url : null
-    return { onLight: fits(onLight), onDark: fits(onDark) }
+    const found = read.filter((f) => f !== null)
+    return found.length ? pickLogos(found) : null
   } catch (error) {
     logger.warn('Site logos unreadable', {
       error: error instanceof Error ? error.name : 'unknown'
     })
-    return { onLight: null, onDark: null }
+    return null
   }
 }
 
@@ -191,7 +217,7 @@ export async function readBrandSite(
     }))
     return { count: result.findings.length }
   }
-  let logos: Promise<PickedLogos> | null = null
+  let logos: Promise<PickedLogos | null> | null = null
   const home = homeUrl(domain)
   if (!home) skip(`https://${domain || 'unknown'}/`, 'home', 'no_domain')
   else if (!ask) skip(home, 'home', 'no_model')
