@@ -55,38 +55,38 @@ insert into public.strategy_runs (id, tenant_id, start_on, state, pulse, offer_p
   ('00000000-0000-4000-8000-00000000e102','00000000-0000-4000-8000-000000000102',current_date,'planned','{"offers":[]}','{"mode":"auto"}',
    '{"slots":[{"date":"2099-01-01","time":"10:00","emailType":"launch"},{"date":"2099-01-02","time":"10:00","emailType":"offer"}]}',
    '00000000-0000-4000-8000-000000000004');
-insert into public.email_builds (id, tenant_id, run_id, slot, push_key, state, email, klaviyo_campaign_id, sample_draft, created_by, created_at) values
+insert into public.email_builds (id, tenant_id, run_id, slot, push_key, state, email, klaviyo_campaign_id, sample_draft, created_by, created_at, step) values
   ('00000000-0000-4000-8000-00000000b201','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',0,
    '00000000-0000-4000-8000-00000000c201','drafted',
    '{"html":"<table></table>","subject":"Weekend knit","code":"KNIT10","approach":"A","plannedSendAt":"2026-11-18T12:15:00.000Z"}',
-   'CmpR01',false,'00000000-0000-4000-8000-000000000001',now() - interval '5 days'),
+   'CmpR01',false,'00000000-0000-4000-8000-000000000001',now() - interval '5 days','push'),
   ('00000000-0000-4000-8000-00000000b202','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',1,
    '00000000-0000-4000-8000-00000000c202','drafted','{"html":"<table></table>","approach":"A"}',
-   'sample-draft-00000000-0000-4000-8000-00000000c202',true,'00000000-0000-4000-8000-000000000001',now()),
+   'sample-draft-00000000-0000-4000-8000-00000000c202',true,'00000000-0000-4000-8000-000000000001',now(),'push'),
   ('00000000-0000-4000-8000-00000000b203','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',2,
-   '00000000-0000-4000-8000-00000000c203','drafted','{"html":""}','CmpR03',false,'00000000-0000-4000-8000-000000000001',now()),
+   '00000000-0000-4000-8000-00000000c203','drafted','{"html":""}','CmpR03',false,'00000000-0000-4000-8000-000000000001',now(),'push'),
   ('00000000-0000-4000-8000-00000000b205','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',3,
-   '00000000-0000-4000-8000-00000000c205','build_queued',null,null,false,'00000000-0000-4000-8000-000000000001',now()),
+   '00000000-0000-4000-8000-00000000c205','build_queued',null,null,false,'00000000-0000-4000-8000-000000000001',now(),'sections'),
   ('00000000-0000-4000-8000-00000000b207','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',4,
    '00000000-0000-4000-8000-00000000c207','drafted','{"html":""}','CmpR07',false,'00000000-0000-4000-8000-000000000001',
-   now() - interval '12 days'),
+   now() - interval '12 days','push'),
   ('00000000-0000-4000-8000-00000000b208','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',5,
-   '00000000-0000-4000-8000-00000000c208','drafted','{"html":""}','CmpR08',false,'00000000-0000-4000-8000-000000000001',now()),
+   '00000000-0000-4000-8000-00000000c208','drafted','{"html":""}','CmpR08',false,'00000000-0000-4000-8000-000000000001',now(),'push'),
   ('00000000-0000-4000-8000-00000000b211','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',7,
    '00000000-0000-4000-8000-00000000c211','drafted',jsonb_build_object('html','','subject',repeat('s', 201)),'CmpR11',false,
-   '00000000-0000-4000-8000-000000000001',now()),
+   '00000000-0000-4000-8000-000000000001',now(),'push'),
   ('00000000-0000-4000-8000-00000000b212','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',8,
    '00000000-0000-4000-8000-00000000c212','drafted','{"html":""}','CmpR12',false,'00000000-0000-4000-8000-000000000001',
-   now() - interval '5 days'),
+   now() - interval '5 days','push'),
   ('00000000-0000-4000-8000-00000000b204','00000000-0000-4000-8000-000000000102','00000000-0000-4000-8000-00000000e102',0,
-   '00000000-0000-4000-8000-00000000c204','drafted','{"html":""}','sample-draft-x',true,'00000000-0000-4000-8000-000000000004',now()),
+   '00000000-0000-4000-8000-00000000c204','drafted','{"html":""}','sample-draft-x',true,'00000000-0000-4000-8000-000000000004',now(),'push'),
   ('00000000-0000-4000-8000-00000000b206','00000000-0000-4000-8000-000000000102','00000000-0000-4000-8000-00000000e102',1,
-   '00000000-0000-4000-8000-00000000c206','drafted','{"html":""}','CmpR06',false,'00000000-0000-4000-8000-000000000004',now());
+   '00000000-0000-4000-8000-00000000c206','drafted','{"html":""}','CmpR06',false,'00000000-0000-4000-8000-000000000004',now(),'push');
 insert into public.email_builds (id, tenant_id, run_id, slot, push_key, state, email, klaviyo_campaign_id, sample_draft, created_by,
-    created_at, updated_at) values
+    created_at, updated_at, step) values
   ('00000000-0000-4000-8000-00000000b210','00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000e101',6,
    '00000000-0000-4000-8000-00000000c210','drafted','{"html":""}','CmpR10',false,'00000000-0000-4000-8000-000000000001',
-   now() - interval '31 days', now() - interval '31 days');
+   now() - interval '31 days', now() - interval '31 days','push');
 insert into public.klaviyo_draft_pushes (tenant_id, push_key, state, campaign_id, message_id, designs) values
   ('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000c210','drafted','CmpR10','MsgR10','A'),
   ('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-00000000c211','drafted','CmpR11','MsgR11','A'),
@@ -416,9 +416,9 @@ select is((select array_agg(status order by build_id)::text from public.klaviyo_
 -- A paused workspace: its drafts are not met, its checks not taken, its
 -- saves refused.
 reset role;
-insert into public.email_builds (id, tenant_id, run_id, slot, push_key, state, email, klaviyo_campaign_id, sample_draft, created_by) values
+insert into public.email_builds (id, tenant_id, run_id, slot, push_key, state, email, klaviyo_campaign_id, sample_draft, created_by, step) values
   ('00000000-0000-4000-8000-00000000b209','00000000-0000-4000-8000-000000000102','00000000-0000-4000-8000-00000000e102',2,
-   '00000000-0000-4000-8000-00000000c209','drafted','{"html":""}','CmpR09',false,'00000000-0000-4000-8000-000000000004');
+   '00000000-0000-4000-8000-00000000c209','drafted','{"html":""}','CmpR09',false,'00000000-0000-4000-8000-000000000004','push');
 insert into public.klaviyo_draft_pushes (tenant_id, push_key, state, campaign_id, message_id, designs) values
   ('00000000-0000-4000-8000-000000000102','00000000-0000-4000-8000-00000000c209','drafted','CmpR09','MsgR09','A');
 update public.tenants set status = 'paused' where id = '00000000-0000-4000-8000-000000000102';
