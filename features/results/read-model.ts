@@ -38,6 +38,8 @@ export type ResultLine = {
   buildId: string
   subject: string | null
   plannedDay: string | null
+  /** The planned email type (`emailTypes` in features/strategy/plan.ts). */
+  emailType: string | null
   status: EmailStatus
   statusText: string
   sentAt: string | null
@@ -138,6 +140,7 @@ export function resultLine(email: EmailResult): ResultLine {
     buildId: email.buildId,
     subject: text(email.planned.subject),
     plannedDay: text(email.planned.date),
+    emailType: text(email.planned.emailType),
     status: email.status,
     statusText: email.changed
       ? `${statusWords[email.status]} (changed in Klaviyo)`
