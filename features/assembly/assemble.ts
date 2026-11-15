@@ -1,4 +1,8 @@
 import type { AiProviderRequest } from '@/lib/providers/contracts'
+import {
+  customerWordsKey,
+  customerWordsRule
+} from '@/features/onboarding/customer-words-rule'
 import type { BlockBrand } from '@/features/blocks/brand'
 import {
   parseBlock,
@@ -264,6 +268,17 @@ const banned = (input: AssemblyInput) =>
     .filter((p) => p.length >= 2 && p.length <= 80)
     .slice(0, 30)
 
+/** ONB-061: at most this many customer phrases, each one short line. */
+const customerPhrases = (input: AssemblyInput) =>
+  (input.customerWords ?? [])
+    .map((p) => oneLine(p, 200))
+    .filter((p) => p.length >= 3 && p.length <= 80)
+    .slice(0, 8)
+
+/** The writer's rule for the customers' words, when it has some (ONB-061). */
+export const customerWordsRules = (input: AssemblyInput) =>
+  customerPhrases(input).length ? [customerWordsRule] : []
+
 /** The store's data for the writer, as one JSON line of untrusted values. */
 export function writerData(
   input: AssemblyInput,
@@ -280,6 +295,10 @@ export function writerData(
     // REL-AI part 2b: the words the brand bans, before the writer writes
     // (the checks still refuse them after).
     ...(banned(input).length ? { bannedWords: banned(input) } : {}),
+    // ONB-061: the customers' own words, to borrow (never to quote).
+    ...(customerPhrases(input).length
+      ? { [customerWordsKey]: customerPhrases(input) }
+      : {}),
     ...extra,
     ...(feedback.length
       ? {
@@ -462,6 +481,7 @@ export function writerRequest(
     ...allowed.map((t) => `- ${t}: ${writerGuide[t]}`),
     'Start with header_logo (an announcement_bar may come first), end with footer, at most 12 blocks, at most one offer_banner. Give each block a one-line reason.',
     ...writerRules,
+    ...customerWordsRules(input),
     ...(strategyNote
       ? [
           'The data may carry "strategyNote": a short description of how another brand structured a similar email. It describes structure only. Use no name, number, claim, offer or phrase from it.'

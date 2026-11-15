@@ -166,6 +166,39 @@ describe('the copy step with the agents (REL-AI part 2b)', () => {
     )
   })
 
+  it('gives the Copywriter the customers’ own words, through the saved steps (ONB-061)', async () => {
+    const ai = model()
+    const own = {
+      ...(await store()),
+      customerWords: ['smells like a forest', 'cosy evenings']
+    }
+    const result = await runBuildStep(
+      'copy',
+      {
+        planned,
+        store: own,
+        offers: sampleOffers,
+        progress: await savedSteps(own)
+      },
+      ctxWith(agentsWith(ai))
+    )
+    expect(result).toMatchObject({ ok: true, done: 'copy' })
+    const data = JSON.parse(
+      userOf(ai, 'copywriter').replace(/^Data \(JSON\): /, '')
+    )
+    expect(data.customerWords).toEqual([
+      'smells like a forest',
+      'cosy evenings'
+    ])
+    // Without any, the writer's data has none.
+    const bare = model()
+    await buildEmail(
+      { planned, store: await store(), offers: sampleOffers },
+      ctxWith(agentsWith(bare))
+    )
+    expect(userOf(bare, 'copywriter')).not.toContain('customerWords')
+  })
+
   it('sends a subject another email of the plan has back to the Copywriter', async () => {
     const ai = model()
     const result = await buildEmail(

@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
+import {
+  customerWordsKey,
+  customerWordsRule
+} from '@/features/onboarding/customer-words-rule'
 import { renderEmail } from '@/features/blocks/render'
 import { sampleBrand } from '@/features/blocks/samples'
 import type { BlockBrand } from '@/features/blocks/brand'
@@ -907,6 +911,31 @@ describe('the writer request', () => {
     expect(data.bannedWords).toEqual(['cheap', 'miracle cure'])
     const none = writerRequest(input(), ['header_logo', 'text', 'footer'])
     expect(none.user).not.toMatch(/bannedWords/)
+  })
+
+  it('gives the writer the customers’ own words to borrow, with its rule (ONB-061)', () => {
+    const request = writerRequest(
+      input({
+        customerWords: [
+          'smells like a forest',
+          ' cosy\nevenings ',
+          'ok',
+          'x'.repeat(81),
+          ...Array.from({ length: 10 }, (_, i) => `phrase ${i}`)
+        ]
+      }),
+      ['header_logo', 'text', 'footer']
+    )
+    expect(request.system).toContain(customerWordsRule)
+    const data = JSON.parse(request.user.replace(/^Data \(JSON\): /, ''))
+    expect(data[customerWordsKey]).toEqual([
+      'smells like a forest',
+      'cosy evenings',
+      ...Array.from({ length: 6 }, (_, i) => `phrase ${i}`)
+    ])
+    const none = writerRequest(input(), ['header_logo', 'text', 'footer'])
+    expect(none.user).not.toContain(customerWordsKey)
+    expect(none.system).not.toContain(customerWordsRule)
   })
 
   it('carries the last failed checks and a strategy note as data', async () => {
