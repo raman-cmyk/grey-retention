@@ -301,9 +301,12 @@ export function designA(draft: Draft, brand: BlockBrand) {
   }
 }
 
-/** Approach B's hero: the first product hero, which B redraws. */
+/**
+ * Approach B's hero: the first product hero, which B redraws. A hero the
+ * design studio drew (DST-006a) is its picture already: B never redraws it.
+ */
 export const heroIndex = (draft: Draft) =>
-  draft.blocks.findIndex((b) => b.type === 'hero_product')
+  draft.blocks.findIndex((b) => b.type === 'hero_product' && !b.content.picture)
 
 /** A designed picture B may use: an https link with no user or password. */
 export function designedPictureOk(url: string) {

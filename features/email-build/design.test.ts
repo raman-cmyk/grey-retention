@@ -12,6 +12,7 @@ import {
   designedPictureOk,
   fakeHeroImages,
   fakeScreenshots,
+  heroIndex,
   pictureReasons,
   screenshotChecks,
   visualFindings,
@@ -275,6 +276,32 @@ describe('drawing the email', () => {
     expect(out).toMatchObject({ approach: 'A', fellBack: false })
     expect(heroImages.design).not.toHaveBeenCalled()
     expect(fallbacks.entries()).toEqual([])
+  })
+
+  it('never redraws a hero the design studio drew (DST-006a): it is its picture already', async () => {
+    const studio = {
+      ...hero,
+      content: {
+        ...hero.content,
+        picture: {
+          src: 'https://db.example/studio-renders/render/x.jpg?token=t',
+          alt: 'Meet the oak tray',
+          height: 640,
+          render: '33333333-3333-4333-8333-333333333333'
+        }
+      }
+    } as typeof hero
+    const drawn = { ...draft(), blocks: [sampleBlocks.header_logo, studio] }
+    expect(heroIndex(drawn)).toBe(-1)
+    expect(heroIndex({ ...drawn, blocks: [studio, hero] })).toBe(1)
+    const heroImages = designed()
+    const { ctx } = context(inspector({ problems: [] }))
+    const out = await designEmail(
+      { ...run('B', { heroImages }), draft: drawn },
+      ctx
+    )
+    expect(out).toMatchObject({ approach: 'A' })
+    expect(heroImages.design).not.toHaveBeenCalled()
   })
 
   it('photographs the email as a reader sees it: the footer’s placeholders, never Klaviyo’s raw tags (REL-FTR)', async () => {

@@ -1014,3 +1014,29 @@ describe('the copy QA hook (withCopyQa, ASM-002)', () => {
     expect(words).not.toMatch(/https?:\/\//)
   })
 })
+
+describe('a hero the design studio drew (DST-006a)', () => {
+  it('reads the hero’s own words, never the picture’s link, render or alt', () => {
+    const words = allText([
+      {
+        type: 'hero_image',
+        content: {
+          image: 'https://cdn.example/photo.jpg',
+          alt: 'A cedar tray on a table',
+          headline: 'Meet the cedar tray',
+          url: 'https://shop.example/tray',
+          cta: 'Shop now',
+          picture: {
+            src: 'https://db.example/studio-renders/render/x.jpg?token=t',
+            alt: 'Picture alt words',
+            height: 640,
+            render: '33333333-3333-4333-8333-333333333333'
+          }
+        }
+      }
+    ])
+    expect(words).toContain('Meet the cedar tray')
+    expect(words).toContain('Shop now')
+    expect(words).not.toMatch(/https?:\/\/|33333333|Picture alt words/)
+  })
+})

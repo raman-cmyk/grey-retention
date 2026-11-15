@@ -838,7 +838,9 @@ export function fill(
       }
       case 'hero_image':
         content = {
-          ...c.lifestylePhoto,
+          // The photo's own fields only: nothing else rides in.
+          image: c.lifestylePhoto?.image,
+          alt: c.lifestylePhoto?.alt,
           headline: w.headline,
           sub: w.sub,
           url: link,
@@ -1242,16 +1244,19 @@ const notWords = new Set([
   'price',
   'compareAt',
   'code',
-  'rating'
+  'rating',
+  // A studio picture (DST-006a): its link, render and alt, never words.
+  // Its words are the hero's own, read here from the hero.
+  'picture'
 ])
 
 /** Every word a reader sees in one block, never links or pictures. */
 export function blockWords(block: Block): string[] {
   const out: string[] = []
   const walk = (value: unknown, key: string) => {
-    if (typeof value === 'string') {
-      if (!notWords.has(key)) out.push(value)
-    } else if (Array.isArray(value)) value.forEach((v) => walk(v, key))
+    if (notWords.has(key)) return
+    if (typeof value === 'string') out.push(value)
+    else if (Array.isArray(value)) value.forEach((v) => walk(v, key))
     else if (value && typeof value === 'object')
       for (const [k, v] of Object.entries(value)) walk(v, k)
   }
