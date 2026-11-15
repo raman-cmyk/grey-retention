@@ -26,7 +26,11 @@ const email = (over: Partial<EmailResult> = {}): EmailResult => ({
   slot: 0,
   sample: false,
   campaignId: 'C1',
-  planned: { subject: '20% off knitwear', date: '2026-11-17' },
+  planned: {
+    subject: '20% off knitwear',
+    date: '2026-11-17',
+    emailType: 'offer'
+  },
   status: 'sent',
   changed: false,
   sentAt: '2026-11-17T18:00:00Z',
@@ -196,6 +200,7 @@ describe('a Results line', () => {
     expect(line).toMatchObject({
       subject: '20% off knitwear',
       plannedDay: '2026-11-17',
+      emailType: 'offer',
       statusText: 'Sent (changed in Klaviyo)',
       final: true,
       totals: { recipients: 2000 },
