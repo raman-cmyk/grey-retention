@@ -15,9 +15,8 @@
 -- A section the browser refuses, or that is too large or tries to leave
 -- the page, fails at once; a timeout or a browser failure is tried again
 -- (the platform jobs' 4 attempts), then fails. A failed render is drawn as
--- its coded block by the build (DST-006). A job that is never answered is
--- failed by the next claim's lease recovery; the build's own deadline
--- covers its render (DST-006).
+-- its coded block by the build (DST-006). A job that fails for good,
+-- also by the next claim's lease recovery, fails its render.
 --
 -- Workspace members see their own builds' renders and pictures; platform
 -- admins see everything. Only jobs (service role) write, through these
@@ -25,8 +24,8 @@
 
 create table public.section_renders (
   id uuid primary key default gen_random_uuid(),
-  tenant_id uuid not null references public.tenants(id),
-  build_id uuid not null references public.email_builds(id),
+  tenant_id uuid not null,
+  build_id uuid not null,
   -- The caller's key for this section and design, e.g. "s2-r1-ab12cd34".
   section_key text not null check (section_key ~ '^[a-z0-9-]{1,40}$'),
   -- The section as code checked it (DST-001a's format).
@@ -38,10 +37,15 @@ create table public.section_renders (
   path text check (path ~ '^render/[0-9a-f-]{36}\.jpg$'),
   height integer check (height between 80 and 3200),
   bytes integer check (bytes between 1 and 3145728),
+  -- The stored picture's tag when it was recorded: a later upload to the
+  -- same path changes it, so a picture swapped after drawing is caught.
+  etag text check (length(etag) between 1 and 200),
   created_at timestamptz not null default now(),
   finished_at timestamptz,
   unique (build_id, section_key),
-  check ((state = 'drawn') = (path is not null and height is not null and bytes is not null)),
+  -- A render is its build's, in the build's workspace, and goes with it.
+  foreign key (tenant_id, build_id) references public.email_builds (tenant_id, id) on delete cascade,
+  check ((state = 'drawn') = (path is not null and height is not null and bytes is not null and etag is not null)),
   check ((state = 'failed') = (failure is not null)),
   check (path is null or path = 'render/' || id || '.jpg')
 );
@@ -54,6 +58,11 @@ create policy section_renders_member_read on public.section_renders for select t
 revoke all on public.section_renders from public, anon, authenticated;
 grant select on public.section_renders to authenticated;
 revoke insert, update, delete, truncate, references, trigger on public.section_renders from service_role;
+do $$ begin
+  if current_setting('server_version_num')::integer >= 170000 then
+    execute 'revoke maintain on public.section_renders from public, anon, authenticated, service_role';
+  end if;
+end $$;
 
 -- A designed section's picture is at most 3 MiB (the renderer's limit).
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -76,13 +85,19 @@ alter table public.platform_jobs drop constraint platform_jobs_kind_check,
     check (kind in ('inbox.poll','inbox.assets','inbox.screenshot','inbox.label','inbox.confirm','inbox.variant','studio.render'));
 
 -- The build's design step asks for a section to be drawn. The same key
--- again is the same render (a retried claim asks nothing twice).
+-- and the same section again is the same render (a retried claim asks
+-- nothing twice); the same key with another section is PT409.
 create or replace function public.request_section_render(build uuid, lease uuid, section_key text, section jsonb, origins text[])
 returns uuid language plpgsql security definer set search_path = '' as $$
 declare
   b public.email_builds;
-  r uuid;
+  t uuid;
+  r public.section_renders;
 begin
+  -- Tenant first, then the build (as every build-leased command).
+  select e.tenant_id into t from public.email_builds e where e.id = build;
+  if not found then raise exception 'Lease unavailable' using errcode = 'PT409'; end if;
+  perform 1 from public.tenants where id = t for share;
   b := private.leased_email_build(build, lease, 'build_queued');
   if b.step is distinct from 'design' then
     raise exception 'Only the design step draws sections' using errcode = 'PT409';
@@ -96,25 +111,32 @@ begin
      or (section->>'height')::numeric <> floor((section->>'height')::numeric) then
     raise exception 'A render needs a section of a usable size' using errcode = '22023';
   end if;
+  -- A hostname (its last label not a number: no IP address), no port.
   if origins is null or cardinality(origins) not between 1 and 8 or exists (
        select 1 from unnest(origins) o
-       where o is null or o !~ '^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$') then
+       where o is null or length(o) > 261
+         or o !~ '^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$'
+         or o ~ '\.[0-9]+$') then
     raise exception 'A render loads from https origins only' using errcode = '22023';
   end if;
-  select id into r from public.section_renders where build_id = b.id and section_renders.section_key = request_section_render.section_key;
-  if r is not null then
-    return r;
+  select * into r from public.section_renders s
+    where s.build_id = b.id and s.section_key = request_section_render.section_key;
+  if found then
+    if r.section is distinct from request_section_render.section or r.origins is distinct from request_section_render.origins then
+      raise exception 'This key is another section''s' using errcode = 'PT409';
+    end if;
+    return r.id;
   end if;
   if (select count(*) from public.section_renders where build_id = b.id) >= 12 then
     raise exception 'This build drew too many sections' using errcode = '22023', detail = 'too_many_renders';
   end if;
   insert into public.section_renders (tenant_id, build_id, section_key, section, origins)
     values (b.tenant_id, b.id, request_section_render.section_key, request_section_render.section, request_section_render.origins)
-    returning id into r;
+    returning * into r;
   insert into public.platform_jobs (kind, subject_key, idempotency_key)
-    values ('studio.render', r::text, 'studio.render:' || r)
+    values ('studio.render', r.id::text, 'studio.render:' || r.id)
     on conflict do nothing;
-  return r;
+  return r.id;
 end $$;
 
 -- The leased render job's render, locked; a render already finished is PT409.
@@ -135,11 +157,14 @@ begin
   return r;
 end $$;
 
--- The browser drew the section and stored its picture.
+-- The browser drew the section and stored its picture. A report that
+-- does not match (another height, no stored picture, another size or
+-- type than stored) is 23514: the caller fails the render.
 create or replace function public.record_section_render(job uuid, lease uuid, height integer, bytes integer)
 returns void language plpgsql security definer set search_path = '' as $$
 declare
   r public.section_renders;
+  m jsonb;
 begin
   r := private.leased_section_render(job, lease);
   if height is null or height <> 2 * (r.section->>'height')::integer then
@@ -148,13 +173,18 @@ begin
   if bytes is null or bytes not between 1 and 3145728 then
     raise exception 'The picture is not a usable size' using errcode = '23514';
   end if;
-  if not exists (select 1 from storage.objects o
-      where o.bucket_id = 'studio-renders' and o.name = 'render/' || r.id || '.jpg') then
-    raise exception 'Stored picture missing' using errcode = 'PT409';
+  select o.metadata into m from storage.objects o
+    where o.bucket_id = 'studio-renders' and o.name = 'render/' || r.id || '.jpg';
+  if not found then
+    raise exception 'Stored picture missing' using errcode = '23514';
+  end if;
+  if coalesce(m->>'size', '') <> bytes::text or coalesce(m->>'mimetype', '') <> 'image/jpeg'
+     or coalesce(length(m->>'eTag'), 0) not between 1 and 200 then
+    raise exception 'The stored picture is not the one reported' using errcode = '23514';
   end if;
   update public.section_renders
     set state = 'drawn', path = 'render/' || r.id || '.jpg', height = record_section_render.height,
-        bytes = record_section_render.bytes, finished_at = now()
+        bytes = record_section_render.bytes, etag = m->>'eTag', finished_at = now()
     where id = r.id;
   perform public.finish_platform_job(job, lease, jsonb_build_object('height', height));
 end $$;
@@ -186,6 +216,21 @@ begin
       case when failure = 'timeout' then 'timeout' else 'unavailable' end, 'render_' || failure);
   end if;
 end $$;
+
+-- A render job that fails for good (its last attempt, or a lease that ran
+-- out on it) fails its render, so the build never waits on a dead one.
+create or replace function private.fail_dead_render()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  update public.section_renders
+    set state = 'failed', failure = 'timeout', finished_at = now()
+    where id = new.subject_key::uuid and state = 'queued';
+  return new;
+end $$;
+revoke all on function private.fail_dead_render() from public, anon, authenticated, service_role;
+create trigger studio_render_failed after update of status on public.platform_jobs
+  for each row when (new.kind = 'studio.render' and new.status = 'failed' and old.status is distinct from 'failed')
+  execute function private.fail_dead_render();
 
 revoke all on function public.request_section_render(uuid, uuid, text, jsonb, text[]) from public, anon, authenticated;
 revoke all on function public.record_section_render(uuid, uuid, integer, integer) from public, anon, authenticated;

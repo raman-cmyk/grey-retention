@@ -6124,6 +6124,7 @@ export type Database = {
           build_id: string
           bytes: number | null
           created_at: string
+          etag: string | null
           failure: string | null
           finished_at: string | null
           height: number | null
@@ -6139,6 +6140,7 @@ export type Database = {
           build_id: string
           bytes?: number | null
           created_at?: string
+          etag?: string | null
           failure?: string | null
           finished_at?: string | null
           height?: number | null
@@ -6154,6 +6156,7 @@ export type Database = {
           build_id?: string
           bytes?: number | null
           created_at?: string
+          etag?: string | null
           failure?: string | null
           finished_at?: string | null
           height?: number | null
@@ -6167,18 +6170,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'section_renders_build_id_fkey'
-            columns: ['build_id']
+            foreignKeyName: 'section_renders_tenant_id_build_id_fkey'
+            columns: ['tenant_id', 'build_id']
             isOneToOne: false
             referencedRelation: 'email_builds'
-            referencedColumns: ['id']
-          },
-          {
-            foreignKeyName: 'section_renders_tenant_id_fkey'
-            columns: ['tenant_id']
-            isOneToOne: false
-            referencedRelation: 'tenants'
-            referencedColumns: ['id']
+            referencedColumns: ['tenant_id', 'id']
           }
         ]
       }

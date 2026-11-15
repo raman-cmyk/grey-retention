@@ -76,7 +76,10 @@ export async function POST(request: NextRequest) {
   if (!done.ok)
     return NextResponse.json(
       { error: 'Render not recorded', code: done.code },
-      { status: done.code === 'PT409' ? 409 : 500, headers: noStore }
+      {
+        status: done.code === 'PT409' ? 409 : done.code === '23514' ? 422 : 500,
+        headers: noStore
+      }
     )
   return NextResponse.json({ ok: true }, { headers: noStore })
 }

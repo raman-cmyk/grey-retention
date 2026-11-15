@@ -6,12 +6,17 @@ vi.mock('server-only', () => ({}))
 const service = vi.hoisted(() => ({ createServiceClient: vi.fn() }))
 vi.mock('@/lib/supabase/service', () => service)
 import { GET, POST } from '@/app/api/internal/studio/renders/route'
-import { renderJobs, requestSectionRender } from './render-jobs'
+import {
+  renderJobs,
+  requestSectionRender,
+  SectionNotDrawable
+} from './render-jobs'
 import { sectionDocument, type DesignedSection } from './section'
 
 const job = '11111111-1111-4111-8111-111111111111'
 const lease = '22222222-2222-4222-8222-222222222222'
 const render = '33333333-3333-4333-8333-333333333333'
+const build = '44444444-4444-4444-8444-444444444444'
 const photo = 'https://cdn.shop.example/images/tray.jpg'
 const section: DesignedSection = {
   id: 's2',
@@ -19,56 +24,64 @@ const section: DesignedSection = {
   html: `<img src="${photo}" alt=""><h1>Meet the cedar tray</h1>`,
   css: 'h1{color:#fff}'
 }
+const queued = {
+  id: render,
+  build_id: build,
+  section,
+  origins: ['https://cdn.shop.example'],
+  state: 'queued'
+}
 
+type Row = Record<string, unknown> | null | 'error' | 'throw'
 function database(
   options: {
-    jobs?: number
-    row?: Record<string, unknown> | null
+    /** One render row per claim, in order; the claims end with the list. */
+    rows?: Row[]
+    buildState?: string
     uploadError?: boolean
-    rpcError?: string
+    rpcError?: Record<string, string>
   } = {}
 ) {
-  let left = options.jobs ?? 1
+  const rows = [...(options.rows ?? [queued])]
+  let current: Row = null
   const calls: { name: string; args: Record<string, unknown> }[] = []
-  const row =
-    options.row === undefined
-      ? {
-          id: render,
-          section,
-          origins: ['https://cdn.shop.example'],
-          state: 'queued'
-        }
-      : options.row
   return {
     calls,
     rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
       calls.push({ name, args })
-      if (name === 'claim_platform_job')
-        return left-- > 0
-          ? {
-              data: [{ id: job, lease_token: lease, subject_key: render }],
-              error: null
-            }
-          : { data: [], error: null }
+      if (options.rpcError?.[name])
+        return {
+          data: null,
+          error: { code: options.rpcError[name], message: 'x' }
+        }
+      if (name === 'claim_platform_job') {
+        if (!rows.length) return { data: [], error: null }
+        current = rows.shift()!
+        return {
+          data: [{ id: job, lease_token: lease, subject_key: render }],
+          error: null
+        }
+      }
       if (name === 'request_section_render')
         return { data: render, error: null }
-      if (
-        options.rpcError &&
-        (name === 'record_section_render' || name === 'fail_section_render')
-      )
-        return { data: null, error: { code: options.rpcError, message: 'x' } }
       return { data: null, error: null }
     }),
-    from: () => {
+    from: (table: string) => {
       const query = {
         select: () => query,
         eq: () => query,
-        in: () => query,
-        lte: async () => ({ count: 3, error: null }),
-        single: async () =>
-          row
-            ? { data: row, error: null }
-            : { data: null, error: { code: 'PGRST116' } }
+        or: async () => ({ count: 3, error: null }),
+        maybeSingle: async () => {
+          if (table === 'email_builds')
+            return {
+              data: { state: options.buildState ?? 'build_queued' },
+              error: null
+            }
+          if (current === 'throw') throw new Error('boom')
+          if (current === 'error')
+            return { data: null, error: { code: 'XX000' } }
+          return { data: current, error: null }
+        }
       }
       return query
     },
@@ -89,13 +102,37 @@ function database(
 }
 type Fake = ReturnType<typeof database>
 const db = (d: Fake) => d as unknown as Parameters<typeof renderJobs>[0]
+const handed = {
+  job,
+  lease,
+  render,
+  document: sectionDocument(section),
+  height: 320,
+  origins: ['https://cdn.shop.example'],
+  upload: `https://db.test/upload/studio-renders/render/${render}.jpg?token=t`
+}
+const last = (d: Fake, name: string) =>
+  d.calls.filter((c) => c.name === name).at(-1)?.args
 
 describe('asking for a section to be drawn (DST-001b)', () => {
-  it('queues a checked section under the build’s lease, with its https origins', async () => {
+  const ask = (
+    d: Fake,
+    change: Partial<DesignedSection> = {},
+    hosts = ['cdn.shop.example']
+  ) =>
+    requestSectionRender(db(d), {
+      build,
+      lease,
+      key: 's2-r1-ab12cd34',
+      section: { ...section, ...change },
+      hosts
+    })
+
+  it('queues a checked section under the build’s lease, with its https origins once each', async () => {
     const d = database()
     expect(
       await requestSectionRender(db(d), {
-        build: job,
+        build,
         lease,
         key: 's2-r1-ab12cd34',
         section,
@@ -106,7 +143,7 @@ describe('asking for a section to be drawn (DST-001b)', () => {
       {
         name: 'request_section_render',
         args: {
-          build: job,
+          build,
           lease,
           section_key: 's2-r1-ab12cd34',
           section,
@@ -116,71 +153,107 @@ describe('asking for a section to be drawn (DST-001b)', () => {
     ])
   })
 
-  it('never queues a section the format refuses', async () => {
-    const d = database()
-    await expect(
-      requestSectionRender(db(d), {
-        build: job,
-        lease,
-        key: 's2-r1',
-        section: { ...section, html: '<script>alert(1)</script>' },
-        hosts: ['cdn.shop.example']
-      })
-    ).rejects.toThrow('never drawn')
-    expect(d.calls).toEqual([])
+  it('never queues a section the format refuses, with no host or too many, or too large to store', async () => {
+    for (const [change, hosts] of [
+      [{ html: '<script>alert(1)</script>' }, ['cdn.shop.example']],
+      [{ html: '<h1>Meet the cedar tray</h1>' }, []],
+      [{}, Array.from({ length: 9 }, (_, i) => `h${i}.shop.example`)],
+      [
+        { html: `${section.html}<p>${'“'.repeat(40_000)}</p>` },
+        ['cdn.shop.example']
+      ]
+    ] as const) {
+      const d = database()
+      await expect(ask(d, change, [...hosts])).rejects.toBeInstanceOf(
+        SectionNotDrawable
+      )
+      expect(d.calls).toEqual([])
+    }
+  })
+
+  it('passes on the command’s refusals (another section under the key, the wrong step)', async () => {
+    const d = database({ rpcError: { request_section_render: 'PT409' } })
+    await expect(ask(d)).rejects.toMatchObject({ code: 'PT409' })
   })
 })
 
 describe('handing out sections to draw (DST-001b)', () => {
-  it('hands out one section at a time: its page, its height, its origins, its upload link', async () => {
-    const d = database({ jobs: 2 })
-    expect(await renderJobs(db(d))).toEqual([
-      {
-        job,
-        lease,
-        render,
-        document: sectionDocument(section),
-        height: 320,
-        origins: ['https://cdn.shop.example'],
-        upload: `https://db.test/upload/studio-renders/render/${render}.jpg?token=t`
-      }
-    ])
+  it('hands out one section: its page, its height, its origins, its upload link', async () => {
+    const d = database({ rows: [queued, queued] })
+    expect(await renderJobs(db(d))).toEqual([handed])
     expect(d.calls.filter((c) => c.name === 'claim_platform_job')).toEqual([
       { name: 'claim_platform_job', args: { kinds: ['studio.render'] } }
     ])
   })
 
-  it('checks the section again, and fails one that no longer passes, never handing it out', async () => {
+  it('claims on past a render it cannot hand out, so one bad render never stops the run', async () => {
     const d = database({
-      row: {
-        id: render,
-        section: {
-          ...section,
-          html: `<img src="https://evil.example/x.png" alt="">`
+      rows: [
+        null,
+        'error',
+        { ...queued, state: 'drawn' },
+        {
+          ...queued,
+          section: {
+            ...section,
+            html: `<img src="https://evil.example/x.png" alt="">`
+          }
         },
-        origins: ['https://cdn.shop.example'],
-        state: 'queued'
-      }
+        queued
+      ]
     })
+    expect(await renderJobs(db(d))).toEqual([handed])
+    expect(
+      d.calls.map((c) => [
+        c.name,
+        c.args.failure ?? c.args.error_code ?? c.args.outcome ?? ''
+      ])
+    ).toEqual([
+      ['claim_platform_job', ''],
+      ['fail_platform_job', 'protocol'],
+      ['claim_platform_job', ''],
+      ['fail_platform_job', 'unavailable'],
+      ['claim_platform_job', ''],
+      ['finish_platform_job', { settled: 'drawn' }],
+      ['claim_platform_job', ''],
+      ['fail_section_render', 'refused'],
+      ['claim_platform_job', '']
+    ])
+  })
+
+  it('stops after five claims, or when nothing is waiting', async () => {
+    const d = database({ rows: Array(6).fill(null) })
     expect(await renderJobs(db(d))).toEqual([])
-    expect(d.calls.at(-1)).toEqual({
-      name: 'fail_section_render',
-      args: { job, lease, failure: 'refused' }
+    expect(d.calls.filter((c) => c.name === 'claim_platform_job')).toHaveLength(
+      5
+    )
+    expect(await renderJobs(db(database({ rows: [] })))).toEqual([])
+  })
+
+  it('never draws for a build that no longer wants the picture', async () => {
+    const d = database({ buildState: 'failed' })
+    expect(await renderJobs(db(d))).toEqual([])
+    expect(last(d, 'fail_section_render')).toEqual({
+      job,
+      lease,
+      failure: 'refused'
     })
   })
 
-  it('fails a job whose render is gone, or that cannot get its upload link', async () => {
-    const gone = database({ row: null })
-    expect(await renderJobs(db(gone))).toEqual([])
-    expect(gone.calls.at(-1)).toEqual({
-      name: 'fail_platform_job',
-      args: { job, lease, failure: 'protocol', error_code: 'render_missing' }
-    })
+  it('fails a render whose upload link cannot be signed, or whose hand-out throws', async () => {
     const noLink = database({ uploadError: true })
     expect(await renderJobs(db(noLink))).toEqual([])
-    expect(noLink.calls.at(-1)).toEqual({
-      name: 'fail_section_render',
-      args: { job, lease, failure: 'upload_failed' }
+    expect(last(noLink, 'fail_section_render')).toEqual({
+      job,
+      lease,
+      failure: 'upload_failed'
+    })
+    const boom = database({ rows: ['throw'] })
+    expect(await renderJobs(db(boom))).toEqual([])
+    expect(last(boom, 'fail_section_render')).toEqual({
+      job,
+      lease,
+      failure: 'failed'
     })
   })
 })
@@ -199,6 +272,12 @@ describe('the render route (DST-001b)', () => {
         body: init.body,
         headers: init.headers ?? auth
       }
+    )
+  const post = (body: unknown) =>
+    POST(
+      req('POST', {
+        body: typeof body === 'string' ? body : JSON.stringify(body)
+      })
     )
   beforeEach(() => vi.stubEnv('CRON_SECRET', secret))
   afterEach(() => {
@@ -219,7 +298,7 @@ describe('the render route (DST-001b)', () => {
     expect((await GET(req('GET'))).status).toBe(503)
   })
 
-  it('peeks without claiming, and hands out jobs', async () => {
+  it('peeks without claiming, hands out jobs, and says when it cannot', async () => {
     const d = database()
     service.createServiceClient.mockReturnValue(d)
     const peek = await GET(
@@ -229,50 +308,83 @@ describe('the render route (DST-001b)', () => {
     expect(d.calls).toEqual([])
     const got = await GET(req('GET'))
     expect(got.headers.get('cache-control')).toBe('no-store')
-    expect((await got.json()).jobs).toHaveLength(1)
+    expect((await got.json()).jobs).toEqual([handed])
+    service.createServiceClient.mockReturnValue(
+      database({ rpcError: { claim_platform_job: 'XX000' } })
+    )
+    const down = await GET(req('GET'))
+    expect(down.status).toBe(500)
+    expect(await down.json()).toEqual({
+      error: 'Render jobs unavailable; they stay queued.'
+    })
   })
 
-  it('records a drawn section or its failure, and refuses anything else', async () => {
+  it('records a drawn section or its failure', async () => {
     const d = database()
     service.createServiceClient.mockReturnValue(d)
-    const drawn = await POST(
-      req('POST', {
-        body: JSON.stringify({ job, lease, height: 640, bytes: 1000 })
-      })
-    )
-    expect(await drawn.json()).toEqual({ ok: true })
-    expect(d.calls.at(-1)).toEqual({
-      name: 'record_section_render',
-      args: { job, lease, height: 640, bytes: 1000 }
+    expect(
+      await (await post({ job, lease, height: 640, bytes: 1000 })).json()
+    ).toEqual({ ok: true })
+    expect(last(d, 'record_section_render')).toEqual({
+      job,
+      lease,
+      height: 640,
+      bytes: 1000
     })
-    await POST(
-      req('POST', { body: JSON.stringify({ job, lease, failure: 'timeout' }) })
-    )
-    expect(d.calls.at(-1)).toEqual({
-      name: 'fail_section_render',
-      args: { job, lease, failure: 'timeout' }
+    await post({ job, lease, failure: 'timeout' })
+    expect(last(d, 'fail_section_render')).toEqual({
+      job,
+      lease,
+      failure: 'timeout'
     })
-    for (const body of [
-      'not json',
-      JSON.stringify({ job, lease, failure: 'gone' }),
-      JSON.stringify({ job, lease, height: 640, bytes: 4_000_000 }),
-      JSON.stringify({ job, lease, height: 640, bytes: 1000, extra: 1 }),
-      'x'.repeat(2_001)
-    ])
-      expect((await POST(req('POST', { body }))).status).toBe(400)
   })
 
-  it('says 409 when the lease or the render moved on', async () => {
-    service.createServiceClient.mockReturnValue(database({ rpcError: 'PT409' }))
-    const moved = await POST(
-      req('POST', {
-        body: JSON.stringify({ job, lease, height: 640, bytes: 1000 })
-      })
+  it('refuses anything else: not JSON, unknown fields, a refusal claimed by the browser, too large', async () => {
+    service.createServiceClient.mockReturnValue(database())
+    for (const body of [
+      'not json',
+      { job, lease, failure: 'gone' },
+      { job, lease, failure: 'refused' },
+      { job, lease, height: 640, bytes: 4_000_000 },
+      { job, lease, height: 640, bytes: 1000, extra: 1 },
+      JSON.stringify({ job, lease, failure: 'timeout' }) + ' '.repeat(2_000)
+    ])
+      expect((await post(body)).status).toBe(400)
+    expect(
+      (
+        await POST(
+          req('POST', {
+            body: JSON.stringify({ job, lease, failure: 'timeout' }),
+            headers: { ...auth, 'content-length': '2001' }
+          })
+        )
+      ).status
+    ).toBe(400)
+  })
+
+  it('says 409 when the lease moved on, 422 (and fails the attempt) when the report does not match, 500 otherwise', async () => {
+    service.createServiceClient.mockReturnValue(
+      database({ rpcError: { record_section_render: 'PT409' } })
     )
+    const moved = await post({ job, lease, height: 640, bytes: 1000 })
     expect(moved.status).toBe(409)
     expect(await moved.json()).toEqual({
       error: 'Render not recorded',
       code: 'PT409'
     })
+    const wrong = database({ rpcError: { record_section_render: '23514' } })
+    service.createServiceClient.mockReturnValue(wrong)
+    expect((await post({ job, lease, height: 640, bytes: 1000 })).status).toBe(
+      422
+    )
+    expect(last(wrong, 'fail_section_render')).toEqual({
+      job,
+      lease,
+      failure: 'failed'
+    })
+    service.createServiceClient.mockReturnValue(
+      database({ rpcError: { fail_section_render: 'XX000' } })
+    )
+    expect((await post({ job, lease, failure: 'timeout' })).status).toBe(500)
   })
 })

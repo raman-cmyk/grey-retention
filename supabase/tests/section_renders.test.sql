@@ -1,5 +1,5 @@
 begin;
-select plan(37);
+select plan(47);
 
 -- DST-001b: a designed section drawn to a picture by a browser outside the
 -- app. Workspace 101: owner ...01; another workspace: owner ...04.
@@ -57,10 +57,12 @@ select throws_ok($$select pg_temp.req('s2-r1',pg_temp.sec(2000))$$,'22023',null,
 select throws_ok($$select pg_temp.req('s2-r1',pg_temp.sec(),array['http://cdn.shop.example'])$$,'22023','A render loads from https origins only','https origins only');
 select throws_ok($$select pg_temp.req('s2-r1',pg_temp.sec(),array['https://cdn.shop.example:8443'])$$,'22023',null,'with no port');
 select throws_ok($$select pg_temp.req('s2-r1',pg_temp.sec(),array[]::text[])$$,'22023',null,'and at least one');
+select throws_ok($$select pg_temp.req('s2-r1',pg_temp.sec(),array['https://10.0.0.5'])$$,'22023',null,'a hostname, never an IP address');
 
 -- Asked for once: one render and one job, the same key again is the same render.
 select set_config('test.r1',pg_temp.req('s2-r1')::text,true);
-select is(pg_temp.req('s2-r1')::text,current_setting('test.r1'),'the same key again is the same render');
+select is(pg_temp.req('s2-r1')::text,current_setting('test.r1'),'the same key and section again is the same render');
+select throws_ok($$select pg_temp.req('s2-r1',pg_temp.sec(400))$$,'PT409','This key is another section''s','the same key with another section is refused');
 select is((select state || ':' || tenant_id from public.section_renders where id=current_setting('test.r1')::uuid),
   'queued:00000000-0000-4000-8000-000000000101','it is queued for the build''s workspace');
 select is((select count(*)::int from public.platform_jobs where kind='studio.render' and subject_key=current_setting('test.r1')),1,'with one render job');
@@ -69,8 +71,11 @@ select is((select count(*)::int from public.platform_jobs where kind='studio.ren
 select set_config('test.job',(select id::text from public.platform_jobs where kind='studio.render' and subject_key=current_setting('test.r1')),true);
 select set_config('test.jl',(select lease_token::text from public.claim_platform_job(array['studio.render'])),true);
 select throws_ok($$select public.record_section_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,640,1000)$$,
-  'PT409','Stored picture missing','a picture is recorded only once it is stored');
-insert into storage.objects(bucket_id, name) values ('studio-renders','render/'||current_setting('test.r1')||'.jpg');
+  '23514','Stored picture missing','a picture is recorded only once it is stored');
+insert into storage.objects(bucket_id, name, metadata) values ('studio-renders','render/'||current_setting('test.r1')||'.jpg',
+  '{"size":1000,"mimetype":"image/jpeg","eTag":"\"e1\""}');
+select throws_ok($$select public.record_section_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,640,999)$$,
+  '23514','The stored picture is not the one reported','at the size stored');
 select throws_ok($$select public.record_section_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,600,1000)$$,
   '23514','The picture is not the section''s size','at twice the section''s height');
 select throws_ok($$select public.record_section_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,640,4000000)$$,
@@ -78,8 +83,8 @@ select throws_ok($$select public.record_section_render(current_setting('test.job
 select throws_ok($$select public.record_section_render(current_setting('test.job')::uuid,gen_random_uuid(),640,1000)$$,
   'PT409',null,'under the job''s own lease');
 select lives_ok($$select public.record_section_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,640,1000)$$,'the picture is recorded');
-select is((select state || ':' || path || ':' || height || ':' || bytes from public.section_renders where id=current_setting('test.r1')::uuid),
-  'drawn:render/'||current_setting('test.r1')||'.jpg:640:1000','the render is drawn');
+select is((select state || ':' || path || ':' || height || ':' || bytes || ':' || etag from public.section_renders where id=current_setting('test.r1')::uuid),
+  'drawn:render/'||current_setting('test.r1')||'.jpg:640:1000:"e1"','the render is drawn, with its stored picture''s tag');
 select is((select status from public.platform_jobs where id=current_setting('test.job')::uuid),'succeeded','and its job is done');
 select throws_ok($$select public.record_section_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,640,1000)$$,
   'PT409',null,'a finished render is recorded once');
@@ -108,8 +113,33 @@ select public.fail_section_render(current_setting('test.job')::uuid,current_sett
 select is((select r.state || ':' || r.failure || ':' || j.status from public.section_renders r, public.platform_jobs j
   where r.id=current_setting('test.r3')::uuid and j.id=current_setting('test.job')::uuid),'failed:failed:failed','the last attempt fails the render');
 
+-- A job that fails for good on a lease that ran out fails its render.
+select set_config('test.r4',pg_temp.req('s2-r4')::text,true);
+select set_config('test.job',(select id::text from public.platform_jobs where kind='studio.render' and subject_key=current_setting('test.r4')),true);
+select set_config('test.jl',(select lease_token::text from public.claim_platform_job(array['studio.render'])),true);
+reset role;
+update public.platform_jobs set lease_expires_at = now() - interval '1 minute' where id=current_setting('test.job')::uuid;
+set local role service_role;
+select throws_ok($$select public.record_section_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,640,1000)$$,
+  'PT409',null,'never under a lease that ran out');
+reset role;
+update public.platform_jobs set attempt = 4 where id=current_setting('test.job')::uuid;
+set local role service_role;
+select public.claim_platform_job(array['studio.render']);
+select is((select r.state || ':' || r.failure || ':' || j.status from public.section_renders r, public.platform_jobs j
+  where r.id=current_setting('test.r4')::uuid and j.id=current_setting('test.job')::uuid),'failed:timeout:failed','a job that fails for good fails its render');
+
+-- Another kind's job draws nothing (and the older kinds are still jobs).
+reset role;
+insert into public.platform_jobs(kind, subject_key, idempotency_key) values ('inbox.variant','test-variant','test:inbox.variant');
+set local role service_role;
+select set_config('test.vjob',(select id::text from public.platform_jobs where idempotency_key='test:inbox.variant'),true);
+select set_config('test.vl',(select lease_token::text from public.claim_platform_job(array['inbox.variant'])),true);
+select throws_ok($$select public.record_section_render(current_setting('test.vjob')::uuid,current_setting('test.vl')::uuid,640,1000)$$,
+  '23514','This job draws no section','another kind''s job draws no section');
+
 -- At most 12 renders a build.
-select lives_ok($$select pg_temp.req('s3-r' || n) from generate_series(1,9) n$$,'up to 12 renders a build');
+select lives_ok($$select pg_temp.req('s3-r' || n) from generate_series(1,8) n$$,'up to 12 renders a build');
 select throws_ok($$select pg_temp.req('s4-r1')$$,'22023','This build drew too many sections','and no more');
 reset role;
 
@@ -124,9 +154,18 @@ set local role authenticated;
 select is((select count(*)::int from public.section_renders),0,'another workspace sees none');
 select is((select count(*)::int from storage.objects where bucket_id='studio-renders'),0,'nor their pictures');
 reset role;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
+set local role authenticated;
+select is((select count(*)::int from public.section_renders),12,'platform admins see every render');
+select is((select count(*)::int from storage.objects where bucket_id='studio-renders'),1,'and every picture');
+reset role;
 set local role anon;
 select throws_ok($$select count(*) from public.section_renders$$,'42501',null,'nobody signed out reads renders');
 reset role;
+
+-- A build that is deleted takes its renders with it.
+select lives_ok($$delete from public.email_builds where id=current_setting('test.build')::uuid$$,'a build with renders can be deleted');
+select is((select count(*)::int from public.section_renders where build_id=current_setting('test.build')::uuid),0,'and its renders go with it');
 
 select * from finish();
 rollback;
