@@ -1,5 +1,7 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { InMemoryMemoryStore } from '@/features/agents/memory'
+import { InMemoryRunLog, type AiCall } from '@/features/agents/runtime'
 import { productTakes } from '@/features/assembly/assemble'
 import { blockTypes, type BlockType } from '@/features/blocks/catalog'
 import {
@@ -8,11 +10,14 @@ import {
   seedVariants,
   type SectionPlan
 } from '@/features/email-build/sections'
+import { memoryFallbackLog } from '@/features/fallback/log'
 import { emailTypes, type EmailType } from '@/features/strategy/plan'
 import {
+  artDirectorAgent,
   codeStoryboard,
   emailHeight,
   maxDesignedShare,
+  storyboardFor,
   storyboardProblems,
   type Storyboard,
   type StoryboardInput,
@@ -78,6 +83,30 @@ const launch: StoryboardInput = {
 }
 const total = (b: Pick<Storyboard, 'sections'>) =>
   b.sections.reduce((n, s) => n + s.height, 0)
+const ok = (content: unknown) => ({
+  ok: true as const,
+  content,
+  provider: 'gemini' as const,
+  model: 'test',
+  costMicro: 0,
+  inputTokens: 1,
+  outputTokens: 1,
+  settled: true
+})
+const ctx = (ai: AiCall) => {
+  const fallbacks = memoryFallbackLog()
+  return {
+    fallbacks,
+    ctx: {
+      tenantId: '00000000-0000-4000-8000-000000000101',
+      callerKey: 'email-build:b1',
+      memory: new InMemoryMemoryStore(),
+      log: new InMemoryRunLog(),
+      ai,
+      fallbacks
+    }
+  }
+}
 const must = (b: Storyboard | null) => {
   if (!b) throw new Error('no storyboard')
   return b
@@ -308,5 +337,101 @@ describe('the storyboard checks (DST-002)', () => {
         expect.stringMatching(/^The email is \d+ px tall/)
       ])
     )
+  })
+})
+
+describe('the Art director (DST-002)', () => {
+  it('gets the sections, their limits and, outside Scratch, each one’s reference', () => {
+    const reference = [
+      { family: 'hero_product' as const, tone: 'dark' as const, height: 500 }
+    ]
+    const withRef = {
+      ...launch,
+      sections: launch.sections.map((x, i) => (i === 1 ? { ...x, ref: 0 } : x)),
+      reference
+    }
+    const scratch = JSON.parse(
+      artDirectorAgent.task({ input: withRef, problems: [] })
+    )
+    expect(scratch.sections[1]).toEqual({
+      id: 's2',
+      kind: 'hero_product',
+      does: 'The new tray.',
+      products: 1,
+      may_be_designed: true
+    })
+    const copy = JSON.parse(
+      artDirectorAgent.task({
+        input: { ...withRef, mode: 'copy' },
+        problems: ['Too tall.']
+      })
+    )
+    expect(copy.sections[1].reference).toEqual(reference[0])
+    expect(copy.fix_these_problems_from_your_last_answer).toEqual(['Too tall.'])
+    expect(artDirectorAgent.purpose).toBe('plan')
+    expect(artDirectorAgent.instructions).toMatch(
+      /announcement_bar dark, offer_banner accent/
+    )
+  })
+
+  it('its storyboard is taken when it passes, after its problems are sent back', async () => {
+    const good = must(codeStoryboard(launch)).sections.map((s) => ({
+      ...s,
+      note: 'Calm and airy.'
+    }))
+    const tooShort = good.map((s) => ({ ...s, height: 60 }))
+    const ai = vi
+      .fn<AiCall>()
+      .mockResolvedValueOnce(ok({ sections: tooShort }))
+      .mockResolvedValueOnce(ok({ sections: good }))
+    const { ctx: c, fallbacks } = ctx(ai)
+    expect(await storyboardFor(launch, c)).toMatchObject({
+      source: 'agent',
+      sections: good
+    })
+    expect(ai).toHaveBeenCalledTimes(2)
+    expect(ai.mock.calls[1][0].request.user).toMatch(
+      /px tall; make it 1800 to 2400 px/
+    )
+    expect(ai.mock.calls[0][0].callerKey).toBe('art-director:email-build:b1')
+    expect(fallbacks.entries()).toEqual([])
+  })
+
+  it('code’s own is used, logged, when it keeps failing or cannot answer', async () => {
+    const one = ctx(vi.fn<AiCall>(async () => ok({ sections: [] })))
+    expect(await storyboardFor(launch, one.ctx)).toEqual(codeStoryboard(launch))
+    expect(one.fallbacks.entries()).toEqual([
+      expect.objectContaining({
+        agent: 'art-director',
+        reasonCode: 'storyboard_answer_invalid',
+        attempts: 3
+      })
+    ])
+    const checks = ctx(
+      vi.fn<AiCall>(async () =>
+        ok({ sections: must(codeStoryboard(launch)).sections.slice(1) })
+      )
+    )
+    await storyboardFor(launch, checks.ctx)
+    expect(checks.fallbacks.entries()[0]).toMatchObject({
+      reasonCode: 'storyboard_check_failed',
+      reason: 'The Art director kept failing the storyboard checks.'
+    })
+  })
+
+  it('is not asked when no storyboard can fit: the email is drawn coded, logged', async () => {
+    const ai = vi.fn<AiCall>()
+    const { ctx: c, fallbacks } = ctx(ai)
+    expect(
+      await storyboardFor(
+        { ...launch, sections: [launch.sections[0], launch.sections[5]] },
+        c
+      )
+    ).toBeNull()
+    expect(ai).not.toHaveBeenCalled()
+    expect(fallbacks.entries()[0]).toMatchObject({
+      reasonCode: 'storyboard_cannot_fit',
+      fallback: 'Drew the email with coded blocks.'
+    })
   })
 })
