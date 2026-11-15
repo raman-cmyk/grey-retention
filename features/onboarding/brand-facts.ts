@@ -3,23 +3,31 @@ import type { BrandFacts } from '@/features/copy-qa/check'
 import {
   topicValues,
   type Finding,
-  type FindingSource
+  type FindingSource,
+  type SitePageKind
 } from '@/features/onboarding/findings'
 
 /**
  * The brand's true facts from what the onboarding readers found (ONB-106a,
  * D19): free shipping, returns, money-back guarantee, delivery time and
- * whether its reviews are real. When sources (or two pages of one source)
- * disagree, the stricter fact is used and the conflict recorded: the less
- * generous promise is true under every source, the other is never stated.
+ * whether its reviews are real. Two views:
  *
- * Stricter means: no free shipping before free shipping over an amount,
- * a higher amount before a lower one, both before always; fewer days to
- * return or for the guarantee; the slower delivery window. Only findings at
- * least `minConfidence` sure count, and a sample-rules finding never counts
- * for a live workspace. Pure: the Brand strategist (ONB-106) writes these
- * into the Brand book and the email build's store source (ONB-057b) hands
- * them to copy QA (`copyFacts`).
+ * - `trueFacts`, for the Brand book: per topic the stricter of what the
+ *   sources say (free shipping never, then over a higher amount, then
+ *   always; fewer days; the slower delivery window per region), with every
+ *   conflict and which page said what, so the owner can correct it.
+ * - `copyFacts`, for copy QA and the writer: only what is true under every
+ *   source. A stricter positive fact is (an order over $100 is also over
+ *   $75; 14 days is within 30), so it is kept. A negative one ("No
+ *   returns.", "There is no free shipping.") is not, when another source
+ *   says otherwise or it did not come from the policy page itself (a
+ *   product page's "final sale" is about some items): then the topic is
+ *   unknown and copy QA refuses every claim about it.
+ *
+ * Only findings at least `minConfidence` sure count, never a sample-rules
+ * finding for a live workspace. Ads never set the standing free shipping:
+ * an ad's "free shipping this weekend" is a dated offer for the plan. Only
+ * a money-back guarantee counts as one, never a warranty against defects.
  */
 
 export const minConfidence = 0.6
@@ -28,29 +36,80 @@ type Value<T extends keyof typeof topicValues> = z.infer<
   (typeof topicValues)[T]
 >
 export type FreeShipping = Value<'free_shipping'>
-
 export type FactTopic =
   'free_shipping' | 'returns' | 'guarantee' | 'delivery_days'
 
 export type FactConflict = {
   topic: FactTopic
-  /** What each source said, in its own plain sentence. */
-  said: { source: FindingSource; statement: string }[]
+  /** `disagree`: sources say different things; `other_currency`: an amount in another currency than the store's. */
+  reason: 'disagree' | 'other_currency'
+  /** What each source said, in its own plain sentence, and where. */
+  said: {
+    source: FindingSource
+    statement: string
+    url: string | null
+    page: SitePageKind | null
+  }[]
+}
+
+/** A fact for the Brand book: the stricter value, and how sure copy may be of it. */
+export type Fact<T> = {
+  value: T
+  /** Sources said different things. */
+  conflict: boolean
+  /** A finding with this value came from the topic's own policy page. */
+  fromPolicyPage: boolean
+}
+
+export type DeliveryWindow = {
+  /** Null for a window with no region named. */
+  region: string | null
+  min: number
+  max: number
+  /** The page counted business days, not calendar days. */
+  businessDays: boolean
+  conflict: boolean
 }
 
 export type TrueFacts = {
-  freeShipping: FreeShipping | null
+  freeShipping: Fact<FreeShipping> | null
   /** Days a customer has to return; 0 means no returns. */
-  returnDays: number | null
+  returnDays: Fact<number> | null
   /** Money-back guarantee in days; 0 means none. */
-  guaranteeDays: number | null
-  deliveryDays: { min: number; max: number } | null
+  guaranteeDays: Fact<number> | null
+  /** One window per region named (null: no region). */
+  delivery: DeliveryWindow[]
   /** True only when a review platform the brand uses is verified. */
   reviewsVerified: boolean
   conflicts: FactConflict[]
 }
 
+/** The pages each topic's policy lives on. */
+const policyPages: Record<FactTopic, readonly SitePageKind[]> = {
+  free_shipping: ['shipping'],
+  returns: ['returns'],
+  guarantee: ['returns', 'faq'],
+  delivery_days: ['shipping']
+}
+
+const moneyBack =
+  /money[- ]back|refund|satisfaction|your money|full price back|risk[- ]free/i
+const business = /\b(?:business|working)\s+days?\b/i
+
 type Sure<T extends FactTopic> = { finding: Finding; value: Value<T> }
+
+const evidenceText = (f: Finding) =>
+  `${f.statement} ${'quote' in f.evidence ? f.evidence.quote : ''}`
+const pageOf = (f: Finding) =>
+  'page' in f.evidence ? (f.evidence.page ?? null) : null
+const urlOf = (f: Finding) => ('url' in f.evidence ? f.evidence.url : null)
+const said = (all: readonly { finding: Finding }[]) =>
+  all.map(({ finding: f }) => ({
+    source: f.source,
+    statement: f.statement,
+    url: urlOf(f),
+    page: pageOf(f)
+  }))
 
 /** The sure findings of a topic whose value fits it. */
 function sure<T extends FactTopic | 'review_platform'>(
@@ -66,85 +125,142 @@ function sure<T extends FactTopic | 'review_platform'>(
   })
 }
 
-/** Lower is stricter. Amounts in other currencies cannot be compared. */
-function shippingRank(v: FreeShipping, currency: string | null) {
-  if (v.kind === 'never') return -Infinity
-  if (v.kind === 'always') return Infinity
-  if (currency && v.currency !== currency) return null
-  return -v.amount
-}
-
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 /**
- * The stricter of each fact, and the conflicts. `currency` is the store's
- * (an "over" amount in another one is not used).
+ * The stricter of each fact, every conflict and where each came from.
+ * `currency` is the store's (null when unknown: then no "over" amount is
+ * used, as its currency cannot be checked).
  */
 export function trueFacts(
   findings: readonly Finding[],
-  {
-    live = false,
-    currency = null
-  }: { live?: boolean; currency?: string | null } = {}
+  { live, currency }: { live: boolean; currency: string | null }
 ): TrueFacts {
   const conflicts: FactConflict[] = []
-  function pick<T extends FactTopic>(
+  const fact = <T extends FactTopic, V>(
     topic: T,
-    stricter: (a: Value<T>, b: Value<T>) => Value<T> | null
-  ): Value<T> | null {
-    const all = sure(findings, topic, live) as Sure<T>[]
-    if (!all.length) return null
-    let chosen: Value<T> | null = all[0]!.value
-    for (const s of all.slice(1))
-      chosen = chosen === null ? null : stricter(chosen, s.value)
-    const differ = all.some((s) => !same(s.value, all[0]!.value))
-    if (differ)
-      conflicts.push({
-        topic,
-        said: all.map((s) => ({
-          source: s.finding.source,
-          statement: s.finding.statement
-        }))
-      })
-    return chosen
+    all: Sure<T>[],
+    value: V,
+    of: (v: Value<T>) => V
+  ): Fact<V> => {
+    const conflict = all.some((s) => !same(s.value, all[0]!.value))
+    if (conflict) conflicts.push({ topic, reason: 'disagree', said: said(all) })
+    return {
+      value,
+      conflict,
+      fromPolicyPage: all.some(
+        (s) =>
+          same(of(s.value), value) &&
+          policyPages[topic].includes(pageOf(s.finding) as SitePageKind)
+      )
+    }
   }
-  const freeShipping = pick('free_shipping', (a, b) => {
-    // Two amounts we cannot compare: say nothing about free shipping.
-    if (a.kind === 'over' && b.kind === 'over' && a.currency !== b.currency)
-      return null
-    const ra = shippingRank(a, currency)
-    const rb = shippingRank(b, currency)
-    if (ra === null || rb === null) return null
-    return rb < ra ? b : a
+
+  // Free shipping: the site's standing policy, never an ad's offer.
+  const shipping = sure(findings, 'free_shipping', live).filter(
+    (s) => s.finding.source !== 'ads'
+  )
+  const foreign = shipping.filter(
+    (s) => s.value.kind === 'over' && s.value.currency !== currency
+  )
+  if (foreign.length)
+    conflicts.push({
+      topic: 'free_shipping',
+      reason: 'other_currency',
+      said: said(foreign)
+    })
+  let freeShipping: Fact<FreeShipping> | null = null
+  if (shipping.length) {
+    const never = shipping.find((s) => s.value.kind === 'never')
+    const overs = shipping.flatMap((s) =>
+      s.value.kind === 'over' ? [s.value] : []
+    )
+    // Never is the strictest whatever else is said; an amount in another
+    // currency (or with the store's unknown) makes free shipping unknown.
+    const value: FreeShipping | null = never
+      ? never.value
+      : foreign.length
+        ? null
+        : overs.length
+          ? overs.reduce((a, b) => (b.amount > a.amount ? b : a))
+          : { kind: 'always' }
+    freeShipping =
+      value === null ? null : fact('free_shipping', shipping, value, (v) => v)
+  }
+
+  const days = (topic: 'returns' | 'guarantee', all: Sure<typeof topic>[]) =>
+    all.length
+      ? fact(
+          topic,
+          all,
+          Math.min(...all.map((s) => s.value.days)),
+          (v) => v.days
+        )
+      : null
+  const returnDays = days('returns', sure(findings, 'returns', live))
+  // Only a money-back guarantee, never a warranty against defects.
+  const guaranteeDays = days(
+    'guarantee',
+    sure(findings, 'guarantee', live).filter((s) =>
+      moneyBack.test(evidenceText(s.finding))
+    )
+  )
+
+  // Delivery: per region, the slower window; windows of two regions are
+  // not a conflict.
+  const byRegion = new Map<string | null, Sure<'delivery_days'>[]>()
+  for (const s of sure(findings, 'delivery_days', live)) {
+    const region = s.value.region?.trim().toLowerCase() || null
+    byRegion.set(region, [...(byRegion.get(region) ?? []), s])
+  }
+  const delivery = [...byRegion.values()].map((all) => {
+    const window = (s: Sure<'delivery_days'>) => ({
+      min: s.value.min,
+      max: s.value.max
+    })
+    const conflict = all.some((s) => !same(window(s), window(all[0]!)))
+    if (conflict)
+      conflicts.push({
+        topic: 'delivery_days',
+        reason: 'disagree',
+        said: said(all)
+      })
+    return {
+      region: all[0]!.value.region ?? null,
+      min: Math.max(...all.map((s) => s.value.min)),
+      max: Math.max(...all.map((s) => s.value.max)),
+      businessDays: all.some((s) => business.test(evidenceText(s.finding))),
+      conflict
+    }
   })
-  const returns = pick('returns', (a, b) => (b.days < a.days ? b : a))
-  const guarantee = pick('guarantee', (a, b) => (b.days < a.days ? b : a))
-  const delivery = pick('delivery_days', (a, b) => ({
-    min: Math.max(a.min, b.min),
-    max: Math.max(a.max, b.max)
-  }))
+
   const reviewsVerified = sure(findings, 'review_platform', live).some(
     (s) => s.finding.source === 'reviews' && s.value.verified
   )
   return {
-    freeShipping:
-      freeShipping?.kind === 'over' &&
-      currency &&
-      freeShipping.currency !== currency
-        ? null
-        : freeShipping,
-    returnDays: returns?.days ?? null,
-    guaranteeDays: guarantee?.days ?? null,
-    deliveryDays: delivery ? { min: delivery.min, max: delivery.max } : null,
+    freeShipping,
+    returnDays,
+    guaranteeDays,
+    delivery,
     reviewsVerified,
     conflicts
   }
 }
 
+/** A negative fact copy may state: unconflicted and from the policy page. */
+const negativeOk = (f: Fact<unknown>) => !f.conflict && f.fromPolicyPage
+
+/** Business days as calendar days at most: five a week, weekends added. */
+const calendar = (w: DeliveryWindow) =>
+  w.businessDays
+    ? { min: w.min, max: Math.ceil(w.max / 5) * 7 }
+    : { min: w.min, max: w.max }
+
 /**
- * The facts copy QA and the writer use. Anything unknown stays null, so a
- * claim about it is refused. `approvedClaims` and `bannedPhrases` come
- * from the brand (and ONB-062's industry list via `withClaimsSafety`).
+ * The facts copy QA and the writer use: only what is true under every
+ * source. Anything unknown stays null, so a claim about it is refused.
+ * `approvedClaims` and `bannedPhrases` come from the brand (and ONB-062's
+ * industry list via `withClaimsSafety`).
  */
 export function copyFacts(
   facts: TrueFacts,
@@ -154,16 +270,25 @@ export function copyFacts(
   }: { approvedClaims?: string[]; bannedPhrases?: string[] } = {}
 ): BrandFacts {
   const shipping = facts.freeShipping
+  const freeShipping: BrandFacts['freeShipping'] =
+    shipping === null
+      ? null
+      : shipping.value.kind === 'never'
+        ? negativeOk(shipping)
+          ? 'never'
+          : null
+        : shipping.value.kind === 'over'
+          ? { over: shipping.value.amount }
+          : 'always'
+  const days = (f: Fact<number> | null) =>
+    f === null ? null : f.value === 0 && !negativeOk(f) ? null : f.value
+  // Only a window for everyone: one region's time is not every subscriber's.
+  const everyone = facts.delivery.find((w) => w.region === null)
   return {
-    freeShipping:
-      shipping === null
-        ? null
-        : shipping.kind === 'over'
-          ? { over: shipping.amount }
-          : shipping.kind,
-    deliveryDays: facts.deliveryDays,
-    returnDays: facts.returnDays,
-    guaranteeDays: facts.guaranteeDays,
+    freeShipping,
+    deliveryDays: everyone ? calendar(everyone) : null,
+    returnDays: days(facts.returnDays),
+    guaranteeDays: days(facts.guaranteeDays),
     approvedClaims,
     bannedPhrases,
     reviewsVerified: facts.reviewsVerified
