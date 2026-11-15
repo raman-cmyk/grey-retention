@@ -297,6 +297,34 @@ describe('storeFrom (ONB-057b part 2)', () => {
     expect(store.facts.returnDays).toBe(30)
   })
 
+  it('shows the logos the Site reader kept from this same website (ONB-060b)', () => {
+    const logos = {
+      domain: 'shop.example',
+      onLight: 'https://cdn.example/logo-dark.svg',
+      onDark: 'https://cdn.example/logo-white.png'
+    }
+    expect(storeFrom(parts({ logos })).brand).toMatchObject({
+      logo: 'https://cdn.example/logo-dark.svg',
+      logoOnDark: 'https://cdn.example/logo-white.png'
+    })
+    // Its www. address is the same website.
+    expect(
+      storeFrom(parts({ domain: 'www.shop.example', logos })).brand.logo
+    ).toBe('https://cdn.example/logo-dark.svg')
+    // Only one found: the other stays unset (the name is shown there).
+    const light = storeFrom(parts({ logos: { ...logos, onDark: null } }))
+    expect(light.brand.logoOnDark).toBeUndefined()
+    // Read from the website before the owner changed it: none.
+    for (const brand of [
+      storeFrom(parts({ domain: 'new-shop.example', logos })).brand,
+      storeFrom(parts({ domain: 'not a domain', logos })).brand,
+      storeFrom(parts({ logos: null })).brand
+    ]) {
+      expect(brand.logo).toBeUndefined()
+      expect(brand.logoOnDark).toBeUndefined()
+    }
+  })
+
   it('has calm defaults for a brand with no kit, name or valid site', () => {
     const store = storeFrom(
       parts({ brandName: '  ', domain: 'not a domain', kit: null })
@@ -336,7 +364,15 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
       data: { brand_name: 'Cedar Lane', domain: 'shop.example' },
       error: null
     },
-    brand_kits: { data: parts().kit, error: null }
+    brand_kits: { data: parts().kit, error: null },
+    brand_logos: {
+      data: {
+        domain: 'shop.example',
+        on_light: 'https://cdn.example/logo.svg',
+        on_dark: null
+      },
+      error: null
+    }
   }
 
   it('reads the workspace’s own store, only its own rows', async () => {
@@ -348,8 +384,13 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
     expect(store).toMatchObject({
       sample: false,
       industry: 'supplements',
-      brand: { name: 'Cedar Lane', site: 'https://shop.example' }
+      brand: {
+        name: 'Cedar Lane',
+        site: 'https://shop.example',
+        logo: 'https://cdn.example/logo.svg'
+      }
     })
+    expect(store.brand.logoOnDark).toBeUndefined()
     expect(store.facts.returnDays).toBe(60)
     expect(store.products).toHaveLength(4)
     // A live store never shows the fake Klaviyo's products.
@@ -362,7 +403,8 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
     expect(asked.filter((a) => a[1] === 'eq')).toEqual([
       ['catalog_status', 'eq', 'tenant_id', tenantId],
       ['brand_profiles', 'eq', 'tenant_id', tenantId],
-      ['brand_kits', 'eq', 'tenant_id', tenantId]
+      ['brand_kits', 'eq', 'tenant_id', tenantId],
+      ['brand_logos', 'eq', 'tenant_id', tenantId]
     ])
   })
 
@@ -392,7 +434,8 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
     for (const answers of [
       { catalog_status: failed } as Record<string, Answer>,
       { catalog_status: status(), brand_profiles: failed },
-      { catalog_status: status(), brand_kits: failed }
+      { catalog_status: status(), brand_kits: failed },
+      { catalog_status: status(), brand_logos: failed }
     ])
       await expect(
         ownStoreSource(fakeDb(answers).db).read(tenantId)

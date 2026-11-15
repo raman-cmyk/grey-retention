@@ -9,6 +9,8 @@ import type { ImageFetcher } from '@/lib/providers/image-fetch'
 import {
   homeUrl,
   liveSiteFetcher,
+  logoFetchOptions,
+  logoTimeoutMs,
   maxPageBytes,
   pageTimeoutMs,
   sampleSiteFetcher,
@@ -100,6 +102,60 @@ describe('the live site reader', () => {
         answering({ ok: true, bytes: new Uint8Array([60, 0, 62]) }).fetcher
       ).fetch('https://shop.com/')
     ).toEqual({ ok: false, failure: 'broken' })
+  })
+})
+
+describe('the logo pictures (ONB-060b)', () => {
+  it('reads a logo picture over https, from any public host, within its limits', async () => {
+    const bytes = new Uint8Array([60, 115, 118, 103])
+    const page = answering({ ok: false, failure: 'broken' })
+    const pictures = answering({ ok: true, bytes })
+    const site = liveSiteFetcher('shop.com', page.fetcher, pictures.fetcher)
+    expect(await site.picture!('https://cdn.shopify.com/logo.svg')).toBe(bytes)
+    expect(pictures.fetch).toHaveBeenCalledWith(
+      'https://cdn.shopify.com/logo.svg',
+      { maxBytes: 1_000_000, timeoutMs: logoTimeoutMs }
+    )
+    // Never through the page reader, which keeps to the brand's own host.
+    expect(page.fetch).not.toHaveBeenCalled()
+    expect(await site.picture!('http://cdn.shopify.com/logo.svg')).toBeNull()
+    expect(pictures.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('gives nothing for a picture it cannot read, never an error', async () => {
+    const page = answering({ ok: false, failure: 'broken' }).fetcher
+    for (const pictures of [
+      answering({ ok: false, failure: 'blocked' }).fetcher,
+      {
+        fetch: async () => {
+          throw new Error('socket hang up')
+        }
+      } as ImageFetcher
+    ])
+      expect(
+        await liveSiteFetcher('shop.com', page, pictures).picture!(
+          'https://cdn.shopify.com/logo.png'
+        )
+      ).toBeNull()
+  })
+
+  it('asks for pictures only, over https on 443', () => {
+    expect(logoFetchOptions).toMatchObject({
+      ports: ['443'],
+      protocols: ['https:']
+    })
+    for (const type of [
+      'image/png',
+      'image/svg+xml; charset=utf-8',
+      'image/webp'
+    ])
+      expect(logoFetchOptions.types.test(type), type).toBe(true)
+    for (const type of ['text/html', 'application/json', ''])
+      expect(logoFetchOptions.types.test(type), type).toBe(false)
+  })
+
+  it('has none for the sample site', () => {
+    expect(sampleSiteFetcher('cedar-lane.example').picture).toBeUndefined()
   })
 })
 
