@@ -18,6 +18,8 @@ const serverEnvironmentSchema = z.object({
   KLAVIYO_DRAFT_PUSH: z.string().optional(),
   /** `on` lets "Create email" ask the AI agents (REL-AI part 2), with a live model; the owner's switch, off by default. */
   EMAIL_BUILD_AGENTS: z.string().optional(),
+  /** `on` lets "Create email" design its heroes as pictures (DST-006, D25), with the agents on; the owner's switch, off by default. */
+  DESIGN_STUDIO: z.string().optional(),
   /** `live` reads real brand websites (ONB-101); the owner's switch, off by default. */
   SITE_READER_MODE: z.string().optional(),
   AI_DEFAULT_PROVIDER: z.string().default('fake'),
