@@ -1,6 +1,14 @@
 // @vitest-environment node
-import { execFileSync } from 'node:child_process'
-import { readFileSync, readdirSync } from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -272,7 +280,11 @@ describe('CI workflows', () => {
     expect(text).not.toContain('pnpm install')
     expect(text).toContain('/api/internal/onboarding/readers')
     // It asks first and stops when nothing is waiting.
-    expect(text.indexOf("call '?peek=1'")).toBeLessThan(text.indexOf("call ''"))
+    const peek = text.indexOf("call '/api/internal/onboarding/readers?peek=1' ")
+    expect(peek).toBeGreaterThan(-1)
+    expect(peek).toBeLessThan(
+      text.indexOf("call '/api/internal/onboarding/readers' run.json ")
+    )
     expect(text).toContain('if [ "$waiting" = "0" ]; then exit 0; fi')
     expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(1)
   })
@@ -287,7 +299,11 @@ describe('CI workflows', () => {
     expect(text).not.toContain('actions/checkout')
     expect(text).not.toContain('pnpm install')
     expect(text).toContain('/api/internal/klaviyo/results')
-    expect(text.indexOf("call '?peek=1'")).toBeLessThan(text.indexOf("call ''"))
+    const peek = text.indexOf("call '/api/internal/klaviyo/results?peek=1' ")
+    expect(peek).toBeGreaterThan(-1)
+    expect(peek).toBeLessThan(
+      text.indexOf("call '/api/internal/klaviyo/results' run.json ")
+    )
     expect(text).toContain('if [ "$waiting" = "0" ]; then exit 0; fi')
     expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(1)
   })
@@ -304,5 +320,121 @@ describe('CI workflows', () => {
     expect(text).not.toContain('pnpm install')
     expect(text).toContain('/api/internal/inbox/tags')
     expect(text.match(/secrets\.CRON_SECRET/g)).toHaveLength(1)
+  })
+  it('tries each scheduled call once more after 2 minutes and says the app’s error (CI-005)', () => {
+    const scheduled = [
+      ['scheduled-jobs.yml', 7],
+      ['onboarding-readers.yml', 10],
+      ['inbox-tagging.yml', 6],
+      ['inbox-screenshots.yml', 18],
+      ['klaviyo-results.yml', 10]
+    ] as const
+    for (const [name, minutes] of scheduled) {
+      const text = read(name)
+      // The secret is trimmed and sent through stdin, never as a curl
+      // config line (a pasted line break broke every call).
+      expect(text, name).not.toContain('--config -')
+      expect(text, name).toContain("tr -d '\\r\\n'")
+      expect(text, name).toContain(
+        'printf \'Authorization: Bearer %s\\n\' "$secret" |'
+      )
+      expect(text, name).toContain("curl -H @- --proto '=https'")
+      // Two tries, 2 minutes apart; red only when both fail, with the reason.
+      expect(text, name).toContain('for try in 1 2; do')
+      expect(text, name).toContain('sleep 120')
+      expect(text, name).toContain('.error // .code // .message // empty')
+      expect(text, name).toContain('on both tries.')
+      expect(text, name).toMatch(
+        new RegExp(`\\n {4}timeout-minutes: ${minutes}\\n`)
+      )
+    }
+  })
+
+  it('runs the call: one retry after 2 minutes, red only when both fail, with the app’s words (CI-005)', () => {
+    // The real step script of Scheduled jobs, with curl and sleep stood in.
+    const lines = read('scheduled-jobs.yml').split('\n')
+    const start = lines.findIndex((l) => l.trim() === 'run: |')
+    const body: string[] = []
+    for (const l of lines.slice(start + 1)) {
+      if (l !== '' && !l.startsWith(' '.repeat(10))) break
+      body.push(l.slice(10))
+    }
+    const dir = mkdtempSync(join(tmpdir(), 'ci005-'))
+    writeFileSync(join(dir, 'step.sh'), body.join('\n'))
+    writeFileSync(
+      join(dir, 'curl'),
+      [
+        '#!/bin/bash',
+        'out=""',
+        'while [ $# -gt 0 ]; do case "$1" in --output) out="$2"; shift 2;; --write-out|--max-time|--proto|-H) shift 2;; *) shift;; esac; done',
+        'hdr=$(cat)',
+        'n=$(( $(cat "$STUB/n" 2>/dev/null || echo 0) + 1 )); echo $n > "$STUB/n"',
+        // A reply's line breaks are written \\n in the plan.
+        'line=$(sed -n "${n}p" "$STUB/plan"); status=${line%% *}; body=$(printf "%b" "${line#* }")',
+        '[ "$hdr" = "Authorization: Bearer $WANT" ] || { status=401; body=\'{"error":"Unauthorized"}\'; }',
+        'printf "%s" "$body" > "$out"; printf "%s" "$status"'
+      ].join('\n'),
+      { mode: 0o755 }
+    )
+    writeFileSync(
+      join(dir, 'sleep'),
+      '#!/bin/sh\necho "$1" >> "$STUB/slept"\n',
+      {
+        mode: 0o755
+      }
+    )
+    const want = 'synthetic-cron-secret-0123456789-0123456789'
+    const runWith = (plan: string[]) => {
+      writeFileSync(join(dir, 'plan'), plan.join('\n') + '\n')
+      rmSync(join(dir, 'n'), { force: true })
+      rmSync(join(dir, 'slept'), { force: true })
+      const result = spawnSync('bash', ['-e', join(dir, 'step.sh')], {
+        cwd: dir,
+        encoding: 'utf8',
+        env: {
+          NODE_ENV: 'test',
+          PATH: `${dir}:${process.env.PATH}`,
+          STUB: dir,
+          WANT: want,
+          // A pasted secret with a line break at the end.
+          CRON_SECRET: `${want}\n`,
+          APP_URL: 'https://app.example'
+        }
+      })
+      return {
+        code: result.status,
+        out: result.stdout,
+        slept: existsSync(join(dir, 'slept'))
+          ? readFileSync(join(dir, 'slept'), 'utf8').trim()
+          : ''
+      }
+    }
+    try {
+      const flaky = runWith([
+        '500 {"error":"Job run failed"}',
+        '200 {"live":false,"failed":0}'
+      ])
+      expect(flaky.code).toBe(0)
+      expect(flaky.out).toContain(
+        '::warning::The app returned HTTP 500 (Job run failed). Trying again in 2 minutes.'
+      )
+      expect(flaky.out).toContain('{"live":false,"failed":0}')
+      expect(flaky.slept).toBe('120')
+      // The trimmed secret is masked, never printed bare.
+      expect(flaky.out.replace(`::add-mask::${want}`, '')).not.toContain(want)
+      const down = runWith([
+        '502 <html>Bad\\ngateway</html>',
+        '503 {"code":"setup"}'
+      ])
+      expect(down.code).toBe(1)
+      expect(down.out).toContain('HTTP 502 (<html>Bad gateway</html>)')
+      expect(down.out).toContain(
+        '::error::The app returned HTTP 503 (setup) on both tries.'
+      )
+      const fine = runWith(['200 {"live":false,"failed":0}'])
+      expect(fine).toMatchObject({ code: 0, slept: '' })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
