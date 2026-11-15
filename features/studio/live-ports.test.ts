@@ -26,7 +26,12 @@ vi.mock('./critic', async (original) => ({
 import { InMemoryMemoryStore } from '@/features/agents/memory'
 import { InMemoryRunLog } from '@/features/agents/runtime'
 import { memoryFallbackLog } from '@/features/fallback/log'
-import { photoOf, pictureLinkSeconds, studioPortsFor } from './live-ports'
+import {
+  noPhotos,
+  photoOf,
+  pictureLinkSeconds,
+  studioPortsFor
+} from './live-ports'
 import type { BuildRender } from './waits'
 
 const tenant = '00000000-0000-4000-8000-000000000101'
@@ -216,6 +221,20 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
     expect(
       await ports(storage({ tags: ['abc', 'changed'] })).ports.sign(drawn)
     ).toBeNull()
+    // Changed before the copy: nothing is copied.
+    const changed = storage({ tags: ['changed'] })
+    expect(await ports(changed).ports.sign(drawn)).toBeNull()
+    expect(changed.calls.some((c) => c[0] === 'copy')).toBe(false)
+    // A copy there already with another tag (409): none.
+    expect(
+      await ports(
+        storage({ copy: { statusCode: '409' }, finalTags: [null, 'other'] })
+      ).ports.sign(drawn)
+    ).toBeNull()
+    // Storage down reading the copy: it throws.
+    await expect(
+      ports(storage({ finalTags: ['down'] })).ports.sign(drawn)
+    ).rejects.toMatchObject({ statusCode: '500' })
     // Storage down while copying: it throws, never an unlinked hero.
     await expect(
       ports(storage({ copy: { statusCode: '500' } })).ports.sign(drawn)
@@ -277,7 +296,9 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
     expect(ctx).toMatchObject({ tenantId: tenant, ai })
     expect(ctx.fits()).toBe(true)
     const brief = { image: { url: 'https://cdn.shop.example/p.jpg' } }
-    await p.critique(brief as never, {} as never)
+    // With the critic's tries and the photo's time left.
+    const roomy = ports(storage()).ports
+    await roomy.critique(brief as never, {} as never)
     // The product's own photo goes to the critic, within its limits.
     expect(photos.fetch).toHaveBeenCalledWith(
       'https://cdn.shop.example/p.jpg',
@@ -300,12 +321,39 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
       { ok: true as const, bytes: new Uint8Array([0x47, 0x49, 0x46, 0x38]) }
     ]) {
       photos.fetch.mockResolvedValueOnce(got as never)
-      await p.critique(brief as never, {} as never)
+      await ports(storage()).ports.critique(brief as never, {} as never)
       expect(agents.critiqueSection.mock.calls.at(-1)![0]).toEqual({
         brief,
         image: {}
       })
     }
+  })
+
+  it('fetches the photo once a claim, only in the time the critic leaves, and never throws for it', async () => {
+    photos.fetch.mockClear()
+    const brief = { image: { url: 'https://cdn.shop.example/p.jpg' } }
+    const p = ports(storage(), { until: 50_000 }).ports
+    await p.critique(brief as never, {} as never)
+    await p.critique(brief as never, {} as never)
+    // 50 s less the critic's 3 × 15 s and the slack: 3 s for the photo.
+    expect(photos.fetch).toHaveBeenCalledTimes(1)
+    expect(photos.fetch).toHaveBeenCalledWith(brief.image.url, {
+      maxBytes: 3 * 1024 * 1024,
+      timeoutMs: 3_000
+    })
+    // No time for it: no fetch, the critic goes without.
+    const tight = ports(storage(), { until: 47_500 }).ports
+    await tight.critique(brief as never, {} as never)
+    expect(photos.fetch).toHaveBeenCalledTimes(1)
+    // A fetcher that throws: no photo, never a failed step.
+    photos.fetch.mockRejectedValueOnce(new Error('boom'))
+    await ports(storage()).ports.critique(brief as never, {} as never)
+    expect(agents.critiqueSection.mock.calls.at(-1)![0]).not.toHaveProperty(
+      'photo'
+    )
+    expect(
+      await noPhotos.fetch('https://x.example/p.jpg', {} as never)
+    ).toEqual({ ok: false, failure: 'blocked' })
   })
 
   it('counts each agent call and its slack before the claim’s end', () => {

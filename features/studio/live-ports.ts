@@ -14,6 +14,7 @@ import { codedReasons } from './rounds'
 import { storyboardFor } from './storyboard'
 import { buildRenders, type BuildRender } from './waits'
 import type { ImageFetcher } from '@/lib/providers/image-fetch'
+import { createImageFetcher } from '@/features/inbox/image-fetch'
 import type { AiImage } from '@/lib/providers/contracts'
 
 /**
@@ -48,6 +49,21 @@ export const pictureLinkSeconds = 365 * 24 * 60 * 60
 export const finalPath = (render: string) => `final/${render}.jpg`
 /** The product's own photo for the critic: small and quick, or none. */
 const photoLimits = { maxBytes: 3 * 1024 * 1024, timeoutMs: 8_000 }
+/** The critic's tries, as the rounds count them (`fits(3)`). */
+const criticCalls = 3
+/**
+ * The studio's own photo fetcher (the inbox's guards: public hosts only,
+ * ports 80 and 443, redirects checked, size and time capped), asking only
+ * for what the critic takes, over https.
+ */
+export const studioPhotos: ImageFetcher = createImageFetcher({
+  accept: 'image/jpeg,image/png,image/webp',
+  protocols: ['https:']
+})
+/** A sample store's photos are never fetched: the critic goes without. */
+export const noPhotos: ImageFetcher = {
+  fetch: async () => ({ ok: false, failure: 'blocked' })
+}
 
 /** The photo's type by its bytes, as the critic takes them; else null. */
 export function photoOf(bytes: Uint8Array): AiImage | null {
@@ -118,6 +134,23 @@ export function studioPortsFor(
   const fits = (calls = 1) =>
     input.now() + calls * agentCallMs + callSlackMs <= input.until
   const files = () => db.storage.from(bucket)
+  /** One fetch per photo per claim; none when its time would not fit. */
+  const photos = new Map<string, Promise<AiImage | null>>()
+  const photoFor = (url: string) => {
+    const left =
+      input.until - input.now() - criticCalls * agentCallMs - callSlackMs
+    const timeoutMs = Math.min(photoLimits.timeoutMs, left)
+    if (timeoutMs < 1_000) return Promise.resolve(null)
+    let got = photos.get(url)
+    if (!got) {
+      got = input.photos
+        .fetch(url, { ...photoLimits, timeoutMs })
+        .then((r) => (r.ok ? photoOf(r.bytes) : null))
+        .catch(() => null)
+      photos.set(url, got)
+    }
+    return got
+  }
   /** The render's stored file, only while its tag is the one recorded. */
   const tagged = async (render: Extract<BuildRender, { state: 'drawn' }>) => {
     const info = stored(await files().info(render.path))
@@ -132,8 +165,7 @@ export function studioPortsFor(
       // The product's own photo, so print on it is not read as drawn
       // words; without it (unreadable, too large, slow), the print counts
       // (the safe side).
-      const got = await input.photos.fetch(brief.image.url, photoLimits)
-      const photo = got.ok ? photoOf(got.bytes) : null
+      const photo = await photoFor(brief.image.url)
       return critiqueSection({ brief, image, ...(photo ? { photo } : {}) }, ctx)
     },
     request: ({ key, section, hosts }) =>

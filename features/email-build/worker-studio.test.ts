@@ -308,6 +308,18 @@ describe('a design step waiting for its pictures (DST-006b)', () => {
       now: () => t
     })
     expect(runStep.mock.calls.at(-1)![2].until - t).toBe(90_000)
+    // Still never past the run's deadline.
+    runStep.mockResolvedValueOnce(waits)
+    const capped = fakeDb()
+    await runEmailBuilds(capped.db, {
+      fallbacks: memoryFallbackLog(),
+      first: capped.first,
+      studio: true,
+      agents: withAgents,
+      now: () => t,
+      deadline: t + 60_000
+    })
+    expect(runStep.mock.calls.at(-1)![2].until - t).toBe(60_000)
     // By default, the owner's switch decides.
     for (const [value, given] of [
       ['on', true],

@@ -23,11 +23,12 @@ import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { maxStepSaves, roundSteps, maxEmailBytes } from './step-names'
 import { buildCode, type BuildFailureCode } from './failure-words'
 import { type SavedOffers, type StoreSource } from './ports'
-import { studioPortsFor, studioStepMs } from '@/features/studio/live-ports'
 import {
-  liveImageFetcher,
-  sampleImageFetcher
-} from '@/features/inbox/image-fetch'
+  noPhotos,
+  studioPhotos,
+  studioPortsFor,
+  studioStepMs
+} from '@/features/studio/live-ports'
 import {
   designStudioOn,
   waitForPictures,
@@ -252,9 +253,7 @@ export async function runEmailBuilds(
                     callerKey: `email-build:${job.id}`,
                     industry: store.industry ?? null,
                     // A sample store's photos are never fetched.
-                    photos: store.sample
-                      ? sampleImageFetcher
-                      : liveImageFetcher,
+                    photos: store.sample ? noPhotos : studioPhotos,
                     until,
                     now
                   })
@@ -263,7 +262,7 @@ export async function runEmailBuilds(
           }
         )
         const took = now() - started
-        if (took > stepBudgetMs)
+        if (took > until - started)
           logger.warn('Email build step ran long', {
             build: job.id,
             step: job.step,
