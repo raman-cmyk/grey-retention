@@ -78,7 +78,8 @@ describe('offerTracker (CMP-049)', () => {
         codes: ['SAVE20', 'SAVE30']
       }
     ])
-    expect(t.brands[0]).toMatchObject({ offerWeeks: 0.5, usualPercent: 25 })
+    // The median is a percent the brand ran (20 and 30: 20), as the brand summary.
+    expect(t.brands[0]).toMatchObject({ offerWeeks: 0.5, usualPercent: 20 })
     expect(t.brands[1]!.byWeek[0]).toEqual({
       emails: 1,
       offers: [{ kind: 'amount', emails: 1 }],
@@ -88,7 +89,7 @@ describe('offerTracker (CMP-049)', () => {
     expect(t.overall).toEqual([
       { brandsWithOffer: 1, usualPercent: null },
       { brandsWithOffer: 0, usualPercent: null },
-      { brandsWithOffer: 2, usualPercent: 20 }
+      { brandsWithOffer: 2, usualPercent: 10 }
     ])
   })
 
@@ -126,9 +127,74 @@ describe('offerTracker (CMP-049)', () => {
       ny
     )!
     expect(t.brands[0]!.byWeek.map((w) => w.emails)).toEqual([0, 0, 1])
-    expect(t.brands[0]).toMatchObject({ usualPercent: null, offerWeeks: 1 })
+    // "0% off" is no offer.
+    expect(t.brands[0]).toMatchObject({ usualPercent: null, offerWeeks: 0 })
     expect(t.brands[1]).toMatchObject({ offerWeeks: null, usualPercent: null })
     expect(offerTracker([], { now, timezone: 'Nowhere/Land' })).toBeNull()
     expect(offerTracker([], { now, timezone: 'UTC' })!.weeks).toHaveLength(12)
+  })
+
+  it('keeps codes from emails whose offer was not recognised', () => {
+    const t = offerTracker(
+      [
+        {
+          domain: 'a.example',
+          label: 'A',
+          rows: [
+            email('2026-11-10T15:00:00Z', {
+              kind: 'none',
+              value: null,
+              code: 'tenoff'
+            })
+          ]
+        }
+      ],
+      ny
+    )!
+    expect(t.brands[0]!.byWeek[2]).toEqual({
+      emails: 1,
+      offers: [],
+      deepestPercent: null,
+      codes: ['TENOFF']
+    })
+    expect(t.brands[0]!.offerWeeks).toBe(1)
+    expect(t.overall[2]!.brandsWithOffer).toBe(1)
+  })
+
+  it('never fails on an odd send time, a bad time or a bad week count', () => {
+    const rows = [
+      email('0999-01-01T00:00:00Z', pct(10)),
+      email('0001-01-01T00:00:00Z', pct(10)),
+      email('2026-11-10T15:00:00Z', pct(10))
+    ]
+    const t = offerTracker([{ domain: 'a.example', label: 'A', rows }], ny)!
+    expect(t.brands[0]!.byWeek.map((w) => w.emails)).toEqual([0, 0, 1])
+    expect(offerTracker([], { now: Number.NaN, timezone: 'UTC' })).toBeNull()
+    expect(
+      offerTracker([], { now, timezone: 'UTC', weeks: 200 })!.weeks
+    ).toHaveLength(104)
+    expect(
+      offerTracker([], { now, timezone: 'UTC', weeks: 0 })!.weeks
+    ).toHaveLength(1)
+  })
+
+  it('crosses the new year east of UTC', () => {
+    // Sydney, Thursday 1 January 2026 at 14:00.
+    const t = offerTracker(
+      [
+        {
+          domain: 'a.example',
+          label: 'A',
+          rows: [email('2025-12-29T00:30:00Z', pct(15))]
+        }
+      ],
+      {
+        now: Date.parse('2026-01-01T03:00:00Z'),
+        timezone: 'Australia/Sydney',
+        weeks: 3
+      }
+    )!
+    expect(t.weeks).toEqual(['2025-12-15', '2025-12-22', '2025-12-29'])
+    expect(t.brands[0]!.byWeek[2]!.deepestPercent).toBe(15)
   })
 })
