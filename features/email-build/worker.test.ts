@@ -265,11 +265,17 @@ describe('saved steps (REL-081)', () => {
     // Then the owner saves a 30% max (keeping the code) and moves the
     // workspace to another timezone, and the build goes on at its content
     // step: the email keeps the first step's rules and timezone.
+    // The same code, percent and end as the first step saved.
+    const saved = (
+      sections as {
+        rules: { codes: { code: string; expiresAt: string | null }[] }
+      }
+    ).rules.codes.find((c) => c.code === 'CANDLE10')!
     const candle = {
       id: '00000000-0000-4000-8000-0000000000c1',
       code: 'CANDLE10',
       percent: 10,
-      expires_at: null
+      expires_at: saved.expiresAt
     }
     const { db, calls } = fakeDb(
       [
@@ -766,6 +772,27 @@ describe('failed steps', () => {
     expect(failure(unreadable.calls)).toMatchObject({
       code: 'offers_unreadable',
       final: false
+    })
+    // Removed and added again at 5%: the email still says 10%.
+    const shown = fakeDb([
+      step({
+        state: 'push_queued',
+        step: 'push',
+        email: { ...email, offer: { percent: 10, expiresAt: null } }
+      })
+    ])
+    await runEmailBuilds(shown.db, {
+      pusher,
+      offers: {
+        offers: async () => ({
+          maxDiscountPercent: 20,
+          codes: [{ code: 'CANDLE10', percent: 5, expiresAt: null }]
+        })
+      }
+    })
+    expect(failure(shown.calls)).toMatchObject({
+      code: 'offer_unsafe',
+      final: true
     })
     expect(createDraft).not.toHaveBeenCalled()
   })

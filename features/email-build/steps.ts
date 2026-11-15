@@ -3,6 +3,7 @@ import type { OfferSource } from '@/features/offers/source'
 import {
   codeWorksNow,
   contentStep,
+  shownOffer,
   copyStep,
   designStep,
   sectionsStep,
@@ -201,7 +202,8 @@ export async function runBuildStep(
       code,
       input.offers,
       ctx.tenantId,
-      sections.sendAt
+      sections.sendAt,
+      shownOffer(code, sections.rules)
     )
     if (now === 'unreadable') return { ok: false, code: 'offers_unreadable' }
     if (now === 'unsafe') return { ok: false, code: 'offer_unsafe' }

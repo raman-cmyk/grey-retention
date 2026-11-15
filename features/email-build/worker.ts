@@ -298,7 +298,8 @@ export async function runEmailBuilds(
             deps.offers ??
               ownerOrSampleOffers(saved, sampleOffersFrom(job.start_on)),
             job.tenant_id,
-            email.data.plannedSendAt
+            email.data.plannedSendAt,
+            email.data.offer
           )
           if (now !== 'ok') {
             await fail(

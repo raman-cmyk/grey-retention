@@ -219,15 +219,23 @@ const shortDay = (date: string) =>
 
 /** The plan's note for offers left out of their emails, or null. */
 export function droppedOffersNote(dropped: readonly PlannedSlot[]) {
-  const named = dropped
-    .slice(0, 10)
-    .flatMap((s) => (s.offer ? [`${s.offer.code} on ${shortDay(s.date)}`] : []))
-  if (!named.length) return null
+  const all = dropped.flatMap((s) =>
+    s.offer ? [`${s.offer.code} on ${shortDay(s.date)}`] : []
+  )
+  if (!all.length) return null
   const one = dropped.length === 1
-  const more = dropped.length > 10 ? ` and ${dropped.length - 10} more` : ''
-  const note = `Left out of ${one ? 'its email' : 'their emails'} because ${one ? 'it' : 'they'} would not work on that day (above your max, not one of your codes, or ended): ${named.join(', ')}${more}. ${one ? 'That email goes' : 'Those emails go'} out without a discount.`
-  // A stored note is at most 600 characters.
-  return note.length <= 600 ? note : `${note.slice(0, 599)}…`
+  const words = (named: string[]) => {
+    const more =
+      all.length > named.length ? ` and ${all.length - named.length} more` : ''
+    return `Left out of ${one ? 'its email' : 'their emails'} because ${one ? 'it' : 'they'} would not work on that day (above your max, not one of your codes, or ended): ${named.join(', ')}${more}. ${one ? 'That email goes' : 'Those emails go'} out without a discount.`
+  }
+  // At most ten named, and fewer until the note fits a stored note's 600
+  // characters (whole names, a whole sentence).
+  for (let n = Math.min(all.length, 10); n > 0; n--) {
+    const note = words(all.slice(0, n))
+    if (note.length <= 600) return note
+  }
+  return words([])
 }
 
 /**

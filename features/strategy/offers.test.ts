@@ -207,9 +207,12 @@ describe('the guard and the note', () => {
       planned('2026-11-17', '10:00', `A-LONG-CODE-NAME-FOR-TESTING-${i + 1}`)
     )
     const note = droppedOffersNote(many)!
-    expect(note).toContain('and 4 more')
     expect(note).not.toContain('TESTING-11')
     expect(note.length).toBeLessThanOrEqual(600)
+    // Whole names and a whole sentence: fewer names, the rest counted.
+    expect(note).toMatch(
+      / and \d+ more\. Those emails go out without a discount\.$/
+    )
   })
 
   it('log counts and days only, never a code', () => {
