@@ -172,7 +172,14 @@ export async function runEmailBuilds(
             tenantId: job.tenant_id,
             callerKey: `email-build:${job.id}`,
             fallbacks,
-            agents
+            agents,
+            // A step with rounds starts a model call only while one fits in
+            // this claim's budget and the job's deadline (REL-AI part 2b).
+            until: Math.min(
+              started + stepBudgetMs,
+              deps.deadline ?? Number.POSITIVE_INFINITY
+            ),
+            clock: now
           }
         )
         const took = now() - started

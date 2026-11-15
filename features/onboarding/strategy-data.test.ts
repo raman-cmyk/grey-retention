@@ -8,7 +8,12 @@ import {
 } from '@/features/onboarding/history/facts'
 import type { StoredHistory } from '@/features/onboarding/history/read'
 import { readMapperInput } from '@/features/strategy/competitors'
-import { readPulseInput } from '@/features/strategy/pulse'
+import { samplePlan } from '@/features/strategy/plan'
+import {
+  codePulse,
+  gatherEvidence,
+  readPulseInput
+} from '@/features/strategy/pulse'
 
 vi.mock('server-only', () => ({}))
 const reads = vi.hoisted(() => ({
@@ -193,6 +198,16 @@ describe('strategyFrom (ONB-057a)', () => {
       'Black Friday',
       'Winter sale'
     ])
+    // And its plan, as the plan step makes it (the pulse, no offers).
+    const pulseOut = codePulse(gatherEvidence(pulse.input))
+    const made = samplePlan({
+      ...own.plan,
+      start,
+      pulse: pulseOut,
+      offers: [],
+      moves: []
+    })
+    expect(made.slots.length).toBeGreaterThan(0)
     const mapper = readMapperInput(own.mapper)
     expect(mapper.industry).toBe('apparel')
     expect(mapper.ourDates).toEqual([
@@ -339,15 +354,23 @@ describe('onboardedStrategyData (ONB-057a)', () => {
   } as never
   const sample = { load: vi.fn(async () => sampleAnswer) }
   const profileEq = vi.fn()
+  const statusEq = vi.fn()
+  // The catalog's last read: live like the history unless a test says.
+  let catalogStatus: { data: unknown; error: unknown } = {
+    data: { live: true },
+    error: null
+  }
   const db = (profile: { data: unknown; error: unknown }) =>
     ({
       from: (table: string) => {
-        expect(table).toBe('brand_profiles')
+        expect(['brand_profiles', 'catalog_status']).toContain(table)
+        const eq = table === 'catalog_status' ? statusEq : profileEq
+        const answer = table === 'catalog_status' ? catalogStatus : profile
         return {
           select: () => ({
             eq: (column: string, value: string) => {
-              profileEq(column, value)
-              return { maybeSingle: async () => profile }
+              eq(column, value)
+              return { maybeSingle: async () => answer }
             }
           })
         }
@@ -368,6 +391,7 @@ describe('onboardedStrategyData (ONB-057a)', () => {
     })
   beforeEach(() => {
     vi.clearAllMocks()
+    catalogStatus = { data: { live: true }, error: null }
     reads.timezone.mockResolvedValue('America/New_York')
     reads.catalog.mockResolvedValue(parts().catalog)
     reads.history.mockResolvedValue(stored())
@@ -382,10 +406,15 @@ describe('onboardedStrategyData (ONB-057a)', () => {
   it('reads only this workspace and plans from it', async () => {
     const own = await load()
     expect(own.sample).toBe(false)
+    // ONB-057b: "Create email" builds from the store this was made from.
+    expect(own.own).toBe(true)
     expect(sample.load).not.toHaveBeenCalled()
     expect(reads.timezone).toHaveBeenCalledWith(expect.anything(), tenantId)
+    expect(statusEq).toHaveBeenCalledWith('tenant_id', tenantId)
+    // A live store never plans the fake Klaviyo's products.
     expect(reads.catalog).toHaveBeenCalledWith(expect.anything(), tenantId, {
-      featurableOnly: true
+      featurableOnly: true,
+      synthetic: false
     })
     expect(reads.history).toHaveBeenCalledWith(expect.anything(), tenantId)
     expect(reads.findings).toHaveBeenCalledWith(expect.anything(), tenantId, {
@@ -410,6 +439,38 @@ describe('onboardedStrategyData (ONB-057a)', () => {
     await expect(load()).resolves.toBe(sampleAnswer)
   })
 
+  it('plans the sample store until the catalog and the history were read the same way (ONB-057b)', async () => {
+    // No catalog read yet, or one read fake while the history is live.
+    for (const status of [{ live: false }, null]) {
+      catalogStatus = { data: status, error: null }
+      await expect(load()).resolves.toBe(sampleAnswer)
+    }
+    expect(reads.catalog).not.toHaveBeenCalled()
+    // Both fake: the recorded store, marked sample, with the fake products.
+    catalogStatus = { data: { live: false }, error: null }
+    reads.history.mockResolvedValue(stored({ live: false }))
+    const fake = await load()
+    expect(fake).toMatchObject({ sample: true, own: true })
+    expect(reads.catalog).toHaveBeenLastCalledWith(
+      expect.anything(),
+      tenantId,
+      { featurableOnly: true, synthetic: true }
+    )
+  })
+
+  it('needs no more reads, and never waits on key dates, for a sample plan', async () => {
+    reads.history.mockResolvedValue(stored({ readAt: '2026-10-01T00:00:00Z' }))
+    reads.keyDates.mockResolvedValue(null)
+    await expect(load()).resolves.toBe(sampleAnswer)
+    expect(reads.findings).not.toHaveBeenCalled()
+    expect(reads.keyDates).not.toHaveBeenCalled()
+    expect(profileEq).not.toHaveBeenCalled()
+    reads.history.mockResolvedValue(stored())
+    reads.catalog.mockResolvedValue([])
+    await expect(load()).resolves.toBe(sampleAnswer)
+    expect(reads.findings).not.toHaveBeenCalled()
+  })
+
   it('throws when any read fails, so the step is tried again', async () => {
     for (const read of [
       'timezone',
@@ -425,6 +486,9 @@ describe('onboardedStrategyData (ONB-057a)', () => {
     ).rejects.toMatchObject({
       code: '42501'
     })
+    catalogStatus = { data: null, error: { code: 'PGRST000' } }
+    await expect(load()).rejects.toMatchObject({ code: 'PGRST000' })
+    catalogStatus = { data: { live: true }, error: null }
     // Never a plan without the key dates (Black Friday, the owner's own days).
     reads.keyDates.mockResolvedValueOnce(null)
     await expect(load()).rejects.toMatchObject({ code: 'key_dates_unreadable' })

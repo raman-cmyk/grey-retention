@@ -23,11 +23,22 @@ import type { StoredPulse } from './stored'
  */
 export type PlanOffers = { maxDiscountPercent: number; codes: DiscountCode[] }
 
-/** The plan's offers: the owner's, or the sample's from the plan's first day. */
+/** Nothing saved: no discount and no codes. */
+const noOffers: OfferSource = {
+  offers: async () => ({ maxDiscountPercent: null, codes: [] })
+}
+
+/**
+ * The plan's offers: the owner's; when nothing is saved, the sample's from
+ * the plan's first day for the sample store, and none for the workspace's
+ * own store (ONB-057b: its emails never offer the sample's codes).
+ */
 export const planOfferSource = (
   saved: SavedOffers,
-  start: string
-): OfferSource => ownerOrSampleOffers(saved, sampleOffersFrom(start))
+  start: string,
+  { sample }: { sample: boolean }
+): OfferSource =>
+  ownerOrSampleOffers(saved, sample ? sampleOffersFrom(start) : noOffers)
 
 /** The first moment of a store-local day (01:00 when midnight is skipped). */
 function dayStart(date: string, timezone: string) {

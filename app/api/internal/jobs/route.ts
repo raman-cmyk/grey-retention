@@ -11,6 +11,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { runFixtureJobs } from '@/features/integrations/worker'
 import { runInboxStep } from '@/features/inbox/step'
 import { runStrategyRuns } from '@/features/strategy/worker'
+import { onboardedStrategyData } from '@/features/onboarding/strategy-data'
 import { runEmailBuilds } from '@/features/email-build/worker'
 import { draftPusherFor } from '@/features/klaviyo-push/live'
 
@@ -69,7 +70,10 @@ export async function GET(request: NextRequest) {
   // "Plan next 15 days" steps (STR-003 part 2): the code-only path (no AI
   // call, nothing metered), at most 5 s of this sweep; a failure stays
   // queued for the next run.
+  // The workspace's own store once onboarding has read enough of it
+  // (ONB-057), else the sample store.
   const plans = await runStrategyRuns(db, {
+    data: onboardedStrategyData(db),
     deadline: Date.now() + planBudgetMs
   }).catch((error) => {
     logger.error('Plan steps could not run', {
