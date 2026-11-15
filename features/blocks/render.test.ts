@@ -15,6 +15,7 @@ import {
 } from './render'
 import { sampleBlocks, sampleBrand } from './samples'
 import type { BlockBrand } from './brand'
+import { designedHeight } from '@/features/studio/storyboard'
 
 const all = blockTypes.map((t) => sampleBlocks[t])
 const block = (type: Parameters<typeof parseBlock>[0], content: unknown) => {
@@ -328,5 +329,118 @@ describe('blockPreviewDocument (gallery)', () => {
     expect(html).toContain('data-block="hero_image"')
     expect(html).not.toContain('data-block="footer"')
     expect(html).not.toMatch(/\{%|\{\{/)
+  })
+})
+
+describe('a hero the design studio drew (DST-006a)', () => {
+  const picture = {
+    src: 'https://db.example/storage/v1/object/sign/studio-renders/render/x.jpg?token=t',
+    alt: 'Just in. Meet the cedar tray. Hand-finished, made to last.',
+    height: 640,
+    render: '33333333-3333-4333-8333-333333333333'
+  }
+
+  it.each(['hero_product', 'hero_image'] as const)(
+    '%s shows the picture, linked and full width, with its words as alt, then the live button only',
+    (type) => {
+      const base = sampleBlocks[type].content as Record<string, unknown>
+      const html = renderBlock(
+        block(type, { ...base, picture }),
+        httpsBrand,
+        'klaviyo'
+      )
+      const img = html.match(/<img [^>]*>/g) ?? []
+      expect(img).toHaveLength(1)
+      expect(img[0]).toContain(`src="${picture.src.replace(/&/g, '&amp;')}"`)
+      expect(img[0]).toContain(`alt="${picture.alt}"`)
+      expect(img[0]).toContain('width="600"')
+      // Linked like the hero's photo, and the button stays live.
+      expect(html).toMatch(
+        new RegExp(
+          `<a href="${String(base.url).replace(/[.?]/g, '\\$&')}"[^>]*><img`
+        )
+      )
+      expect(html).toContain(`>${String(base.cta)}</a>`)
+      // The words are in the picture: never drawn again as HTML.
+      expect(html).not.toContain(`>${String(base.headline)}<`)
+      if (base.sub) expect(html).not.toContain(String(base.sub))
+    }
+  )
+
+  it('keeps the picture’s shape while it loads and its background behind the button', () => {
+    const base = sampleBlocks.hero_product.content as Record<string, unknown>
+    const html = renderBlock(
+      block('hero_product', {
+        ...base,
+        picture: { ...picture, bg: '#1f3a2e' }
+      }),
+      httpsBrand,
+      'klaviyo'
+    )
+    expect(html.match(/<img [^>]*>/)?.[0]).toContain('height="640"')
+    // Both rows (the picture and the button) on the section's background.
+    expect(html.match(/bgcolor="#1f3a2e"/g)).toHaveLength(2)
+    // With pictures off, the alt shows in the brand's font, readable.
+    expect(html.match(/<img [^>]*>/)?.[0]).toMatch(
+      /style="[^"]*font-family:[^"]*color:#(?:fff|ffffff)\b/i
+    )
+    // The eyebrow is in the picture too, and no heading is drawn.
+    const outside = html.replace(/ alt="[^"]*"/g, '')
+    if (base.eyebrow) expect(outside).not.toContain(String(base.eyebrow))
+    expect(html).not.toMatch(/<h[12]/)
+  })
+
+  it('counts as the email’s first headline: the next is an h2', () => {
+    const html = renderEmail({
+      blocks: [
+        sampleBlocks.header_logo,
+        block('hero_product', {
+          ...(sampleBlocks.hero_product.content as object),
+          picture
+        }),
+        sampleBlocks.offer_banner
+      ],
+      brand: httpsBrand,
+      mode: 'klaviyo'
+    })
+    expect(html).not.toMatch(/<h1/)
+    expect(html).toMatch(/<h2/)
+  })
+
+  it('takes only an https picture of a designed section’s size, with its render', () => {
+    const base = sampleBlocks.hero_product.content as Record<string, unknown>
+    for (const bad of [
+      { ...picture, src: 'http://db.example/x.jpg' },
+      { ...picture, src: 'data:image/png;base64,iVBORw0KGgo=' },
+      { ...picture, height: designedHeight.min - 1 },
+      { ...picture, height: designedHeight.max + 1 },
+      { ...picture, render: 'not-a-render' },
+      { ...picture, bg: 'red' },
+      { ...picture, extra: 1 }
+    ])
+      expect(parseBlock('hero_product', { ...base, picture: bad }).ok).toBe(
+        false
+      )
+    for (const height of [designedHeight.min, designedHeight.max])
+      expect(
+        parseBlock('hero_product', { ...base, picture: { ...picture, height } })
+          .ok
+      ).toBe(true)
+  })
+
+  it('escapes the alt text, braces too', () => {
+    const base = sampleBlocks.hero_image.content as Record<string, unknown>
+    const html = renderBlock(
+      block('hero_image', {
+        ...base,
+        picture: { ...picture, alt: 'Grove & Co "new" <tray> {{ first_name }}' }
+      }),
+      httpsBrand,
+      'klaviyo'
+    )
+    expect(html).toContain(
+      'alt="Grove &amp; Co &quot;new&quot; &lt;tray&gt; &#123;&#123; first_name &#125;&#125;"'
+    )
+    expect(html).not.toMatch(/\{\{|\{%/)
   })
 })

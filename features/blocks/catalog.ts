@@ -14,7 +14,9 @@ import { z } from 'zod'
  *
  * Text is plain text (never HTML), prices arrive already formatted in the
  * store currency, and every image is a real photo (no text inside images,
- * VISION hard rules 9 and 10). The renderer checks every block against
+ * VISION hard rules 9 and 10), except a hero's studio `picture` (D25,
+ * DST-006a): a section a browser drew from HTML, its words in its alt
+ * text and kept in the hero's fields. The renderer checks every block against
  * these schemas again, so content stored and re-rendered later can never
  * skip them.
  */
@@ -70,6 +72,26 @@ const hexSchema = z
   .trim()
   .regex(/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i, 'Use a hex colour')
 
+/**
+ * DST-006a: a hero the design studio drew (D25). The picture is the whole
+ * section as the browser drew it (1,200 px wide, shown at 600): its words
+ * are in the picture and in its alt text (DST-003b's `sectionAlt`), so the
+ * hero shows the picture and its live button only. `src` is an https link
+ * to the stored picture, never an inline one (a long-lived signed link;
+ * Klaviyo imports it when the draft is pushed); `render` names the render
+ * it came from; `bg` is the section's background, kept behind the button.
+ */
+export const studioPictureSchema = z.strictObject({
+  src: imageUrlSchema.refine((v) => !inlineImage.test(v), {
+    message: 'Use an https picture'
+  }),
+  alt: text(400),
+  /** CSS px at 600 wide: a designed section's height (`designedHeight`). */
+  height: z.int().min(200).max(1200),
+  render: z.uuid(),
+  bg: hexSchema.optional()
+})
+
 export const productSchema = z.object({
   title: text(90),
   price: text(24),
@@ -116,7 +138,8 @@ const definitions = {
       alt: optionalText(160),
       url: urlSchema,
       cta: text(40),
-      panel: hexSchema.optional()
+      panel: hexSchema.optional(),
+      picture: studioPictureSchema.optional()
     })
   },
   hero_image: {
@@ -130,7 +153,8 @@ const definitions = {
       headline: text(80),
       sub: optionalText(160),
       url: urlSchema,
-      cta: text(40)
+      cta: text(40),
+      picture: studioPictureSchema.optional()
     })
   },
   offer_banner: {
