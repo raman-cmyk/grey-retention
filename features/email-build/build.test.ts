@@ -5,6 +5,8 @@ import {
   builtEmail,
   buildEmail,
   codeWorks,
+  designStep,
+  lockedDraft,
   sectionsStep,
   type PlannedEmail
 } from './build'
@@ -122,6 +124,38 @@ describe('building a planned email (code-only)', () => {
     expect(shown).not.toMatch(/\{%|\{\{/)
     expect(shown).toContain('Klaviyo adds it when it sends')
     expect(shown).toContain('Unsubscribe')
+  })
+
+  it('stops as render_failed for an inline picture Klaviyo cannot take (REL-FTR)', async () => {
+    const store = await sampleStoreSource.read(tenantId)
+    const p = planned({ emailType: 'launch', offer: null })
+    const made = await lockedDraft(
+      { planned: p, store, offers: sampleOffers },
+      { tenantId, callerKey: 'email-build:b1', fallbacks: memoryFallbackLog() }
+    )
+    if (!made.ok) throw new Error('no draft')
+    const blocks = made.draft.blocks.map((b) =>
+      b.type === 'hero_product'
+        ? {
+            ...b,
+            content: { ...b.content, image: 'data:image/png;base64,AAAA' }
+          }
+        : b
+    ) as typeof made.draft.blocks
+    expect(blocks.some((b) => b.type === 'hero_product')).toBe(true)
+    expect(
+      designStep({
+        planned: p,
+        store,
+        sendAt: made.sendAt,
+        sample: true,
+        rules: made.rules,
+        copy: {
+          draft: { ...made.draft, blocks },
+          changes: made.changes
+        }
+      })
+    ).toEqual({ ok: false, code: 'render_failed' })
   })
 
   it('swaps a sold-out planned product for another real one and logs it', async () => {

@@ -277,6 +277,26 @@ describe('drawing the email', () => {
     expect(fallbacks.entries()).toEqual([])
   })
 
+  it('photographs the email as a reader sees it: the footer’s placeholders, never Klaviyo’s raw tags (REL-FTR)', async () => {
+    const seen: string[] = []
+    const recording: ScreenshotPort = {
+      async capture(html) {
+        seen.push(html)
+        return fakeScreenshots.capture(html)
+      }
+    }
+    const { ctx } = context(inspector({ problems: [] }))
+    const out = await designEmail(
+      run('A', { shots: recording, heroImages: fakeHeroImages }),
+      ctx
+    )
+    expect(out.html).toContain('{% unsubscribe "Unsubscribe" %}')
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).not.toMatch(/\{%|\{\{/)
+    expect(seen[0]).toContain('Klaviyo adds it when it sends')
+    expect(seen[0]).toContain(`${sampleBrand.name}<br>`)
+  })
+
   it('checks screenshots in code before the inspector, and keeps A with its problems logged', async () => {
     const broken: ScreenshotPort = {
       async capture(html) {
