@@ -206,8 +206,19 @@ describe('the ports', () => {
       }).offers(tenantId, at)
     ).toEqual({
       maxDiscountPercent: 15,
+      limitedBy: 'max_discount',
       codes: [{ code: 'OWNER10', percent: 10, expiresAt: null }]
     })
+    // PLN-039: a margin floor that allows less caps the owner's max.
+    expect(
+      await saved({
+        maxDiscountPercent: 50,
+        grossMarginPercent: 60,
+        marginFloorPercent: 30,
+        revision: 2,
+        codes: [owned('OWNER10', null)]
+      }).offers(tenantId, at)
+    ).toMatchObject({ maxDiscountPercent: 42, limitedBy: 'margin_floor' })
     // Codes but no max saved: the owner's (no discount), not the sample's.
     expect(
       await saved({
@@ -217,6 +228,7 @@ describe('the ports', () => {
       }).offers(tenantId, at)
     ).toEqual({
       maxDiscountPercent: null,
+      limitedBy: null,
       codes: [{ code: 'OWNER10', percent: 10, expiresAt: null }]
     })
     // 2. Nothing saved: the sample offers.

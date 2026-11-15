@@ -894,6 +894,8 @@ export type Database = {
       }
       brand_offers: {
         Row: {
+          gross_margin_percent: number | null
+          margin_floor_percent: number | null
           max_discount_percent: number
           revision: number
           tenant_id: string
@@ -901,6 +903,8 @@ export type Database = {
           updated_by: string | null
         }
         Insert: {
+          gross_margin_percent?: number | null
+          margin_floor_percent?: number | null
           max_discount_percent: number
           revision?: number
           tenant_id: string
@@ -908,6 +912,8 @@ export type Database = {
           updated_by?: string | null
         }
         Update: {
+          gross_margin_percent?: number | null
+          margin_floor_percent?: number | null
           max_discount_percent?: number
           revision?: number
           tenant_id?: string
@@ -7999,6 +8005,15 @@ export type Database = {
       set_holiday_country: {
         Args: { country: string; t: string }
         Returns: undefined
+      }
+      set_margin_floor: {
+        Args: {
+          expected_revision: number
+          gross_margin: number
+          margin_floor: number
+          t: string
+        }
+        Returns: number
       }
       set_max_discount: {
         Args: { expected_revision: number; percent: number; t: string }

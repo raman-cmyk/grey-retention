@@ -3,10 +3,10 @@ select no_plan();
 -- PLN-033a. Tenant 101: owner ...001, admin ...006, staff ...005. Tenant 102 owner ...004. Operator ...002. Synthetic seed only.
 
 -- Grants: members read, nobody writes directly, the worker reads.
-select ok(not has_table_privilege('authenticated','public.revenue_goals','insert,update,delete,truncate,references,trigger'),'members cannot write goals directly');
+select ok(not has_table_privilege('authenticated','public.revenue_goals','insert,update,delete,truncate,references,trigger,maintain'),'members cannot write goals directly');
 select ok(not has_table_privilege('anon','public.revenue_goals','select'),'visitors cannot read goals');
 select ok(has_table_privilege('service_role','public.revenue_goals','select')
-  and not has_table_privilege('service_role','public.revenue_goals','insert,update,delete,truncate'),'the worker reads goals and writes none');
+  and not has_table_privilege('service_role','public.revenue_goals','insert,update,delete,truncate,references,trigger,maintain'),'the worker reads goals and writes none');
 select ok(not has_function_privilege('anon','public.set_revenue_goal(uuid,date,numeric,text,integer)','execute')
   and not has_function_privilege('service_role','public.set_revenue_goal(uuid,date,numeric,text,integer)','execute'),'only members can call the command');
 select ok(not has_function_privilege('authenticated','private.record_revenue_goal_change()','execute'),'the recorder is not callable');
@@ -20,6 +20,9 @@ select throws_ok($$select public.set_revenue_goal('00000000-0000-4000-8000-00000
 select is(public.set_revenue_goal('00000000-0000-4000-8000-000000000101','2026-11-01',25000,'USD',1),2,'the owner raises it');
 select throws_ok($$select public.set_revenue_goal('00000000-0000-4000-8000-000000000101','2026-11-01',30000,'USD',1)$$,'PT409',null,'a stale revision is a conflict');
 select throws_ok($$select public.set_revenue_goal('00000000-0000-4000-8000-000000000101','2026-11-01',30000,'USD',null)$$,'PT409',null,'no revision is a conflict');
+select throws_ok($$select public.set_revenue_goal('00000000-0000-4000-8000-000000000101','2027-03-01',100,'USD',null)$$,'PT409',null,'no revision on a month with no goal is a conflict');
+select throws_ok($$select public.set_revenue_goal('00000000-0000-4000-8000-000000000101','2027-03-01',100,'USD',1)$$,'PT409',null,'a revision on a month with no goal is a conflict');
+select throws_ok($$select public.set_revenue_goal('00000000-0000-4000-8000-000000000101','2027-03-01',null,null,1)$$,'PT409',null,'so is clearing it with one');
 
 -- Checks.
 select throws_ok($$select public.set_revenue_goal('00000000-0000-4000-8000-000000000101','2026-11-15',100,'USD',0)$$,'23514',null,'a goal is for a whole month');
