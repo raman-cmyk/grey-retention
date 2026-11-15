@@ -21,13 +21,21 @@ import {
 } from './design'
 
 const tenantId = '00000000-0000-4000-8000-000000000101'
+/** The hero with a store's https photo: Klaviyo takes no inline picture. */
+const hero = {
+  ...sampleBlocks.hero_product,
+  content: {
+    ...(sampleBlocks.hero_product.content as object),
+    image: 'https://cdn.example.com/oak-tray.jpg'
+  }
+} as typeof sampleBlocks.hero_product
 const draft = (withHero = true): Draft => ({
   subject: 'Meet the oak tray',
   preheader: 'Made by hand, for slow dinners at home.',
   plan: [],
   blocks: [
     sampleBlocks.header_logo,
-    ...(withHero ? [sampleBlocks.hero_product] : []),
+    ...(withHero ? [hero] : []),
     sampleBlocks.text,
     sampleBlocks.cta,
     sampleBlocks.footer
@@ -267,6 +275,26 @@ describe('drawing the email', () => {
     expect(out).toMatchObject({ approach: 'A', fellBack: false })
     expect(heroImages.design).not.toHaveBeenCalled()
     expect(fallbacks.entries()).toEqual([])
+  })
+
+  it('photographs the email as a reader sees it: the footer’s placeholders, never Klaviyo’s raw tags (REL-FTR)', async () => {
+    const seen: string[] = []
+    const recording: ScreenshotPort = {
+      async capture(html) {
+        seen.push(html)
+        return fakeScreenshots.capture(html)
+      }
+    }
+    const { ctx } = context(inspector({ problems: [] }))
+    const out = await designEmail(
+      run('A', { shots: recording, heroImages: fakeHeroImages }),
+      ctx
+    )
+    expect(out.html).toContain('{% unsubscribe "Unsubscribe" %}')
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).not.toMatch(/\{%|\{\{/)
+    expect(seen[0]).toContain('Klaviyo adds it when it sends')
+    expect(seen[0]).toContain(`${sampleBrand.name}<br>`)
   })
 
   it('checks screenshots in code before the inspector, and keeps A with its problems logged', async () => {
