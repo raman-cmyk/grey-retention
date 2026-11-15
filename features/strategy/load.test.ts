@@ -114,3 +114,25 @@ describe('the plan read model', () => {
     })
   })
 })
+
+describe('a planned email’s send time (REL-DAT)', () => {
+  it('has passed at and after its store-time send time, and for a time the clock skips', async () => {
+    const { sendTimePassed } = await import('./load')
+    const zone = 'Australia/Melbourne'
+    const slot = { date: '2026-11-17', time: '10:00' }
+    // 10:00 in Melbourne on 17 Nov 2026 is 23:00 UTC on the 16th.
+    expect(sendTimePassed(slot, zone, new Date('2026-11-16T22:59:59Z'))).toBe(
+      false
+    )
+    expect(sendTimePassed(slot, zone, new Date('2026-11-16T23:00:00Z'))).toBe(
+      true
+    )
+    expect(
+      sendTimePassed(
+        { date: '2026-10-04', time: '02:30' },
+        zone,
+        new Date('2026-01-01T00:00:00Z')
+      )
+    ).toBe(true)
+  })
+})

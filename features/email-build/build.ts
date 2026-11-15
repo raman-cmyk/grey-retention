@@ -762,7 +762,10 @@ export type BuildCtx = {
    * time limit (tests and tools).
    */
   until?: number
-  /** The clock for `until` (ms since epoch); default `Date.now`. */
+  /**
+   * The wall clock (ms since epoch; default `Date.now`): for `until`, and
+   * for refusing a send time that has passed (REL-DAT).
+   */
   clock?: () => number
 }
 

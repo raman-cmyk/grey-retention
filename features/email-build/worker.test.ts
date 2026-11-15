@@ -978,6 +978,10 @@ describe('failed steps', () => {
         'slot_outside_plan'
       ],
       [
+        step({ planned: { ...planned, date: inDays(2) }, start_on: inDays(3) }),
+        'slot_outside_plan'
+      ],
+      [
         step({
           planned: { ...planned, date: inDays(-1), time: '09:00' },
           start_on: inDays(-1)

@@ -1,7 +1,14 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { memoryFallbackLog } from '@/features/fallback/log'
-import { builtEmail, buildEmail, codeWorks, type PlannedEmail } from './build'
+import {
+  builtEmail,
+  buildEmail,
+  codeWorks,
+  sectionsStep,
+  type PlannedEmail
+} from './build'
+import { localTimeCandidates } from '@/lib/local-time'
 import { fakeDraftPusher } from '@/lib/providers/klaviyo-draft'
 import {
   endOfLocalDay,
@@ -469,5 +476,27 @@ describe('a code an email may carry (REL-OFF)', () => {
       codeWorks('CANDLE10', rules({ expiresAt: '2026-11-17T10:00:01Z' }), at)
     ).toBe(true)
     expect(codeWorks('CANDLE10', rules({ expiresAt: 'soon' }), at)).toBe(false)
+  })
+})
+
+describe('a send time that has passed (REL-DAT)', () => {
+  it('builds just before it, and refuses at it', async () => {
+    const store = await sampleStoreSource.read(tenantId)
+    const p = planned()
+    const sendAt = Date.parse(
+      localTimeCandidates(`${p.date}T${p.time}`, store.timezone)[0]
+    )
+    const at = async (now: number) =>
+      sectionsStep(
+        { planned: p, store, offers: sampleOffers },
+        {
+          tenantId,
+          callerKey: 'email-build:b1',
+          fallbacks: memoryFallbackLog(),
+          clock: () => now
+        }
+      )
+    expect((await at(sendAt - 1)).ok).toBe(true)
+    expect(await at(sendAt)).toEqual({ ok: false, code: 'send_time_passed' })
   })
 })
