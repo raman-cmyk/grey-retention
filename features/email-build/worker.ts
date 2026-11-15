@@ -9,6 +9,7 @@ import {
 import { SupabaseOfferSource, type OfferSource } from '@/features/offers/source'
 import { databaseFallbackLog, type FallbackLog } from '@/features/fallback/log'
 import { stepCode } from '@/features/strategy/worker'
+import { onboardedStoreSource } from '@/features/onboarding/store-source'
 import { builtEmail, plannedEmail, type BuildAgents } from './build'
 import { buildAgentsFor } from './agents'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
@@ -43,7 +44,10 @@ export const maxEmailBytes = 290_000
 export async function runEmailBuilds(
   db: Db,
   deps: {
-    /** Default: the sample store from the plan's first day. */
+    /**
+     * Default: the workspace's own store once its catalog is read
+     * (ONB-057b), else the sample store from the plan's first day.
+     */
     stores?: StoreSource
     /**
      * Default: what the owner saved in Settings (DSC-001, read with this
@@ -133,7 +137,9 @@ export async function runEmailBuilds(
           await fail('planned_email_invalid', true)
           continue
         }
-        const stores = deps.stores ?? sampleStoreFrom(job.start_on)
+        const stores =
+          deps.stores ??
+          onboardedStoreSource(db, { fallback: sampleStoreFrom(job.start_on) })
         const offers =
           deps.offers ??
           ownerOrSampleOffers(saved, sampleOffersFrom(job.start_on))

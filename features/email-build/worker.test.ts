@@ -1,6 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
+// ONB-057b: the workspace's own store is tested on its own; here, the sample.
+vi.mock('@/features/onboarding/store-source', () => ({
+  onboardedStoreSource: (_db: unknown, o: { fallback: unknown }) => o.fallback
+}))
 import { memoryFallbackLog } from '@/features/fallback/log'
 import { InMemoryMemoryStore } from '@/features/agents/memory'
 import { InMemoryRunLog, type AiCall } from '@/features/agents/runtime'
