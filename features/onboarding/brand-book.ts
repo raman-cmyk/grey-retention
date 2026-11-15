@@ -137,40 +137,44 @@ const site = (domain: string | null) => {
 
 /** A line whatever its case and spacing (as ONB-058 matches it). */
 const lineKey = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase()
+const ownKey = (section: string, text: string) => `${section} ${lineKey(text)}`
 
 /**
  * Drops the least needed observed lines until the book fits: the readers'
- * first, the owner's own lines (`keep`, ONB-058) only after them.
+ * first (their audience names last of theirs), the owner's own lines
+ * (`keep`: `section line` keys, ONB-058) only after them.
  */
 function fit(
   book: BrandBookContent,
   keep: ReadonlySet<string> = new Set()
 ): BrandBookContent {
   const size = () => JSON.stringify(book).length
-  const lists = [
-    book.observed.marketing,
-    book.observed.customers.worries,
-    book.observed.voice,
-    book.observed.customers.love,
-    book.observed.customers.who,
-    book.products.newArrivals,
-    book.products.bestsellers,
-    book.observed.offering
+  const lists: [string, string[]][] = [
+    ['marketing', book.observed.marketing],
+    ['customers.worries', book.observed.customers.worries],
+    ['voice', book.observed.voice],
+    ['customers.love', book.observed.customers.love],
+    ['customers.who', book.observed.customers.who],
+    ['', book.products.newArrivals],
+    ['', book.products.bestsellers],
+    ['offering', book.observed.offering]
   ]
-  const readers = (list: string[]) => {
+  for (const [section, list] of lists)
     for (let i = list.length - 1; i >= 0 && size() > maxBookChars; i--)
-      if (!keep.has(lineKey(list[i]!))) list.splice(i, 1)
-  }
-  for (const list of lists) readers(list)
-  for (const list of lists)
-    while (size() > maxBookChars && list.length) list.pop()
+      if (!keep.has(ownKey(section, list[i]!))) list.splice(i, 1)
   if (size() > maxBookChars && book.observed.sending)
     book.observed.sending.audiences = []
+  for (const [, list] of lists)
+    while (size() > maxBookChars && list.length) list.pop()
   return book
 }
 
 /** The Brand book from the readers' findings, the catalog and the history. */
-export function brandBookFrom(parts: BrandBookParts): BrandBookContent {
+export const brandBookFrom = (parts: BrandBookParts): BrandBookContent =>
+  fit(bookFrom(parts))
+
+/** The book before it is cut to size. */
+function bookFrom(parts: BrandBookParts): BrandBookContent {
   // Read for real when any reader read the brand's own data.
   const live =
     parts.history?.live === true ||
@@ -187,7 +191,7 @@ export function brandBookFrom(parts: BrandBookParts): BrandBookContent {
   const featurable = parts.catalog.filter((p) => p.featurable)
   const history = parts.history
   const full = history?.state === 'ready' && history.complete
-  return fit({
+  return {
     schema: brandBookSchema,
     sample: !live,
     brand: {
@@ -250,7 +254,7 @@ export function brandBookFrom(parts: BrandBookParts): BrandBookContent {
     },
     avoid: claimsSafety(industryWords).groups.map((g) => g.reason),
     sources: [...new Set(used.map((f) => f.source))].sort()
-  })
+  }
 }
 
 type Db = SupabaseClient<Database>
@@ -351,7 +355,8 @@ export async function writeBrandBook(
     profile !== null &&
     profile.approved_revision !== null &&
     profile.approved_revision === profile.revision
-  const book = brandBookFrom({
+  // Cut to size once, after the owner's corrections (ONB-058b).
+  const book = bookFrom({
     brandName: profile?.brand_name ?? null,
     domain: profile?.domain ?? null,
     timezone,
@@ -375,27 +380,34 @@ export async function writeBrandBook(
 }
 
 /**
- * The book with the owner's corrections (ONB-058): his facts confirmed and
- * no longer unclear, his lines in place of the readers'. Cut to size, his
- * own lines go last. A book he never corrected is unchanged.
+ * The book with the owner's corrections (ONB-058), cut to size: his facts
+ * confirmed and no longer unclear, his lines in place of the readers'; cut,
+ * the readers' lines go first. The book given is never changed.
  */
 export function withCorrections(
   book: BrandBookContent,
   corrections: readonly Correction[]
 ): BrandBookContent {
-  if (!corrections.length) return book
-  const corrected = applyCorrections(book, corrections)
-  // Nothing he named is in this book (yet): the book as it is.
-  if (!corrected.corrected.length) return book
+  const corrected = corrections.length
+    ? applyCorrections(book, corrections)
+    : null
+  // Nothing he named is in this book (yet): the book as it is, cut to size.
+  if (!corrected || !corrected.corrected.length)
+    return fit(structuredClone(book))
   const own = new Set(
     corrections.flatMap((c) =>
       !c.section.startsWith('facts.') && c.action !== 'remove' && c.value
-        ? [lineKey(c.value)]
+        ? [ownKey(c.section, c.value)]
         : []
     )
   )
   return fit(corrected, own)
 }
+
+/** Rows of corrections made, and of corrections taken back, read per run (small rows). */
+const changesRead = 1000
+/** Workspaces whose books are looked up per run (newest changes first). */
+const workspacesChecked = 100
 
 /** The onboarding readers' jobs (a read that finished changes the book). */
 const readerKinds = [
@@ -431,7 +443,7 @@ export async function staleBooks(
       .select(`tenant_id,at:${column}`)
       .gte(column, since)
       .order(column, { ascending: false })
-      .limit(200)
+      .limit(changesRead)
   const [made, withdrawn] = await Promise.all([
     changes('created_at'),
     changes('withdrawn_at')
@@ -448,18 +460,24 @@ export async function staleBooks(
   for (const c of [...(made.data ?? []), ...(withdrawn.data ?? [])])
     seen(c.tenant_id, c.at)
   if (!newest.size) return []
+  // The newest changed workspaces only: a short request, the slots to fill.
+  const changed = [...newest]
+    .sort((a, b) => Date.parse(b[1]) - Date.parse(a[1]))
+    .slice(0, workspacesChecked)
   const books = await db
     .from('brand_books')
     .select('tenant_id,created_at')
-    .in('tenant_id', [...newest.keys()])
+    .in(
+      'tenant_id',
+      changed.map(([t]) => t)
+    )
     .order('created_at', { ascending: false })
     .limit(1000)
   if (books.error) throw books.error
   const written = new Map<string, string>()
   for (const b of books.data ?? [])
     if (!written.has(b.tenant_id)) written.set(b.tenant_id, b.created_at)
-  return [...newest]
-    .sort((a, b) => Date.parse(b[1]) - Date.parse(a[1]))
+  return changed
     .filter(
       ([t, at]) =>
         !written.has(t) || Date.parse(written.get(t)!) < Date.parse(at)

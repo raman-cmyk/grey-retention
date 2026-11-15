@@ -486,6 +486,11 @@ describe('writeBrandBook (ONB-106b)', () => {
           section: 'facts.returnDays',
           action: 'replace',
           value: '60'
+        }),
+        correction({
+          section: 'offering',
+          action: 'add',
+          value: 'Made in Portugal.'
         })
       ])
     }
@@ -497,7 +502,8 @@ describe('writeBrandBook (ONB-106b)', () => {
     expect(saved.content.observed.voice).toEqual(['Warm and witty.'])
     expect(saved.content.facts.returnDays).toBe(60)
     expect(saved.content).toMatchObject({
-      corrected: ['facts.returnDays', 'voice']
+      corrected: ['facts.returnDays', 'offering', 'voice'],
+      observed: { offering: expect.arrayContaining(['Made in Portugal.']) }
     })
   })
 
@@ -511,6 +517,15 @@ describe('writeBrandBook (ONB-106b)', () => {
     }
     const real = client({ profile, status: null })
     expect(await writeBrandBook(real.db, tenantId, sampleReads)).toBeNull()
+    // Not even with his corrections.
+    expect(
+      await writeBrandBook(real.db, tenantId, {
+        ...sampleReads,
+        corrections: vi.fn(async () => [
+          correction({ section: 'voice', action: 'add', value: 'Warm.' })
+        ])
+      })
+    ).toBeNull()
     expect(real.rpc).not.toHaveBeenCalled()
     const synthetic = client({
       profile: { ...profile, synthetic: true, approved_revision: 1 },
@@ -543,17 +558,23 @@ describe('writeBrandBook (ONB-106b)', () => {
 describe('withCorrections (ONB-058)', () => {
   it('leaves a book he never corrected, or whose lines are gone, as it is', () => {
     const book = brandBookFrom(parts())
-    expect(withCorrections(book, [])).toBe(book)
-    expect(
-      withCorrections(book, [
-        correction({
-          section: 'voice',
-          original: 'A line no reader found.',
-          action: 'remove'
-        })
-      ])
-    ).toBe(book)
-    expect(book).not.toHaveProperty('corrected')
+    const given = structuredClone(book)
+    expect(withCorrections(book, [])).toEqual(given)
+    const none = withCorrections(book, [
+      correction({
+        section: 'voice',
+        original: 'A line no reader found.',
+        action: 'remove'
+      })
+    ])
+    expect(none).toEqual(given)
+    expect(none).not.toHaveProperty('corrected')
+    // The same corrections give the same book (no new version each run).
+    const fix = [
+      correction({ section: 'voice', action: 'add', value: 'Warm.' })
+    ]
+    expect(withCorrections(book, fix)).toEqual(withCorrections(book, fix))
+    expect(book).toEqual(given)
   })
 
   it('makes his fact the confirmed one and takes it out of unclear', () => {
@@ -573,6 +594,45 @@ describe('withCorrections (ONB-058)', () => {
     expect(own.corrected).toEqual(['facts.returnDays'])
     // The book given is not changed.
     expect(book.facts.returnDays).toBeNull()
+  })
+
+  it('applies his correction to a line before the book is cut, so his words stay', () => {
+    const long = (n: number) => `${'Reader line about linen '.repeat(10)}${n}.`
+    // A book read too long for its size: the last line would be cut first.
+    const book = structuredClone(brandBookFrom(parts()))
+    book.observed.marketing = Array.from({ length: 60 }, (_, i) => long(i))
+    const own = withCorrections(book, [
+      correction({
+        section: 'marketing',
+        original: long(59),
+        action: 'replace',
+        value: 'His own words about his ads.'
+      })
+    ])
+    expect(JSON.stringify(own).length).toBeLessThanOrEqual(maxBookChars)
+    expect(own.observed.marketing).toContain('His own words about his ads.')
+    expect(own.corrected).toEqual(['marketing'])
+  })
+
+  it('cuts the readers’ lines in every section, and their audience names, before his own', () => {
+    const long = (n: number) => `${'Reader line about linen '.repeat(10)}${n}.`
+    const book = structuredClone(brandBookFrom(parts()))
+    book.observed.marketing = Array.from({ length: 30 }, (_, i) => long(i))
+    book.observed.voice = Array.from({ length: 30 }, (_, i) => long(i))
+    book.observed.sending = {
+      sendsPerWeek: 2,
+      usualSendTime: '09:00',
+      audiences: Array.from({ length: 40 }, (_, i) => `Audience ${i}`)
+    }
+    const mine = 'Calm and plain, always.'
+    const own = withCorrections(book, [
+      correction({ section: 'voice', action: 'add', value: mine }),
+      // The same words as a reader's line in another section are not his.
+      correction({ section: 'voice', action: 'add', value: long(3) })
+    ])
+    expect(JSON.stringify(own).length).toBeLessThanOrEqual(maxBookChars)
+    expect(own.observed.voice).toContain(mine)
+    expect(own.observed.marketing).not.toContain(long(3))
   })
 
   it('cuts the readers’ lines before his own when the book is too long', () => {
@@ -662,6 +722,44 @@ describe('staleBooks and within (ONB-106b)', () => {
       'c',
       'a'
     ])
+  })
+
+  it('takes the newest of a read and a correction, keeps to its limit, and throws a failed read', async () => {
+    const db = client(
+      [{ tenant_id: 'a', updated_at: '2026-11-15T08:00:00Z' }],
+      [
+        { tenant_id: 'a', created_at: '2026-11-15T09:00:00Z' },
+        { tenant_id: 'b', created_at: '2026-11-15T09:00:00Z' }
+      ],
+      {
+        made: [
+          { tenant_id: 'a', at: '2026-11-15T10:00:00Z' },
+          { tenant_id: 'b', at: '2026-11-15T09:30:00Z' }
+        ]
+      }
+    )
+    expect(await staleBooks(db, { since: 'x' })).toEqual(['a', 'b'])
+    expect(await staleBooks(db, { since: 'x', limit: 1 })).toEqual(['a'])
+    const failing = {
+      from: (table: string) => {
+        let cols = ''
+        const chain = {
+          select: (c: string) => ((cols = c), chain),
+          in: () => chain,
+          eq: () => chain,
+          gte: () => chain,
+          order: () => chain,
+          limit: async () =>
+            table === 'brand_book_corrections' && cols.includes('withdrawn_at')
+              ? { data: null, error: { code: 'PGRST000' } }
+              : { data: [], error: null }
+        }
+        return chain
+      }
+    } as never
+    await expect(staleBooks(failing, { since: 'x' })).rejects.toMatchObject({
+      code: 'PGRST000'
+    })
   })
 
   it('waits for a write at most so long', async () => {
