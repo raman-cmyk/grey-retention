@@ -7,7 +7,6 @@ import {
   type StoreSource
 } from '@/features/email-build/ports'
 import {
-  applyCorrections,
   correctedFacts,
   listCorrections,
   type Correction
@@ -25,7 +24,7 @@ import {
 import { withClaimsSafety } from '@/features/onboarding/claims-safety'
 import { customerWords } from '@/features/onboarding/customer-words'
 import { listFindings, type Finding } from '@/features/onboarding/findings'
-import { industryInWords } from '@/features/onboarding/industry'
+import { industryFrom } from '@/features/onboarding/strategy-data'
 import { workspaceTimezone } from '@/features/strategy/offers'
 import type { Industry } from '@/features/intelligence/taxonomy'
 import type { Database } from '@/lib/supabase/database.types'
@@ -78,32 +77,16 @@ export type OwnStoreParts = {
 
 const hostname =
   /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/
-const key = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase()
 
 /**
- * The industry from what the brand sells: the owner's own lines first,
- * then the readers' surest, as he corrected them (ONB-058).
+ * The industry from what the brand sells, as the owner corrected it: the
+ * planner's own rule (`industryFrom`, ONB-057c), on findings already
+ * kept for this store.
  */
-export function correctedIndustry(
+export const correctedIndustry = (
   findings: readonly Finding[],
   corrections: readonly Correction[]
-): Industry {
-  const offering = findings
-    .filter((f) => f.topic === 'offering')
-    .sort((a, b) => b.confidence - a.confidence)
-    .map((f) => f.statement.trim())
-  const own = corrections.filter((c) => c.section === 'offering')
-  const lines =
-    applyCorrections({ observed: { offering } }, own).observed?.offering ?? []
-  const added = new Set(
-    own.flatMap((c) => (c.action === 'add' && c.value ? [key(c.value)] : []))
-  )
-  const first =
-    lines.find((l) => added.has(key(l))) ??
-    lines.find((l) => !added.has(key(l))) ??
-    ''
-  return industryInWords(first) ?? 'other'
-}
+): Industry => industryFrom(findings, { corrections }).key
 
 /** The store, from its parts. Pure, for tests. */
 export function storeFrom(parts: OwnStoreParts): Store {

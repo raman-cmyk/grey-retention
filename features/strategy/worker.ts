@@ -29,6 +29,7 @@ import {
   type PlanOffers
 } from './offers'
 import { databaseFallbackLog, type FallbackLog } from '@/features/fallback/log'
+import { outsideWindowEntry, outsideWindowNote, slotsInWindow } from './dates'
 import { keyPart } from '@/features/fallback/entry'
 import { planCode, type PlanFailureCode } from './failure-words'
 
@@ -220,7 +221,22 @@ export async function runStrategyRuns(
         // email" will check it. One that would not (a guard: the plan's last
         // send days ensure it) keeps its day without the offer, named in the
         // plan's notes and logged; the plan itself goes on.
-        const checked = withoutUnusableOffers(made.slots, offers, timezone)
+        // REL-DAT: never an email outside these 15 days (a guard). A plan
+        // with no email at all is fine (no day fits); one this guard
+        // empties did not match its days.
+        const dated = slotsInWindow(made.slots, run.start_on)
+        if (dated.dropped.length && !dated.slots.length)
+          throw final('store_wrong_days')
+        const dateNote = outsideWindowNote(dated.dropped)
+        if (dated.dropped.length)
+          await fallbacks.record(
+            outsideWindowEntry({
+              tenantId: run.tenant_id,
+              runId: run.id,
+              dropped: dated.dropped
+            })
+          )
+        const checked = withoutUnusableOffers(dated.slots, offers, timezone)
         const dropNote = droppedOffersNote(checked.dropped)
         if (checked.dropped.length)
           await fallbacks.record(
@@ -240,7 +256,7 @@ export async function runStrategyRuns(
             ? unusedOffersNote(
                 usable,
                 new Set(
-                  made.slots.flatMap((s) => (s.offer ? [s.offer.code] : []))
+                  dated.slots.flatMap((s) => (s.offer ? [s.offer.code] : []))
                 )
               )
             : null
@@ -250,6 +266,7 @@ export async function runStrategyRuns(
           notes: [
             ...(note ? [note] : []),
             ...made.notes,
+            ...(dateNote ? [dateNote] : []),
             ...(dropNote ? [dropNote] : []),
             ...(unused ? [unused] : [])
           ].slice(0, 10)

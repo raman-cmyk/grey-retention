@@ -11,6 +11,8 @@ import { planCode, planFailureWords, planReason } from './failure-words'
 const buildCodes = [
   'planned_email_invalid',
   'slot_time_invalid',
+  'send_time_passed',
+  'slot_outside_plan',
   'offers_unreadable',
   'copy_failed',
   'subject_taken',

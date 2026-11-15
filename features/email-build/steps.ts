@@ -121,6 +121,7 @@ export type StepResult =
        */
       code:
         | 'slot_time_invalid'
+        | 'send_time_passed'
         | 'offers_unreadable'
         | 'subject_taken'
         | 'copy_failed'
