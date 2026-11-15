@@ -286,10 +286,6 @@ describe('historyUsable (ONB-057a)', () => {
       expect(historyUsable(stored({}, { parts: { [part]: false } }), now)).toBe(
         false
       )
-    // The flows are not part of a campaign plan.
-    expect(historyUsable(stored({}, { parts: { flows: false } }), now)).toBe(
-      true
-    )
   })
 })
 

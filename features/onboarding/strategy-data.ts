@@ -33,7 +33,9 @@ import type { Database } from '@/lib/supabase/database.types'
  *
  * Until there is enough to plan a real store, it hands back the sample
  * store, exactly as today: products emails may feature, and a Klaviyo
- * history that is ready, read in full (sent, scheduled, audiences) and
+ * history that is ready, read in full (`complete`: the historian sets it
+ * only when every part and every message was read; the sent, scheduled and
+ * audiences parts are checked again) and
  * read in the last `historyFreshDays`, with at least one audience to send
  * to. A stale history would miss campaigns scheduled since, which the
  * weekly cap and the same-day rules must see. It says `sample: false` only
@@ -216,7 +218,9 @@ export function onboardedStrategyData(
         industry: industryFrom(findings, { live: history?.live ?? false }).words
       })
       // A failed read (holidays, the owner's own days) is tried again, never
-      // planned without: a plan missing Black Friday would say nothing.
+      // planned without: a plan missing Black Friday would say nothing. It
+      // is checked before the fallback, so it also holds up a sample plan;
+      // the step's tries cover a short outage.
       if (!keyDates)
         throw Object.assign(new Error('key_dates_unreadable'), {
           code: 'key_dates_unreadable'
