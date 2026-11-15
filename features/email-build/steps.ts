@@ -100,6 +100,7 @@ export type StepResult =
       code:
         | 'slot_time_invalid'
         | 'offers_unreadable'
+        | 'subject_taken'
         | 'copy_failed'
         | 'render_failed'
         | 'step_progress_invalid'
@@ -123,6 +124,8 @@ export async function runBuildStep(
     store: Store
     offers: OfferSource
     progress: unknown
+    /** The copy step: subjects the plan's other emails use (REL-AI). */
+    taken?: readonly string[]
   },
   ctx: BuildCtx
 ): Promise<StepResult> {
@@ -150,7 +153,11 @@ export async function runBuildStep(
     const locked = contentSaved.safeParse(progress.data.content)
     if (!locked.success) return unreadable
     const made = await copyStep(
-      { store, locked: locked.data as unknown as LockedContent },
+      {
+        store,
+        locked: locked.data as unknown as LockedContent,
+        taken: input.taken
+      },
       ctx
     )
     return made.ok ? { ok: true, done: 'copy', output: made.output } : made
