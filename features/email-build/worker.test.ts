@@ -861,9 +861,22 @@ describe('failed steps', () => {
         // Melbourne's clock skips 02:00 to 03:00 that day.
         step({
           planned: { ...planned, date: '2027-10-03', time: '02:30' },
-          timezone: 'Australia/Melbourne'
+          timezone: 'Australia/Melbourne',
+          start_on: '2027-09-30'
         }),
         'slot_time_invalid'
+      ],
+      // REL-DAT: a day outside its plan's 15 days, and a send time passed.
+      [
+        step({ planned: { ...planned, date: inDays(30) } }),
+        'slot_outside_plan'
+      ],
+      [
+        step({
+          planned: { ...planned, date: inDays(-1), time: '09:00' },
+          start_on: inDays(-1)
+        }),
+        'send_time_passed'
       ]
     ] as const
     for (const [s, code] of cases) {
