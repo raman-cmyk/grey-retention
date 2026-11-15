@@ -330,3 +330,66 @@ describe('blockPreviewDocument (gallery)', () => {
     expect(html).not.toMatch(/\{%|\{\{/)
   })
 })
+
+describe('a hero the design studio drew (DST-006a)', () => {
+  const picture = {
+    src: 'https://db.example/storage/v1/object/sign/studio-renders/render/x.jpg?token=t',
+    alt: 'Just in. Meet the cedar tray. Hand-finished, made to last.',
+    height: 640,
+    render: '33333333-3333-4333-8333-333333333333'
+  }
+
+  it.each(['hero_product', 'hero_image'] as const)(
+    '%s shows the picture, linked and full width, with its words as alt, then the live button only',
+    (type) => {
+      const base = sampleBlocks[type].content as Record<string, unknown>
+      const html = renderBlock(
+        block(type, { ...base, picture }),
+        httpsBrand,
+        'klaviyo'
+      )
+      const img = html.match(/<img [^>]*>/g) ?? []
+      expect(img).toHaveLength(1)
+      expect(img[0]).toContain(`src="${picture.src.replace(/&/g, '&amp;')}"`)
+      expect(img[0]).toContain(`alt="${picture.alt}"`)
+      expect(img[0]).toContain('width="600"')
+      // Linked like the hero's photo, and the button stays live.
+      expect(html).toMatch(
+        new RegExp(
+          `<a href="${String(base.url).replace(/[.?]/g, '\\$&')}"[^>]*><img`
+        )
+      )
+      expect(html).toContain(`>${String(base.cta)}</a>`)
+      // The words are in the picture: never drawn again as HTML.
+      expect(html).not.toContain(`>${String(base.headline)}<`)
+      if (base.sub) expect(html).not.toContain(String(base.sub))
+    }
+  )
+
+  it('takes only an https picture of a usable size, with its render', () => {
+    const base = sampleBlocks.hero_product.content as Record<string, unknown>
+    for (const bad of [
+      { ...picture, src: 'http://db.example/x.jpg' },
+      { ...picture, height: 20 },
+      { ...picture, render: 'not-a-render' },
+      { ...picture, extra: 1 }
+    ])
+      expect(parseBlock('hero_product', { ...base, picture: bad }).ok).toBe(
+        false
+      )
+    expect(parseBlock('hero_product', { ...base, picture }).ok).toBe(true)
+  })
+
+  it('escapes the alt text', () => {
+    const base = sampleBlocks.hero_image.content as Record<string, unknown>
+    const html = renderBlock(
+      block('hero_image', {
+        ...base,
+        picture: { ...picture, alt: 'Grove & Co "new" <tray>' }
+      }),
+      httpsBrand,
+      'klaviyo'
+    )
+    expect(html).toContain('alt="Grove &amp; Co &quot;new&quot; &lt;tray&gt;"')
+  })
+})

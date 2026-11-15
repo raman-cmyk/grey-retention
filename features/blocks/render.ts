@@ -188,6 +188,33 @@ const linked = (url: string, inner: string) =>
   `<a href="${safeUrl(url)}" target="_blank" style="text-decoration:none">${inner}</a>`
 
 /**
+ * DST-006a: a hero the design studio drew. The picture is the section
+ * (its words drawn, and in its alt text), linked like the hero's photo,
+ * full width with no padding; the button stays live HTML below it.
+ */
+function studioHero(
+  type: 'hero_product' | 'hero_image',
+  c: {
+    picture?: { src: string; alt: string; height: number }
+    url: string
+    cta: string
+  },
+  ctx: Ctx
+) {
+  const picture = c.picture!
+  return (
+    row(
+      type,
+      linked(c.url, image(picture.src, picture.alt, EMAIL_WIDTH, ctx)),
+      {
+        padding: '0',
+        pad: false
+      }
+    ) + row(type, button(c.cta, c.url, ctx), { padding: '20px 24px 32px' })
+  )
+}
+
+/**
  * Side-by-side cells. `stack` cells become full width on a phone; others
  * stay side by side (small photos and 2-up grids read fine at 375px).
  */
@@ -287,6 +314,7 @@ const renderers: Renderers = {
     )
   },
   hero_product: (c, ctx) => {
+    if (c.picture) return studioHero('hero_product', c, ctx)
     const t = ctx.theme
     const panel = safeColor(c.panel, t.page)
     const ink = readableOn(t.ink, panel)
@@ -303,14 +331,20 @@ const renderers: Renderers = {
     )
   },
   hero_image: (c, ctx) =>
-    row('hero_image', linked(c.url, image(c.image, c.alt, EMAIL_WIDTH, ctx)), {
-      padding: '0',
-      pad: false
-    }) +
-    row(
-      'hero_image',
-      `${headline(c.headline, ctx, ctx.theme.ink)}${c.sub ? `<p style="margin:0 0 22px;text-align:center;${bodyText(ctx, 17)}">${escapeHtml(c.sub)}</p>` : ''}${button(c.cta, c.url, ctx)}`
-    ),
+    c.picture
+      ? studioHero('hero_image', c, ctx)
+      : row(
+          'hero_image',
+          linked(c.url, image(c.image, c.alt, EMAIL_WIDTH, ctx)),
+          {
+            padding: '0',
+            pad: false
+          }
+        ) +
+        row(
+          'hero_image',
+          `${headline(c.headline, ctx, ctx.theme.ink)}${c.sub ? `<p style="margin:0 0 22px;text-align:center;${bodyText(ctx, 17)}">${escapeHtml(c.sub)}</p>` : ''}${button(c.cta, c.url, ctx)}`
+        ),
   offer_banner: (c, ctx) => {
     const t = ctx.theme
     const code = c.code

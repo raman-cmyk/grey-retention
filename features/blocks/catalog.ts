@@ -65,6 +65,22 @@ export const imageUrlSchema = z
   .max(2000)
   .refine(safeImage, { message: 'Use an https picture' })
 
+/**
+ * DST-006a: a hero the design studio drew (D25). The picture is the whole
+ * section as the browser drew it (1,200 px wide, shown at 600): its words
+ * are in the picture and in its alt text (DST-003b's `sectionAlt`), so the
+ * hero shows the picture and its live button only. `src` is an https link
+ * to the stored picture (a long-lived signed link; Klaviyo imports it when
+ * the draft is pushed); `render` names the render it came from.
+ */
+export const studioPictureSchema = z.strictObject({
+  src: imageUrlSchema,
+  alt: text(400),
+  /** CSS px at 600 wide. */
+  height: z.int().min(40).max(1600),
+  render: z.uuid()
+})
+
 const hexSchema = z
   .string()
   .trim()
@@ -116,7 +132,8 @@ const definitions = {
       alt: optionalText(160),
       url: urlSchema,
       cta: text(40),
-      panel: hexSchema.optional()
+      panel: hexSchema.optional(),
+      picture: studioPictureSchema.optional()
     })
   },
   hero_image: {
@@ -130,7 +147,8 @@ const definitions = {
       headline: text(80),
       sub: optionalText(160),
       url: urlSchema,
-      cta: text(40)
+      cta: text(40),
+      picture: studioPictureSchema.optional()
     })
   },
   offer_banner: {
