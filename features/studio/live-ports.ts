@@ -60,10 +60,10 @@ export function studioPortsFor(
   }
   const fits = (calls = 1) =>
     input.now() + calls * agentCallMs + callSlackMs <= input.until
-  const files = db.storage.from(bucket)
+  const files = () => db.storage.from(bucket)
   /** The render's stored file, only while its tag is the one recorded. */
   const tagged = async (render: Extract<BuildRender, { state: 'drawn' }>) => {
-    const info = await files.info(render.path)
+    const info = await files().info(render.path)
     return !info.error && tagOf(info.data?.etag) === tagOf(render.etag)
   }
   return {
@@ -83,7 +83,7 @@ export function studioPortsFor(
       buildRenders(db, { tenant: input.tenant, build: input.build }),
     async picture(render, section) {
       if (!(await tagged(render))) return null
-      const file = await files.download(render.path)
+      const file = await files().download(render.path)
       if (file.error || !file.data) return null
       // Changed while it was read: not the picture the browser drew.
       if (!(await tagged(render))) return null
@@ -106,7 +106,10 @@ export function studioPortsFor(
           r.id === render && r.state === 'drawn'
       )
       if (!drawn || !(await tagged(drawn))) return null
-      const signed = await files.createSignedUrl(drawn.path, pictureLinkSeconds)
+      const signed = await files().createSignedUrl(
+        drawn.path,
+        pictureLinkSeconds
+      )
       const url = signed.data?.signedUrl
       if (signed.error || !url) return null
       try {
