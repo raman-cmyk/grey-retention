@@ -389,4 +389,59 @@ describe('the kinds of text email (DST-PIC #24)', () => {
         })
       ).toBeUndefined()
   })
+
+  it('judges the note as one block, and a short line of it as a copy only whole', async () => {
+    expect(
+      founderNote(
+        await briefFor('founder_note', {
+          note: [
+            'Here is a little code from me, just for you.',
+            'WINTER25 works all week.'
+          ]
+        })
+      )
+    ).toBeNull()
+    const brief = await briefFor('founder_note', {
+      note: [...note, 'Thank you.']
+    })
+    expect(
+      rulesOf(brief, {
+        body: [
+          'I wanted to write to you myself.',
+          `I hope it finds you well this week. Thank you. ${filler(30)}`,
+          'Here is [the candle](1).'
+        ]
+      })
+    ).not.toContain('kind_note_quoted')
+  })
+
+  it('reads more thanks, and the win-back lines as guilt, without a false hit', async () => {
+    const thank = await briefFor('thank_you')
+    for (const words of [
+      'We are so thankful for you this season.',
+      'You are so appreciated here.',
+      'With gratitude, from all of us.',
+      'Thank\u00a0you for reading along.'
+    ])
+      expect(
+        rulesOf(thank, { body: [words, `Warm ${filler(60)}`] }),
+        words
+      ).not.toContain('kind_thanks')
+    const miss = await briefFor('we_miss_you')
+    for (const words of [
+      'You didn’t open our last letter.',
+      'We haven’t seen you in a while.',
+      'We haven’t heard from you lately.',
+      'It’s been ages since we’ve seen you.'
+    ])
+      expect(
+        rulesOf(miss, { body: [words, `Warm ${filler(60)}`] }),
+        words
+      ).toContain('kind_guilt')
+    expect(
+      rulesOf(miss, {
+        body: ['Tell us where you’ve been lighting it.', `Warm ${filler(60)}`]
+      })
+    ).not.toContain('kind_guilt')
+  })
 })

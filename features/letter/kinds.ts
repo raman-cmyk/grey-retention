@@ -147,7 +147,8 @@ export function founderNote(brief: LetterBrief): string[] | null {
     draft: {
       subject: '',
       preview: '',
-      blocks: note.map((text, i) => ({ id: `note-${i + 1}`, text }))
+      // One block, as the designed founder note section is judged.
+      blocks: [{ id: 'note', text: note.join('\n') }]
     },
     facts: input.facts,
     maxDiscountPercent: input.maxDiscountPercent,
@@ -160,7 +161,11 @@ export function founderNote(brief: LetterBrief): string[] | null {
       .map((p) => amount(p.price))
       .filter((n): n is number => n !== null)
   )
-  if (qa.failures.length || note.some((p) => strayPrices(p, prices).length))
+  const store = [brief.brandName, ...input.products.map((p) => p.title)]
+  if (
+    qa.failures.length ||
+    note.some((p) => strayPrices(masked(p, store), prices).length)
+  )
     return null
   return note.map((p) => p.trim())
 }
@@ -216,7 +221,7 @@ export function kindRules(brief: LetterBrief): string[] {
   const note = placedNote(brief)
   const noted = note ? note.reduce((n, p) => n + wordCount(p), 0) : 0
   const length = note
-    ? `The founder’s note has ${noted} words; with yours the letter is ${letterWords.min} to ${letterWords.max} words: write ${Math.max(0, letterWords.min - noted)} to ${letterWords.max - noted} words of your own, in at most ${founderParagraphs} paragraphs.`
+    ? `The founder’s note has ${noted} words; with yours the letter is ${letterWords.min} to ${letterWords.max} words: write ${noted >= letterWords.min ? `up to ${letterWords.max - noted}` : `${letterWords.min - noted} to ${letterWords.max - noted}`} words of your own, in at most ${founderParagraphs} paragraphs.`
     : `Write ${spec.words.min} to ${spec.words.max} words in the paragraphs and the P.S. together.`
   return [...spec.rules, length]
 }
@@ -224,12 +229,16 @@ export function kindRules(brief: LetterBrief): string[] {
 /** Words that lay guilt on a reader who has been away (absence, never warmth). */
 const absent =
   '(?:bought|ordered|shopped|opened|read|visited|been back|been in|come back|came back|stopped by|clicked)'
+/** After "didn't", the same in the base form. */
+const absentBase = '(?:buy|order|shop|open|read|visit|come back|stop by|click)'
 const guilt = new RegExp(
   [
-    `\\byou (?:haven['’]t|have not|hadn['’]t|had not|didn['’]t|did not)(?: \\w+)? ${absent}\\b`,
+    `\\byou (?:haven['’]t|have not|hadn['’]t|had not)(?: \\w+)? ${absent}\\b`,
+    `\\byou (?:didn['’]t|did not)(?: \\w+)? ${absentBase}\\b`,
     `\\bwe(?:['’]ve| have)? noticed (?:that )?you\\b`,
     `\\bwhere (?:have )?you been\\b`,
-    `\\bwhere you['’]ve been\\b`,
+    `\\bwe (?:haven['’]t|have not) (?:seen|heard from) you\\b`,
+    `\\bsince we(?:['’]ve| have)? (?:last )?(?:seen|heard from) you\\b`,
     `\\bsince you last ${absent}\\b`,
     `\\byou(?:['’]ve| have)? (?:been away|forgotten (?:about )?us|forgot (?:about )?us|left us|stopped (?:buying|ordering|shopping|opening|reading|visiting))\\b`
   ].join('|'),
@@ -237,7 +246,8 @@ const guilt = new RegExp(
 )
 const firstPerson = /\b(?:i|i['’]m|i['’]ve|i['’]d|i['’]ll|my|me)\b/i
 /** Thanks, as words ("Thanksgiving" and "thankfully" thank no one). */
-const thanks = /\b(?:thank you|thank-you|thanks|grateful|appreciate)\b/i
+const thanks =
+  /\b(?:thank[\s-]you|thanks|thankful|grateful|gratitude|appreciate|appreciated|appreciation)\b/i
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 /** `text` with the store's own words (its name, titles) blanked out. */
@@ -293,7 +303,10 @@ export function kindProblems(
         'kind_first_person',
         'The founder writes a founder note: write your paragraphs in the first person ("I").'
       )
-    if (own.some((t) => note.some((p) => t.includes(p))))
+    // A short line of the note ("Thank you.") is a copy only as a whole.
+    const copies = (t: string, p: string) =>
+      wordCount(p) >= 6 ? t.includes(p) : t.trim() === p
+    if (own.some((t) => note.some((p) => copies(t, p))))
       add(
         'kind_note_quoted',
         'Never repeat the founder’s note: the system places it once, after your first paragraph.'
