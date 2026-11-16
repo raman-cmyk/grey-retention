@@ -192,7 +192,8 @@ describe('the design step with the design studio (DST-006c part 2b)', () => {
         agent: 'ab-test',
         reasonCode: 'ab_no_coded',
         reason: 'Its coded design did not pass the email checks.',
-        fallback: 'Sent only the designed email to Klaviyo, with no A/B test.'
+        fallback:
+          'Only the designed email goes into Klaviyo as a draft, with no A/B test.'
       })
     ])
   })

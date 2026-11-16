@@ -493,28 +493,31 @@ export async function runBuildStep(
   // words, through the same hard checks), in one Klaviyo draft, half the
   // audience each, no winner picked. Each is under Gmail's size (DST-005),
   // so both fit what is stored. Short of A, B goes alone, logged.
-  if (made.ok && studioEmail && made.email === studioEmail) {
+  const studioPassed = made.ok && !!studioEmail && made.email === studioEmail
+  if (made.ok && studioPassed) {
     const a = draw(plain)
-    const coded = a.ok && !checksOf(a.email.html).length ? a.email.html : null
+    const codedHtml =
+      a.ok && !checksOf(a.email.html).length ? a.email.html : null
     made = {
       ok: true,
       email: {
         ...made.email,
         approach: 'B',
-        ...(coded ? { designA: coded } : {})
+        ...(codedHtml ? { designA: codedHtml } : {})
       }
     }
-    if (!coded)
+    if (!codedHtml)
       await ctx.fallbacks.record({
         tenantId: ctx.tenantId,
         campaignId: ctx.campaignId ?? null,
         agent: 'ab-test',
         reasonCode: 'ab_no_coded',
         reason: 'Its coded design did not pass the email checks.',
-        fallback: 'Sent only the designed email to Klaviyo, with no A/B test.',
+        fallback:
+          'Only the designed email goes into Klaviyo as a draft, with no A/B test.',
         attempts: 1,
         detail: {},
-        dedupeKey: `ab-test:${keyPart(ctx.callerKey)}`
+        dedupeKey: `ab-test:${keyPart(ctx.callerKey)}:no-coded`
       })
   }
   if (made.ok && coded)

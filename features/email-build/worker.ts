@@ -491,19 +491,23 @@ export async function runEmailBuilds(
           sample: pushed.sample
         })
         if (done.error) throw done.error
-        // EML-AB: Klaviyo would not take an even test of the two designs,
-        // so the draft has design A only (the owner's log says so).
+        // EML-AB: the draft could not hold both designs (Klaviyo refused
+        // the even test, or the draft was made with one design before), so
+        // it has design A only; the owner's log says so, once per planned
+        // email (its push key). Written after the push is recorded: a crash
+        // between the two loses this line, never the draft.
         if (pushed.designs === 'A')
           await fallbacks.record({
             tenantId: job.tenant_id,
             campaignId: null,
             agent: 'ab-test',
-            reasonCode: 'ab_even_refused',
-            reason: 'Klaviyo would not split the two designs half and half.',
-            fallback: 'The draft in Klaviyo has the coded design only.',
+            reasonCode: 'ab_one_design',
+            reason: 'This email’s Klaviyo draft could not hold both designs.',
+            fallback:
+              'The draft in Klaviyo has the coded design only, with no A/B test.',
             attempts: 1,
             detail: {},
-            dedupeKey: `ab-test:${job.id}:even`
+            dedupeKey: `ab-test:${job.push_key}:one-design`
           })
       }
       moved = job.id
