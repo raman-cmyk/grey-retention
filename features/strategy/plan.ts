@@ -8,6 +8,12 @@ import { addDays, pulseDays, type Pulse } from './pulse'
 import type { CompetitorMove } from './competitors'
 import { failedWords, tryAgent, type AgentCtx, type TryResult } from './retry'
 import { statedFact } from './words'
+import {
+  kindsWithoutOffer,
+  kindWhen,
+  letterKinds,
+  type LetterKind
+} from '@/features/letter/kind-list'
 
 /**
  * STR-003 part 1: "Plan next 15 days" after the pulse and the competitor
@@ -86,7 +92,8 @@ const planInputSchema = z.object({
         offer: z.boolean()
       })
     )
-    .max(200)
+    .max(200),
+  founderNote: z.boolean().optional()
 })
 
 export type PlanInput = {
@@ -114,6 +121,11 @@ export type PlanInput = {
    * count against the weekly cap, the offer share and the offer spacing.
    */
   existing: { date: string; audienceId: string; offer: boolean }[]
+  /**
+   * DST-PIC #24: the store has the founder's own note, so a text email may
+   * be a founder note (missing: it has none).
+   */
+  founderNote?: boolean
 }
 
 /**
@@ -154,6 +166,8 @@ export type Slot = {
   audienceId: string
   /** D26 (TXT-001f): missing (the code calendar's, older plans): designed. */
   format?: EmailFormat
+  /** DST-PIC #24: a text email's kind; missing: a plain short note. */
+  letterKind?: LetterKind
 }
 
 export type PlannedSlot = {
@@ -166,6 +180,8 @@ export type PlannedSlot = {
   audience: { id: string; label: string }
   /** D26: a text email; missing: a designed one. */
   format?: 'text'
+  /** DST-PIC #24: a text email's kind; missing: a plain short note. */
+  letterKind?: LetterKind
   /** Why this email: the brief's goal and the facts behind it. */
   why: string
   evidence: { id: string; fact: string }[]
@@ -362,7 +378,12 @@ const slotSchema = z.strictObject({
   audienceId: z.string().min(1).max(120),
   // Asked for (the answer shape requires it); an answer that leaves it out
   // (a provider that does not enforce the shape) is a designed email.
-  format: z.enum(emailFormats).optional()
+  format: z.enum(emailFormats).optional(),
+  // DST-PIC #24: "none" (or left out) is no kind.
+  letterKind: z
+    .enum(['none', ...letterKinds])
+    .optional()
+    .transform((k) => (k === 'none' ? undefined : k))
 })
 const slotAnswer = z.strictObject({
   slots: z.array(slotSchema).min(1).max(10)
@@ -389,6 +410,11 @@ export function productsForPlanner(input: PlanInput) {
     .map((p) => ({ id: p.id, title: p.title, availableFrom: p.availableFrom }))
 }
 
+/** DST-PIC #24: the kinds of text email, for the planner. */
+const kindGuide = letterKinds
+  .map((k) => `"${k}" (${kindWhen[k].replace(/\.$/, '')})`)
+  .join(', ')
+
 export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
   name: 'calendar-planner',
   version: '2026-11-16.1',
@@ -399,6 +425,7 @@ export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
     'You are the Calendar planner for a small online store that sends marketing emails.',
     'Turn the brief into email slots for the next 15 days: for each, the action it serves (actionIndex), date, local send time, email type, a short angle in plain words, up to three products, the offer (or null), the audience and the format.',
     `Format: "designed" for an email with pictures and sections, or "text" for a short personal letter from the store (a story, a note from the founder, a quick question, a thank-you, a reminder about one product). A text email names one product at most. At most one email in ${textShareOneIn} is a text email (a plan of fewer than ${textShareOneIn} emails has none).`,
+    `letterKind, for a text email: ${kindGuide}, or "none" for a short note of no kind. A founder note only when founder_note_available is true; a quick question or a launch teaser never carries an offer. A designed email's letterKind is "none".`,
     'Use only the products, offers and audiences given, by id. Never use a day with no emails, or a product before its availableFrom day.',
     `Keep to sends_per_week. An email of type "offer" carries an offer; other types carry none. Offers: at most ${offerSharePercent}% of a week’s emails, and at least ${offerSpacingDays} days apart. One email per audience per day. Send times between ${sendHours.from} and ${sendHours.to}.`,
     'If previous_plan is given, revise it: fix every problem listed against its slotIndex and keep what works.',
@@ -416,6 +443,7 @@ export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
       products: productsForPlanner(input),
       offers: input.offers.map((o) => ({ id: o.id, until: o.until })),
       audiences: input.audiences,
+      founder_note_available: input.founderNote === true,
       ...(previous
         ? {
             previous_plan: previous.slots.map((s, slotIndex) => ({
@@ -449,7 +477,8 @@ export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
               productIds: { type: 'array', items: { type: 'string' } },
               offerId: { type: ['string', 'null'] },
               audienceId: { type: 'string' },
-              format: { type: 'string', enum: [...emailFormats] }
+              format: { type: 'string', enum: [...emailFormats] },
+              letterKind: { type: 'string', enum: ['none', ...letterKinds] }
             },
             required: [
               'actionIndex',
@@ -460,7 +489,8 @@ export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
               'productIds',
               'offerId',
               'audienceId',
-              'format'
+              'format',
+              'letterKind'
             ]
           }
         }
@@ -491,6 +521,9 @@ export type CalendarRule =
   | 'send_time'
   | 'text_products'
   | 'text_share'
+  | 'kind_not_text'
+  | 'kind_needs_founder_note'
+  | 'kind_never_offers'
   | 'same_day'
   | 'weekly_cap'
   | 'audience_cap'
@@ -570,6 +603,21 @@ export function calendarProblems(
     if (stated) add(i, 'stated_fact', `the angle writes ${stated}.`)
     if (s.format === 'text' && s.productIds.length > 1)
       add(i, 'text_products', 'a text email names one product at most.')
+    // DST-PIC #24: a kind only on a text email it fits (code fixes these).
+    if (s.letterKind && s.format !== 'text')
+      add(i, 'kind_not_text', 'only a text email has a letterKind.')
+    else if (s.letterKind === 'founder_note' && input.founderNote !== true)
+      add(
+        i,
+        'kind_needs_founder_note',
+        'a founder note needs founder_note_available.'
+      )
+    else if (
+      s.letterKind &&
+      kindsWithoutOffer.includes(s.letterKind) &&
+      s.offerId !== null
+    )
+      add(i, 'kind_never_offers', `a ${s.letterKind} never carries an offer.`)
   })
   // D26: at most one email in `textShareOneIn` is a text email (rounded
   // down: a plan of 4 has one, a plan of 2 none); the latest ones over it,
@@ -695,7 +743,13 @@ export function calendarProblems(
   return problems
 }
 
-const textRules = new Set<Problem['rule']>(['text_products', 'text_share'])
+const textRules = new Set<Problem['rule']>([
+  'text_products',
+  'text_share',
+  'kind_not_text',
+  'kind_needs_founder_note',
+  'kind_never_offers'
+])
 
 /**
  * D26 (D16, fall back safely): a slot that breaks only the text rules is
@@ -705,12 +759,22 @@ const textRules = new Set<Problem['rule']>(['text_products', 'text_share'])
  */
 function textFixed(slot: Slot, problems: readonly Problem[]): Slot | null {
   if (problems.some((p) => !textRules.has(p.rule))) return null
-  if (problems.some((p) => p.rule === 'text_share')) {
-    const designed = { ...slot }
-    delete designed.format
-    return designed
-  }
-  return { ...slot, productIds: slot.productIds.slice(0, 1) }
+  const has = (rule: Problem['rule']) => problems.some((p) => p.rule === rule)
+  const fixed = { ...slot }
+  if (has('text_share')) {
+    // A designed email: no format, and no letter kind.
+    delete fixed.format
+    delete fixed.letterKind
+  } else if (has('text_products'))
+    fixed.productIds = slot.productIds.slice(0, 1)
+  // DST-PIC #24: a kind that does not fit is a short note of no kind.
+  if (
+    has('kind_not_text') ||
+    has('kind_needs_founder_note') ||
+    has('kind_never_offers')
+  )
+    delete fixed.letterKind
+  return fixed
 }
 
 /** The slots that would be dropped: a problem code cannot fix. */
@@ -1132,6 +1196,9 @@ export const ruleWords: Record<CalendarRule | 'critic', string> = {
   send_time: 'its time is outside your send hours',
   text_products: 'it was a text email with more than one product',
   text_share: 'too many of the plan’s emails were text emails',
+  kind_not_text: 'it was a designed email with a letter kind',
+  kind_needs_founder_note: 'it was a founder note without the founder’s note',
+  kind_never_offers: 'it was a kind of letter that never has an offer',
   same_day: 'that audience already gets an email that day',
   weekly_cap: 'that week already has as many emails as you chose',
   audience_cap: 'that audience already gets enough emails that week',
@@ -1221,6 +1288,9 @@ function planOutput(
           : null,
         audience: audiences.get(s.audienceId)!,
         ...(s.format === 'text' ? { format: 'text' as const } : {}),
+        ...(s.format === 'text' && s.letterKind
+          ? { letterKind: s.letterKind }
+          : {}),
         why: action.goal,
         evidence: action.evidenceIds
           .filter((id) => facts.has(id))

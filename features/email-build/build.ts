@@ -14,6 +14,7 @@ import {
 } from '@/features/assembly/inputs'
 import { assembleLocked, assembleLockedPlain } from '@/features/assembly/modes'
 import { localTimeCandidates } from '@/lib/local-time'
+import { letterKinds } from '@/features/letter/kind-list'
 import {
   codeSectionPlan,
   planSections,
@@ -80,7 +81,9 @@ export const plannedEmail = z.object({
    * D26 (TXT-001c): a designed email or a text email (a short letter).
    * Missing on slots planned before it: designed.
    */
-  format: z.enum(emailFormats).optional()
+  format: z.enum(emailFormats).optional(),
+  /** DST-PIC #24: a text email's kind (missing: a short note of no kind). */
+  letterKind: z.enum(letterKinds).optional()
 })
 export type PlannedEmail = z.infer<typeof plannedEmail>
 
@@ -827,7 +830,12 @@ async function buildLetterEmail(
   const locked = await contentStep({ ...input, sections: sections.output }, ctx)
   // No time limit here (`ctx.until`): the rewrites run to their end.
   const copy = await letterCopyStep(
-    { store: input.store, locked, taken: input.taken },
+    {
+      store: input.store,
+      locked,
+      taken: input.taken,
+      ...(input.planned.letterKind ? { kind: input.planned.letterKind } : {})
+    },
     { ...ctx, until: undefined }
   )
   if (!copy.ok) return copy

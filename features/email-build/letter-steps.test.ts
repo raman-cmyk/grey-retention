@@ -434,4 +434,63 @@ describe('a text email in Create email (TXT-001c)', () => {
     expect(made.ok && made.email.format).toBeUndefined()
     expect(made.ok && made.email.text).toBeUndefined()
   })
+
+  it('passes the planned kind to the Letter writer (DST-PIC #24)', async () => {
+    const ai = model()
+    const made = await buildEmail(
+      {
+        planned: { ...planned, letterKind: 'thank_you' },
+        store: await store(),
+        offers: sampleOffers
+      },
+      ctxWith(ai)
+    )
+    expect(made.ok).toBe(true)
+    const writer = ai.mock.calls.find((c) =>
+      c[0].callerKey.startsWith('letter-writer:')
+    )![0]
+    expect(writer.request.system).toContain('This letter is a thank-you')
+    expect(writer.request.user).toContain('"kind":"Thank-you"')
+  })
+
+  it('a planned kind that does not fit: a letter of no kind, logged once', async () => {
+    const ai = model()
+    const fallbacks = memoryFallbackLog()
+    const made = await buildEmail(
+      {
+        // A quick question never carries an offer; this one has one.
+        planned: { ...planned, letterKind: 'quick_question' },
+        store: await store(),
+        offers: sampleOffers
+      },
+      ctxWith(ai, fallbacks)
+    )
+    expect(made.ok).toBe(true)
+    const writer = ai.mock.calls.find((c) =>
+      c[0].callerKey.startsWith('letter-writer:')
+    )![0]
+    expect(writer.request.system).not.toContain('This letter is a quick')
+    expect(fallbacks.entries()).toContainEqual(
+      expect.objectContaining({
+        agent: 'letter-writer',
+        reasonCode: 'letter_kind_dropped',
+        reason:
+          'The planned kind of letter never carries an offer, and this email has one.',
+        detail: { kind: 'quick_question', why: 'kind_never_offers' }
+      })
+    )
+    // Without the agents the plain letter has no kind: nothing to log.
+    const quiet = memoryFallbackLog()
+    await buildEmail(
+      {
+        planned: { ...planned, letterKind: 'quick_question' },
+        store: await store(),
+        offers: sampleOffers
+      },
+      ctxWith(null, quiet)
+    )
+    expect(
+      quiet.entries().filter((e) => e.reasonCode === 'letter_kind_dropped')
+    ).toEqual([])
+  })
 })

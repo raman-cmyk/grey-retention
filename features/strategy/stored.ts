@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { letterKinds } from '@/features/letter/kind-list'
 import { emailFormats, emailTypes } from './plan'
 
 /**
@@ -84,6 +85,8 @@ export const storedPlan = z.object({
         }),
         // D26: a text email's slot says so; a designed one has none.
         format: z.enum(emailFormats).optional(),
+        // DST-PIC #24: a text email's kind.
+        letterKind: z.enum(letterKinds).optional(),
         why: words,
         evidence: z
           .array(z.object({ id: z.string().max(160), fact: words }))
