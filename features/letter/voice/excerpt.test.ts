@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { renderBlock } from '@/features/blocks/render'
 import { sampleBlocks, sampleBrand } from '@/features/blocks/samples'
 import type { MessageBody } from '@/lib/providers/klaviyo/history'
-import { maxExcerptChars, voiceExcerpt as excerptOf } from './excerpt'
+import {
+  maxExcerptChars,
+  ownWordsOf,
+  voiceExcerpt as excerptOf
+} from './excerpt'
 
 /** PIC-23 part 2a: the owner's own words, safe to keep. */
 const body = (over: Partial<MessageBody>): MessageBody => ({
@@ -275,5 +279,64 @@ describe('the owner’s words as a voice excerpt (PIC-23)', () => {
     )
     const loop = `{% for item in event.items %}{{ item.name }}{% empty %}Hi Jordan Sample{% endfor %}\n${letter}`
     expect(excerpt(body({ text: loop }))!.text).not.toContain('Jordan')
+  })
+
+  it('finds a name next to a greeting or a thanks, and keeps the owner’s P.S. and the store’s words (round 4)', () => {
+    const spotlights = [
+      'Dear Jordan Sample, thank you for the lovely letter.',
+      'Meet Jordan Sample, our customer of the month.',
+      'Thanks Jordan Sample for the photo of your dog in the overshirt.',
+      'Hi Jordan Sample, your order is ready.',
+      'Happy Birthday Jordan Sample from all of us.',
+      'Our Winner Jordan Sample gets a year of shirts.',
+      'Shoutout To Jordan Sample for the photo.',
+      'Jordan Sample And Priya Raman won the giveaway.',
+      'Thank You Jordan Sample!',
+      'Welcome Jordan Sample to the team.',
+      'Photo By Jordan Sample',
+      'Made With Love By Jordan Sample',
+      'Love From Jordan Sample',
+      'With Jordan Sample and the team at the mill.',
+      'Team Member Spotlight: Jordan Sample',
+      'Top Customer Jordan Sample bought ten shirts.',
+      'Happy Mother’s Day Jordan Sample, and thank you.',
+      'Big thanks to Mary Jane Watson Parker for the photos.'
+    ]
+    const named = excerpt(
+      body({ text: `${letter}\n${spotlights.join('\n')}` })
+    )!.text
+    expect(named).not.toMatch(/Jordan|Sample|Priya|Raman|Watson|Parker/)
+    for (const kept of [
+      'Meet [name], our customer',
+      'Happy Birthday [name]',
+      'Happy Mother’s Day [name]',
+      'Thank You [name]!'
+    ])
+      expect(named, kept).toContain(kept)
+
+    const own = ['Cedar Goods', 'Maya’s Overshirt', 'Cedar Goods Co.']
+    const owner = `${letter}\nP.S. If you have a question, just hit reply and it comes to me.\nP.P.S. Remember the studio sale on Sunday afternoon.\nU.S. Shipping is free this week on every order.\nTake Vitamin D. Then go for a walk in your new overshirt.\nMaya's Overshirt is back in three new colours.\nCedar Goods Co. has been making shirts for ten years.\nSOLD OUT twice, now back for good.\nSneak Peek at the new colours we are testing.\nOur star rating on Google is 4.9, and I am so proud of the team.\nThank you all.`
+    const text = excerptOf(body({ text: owner }), ownWordsOf(own))!.text
+    for (const line of owner.split('\n').slice(-10))
+      expect(text, line).toContain(line)
+    // A star in a picture's words, not a rating: no review.
+    const anise = `<img alt="Star anise candle" src="candle-star-anise.jpg"><h2>Warm And Slow</h2><p>${letter.replace(/\n+/g, '</p><p>')}</p>`
+    expect(excerpt(body({ html: anise, editor: 'code' }))!.text).toContain(
+      'Warm And Slow'
+    )
+    // A star's picture by its file still is.
+    const widget = `<p>${letter.replace(/\n+/g, '</p><p>')}</p><img src="https://cdn.example/star-full.png" alt=""><p>So soft.</p><p>Jordan Sample</p>`
+    expect(excerpt(body({ html: widget, editor: 'code' }))!.text).not.toMatch(
+      /So soft|Jordan|Sample/
+    )
+    // A catalogue of long titles is read once, and quickly.
+    const titles = Array.from({ length: 50_000 }, (_, i) =>
+      Array.from({ length: 40 }, (_, j) => `w${i}x${j}`).join(' ')
+    )
+    const start = performance.now()
+    const catalogue = ownWordsOf(titles)
+    for (let i = 0; i < 20; i++) excerptOf(body({ text: letter }), catalogue)
+    expect(performance.now() - start).toBeLessThan(3_000)
+    expect(catalogue.runs.size).toBeLessThanOrEqual(200_000)
   })
 })

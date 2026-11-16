@@ -108,10 +108,14 @@ function hidden(e: T.Element) {
 export const reviewMark = '@@review@@'
 const quoteBlocks = new Set(['blockquote', 'cite', 'figcaption', 'q'])
 const reviewWords =
-  /\b\d?\s*stars?\b|\brating\b|\breviews?\b|\btestimonials?\b/i
+  /\b(?:\d(?:\.\d)?|one|two|three|four|five)[\s-]*stars?\b|\bstars?[\s-]*rating\b|\brating\b|\breviews?\b|\btestimonials?\b/i
+/** A star's picture by its file: star.png, 5-stars.png, star-full.svg. */
+const starFile =
+  /(?:^|\/)(?:\d[-_]?)?stars?(?:[-_](?:full|filled|empty|half|on|off|rating|icon|gold|yellow|\d))?\.(?:png|gif|jpe?g|svg|webp)(?:$|[?#])/i
 const starPicture = (e: T.Element) =>
   (e.tagName === 'img' &&
-    reviewWords.test(`${attr(e, 'alt')} ${attr(e, 'src')}`)) ||
+    (reviewWords.test(`${attr(e, 'alt')} ${attr(e, 'src')}`) ||
+      starFile.test(attr(e, 'src')))) ||
   attr(e, 'class')
     .toLowerCase()
     .split(/\s+/)
@@ -278,7 +282,7 @@ function untag(text: string) {
 const starGlyphs = /[★☆⭐]/gu
 const starRun = /[★☆⭐]{3,}/u
 const ratingFirst =
-  /^\s*[1-5](?:\.\d)?\s?(?:stars?|\/\s?5|out of 5)\b|\bstar rating\b/i
+  /^\s*(?:[1-5](?:\.\d)?\s?(?:stars?|\/\s?5|out of 5)\b|star rating\b)/i
 function starLine(line: string) {
   if (starRun.test(line) || ratingFirst.test(line)) return true
   const glyphs = line.match(starGlyphs)?.length ?? 0
@@ -297,7 +301,7 @@ function quotedShare(line: string) {
 const wordsIn = (line: string) => line.split(/\s+/).filter(Boolean).length
 
 /** The text's lines, each review out with its stars, its quote and its name. */
-function withoutReviews(lines: readonly string[], own: Own) {
+function withoutReviews(lines: readonly string[], own: OwnWords) {
   const kept: string[] = []
   let after = false
   for (const line of lines) {
@@ -376,60 +380,240 @@ function phones(text: string) {
 
 // ---------------------------------------------------------------- names
 
-/** The store's own words, by their runs of one to three words. */
-type Own = ReadonlySet<string>
-function ownWords(own: readonly string[]): Own {
-  const set = new Set<string>()
-  for (const phrase of own.slice(0, 50_000)) {
-    const words = phrase.toLowerCase().split(/\s+/).filter(Boolean)
-    for (let i = 0; i < words.length && i < 40; i++)
-      for (let n = 1; n <= 3 && i + n <= words.length; n++)
-        set.add(words.slice(i, i + n).join(' '))
+/**
+ * One spelling for the store's words and a line's: NFKC, lower case, one
+ * apostrophe, no punctuation at a word's ends ("Co." is "co").
+ */
+const normWord = (word: string) =>
+  word
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
+
+/** The store's own words, by their runs of one to three words (`ownWordsOf`). */
+export type OwnWords = { readonly runs: ReadonlySet<string> }
+const maxOwnPhrases = 50_000
+const maxOwnWordsEach = 12
+const maxOwnRuns = 200_000
+
+/**
+ * The store's own words (its name, its product titles) as the name check
+ * reads them. Build it once and pass it to every `voiceExcerpt` of a run:
+ * at most 50,000 phrases, 12 words each, 200,000 runs in all.
+ */
+export function ownWordsOf(own: readonly string[]): OwnWords {
+  const runs = new Set<string>()
+  for (const phrase of own.slice(0, maxOwnPhrases)) {
+    if (typeof phrase !== 'string') continue
+    const words = phrase
+      .split(/\s+/)
+      .map(normWord)
+      .filter(Boolean)
+      .slice(0, maxOwnWordsEach)
+    for (let i = 0; i < words.length; i++)
+      for (let n = 1; n <= 3 && i + n <= words.length; n++) {
+        if (runs.size >= maxOwnRuns) return { runs }
+        runs.add(words.slice(i, i + n).join(' '))
+      }
   }
-  return set
+  return { runs }
 }
 
-/** Words of the calendar: a capitalised pair of them is no one's name. */
+/** Words of the calendar: they may start a name (April, Summer), never make one alone. */
 const calendar = new Set(
   "monday tuesday wednesday thursday friday saturday sunday january february march april may june july august september october november december black cyber small business christmas easter new year eve day mother's father's valentine's thanksgiving halloween boxing labor labour memorial independence spring summer autumn fall winter".split(
     ' '
   )
 )
-/** Common words a heading or a greeting is made of: never a name. */
+/**
+ * Common words a heading, a greeting or a sentence's start is made of
+ * (and the verbs an email's sentences start with): never part of a name,
+ * so "Meet Jordan Sample" keeps "Meet" and loses the name, and "Happy
+ * Thanksgiving" or "Our Story" stay.
+ */
 const common = new Set(
-  'a an the this that these next last first our your my his her their its all every each happy merry thank thanks dear hi hello hey welcome good great best top big little new free pro fun quick early final special limited meet shop sale gift gifts tip tips fact story news note notes update team love from with and or for of to in on at by is are was here now today tonight back thoughts morning evening weekend week month season holiday holidays edition collection'.split(
+  'a an the this that these those next last first our your my his her their its all every each any some no not happy merry thank thanks dear hi hello hey welcome congrats congratulations good great best top big little new free pro fun quick early final special limited meet shop sale sold out coming soon sneak peek studio diary field notes gift gifts tip tips fact facts story stories news note update updates team love from with without and or but so if then when while after before also just only still yet please for of to in on at by into about over under up down off is are was were be been will can do does did have has had here there now today tonight tomorrow back thoughts morning evening night weekend week month year season holiday holidays edition collection deal deals offer offers order orders shipping stock open closed inside behind scenes look birthday anniversary winner winners customer customers member members spotlight shoutout photo photos giveaway take get try make keep find see join come bring give grab save enjoy discover explore read watch learn start let check pick choose wear treat send call visit tell ask go you yours us we i me it they he she who what why how where which one two three'.split(
     ' '
   )
 )
-const titles = '(?:Mr|Mrs|Ms|Mx|Dr|Miss|Prof)\\.?'
-const particles = '(?:de|da|di|du|la|le|van|von|der|den|del|dos|das|al)'
-/** A name's part: a capitalised word (McDonald, O'Brien, Mary-Kate) or initials. */
-const part = "(?:[\\p{Lu}][\\p{L}'’-]{1,24}|[\\p{Lu}]\\.(?:\\s?[\\p{Lu}]\\.)?)"
-const namesAll = new RegExp(
-  `(?<![\\p{L}\\p{N}])(?:${titles}\\s+${part}(?:\\s+${part})?|${part}(?:\\s+(?:${particles}\\s+){0,3}${part}){1,2})(?![\\p{L}\\p{N}])`,
-  'gu'
+const titleWords = new Set(['mr', 'mrs', 'ms', 'mx', 'dr', 'miss', 'prof'])
+const particleWords = new Set(
+  'de da di du la le van von der den del dos das al'.split(' ')
 )
+/** Abbreviations written like initials: never a name. */
+const abbreviations = new Set(
+  'p.s. p.p.s. n.b. u.s. u.s.a. u.k. e.u. a.m. p.m. d.c. l.a. n.y. n.y.c. u.a.e. e.g. i.e.'.split(
+    ' '
+  )
+)
+/** A capitalised word: McDonald, O'Brien, Mary-Kate, JORDAN, Иван. */
+const capitalised = /^\p{Lu}[\p{L}'’-]{1,24}$/u
+/** Initials: J., A.J., J.R.R. */
+const initials = /^(?:\p{Lu}\.){1,3}$/u
+const opening = /^[("“«‘'[]+/u
+const closing = /[,;:!?.)"”»’'\]]+$/u
 
-/** Is this match a person's name (not the store's words, a date, a heading)? */
-function personal(found: string, own: Own) {
-  const lower = found
-    .toLowerCase()
-    .replace(/[’]/g, "'")
-    .replace(/[.,]+$/, '')
-  if (own.has(lower)) return false
-  const words = lower.split(/\s+/)
-  if (words.every((w) => calendar.has(w))) return false
-  if (words.some((w) => common.has(w))) return false
-  return true
+type Kind = 'part' | 'initial' | 'calendar' | 'title' | 'particle' | 'stop'
+type Token = {
+  kind: Kind
+  /** Where its word starts and ends in the line (punctuation outside). */
+  start: number
+  end: number
+  norm: string
+  /** Punctuation before it: a name starts here. */
+  opens: boolean
+  /** Punctuation after it: a name ends here. */
+  closes: boolean
+  /** It starts with a capital letter. */
+  upper: boolean
 }
-const hasName = (line: string, own: Own) =>
-  [...line.matchAll(namesAll)].some((m) => personal(m[0], own))
 
-/** People's names out, the store's own words and the calendar's kept. */
-const withoutNames = (line: string, own: Own) =>
-  line.replace(namesAll, (found) => (personal(found, own) ? '[name]' : found))
+function tokensOf(line: string): Token[] {
+  const out: Token[] = []
+  for (const m of line.matchAll(/\S+/g)) {
+    const raw = m[0]
+    const lead = opening.exec(raw)?.[0].length ?? 0
+    let word = raw.slice(lead)
+    let tail = closing.exec(word)?.[0] ?? ''
+    word = word.slice(0, word.length - tail.length)
+    // An initial's own full stop is its own ("A.J.", "P.S.").
+    if (tail.startsWith('.') && initials.test(`${word}.`)) {
+      word += '.'
+      tail = tail.slice(1)
+    }
+    const norm = normWord(word)
+    let kind: Kind = 'stop'
+    if (abbreviations.has(word.toLowerCase())) kind = 'stop'
+    else if (initials.test(word)) kind = 'initial'
+    else if (capitalised.test(word)) {
+      if (titleWords.has(norm)) {
+        kind = 'title'
+        // "Mrs." : the title's full stop does not end the name.
+        if (tail.startsWith('.')) tail = tail.slice(1)
+      } else if (common.has(norm)) kind = 'stop'
+      else if (calendar.has(norm)) kind = 'calendar'
+      else kind = 'part'
+    } else if (particleWords.has(word)) kind = 'particle'
+    const start = (m.index ?? 0) + lead
+    out.push({
+      kind,
+      start,
+      end: start + word.length,
+      norm,
+      opens: lead > 0,
+      closes: tail !== '',
+      upper: /^\p{Lu}/u.test(word)
+    })
+  }
+  return out
+}
 
-const redact = (line: string, own: Own) =>
+/** The tokens that may make a name together, split at anything else. */
+function groupsOf(tokens: readonly Token[]) {
+  const groups: { tokens: Token[]; next: Token | undefined }[] = []
+  let current: Token[] = []
+  const close = (next: Token | undefined) => {
+    if (current.length) groups.push({ tokens: current, next })
+    current = []
+  }
+  tokens.forEach((t, i) => {
+    if (t.kind === 'stop') return close(t)
+    if (t.opens || t.kind === 'title') close(t)
+    current.push(t)
+    if (t.closes) close(tokens[i + 1])
+  })
+  close(undefined)
+  return groups
+}
+
+const runOf = (tokens: readonly Token[]) => tokens.map((t) => t.norm).join(' ')
+const counted = (t: Token) =>
+  t.kind === 'part' || t.kind === 'initial' || t.kind === 'calendar'
+
+/** The part of a group that is a person's name, or null. */
+function nameIn(
+  group: { tokens: Token[]; next: Token | undefined },
+  own: OwnWords
+): Token[] | null {
+  const all = group.tokens
+  let lo = 0
+  let hi = all.length
+  const trim = () => {
+    while (lo < hi && all[lo]!.kind === 'particle') lo++
+    while (hi > lo && all[hi - 1]!.kind === 'particle') hi--
+  }
+  trim()
+  // "Vitamin D. Then": one capital that ends a sentence is no initial
+  // ("Jordan S.:" or "Jordan S.," is one).
+  const end = all[hi - 1]
+  if (
+    end?.kind === 'initial' &&
+    end.norm.length === 1 &&
+    !end.closes &&
+    hi === all.length &&
+    group.next?.upper
+  ) {
+    hi--
+    trim()
+  }
+  if (lo >= hi) return null
+  const run = (a: number, b: number) => runOf(all.slice(a, b))
+  // The store's own words: the whole group, or a run of two or three at
+  // either end ("Cedar Goods Co.", a product title).
+  if (hi - lo <= 3 && own.runs.has(run(lo, hi))) return null
+  for (let moved = true; moved && lo < hi;) {
+    moved = false
+    for (const n of [3, 2]) {
+      if (hi - lo < n) continue
+      if (own.runs.has(run(lo, lo + n))) {
+        lo += n
+        moved = true
+        break
+      }
+      if (own.runs.has(run(hi - n, hi))) {
+        hi -= n
+        moved = true
+        break
+      }
+    }
+    trim()
+  }
+  if (lo >= hi) return null
+  const title = all[lo]!.kind === 'title'
+  let others = 0
+  for (let i = lo; i < hi; i++)
+    if (all[i]!.kind === 'part' || all[i]!.kind === 'initial') others++
+  // Calendar words at the ends go while two other parts are left
+  // ("Happy Mother's Day Jordan Sample" keeps the day).
+  if (!title)
+    while (lo < hi && all[lo]!.kind === 'calendar' && others >= 2) lo++
+  while (hi > lo && all[hi - 1]!.kind === 'calendar' && others >= 2) hi--
+  const name = all.slice(lo, hi)
+  const parts = name.filter(counted)
+  if (title) return parts.length >= 1 ? name : null
+  if (parts.length < 2 || parts.every((x) => x.kind === 'calendar')) return null
+  return name
+}
+
+/** Whether a line names someone (two name parts, a title and a name). */
+const hasName = (line: string, own: OwnWords) =>
+  groupsOf(tokensOf(line)).some((g) => nameIn(g, own) !== null)
+
+/** People's names out; the store's own words, the calendar and headings kept. */
+function withoutNames(line: string, own: OwnWords) {
+  let out = ''
+  let at = 0
+  for (const g of groupsOf(tokensOf(line))) {
+    const name = nameIn(g, own)
+    if (!name) continue
+    out += `${line.slice(at, name[0]!.start)}[name]`
+    at = name.at(-1)!.end
+  }
+  return out + line.slice(at)
+}
+
+const redact = (line: string, own: OwnWords) =>
   withoutNames(
     phones(
       line
@@ -457,7 +641,7 @@ function cut(text: string, max: number) {
   return (last >= 0xd800 && last <= 0xdbff ? kept.slice(0, -1) : kept).trimEnd()
 }
 
-function excerptOf(source: string, own: Own) {
+function excerptOf(source: string, own: OwnWords) {
   const lines = untag(visible(source))
     .split('\n')
     .map((line) => line.replace(/[ \t]+/g, ' ').trim())
@@ -484,9 +668,9 @@ function excerptOf(source: string, own: Own) {
  */
 export function voiceExcerpt(
   body: MessageBody,
-  own: readonly string[] = []
+  own: readonly string[] | OwnWords = []
 ): VoiceExcerpt | null {
-  const ours = ownWords(own)
+  const ours = 'runs' in own ? own : ownWordsOf(own)
   // The plain-text part when it says enough, else the HTML.
   const fromText = body.text?.trim()
     ? excerptOf(body.text.slice(0, GMAIL_CLIP_BYTES), ours)
