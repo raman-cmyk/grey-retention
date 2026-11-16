@@ -7,7 +7,13 @@ import {
   type RenderMode
 } from '@/features/blocks/render'
 import { hiddenChars } from '@/features/assembly/assemble'
-import { linkMark, psMark, visibleWords, type Letter } from './letter'
+import {
+  linkMark,
+  offerLine,
+  psMark,
+  visibleWords,
+  type Letter
+} from './letter'
 
 /**
  * TXT-001: a letter drawn as a person's email looks: the reader's own
@@ -130,6 +136,7 @@ export function renderLetter(
       : '',
     letter.greeting ? p(escapeHtml(letter.greeting)) : '',
     ...letter.body.map((para) => p(html(para))),
+    letter.offer ? p(escapeHtml(offerLine(letter.offer))) : '',
     p(signed.map((s) => escapeHtml(s)).join('<br>'), '24px 0 0'),
     hasPs ? p(html(ps(letter.ps!)), '24px 0 0') : '',
     `<p style="margin:40px 0 0;font-size:12px;line-height:1.5;color:${footerGrey}">${footerHtml(mode, brand.name)}</p>`
@@ -151,6 +158,7 @@ export function renderLetter(
   const text = [
     ...(letter.greeting ? [plainText(letter.greeting)] : []),
     ...letter.body.map(plain),
+    ...(letter.offer ? [plainText(offerLine(letter.offer))] : []),
     signed.map(plainText).join('\n'),
     ...(hasPs ? [plain(ps(letter.ps!))] : []),
     `-- \n${footer.join('\n')}`
