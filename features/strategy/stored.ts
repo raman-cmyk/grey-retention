@@ -86,7 +86,7 @@ export const storedPlan = z.object({
         // D26: a text email's slot says so; a designed one has none.
         format: z.enum(emailFormats).optional(),
         // DST-PIC #24: a text email's kind.
-        letterKind: z.enum(letterKinds).optional(),
+        letterKind: z.enum(letterKinds).optional().catch(undefined),
         why: words,
         evidence: z
           .array(z.object({ id: z.string().max(160), fact: words }))

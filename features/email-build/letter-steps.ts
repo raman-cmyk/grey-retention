@@ -136,18 +136,21 @@ export async function letterCopyStep(
   // A planned kind that does not fit is a short letter of no kind, logged
   // (only the Letter writer reads a kind).
   const unfit = input.kind && ctx.agents ? kindFits(input.kind, brief) : null
-  if (unfit)
-    await ctx.fallbacks.record({
-      tenantId: ctx.tenantId,
-      campaignId: ctx.campaignId ?? null,
-      agent: 'letter-writer',
-      reasonCode: 'letter_kind_dropped',
-      reason: kindDropped[unfit],
-      fallback: 'Wrote a short letter of no kind instead.',
-      attempts: 1,
-      detail: { kind: input.kind ?? null, why: unfit },
-      dedupeKey: `letter-writer:kind:${keyPart(ctx.callerKey)}`
-    })
+  // Logged once a letter is written (no email, nothing to say about it).
+  const logUnfit = async () => {
+    if (unfit)
+      await ctx.fallbacks.record({
+        tenantId: ctx.tenantId,
+        campaignId: ctx.campaignId ?? null,
+        agent: 'letter-writer',
+        reasonCode: 'letter_kind_dropped',
+        reason: kindDropped[unfit],
+        fallback: 'Wrote a short letter of no kind instead.',
+        attempts: 1,
+        detail: { kind: input.kind ?? null, why: unfit },
+        dedupeKey: `letter-writer:kind:${keyPart(ctx.callerKey)}`
+      })
+  }
   const taken = new Set((input.taken ?? []).map(subjectKey))
   const changes = [
     ...new Set(locked.changes.map((c): ChangeKey => c.key))
@@ -185,11 +188,13 @@ export async function letterCopyStep(
       },
       takenProblem
     )
-    if (made.status === 'written')
+    if (made.status === 'written') {
+      await logUnfit()
       return {
         ok: true,
         output: { letter: made.letter, productIds, changes, written: true }
       }
+    }
     if (made.status === 'failed') return { ok: false, code: 'copy_failed' }
     plain = made.letter
   } else {
@@ -234,6 +239,7 @@ export async function letterCopyStep(
     })
     return { ok: false, code: 'subject_taken' }
   }
+  await logUnfit()
   return { ok: true, output: { letter: free, productIds, changes } }
 }
 

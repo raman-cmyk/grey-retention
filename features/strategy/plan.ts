@@ -383,6 +383,8 @@ const slotSchema = z.strictObject({
   letterKind: z
     .enum(['none', ...letterKinds])
     .optional()
+    // An unknown value is no kind (D16), never a failed answer to retry.
+    .catch(undefined)
     .transform((k) => (k === 'none' ? undefined : k))
 })
 const slotAnswer = z.strictObject({
@@ -417,7 +419,7 @@ const kindGuide = letterKinds
 
 export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
   name: 'calendar-planner',
-  version: '2026-11-16.1',
+  version: '2026-11-16.2',
   // AGENT_MAP.md models: the Calendar planner runs on 2.5 Pro.
   purpose: 'plan',
   usesBrandBook: true,
@@ -799,13 +801,16 @@ export function keepPassing(
 ) {
   const dropped: Problem[][] = []
   let changed = 0
+  let kinds = 0
   const settle = (list: Slot[], found: Map<number, Problem[]>) =>
     list.flatMap((s, i) => {
       const problems = found.get(i)
       if (!problems) return [s]
       const fixed = textFixed(s, problems)
       if (fixed) {
-        changed++
+        // A text rule's fix and a kind's drop are logged apart.
+        if (problems.some((p) => p.rule.startsWith('text_'))) changed++
+        else kinds++
         return [fixed]
       }
       // The owner reads why it was dropped, never a text rule code fixes.
@@ -818,7 +823,7 @@ export function keepPassing(
     if (!again.size) break
     kept = settle(kept, again)
   }
-  return { kept, dropped, changed }
+  return { kept, dropped, changed, kinds }
 }
 
 /** A plain calendar from the brief: one slot per action, where it fits. */
@@ -1123,7 +1128,7 @@ export async function planFifteenDays(
   if (!best?.slots.length) source.critic = 'skipped'
 
   // 3. What still fails is dropped, and the rest is checked again.
-  const { kept, dropped, changed } = keepPassing(
+  const { kept, dropped, changed, kinds } = keepPassing(
     best?.slots ?? [],
     best?.issues ?? new Map(),
     input,
@@ -1161,6 +1166,15 @@ export async function planFifteenDays(
       `Changed ${changed === 1 ? 'it' : 'them'} to fit: a designed email instead, or the text email with its lead product only.`,
       criticRounds,
       { changed }
+    )
+  if (kinds)
+    await log(
+      'calendar-rules',
+      'kind_dropped',
+      `${count(kinds)} had a kind of letter that did not fit.`,
+      `Removed the kind: ${kinds === 1 ? 'it is' : 'they are'} a short letter of no kind.`,
+      criticRounds,
+      { kinds }
     )
   if (byCritic)
     await log(

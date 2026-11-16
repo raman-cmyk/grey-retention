@@ -170,6 +170,8 @@ export function kindFits(
   kind: LetterKind,
   brief: LetterBrief
 ): 'kind_needs_founder_note' | 'kind_never_offers' | null {
+  // A value that is no kind is no kind (it fits nothing, and never throws).
+  if (!Object.hasOwn(kindSpecs, kind)) return null
   if (kind === 'founder_note' && !founderNote(brief))
     return 'kind_needs_founder_note'
   if (!kindSpecs[kind].offer && brief.locked.offer) return 'kind_never_offers'

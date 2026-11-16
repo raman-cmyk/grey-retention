@@ -83,7 +83,7 @@ export const plannedEmail = z.object({
    */
   format: z.enum(emailFormats).optional(),
   /** DST-PIC #24: a text email's kind (missing: a short note of no kind). */
-  letterKind: z.enum(letterKinds).optional()
+  letterKind: z.enum(letterKinds).optional().catch(undefined)
 })
 export type PlannedEmail = z.infer<typeof plannedEmail>
 

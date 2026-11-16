@@ -493,4 +493,50 @@ describe('a text email in Create email (TXT-001c)', () => {
       quiet.entries().filter((e) => e.reasonCode === 'letter_kind_dropped')
     ).toEqual([])
   })
+
+  it('the job’s saved steps give the planned kind to the Letter writer, and log an unfit one once (DST-PIC #24)', async () => {
+    const s = await store()
+    const steps = async (letterKind: PlannedEmail['letterKind']) => {
+      const ai = model()
+      const fallbacks = memoryFallbackLog()
+      const progress: Record<string, unknown> = {}
+      const run = (step: string) =>
+        runBuildStep(
+          step,
+          {
+            planned: { ...planned, letterKind },
+            store: s,
+            offers: sampleOffers,
+            progress
+          },
+          ctxWith(ai, fallbacks)
+        )
+      for (const step of ['sections', 'content'] as const) {
+        const made = await run(step)
+        if (!made.ok || !('output' in made)) throw new Error(`${step} failed`)
+        progress[step] = JSON.parse(JSON.stringify(made.output))
+      }
+      // The copy step twice, as a retried claim runs it again.
+      await run('copy')
+      const copy = await run('copy')
+      return { ai, fallbacks, copy }
+    }
+    const thanks = await steps('thank_you')
+    expect(thanks.copy.ok).toBe(true)
+    const writer = thanks.ai.mock.calls.find((c) =>
+      c[0].callerKey.startsWith('letter-writer:')
+    )![0]
+    expect(writer.request.system).toContain('This letter is a thank-you')
+    // A founder note for a store without the founder's own note.
+    const noted = await steps('founder_note')
+    const dropped = noted.fallbacks
+      .entries()
+      .filter((e) => e.reasonCode === 'letter_kind_dropped')
+    expect(dropped).toHaveLength(1)
+    expect(dropped[0]).toMatchObject({
+      reason:
+        'The planned founder note had no founder’s note it could use (one confirmed, short, and passing the checks).',
+      detail: { kind: 'founder_note', why: 'kind_needs_founder_note' }
+    })
+  })
 })
