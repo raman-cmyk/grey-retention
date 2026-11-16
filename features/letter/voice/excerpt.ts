@@ -455,3 +455,24 @@ export function voiceExcerpt(
     words
   }
 }
+
+/**
+ * PIC-29 part 2b: one line of an email outside its template (its subject,
+ * its preview line) as the excerpt reads its lines: what a reader sees,
+ * Klaviyo's tags as placeholders, without contact details, links, long
+ * numbers or people's names. Empty when it is a footer's or an address's
+ * line, or holds none of the owner's words.
+ */
+export function excerptLine(
+  text: string | null,
+  own: readonly string[] | OwnWords = []
+): string {
+  if (!text) return ''
+  const ours = 'runs' in own ? own : ownWordsOf(own)
+  const line = untag(visible(text.slice(0, 2_000)))
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!line || line === footerMark || footerWords.test(line)) return ''
+  const out = redact(line, ours)
+  return addresses.some((a) => a.test(out)) || count(out) === 0 ? '' : out
+}

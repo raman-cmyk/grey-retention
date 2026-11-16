@@ -1004,6 +1004,54 @@ export type Database = {
           }
         ]
       }
+      brand_never_words: {
+        Row: {
+          instead: Json
+          kept: number
+          phrase: string
+          read_at: string
+          removed: number
+          run_id: string
+          state: string
+          tenant_id: string
+        }
+        Insert: {
+          instead?: Json
+          kept: number
+          phrase: string
+          read_at?: string
+          removed: number
+          run_id: string
+          state: string
+          tenant_id: string
+        }
+        Update: {
+          instead?: Json
+          kept?: number
+          phrase?: string
+          read_at?: string
+          removed?: number
+          run_id?: string
+          state?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_never_words_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_never_words_tenant_id_run_id_fkey'
+            columns: ['tenant_id', 'run_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       brand_offers: {
         Row: {
           gross_margin_percent: number | null
@@ -8136,6 +8184,10 @@ export type Database = {
           summary: Json
         }
         Returns: Json
+      }
+      record_never_words: {
+        Args: { job: string; lease: string; words: Json }
+        Returns: number
       }
       record_render_upload: {
         Args: {
