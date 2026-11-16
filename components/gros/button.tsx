@@ -1,3 +1,4 @@
+import type { Route } from 'next'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import type { ButtonHTMLAttributes } from 'react'
@@ -85,7 +86,7 @@ export function ButtonLink({
   kind = 'main',
   size = 'app',
   className
-}: Common & { href: string; label: string }) {
+}: Common & { href: Route; label: string }) {
   return (
     <Link
       href={href}
