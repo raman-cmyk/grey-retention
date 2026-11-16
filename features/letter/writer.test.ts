@@ -188,6 +188,36 @@ describe('the Letter writer (TXT-001 part 2)', () => {
     )
   })
 
+  it('writes in the founder’s own voice when their emails show it, never without (PIC-23 part 3b)', async () => {
+    const voice = {
+      greeting: 'Hi,',
+      signoff: 'Warmly,',
+      writesAs: 'I' as const,
+      sentenceWords: 9,
+      exclamations: 'never' as const,
+      contractions: null,
+      examples: ['Every shirt still gets checked by hand before it ships.'],
+      from: { samples: 1, words: 44 }
+    }
+    const brief = { ...(await briefFor()), voice }
+    const ai = modelOf([() => ok(good)])
+    const result = await writeLetter(brief, ctxWith(ai))
+    expect(result).toMatchObject({ status: 'written' })
+    const call = ai.mock.calls[0]![0]
+    expect(call.request.user).toContain(
+      '"founderVoice":{"greeting":"Hi,","signoff":"Warmly,","writesAs":"I","wordsPerSentence":9,"exclamationMarks":"never","examples":["Every shirt still gets checked by hand before it ships."]}'
+    )
+    expect(call.request.system).toContain(
+      'Write the way the founder writes ("founderVoice"'
+    )
+    expect(call.request.system).toContain('never copy one')
+    // Without a voice: neither the data nor the rule.
+    const plain = modelOf([() => ok(good)])
+    await writeLetter(await briefFor(), ctxWith(plain))
+    expect(plain.mock.calls[0]![0].request.user).not.toContain('founderVoice')
+    expect(plain.mock.calls[0]![0].request.system).not.toContain('founderVoice')
+  })
+
   it('keeps the shared rules about facts, claims, urgency and banned words', () => {
     expect(
       letterInstructions.filter((r) =>

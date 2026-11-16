@@ -23,6 +23,7 @@ import { keyPart, ruleWords } from '@/features/fallback/entry'
 import type { FallbackLog } from '@/features/fallback/log'
 import type { AgentCtx } from '@/features/strategy/retry'
 import { letterProblems, type LetterProblem } from './checks'
+import type { FounderVoice } from './voice/profile'
 import {
   founderParagraphs,
   kindOf,
@@ -55,7 +56,7 @@ import {
  * plainer letter that code writes from the store's name and product only,
  * logged (D16). Nothing waits for a person.
  */
-export const letterWriterVersion = '2026-11-16.4'
+export const letterWriterVersion = '2026-11-16.5'
 
 export type LetterBrief = {
   /** The locked content: its products, offer, facts and founder. */
@@ -65,7 +66,29 @@ export type LetterBrief = {
   site: string
   /** DST-PIC #24: its kind (`letterKinds`), when the plan gives one. */
   kind?: LetterKind
+  /** PIC-23 part 3b: how the founder writes, from their own sent emails. */
+  voice?: FounderVoice
 }
+
+/**
+ * PIC-23 part 3b: the founder's voice in the writer's data, in plain
+ * words, and the rule that goes with it (none without a voice).
+ */
+const voiceData = (voice: FounderVoice) => ({
+  ...(voice.greeting ? { greeting: voice.greeting } : {}),
+  ...(voice.signoff ? { signoff: voice.signoff } : {}),
+  ...(voice.writesAs ? { writesAs: voice.writesAs } : {}),
+  wordsPerSentence: voice.sentenceWords,
+  exclamationMarks: voice.exclamations,
+  ...(voice.contractions ? { contractions: voice.contractions } : {}),
+  examples: voice.examples
+})
+const voiceRules = (brief: LetterBrief) =>
+  brief.voice
+    ? [
+        'Write the way the founder writes ("founderVoice", from their own emails): their greeting and sign-off when they fit the other rules, "I" or "we" as they write, sentences of about their length, exclamation marks and contractions as often as they use them. Its examples show how they sound: never copy one, and never take a fact from one.'
+      ]
+    : []
 
 /** Store text as a letter shows it: one line, no hidden characters. */
 const clean = (text: string, max: number) => oneLine(text, max)
@@ -174,6 +197,8 @@ export const letterWriter = (
     ...customerWordsRules(brief.locked.input),
     // DST-PIC #24: the kind's own rules, with their numbers, when it fits.
     ...kindRules(brief),
+    // PIC-23 part 3b: the founder's own voice, when their emails show it.
+    ...voiceRules(brief),
     // DST-PIC #28: the industry’s reading level.
     readingRule(industry)
   ].join('\n'),
@@ -189,7 +214,8 @@ export const letterWriter = (
         signedBy: letterSigner(brief).signature,
         ...(kindOf(brief) ? { kind: kindSpecs[kindOf(brief)!].name } : {}),
         // The founder's own words, placed by the system (never the writer's).
-        ...(placedNote(brief) ? { founderNote: placedNote(brief) } : {})
+        ...(placedNote(brief) ? { founderNote: placedNote(brief) } : {}),
+        ...(brief.voice ? { founderVoice: voiceData(brief.voice) } : {})
       },
       feedback
     ),
