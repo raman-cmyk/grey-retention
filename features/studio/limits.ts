@@ -13,6 +13,8 @@ export const studioWaits = {
   maxSeconds: 3_600,
   /** Waits per design step: the studio's rounds are 3 at most. */
   perStep: 6,
+  /** Of those, kept for the email's inbox views (DST-006d): the rounds stop one short. */
+  forViews: 1,
   /** Pictures per build. */
   renders: 12,
   /** The email's views per build (DST-005b: three views of three versions). */

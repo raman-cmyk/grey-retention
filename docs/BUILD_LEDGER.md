@@ -2653,6 +2653,17 @@ Append entries using this exact shape:
 - Known issues: link reachability is not checked (a store link that answers 404 passes); the worker never passes `contentChecked` to the pusher, so a live push is refused (QAG-001's release QA is not wired; the push owner's decision); builds pushed before this deploy were not checked; `buildEmail` and the A/B test call `designStep` without these checks (not wired in production; EML-AB must add them). Review fixes: the offer read as copy QA reads it (names and approved claims masked; `drawnText` shared with the golden set), 10 KB kept for Klaviyo's links, a link to the store's own host, widths read in the markup only, the studio's fallback line only once its coded email passes, the reason clipped, "Try again" in the owner's words; tests for a coded email that fails, both failing, and the worker's final failure.
 - Next consumer: DST-005b (the preview); DST-006d.
 
+### 2026-11-16 — DST-006d part 2b — the whole-email check
+
+- Status: review (2c: "Create email")
+- Branch/worktree: `claude/dst-006d-email-check-2b`, on DST-006d part 2a.
+- Commit(s): see the DST-006d part 2b pull request.
+- Changed contracts: new `features/studio/email-check.ts` (`checkWholeEmail`, `emailCheckReasons`, `emailViewsMs`, `viewKey`, and the `EmailViewPorts` and `DrawnView` types, re-exported by `live-ports.ts`). The studio's rounds keep the design step's last wait for the views (`roundWaits` 5, `studioWaits.forViews` 1): a section still drawing at 5 waits is coded.
+- Migrations: none.
+- Verification run: format, lint with no warnings, typecheck, the studio's unit tests (`email-check.test.ts`: the views asked for once and waited for in their window, dark only while there is time, every view judged, code's own words for a fail and never the critic's, every refusal read, no time, no wait, a view failed or unreadable or too large, room for the critic's 3 tries, a pause past the window while a wait is left; `rounds.test.ts`: the kept wait).
+- Known issues: nothing calls it yet (2c). Short of a pass the studio's pictures are not used (the coded email is stored), as a section the critic does not pass is drawn coded. The worker does not compare the database's own wait count with the work's (they rise together in `wait_email_round`).
+- Next consumer: DST-006d part 2c.
+
 ### 2026-11-16 — DST-006d part 2a — the whole-email check's readers and ports
 
 - Status: review (2b: the check; 2c: "Create email")
