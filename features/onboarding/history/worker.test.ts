@@ -36,6 +36,8 @@ function database(
     broken?: boolean
     /** Reading the products throws (a bug). */
     bug?: boolean
+    /** PIC-29 part 2b: the drafts GROS pushed and what it built for them. */
+    drafts?: { campaign: string; message: string; email: unknown }[]
   } = {}
 ) {
   const calls: { name: string; args: Record<string, unknown> }[] = []
@@ -58,6 +60,7 @@ function database(
       eq: () => c,
       not: () => c,
       is: () => c,
+      in: () => c,
       order: () => c,
       limit: () => c,
       then: (done: (r: { data: unknown; error: unknown }) => unknown) => {
@@ -73,24 +76,39 @@ function database(
       from: (table: string) =>
         table === 'klaviyo_draft_pushes'
           ? list(
-              (voice.pushes ?? []).map((campaign_id) => ({ campaign_id })),
+              [
+                ...(voice.pushes ?? []).map((campaign_id) => ({ campaign_id })),
+                ...(voice.drafts ?? []).map((d, i) => ({
+                  campaign_id: d.campaign,
+                  message_id: d.message,
+                  push_key: `push-${i}`
+                }))
+              ],
               voice.broken ? { code: '42P01' } : null
             )
-          : table === 'brand_voice_samples'
-            ? list(voice.kept ?? [])
-            : table === 'products'
-              ? list(
-                  (voice.products ?? ['Weekend Knit']).map((title) => ({
-                    title
-                  })),
-                  null,
-                  voice.bug
-                )
-              : chain(
-                  table === 'tenants'
-                    ? { timezone }
-                    : { brand_name: 'Cedar Goods' }
-                ),
+          : table === 'email_builds'
+            ? list(
+                (voice.drafts ?? []).map((d, i) => ({
+                  push_key: `push-${i}`,
+                  email: d.email,
+                  created_at: '2026-10-01T10:00:00Z'
+                }))
+              )
+            : table === 'brand_voice_samples'
+              ? list(voice.kept ?? [])
+              : table === 'products'
+                ? list(
+                    (voice.products ?? ['Weekend Knit']).map((title) => ({
+                      title
+                    })),
+                    null,
+                    voice.bug
+                  )
+                : chain(
+                    table === 'tenants'
+                      ? { timezone }
+                      : { brand_name: 'Cedar Goods' }
+                  ),
       rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
         calls.push({ name, args })
         return { data: {}, error: null }
@@ -676,6 +694,84 @@ describe('readBrandHistory', () => {
     expect(
       ours.calls.find((c) => c.name === 'record_voice_samples')!.args.samples
     ).toEqual([])
+  })
+
+  it('learns what the owner took out of an email GROS drafted, once every sent GROS email is read (PIC-29 part 2b)', async () => {
+    const letter =
+      '<p>Hi {{ first_name|default:"friend" }},</p><p>I started Cedar Goods in my garage with one truly amazing sewing machine and a lot of stubbornness. Every shirt still gets checked by hand before it ships.</p><p>Thank you for being here. If you ever have a question, just hit reply. I read every one.</p><p>Warmly,<br>Maya</p>'
+    const email = {
+      sample: false,
+      ai: true,
+      name: 'Sat 10 Oct · Founder note',
+      subject: 'A note from our founder',
+      preheader: 'Why we started Cedar Goods.',
+      html: letter,
+      approach: 'A',
+      copy: 'written',
+      plannedSendAt: '2026-10-10T16:00:00Z',
+      audienceId: 'SegEng90',
+      productIds: [],
+      code: null,
+      changes: []
+    }
+    const { calls, stored } = await read({
+      voice: { drafts: [{ campaign: 'CmpA08', message: 'MsgA08', email }] }
+    })
+    const names = calls.map((c) => c.name)
+    expect(names.indexOf('record_never_words')).toBeGreaterThanOrEqual(0)
+    expect(names.indexOf('record_never_words')).toBeLessThan(
+      names.indexOf('record_klaviyo_history')
+    )
+    const args = calls.find((c) => c.name === 'record_never_words')!.args
+    expect(args).toMatchObject({ job: 'job-1', lease: 'lease-1' })
+    // Taken out of one email: watched, not yet never used.
+    expect(args.words).toEqual([
+      {
+        phrase: 'truly amazing',
+        state: 'watched',
+        removed: 1,
+        kept: 0,
+        instead: []
+      }
+    ])
+    expect(stored.summary.state).toBe('ready')
+    // No GROS email sent: nothing recorded, the list stays as it was.
+    const none = await read()
+    expect(none.calls.map((c) => c.name)).not.toContain('record_never_words')
+    // The key cannot read templates: the list stays as it was.
+    const blind = await read({
+      noTemplateScope: true,
+      voice: { drafts: [{ campaign: 'CmpA08', message: 'MsgA08', email }] }
+    })
+    expect(blind.calls.map((c) => c.name)).not.toContain('record_never_words')
+  })
+
+  it('reads no edits once Klaviyo asked to wait during the voice read (PIC-29 part 2b)', async () => {
+    const email = {
+      sample: false,
+      ai: true,
+      name: 'Founder note',
+      subject: 'A note from our founder',
+      preheader: 'Why we started Cedar Goods.',
+      html: '<p>Hello.</p>',
+      approach: 'A',
+      copy: 'written',
+      plannedSendAt: '2026-10-10T16:00:00Z',
+      audienceId: 'SegEng90',
+      productIds: [],
+      code: null,
+      changes: []
+    }
+    let asked = 0
+    const busy = await read({
+      voice: { drafts: [{ campaign: 'CmpA08', message: 'MsgA08', email }] },
+      instead: (url) =>
+        url.includes('/api/templates/') ? (asked++, refused(429)) : null
+    })
+    // One template asked (the voice read's), none by the edits read.
+    expect(asked).toBe(1)
+    expect(busy.calls.map((c) => c.name)).not.toContain('record_never_words')
+    expect(busy.calls.map((c) => c.name)).toContain('record_klaviyo_history')
   })
 
   it('keeps the earlier samples when it could not read the emails, and stores the history all the same', async () => {
