@@ -8,8 +8,10 @@
  * section's own origins, no redirect, no navigation), uploads the JPEG
  * through the section's signed link and reports the result.
  *
- * Then the design steps waiting for their pictures go on (`carryOn`,
- * DST-006b).
+ * Then the built emails' views waiting (DST-005b: desktop, phone, dark)
+ * are drawn the same way with `renderEmail`, from
+ * `/api/internal/studio/previews`. Then the design steps waiting for their
+ * pictures go on (`carryOn`, DST-006b).
  *
  * The repository is public, so its logs are: it prints counts only, never
  * a job, a page, a link or the secret, and Chromium gets no secret in its
@@ -18,16 +20,17 @@
  * APP_URL=https://… CRON_SECRET=… node scripts/studio-renders.mjs
  */
 import { pathToFileURL } from 'node:url'
-import { renderSection } from './section-render.mjs'
+import { renderEmail, renderSection } from './section-render.mjs'
 
 /**
- * Sections drawn per run at most, and the run's time: with the setup
- * before it (the peek and its retry, installing Chromium), one last
- * section and the designs carried on after (`carryOnMs`), a run ends
- * inside the job's 18 minutes.
+ * Pictures drawn per run at most (sections and views together), and the
+ * run's time: with the setup before it (the two peeks, each with its
+ * 2-minute retry, and installing Chromium), one last picture and the
+ * designs carried on after (`carryOnMs`), a run ends inside the job's 18
+ * minutes. A picture takes seconds: 24 fit well inside 6 minutes.
  */
 export const perRun = 24
-export const runBudgetMs = 8 * 60_000
+export const runBudgetMs = 6 * 60_000
 /** A job's lease (`claim_platform_job`); its report must arrive inside it. */
 export const leaseMs = 120_000
 /** Time kept at the end of the lease for the report. */
@@ -70,16 +73,44 @@ async function upload(url, image, ms) {
   if (!response.ok) throw new Error('upload_failed')
 }
 
-/** Draws and uploads one section inside its lease; the report for the app. */
-async function draw(browser, job, leaseLeft) {
+/**
+ * What the app hands out, how each is drawn, and what is reported: a
+ * designed section (DST-001b) or a view of a built email (DST-005b).
+ */
+const kinds = {
+  section: {
+    path: '/api/internal/studio/renders',
+    draw: (browser, job) =>
+      renderSection(browser, {
+        document: job.document,
+        height: job.height,
+        origins: job.origins
+      }),
+    report: (drawn) => ({ height: drawn.height, bytes: drawn.image.byteLength })
+  },
+  view: {
+    path: '/api/internal/studio/previews',
+    draw: (browser, job) =>
+      renderEmail(browser, {
+        document: job.document,
+        view: job.view,
+        origins: job.origins
+      }),
+    report: (drawn) => ({
+      height: drawn.height,
+      cut: drawn.cut,
+      wide: drawn.wide,
+      bytes: drawn.image.byteLength
+    })
+  }
+}
+
+/** Draws and uploads one picture inside its lease; the report for the app. */
+async function draw(browser, kind, job, leaseLeft) {
   const at = { job: job.job, lease: job.lease }
   let drawn
   try {
-    drawn = await renderSection(browser, {
-      document: job.document,
-      height: job.height,
-      origins: job.origins
-    })
+    drawn = await kind.draw(browser, job)
   } catch (error) {
     const reason = String(error?.message ?? '')
     return { ...at, failure: reasons.has(reason) ? reason : 'failed' }
@@ -89,15 +120,16 @@ async function draw(browser, job, leaseLeft) {
   } catch {
     return { ...at, failure: 'upload_failed' }
   }
-  return { ...at, height: drawn.height, bytes: drawn.image.byteLength }
+  return { ...at, ...kind.report(drawn) }
 }
 
 /**
- * One run: one section at a time, until none is left (at most `perRun`,
- * `runBudgetMs`). A section counts as drawn only when the app recorded it;
- * a report that did not arrive leaves the job to its lease (it is drawn
- * again once the lease runs out). A browser that stopped ends the run, so
- * the sections waiting never spend their attempts on it.
+ * One run: one picture at a time, the sections first, then the email's
+ * views, until none is left (at most `perRun` together, `runBudgetMs`). A
+ * picture counts as drawn only when the app recorded it; a report that did
+ * not arrive leaves the job to its lease (it is drawn again once the lease
+ * runs out). A browser that stopped ends the run, so the pictures waiting
+ * never spend their attempts on it.
  */
 export async function run({
   base,
@@ -107,43 +139,55 @@ export async function run({
   now = Date.now
 }) {
   const counts = { drawn: 0, failed: 0, lost: 0 }
+  const views = { drawn: 0, failed: 0, lost: 0 }
   const until = now() + runBudgetMs
   const alive = () => !browser.isConnected || browser.isConnected()
+  let n = 0
   try {
-    for (let n = 0; n < perRun && now() < until; n++) {
-      if (!alive()) throw new Error('The browser stopped.')
-      const answer = await call(base, secret)
-      const claimed = now()
-      const jobs = Array.isArray(answer?.jobs) ? answer.jobs : []
-      if (!jobs.length) break
-      for (const job of jobs) {
-        const report = await draw(
-          browser,
-          job,
-          () => leaseMs - (now() - claimed)
-        )
-        // The browser died while drawing: nothing is reported, the lease
-        // brings the section back, and the run ends.
-        if ('failure' in report && !alive())
-          throw new Error('The browser stopped.')
-        const recorded = await call(base, secret, {
-          method: 'POST',
-          body: JSON.stringify(report)
-        }).then(
-          () => true,
-          () => false
-        )
-        if (!recorded) counts.lost++
-        else if ('failure' in report) counts.failed++
-        else counts.drawn++
+    for (const [kind, tally] of [
+      [kinds.section, counts],
+      [kinds.view, views]
+    ])
+      for (; n < perRun && now() < until; n++) {
+        if (!alive()) throw new Error('The browser stopped.')
+        const answer = await call(base, secret, {}, kind.path)
+        const claimed = now()
+        const jobs = Array.isArray(answer?.jobs) ? answer.jobs : []
+        if (!jobs.length) break
+        for (const job of jobs) {
+          const report = await draw(
+            browser,
+            kind,
+            job,
+            () => leaseMs - (now() - claimed)
+          )
+          // The browser died while drawing: nothing is reported, the lease
+          // brings the picture back, and the run ends.
+          if ('failure' in report && !alive())
+            throw new Error('The browser stopped.')
+          const recorded = await call(
+            base,
+            secret,
+            { method: 'POST', body: JSON.stringify(report) },
+            kind.path
+          ).then(
+            () => true,
+            () => false
+          )
+          if (!recorded) tally.lost++
+          else if ('failure' in report) tally.failed++
+          else tally.drawn++
+        }
       }
-    }
   } finally {
     log(
       `Sections drawn: ${counts.drawn}. Failed: ${counts.failed}. Not recorded: ${counts.lost}.`
     )
+    log(
+      `Email views drawn: ${views.drawn}. Failed: ${views.failed}. Not recorded: ${views.lost}.`
+    )
   }
-  return counts
+  return { ...counts, views }
 }
 
 /**
