@@ -580,6 +580,107 @@ describe('the fix loop', () => {
   })
 })
 
+describe('the subject ideas, judged with the email (PIC-26 part 3a)', () => {
+  const ideas = [
+    'A quiet evening, picked for you',
+    'Ready for slow evenings?',
+    'Your evening candle'
+  ]
+  const flag = (field: string, quote: string) => ({
+    problems: [{ field, quote, reason: 'Not for this brand.', fix: '' }]
+  })
+
+  it('drops an idea either inspector flags, and never sends the email back for it', async () => {
+    const locked = await lock()
+    const ai = inspectors(
+      flag('idea-2', 'slow evenings'),
+      flag('idea-3', 'evening candle')
+    )
+    const run = writer(words({ subjectIdeas: ideas }))
+    const { ctx } = context(ai)
+    const result = await writeAndInspect(build(locked, run), ctx)
+    expect(result.status).toBe('passed')
+    if (result.status !== 'passed') return
+    expect(result.draft.subjectIdeas).toEqual([ideas[0]])
+    // One write, one call to each inspector: the ideas cost no more calls.
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(ai).toHaveBeenCalledTimes(2)
+    for (const call of ai.mock.calls) {
+      expect(call[0].request.user).toContain('"subject_ideas"')
+      expect(call[0].request.user).toContain(
+        '"idea-2":"Ready for slow evenings?"'
+      )
+      expect(call[0].request.system).toContain('"idea-1"')
+    }
+  })
+
+  it('still sends the email back for its own problem, with no word about an idea', async () => {
+    const locked = await lock()
+    const both = {
+      problems: [
+        ...flag('subject', 'favourite candle').problems,
+        ...flag('idea-1', 'quiet evening').problems
+      ]
+    }
+    const ai = inspectors(both, { problems: [] }, { problems: [] })
+    const run = writer(
+      words({ subjectIdeas: ideas }),
+      words({ subject: 'Slow evenings, 10% off', subjectIdeas: ideas })
+    )
+    const { ctx } = context(ai)
+    const result = await writeAndInspect(build(locked, run), ctx)
+    expect(result.status).toBe('passed')
+    expect(run).toHaveBeenCalledTimes(2)
+    const feedback = userOf(run, 1)
+    expect(feedback).toContain('subject')
+    expect(feedback).not.toContain('idea-1')
+    // The rewrite's ideas were judged again: none flagged this time.
+    if (result.status === 'passed')
+      expect(result.draft.subjectIdeas).toEqual(ideas)
+  })
+
+  it('keeps no idea when an inspector gave up (only code checked them)', async () => {
+    const locked = await lock()
+    const ai = inspectors('refused', { problems: [] })
+    const { ctx } = context(ai)
+    const result = await writeAndInspect(
+      build(locked, writer(words({ subjectIdeas: ideas }))),
+      ctx
+    )
+    expect(result.status).toBe('passed')
+    if (result.status === 'passed')
+      expect(result.draft.subjectIdeas).toBeUndefined()
+  })
+
+  it('reads an idea’s field and quote, and refuses an idea the email does not have', async () => {
+    const locked = await lock()
+    const draft = await draftOf(locked, words({ subjectIdeas: ideas }))
+    expect(draft.subjectIdeas).toEqual(ideas)
+    expect(
+      checkInspection(
+        {
+          problems: [
+            {
+              field: 'idea-2',
+              quote: 'slow evenings',
+              reason: 'Fine.',
+              fix: ''
+            },
+            { field: 'idea-4', quote: 'x', reason: 'No such idea.', fix: '' },
+            { field: 'idea-1', quote: 'not in it', reason: 'No.', fix: '' }
+          ]
+        },
+        draft,
+        locked,
+        brand.name
+      )
+    ).toEqual([
+      'Problem 2: "idea-4" is not a field of this email; use "subject", "preview", a block id or a subject idea ("idea-1").',
+      'Problem 3: the quote is not in idea-1; quote its words exactly.'
+    ])
+  })
+})
+
 describe('the email checks (code)', () => {
   it('send back a preview that repeats the subject, never one that names only the brand again (DST-PIC #27)', async () => {
     const locked = await lock()
