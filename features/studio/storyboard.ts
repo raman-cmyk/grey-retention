@@ -24,7 +24,7 @@ import { failedWords, tryAgent, type AgentCtx } from '@/features/strategy/retry'
  * sections) is not designed at all: it is drawn with coded blocks.
  *
  * Only the two heroes are designed (drawn as one picture by the Section
- * designer, DST-003); their button stays live HTML beside the picture.
+ * designer, DST-003); their button stays live HTML below the picture.
  * Every other section is live HTML from its block variant, with the tone
  * that block always has. `focus` and `note` describe the design only: the
  * Section designer never draws them as words (all words come from the
@@ -453,7 +453,7 @@ export const artDirectorAgent: AgentDefinition<
     'You are the Art director for a marketing email of a small online store.',
     'Storyboard the whole email before anything is designed, at 600 px wide and about the height given (email_height_px, its least and most), as it is drawn: each live section at its drawnHeight, each designed hero at the height you give plus its live button’s row below the picture (button_row_px).',
     'For each section given: whether it is designed (drawn as one picture) or live HTML, its tone (light, dark or accent), its height in px, its one focus in a few words, its imagery (product: the product photo; photo: the store’s own photo; backdrop: the product photo on a backdrop; none), its white space (tight, normal or airy), and a short layout note.',
-    `Only the heroes (${designable.join(', ')}) may be designed; a designed hero keeps its button live beside the picture. A designed hero_product shows its product (product or backdrop); a designed hero_image shows the store’s photo (photo). Pictures are at most ${maxDesignedShare * 100}% of the email’s height, and a designed section is ${designedHeight.min} to ${designedHeight.max} px.`,
+    `Only the heroes (${designable.join(', ')}) may be designed; a designed hero keeps its button live below the picture. A designed hero_product shows its product (product or backdrop); a designed hero_image shows the store’s photo (photo). Pictures are at most ${maxDesignedShare * 100}% of the email’s height, and a designed section is ${designedHeight.min} to ${designedHeight.max} px.`,
     'Live sections keep their own tone (announcement_bar dark, offer_banner accent, every other light) and are drawn at their own height: give each live section its drawnHeight. The designed heroes make the rest of the email’s height.',
     'Product imagery only where a section has products; a backdrop only in a designed section. Never two dark sections next to each other. One focus per section; generous white space around the main message.',
     'Scratch and Remix: order the sections as you like, the logo header first (an announcement bar may come before it) and the footer last. Copy: keep the sections in the order given, and each designed section keeps its reference section’s tone and about its height.',

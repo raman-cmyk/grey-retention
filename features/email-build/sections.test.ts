@@ -4,7 +4,7 @@ import { InMemoryMemoryStore } from '@/features/agents/memory'
 import { InMemoryRunLog, type AiCall } from '@/features/agents/runtime'
 import { memoryFallbackLog } from '@/features/fallback/log'
 import { blockTypes, type BlockType } from '@/features/blocks/catalog'
-import { emailHeight, emailHeightOf } from '@/features/blocks/heights'
+import { emailHeight } from '@/features/blocks/heights'
 import { emailTypes } from '@/features/strategy/plan'
 import {
   checkSections,
@@ -13,6 +13,7 @@ import {
   planSections,
   searchVariants,
   sectionPlannerAgent,
+  sectionsHeight,
   seedVariants,
   type SectionInput,
   type Variant
@@ -344,7 +345,7 @@ describe('the email’s height (DST-007)', () => {
       slot: { emailType, angle: 'x', products, offer: emailType === 'offer' }
     })
     const families = codeSectionPlan(i).sections.map((s) => s.family)
-    return { i, families, height: emailHeightOf(families, products) }
+    return { i, families, height: sectionsHeight(families) }
   }
 
   it('fills the safe plan to about 2,000 px with the store’s own content, each block once', () => {
@@ -431,8 +432,56 @@ describe('the email’s height (DST-007)', () => {
         slot: { ...rich.slot, products: 6 }
       })
     ).toEqual([
-      'The sections come to about 3506 px tall at 600 wide; plan at most about 2400 px.'
+      'The sections come to about 3138 px tall at 600 wide; plan at most about 2400 px.'
     ])
+  })
+
+  it('adds only products with what the build can show today, and the store’s own content once', () => {
+    // "Create email" has no reviews, customer photos or founder's note yet
+    // (the build's store data does not carry them): only products.
+    const today = everything.filter(
+      (t) =>
+        !['review_strip', 'ugc_grid', 'founder_note', 'hero_image'].includes(t)
+    )
+    expect(plan('launch', 4, today)).toMatchObject({
+      families: [
+        'header_logo',
+        'hero_product',
+        'text',
+        'product_feature',
+        'product_grid_2col',
+        'cta',
+        'footer'
+      ],
+      height: 1983
+    })
+    expect(plan('story', 0, today).height).toBe(547)
+    // A grid is counted with the products the Content locker locks for it.
+    expect(sectionsHeight(['product_grid_2col'])).toBe(443)
+    const fam = (family: BlockType) => ({ family, variantId: `${family}/seed` })
+    const rich = input({
+      allowed: everything,
+      slot: { emailType: 'launch', angle: 'x', products: 1, offer: false }
+    })
+    expect(
+      checkSections(
+        [
+          'header_logo',
+          'review_strip',
+          'founder_note',
+          'review_strip',
+          'founder_note',
+          'cta',
+          'footer'
+        ].map((f) => fam(f as BlockType)),
+        rich
+      )
+    ).toEqual(
+      expect.arrayContaining([
+        'Only one review_strip: it shows the same store content.',
+        'Only one founder_note: it shows the same store content.'
+      ])
+    )
   })
 
   it('tells the Section planner the height and each variant’s', () => {
@@ -447,6 +496,15 @@ describe('the email’s height (DST-007)', () => {
       variantId: seedVariants[0].id,
       height: expect.any(Number)
     })
+    // A grid at the products it is locked with, as the check counts it.
+    const grid = JSON.parse(
+      sectionPlannerAgent.task({
+        input: input(),
+        variants: seedVariants.filter((v) => v.family === 'product_grid_2col'),
+        problems: []
+      })
+    )
+    expect(grid.variants[0].height).toBe(443)
     expect(sectionPlannerAgent.instructions).toMatch(/about 1800 to 2400 px/)
   })
 })

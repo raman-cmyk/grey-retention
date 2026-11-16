@@ -3,11 +3,7 @@ import type { AgentDefinition } from '@/features/agents/runtime'
 import type { FallbackLog } from '@/features/fallback/log'
 import { keyPart } from '@/features/fallback/entry'
 import { blockTypes, type BlockType } from '@/features/blocks/catalog'
-import {
-  blockHeight,
-  emailHeight,
-  emailHeightOf
-} from '@/features/blocks/heights'
+import { blockHeight, emailHeight } from '@/features/blocks/heights'
 import { minProducts } from '@/features/assembly/assemble'
 import {
   layoutSequence,
@@ -65,6 +61,14 @@ export const seedVariants: Variant[] = blockTypes.map((family) => ({
 /** Products each family needs (the fewest it shows). */
 export const productNeed = minProducts
 const heroes: BlockType[] = ['hero_product', 'hero_image']
+
+/**
+ * DST-007: about how tall these sections are drawn at 600 wide, each with
+ * the products the Content locker locks for it (the fewest it shows).
+ */
+export function sectionsHeight(families: readonly BlockType[]) {
+  return families.reduce((n, f) => n + blockHeight(f, productNeed[f] ?? 0), 0)
+}
 
 /** The library search: allowed families, this industry and email type, best results first. */
 export function searchVariants(
@@ -205,7 +209,7 @@ export const sectionPlannerAgent: AgentDefinition<SectionTask, SectionAnswer> =
           variantId: v.id,
           family: v.family,
           score: v.score,
-          height: blockHeight(v.family)
+          height: blockHeight(v.family, productNeed[v.family] ?? 0)
         })),
         ...(input.mode === 'remix' && input.competitor?.angle
           ? { strategyNote: input.competitor.angle }
@@ -243,7 +247,7 @@ export const sectionPlannerAgent: AgentDefinition<SectionTask, SectionAnswer> =
   }
 
 /** How far under the safe plan's height (or over the most) a plan may be. */
-const heightSlack = 0.1
+const heightSlack = 0.15
 
 /** Code's check of a section plan; empty means it passed. */
 export function checkSections(
@@ -275,6 +279,11 @@ export function checkSections(
     problems.push('Only one button section: one clear action.')
   if (families.filter((f) => f !== null && heroes.includes(f)).length > 1)
     problems.push('Only one hero.')
+  // The store's own reviews, customer photos and founder's note: the same
+  // content wherever it is, so once (DST-007).
+  for (const once of ['review_strip', 'ugc_grid', 'founder_note'] as const)
+    if (families.filter((f) => f === once).length > 1)
+      problems.push(`Only one ${once}: it shows the same store content.`)
   const needed = families.reduce(
     (n, f) => n + (f ? (productNeed[f] ?? 0) : 0),
     0
@@ -288,10 +297,9 @@ export function checkSections(
   // DST-007: about the email's height, as far as the store can fill it.
   if (!families.includes(null)) {
     const known = families as BlockType[]
-    const height = emailHeightOf(known, input.slot.products)
-    const reach = emailHeightOf(
-      codeSectionPlan(input).sections.map((s) => s.family),
-      input.slot.products
+    const height = sectionsHeight(known)
+    const reach = sectionsHeight(
+      codeSectionPlan(input).sections.map((s) => s.family)
     )
     const floor = Math.min(emailHeight.min, reach)
     if (height < floor * (1 - heightSlack))
@@ -392,10 +400,7 @@ export function codeSectionPlan(input: SectionInput): SectionPlan {
   // DST-007: the store's own content, before the button (else the footer),
   // while the email is short and the next one keeps it under the most.
   const height = (list: readonly PlannedSection[]) =>
-    emailHeightOf(
-      list.map((s) => s.family),
-      input.slot.products
-    )
+    sectionsHeight(list.map((s) => s.family))
   for (const family of moreSections[input.slot.emailType]) {
     if (height(sections) >= emailHeight.min) break
     if (sections.length >= maxSections) break
