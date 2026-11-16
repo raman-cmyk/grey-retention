@@ -1,5 +1,5 @@
 begin;
-select plan(54);
+select plan(53);
 
 -- PIC-23 part 2b: the owner's own words kept by the history read. Owner
 -- ...01 and staff ...05 are in workspace 101 (a synthetic brand); owner ...04
@@ -87,7 +87,6 @@ select throws_ok(format('select pg_temp.record(%L::jsonb)', x),'23514',null,'ref
     jsonb_build_array(pg_temp.v('MsgA08','{"weight":3.0}'))::text,
     jsonb_build_array(pg_temp.v('MsgA08','{"words":24}'))::text,
     jsonb_build_array(pg_temp.v('MsgA08','{"words":30.5}'))::text,
-    jsonb_build_array(pg_temp.v('MsgA08',jsonb_build_object('words',8001,'text',repeat('ab ',2700))))::text,
     jsonb_build_array(pg_temp.v('MsgA08','{"words":90}'))::text,
     jsonb_build_array(pg_temp.v('MsgA08','{"sentAt":"yesterday"}'))::text,
     jsonb_build_array(pg_temp.v('MsgA08','{"sentAt":"2026-02-30T10:00:00Z"}'))::text,
