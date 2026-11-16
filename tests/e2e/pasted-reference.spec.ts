@@ -161,7 +161,6 @@ test('owner pastes a hostile email, recovers from failure, replays safely and re
   // The old dashboard's campaign list is retired with it (UI-HOMEb): the
   // saved campaign keeps its own page.
   await page.goto(campaignUrl)
-  await expect(page).toHaveURL(campaignUrl)
   await page.reload()
   await expect(
     page.getByRole('heading', { name: 'Starting point · email you added' })

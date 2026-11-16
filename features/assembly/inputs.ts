@@ -99,6 +99,13 @@ export type AssemblyInput = {
    * (`customerWordsRule`); every check still judges what it writes.
    */
   customerWords?: readonly string[]
+  /**
+   * PIC-29 part 2c: the phrases this brand never uses, learned from what
+   * the owner takes out of GROS's emails. Apart from `facts.bannedPhrases`:
+   * the writers avoid them and their own words are refused for them, but
+   * copy QA never checks them, so the plain fallback is never refused.
+   */
+  neverWords?: readonly string[]
   confirmed?: {
     reviews?: readonly ConfirmedReview[]
     customerPhotos?: readonly ConfirmedPhoto[]

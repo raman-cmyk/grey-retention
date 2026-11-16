@@ -1,10 +1,6 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import type { Route } from 'next'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-
-vi.mock('next/font/google', () => ({
-  Urbanist: () => ({ variable: 'urbanist-variable' })
-}))
+import { afterEach, describe, expect, it } from 'vitest'
 import { Button } from './button'
 import { DayStrip, planDates } from './day-strip'
 import { EmailThumb, ListRow, RowList, TextThumb } from './list-row'
@@ -16,7 +12,7 @@ import { FocusShell, StepCards, onboardingSteps } from './steps'
 afterEach(cleanup)
 
 describe('TopBar and AppPage (UI-DS)', () => {
-  it('has the five menu items, the current one marked, and Ask GROS and Settings', () => {
+  it('has the menu items whose screens exist, the current one marked, and Ask GROS and Settings', () => {
     render(<TopBar current="inspiration" title="Inspiration" />)
     expect(
       screen.getByRole('heading', { level: 1, name: 'Inspiration' })
@@ -26,7 +22,7 @@ describe('TopBar and AppPage (UI-DS)', () => {
       'Home',
       'Plan',
       'Inspiration',
-      'Audiences',
+      // Audiences has no screen yet, so it is left out rather than a dead link.
       'Results'
     ])
     const here = menu.getByRole('link', { name: 'Inspiration' })

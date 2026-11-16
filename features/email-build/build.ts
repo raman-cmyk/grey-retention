@@ -353,7 +353,9 @@ const assemblyFor = (
     ? { customerWords: store.customerWords }
     : {}),
   // REL-ONB2: the store's own reviews, placed word for word by code.
-  ...(store.confirmed ? { confirmed: store.confirmed } : {})
+  ...(store.confirmed ? { confirmed: store.confirmed } : {}),
+  // PIC-29 part 2c: the phrases the owner takes out, for the writers only.
+  ...(store.neverWords?.length ? { neverWords: store.neverWords } : {})
 })
 
 /**
