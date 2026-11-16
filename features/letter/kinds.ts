@@ -12,6 +12,9 @@ import {
   type Letter
 } from './letter'
 import type { LetterBrief } from './writer'
+import { kindWhen, letterKinds, type LetterKind } from './kind-list'
+
+export { letterKinds, type LetterKind }
 
 /**
  * DST-PIC #24 ("Library of text email types"): a text email can be one of
@@ -35,14 +38,6 @@ import type { LetterBrief } from './writer'
  * The kinds hold for the writer's letters only: the plain letter (no AI,
  * or after the rewrites) is the same short note for every kind.
  */
-export const letterKinds = [
-  'founder_note',
-  'quick_question',
-  'we_miss_you',
-  'launch_teaser',
-  'thank_you'
-] as const
-export type LetterKind = (typeof letterKinds)[number]
 
 export type KindSpec = {
   /** The owner's name for it. */
@@ -62,7 +57,7 @@ export type KindSpec = {
 export const kindSpecs: Record<LetterKind, KindSpec> = {
   founder_note: {
     name: 'Founder note',
-    when: 'The founder writes to a customer they know, around the founder’s own note.',
+    when: kindWhen.founder_note,
     rules: [
       'This letter is a founder note: the founder writes it, in the first person ("I"), to a customer they know.',
       'The founder’s own note ("founderNote" in Data) is placed in the letter word for word by the system, after your first paragraph. Write one short paragraph that opens it, and one or two after it that close it with a link: at most 3 paragraphs of your own. Never retell, quote or change the note, and tell no story of your own.'
@@ -73,7 +68,7 @@ export const kindSpecs: Record<LetterKind, KindSpec> = {
   },
   quick_question: {
     name: 'Quick question',
-    when: 'One simple question for the reader to answer by reply; no offer.',
+    when: kindWhen.quick_question,
     rules: [
       'This letter is a quick question: ask the reader one simple question they can answer in a few words, and ask them to reply.',
       'Put the question in the last paragraph or the P.S., and ask only that one. Sell nothing: one link at most, and no offer.'
@@ -84,7 +79,7 @@ export const kindSpecs: Record<LetterKind, KindSpec> = {
   },
   we_miss_you: {
     name: 'We miss you',
-    when: 'For people who have not shopped or opened in a while.',
+    when: kindWhen.we_miss_you,
     rules: [
       'This letter is a "we miss you", to someone who has not shopped or read in a while: warm and short, glad to write to them, with one reason to come back.',
       'Never make them feel guilty: never say they have not bought, opened or visited, that they have been away, or that you noticed.'
@@ -95,7 +90,7 @@ export const kindSpecs: Record<LetterKind, KindSpec> = {
   },
   launch_teaser: {
     name: 'Launch teaser',
-    when: 'Something new from the store, before the email that shows it; no offer.',
+    when: kindWhen.launch_teaser,
     rules: [
       'This letter is a launch teaser: something new from the store. Say what it is and why it is worth a look, and keep a little back.',
       'No offer, one link at most, and never a launch date, a time or a "coming soon" a fact does not state.'
@@ -106,7 +101,7 @@ export const kindSpecs: Record<LetterKind, KindSpec> = {
   },
   thank_you: {
     name: 'Thank-you',
-    when: 'Thanks the reader for being a customer or for reading along.',
+    when: kindWhen.thank_you,
     rules: [
       'This letter is a thank-you: thank the reader in the greeting or the first paragraph, for being a customer or for reading along.',
       'Sell nothing in the first paragraph and put no link in it. An offer may close the letter, as a small thank-you.'
@@ -175,6 +170,8 @@ export function kindFits(
   kind: LetterKind,
   brief: LetterBrief
 ): 'kind_needs_founder_note' | 'kind_never_offers' | null {
+  // A value that is no kind is no kind (it fits nothing, and never throws).
+  if (!Object.hasOwn(kindSpecs, kind)) return null
   if (kind === 'founder_note' && !founderNote(brief))
     return 'kind_needs_founder_note'
   if (!kindSpecs[kind].offer && brief.locked.offer) return 'kind_never_offers'

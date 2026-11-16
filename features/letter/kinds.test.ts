@@ -10,6 +10,7 @@ import {
 } from '@/features/email-build/build'
 import { sampleOffers, sampleStoreSource } from '@/features/email-build/ports'
 import { memoryFallbackLog } from '@/features/fallback/log'
+import { kindsWithoutOffer } from './kind-list'
 import {
   founderNote,
   kindFits,
@@ -443,5 +444,11 @@ describe('the kinds of text email (DST-PIC #24)', () => {
         body: ['Tell us where you’ve been lighting it.', `Warm ${filler(60)}`]
       })
     ).not.toContain('kind_guilt')
+  })
+
+  it('the planner’s list of kinds without an offer is the kinds’ own', () => {
+    expect(letterKinds.filter((k) => !kindSpecs[k].offer)).toEqual([
+      ...kindsWithoutOffer
+    ])
   })
 })

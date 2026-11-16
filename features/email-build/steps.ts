@@ -317,7 +317,8 @@ export async function runBuildStep(
         {
           store,
           locked: locked.data as unknown as LockedContent,
-          taken: input.taken
+          taken: input.taken,
+          ...(planned.letterKind ? { kind: planned.letterKind } : {})
         },
         ctx
       )
