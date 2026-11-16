@@ -379,6 +379,74 @@ describe('the calendar rules (code)', () => {
   })
 })
 
+describe('designed or text emails (TXT-001f, D26)', () => {
+  it('lets a text email name one product, and at most one email in three be text', () => {
+    const problems = calendarProblems(
+      [
+        offerSlot,
+        { ...storySlot, format: 'text' },
+        slot({ format: 'text', productIds: ['p-oak-tray', 'p-wool-cushion'] }),
+        { ...giftSlot, format: 'designed' }
+      ],
+      input,
+      brief.actions
+    )
+    expect(texts(problems, 1)).toEqual([])
+    expect(texts(problems, 2)).toEqual([
+      'a text email names one product at most.'
+    ])
+    // Three text emails in four: the third is over the share.
+    const many = calendarProblems(
+      [
+        { ...storySlot, format: 'text' },
+        slot({ format: 'text' }),
+        { ...giftSlot, format: 'text', productIds: ['p-linen-throw'] },
+        offerSlot
+      ],
+      input,
+      brief.actions
+    )
+    expect(texts(many, 2)).toEqual([
+      'at most 2 of these 4 emails may be text emails.'
+    ])
+    expect(texts(many, 0)).toEqual([])
+  })
+
+  it('plans the text emails the planner chose, the rest designed', async () => {
+    const ai = agents({
+      'brief-writer': [brief],
+      'calendar-planner': [
+        {
+          slots: [
+            { ...offerSlot, format: 'designed' },
+            { ...storySlot, format: 'text' },
+            slot({}),
+            giftSlot
+          ]
+        }
+      ],
+      'strategy-critic': [{ issues: [] }]
+    })
+    const plan = await planFifteenDays(input, context(ai).ctx)
+    expect(plan.slots.map((s) => [s.emailType, s.format])).toEqual([
+      ['offer', undefined],
+      ['story', 'text'],
+      ['launch', undefined],
+      ['gift guide', undefined]
+    ])
+    const system = ai.mock.calls.find(
+      (c) => c[0].callerKey.split(':')[0] === 'calendar-planner'
+    )![0].request.system
+    expect(system).toContain('At most one email in 3 is a text email.')
+  })
+
+  it('the plain plan (no AI) is all designed emails', () => {
+    expect(samplePlan(input).slots.every((s) => s.format === undefined)).toBe(
+      true
+    )
+  })
+})
+
 describe('what ships is checked again after every drop', () => {
   it('drops the offer when a dropped email leaves it over 40% of its week', () => {
     const slots = [

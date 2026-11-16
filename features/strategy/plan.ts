@@ -33,6 +33,12 @@ export const emailTypes = [
 ] as const
 export type EmailType = (typeof emailTypes)[number]
 
+/** D26: a designed email, or a text email (a short personal letter). */
+export const emailFormats = ['designed', 'text'] as const
+export type EmailFormat = (typeof emailFormats)[number]
+/** At most one email in this many is a text email (TXT-001f). */
+export const textShareOneIn = 3
+
 /** Local send times the planner may use. */
 export const sendHours = { from: '07:00', to: '21:00' } as const
 /** The shared planning policy (features/workflow/domain/policy.ts). */
@@ -146,6 +152,8 @@ export type Slot = {
   productIds: string[]
   offerId: string | null
   audienceId: string
+  /** D26 (TXT-001f): missing (the code calendar's, older plans): designed. */
+  format?: EmailFormat
 }
 
 export type PlannedSlot = {
@@ -156,6 +164,8 @@ export type PlannedSlot = {
   products: { id: string; title: string }[]
   offer: { id: string; code: string; percent: number } | null
   audience: { id: string; label: string }
+  /** D26: a text email; missing: a designed one. */
+  format?: 'text'
   /** Why this email: the brief's goal and the facts behind it. */
   why: string
   evidence: { id: string; fact: string }[]
@@ -349,7 +359,10 @@ const slotSchema = z.strictObject({
   angle: z.string().trim().min(3).max(80),
   productIds: z.array(z.string().min(1).max(120)).max(3),
   offerId: z.string().min(1).max(120).nullable(),
-  audienceId: z.string().min(1).max(120)
+  audienceId: z.string().min(1).max(120),
+  // Asked for (the answer shape requires it); an answer without it, or a
+  // revision of an older plan, is a designed email.
+  format: z.enum(emailFormats).optional()
 })
 const slotAnswer = z.strictObject({
   slots: z.array(slotSchema).min(1).max(10)
@@ -378,13 +391,14 @@ export function productsForPlanner(input: PlanInput) {
 
 export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
   name: 'calendar-planner',
-  version: '2026-11-11.2',
+  version: '2026-11-16.1',
   // AGENT_MAP.md models: the Calendar planner runs on 2.5 Pro.
   purpose: 'plan',
   usesBrandBook: true,
   instructions: [
     'You are the Calendar planner for a small online store that sends marketing emails.',
-    'Turn the brief into email slots for the next 15 days: for each, the action it serves (actionIndex), date, local send time, email type, a short angle in plain words, up to three products, the offer (or null) and the audience.',
+    'Turn the brief into email slots for the next 15 days: for each, the action it serves (actionIndex), date, local send time, email type, a short angle in plain words, up to three products, the offer (or null), the audience and the format.',
+    `Format: "designed" for an email with pictures and sections, or "text" for a short personal letter from the store (a story, a note from the founder, a quick question, a thank-you, a reminder about one product). A text email names one product at most. At most one email in ${textShareOneIn} is a text email.`,
     'Use only the products, offers and audiences given, by id. Never use a day with no emails, or a product before its availableFrom day.',
     `Keep to sends_per_week. An email of type "offer" carries an offer; other types carry none. Offers: at most ${offerSharePercent}% of a week’s emails, and at least ${offerSpacingDays} days apart. One email per audience per day. Send times between ${sendHours.from} and ${sendHours.to}.`,
     'If previous_plan is given, revise it: fix every problem listed against its slotIndex and keep what works.',
@@ -434,7 +448,8 @@ export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
               angle: { type: 'string' },
               productIds: { type: 'array', items: { type: 'string' } },
               offerId: { type: ['string', 'null'] },
-              audienceId: { type: 'string' }
+              audienceId: { type: 'string' },
+              format: { type: 'string', enum: [...emailFormats] }
             },
             required: [
               'actionIndex',
@@ -444,7 +459,8 @@ export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
               'angle',
               'productIds',
               'offerId',
-              'audienceId'
+              'audienceId',
+              'format'
             ]
           }
         }
@@ -473,6 +489,8 @@ export type CalendarRule =
   | 'unknown_audience'
   | 'stated_fact'
   | 'send_time'
+  | 'text_products'
+  | 'text_share'
   | 'same_day'
   | 'weekly_cap'
   | 'audience_cap'
@@ -550,7 +568,23 @@ export function calendarProblems(
       )
     const stated = statedFact(s.angle, codes)
     if (stated) add(i, 'stated_fact', `the angle writes ${stated}.`)
+    if (s.format === 'text' && s.productIds.length > 1)
+      add(i, 'text_products', 'a text email names one product at most.')
   })
+  // D26: at most one email in `textShareOneIn` is a text email; the later
+  // ones over it have to change.
+  const textMost = Math.ceil(slots.length / textShareOneIn)
+  slots
+    .map((s, i) => ({ s, i }))
+    .filter(({ s }) => s.format === 'text')
+    .slice(textMost)
+    .forEach(({ i }) =>
+      add(
+        i,
+        'text_share',
+        `at most ${textMost} of these ${slots.length} emails may be text emails.`
+      )
+    )
   // Across slots: one per audience per day, sends per week, and the shared
   // planning guards (audience cap, spacing between offers).
   const rows = [
@@ -1041,6 +1075,8 @@ export const ruleWords: Record<CalendarRule | 'critic', string> = {
   unknown_audience: 'there is no audience to send it to',
   stated_fact: 'its idea stated a number your store has not confirmed',
   send_time: 'its time is outside your send hours',
+  text_products: 'a text email names one product at most',
+  text_share: 'too many of the plan’s emails were text emails',
   same_day: 'that audience already gets an email that day',
   weekly_cap: 'that week already has as many emails as you chose',
   audience_cap: 'that audience already gets enough emails that week',
@@ -1129,6 +1165,7 @@ function planOutput(
           ? { id: offer.id, code: offer.code, percent: offer.percent }
           : null,
         audience: audiences.get(s.audienceId)!,
+        ...(s.format === 'text' ? { format: 'text' as const } : {}),
         why: action.goal,
         evidence: action.evidenceIds
           .filter((id) => facts.has(id))
