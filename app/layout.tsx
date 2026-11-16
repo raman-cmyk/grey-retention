@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono, Newsreader } from 'next/font/google'
+import { Geist, Geist_Mono, Newsreader, Urbanist } from 'next/font/google'
 import {
   brandCssVariables,
   defaultBrandPresentation
@@ -17,6 +17,13 @@ const display = Newsreader({
 const ui = Geist({
   variable: '--font-geist',
   subsets: ['latin'],
+  display: 'swap'
+})
+// The GROS brand font (docs/design/BRAND.md): weights 400, 500 and 600.
+const urbanist = Urbanist({
+  variable: '--font-urbanist',
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
   display: 'swap'
 })
 const mono = Geist_Mono({
@@ -45,7 +52,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${display.variable} ${ui.variable} ${mono.variable}`}
+      className={`${display.variable} ${ui.variable} ${mono.variable} ${urbanist.variable}`}
     >
       <body
         style={
