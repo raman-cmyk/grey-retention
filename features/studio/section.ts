@@ -58,8 +58,8 @@ export const maxTypeSizes = 3
 /**
  * DST-PIC #16 (owner pick, "Phone first"): a section is a picture 600 px
  * wide that a phone shows 375 px wide, so its text shrinks to 62.5%; text
- * under 14 px on a phone fails. The smallest size the picture may set (CSS
- * px at 600), rounded up.
+ * under 14 px on a phone fails. The smallest size the picture may set (px
+ * at 600), rounded up.
  */
 export const phoneTextPx = 14
 export const minPictureTextPx = Math.ceil(phoneTextPx / (375 / sectionWidth))
@@ -129,59 +129,29 @@ export function srcsetUrls(value: string) {
 type Found = {
   problems: string[]
   urls: string[]
-  sizes?: Set<string>
-  /** The CSS sizes set, in px where a px value is known (DST-PIC #16). */
-  px?: number[]
-}
-
-/** A CSS font size in px, where it is known: px, pt, em and rem (on 16 px), %, keywords. */
-function sizePx(key: string) {
-  const n = /^(\d*\.?\d+)(px|pt|em|rem|%)$/.exec(key)
-  if (n) {
-    const v = Number(n[1])
-    return n[2] === 'px'
-      ? v
-      : n[2] === 'pt'
-        ? (v * 4) / 3
-        : n[2] === '%'
-          ? (v / 100) * 16
-          : v * 16
-  }
-  const keywords: Record<string, number> = {
-    'xx-small': 9,
-    'x-small': 10,
-    small: 13,
-    medium: 16,
-    large: 18,
-    'x-large': 24,
-    'xx-large': 32,
-    'xxx-large': 48
-  }
-  return keywords[key] ?? null
-}
-
-/** A CSS font size as one key (`32px`, `2em`, `large`), or null. */
-function sizeKey(value: string) {
-  const v = value.trim().toLowerCase()
-  const n = /^(\d*\.?\d+)(px|pt|em|rem|%|vw|vh|vmin|vmax|ex|ch)?$/.exec(v)
-  if (n) return `${Number(n[1])}${n[2] ?? 'px'}`
-  return /^(?:xx-small|x-small|small|medium|large|x-large|xx-large|xxx-large|larger|smaller)$/.test(
-    v
-  ) || /^(?:calc|clamp|min|max)\(/.test(v)
-    ? v.replace(/\s+/g, ' ')
-    : null
+  /** The font sizes it sets, in px (DST-PIC #11). */
+  sizes: Set<number>
+  /** Those its styles set (SVG text is in its viewBox's units; DST-PIC #16). */
+  styled?: number[]
 }
 
 /**
- * The size in a `font` shorthand: its first part with a unit or a size
- * keyword, before its `/line-height` (a bare number there is the weight).
+ * DST-PIC #11: a font size in a designed section (a picture 600 px wide)
+ * is written in px; any other way (a unit, a keyword, `calc()`, `inherit`)
+ * is refused rather than guessed at, as the styles are.
+ */
+const pxSize = /^(\d+(?:\.\d+)?)px$/
+const sizeWords = 'Write each font size in px, for example 48px'
+
+/**
+ * The px size in a `font` shorthand (`[style] [weight] <px>[/<line-height>]
+ * <family>`), or null: none, or a function before it (`calc()`), is not read.
  */
 function shorthandSize(value: string) {
   for (const part of value.trim().split(/\s+/)) {
-    const size = part.split('/')[0] ?? ''
-    if (/^\d*\.?\d+$/.test(size)) continue
-    const key = sizeKey(size)
-    if (key) return key
+    const n = /^(\d+(?:\.\d+)?)px(?:\/\S+)?$/.exec(part)
+    if (n) return Number(n[1])
+    if (part.includes('(')) return null
   }
   return null
 }
@@ -200,16 +170,18 @@ function checkCss(
   const read = readCss(css, where !== 'styles')
   if (read.unread || where !== 'attributes') f.problems.push(...read.problems)
   for (const d of read.declarations) {
-    const key =
+    if (d.property !== 'font-size' && d.property !== 'font') continue
+    const px =
       d.property === 'font-size'
-        ? sizeKey(d.value.replace(/\s*!important$/i, ''))
-        : d.property === 'font'
-          ? shorthandSize(d.value)
-          : null
-    if (key) {
-      f.sizes?.add(key)
-      const px = sizePx(key)
-      if (px !== null) f.px?.push(px)
+        ? pxSize.exec(d.value.trim())?.[1]
+        : shorthandSize(d.value)
+    if (px === undefined || px === null)
+      f.problems.push(
+        `${sizeWords}: “${d.property}: ${d.value.trim().slice(0, 40)}” is not.`
+      )
+    else {
+      f.sizes.add(Number(px))
+      f.styled?.push(Number(px))
     }
   }
   for (const url of read.urls)
@@ -259,9 +231,14 @@ function walk(node: T.ParentNode, hosts: readonly string[], f: Found) {
         )
         continue
       }
-      if (name === 'font-size') {
-        const key = sizeKey(value)
-        if (key) f.sizes?.add(key)
+      if (name === 'font-size' && svg) {
+        // SVG text: a plain number is px.
+        const n = /^(\d+(?:\.\d+)?)(?:px)?$/.exec(value.trim())
+        if (n) f.sizes.add(Number(n[1]))
+        else
+          f.problems.push(
+            `${sizeWords}: the SVG font-size “${value.trim().slice(0, 40)}” is not.`
+          )
       }
       if (name === 'style') checkCss(value, 'inline styles', hosts, f)
       else if (name === 'src') {
@@ -297,7 +274,7 @@ export function sectionProblems(
   const parsed = designedSection.safeParse(input)
   if (!parsed.success) return ['The section is not in the shape a section has.']
   const section = parsed.data
-  const f: Found = { problems: [], urls: [], sizes: new Set(), px: [] }
+  const f: Found = { problems: [], urls: [], sizes: new Set(), styled: [] }
   if (!/^[a-z0-9-]{1,40}$/i.test(section.id))
     f.problems.push('The section has no usable name.')
   if (
@@ -316,14 +293,19 @@ export function sectionProblems(
   if (f.problems.some((p) => p.endsWith('too long.'))) return f.problems
   checkCss(section.css, 'styles', hosts, f)
   walk(parseFragment(section.html), hosts, f)
-  const smallest = Math.min(...f.px!)
+  const smallest = Math.min(...f.styled!)
   if (smallest < minPictureTextPx)
     f.problems.push(
-      `Text set at ${Math.round(smallest * 10) / 10} px shows at ${Math.round(smallest * 0.625 * 10) / 10} px on a phone: set text at ${minPictureTextPx} px or more (${phoneTextPx} px on a phone).`
+      `Text set at ${smallest} px shows at ${Math.round(smallest * 6.25) / 10} px on a phone: set text at ${minPictureTextPx} px or more (${phoneTextPx} px on a phone).`
     )
-  if (f.sizes!.size > maxTypeSizes)
+  if (f.sizes.size > maxTypeSizes)
     f.problems.push(
-      `The section uses ${f.sizes!.size} type sizes; use at most ${maxTypeSizes} (a headline, a line under it and a small label).`
+      `The section uses ${f.sizes.size} type sizes (${[...f.sizes]
+        .sort((x, y) => y - x)
+        .map((s) => `${s}px`)
+        .join(
+          ', '
+        )}); use at most ${maxTypeSizes} (a headline, a line under it and a small label).`
     )
   const fonts = section.fonts ?? []
   if (fonts.length > maxSectionFonts)
@@ -351,7 +333,7 @@ export function sectionUrls(
   section: DesignedSection,
   hosts: readonly string[]
 ) {
-  const f: Found = { problems: [], urls: [] }
+  const f: Found = { problems: [], urls: [], sizes: new Set() }
   checkCss(section.css, 'styles', hosts, f)
   walk(parseFragment(section.html), hosts, f)
   return [...f.urls, ...(section.fonts ?? []).map((x) => x.url)]
@@ -369,5 +351,5 @@ export function sectionDocument(section: DesignedSection) {
         `@font-face{font-family:"${font.family}";src:url("${new URL(font.url).href}");font-weight:${font.weight ?? 400};font-style:${font.italic ? 'italic' : 'normal'};font-display:block}`
     )
     .join('')
-  return `<!doctype html><html><head><meta charset="utf-8"><style>${faces}html,body{margin:0;padding:0;background:#ffffff}li{list-style:none}#gr-section{position:relative;width:${sectionWidth}px;height:${section.height}px;overflow:hidden}${section.css}</style></head><body><div id="gr-section">${section.html}</div></body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${faces}html,body{margin:0;padding:0;background:#ffffff;font-size:16px}li{list-style:none}:where(#gr-section) :where(h1,h2,h3,h4,h5,h6,small,big,sub,sup){font-size:inherit}#gr-section{position:relative;width:${sectionWidth}px;height:${section.height}px;overflow:hidden}${section.css}</style></head><body><div id="gr-section">${section.html}</div></body></html>`
 }
