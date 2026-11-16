@@ -8,8 +8,9 @@
  * a few words he took out (or swapped for others) are one removal
  * (`removedPhrases`), and only when they are gone from the whole email he
  * sent: a word moved, a sentence split, a comma made a full stop or a word
- * said once instead of twice is no removal. A sentence rewritten whole or
- * dropped says nothing about a word.
+ * said once instead of twice is no removal. A sentence rewritten (more
+ * than three changes, one over four words, or under 40% of its words
+ * kept) or dropped says nothing about a word.
  *
  * Across emails (`learnNeverWords`), a phrase the owner took out of two
  * emails or more (a single word: three, and at least four letters), and
@@ -70,6 +71,8 @@ const sameSentence = 0.5
 const sameLine = 0.5
 /** More changes than this in one sentence is a rewrite. */
 const maxChanges = 3
+/** A pair keeping less than this share of the longer sentence's words is a rewrite. */
+const minKept = 0.4
 /** Sentences longer than this are not compared word by word. */
 const maxSentenceWords = 80
 /** At most this many lines, sentences and words of an email are read. */
@@ -173,7 +176,10 @@ function likeness(a: Sentence, b: Sentence) {
   return shorter ? shared / shorter : 0
 }
 
-/** The spans one sentence changed into the other, word by word (LCS). */
+/**
+ * The spans one sentence changed into the other, word by word (LCS), and
+ * how many words it kept.
+ */
 function changes(a: readonly string[], b: readonly string[]) {
   const n = a.length
   const m = b.length
@@ -218,7 +224,7 @@ function changes(a: readonly string[], b: readonly string[]) {
     }
     if (i >= n && j >= m) open.atEnd = true
   }
-  return spans
+  return { spans, kept: lcs[0]![0]! }
 }
 
 /**
@@ -311,9 +317,12 @@ const isNumber = (w: string) => /\p{N}/u.test(w)
 /**
  * The phrases the owner took out of one email, each once: one to four
  * words taken out, or swapped for at most four, that are gone from the
- * whole email he sent; never a number, a placeholder, the store's own
- * words (`keep`, as whole words), filler alone, a single word of fewer
- * than four letters, or a word swapped for another form of itself.
+ * whole email he sent; never a number, a placeholder, a phrase holding
+ * one of the store's own content words (`keep`) or a form of one, filler
+ * alone, a single word of fewer than four letters, or a word swapped for
+ * another form of itself. A pair with a change over four words, or one
+ * keeping under 40% of the longer sentence's words, is a rewrite: nothing
+ * in it is learned.
  */
 export function removedPhrases(
   edit: Pick<OwnerEdit, 'drafted' | 'sent'>,
@@ -343,16 +352,27 @@ function removedFrom(
   ours: ReadonlySet<string>
 ) {
   const still = groupsOf(sentWords)
+  const oursList = [...ours]
   const found = new Map<string, string>()
   for (const [a, b] of pairsOf(drafted, sent, true)) {
     if (a.words.length > maxSentenceWords || b.words.length > maxSentenceWords)
       continue
     if (a.text === b.text) continue
-    const spans = changes(a.words, b.words)
-    if (spans.length > maxChanges) continue
+    const { spans, kept } = changes(a.words, b.words)
+    // A rewrite: too many changes, one too long, or too little kept.
+    if (
+      spans.length > maxChanges ||
+      kept < minKept * Math.max(a.words.length, b.words.length) ||
+      spans.some(
+        (s) =>
+          s.removed.length > maxSpan ||
+          s.added.length > maxSpan ||
+          (s.atStart && s.atEnd)
+      )
+    )
+      continue
     for (const span of spans) {
-      if (!span.removed.length || span.removed.length > maxSpan) continue
-      if (span.added.length > maxSpan || (span.atStart && span.atEnd)) continue
+      if (!span.removed.length) continue
       // Light words around a phrase are not part of it.
       const core = [...span.removed]
       while (core.length && edges.has(core[0]!)) core.shift()
@@ -371,9 +391,7 @@ function removedFrom(
       // Still in the email he sent: moved, not taken out.
       if (still.has(phrase)) continue
       // A store word in it, or a form of one ("candles" for its candle).
-      if (
-        core.some((w) => ours.has(w) || [...ours].some((o) => sameWord(w, o)))
-      )
+      if (core.some((w) => ours.has(w) || oursList.some((o) => sameWord(w, o))))
         continue
       const instead = [...span.added]
       while (instead.length && edges.has(instead[0]!)) instead.shift()

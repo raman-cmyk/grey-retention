@@ -144,6 +144,32 @@ describe('the subject, the preview line and whole rewrites (PIC-29, round 2)', (
     )
   })
 
+  it('learns nothing from a pair with a long change or little kept, even a word taken out beside it', () => {
+    // "amazing" out, and seven words rewritten: a rewrite.
+    none(
+      [
+        'Our amazing linen shirts are sewn by hand in our small studio near the sea.'
+      ],
+      [
+        'Our linen shirts are sewn by hand and checked twice before they leave us.'
+      ]
+    )
+    // Three short changes, but only four of fifteen words kept.
+    none(
+      [
+        'Our truly amazing soft linen shirts are finally back now for spring this whole year.'
+      ],
+      ['Linen shirts for spring.']
+    )
+    // The same word taken out of a small edit is learned.
+    expect(
+      removedPhrases({
+        drafted: ['Our amazing linen shirts are sewn by hand.'],
+        sent: ['Our linen shirts are sewn by hand.']
+      })
+    ).toEqual([{ phrase: 'amazing', instead: '' }])
+  })
+
   it('never learns a phrase holding the store’s own word or a form of it', () => {
     expect(
       removedPhrases(
