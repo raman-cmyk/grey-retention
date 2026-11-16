@@ -1,5 +1,9 @@
 import { parse, type DefaultTreeAdapterTypes as T } from 'parse5'
 import { GMAIL_CLIP_BYTES } from '@/features/blocks/render'
+import {
+  holidayCountries,
+  platformHolidays
+} from '@/features/holidays/platform'
 import type { MessageBody } from '@/lib/providers/klaviyo/history'
 
 /**
@@ -385,11 +389,23 @@ function phones(text: string) {
  * apostrophe, no punctuation at a word's ends ("Co." is "co").
  */
 const normWord = (word: string) =>
-  word
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/[’‘]/g, "'")
-    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
+  trimEnds(word.normalize('NFKC').toLowerCase().replace(/[’‘]/g, "'"), (c) =>
+    /[\p{L}\p{N}]/u.test(c)
+  )
+
+/**
+ * A word without the characters at its ends that `keep` refuses, by a
+ * loop from each end (a pattern anchored at the end tries every start:
+ * slow on a long run of commas).
+ */
+function trimEnds(word: string, keep: (char: string) => boolean) {
+  const chars = Array.from(word)
+  let from = 0
+  let to = chars.length
+  while (from < to && !keep(chars[from]!)) from++
+  while (to > from && !keep(chars[to - 1]!)) to--
+  return chars.slice(from, to).join('')
+}
 
 /** The store's own words, by their runs of one to three words (`ownWordsOf`). */
 export type OwnWords = { readonly runs: ReadonlySet<string> }
@@ -404,21 +420,91 @@ const maxOwnRuns = 200_000
  */
 export function ownWordsOf(own: readonly string[]): OwnWords {
   const runs = new Set<string>()
-  for (const phrase of own.slice(0, maxOwnPhrases)) {
+  addRuns(runs, own.slice(0, maxOwnPhrases), maxOwnRuns)
+  return { runs }
+}
+
+function addRuns(runs: Set<string>, phrases: readonly unknown[], max: number) {
+  for (const phrase of phrases) {
     if (typeof phrase !== 'string') continue
     const words = phrase
       .split(/\s+/)
-      .map(normWord)
-      .filter(Boolean)
       .slice(0, maxOwnWordsEach)
+      .map((w) => (w.length > maxTokenChars ? '' : normWord(w)))
+      .filter(Boolean)
     for (let i = 0; i < words.length; i++)
       for (let n = 1; n <= 3 && i + n <= words.length; n++) {
-        if (runs.size >= maxOwnRuns) return { runs }
+        if (runs.size >= max) return
         runs.add(words.slice(i, i + n).join(' '))
       }
   }
-  return { runs }
 }
+
+/**
+ * The occasions emails are sent for (the planner's holidays, every
+ * country's, and the days stores sell on): no one's name, whatever the
+ * store passes. Built once.
+ */
+const extraOccasions = [
+  'Earth Day',
+  'International Cat Day',
+  'International Coffee Day',
+  'International Day of Yoga',
+  'International Dog Day',
+  'International Tea Day',
+  'International Women’s Day',
+  'National Pet Day',
+  'World Chocolate Day',
+  'World Environment Day',
+  'World Health Day',
+  'World Mental Health Day',
+  'Cinco de Mayo',
+  'Mardi Gras',
+  'Eid Mubarak',
+  'Eid al-Fitr',
+  'Eid al-Adha',
+  'Ramadan Kareem',
+  'Chinese New Year',
+  'Rosh Hashanah',
+  'Yom Kippur',
+  'Prime Day',
+  'Green Monday',
+  'Small Business Saturday',
+  'Singles Day',
+  'Super Bowl Sunday',
+  'Black History Month',
+  'Pride Month',
+  'Back To School',
+  'Boxing Week',
+  'Cyber Week',
+  'Fourth Of July',
+  'Bastille Day',
+  'Burns Night',
+  'Pancake Day',
+  'Shrove Tuesday',
+  'Ash Wednesday',
+  'Palm Sunday',
+  'Easter Sunday',
+  'St. Andrew’s Day',
+  'St. David’s Day',
+  'St. George’s Day',
+  'Guy Fawkes Night'
+]
+let occasions: ReadonlySet<string> | null = null
+function occasionRuns(): ReadonlySet<string> {
+  if (occasions) return occasions
+  const names = holidayCountries.flatMap((c) =>
+    platformHolidays({ country: c.code, from: '2026-01-01', days: 366 }).map(
+      (h) => h.name.replace(/\s*\(.*\)\s*$/, '')
+    )
+  )
+  const runs = new Set<string>()
+  addRuns(runs, [...new Set([...names, ...extraOccasions])], 10_000)
+  occasions = runs
+  return runs
+}
+const ownHas = (own: OwnWords, run: string) =>
+  own.runs.has(run) || occasionRuns().has(run)
 
 /** Words of the calendar: they may start a name (April, Summer), never make one alone. */
 const calendar = new Set(
@@ -438,6 +524,12 @@ const common = new Set(
   )
 )
 const titleWords = new Set(['mr', 'mrs', 'ms', 'mx', 'dr', 'miss', 'prof'])
+/** Common words that are also surnames: they end a name after its part. */
+const surnameLike = new Set(
+  'little best good field story read winner will love hope young king rose page'.split(
+    ' '
+  )
+)
 const particleWords = new Set(
   'de da di du la le van von der den del dos das al'.split(' ')
 )
@@ -451,10 +543,13 @@ const abbreviations = new Set(
 const capitalised = /^\p{Lu}[\p{L}'’-]{1,24}$/u
 /** Initials: J., A.J., J.R.R. */
 const initials = /^(?:\p{Lu}\.){1,3}$/u
-const opening = /^[("“«‘'[]+/u
-const closing = /[,;:!?.)"”»’'\]]+$/u
+const openingChars = new Set(Array.from('("“«‘\'['))
+const closingChars = new Set(Array.from(',;:!?.)"”»’\']'))
+/** A token longer than this is no word of a name (a part is at most 25 letters). */
+const maxTokenChars = 40
 
-type Kind = 'part' | 'initial' | 'calendar' | 'title' | 'particle' | 'stop'
+type Kind =
+  'part' | 'initial' | 'calendar' | 'title' | 'particle' | 'surname' | 'stop'
 type Token = {
   kind: Kind
   /** Where its word starts and ends in the line (punctuation outside). */
@@ -473,10 +568,25 @@ function tokensOf(line: string): Token[] {
   const out: Token[] = []
   for (const m of line.matchAll(/\S+/g)) {
     const raw = m[0]
-    const lead = opening.exec(raw)?.[0].length ?? 0
-    let word = raw.slice(lead)
-    let tail = closing.exec(word)?.[0] ?? ''
-    word = word.slice(0, word.length - tail.length)
+    const at = m.index ?? 0
+    if (raw.length > maxTokenChars) {
+      out.push({
+        kind: 'stop',
+        start: at,
+        end: at + raw.length,
+        norm: '',
+        opens: false,
+        closes: true,
+        upper: false
+      })
+      continue
+    }
+    let lead = 0
+    while (lead < raw.length && openingChars.has(raw[lead]!)) lead++
+    let cut = raw.length
+    while (cut > lead && closingChars.has(raw[cut - 1]!)) cut--
+    let word = raw.slice(lead, cut)
+    let tail = raw.slice(cut)
     // An initial's own full stop is its own ("A.J.", "P.S.").
     if (tail.startsWith('.') && initials.test(`${word}.`)) {
       word += '.'
@@ -491,11 +601,16 @@ function tokensOf(line: string): Token[] {
         kind = 'title'
         // "Mrs." : the title's full stop does not end the name.
         if (tail.startsWith('.')) tail = tail.slice(1)
-      } else if (common.has(norm)) kind = 'stop'
-      else if (calendar.has(norm)) kind = 'calendar'
+      } else if (surnameLike.has(norm)) kind = 'surname'
+      else if (common.has(norm)) kind = 'stop'
+      else if (calendar.has(norm) || calendar.has(norm.replace(/'s$/, '')))
+        kind = 'calendar'
       else kind = 'part'
-    } else if (particleWords.has(word)) kind = 'particle'
-    const start = (m.index ?? 0) + lead
+    } else if (/^\p{Lu}$/u.test(word) && word !== 'I' && word !== 'A')
+      // "Jordan S": one capital next to a name part is an initial.
+      kind = 'initial'
+    else if (particleWords.has(word)) kind = 'particle'
+    const start = at + lead
     out.push({
       kind,
       start,
@@ -518,6 +633,13 @@ function groupsOf(tokens: readonly Token[]) {
     current = []
   }
   tokens.forEach((t, i) => {
+    // "Jordan Little": a common word that is also a surname ends a name
+    // right after a name's part; anywhere else it is a common word.
+    if (t.kind === 'surname') {
+      if (t.opens || current.at(-1)?.kind !== 'part') return close(t)
+      current.push({ ...t, kind: 'part' })
+      return close(tokens[i + 1])
+    }
     if (t.kind === 'stop') return close(t)
     if (t.opens || t.kind === 'title') close(t)
     current.push(t)
@@ -561,17 +683,17 @@ function nameIn(
   const run = (a: number, b: number) => runOf(all.slice(a, b))
   // The store's own words: the whole group, or a run of two or three at
   // either end ("Cedar Goods Co.", a product title).
-  if (hi - lo <= 3 && own.runs.has(run(lo, hi))) return null
+  if (hi - lo <= 3 && ownHas(own, run(lo, hi))) return null
   for (let moved = true; moved && lo < hi;) {
     moved = false
     for (const n of [3, 2]) {
       if (hi - lo < n) continue
-      if (own.runs.has(run(lo, lo + n))) {
+      if (ownHas(own, run(lo, lo + n))) {
         lo += n
         moved = true
         break
       }
-      if (own.runs.has(run(hi - n, hi))) {
+      if (ownHas(own, run(hi - n, hi))) {
         hi -= n
         moved = true
         break

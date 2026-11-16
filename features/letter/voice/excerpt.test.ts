@@ -339,4 +339,41 @@ describe('the owner’s words as a voice excerpt (PIC-23)', () => {
     expect(performance.now() - start).toBeLessThan(3_000)
     expect(catalogue.runs.size).toBeLessThanOrEqual(200_000)
   })
+
+  it('keeps the holidays emails are sent for, finds a name with a bare initial or a surname that is a word, and stays fast on a run of commas (round 5)', () => {
+    const holidays = [
+      'Anzac Day',
+      'Canada Day',
+      'Giving Tuesday',
+      'Waitangi Day',
+      'International Women’s Day',
+      'World Mental Health Day',
+      'Martin Luther King Jr. Day',
+      'Remembrance Sunday',
+      'New Year’s Eve',
+      'St. Patrick’s Day',
+      'Cinco de Mayo',
+      'Mardi Gras',
+      'Small Business Saturday'
+    ]
+    const plans = holidays.map(
+      (h) => `Our ${h} plans are ready, and the studio is busy.`
+    )
+    const text = excerpt(body({ text: `${letter}\n${plans.join('\n')}` }))!.text
+    for (const line of plans) expect(text, line).toContain(line)
+    const named = excerpt(
+      body({
+        text: `${letter}\nThanks to Jordan S for the photo.\nThanks to Jordan Little and Sally Field for the photos.`
+      })
+    )!.text
+    expect(named).not.toMatch(/Jordan|Little|Sally|Field/)
+    expect(named).toContain('Thanks to [name] and [name] for the photos.')
+    // A run of commas, full stops or dashes in one token: fast.
+    const start = performance.now()
+    for (const mark of [',', '.', '-', '’'])
+      excerpt(
+        body({ text: `${letter}\n${mark.repeat(100_000)}a\nJordan Sample` })
+      )
+    expect(performance.now() - start).toBeLessThan(3_000)
+  })
 })
