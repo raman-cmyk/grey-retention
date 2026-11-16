@@ -580,6 +580,166 @@ describe('the fix loop', () => {
   })
 })
 
+describe('the subject ideas, judged with the email (PIC-26 part 3a)', () => {
+  const ideas = [
+    'A quiet evening, picked for you',
+    'Ready for slow evenings?',
+    'Your evening candle'
+  ]
+  const flag = (field: string, quote: string) => ({
+    problems: [{ field, quote, reason: 'Not for this brand.', fix: '' }]
+  })
+
+  it('drops an idea either inspector flags, and never sends the email back for it', async () => {
+    const locked = await lock()
+    const ai = inspectors(
+      flag('idea-2', 'slow evenings'),
+      flag('idea-3', 'evening candle')
+    )
+    const run = writer(words({ subjectIdeas: ideas }))
+    const { ctx } = context(ai)
+    const result = await writeAndInspect(build(locked, run), ctx)
+    expect(result.status).toBe('passed')
+    if (result.status !== 'passed') return
+    expect(result.draft.subjectIdeas).toEqual([ideas[0]])
+    // One write, one call to each inspector: the ideas cost no more calls.
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(ai).toHaveBeenCalledTimes(2)
+    for (const call of ai.mock.calls) {
+      expect(call[0].request.user).toContain('"subject_ideas"')
+      expect(call[0].request.user).toContain(
+        '"idea-2":"Ready for slow evenings?"'
+      )
+      expect(call[0].request.system).toContain('"idea-1"')
+    }
+  })
+
+  it('still sends the email back for its own problem, with no word about an idea', async () => {
+    const locked = await lock()
+    const both = {
+      problems: [
+        ...flag('subject', 'favourite candle').problems,
+        ...flag('idea-1', 'quiet evening').problems
+      ]
+    }
+    const ai = inspectors(both, { problems: [] }, { problems: [] })
+    const run = writer(
+      words({ subjectIdeas: ideas }),
+      words({ subject: 'Slow evenings, 10% off', subjectIdeas: ideas })
+    )
+    const { ctx } = context(ai)
+    const result = await writeAndInspect(build(locked, run), ctx)
+    expect(result.status).toBe('passed')
+    expect(run).toHaveBeenCalledTimes(2)
+    const feedback = userOf(run, 1)
+    expect(feedback).toContain('subject')
+    expect(feedback).not.toContain('idea-1')
+    // The rewrite's ideas were judged again: none flagged this time.
+    if (result.status === 'passed')
+      expect(result.draft.subjectIdeas).toEqual(ideas)
+  })
+
+  it('keeps no idea when an inspector gave up (only code checked them)', async () => {
+    const locked = await lock()
+    const ai = inspectors('refused', { problems: [] })
+    const { ctx } = context(ai)
+    const result = await writeAndInspect(
+      build(locked, writer(words({ subjectIdeas: ideas }))),
+      ctx
+    )
+    expect(result.status).toBe('passed')
+    if (result.status === 'passed')
+      expect(result.draft.subjectIdeas).toBeUndefined()
+  })
+
+  it('never sends an inspector back for an idea’s problem, quoted well or not', async () => {
+    const locked = await lock()
+    const draft = await draftOf(locked, words({ subjectIdeas: ideas }))
+    expect(draft.subjectIdeas).toEqual(ideas)
+    expect(
+      checkInspection(
+        {
+          problems: [
+            {
+              field: 'idea-2',
+              quote: 'slow evenings',
+              reason: 'Fine.',
+              fix: ''
+            },
+            { field: 'idea-4', quote: 'x', reason: 'No such idea.', fix: '' },
+            { field: 'idea-1', quote: 'not in it', reason: 'No.', fix: '' },
+            { field: '9-text', quote: 'x', reason: 'No such block.', fix: '' }
+          ]
+        },
+        draft,
+        locked,
+        brand.name
+      )
+    ).toEqual([
+      'Problem 4: "9-text" is not a field of this email; use "subject", "preview", a block id or a subject idea ("idea-1").'
+    ])
+  })
+
+  it('reads an idea’s problem that quotes the writer’s subject, not the idea, as the subject’s', async () => {
+    const locked = await lock()
+    const ai = inspectors(
+      flag('idea-1', 'favourite candle'),
+      { problems: [] },
+      { problems: [] },
+      { problems: [] }
+    )
+    const run = writer(
+      words({ subjectIdeas: ideas }),
+      words({ subject: 'Slow evenings, 10% off', subjectIdeas: ideas })
+    )
+    const { ctx } = context(ai)
+    const result = await writeAndInspect(build(locked, run), ctx)
+    expect(result.status).toBe('passed')
+    // The email went back once, about its subject; idea 1 was kept.
+    expect(run).toHaveBeenCalledTimes(2)
+    expect(userOf(run, 1)).toContain('subject')
+    if (result.status === 'passed')
+      expect(result.draft.subjectIdeas).toEqual(ideas)
+  })
+
+  it('drops an idea whose problem is misquoted, without asking again', async () => {
+    const locked = await lock()
+    const ai = inspectors(flag('idea-1', 'not in it'), { problems: [] })
+    const { ctx, fallbacks } = context(ai)
+    const result = await writeAndInspect(
+      build(locked, writer(words({ subjectIdeas: ideas }))),
+      ctx
+    )
+    expect(result.status).toBe('passed')
+    if (result.status === 'passed')
+      expect(result.draft.subjectIdeas).toEqual(ideas.slice(1))
+    expect(ai).toHaveBeenCalledTimes(2)
+    expect(fallbacks.entries()).toEqual([])
+  })
+
+  it('keeps at most ten of an inspector’s own problems, so the other inspector’s reach the writer', async () => {
+    const locked = await lock()
+    const many = {
+      problems: Array.from({ length: 12 }, (_, i) => ({
+        field: 'subject',
+        quote: 'favourite candle',
+        reason: `Problem number ${i + 1} with it.`,
+        fix: ''
+      }))
+    }
+    const ai = inspectors(many, flag('preview', 'Use your code'), {
+      problems: []
+    })
+    const run = writer(words(), words({ subject: 'Slow evenings, 10% off' }))
+    const { ctx } = context(ai)
+    await writeAndInspect(build(locked, run), ctx)
+    const feedback = userOf(run, 1)
+    expect(feedback).toContain('Problem number 10 with it.')
+    expect(feedback).not.toContain('Problem number 11 with it.')
+    expect(feedback).toContain('preview')
+  })
+})
+
 describe('the email checks (code)', () => {
   it('send back a preview that repeats the subject, never one that names only the brand again (DST-PIC #27)', async () => {
     const locked = await lock()
@@ -879,6 +1039,74 @@ describe('rounds saved between claims (REL-AI part 2b)', () => {
     )
     expect(next.status).toBe('passed')
     expect(ai.mock.calls.map((c) => c[0].purpose)).toEqual(['review', 'label'])
+  })
+
+  it('keeps the ideas an inspector refused when it saves between the two, apart from its findings (PIC-26 part 3a)', async () => {
+    const locked = await lock()
+    const ideas = [
+      'A quiet evening, picked for you',
+      'Ready for slow evenings?',
+      'Your evening candle'
+    ]
+    const refusal = {
+      problems: ideas.map((idea, i) => ({
+        field: `idea-${i === 0 ? 2 : 3}`,
+        quote: i === 0 ? 'slow evenings' : 'evening candle',
+        reason: 'x'.repeat(290),
+        fix: ''
+      }))
+    }
+    const ai = inspectors(refusal, { problems: [] })
+    const { ctx } = context(ai)
+    const first = await copyRounds(
+      {
+        ...build(locked, writer(words({ subjectIdeas: ideas }))),
+        fits: budget(2)
+      },
+      ctx
+    )
+    if (first.status !== 'paused') throw new Error('expected a pause')
+    expect(first.work.pending).toMatchObject({
+      next: 'email-inspector',
+      findings: [],
+      refusedIdeas: ['idea-2', 'idea-3'],
+      ideasJudged: true
+    })
+    const next = await copyRounds(
+      { ...build(locked, writer()), work: stored(first.work), fits: budget(9) },
+      ctx
+    )
+    expect(next.status).toBe('passed')
+    if (next.status === 'passed')
+      expect(next.draft.subjectIdeas).toEqual([ideas[0]])
+  })
+
+  it('keeps no idea of a draft saved before the inspectors judged ideas', async () => {
+    const locked = await lock()
+    const ai = inspectors({ problems: [] }, { problems: [] })
+    const { ctx } = context(ai)
+    const first = await copyRounds(
+      {
+        ...build(
+          locked,
+          writer(words({ subjectIdeas: ['Ready for slow evenings?'] }))
+        ),
+        fits: budget(2)
+      },
+      ctx
+    )
+    if (first.status !== 'paused') throw new Error('expected a pause')
+    // As the older version saved it: no mark that its ideas were judged.
+    const older = JSON.parse(JSON.stringify(first.work))
+    delete older.pending.ideasJudged
+    delete older.pending.refusedIdeas
+    const next = await copyRounds(
+      { ...build(locked, writer()), work: stored(older), fits: budget(9) },
+      ctx
+    )
+    expect(next.status).toBe('passed')
+    if (next.status === 'passed')
+      expect(next.draft.subjectIdeas).toBeUndefined()
   })
 
   it('an inspector out of time between its tries goes on from them in the next claim, never skipped or logged', async () => {
