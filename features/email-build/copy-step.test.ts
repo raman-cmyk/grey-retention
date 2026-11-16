@@ -870,7 +870,7 @@ describe('the subject line lab on the Copywriter’s words (PIC-26 part 2)', () 
       'New: the winter candles',
       'Almost gone: cedar candles',
       'This weekend only',
-      'Our bestselling candle',
+      'Everyone’s favourite candle',
       // The ninth and last idea the lab weighs.
       'Ready for the weekend?'
     ])

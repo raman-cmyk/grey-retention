@@ -233,7 +233,7 @@ const priceTalk =
  * only", "our bestseller", "handmade".
  */
 const claimTalk =
-  /\b(?:almost gone|selling (?:out|fast)|sold out|going fast|while (?:they|stocks?|supplies) lasts?|(?:week(?:end)?|today|tonight|day)s? only|only (?:a few|\d+) left|(?:a )?few left|limited(?: stock| edition| time| run)?|before (?:it'?s|they'?re) gone|back in stock|low stock|last (?:one|few|chance)|best[- ]?sell(?:ing|ers?)|best|most (?:popular|loved)|(?:everyone'?s|fan|customer|crowd) favou?rites?|hand[- ]?made|small[- ]batch(?:es)?|award[- ]winning|loved by|number one|guaranteed?|organic|natural|sustainable|vegan|eco)\b|#\s?1\b/i
+  /\b(?:almost gone|selling (?:out|fast)|sold out|going fast|while (?:they|stocks?|supplies) lasts?|(?:week(?:end)?|today|tonight|day)s? only|only (?:a few|\d+) left|(?:a )?few left|limited(?: stock| edition| time| run)?|before (?:it['’]?s|they['’]?re) gone|back in stock|low stock|last (?:one|few|chance)|best[- ]?sell(?:ing|ers?)|best|most (?:popular|loved)|(?:everyone['’]?s|fan|customer|crowd) favou?rites?|hand[- ]?made|small[- ]batch(?:es)?|award[- ]winning|loved by|number one|guaranteed?|organic|natural|sustainable|vegan|eco)\b|#\s?1\b/i
 
 /**
  * True when an idea talks about price other than by the email's own offer
