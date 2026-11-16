@@ -350,7 +350,7 @@ export const previewResult = z.union([
     lease: z.uuid(),
     height: z.int().min(1).max(previewLimits.maxHeight),
     cut: z.boolean(),
-    /** Something in it is wider than the view. */
+    /** Wider than its window, or its frame wider than the part drawn (DST-007). */
     wide: z.boolean(),
     bytes: z.int().min(1).max(previewLimits.maxBytes)
   }),
