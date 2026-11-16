@@ -52,7 +52,13 @@ export async function runGolden(
     return {
       result,
       store: await goldenStore(brief.store),
-      sections: s ? { rules: s.rules, sendAt: s.sendAt } : null,
+      sections: s
+        ? {
+            rules: s.rules,
+            sendAt: s.sendAt,
+            families: s.layout.sections.map((x) => x.family)
+          }
+        : null,
       fallbacks: deps.fallbacks.entries(),
       saves: Object.values(
         (progress.work ?? {}) as Record<string, { saves?: number }>
