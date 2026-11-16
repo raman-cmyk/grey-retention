@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { InMemoryMemoryStore } from '@/features/agents/memory'
 import { InMemoryRunLog, type AiCall } from '@/features/agents/runtime'
 import { memoryFallbackLog } from '@/features/fallback/log'
-import type { BlockType } from '@/features/blocks/catalog'
+import { blockTypes, type BlockType } from '@/features/blocks/catalog'
+import { emailHeight, emailHeightOf } from '@/features/blocks/heights'
+import { emailTypes } from '@/features/strategy/plan'
 import {
   checkSections,
   codeSectionPlan,
@@ -324,5 +326,127 @@ describe('the safe layouts', () => {
           `${emailType} ${products}`
         ).toEqual([])
       }
+  })
+})
+
+describe('the email’s height (DST-007)', () => {
+  /** Everything a store can have: reviews, customer photos, the founder's note. */
+  const everything = blockTypes.filter(
+    (t) => t !== 'category_tiles' && t !== 'before_after'
+  )
+  const plan = (
+    emailType: (typeof emailTypes)[number],
+    products: number,
+    a: readonly BlockType[]
+  ) => {
+    const i = input({
+      allowed: a,
+      slot: { emailType, angle: 'x', products, offer: emailType === 'offer' }
+    })
+    const families = codeSectionPlan(i).sections.map((s) => s.family)
+    return { i, families, height: emailHeightOf(families, products) }
+  }
+
+  it('fills the safe plan to about 2,000 px with the store’s own content, each block once', () => {
+    for (const type of emailTypes)
+      for (let products = 1; products <= 6; products++) {
+        const { i, families, height } = plan(type, products, everything)
+        expect(height, `${type} ${products}`).toBeGreaterThanOrEqual(
+          emailHeight.min
+        )
+        expect(height, `${type} ${products}`).toBeLessThanOrEqual(
+          emailHeight.max
+        )
+        expect(new Set(families).size, `${type} ${products}`).toBe(
+          families.length
+        )
+        expect(families.length).toBeLessThanOrEqual(12)
+        expect(checkSections(codeSectionPlan(i).sections, i)).toEqual([])
+      }
+  })
+
+  it('never fills it with words alone, or a product it cannot link', () => {
+    // The sample store: no reviews, customer photos or founder's note.
+    const sample = everything.filter(
+      (t) =>
+        !['review_strip', 'ugc_grid', 'founder_note', 'hero_image'].includes(t)
+    )
+    for (const type of emailTypes)
+      for (let products = 0; products <= 6; products++) {
+        const { families } = plan(type, products, sample)
+        expect(families).not.toContain('image_text')
+        for (const words of ['text', 'steps', 'faq', 'signoff'] as const)
+          expect(
+            families.filter((f) => f === words).length,
+            `${type} ${products} ${words}`
+          ).toBeLessThanOrEqual(1)
+      }
+    // Nothing more to show: the email stays as short as its content.
+    expect(plan('story', 0, sample).families).toEqual([
+      'header_logo',
+      'text',
+      'cta',
+      'footer'
+    ])
+  })
+
+  it('sends the Section planner back when its plan is much shorter than the store can fill, or too tall', () => {
+    const rich = input({
+      allowed: everything,
+      slot: { emailType: 'launch', angle: 'x', products: 3, offer: false }
+    })
+    const fam = (family: BlockType) => ({ family, variantId: `${family}/seed` })
+    const short = [
+      'header_logo',
+      'hero_product',
+      'text',
+      'cta',
+      'footer'
+    ] as const
+    expect(checkSections(short.map(fam), rich)).toEqual([
+      'The sections come to about 1224 px tall at 600 wide; plan about 1800 px or more (up to 2400) with sections the store can fill.'
+    ])
+    // A store with nothing more to show: the short plan stands.
+    const bare = input({
+      allowed: ['header_logo', 'hero_product', 'text', 'cta', 'footer'],
+      slot: { emailType: 'launch', angle: 'x', products: 1, offer: false }
+    })
+    expect(checkSections(short.map(fam), bare)).toEqual([])
+    const tall = [
+      'header_logo',
+      'hero_product',
+      'founder_note',
+      'review_strip',
+      'ugc_grid',
+      'product_grid_2col',
+      'text',
+      'steps',
+      'faq',
+      'cta',
+      'footer'
+    ] as const
+    expect(
+      checkSections(tall.map(fam), {
+        ...rich,
+        slot: { ...rich.slot, products: 6 }
+      })
+    ).toEqual([
+      'The sections come to about 3506 px tall at 600 wide; plan at most about 2400 px.'
+    ])
+  })
+
+  it('tells the Section planner the height and each variant’s', () => {
+    const task = JSON.parse(
+      sectionPlannerAgent.task({
+        input: input(),
+        variants: seedVariants.slice(0, 2),
+        problems: []
+      })
+    )
+    expect(task.variants[0]).toMatchObject({
+      variantId: seedVariants[0].id,
+      height: expect.any(Number)
+    })
+    expect(sectionPlannerAgent.instructions).toMatch(/about 1800 to 2400 px/)
   })
 })

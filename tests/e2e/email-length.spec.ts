@@ -1,13 +1,20 @@
 import { expect, test, type Page } from '@playwright/test'
 import { blockTypes, type Block } from '../../features/blocks/catalog'
-import { blockHeight, blockHeights } from '../../features/blocks/heights'
+import {
+  blockHeight,
+  blockHeights,
+  emailHeightOf
+} from '../../features/blocks/heights'
 import { blockPreviewDocument } from '../../features/blocks/render'
 import { sampleBlocks, sampleBrand } from '../../features/blocks/samples'
+import { goldenBriefs } from '../../features/email-build/golden/briefs'
+import { runGolden } from '../../features/email-build/golden/run'
+import { memoryFallbackLog } from '../../features/fallback/log'
 
-// DST-007: how tall the blocks really are, at 600 wide in a desktop
-// window (700: the email's phone layout starts under 620), measured in
-// Chromium. Product photos are a square picture, as a shop's product
-// photos usually are. No server or sign-in is needed.
+// DST-007: how tall the blocks and the coded emails really are, at 600
+// wide in a desktop window (700: the email's phone layout starts under
+// 620), measured in Chromium. Product photos are a square picture, as a
+// shop's product photos usually are. No server or sign-in is needed.
 const square = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mN8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
   'base64'
@@ -70,6 +77,32 @@ test('DST-007 every block is drawn at the height the plans count on', async ({
       off.push(
         `${type} with ${count}: drawn ${drawn}, counted ${blockHeight(type, count)}`
       )
+  }
+  expect(off).toEqual([])
+})
+
+test('DST-007 the coded emails are about as tall as their plan counts', async ({
+  page
+}) => {
+  const taken: string[] = []
+  const off: string[] = []
+  for (const brief of goldenBriefs) {
+    const run = await runGolden(brief, {
+      agents: null,
+      fallbacks: memoryFallbackLog(),
+      taken: [...taken]
+    })
+    if (!run.result.ok) throw new Error(`${brief.id}: ${run.result.code}`)
+    taken.push(run.result.email.subject)
+    const drawn = await frameHeight(page, run.result.email.html)
+    const counted = emailHeightOf(
+      run.sections!.families,
+      run.result.email.productIds.length
+    )
+    // The plain copy writes one short paragraph and turns steps and
+    // questions into text, shorter than the samples: within a quarter.
+    if (Math.abs(drawn - counted) > counted * 0.25)
+      off.push(`${brief.id}: drawn ${drawn}, counted ${counted}`)
   }
   expect(off).toEqual([])
 })
