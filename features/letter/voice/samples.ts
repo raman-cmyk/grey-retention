@@ -24,19 +24,22 @@ export type VoiceSample = {
 export const maxVoiceSamples = 20
 export const maxVoiceChars = 60_000
 
-const sample = z.object({
-  messageId: z.string().regex(/^[A-Za-z0-9]{1,64}$/),
-  text: z.string().min(1).max(8_000),
-  weight: z.union([z.literal(1), z.literal(2), z.literal(3)]),
-  words: z.number().int().min(25).max(8_000),
-  // As the table keeps it: a real time from 2000 on, in one spelling.
-  sentAt: z.iso
-    .datetime({ offset: true })
-    .transform((t) => new Date(t))
-    .refine((d) => !Number.isNaN(d.getTime()) && d.getUTCFullYear() >= 2000)
-    .transform((d) => d.toISOString())
-    .nullable()
-})
+const sample = z
+  .object({
+    messageId: z.string().regex(/^[A-Za-z0-9]{1,64}$/),
+    text: z.string().min(1).max(8_000),
+    weight: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    words: z.number().int().min(25).max(8_000),
+    // As the table keeps it: a real time from 2000 on, in one spelling.
+    sentAt: z.iso
+      .datetime({ offset: true })
+      .transform((t) => new Date(t))
+      .refine((d) => !Number.isNaN(d.getTime()) && d.getUTCFullYear() >= 2000)
+      .transform((d) => d.toISOString())
+      .nullable()
+  })
+  // A word is at least one letter and a space (as the table checks).
+  .refine((v) => v.words <= (v.text.length + 1) / 2)
 
 /**
  * The samples worth keeping: the letters first (by weight), then the

@@ -68,6 +68,7 @@ describe('the owner’s words kept per workspace (PIC-23 part 2b)', () => {
       s({ messageId: 'Weight', weight: 4 as never }),
       s({ messageId: 'When', sentAt: 'yesterday' }),
       s({ messageId: 'Old', sentAt: '0000-01-01T00:00:00Z' }),
+      s({ messageId: 'Wordy', text: 'a b c d e f', words: 30 }),
       s({ messageId: 'Good' })
     ])
     expect(picked.map((p) => p.messageId)).toEqual(['Good'])
