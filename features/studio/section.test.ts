@@ -261,3 +261,76 @@ describe('a designed section (DST-001)', () => {
     expect(page).toContain(`<div id="gr-section">${good.html}</div>`)
   })
 })
+
+describe('typography in a designed section (DST-PIC #11)', () => {
+  const problems = (css: string, html = '<h1>Hi</h1>') =>
+    sectionProblems(with_({ css, html }), hosts).filter(
+      (p) => p.includes('type sizes') || p.includes('in px')
+    )
+  const four =
+    'The section uses 4 type sizes (48px, 32px, 18px, 12px); use at most 3 (a headline, a line under it and a small label).'
+  it('takes at most three type sizes, and names them past that', () => {
+    expect(
+      problems('h1{font-size:48px}p{font-size:18px}small{font-size:12px}')
+    ).toEqual([])
+    // The same size twice, and a weight in the shorthand, count once.
+    expect(
+      problems(
+        'h1{font:700 48px/1.1 Georgia,serif}h2{font-size:48.0px}p{font-size:18px !important}small{font-size:12px}'
+      )
+    ).toEqual([])
+    expect(
+      problems(
+        'h1{font-size:48px}h2{font-size:32px}p{font-size:18px}small{font-size:12px}'
+      )
+    ).toEqual([four])
+    // A size of 0 (closing the gaps between inline blocks) is no size.
+    expect(
+      problems(
+        '.row{font-size:0}.wrap{font-size:0px}h1{font-size:48px}p{font-size:18px}small{font-size:12px}'
+      )
+    ).toEqual([])
+  })
+
+  it('counts the sizes in inline styles, the shorthand and SVG text, not an HTML attribute', () => {
+    expect(
+      problems(
+        'h1{font-size:48px}',
+        '<h1>Hi</h1><p style="font: italic 32px Georgia">Line</p><small style="font-size:12px">x</small><svg viewBox="0 0 10 10"><text font-size="18">A</text></svg><p font-size="99">y</p>'
+      )
+    ).toEqual([four])
+  })
+
+  it('refuses a size it cannot read for sure, rather than guess', () => {
+    for (const css of [
+      'p{font-size:1.5em}',
+      'p{font-size:2rem}',
+      'p{font-size:12mm}',
+      'p{font-size:small}',
+      'p{font-size:inherit}',
+      'p{font-size:calc(10px + 1vw)}',
+      'p{font-size:48}',
+      'p{font-size:+12px}',
+      'p{font-size:12px ! important}',
+      'p{font:caption}',
+      'p{font:calc(10px + 1vw)/1 Georgia}'
+    ])
+      expect(problems(css), css).toEqual([
+        expect.stringMatching(/^Write each font size in px, for example 48px: /)
+      ])
+    expect(
+      problems(
+        'h1{font-size:48px}',
+        '<svg viewBox="0 0 1 1"><text font-size="1e1">A</text></svg>'
+      )
+    ).toEqual([
+      'Write each font size in px, for example 48px: the SVG font-size “1e1” is not.'
+    ])
+  })
+
+  it('draws a heading or small text given no size at the text’s own size', () => {
+    expect(sectionDocument(good)).toContain(
+      ':where(#gr-section) :where(h1,h2,h3,h4,h5,h6,small,big,sub,sup){font-size:inherit}'
+    )
+  })
+})
