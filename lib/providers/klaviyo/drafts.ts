@@ -75,11 +75,12 @@ export type VariationContent = {
 
 export const designName = (approach: 'A' | 'B') => `Design ${approach}`
 
-/** An HTML template (the "code" editor); its id. */
+/** An HTML template (the "code" editor), with its plain-text part when given (TXT-001e); its id. */
 export async function createTemplate(
   client: KlaviyoClient,
   name: string,
-  html: string
+  html: string,
+  text?: string
 ) {
   const body = await client.write(
     'POST',
@@ -87,7 +88,12 @@ export async function createTemplate(
     {
       data: {
         type: 'template',
-        attributes: { name: name.slice(0, 120), editor_type: 'CODE', html }
+        attributes: {
+          name: name.slice(0, 120),
+          editor_type: 'CODE',
+          html,
+          ...(text !== undefined ? { text } : {})
+        }
       }
     },
     'templates:write'

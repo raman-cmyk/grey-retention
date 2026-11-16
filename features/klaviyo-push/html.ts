@@ -71,6 +71,12 @@ export function footerProblems(html: string) {
   return problems
 }
 
+/**
+ * The unsubscribe link a plain-text part must carry (TXT-001e): Klaviyo's
+ * URL-only tag, as the letter's plain text writes it (`plainFooterTags`).
+ */
+export const textUnsubscribeTag = '{% unsubscribe_link %}'
+
 const klaviyoId = /^[A-Za-z0-9_-]{1,64}$/
 
 /** A Klaviyo list or segment id, never the sample store's own audiences. */
@@ -84,11 +90,16 @@ export const audienceOk = (audienceId: string) =>
  */
 export function preflight(
   htmls: string[],
-  audienceId: string
+  audienceId: string,
+  /** Plain-text parts (TXT-001e): each needs its unsubscribe link. */
+  texts: string[] = []
 ): { reason: string; check: string } | null {
   if (!audienceOk(audienceId))
     return { reason: 'audience_not_in_klaviyo', check: 'audience' }
-  if (htmls.some((h) => footerProblems(h).length))
+  if (
+    htmls.some((h) => footerProblems(h).length) ||
+    texts.some((t) => !t.includes(textUnsubscribeTag))
+  )
     return { reason: 'footer_missing', check: 'footer' }
   if (htmls.some((h) => Buffer.byteLength(h, 'utf8') > gmailClipBytes))
     return { reason: 'too_big_for_gmail', check: 'size' }

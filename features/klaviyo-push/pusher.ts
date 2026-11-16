@@ -194,13 +194,30 @@ const short = (key: string) => key.replace(/-/g, '').slice(0, 8)
 const templateName = (key: string, approach: 'A' | 'B', hash: string) =>
   `GROS ${short(key)} ${approach} ${hash.slice(0, 8)}`
 
-type Design = { approach: 'A' | 'B'; html: string }
+type Design = { approach: 'A' | 'B'; html: string; text?: string }
 
-/** The designs asked for: two for an A/B test (A first), else the one. */
+/**
+ * The designs asked for: two for an A/B test (A first), else the one, with
+ * a text email's plain-text part (TXT-001e; never with a test).
+ */
 function designsOf(input: DraftInput): Design[] {
-  if (!input.variations) return [{ approach: 'A', html: input.html }]
+  if (!input.variations)
+    return [
+      {
+        approach: 'A',
+        html: input.html,
+        ...(input.text !== undefined ? { text: input.text } : {})
+      }
+    ]
   const [a, b, ...more] = input.variations
-  if (!a || !b || more.length || a.approach !== 'A' || b.approach !== 'B')
+  if (
+    !a ||
+    !b ||
+    more.length ||
+    a.approach !== 'A' ||
+    b.approach !== 'B' ||
+    input.text !== undefined
+  )
     throw new Refused('variations_invalid', ['variations'])
   return [a, b]
 }
@@ -577,7 +594,8 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
   const designs = designsOf(input)
   const before = preflight(
     designs.map((d) => d.html),
-    input.audienceId
+    input.audienceId,
+    designs.flatMap((d) => (d.text !== undefined ? [d.text] : []))
   )
   if (before) throw new Refused(before.reason, [before.check])
   if (p.audienceId && p.audienceId !== input.audienceId)
@@ -639,7 +657,7 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     if (!id) {
       fits(1)
       await save({ templateStartedAt: now().toISOString() })
-      id = await createTemplate(client, name, htmls[i]!)
+      id = await createTemplate(client, name, htmls[i]!, wanted[i]!.text)
     }
     const t: PushTemplate = {
       approach,

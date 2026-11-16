@@ -96,7 +96,10 @@ type Variation = {
 }
 
 export type FakeDraftAccount = {
-  templates: Map<string, { name: string; html: string; created: string }>
+  templates: Map<
+    string,
+    { name: string; html: string; text?: string; created: string }
+  >
   images: Map<string, { from: string; url: string }>
   campaigns: Map<string, Campaign>
   messages: Map<string, Message>
@@ -300,13 +303,17 @@ export function fakeDraftAccount(
         !attributes ||
         !str(attributes.name) ||
         attributes.editor_type !== 'CODE' ||
-        !str(attributes.html)
+        !str(attributes.html) ||
+        (attributes.text !== undefined && !str(attributes.text))
       )
         return bad()
       const tid = id('Tpl')
       account.templates.set(tid, {
         name: attributes.name as string,
         html: attributes.html as string,
+        ...(attributes.text !== undefined
+          ? { text: attributes.text as string }
+          : {}),
         created: now().toISOString()
       })
       if (account.faults.loseTemplate && firstTime('lose template'))

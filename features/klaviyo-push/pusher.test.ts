@@ -10,6 +10,7 @@ import {
   type FakeDraftAccount
 } from '@/lib/providers/klaviyo/recorded-drafts'
 import { fakeDraftPusher, type DraftInput } from '@/lib/providers/klaviyo-draft'
+import { textUnsubscribeTag } from './html'
 import {
   liveDraftPusher,
   pushMark,
@@ -28,6 +29,8 @@ const page = (title: string, pictures: string[]) =>
     .join(
       ''
     )}<a href="https://cedar.example/p/1">Shop</a>${footer}</body></html>`
+/** A text email's plain-text part, as the letter writes it (TXT-001e). */
+const plain = `Hi there,\n\nA short note from the shop.\n\nWarmly,\nMaya\n\n-- \n{{ organization.name }}, {{ organization.full_address }}\nUnsubscribe: ${textUnsubscribeTag}\n`
 const hero = 'https://cedar.example/images/hero.jpg?w=600&amp;h=400'
 const knit = 'https://cedar.example/images/knit.jpg'
 const input = (over: Partial<DraftInput> = {}): DraftInput => ({
@@ -250,6 +253,24 @@ describe('the live Klaviyo draft push', () => {
       { id: 'footer', pass: true, problems: [] },
       { id: 'size', pass: true, problems: [] }
     ])
+  })
+
+  it('puts a text email’s plain-text part on its template beside the HTML (TXT-001e)', async () => {
+    const { account, pusher } = setup()
+    const result = await pusher.createDraft(input({ text: plain }))
+    expect(result).toMatchObject({ ok: true })
+    const [variation] = variationsOf(account)
+    // Klaviyo's copy keeps it, word for word.
+    expect(account.templates.get(variation!.templateId!)).toMatchObject({
+      text: plain
+    })
+    // A designed email sends none: Klaviyo makes its own.
+    const designed = setup()
+    await designed.pusher.createDraft(input())
+    const [other] = variationsOf(designed.account)
+    expect(
+      designed.account.templates.get(other!.templateId!)
+    ).not.toHaveProperty('text')
   })
 
   it('puts an A/B design test into one draft: both designs and an even split with no winner, in one request, verified', async () => {
@@ -849,6 +870,13 @@ describe('the live Klaviyo draft push', () => {
         { variations: [{ approach: 'A', html: page('A', []) }] },
         ['variations'],
         'variations_invalid'
+      ],
+      // TXT-001e: a plain-text part is one design's, with its unsubscribe link.
+      [{ ...ab(), text: plain }, ['variations'], 'variations_invalid'],
+      [
+        { text: plain.replace(textUnsubscribeTag, '') },
+        ['footer'],
+        'footer_missing'
       ],
       [
         {
@@ -1491,6 +1519,9 @@ describe('the fake pusher', () => {
       checks: ['variations'],
       reason: 'variations_invalid'
     })
+    expect(
+      await fakeDraftPusher().createDraft(ab({ text: plain }))
+    ).toMatchObject({ ok: false, reason: 'variations_invalid' })
     expect(
       await fakeDraftPusher({ designs: 'A' }).createDraft(ab())
     ).toMatchObject({ ok: true, designs: 'A' })
