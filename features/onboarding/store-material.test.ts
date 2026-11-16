@@ -56,6 +56,7 @@ describe('reviewerName (REL-ONB2)', () => {
     ['Dr. Jane Smith', 'Jane S.'],
     ['Mrs Ann Lee', 'Ann L.'],
     ['Ines Andersson', 'Ines A.'],
+    ['Jordan V.', 'Jordan V.'],
     ['Zoë Ångström', 'Zoë Å.']
   ])('names %j as %j', (author, shown) => {
     expect(reviewerName(author)).toBe(shown)
@@ -74,6 +75,14 @@ describe('reviewerName (REL-ONB2)', () => {
     'Sarah in London',
     'Jordan Smith Jr.',
     'John Smith III',
+    'John Smith V',
+    'John Smith PhD',
+    'Jane Smith MD',
+    'Ann Lee DDS',
+    'Sam Ray Esq.',
+    'Kim Park DVM',
+    'Lee Chan RN',
+    'Al Bent CPA',
     'One Two Three Four Five',
     'Abcdefghijklmnopqrstuvwxyzabcdefg'
   ])('names no one for %j (never an initial made up)', (author) => {
@@ -167,6 +176,10 @@ describe('storeMaterial (REL-ONB2 part a)', () => {
       review('jordan here, and it is so warm on cold days.'),
       review('Sarah Jones in the shop helped me choose the colour.'),
       review('Maria helped me pick the size and it fits well.'),
+      // A first name first: before a comma, a place word or a verb.
+      review('Ordered for my mum. Linda adores the colour and wears it daily.'),
+      review('Lovely knit. Tom at the market stall recommended it.'),
+      review('So warm… Priya, my neighbour, wants one now.'),
       // What copy QA refuses, a claim, a result, the body, spam, a code, a link.
       review('Arrived fast and free shipping too, love it.'),
       review('The best jumper I have ever owned, honestly.'),
@@ -179,6 +192,21 @@ describe('storeMaterial (REL-ONB2 part a)', () => {
       review(scarf)
     ]
     expect(material([verified, ...left])).toBeUndefined()
+  })
+
+  it('keeps honest reviews whose sentences start with an ordinary word, “I” or a product’s name', () => {
+    const honest = [
+      'It is so soft and it washes well.',
+      'Lovely, soft knit that keeps its shape.',
+      'Ordered the green one. Colour looks just like the photos.',
+      'Quality feels solid and it keeps me warm.',
+      'I wear it every weekend. Weekend Knit fits well too.',
+      'Arrived quickly. Sizing runs true and the sleeves are long.'
+    ]
+    for (const quote of honest)
+      expect(material([verified, review(quote)])?.reviews, quote).toHaveLength(
+        1
+      )
   })
 
   it('reads only the store’s own website or its subdomains, never its parent or a sibling', () => {

@@ -28,9 +28,12 @@ import { claims } from './words'
  *   `reviewsVerified`): the strip shows each review's stars, and copy QA
  *   refuses stars without one.
  * - Never a quote naming someone (another customer, a member of staff, the
- *   reviewer themself), never spam words, and every word judged by copy QA
- *   at least as strictly as the Brand inspector will judge the email
- *   (`safe`), so the inspector never meets a review it cannot fix.
+ *   reviewer themself: `namesIn`), never spam words, and every word judged
+ *   by copy QA at least as strictly as the Brand inspector will judge the
+ *   email (`safe`), so the inspector never meets a review it cannot fix.
+ *   The name check reads English-style capitals: it drops honest reviews
+ *   too, and still misses a first name that starts a sentence before a
+ *   verb it cannot tell ("Emily gave it to me.").
  *
  * Not here: customer photos (`ugc_grid`; no reader keeps customers' own
  * photos, and a brand photo is never one), a note in the brand's words
@@ -73,6 +76,54 @@ const sentences = (text: string) =>
   text.split(/(?<=[.!?…])\s+/).filter((s) => s.trim())
 
 /**
+ * Ordinary first words of a review's sentence: never a name, even before
+ * a comma, a place word or a verb ("Lovely, soft knit.", "Quality feels
+ * great.", "Warm in the wind."). Words ending in -ing or -ed (5 letters
+ * or more) count too ("Ordered", "Amazing").
+ */
+const starters = new Set(
+  (
+    "a an the this that these those it its it’s it's they them their there here my our your his her she he we you me " +
+    'so very really just such too also and but or then now well yes no oh wow ok okay overall honestly ' +
+    'absolutely definitely seriously totally truly highly only simply sadly unfortunately finally initially usually ' +
+    'actually literally personally lovely great perfect gorgeous beautiful stunning brilliant excellent fantastic ' +
+    'awesome amazing super nice good fine cute pretty soft warm cosy cozy comfy comfortable light heavy thick thin ' +
+    'quick fast slow small big large long short true happy pleased glad delighted impressed love loved best better ' +
+    'first second next last again bought made wore wear worn fits fit got took came arrived ' +
+    'colour color quality fabric material wool cotton knit yarn size sizing delivery shipping postage packaging ' +
+    'package parcel order item product price design style stitching seams sleeves length everything nothing mine ' +
+    'one both all each every some most many'
+  ).split(' ')
+)
+const ordinary = (word: string) =>
+  starters.has(word.toLowerCase()) ||
+  (Array.from(word).length >= 5 && /(?:ing|ed)$/i.test(word))
+
+/**
+ * Someone named in a sentence of a review: customer words' own check
+ * (`namesSomeone`: a capitalised word after the first, thanks, a first
+ * word doing something), and a capitalised first word that is no ordinary
+ * one, "I" or a name the store allows, when a comma, a place word or a verb
+ * follows it ("Priya, my neighbour…", "Tom at the stall…", "Linda adores…").
+ */
+function namesIn(sentence: string, names: readonly string[]) {
+  const s = sentence.trim()
+  const lead = /^(["“‘']?)([\p{L}\p{M}'’-]+)(.*)$/su.exec(s)
+  const own = names.some((n) => n.trim().length > 1 && s.startsWith(n.trim()))
+  if (!lead || own || !/^\p{Lu}/u.test(lead[2]!)) return namesSomeone(s, names)
+  const [, mark = '', first = '', rest = ''] = lead
+  // An ordinary first word is lowered, so only the words after it count.
+  if (/^I(?:'|’|$)/.test(first) || ordinary(first))
+    return namesSomeone(`${mark}${first.toLowerCase()}${rest}`, names)
+  return (
+    /^\s*,/.test(rest) ||
+    /^\s+(?:at|from|in|of|with)\b/i.test(rest) ||
+    /^\s+\p{Ll}+(?:s|ed)\b/u.test(rest) ||
+    namesSomeone(s, names)
+  )
+}
+
+/**
  * Words an email may show as the store's: clean, no claim, result, effect
  * on the body (what customers' words never say either, ONB-061), spam
  * word or anyone's name (the brand's and its products' aside), and passed
@@ -88,7 +139,7 @@ const safe = (text: string, parts: MaterialParts, judged = text) =>
   !bodyWords.test(text) &&
   !spamPhrases.some((s) => phrase(text, s)) &&
   !sentences(text).some((s) =>
-    namesSomeone(s, [parts.brandName, ...parts.productNames])
+    namesIn(s, [parts.brandName, ...parts.productNames])
   ) &&
   checkCopy({
     draft: {
@@ -116,9 +167,15 @@ const counts = (f: Finding, parts: MaterialParts): f is Quoted =>
 
 const nameWord = /^\p{L}[\p{L}\p{M}'’-]*\.?$/u
 const title = /^(?:dr|mr|mrs|ms|miss|mx|prof|sir|dame)\.?$/i
-/** Words that are no name: a placeholder, or a place or a pair ("from Leeds", "Kate and Sam", "Jr."). */
+/**
+ * Words that are no name: a placeholder, a place or a pair ("from Leeds",
+ * "Kate and Sam") or a suffix ("Jr.", "III", "PhD", "MD"): its letter is no
+ * initial.
+ */
 const noOne =
-  /(?<![\p{L}\p{M}])(?:verified|anonymous|anon|customer|buyer|reviewer|shopper|user|guest|team|admin|store|shop|from|in|and|of|at|with|by|for|the|jr|sr|ii|iii|iv)(?![\p{L}\p{M}])/iu
+  /(?<![\p{L}\p{M}])(?:verified|anonymous|anon|customer|buyer|reviewer|shopper|user|guest|team|admin|store|shop|from|in|and|of|at|with|by|for|the|jr|sr|ii|iii|iv|vi|phd|md|dds|dmd|dvm|rn|cpa|esq|mba|jd)(?![\p{L}\p{M}])/iu
+/** A last "V" after a surname is a fifth, not an initial ("John Smith V"). */
+const fifth = /^v\.?$/i
 
 /**
  * A reviewer as an email names them: the first name and the initial of
@@ -135,6 +192,7 @@ export function reviewerName(author: string): string | null {
     title.test(words[0]!) ||
     words.length > 4 ||
     noOne.test(author) ||
+    (words.length >= 3 && fifth.test(words.at(-1)!)) ||
     !words.every((w) => nameWord.test(w)) ||
     Array.from(words[0]!).length > 30
   )
