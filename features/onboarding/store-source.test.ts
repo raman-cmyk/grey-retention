@@ -466,12 +466,8 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
       brand_never_words: never
     })
     const store = await ownStoreSource(live.db).read(tenantId)
-    // Never-used only, both apostrophes; never added to the banned list.
-    expect(store.neverWords).toEqual([
-      'truly amazing',
-      "it's magic",
-      'it’s magic'
-    ])
+    // Never-used only, one spelling each; never added to the banned list.
+    expect(store.neverWords).toEqual(['truly amazing', "it's magic"])
     expect(store.facts.bannedPhrases).not.toContain('truly amazing')
     // The sample account's list on a live store, no history, or an
     // unreadable list: none.

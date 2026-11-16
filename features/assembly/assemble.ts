@@ -321,11 +321,25 @@ export const neverWordsRule = `Never use a word or phrase listed in "${neverWord
 export const neverWordsRules = (input: AssemblyInput) =>
   learnedNever(input).length ? [neverWordsRule] : []
 
-/** The learned phrases a text uses (whole words, any case), each once. */
+/**
+ * The learned phrases a text uses (whole words, any case, either
+ * apostrophe), each once; never inside a product's title, an approved
+ * claim or a fact line (the writer must use those as they are).
+ */
 export function neverWordsIn(text: string, input: AssemblyInput): string[] {
+  const learned = learnedNever(input)
+  if (!learned.length) return []
   const straight = (t: string) => t.replace(/[’‘]/g, "'")
-  const seen = straight(normal(text))
-  return learnedNever(input).filter((p) => phrase(straight(p)).test(seen))
+  const masks = [
+    ...input.products.map((p) => p.title),
+    ...input.facts.approvedClaims,
+    ...factLines(input.facts)
+  ]
+    .filter((m) => normal(m).length >= 3)
+    .sort((a, b) => b.length - a.length)
+    .map((m) => phrase(straight(m)))
+  const seen = masks.reduce((t, m) => t.replace(m, ' '), straight(normal(text)))
+  return [...new Set(learned.map(straight))].filter((p) => phrase(p).test(seen))
 }
 
 /** The store's data for the writer, as one JSON line of untrusted values. */
@@ -1215,6 +1229,17 @@ export function checkAssembled(result: Assembled): {
   return { pass: false, failures: result.problems }
 }
 
+/**
+ * PIC-29 part 2c: the learned phrases judge only a writer's words (the
+ * model's): plain and sample copy are code's own words, the fallback that
+ * must never be refused (D16).
+ */
+const writersOnly = (
+  input: AssemblyInput,
+  source: Draft['source']
+): AssemblyInput =>
+  source === 'model' || !input.neverWords ? input : { ...input, neverWords: [] }
+
 /** The engine's checks after `fill`, shared with ASM-003. */
 export function finish(
   input: AssemblyInput,
@@ -1236,7 +1261,7 @@ export function finish(
       field: 'email',
       reason: `Show ${oneLine(input.products.find((p) => p.id === id)?.title ?? id, 60)}, the brief's product, in a product block.`
     })),
-    ...wordProblems(filled.printed, input, {
+    ...wordProblems(filled.printed, writersOnly(input, source), {
       productIds: filled.productIds,
       offerShown
     })

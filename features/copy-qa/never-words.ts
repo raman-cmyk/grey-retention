@@ -481,7 +481,7 @@ export function learnNeverWords(
  * PIC-29 part 2c: the never-used phrases as the writers get them: each
  * once, as the learner writes them (letters, numbers, hyphens and
  * apostrophes, one space between words), at most 80 characters (the
- * writer's limit), with the curly apostrophe as well as the straight one.
+ * writer's limit), the straight apostrophe for either.
  */
 export function neverWordsForCopy(phrases: readonly string[]): string[] {
   const out = new Set<string>()
@@ -490,11 +490,11 @@ export function neverWordsForCopy(phrases: readonly string[]): string[] {
       typeof p !== 'string' ||
       p.length < 2 ||
       p.length > 80 ||
-      !/^[\p{L}\p{N}'’-]+(?: [\p{L}\p{N}'’-]+){0,3}$/u.test(p)
+      !/^[\p{L}\p{M}\p{N}'’-]+(?: [\p{L}\p{M}\p{N}'’-]+){0,3}$/u.test(p)
     )
       continue
-    out.add(p)
-    if (p.includes("'")) out.add(p.replace(/'/g, '’'))
+    // One spelling: the writers' check reads either apostrophe as one.
+    out.add(p.replace(/’/g, "'"))
   }
   return [...out]
 }

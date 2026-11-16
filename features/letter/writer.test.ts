@@ -296,6 +296,31 @@ describe('the Letter writer (TXT-001 part 2)', () => {
     expect(userOf(ai, 1)).toContain(
       'is a phrase the owner takes out of these emails: use other words.'
     )
+    // A product's title holding one is never sent back.
+    const titled = {
+      ...brief,
+      locked: {
+        ...brief.locked,
+        input: {
+          ...brief.locked.input,
+          neverWords: ['cedar candle']
+        }
+      }
+    }
+    const named = modelOf([
+      () =>
+        ok({
+          ...good,
+          body: [
+            `Our Cedar candle is back. ${good.body[0]}`,
+            ...good.body.slice(1)
+          ]
+        })
+    ])
+    expect(await writeLetter(titled, ctxWith(named))).toMatchObject({
+      status: 'written',
+      tries: 1
+    })
     // The plain letter says "short note", a phrase it uses: still made.
     const plain = await writeLetter(
       brief,

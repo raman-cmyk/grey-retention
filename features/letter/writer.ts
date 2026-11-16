@@ -166,7 +166,7 @@ function neverWordProblems(
     .join('\n')
   return neverWordsIn(own, brief.locked.input).map((p) => ({
     rule: 'never_word',
-    reason: `"${p.slice(0, 40)}" is a phrase the owner takes out of these emails: use other words.`
+    reason: `"${oneLine(p, 40)}" is a phrase the owner takes out of these emails: use other words.`
   }))
 }
 
