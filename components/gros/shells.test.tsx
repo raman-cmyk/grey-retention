@@ -1,4 +1,5 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
+import type { Route } from 'next'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('next/font/google', () => ({
@@ -73,9 +74,9 @@ describe('DayStrip (UI-DS)', () => {
       <DayStrip
         start="2026-11-16"
         days={[
-          { state: 'planned', href: '/plan/email/1' },
+          { state: 'planned', href: '/plan/email/1' as Route },
           { state: 'in_klaviyo' },
-          { state: 'none', href: '/nowhere' }
+          { state: 'none', href: '/plan' }
         ]}
       />
     )
@@ -148,7 +149,7 @@ describe('StepCards and FocusShell (UI-DS)', () => {
         current={2}
         steps={onboardingSteps.map((name) => ({
           name,
-          href: `/onboarding/${name.toLowerCase()}`
+          href: `/onboarding?step=${name.toLowerCase()}` as Route
         }))}
       />
     )

@@ -1,3 +1,4 @@
+import type { Route } from 'next'
 import Link from 'next/link'
 import { MessageCircle, Settings } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -12,16 +13,18 @@ import { Mark } from './mark'
  * sidebar. On a narrow screen the three parts wrap onto their own lines;
  * nothing hides behind a menu icon.
  */
+// Typed routes: the addresses of screens not built yet are cast until
+// each screen lands (then the cast goes, and the build checks the address).
 export const navItems = [
-  { key: 'home', label: 'Home', href: '/home' },
-  { key: 'plan', label: 'Plan', href: '/plan' },
-  { key: 'inspiration', label: 'Inspiration', href: '/inspiration' },
-  { key: 'audiences', label: 'Audiences', href: '/audiences' },
-  { key: 'results', label: 'Results', href: '/results' }
+  { key: 'home', label: 'Home', href: '/home' as Route },
+  { key: 'plan', label: 'Plan', href: '/plan' as Route },
+  { key: 'inspiration', label: 'Inspiration', href: '/inspiration' as Route },
+  { key: 'audiences', label: 'Audiences', href: '/audiences' as Route },
+  { key: 'results', label: 'Results', href: '/results' as Route }
 ] as const
 export type NavKey = (typeof navItems)[number]['key']
-export const settingsHref = '/settings'
-export const askHref = '/gros'
+export const settingsHref: Route = '/settings'
+export const askHref: Route = '/gros'
 
 export function TopBar({
   current,

@@ -1,3 +1,4 @@
+import type { Route } from 'next'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
@@ -9,7 +10,7 @@ import { cn } from '@/lib/utils'
  */
 export const planDays = 15
 export type DayState = 'none' | 'planned' | 'in_klaviyo'
-export type Day = { state: DayState; href?: string }
+export type Day = { state: DayState; href?: Route }
 
 const looks: Record<DayState, { cell: string; dot: string; word: string }> = {
   none: {

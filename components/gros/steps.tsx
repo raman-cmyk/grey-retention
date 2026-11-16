@@ -1,3 +1,4 @@
+import type { Route } from 'next'
 import Link from 'next/link'
 import { Check } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -18,7 +19,7 @@ export const onboardingSteps = [
   'Rivals'
 ] as const
 
-export type Step = { name: string; href?: string }
+export type Step = { name: string; href?: Route }
 
 export function StepCards({
   steps,
