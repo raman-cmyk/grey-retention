@@ -349,7 +349,11 @@ const assemblyFor = (
   timezone: saved.timezone,
   facts: store.facts,
   // ONB-061: the customers' own words, for the Copywriter to borrow.
-  ...(store.customerWords?.length ? { customerWords: store.customerWords } : {})
+  ...(store.customerWords?.length
+    ? { customerWords: store.customerWords }
+    : {}),
+  // PIC-29 part 2c: the phrases the owner takes out, for the writers only.
+  ...(store.neverWords?.length ? { neverWords: store.neverWords } : {})
 })
 
 /**

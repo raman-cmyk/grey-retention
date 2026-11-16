@@ -27,6 +27,8 @@ import { withClaimsSafety } from '@/features/onboarding/claims-safety'
 import { customerWords } from '@/features/onboarding/customer-words'
 import { z } from 'zod'
 import { pastSubjects } from '@/features/email-build/subject-traits'
+import { neverWordsForCopy } from '@/features/copy-qa/never-words'
+import { readNeverWords } from '@/features/copy-qa/never-words-store'
 import { founderVoice } from '@/features/letter/voice/profile'
 import {
   readVoiceSamples,
@@ -96,6 +98,11 @@ export type OwnStoreParts = {
    * history was read from the same account as the catalog.
    */
   voice?: readonly VoiceSample[] | null
+  /**
+   * PIC-29 part 2c: the phrases this brand never uses, learned from the
+   * owner's edits, when the history was read from the same account.
+   */
+  neverWords?: readonly string[] | null
 }
 
 /**
@@ -186,7 +193,8 @@ export function storeFrom(parts: OwnStoreParts): Store {
       names: [name, ...products.map((p) => p.title)].filter(Boolean)
     }).map((p) => p.phrase),
     ...(parts.history ? { pastSubjects: pastSubjects(parts.history) } : {}),
-    ...voiceOf(parts.voice, [name, ...products.map((p) => p.title)])
+    ...voiceOf(parts.voice, [name, ...products.map((p) => p.title)]),
+    ...neverWordsOf(parts.neverWords, facts)
   }
 }
 
@@ -197,6 +205,24 @@ const voiceOf = (
 ) => {
   const voice = samples?.length ? founderVoice(samples, own) : null
   return voice ? { founderVoice: voice } : {}
+}
+
+/**
+ * PIC-29 part 2c: the learned phrases the writers avoid, apart from the
+ * brand's banned phrases (copy QA never checks them): each once, none the
+ * brand already bans.
+ */
+function neverWordsOf(
+  learned: readonly string[] | null | undefined,
+  facts: { bannedPhrases: readonly string[] }
+): { neverWords?: string[] } {
+  const banned = new Set(
+    facts.bannedPhrases.map((p) => p.trim().toLowerCase().replace(/’/g, "'"))
+  )
+  const words = neverWordsForCopy(learned ?? []).filter(
+    (p) => !banned.has(p.toLowerCase().replace(/’/g, "'"))
+  )
+  return words.length ? { neverWords: words } : {}
 }
 
 /** Which store a plan was made from (`strategy_runs.plan`). */
@@ -257,7 +283,8 @@ export function ownStoreSource(db: Db): StoreSource {
         kit,
         logos,
         history,
-        voice
+        voice,
+        neverWords
       ] = await Promise.all([
         workspaceTimezone(db, tenantId),
         listCatalog(db, tenantId, { featurableOnly: true, synthetic: !live }),
@@ -288,6 +315,13 @@ export function ownStoreSource(db: Db): StoreSource {
         // PIC-23 part 3b: optional; without it the letter has no voice.
         readVoiceSamples(db, tenantId).catch((error: unknown) => {
           logger.warn('Voice samples unreadable', {
+            code: String((error as { code?: unknown })?.code ?? 'unknown')
+          })
+          return null
+        }),
+        // PIC-29 part 2c: optional; without it the writers avoid no more.
+        readNeverWords(db, tenantId).catch((error: unknown) => {
+          logger.warn('Never words unreadable', {
             code: String((error as { code?: unknown })?.code ?? 'unknown')
           })
           return null
@@ -327,6 +361,11 @@ export function ownStoreSource(db: Db): StoreSource {
                 const sent = new Set(history.sent.map((e) => e.id))
                 return voice.filter((s) => sent.has(s.messageId))
               })()
+            : null,
+        // Learned by the history read: of the same kind of account only.
+        neverWords:
+          history && history.live === live && neverWords
+            ? neverWords.never.map((w) => w.phrase)
             : null
       })
     }

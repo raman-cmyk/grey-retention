@@ -73,6 +73,12 @@ export type Store = {
    */
   customerWords?: string[]
   /**
+   * PIC-29 part 2c: the phrases this brand never uses, learned from the
+   * owner's edits (`brand_never_words`), for the writers only, never copy
+   * QA. Absent for the sample store and before a history read learned any.
+   */
+  neverWords?: string[]
+  /**
    * PIC-26 part 2: the subjects the store sent and how they were opened
    * (its Klaviyo history, `pastSubjects`), for the subject line lab.
    * Absent for the sample store and before a history read.

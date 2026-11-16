@@ -268,6 +268,42 @@ describe('the Letter writer (TXT-001 part 2)', () => {
     })
   })
 
+  it('sends back a letter with a phrase the owner takes out, but never refuses the plain letter for one (PIC-29 part 2c)', async () => {
+    const base = await briefFor()
+    const brief = {
+      ...base,
+      locked: {
+        ...base.locked,
+        input: {
+          ...base.locked.input,
+          neverWords: ['truly amazing', 'short note']
+        }
+      }
+    }
+    const ai = modelOf([
+      () =>
+        ok({
+          ...good,
+          body: [`Truly amazing news. ${good.body[0]}`, ...good.body.slice(1)]
+        }),
+      () => ok(good)
+    ])
+    expect(await writeLetter(brief, ctxWith(ai))).toMatchObject({
+      status: 'written',
+      tries: 2
+    })
+    expect(userOf(ai, 0)).toContain('ownerTakesOut')
+    expect(userOf(ai, 1)).toContain(
+      'is a phrase the owner takes out of these emails: use other words.'
+    )
+    // The plain letter says "short note", a phrase it uses: still made.
+    const plain = await writeLetter(
+      brief,
+      ctxWith(modelOf([() => ({ ok: false, code: 'setup_required' })]))
+    )
+    expect(plain.status).toBe('plain')
+  })
+
   it('keeps the shared rules about facts, claims, urgency and banned words', () => {
     expect(
       letterInstructions.filter((r) =>

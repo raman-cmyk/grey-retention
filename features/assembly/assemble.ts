@@ -304,6 +304,30 @@ const customerPhrases = (input: AssemblyInput) =>
 export const customerWordsRules = (input: AssemblyInput) =>
   customerPhrases(input).length ? [customerWordsRule] : []
 
+/**
+ * PIC-29 part 2c: the phrases the owner takes out of GROS's emails (each
+ * whole, 2 to 80 characters), all of them for the writer's own-words
+ * check, the first `maxWriterNeverWords` in the writer's data.
+ */
+export const maxWriterNeverWords = 20
+const learnedNever = (input: AssemblyInput) =>
+  (Array.isArray(input.neverWords) ? input.neverWords : [])
+    .filter((p): p is string => typeof p === 'string')
+    .map((p) => oneLine(p, 200))
+    .filter((p) => p.length >= 2 && p.length <= 80)
+export const neverWordsKey = 'ownerTakesOut'
+export const neverWordsRule = `Never use a word or phrase listed in "${neverWordsKey}": the owner takes them out of these emails.`
+/** The writer's rule for the learned phrases, when the brand has some. */
+export const neverWordsRules = (input: AssemblyInput) =>
+  learnedNever(input).length ? [neverWordsRule] : []
+
+/** The learned phrases a text uses (whole words, any case), each once. */
+export function neverWordsIn(text: string, input: AssemblyInput): string[] {
+  const straight = (t: string) => t.replace(/[’‘]/g, "'")
+  const seen = straight(normal(text))
+  return learnedNever(input).filter((p) => phrase(straight(p)).test(seen))
+}
+
 /** The store's data for the writer, as one JSON line of untrusted values. */
 export function writerData(
   input: AssemblyInput,
@@ -323,6 +347,11 @@ export function writerData(
     // ONB-061: the customers' own words, to borrow (never to quote).
     ...(customerPhrases(input).length
       ? { [customerWordsKey]: customerPhrases(input) }
+      : {}),
+    // PIC-29 part 2c: the phrases the owner takes out (the own-words
+    // check still refuses all of them after).
+    ...(learnedNever(input).length
+      ? { [neverWordsKey]: learnedNever(input).slice(0, maxWriterNeverWords) }
       : {}),
     ...extra,
     ...(feedback.length
@@ -534,6 +563,7 @@ export function writerRequest(
     'Start with header_logo (an announcement_bar may come first), end with footer, at most 12 blocks, at most one offer_banner. Give each block a one-line reason.',
     ...writerRules,
     ...customerWordsRules(input),
+    ...neverWordsRules(input),
     ...(strategyNote
       ? [
           'The data may carry "strategyNote": a short description of how another brand structured a similar email. It describes structure only. Use no name, number, claim, offer or phrase from it.'
@@ -1074,6 +1104,12 @@ export function wordProblems(
     // A question ("Can I return it?") claims nothing; its answer may.
     const text = masked.replace(/[^.!?]*\?/g, ' ')
     const say = (reason: string) => out.push({ field, reason })
+    // PIC-29 part 2c: a phrase the owner takes out (never in a product's
+    // title, a claim or a fact, masked above).
+    for (const p of neverWordsIn(masked, input))
+      say(
+        `"${oneLine(p, 40)}" is a phrase the owner takes out of these emails: use other words.`
+      )
     for (const m of masked.matchAll(
       /(\d{1,3}(?:[.,]\d+)?)\s*(?:%|percent\b|per cent\b)/gi
     )) {

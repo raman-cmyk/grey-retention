@@ -438,8 +438,53 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
       ['brand_kits', 'eq', 'tenant_id', tenantId],
       ['brand_logos', 'eq', 'tenant_id', tenantId],
       ['klaviyo_history', 'eq', 'tenant_id', tenantId],
-      ['brand_voice_samples', 'eq', 'tenant_id', tenantId]
+      ['brand_voice_samples', 'eq', 'tenant_id', tenantId],
+      ['brand_never_words', 'eq', 'tenant_id', tenantId]
     ])
+  })
+
+  it('gives the writers the phrases the owner takes out, apart from the banned ones (PIC-29 part 2c)', async () => {
+    const history = (live: boolean) => ({
+      data: { live, sent: [] },
+      error: null
+    })
+    const row = (phrase: string, state = 'never') => ({
+      phrase,
+      state,
+      removed: 3,
+      kept: 0,
+      instead: []
+    })
+    const never = {
+      data: [row('truly amazing'), row("it's magic"), row('kinda', 'watched')],
+      error: null
+    }
+    const live = fakeDb({
+      catalog_status: status(),
+      ...own,
+      klaviyo_history: history(true),
+      brand_never_words: never
+    })
+    const store = await ownStoreSource(live.db).read(tenantId)
+    // Never-used only, both apostrophes; never added to the banned list.
+    expect(store.neverWords).toEqual([
+      'truly amazing',
+      "it's magic",
+      'it’s magic'
+    ])
+    expect(store.facts.bannedPhrases).not.toContain('truly amazing')
+    // The sample account's list on a live store, no history, or an
+    // unreadable list: none.
+    for (const answers of <Record<string, Answer>[]>[
+      { klaviyo_history: history(false), brand_never_words: never },
+      { brand_never_words: never },
+      { klaviyo_history: history(true), brand_never_words: failed }
+    ]) {
+      const { db } = fakeDb({ catalog_status: status(), ...own, ...answers })
+      expect((await ownStoreSource(db).read(tenantId)).neverWords).toBe(
+        undefined
+      )
+    }
   })
 
   it('gives the Letter writer the founder’s voice, from the same account as its catalog (PIC-23 part 3b)', async () => {
