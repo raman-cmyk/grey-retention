@@ -100,7 +100,14 @@ export const builtEmail = z.object({
     .nullable()
     .optional(),
   /** Planned content the Content locker replaced with safer choices. */
-  changes: z.array(z.string()).max(40)
+  changes: z.array(z.string()).max(40),
+  /**
+   * EML-AB (D21): the same email drawn with its coded blocks (design A)
+   * when `html` is the studio's (design B, `approach` B): one Klaviyo
+   * draft with the two as variations, half the audience each, no winner
+   * picked. Missing when only one design goes.
+   */
+  designA: z.string().min(1).max(200_000).optional()
 })
 export type BuiltEmail = z.infer<typeof builtEmail>
 
