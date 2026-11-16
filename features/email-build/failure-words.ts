@@ -30,6 +30,8 @@ export const buildFailureWords = {
     'The app was updated while this email was being made. Try again.',
   store_changed:
     'Your store data changed while this email was being made. Try again.',
+  format_changed:
+    'This email was switched between designed and text while it was being made. Try again.',
   plan_store_changed:
     'This plan was made from other store data. Plan next 15 days again.',
   store_data_invalid: 'Your store data could not be read. Try again.',

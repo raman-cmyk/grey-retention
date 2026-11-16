@@ -535,7 +535,9 @@ export async function planSubjects(
 ): Promise<string[]> {
   const { data, error } = await db
     .from('email_builds')
-    .select('built:email->>subject,saved:progress->copy->draft->>subject')
+    .select(
+      'built:email->>subject,saved:progress->copy->draft->>subject,letter:progress->copy->letter->>subject'
+    )
     .eq('tenant_id', job.tenant_id)
     .eq('run_id', job.run_id)
     .neq('slot', job.slot)
@@ -545,8 +547,12 @@ export async function planSubjects(
   const rows = (data ?? []) as {
     built: string | null
     saved: string | null
+    /** TXT-001d: a text email's saved letter. */
+    letter?: string | null
   }[]
   return rows.flatMap((r) =>
-    [r.built, r.saved].filter((x): x is string => typeof x === 'string')
+    [r.built, r.saved, r.letter].filter(
+      (x): x is string => typeof x === 'string'
+    )
   )
 }
