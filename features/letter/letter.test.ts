@@ -1,10 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { sampleBrand } from '@/features/blocks/samples'
 import { klaviyoFooterTags } from '@/features/blocks/klaviyo-tags'
+import { BlockRenderError } from '@/features/blocks/render'
+import { sampleBrand } from '@/features/blocks/samples'
 import { letterHtmlProblems, letterProblems, replyToProblem } from './checks'
 import { letterSchema, wordCount, type Letter } from './letter'
-import { plainFooterTags, renderLetter } from './render'
+import { footerGrey, plainFooterTags, renderLetter } from './render'
 
 /** TXT-001 (D26): a text email is a short personal letter. */
 const words = (n: number) =>
@@ -48,6 +49,11 @@ describe('a text email drawn as a letter (TXT-001)', () => {
     expect(html).toContain('P.S. Reply and tell me')
     for (const tag of Object.values(klaviyoFooterTags))
       expect(html).toContain(tag)
+    // Outlook on Windows: a font it has; the footer's grey reads on white.
+    expect(html).toContain(
+      "<!--[if mso]><style>body,div,p{font-family:'Segoe UI',Arial,sans-serif !important}</style><![endif]-->"
+    )
+    expect(html).toContain(`color:${footerGrey}`)
     expect(letterHtmlProblems(html, { logo: false })).toEqual([])
   })
 
@@ -59,13 +65,31 @@ describe('a text email drawn as a letter (TXT-001)', () => {
     )
     expect(text).toContain('Warmly,\nMaya\nFounder, Cedar Lane\n\nP.S. Reply')
     expect(text).toContain(
-      `--\n${klaviyoFooterTags.organization}, ${klaviyoFooterTags.address}\nUnsubscribe: ${plainFooterTags.unsubscribe}\nPreferences: ${plainFooterTags.preferences}\n`
+      `-- \n${klaviyoFooterTags.organization}, ${klaviyoFooterTags.address}\nUnsubscribe: ${plainFooterTags.unsubscribe}\nPreferences: ${plainFooterTags.preferences}\n`
     )
     expect(text).not.toMatch(/<[a-z]|&amp;|&#/i)
     // Our own preview never shows a raw tag.
-    const preview = renderLetter(letter(), { brand }).text
+    const preview = renderLetter(letter(), { brand, mode: 'preview' }).text
     expect(preview).not.toMatch(/\{\{|\{%/)
     expect(preview).toContain('Cedar Lane, your store address')
+    expect(renderLetter(letter(), { brand, mode: 'preview' }).html).not.toMatch(
+      /\{\{|\{%/
+    )
+  })
+
+  it('draws links only in the paragraphs and the P.S., and never on empty words', () => {
+    const odd = letter({
+      greeting: 'Hi [there](1),',
+      body: [`${words(80)} [ ](1) and [the candle](1).`]
+    })
+    const { html, text } = renderLetter(odd, { brand, mode: 'klaviyo' })
+    expect(html).toContain('<p style="margin:0 0 16px">Hi [there](1),</p>')
+    expect(html.match(/<a href="https:\/\/cedar/g)).toHaveLength(1)
+    expect(text).toMatch(/^Hi \[there\]\(1\),\n/)
+    expect(text).toContain(
+      'and the candle (https://cedar-lane.example/products/cedar-candle).'
+    )
+    expect(text).not.toContain('  (https')
   })
 
   it('keeps the writer’s words words: escaped, never a Klaviyo tag, never a link it was not given', () => {
@@ -108,6 +132,20 @@ describe('a text email drawn as a letter (TXT-001)', () => {
     expect(withLogo.match(/<img\b/g)).toHaveLength(1)
     expect(withLogo).toContain('P.S. One more thing.')
     expect(withLogo).not.toContain('P.S. P.S.')
+    expect(
+      renderLetter(letter({ ps: 'P.P.S. And one more.' }), {
+        brand,
+        mode: 'klaviyo'
+      }).text
+    ).toContain('\n\nP.S. And one more.\n')
+    // Klaviyo mode sends only pictures uploaded to Klaviyo.
+    expect(() =>
+      renderLetter(letter(), {
+        brand: { ...brand, logo: 'data:image/png;base64,iVBORw0KGgo=' },
+        mode: 'klaviyo',
+        logo: true
+      })
+    ).toThrow(BlockRenderError)
     expect(letterHtmlProblems(withLogo, { logo: true })).toEqual([])
     expect(letterHtmlProblems(withLogo, { logo: false })).toEqual([
       'A text email has no pictures: only its small logo at the top.'
@@ -156,10 +194,10 @@ describe('the text checks (TXT-001)', () => {
       'Write to maya@cedar-lane.example.',
       'Go to www.cedar-lane.example.'
     ])
-      expect(reasons({ body: [`${words(80)} ${text}`] }), text).toEqual([
-        'Write no web or email address: put a link on a few words, as [the words](1).'
-      ])
-    expect(reasons({ signature: 'Maya {{ first_name }}' })).toEqual([
+      expect(reasons({ body: [`${words(80)} ${text}`] })[0], text).toMatch(
+        /” is a web or email address: never write one, put a link on a few words, as \[the words\]\(1\)\.$/
+      )
+    expect(reasons({ greeting: 'Hi {{ first_name }},' })).toEqual([
       'Write no { or }: Klaviyo reads them as its own.'
     ])
     expect(
@@ -173,6 +211,81 @@ describe('the text checks (TXT-001)', () => {
       'The subject is 61 characters; at most 60.',
       'The preview line is 9 characters; write 20 to 140.'
     ])
+    expect(
+      reasons({
+        subject: 'A note \u202e about LOVE',
+        preheader: 'Why we made it <b>, and how.'
+      })
+    ).toEqual([
+      'Write the subject in plain words, without { } < > signs or hidden characters.',
+      'Write the subject normally: no word in capitals, at most one exclamation mark.',
+      'Write the preview line in plain words, without { } < > signs or hidden characters.'
+    ])
+  })
+
+  it('names a link mark that is broken or outside the paragraphs, and a link on no words', () => {
+    const rules = (over: Partial<Letter>) =>
+      letterProblems(letter(over)).map((p) => p.rule)
+    for (const broken of [
+      '[the candle](1 )',
+      '[a] (1)',
+      '[a [b] c](1)',
+      '[the\ncandle](1)',
+      '[a](123)',
+      `[${'x'.repeat(121)}](1)`,
+      '\\[a\\](1)'
+    ])
+      expect(rules({ body: [`${words(80)} ${broken}`] }), broken).toEqual([
+        'broken_link'
+      ])
+    expect(rules({ greeting: 'Hi [there](1),' })).toEqual([
+      'link_outside_letter'
+    ])
+    expect(rules({ signoff: 'See [you](2)' })).toEqual(['link_outside_letter'])
+    expect(rules({ body: [`${words(80)} [ ](1)`] })).toEqual(['empty_link'])
+    expect(rules({ body: [`${words(80)} [0](0)`] })).toEqual(['unknown_link'])
+    // No link at all is fine: a quick question asks only for a reply.
+    expect(rules({ body: [words(90)] })).toEqual([])
+    expect(
+      letterProblems(
+        letter({ body: [`${words(80)} [here](3) and [here](3)`] })
+      ).map((p) => p.reason)
+    ).toEqual(['“here” points to a link that does not exist: use (1).'])
+  })
+
+  it('never asks the writer to change the store’s own words', () => {
+    const own = ['Ritual.co', 'Winner Candles']
+    const fine = letter({
+      role: 'Founder, Ritual.co',
+      body: [`${words(80)} The Winner Candles range is back.`]
+    })
+    expect(letterProblems(fine, own)).toEqual([])
+    // Without them, and no role that names it: the address and the spam
+    // word are the writer's.
+    expect(
+      letterProblems({
+        ...fine,
+        role: undefined,
+        body: [`${words(80)} Ritual.co and Winner Candles.`]
+      }).map((p) => p.rule)
+    ).toEqual(['address_in_text', 'spam_words'])
+    for (const site of ['cedarlane.ca', 'cedarlane.nz', 'cedarlane.de'])
+      expect(
+        letterProblems(letter({ body: [`${words(80)} See ${site}.`] })).map(
+          (p) => p.rule
+        ),
+        site
+      ).toEqual(['address_in_text'])
+    // Prose that only looks like an address.
+    expect(
+      letterProblems(
+        letter({
+          body: [
+            `${words(80)} Cedar Lane Co. and its co-founder, e.g. in the U.K., at 9 a.m., version 2.0.`
+          ]
+        })
+      )
+    ).toEqual([])
   })
 
   it('asks for a reply-to inbox someone reads', () => {
@@ -194,6 +307,24 @@ describe('the text checks (TXT-001)', () => {
     expect(replyToProblem('maya at cedar')).toBe(
       '“maya at cedar” is not an email address: set an inbox someone reads as the reply-to address.'
     )
+    for (const nobody of [
+      'store-noreply@cedar-lane.example',
+      'orders-no-reply@cedar-lane.example',
+      'noreply1@cedar-lane.example',
+      'noreplies@cedar-lane.example',
+      'donotrespond@cedar-lane.example',
+      'dont-reply@cedar-lane.example',
+      'maya@noreply.cedar-lane.example'
+    ])
+      expect(replyToProblem(nobody), nobody).toMatch(/which nobody reads/)
+    for (const odd of [
+      '<maya@cedar-lane.example>',
+      'maya@cedar-lane.example,',
+      'a@b..c',
+      'a@.b.c',
+      '.maya@cedar-lane.example'
+    ])
+      expect(replyToProblem(odd), odd).toMatch(/is not an email address/)
     // A real name that starts like one is still a real inbox.
     expect(replyToProblem('norepair@cedar-lane.example')).toBeNull()
   })

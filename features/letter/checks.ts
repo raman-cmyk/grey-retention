@@ -1,15 +1,21 @@
+import { hiddenChars } from '@/features/assembly/assemble'
 import {
+  mask,
   phrase,
   previewRange,
   spamPhrases,
-  subjectMax
+  subjectMax,
+  typedLink
 } from '@/features/email-build/inspect'
 import {
+  brokenMark,
   letterText,
   letterWords,
+  linkMark,
   linksIn,
   maxLetterLinks,
   seenText,
+  visibleWords,
   wordCount,
   type Letter
 } from './letter'
@@ -20,21 +26,35 @@ import {
  * every time. The letter's own problems go back to the Letter writer with
  * the exact reason, as a designed email's go to the Copywriter (D21); the
  * reply-to inbox is the owner's setting, so it is the owner's to fix.
+ *
+ * Words that come from the store (its name, product titles, the name and
+ * role that sign: `own`) are masked first, as the designed email's checks
+ * mask them, so the writer is never asked to change words it cannot. A
+ * letter with no link passes (a quick question asks only for a reply);
+ * the writer is asked for one or two.
  */
 export type LetterProblem = { rule: string; reason: string }
 
 const count = (n: number, one: string, many = `${one}s`) =>
   `${n} ${n === 1 ? one : many}`
-const quoted = (list: readonly string[]) =>
-  list.map((w) => `“${w}”`).join(list.length === 2 ? ' and ' : ', ')
-/** A web or email address, as a reader would see it. */
-const address =
-  /\bhttps?:\/\/|\bwww\.|\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b|\b[a-z0-9-]+\.(?:com|net|org|shop|store|co|io|uk|au)\b/i
+const quoted = (list: readonly string[]) => {
+  const unique = [...new Set(list)]
+  return unique.map((w) => `“${w}”`).join(unique.length === 2 ? ' and ' : ', ')
+}
+const markup = new RegExp(`[{}<>]|${hiddenChars.source}`)
+const typedLinks = new RegExp(typedLink.source, 'gi')
 
 /** What is wrong with a letter, in plain words (empty: nothing). */
-export function letterProblems(letter: Letter): LetterProblem[] {
+export function letterProblems(
+  letter: Letter,
+  own: readonly string[] = []
+): LetterProblem[] {
   const problems: LetterProblem[] = []
   const add = (rule: string, reason: string) => problems.push({ rule, reason })
+  const protect = [...own, letter.signature, letter.role ?? '']
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2)
+    .sort((a, b) => b.length - a.length)
   const read = letterText(letter)
   const words = read.reduce((n, t) => n + wordCount(t), 0)
   if (words < letterWords.min || words > letterWords.max)
@@ -53,23 +73,44 @@ export function letterProblems(letter: Letter): LetterProblem[] {
     add(
       'unknown_link',
       letter.links.length
-        ? `${quoted(missing.map((u) => u.words))} ${missing.length === 1 ? 'points' : 'point'} to a link that does not exist: use ${letter.links.map((_, i) => `(${i + 1})`).join(' or ')}.`
+        ? `${quoted(missing.map((u) => u.words))} ${new Set(missing.map((u) => u.words)).size === 1 ? 'points' : 'point'} to a link that does not exist: use ${letter.links.map((_, i) => `(${i + 1})`).join(' or ')}.`
         : `There is no link to point to: write ${quoted(missing.map((u) => u.words))} without one.`
     )
-  // Everything a reader sees, the inbox lines too.
-  const seen = [
+  if (uses.some((u) => !visibleWords(u.words)))
+    add(
+      'empty_link',
+      'Put each link on a few words a reader can see, as [the words](1).'
+    )
+  if (read.some((t) => brokenMark.test(t.replace(linkMark, ' '))))
+    add(
+      'broken_link',
+      'Write each link exactly as [the words](1): a few words on one line in square brackets, then the link’s number in round brackets.'
+    )
+  // Fields drawn as written: a mark there would show as brackets.
+  const plain = [
     letter.subject,
     letter.preheader,
     letter.greeting ?? '',
-    ...read,
-    letter.signoff,
-    letter.signature,
-    letter.role ?? ''
-  ].map(seenText)
-  if (seen.some((t) => address.test(t)))
+    letter.signoff
+  ]
+  if (plain.some((t) => brokenMark.test(t)))
+    add(
+      'link_outside_letter',
+      'Put links only in the paragraphs and the P.S.: the subject, preview line, greeting and sign-off show every word as written.'
+    )
+  // Everything the writer wrote, as a reader sees it, store text masked.
+  const seen = [...plain, ...read].map((t) => mask(seenText(t), protect))
+  // An address inside the store's own words is the store's (a role such
+  // as "Founder, Ritual.co"); any other is the writer's.
+  const typed = [...plain, ...read]
+    .flatMap((t) => [...seenText(t).matchAll(typedLinks)].map((m) => m[0]))
+    .find(
+      (m) => !protect.some((p) => p.toLowerCase().includes(m.toLowerCase()))
+    )
+  if (typed)
     add(
       'address_in_text',
-      'Write no web or email address: put a link on a few words, as [the words](1).'
+      `“${typed.slice(0, 60)}” is a web or email address: never write one, put a link on a few words, as [the words](1).`
     )
   if (seen.some((t) => /[{}]/.test(t)))
     add('template_marks', 'Write no { or }: Klaviyo reads them as its own.')
@@ -79,24 +120,43 @@ export function letterProblems(letter: Letter): LetterProblem[] {
       'spam_words',
       `Leave out ${quoted(spam.slice(0, 3))}: ${spam.length === 1 ? 'it reads' : 'they read'} as spam.`
     )
-  const subject = [...letter.subject].length
-  if (subject > subjectMax)
+  // The inbox lines, as the designed email's checks read them.
+  const subject = letter.subject.trim()
+  if (subject.length > subjectMax)
     add(
       'subject_too_long',
-      `The subject is ${subject} characters; at most ${subjectMax}.`
+      `The subject is ${subject.length} characters; at most ${subjectMax}.`
     )
-  const preview = [...letter.preheader].length
-  if (preview < previewRange.min || preview > previewRange.max)
+  if (markup.test(letter.subject))
+    add(
+      'subject_markup',
+      'Write the subject in plain words, without { } < > signs or hidden characters.'
+    )
+  const shouting = mask(letter.subject, protect)
+  if ((shouting.match(/!/g) ?? []).length > 1 || /\b[A-Z]{4,}\b/.test(shouting))
+    add(
+      'subject_shouting',
+      'Write the subject normally: no word in capitals, at most one exclamation mark.'
+    )
+  const preview = letter.preheader.trim()
+  if (preview.length < previewRange.min || preview.length > previewRange.max)
     add(
       'preview_length',
-      `The preview line is ${count(preview, 'character')}; write ${previewRange.min} to ${previewRange.max}.`
+      `The preview line is ${count(preview.length, 'character')}; write ${previewRange.min} to ${previewRange.max}.`
+    )
+  if (markup.test(letter.preheader))
+    add(
+      'preview_markup',
+      'Write the preview line in plain words, without { } < > signs or hidden characters.'
     )
   return problems
 }
 
-/** Inboxes nobody reads. */
+/** No-reply forms, as a whole part of an address. */
 const unread =
-  /^(?:no[-_.]?reply|do[-_.]?not[-_.]?reply|bounces?|mailer[-_.]?daemon|postmaster)(?:[-_.+]|$)/i
+  /(?:^|[^a-z])(?:no[-_.]?repl(?:y|ies)|do[-_.]?not[-_.]?(?:reply|respond)|dont[-_.]?(?:reply|respond)|bounces?|mailer[-_.]?daemon|postmaster)(?:[^a-z]|$)/i
+const address =
+  /^[a-z0-9_%+-]+(?:\.[a-z0-9_%+-]+)*@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/i
 
 /**
  * A text email asks for a reply, so its replies must reach a person: the
@@ -106,11 +166,14 @@ export function replyToProblem(replyTo: string | null | undefined) {
   const inbox = replyTo?.trim() ?? ''
   if (!inbox)
     return 'Set an inbox someone reads as the reply-to address: a text email asks people to reply.'
-  const at = inbox.lastIndexOf('@')
-  if (at < 1 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inbox))
+  if (!address.test(inbox))
     return `“${inbox.slice(0, 80)}” is not an email address: set an inbox someone reads as the reply-to address.`
-  if (unread.test(inbox.slice(0, at)))
-    return `Replies go to ${inbox.slice(0, 80)}, which nobody reads: set an inbox someone reads as the reply-to address.`
+  const [local, domain] = inbox.split('@') as [string, string]
+  if (
+    unread.test(local) ||
+    domain.split('.').some((label) => unread.test(label))
+  )
+    return `Replies go to ${inbox}, which nobody reads: set an inbox someone reads as the reply-to address.`
   return null
 }
 

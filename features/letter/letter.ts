@@ -35,8 +35,19 @@ export const letterSchema = z.object({
 })
 export type Letter = z.infer<typeof letterSchema>
 
-/** A link in the text: `[the words](n)`. */
-export const linkMark = /\[([^\]\n]{1,120})\]\((\d{1,2})\)/g
+/**
+ * A link in the text: `[the words](n)`. Its words are on one line, at
+ * most 120 characters, with no bracket or backslash; anything else that
+ * looks like a mark is refused by the checks (`brokenMark`). Use it only
+ * with `matchAll` and `replace` (it is global).
+ */
+export const linkMark = /\[([^[\]\n\\]{1,120})\]\((\d{1,2})\)/g
+
+/** What is left of a mark once the real ones are taken out: refused. */
+export const brokenMark = /\]\s*\(/
+
+/** Link words a reader can see: a letter or a digit. */
+export const visibleWords = (words: string) => /[\p{L}\p{N}]/u.test(words)
 
 export type LinkUse = { words: string; n: number }
 
@@ -52,10 +63,13 @@ export function linksIn(text: string): LinkUse[] {
 export const seenText = (text: string) =>
   text.replace(linkMark, (_, words: string) => words)
 
-/** The parts of the letter the writer wrote that a reader reads as the letter. */
+/** "P.S.", "PS" or "P.P.S." the writer typed before its P.S. */
+export const psMark = /^p\.?(?:\s*p\.?)?\s*s\b\.?:?\s*/i
+
+/** The parts of the letter the writer wrote that a reader reads as the letter: the only parts with links. */
 export const letterText = (letter: Letter) => [
   ...letter.body,
-  ...(letter.ps ? [letter.ps] : [])
+  ...(letter.ps ? [letter.ps.replace(psMark, '')] : [])
 ]
 
 /** Words, as a reader counts them: a run with a letter or a digit in it. */
