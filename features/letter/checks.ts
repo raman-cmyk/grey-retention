@@ -114,7 +114,7 @@ export function letterProblems(
     letter.role ?? '',
     letter.ps ?? ''
   ]
-  if (drawn.some((t) => hidden.test(t.replace(/[\n\t]/g, ' '))))
+  if (drawn.some((t) => hidden.test(t.replace(/[\r\n\t]/g, ' '))))
     add('hidden_characters', 'Write plain words, without hidden characters.')
   // Everything the writer wrote, as a reader sees it, store text masked.
   const seen = [...plain, ...read].map((t) => mask(seenText(t), protect))

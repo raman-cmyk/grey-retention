@@ -284,6 +284,8 @@ describe('the text checks (TXT-001)', () => {
     ])
     expect(rules({ role: 'Founder, act now' })).toEqual(['spam_words'])
     expect(rules({ signature: 'Maya \u202e' })).toEqual(['hidden_characters'])
+    // A Windows line ending is a line ending.
+    expect(rules({ body: [`${words(80)}\r\nNext line.`] })).toEqual([])
     // The store's own founder, as the caller gives it.
     expect(
       rules({ role: 'Founder, Ritual.co' }, ['Founder, Ritual.co'])
