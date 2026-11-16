@@ -34,6 +34,8 @@ function database(
     kept?: Record<string, unknown>[]
     /** The campaigns GROS drafted cannot be read. */
     broken?: boolean
+    /** Reading the products throws (a bug). */
+    bug?: boolean
   } = {}
 ) {
   const calls: { name: string; args: Record<string, unknown> }[] = []
@@ -48,7 +50,8 @@ function database(
   // PIC-23 part 2b: the campaigns GROS drafted and the products' titles.
   const list = (
     rows: Record<string, unknown>[],
-    error: { code: string } | null = null
+    error: { code: string } | null = null,
+    bug = false
   ) => {
     const c = {
       select: () => c,
@@ -57,8 +60,10 @@ function database(
       is: () => c,
       order: () => c,
       limit: () => c,
-      then: (done: (r: { data: unknown; error: unknown }) => unknown) =>
-        done({ data: error ? null : rows, error })
+      then: (done: (r: { data: unknown; error: unknown }) => unknown) => {
+        if (bug) throw new TypeError('a secret customer line')
+        return done({ data: error ? null : rows, error })
+      }
     }
     return c
   }
@@ -77,7 +82,9 @@ function database(
               ? list(
                   (voice.products ?? ['Weekend Knit']).map((title) => ({
                     title
-                  }))
+                  })),
+                  null,
+                  voice.bug
                 )
               : chain(
                   table === 'tenants'
@@ -697,6 +704,7 @@ describe('readBrandHistory', () => {
       fail: { on: 'variations', with: refused(404) }
     })
     expect(voiceOf(blind)).toBe(false)
+    expect(blind.stored.summary.state).toBe('ready')
     // Every template in a shape we do not read.
     const odd = await read({
       instead: (url) =>
@@ -745,5 +753,67 @@ describe('readBrandHistory', () => {
     const logged = error.mock.calls.map((c) => String(c[0])).join('\n')
     expect(logged).toContain('42P01')
     expect(logged).toContain('the voice read left out')
+  })
+
+  it('reads no template when no time is left for the voice, and stops reading them when time runs out', async () => {
+    let t = now
+    const late = await read({
+      clock: () => t,
+      instead: (url) => {
+        if (url.includes('/api/segments')) t = now + 12_000
+        return null
+      }
+    })
+    expect(
+      late.transport.calls.some((c) => c.includes('/api/templates/'))
+    ).toBe(false)
+    expect(late.calls.map((c) => c.name)).not.toContain('record_voice_samples')
+    expect(late.run.analysis).toBe('done')
+    t = now
+    const slow = await read({
+      clock: () => t,
+      instead: (url) => {
+        if (url.includes('/api/templates/')) t += 5_000
+        return null
+      }
+    })
+    expect(
+      slow.transport.calls.filter((c) => c.includes('/api/templates/')).length
+    ).toBeLessThan(5)
+    // The newest are designed emails: nothing found, the samples kept.
+    expect(slow.calls.map((c) => c.name)).not.toContain('record_voice_samples')
+    expect(slow.stored.summary.state).toBe('ready')
+  })
+
+  it('drops a sample read again that no longer says enough', async () => {
+    const words =
+      'We knit every scarf slowly on old machines in the valley, and each one is checked twice by hand before it is folded, wrapped and sent to you.'
+    const { calls } = await read({
+      instead: (url) =>
+        url.includes('/api/templates/TplMsgA02') ? refused(422) : null,
+      voice: {
+        kept: [
+          {
+            message_id: 'MsgA05',
+            text: words,
+            weight: 1,
+            words: 30,
+            sent_at: '2026-06-01T10:00:00+00:00'
+          }
+        ]
+      }
+    })
+    const samples = calls.find((c) => c.name === 'record_voice_samples')!.args
+      .samples as { messageId: string }[]
+    expect(samples.map((x) => x.messageId)).toEqual(['MsgA08'])
+  })
+
+  it('logs a bug in the voice by its class, never its message, and stores the history', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { stored } = await read({ voice: { bug: true } })
+    expect(stored.summary.state).toBe('ready')
+    const logged = error.mock.calls.map((c) => String(c[0])).join('\n')
+    expect(logged).toContain('TypeError')
+    expect(logged).not.toContain('a secret customer line')
   })
 })

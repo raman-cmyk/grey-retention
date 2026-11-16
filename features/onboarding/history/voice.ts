@@ -47,6 +47,7 @@ export type VoiceStop =
   | 'missing_scope'
   | 'cap'
   | 'time'
+  | 'unavailable'
   | 'unreadable'
   | 'content_unknown'
 
@@ -60,8 +61,11 @@ export type VoiceRead = {
   authoritative: boolean
   /** Bodies read. */
   read: number
-  /** Emails GROS drafted itself, left out. */
+  /** The messages read this time (a sample of one, kept before, is replaced or goes). */
+  readIds: ReadonlySet<string>
+  /** Emails GROS drafted itself, left out (a sample of one kept before goes). */
   ours: number
+  oursIds: ReadonlySet<string>
   stopped: VoiceStop | null
 }
 
@@ -72,17 +76,20 @@ export function voiceCandidates(
 ): {
   candidates: CampaignMessage[]
   ours: number
+  oursIds: Set<string>
   /** Email messages whose template is not known (their content unread). */
   unknown: number
+  /** More emails than are tried: the oldest were left out. */
+  cut: boolean
 } {
   const emails = sent.filter(
     (m) => m.status === 'sent' && (m.channel === null || m.channel === 'email')
   )
   const theirs: CampaignMessage[] = []
-  let mine = 0
+  const oursIds = new Set<string>()
   let unknown = 0
   for (const m of emails) {
-    if (m.campaignId && ours.has(m.campaignId)) mine++
+    if (m.campaignId && ours.has(m.campaignId)) oursIds.add(m.id)
     else if (!m.templateId || !m.contentKnown) unknown++
     else theirs.push(m)
   }
@@ -91,8 +98,10 @@ export function voiceCandidates(
     candidates: theirs
       .sort((a, b) => time(b) - time(a))
       .slice(0, maxCandidates),
-    ours: mine,
-    unknown
+    ours: oursIds.size,
+    oursIds,
+    unknown,
+    cut: theirs.length > maxCandidates
   }
 }
 
@@ -109,14 +118,20 @@ export async function readOwnerVoice(input: {
   /** The store's own words: its name and product titles. */
   own: readonly string[]
 }): Promise<VoiceRead> {
-  const { candidates, ours, unknown } = voiceCandidates(input.sent, input.ours)
-  const whole = input.sentComplete && unknown === 0
+  const { candidates, ours, oursIds, unknown, cut } = voiceCandidates(
+    input.sent,
+    input.ours
+  )
+  const whole = input.sentComplete && unknown === 0 && !cut
+  const none = new Set<string>()
   if (!candidates.length)
     return {
       found: [],
       authoritative: whole,
       read: 0,
+      readIds: none,
       ours,
+      oursIds,
       stopped: whole ? null : 'content_unknown'
     }
   let bodies: Awaited<ReturnType<typeof readMessageBodies>>
@@ -130,8 +145,15 @@ export async function readOwnerVoice(input: {
       found: [],
       authoritative: false,
       read: 0,
+      readIds: none,
       ours,
-      stopped: error.kind === 'bad_key' ? 'bad_key' : 'rate_limited'
+      oursIds,
+      stopped:
+        error.kind === 'bad_key'
+          ? 'bad_key'
+          : error.kind === 'rate_limited'
+            ? 'rate_limited'
+            : 'unreadable'
     }
   }
   const sentAt = new Map(candidates.map((m) => [m.id, m.sendAt]))
@@ -156,7 +178,10 @@ export async function readOwnerVoice(input: {
     : !bodies.complete
       ? tried >= maxBodyReads
         ? 'cap'
-        : 'time'
+        : // Stopped with time left: Klaviyo unavailable.
+          input.more()
+          ? 'unavailable'
+          : 'time'
       : bodies.skipped
         ? 'unreadable'
         : !whole
@@ -164,10 +189,16 @@ export async function readOwnerVoice(input: {
           : null
   return {
     found,
-    // Every template read, or gone (a template gone is no voice).
-    authoritative: whole && stopped === null,
+    // Every template read, or gone (a template gone is no voice), and at
+    // least one read when any were gone (every one gone may be Klaviyo's).
+    authoritative:
+      whole &&
+      stopped === null &&
+      (bodies.records.length > 0 || bodies.gone === 0),
     read: bodies.records.length,
+    readIds: new Set(bodies.records.map((b) => b.messageId)),
     ours,
+    oursIds,
     stopped
   }
 }
@@ -187,8 +218,10 @@ export async function samplesToKeep(
   const before = await readVoiceSamples(db, tenantId)
   return pickVoiceSamples([
     ...voice.found,
+    // A message read again (with or without an excerpt now), or one GROS
+    // drafted, keeps nothing from before.
     ...before.filter(
-      (b) => !voice.found.some((f) => f.messageId === b.messageId)
+      (b) => !voice.readIds.has(b.messageId) && !voice.oursIds.has(b.messageId)
     )
   ])
 }
