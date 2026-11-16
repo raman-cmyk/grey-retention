@@ -274,7 +274,10 @@ describe('founderVoice (PIC-23 part 3a)', () => {
       ['Sale ends tonight!', 'Last chance!'],
       ['Only a few left!', 'Free gift inside!'],
       ['Hi Sarah,', 'Love Maya,'],
-      ['Maya here!', 'With love from Maya!']
+      ['Maya here!', 'With love from Maya!'],
+      ['This weekend only!', 'One day only!'],
+      ['It ends at midnight!', 'Just a few hours left!'],
+      ['Now or never!', 'See you at midnight!']
     ]) {
       const voice = founderVoice([
         sample(`${greeting}\n${body}\n${signoff}`, 3, 'MsgS1'),

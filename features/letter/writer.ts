@@ -90,7 +90,8 @@ const writesAsFits = (
   brief: LetterBrief
 ) =>
   writesAs === 'I'
-    ? !!brief.locked.input.confirmed?.founder?.name
+    ? // The name that signs, as the letter shows it (`letterSigner`).
+      !!clean(brief.locked.input.confirmed?.founder?.name ?? '', 80)
     : writesAs === 'we'
       ? kindOf(brief) !== 'founder_note'
       : false
@@ -112,7 +113,19 @@ const copiedRun = 8
 function voiceProblems(letter: Letter, brief: LetterBrief): LetterProblem[] {
   const examples = brief.voice?.examples ?? []
   if (!examples.length) return []
-  const text = ` ${flat(letterText(letter).map(seenText).join(' '))} `
+  // The writer's own words only: never the founder's placed note.
+  const own = [
+    letter.subject,
+    letter.preheader,
+    ...writerBody(letter, brief),
+    letter.ps
+  ]
+  const text = ` ${flat(
+    own
+      .filter((t): t is string => typeof t === 'string')
+      .map(seenText)
+      .join(' ')
+  )} `
   const copied = examples.some((example) => {
     const words = flat(example).split(' ').filter(Boolean)
     if (words.length <= copiedRun) return text.includes(` ${words.join(' ')} `)
@@ -484,6 +497,7 @@ const letterRuleWords: Record<string, string> = {
   kind_offer: 'an offer its kind never has',
   kind_first_person: 'a founder note not in the first person',
   kind_note_quoted: 'the founder’s note repeated',
+  voice_example_copied: 'a sentence of the founder’s copied',
   kind_paragraphs: 'too many paragraphs around the founder’s note',
   kind_question: 'a quick question with no question',
   kind_questions: 'more than one question',

@@ -42,7 +42,7 @@ export type FounderVoice = {
 
 export type Frequency = 'never' | 'sometimes' | 'often'
 
-export const founderVoiceVersion = '2026-11-16.3'
+export const founderVoiceVersion = '2026-11-16.4'
 
 /** Fewer of the owner's words than this say nothing about a voice. */
 export const minVoiceWords = 40
@@ -233,7 +233,7 @@ const closers = new Set(
 
 /** Talk of an offer, a code or a deadline, in words: never an example. */
 const offerTalk =
-  /\b(?:codes?|coupons?|promo|discount(?:s|ed)?|half|price[sd]?|free|sale|off|deals?|save|savings?|percent|per cent|cheap(?:er|est)?|less|lower|mark(?:ed)? down|markdowns?|clearance|clearing|reduced|bargains?|on us|no (?:extra )?cost|complimentary|gifts?|two for one|bogo|last chance|ends? (?:tonight|today|tomorrow|soon)|(?:today|tonight) only|while (?:they|stocks?|supplies) lasts?|before (?:it['’]?s|they['’]?re|they) go(?:ne)?|limited|sold out|selling (?:out|fast)|few left|stock)\b/i
+  /\b(?:codes?|coupons?|promo|discount(?:s|ed)?|half|price[sd]?|free|sale|off|deals?|save|savings?|percent|per cent|cheap(?:er|est)?|less|lower|mark(?:ed)? down|markdowns?|clearance|clearing|reduced|bargains?|on us|no (?:extra )?cost|complimentary|gifts?|two for one|bogo|last chance|ends? (?:tonight|today|tomorrow|soon)|(?:today|tonight) only|while (?:they|stocks?|supplies) lasts?|before (?:it['’]?s|they['’]?re|they) go(?:ne)?|limited|sold out|selling (?:out|fast)|few left|stock|(?:days?|weeks?|weekends?|hours?|nights?|tonight|today) only|ends? at|midnight|hours? left|hurry|now or never|don['’]?t miss|countdown)\b/i
 /** A link, an address or a handle: never an example. */
 const linkLike = /\p{L}\.\p{L}|[/@#]|\bwww\b|https?/iu
 /**
