@@ -317,6 +317,33 @@ describe('the kinds of text email (DST-PIC #24)', () => {
       ).toBeNull()
   })
 
+  it('never counts the founder’s placed note as a copy of their example (PIC-23 part 3b)', async () => {
+    const voice = {
+      greeting: null,
+      signoff: null,
+      writesAs: null,
+      sentenceWords: 9,
+      exclamations: 'never' as const,
+      contractions: null,
+      examples: [note[0]!],
+      from: { samples: 1, words: 44 }
+    }
+    const brief = { ...(await briefFor('founder_note')), voice }
+    const ai = modelOf([
+      answer({
+        body: [
+          'I wanted to write to you myself this week.',
+          `Warm ${filler(45)}`,
+          'If you would like one, [the candle is here](1).'
+        ]
+      })
+    ])
+    expect(await writeLetter(brief, ctxWith(ai))).toMatchObject({
+      status: 'written',
+      tries: 1
+    })
+  })
+
   it('a founder note: at most three paragraphs of the writer’s, and the note never repeated', async () => {
     const brief = await briefFor('founder_note')
     const long = answer({
