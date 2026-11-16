@@ -71,6 +71,17 @@ export function siteDomain(domain: string | null | undefined): string | null {
 }
 
 /**
+ * The website an owner typed, as it is saved: a link is fine
+ * ("https://www.CedarLane.com/shop" is cedarlane.com); null when it holds
+ * no plain host name (a name and password, a port, spaces).
+ */
+export function websiteOf(typed: string): string | null {
+  const t = typed.trim().replace(/^https?:\/\//i, '')
+  const host = t.replace(/[/?#].*$/, '')
+  return host.includes('@') || host.includes(':') ? null : siteDomain(host)
+}
+
+/**
  * Klaviyo works for GROS: connected, its key not refused, and with live
  * keys on (KLAVIYO_MODE=live) a real key, not the sample connection. The
  * same rule as the Klaviyo card in Settings.

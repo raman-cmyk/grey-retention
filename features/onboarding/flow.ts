@@ -20,12 +20,14 @@ type Db = SupabaseClient<Database>
  * (row rules keep it to the workspace). Every step's state needs every
  * record: when one cannot be read, the flow is unreadable and the screen
  * says so, never a guess. The brand found on the website and the readers'
- * progress come with the Store and Brand steps (UI-ONBb).
+ * progress come with the Brand step (UI-ONBc).
  */
 export type SetupView = {
   state: 'ready' | 'demo' | 'unreadable'
   /** Only the owner saves steps; everyone else sees where setup is. */
   owner: boolean
+  /** The workspace's name: the store's name until one is saved. */
+  workspaceName: string
   flow: SetupFlow | null
   /** The brand as saved, with its revision for the next save. */
   brand: { name: string; domain: string; revision: number } | null
@@ -79,6 +81,7 @@ export async function setupReadModel(
   const view: SetupView = {
     state: 'unreadable',
     owner: context.tenantRole === 'owner',
+    workspaceName: context.tenantName,
     flow: null,
     brand: null,
     klaviyo: null,

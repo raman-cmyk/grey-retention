@@ -5,6 +5,7 @@ import {
   openPlace,
   setupFlow,
   siteDomain,
+  websiteOf,
   type SetupRecords
 } from './flow-model'
 
@@ -60,6 +61,28 @@ describe('siteDomain (as the database reads a website)', () => {
       undefined
     ])
       expect(siteDomain(bad)).toBeNull()
+  })
+})
+
+describe('websiteOf (what the owner typed)', () => {
+  it('takes a link or a bare website', () => {
+    expect(websiteOf('https://WWW.CedarLane.example/shop?x=1')).toBe(
+      'cedarlane.example'
+    )
+    expect(websiteOf(' cedarlane.example/ ')).toBe('cedarlane.example')
+    expect(websiteOf('http://shop.cedarlane.example#top')).toBe(
+      'shop.cedarlane.example'
+    )
+  })
+  it('refuses a port, a name and password, spaces or nothing', () => {
+    for (const bad of [
+      'cedarlane.example:8080',
+      'https://me:secret@cedarlane.example',
+      'cedar lane',
+      'ftp://cedarlane.example',
+      ''
+    ])
+      expect(websiteOf(bad)).toBeNull()
   })
 })
 
