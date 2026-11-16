@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { runAgent, type AgentDefinition } from '@/features/agents/runtime'
 import {
   amount,
+  factLines,
   customerWordsRules,
   oneLine,
   storeLink,
@@ -14,6 +15,10 @@ import { checkCopy, type QaRule } from '@/features/copy-qa/check'
 import type { LockedContent } from '@/features/email-build/content'
 import { rewriteRounds, strayPrices } from '@/features/email-build/inspect'
 import { previewRepeat } from '@/features/email-build/preview-pair'
+import {
+  letterReading,
+  readingRule
+} from '@/features/email-build/reading-level'
 import { keyPart, ruleWords } from '@/features/fallback/entry'
 import type { FallbackLog } from '@/features/fallback/log'
 import type { AgentCtx } from '@/features/strategy/retry'
@@ -30,6 +35,7 @@ import {
 } from './kinds'
 import {
   letterSchema,
+  letterText,
   letterWords,
   offerLine,
   seenText,
@@ -49,7 +55,7 @@ import {
  * plainer letter that code writes from the store's name and product only,
  * logged (D16). Nothing waits for a person.
  */
-export const letterWriterVersion = '2026-11-16.3'
+export const letterWriterVersion = '2026-11-16.4'
 
 export type LetterBrief = {
   /** The locked content: its products, offer, facts and founder. */
@@ -156,7 +162,9 @@ type LetterTask = { brief: LetterBrief; feedback: CopyFeedback[] }
 
 /** The Letter writer for one brief (the customers' own words when it has them, ONB-061). */
 export const letterWriter = (
-  brief: LetterBrief
+  brief: LetterBrief,
+  /** The store's industry: its reading level (DST-PIC #28). */
+  industry: string | null = null
 ): AgentDefinition<LetterTask, LetterAnswer> => ({
   name: 'letter-writer',
   version: letterWriterVersion,
@@ -165,7 +173,9 @@ export const letterWriter = (
     ...letterInstructions,
     ...customerWordsRules(brief.locked.input),
     // DST-PIC #24: the kind's own rules, with their numbers, when it fits.
-    ...kindRules(brief)
+    ...kindRules(brief),
+    // DST-PIC #28: the industry’s reading level.
+    readingRule(industry)
   ].join('\n'),
   task: ({ brief, feedback }) =>
     writerData(
@@ -377,6 +387,7 @@ type Cause = keyof typeof causes
 const letterRuleWords: Record<string, string> = {
   letter_too_short: 'a letter too short',
   letter_too_long: 'a letter too long',
+  reading_level: 'words too hard to read',
   too_many_links: 'too many links',
   unknown_link: 'a link the letter does not have',
   empty_link: 'a link on no words',
@@ -442,7 +453,7 @@ export async function writeLetter(
   let cause: Cause = 'check_failed'
   let tries = 0
   let runId: string | undefined
-  const writer = letterWriter(brief)
+  const writer = letterWriter(brief, ctx.industry)
   // A code in a reason (copy QA's "Use exactly: …") is never given back.
   const codes = brief.locked.input.codes.map((c) => c.code).filter(Boolean)
   const noCodes = (text: string) =>
@@ -506,7 +517,23 @@ export async function writeLetter(
       ...checks(letter.data),
       ...letterFindings(letter.data, brief),
       // DST-PIC #24: its kind's rules (the plain letter has no kind).
-      ...kindProblems(letter.data, brief)
+      ...kindProblems(letter.data, brief),
+      // DST-PIC #28: the industry's reading level (the writer's words).
+      ...letterReading(
+        // The writer's words only: never the founder's placed note.
+        [
+          ...writerBody(letter.data, brief),
+          ...letterText(letter.data).slice(letter.data.body.length)
+        ].map(seenText),
+        ctx.industry,
+        [
+          brief.brandName,
+          ...brief.locked.input.products.map((p) => p.title),
+          ...factLines(brief.locked.input.facts).map((f) =>
+            f.replace(/[.!?]$/, '')
+          )
+        ].flatMap((t) => [t, clean(t, 2_000)])
+      )
     ]
     if (!found.length)
       return { status: 'written', letter: letter.data, tries, runId }

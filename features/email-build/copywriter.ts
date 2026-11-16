@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { runAgent, type AgentDefinition } from '@/features/agents/runtime'
 import type { AiRun, RunAi } from '@/features/assembly/assemble'
 import type { BuildAgents } from './build'
+import { readingRule } from './reading-level'
 
 /**
  * REL-AI part 2b: the Copywriter (EML-002's writer on the locked sections,
@@ -13,7 +14,7 @@ import type { BuildAgents } from './build'
  * The build has agents only with a live model (`buildAgentsFor`); the
  * answer says which provider gave it.
  */
-export const copywriterVersion = '2026-11-16.2'
+export const copywriterVersion = '2026-11-16.3'
 
 export function copywriterRun(
   agents: BuildAgents,
@@ -26,7 +27,8 @@ export function copywriterRun(
       name: 'copywriter',
       version: copywriterVersion,
       purpose: 'copy',
-      instructions: request.system,
+      // DST-PIC #28: the industry's words per section and reading level.
+      instructions: `${request.system}\n${readingRule(ctx.industry)}`,
       task: () => request.user,
       schema: request.schema,
       output: z.unknown(),
