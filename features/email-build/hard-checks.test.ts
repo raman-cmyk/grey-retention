@@ -130,6 +130,7 @@ describe('the hard checks on a drawn email (DST-005)', () => {
     const html = await built()
     const known = [
       'Up to 60% recycled fibres',
+      'Up to 60 percent recycled fibres',
       'Get 100% organic cotton',
       'Bundle (30% off)'
     ]
@@ -138,6 +139,10 @@ describe('the hard checks on a drawn email (DST-005)', () => {
         (p) => p.check
       )
     expect(offer('<p>Made with up to 60% recycled fibres.</p>')).toEqual([])
+    expect(
+      offer('<p>Up to 60 percent recycled fibres in every throw.</p>')
+    ).toEqual([])
+    expect(offer('<p>Save 40 per cent today</p>')).toEqual(['offer'])
     expect(offer('<p>Get 100% organic cotton in every throw.</p>')).toEqual([])
     expect(offer('<p>Bundle (30% off) is back</p>')).toEqual([])
     for (const drawn of [

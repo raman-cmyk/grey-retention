@@ -374,7 +374,7 @@ export async function runBuildStep(
   let made = draw(drawn)
   let problems = made.ok ? checksOf(made.email.html) : []
   const pictured = drawn.draft.blocks.some(
-    (b) => (b.content as { picture?: unknown }).picture
+    (b) => (b?.content as { picture?: unknown } | undefined)?.picture
   )
   if (made.ok && problems.length && pictured) {
     // The studio's email failed one: its coded blocks instead (D16),

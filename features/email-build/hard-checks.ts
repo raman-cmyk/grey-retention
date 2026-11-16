@@ -135,12 +135,14 @@ export function hardProblems(
     )
   for (const problem of footerProblems(html)) add('footer', problem)
   // What a reader sees, the pictures' words with it, as copy QA reads it.
+  // The store's own words go first (an approved "60 percent" claim too),
+  // then "N percent" and "N per cent" are read as N%.
   const seen = masked(
-    [drawnText(html), ...pictures.map((tag) => drawnText(altOf(tag)))]
-      .join(' ')
-      .replace(/(\d+(?:[.,]\d+)?)\s*percent\b/gi, '$1%'),
+    [drawnText(html), ...pictures.map((tag) => drawnText(altOf(tag)))].join(
+      ' '
+    ),
     input.known ?? []
-  )
+  ).replace(/(\d+(?:[.,]\d+)?)\s*per\s?cent\b/gi, '$1%')
   const max = input.maxDiscountPercent
   const over: number[] = []
   for (const m of seen.matchAll(/(\d+(?:[.,]\d+)?)\s*%/g)) {
