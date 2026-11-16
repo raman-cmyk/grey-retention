@@ -51,10 +51,11 @@ import { offersAt, type Store } from './ports'
  * in part 2c.
  */
 
-/** The planned email this build is for (a slot of STR-003's stored plan). */
 /** D26: the two kinds of email the build makes. */
 export const emailFormats = ['designed', 'text'] as const
 export type EmailFormat = (typeof emailFormats)[number]
+
+/** The planned email this build is for (a slot of STR-003's stored plan). */
 
 export const plannedEmail = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -403,8 +404,9 @@ export async function contentStep(
       site: store.brand.site
     },
     // REL-AI part 2: the Content locker agent places the products when the
-    // agents are on (checked, retried, else code's placement, logged).
-    ctx.agents
+    // agents are on (checked, retried, else code's placement, logged). A
+    // text email locks only its lead product: code places it, no AI call.
+    ctx.agents && planned.format !== 'text'
       ? {
           ...ctx,
           industry: store.industry,
@@ -494,7 +496,7 @@ export function uniqueSubject(
 }
 
 /** A model call ends this long after it starts, with its database calls. */
-const callSlackMs = 2_000
+export const callSlackMs = 2_000
 
 /** REL-AI: a subject another email of the plan has goes back to the writer. */
 const takenSubject =

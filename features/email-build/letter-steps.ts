@@ -9,6 +9,7 @@ import { renderLetter } from '@/features/letter/render'
 import {
   letterFindings,
   plainLetter,
+  theTitle,
   writeLetter,
   type LetterBrief
 } from '@/features/letter/writer'
@@ -17,6 +18,7 @@ import type { ChangeKey, LockedContent } from './content'
 import type { SectionPlan } from './sections'
 import type { Store } from './ports'
 import {
+  callSlackMs,
   shownOffer,
   subjectKey,
   subjectText,
@@ -35,8 +37,8 @@ import {
  * emails skip layer 1) and the design studio. The copy step writes the
  * letter (the Letter writer with the agents, else the plain letter), the
  * design step draws it as a person's email with a real plain-text part,
- * and the hard checks (width, weight, links, the offer within the max)
- * judge it as they judge every email.
+ * and, in the job's saved steps (TXT-001d), the hard checks (width,
+ * weight, links, the offer within the max) judge it as every email.
  */
 
 /** A text email's sections: only what the Content locker must lock. */
@@ -91,7 +93,7 @@ function plainSubjects(store: Store, locked: LockedContent, letter: Letter) {
   const title = lead ? subjectText(lead.title) : null
   return [
     letter.subject,
-    ...(title ? [`A short note about the ${title}`] : []),
+    ...(title ? [`A short note about ${theTitle(title)}`] : []),
     ...(brand
       ? [`A short note from ${brand}`, `A note from all of us at ${brand}`]
       : []),
@@ -147,7 +149,7 @@ export async function letterCopyStep(
         ai: ctx.agents.ai,
         fallbacks: ctx.fallbacks,
         ...(until !== undefined
-          ? { fits: () => now() + agentCallMs <= until }
+          ? { fits: () => now() + agentCallMs + callSlackMs <= until }
           : {})
       },
       takenProblem
