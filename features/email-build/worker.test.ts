@@ -24,7 +24,13 @@ import { InMemoryMemoryStore } from '@/features/agents/memory'
 import { InMemoryRunLog, type AiCall } from '@/features/agents/runtime'
 import { logger } from '@/lib/logger'
 import { runEmailBuilds } from './worker'
-import { buildEmail, type BuiltEmail, type PlannedEmail } from './build'
+import {
+  buildEmail,
+  builtEmail,
+  type BuiltEmail,
+  type PlannedEmail
+} from './build'
+import { maxEmailBytes } from './step-names'
 import {
   fakeDraftPusher,
   type DraftPusher,
@@ -213,6 +219,92 @@ describe('building and pushing (code-only, fake pusher)', () => {
       lease: 'lease-1',
       campaign: 'sample-draft-key-1',
       sample: true
+    })
+  })
+
+  describe('A versus B (EML-AB)', () => {
+    const pair = async () => {
+      const coded = await built()
+      const email: BuiltEmail = {
+        ...coded,
+        approach: 'B',
+        html: coded.html.replace('</body>', '<!-- designed --></body>'),
+        designA: coded.html
+      }
+      return { coded, email }
+    }
+    const push = async (email: BuiltEmail, pusher: DraftPusher) => {
+      const fallbacks = memoryFallbackLog()
+      const db = fakeDb([step({ state: 'push_queued', step: 'push', email })])
+      await runEmailBuilds(db.db, { pusher, fallbacks })
+      return { calls: db.calls, fallbacks }
+    }
+
+    it('pushes the studio’s email and its coded design as one draft, half the audience each', async () => {
+      const { coded, email } = await pair()
+      const pusher = fakeDraftPusher()
+      const { calls, fallbacks } = await push(email, pusher)
+      expect(pusher.calls[0]!.variations).toEqual([
+        { approach: 'A', html: coded.html },
+        { approach: 'B', html: email.html }
+      ])
+      expect(calls.some((c) => c.fn === 'finish_email_push')).toBe(true)
+      expect(fallbacks.entries()).toEqual([])
+    })
+
+    it('says so, once per planned email, when the draft could hold design A only; nothing on a failed push', async () => {
+      const { email } = await pair()
+      const { calls, fallbacks } = await push(
+        email,
+        fakeDraftPusher({ designs: 'A' })
+      )
+      expect(calls.some((c) => c.fn === 'finish_email_push')).toBe(true)
+      expect(fallbacks.entries()).toEqual([
+        expect.objectContaining({
+          agent: 'ab-test',
+          reasonCode: 'ab_one_design',
+          reason: 'This email’s Klaviyo draft could not hold both designs.',
+          fallback:
+            'The draft in Klaviyo has the coded design only, with no A/B test.',
+          dedupeKey: 'ab-test:key-1:one-design'
+        })
+      ])
+      const failed = await push(email, {
+        createDraft: async () => ({ ok: false, code: 'unavailable' })
+      })
+      expect(failed.fallbacks.entries()).toEqual([])
+    })
+
+    it('pushes one design alone: coded, designed without its coded design, or coded carrying a second', async () => {
+      const { coded, email } = await pair()
+      for (const one of [
+        coded,
+        { ...email, designA: undefined },
+        { ...coded, designA: email.html }
+      ]) {
+        const single = fakeDraftPusher()
+        await push(one, single)
+        expect(single.calls[0]).not.toHaveProperty('variations')
+      }
+    })
+
+    it('fits both designs at Gmail’s size in what is stored', async () => {
+      const { coded } = await pair()
+      // Each design at the hard checks' most (Gmail's 102 kB less 10 kB),
+      // as real markup (its quotes escaped when stored).
+      const most = 102 * 1024 - 10 * 1024
+      const big = (html: string) =>
+        html.repeat(Math.ceil(most / html.length)).slice(0, most)
+      const email: BuiltEmail = {
+        ...coded,
+        approach: 'B',
+        html: big(coded.html),
+        designA: big(coded.html)
+      }
+      expect(Buffer.byteLength(JSON.stringify(email))).toBeLessThanOrEqual(
+        maxEmailBytes
+      )
+      expect(builtEmail.safeParse(email).success).toBe(true)
     })
   })
 
