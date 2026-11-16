@@ -11,6 +11,7 @@ import {
   emailOrigins,
   EmailNotDrawable,
   previewJobs,
+  previewsWaiting,
   requestEmailRender
 } from './preview-jobs'
 
@@ -45,8 +46,11 @@ function database(
   const rows = [...(options.rows ?? [queued])]
   let current: Row = null
   const calls: { name: string; args: Record<string, unknown> }[] = []
+  /** Each read's table and filters, as asked. */
+  const reads: { table: string; filters: unknown[][] }[] = []
   return {
     calls,
+    reads,
     rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
       calls.push({ name, args })
       if (options.rpcError?.[name])
@@ -66,10 +70,15 @@ function database(
       return { data: null, error: null }
     }),
     from: (table: string) => {
+      const read = { table, filters: [] as unknown[][] }
+      reads.push(read)
       const query = {
         select: () => query,
-        eq: () => query,
-        or: async () => ({ count: 2, error: null }),
+        eq: (...args: unknown[]) => (read.filters.push(['eq', ...args]), query),
+        or: async (...args: unknown[]) => {
+          read.filters.push(['or', ...args])
+          return { count: 2, error: null }
+        },
         maybeSingle: async () => {
           if (table === 'email_builds')
             return {
@@ -131,6 +140,12 @@ describe('the hosts an email’s pictures come from (DST-005b)', () => {
     ])
   })
 
+  it('reads pictures inside <noscript>, as the browser with JavaScript off draws them', () => {
+    expect(
+      emailOrigins('<noscript><img src="https://ns.example/a.jpg"></noscript>')
+    ).toEqual(['https://ns.example'])
+  })
+
   it('leaves out what may not load: http, IP addresses, ports, users, inline pictures', () => {
     expect(
       emailOrigins(
@@ -182,8 +197,11 @@ describe('asking for a view of the email (DST-005b)', () => {
     expect(JSON.stringify(d.calls)).not.toContain('{%')
   })
 
-  it('never queues an email too large to draw, or with too many picture hosts', async () => {
+  it('never queues an email too large to draw, with too many picture hosts, or that the browser would refuse', async () => {
     for (const big of [
+      `${html}<link rel="preconnect" href="https://evil.example">`,
+      `${html}<meta http-equiv="refresh" content="0">`,
+      `${html}<iframe srcdoc="x"></iframe>`,
       `${html}<p>${'x'.repeat(200_001)}</p>`,
       Array.from(
         { length: 9 },
@@ -211,6 +229,53 @@ describe('handing out views to draw (DST-005b)', () => {
     expect(d.calls.filter((c) => c.name === 'claim_platform_job')).toEqual([
       { name: 'claim_platform_job', args: { kinds: ['studio.preview'] } }
     ])
+    // The job's own view, then that view's own build.
+    expect(d.reads).toEqual([
+      { table: 'email_renders', filters: [['eq', 'id', render]] },
+      { table: 'email_builds', filters: [['eq', 'id', build]] }
+    ])
+  })
+
+  it('closes the job of a view gone with its build, at once, never retried', async () => {
+    const d = database({ rows: [null] })
+    expect(await previewJobs(db(d))).toEqual([])
+    expect(last(d, 'finish_platform_job')).toEqual({
+      job,
+      lease,
+      outcome: { settled: 'gone' }
+    })
+    expect(last(d, 'fail_platform_job')).toBeUndefined()
+    // Gone between the two reads: refusing it finds no view, so the job is closed.
+    const race = database({
+      buildState: 'failed',
+      rpcError: { fail_email_render: 'PT409' }
+    })
+    expect(await previewJobs(db(race))).toEqual([])
+    expect(last(race, 'finish_platform_job')).toEqual({
+      job,
+      lease,
+      outcome: { settled: 'gone' }
+    })
+  })
+
+  it('refuses a view whose stored origins are not exactly the ones its page loads, or whose page would reach out', async () => {
+    for (const row of [
+      { ...queued, origins: ['https://10.0.0.5'] },
+      { ...queued, origins: [...queued.origins, 'https://extra.example'] },
+      { ...queued, origins: ['https://cdn.shop.example'] },
+      {
+        ...queued,
+        document: `${page}<link rel="prefetch" href="https://evil.example/">`
+      }
+    ]) {
+      const d = database({ rows: [row] })
+      expect(await previewJobs(db(d))).toEqual([])
+      expect(last(d, 'fail_email_render')).toEqual({
+        job,
+        lease,
+        failure: 'refused'
+      })
+    }
   })
 
   it('claims on past a view it cannot hand out, so one bad view never stops the run', async () => {
@@ -232,7 +297,7 @@ describe('handing out views to draw (DST-005b)', () => {
       ])
     ).toEqual([
       ['claim_platform_job', ''],
-      ['fail_platform_job', 'protocol'],
+      ['finish_platform_job', { settled: 'gone' }],
       ['claim_platform_job', ''],
       ['fail_platform_job', 'unavailable'],
       ['claim_platform_job', ''],
@@ -247,8 +312,17 @@ describe('handing out views to draw (DST-005b)', () => {
     expect(await previewJobs(db(next))).toEqual([handed])
   })
 
-  it('stops when nothing is waiting', async () => {
+  it('stops when nothing is waiting, and counts only the email’s views waiting', async () => {
     expect(await previewJobs(db(database({ rows: [] })))).toEqual([])
+    const d = database()
+    expect(await previewsWaiting(db(d))).toBe(2)
+    expect(d.reads[0]).toMatchObject({
+      table: 'platform_jobs',
+      filters: [
+        ['eq', 'kind', 'studio.preview'],
+        ['or', expect.any(String)]
+      ]
+    })
   })
 
   it('never draws for a build that no longer wants the view, or a page that can no longer be drawn', async () => {

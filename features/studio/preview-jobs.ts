@@ -64,6 +64,13 @@ export type PreviewJob = {
 /** A hostname the command takes: no IP address, no port, no user. */
 const hostname =
   /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/
+/**
+ * What the browser refuses to draw (`renderEmail`'s own rule, kept the
+ * same): a <link>, a meta http-equiv, frames, objects and `srcdoc` would
+ * reach out past its route guard.
+ */
+const reachesOut =
+  /<link\b|\bhttp-equiv\b|<(?:iframe|frame|frameset|object|embed|portal|fencedframe)\b|\bsrcdoc\b/i
 const cssUrls = (css: string) =>
   [...css.matchAll(/url\(\s*(['"]?)([^'")\s]+)\1\s*\)/gi)].map((m) => m[2]!)
 
@@ -98,7 +105,8 @@ function loadedUrls(node: T.ParentNode, urls: string[]) {
  */
 export function emailOrigins(html: string): string[] {
   const urls: string[] = []
-  loadedUrls(parse(html), urls)
+  // As the browser reads it with JavaScript off: <noscript> is drawn.
+  loadedUrls(parse(html, { scriptingEnabled: false }), urls)
   const hosts = new Set<string>()
   for (const url of urls) {
     let u: URL
@@ -131,7 +139,8 @@ export function emailOrigins(html: string): string[] {
  * its design step, as the preview shows it (Klaviyo's tags as
  * placeholders). The same key, view and email again is the same render;
  * the same key and view with another email is PT409. An email too large,
- * or with pictures from too many places, is never queued.
+ * with pictures from too many places, or that the browser would refuse,
+ * is never queued.
  */
 export async function requestEmailRender(
   db: Db,
@@ -147,6 +156,10 @@ export async function requestEmailRender(
   const document = previewFooterTags(input.html, input.brandName)
   if (Buffer.byteLength(document) > previewLimits.maxDocumentBytes)
     throw new EmailNotDrawable(['The email is too large to draw.'])
+  if (reachesOut.test(document))
+    throw new EmailNotDrawable([
+      'The email has a part that would load from outside its pictures.'
+    ])
   const origins = emailOrigins(document)
   const { data, error } = await db.rpc('request_email_render', {
     build: input.build,
@@ -182,6 +195,16 @@ type Lease = { id: string; lease_token: string; subject_key: string }
 const logged = (what: string, code: string | undefined) =>
   logger.error(what, { code: code ?? 'preview_job_error' })
 
+/** The job closed as done: its view is gone, so nothing is left to try. */
+const settle = async (db: Db, job: string, lease: string, why: string) => {
+  const { error } = await db.rpc('finish_platform_job', {
+    job,
+    lease,
+    outcome: { settled: why }
+  })
+  if (error) logged('A preview job could not be finished', error.code)
+}
+
 const fail = async (
   db: Db,
   job: string,
@@ -189,7 +212,11 @@ const fail = async (
   failure: PreviewFailure
 ) => {
   const { error } = await db.rpc('fail_email_render', { job, lease, failure })
-  if (error) logged('A view could not be failed', error.code)
+  if (!error) return
+  logged('A view could not be failed', error.code)
+  // The view went with its build meanwhile: the job is closed, never left
+  // to its lease.
+  if (error.code === 'PT409') await settle(db, job, lease, 'gone')
 }
 
 /**
@@ -234,24 +261,25 @@ async function handOut(db: Db, job: Lease): Promise<PreviewJob | null> {
     .select('id,build_id,view,document,origins,state')
     .eq('id', job.subject_key)
     .maybeSingle()
-  if (row.error || !row.data) {
+  if (row.error) {
+    // Unreadable now: tried again later.
     const { error } = await db.rpc('fail_platform_job', {
       job: job.id,
       lease: job.lease_token,
-      failure: row.error ? 'unavailable' : 'protocol',
-      error_code: row.error ? 'preview_read_failed' : 'preview_missing'
+      failure: 'unavailable',
+      error_code: 'preview_read_failed'
     })
     if (error) logged('A preview job could not be failed', error.code)
     return null
   }
+  if (!row.data) {
+    // Gone with its build: nothing to draw, ever.
+    await settle(db, job.id, job.lease_token, 'gone')
+    return null
+  }
   if (row.data.state !== 'queued') {
     // Already drawn or failed: the job has nothing left to do.
-    const { error } = await db.rpc('finish_platform_job', {
-      job: job.id,
-      lease: job.lease_token,
-      outcome: { settled: row.data.state }
-    })
-    if (error) logged('A preview job could not be finished', error.code)
+    await settle(db, job.id, job.lease_token, row.data.state)
     return null
   }
   const build = await db
@@ -265,21 +293,22 @@ async function handOut(db: Db, job: Lease): Promise<PreviewJob | null> {
     await fail(db, job.id, job.lease_token, 'refused')
     return null
   }
-  // Checked again: a view that can no longer be drawn never is.
+  // Checked again: a view that can no longer be drawn never is, and its
+  // origins are exactly the ones its page loads by today's rules.
   const { document, view, origins } = row.data
-  let drawable = isView(view)
+  let drawable =
+    isView(view) &&
+    Buffer.byteLength(document) <= previewLimits.maxDocumentBytes &&
+    !reachesOut.test(document)
   if (drawable)
     try {
-      emailOrigins(document)
+      const own = emailOrigins(document)
+      drawable =
+        own.length === origins.length && own.every((o, i) => o === origins[i])
     } catch {
       drawable = false
     }
-  if (
-    !drawable ||
-    Buffer.byteLength(document) > previewLimits.maxDocumentBytes ||
-    origins.length > previewLimits.maxOrigins ||
-    origins.some((o) => !/^https:\/\//.test(o) || !hostname.test(o.slice(8)))
-  ) {
+  if (!drawable) {
     logged('A view was refused before drawing', 'preview_refused')
     await fail(db, job.id, job.lease_token, 'refused')
     return null
