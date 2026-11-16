@@ -325,8 +325,9 @@ export function readCampaignMessages(
 }
 
 /**
- * The content of one message (its first variation's subject, preview and
- * channel), for a message whose variations did not come with the list.
+ * The content of one message (its first variation's subject, preview,
+ * channel and template), for a message whose variations did not come with
+ * the list.
  */
 export async function readMessageContent(
   client: KlaviyoClient,
@@ -592,8 +593,11 @@ export function readAudiences(
 export type MessageBody = {
   messageId: string
   templateId: string
-  /** How it was made: code, a plain text editor, or drag and drop. */
-  editor: 'code' | 'text' | 'drag_and_drop' | 'hybrid' | 'unknown'
+  /**
+   * How it was made: custom code, Klaviyo's rich text editor (a letter, as
+   * a founder writes one), drag and drop, or code inside drag and drop.
+   */
+  editor: 'code' | 'rich_text' | 'drag_and_drop' | 'hybrid' | 'unknown'
   /** At most `maxBodyChars`. */
   html: string
   /** Klaviyo's plain-text part (often none for drag and drop), capped. */
@@ -615,7 +619,7 @@ export function templateBodyPath(templateId: string) {
 
 const editors: Record<string, MessageBody['editor']> = {
   CODE: 'code',
-  SIMPLE: 'text',
+  SIMPLE: 'rich_text',
   SYSTEM_DRAGGABLE: 'drag_and_drop',
   USER_DRAGGABLE: 'hybrid'
 }
@@ -627,7 +631,7 @@ const templateRecord = z.object({
       editor_type: z.string().nullish(),
       html: z.string().nullish(),
       text: z.string().nullish(),
-      updated: z.string().nullish()
+      updated: when
     })
   })
 })
@@ -641,13 +645,17 @@ export type BodiesRead = PagedRead<MessageBody> & {
   scopeMissing: boolean
 }
 
+/** Unavailable answers in a row that mean Klaviyo is down, not one template. */
+const unavailableInARow = 2
+
 /**
  * The bodies of `messages`, in order, the first variation's template of
- * each email. A template gone, or of a shape we do not know, is counted
- * and the read goes on; a key without `templates:read` stops it, as does
- * Klaviyo being unavailable (an answer over the client's size limit is
- * one), both as an incomplete read, never a throw. A bad key and too many
- * requests throw, so the job waits.
+ * each email, each template once. A template gone, an answer of a shape we
+ * do not know, one Klaviyo refuses (400, 409, 422) or cannot give (an
+ * answer over the client's size limit is unavailable) is counted and the
+ * read goes on; a key without `templates:read`, or Klaviyo unavailable
+ * twice in a row, stops it as an incomplete read, never a throw. Only a
+ * bad key and too many requests throw, so the job waits.
  */
 export async function readMessageBodies(
   client: KlaviyoClient,
@@ -666,13 +674,21 @@ export async function readMessageBodies(
     noTemplate: 0,
     scopeMissing: false
   }
-  const cap = (t: string) => t.slice(0, maxBodyChars)
+  // Cut at the limit, never inside a character written as two units.
+  const cap = (t: string) =>
+    t.length > maxBodyChars
+      ? t.slice(0, maxBodyChars).replace(/[\uD800-\uDBFF]$/, '')
+      : t
+  const seen = new Set<string>()
+  let down = 0
   for (const message of messages) {
     const id = message.templateId
     if (!id || (message.channel !== null && message.channel !== 'email')) {
       out.noTemplate++
       continue
     }
+    // Two emails of one template: one read.
+    if (seen.has(id)) continue
     if (
       out.records.length + out.gone + out.skipped >= maxBodyReads ||
       !more()
@@ -680,11 +696,19 @@ export async function readMessageBodies(
       out.complete = false
       break
     }
+    seen.add(id)
     let body: unknown
     try {
       body = await client.get(templateBodyPath(id), 'templates:read')
+      down = 0
     } catch (error) {
       if (!(error instanceof KlaviyoError)) throw error
+      if (error.kind === 'bad_key' || error.kind === 'rate_limited') throw error
+      if (error.kind === 'missing_scope') {
+        out.scopeMissing = true
+        out.complete = false
+        break
+      }
       if (
         error.kind === 'rejected' &&
         (error.details.status === 404 || error.details.status === 410)
@@ -692,20 +716,12 @@ export async function readMessageBodies(
         out.gone++
         continue
       }
-      if (error.kind === 'missing_scope') {
-        out.scopeMissing = true
+      if (error.kind === 'unavailable' && ++down >= unavailableInARow) {
         out.complete = false
         break
       }
-      if (error.kind === 'unavailable') {
-        out.complete = false
-        break
-      }
-      if (error.kind === 'invalid_response') {
-        out.skipped++
-        continue
-      }
-      throw error
+      out.skipped++
+      continue
     }
     const parsed = templateRecord.safeParse(body)
     if (!parsed.success || parsed.data.data.id !== id) {
@@ -721,7 +737,7 @@ export async function readMessageBodies(
       editor: editors[a.editor_type ?? ''] ?? 'unknown',
       html: cap(html),
       text: text === null ? null : cap(text),
-      updated: a.updated ?? null,
+      updated: a.updated,
       truncated:
         html.length > maxBodyChars || (text?.length ?? 0) > maxBodyChars
     })

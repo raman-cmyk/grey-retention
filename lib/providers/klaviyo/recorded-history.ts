@@ -215,7 +215,7 @@ export type HistoryScenario = {
 
 /**
  * PIC-23: the words of the sent emails, as Klaviyo keeps each template
- * (all made up). The founder's letter is a plain-text editor's, with a
+ * (all made up). The founder's letter is from Klaviyo's rich text editor, with a
  * template tag and a signature; one email holds a name and an address the
  * owner typed, which the caller must redact; the rest are designed.
  */
@@ -603,7 +603,12 @@ export function recordedHistoryTransport(
           return json(403, {
             errors: [{ status: 403, code: 'permission_denied' }]
           })
-        if (options.templatesGone?.some((m) => id.endsWith(m))) return notFound
+        if (
+          options.templatesGone?.some(
+            (m) => id === `Tpl${m}` || id === `TplB${m}`
+          )
+        )
+          return notFound
         return fail('templates') ?? answer
       }
     return notFound
