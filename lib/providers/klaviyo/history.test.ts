@@ -58,6 +58,7 @@ describe('the history reads, against recorded Klaviyo answers', () => {
       channel: 'email',
       subject: '20% off knitwear this weekend',
       preview: 'Use code KNIT20 at checkout.',
+      templateId: 'TplMsgA02',
       contentKnown: true,
       abTest: false
     })
@@ -105,6 +106,7 @@ describe('the history reads, against recorded Klaviyo answers', () => {
       channel: 'email',
       subject: 'Last chance: 15% off overshirts',
       preview: 'Ends at midnight.',
+      templateId: 'TplMsgA09',
       abTest: true,
       found: true
     })

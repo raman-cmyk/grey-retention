@@ -188,7 +188,9 @@ export async function readBrandHistory(
       subject: content.subject,
       preview: content.preview,
       abTest: content.abTest,
-      contentKnown: content.found
+      contentKnown: content.found,
+      // PIC-23: the template its words are in.
+      templateId: content.templateId
     })
   }
   const unknownContent = [...scheduledRead.records, ...sentRead.records].filter(

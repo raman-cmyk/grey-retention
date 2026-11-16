@@ -32,6 +32,12 @@ export type CampaignMessage = {
   channel: string | null
   subject: string | null
   preview: string | null
+  /**
+   * PIC-23: the template its first variation sends (where its words are),
+   * null when Klaviyo does not say or the id is not one we can ask for
+   * (missing on a message built before it).
+   */
+  templateId?: string | null
   /** Its variations came with it (their subject, preview and channel). */
   contentKnown: boolean
   /** It has more than one variation (an A/B content test). */
@@ -196,7 +202,8 @@ const variationRecord = z.object({
         .object({
           channel: z.string().nullish(),
           subject: text(300),
-          preview_text: text(300)
+          preview_text: text(300),
+          template_id: z.string().nullish()
         })
         .passthrough()
         .nullish()
@@ -241,7 +248,12 @@ type Details = z.infer<
 const contentOf = (details: Details | undefined) => ({
   channel: details?.channel?.trim().toLowerCase() || null,
   subject: details?.subject ?? null,
-  preview: details?.preview_text ?? null
+  preview: details?.preview_text ?? null,
+  // A template id we could not ask for is none (never a failed read).
+  templateId:
+    details?.template_id && kidPattern.test(details.template_id)
+      ? details.template_id
+      : null
 })
 
 /** Campaign messages of one status, each with its campaign and first variation. */
@@ -313,8 +325,9 @@ export function readCampaignMessages(
 }
 
 /**
- * The content of one message (its first variation's subject, preview and
- * channel), for a message whose variations did not come with the list.
+ * The content of one message (its first variation's subject, preview,
+ * channel and template), for a message whose variations did not come with
+ * the list.
  */
 export async function readMessageContent(
   client: KlaviyoClient,
@@ -565,4 +578,169 @@ export function readAudiences(
       return { records, skipped }
     }
   )
+}
+
+/**
+ * PIC-23 (owner pick #23, the founder's voice): the words of what the store
+ * sent, from the template each message sends. One read per email (Klaviyo
+ * side-loads no templates), so at most `maxBodyReads`, each asked for only
+ * while `more()` allows it. Read-only (`templates:read`, the same read the
+ * push makes of its own drafts). The template is Klaviyo's copy, never
+ * what one person got: personal data shows as template tags, and what the
+ * owner typed (names, addresses) is redacted by the caller before anything
+ * is kept.
+ */
+export type MessageBody = {
+  messageId: string
+  templateId: string
+  /**
+   * How it was made: custom code, Klaviyo's rich text editor (a letter, as
+   * a founder writes one), drag and drop, or code inside drag and drop.
+   */
+  editor: 'code' | 'rich_text' | 'drag_and_drop' | 'hybrid' | 'unknown'
+  /** At most `maxBodyChars`. */
+  html: string
+  /** Klaviyo's plain-text part (often none for drag and drop), capped. */
+  text: string | null
+  /** When the template last changed, ISO (after the send: edited since). */
+  updated: string | null
+  /** The HTML or the text was longer than `maxBodyChars`. */
+  truncated: boolean
+}
+
+export const maxBodyReads = 20
+export const maxBodyChars = 300_000
+
+export function templateBodyPath(templateId: string) {
+  if (!kidPattern.test(templateId))
+    throw new KlaviyoError('invalid_response', { endpoint: '/api/templates/' })
+  return `/api/templates/${templateId}?fields[template]=editor_type,html,text,updated`
+}
+
+const editors: Record<string, MessageBody['editor']> = {
+  CODE: 'code',
+  SIMPLE: 'rich_text',
+  SYSTEM_DRAGGABLE: 'drag_and_drop',
+  USER_DRAGGABLE: 'hybrid'
+}
+const templateRecord = z.object({
+  data: z.object({
+    type: z.literal('template'),
+    id: z.string(),
+    attributes: z.object({
+      editor_type: z.string().nullish(),
+      html: z.string().nullish(),
+      text: z.string().nullish(),
+      updated: when
+    })
+  })
+})
+
+export type BodiesRead = PagedRead<MessageBody> & {
+  /** Templates Klaviyo no longer has (404, 410). */
+  gone: number
+  /** Messages with no email template to read (another channel, no id). */
+  noTemplate: number
+  /** The key lacks `templates:read`: nothing more was asked. */
+  scopeMissing: boolean
+}
+
+/** Unavailable answers in a row that mean Klaviyo is down, not one template. */
+const unavailableInARow = 2
+
+/**
+ * The bodies of `messages`, in order, the first variation's template of
+ * each email, each template once. A template gone, an answer of a shape we
+ * do not know, one Klaviyo refuses (400, 409, 422) or cannot give (an
+ * answer over the client's size limit is unavailable) is counted and the
+ * read goes on; a key without `templates:read`, or Klaviyo unavailable
+ * twice in a row, stops it as an incomplete read, never a throw. Only a
+ * bad key and too many requests throw, so the job waits.
+ */
+export async function readMessageBodies(
+  client: KlaviyoClient,
+  messages: readonly {
+    id: string
+    templateId?: string | null
+    channel: string | null
+  }[],
+  more: MorePages
+): Promise<BodiesRead> {
+  const out: BodiesRead = {
+    records: [],
+    complete: true,
+    skipped: 0,
+    gone: 0,
+    noTemplate: 0,
+    scopeMissing: false
+  }
+  // Cut at the limit, never inside a character written as two units.
+  const cap = (t: string) =>
+    t.length > maxBodyChars
+      ? t.slice(0, maxBodyChars).replace(/[\uD800-\uDBFF]$/, '')
+      : t
+  const seen = new Set<string>()
+  let down = 0
+  for (const message of messages) {
+    const id = message.templateId
+    if (!id || (message.channel !== null && message.channel !== 'email')) {
+      out.noTemplate++
+      continue
+    }
+    // Two emails of one template: one read.
+    if (seen.has(id)) continue
+    if (
+      out.records.length + out.gone + out.skipped >= maxBodyReads ||
+      !more()
+    ) {
+      out.complete = false
+      break
+    }
+    seen.add(id)
+    let body: unknown
+    try {
+      body = await client.get(templateBodyPath(id), 'templates:read')
+      down = 0
+    } catch (error) {
+      if (!(error instanceof KlaviyoError)) throw error
+      if (error.kind === 'bad_key' || error.kind === 'rate_limited') throw error
+      if (error.kind === 'missing_scope') {
+        out.scopeMissing = true
+        out.complete = false
+        break
+      }
+      if (
+        error.kind === 'rejected' &&
+        (error.details.status === 404 || error.details.status === 410)
+      ) {
+        out.gone++
+        continue
+      }
+      if (error.kind === 'unavailable' && ++down >= unavailableInARow) {
+        out.complete = false
+        break
+      }
+      out.skipped++
+      continue
+    }
+    const parsed = templateRecord.safeParse(body)
+    if (!parsed.success || parsed.data.data.id !== id) {
+      out.skipped++
+      continue
+    }
+    const a = parsed.data.data.attributes
+    const html = a.html ?? ''
+    const text = a.text?.trim() ? a.text : null
+    out.records.push({
+      messageId: message.id,
+      templateId: id,
+      editor: editors[a.editor_type ?? ''] ?? 'unknown',
+      html: cap(html),
+      text: text === null ? null : cap(text),
+      updated: a.updated,
+      truncated:
+        html.length > maxBodyChars || (text?.length ?? 0) > maxBodyChars
+    })
+  }
+  return out
 }
