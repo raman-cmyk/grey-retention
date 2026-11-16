@@ -1,7 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { minConfidence } from '@/features/agents/memory'
 import type { ClientRequestContext } from '@/features/auth/domain/types'
+import { learnedRows } from '@/features/learned/read-model'
 import { offersPage } from '@/features/offers/data'
 import type { ManagedOffers } from '@/features/offers/source'
 import {
@@ -306,8 +306,8 @@ export function homeView(input: HomeInput): HomeView {
 type Db = SupabaseClient<Database>
 
 /**
- * The workspace's top do's and don'ts that the agents use now (active, not
- * expired, confident enough: as `selectRules` reads them), surest first.
+ * The workspace's top do's and don'ts that the agents use now, as the
+ * Learned page reads them (`learnedRows`): pinned first, then surest.
  */
 export async function topLearned(
   db: Db,
@@ -315,18 +315,9 @@ export async function topLearned(
   now: Date,
   limit = learnedCount
 ): Promise<HomeView['learned'] | null> {
-  const { data, error } = await db
-    .from('agent_memory_rules')
-    .select('id,kind,rule,source,created_at')
-    .eq('tenant_id', tenantId)
-    .eq('status', 'active')
-    .gte('confidence', minConfidence)
-    .or(`expires_at.is.null,expires_at.gt.${now.toISOString()}`)
-    .order('confidence', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(limit)
-  if (error || !data) return null
-  return data.map((r) => ({
+  const rows = await learnedRows(db, tenantId, now, limit)
+  if (!rows) return null
+  return rows.map((r) => ({
     id: r.id,
     kind: r.kind === 'dont' ? 'dont' : 'do',
     rule: r.rule,

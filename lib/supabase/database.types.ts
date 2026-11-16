@@ -109,6 +109,9 @@ export type Database = {
           idempotency_key: string
           industry: string | null
           kind: string
+          pinned: boolean
+          retired_at: string | null
+          retired_by: string | null
           revision: number
           rule: string
           source: string
@@ -128,6 +131,9 @@ export type Database = {
           idempotency_key: string
           industry?: string | null
           kind: string
+          pinned?: boolean
+          retired_at?: string | null
+          retired_by?: string | null
           revision?: number
           rule: string
           source: string
@@ -147,6 +153,9 @@ export type Database = {
           idempotency_key?: string
           industry?: string | null
           kind?: string
+          pinned?: boolean
+          retired_at?: string | null
+          retired_by?: string | null
           revision?: number
           rule?: string
           source?: string
@@ -156,6 +165,13 @@ export type Database = {
           why?: string
         }
         Relationships: [
+          {
+            foreignKeyName: 'agent_memory_rules_retired_by_fkey'
+            columns: ['retired_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
           {
             foreignKeyName: 'agent_memory_rules_tenant_id_fkey'
             columns: ['tenant_id']
@@ -7928,6 +7944,15 @@ export type Database = {
         Args: { pick: Json; run: string; t: string }
         Returns: undefined
       }
+      pin_memory_rule: {
+        Args: {
+          expected_revision: number
+          pinned: boolean
+          rule: string
+          t: string
+        }
+        Returns: number
+      }
       platform_ai_usage_today: {
         Args: never
         Returns: {
@@ -8316,6 +8341,10 @@ export type Database = {
         Returns: number
       }
       retire_discount_code: { Args: { code_id: string }; Returns: undefined }
+      retire_memory_rule: {
+        Args: { expected_revision: number; rule: string; t: string }
+        Returns: number
+      }
       retry_email_file_import: {
         Args: { import: string; t: string }
         Returns: string
