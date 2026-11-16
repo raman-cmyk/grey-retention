@@ -2,9 +2,6 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
-vi.mock('next/font/google', () => ({
-  Urbanist: () => ({ variable: 'urbanist-variable' })
-}))
 vi.mock('@/features/strategy/actions', () => ({
   startPlan: vi.fn(async () => ({}))
 }))
