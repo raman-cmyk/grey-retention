@@ -52,7 +52,7 @@ describe('retireRule (UI-LRNa)', () => {
   })
 
   it('checks the form before calling the database', async () => {
-    for (const values of [
+    for (const values of <Record<string, string>[]>[
       { rule: 'not-a-rule', revision: '2' },
       { rule, revision: '0' },
       { rule, revision: '1.5' },
