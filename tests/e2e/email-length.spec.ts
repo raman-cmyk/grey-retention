@@ -7,6 +7,10 @@ import {
 } from '../../features/blocks/heights'
 import { blockPreviewDocument, renderEmail } from '../../features/blocks/render'
 import { sampleBlocks, sampleBrand } from '../../features/blocks/samples'
+import { goldenBriefs } from '../../features/email-build/golden/briefs'
+import { runGolden } from '../../features/email-build/golden/run'
+import { sectionsHeight } from '../../features/email-build/sections'
+import { memoryFallbackLog } from '../../features/fallback/log'
 
 // DST-007: how tall the blocks really are, at 600 wide in a desktop
 // window (700: the email's phone layout starts under 620), measured in
@@ -31,15 +35,16 @@ test.beforeEach(async ({ page }, info) => {
   test.skip(info.project.name.startsWith('mobile'), 'Sets its own width')
   await page.setViewportSize({ width: 700, height: 900 })
   // A studio picture is drawn 1,200 px wide at twice its height (`?h=`);
-  // nothing else reaches out (the samples' pictures are inline).
+  // any other picture is a square product photo, as a shop's usually are.
+  // Nothing reaches out (the samples' own pictures are inline).
   await page.route('**/*', (route) => {
-    const h = Number(new URL(route.request().url()).searchParams.get('h'))
-    return route.request().resourceType() === 'image' && h > 0
-      ? route.fulfill({
-          body: `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${h * 2}"><rect width="1200" height="${h * 2}" fill="#c96"/></svg>`,
-          contentType: 'image/svg+xml'
-        })
-      : route.abort()
+    if (route.request().resourceType() !== 'image') return route.abort()
+    const h = Number(new URL(route.request().url()).searchParams.get('h')) || 0
+    const [w, tall] = h > 0 ? [1200, h * 2] : [800, 800]
+    return route.fulfill({
+      body: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${tall}"><rect width="${w}" height="${tall}" fill="#c96"/></svg>`,
+      contentType: 'image/svg+xml'
+    })
   })
 })
 
@@ -134,4 +139,32 @@ test('DST-007 a designed email is drawn as tall as its storyboard counts', async
     renderEmail({ blocks, brand: sampleBrand, mode: 'preview' })
   )
   expect(near(drawn, counted), `drawn ${drawn}, counted ${counted}`).toBe(true)
+})
+
+test('DST-007 the coded emails are about as tall as their plan counts', async ({
+  page
+}) => {
+  const taken: string[] = []
+  const off: string[] = []
+  for (const brief of goldenBriefs) {
+    const run = await runGolden(brief, {
+      agents: null,
+      fallbacks: memoryFallbackLog(),
+      taken: [...taken]
+    })
+    if (!run.result.ok || !run.sections)
+      throw new Error(`${brief.id}: not built`)
+    taken.push(run.result.email.subject)
+    const drawn = await frameHeight(page, run.result.email.html)
+    // As the plain copy draws them: steps and questions as text.
+    const counted = sectionsHeight(
+      run.sections.families.map((f) =>
+        f === 'steps' || f === 'faq' ? 'text' : f
+      )
+    )
+    // The plain copy's one short paragraph per text section: within a fifth.
+    if (Math.abs(drawn - counted) > counted * 0.2)
+      off.push(`${brief.id}: drawn ${drawn}, counted ${counted}`)
+  }
+  expect(off).toEqual([])
 })
