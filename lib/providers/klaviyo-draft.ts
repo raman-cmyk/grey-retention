@@ -65,9 +65,10 @@ export type DraftResult =
       campaignId: string
       sample: boolean
       /**
-       * Which designs went in: both, or A only when Klaviyo refused an even
-       * test (the draft then has one variation; alternate the designs
-       * across emails instead). Absent when no variations were asked.
+       * Which designs went in: both, or A only (the draft then has one
+       * variation): Klaviyo refused an even test, or the draft was first
+       * made with one design, or an existing message was taken over.
+       * Absent when no variations were asked.
        */
       designs?: 'both' | 'A'
     }

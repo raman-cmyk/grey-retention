@@ -60,7 +60,7 @@ export const offerLine = (offer: NonNullable<Letter['offer']>) =>
 export const linkMark = /\[([^[\]\n\\]{1,120})\]\((\d{1,2})\)/g
 
 /** What is left of a mark once the real ones are taken out: refused. */
-export const brokenMark = /\]\s*\(/
+export const brokenMark = /\]\(|\]\s+\(\d{1,2}\)/
 
 /** Link words a reader can see: a letter or a digit. */
 export const visibleWords = (words: string) => /[\p{L}\p{N}]/u.test(words)
@@ -79,8 +79,8 @@ export function linksIn(text: string): LinkUse[] {
 export const seenText = (text: string) =>
   text.replace(linkMark, (_, words: string) => words)
 
-/** "P.S.", "PS" or "P.P.S." the writer typed before its P.S. */
-export const psMark = /^p\.?(?:\s*p\.?)?\s*s\b\.?:?\s*/i
+/** "P.S.", "P. S.", "P.P.S.", "PS:" or "PPS:" the writer typed before its P.S. */
+export const psMark = /^(?:(?:p\.\s*)?p\.\s*s\b\.?:?|p{1,2}s\s*:)\s*/i
 
 /** The parts of the letter the writer wrote that a reader reads as the letter: the only parts with links. */
 export const letterText = (letter: Letter) => [

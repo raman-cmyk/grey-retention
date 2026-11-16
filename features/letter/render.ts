@@ -49,7 +49,7 @@ const hidden = new RegExp(hiddenChars.source, 'g')
 const plainText = (text: string) =>
   text
     .split('\n')
-    .map((l) => l.replace(hidden, ''))
+    .map((l) => l.replace(/\t/g, ' ').replace(hidden, ''))
     .join('\n')
     .replaceAll('{', '(')
     .replaceAll('}', ')')
@@ -95,6 +95,8 @@ export function renderLetter(
   input: { brand: BlockBrand; mode: RenderMode; logo?: boolean }
 ): { html: string; text: string } {
   const { brand, mode } = input
+  // A P.S. that is only its mark is left out.
+  const hasPs = !!letter.ps?.replace(psMark, '').trim()
   const url = (n: number) => letter.links[n - 1]?.url
   const html = (text: string) =>
     withLinks(
@@ -136,7 +138,7 @@ export function renderLetter(
     ...letter.body.map((para) => p(html(para))),
     letter.offer ? p(escapeHtml(offerLine(letter.offer))) : '',
     p(signed.map((s) => escapeHtml(s)).join('<br>'), '24px 0 0'),
-    letter.ps ? p(html(ps(letter.ps)), '24px 0 0') : '',
+    hasPs ? p(html(ps(letter.ps!)), '24px 0 0') : '',
     `<p style="margin:40px 0 0;font-size:12px;line-height:1.5;color:${footerGrey}">${footerHtml(mode, brand.name)}</p>`
   ].join('')
   const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="x-apple-disable-message-reformatting"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><!--[if mso]><style>body,div,p{font-family:'Segoe UI',Arial,sans-serif !important}</style><![endif]--><title>${escapeHtml(letter.subject)}</title></head><body style="margin:0;padding:0">${pre}<div class="gr-letter" style="max-width:560px;padding:24px 16px;font-family:${letterFont};font-size:16px;line-height:1.5;text-align:left">${body}</div></body></html>`
@@ -158,7 +160,7 @@ export function renderLetter(
     ...letter.body.map(plain),
     ...(letter.offer ? [plainText(offerLine(letter.offer))] : []),
     signed.map(plainText).join('\n'),
-    ...(letter.ps ? [plain(ps(letter.ps))] : []),
+    ...(hasPs ? [plain(ps(letter.ps!))] : []),
     `-- \n${footer.join('\n')}`
   ].join('\n\n')
   return { html: page, text: `${text}\n` }
