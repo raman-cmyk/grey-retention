@@ -181,12 +181,31 @@ export const emailWindow = 100
 const reachesOut =
   /<link\b|\bhttp-equiv\b|<(?:iframe|frame|frameset|object|embed|portal|fencedframe)\b|\bsrcdoc\b/i
 
-/** The page's laid-out size (CSS px), as the browser measures it, never the page's own words. */
+/** The frame every built email has (`features/blocks/render.ts`): its 600 px. */
+const emailFrame = '.gr-wrap'
+
+/**
+ * The page's laid-out size and the email frame's left and right edges
+ * (CSS px; null for a page without the frame), as the browser measures
+ * them through its own protocol (JavaScript is off), never the page's own
+ * words.
+ */
 async function layoutSize(context, page) {
   const cdp = await context.newCDPSession(page)
   try {
     const { cssContentSize } = await cdp.send('Page.getLayoutMetrics')
-    return cssContentSize
+    const { root } = await cdp.send('DOM.getDocument', { depth: 0 })
+    const { nodeId } = await cdp.send('DOM.querySelector', {
+      nodeId: root.nodeId,
+      selector: emailFrame
+    })
+    let frame = null
+    if (nodeId) {
+      const { model } = await cdp.send('DOM.getBoxModel', { nodeId })
+      const xs = model.border.filter((_, i) => i % 2 === 0).map(Number)
+      frame = { left: Math.min(...xs), right: Math.max(...xs) }
+    }
+    return { ...cssContentSize, frame }
   } finally {
     await cdp.detach().catch(() => {})
   }
@@ -196,9 +215,10 @@ async function layoutSize(context, page) {
  * Draws a whole built email in one view, as the sections are drawn
  * (JavaScript off, only its own origins, no redirect, no navigation), at
  * its full height up to `maxEmailHeight`, as a JPEG. `cut` says a longer
- * one was cut; `wide` says the page is wider than its window, 375 on a
- * phone and 700 on desktop (the picture keeps the view's width; markup
- * wider than 600 is refused before any view, DST-005). Throws `navigated` for a page that
+ * one was cut; `wide` says the page is wider than its window (375 on a
+ * phone, 700 on desktop), or the email's frame (`.gr-wrap`) is wider than
+ * the part drawn: the picture keeps the view's width, so that part is cut.
+ * Throws `navigated` for a page that
  * would reach out on its own or that navigated, `timeout`, `failed` (an
  * unknown view, an empty page) or `too_large`.
  */
@@ -237,6 +257,12 @@ export async function renderEmail(
     }
     const measured = Math.ceil(Number(size?.height))
     const across = Math.ceil(Number(size?.width))
+    const x = (v.window - v.width) / 2
+    // The email's frame outside the part drawn (a table grown past 600 px
+    // by what is in it is cut by the picture): wide.
+    const frame = size?.frame
+    const outside =
+      !!frame && !(frame.left >= x - 0.5 && frame.right <= x + v.width + 0.5)
     if (!(measured > emailWindow) || !Number.isFinite(across))
       throw new Error('failed')
     const height = Math.min(measured, maxEmailHeight)
@@ -249,7 +275,7 @@ export async function renderEmail(
         // window).
         fullPage: true,
         // The email's own width, from the middle of its window.
-        clip: { x: (v.window - v.width) / 2, y: 0, width: v.width, height },
+        clip: { x, y: 0, width: v.width, height },
         animations: 'disabled',
         timeout: timeoutMs
       })
@@ -263,7 +289,7 @@ export async function renderEmail(
       width: v.width,
       height,
       cut: measured > maxEmailHeight,
-      wide: across > v.window
+      wide: across > v.window || outside
     }
   } finally {
     await context.close().catch(() => {})

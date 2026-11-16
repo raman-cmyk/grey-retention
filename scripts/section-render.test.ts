@@ -19,6 +19,8 @@ function fakeBrowser(
     url?: string
     /** What the browser measures (DST-005b), or a failure to. */
     layout?: { width: number; height: number } | 'throw'
+    /** The email frame's left and right edges (DST-007); none: no frame. */
+    frame?: [number, number]
     close?: () => Promise<void>
   } = {}
 ) {
@@ -50,7 +52,15 @@ function fakeBrowser(
         newPage: async () => page,
         newCDPSession: async () => ({
           send: async (method: string) => {
-            if (method !== 'Page.getLayoutMetrics' || over.layout === 'throw')
+            if (over.layout === 'throw') throw new Error('Protocol error')
+            if (method === 'DOM.getDocument') return { root: { nodeId: 1 } }
+            if (method === 'DOM.querySelector')
+              return { nodeId: over.frame ? 2 : 0 }
+            if (method === 'DOM.getBoxModel' && over.frame) {
+              const [l, r] = over.frame
+              return { model: { border: [l, 0, r, 0, r, 400, l, 400] } }
+            }
+            if (method !== 'Page.getLayoutMetrics')
               throw new Error('Protocol error')
             return {
               cssContentSize: {
@@ -279,6 +289,28 @@ describe('the whole-email browser (DST-005b)', () => {
         }
       )
     ).toMatchObject({ width: 600, wide: false })
+    // The email's frame inside the 600 px drawn, or grown past them by
+    // what is in it (cut by the picture): wide.
+    for (const [frame, wide] of [
+      [[50, 650], false],
+      [[49.6, 650.4], false],
+      [[10, 690], true],
+      [[50, 652], true]
+    ] as [[number, number], boolean][])
+      expect(
+        await renderEmail(
+          fakeBrowser({ layout: { width: 700, height: 900 }, frame }).browser,
+          { ...email, view: 'desktop' }
+        ),
+        JSON.stringify(frame)
+      ).toMatchObject({ wide })
+    expect(
+      await renderEmail(
+        fakeBrowser({ layout: { width: 375, height: 900 }, frame: [0, 375] })
+          .browser,
+        { ...email, view: 'phone' }
+      )
+    ).toMatchObject({ wide: false })
     const { browser, seen } = fakeBrowser({
       layout: { width: 700.4, height: 7000 }
     })
