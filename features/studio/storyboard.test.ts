@@ -16,6 +16,7 @@ import {
   artDirectorAgent,
   codeStoryboard,
   emailHeight,
+  heightFloor,
   maxDesignedShare,
   storyboardFor,
   storyboardProblems,
@@ -127,6 +128,7 @@ describe('code’s own storyboard (DST-002)', () => {
   ]
   it('passes every check for every plan layer 1 makes: each email type, 0 to 6 products, with and without an offer', () => {
     let boards = 0
+    let heroes = 0
     for (const [, allowed] of allowedSets)
       for (const type of emailTypes)
         for (let products = 0; products <= 6; products++)
@@ -143,19 +145,31 @@ describe('code’s own storyboard (DST-002)', () => {
                 (x.family === 'hero_product' && x.products > 0)
             )
             // Never a storyboard that fails; none without a hero to design
-            // (or when the heights cannot fit), drawn with coded blocks.
+            // (drawn with coded blocks); one for every plan with a hero, as
+            // tall as its live sections allow (DST-007).
             if (!hero) expect(board, `${type} ${products} ${offer}`).toBeNull()
+            else heroes++
             if (board) {
               expect(storyboardProblems(board, input)).toEqual([])
               boards++
             }
           }
-    // Most plans have a hero to design.
+    expect(boards).toBe(heroes)
     expect(boards).toBeGreaterThan(emailTypes.length * 7)
   })
 
-  it('designs the heroes and keeps every other section live in its own tone', () => {
+  it('designs the heroes and keeps every other section live in its own tone, at its drawn height (DST-007)', () => {
     const board = must(codeStoryboard(launch))
+    // Live blocks are drawn at their own height; only the hero grows, to
+    // 1,800 px as drawn (its picture, then its button's 100 px row).
+    expect(board.sections.map((s) => s.height)).toEqual([
+      70,
+      emailHeight.min - (70 + 198 + 443 + 96 + 183) - 100,
+      198,
+      443,
+      96,
+      183
+    ])
     expect(
       board.sections.map((s) => `${s.render}:${s.tone}:${s.imagery}`)
     ).toEqual([
@@ -166,7 +180,7 @@ describe('code’s own storyboard (DST-002)', () => {
       'live:light:none',
       'live:light:none'
     ])
-    expect(total(board)).toBeGreaterThanOrEqual(emailHeight.min)
+    expect(total(board) + 100).toBe(emailHeight.min)
     const pictures = board.sections
       .filter((s) => s.render === 'designed')
       .reduce((n, s) => n + s.height, 0)
@@ -203,6 +217,32 @@ describe('code’s own storyboard (DST-002)', () => {
     })
     expect(Math.abs(hero.height - 700)).toBeLessThanOrEqual(175)
     expect(storyboardProblems(board, input)).toEqual([])
+    // D1 "Exact" before the height (DST-007): the hero grows to a quarter
+    // over its reference, and the email may stay under 1,800 px; the same
+    // storyboard outside Copy mode is too short.
+    expect(hero.height).toBe(875)
+    const drawn = total(board) + 100
+    expect(drawn).toBe(875 + 100 + 70 + 198 * 2 + 96 + 183)
+    expect(storyboardProblems(board, { ...input, mode: 'remix' })).toContain(
+      `The email is drawn ${drawn} px tall; make it 1800 to 2400 px.`
+    )
+    // A Copy board under what its references allow is sent back.
+    const short = {
+      sections: board.sections.map((s) =>
+        s.render === 'designed' ? { ...s, height: 700 } : s
+      )
+    }
+    expect(storyboardProblems(short, input)).toContain(
+      `The email is drawn ${drawn - 175} px tall; make it ${drawn} to 2400 px.`
+    )
+    // References tall enough keep the floor at 1,800.
+    const tall = fromPlan(
+      plan,
+      2,
+      'story',
+      reference.map((r) => ({ ...r, height: r.height === 700 ? 1100 : 300 }))
+    )
+    expect(heightFloor(must(codeStoryboard(tall)), tall)).toBe(emailHeight.min)
     // Moved out of the reference's order, it fails.
     const moved = {
       sections: [
@@ -253,9 +293,9 @@ describe('the storyboard checks (DST-002)', () => {
       'Section s4 (product_grid_2col) stays live HTML: only a hero is a picture; buttons, products, the offer, words and the footer are never one.'
     ],
     [
-      'a live block out of its height',
+      'a live block out of its drawn height',
       { sections: at(4, { height: 400 }) },
-      'Section s5 (cta) is 80 to 180 px tall.'
+      'Section s5 (cta) is live: it is drawn about 96 px tall.'
     ],
     [
       'a live block in another tone',
@@ -304,12 +344,24 @@ describe('the storyboard checks (DST-002)', () => {
         launch
       )
     ).toContain('Design at least one hero.')
-    // A 1,200 px hero with every live block at its fewest px: 64% pictures.
-    const mins = [60, 1200, 100, 300, 80, 140]
-    const tall = s.map((x, i) => ({ ...x, height: mins[i] }))
-    expect(storyboardProblems({ sections: tall }, launch)).toEqual([
-      'Pictures are 64% of the email; keep them to 60% or less.'
+    // Without the grid, a 1,200 px hero over the live blocks at their
+    // drawn heights (547 px, and the hero's button 100): 65% pictures.
+    const short = {
+      ...launch,
+      sections: launch.sections.filter((x) => x.id !== 's4')
+    }
+    const tall = s
+      .filter((x) => x.id !== 's4')
+      .map((x) => ({ ...x, height: x.render === 'designed' ? 1200 : x.height }))
+    expect(storyboardProblems({ sections: tall }, short)).toEqual([
+      'Pictures are 65% of the email; keep them to 60% or less.'
     ])
+    // Code's own is as tall as its live sections allow: 647 px live, so
+    // pictures of at most 970 px, 1,617 px in all, under 1,800.
+    const fit = must(codeStoryboard(short))
+    expect(fit.sections.find((x) => x.render === 'designed')!.height).toBe(970)
+    expect(heightFloor(fit, short)).toBe(1617)
+    expect(storyboardProblems(fit, short)).toEqual([])
     const story: StoryboardInput = {
       ...launch,
       sections: [
@@ -330,13 +382,28 @@ describe('the storyboard checks (DST-002)', () => {
     ).toContain(
       'Sections s0 and s1 are both dark: put a light section between them.'
     )
+    // The Art director's own numbers never make the email's height: a
+    // live section far off is named, and the height counted as drawn.
     expect(
       storyboardProblems({ sections: at(5, { height: 30 }) }, launch)
-    ).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/^The email is \d+ px tall/)
-      ])
+    ).toEqual(['Section s6 (footer) is live: it is drawn about 183 px tall.'])
+    // Every live section 15% over and the hero 140 px short: each live one
+    // within its slack, but the email as drawn is short.
+    const padded = s.map((x) =>
+      x.render === 'designed'
+        ? { ...x, height: x.height - 140 }
+        : { ...x, height: Math.floor(x.height * 1.15) }
     )
+    expect(storyboardProblems({ sections: padded }, launch)).toEqual([
+      'The email is drawn 1660 px tall; make it 1800 to 2400 px.'
+    ])
+    // Just past its slack, a live section is named.
+    expect(
+      storyboardProblems({ sections: at(2, { height: 228 }) }, launch)
+    ).toEqual(['Section s3 (text) is live: it is drawn about 198 px tall.'])
+    expect(
+      storyboardProblems({ sections: at(2, { height: 227 }) }, launch)
+    ).toEqual([])
   })
 })
 
@@ -358,7 +425,13 @@ describe('the Art director (DST-002)', () => {
       kind: 'hero_product',
       does: 'The new tray.',
       products: 1,
-      may_be_designed: true
+      may_be_designed: true,
+      // Drawn live, the hero would be its coded block's height.
+      drawnHeight: 677
+    })
+    expect(scratch.sections[3]).toMatchObject({
+      kind: 'product_grid_2col',
+      drawnHeight: 443
     })
     const copy = JSON.parse(
       artDirectorAgent.task({

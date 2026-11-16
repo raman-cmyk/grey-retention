@@ -4,6 +4,7 @@ import {
   hiddenChars,
   type Draft
 } from '@/features/assembly/assemble'
+import type { BlockType } from '@/features/blocks/catalog'
 import type { FallbackEntry } from '@/features/fallback/entry'
 import { footerProblems, preflight } from '@/features/klaviyo-push/html'
 import { emailLinks } from '@/features/release-qa/checks'
@@ -27,7 +28,12 @@ export type GoldenRun = {
     { ok: true; email: BuiltEmail; draft: Draft } | { ok: false; code: string }
   store: Store
   /** The offer rules and send time the first step saved. */
-  sections: Pick<SectionsOutput, 'rules' | 'sendAt'> | null
+  sections:
+    | (Pick<SectionsOutput, 'rules' | 'sendAt'> & {
+        /** The planned sections, top to bottom (DST-007's height). */
+        families: BlockType[]
+      })
+    | null
   fallbacks: readonly FallbackEntry[]
   /** How often a step saved its rounds (REL-AI part 2b) before it ended. */
   saves?: number
