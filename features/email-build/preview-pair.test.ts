@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { memoryFallbackLog } from '@/features/fallback/log'
-import { buildEmail, type PlannedEmail } from './build'
+import { buildEmail, subjectText, type PlannedEmail } from './build'
 import { sampleOffers, sampleStoreSource } from './ports'
 import { previewRepeat } from './preview-pair'
 
@@ -149,6 +149,22 @@ describe('preview text that adds something (DST-PIC #27)', () => {
     ).toBeNull()
   })
 
+  it('removes a cut name only at the end of a line, where the builders cut it', () => {
+    // "The Candle" starts the name, but this subject never names the brand.
+    expect(
+      previewRepeat(
+        'The candle sale: Friday',
+        'Our candle sale is on this Friday, every scent included.',
+        'The Candle Shop'
+      )
+    ).toMatch(/says the subject again/)
+    // A tab in a name is a space in a subject too, never two words glued.
+    expect(subjectText('Old Cedar\tLane Candles')).toBe(
+      'Old Cedar Lane Candles'
+    )
+    expect(subjectText('Old \u200b Cedar')).toBe('Old Cedar')
+  })
+
   it('reads a word with its marks, and one apostrophe as the other', () => {
     expect(
       previewRepeat(
@@ -197,7 +213,9 @@ const oddNames = [
   'The Very Long Name of the Old Cedar Lane Candle and Soap Company Limited',
   'Old Cedar  Lane Candle Soap Works',
   'An',
-  'Cedar Lane’s'
+  'Cedar Lane’s',
+  'From From Candles',
+  'A Short Story Candles'
 ]
 
 describe('the plain copy and the plain letter pass, whatever the name (DST-PIC #27)', () => {

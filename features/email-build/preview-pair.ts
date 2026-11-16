@@ -92,23 +92,24 @@ const wordsOf = (text: string) =>
   ).map((w) => w.replace(/'s$/u, ''))
 
 /**
- * `words` without the brand's name: each run of its words (at least two,
- * or its one word), and a name cut short with the start of its next word.
+ * `words` without the brand's name: the whole name anywhere, and a name
+ * cut short (at least its first two words, its next word maybe cut too)
+ * only where the builders cut it, at the end of the line.
  */
 function withoutBrand(words: readonly string[], brand: readonly string[]) {
   if (!brand.length) return [...words]
-  const least = Math.min(brand.length, 2)
   const out: string[] = []
   for (let i = 0; i < words.length;) {
     let k = 0
     while (k < brand.length && words[i + k] === brand[k]) k++
-    if (k < least) {
-      out.push(words[i]!)
-      i++
+    const next = words[i + k]
+    const cut = next !== undefined && brand[k]?.startsWith(next) ? 1 : 0
+    if (k === brand.length || (k >= 2 && i + k + cut === words.length)) {
+      i += k === brand.length ? k : k + cut
       continue
     }
-    const next = words[i + k]
-    i += k + (k < brand.length && next && brand[k]!.startsWith(next) ? 1 : 0)
+    out.push(words[i]!)
+    i++
   }
   return out
 }

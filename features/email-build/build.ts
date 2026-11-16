@@ -442,7 +442,12 @@ const hidden = new RegExp(hiddenChars.source, 'g')
  * `>`), since the copy checks mask product titles and cannot judge them.
  */
 export function subjectText(text: string) {
-  const clean = text.replace(hidden, '').replace(/\s+/g, ' ').trim()
+  // Spaces first (a tab is one), then hidden characters, as `oneLine`.
+  const clean = text
+    .replace(/\s+/g, ' ')
+    .replace(hidden, '')
+    .replace(/\s+/g, ' ')
+    .trim()
   return clean && !/[{}<>]/.test(clean) ? clean : null
 }
 
