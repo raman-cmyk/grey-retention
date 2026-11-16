@@ -51,7 +51,7 @@ export type LetterBrief = {
 /** Store text as a letter shows it: one line, no hidden characters. */
 const clean = (text: string, max: number) => oneLine(text, max)
 /** "the Cedar candle", never "the The Cedar candle". */
-const theTitle = (title: string) =>
+export const theTitle = (title: string) =>
   /^the\s/i.test(title) ? title : `the ${title}`
 
 /**
