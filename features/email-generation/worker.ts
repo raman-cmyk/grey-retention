@@ -4,8 +4,15 @@ import type { Database, Json } from '@/lib/supabase/database.types'
 import { AiProviderError, type AiProvider } from '@/lib/providers/contracts'
 import { logger } from '@/lib/logger'
 import { rewriteSetup, type RewriteSetup } from './config'
-import { OpenAiResponsesProvider, responsesRequestBody } from './openai'
-import { costMicro, estimateMicro, maxRequestBytes } from './pricing'
+import {
+  OpenAiResponsesProvider,
+  responsesRequestBody
+} from '@/lib/providers/openai'
+import {
+  costMicro,
+  estimateMicro,
+  maxRequestBytes
+} from '@/lib/providers/openai-pricing'
 import { rewritePromptVersion, type BrandFacts } from './prompt'
 import {
   httpsLink,

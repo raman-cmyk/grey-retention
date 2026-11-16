@@ -9,7 +9,7 @@ import {
   cappedAiEnv,
   openAiBaseUrl
 } from './setup'
-import { estimateMicro } from '@/features/email-generation/pricing'
+import { estimateMicro } from '@/lib/providers/openai-pricing'
 import { InMemoryBudgetLedger, SupabaseBudgetLedger } from './budget-ledger'
 import { geminiEstimateMicro } from '@/lib/providers/gemini-pricing'
 

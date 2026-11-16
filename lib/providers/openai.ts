@@ -4,7 +4,13 @@ import {
   type AiProvider,
   type AiProviderRequest,
   type AiProviderResponse
-} from '@/lib/providers/contracts'
+} from './contracts'
+import {
+  BodyTooLarge,
+  readBounded,
+  retryAfterSeconds as retryAfter,
+  safeToken as token
+} from './bounded-read'
 
 // Responses API adapter using native fetch, following
 // https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses
@@ -30,16 +36,6 @@ type Usage = {
   outputTokens: number
   cachedInputTokens?: number
 }
-
-/** Provider strings are untrusted: keep only short identifier-like values. */
-const token = (value: unknown, max = 64) =>
-  typeof value === 'string' &&
-  /^[A-Za-z0-9_.:-]+$/.test(value) &&
-  value.length <= max
-    ? value
-    : value
-      ? 'other'
-      : ''
 
 /**
  * How a request is sent. The email rewriting uses the defaults. The v2
@@ -103,44 +99,6 @@ function usageOf(body: unknown): Usage | undefined {
     outputTokens: output,
     cachedInputTokens: Number.isSafeInteger(cached) && cached >= 0 ? cached : 0
   }
-}
-
-function retryAfter(headers: Headers) {
-  const raw = headers.get('retry-after')
-  if (!raw) return undefined
-  const seconds = Number(raw)
-  if (Number.isFinite(seconds))
-    return Math.max(0, Math.min(300, Math.ceil(seconds)))
-  const date = Date.parse(raw)
-  return Number.isFinite(date)
-    ? Math.max(0, Math.min(300, Math.ceil((date - Date.now()) / 1000)))
-    : undefined
-}
-
-class BodyTooLarge extends Error {}
-
-/** Reads at most `limit` bytes, cancelling the stream beyond it. */
-async function readBounded(response: Response, limit: number) {
-  const length = Number(response.headers.get('content-length'))
-  if (Number.isFinite(length) && length > limit) {
-    await response.body?.cancel().catch(() => undefined)
-    throw new BodyTooLarge()
-  }
-  if (!response.body) return ''
-  const reader = response.body.getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    total += value.byteLength
-    if (total > limit) {
-      await reader.cancel().catch(() => undefined)
-      throw new BodyTooLarge()
-    }
-    chunks.push(value)
-  }
-  return new TextDecoder().decode(Buffer.concat(chunks))
 }
 
 export class OpenAiResponsesProvider implements AiProvider {
