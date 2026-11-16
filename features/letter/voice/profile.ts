@@ -42,7 +42,7 @@ export type FounderVoice = {
 
 export type Frequency = 'never' | 'sometimes' | 'often'
 
-export const founderVoiceVersion = '2026-11-16.2'
+export const founderVoiceVersion = '2026-11-16.3'
 
 /** Fewer of the owner's words than this say nothing about a voice. */
 export const minVoiceWords = 40
@@ -134,7 +134,9 @@ function unwrapped(lines: readonly string[]) {
       out.length > 1 &&
       !endsSentence.test(tail.slice(-8)) &&
       !closingMark.test(tail) &&
-      /^\p{Ll}/u.test(line)
+      /^\p{Ll}/u.test(line) &&
+      // "warmly," of a writer in lower case is a sign-off, not a wrap.
+      !closingOf(line, maxSignoffWords)
     )
       last.push(line)
     else out.push([line])
@@ -200,40 +202,74 @@ const contraction =
   /\p{L}['’](?:re|ve|ll|d|m|t)\b|\b(?:it|that|here|there|what|who|let|he|she)['’]s\b/iu
 /**
  * Common English words that are no common word of the other languages
- * stores write in ("a", "i" and "in" are Italian and Catalan too): a
- * sample with enough of them is read as English.
+ * stores write in ("a", "i" and "in" are Italian and Catalan too; "we",
+ * "is", "was" and "of" Dutch): a sample with enough of them is read as
+ * English.
  */
 const english = new Set(
-  'the and to of for with is are was it you your our my we this that but be have just from'.split(
+  'the and to for with are it you your our my this that but be have just from'.split(
     ' '
   )
 )
 const englishShare = 0.12
-/** Words that may start an example sentence without being a name. */
+/**
+ * The only capitalised words an example may start with: ordinary first
+ * words, never one that is also a name ("Will", "May", "Hope").
+ */
 const starters = new Set(
-  'i we our my the a an this that these those it its every each if when thank thanks you your there here what how why so and but just all some one after before since today now last next as for in on at with to please come take'.split(
+  'i we our my the a an this that these those it its every each if when thank thanks you your there here what how why so and but just all some one after before since now as for in on at with to please come take they he she us while once most many more even also then still not no yes maybe sometimes honestly really everything everyone nothing both either few much because although though until whenever where who which'.split(
     ' '
   )
 )
-/** Talk of an offer or a code, in words: never an example. */
+/** Talk of an offer, a code or a deadline, in words: never an example. */
 const offerTalk =
-  /\b(?:codes?|coupons?|promo|discount(?:s|ed)?|half|price[sd]?|free|sale|off|deals?|save|savings?)\b/i
+  /\b(?:codes?|coupons?|promo|discount(?:s|ed)?|half|price[sd]?|free|sale|off|deals?|save|savings?|percent|per cent|cheap(?:er|est)?|less|lower|mark(?:ed)? down|markdowns?|clearance|clearing|reduced|bargains?|on us|no (?:extra )?cost|complimentary|gifts?|two for one|bogo|last chance|ends? (?:tonight|today|tomorrow|soon)|(?:today|tonight) only|while (?:they|stocks?|supplies) lasts?|before (?:it['’]?s|they['’]?re|they) go(?:ne)?|limited|sold out|selling (?:out|fast)|few left|stock)\b/i
 /** A link, an address or a handle: never an example. */
 const linkLike = /\p{L}\.\p{L}|[/@#]|\bwww\b|https?/iu
-/** A quote, in any form: someone else's words. */
-const quoted = /["“”„«»‹›「」『』]|(?:^|\s)['‘’]/u
+/**
+ * A quote, in any form: someone else's words ("‘" anywhere, an apostrophe
+ * after anything but a letter).
+ */
+const quoted = /["“”„«»‹›「」『』‘]|(?:^|[^\p{L}])['’]/u
 
-/** The store's own words (its name, its product titles), lower case. */
+/** A run of the store's words is at most this many words. */
+const maxOwnRun = 4
+
+/**
+ * The store's own words (its name, its product titles), lower case: each
+ * run of two to four words of a title ("cedar goods", "emma dress") and a
+ * title of one word, never one word of a longer title ("Emma" of "The Emma
+ * Dress" is a person's name as often as the dress).
+ */
 function ownSet(own: readonly unknown[]) {
   const set = new Set<string>()
+  if (!Array.isArray(own)) return set
   for (const phrase of own.slice(0, maxOwn)) {
     if (typeof phrase !== 'string') continue
-    for (const w of phrase.split(/\s+/).slice(0, maxOwnWords)) {
-      const b = bare(w).toLowerCase()
-      if (b) set.add(b)
-    }
+    const words = phrase
+      .split(/\s+/)
+      .slice(0, maxOwnWords)
+      .map((w) => bare(w).toLowerCase())
+      .filter(Boolean)
+    if (words.length === 1) set.add(words[0]!)
+    for (let a = 0; a < words.length; a++)
+      for (let n = 2; n <= maxOwnRun && a + n <= words.length; n++)
+        set.add(words.slice(a, a + n).join(' '))
   }
   return set
+}
+
+/** Whether the word at `k` is part of a run of the store's own words. */
+function inOwnRun(
+  bares: readonly string[],
+  k: number,
+  ours: ReadonlySet<string>
+) {
+  if (ours.has(bares[k]!)) return true
+  for (let n = 2; n <= maxOwnRun; n++)
+    for (let a = Math.max(0, k - n + 1); a <= k && a + n <= bares.length; a++)
+      if (ours.has(bares.slice(a, a + n).join(' '))) return true
+  return false
 }
 
 /** How the owner writes, or null when their letters and coded emails say too little. */
@@ -264,7 +300,15 @@ export function founderVoice(
     chars += s.text.length
     read.push(s)
   }
-  const parts = read.map((s) => ({ ...partsOf(s.text), text: s.text }))
+  const parts = read.map((s) => ({
+    ...partsOf(s.text),
+    text: s.text,
+    letter: s.weight === 3
+  }))
+  // The letters decide the greeting and sign-off when there are any.
+  const closers = parts.some((p) => p.letter)
+    ? parts.filter((p) => p.letter)
+    : parts
   const sentences = parts.flatMap((p) => sentencesOf(p.body))
   const words = sentences.reduce((n, s) => n + wordsIn(s).length, 0)
   if (!sentences.length || words < minVoiceWords) return null
@@ -276,12 +320,10 @@ export function founderVoice(
   let all = 0
   let contracted = 0
   let englishSentences = 0
-  const seenLower = new Set<string>()
   for (const p of parts) {
     const lowerStyle = !/\p{Lu}/u.test(p.text)
     const said = sentencesOf(p.body)
     const tokens = said.flatMap((s) => wordsIn(s).map(bare)).filter(Boolean)
-    for (const t of tokens) if (t === t.toLowerCase()) seenLower.add(t)
     const shared = tokens.filter((t) => english.has(t.toLowerCase())).length
     if (!tokens.length || shared / tokens.length < englishShare) continue
     common += shared
@@ -308,7 +350,7 @@ export function founderVoice(
   const taken = new Set<string>()
   for (const s of sentences) {
     if (examples.length >= maxVoiceExamples) break
-    if (!safeExample(s, ours, seenLower)) continue
+    if (!safeExample(s, ours)) continue
     const key = s.toLowerCase().replace(/[.!?…。！？؟۔।॥"'”’)\]]+$/u, '')
     if (taken.has(key)) continue
     taken.add(key)
@@ -316,8 +358,8 @@ export function founderVoice(
   }
 
   return {
-    greeting: most(parts.map((p) => p.greeting)),
-    signoff: most(parts.map((p) => p.signoff)),
+    greeting: most(closers.map((p) => p.greeting)),
+    signoff: most(closers.map((p) => p.signoff)),
     writesAs,
     sentenceWords: Math.round(words / sentences.length),
     exclamations: frequency(
@@ -335,14 +377,11 @@ export function founderVoice(
 
 /**
  * Whether a sentence is safe to show an AI as the owner's voice (see
- * above). `seenLower`: words the owner writes in lower case somewhere, so
- * "Every" may start a sentence and "Sarah" may not.
+ * above): a capitalised word is "I", one of the store's own words, or an
+ * ordinary first word (`starters`), so "Every" may start a sentence and
+ * "Sarah" or "Will" may not.
  */
-function safeExample(
-  s: string,
-  ours: ReadonlySet<string>,
-  seenLower: ReadonlySet<string>
-) {
+function safeExample(s: string, ours: ReadonlySet<string>) {
   const words = wordsIn(s)
   if (words.length < exampleWords.min || words.length > exampleWords.max)
     return false
@@ -352,13 +391,14 @@ function safeExample(
   // A whole sentence: a capital first letter where the script has one.
   const first = [...s].find((c) => /\p{L}/u.test(c))
   if (first && first !== first.toUpperCase()) return false
+  const bares = words.map((w) => bare(w).toLowerCase())
   return words.every((w, k) => {
     const b = bare(w)
     if (!b) return w.length <= maxTokenChars
-    if (iForm.test(b) || ours.has(b.toLowerCase())) return true
     if (b[0] === b[0]!.toLowerCase()) return true
+    if (iForm.test(b) || inOwnRun(bares, k, ours)) return true
     // A capitalised word: only a common first word, never a name.
     const lower = b.toLowerCase()
-    return k === 0 && (starters.has(lower) || seenLower.has(lower))
+    return k === 0 && starters.has(lower)
   })
 }

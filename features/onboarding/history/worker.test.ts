@@ -25,7 +25,19 @@ const job = {
 } as unknown as Job
 const now = Date.parse('2026-11-11T12:00:00Z')
 
-function database(timezone: string | null = null) {
+function database(
+  timezone: string | null = null,
+  voice: {
+    pushes?: string[]
+    products?: string[]
+    /** The samples an earlier read kept (`brand_voice_samples`). */
+    kept?: Record<string, unknown>[]
+    /** The campaigns GROS drafted cannot be read. */
+    broken?: boolean
+    /** Reading the products throws (a bug). */
+    bug?: boolean
+  } = {}
+) {
   const calls: { name: string; args: Record<string, unknown> }[] = []
   const chain = (row: Record<string, unknown>) => {
     const c = {
@@ -35,13 +47,50 @@ function database(timezone: string | null = null) {
     }
     return c
   }
+  // PIC-23 part 2b: the campaigns GROS drafted and the products' titles.
+  const list = (
+    rows: Record<string, unknown>[],
+    error: { code: string } | null = null,
+    bug = false
+  ) => {
+    const c = {
+      select: () => c,
+      eq: () => c,
+      not: () => c,
+      is: () => c,
+      order: () => c,
+      limit: () => c,
+      then: (done: (r: { data: unknown; error: unknown }) => unknown) => {
+        if (bug) throw new TypeError('a secret customer line')
+        return done({ data: error ? null : rows, error })
+      }
+    }
+    return c
+  }
   return {
     calls,
     db: {
       from: (table: string) =>
-        chain(
-          table === 'tenants' ? { timezone } : { brand_name: 'Cedar Goods' }
-        ),
+        table === 'klaviyo_draft_pushes'
+          ? list(
+              (voice.pushes ?? []).map((campaign_id) => ({ campaign_id })),
+              voice.broken ? { code: '42P01' } : null
+            )
+          : table === 'brand_voice_samples'
+            ? list(voice.kept ?? [])
+            : table === 'products'
+              ? list(
+                  (voice.products ?? ['Weekend Knit']).map((title) => ({
+                    title
+                  })),
+                  null,
+                  voice.bug
+                )
+              : chain(
+                  table === 'tenants'
+                    ? { timezone }
+                    : { brand_name: 'Cedar Goods' }
+                ),
       rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
         calls.push({ name, args })
         return { data: {}, error: null }
@@ -76,19 +125,24 @@ const read = async (
     live?: boolean
     ask?: Ask | null
     clock?: () => number
+    voice?: Parameters<typeof database>[1]
+    templatesGone?: string[]
+    noTemplateScope?: boolean
   } = {}
 ) => {
   const recordedAnswers = recordedHistoryTransport({
     now: new Date(now),
     fail: options.fail,
     variationsApart: options.variationsApart,
-    reportsCut: options.reportsCut
+    reportsCut: options.reportsCut,
+    templatesGone: options.templatesGone,
+    noTemplateScope: options.noTemplateScope
   })
   const transport = (async (request) =>
     options.instead?.(decodeURIComponent(request.url)) ??
     recordedAnswers(request)) as typeof recordedAnswers
   transport.calls = recordedAnswers.calls
-  const { db, calls } = database(options.timezone ?? null)
+  const { db, calls } = database(options.timezone ?? null, options.voice)
   const waits: number[] = []
   const run = await readBrandHistory(db, job, {
     client: klaviyoClient('pk_SAMPLE0123456789abcdefghij', {
@@ -579,5 +633,187 @@ describe('readBrandHistory', () => {
       expect(run.analysis).toBe('skipped')
       expect(stored.findings.map((f) => f.pass)).toEqual(['code', 'code'])
     }
+  })
+
+  it("keeps the owner's voice from the letter they sent, after the history's reads and before it is stored, never GROS's own drafts", async () => {
+    const { calls, transport } = await read()
+    const names = calls.map((c) => c.name)
+    expect(names.indexOf('record_voice_samples')).toBeGreaterThanOrEqual(0)
+    expect(names.indexOf('record_voice_samples')).toBeLessThan(
+      names.indexOf('record_klaviyo_history')
+    )
+    // The templates are read last, after every other read of the history.
+    const templates = transport.calls
+      .map((c, i) => (c.includes('/api/templates/') ? i : -1))
+      .filter((i) => i >= 0)
+    expect(templates.length).toBeGreaterThan(0)
+    expect(Math.min(...templates)).toBe(
+      transport.calls.length - templates.length
+    )
+    const voice = calls.find((c) => c.name === 'record_voice_samples')!.args
+    expect(voice).toMatchObject({ job: 'job-1', lease: 'lease-1' })
+    const samples = voice.samples as {
+      messageId: string
+      text: string
+      weight: number
+      sentAt: string | null
+    }[]
+    // The founder's letter only: the designed emails say too little, and
+    // the one with a customer's name and email says too little once they go.
+    expect(samples.map((x) => x.messageId)).toEqual(['MsgA08'])
+    expect(samples[0]!.weight).toBe(3)
+    expect(samples[0]!.text.startsWith('Hi [first name],')).toBe(true)
+    expect(samples[0]!.text).toContain('I started Cedar Goods in my garage')
+    expect(samples[0]!.sentAt).toMatch(/^2026-/)
+    expect(JSON.stringify(samples)).not.toMatch(/Jordan|someone@example/)
+
+    // A campaign GROS drafted is never read: a whole read with none left
+    // clears the samples.
+    const ours = await read({ voice: { pushes: ['CmpA08'] } })
+    expect(
+      ours.transport.calls.some((c) => c.includes('/api/templates/TplMsgA08'))
+    ).toBe(false)
+    expect(
+      ours.calls.find((c) => c.name === 'record_voice_samples')!.args.samples
+    ).toEqual([])
+  })
+
+  it('keeps the earlier samples when it could not read the emails, and stores the history all the same', async () => {
+    const voiceOf = (r: Awaited<ReturnType<typeof read>>) =>
+      r.calls.map((c) => c.name).includes('record_voice_samples')
+    // The key cannot read templates.
+    const scope = await read({ noTemplateScope: true })
+    expect(voiceOf(scope)).toBe(false)
+    expect(scope.stored.summary.state).toBe('ready')
+    // Klaviyo slows down: the voice stops at its first template.
+    const slow = await read({
+      fail: { on: 'templates', with: recorded.throttled(30) }
+    })
+    expect(voiceOf(slow)).toBe(false)
+    expect(
+      slow.transport.calls.filter((c) => c.includes('/api/templates/'))
+    ).toHaveLength(1)
+    expect(slow.stored.summary.state).toBe('ready')
+    // A refused key on a template: the history read has its answer.
+    const key = await read({ fail: { on: 'templates', with: recorded.badKey } })
+    expect(voiceOf(key)).toBe(false)
+    expect(key.stored.summary.state).toBe('ready')
+    // No sent email's template is known (its content could not be read).
+    const blind = await read({
+      variationsApart: true,
+      fail: { on: 'variations', with: refused(404) }
+    })
+    expect(voiceOf(blind)).toBe(false)
+    expect(blind.stored.summary.state).toBe('ready')
+    // Every template in a shape we do not read.
+    const odd = await read({
+      instead: (url) =>
+        url.includes('/api/templates/')
+          ? {
+              status: 200,
+              headers: { 'content-type': 'application/vnd.api+json' },
+              body: JSON.stringify({ data: { type: 'something-else' } })
+            }
+          : null
+    })
+    expect(voiceOf(odd)).toBe(false)
+    expect(odd.stored.summary.state).toBe('ready')
+  })
+
+  it('merges a read cut short with the samples kept before, the one found again winning', async () => {
+    const before = (id: string, text: string) => ({
+      message_id: id,
+      text,
+      weight: 2,
+      words: 30,
+      sent_at: '2026-06-01T10:00:00+00:00'
+    })
+    const words =
+      'We knit every scarf slowly on old machines in the valley, and each one is checked twice by hand before it is folded, wrapped and sent to you.'
+    const { calls } = await read({
+      // One designed email refused: the read is not whole.
+      instead: (url) =>
+        url.includes('/api/templates/TplMsgA02') ? refused(422) : null,
+      voice: {
+        kept: [before('MsgOLD', words), before('MsgA08', `${words} Again.`)]
+      }
+    })
+    const samples = calls.find((c) => c.name === 'record_voice_samples')!.args
+      .samples as { messageId: string; weight: number; text: string }[]
+    expect(samples.map((x) => x.messageId)).toEqual(['MsgA08', 'MsgOLD'])
+    expect(samples[0]!.weight).toBe(3)
+    expect(samples[0]!.text.startsWith('Hi [first name],')).toBe(true)
+  })
+
+  it('logs a database error in the voice by its code, and stores the history', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { calls, stored } = await read({ voice: { broken: true } })
+    expect(calls.map((c) => c.name)).not.toContain('record_voice_samples')
+    expect(stored.summary.state).toBe('ready')
+    const logged = error.mock.calls.map((c) => String(c[0])).join('\n')
+    expect(logged).toContain('42P01')
+    expect(logged).toContain('the voice read left out')
+  })
+
+  it('reads no template when no time is left for the voice, and stops reading them when time runs out', async () => {
+    let t = now
+    const late = await read({
+      clock: () => t,
+      instead: (url) => {
+        if (url.includes('/api/segments')) t = now + 12_000
+        return null
+      }
+    })
+    expect(
+      late.transport.calls.some((c) => c.includes('/api/templates/'))
+    ).toBe(false)
+    expect(late.calls.map((c) => c.name)).not.toContain('record_voice_samples')
+    expect(late.run.analysis).toBe('done')
+    t = now
+    const slow = await read({
+      clock: () => t,
+      instead: (url) => {
+        if (url.includes('/api/templates/')) t += 5_000
+        return null
+      }
+    })
+    expect(
+      slow.transport.calls.filter((c) => c.includes('/api/templates/')).length
+    ).toBeLessThan(5)
+    // The newest are designed emails: nothing found, the samples kept.
+    expect(slow.calls.map((c) => c.name)).not.toContain('record_voice_samples')
+    expect(slow.stored.summary.state).toBe('ready')
+  })
+
+  it('drops a sample read again that no longer says enough', async () => {
+    const words =
+      'We knit every scarf slowly on old machines in the valley, and each one is checked twice by hand before it is folded, wrapped and sent to you.'
+    const { calls } = await read({
+      instead: (url) =>
+        url.includes('/api/templates/TplMsgA02') ? refused(422) : null,
+      voice: {
+        kept: [
+          {
+            message_id: 'MsgA05',
+            text: words,
+            weight: 1,
+            words: 30,
+            sent_at: '2026-06-01T10:00:00+00:00'
+          }
+        ]
+      }
+    })
+    const samples = calls.find((c) => c.name === 'record_voice_samples')!.args
+      .samples as { messageId: string }[]
+    expect(samples.map((x) => x.messageId)).toEqual(['MsgA08'])
+  })
+
+  it('logs a bug in the voice by its class, never its message, and stores the history', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { stored } = await read({ voice: { bug: true } })
+    expect(stored.summary.state).toBe('ready')
+    const logged = error.mock.calls.map((c) => String(c[0])).join('\n')
+    expect(logged).toContain('TypeError')
+    expect(logged).not.toContain('a secret customer line')
   })
 })

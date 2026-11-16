@@ -220,6 +220,73 @@ describe('founderVoice (PIC-23 part 3a)', () => {
     ).toBeNull()
   })
 
+  it('never gives an example with an offer or a deadline in words, a name as its first word, or a quote in brackets (round 2)', () => {
+    const risky = [
+      'This weekend everything in the shop is twenty percent less.',
+      'This week the shipping is on us for every single order.',
+      'This week every order gets a second candle at no extra cost.',
+      'This week it is two for one on all of our winter candles.',
+      'All of the old colours are marked down until they are gone.',
+      'The winter candles are now a little cheaper while they last.',
+      'Every order this week comes with a little gift from us.',
+      'This is the last chance to get the winter scents before they go.',
+      'It ends tonight, so grab yours before we close the doors.',
+      'We are clearing out the old stock to make room for spring.',
+      'Will packed every single order this week with a handwritten note.',
+      'May chose the colours for the winter shirts this year.',
+      'Hope wrote to tell us her candle lasted the whole winter.',
+      '(‘The best candle I have ever owned’) is what one reader told me.'
+    ]
+    for (const line of risky)
+      expect(
+        founderVoice(
+          [
+            sample(
+              `${line} ${body} We will make more, and we hope you may like them.`
+            )
+          ],
+          own
+        )!.examples,
+        line
+      ).not.toContain(line)
+  })
+
+  it('lets an example name the store’s own words only as a whole run of a title (round 3)', () => {
+    const titles = ['Cedar Goods', 'The Emma Dress', 'Rose Candle']
+    const of = (line: string) =>
+      founderVoice([sample(`${line} ${body}`)], titles)!.examples
+    // A person named like one word of a title: never.
+    for (const line of [
+      'Emma from our studio picked every one of the new colours.',
+      'Thanks to Rose and the team for packing each order by hand.'
+    ])
+      expect(of(line), line).not.toContain(line)
+    // The title, or two of its words together: yes.
+    for (const line of [
+      'The Emma Dress is the one I wear most days at the studio.',
+      'We pour every Rose Candle by hand in the back of the shop.'
+    ])
+      expect(of(line), line).toContain(line)
+  })
+
+  it('lets the letters decide the greeting and sign-off, and keeps a sign-off written in lower case', () => {
+    const letters = [1, 2, 3, 4, 5].map((n) =>
+      sample(`Hi,\n${body}\nWarmly,\nMaya`, 3, `MsgL${n}`)
+    )
+    const coded = [1, 2, 3, 4, 5, 6].map((n) => sample(body, 2, `MsgC${n}`))
+    expect(founderVoice([...coded, ...letters])).toMatchObject({
+      greeting: 'Hi,',
+      signoff: 'Warmly,'
+    })
+    const lower = founderVoice([
+      sample(
+        `hi there,\n${body.toLowerCase()}\nsee you soon at the shop\nwarmly,\nmaya`
+      )
+    ])!
+    expect(lower).toMatchObject({ greeting: 'hi there,', signoff: 'warmly,' })
+    expect(founderVoice([sample(body)], null as never)).not.toBeNull()
+  })
+
   it('reads hostile text at once', () => {
     const runs = [
       'a' + '🎉'.repeat(29_000) + 'b',
