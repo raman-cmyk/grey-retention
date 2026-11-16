@@ -22,7 +22,6 @@ export default async function ListPage({
   params
 }: {
   params: Promise<{ listId: string }>
-  searchParams?: Promise<{ from?: string | string[] }>
 }) {
   const [{ listId }, { timezone, data }] = await Promise.all([
     params,

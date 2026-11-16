@@ -10,8 +10,8 @@ import type {
 /**
  * What the Klaviyo detail pages (lists, segments, flows, metrics, Klaviyo
  * campaigns) kept from the retired dashboard (UI-HOMEb): where their
- * numbers come from, a campaign's status look, and the way back, which is
- * Home until Audiences and Results take these pages.
+ * numbers come from, a campaign's status look, and the way back: Audiences
+ * for a segment or a list (UI-AUDa), Home for the others until Results.
  */
 const notConnectedWords: Record<ConnectionState, string> = {
   connected: 'Klaviyo is connected.',

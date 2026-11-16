@@ -4,8 +4,13 @@ import { ButtonLink } from '@/components/gros/button'
 import { Card } from '@/components/gros/card'
 import { ListRow, RowList } from '@/components/gros/list-row'
 import { AppPage, CardRow } from '@/components/gros/nav'
-import { EmptyState } from '@/components/gros/states'
+import { EmptyState, ErrorState } from '@/components/gros/states'
 import type { AudienceRow, AudiencesView } from './read-model'
+
+// Klaviyo is connected on Connections today (the detail pages say "Go to
+// Connections" too); the GROS Settings screen takes this over later.
+const connectHref: Route = '/connections'
+const audiencesHref: Route = '/audiences'
 
 /**
  * Audiences (UI-AUDa): the store's Klaviyo segments and lists with their
@@ -21,36 +26,56 @@ export function AudiencesScreen({
   return (
     <AppPage current="audiences" title="Audiences">
       {view.state === 'not_connected' ? (
-        <EmptyState
-          title="Connect Klaviyo"
+        owner ? (
+          <EmptyState
+            title="Connect Klaviyo"
+            action={<ButtonLink href={connectHref} label="Connect Klaviyo" />}
+          />
+        ) : (
+          <Card label="Klaviyo">
+            <h2 className="type-heading">Klaviyo is not connected</h2>
+            <p className="type-body mt-[var(--space-3)] text-[var(--stone)]">
+              The store’s owner connects Klaviyo. Its segments and lists then
+              show here.
+            </p>
+          </Card>
+        )
+      ) : view.state === 'reconnect' ? (
+        <ErrorState
+          title="Klaviyo key stopped working"
+          reason={
+            owner
+              ? 'Reconnect Klaviyo with a new private key to see your segments and lists.'
+              : 'The store’s owner reconnects Klaviyo with a new private key.'
+          }
           action={
-            owner ? (
-              <ButtonLink href={'/settings' as Route} label="Open Settings" />
-            ) : null
+            owner ? <ButtonLink href={connectHref} label="Reconnect" /> : null
           }
         />
       ) : view.state === 'unavailable' ? (
-        <Card label="Audiences">
-          <h2 className="type-heading">Audiences</h2>
-          <p className="type-body mt-[var(--space-3)] text-[var(--stone)]">
-            {view.source}
-          </p>
-        </Card>
+        <ErrorState
+          title="Audiences could not be read"
+          reason={`${view.reason} Try again in a minute.`}
+          action={<ButtonLink href={audiencesHref} label="Try again" />}
+        />
       ) : (
-        <CardRow>
-          <AudienceCard
-            title="Segments"
-            rows={view.segments}
-            source={view.source}
-            href={(id) => `/segments/${encodeURIComponent(id)}` as Route}
-          />
-          <AudienceCard
-            title="Lists"
-            rows={view.lists}
-            source={view.source}
-            href={(id) => `/lists/${encodeURIComponent(id)}` as Route}
-          />
-        </CardRow>
+        <>
+          <p className="type-caption text-[var(--stone)]">{view.source}</p>
+          <CardRow>
+            <AudienceCard
+              title="Segments"
+              empty="No segments in Klaviyo yet."
+              rows={view.segments}
+              href={(id) => `/segments/${encodeURIComponent(id)}` as Route}
+            />
+            <AudienceCard
+              title="Lists"
+              empty="No lists in Klaviyo yet."
+              rows={view.lists}
+              href={(id) => `/lists/${encodeURIComponent(id)}` as Route}
+            />
+          </CardRow>
+        </>
       )}
     </AppPage>
   )
@@ -72,28 +97,22 @@ function AudienceThumb() {
 
 function AudienceCard({
   title,
+  empty,
   rows,
-  source,
   href
 }: {
   title: string
+  /** What the card says when Klaviyo has none. */
+  empty: string
   rows: AudienceRow[]
-  source: string
   href: (id: string) => Route
 }) {
   return (
     <Card label={title}>
       <div className="flex flex-col gap-[var(--space-5)]">
-        <div className="flex flex-col gap-[var(--space-1)]">
-          <h2 className="type-heading">{title}</h2>
-          <p className="type-caption text-[var(--stone)]">{source}</p>
-        </div>
+        <h2 className="type-heading">{title}</h2>
         {rows.length === 0 ? (
-          <p className="type-body text-[var(--stone)]">
-            {title === 'Segments'
-              ? 'No segments in Klaviyo yet.'
-              : 'No lists in Klaviyo yet.'}
-          </p>
+          <p className="type-body text-[var(--stone)]">{empty}</p>
         ) : (
           <RowList label={title}>
             {rows.map((row) => (
@@ -102,6 +121,8 @@ function AudienceCard({
                 thumbnail={<AudienceThumb />}
                 title={row.name}
                 details={[
+                  // Starred segments come first, so say why.
+                  row.starred ? 'Starred' : '',
                   people(row.people),
                   row.detail,
                   row.active ? '' : 'Not kept up to date'

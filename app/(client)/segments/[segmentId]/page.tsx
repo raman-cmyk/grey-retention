@@ -23,7 +23,6 @@ export default async function SegmentPage({
   params
 }: {
   params: Promise<{ segmentId: string }>
-  searchParams?: Promise<{ from?: string | string[] }>
 }) {
   const [{ segmentId }, { timezone, data }] = await Promise.all([
     params,

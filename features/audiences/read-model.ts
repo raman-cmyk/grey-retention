@@ -25,35 +25,49 @@ export type AudienceRow = {
 
 export type AudiencesView =
   | {
-      state: 'sample' | 'live'
+      state: 'ready'
+      /** Where the numbers come from (sample data today), said once. */
       source: string
       segments: AudienceRow[]
       lists: AudienceRow[]
     }
-  | { state: 'not_connected'; source: string }
-  | { state: 'unavailable'; source: string }
+  /** Klaviyo was never connected, or was disconnected. */
+  | { state: 'not_connected' }
+  /** The saved key stopped working (expired or refused). */
+  | { state: 'reconnect' }
+  /** The audiences could not be read: the reason, in the owner's words. */
+  | { state: 'unavailable'; reason: string }
 
 const byPeople = (a: AudienceRow, b: AudienceRow) =>
   Number(b.starred) - Number(a.starred) ||
   b.people - a.people ||
   a.name.localeCompare(b.name)
 
+/** Klaviyo's rule text without its closing full stop (it sits in a row). */
+const phrase = (text: string) => text.trim().replace(/\.+$/, '')
+
 /** The view from the Klaviyo data. Pure, for tests. */
 export function audiencesView(data: KlaviyoData, now: Date): AudiencesView {
-  const source = sourceLine(data, now)
-  if (data.state === 'not_connected') return { state: 'not_connected', source }
-  if (data.state !== 'sample') return { state: 'unavailable', source }
+  if (data.state === 'not_connected') {
+    if (data.reason === 'expired' || data.reason === 'error')
+      return { state: 'reconnect' }
+    // A connection that could not be checked is not "not connected".
+    if (data.reason === 'unknown')
+      return { state: 'unavailable', reason: sourceLine(data, now) }
+    return { state: 'not_connected' }
+  }
+  if (data.state !== 'sample')
+    return { state: 'unavailable', reason: sourceLine(data, now) }
   const snapshot = data.snapshot
   return {
-    // A snapshot with a sync time came from the store's own account.
-    state: snapshot.syncedAt ? 'live' : 'sample',
-    source,
+    state: 'ready',
+    source: sourceLine(data, now),
     segments: snapshot.segments
       .map((s) => ({
         id: s.id,
         name: s.name,
         people: s.profileCount,
-        detail: s.rules,
+        detail: phrase(s.rules),
         starred: s.starred,
         active: s.active
       }))
@@ -85,7 +99,7 @@ export async function audiencesReadModel(
   } catch {
     return {
       state: 'unavailable',
-      source: 'The audiences could not be read just now.'
+      reason: 'The audiences could not be read just now.'
     }
   }
 }

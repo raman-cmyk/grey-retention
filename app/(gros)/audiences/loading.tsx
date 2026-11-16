@@ -6,7 +6,9 @@ export default function AudiencesLoading() {
   return (
     <AppPage current="audiences" title="Audiences">
       <Card>
-        <p className="type-heading">Opening Audiences</p>
+        <p aria-live="polite" className="type-heading">
+          Opening Audiences
+        </p>
       </Card>
     </AppPage>
   )

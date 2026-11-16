@@ -96,8 +96,11 @@ describe('Klaviyo detail pages (§4)', () => {
     expect(screen.getByText(/Flow triggers · 1 item/)).toBeInTheDocument()
   })
 
-  it('segment: active and starred pills, rules as a sentence, JSON only in Advanced', async () => {
+  it('segment: active and starred pills, rules as a sentence, JSON only in Advanced, back to Audiences', async () => {
     render(await SegmentPage(props('segmentId', 'SEGeng030')))
+    expect(
+      screen.getByRole('link', { name: 'Back to Audiences' })
+    ).toHaveAttribute('href', '/audiences')
     expect(screen.getByText('Active')).toBeInTheDocument()
     expect(screen.getByText('Starred')).toBeInTheDocument()
     const rules = screen.getByRole('region', {
