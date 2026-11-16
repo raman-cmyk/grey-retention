@@ -25,6 +25,7 @@ export const teamNames = {
   'section-planner': 'The email planner',
   'content-locker': 'Choosing the email’s content',
   copywriter: 'The copywriter',
+  'letter-writer': 'The letter writer',
   'copy-check': 'The copy check',
   'copy-inspectors': 'The copy check',
   'brand-inspector': 'The brand check',
@@ -71,7 +72,8 @@ const aiPrefixes = [
   'visual_',
   'pulse_',
   'mapper_',
-  'storyboard_'
+  'storyboard_',
+  'letter_'
 ]
 const aiWords = {
   agent_failed:

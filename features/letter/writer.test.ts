@@ -9,13 +9,16 @@ import {
   type PlannedEmail
 } from '@/features/email-build/build'
 import { sampleOffers, sampleStoreSource } from '@/features/email-build/ports'
+import { eligibleProducts } from '@/features/assembly/inputs'
 import { memoryFallbackLog } from '@/features/fallback/log'
+import { ownerLine } from '@/features/fallback/owner-words'
 import { sampleBrand } from '@/features/blocks/samples'
 import { letterProblems } from './checks'
 import { wordCount } from './letter'
 import { renderLetter } from './render'
 import {
   letterFindings,
+  letterFrom,
   letterInstructions,
   plainLetter,
   writeLetter,
@@ -121,6 +124,25 @@ const ctxWith = (ai: AiCall, over: { fits?: () => boolean } = {}) => ({
   fallbacks: memoryFallbackLog(),
   ...over
 })
+/** The lead product's page. */
+const leadUrl = (brief: LetterBrief) =>
+  eligibleProducts(brief.locked.input)[0]!.url
+/** The brief with its lead product's title changed. */
+const titled = (brief: LetterBrief, title: string): LetterBrief => {
+  const id = eligibleProducts(brief.locked.input)[0]!.id
+  return {
+    ...brief,
+    locked: {
+      ...brief.locked,
+      input: {
+        ...brief.locked.input,
+        products: brief.locked.input.products.map((p) =>
+          p.id === id ? { ...p, title } : p
+        )
+      }
+    }
+  }
+}
 const userOf = (ai: ReturnType<typeof modelOf>, n: number) =>
   ai.mock.calls[n]![0].request.user
 
@@ -143,10 +165,10 @@ describe('the Letter writer (TXT-001 part 2)', () => {
     expect(call.callerKey).toBe('letter-writer:email-build:b1')
     expect(call.purpose).toBe('copy')
     expect(call.request.user).toContain(
-      '"links":["1: the Cedar candle page","2: the store’s home page"]'
+      '"links":["1: the page for Cedar candle","2: the store’s home page"]'
     )
     expect(call.request.user).toContain(
-      '"offer":"10% off with the client\'s code"'
+      '"offer":"10% off, with a code the system adds after the letter"'
     )
     expect(call.request.user).toContain(
       '"signedBy":"The Cedar Lane (sample) team"'
@@ -205,7 +227,7 @@ describe('the Letter writer (TXT-001 part 2)', () => {
     const result = await writeLetter(brief, ctxWith(ai))
     expect(result).toMatchObject({ status: 'written', tries: 3 })
     expect(userOf(ai, 1)).toContain(
-      'signoff: Keep it within its limit, and never empty.'
+      'signoff: Keep it to 60 characters or fewer.'
     )
     expect(userOf(ai, 2)).toContain(
       'The answer did not match the required JSON shape.'
@@ -222,11 +244,14 @@ describe('the Letter writer (TXT-001 part 2)', () => {
     expect(fallbacks.entries()).toEqual([
       expect.objectContaining({
         agent: 'letter-writer',
-        reasonCode: 'letter_plain_fallback',
+        reasonCode: 'letter_check_failed',
         reason:
           'The letter still failed the checks after every rewrite: spam words.',
         attempts: 4,
-        detail: { cause: 'check_failed', rules: ['spam_words'] },
+        detail: expect.objectContaining({
+          cause: 'check_failed',
+          rules: ['spam_words']
+        }),
         dedupeKey: 'letter-writer:email-build-b1'
       })
     ])
@@ -240,8 +265,38 @@ describe('the Letter writer (TXT-001 part 2)', () => {
     expect(ai).toHaveBeenCalledTimes(1)
     expect(result).toMatchObject({ status: 'plain', tries: 1 })
     expect(fallbacks.entries()[0]).toMatchObject({
-      reasonCode: 'letter_plain_fallback',
-      detail: { cause: 'agent_failed' }
+      reasonCode: 'letter_agent_failed',
+      detail: expect.objectContaining({ cause: 'agent_failed' })
+    })
+  })
+
+  it('a busy AI, or answers in the wrong shape every time: the plain letter, each with its own reason', async () => {
+    const brief = await briefFor()
+    const busy = memoryFallbackLog()
+    await writeLetter(brief, {
+      ...ctxWith(modelOf([() => ({ ok: false, code: 'rate_limited' })])),
+      fallbacks: busy
+    })
+    expect(busy.entries()[0]).toMatchObject({
+      reasonCode: 'letter_ai_busy',
+      reason: 'The AI was busy or could not be reached.'
+    })
+    const shapes = memoryFallbackLog()
+    const ai = modelOf([() => ok({ subject: 'Only a subject' })])
+    const result = await writeLetter(brief, {
+      ...ctxWith(ai),
+      fallbacks: shapes
+    })
+    expect(ai).toHaveBeenCalledTimes(4)
+    expect(result.status).toBe('plain')
+    expect(shapes.entries()[0]).toMatchObject({
+      reasonCode: 'letter_answer_invalid',
+      detail: expect.objectContaining({ rules: ['answer_shape'] })
+    })
+    // In the owner's log, the AI's own failures in its fixed words.
+    expect(ownerLine(shapes.entries()[0]!)).toMatchObject({
+      who: 'The letter writer',
+      what: 'The AI kept giving answers we could not use.'
     })
   })
 
@@ -255,8 +310,9 @@ describe('the Letter writer (TXT-001 part 2)', () => {
     })
     expect(ai).toHaveBeenCalledTimes(1)
     expect(result.status).toBe('plain')
-    expect(fallbacks.entries()[0]?.detail).toMatchObject({
-      cause: 'out_of_time'
+    expect(fallbacks.entries()[0]).toMatchObject({
+      reasonCode: 'letter_out_of_time',
+      detail: expect.objectContaining({ cause: 'out_of_time' })
     })
   })
 })
@@ -285,10 +341,113 @@ describe('the plain letter (TXT-001 part 2)', () => {
     const fallbacks = memoryFallbackLog()
     const ai = modelOf([() => ({ ok: false, code: 'setup_required' })])
     const result = await writeLetter(brief, { ...ctxWith(ai), fallbacks })
-    expect(result).toEqual({ status: 'failed', tries: 1 })
+    expect(result).toMatchObject({ status: 'failed', tries: 1 })
     expect(fallbacks.entries()[0]).toMatchObject({
       reasonCode: 'letter_failed',
-      detail: { plainRules: ['banned_phrase'] }
+      reason:
+        'The plain letter failed the checks too: a banned word or phrase.',
+      fallback: 'No email was built; the owner can create it again.',
+      detail: expect.objectContaining({ plainRules: ['banned_phrase'] })
     })
+  })
+
+  it('a store with no products or no valid site: only links that exist', async () => {
+    const brief = await briefFor()
+    const none = {
+      ...brief,
+      locked: {
+        ...brief.locked,
+        input: { ...brief.locked.input, products: [] }
+      }
+    }
+    for (const [b, links] of [
+      [none, ['https://cedar-lane.example']],
+      [{ ...none, site: '' }, []],
+      [{ ...brief, site: 'not a site' }, [leadUrl(brief)]]
+    ] as const) {
+      const plain = plainLetter(b)
+      expect(plain.links.map((l) => l.url)).toEqual(links)
+      expect(letterFindings(plain, b)).toEqual([])
+    }
+  })
+
+  it('never lets odd store text break the plain letter', async () => {
+    const brief = await briefFor()
+    for (const title of [
+      '[SAMPLE] Cedar candle',
+      'Cedar candle [2-pack]',
+      'Cedar\ncandle',
+      'Cedar\u200bcandle',
+      'The Cedar candle',
+      '100% Pure Cedar Candle, SET20'
+    ]) {
+      const b = titled(brief, title)
+      const plain = plainLetter(b)
+      expect(letterFindings(plain, b), title).toEqual([])
+      expect(JSON.stringify(plain)).not.toMatch(/the The/)
+    }
+    for (const brandName of [
+      'Cedar <Lane>',
+      'Cedar {Lane}',
+      'Winner Co',
+      'Ritual.co'
+    ])
+      expect(
+        letterFindings(plainLetter({ ...brief, brandName }), {
+          ...brief,
+          brandName
+        }),
+        brandName
+      ).toEqual([])
+    // A founder whose name or role reads like a check's: the store's words.
+    const founder = await briefFor({ founder: true })
+    const odd = {
+      ...founder,
+      locked: {
+        ...founder.locked,
+        input: {
+          ...founder.locked.input,
+          confirmed: {
+            founder: { name: 'Maya Urgent', role: 'Founder, Ritual.co' }
+          }
+        }
+      }
+    }
+    expect(letterFindings(plainLetter(odd), odd)).toEqual([])
+  })
+})
+
+describe('the facts in a written letter (TXT-001 part 2)', () => {
+  const rulesOf = (brief: LetterBrief, over: Partial<LetterAnswer>) => {
+    const letter = letterFrom({ ...good, ...over }, brief)
+    if (!letter.success) throw new Error('letter')
+    return letterFindings(letter.data, brief).map((f) => f.rule)
+  }
+  it('takes the offer in words, never a percent, a price or a code it was not given', async () => {
+    const brief = await briefFor()
+    expect(rulesOf(brief, {})).toEqual([])
+    expect(rulesOf(brief, { ps: 'It is only $5 this week.' })).toEqual([
+      'wrong_price'
+    ])
+    expect(rulesOf(brief, { ps: 'And 20% off everything else.' })).not.toEqual(
+      []
+    )
+    const none = await briefFor({ offer: false })
+    expect(rulesOf(none, { ps: 'Take 10% off this week.' })).not.toEqual([])
+    // A locked code that ends before the email sends.
+    const ended = {
+      ...brief,
+      locked: {
+        ...brief.locked,
+        input: {
+          ...brief.locked.input,
+          codes: brief.locked.input.codes.map((c) => ({
+            ...c,
+            expiresAt: '2000-01-01T00:00:00Z'
+          }))
+        }
+      }
+    }
+    expect(rulesOf(ended, {})).toContain('expired_code')
   })
 })

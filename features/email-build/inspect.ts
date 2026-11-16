@@ -321,6 +321,16 @@ const money =
 const moneyValue = (found: string) =>
   amount(found.replace(/^\D+/, '').replace(/\D+$/, '').replace(/[.,]$/, ''))
 
+/** Money amounts in `text` that are not one of `prices` (TXT-001b reuses it). */
+export function strayPrices(text: string, prices: ReadonlySet<number>) {
+  return (text.match(money) ?? [])
+    .filter((found) => {
+      const n = moneyValue(found)
+      return n === null || !prices.has(n)
+    })
+    .map((found) => found.trim())
+}
+
 /**
  * Prices are placed by the system (ASM-001). A price the writer writes is
  * refused unless it is exactly a locked product's price.
