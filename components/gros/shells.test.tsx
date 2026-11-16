@@ -1,10 +1,6 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import type { Route } from 'next'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-
-vi.mock('next/font/google', () => ({
-  Urbanist: () => ({ variable: 'urbanist-variable' })
-}))
+import { afterEach, describe, expect, it } from 'vitest'
 import { Button } from './button'
 import { DayStrip, planDates } from './day-strip'
 import { EmailThumb, ListRow, RowList, TextThumb } from './list-row'
