@@ -6,6 +6,7 @@ import type { AiRunResult } from '@/features/ai/run'
 import { memoryFallbackLog } from '@/features/fallback/log'
 import {
   buildEmail,
+  claimsPrice,
   contentStep,
   lockedDraft,
   sectionsStep,
@@ -14,6 +15,7 @@ import {
   type PlannedEmail
 } from './build'
 import { runBuildStep } from './steps'
+import type { CopyOutput } from './build'
 import { sampleOffers, sampleStoreSource } from './ports'
 
 /**
@@ -784,5 +786,176 @@ describe('a build that started in time (REL-DAT)', () => {
       ctxWith(null, late)
     )
     expect(copy).toMatchObject({ ok: true, done: 'copy' })
+  })
+})
+
+describe('the subject line lab on the Copywriter’s words (PIC-26 part 2)', () => {
+  /** A store whose question subjects opened more, as a store's go up and down. */
+  const past = [
+    ...[0.36, 0.26, 0.34, 0.28, 0.32, 0.3].map((openRate, i) => ({
+      subject: `Question ${['one', 'two', 'three', 'four', 'five', 'six'][i]}?`,
+      recipients: 800,
+      openRate
+    })),
+    ...[0.3, 0.22, 0.28, 0.24, 0.26, 0.26].map((openRate, i) => ({
+      subject: `A note ${['one', 'two', 'three', 'four', 'five', 'six'][i]}`,
+      recipients: 800,
+      openRate
+    }))
+  ]
+  const ideasWriter =
+    (ideas: unknown) =>
+    (call: Parameters<AiCall>[0]): AiRunResult =>
+      answer({ ...writes(call.request.system, 1), subjectIdeas: ideas })
+  const copy = async (
+    ideas: unknown,
+    over: { past?: typeof past; taken?: string[] } = {}
+  ) => {
+    const s = { ...(await store()), pastSubjects: over.past ?? past }
+    const saved = await savedSteps(s)
+    const ai = model({ writer: ideasWriter(ideas) })
+    const result = await runBuildStep(
+      'copy',
+      {
+        planned,
+        store: s,
+        offers: sampleOffers,
+        progress: saved,
+        taken: over.taken ?? []
+      },
+      ctxWith(agentsWith(ai))
+    )
+    expect(result).toMatchObject({ ok: true, done: 'copy' })
+    return {
+      ai,
+      out: (result as unknown as { output: CopyOutput }).output
+    }
+  }
+
+  it('keeps the idea the store’s own opens point to, and the writer’s own to test against it', async () => {
+    const { ai, out } = await copy(
+      [
+        'Ready for the weekend?',
+        'Quiet evenings, picked for you 1',
+        'SHOP NOW!!!',
+        'Taken already',
+        42
+      ],
+      { taken: ['Taken already'] }
+    )
+    expect(out.draft.subject).toBe('Ready for the weekend?')
+    expect(out.draft.subjectIdeas).toBeUndefined()
+    expect(out.subjectLab).toMatchObject({
+      learned: true,
+      // The writer's own and the question: shouting, a taken subject,
+      // a repeat and a number are never weighed.
+      weighed: 2,
+      a: { subject: 'Ready for the weekend?' },
+      b: { subject: 'Quiet evenings, picked for you 1' },
+      tests: ['short', 'question', 'number', 'you']
+    })
+    expect(out.subjectLab!.a.why[0]).toMatch(
+      /^Subjects that ask a question: 31% opened, the others 26%/
+    )
+    // The Copywriter was asked for its ideas.
+    expect(ai.mock.calls[0]![0].request.system).toContain('subjectIdeas')
+  })
+
+  it('never weighs an idea that claims a price, scarcity, a deadline or something new the email does not', async () => {
+    const { out } = await copy([
+      '20 percent off, quiet nights',
+      'Half price on everything',
+      'Buy one, get one',
+      'Last chance, ends tonight',
+      'New: the winter candles',
+      'Almost gone: cedar candles',
+      'This weekend only',
+      'Everyone’s favourite candle',
+      // The ninth and last idea the lab weighs.
+      'Ready for the weekend?'
+    ])
+    expect(out.draft.subject).toBe('Ready for the weekend?')
+    expect(out.subjectLab).toMatchObject({
+      weighed: 2,
+      b: { subject: 'Quiet evenings, picked for you 1' }
+    })
+  })
+
+  it('keeps the writer’s own subject without past emails, the lab’s pick to test beside it', async () => {
+    const none = await copy(undefined, { past: [] })
+    expect(none.out.draft.subject).toBe('Quiet evenings, picked for you 1')
+    expect(none.out.subjectLab).toMatchObject({
+      learned: false,
+      weighed: 1,
+      b: null,
+      tests: []
+    })
+    // Rules of thumb never move the subject: only the store's own opens do.
+    const ideas = await copy(['Ready for the weekend?'], { past: [] })
+    expect(ideas.out.draft.subject).toBe('Quiet evenings, picked for you 1')
+    expect(ideas.out.subjectLab).toMatchObject({
+      learned: false,
+      weighed: 2,
+      a: { subject: 'Quiet evenings, picked for you 1', expected: null },
+      b: { subject: 'Ready for the weekend?', expected: null }
+    })
+  })
+
+  it('weighs nothing for plain copy, which keeps its own subject', async () => {
+    const progress = await savedSteps()
+    const plain = await runBuildStep(
+      'copy',
+      { planned, store: await store(), offers: sampleOffers, progress },
+      ctxWith(null)
+    )
+    if (!plain.ok || !('output' in plain)) throw new Error('copy failed')
+    const out = plain.output as unknown as CopyOutput
+    expect(out.written).toBeFalsy()
+    expect(out.subjectLab).toBeUndefined()
+    expect(out.draft.subjectIdeas).toBeUndefined()
+  })
+})
+
+describe('claimsPrice (PIC-26 part 2)', () => {
+  const offer = {
+    id: 'offer:CANDLE10',
+    code: 'CANDLE10',
+    percent: 10,
+    endsAt: null,
+    ends: null,
+    from: 'discount codes' as const
+  }
+
+  it('lets an idea name the offer only by its own percent', () => {
+    for (const subject of [
+      '10% off candles tonight',
+      'Save 10% on the cedar candle',
+      '10 percent off, quiet nights',
+      'Up to 10% off',
+      'Ready for the weekend?'
+    ])
+      expect(claimsPrice(subject, offer), subject).toBe(false)
+    for (const subject of [
+      'Half price on everything',
+      '20 percent off, quiet nights',
+      '10% off, and free gifts',
+      '110% cozy',
+      'Candles from $5',
+      'Our winter sale',
+      // An offer the code does not give.
+      'Buy one, get one',
+      'A gift with your order',
+      'Gift with purchase',
+      'Use code at checkout',
+      'Two for one candles',
+      '2 for 1 candles',
+      'Quiet nights, for less'
+    ])
+      expect(claimsPrice(subject, offer), subject).toBe(true)
+  })
+
+  it('refuses any price for an email without an offer', () => {
+    expect(claimsPrice('10% off candles tonight', null)).toBe(true)
+    expect(claimsPrice('Ready for the weekend?', null)).toBe(false)
   })
 })
