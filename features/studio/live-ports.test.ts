@@ -5,8 +5,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
 const jobs = vi.hoisted(() => ({ requestSectionRender: vi.fn() }))
 vi.mock('./render-jobs', () => jobs)
-const reads = vi.hoisted(() => ({ buildRenders: vi.fn() }))
+const reads = vi.hoisted(() => ({ buildRenders: vi.fn(), buildViews: vi.fn() }))
 vi.mock('./waits', () => reads)
+const previews = vi.hoisted(() => ({ requestEmailRender: vi.fn() }))
+vi.mock('./preview-jobs', () => ({
+  emailViewNames: ['desktop', 'phone', 'dark'],
+  requestEmailRender: previews.requestEmailRender
+}))
+const emailCritic = vi.hoisted(() => ({ critiqueEmail: vi.fn() }))
+vi.mock('./email-critic', () => emailCritic)
 const agents = vi.hoisted(() => ({
   storyboardFor: vi.fn(),
   designSection: vi.fn(),
@@ -28,12 +35,15 @@ import { InMemoryMemoryStore } from '@/features/agents/memory'
 import { InMemoryRunLog } from '@/features/agents/runtime'
 import { memoryFallbackLog } from '@/features/fallback/log'
 import {
+  emailPortsFor,
   noPhotos,
   photoOf,
   pictureLinkSeconds,
-  studioPortsFor
+  studioPortsFor,
+  viewKey,
+  type DrawnView
 } from './live-ports'
-import type { BuildRender } from './waits'
+import type { BuildRender, BuildView } from './waits'
 
 const tenant = '00000000-0000-4000-8000-000000000101'
 const build = '44444444-4444-4444-8444-444444444444'
@@ -408,5 +418,143 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
       )?.mediaType
     ).toBe('image/webp')
     expect(photoOf(new Uint8Array([0x3c, 0x73, 0x76, 0x67]))).toBeNull()
+  })
+})
+
+describe('the whole-email check’s ports in the build (DST-006d part 2a)', () => {
+  const view = '00000002-3333-4333-8333-333333333333'
+  const phone: DrawnView = {
+    id: view,
+    key: 'e-abc',
+    view: 'phone',
+    state: 'drawn',
+    path: `email/${view}.jpg`,
+    height: 2100,
+    cut: false,
+    wide: true,
+    bytes: 4,
+    etag: '"abc"'
+  }
+  const email = { emailType: 'launch', angle: 'Meet the tray', brand: 'Grove' }
+  const portsOf = (s: ReturnType<typeof storage>) => {
+    const fallbacks = memoryFallbackLog()
+    return emailPortsFor(s.db, {
+      tenant,
+      build,
+      lease,
+      agents: {
+        memory: new InMemoryMemoryStore(),
+        log: new InMemoryRunLog(),
+        ai
+      },
+      fallbacks,
+      callerKey: `email-build:${build}`,
+      industry: 'home',
+      email
+    })
+  }
+
+  it('keys a version of the email by its HTML, as the database takes a key', () => {
+    const key = viewKey('<p>x</p>')
+    expect(key).toBe(viewKey('<p>x</p>'))
+    expect(key).not.toBe(viewKey('<p>y</p>'))
+    expect(key).toMatch(/^[a-z0-9-]{1,40}$/)
+  })
+
+  it('asks for the three views under the build’s own lease, with the brand for the footer', async () => {
+    previews.requestEmailRender.mockResolvedValue(view)
+    const s = storage()
+    await portsOf(s).ask('e-abc', '<p>x</p>')
+    expect(previews.requestEmailRender.mock.calls.map((c) => c[1])).toEqual(
+      ['desktop', 'phone', 'dark'].map((v) => ({
+        build,
+        lease,
+        key: 'e-abc',
+        view: v,
+        html: '<p>x</p>',
+        brandName: 'Grove'
+      }))
+    )
+    // A refusal comes through as it is.
+    previews.requestEmailRender.mockRejectedValueOnce({ code: 'PT409' })
+    await expect(
+      portsOf(storage()).ask('e-abc', '<p>y</p>')
+    ).rejects.toMatchObject({ code: 'PT409' })
+  })
+
+  it('reads only this version’s views, in the build’s own workspace', async () => {
+    const other: BuildView = {
+      id: render,
+      key: 'e-old',
+      view: 'desktop',
+      state: 'queued'
+    }
+    reads.buildViews.mockResolvedValue([other, phone])
+    const s = storage()
+    expect(await portsOf(s).views('e-abc')).toEqual([phone])
+    expect(reads.buildViews).toHaveBeenCalledWith(s.db, { tenant, build })
+  })
+
+  it('reads a view’s picture back only while its tag, size and bytes are the ones recorded', async () => {
+    const jpeg4 = new Uint8Array([0xff, 0xd8, 0xff, 0xe0])
+    const ok = storage({ tags: ['abc', 'abc'], download: jpeg4 })
+    expect(await portsOf(ok).picture(phone)).toEqual({
+      bytes: jpeg4,
+      contentType: 'image/jpeg',
+      width: 375,
+      height: 2100,
+      cut: false,
+      wide: true
+    })
+    expect(ok.calls.filter((c) => c[0] !== 'bucket')).toEqual([
+      ['info', phone.path],
+      ['download', phone.path],
+      ['info', phone.path]
+    ])
+    for (const s of [
+      storage({ tags: ['other'], download: jpeg4 }),
+      storage({ tags: [null], download: jpeg4 }),
+      storage({ download: null }),
+      storage({ tags: ['abc', 'changed'], download: jpeg4 }),
+      // Not the size recorded, or not a JPEG.
+      storage({ download: new Uint8Array([0xff, 0xd8, 0xff]) }),
+      storage({ download: new Uint8Array([1, 2, 3, 4]) })
+    ])
+      expect(await portsOf(s).picture(phone)).toBeNull()
+    // A single upload's tag is its bytes' MD5: other bytes under it are refused.
+    const md5 = createHash('md5').update(jpeg4).digest('hex')
+    const tagged = { ...phone, etag: `"${md5}"` }
+    expect(
+      await portsOf(storage({ tags: [md5, md5], download: jpeg4 })).picture(
+        tagged
+      )
+    ).not.toBeNull()
+    const other = '0'.repeat(32)
+    expect(
+      await portsOf(storage({ tags: [other, other], download: jpeg4 })).picture(
+        { ...phone, etag: `"${other}"` }
+      )
+    ).toBeNull()
+    await expect(
+      portsOf(storage({ tags: ['down'] })).picture(phone)
+    ).rejects.toMatchObject({ statusCode: '500' })
+  })
+
+  it('asks the Design critic about the whole email, through the build’s metered AI', async () => {
+    emailCritic.critiqueEmail.mockResolvedValue({
+      pass: true,
+      scores: {},
+      problems: []
+    })
+    const views = { desktop: {} as never, phone: {} as never }
+    expect(await portsOf(storage()).judge(views)).toMatchObject({ pass: true })
+    const [input, ctx] = emailCritic.critiqueEmail.mock.calls[0]!
+    expect(input).toEqual({ email, views })
+    expect(ctx).toMatchObject({
+      tenantId: tenant,
+      industry: 'home',
+      callerKey: `email-build:${build}`,
+      ai
+    })
   })
 })

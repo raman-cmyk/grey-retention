@@ -9,11 +9,23 @@ import type { FallbackLog } from '@/features/fallback/log'
 import { critiqueSection } from './critic'
 import type { StudioStepPorts } from './design-step'
 import { designSection } from './designer'
+import {
+  critiqueEmail,
+  type EmailPicture,
+  type EmailVerdict,
+  type EmailViews
+} from './email-critic'
+import { emailViewNames, requestEmailRender } from './preview-jobs'
 import { renderScale, renderWidth } from './renderer'
 import { requestSectionRender } from './render-jobs'
 import { codedReasons } from './rounds'
 import { storyboardFor } from './storyboard'
-import { buildRenders, type BuildRender } from './waits'
+import {
+  buildRenders,
+  buildViews,
+  type BuildRender,
+  type BuildView
+} from './waits'
 import type { ImageFetcher } from '@/lib/providers/image-fetch'
 import { createImageFetcher } from '@/features/inbox/image-fetch'
 import type { AiImage } from '@/lib/providers/contracts'
@@ -258,5 +270,111 @@ export function studioPortsFor(
     },
     fits,
     now: input.now
+  }
+}
+
+/**
+ * DST-006d part 2a: the key of one version of the email: its views are
+ * asked for, and found again, under it.
+ */
+export const viewKey = (html: string) =>
+  `e-${createHash('sha256').update(html).digest('hex').slice(0, 24)}`
+
+/** The width each view is drawn at (`renderEmail`). */
+const viewWidth = { desktop: 600, phone: 375, dark: 600 } as const
+
+export type DrawnView = Extract<BuildView, { state: 'drawn' }>
+
+/** The ports the whole-email check uses (DST-006d), under the build's lease. */
+export type EmailViewPorts = {
+  /**
+   * Asks for the email's three views under `key` (`requestEmailRender`):
+   * the same again is the same views. Throws `EmailNotDrawable` for an
+   * email that cannot be drawn and the database's refusals as they come.
+   */
+  ask: (key: string, html: string) => Promise<void>
+  /** The build's views under `key`, in its own workspace (`buildViews`). */
+  views: (key: string) => Promise<BuildView[]>
+  /** A view's stored picture, only while its tag, size and bytes are the ones recorded; else null. */
+  picture: (view: DrawnView) => Promise<EmailPicture | null>
+  /** The Design critic on the whole email (`critiqueEmail`); null when it cannot answer. */
+  judge: (views: EmailViews) => Promise<EmailVerdict | null>
+}
+
+export function emailPortsFor(
+  db: Db,
+  input: {
+    tenant: string
+    build: string
+    lease: string
+    agents: BuildAgents
+    fallbacks: FallbackLog
+    callerKey: string
+    industry: string | null
+    email: { emailType: string; angle: string; brand: string }
+  }
+): EmailViewPorts {
+  const files = () => db.storage.from(bucket)
+  const tagged = async (view: DrawnView) => {
+    const info = stored(await files().info(view.path))
+    const tag = tagOf(info?.etag)
+    return tag !== null && tag === tagOf(view.etag)
+  }
+  return {
+    async ask(key, html) {
+      for (const view of emailViewNames)
+        await requestEmailRender(db, {
+          build: input.build,
+          lease: input.lease,
+          key,
+          view,
+          html,
+          brandName: input.email.brand
+        })
+    },
+    views: async (key) =>
+      (
+        await buildViews(db, { tenant: input.tenant, build: input.build })
+      ).filter((v) => v.key === key),
+    async picture(view) {
+      if (!(await tagged(view))) return null
+      const file = stored(await files().download(view.path))
+      if (!file) return null
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      // Changed while it was read, or not the size recorded: not the
+      // picture the browser drew.
+      if (!(await tagged(view)) || bytes.byteLength !== view.bytes) return null
+      // As a section's: a single upload's tag is its bytes' MD5, and the
+      // bytes are a JPEG (the browser draws nothing else).
+      const tag = tagOf(view.etag) ?? ''
+      if (
+        /^[0-9a-f]{32}$/i.test(tag) &&
+        createHash('md5').update(bytes).digest('hex') !== tag.toLowerCase()
+      )
+        return null
+      if (!(bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff))
+        return null
+      return {
+        bytes,
+        contentType: 'image/jpeg',
+        width: viewWidth[view.view],
+        height: view.height,
+        cut: view.cut,
+        wide: view.wide
+      }
+    },
+    judge: (views) =>
+      critiqueEmail(
+        { email: input.email, views },
+        {
+          tenantId: input.tenant,
+          industry: input.industry,
+          callerKey: input.callerKey,
+          memory: input.agents.memory,
+          log: input.agents.log,
+          ai: input.agents.ai,
+          fallbacks: input.fallbacks
+        }
+      )
   }
 }

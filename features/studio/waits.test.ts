@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
 import {
   buildRenders,
+  buildViews,
   claimWaitingDesign,
   designStudioOn,
   waitForPictures
@@ -218,6 +219,102 @@ describe('reading a build’s pictures (DST-006b)', () => {
     ])
     await expect(
       buildRenders(db(database({ data: null, error: { code: 'XX000' } })), {
+        tenant,
+        build
+      })
+    ).rejects.toMatchObject({ code: 'XX000' })
+  })
+})
+
+describe('the build’s email views (DST-006d)', () => {
+  const row = (n: number, change: Record<string, unknown>) => ({
+    id: id(n),
+    render_key: 'e-abc',
+    view: 'phone',
+    state: 'queued',
+    failure: null,
+    path: null,
+    height: null,
+    cut: null,
+    wide: null,
+    bytes: null,
+    etag: null,
+    ...change
+  })
+  const drawn = (n: number) => ({
+    state: 'drawn',
+    path: `email/${id(n)}.jpg`,
+    height: 2100,
+    cut: false,
+    wide: false,
+    bytes: 90_000,
+    etag: '"v"'
+  })
+
+  it('reads each view in its own shape, oldest first, at most a build’s 9, in its own workspace', async () => {
+    const d = database({
+      data: [
+        row(1, drawn(1)),
+        row(2, { view: 'dark', state: 'failed', failure: 'timeout' }),
+        row(3, { view: 'desktop' })
+      ],
+      error: null
+    })
+    expect(await buildViews(db(d), { tenant, build })).toEqual([
+      {
+        id: id(1),
+        key: 'e-abc',
+        view: 'phone',
+        state: 'drawn',
+        path: `email/${id(1)}.jpg`,
+        height: 2100,
+        cut: false,
+        wide: false,
+        bytes: 90_000,
+        etag: '"v"'
+      },
+      {
+        id: id(2),
+        key: 'e-abc',
+        view: 'dark',
+        state: 'failed',
+        failure: 'timeout'
+      },
+      { id: id(3), key: 'e-abc', view: 'desktop', state: 'queued' }
+    ])
+    expect(d.calls).toEqual([
+      ['from', 'email_renders'],
+      [
+        'select',
+        'id,render_key,view,state,failure,path,height,cut,wide,bytes,etag'
+      ],
+      ['eq', 'tenant_id', tenant],
+      ['eq', 'build_id', build],
+      ['order', 'created_at'],
+      ['order', 'id'],
+      ['limit', 9]
+    ])
+  })
+
+  it('reads a row it cannot trust as failed, never as drawn, and leaves out one it cannot read', async () => {
+    const d = database({
+      data: [
+        row(1, { ...drawn(1), path: null }),
+        row(2, { ...drawn(2), path: `email/${id(9)}.jpg` }),
+        row(3, { ...drawn(3), cut: true }),
+        row(4, { ...drawn(4), wide: null }),
+        row(5, { ...drawn(5), height: 6001 }),
+        row(6, { state: 'gone' }),
+        row(7, { view: 'tablet' }),
+        { id: 8, render_key: {} }
+      ],
+      error: null
+    })
+    expect(
+      (await buildViews(db(d), { tenant, build })).map((v) => v.state)
+    ).toEqual(['failed', 'failed', 'failed', 'failed', 'failed', 'failed'])
+    await expect(
+      buildViews(db(database({ data: null, error: { code: 'XX000' } })), {
         tenant,
         build
       })
