@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { emailTypes } from './plan'
+import { emailFormats, emailTypes } from './plan'
 
 /**
  * The shapes a run saves (`strategy_runs.pulse` and `.plan`), checked again
@@ -82,6 +82,8 @@ export const storedPlan = z.object({
           id: z.string().max(120),
           label: z.string().max(200)
         }),
+        // D26: a text email's slot says so; a designed one has none.
+        format: z.enum(emailFormats).optional(),
         why: words,
         evidence: z
           .array(z.object({ id: z.string().max(160), fact: words }))
