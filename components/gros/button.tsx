@@ -42,7 +42,8 @@ export function buttonClasses(
     kinds[kind],
     sizes[size],
     // Quiet actions (Change, Edit) are the small 44 px kind, weight 500.
-    kind === 'quiet' && 'h-[var(--control-sm)] px-[var(--space-3)]'
+    kind === 'quiet' &&
+      'gros-button-row h-[var(--control-sm)] px-[var(--space-3)]'
   )
 }
 

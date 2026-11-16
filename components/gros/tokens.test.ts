@@ -69,7 +69,7 @@ describe('GROS tokens (UI-DS)', () => {
     const dir = join(root, 'components/gros')
     for (const file of readdirSync(dir).filter((f) => f.endsWith('.tsx')))
       expect(readFileSync(join(dir, file), 'utf8'), file).not.toMatch(
-        /#[0-9a-f]{3,8}\b|rgba?\(/i
+        /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab)\(|\b(?:bg|text|border|fill|stroke|ring|outline|from|to)-(?:white|black|slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)\b/i
       )
   })
 })

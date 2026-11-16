@@ -52,6 +52,8 @@
     --control-round: 64px;
     --page-max: 1320px;
     --focus-ring: 2px;
+    /* The old screens' link focus rule (globals.css) reads --focus: forest here. */
+    --focus: var(--forest);
 
     font-family: var(--font-urbanist), ui-sans-serif, system-ui, sans-serif;
     font-size: 17px;
@@ -216,15 +218,5 @@
   .gros .gros-error-mark {
     width: var(--control-sm);
     height: var(--control-sm);
-  }
-
-  /* Motion only shows a change: 150 to 200 ms, nothing that bounces (rule 28). */
-  .gros .gros-fade {
-    transition: opacity 150ms ease-out;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .gros .gros-fade {
-      transition: none;
-    }
   }
 }
