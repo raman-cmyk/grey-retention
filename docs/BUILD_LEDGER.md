@@ -2745,7 +2745,7 @@ Append entries using this exact shape:
 - Commit(s): see the PIC-13 pull request.
 - Changed contracts: see Global decision PIC-13. New `features/studio/palette.ts` (`parseColour`, `coloursUsed`, `paletteProblems`, `hueSlack`, `saturationSlack`); `designProblems` adds its problems; the Section designer's instructions gain the rule.
 - Migrations: none.
-- Verification run: format, lint with no warnings, typecheck, `features/studio` and `features/email-build` unit tests (630; colours read as hex, rgb and hsl, with alpha; found in styles, inline styles and SVG paint, never font names or links; the accent, its tint and shade, greys and white pass; a blue and a green off a terracotta palette, a named colour, and any colour for a brand of greys are named back; a designer answer with an off-palette colour is sent back); the build in CI.
+- Verification run: format, lint with no warnings, typecheck, `features/studio` and `features/email-build` unit tests (629; colours read as hex, rgb and hsl, with alpha; found in styles, inline styles and SVG paint, never font names or links; the accent, its tint and shade, greys and white pass; a blue and a green off a terracotta palette, a named colour, and any colour for a brand of greys are named back; a designer answer with an off-palette colour is sent back); the build in CI.
 - Known issues: `color-mix()`, `oklch()` and similar newer colour functions are not read (a designer that uses one is not told); the brand kit's colours are the four the block brand has. Both PIC-11 and PIC-13 bump the Section designer's version: the second to merge takes the next.
 - Next consumer: the Section designer's retries; pick #16 (phone first), #20 (copy must fit).
 
