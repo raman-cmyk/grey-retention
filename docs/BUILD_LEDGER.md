@@ -2683,7 +2683,7 @@ Append entries using this exact shape:
 ### 2026-11-16 — PIC-24 part 2 — the planner chooses a text email's kind
 
 - Status: review
-- Branch/worktree: `claude/pic-24b-letter-kinds-plan`, on PIC-24 part 1 (`claude/pic-24-letter-kinds`).
+- Branch/worktree: `claude/pic-24b-letter-kinds-plan`, from `main` (after PIC-24 part 1).
 - Commit(s): see the PIC-24 part 2 pull request.
 - Changed contracts: see Global decision PIC-24 part 2. New `features/letter/kind-list.ts` (`letterKinds`, `LetterKind`, `kindsWithoutOffer`, `kindWhen`; `kinds.ts` re-exports the first two and reads `kindWhen`); `PlanInput.founderNote` (optional); `Slot.letterKind` and `PlannedSlot.letterKind` (optional); the planner's answer shape (`letterKind`, required, "none" read as no kind), instructions and data; calendar rules `kind_not_text`, `kind_needs_founder_note`, `kind_never_offers` with owner words, fixed by `textFixed`; `keepPassing` returns `kinds` (kinds dropped) beside `changed`, and the plan logs `kind_dropped`; `storedPlan` and `plannedEmail` read `letterKind` (`.catch(undefined)`); `kindFits` answers null for a value that is no kind; `letterCopyStep` takes `kind` and logs `letter_kind_dropped` once a letter is written; calendar planner version `2026-11-16.2`.
 - Migrations: none.
