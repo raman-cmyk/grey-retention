@@ -581,6 +581,34 @@ describe('the fix loop', () => {
 })
 
 describe('the email checks (code)', () => {
+  it('send back a preview that repeats the subject, never one that names only the brand again (DST-PIC #27)', async () => {
+    const locked = await lock()
+    const draft = await draftOf(locked)
+    const found = (over: Partial<Draft>) =>
+      emailChecks({ ...draft, ...over }, locked, brand.name).filter(
+        (f) => f.rule === 'preview_repeats_subject'
+      )
+    expect(
+      found({
+        subject: 'Cosy evenings by candlelight',
+        preheader: 'Cosy evenings by candlelight, all winter long.'
+      })
+    ).toEqual([
+      {
+        by: 'code',
+        rule: 'preview_repeats_subject',
+        field: 'preview',
+        reason: expect.stringContaining('repeats the whole subject')
+      }
+    ])
+    expect(
+      found({
+        subject: `Cosy evenings at ${brand.name}`,
+        preheader: `${brand.name} poured a softer candle for the long nights.`
+      })
+    ).toEqual([])
+  })
+
   it('keep template tags, markup and hidden characters out of the subject and preview (Klaviyo reads them)', async () => {
     const locked = await lock()
     const draft = await draftOf(locked)

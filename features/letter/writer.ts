@@ -13,6 +13,7 @@ import { eligibleProducts } from '@/features/assembly/inputs'
 import { checkCopy, type QaRule } from '@/features/copy-qa/check'
 import type { LockedContent } from '@/features/email-build/content'
 import { rewriteRounds, strayPrices } from '@/features/email-build/inspect'
+import { previewRepeat } from '@/features/email-build/preview-pair'
 import { keyPart, ruleWords } from '@/features/fallback/entry'
 import type { FallbackLog } from '@/features/fallback/log'
 import type { AgentCtx } from '@/features/strategy/retry'
@@ -38,7 +39,7 @@ import {
  * plainer letter that code writes from the store's name and product only,
  * logged (D16). Nothing waits for a person.
  */
-export const letterWriterVersion = '2026-11-16.1'
+export const letterWriterVersion = '2026-11-16.2'
 
 export type LetterBrief = {
   /** The locked content: its products, offer, facts and founder. */
@@ -106,7 +107,7 @@ export const letterInstructions = [
   'Never write a price, a discount code or its end date: when there is an offer, the system adds its line after the letter. You may mention it in words.',
   'Name a product only by its title as given.',
   'A greeting such as "Hi there," (never a name), a sign-off such as "Warmly,", and a P.S. that adds one small thing. Leave greeting or ps empty only when they do not fit. The name that signs is added by the system: never sign.',
-  'For the inbox: a subject of at most 60 characters with no word in capitals and at most one exclamation mark; a preview line of 20 to 140 characters that adds to the subject. Never a spam word such as "act now", "click here", "risk-free" or "winner".',
+  'For the inbox: a subject of at most 60 characters with no word in capitals and at most one exclamation mark; a preview line of 20 to 140 characters that says what the subject does not, never the subject’s words again (name a product in one of them only). Never a spam word such as "act now", "click here", "risk-free" or "winner".',
   'Invite a reply when it fits: replies reach a person.',
   'Never write { or }.',
   ...sharedRules
@@ -240,8 +241,15 @@ export function letterFindings(
         .flatMap((t) => strayPrices(maskOwn(t, own), prices))
     )
   ]
+  // DST-PIC #27: the preview pairs with the subject, never repeats it.
+  const repeat = previewRepeat(
+    letter.subject,
+    letter.preheader,
+    brief.brandName
+  )
   return [
     ...letterProblems(letter, own),
+    ...(repeat ? [{ rule: 'preview_repeats_subject', reason: repeat }] : []),
     ...qa.failures.map((f) => ({ rule: f.rule, reason: f.reason })),
     ...(stray.length
       ? [
@@ -359,6 +367,7 @@ const letterRuleWords: Record<string, string> = {
   subject_shouting: 'a shouting subject',
   preview_length: 'a preview line of the wrong length',
   preview_markup: 'markup in the preview line',
+  preview_repeats_subject: 'a preview line that repeats the subject',
   wrong_price: 'a price that is not the product’s',
   subject_taken: 'a subject another email of the plan has'
 }
