@@ -1,34 +1,61 @@
 import type { EmailBuildView, PlanRun } from './load'
+import type { EmailType } from './plan'
 
 /**
  * UI-PLAN-a (the owner's request of 16 November: a basic working UI on
  * docs/design/BRAND.md): what the Plan screen shows, from the plan run the
  * page already reads (`latestPlanRun`). Pure: the page draws it with the
  * GROS components (DayStrip, ListRow, Status, Progress, EmptyState), and
- * this file decides every word and state, so the screen has no logic of
- * its own.
+ * this file decides every word, state and button, so the screen has no
+ * logic of its own. Only the workspace's owner starts a plan, picks offers
+ * and creates emails (the server refuses anyone else): for staff the
+ * screen says so and offers no such button.
  *
- * The screen is one of four:
+ * The screen is one of six:
  * - `empty`: no plan yet, one button (Plan next 15 days);
  * - `planning`: what the planner is doing, step by step;
+ * - `offers`: the planner waits for the owner to pick the offers to run;
+ * - `restart`: a plan started for days that have begun: start again;
  * - `failed`: what happened, in the owner's words, and Try again;
  * - `plan`: the 15 days, and each planned email with its one action.
  */
 export type PlanScreen =
-  | { kind: 'empty' }
+  | { kind: 'empty'; canPlan: boolean }
   | { kind: 'planning'; steps: PlanStep[] }
-  | { kind: 'failed'; reason: string }
   | {
-      kind: 'plan'
-      /** The 15 days have begun: only a new plan helps. */
-      stale: boolean
+      kind: 'offers'
       /** Made from the sample store: the screen says so. */
       sample: boolean
+      runId: string
+      /** "Tue 17 Nov to Tue 1 Dec". */
+      days: string
+      summary: string
+      highlights: { fact: string; why: string }[]
+      offers: { id: string; label: string }[]
+      /** "SUMMER10 is not offered: it ended on 1 Sep." */
+      leftOut: string[]
+      /** The owner picks; anyone else is told only the owner can. */
+      canPick: boolean
+    }
+  | { kind: 'restart'; reason: string; canPlan: boolean }
+  | { kind: 'failed'; reason: string; canPlan: boolean }
+  | {
+      kind: 'plan'
+      /** Made from the sample store: the screen says so. */
+      sample: boolean
+      /** Planned from facts only: the AI was not used for this plan. */
+      noAi: boolean
+      /** The planner's own notes (a dropped email, an offer left out). */
+      notes: string[]
       startOn: string
       days: PlanDay[]
       emails: PlanEmail[]
-      /** "3 in Klaviyo · 5 planned", for the card's label. */
-      counts: { inKlaviyo: number; planned: number }
+      /** None planned: why, in the owner's words. */
+      none: string | null
+      /** "3 in Klaviyo · 1 sample draft · 5 planned", for the card's label. */
+      counts: { inKlaviyo: number; sampleDrafts: number; planned: number }
+      /** Plan again (the owner only). */
+      canPlan: boolean
     }
 
 export type PlanStep = {
@@ -38,7 +65,8 @@ export type PlanStep = {
 
 export type PlanDay = {
   date: string
-  state: 'none' | 'planned' | 'in_klaviyo'
+  /** The day's furthest email: in Klaviyo, a sample draft, or planned. */
+  state: 'none' | 'planned' | 'sample_draft' | 'in_klaviyo'
   /** The planned email of that day (its slot), the first when several. */
   slot: number | null
 }
@@ -48,7 +76,9 @@ export type EmailStatus =
   /** Agents are on it: the word is the step. */
   | { kind: 'working'; word: string }
   | { kind: 'in_klaviyo' }
-  /** The owner must act: why, in his words. */
+  /** Made by the fake pusher: nothing was sent to Klaviyo. */
+  | { kind: 'sample_draft' }
+  /** The owner must act: what happened and what to do, in his words. */
   | { kind: 'needs_you'; reason: string }
 
 export type EmailAction =
@@ -66,26 +96,29 @@ export type PlanEmail = {
   /** Joined with a middle dot on the row: "Fri 20 · 6:00 pm · Past buyers". */
   details: string[]
   format: 'designed' | 'text'
+  /** What it is about, in a sentence. */
+  angle: string
+  /** Why the planner chose it, and the facts behind that. */
+  why: string
+  evidence: string[]
   status: EmailStatus
-  /** At most one action; none when there is nothing to do (a day passed). */
+  /** At most one action; none when there is nothing to do or no right to. */
   action: EmailAction | null
   /** The one email that is next: lime-soft row with the forest button. */
   next: boolean
-  /** The draft is a sample (Klaviyo not connected): nothing was sent to it. */
-  sampleDraft: boolean
 }
 
 /** A build step in the owner's words, as the Working pill shows it. */
 export const stepWords: Record<EmailBuildView['step'], string> = {
-  sections: 'Planning',
-  content: 'Choosing',
+  sections: 'Planning sections',
+  content: 'Choosing products',
   copy: 'Writing',
   design: 'Designing',
-  push: 'Drafting'
+  push: 'Adding to Klaviyo'
 }
 
 /** What an email is about, in a few words, when it has no title yet. */
-const typeWords: Record<string, string> = {
+const typeWords: Record<EmailType, string> = {
   launch: 'New arrival',
   bestseller: 'Bestseller',
   offer: 'Offer',
@@ -111,6 +144,18 @@ export function dayLabel(date: string) {
   return `${weekday} ${day}`.trim()
 }
 
+const longDayOf = new Intl.DateTimeFormat('en-GB', {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  timeZone: 'UTC'
+})
+/** "Fri 20 Nov". */
+function longDay(date: string) {
+  const t = Date.parse(`${date}T00:00:00Z`)
+  return Number.isNaN(t) ? date : longDayOf.format(new Date(t))
+}
+
 /** "6:00 pm" for "18:00". */
 export function timeLabel(time: string) {
   const m = /^(\d{2}):(\d{2})$/.exec(time)
@@ -130,48 +175,50 @@ export function fifteenDays(start: string): string[] {
 
 /** The planner's steps, as the run's state shows how far it got. */
 function planningSteps(state: PlanRun['state']): PlanStep[] {
-  const labels = [
-    'Read your store and your discounts',
-    'Planned 15 days of emails'
+  const steps = [
+    {
+      done: 'Read your store and your discounts',
+      doing: 'Reading your store and your discounts'
+    },
+    { done: 'Planned 15 days of emails', doing: 'Planning 15 days of emails' }
   ]
   const at = state === 'pulse_queued' ? 0 : 1
-  return labels.map((label, i) => ({
-    label:
-      i === at
-        ? i === 0
-          ? 'Reading your store and your discounts'
-          : 'Planning 15 days of emails'
-        : label,
+  return steps.map((s, i) => ({
+    label: i < at ? s.done : s.doing,
     state: i < at ? 'done' : i === at ? 'now' : 'next'
   }))
 }
 
+const passedWords =
+  'Its send time passed before it was made. Plan next 15 days for new emails.'
+
 /** One planned email's status and action, from its latest build. */
 function emailState(
   build: EmailBuildView | undefined,
-  passed: boolean
+  passed: boolean,
+  owner: boolean
 ): { status: EmailStatus; action: EmailAction | null } {
+  const create = (label: 'Create email' | 'Try again') =>
+    owner ? ({ kind: 'create', label } as const) : null
   if (!build)
     return passed
+      ? { status: { kind: 'needs_you', reason: passedWords }, action: null }
+      : { status: { kind: 'planned' }, action: create('Create email') }
+  if (build.state === 'failed') {
+    const reason = build.reason ?? 'We could not create this email.'
+    return passed
       ? {
-          status: { kind: 'needs_you', reason: 'Its send time has passed.' },
+          status: { kind: 'needs_you', reason: `${reason} ${passedWords}` },
           action: null
         }
       : {
-          status: { kind: 'planned' },
-          action: { kind: 'create', label: 'Create email' }
+          status: { kind: 'needs_you', reason },
+          action: create('Try again')
         }
-  if (build.state === 'failed')
-    return {
-      status: {
-        kind: 'needs_you',
-        reason: build.reason ?? 'We could not create this email.'
-      },
-      action: passed ? null : { kind: 'create', label: 'Try again' }
-    }
+  }
   if (build.state === 'drafted')
     return {
-      status: { kind: 'in_klaviyo' },
+      status: { kind: build.sampleDraft ? 'sample_draft' : 'in_klaviyo' },
       action: { kind: 'open', buildId: build.id }
     }
   return {
@@ -180,77 +227,146 @@ function emailState(
   }
 }
 
+/** How far a day's emails got, the furthest first. */
+const dayRank: Record<PlanDay['state'], number> = {
+  none: 0,
+  planned: 1,
+  sample_draft: 2,
+  in_klaviyo: 3
+}
+
 /** The Plan screen from the latest plan run (see above). */
-export function planScreen(run: PlanRun | null): PlanScreen {
-  if (!run) return { kind: 'empty' }
+export function planScreen(
+  run: PlanRun | null,
+  { owner }: { owner: boolean }
+): PlanScreen {
+  if (!run) return { kind: 'empty', canPlan: owner }
   if (run.state === 'failed')
     return {
       kind: 'failed',
-      reason: run.reason ?? 'The plan could not be made. Try again.'
+      reason: run.reason ?? 'The plan could not be made. Try again.',
+      canPlan: owner
     }
-  if (run.state !== 'planned' || !run.plan)
-    return run.state === 'planned'
-      ? { kind: 'failed', reason: 'The plan could not be read. Try again.' }
-      : { kind: 'planning', steps: planningSteps(run.state) }
+  // An open run for days that have begun: the server closes it only when
+  // a new one starts, so only starting again helps.
+  if (run.state !== 'planned' && run.stale)
+    return {
+      kind: 'restart',
+      reason:
+        'This plan was for days that have started. Plan the next 15 days again.',
+      canPlan: owner
+    }
+  if (run.state === 'offers_ready')
+    return run.pulse
+      ? {
+          kind: 'offers',
+          sample: run.pulse.sample === true,
+          runId: run.id,
+          days: `${longDay(run.pulse.start)} to ${longDay(run.pulse.end)}`,
+          summary: run.pulse.summary,
+          highlights: run.pulse.highlights.map((h) => ({
+            fact: h.fact,
+            why: h.why
+          })),
+          offers: run.pulse.offers.map((o) => ({
+            id: o.id,
+            label: `${o.percent}% off with ${o.code}${o.until ? `, until ${longDay(o.until)}` : ''}`
+          })),
+          leftOut: run.pulse.leftOut.map(
+            (l) => `${l.code} is not offered: ${l.why}`
+          ),
+          canPick: owner
+        }
+      : {
+          kind: 'failed',
+          reason: 'This plan could not be read. Start a new one.',
+          canPlan: owner
+        }
+  if (run.state !== 'planned')
+    return { kind: 'planning', steps: planningSteps(run.state) }
+  if (!run.plan)
+    return {
+      kind: 'failed',
+      reason: 'This plan could not be read. Start a new one.',
+      canPlan: owner
+    }
 
-  const slots = run.plan.slots
-  const emails: PlanEmail[] = slots
+  const plan = run.plan
+  const emails: PlanEmail[] = plan.slots
     .map((s, slot) => {
-      const passed = run.sendPassed?.[slot] ?? false
-      const { status, action } = emailState(run.builds[slot], passed)
+      // REL-DAT: the loader says when a send time has passed; else its day.
+      const passed = run.sendPassed?.[slot] ?? s.date < run.today
+      const { status, action } = emailState(run.builds[slot], passed, owner)
       const format: PlanEmail['format'] =
         s.format === 'text' ? 'text' : 'designed'
+      const kind = typeWords[s.emailType] ?? 'Email'
       const lead = s.products[0]?.title
       return {
         slot,
         date: s.date,
         day: dayLabel(s.date),
-        title: lead
-          ? `${typeWords[s.emailType] ?? 'Email'}: ${lead}`
-          : (typeWords[s.emailType] ?? 'Email'),
+        title: lead ? `${kind}: ${lead}` : kind,
         details: [
           dayLabel(s.date),
           timeLabel(s.time),
           s.audience.label,
-          ...(s.offer ? [`${s.offer.percent}% off`] : []),
+          ...(s.offer ? [`${s.offer.percent}% off with ${s.offer.code}`] : []),
           ...(format === 'text' ? ['Text email'] : [])
         ],
         format,
+        angle: s.angle,
+        why: s.why,
+        evidence: s.evidence.map((e) => e.fact),
         status,
         action,
-        next: false,
-        sampleDraft: run.builds[slot]?.sampleDraft ?? false
+        next: false
       }
     })
-    .sort((a, b) => a.date.localeCompare(b.date) || a.slot - b.slot)
-  // The next one: the first email still to create, on a day not passed.
+    .sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) ||
+        plan.slots[a.slot]!.time.localeCompare(plan.slots[b.slot]!.time) ||
+        a.slot - b.slot
+    )
+  // The next one: the first email still to create (a passed one has none).
   const next = emails.find(
     (e) => e.action?.kind === 'create' && e.status.kind === 'planned'
   )
-  if (next && !run.stale) next.next = true
+  if (next) next.next = true
 
-  const byDate = new Map<string, PlanEmail>()
-  for (const e of emails) if (!byDate.has(e.date)) byDate.set(e.date, e)
-  const days: PlanDay[] = fifteenDays(run.startOn).map((date) => {
-    const e = byDate.get(date)
-    return {
-      date,
-      state: !e
-        ? 'none'
-        : e.status.kind === 'in_klaviyo'
-          ? 'in_klaviyo'
-          : 'planned',
-      slot: e ? e.slot : null
-    }
-  })
+  const byDate = new Map<string, PlanDay>()
+  for (const e of emails) {
+    const state: PlanDay['state'] =
+      e.status.kind === 'in_klaviyo' || e.status.kind === 'sample_draft'
+        ? e.status.kind
+        : 'planned'
+    const day = byDate.get(e.date)
+    if (!day) byDate.set(e.date, { date: e.date, state, slot: e.slot })
+    else if (dayRank[state] > dayRank[day.state]) day.state = state
+  }
+  const days: PlanDay[] = fifteenDays(run.startOn).map(
+    (date) => byDate.get(date) ?? { date, state: 'none', slot: null }
+  )
   const inKlaviyo = emails.filter((e) => e.status.kind === 'in_klaviyo').length
+  const sampleDrafts = emails.filter(
+    (e) => e.status.kind === 'sample_draft'
+  ).length
   return {
     kind: 'plan',
-    stale: run.stale,
-    sample: run.plan.sample === true,
+    sample: plan.sample === true,
+    noAi: plan.source.brief === 'code' && plan.source.planner === 'code',
+    notes: plan.notes,
     startOn: run.startOn,
     days,
     emails,
-    counts: { inKlaviyo, planned: emails.length - inKlaviyo }
+    none: emails.length
+      ? null
+      : 'No email fits these 15 days with your current settings.',
+    counts: {
+      inKlaviyo,
+      sampleDrafts,
+      planned: emails.length - inKlaviyo - sampleDrafts
+    },
+    canPlan: owner
   }
 }
