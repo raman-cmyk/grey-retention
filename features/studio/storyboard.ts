@@ -2,7 +2,11 @@ import { z } from 'zod'
 import type { AgentDefinition } from '@/features/agents/runtime'
 import { hiddenChars } from '@/features/assembly/assemble'
 import type { BlockType } from '@/features/blocks/catalog'
-import { blockHeight, emailHeight } from '@/features/blocks/heights'
+import {
+  blockHeight,
+  emailHeight,
+  heroButtonRow
+} from '@/features/blocks/heights'
 import type { FallbackLog } from '@/features/fallback/log'
 import { keyPart } from '@/features/fallback/entry'
 import type { BuildMode } from '@/features/email-build/sections'
@@ -31,9 +35,13 @@ import { failedWords, tryAgent, type AgentCtx } from '@/features/strategy/retry'
  * section's tone and about its height.
  *
  * DST-007: a live section is drawn at its own height (`blockHeights`,
- * measured in Chromium), so the storyboard gives it that height and never
- * stretches it; only the designed heroes, drawn at the storyboard's
- * height, make the email taller or shorter.
+ * measured in Chromium; steps and questions in plain copy as text), so the
+ * storyboard gives it that height and never stretches it; only the
+ * designed heroes, drawn at the storyboard's height with their live
+ * button's row below, make the email taller or shorter. The email's height
+ * and the pictures' share are counted from those drawn heights, never the
+ * Art director's own numbers. An email whose live sections cannot carry
+ * pictures enough for 1,800 px is designed as tall as they allow.
  */
 
 /** Sections the studio may draw as a picture; every other stays live. */
@@ -61,8 +69,14 @@ const refRange = (height: number): [number, number] => [
   )
 ]
 /** A live section's height: as it is drawn, with its products. */
-const liveHeight = (s: { family: BlockType; products: number }) =>
-  blockHeight(s.family, s.products)
+const liveHeight = (s: {
+  family: BlockType
+  products: number
+  drawn?: BlockType
+}) => blockHeight(s.drawn ?? s.family, s.products)
+/** A hero code's own storyboard designs: a product hero with a product, a picture hero. */
+const heroDesigned = (s: { family: BlockType; products: number }) =>
+  (s.family === 'hero_product' && s.products > 0) || s.family === 'hero_image'
 /** The tone a live block always has (`features/blocks/render.ts`). */
 export const liveTone = (f: BlockType): Tone =>
   f === 'announcement_bar' ? 'dark' : f === 'offer_banner' ? 'accent' : 'light'
@@ -82,6 +96,8 @@ export type StoryboardInput = {
     family: BlockType
     purpose: string
     products: number
+    /** The block it is drawn as, when not its own (plain copy draws steps and questions as text). */
+    drawn?: BlockType
     /** Copy and Remix: the reference section it follows (index in `reference`). */
     ref?: number
   }[]
@@ -222,15 +238,14 @@ export function storyboardProblems(
     !board.sections.some((s) => s.render === 'designed')
   )
     problems.push('Design at least one hero.')
-  const total = board.sections.reduce((n, s) => n + s.height, 0)
+  // As drawn: live sections at their own height, a designed one at its
+  // picture's with its button's row.
+  const { total, pictures } = drawnHeights(board, input)
   const floor = heightFloor(board, input)
   if (total < floor || total > emailHeight.max)
     problems.push(
-      `The email is ${total} px tall; make it ${floor} to ${emailHeight.max} px.`
+      `The email is drawn ${total} px tall; make it ${floor} to ${emailHeight.max} px.`
     )
-  const pictures = board.sections
-    .filter((s) => s.render === 'designed')
-    .reduce((n, s) => n + s.height, 0)
   if (pictures > total * maxDesignedShare)
     problems.push(
       `Pictures are ${Math.round((pictures / Math.max(total, 1)) * 100)}% of the email; keep them to ${maxDesignedShare * 100}% or less.`
@@ -238,17 +253,35 @@ export function storyboardProblems(
   return [...new Set(problems)]
 }
 
-/**
- * The shortest the email may be: 1,800 px; in Copy mode (D1 "Exact") at
- * most what its live sections, drawn at their own heights, and its
- * designed sections, at about their references' heights and within the
- * pictures' share, can come to.
- */
-function heightFloor(
+/** The email's height and its pictures' as drawn (a board's ids not given are left out). */
+function drawnHeights(
   board: Pick<Storyboard, 'sections'>,
   input: StoryboardInput
 ) {
-  if (input.mode !== 'copy') return emailHeight.min
+  const byId = new Map(input.sections.map((s) => [s.id, s]))
+  let total = 0
+  let pictures = 0
+  for (const s of board.sections) {
+    const given = byId.get(s.id)
+    if (!given) continue
+    if (s.render === 'designed') {
+      pictures += s.height
+      total += s.height + heroButtonRow
+    } else total += liveHeight(given)
+  }
+  return { total, pictures }
+}
+
+/**
+ * The shortest the email may be: 1,800 px, or less when its live sections
+ * (with the designed heroes' button rows) cannot carry pictures enough
+ * within their share, or (Copy mode, D1 "Exact") its designed sections
+ * stay about their references' heights.
+ */
+export function heightFloor(
+  board: Pick<Storyboard, 'sections'>,
+  input: StoryboardInput
+) {
   const byId = new Map(input.sections.map((s) => [s.id, s]))
   let live = 0
   let pictures = 0
@@ -256,9 +289,14 @@ function heightFloor(
     const given = byId.get(s.id)
     if (!given) continue
     const ref =
-      given.ref !== undefined ? input.reference?.[given.ref] : undefined
+      input.mode === 'copy' && given.ref !== undefined
+        ? input.reference?.[given.ref]
+        : undefined
     if (s.render !== 'designed') live += liveHeight(given)
-    else pictures += ref ? refRange(ref.height)[1] : designedHeight.max
+    else {
+      live += heroButtonRow
+      pictures += ref ? refRange(ref.height)[1] : designedHeight.max
+    }
   }
   const share = Math.floor((live * maxDesignedShare) / (1 - maxDesignedShare))
   return Math.min(emailHeight.min, live + Math.min(pictures, share))
@@ -307,9 +345,7 @@ export function codeStoryboard(input: StoryboardInput): Storyboard | null {
   let dark = false
   const ranges: [number, number][] = []
   const sections: StoryboardSection[] = input.sections.map((s, i) => {
-    const designed =
-      (s.family === 'hero_product' && s.products > 0) ||
-      s.family === 'hero_image'
+    const designed = heroDesigned(s)
     const ref =
       input.mode === 'copy' && s.ref !== undefined
         ? input.reference?.[s.ref]
@@ -360,14 +396,14 @@ export function codeStoryboard(input: StoryboardInput): Storyboard | null {
   sections.forEach((s) => {
     if (s.focus.length < 3) s.focus = 'Its message'
   })
-  const total = () => sections.reduce((n, s) => n + s.height, 0)
-  const pictures = () =>
-    sections
-      .filter((s) => s.render === 'designed')
-      .reduce((n, s) => n + s.height, 0)
   const designedAt = sections.flatMap((s, i) =>
     s.render === 'designed' ? [i] : []
   )
+  const pictures = () => designedAt.reduce((n, i) => n + sections[i]!.height, 0)
+  // As drawn: each designed hero has its button's row below its picture.
+  const total = () =>
+    sections.reduce((n, s) => n + s.height, 0) +
+    designedAt.length * heroButtonRow
   // Only the heroes move (in Copy mode, within about their references'
   // heights): a live section is drawn at its own height.
   if (total() < emailHeight.min)
@@ -375,7 +411,7 @@ export function codeStoryboard(input: StoryboardInput): Storyboard | null {
   if (total() > emailHeight.max)
     spread(sections, ranges, designedAt, emailHeight.max - total())
   // Pictures to at most their share of the email: shrink them (the email
-  // may then be too short to fit, and is drawn with coded blocks).
+  // is then as tall as its live sections allow, `heightFloor`).
   const live = total() - pictures()
   const most = Math.floor((live * maxDesignedShare) / (1 - maxDesignedShare))
   if (pictures() > most) spread(sections, ranges, designedAt, most - pictures())
@@ -385,6 +421,24 @@ export function codeStoryboard(input: StoryboardInput): Storyboard | null {
   return board
 }
 
+/** The least height for the email with every hero that can be designed designed (as code's own storyboard designs them). */
+const floorFor = (input: StoryboardInput) =>
+  heightFloor(
+    {
+      sections: input.sections.map((s) => ({
+        id: s.id,
+        render: heroDesigned(s) ? 'designed' : 'live',
+        tone: 'light',
+        height: 0,
+        focus: 'x',
+        imagery: 'none',
+        space: 'normal',
+        note: ''
+      }))
+    },
+    input
+  )
+
 type StoryTask = { input: StoryboardInput; problems: string[] }
 
 export const artDirectorAgent: AgentDefinition<
@@ -392,15 +446,15 @@ export const artDirectorAgent: AgentDefinition<
   z.infer<typeof storyboardShape>
 > = {
   name: 'art-director',
-  version: '2026-11-16.3',
+  version: '2026-11-16.4',
   // AGENT_MAP.md models: the Art director runs on 2.5 Pro.
   purpose: 'plan',
   instructions: [
     'You are the Art director for a marketing email of a small online store.',
-    `Storyboard the whole email before anything is designed: ${emailHeight.min} to ${emailHeight.max} px tall at 600 px wide.`,
+    'Storyboard the whole email before anything is designed, at 600 px wide and about the height given (email_height_px, its least and most), as it is drawn: each live section at its drawnHeight, each designed hero at the height you give plus its live button’s row below the picture (button_row_px).',
     'For each section given: whether it is designed (drawn as one picture) or live HTML, its tone (light, dark or accent), its height in px, its one focus in a few words, its imagery (product: the product photo; photo: the store’s own photo; backdrop: the product photo on a backdrop; none), its white space (tight, normal or airy), and a short layout note.',
     `Only the heroes (${designable.join(', ')}) may be designed; a designed hero keeps its button live beside the picture. A designed hero_product shows its product (product or backdrop); a designed hero_image shows the store’s photo (photo). Pictures are at most ${maxDesignedShare * 100}% of the email’s height, and a designed section is ${designedHeight.min} to ${designedHeight.max} px.`,
-    'Live sections keep their own tone (announcement_bar dark, offer_banner accent, every other light) and are drawn at their own height: give each live section the height it is given (drawnHeight). The designed heroes, drawn at the height you give, make the rest of the email’s height.',
+    'Live sections keep their own tone (announcement_bar dark, offer_banner accent, every other light) and are drawn at their own height: give each live section its drawnHeight. The designed heroes make the rest of the email’s height.',
     'Product imagery only where a section has products; a backdrop only in a designed section. Never two dark sections next to each other. One focus per section; generous white space around the main message.',
     'Scratch and Remix: order the sections as you like, the logo header first (an announcement bar may come before it) and the footer last. Copy: keep the sections in the order given, and each designed section keeps its reference section’s tone and about its height.',
     'Focus and note describe the design only, in one line: never a price, percent, code, link or words to print. The words come from the copy.',
@@ -410,6 +464,8 @@ export const artDirectorAgent: AgentDefinition<
     JSON.stringify({
       mode: input.mode,
       email: { type: input.slot.emailType, angle: input.slot.angle },
+      email_height_px: { least: floorFor(input), most: emailHeight.max },
+      button_row_px: heroButtonRow,
       sections: input.sections.map((s) => ({
         id: s.id,
         kind: s.family,

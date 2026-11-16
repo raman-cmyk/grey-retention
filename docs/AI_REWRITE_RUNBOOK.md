@@ -8,7 +8,7 @@ Owner flow: brand basics → paste an email → choose **Rewrite for my brand** 
 | --------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `OPENAI_API_KEY`            | Rewrite             | Server-only. Missing → owners see "Rewriting is not set up yet"; copy still works. Never use a ChatGPT/Claude subscription login.                                                                    |
 | `SUPABASE_SERVICE_ROLE_KEY` | Rewrite             | Server-only. The paid-provider worker RPCs (`claim_/begin_/finish_/fail_email_generation`) execute only as `service_role`. Missing → setup required, no job runs.                                    |
-| `OPENAI_REWRITE_MODEL`      | Optional            | Default `gpt-6.1-terra`. Allowed: models with known prices in `features/email-generation/pricing.ts` (`gpt-6.1-terra`, `gpt-6-luna`). Others → setup required.                                       |
+| `OPENAI_REWRITE_MODEL`      | Optional            | Default `gpt-6.1-terra`. Allowed: models with known prices in `lib/providers/openai-pricing.ts` (`gpt-6.1-terra`, `gpt-6-luna`). Others → setup required.                                            |
 | `OPENAI_TIMEOUT_MS`         | Optional            | 5,000–120,000; default 60,000.                                                                                                                                                                       |
 | `OPENAI_BASE_URL`           | Tests only          | Unset in production (official `https://api.openai.com/v1`). Only a loopback `http://127.0.0.1`/`localhost` test double is accepted, and never when `NODE_ENV=production`.                            |
 | `EMAIL_REWRITE_TENANT_IDS`  | Rewrite (pilot)     | Server-only comma-separated list of exact workspace UUIDs allowed to make real OpenAI requests (at most 50; wildcards and invalid entries are ignored). Empty → no workspace can use real rewriting. |
@@ -22,7 +22,7 @@ Every workspace automatically gets the synthetic starter package, and any confir
 
 ## Request contract
 
-Responses API via native `fetch` (`features/email-generation/openai.ts`): `store: false`, strict `json_schema` output (`email_rewrite`), `reasoning.effort: low`, `max_output_tokens` 4,000 (text) or 8,000 (layout rewrite), a hashed `safety_identifier`, a bounded timeout and a 1 MiB response limit. The pasted email is placed only inside a JSON data field and the fixed instructions (`email-rewrite-v1`) tell the model to treat it as untrusted data. The button destination is constrained by schema `enum` to the brand's own links.
+Responses API via native `fetch` (`lib/providers/openai.ts`): `store: false`, strict `json_schema` output (`email_rewrite`), `reasoning.effort: low`, `max_output_tokens` 4,000 (text) or 8,000 (layout rewrite), a hashed `safety_identifier`, a bounded timeout and a 1 MiB response limit. The pasted email is placed only inside a JSON data field and the fixed instructions (`email-rewrite-v1`) tell the model to treat it as untrusted data. The button destination is constrained by schema `enum` to the brand's own links.
 
 ## Spend safeguards
 

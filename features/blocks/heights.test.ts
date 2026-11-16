@@ -5,7 +5,7 @@ import {
   blockHeight,
   blockHeights,
   emailHeight,
-  emailHeightOf
+  heroButtonRow
 } from './heights'
 
 /** DST-007: the drawn heights the plans count on (kept true in Chromium by `tests/e2e/email-length.spec.ts`). */
@@ -27,20 +27,7 @@ describe('the block heights (DST-007)', () => {
     expect(blockHeight('product_feature', 1)).toBe(316)
   })
 
-  it('counts an email with its products placed as the email places them', () => {
-    // Four products: the hero takes one, the grid the next two (a grid
-    // shows four only when the blocks after it still get theirs).
-    expect(
-      emailHeightOf(
-        ['header_logo', 'hero_product', 'product_grid_2col', 'footer'],
-        4
-      )
-    ).toBe(70 + 677 + 443 + 183)
-    expect(
-      emailHeightOf(
-        ['header_logo', 'hero_product', 'product_grid_2col', 'footer'],
-        5
-      )
-    ).toBe(70 + 677 + 811 + 183)
+  it('counts the live button’s row under a hero the studio drew', () => {
+    expect(heroButtonRow).toBe(100)
   })
 })

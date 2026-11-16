@@ -1,4 +1,3 @@
-import { productTakes } from '@/features/assembly/assemble'
 import type { BlockType } from './catalog'
 
 /**
@@ -49,11 +48,8 @@ export function blockHeight(family: BlockType, products = 0) {
     : blockHeights[family]
 }
 
+/** Under a hero the studio drew, its live button's row (the picture is drawn at its own height). */
+export const heroButtonRow = 100
+
 /** The email's height at 600 wide, in CSS px (D25: about 2,000). */
 export const emailHeight = { min: 1_800, max: 2_400 }
-
-/** About how tall these sections make an email, with `products` placed as `fill` places them. */
-export function emailHeightOf(families: readonly BlockType[], products: number) {
-  const takes = productTakes(families, products)
-  return families.reduce((n, f, i) => n + blockHeight(f, takes[i]), 0)
-}

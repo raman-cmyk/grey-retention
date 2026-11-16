@@ -4,7 +4,7 @@ import {
   defaultRewriteModel,
   isRewriteModel,
   type RewriteModel
-} from './pricing'
+} from '@/lib/providers/openai-pricing'
 
 export type SetupReason =
   | 'missing_key'
