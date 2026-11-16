@@ -210,7 +210,7 @@ describe('handing out sections to draw (DST-001b)', () => {
       ])
     ).toEqual([
       ['claim_platform_job', ''],
-      ['fail_platform_job', 'protocol'],
+      ['finish_platform_job', { settled: 'gone' }],
       ['claim_platform_job', ''],
       ['fail_platform_job', 'unavailable'],
       ['claim_platform_job', ''],
@@ -219,6 +219,19 @@ describe('handing out sections to draw (DST-001b)', () => {
       ['fail_section_render', 'refused'],
       ['claim_platform_job', '']
     ])
+  })
+
+  it('closes the job of a render gone with its build, also between the two reads', async () => {
+    const race = database({
+      buildState: 'failed',
+      rpcError: { fail_section_render: 'PT409' }
+    })
+    expect(await renderJobs(db(race))).toEqual([])
+    expect(last(race, 'finish_platform_job')).toEqual({
+      job,
+      lease,
+      outcome: { settled: 'gone' }
+    })
   })
 
   it('stops after five claims, or when nothing is waiting', async () => {

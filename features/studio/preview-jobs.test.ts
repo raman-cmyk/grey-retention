@@ -1,11 +1,17 @@
 // @vitest-environment node
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { NextRequest } from 'next/server'
 
 vi.mock('server-only', () => ({}))
+const service = vi.hoisted(() => ({ createServiceClient: vi.fn() }))
+vi.mock('@/lib/supabase/service', () => service)
+import { GET, POST } from '@/app/api/internal/studio/previews/route'
 import { klaviyoFooterTags } from '@/features/blocks/klaviyo-tags'
 import {
   emailOrigins,
   EmailNotDrawable,
+  previewJobs,
+  previewsWaiting,
   requestEmailRender
 } from './preview-jobs'
 
@@ -103,7 +109,19 @@ function database(
   }
 }
 type Fake = ReturnType<typeof database>
-const db = (d: Fake) => d as unknown as Parameters<typeof requestEmailRender>[0]
+const db = (d: Fake) => d as unknown as Parameters<typeof previewJobs>[0]
+const handed = {
+  job,
+  lease,
+  render,
+  document: page,
+  view: 'phone',
+  origins: ['https://img.shop.example', 'https://cdn.shop.example'],
+  upload: `https://db.test/upload/studio-renders/email/${render}.jpg?token=t`
+}
+const last = (d: Fake, name: string) =>
+  d.calls.filter((c) => c.name === name).at(-1)?.args
+
 describe('the hosts an email’s pictures come from (DST-005b)', () => {
   it('reads src, srcset, background and CSS links, https hosts once each', () => {
     expect(
@@ -201,5 +219,285 @@ describe('asking for a view of the email (DST-005b)', () => {
   it('passes on the command’s refusals (another email under the key, the wrong step)', async () => {
     const d = database({ rpcError: { request_email_render: 'PT409' } })
     await expect(ask(d)).rejects.toMatchObject({ code: 'PT409' })
+  })
+})
+
+describe('handing out views to draw (DST-005b)', () => {
+  it('hands out one view: its page, its view, its origins, its upload link', async () => {
+    const d = database({ rows: [queued, queued] })
+    expect(await previewJobs(db(d))).toEqual([handed])
+    expect(d.calls.filter((c) => c.name === 'claim_platform_job')).toEqual([
+      { name: 'claim_platform_job', args: { kinds: ['studio.preview'] } }
+    ])
+    // The job's own view, then that view's own build.
+    expect(d.reads).toEqual([
+      { table: 'email_renders', filters: [['eq', 'id', render]] },
+      { table: 'email_builds', filters: [['eq', 'id', build]] }
+    ])
+  })
+
+  it('closes the job of a view gone with its build, at once, never retried', async () => {
+    const d = database({ rows: [null] })
+    expect(await previewJobs(db(d))).toEqual([])
+    expect(last(d, 'finish_platform_job')).toEqual({
+      job,
+      lease,
+      outcome: { settled: 'gone' }
+    })
+    expect(last(d, 'fail_platform_job')).toBeUndefined()
+    // Gone between the two reads: refusing it finds no view, so the job is closed.
+    const race = database({
+      buildState: 'failed',
+      rpcError: { fail_email_render: 'PT409' }
+    })
+    expect(await previewJobs(db(race))).toEqual([])
+    expect(last(race, 'finish_platform_job')).toEqual({
+      job,
+      lease,
+      outcome: { settled: 'gone' }
+    })
+  })
+
+  it('refuses a view whose stored origins are not exactly the ones its page loads, or whose page would reach out', async () => {
+    for (const row of [
+      { ...queued, origins: ['https://10.0.0.5'] },
+      { ...queued, origins: [...queued.origins, 'https://extra.example'] },
+      { ...queued, origins: ['https://cdn.shop.example'] },
+      {
+        ...queued,
+        document: `${page}<link rel="prefetch" href="https://evil.example/">`
+      }
+    ]) {
+      const d = database({ rows: [row] })
+      expect(await previewJobs(db(d))).toEqual([])
+      expect(last(d, 'fail_email_render')).toEqual({
+        job,
+        lease,
+        failure: 'refused'
+      })
+    }
+  })
+
+  it('claims on past a view it cannot hand out, so one bad view never stops the run', async () => {
+    const d = database({
+      rows: [
+        null,
+        'error',
+        { ...queued, state: 'drawn' },
+        { ...queued, view: 'tablet' },
+        { ...queued, origins: ['http://cdn.shop.example'] },
+        queued
+      ]
+    })
+    expect(await previewJobs(db(d))).toEqual([])
+    expect(
+      d.calls.map((c) => [
+        c.name,
+        c.args.failure ?? c.args.error_code ?? c.args.outcome ?? ''
+      ])
+    ).toEqual([
+      ['claim_platform_job', ''],
+      ['finish_platform_job', { settled: 'gone' }],
+      ['claim_platform_job', ''],
+      ['fail_platform_job', 'unavailable'],
+      ['claim_platform_job', ''],
+      ['finish_platform_job', { settled: 'drawn' }],
+      ['claim_platform_job', ''],
+      ['fail_email_render', 'refused'],
+      ['claim_platform_job', ''],
+      ['fail_email_render', 'refused']
+    ])
+    // A sixth claim is never made: five a call.
+    const next = database({ rows: [null, queued] })
+    expect(await previewJobs(db(next))).toEqual([handed])
+  })
+
+  it('stops when nothing is waiting, and counts only the email’s views waiting', async () => {
+    expect(await previewJobs(db(database({ rows: [] })))).toEqual([])
+    const d = database()
+    expect(await previewsWaiting(db(d))).toBe(2)
+    expect(d.reads[0]).toMatchObject({
+      table: 'platform_jobs',
+      filters: [
+        ['eq', 'kind', 'studio.preview'],
+        ['or', expect.any(String)]
+      ]
+    })
+  })
+
+  it('never draws for a build that no longer wants the view, or a page that can no longer be drawn', async () => {
+    const gone = database({ buildState: 'push_queued' })
+    expect(await previewJobs(db(gone))).toEqual([])
+    expect(last(gone, 'fail_email_render')).toEqual({
+      job,
+      lease,
+      failure: 'refused'
+    })
+    const many = Array.from(
+      { length: 9 },
+      (_, i) => `<img src="https://h${i}.example/a.jpg">`
+    ).join('')
+    const wide = database({ rows: [{ ...queued, document: many }] })
+    expect(await previewJobs(db(wide))).toEqual([])
+    expect(last(wide, 'fail_email_render')).toEqual({
+      job,
+      lease,
+      failure: 'refused'
+    })
+  })
+
+  it('fails a view whose upload link cannot be signed, or whose hand-out throws', async () => {
+    const noLink = database({ uploadError: true })
+    expect(await previewJobs(db(noLink))).toEqual([])
+    expect(last(noLink, 'fail_email_render')).toEqual({
+      job,
+      lease,
+      failure: 'upload_failed'
+    })
+    const boom = database({ rows: ['throw'] })
+    expect(await previewJobs(db(boom))).toEqual([])
+    expect(last(boom, 'fail_email_render')).toEqual({
+      job,
+      lease,
+      failure: 'failed'
+    })
+  })
+})
+
+describe('the preview route (DST-005b)', () => {
+  const secret = 's'.repeat(40)
+  const auth = { authorization: `Bearer ${secret}` }
+  const req = (
+    method: string,
+    init: { url?: string; body?: string; headers?: Record<string, string> } = {}
+  ) =>
+    new NextRequest(
+      init.url ?? 'https://app.test/api/internal/studio/previews',
+      { method, body: init.body, headers: init.headers ?? auth }
+    )
+  const post = (body: unknown) =>
+    POST(
+      req('POST', {
+        body: typeof body === 'string' ? body : JSON.stringify(body)
+      })
+    )
+  const drawn = {
+    job,
+    lease,
+    height: 2100,
+    cut: false,
+    wide: false,
+    bytes: 90_000
+  }
+  beforeEach(() => vi.stubEnv('CRON_SECRET', secret))
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    service.createServiceClient.mockReset()
+  })
+
+  it('answers only the cron secret, and says when the server has no database', async () => {
+    expect((await GET(req('GET', { headers: {} }))).status).toBe(401)
+    expect(
+      (
+        await POST(
+          req('POST', { headers: { authorization: 'Bearer x' }, body: '{}' })
+        )
+      ).status
+    ).toBe(401)
+    service.createServiceClient.mockReturnValue(null)
+    expect((await GET(req('GET'))).status).toBe(503)
+    expect((await post(drawn)).status).toBe(503)
+  })
+
+  it('peeks without claiming, hands out views, and says when it cannot', async () => {
+    const d = database()
+    service.createServiceClient.mockReturnValue(d)
+    const peek = await GET(
+      req('GET', {
+        url: 'https://app.test/api/internal/studio/previews?peek=1'
+      })
+    )
+    expect(await peek.json()).toEqual({ waiting: 2 })
+    expect(d.calls).toEqual([])
+    const got = await GET(req('GET'))
+    expect(got.headers.get('cache-control')).toBe('no-store')
+    expect((await got.json()).jobs).toEqual([handed])
+    service.createServiceClient.mockReturnValue(
+      database({ rpcError: { claim_platform_job: 'XX000' } })
+    )
+    const down = await GET(req('GET'))
+    expect(down.status).toBe(500)
+    expect(await down.json()).toEqual({
+      error: 'Preview jobs unavailable; they stay queued.'
+    })
+  })
+
+  it('records a drawn view, cut or not, or its failure', async () => {
+    const d = database()
+    service.createServiceClient.mockReturnValue(d)
+    expect(await (await post(drawn)).json()).toEqual({ ok: true })
+    expect(last(d, 'record_email_render')).toEqual(drawn)
+    await post({ ...drawn, height: 6000, cut: true, wide: true })
+    expect(last(d, 'record_email_render')).toMatchObject({
+      cut: true,
+      wide: true
+    })
+    await post({ job, lease, failure: 'timeout' })
+    expect(last(d, 'fail_email_render')).toEqual({
+      job,
+      lease,
+      failure: 'timeout'
+    })
+  })
+
+  it('refuses anything else: not JSON, unknown fields, a refusal claimed by the browser, out of range, too large', async () => {
+    service.createServiceClient.mockReturnValue(database())
+    for (const body of [
+      'not json',
+      { job, lease, failure: 'gone' },
+      { job, lease, failure: 'refused' },
+      { ...drawn, bytes: 4_000_000 },
+      { ...drawn, height: 6001 },
+      { ...drawn, cut: 'no' },
+      { job, lease, height: 2100, bytes: 90_000 },
+      { job, lease, height: 2100, cut: false, bytes: 90_000 },
+      { ...drawn, extra: 1 },
+      JSON.stringify({ job, lease, failure: 'timeout' }) + ' '.repeat(2_000)
+    ])
+      expect((await post(body)).status).toBe(400)
+    expect(
+      (
+        await POST(
+          req('POST', {
+            body: JSON.stringify({ job, lease, failure: 'timeout' }),
+            headers: { ...auth, 'content-length': '2001' }
+          })
+        )
+      ).status
+    ).toBe(400)
+  })
+
+  it('says 409 when the lease moved on, 422 (and fails the attempt) when the report does not match, 500 otherwise', async () => {
+    service.createServiceClient.mockReturnValue(
+      database({ rpcError: { record_email_render: 'PT409' } })
+    )
+    const moved = await post(drawn)
+    expect(moved.status).toBe(409)
+    expect(await moved.json()).toEqual({
+      error: 'Preview not recorded',
+      code: 'PT409'
+    })
+    const wrong = database({ rpcError: { record_email_render: '23514' } })
+    service.createServiceClient.mockReturnValue(wrong)
+    expect((await post(drawn)).status).toBe(422)
+    expect(last(wrong, 'fail_email_render')).toEqual({
+      job,
+      lease,
+      failure: 'failed'
+    })
+    service.createServiceClient.mockReturnValue(
+      database({ rpcError: { fail_email_render: 'XX000' } })
+    )
+    expect((await post({ job, lease, failure: 'timeout' })).status).toBe(500)
   })
 })
