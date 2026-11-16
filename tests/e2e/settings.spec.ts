@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { login } from './accounts'
 import { newOwner } from './new-owner'
 
-test('UI-SETa the owner sets the max discount and adds and retires a code', async ({
+test('UI-SETa the owner sets the biggest discount and adds and removes a code', async ({
   page
 }) => {
   await newOwner(page, { prefix: 'settings', name: 'Settings studio' })
@@ -23,15 +23,17 @@ test('UI-SETa the owner sets the max discount and adds and retires a code', asyn
     /^[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2} \d{4} · \d{1,2}:\d{2} [AP]M$/
   )
 
-  const max = page.getByRole('region', { name: 'Max discount' })
+  const max = page.getByRole('region', { name: 'Biggest discount' })
   await expect(max).toContainText('Not set')
   await max.getByLabel('Percent off, 0 to 100').fill('120')
-  await max.getByRole('button', { name: 'Save max discount' }).click()
+  await max.getByRole('button', { name: 'Save biggest discount' }).click()
   await expect(
     max.getByText('Enter a whole number from 0 to 100.')
   ).toBeVisible()
+  // A refusal keeps what was typed.
+  await expect(max.getByLabel('Percent off, 0 to 100')).toHaveValue('120')
   await max.getByLabel('Percent off, 0 to 100').fill('20')
-  await max.getByRole('button', { name: 'Save max discount' }).click()
+  await max.getByRole('button', { name: 'Save biggest discount' }).click()
   await expect(
     max.getByText('Saved. New emails offer at most 20% off.')
   ).toBeVisible()
@@ -48,8 +50,22 @@ test('UI-SETa the owner sets the max discount and adds and retires a code', asyn
   ).toBeVisible()
   const row = codes.getByRole('listitem').filter({ hasText: 'WELCOME15' })
   await expect(row).toContainText('15% off · No end date')
-  await row.getByRole('button', { name: 'Retire' }).click()
+  // The same code again is refused, and the fields keep it.
+  await codes.getByLabel('Code', { exact: true }).fill('WELCOME15')
+  await codes.getByLabel('Percent off', { exact: true }).fill('15')
+  await codes.getByRole('button', { name: 'Add code' }).click()
+  await expect(
+    codes.getByText('WELCOME15 is already in your list.')
+  ).toBeVisible()
+  await expect(codes.getByLabel('Code', { exact: true })).toHaveValue(
+    'WELCOME15'
+  )
+  await codes.getByRole('button', { name: 'Remove: WELCOME15' }).click()
   await expect(row).toHaveCount(0)
+  // The answer stays though its row has gone.
+  await expect(
+    codes.getByText('Removed. New emails will not use it.')
+  ).toBeVisible()
 
   // Klaviyo is not connected here; the team and the account link on.
   const klaviyo = page.getByRole('region', { name: 'Klaviyo', exact: true })
@@ -80,9 +96,9 @@ test('UI-SETa staff see Settings without the owner’s controls', async ({
     page.getByRole('heading', { name: 'Settings', level: 1 })
   ).toBeVisible()
   for (const name of [
-    'Save max discount',
+    'Save biggest discount',
     'Add code',
-    'Retire',
+    'Remove',
     'Connect Klaviyo',
     'Change key',
     'Disconnect',

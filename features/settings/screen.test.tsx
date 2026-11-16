@@ -1,9 +1,16 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
-vi.mock('next/font/google', () => ({
-  Urbanist: () => ({ variable: 'urbanist-variable' })
+vi.mock('@/features/auth/presentation/actions', () => ({
+  signOut: vi.fn(async () => undefined)
 }))
 vi.mock('@/features/connections/actions', () => ({
   connectKlaviyo: vi.fn(async () => ({})),
@@ -19,12 +26,11 @@ vi.mock('./timezone-actions', () => ({
   switchToKlaviyoTimezone: vi.fn(async () => ({}))
 }))
 
+import { disconnectKlaviyo } from '@/features/connections/actions'
 import type { SettingsView } from './page-model'
 import { SettingsScreen } from './screen'
 
 afterEach(cleanup)
-
-const key = 'pk_abcdefghijklmnopqrstuvwxyz1234'
 
 function view(over: Partial<SettingsView> = {}): SettingsView {
   return {
@@ -104,11 +110,13 @@ describe('Settings screen (UI-SETa)', () => {
     )
   })
 
-  it('shows the max discount and saves it with its revision', () => {
+  it('shows the biggest discount and saves it with its revision', () => {
     render(<SettingsScreen view={view()} />)
-    const max = card('Max discount')
+    const max = card('Biggest discount')
     expect(max).toHaveTextContent('20%')
-    const save = within(max).getByRole('button', { name: 'Save max discount' })
+    const save = within(max).getByRole('button', {
+      name: 'Save biggest discount'
+    })
     expect(formOf(save)).toEqual({ revision: '3', percent: '20' })
     expect(save.className).toContain('bg-[var(--forest)]')
     cleanup()
@@ -117,11 +125,13 @@ describe('Settings screen (UI-SETa)', () => {
         view={view({ offers: { ...view().offers!, maxDiscountPercent: null } })}
       />
     )
-    expect(card('Max discount')).toHaveTextContent('Not set')
-    expect(card('Max discount')).toHaveTextContent('Emails offer no discount.')
+    expect(card('Biggest discount')).toHaveTextContent('Not set')
+    expect(card('Biggest discount')).toHaveTextContent(
+      'Emails offer no discount.'
+    )
   })
 
-  it('lists the codes, each with Retire, and adds a code', () => {
+  it('lists the codes, each with its own Remove, and adds a code', () => {
     render(<SettingsScreen view={view()} />)
     const codes = card('Discount codes')
     const rows = within(codes).getAllByRole('listitem')
@@ -133,7 +143,7 @@ describe('Settings screen (UI-SETa)', () => {
     )
     expect(rows[2]).toHaveTextContent('10% off · Ended Nov 1, 2026')
     expect(
-      formOf(within(rows[1]!).getByRole('button', { name: 'Retire' }))
+      formOf(within(rows[1]!).getByRole('button', { name: 'Remove: BIG30' }))
     ).toEqual({ id: '00000000-0000-4000-8000-0000000000c2' })
     const add = within(codes).getByRole('button', { name: 'Add code' })
     expect(Object.keys(formOf(add))).toEqual(['code', 'percent', 'expires'])
@@ -151,7 +161,7 @@ describe('Settings screen (UI-SETa)', () => {
   })
 
   it('shows a working Klaviyo connection by its masked hint, never the key', () => {
-    const { container } = render(<SettingsScreen view={view()} />)
+    render(<SettingsScreen view={view()} />)
     const klaviyo = card('Klaviyo')
     expect(within(klaviyo).queryByText(/In Klaviyo|Needs you/)).toBeNull()
     expect(klaviyo).toHaveTextContent('Cedar Lane (sample)')
@@ -166,7 +176,31 @@ describe('Settings screen (UI-SETa)', () => {
     expect(
       within(klaviyo).getByRole('button', { name: 'Disconnect' })
     ).toBeInTheDocument()
-    expect(container.innerHTML).not.toContain(key)
+    expect(klaviyo).not.toHaveTextContent('more access')
+  })
+
+  it('asks before Disconnect, and names what the key cannot do yet', async () => {
+    const ask = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(
+      <SettingsScreen
+        view={view({
+          klaviyo: { ...view().klaviyo!, missingLater: ['flows:read'] }
+        })}
+      />
+    )
+    expect(card('Klaviyo')).toHaveTextContent(
+      'Later, to read your flows, GROS needs a key with more access.'
+    )
+    await userEvent.click(
+      within(card('Klaviyo')).getByRole('button', { name: 'Disconnect' })
+    )
+    await waitFor(() =>
+      expect(ask).toHaveBeenCalledWith(
+        expect.stringContaining('GROS stops reading it')
+      )
+    )
+    expect(disconnectKlaviyo).not.toHaveBeenCalled()
+    ask.mockRestore()
   })
 
   it('says when Klaviyo needs the owner, with one main button', () => {
@@ -202,7 +236,6 @@ describe('Settings screen (UI-SETa)', () => {
     expect(card('Klaviyo')).toHaveTextContent(
       'Sample connection. Paste your real key'
     )
-    expect(card('Klaviyo')).toHaveTextContent('We check the key with Klaviyo')
   })
 
   it('shows the timezone, and offers Klaviyo’s when it differs', () => {
@@ -261,12 +294,25 @@ describe('Settings screen (UI-SETa)', () => {
     expect(
       within(account).getByRole('link', { name: 'Change' })
     ).toHaveAttribute('href', '/profile')
+    expect(
+      within(account).getByRole('button', { name: 'Log out' })
+    ).toBeVisible()
+    cleanup()
+    // Without a name, the email shows once.
+    render(
+      <SettingsScreen
+        view={view({ account: { name: '', email: 'owner@cedarlane.example' } })}
+      />
+    )
+    expect(
+      within(card('Account')).getAllByText('owner@cedarlane.example')
+    ).toHaveLength(1)
   })
 
   it('lets an admin change offers only, and staff change nothing', () => {
     render(<SettingsScreen view={view({ owner: false })} />)
     expect(
-      screen.getByRole('button', { name: 'Save max discount' })
+      screen.getByRole('button', { name: 'Save biggest discount' })
     ).toBeVisible()
     expect(screen.getByRole('button', { name: 'Add code' })).toBeVisible()
     expect(screen.queryByLabelText(/private API key/i)).toBeNull()
@@ -305,7 +351,9 @@ describe('Settings screen (UI-SETa)', () => {
         })}
       />
     )
-    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Log out'
+    ])
     expect(screen.queryByRole('textbox')).toBeNull()
     expect(card('Timezone')).toHaveTextContent(
       'The workspace owner can switch to it.'
@@ -327,7 +375,7 @@ describe('Settings screen (UI-SETa)', () => {
     })
     render(<SettingsScreen view={unread} />)
     for (const [name, words] of [
-      ['Max discount', 'Your offers could not be read just now.'],
+      ['Biggest discount', 'Your offers could not be read just now.'],
       ['Discount codes', 'Your offers could not be read just now.'],
       ['Klaviyo', 'The Klaviyo connection could not be read just now.'],
       ['Timezone', 'The timezone could not be read just now.'],
@@ -335,9 +383,23 @@ describe('Settings screen (UI-SETa)', () => {
       ['Account', 'Your account could not be read just now.']
     ])
       expect(card(name)).toHaveTextContent(words)
-    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Log out'
+    ])
     cleanup()
     render(<SettingsScreen view={{ ...unread, demo: true }} />)
     expect(screen.getAllByText('Nothing is kept in the demo.')).toHaveLength(6)
+    cleanup()
+    // The demo's timezone shows, but cannot be saved.
+    render(
+      <SettingsScreen
+        view={{ ...unread, demo: true, timezone: view().timezone }}
+      />
+    )
+    expect(card('Timezone')).toHaveTextContent('Asia/Kathmandu (UTC+05:45)')
+    expect(card('Timezone')).toHaveTextContent('Nothing is kept in the demo.')
+    expect(
+      within(card('Timezone')).queryByRole('button', { name: 'Save timezone' })
+    ).toBeNull()
   })
 })

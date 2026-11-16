@@ -17,6 +17,7 @@ async function connectSampleKlaviyo(page: Page) {
     card.getByText(/Klaviyo connected with sample data/)
   ).toBeVisible()
   await expect(card.getByText('Needs you')).toHaveCount(0)
+  await expect(card.getByLabel(/private API key/)).toHaveValue('')
   await expect(card.getByText(`Key ${key.slice(0, 8)}••••••••`)).toBeVisible()
   expect(await page.content()).not.toContain(key)
 }
@@ -76,6 +77,19 @@ test('UIR-023 Klaviyo sets the brand timezone; the owner can change it and switc
   ).toBeVisible()
   await expect(
     card.getByText('From your Klaviyo account (sample connection).')
+  ).toBeVisible()
+
+  // Disconnect asks first, then says what happened to the key.
+  const klaviyo = page.getByRole('region', { name: 'Klaviyo', exact: true })
+  page.once('dialog', (dialog) => void dialog.accept())
+  await klaviyo.getByRole('button', { name: 'Disconnect' }).click()
+  await expect(
+    klaviyo.getByText(
+      /The key is deleted here; it still works in Klaviyo until you delete it there\./
+    )
+  ).toBeVisible()
+  await expect(
+    klaviyo.getByRole('button', { name: 'Connect Klaviyo' })
   ).toBeVisible()
 })
 

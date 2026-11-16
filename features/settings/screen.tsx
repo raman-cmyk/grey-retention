@@ -1,11 +1,12 @@
 import { TicketPercent } from 'lucide-react'
-import { ActionButton } from '@/components/gros/action'
-import { ButtonLink } from '@/components/gros/button'
+import { ActionAnswers, ActionButton } from '@/components/gros/action'
+import { Button, ButtonLink } from '@/components/gros/button'
 import { Card, Tile } from '@/components/gros/card'
 import { Field } from '@/components/gros/input'
 import { ListRow, RowList } from '@/components/gros/list-row'
-import { AppPage, CardRow } from '@/components/gros/nav'
+import { AppPage, CardRow, defaultAssistant } from '@/components/gros/nav'
 import { Status } from '@/components/gros/status'
+import { signOut } from '@/features/auth/presentation/actions'
 import {
   connectKlaviyo,
   disconnectKlaviyo
@@ -21,11 +22,13 @@ import type { SettingsPart, SettingsView } from './page-model'
 import { saveBrandTimezone, switchToKlaviyoTimezone } from './timezone-actions'
 
 /**
- * Settings (UI-SETa) on the GROS components: the max discount, the codes,
+ * Settings (UI-SETa) on the GROS components: the biggest discount, codes,
  * Klaviyo, the timezone, the team and the account, one card each. The
  * buttons call the existing server actions, which check the role again:
  * owners and admins change offers; only the owner changes Klaviyo and the
- * timezone. A Klaviyo key is never shown back: only its masked hint.
+ * timezone. A Klaviyo key is never shown back: only its masked hint. A
+ * card's answers show in one place (`ActionAnswers`), so an answer stays
+ * when its button goes with the change it made (Remove, Disconnect).
  */
 export function SettingsScreen({ view }: { view: SettingsView }) {
   return (
@@ -70,15 +73,15 @@ function Title({ text }: { text: string }) {
 }
 
 function MaxDiscountCard({ view }: { view: SettingsView }) {
-  const label = 'Max discount'
+  const title = 'Biggest discount'
   const offers = view.offers
   return (
-    <Card label={label}>
+    <Card label={title}>
       <div className="flex flex-col gap-[var(--space-5)]">
+        <Title text={title} />
         {offers ? (
           <>
             <div className="flex flex-col gap-[var(--space-1)]">
-              <p className="type-label text-[var(--stone)]">{label}</p>
               <p className="type-number-lg">
                 {offers.maxDiscountPercent === null
                   ? 'Not set'
@@ -94,7 +97,7 @@ function MaxDiscountCard({ view }: { view: SettingsView }) {
             {view.editor ? (
               <ActionButton
                 action={saveMaxDiscount}
-                label="Save max discount"
+                label="Save biggest discount"
                 fields={{ revision: String(offers.revision) }}
               >
                 <Field
@@ -109,10 +112,7 @@ function MaxDiscountCard({ view }: { view: SettingsView }) {
             ) : null}
           </>
         ) : (
-          <>
-            <Title text={label} />
-            <Unread view={view} part="offers" />
-          </>
+          <Unread view={view} part="offers" />
         )}
       </div>
     </Card>
@@ -152,58 +152,65 @@ function CodesCard({ view }: { view: SettingsView }) {
   return (
     <Card label={title}>
       <div className="flex flex-col gap-[var(--space-5)]">
-        <Title text={title} />
-        {!offers ? (
-          <Unread view={view} part="offers" />
-        ) : offers.codes.length === 0 ? (
-          <p className="type-body text-[var(--stone)]">
-            No codes yet. Emails will not mention a code.
-          </p>
-        ) : (
-          <RowList label={title}>
-            {offers.codes.map((code) => (
-              <ListRow
-                key={code.id}
-                thumbnail={<CodeThumb />}
-                title={code.code}
-                details={codeDetails(code, offers.maxDiscountPercent, timezone)}
-                end={
-                  view.editor ? (
-                    <ActionButton
-                      action={retireDiscountCode}
-                      label="Retire"
-                      kind="quiet"
-                      size="row"
-                      fields={{ id: code.id }}
-                    />
-                  ) : null
-                }
-              />
-            ))}
-          </RowList>
-        )}
-        {offers && view.editor ? (
-          <ActionButton action={addDiscountCode} label="Add code">
-            <div className="grid gap-[var(--space-4)] sm:grid-cols-3">
-              <Field
-                label="Code"
-                name="code"
-                autoComplete="off"
-                spellCheck={false}
-                maxLength={40}
-                required
-              />
-              <Field
-                label="Percent off"
-                name="percent"
-                inputMode="numeric"
-                autoComplete="off"
-                required
-              />
-              <Field label="Ends (optional)" name="expires" type="date" />
-            </div>
-          </ActionButton>
-        ) : null}
+        <ActionAnswers>
+          <Title text={title} />
+          {!offers ? (
+            <Unread view={view} part="offers" />
+          ) : offers.codes.length === 0 ? (
+            <p className="type-body text-[var(--stone)]">
+              No codes yet. Emails will not mention a code.
+            </p>
+          ) : (
+            <RowList label={title}>
+              {offers.codes.map((code) => (
+                <ListRow
+                  key={code.id}
+                  thumbnail={<CodeThumb />}
+                  title={code.code}
+                  details={codeDetails(
+                    code,
+                    offers.maxDiscountPercent,
+                    timezone
+                  )}
+                  end={
+                    view.editor ? (
+                      <ActionButton
+                        action={retireDiscountCode}
+                        label="Remove"
+                        spokenLabel={code.code}
+                        kind="outline"
+                        size="row"
+                        fields={{ id: code.id }}
+                      />
+                    ) : null
+                  }
+                />
+              ))}
+            </RowList>
+          )}
+          {offers && view.editor ? (
+            <ActionButton action={addDiscountCode} label="Add code">
+              <div className="grid gap-[var(--space-4)] sm:grid-cols-3">
+                <Field
+                  label="Code"
+                  name="code"
+                  autoComplete="off"
+                  spellCheck={false}
+                  maxLength={40}
+                  required
+                />
+                <Field
+                  label="Percent off"
+                  name="percent"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  required
+                />
+                <Field label="Ends (optional)" name="expires" type="date" />
+              </div>
+            </ActionButton>
+          ) : null}
+        </ActionAnswers>
       </div>
     </Card>
   )
@@ -248,73 +255,86 @@ function KlaviyoCard({ view }: { view: SettingsView }) {
   const checked = k.checkedAt
     ? formatBrandDate(k.checkedAt, view.timezone?.saved ?? 'UTC')
     : null
+  // What the key cannot do yet, for steps that come later.
+  const later = [
+    k.missingLater.includes('flows:read') ? 'read your flows' : '',
+    k.missingLater.some((s) => s !== 'flows:read') ? 'send emails' : ''
+  ].filter(Boolean)
   return (
     <Card label={title}>
       <div className="flex flex-col gap-[var(--space-5)]">
-        <div className="flex flex-wrap items-center justify-between gap-[var(--space-3)]">
-          <Title text={title} />
-          {/* A working connection needs no pill (In Klaviyo is a draft's
+        <ActionAnswers>
+          <div className="flex flex-wrap items-center justify-between gap-[var(--space-3)]">
+            <Title text={title} />
+            {/* A working connection needs no pill (In Klaviyo is a draft's
               word); Needs you only when the owner must act. */}
-          {!working && view.owner ? <Status kind="needs_you" /> : null}
-        </div>
-        {linked || problem ? (
-          <div className="flex flex-col gap-[var(--space-1)]">
-            {linked ? (
-              <p className="type-body-strong">
-                {k.accountLabel ?? 'Sample account'}
-              </p>
-            ) : null}
-            <p className="type-caption text-[var(--stone)]">
-              {[
-                k.keyHint ? `Key ${k.keyHint}` : '',
-                k.mode === 'sample'
-                  ? 'Sample data. Nothing is sent to Klaviyo.'
-                  : checked
-                    ? `Checked ${checked}`
-                    : ''
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </p>
-            {problem ? (
-              <p className="type-body text-[var(--signal-ink)]">{problem}</p>
-            ) : null}
+            {!working && view.owner ? <Status kind="needs_you" /> : null}
           </div>
-        ) : (
-          <p className="type-body text-[var(--stone)]">Not connected.</p>
-        )}
-        {view.owner ? (
-          <ActionButton
-            action={connectKlaviyo}
-            label={
-              working ? 'Change key' : problem ? 'Reconnect' : 'Connect Klaviyo'
-            }
-            kind={working ? 'outline' : 'main'}
-          >
-            <Field
-              label={working ? 'New private API key' : 'Private API key'}
-              name="apiKey"
-              {...secret}
-            />
-            <p className="type-caption text-[var(--stone)]">
-              {view.liveKeys
-                ? 'We check the key with Klaviyo, then keep it encrypted.'
-                : 'Sample mode: we check the format only and keep a masked hint, never the key.'}
+          {linked || problem ? (
+            <div className="flex flex-col gap-[var(--space-1)]">
+              {linked ? (
+                <p className="type-body-strong">
+                  {k.accountLabel ?? 'Sample account'}
+                </p>
+              ) : null}
+              <p className="type-caption text-[var(--stone)]">
+                {[
+                  k.keyHint ? `Key ${k.keyHint}` : '',
+                  k.mode === 'sample'
+                    ? 'Sample data. Nothing is sent to Klaviyo.'
+                    : checked
+                      ? `Checked ${checked}`
+                      : ''
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+              {problem ? (
+                <p className="type-body text-[var(--signal-ink)]">{problem}</p>
+              ) : null}
+              {working && later.length ? (
+                <p className="type-caption text-[var(--stone)]">
+                  Later, to {later.join(' and ')}, {defaultAssistant} needs a
+                  key with more access.
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="type-body text-[var(--stone)]">Not connected.</p>
+          )}
+          {view.owner ? (
+            <ActionButton
+              action={connectKlaviyo}
+              label={
+                working
+                  ? 'Change key'
+                  : problem
+                    ? 'Reconnect'
+                    : 'Connect Klaviyo'
+              }
+              kind={working ? 'outline' : 'main'}
+              clear="always"
+            >
+              <Field
+                label={working ? 'New private API key' : 'Private API key'}
+                name="apiKey"
+                {...secret}
+              />
+            </ActionButton>
+          ) : (
+            <p className="type-body text-[var(--stone)]">
+              Only the workspace owner can change Klaviyo.
             </p>
-          </ActionButton>
-        ) : (
-          <p className="type-body text-[var(--stone)]">
-            Only the workspace owner can change Klaviyo.
-          </p>
-        )}
-        {view.owner && k.status !== 'none' && k.status !== 'disconnected' ? (
-          <ActionButton
-            action={disconnectKlaviyo}
-            label="Disconnect"
-            kind="quiet"
-            confirm="Disconnect Klaviyo? GROS stops reading it and the key is deleted here. Drafts already in Klaviyo stay there."
-          />
-        ) : null}
+          )}
+          {view.owner && k.status !== 'none' && k.status !== 'disconnected' ? (
+            <ActionButton
+              action={disconnectKlaviyo}
+              label="Disconnect"
+              kind="quiet"
+              confirm={`Disconnect Klaviyo? ${defaultAssistant} stops reading it and the key is deleted here. Drafts already in Klaviyo stay there.`}
+            />
+          ) : null}
+        </ActionAnswers>
       </div>
     </Card>
   )
@@ -332,71 +352,75 @@ function TimezoneCard({ view }: { view: SettingsView }) {
   const zone = view.timezone
   // The sample connection's timezone is the sample's, so say so.
   const sample = view.klaviyo?.mode !== 'live' ? ' (sample connection)' : ''
+  // Nothing is kept in the demo, so it offers no change.
+  const owner = view.owner && !view.demo
   return (
     <Card label={title}>
       <div className="flex flex-col gap-[var(--space-5)]">
-        <Title text={title} />
-        {!zone ? (
-          <Unread view={view} part="timezone" />
-        ) : (
-          <>
-            <div className="flex flex-col gap-[var(--space-1)]">
-              <p className="type-body-strong">{zone.label}</p>
-              <p className="type-caption text-[var(--stone)]">
-                {zone.source === 'klaviyo'
-                  ? `From your Klaviyo account${sample}.`
-                  : sourceWords[zone.source]}
-              </p>
-              <p className="type-caption text-[var(--stone)]">
-                Now <time dateTime={zone.at}>{zone.localTime}</time>
-              </p>
-            </div>
-            {zone.klaviyo ? (
-              <div className="flex flex-col gap-[var(--space-3)]">
-                <p className="type-body">
-                  Your Klaviyo account{sample} uses {zone.klaviyo.label}.
-                  {view.owner
-                    ? ' Use it, so times here match Klaviyo.'
-                    : ' The workspace owner can switch to it.'}
+        <ActionAnswers>
+          <Title text={title} />
+          {!zone ? (
+            <Unread view={view} part="timezone" />
+          ) : (
+            <>
+              <div className="flex flex-col gap-[var(--space-1)]">
+                <p className="type-body-strong">{zone.label}</p>
+                <p className="type-caption text-[var(--stone)]">
+                  {zone.source === 'klaviyo'
+                    ? `From your Klaviyo account${sample}.`
+                    : sourceWords[zone.source]}
                 </p>
-                {view.owner ? (
-                  <ActionButton
-                    action={switchToKlaviyoTimezone}
-                    label="Use Klaviyo’s timezone"
-                    fields={{
-                      klaviyoTimezone: zone.klaviyo.zone,
-                      expected: zone.saved
-                    }}
-                  />
-                ) : null}
+                <p className="type-caption text-[var(--stone)]">
+                  Now <time dateTime={zone.at}>{zone.localTime}</time>
+                </p>
               </div>
-            ) : null}
-            {view.owner ? (
-              <ActionButton
-                action={saveBrandTimezone}
-                label="Save timezone"
-                kind={zone.klaviyo ? 'outline' : 'main'}
-                fields={{ expected: zone.saved }}
-                keep
-              >
-                <Field
-                  label="Change timezone"
-                  name="timezone"
-                  list="settings-timezones"
-                  autoComplete="off"
-                  spellCheck={false}
-                  defaultValue={zone.saved}
-                  required
-                />
-                <datalist id="settings-timezones">
-                  {zone.options.map((option) => (
-                    <option key={option} value={option} />
-                  ))}
-                </datalist>
-              </ActionButton>
-            ) : null}
-          </>
-        )}
+              {zone.klaviyo ? (
+                <div className="flex flex-col gap-[var(--space-3)]">
+                  <p className="type-body">
+                    Your Klaviyo account{sample} uses {zone.klaviyo.label}.
+                    {owner
+                      ? ' Use it, so times here match Klaviyo.'
+                      : ' The workspace owner can switch to it.'}
+                  </p>
+                  {owner ? (
+                    <ActionButton
+                      action={switchToKlaviyoTimezone}
+                      label="Use Klaviyo’s timezone"
+                      fields={{
+                        klaviyoTimezone: zone.klaviyo.zone,
+                        expected: zone.saved
+                      }}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+              {view.demo ? <Unread view={view} part="timezone" /> : null}
+              {owner ? (
+                <ActionButton
+                  action={saveBrandTimezone}
+                  label="Save timezone"
+                  kind={zone.klaviyo ? 'outline' : 'main'}
+                  fields={{ expected: zone.saved }}
+                >
+                  <Field
+                    label="Change timezone"
+                    name="timezone"
+                    list="settings-timezones"
+                    autoComplete="off"
+                    spellCheck={false}
+                    defaultValue={zone.saved}
+                    required
+                  />
+                  <datalist id="settings-timezones">
+                    {zone.options.map((option) => (
+                      <option key={option} value={option} />
+                    ))}
+                  </datalist>
+                </ActionButton>
+              ) : null}
+            </>
+          )}
+        </ActionAnswers>
       </div>
     </Card>
   )
@@ -441,10 +465,19 @@ function AccountCard({ view }: { view: SettingsView }) {
         ) : (
           <div className="flex flex-col gap-[var(--space-1)]">
             <p className="type-body-strong">{account.name || account.email}</p>
-            <p className="type-caption text-[var(--stone)]">{account.email}</p>
+            {account.name ? (
+              <p className="type-caption text-[var(--stone)]">
+                {account.email}
+              </p>
+            ) : null}
           </div>
         )}
-        <ButtonLink href="/profile" label="Change" kind="quiet" size="row" />
+        <div className="flex flex-wrap gap-[var(--space-3)]">
+          <ButtonLink href="/profile" label="Change" kind="quiet" size="row" />
+          <form action={signOut}>
+            <Button type="submit" label="Log out" kind="quiet" size="row" />
+          </form>
+        </div>
       </div>
     </Card>
   )

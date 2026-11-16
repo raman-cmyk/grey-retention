@@ -1,7 +1,8 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ActionButton } from './action'
+import { ActionAnswers, ActionButton } from './action'
 
 afterEach(cleanup)
 
@@ -78,39 +79,72 @@ describe('ActionButton (UI-HOMEb)', () => {
     expect(screen.getByLabelText('Code')).toHaveValue('')
   })
 
-  it('keeps what was typed with keep, and asks first with confirm', async () => {
+  it('keeps what was typed after a refusal, except a key, which always clears', async () => {
     const user = userEvent.setup()
     const save = vi.fn(async () => ({
       error: 'Choose a timezone from the list.'
     }))
     render(
-      <ActionButton action={save} label="Save timezone" keep>
-        <label>
-          Zone
-          <input name="timezone" />
-        </label>
-      </ActionButton>
+      <>
+        <ActionButton action={save} label="Save timezone">
+          <label>
+            Zone
+            <input name="timezone" />
+          </label>
+        </ActionButton>
+        <ActionButton action={save} label="Connect" clear="always">
+          <label>
+            Key
+            <input name="apiKey" />
+          </label>
+        </ActionButton>
+      </>
     )
     await user.type(screen.getByLabelText('Zone'), 'Mars/Base')
     await user.click(screen.getByRole('button', { name: 'Save timezone' }))
-    await waitFor(() => expect(save).toHaveBeenCalledOnce())
     await waitFor(() =>
       expect(
         screen.getByRole('button', { name: 'Save timezone' })
       ).toHaveAccessibleDescription('Choose a timezone from the list.')
     )
     expect(screen.getByLabelText('Zone')).toHaveValue('Mars/Base')
-    cleanup()
+    await user.type(screen.getByLabelText('Key'), 'pk_secret')
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Connect' })
+      ).toHaveAccessibleDescription('Choose a timezone from the list.')
+    )
+    await waitFor(() => expect(screen.getByLabelText('Key')).toHaveValue(''))
+  })
 
+  it('asks first with confirm, and names each of many buttons', async () => {
+    const user = userEvent.setup()
     const disconnect = vi.fn(async () => ({}))
     const ask = vi.spyOn(window, 'confirm').mockReturnValue(false)
     render(
-      <ActionButton
-        action={disconnect}
-        label="Disconnect"
-        confirm="Disconnect?"
-      />
+      <>
+        <ActionButton
+          action={disconnect}
+          label="Disconnect"
+          confirm="Disconnect?"
+        />
+        <ActionButton
+          action={disconnect}
+          label="Remove"
+          spokenLabel="WELCOME15"
+        />
+        <ActionButton
+          action={disconnect}
+          label="Remove"
+          spokenLabel="Remove: BIG30"
+        />
+      </>
     )
+    expect(
+      screen.getByRole('button', { name: 'Remove: WELCOME15' })
+    ).toHaveTextContent('Remove')
+    expect(screen.getByRole('button', { name: 'Remove: BIG30' })).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Disconnect' }))
     expect(ask).toHaveBeenCalledWith('Disconnect?')
     expect(disconnect).not.toHaveBeenCalled()
@@ -118,5 +152,36 @@ describe('ActionButton (UI-HOMEb)', () => {
     await user.click(screen.getByRole('button', { name: 'Disconnect' }))
     await waitFor(() => expect(disconnect).toHaveBeenCalledOnce())
     ask.mockRestore()
+  })
+
+  it('keeps a card’s answer when the button that gave it goes away', async () => {
+    const user = userEvent.setup()
+    function Codes() {
+      const [codes, setCodes] = useState(['WELCOME15'])
+      const remove = async () => {
+        setCodes([])
+        return { message: 'Removed. New emails will not use it.' }
+      }
+      return (
+        <ActionAnswers>
+          {codes.map((code) => (
+            <ActionButton
+              key={code}
+              action={remove}
+              label="Remove"
+              spokenLabel={code}
+            />
+          ))}
+        </ActionAnswers>
+      )
+    }
+    render(<Codes />)
+    await user.click(screen.getByRole('button', { name: 'Remove: WELCOME15' }))
+    await waitFor(() =>
+      expect(
+        screen.getByText('Removed. New emails will not use it.')
+      ).toBeVisible()
+    )
+    expect(screen.queryByRole('button')).toBeNull()
   })
 })
