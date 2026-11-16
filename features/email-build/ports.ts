@@ -1,3 +1,4 @@
+import type { PastSubject } from './subject-traits'
 import type { BlockBrand } from '@/features/blocks/brand'
 import { sampleBrand } from '@/features/blocks/samples'
 import {
@@ -70,6 +71,12 @@ export type Store = {
    * sample store.
    */
   customerWords?: string[]
+  /**
+   * PIC-26 part 2: the subjects the store sent and how they were opened
+   * (its Klaviyo history, `pastSubjects`), for the subject line lab.
+   * Absent for the sample store and before a history read.
+   */
+  pastSubjects?: PastSubject[]
 }
 
 /**
