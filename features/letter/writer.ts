@@ -13,12 +13,17 @@ import { eligibleProducts } from '@/features/assembly/inputs'
 import { checkCopy, type QaRule } from '@/features/copy-qa/check'
 import type { LockedContent } from '@/features/email-build/content'
 import { rewriteRounds, strayPrices } from '@/features/email-build/inspect'
+import {
+  letterReading,
+  readingRule
+} from '@/features/email-build/reading-level'
 import { keyPart, ruleWords } from '@/features/fallback/entry'
 import type { FallbackLog } from '@/features/fallback/log'
 import type { AgentCtx } from '@/features/strategy/retry'
 import { letterProblems, type LetterProblem } from './checks'
 import {
   letterSchema,
+  letterText,
   letterWords,
   offerLine,
   seenText,
@@ -143,14 +148,17 @@ type LetterTask = { brief: LetterBrief; feedback: CopyFeedback[] }
 
 /** The Letter writer for one brief (the customers' own words when it has them, ONB-061). */
 export const letterWriter = (
-  brief: LetterBrief
+  brief: LetterBrief,
+  /** The store's industry: its reading level (DST-PIC #28). */
+  industry: string | null = null
 ): AgentDefinition<LetterTask, LetterAnswer> => ({
   name: 'letter-writer',
   version: letterWriterVersion,
   purpose: 'copy',
   instructions: [
     ...letterInstructions,
-    ...customerWordsRules(brief.locked.input)
+    ...customerWordsRules(brief.locked.input),
+    readingRule(industry)
   ].join('\n'),
   task: ({ brief, feedback }) =>
     writerData(
@@ -344,6 +352,7 @@ type Cause = keyof typeof causes
 const letterRuleWords: Record<string, string> = {
   letter_too_short: 'a letter too short',
   letter_too_long: 'a letter too long',
+  reading_level: 'words too hard to read',
   too_many_links: 'too many links',
   unknown_link: 'a link the letter does not have',
   empty_link: 'a link on no words',
@@ -395,7 +404,7 @@ export async function writeLetter(
   let cause: Cause = 'check_failed'
   let tries = 0
   let runId: string | undefined
-  const writer = letterWriter(brief)
+  const writer = letterWriter(brief, ctx.industry)
   // A code in a reason (copy QA's "Use exactly: …") is never given back.
   const codes = brief.locked.input.codes.map((c) => c.code).filter(Boolean)
   const noCodes = (text: string) =>
@@ -443,7 +452,12 @@ export async function writeLetter(
     }
     const found = [
       ...checks(letter.data),
-      ...letterFindings(letter.data, brief)
+      ...letterFindings(letter.data, brief),
+      // DST-PIC #28: the industry's reading level (the writer's words).
+      ...letterReading(letterText(letter.data).map(seenText), ctx.industry, [
+        brief.brandName,
+        ...brief.locked.input.products.map((p) => p.title)
+      ])
     ]
     if (!found.length)
       return { status: 'written', letter: letter.data, tries, runId }

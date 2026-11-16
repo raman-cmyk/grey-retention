@@ -92,9 +92,9 @@ const ok = (content: unknown): AiRunResult => ({
   settled: true
 })
 const filler = (n: number) =>
-  Array.from({ length: n }, (_, i) =>
-    i % 8 === 7 ? 'evening.' : 'quiet'
-  ).join(' ')
+  Array.from({ length: n }, (_, i) => (i % 8 === 7 ? 'light.' : 'warm')).join(
+    ' '
+  )
 /** A letter that passes every check. */
 const good: LetterAnswer = {
   subject: 'A note about our cedar candle',
@@ -102,7 +102,7 @@ const good: LetterAnswer = {
   greeting: 'Hi there,',
   body: [
     'We poured the first cedar candle in our own kitchen, for the long dark evenings.',
-    `Quiet ${filler(60)}`,
+    `Warm ${filler(60)}`,
     'If you would like one this week, [the candle is here](1), with a little off.'
   ],
   signoff: 'Warmly,',
