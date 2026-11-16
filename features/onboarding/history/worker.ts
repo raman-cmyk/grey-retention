@@ -27,6 +27,7 @@ import {
   type Flow,
   type ReportRow
 } from '@/lib/providers/klaviyo/history'
+import { recordVoiceSamples } from '@/features/letter/voice/samples'
 import { findingInput, type FindingInput } from '../findings'
 import { klaviyoCallMs } from '../catalog/worker'
 import {
@@ -42,8 +43,12 @@ import {
   type HistorySnapshot
 } from './facts'
 import { historianInput, readHistory, type HistorianRead } from './historian'
-import { recordVoiceSamples } from '@/features/letter/voice/samples'
-import { readOwnerVoice, voiceInputs, type VoiceRead } from './voice'
+import {
+  readOwnerVoice,
+  samplesToKeep,
+  voiceInputs,
+  type VoiceRead
+} from './voice'
 
 type Db = SupabaseClient<Database>
 type Job = Database['public']['Tables']['job_runs']['Row']
@@ -52,9 +57,14 @@ type Job = Database['public']['Tables']['job_runs']['Row']
 const codeOf = (error: unknown) =>
   error && typeof error === 'object' && 'code' in error
     ? String((error as { code: unknown }).code).slice(0, 40)
-    : error instanceof KlaviyoError
-      ? error.kind
-      : 'unknown'
+    : 'unknown'
+/** An error's class for the log ("TypeError"), never its message. */
+const nameOf = (error: unknown) => {
+  const name = error instanceof Error ? error.name : ''
+  return /^[A-Za-z]{1,40}$/.test(name) ? name : 'unknown'
+}
+/** Time kept after the last template read for its excerpts to be made. */
+export const voiceExcerptMs = 3_000
 
 /** The whole read, so it ends well inside the job's 90-second lease. */
 export const historyRunMs = 30_000
@@ -389,17 +399,22 @@ export async function readBrandHistory(
   // PIC-23 part 2b: the owner's voice from the emails they sent, while
   // time is left (an extra: it never stops the history read).
   let voice: VoiceRead | null = null
-  if (sent.length && more())
+  const voiceMore = () =>
+    now() + klaviyoMs + voiceExcerptMs + deps.callMs <= deadline
+  if (sent.length && voiceMore())
     try {
       voice = await readOwnerVoice({
         client: deps.client,
-        more,
+        more: voiceMore,
         sent: sentRead.records,
+        sentComplete: parts.sent,
         ...(await voiceInputs(db, job.tenant_id, brand.data.brand_name))
       })
     } catch (error) {
-      logger.warn('History read: the voice read left out', {
-        code: codeOf(error)
+      // A bug or the database: logged as such, and the history goes on.
+      logger.error('History read: the voice read left out', {
+        code: codeOf(error),
+        name: nameOf(error)
       })
     }
 
@@ -483,29 +498,35 @@ export async function readBrandHistory(
     flowsRead,
     live: deps.live
   })
-  if (voice?.samples)
+  if (voice)
     try {
-      const kept = await recordVoiceSamples(
-        db,
-        { id: job.id, lease: job.lease_token! },
-        voice.samples
+      const samples = await samplesToKeep(db, job.tenant_id, voice)
+      const voiceKept = samples
+        ? await recordVoiceSamples(
+            db,
+            { id: job.id, lease: job.lease_token! },
+            samples
+          )
+        : null
+      logger.info(
+        voiceKept === null
+          ? 'History read: voice samples kept as they were'
+          : 'History read: voice samples',
+        {
+          read: voice.read,
+          found: voice.found.length,
+          kept: voiceKept ?? 0,
+          whole: voice.authoritative,
+          ours: voice.ours,
+          stopped: voice.stopped ?? 'none'
+        }
       )
-      logger.info('History read: voice samples', {
-        read: voice.read,
-        kept,
-        ours: voice.ours,
-        stopped: voice.stopped
-      })
     } catch (error) {
-      logger.warn('History read: voice samples not kept', {
-        code: codeOf(error)
+      logger.error('History read: voice samples not kept', {
+        code: codeOf(error),
+        name: nameOf(error)
       })
     }
-  else if (voice)
-    logger.info('History read: voice samples kept as they were', {
-      read: voice.read,
-      stopped: voice.stopped
-    })
   const stored = await db.rpc('record_klaviyo_history', {
     job: job.id,
     lease: job.lease_token!,

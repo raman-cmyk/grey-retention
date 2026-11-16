@@ -4,6 +4,7 @@ import { voiceExcerpt } from '@/features/letter/voice/excerpt'
 import { ownWordsOf } from '@/features/letter/voice/names'
 import {
   pickVoiceSamples,
+  readVoiceSamples,
   type VoiceSample
 } from '@/features/letter/voice/samples'
 import type { MorePages } from '@/lib/providers/klaviyo/catalog'
@@ -29,60 +30,95 @@ import {
  *
  * The voice is an extra of the history read: Klaviyo refusing a template,
  * the key lacking `templates:read`, a rate limit or a refused key stop
- * only this step (the history goes on and is stored); a read that stopped
- * before it found anything keeps the samples an earlier read kept.
+ * only this step (the history goes on and is stored). Only a read that
+ * read every sent email's template (`authoritative`) replaces the samples
+ * (and clears them when none said enough); a read cut short merges what it
+ * found with the samples kept before (`samplesToKeep`), and one that found
+ * nothing keeps them as they were.
  */
 
 /** Sent emails tried, newest first, before reads stop at `maxBodyReads`. */
 const maxCandidates = maxBodyReads * 2
 
+/** Why a read stopped early, for the log: a closed list, never a message. */
+export type VoiceStop =
+  | 'rate_limited'
+  | 'bad_key'
+  | 'missing_scope'
+  | 'cap'
+  | 'time'
+  | 'unreadable'
+  | 'content_unknown'
+
 export type VoiceRead = {
-  /** The samples to keep; null: keep the ones an earlier read kept. */
-  samples: VoiceSample[] | null
-  /** Bodies read, and how many of them said enough to be a sample. */
+  /** The samples the read found (the excerpts that said enough). */
+  found: VoiceSample[]
+  /**
+   * True when every sent email's template was read (or is gone): what it
+   * found is all there is, so it replaces the samples, even with none.
+   */
+  authoritative: boolean
+  /** Bodies read. */
   read: number
-  excerpts: number
   /** Emails GROS drafted itself, left out. */
   ours: number
-  /** Why the read stopped early, when it did (a code for the log). */
-  stopped: 'scope_missing' | 'klaviyo' | 'time' | null
+  stopped: VoiceStop | null
 }
 
 /** The emails whose words may be the owner's, newest first. */
 export function voiceCandidates(
   sent: readonly CampaignMessage[],
   ours: ReadonlySet<string>
-): { candidates: CampaignMessage[]; ours: number } {
+): {
+  candidates: CampaignMessage[]
+  ours: number
+  /** Email messages whose template is not known (their content unread). */
+  unknown: number
+} {
   const emails = sent.filter(
-    (m) =>
-      m.status === 'sent' &&
-      (m.channel === null || m.channel === 'email') &&
-      !!m.templateId
+    (m) => m.status === 'sent' && (m.channel === null || m.channel === 'email')
   )
-  const mine = emails.filter((m) => m.campaignId && ours.has(m.campaignId))
+  const theirs: CampaignMessage[] = []
+  let mine = 0
+  let unknown = 0
+  for (const m of emails) {
+    if (m.campaignId && ours.has(m.campaignId)) mine++
+    else if (!m.templateId || !m.contentKnown) unknown++
+    else theirs.push(m)
+  }
   const time = (m: CampaignMessage) => (m.sendAt ? Date.parse(m.sendAt) : 0)
   return {
-    candidates: emails
-      .filter((m) => !mine.includes(m))
+    candidates: theirs
       .sort((a, b) => time(b) - time(a))
       .slice(0, maxCandidates),
-    ours: mine.length
+    ours: mine,
+    unknown
   }
 }
 
 /** Reads the owner's voice from the emails they sent (see above). Never throws for Klaviyo. */
 export async function readOwnerVoice(input: {
   client: KlaviyoClient
+  /** Whether another template may be read (time kept for the excerpts). */
   more: MorePages
   sent: readonly CampaignMessage[]
+  /** The sent emails were read whole (the history's own part). */
+  sentComplete: boolean
   /** The campaigns GROS drafted (`klaviyo_draft_pushes`). */
   ours: ReadonlySet<string>
   /** The store's own words: its name and product titles. */
   own: readonly string[]
 }): Promise<VoiceRead> {
-  const { candidates, ours } = voiceCandidates(input.sent, input.ours)
+  const { candidates, ours, unknown } = voiceCandidates(input.sent, input.ours)
+  const whole = input.sentComplete && unknown === 0
   if (!candidates.length)
-    return { samples: [], read: 0, excerpts: 0, ours, stopped: null }
+    return {
+      found: [],
+      authoritative: whole,
+      read: 0,
+      ours,
+      stopped: whole ? null : 'content_unknown'
+    }
   let bodies: Awaited<ReturnType<typeof readMessageBodies>>
   try {
     bodies = await readMessageBodies(input.client, candidates, input.more)
@@ -90,11 +126,17 @@ export async function readOwnerVoice(input: {
     if (!(error instanceof KlaviyoError)) throw error
     // A rate limit or a refused key: the history read decides about the
     // job; the voice waits for the next read.
-    return { samples: null, read: 0, excerpts: 0, ours, stopped: 'klaviyo' }
+    return {
+      found: [],
+      authoritative: false,
+      read: 0,
+      ours,
+      stopped: error.kind === 'bad_key' ? 'bad_key' : 'rate_limited'
+    }
   }
   const sentAt = new Map(candidates.map((m) => [m.id, m.sendAt]))
   const words = ownWordsOf(input.own)
-  const samples = bodies.records.flatMap((body): VoiceSample[] => {
+  const found = bodies.records.flatMap((body): VoiceSample[] => {
     const excerpt = voiceExcerpt(body, words)
     return excerpt
       ? [
@@ -108,23 +150,47 @@ export async function readOwnerVoice(input: {
         ]
       : []
   })
-  const stopped = bodies.scopeMissing
-    ? 'scope_missing'
-    : bodies.complete
-      ? null
-      : 'time'
+  const tried = bodies.records.length + bodies.gone + bodies.skipped
+  const stopped: VoiceStop | null = bodies.scopeMissing
+    ? 'missing_scope'
+    : !bodies.complete
+      ? tried >= maxBodyReads
+        ? 'cap'
+        : 'time'
+      : bodies.skipped
+        ? 'unreadable'
+        : !whole
+          ? 'content_unknown'
+          : null
   return {
-    // A read that stopped with nothing found keeps the earlier samples;
-    // one without the scope keeps them whatever it found.
-    samples:
-      bodies.scopeMissing || (stopped && !samples.length)
-        ? null
-        : pickVoiceSamples(samples),
+    found,
+    // Every template read, or gone (a template gone is no voice).
+    authoritative: whole && stopped === null,
     read: bodies.records.length,
-    excerpts: samples.length,
     ours,
     stopped
   }
+}
+
+/**
+ * What to keep after a read: everything it found when it was whole
+ * (none: the samples go), else what it found merged with what was kept
+ * before (a sample found again wins), else nothing to write (null).
+ */
+export async function samplesToKeep(
+  db: SupabaseClient<Database>,
+  tenantId: string,
+  voice: VoiceRead
+): Promise<VoiceSample[] | null> {
+  if (voice.authoritative) return pickVoiceSamples(voice.found)
+  if (!voice.found.length) return null
+  const before = await readVoiceSamples(db, tenantId)
+  return pickVoiceSamples([
+    ...voice.found,
+    ...before.filter(
+      (b) => !voice.found.some((f) => f.messageId === b.messageId)
+    )
+  ])
 }
 
 /** The campaigns GROS drafted for this workspace, and its own words. */

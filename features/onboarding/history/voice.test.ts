@@ -45,41 +45,62 @@ describe('the owner’s voice from the emails they sent (PIC-23 part 2b)', () =>
       'Old'
     ])
     expect(ours).toBe(1)
+    expect(
+      voiceCandidates(
+        [message({ id: 'NoTemplate', templateId: null })],
+        new Set()
+      ).unknown
+    ).toBe(1)
     const many = Array.from({ length: 60 }, (_, i) => message({ id: `M${i}` }))
     expect(voiceCandidates(many, new Set()).candidates).toHaveLength(40)
   })
 
-  it('keeps the earlier samples when the read stops before it finds any', async () => {
+  it('replaces the samples only after a whole read; a read cut short or blind keeps them', async () => {
     const client = klaviyoClient('pk_SAMPLE0123456789abcdefghij', {
       transport: recordedHistoryTransport({
         now: new Date('2026-11-11T12:00:00Z')
       }),
       maxWaits: 0
     })
-    const stopped = await readOwnerVoice({
-      client,
-      more: () => false,
-      sent: [message({})],
-      ours: new Set(),
-      own: ['Cedar Goods']
-    })
-    expect(stopped).toMatchObject({ samples: null, read: 0, stopped: 'time' })
-    const found = await readOwnerVoice({
+    const base = {
       client,
       more: () => true,
       sent: [message({})],
-      ours: new Set(),
+      sentComplete: true,
+      ours: new Set<string>(),
       own: ['Cedar Goods']
+    }
+    const stopped = await readOwnerVoice({ ...base, more: () => false })
+    expect(stopped).toMatchObject({
+      found: [],
+      authoritative: false,
+      read: 0,
+      stopped: 'time'
     })
-    expect(found.samples?.map((s) => s.messageId)).toEqual(['MsgA08'])
-    expect(found.samples?.[0]?.sentAt).toBe('2026-10-11T10:00:00.000Z')
-    const none = await readOwnerVoice({
-      client,
-      more: () => true,
-      sent: [],
-      ours: new Set(),
-      own: []
+    const found = await readOwnerVoice(base)
+    expect(found).toMatchObject({ authoritative: true, read: 1, stopped: null })
+    expect(found.found.map((s) => s.messageId)).toEqual(['MsgA08'])
+    expect(found.found[0]?.sentAt).toBe('2026-10-11T10:00:00.000Z')
+    // Nothing sent: all there is, so the samples go.
+    expect(await readOwnerVoice({ ...base, sent: [] })).toMatchObject({
+      found: [],
+      authoritative: true,
+      stopped: null
     })
-    expect(none).toMatchObject({ samples: [], read: 0, stopped: null })
+    // A sent email whose template is unknown, or a list not read whole:
+    // never all there is.
+    expect(
+      await readOwnerVoice({
+        ...base,
+        sent: [message({ id: 'Unread', templateId: null, contentKnown: false })]
+      })
+    ).toMatchObject({
+      found: [],
+      authoritative: false,
+      stopped: 'content_unknown'
+    })
+    expect(
+      await readOwnerVoice({ ...base, sentComplete: false })
+    ).toMatchObject({ authoritative: false, stopped: 'content_unknown' })
   })
 })
