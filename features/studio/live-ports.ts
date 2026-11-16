@@ -9,23 +9,14 @@ import type { FallbackLog } from '@/features/fallback/log'
 import { critiqueSection } from './critic'
 import type { StudioStepPorts } from './design-step'
 import { designSection } from './designer'
-import {
-  critiqueEmail,
-  type EmailPicture,
-  type EmailVerdict,
-  type EmailViews
-} from './email-critic'
+import { critiqueEmail } from './email-critic'
+import type { DrawnView, EmailViewPorts } from './email-check'
 import { emailViewNames, requestEmailRender } from './preview-jobs'
 import { renderScale, renderWidth } from './renderer'
 import { requestSectionRender } from './render-jobs'
 import { codedReasons } from './rounds'
 import { storyboardFor } from './storyboard'
-import {
-  buildRenders,
-  buildViews,
-  type BuildRender,
-  type BuildView
-} from './waits'
+import { buildRenders, buildViews, type BuildRender } from './waits'
 import type { ImageFetcher } from '@/lib/providers/image-fetch'
 import { createImageFetcher } from '@/features/inbox/image-fetch'
 import type { AiImage } from '@/lib/providers/contracts'
@@ -273,33 +264,12 @@ export function studioPortsFor(
   }
 }
 
-/**
- * DST-006d part 2a: the key of one version of the email: its views are
- * asked for, and found again, under it.
- */
-export const viewKey = (html: string) =>
-  `e-${createHash('sha256').update(html).digest('hex').slice(0, 24)}`
+export { viewKey } from './email-check'
 
 /** The width each view is drawn at (`renderEmail`). */
 const viewWidth = { desktop: 600, phone: 375, dark: 600 } as const
 
-export type DrawnView = Extract<BuildView, { state: 'drawn' }>
-
-/** The ports the whole-email check uses (DST-006d), under the build's lease. */
-export type EmailViewPorts = {
-  /**
-   * Asks for the email's three views under `key` (`requestEmailRender`):
-   * the same again is the same views. Throws `EmailNotDrawable` for an
-   * email that cannot be drawn and the database's refusals as they come.
-   */
-  ask: (key: string, html: string) => Promise<void>
-  /** The build's views under `key`, in its own workspace (`buildViews`). */
-  views: (key: string) => Promise<BuildView[]>
-  /** A view's stored picture, only while its tag, size and bytes are the ones recorded; else null. */
-  picture: (view: DrawnView) => Promise<EmailPicture | null>
-  /** The Design critic on the whole email (`critiqueEmail`); null when it cannot answer. */
-  judge: (views: EmailViews) => Promise<EmailVerdict | null>
-}
+export type { DrawnView, EmailViewPorts } from './email-check'
 
 export function emailPortsFor(
   db: Db,

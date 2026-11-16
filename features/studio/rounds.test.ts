@@ -14,7 +14,8 @@ import {
   studioMs,
   studioRound,
   type StudioPorts,
-  type StudioWork
+  type StudioWork,
+  roundWaits
 } from './rounds'
 import type { BuildRender } from './waits'
 
@@ -386,6 +387,23 @@ describe('the design studio’s rounds (DST-006c)', () => {
     })
     expect(failed.design).not.toHaveBeenCalled()
     expect(failed.request).not.toHaveBeenCalled()
+  })
+
+  it('keeps the design step’s last wait for the email’s inbox views (DST-006d)', async () => {
+    expect(roundWaits).toBe(5)
+    const five = { ...(await drawing()), waits: 5 }
+    const queued: BuildRender = { id: uuid(1), key: 'k', state: 'queued' }
+    const p = ports({ renders: [queued] })
+    const out = await studioRound([brief('s2')], five, p)
+    expect(doneOf(out)).toMatchObject({
+      waits: 5,
+      sections: [{ state: 'coded', reason: 'studio_timed_out' }]
+    })
+    // One wait short of that, it still waits for its picture.
+    const four = { ...(await drawing()), waits: 4 }
+    expect(
+      await studioRound([brief('s2')], four, ports({ renders: [queued] }))
+    ).toMatchObject({ wait: { waits: 5 } })
   })
 
   it('reads its work beside the database’s save count, and starts over for another brief, keeping the build’s limits', async () => {

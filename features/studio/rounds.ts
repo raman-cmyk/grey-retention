@@ -38,6 +38,8 @@ export const maxRounds = 3
 export const studioMs = 45 * 60_000
 /** Designed sections an email has at most (today one hero). */
 export const maxDesigned = 4
+/** The rounds' own waits: the design step's, less one kept for the email's views. */
+export const roundWaits = studioWaits.perStep - studioWaits.forViews
 /** Agent calls the critic may make (its answer tried 3 times). */
 const criticCalls = 3
 
@@ -313,8 +315,9 @@ export async function studioRound(
       delete s.alt
     }
     if (s.state !== 'design') continue
-    // Out of time, or no wait left for the picture it would ask for.
-    if (ports.now() >= work.until || work.waits >= studioWaits.perStep) {
+    // Out of time, or no wait left for the picture it would ask for (one
+    // is kept for the email's inbox views, DST-006d).
+    if (ports.now() >= work.until || work.waits >= roundWaits) {
       await code(s, 'studio_timed_out')
       continue
     }
@@ -365,8 +368,8 @@ export async function studioRound(
     paused ||
     work.sections.some((s) => s.state === 'design' || s.state === 'drawing')
   if (!waiting) return { done: studioWork.parse(work) }
-  if (work.waits >= studioWaits.perStep) {
-    // No wait is left for this step: what is unfinished is coded now.
+  if (work.waits >= roundWaits) {
+    // No wait is left for the rounds: what is unfinished is coded now.
     for (const s of work.sections)
       if (s.state === 'design' || s.state === 'drawing')
         await code(s, 'studio_timed_out')
