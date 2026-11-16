@@ -21,8 +21,7 @@ const hard =
 const blocks = (...texts: string[]): Pick<Draft, 'blocks'> => ({
   blocks: texts.map((t) => ({
     type: 'text',
-    reason: 'test',
-    content: { paras: [t] }
+    content: { paras: [t], align: 'left' }
   })) as Draft['blocks']
 })
 
@@ -101,8 +100,7 @@ describe('length and reading level per industry (DST-PIC #28)', () => {
       blocks: [
         {
           type: 'founder_note',
-          reason: 'test',
-          content: { paras: [hard, hard] }
+          content: { paras: [hard, hard], signoff: 'Maya' }
         }
       ]
     } as Pick<Draft, 'blocks'>

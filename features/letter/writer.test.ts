@@ -217,6 +217,22 @@ describe('the Letter writer (TXT-001 part 2)', () => {
     expect(again).toMatch(/shipping/i)
   })
 
+  it('tells the writer its industry’s reading level, and sends back a letter over it (DST-PIC #28)', async () => {
+    const brief = await briefFor()
+    const hard =
+      'Our meticulously formulated aromatic composition harmonizes complementary botanical constituents, and it delivers an extraordinarily sophisticated olfactory experience for the discerning individual. Additionally, our environmentally conscious manufacturing methodology prioritizes responsibly harvested ingredients.'
+    const ai = modelOf([
+      () => ok({ ...good, body: [hard, hard, good.body.at(-1)!] }),
+      () => ok(good)
+    ])
+    const result = await writeLetter(brief, ctxWith(ai))
+    expect(result).toMatchObject({ status: 'written', tries: 2 })
+    expect(ai.mock.calls[0]![0].request.system).toContain(
+      'Write for a reader of school grade 7 or below'
+    )
+    expect(userOf(ai, 1)).toContain('The letter reads at school grade')
+  })
+
   it('sends the caller’s own checks back too (the plan’s other subjects)', async () => {
     const brief = await briefFor()
     const ai = modelOf([

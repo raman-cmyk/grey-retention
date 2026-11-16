@@ -347,6 +347,51 @@ describe('the copy step with the agents (REL-AI part 2b)', () => {
     expect(result.ok && result.email.html).toContain('Made for slow evenings')
   })
 
+  it('sends back a section over its industry’s words, and tells the Copywriter the targets (DST-PIC #28)', async () => {
+    let n = 0
+    const long = Array.from({ length: 14 }, () => 'We picked it for you.').join(
+      ' '
+    )
+    const ai = model({
+      writer: (call) => {
+        const written = writes(call.request.system, ++n)
+        return answer({
+          ...written,
+          // The first section with prose: a text, an image beside words,
+          // or a product with words.
+          blocks: written.blocks.map((b) =>
+            n === 1 && b.type === 'product_feature'
+              ? { ...b, words: { ...b.words, body: long } }
+              : n === 1 && (b.type === 'text' || b.type === 'image_text')
+                ? { ...b, words: { ...b.words, paras: [long] } }
+                : b
+          )
+        })
+      }
+    })
+    const s = await store()
+    const result = await buildEmail(
+      {
+        planned: { ...planned, emailType: 'story', offer: null },
+        store: { ...s, industry: 'apparel' },
+        offers: sampleOffers
+      },
+      ctxWith(agentsWith(ai))
+    )
+    const first = ai.mock.calls.find((c) =>
+      c[0].callerKey.startsWith('copywriter:')
+    )![0].request.system
+    expect(first).toContain(
+      'Write for a reader of school grade 7 or below: short sentences and plain, everyday words. Keep each section to 50 words at most.'
+    )
+    // The long section went back once, and the rewrite was kept.
+    expect(n).toBe(2)
+    expect(userOf(ai, 'copywriter', 1)).toContain(
+      'keep it to 50 at most: say less, in short sentences.'
+    )
+    expect(result.ok && result.email.copy).toBe('written')
+  })
+
   it('a hero headline still too long after every rewrite: plain copy, which names the product by its title', async () => {
     const fallbacks = memoryFallbackLog()
     const result = await buildEmail(
