@@ -321,6 +321,16 @@ const money =
 const moneyValue = (found: string) =>
   amount(found.replace(/^\D+/, '').replace(/\D+$/, '').replace(/[.,]$/, ''))
 
+/** Money amounts in `text` that are not one of `prices` (TXT-001b reuses it). */
+export function strayPrices(text: string, prices: ReadonlySet<number>) {
+  return (text.match(money) ?? [])
+    .filter((found) => {
+      const n = moneyValue(found)
+      return n === null || !prices.has(n)
+    })
+    .map((found) => found.trim())
+}
+
 /**
  * Prices are placed by the system (ASM-001). A price the writer writes is
  * refused unless it is exactly a locked product's price.
@@ -859,6 +869,11 @@ type CopyRoundsInput = {
   plain: () => Assembled
   /** More code checks for a draft (REL-AI: the plan's other subjects). */
   checks?: (draft: Draft) => Finding[]
+  /**
+   * Code checks after the copy rules (DST-PIC #20: headlines that fit), so
+   * a long list of them never hides a claim or a banned word.
+   */
+  laterChecks?: (draft: Draft) => Finding[]
   /** The rounds saved by an earlier claim (REL-AI part 2b). */
   work?: CopyWork
   /**
@@ -937,7 +952,8 @@ export async function copyRounds(
   // `checks` first, so a long list of other reasons never hides them.
   const codeOf = (assembled: Exclude<Assembled, { status: 'sample' }>) => [
     ...(input.checks?.(assembled.draft) ?? []),
-    ...codeFindings(assembled, locked, brandName)
+    ...codeFindings(assembled, locked, brandName),
+    ...(input.laterChecks?.(assembled.draft) ?? [])
   ]
   if (work.pending) {
     let again: Finding[] | null
