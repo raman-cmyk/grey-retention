@@ -1,7 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { minConfidence } from '@/features/agents/memory'
 import type { ClientRequestContext } from '@/features/auth/domain/types'
-import type { BuildStep } from '@/features/email-build/step-names'
 import { offersPage } from '@/features/offers/data'
 import type { ManagedOffers } from '@/features/offers/source'
 import {
@@ -11,6 +11,7 @@ import {
 import {
   latestPlanRun,
   storeToday,
+  type EmailBuildView,
   type PlanRun
 } from '@/features/strategy/load'
 import type { Database } from '@/lib/supabase/database.types'
@@ -21,7 +22,9 @@ import { createClient } from '@/lib/supabase/server'
  * last 30 days' email numbers, the offers and the top things the agents
  * learned. Everything is read with the signed-in member's own client (row
  * rules keep it to their workspace); each part that cannot be read is
- * marked, and the others still show.
+ * marked, and the others still show. What Home offers to create follows
+ * the Plan page and `create_email_build`: a planned run's email can be
+ * created (or tried again) until its send time passes.
  */
 export const planDays = 15
 export const nextCount = 3
@@ -46,38 +49,58 @@ export type HomeSlot = {
   /** For `failed`: why, in plain words. */
   reason: string | null
   buildId: string | null
-  /** The owner may click Create email (or Try again) on it now. */
+  /** Its send time has passed (store time): it can no longer be created. */
+  passed: boolean
+  /**
+   * The owner may click Create email (or Try again) now. A sixth failed try
+   * is still refused by the database (the screen shows its words).
+   */
   canCreate: boolean
 }
 
 export type HomeDay = {
   date: string
   state: HomeDayState
-  /** The email to open: its built draft, else none (the plan opens it). */
+  /** The build to open (made or being made), else none: the plan opens. */
   buildId: string | null
 }
+
+export type HomePlanState =
+  | 'none'
+  | 'working'
+  | 'offers_ready'
+  | 'planned'
+  | 'failed'
+  /** Planned, but its stored plan cannot be read: start a new one. */
+  | 'unreadable'
 
 export type HomeView = {
   greeting: string
   owner: boolean
   plan: {
-    /** none: never planned; working: a plan is being made. */
-    state: 'none' | 'working' | 'offers_ready' | 'planned' | 'failed'
+    state: HomePlanState
     runId: string | null
     reason: string | null
-    /** The plan's 15 days have begun: only a new plan helps. */
-    stale: boolean
-    /** The strip's first day: the plan's, else today (store time). */
+    /** An unfinished run whose days have begun: only a new plan helps. */
+    outOfDate: boolean
+    /** A planned run whose last day has passed. */
+    ended: boolean
+    /** The strip's first day: the plan's (or the one being made), else today. */
     start: string
     days: HomeDay[]
     next: HomeSlot[]
   } | null
   numbers: {
+    /** Sent emails in the window with numbers read. */
     emails: number
+    /** Added up from `revenueEmails` of them only (null when none). */
     revenue: number | null
+    revenueEmails: number
     opens: number
     clicks: number
     currency: string | null
+    /** Every number is whole: all orders read, nothing Klaviyo held back. */
+    complete: boolean
     /** Every counted email came from the sample pusher. */
     sample: boolean
   } | null
@@ -93,12 +116,15 @@ export type HomeView = {
   unread: ('plan' | 'numbers' | 'offers' | 'learned')[]
 }
 
-const stepWords: Record<BuildStep | 'push', string> = {
-  sections: 'Planning',
-  content: 'Writing',
-  copy: 'Writing',
-  design: 'Designing',
-  push: 'Saving draft'
+/** The step a build is on, in a word or two for its status pill. */
+function stepWordsOf(build: EmailBuildView) {
+  if (build.state === 'push_queued' || build.step === 'push')
+    return 'Saving draft'
+  return build.step === 'design'
+    ? 'Designing'
+    : build.step === 'sections'
+      ? 'Starting'
+      : 'Writing'
 }
 
 /** Good morning, afternoon or evening, in the store's own time. */
@@ -148,14 +174,12 @@ function slotsOf(run: PlanRun, owner: boolean): HomeSlot[] {
       audience: s.audience.label,
       format: s.format === 'text' ? 'text' : 'designed',
       status,
-      stepWords: status === 'working' && build ? stepWords[build.step] : null,
+      stepWords: status === 'working' && build ? stepWordsOf(build) : null,
       reason: status === 'failed' ? (build?.reason ?? null) : null,
       buildId: build?.id ?? null,
+      passed,
       canCreate:
-        owner &&
-        !run.stale &&
-        !passed &&
-        (status === 'planned' || status === 'failed')
+        owner && !passed && (status === 'planned' || status === 'failed')
     }
   })
 }
@@ -165,39 +189,53 @@ function planOf(
   owner: boolean,
   today: string
 ): NonNullable<HomeView['plan']> {
-  const state: NonNullable<HomeView['plan']>['state'] = !run
+  const state: HomePlanState = !run
     ? 'none'
     : run.state === 'pulse_queued' || run.state === 'plan_queued'
       ? 'working'
-      : run.state
+      : (run.state === 'planned' && !run.plan) ||
+          (run.state === 'offers_ready' && !run.pulse)
+        ? 'unreadable'
+        : run.state
   const slots = run ? slotsOf(run, owner) : []
-  const start = run?.plan && run.state === 'planned' ? run.plan.start : today
+  const start =
+    state === 'planned' && run?.plan
+      ? run.plan.start
+      : state === 'working' || state === 'offers_ready'
+        ? run!.startOn
+        : today
+  // A slot still to come: not in Klaviyo yet, and not a planned one whose
+  // send time passed (it can no longer be made, for anyone).
+  const ahead = (s: HomeSlot) =>
+    s.status !== 'in_klaviyo' && !(s.passed && s.status === 'planned')
   const days = Array.from({ length: planDays }, (_, i): HomeDay => {
     const date = addDays(start, i)
     const on = slots.filter((s) => s.date === date)
     const inKlaviyo = on.find((s) => s.status === 'in_klaviyo')
     if (inKlaviyo)
       return { date, state: 'in_klaviyo', buildId: inKlaviyo.buildId }
-    // A day that passed without its email has nothing more to show.
-    const planned = on.find((s) => date >= today && s.status !== 'failed')
+    // A failed email's day shows nothing; its row says why.
+    const planned = on.find((s) => ahead(s) && s.status !== 'failed')
     if (planned) return { date, state: 'planned', buildId: planned.buildId }
     return { date, state: 'none', buildId: null }
   })
   const next = slots
-    .filter((s) => s.date >= today && s.status !== 'in_klaviyo')
-    .filter((s) => s.canCreate || s.status !== 'planned' || !owner)
+    .filter((s) => s.date >= today && ahead(s))
     .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))
     .slice(0, nextCount)
   return {
     state,
     runId: run?.id ?? null,
     reason: run?.state === 'failed' ? run.reason : null,
-    stale: run?.stale ?? false,
+    outOfDate: !!run && run.stale && run.state !== 'planned',
+    ended: state === 'planned' && !!run?.plan && run.plan.end < today,
     start,
     days,
     next
   }
 }
+
+const cents = (n: number) => Math.round(n * 100) / 100
 
 function numbersOf(
   lines: readonly ResultLine[],
@@ -213,11 +251,14 @@ function numbersOf(
   return {
     emails: counted.length,
     revenue: known.length
-      ? known.reduce((sum, l) => sum + l.totals!.revenue!, 0)
+      ? cents(known.reduce((sum, l) => sum + l.totals!.revenue!, 0))
       : null,
+    revenueEmails: known.length,
     opens: counted.reduce((sum, l) => sum + l.totals!.opens, 0),
     clicks: counted.reduce((sum, l) => sum + l.totals!.clicks, 0),
     currency,
+    complete:
+      known.length === counted.length && counted.every((l) => l.complete),
     sample: counted.every((l) => l.sample)
   }
 }
@@ -229,7 +270,8 @@ export type HomeInput = {
   run: PlanRun | null | undefined
   results: readonly ResultLine[] | null
   currency: string | null
-  offers: ManagedOffers | null | undefined
+  /** null when it could not be read (`offersPage` answers null then). */
+  offers: ManagedOffers | null
   learned: HomeView['learned'] | null
 }
 
@@ -241,7 +283,7 @@ export function homeView(input: HomeInput): HomeView {
   const unread: HomeView['unread'] = []
   if (input.run === undefined) unread.push('plan')
   if (input.results === null) unread.push('numbers')
-  if (input.offers === undefined) unread.push('offers')
+  if (input.offers === null) unread.push('offers')
   if (input.learned === null) unread.push('learned')
   return {
     greeting: greeting(context.tenantName, context.timezone, now),
@@ -263,10 +305,14 @@ export function homeView(input: HomeInput): HomeView {
 
 type Db = SupabaseClient<Database>
 
-/** The workspace's top active do's and don'ts, surest first. */
+/**
+ * The workspace's top do's and don'ts that the agents use now (active, not
+ * expired, confident enough: as `selectRules` reads them), surest first.
+ */
 export async function topLearned(
   db: Db,
   tenantId: string,
+  now: Date,
   limit = learnedCount
 ): Promise<HomeView['learned'] | null> {
   const { data, error } = await db
@@ -274,6 +320,8 @@ export async function topLearned(
     .select('id,kind,rule,source,created_at')
     .eq('tenant_id', tenantId)
     .eq('status', 'active')
+    .gte('confidence', minConfidence)
+    .or(`expires_at.is.null,expires_at.gt.${now.toISOString()}`)
     .order('confidence', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(limit)
@@ -288,7 +336,7 @@ export async function topLearned(
 }
 
 /** The currency the workspace's Klaviyo account reports, when known. */
-async function accountCurrency(db: Db, tenantId: string) {
+export async function accountCurrency(db: Db, tenantId: string) {
   const { data } = await db
     .from('workspace_connections')
     .select('account_currency')
@@ -306,14 +354,13 @@ export async function homeReadModel(
 ): Promise<HomeView> {
   const db = await createClient()
   const [plan, results, currency, offers, learned] = await Promise.all([
-    latestPlanRun(context.tenantId, context.timezone, now),
+    latestPlanRun(context.tenantId, context.timezone, now).catch(
+      () => ({ ok: false }) as const
+    ),
     db ? resultsReadModel(db, context.tenantId) : null,
     db ? accountCurrency(db, context.tenantId).catch(() => null) : null,
-    offersPage(context).then(
-      (o) => o,
-      () => undefined
-    ),
-    db ? topLearned(db, context.tenantId).catch(() => null) : null
+    offersPage(context).catch(() => null),
+    db ? topLearned(db, context.tenantId, now).catch(() => null) : null
   ])
   return homeView({
     context,
