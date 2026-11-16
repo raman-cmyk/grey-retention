@@ -1,5 +1,5 @@
 begin;
-select plan(56);
+select plan(59);
 
 -- DST-005b part 2a: a whole built email drawn in the inbox's views by the
 -- browser outside the app. Workspace 101: owner ...01; another workspace:
@@ -23,11 +23,11 @@ $$;
 select ok(not bool_or(has_function_privilege(r, f, 'execute')),'browser roles cannot ask for, record or fail a view')
   from unnest(array['anon','authenticated']) r,
        unnest(array['public.request_email_render(uuid,uuid,text,text,text,text[])',
-                    'public.record_email_render(uuid,uuid,integer,boolean,integer)',
+                    'public.record_email_render(uuid,uuid,integer,boolean,boolean,integer)',
                     'public.fail_email_render(uuid,uuid,text)']) f;
 select ok(bool_and(has_function_privilege('service_role', f, 'execute')),'jobs do')
   from unnest(array['public.request_email_render(uuid,uuid,text,text,text,text[])',
-                    'public.record_email_render(uuid,uuid,integer,boolean,integer)',
+                    'public.record_email_render(uuid,uuid,integer,boolean,boolean,integer)',
                     'public.fail_email_render(uuid,uuid,text)']) f;
 select ok(not bool_or(has_function_privilege(r, f, 'execute')),'the helpers are not callable')
   from unnest(array['anon','authenticated','service_role']) r,
@@ -101,27 +101,29 @@ select isnt(current_setting('test.lease'),'','and goes on once its time is up');
 -- Drawn: only with its stored picture, at the size reported.
 select set_config('test.job',pg_temp.job(current_setting('test.r1')),true);
 select set_config('test.jl',pg_temp.claim(current_setting('test.r1')),true);
-select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,2100,false,90000)$$,
+select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,2100,false,false,90000)$$,
   '23514','Stored picture missing','a picture is recorded only once it is stored');
 insert into storage.objects(bucket_id, name, metadata) values ('studio-renders','email/'||current_setting('test.r1')||'.jpg',
   '{"size":90000,"mimetype":"image/jpeg","eTag":"\"v1\""}');
-select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,2100,false,89999)$$,
+select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,2100,false,false,89999)$$,
   '23514','The stored picture is not the one reported','at the size stored');
-select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,6001,false,90000)$$,
+select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,6001,false,false,90000)$$,
   '23514','The picture is not the email''s size','at most 6,000 px tall');
-select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,2100,true,90000)$$,
+select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,2100,true,false,90000)$$,
   '23514','The picture is not the email''s size','cut only at the limit');
-select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,2100,null,90000)$$,
+select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,2100,null,false,90000)$$,
   '23514',null,'saying whether it was cut');
-select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,2100,false,4000000)$$,
+select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,2100,false,null,90000)$$,
+  '23514',null,'and whether it is wider than the view');
+select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,2100,false,false,4000000)$$,
   '23514','The picture is not a usable size','and at most 3 MiB');
-select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,gen_random_uuid(),2100,false,90000)$$,
+select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,gen_random_uuid(),2100,false,false,90000)$$,
   'PT409',null,'under the job''s own lease');
-select lives_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,2100,false,90000)$$,'the picture is recorded');
+select lives_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,2100,false,false,90000)$$,'the picture is recorded');
 select is((select state || ':' || path || ':' || height || ':' || cut || ':' || bytes || ':' || etag from public.email_renders where id=current_setting('test.r1')::uuid),
   'drawn:email/'||current_setting('test.r1')||'.jpg:2100:false:90000:"v1"','the view is drawn, with its stored picture''s tag');
 select is((select status || ':' || (result->>'height') from public.platform_jobs where id=current_setting('test.job')::uuid),'succeeded:2100','and its job is done');
-select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,2100,false,90000)$$,
+select throws_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,2100,false,false,90000)$$,
   'PT409',null,'a finished view is recorded once');
 
 -- Cut at the limit, and said so.
@@ -132,8 +134,8 @@ insert into storage.objects(bucket_id, name, metadata) values ('studio-renders',
   '{"size":300000,"mimetype":"image/jpeg","eTag":"\"v2\""}');
 set local role service_role;
 select set_config('test.jl',pg_temp.claim(current_setting('test.r2')),true);
-select lives_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,6000,true,300000)$$,'an email cut at 6,000 px is recorded');
-select is((select height || ':' || cut from public.email_renders where id=current_setting('test.r2')::uuid),'6000:true','as cut');
+select lives_ok($$select public.record_email_render(current_setting('test.job')::uuid,current_setting('test.jl')::uuid,6000,true,true,300000)$$,'an email cut at 6,000 px, and wide, is recorded');
+select is((select height || ':' || cut || ':' || wide from public.email_renders where id=current_setting('test.r2')::uuid),'6000:true:true','as cut and wide');
 
 -- A page the browser refuses fails at once; a timeout is tried again.
 select set_config('test.r3',pg_temp.req('e-r3')::text,true);
@@ -168,7 +170,7 @@ select set_config('test.sec',public.request_section_render(current_setting('test
   jsonb_build_object('id','s2','height',320,'html','<h1>x</h1>','css',''),array['https://cdn.shop.example'])::text,true);
 select set_config('test.sjob',(select id::text from public.platform_jobs where kind='studio.render' and subject_key=current_setting('test.sec')),true);
 select set_config('test.sl',(select lease_token::text from public.claim_platform_job(array['studio.render'], current_setting('test.sec'))),true);
-select throws_ok($$select public.record_email_render(current_setting('test.sjob')::uuid,current_setting('test.sl')::uuid,2100,false,90000)$$,
+select throws_ok($$select public.record_email_render(current_setting('test.sjob')::uuid,current_setting('test.sl')::uuid,2100,false,false,90000)$$,
   '23514','This job draws no email','a section''s job draws no email');
 select set_config('test.r4p',pg_temp.req('e-r4','phone')::text,true);
 select set_config('test.pjob',pg_temp.job(current_setting('test.r4p')),true);
@@ -179,6 +181,20 @@ select throws_ok($$select public.record_section_render(current_setting('test.pjo
 -- At most 9 views a build (7 so far).
 select lives_ok($$select pg_temp.req('e-r5', v) from unnest(array['desktop','phone']) v$$,'up to 9 views a build');
 select throws_ok($$select pg_temp.req('e-r6')$$,'22023','This build drew the email too often','and no more');
+reset role;
+
+-- The studio goes on at once when every picture and view it asked for is
+-- drawn or failed, before its time is up.
+reset role;
+update public.email_renders set state = 'failed', failure = 'timeout', finished_at = now()
+  where build_id = current_setting('test.build')::uuid and state = 'queued';
+update public.section_renders set state = 'failed', failure = 'timeout', finished_at = now()
+  where build_id = current_setting('test.build')::uuid and state = 'queued';
+update public.email_builds set waits = 1, not_before = now() + interval '10 minutes', lease_token = null, lease_until = null,
+  attempts = 0, updated_at = now() - interval '2 minutes' where id = current_setting('test.build')::uuid;
+set local role service_role;
+select is((select count(*)::int from public.claim_studio_build(current_setting('test.build')::uuid)),1,
+  'the studio goes on once every view is drawn or failed');
 reset role;
 
 -- Who sees them: the workspace's members, never another workspace.
@@ -195,6 +211,7 @@ reset role;
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
 set local role authenticated;
 select is((select count(*)::int from public.email_renders),9,'platform admins see every view');
+select is((select count(*)::int from storage.objects where bucket_id='studio-renders' and name like 'email/%'),2,'and every picture');
 reset role;
 set local role anon;
 select throws_ok($$select count(*) from public.email_renders$$,'42501',null,'nobody signed out reads views');

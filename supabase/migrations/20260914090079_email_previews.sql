@@ -13,7 +13,8 @@
 -- JPEG through a signed link into the private `studio-renders` bucket
 -- (email/<render id>.jpg), and `record_email_render` records it, only
 -- when the stored picture is there and is the size reported. An email
--- taller than 6,000 px is drawn cut there, and says so (`cut`).
+-- taller than 6,000 px is drawn cut there, and says so (`cut`); one with
+-- something wider than the view says so too (`wide`).
 --
 -- Failures are a section's: one the browser refuses, too large or that
 -- tries to leave the page fails at once; a timeout or a browser failure is
@@ -47,6 +48,8 @@ create table public.email_renders (
   height integer check (height between 1 and 6000),
   -- Taller than 6,000 px: drawn cut at 6,000.
   cut boolean,
+  -- Something in it is wider than the view (the picture keeps its width).
+  wide boolean,
   bytes integer check (bytes between 1 and 3145728),
   -- The stored picture's tag when it was recorded (a later upload to the
   -- same path changes it).
@@ -57,7 +60,7 @@ create table public.email_renders (
   -- A view is its build's, in the build's workspace, and goes with it.
   foreign key (tenant_id, build_id) references public.email_builds (tenant_id, id) on delete cascade,
   check ((state = 'drawn') = (path is not null and height is not null and cut is not null
-    and bytes is not null and etag is not null)),
+    and wide is not null and bytes is not null and etag is not null)),
   check ((state = 'failed') = (failure is not null)),
   check (path is null or path = 'email/' || id || '.jpg'),
   check (cut is not true or height = 6000)
@@ -175,14 +178,15 @@ end $$;
 -- not match (a height out of range, cut below the limit, no stored
 -- picture, another size or type than stored) is 23514: the caller fails
 -- the render.
-create or replace function public.record_email_render(job uuid, lease uuid, height integer, cut boolean, bytes integer)
+create or replace function public.record_email_render(job uuid, lease uuid, height integer, cut boolean, wide boolean,
+  bytes integer)
 returns void language plpgsql security definer set search_path = '' as $$
 declare
   r public.email_renders;
   m jsonb;
 begin
   r := private.leased_email_render(job, lease);
-  if height is null or height not between 1 and 6000 or cut is null or (cut and height <> 6000) then
+  if height is null or height not between 1 and 6000 or cut is null or (cut and height <> 6000) or wide is null then
     raise exception 'The picture is not the email''s size' using errcode = '23514';
   end if;
   if bytes is null or bytes not between 1 and 3145728 then
@@ -199,9 +203,10 @@ begin
   end if;
   update public.email_renders
     set state = 'drawn', path = 'email/' || r.id || '.jpg', height = record_email_render.height,
-        cut = record_email_render.cut, bytes = record_email_render.bytes, etag = m->>'eTag', finished_at = now()
+        cut = record_email_render.cut, wide = record_email_render.wide, bytes = record_email_render.bytes,
+        etag = m->>'eTag', finished_at = now()
     where id = r.id;
-  perform public.finish_platform_job(job, lease, jsonb_build_object('height', height, 'cut', cut));
+  perform public.finish_platform_job(job, lease, jsonb_build_object('height', height, 'cut', cut, 'wide', wide));
 end $$;
 
 -- The browser could not draw it: as a section's failure.
@@ -231,13 +236,17 @@ begin
 end $$;
 
 -- A preview job that fails for good fails its render, so the build never
--- waits on a dead one.
+-- waits on a dead one. A job whose key is no view's (only a server bug
+-- could make one) is left alone: this runs inside every job claim's lease
+-- recovery, which must never stop on it.
 create or replace function private.fail_dead_preview()
 returns trigger language plpgsql security definer set search_path = '' as $$
 begin
-  update public.email_renders
-    set state = 'failed', failure = 'timeout', finished_at = now()
-    where id = new.subject_key::uuid and state = 'queued';
+  if new.subject_key ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    update public.email_renders
+      set state = 'failed', failure = 'timeout', finished_at = now()
+      where id = new.subject_key::uuid and state = 'queued';
+  end if;
   return new;
 end $$;
 revoke all on function private.fail_dead_preview() from public, anon, authenticated, service_role;
@@ -246,11 +255,11 @@ create trigger studio_preview_failed after update of status on public.platform_j
   execute function private.fail_dead_preview();
 
 revoke all on function public.request_email_render(uuid, uuid, text, text, text, text[]) from public, anon, authenticated;
-revoke all on function public.record_email_render(uuid, uuid, integer, boolean, integer) from public, anon, authenticated;
+revoke all on function public.record_email_render(uuid, uuid, integer, boolean, boolean, integer) from public, anon, authenticated;
 revoke all on function public.fail_email_render(uuid, uuid, text) from public, anon, authenticated;
 revoke all on function private.leased_email_render(uuid, uuid) from public, anon, authenticated, service_role;
 grant execute on function public.request_email_render(uuid, uuid, text, text, text, text[]) to service_role;
-grant execute on function public.record_email_render(uuid, uuid, integer, boolean, integer) to service_role;
+grant execute on function public.record_email_render(uuid, uuid, integer, boolean, boolean, integer) to service_role;
 grant execute on function public.fail_email_render(uuid, uuid, text) to service_role;
 
 -- The design studio's claim (DST-006b) waits for the email's views as for

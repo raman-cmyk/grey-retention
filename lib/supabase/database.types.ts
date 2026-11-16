@@ -3426,6 +3426,7 @@ export type Database = {
           state: string
           tenant_id: string
           view: string
+          wide: boolean | null
         }
         Insert: {
           build_id: string
@@ -3444,6 +3445,7 @@ export type Database = {
           state?: string
           tenant_id: string
           view: string
+          wide?: boolean | null
         }
         Update: {
           build_id?: string
@@ -3462,6 +3464,7 @@ export type Database = {
           state?: string
           tenant_id?: string
           view?: string
+          wide?: boolean | null
         }
         Relationships: [
           {
@@ -7925,6 +7928,7 @@ export type Database = {
           height: number
           job: string
           lease: string
+          wide: boolean
         }
         Returns: undefined
       }
