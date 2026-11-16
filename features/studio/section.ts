@@ -55,6 +55,14 @@ export const maxSectionFonts = 4
  * one clear order.
  */
 export const maxTypeSizes = 3
+/**
+ * DST-PIC #16 (owner pick, "Phone first"): a section is a picture 600 px
+ * wide that a phone shows 375 px wide, so its text shrinks to 62.5%; text
+ * under 14 px on a phone fails. The smallest size the picture may set (CSS
+ * px at 600), rounded up.
+ */
+export const phoneTextPx = 14
+export const minPictureTextPx = Math.ceil(phoneTextPx / (375 / sectionWidth))
 
 /** HTML elements a picture may use. */
 const htmlElements = new Set(
@@ -118,7 +126,39 @@ export function srcsetUrls(value: string) {
   return urls
 }
 
-type Found = { problems: string[]; urls: string[]; sizes?: Set<string> }
+type Found = {
+  problems: string[]
+  urls: string[]
+  sizes?: Set<string>
+  /** The CSS sizes set, in px where a px value is known (DST-PIC #16). */
+  px?: number[]
+}
+
+/** A CSS font size in px, where it is known: px, pt, em and rem (on 16 px), %, keywords. */
+function sizePx(key: string) {
+  const n = /^(\d*\.?\d+)(px|pt|em|rem|%)$/.exec(key)
+  if (n) {
+    const v = Number(n[1])
+    return n[2] === 'px'
+      ? v
+      : n[2] === 'pt'
+        ? (v * 4) / 3
+        : n[2] === '%'
+          ? (v / 100) * 16
+          : v * 16
+  }
+  const keywords: Record<string, number> = {
+    'xx-small': 9,
+    'x-small': 10,
+    small: 13,
+    medium: 16,
+    large: 18,
+    'x-large': 24,
+    'xx-large': 32,
+    'xxx-large': 48
+  }
+  return keywords[key] ?? null
+}
 
 /** A CSS font size as one key (`32px`, `2em`, `large`), or null. */
 function sizeKey(value: string) {
@@ -166,7 +206,11 @@ function checkCss(
         : d.property === 'font'
           ? shorthandSize(d.value)
           : null
-    if (key) f.sizes?.add(key)
+    if (key) {
+      f.sizes?.add(key)
+      const px = sizePx(key)
+      if (px !== null) f.px?.push(px)
+    }
   }
   for (const url of read.urls)
     if (!sameDocument.test(url)) {
@@ -253,7 +297,7 @@ export function sectionProblems(
   const parsed = designedSection.safeParse(input)
   if (!parsed.success) return ['The section is not in the shape a section has.']
   const section = parsed.data
-  const f: Found = { problems: [], urls: [], sizes: new Set() }
+  const f: Found = { problems: [], urls: [], sizes: new Set(), px: [] }
   if (!/^[a-z0-9-]{1,40}$/i.test(section.id))
     f.problems.push('The section has no usable name.')
   if (
@@ -272,6 +316,11 @@ export function sectionProblems(
   if (f.problems.some((p) => p.endsWith('too long.'))) return f.problems
   checkCss(section.css, 'styles', hosts, f)
   walk(parseFragment(section.html), hosts, f)
+  const smallest = Math.min(...f.px!)
+  if (smallest < minPictureTextPx)
+    f.problems.push(
+      `Text set at ${Math.round(smallest * 10) / 10} px shows at ${Math.round(smallest * 0.625 * 10) / 10} px on a phone: set text at ${minPictureTextPx} px or more (${phoneTextPx} px on a phone).`
+    )
   if (f.sizes!.size > maxTypeSizes)
     f.problems.push(
       `The section uses ${f.sizes!.size} type sizes; use at most ${maxTypeSizes} (a headline, a line under it and a small label).`

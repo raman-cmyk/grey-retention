@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   maxSectionHeight,
+  minPictureTextPx,
   sectionDocument,
   sectionProblems,
   sectionUrls,
@@ -295,5 +296,32 @@ describe('typography in a designed section (DST-PIC #11)', () => {
     ).toEqual([
       'The section uses 4 type sizes; use at most 3 (a headline, a line under it and a small label).'
     ])
+  })
+})
+
+describe('a designed section on a phone (DST-PIC #16)', () => {
+  const small = (css: string) =>
+    sectionProblems(
+      with_({ css, html: '<h1>Hi</h1><p>Line</p>' }),
+      hosts
+    ).filter((p) => p.includes('on a phone'))
+  it('refuses text a phone would show under 14 px (23 px or more at 600)', () => {
+    expect(minPictureTextPx).toBe(23)
+    expect(small('h1{font-size:48px}p{font-size:23px}')).toEqual([])
+    expect(small('h1{font-size:48px}p{font-size:16px}')).toEqual([
+      'Text set at 16 px shows at 10 px on a phone: set text at 23 px or more (14 px on a phone).'
+    ])
+    // Other units, read on 16 px, and the shorthand.
+    expect(small('p{font-size:1.5em}')).toEqual([])
+    expect(small('p{font:italic 12pt Georgia}')).toEqual([
+      'Text set at 16 px shows at 10 px on a phone: set text at 23 px or more (14 px on a phone).'
+    ])
+    expect(small('p{font-size:small}')).toEqual([
+      'Text set at 13 px shows at 8.1 px on a phone: set text at 23 px or more (14 px on a phone).'
+    ])
+    // A size it cannot know (calc, smaller) is left to the critic's phone view.
+    expect(small('p{font-size:calc(1em + 2px)}h1{font-size:smaller}')).toEqual(
+      []
+    )
   })
 })
