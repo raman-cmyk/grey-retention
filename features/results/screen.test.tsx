@@ -1,9 +1,6 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
-vi.mock('next/font/google', () => ({
-  Urbanist: () => ({ variable: 'urbanist-variable' })
-}))
 import type { ResultLine } from './read-model'
 import { resultsScreen } from './results-screen'
 import { ResultsScreen, pillOf, rowDetails } from './screen'
