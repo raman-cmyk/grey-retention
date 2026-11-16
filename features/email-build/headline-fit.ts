@@ -1,4 +1,8 @@
-import { headlineLimits, type Draft } from '@/features/assembly/assemble'
+import {
+  headlineLimits,
+  oneLine,
+  type Draft
+} from '@/features/assembly/assemble'
 import type { BlockType } from '@/features/blocks/catalog'
 import type { Finding } from './inspect'
 
@@ -28,8 +32,17 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 export const seenLength = (text: string) =>
   [...graphemes.segment(text.trim())].length
 
+/** As the writer sees it (`oneLine`, as `writerData` gives titles), for comparing. */
 const plain = (text: string) =>
-  text.replace(/…$/, '').replace(/\s+/g, ' ').trim().toLowerCase()
+  oneLine(text, 2_000).replace(/…$/, '').trim().toLowerCase()
+
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** `title` in `text` as whole words ("Tea" is not in "steady"). */
+const holds = (text: string, title: string) =>
+  new RegExp(
+    `(^|[^\\p{L}\\p{N}])${escape(title)}($|[^\\p{L}\\p{N}])`,
+    'u'
+  ).test(text)
 
 /**
  * A written draft's headlines over their limit, as findings for the
@@ -58,7 +71,7 @@ export function headlineFindings(
       (t) => t === seen || (text.trim().endsWith('…') && t.startsWith(seen))
     )
     // A title that is what makes it too long.
-    const title = own.find((t) => seen.includes(t) && n - seenLength(t) <= most)
+    const title = own.find((t) => holds(seen, t) && n - seenLength(t) <= most)
     const shows =
       block.type === 'product_feature'
         ? ' (it shows under the heading)'

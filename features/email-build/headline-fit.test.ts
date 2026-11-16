@@ -95,6 +95,30 @@ describe('headlines that fit their design (DST-PIC #20)', () => {
       'The heading is the product’s title, 101 characters; at most 60. Write a shorter heading of your own (it shows under the heading).',
       'The heading is the product’s title, 78 characters; at most 60. Write a shorter heading of your own (the picture shows the product).'
     ])
+    // A title found only inside other words is not in the headline; one
+    // with a hidden character in the store is found as the writer saw it.
+    expect(
+      headlineFindings(
+        {
+          blocks: [
+            block('hero_product', {
+              headline: 'Steady warmth for the colder nights, all winter'
+            })
+          ]
+        },
+        ['Tea']
+      ).map((f) => f.reason)
+    ).toEqual([
+      'The headline is 47 characters; a hero’s is at most 45. Use fewer, shorter words, never a smaller size.'
+    ])
+    expect(
+      headlineFindings(
+        { blocks: [block('hero_product', { headline: `Meet the ${title}` })] },
+        [title.replace('Waffle', 'Waf\u200bfle')]
+      ).map((f) => f.reason)
+    ).toEqual([
+      'The headline is 60 characters with the product’s title in it; at most 45. Leave the title out (the picture shows the product) and write about the product in a few words.'
+    ])
     // A short title in a long headline: fewer words.
     expect(
       reasons([
