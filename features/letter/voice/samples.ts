@@ -100,6 +100,8 @@ export async function readVoiceSamples(
     .eq('tenant_id', tenantId)
     .order('weight', { ascending: false })
     .order('sent_at', { ascending: false, nullsFirst: false })
+    // A stable order: the same samples give the same voice every read.
+    .order('message_id', { ascending: true })
     .limit(maxVoiceSamples)
   if (error) throw error
   return (data ?? []).flatMap((row) => {

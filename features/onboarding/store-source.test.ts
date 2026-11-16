@@ -376,6 +376,8 @@ function fakeDb(answers: Record<string, Answer>) {
     const chain = {
       select: (cols: string) => (asked.push([table, cols]), chain),
       eq: (...a: unknown[]) => (asked.push([table, 'eq', ...a]), chain),
+      order: () => chain,
+      limit: async () => answers[table] ?? { data: [], error: null },
       maybeSingle: async () => answers[table] ?? { data: null, error: null }
     }
     return chain
@@ -435,8 +437,81 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
       ['brand_profiles', 'eq', 'tenant_id', tenantId],
       ['brand_kits', 'eq', 'tenant_id', tenantId],
       ['brand_logos', 'eq', 'tenant_id', tenantId],
-      ['klaviyo_history', 'eq', 'tenant_id', tenantId]
+      ['klaviyo_history', 'eq', 'tenant_id', tenantId],
+      ['brand_voice_samples', 'eq', 'tenant_id', tenantId]
     ])
+  })
+
+  it('gives the Letter writer the founder’s voice, from the same account as its catalog (PIC-23 part 3b)', async () => {
+    const letter = {
+      message_id: 'MsgA08',
+      text: 'Hi [first name],\n\nI started Cedar Lane in my garage with one sewing machine and a lot of stubbornness. Every shirt still gets checked by hand before it ships.\n\nThank you for being here. If you ever have a question, just hit reply. I read every one.\n\nWarmly,\nMaya',
+      weight: 3,
+      words: 45,
+      sent_at: '2026-10-01T10:00:00Z'
+    }
+    const sentEmail = (id: string) => ({
+      id,
+      campaignId: `C${id}`,
+      name: null,
+      subject: 'A note from our founder',
+      preview: null,
+      sentAt: '2026-10-01T10:00:00.000Z',
+      offer: false,
+      collecting: false,
+      abTest: false,
+      strategy: 'static',
+      recipients: 900,
+      opens: 300,
+      clicks: 20,
+      orders: 1,
+      revenue: 50,
+      revenuePerRecipient: 0.05,
+      openRate: 0.33,
+      clickRate: 0.02,
+      unsubscribeRate: 0
+    })
+    const history = (live: boolean, ids = ['MsgA08']) => ({
+      data: { live, sent: ids.map(sentEmail) },
+      error: null
+    })
+    const samples = { data: [letter], error: null }
+    const live = fakeDb({
+      catalog_status: status(),
+      ...own,
+      klaviyo_history: history(true),
+      brand_voice_samples: samples
+    })
+    const voice = (await ownStoreSource(live.db).read(tenantId)).founderVoice
+    expect(voice).toMatchObject({
+      greeting: 'Hi,',
+      signoff: 'Warmly,',
+      writesAs: 'I'
+    })
+    // The store's own name may be in an example; no other capitalised word.
+    expect(voice!.examples[0]).toBe(
+      'I started Cedar Lane in my garage with one sewing machine and a lot of stubbornness.'
+    )
+    // A live store never writes in the sample account's founder's voice,
+    // and an unreadable history or samples give no voice.
+    for (const answers of <Record<string, Answer>[]>[
+      { klaviyo_history: history(false), brand_voice_samples: samples },
+      // A sample of an email this history does not hold (an earlier read's,
+      // or another account's): never the voice.
+      {
+        klaviyo_history: history(true, ['MsgB01']),
+        brand_voice_samples: samples
+      },
+      { klaviyo_history: history(true, []), brand_voice_samples: samples },
+      { klaviyo_history: failed, brand_voice_samples: samples },
+      { brand_voice_samples: samples },
+      { klaviyo_history: history(true), brand_voice_samples: failed }
+    ]) {
+      const { db } = fakeDb({ catalog_status: status(), ...own, ...answers })
+      expect((await ownStoreSource(db).read(tenantId)).founderVoice).toBe(
+        undefined
+      )
+    }
   })
 
   it('gives the subject line lab the store’s past subjects, from the same account as its catalog (PIC-26 part 2)', async () => {

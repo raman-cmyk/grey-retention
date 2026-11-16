@@ -188,6 +188,86 @@ describe('the Letter writer (TXT-001 part 2)', () => {
     )
   })
 
+  it('writes in the founder’s own voice when their emails show it, never without (PIC-23 part 3b)', async () => {
+    const voice = {
+      greeting: 'Hi,',
+      signoff: 'Warmly,',
+      writesAs: 'I' as const,
+      sentenceWords: 9,
+      exclamations: 'never' as const,
+      contractions: null,
+      examples: ['Every shirt still gets checked by hand before it ships.'],
+      from: { samples: 1, words: 44 }
+    }
+    const brief = { ...(await briefFor()), voice }
+    const ai = modelOf([() => ok(good)])
+    const result = await writeLetter(brief, ctxWith(ai))
+    expect(result).toMatchObject({ status: 'written' })
+    const call = ai.mock.calls[0]![0]
+    // The team signs: never "I" (only a confirmed founder writes as "I").
+    expect(call.request.user).toContain(
+      '"founderVoice":{"greeting":"Hi,","signoff":"Warmly,","wordsPerSentence":9,"exclamationMarks":"never","examples":["Every shirt still gets checked by hand before it ships."]}'
+    )
+    const signed = modelOf([() => ok(good)])
+    await writeLetter(
+      { ...(await briefFor({ founder: true })), voice },
+      ctxWith(signed)
+    )
+    expect(signed.mock.calls[0]![0].request.user).toContain('"writesAs":"I"')
+    expect(call.request.system).toContain(
+      'Write the way the founder writes ("founderVoice"'
+    )
+    expect(call.request.system).toContain('never copy one')
+    // Without a voice: neither the data nor the rule.
+    const plain = modelOf([() => ok(good)])
+    await writeLetter(await briefFor(), ctxWith(plain))
+    expect(plain.mock.calls[0]![0].request.user).not.toContain('founderVoice')
+    expect(plain.mock.calls[0]![0].request.system).not.toContain('founderVoice')
+  })
+
+  it('sends back a letter that copies the founder’s example, whole or eight words in a row (PIC-23 part 3b)', async () => {
+    const example =
+      'Every shirt still gets checked by hand before it ships out to you.'
+    const voice = {
+      greeting: null,
+      signoff: null,
+      writesAs: null,
+      sentenceWords: 9,
+      exclamations: 'never' as const,
+      contractions: null,
+      examples: [example],
+      from: { samples: 1, words: 44 }
+    }
+    const brief = { ...(await briefFor()), voice }
+    for (const copy of [
+      example,
+      'And every shirt still gets checked by hand before it leaves.'
+    ]) {
+      const ai = modelOf([
+        () => ok({ ...good, body: [copy, ...good.body.slice(1)] }),
+        () => ok(good)
+      ])
+      const result = await writeLetter(brief, ctxWith(ai))
+      expect(result, copy).toMatchObject({ status: 'written', tries: 2 })
+      expect(userOf(ai, 1)).toContain('never copy one of their example')
+    }
+    // Seven words of it, or none: no problem.
+    const ai = modelOf([
+      () =>
+        ok({
+          ...good,
+          body: [
+            'Every shirt still gets checked by hand here.',
+            ...good.body.slice(1)
+          ]
+        })
+    ])
+    expect(await writeLetter(brief, ctxWith(ai))).toMatchObject({
+      status: 'written',
+      tries: 1
+    })
+  })
+
   it('keeps the shared rules about facts, claims, urgency and banned words', () => {
     expect(
       letterInstructions.filter((r) =>
