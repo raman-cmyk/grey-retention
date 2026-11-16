@@ -280,6 +280,10 @@ describe('CI workflows', () => {
     // DST-005b: the emails' views waiting wake the run too.
     expect(text).toContain('/api/internal/studio/previews?peek=1')
     expect(text).toContain('waiting=$((sections + views))')
+    // Its peek failing never stops the sections.
+    expect(text).toContain(
+      "if ! call '/api/internal/studio/previews?peek=1' views.json 30; then"
+    )
     expect(text).toContain('node scripts/studio-renders.mjs')
     // Nothing is checked out or installed until the app says work is waiting.
     const steps = `\n${text.split('\n    steps:\n')[1]!}`

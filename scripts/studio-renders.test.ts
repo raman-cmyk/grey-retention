@@ -53,6 +53,8 @@ function app(
   options: {
     jobs?: number
     views?: number
+    /** The previews route's own answer to a GET, when not 200. */
+    viewsGet?: number
     upload?: number
     post?: number
     get?: number
@@ -80,8 +82,11 @@ function app(
       if (call.method === 'POST')
         return Response.json({ ok: true }, { status: options.post ?? 200 })
       if (options.get) return Response.json({}, { status: options.get })
-      if (url.endsWith('/api/internal/studio/previews'))
+      if (url.endsWith('/api/internal/studio/previews')) {
+        if (options.viewsGet)
+          return Response.json({}, { status: options.viewsGet })
         return Response.json({ jobs: viewsLeft-- > 0 ? [view(++v)] : [] })
+      }
       return Response.json({
         jobs: left-- > 0 ? [job(++n, options.link)] : []
       })
@@ -320,6 +325,62 @@ describe('the section browser job (DST-001c)', () => {
         'Email views drawn: 1. Failed: 1. Not recorded: 0.'
       )
     )
+  })
+
+  it('reports a view whose upload fails, and stops when the browser dies drawing one', async () => {
+    const calls = app({ jobs: 0, views: 1, upload: 403 })
+    draw.renderEmail.mockResolvedValue({
+      ...picture,
+      height: 900,
+      cut: false,
+      wide: false
+    })
+    expect((await run({ base, secret, browser, log: quiet })).views).toEqual({
+      drawn: 0,
+      failed: 1,
+      lost: 0
+    })
+    expect(calls.find((c) => c.method === 'POST')?.body).toEqual({
+      job: 'v1',
+      lease: 'w1',
+      failure: 'upload_failed'
+    })
+    vi.unstubAllGlobals()
+    const dyingCalls = app({ jobs: 0, views: 2 })
+    let up = true
+    const dying = { isConnected: () => up } as unknown as Browser
+    draw.renderEmail.mockImplementation(async () => {
+      up = false
+      throw new Error('failed')
+    })
+    const log = vi.fn()
+    await expect(run({ base, secret, browser: dying, log })).rejects.toThrow(
+      'The browser stopped.'
+    )
+    expect(dyingCalls.filter((c) => c.method === 'POST')).toEqual([])
+    expect(log.mock.calls).toEqual(
+      counts('Sections drawn: 0. Failed: 0. Not recorded: 0.')
+    )
+  })
+
+  it('logs both counts when the views cannot be handed out after the sections were drawn', async () => {
+    app({ jobs: 1, viewsGet: 500 })
+    draw.renderSection.mockResolvedValue(picture)
+    const log = vi.fn()
+    await expect(run({ base, secret, browser, log })).rejects.toThrow(
+      'The app answered 500.'
+    )
+    expect(log.mock.calls).toEqual(
+      counts('Sections drawn: 1. Failed: 0. Not recorded: 0.')
+    )
+  })
+
+  it('imports both drawings from the real browser module', async () => {
+    const real = await vi.importActual<typeof import('./section-render.mjs')>(
+      './section-render.mjs'
+    )
+    expect(typeof real.renderSection).toBe('function')
+    expect(typeof real.renderEmail).toBe('function')
   })
 
   it('counts sections and views together against perRun', async () => {

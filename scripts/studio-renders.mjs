@@ -24,12 +24,13 @@ import { renderEmail, renderSection } from './section-render.mjs'
 
 /**
  * Pictures drawn per run at most (sections and views together), and the
- * run's time: with the setup before it (the peek and its retry,
- * installing Chromium), one last picture and the designs carried on after
- * (`carryOnMs`), a run ends inside the job's 18 minutes.
+ * run's time: with the setup before it (the two peeks, each with its
+ * 2-minute retry, and installing Chromium), one last picture and the
+ * designs carried on after (`carryOnMs`), a run ends inside the job's 18
+ * minutes. A picture takes seconds: 24 fit well inside 6 minutes.
  */
 export const perRun = 24
-export const runBudgetMs = 8 * 60_000
+export const runBudgetMs = 6 * 60_000
 /** A job's lease (`claim_platform_job`); its report must arrive inside it. */
 export const leaseMs = 120_000
 /** Time kept at the end of the lease for the report. */
