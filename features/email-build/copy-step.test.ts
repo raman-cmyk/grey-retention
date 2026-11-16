@@ -934,6 +934,51 @@ describe('the subject line lab on the Copywriter’s words (PIC-26 part 2)', () 
     })
   })
 
+  it('tests B against the subject in the one-design email it builds, never on plain copy (PIC-26 part 3b)', async () => {
+    const { out } = await copy(['Ready for the weekend?'])
+    expect(out.subjectLab?.b?.subject).toBe('Quiet evenings, picked for you 1')
+    const s = { ...(await store()), pastSubjects: past }
+    const progress = { ...(await savedSteps(s)), copy: out }
+    const design = await runBuildStep(
+      'design',
+      { planned, store: s, offers: sampleOffers, progress },
+      ctxWith(null)
+    )
+    expect(design).toMatchObject({
+      ok: true,
+      done: 'design',
+      email: {
+        subject: 'Ready for the weekend?',
+        subjectB: 'Quiet evenings, picked for you 1'
+      }
+    })
+    // Plain copy: no lab, no test.
+    const plain = await runBuildStep(
+      'copy',
+      {
+        planned,
+        store: s,
+        offers: sampleOffers,
+        progress: await savedSteps(s)
+      },
+      ctxWith(null)
+    )
+    if (!plain.ok || !('output' in plain)) throw new Error('copy failed')
+    const plainDesign = await runBuildStep(
+      'design',
+      {
+        planned,
+        store: s,
+        offers: sampleOffers,
+        progress: { ...(await savedSteps(s)), copy: plain.output }
+      },
+      ctxWith(null)
+    )
+    expect(
+      (plainDesign as { email?: Record<string, unknown> }).email
+    ).not.toHaveProperty('subjectB')
+  })
+
   it('weighs nothing for plain copy, which keeps its own subject', async () => {
     const progress = await savedSteps()
     const plain = await runBuildStep(
