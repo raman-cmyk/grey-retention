@@ -14,6 +14,7 @@ import { createClient } from '@/lib/supabase/server'
 const ownerOnly = 'Only this workspace’s owner can change what GROS learned.'
 const stale =
   'This rule changed in another window. Open Learned again, then try again.'
+const gone = 'GROS no longer uses this rule. Open Learned again.'
 
 const ruleForm = z.object({
   rule: z.uuid(),
@@ -50,7 +51,9 @@ async function ownerCommand<F extends z.infer<typeof ruleForm>>(
         error:
           error.details === 'too_many_pins'
             ? 'You have 20 pinned rules. Unpin one first.'
-            : stale
+            : error.details === 'not_active'
+              ? gone
+              : stale
       }
     if (error.code === '42501') return { error: ownerOnly }
     return { error: failed(input) }
