@@ -6,7 +6,7 @@ import type { Database } from '@/lib/supabase/database.types'
 /**
  * PIC-23 part 2b: the owner's own words kept per workspace
  * (`brand_voice_samples`): one voice excerpt of an email the store sent
- * (PIC-23 part 2a's `voiceExcerpt`, already without people's names,
+ * (PIC-23 part 2a's voice excerpt, already without people's names,
  * contact details, reviews and Klaviyo's tags), with when it was sent.
  * Only the history read writes them, under its lease; members read them.
  */
@@ -29,7 +29,13 @@ const sample = z.object({
   text: z.string().min(1).max(8_000),
   weight: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   words: z.number().int().min(25).max(8_000),
-  sentAt: z.iso.datetime({ offset: true }).nullable()
+  // As the table keeps it: a real time from 2000 on, in one spelling.
+  sentAt: z.iso
+    .datetime({ offset: true })
+    .transform((t) => new Date(t))
+    .refine((d) => !Number.isNaN(d.getTime()) && d.getUTCFullYear() >= 2000)
+    .transform((d) => d.toISOString())
+    .nullable()
 })
 
 /**
@@ -39,7 +45,11 @@ const sample = z.object({
  * one). A sample of a shape the table refuses is left out.
  */
 export function pickVoiceSamples(found: readonly VoiceSample[]): VoiceSample[] {
-  const valid = found.filter((s) => sample.safeParse(s).success)
+  // Only what the table keeps, in its own shape (no other field).
+  const valid = found.flatMap((s) => {
+    const parsed = sample.safeParse(s)
+    return parsed.success ? [parsed.data] : []
+  })
   const time = (s: VoiceSample) => (s.sentAt ? Date.parse(s.sentAt) : 0)
   const order = [...valid].sort(
     (a, b) => b.weight - a.weight || time(b) - time(a)

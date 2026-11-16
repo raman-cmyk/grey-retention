@@ -1,10 +1,11 @@
 -- PIC-23 part 2b (owner pick #23, the founder's voice): the owner's own
 -- words from the emails the store sent, as short excerpts safe to keep
--- (features/letter/voice/excerpt.ts): people's names, emails, links,
--- phones, addresses, reviews and Klaviyo's tags already out; never raw
--- HTML. At most 20 a workspace, 60,000 characters in all. Only the history
--- read (`brand.read_history`) writes them, under its own lease, replacing
--- the ones an earlier read kept; the workspace's active members read them.
+-- (PIC-23 part 2a's voice excerpt): people's names, emails, links, phones,
+-- addresses, reviews and Klaviyo's tags already out; never raw HTML. At
+-- most 20 a workspace, 60,000 characters in all. Only the history read
+-- (`brand.read_history`) writes them, under its own lease, replacing the
+-- ones an older read kept (never a newer read's); the workspace's active
+-- members read them.
 
 create table public.brand_voice_samples (
   tenant_id uuid not null references public.tenants(id),
@@ -33,15 +34,16 @@ do $$ begin
   end if;
 end $$;
 
--- The history read keeps what it found: every sample checked, then the
--- workspace's samples replaced at once (an empty list clears them: a read
--- that found none). The sample account's words only for a synthetic brand.
+-- The history read keeps what it found: every sample checked (23514 for any
+-- bad one), then the workspace's samples replaced at once (an empty list
+-- clears them: a read that found none). A read older than the one that
+-- kept the samples, or than the stored history's, writes nothing (0). The
+-- sample account's words only for a synthetic brand.
 create or replace function public.record_voice_samples(job uuid, lease uuid, samples jsonb)
 returns integer language plpgsql security definer set search_path = '' as $$
 declare
   j public.job_runs; n integer;
   keys constant text[] := array['messageId','text','weight','words','sentAt'];
-  iso constant text := '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$';
 begin
   j := private.onboarding_lease(job, lease);
   if j.kind <> 'brand.read_history' then raise exception 'Not a history reading job' using errcode = '23514'; end if;
@@ -49,7 +51,8 @@ begin
     and not coalesce((select b.synthetic from public.brand_profiles b where b.tenant_id = j.tenant_id), false) then
     raise exception 'Invalid voice samples' using errcode = '23514';
   end if;
-  if jsonb_typeof(samples) is distinct from 'array' or jsonb_array_length(samples) > 20 then
+  if jsonb_typeof(samples) is distinct from 'array' or jsonb_array_length(samples) > 20
+    or length(samples::text) > 200000 then
     raise exception 'Invalid voice samples' using errcode = '23514';
   end if;
   if exists (
@@ -61,9 +64,11 @@ begin
       or jsonb_typeof(e->'text') <> 'string' or char_length(e->>'text') not between 1 and 8000
       or jsonb_typeof(e->'weight') <> 'number' or (e->>'weight') !~ '^[123]$'
       or jsonb_typeof(e->'words') <> 'number' or (e->>'words') !~ '^[0-9]{2,4}$'
-      or (e->>'words')::integer < 25
+      or (e->>'words')::integer not between 25 and 8000
+      -- A word is at least one letter and a space.
+      or (e->>'words')::integer > (char_length(e->>'text') + 1) / 2
       or (e ? 'sentAt' and jsonb_typeof(e->'sentAt') <> 'null'
-        and (jsonb_typeof(e->'sentAt') <> 'string' or (e->>'sentAt') !~ iso))
+        and (jsonb_typeof(e->'sentAt') <> 'string' or private.safe_time(e->>'sentAt') is null))
   ) then
     raise exception 'Invalid voice samples' using errcode = '23514';
   end if;
@@ -71,10 +76,22 @@ begin
     or (select coalesce(sum(char_length(e->>'text')), 0) from jsonb_array_elements(samples) e) > 60000 then
     raise exception 'Invalid voice samples' using errcode = '23514';
   end if;
+  -- A newer read already kept the samples or the history: nothing to write.
+  if exists (
+    select 1 from public.brand_voice_samples v
+      join public.job_runs r on r.tenant_id = v.tenant_id and r.id = v.run_id
+    where v.tenant_id = j.tenant_id and r.id <> j.id and r.created_at > j.created_at
+  ) or exists (
+    select 1 from public.klaviyo_history h
+      join public.job_runs r on r.tenant_id = h.tenant_id and r.id = h.run_id
+    where h.tenant_id = j.tenant_id and h.state in ('ready','empty') and r.id <> j.id and r.created_at > j.created_at
+  ) then
+    return 0;
+  end if;
   delete from public.brand_voice_samples where tenant_id = j.tenant_id;
   insert into public.brand_voice_samples(tenant_id, message_id, run_id, text, weight, words, sent_at)
     select j.tenant_id, e->>'messageId', j.id, e->>'text', (e->>'weight')::smallint, (e->>'words')::integer,
-      (e->>'sentAt')::timestamptz
+      private.safe_time(e->>'sentAt')
     from jsonb_array_elements(samples) e;
   get diagnostics n = row_count;
   return n;

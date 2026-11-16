@@ -67,9 +67,18 @@ describe('the owner’s words kept per workspace (PIC-23 part 2b)', () => {
       s({ messageId: 'Huge', text: 'a'.repeat(8_001) }),
       s({ messageId: 'Weight', weight: 4 as never }),
       s({ messageId: 'When', sentAt: 'yesterday' }),
+      s({ messageId: 'Old', sentAt: '0000-01-01T00:00:00Z' }),
       s({ messageId: 'Good' })
     ])
     expect(picked.map((p) => p.messageId)).toEqual(['Good'])
+    // One spelling of the time, and nothing but the table's fields.
+    const extra = {
+      ...s({ sentAt: '2026-10-01T12:00:00.1234567+02:00' }),
+      campaignId: 'Cmp1'
+    }
+    expect(pickVoiceSamples([extra])).toEqual([
+      s({ sentAt: '2026-10-01T10:00:00.123Z' })
+    ])
   })
 
   it('records under the job’s lease, and reads back only what fits', async () => {
