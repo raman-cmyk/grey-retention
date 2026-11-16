@@ -4,6 +4,7 @@ import type { OfferSource } from '@/features/offers/source'
 import {
   codeWorksNow,
   contentStep,
+  emailName,
   shownOffer,
   copyStep,
   designStep,
@@ -27,6 +28,12 @@ import {
   viewKey
 } from '@/features/studio/email-check'
 import { hardProblems } from './hard-checks'
+import { letterSchema } from '@/features/letter/letter'
+import {
+  letterCopyStep,
+  letterDesignStep,
+  type LetterCopy
+} from './letter-steps'
 import type { Store } from './ports'
 import { buildSteps, type BuildStep, type RoundStep } from './step-names'
 
@@ -104,6 +111,13 @@ const copySaved = z.looseObject({
   changes: z.array(z.string()).max(40),
   written: z.boolean().optional()
 })
+/** A text email's saved copy step (TXT-001c): its letter, checked again. */
+const letterSaved = z.looseObject({
+  letter: z.unknown(),
+  productIds: z.array(z.string()).max(12),
+  changes: z.array(z.string()).max(40),
+  written: z.boolean().optional()
+})
 /** A step's saved rounds (REL-AI part 2b), read by the step itself. */
 const roundsOf = (progress: Record<string, unknown>, step: string) => {
   const work = progress.work
@@ -156,6 +170,32 @@ export type StepResult =
     }
 
 const unreadable = { ok: false, code: 'step_progress_invalid' } as const
+
+const hostOf = (url: string | undefined) => {
+  try {
+    return url ? [new URL(url).hostname.toLowerCase()] : []
+  } catch {
+    return []
+  }
+}
+
+/** DST-005: the hard checks on an email as drawn, before it is stored. */
+const checksFor =
+  (store: Store, rules: SectionsOutput['rules']) => (html: string) =>
+    hardProblems(html, {
+      maxDiscountPercent: rules.maxDiscountPercent,
+      known: [
+        store.brand.name,
+        ...store.products.map((p) => p.title),
+        ...store.facts.approvedClaims
+      ],
+      storeHosts: [
+        ...new Set([
+          ...hostOf(store.brand.site),
+          ...store.products.flatMap((p) => hostOf(p.url))
+        ])
+      ]
+    })
 
 /** JSON with every object's keys in order: the same data, the same text. */
 function canonical(value: unknown): string {
@@ -260,6 +300,18 @@ export async function runBuildStep(
   if (step === 'copy') {
     const locked = contentSaved.safeParse(progress.data.content)
     if (!locked.success) return unreadable
+    // TXT-001c: a text email's letter, written or plain.
+    if (planned.format === 'text') {
+      const made = await letterCopyStep(
+        {
+          store,
+          locked: locked.data as unknown as LockedContent,
+          taken: input.taken
+        },
+        ctx
+      )
+      return made.ok ? { ok: true, done: 'copy', output: made.output } : made
+    }
     const rounds = roundsOf(progress.data, 'copy')
     const made = await copyStep(
       {
@@ -276,6 +328,12 @@ export async function runBuildStep(
       ? { ok: true, saved: 'copy', work: made.work }
       : { ok: true, done: 'copy', output: made.output }
   }
+  if (planned.format === 'text')
+    return letterDesign(
+      { ...input, sections, content: progress.data.content },
+      progress.data.copy,
+      ctx
+    )
   const copy = copySaved.safeParse(progress.data.copy)
   if (!copy.success) return unreadable
   const content = progress.data.content as { source?: unknown } | undefined
@@ -359,28 +417,7 @@ export async function runBuildStep(
       ai: sections.layout.source === 'agent' || content?.source === 'agent'
     })
   // DST-005: the hard checks on the email as drawn, before it is stored.
-  const hostOf = (url: string | undefined) => {
-    try {
-      return url ? [new URL(url).hostname.toLowerCase()] : []
-    } catch {
-      return []
-    }
-  }
-  const checksOf = (html: string) =>
-    hardProblems(html, {
-      maxDiscountPercent: sections.rules.maxDiscountPercent,
-      known: [
-        store.brand.name,
-        ...store.products.map((p) => p.title),
-        ...store.facts.approvedClaims
-      ],
-      storeHosts: [
-        ...new Set([
-          ...hostOf(store.brand.site),
-          ...store.products.flatMap((p) => hostOf(p.url))
-        ])
-      ]
-    })
+  const checksOf = checksFor(store, sections.rules)
   let made = draw(drawn)
   let problems = made.ok ? checksOf(made.email.html) : []
   const pictured = drawn.draft.blocks.some(
@@ -533,4 +570,71 @@ export async function runBuildStep(
       dedupeKey: `design-studio:${keyPart(ctx.callerKey)}:${coded.key}`
     })
   return made.ok ? { ok: true, done: 'design', email: made.email } : made
+}
+
+/**
+ * TXT-001c: a text email's design step: its saved letter checked again,
+ * its code still a working one (REL-OFF), drawn as a letter, then the
+ * hard checks every email gets. No studio: a letter has no pictures.
+ */
+async function letterDesign(
+  input: {
+    planned: PlannedEmail
+    store: Store
+    offers: OfferSource
+    sections: SectionsOutput
+    content: unknown
+  },
+  saved: unknown,
+  ctx: BuildCtx
+): Promise<StepResult> {
+  const { planned, store, sections } = input
+  const read = letterSaved.safeParse(saved)
+  const letter = read.success ? letterSchema.safeParse(read.data.letter) : null
+  if (!read.success || !letter?.success) return unreadable
+  const copy: LetterCopy = {
+    letter: letter.data,
+    productIds: read.data.productIds,
+    changes: read.data.changes as LetterCopy['changes'],
+    ...(read.data.written ? { written: true } : {})
+  }
+  const code = copy.letter.offer?.code ?? null
+  if (code !== null) {
+    const now = await codeWorksNow(
+      code,
+      input.offers,
+      ctx.tenantId,
+      sections.sendAt,
+      shownOffer(code, sections.rules)
+    )
+    if (now === 'unreadable') return { ok: false, code: 'offers_unreadable' }
+    if (now === 'unsafe') return { ok: false, code: 'offer_unsafe' }
+  }
+  const made = letterDesignStep({
+    planned,
+    store,
+    sendAt: sections.sendAt,
+    sample: sections.sample,
+    copy,
+    rules: sections.rules,
+    ai: (input.content as { source?: unknown } | undefined)?.source === 'agent',
+    name: emailName(planned)
+  })
+  if (!made.ok) return made
+  const problems = checksFor(store, sections.rules)(made.email.html)
+  if (problems.length) {
+    await ctx.fallbacks.record({
+      tenantId: ctx.tenantId,
+      campaignId: ctx.campaignId ?? null,
+      agent: 'email-checks',
+      reasonCode: `hard_check_${problems[0]!.check}`,
+      reason: clip(problems.map((p) => p.problem).join(' '), 500),
+      fallback: 'No email was stored; trying again makes it again.',
+      attempts: 1,
+      detail: { checks: problems.map((p) => p.check) },
+      dedupeKey: `email-checks:${keyPart(ctx.callerKey)}:letter`
+    })
+    return { ok: false, code: 'hard_check_failed' }
+  }
+  return { ok: true, done: 'design', email: made.email }
 }
