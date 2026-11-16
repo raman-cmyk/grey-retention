@@ -34,6 +34,8 @@ export type PlanScreen =
       offers: { id: string; label: string }[]
       /** "SUMMER10 is not offered: it ended on 1 Sep." */
       leftOut: string[]
+      /** No offer can run: why (the plan goes on with none). */
+      none: string | null
       /** The owner picks; anyone else is told only the owner can. */
       canPick: boolean
     }
@@ -189,8 +191,11 @@ function planningSteps(state: PlanRun['state']): PlanStep[] {
   }))
 }
 
-const passedWords =
-  'Its send time passed before it was made. Plan next 15 days for new emails.'
+/** A send time that passed: what to do, or who can (staff cannot plan). */
+const passedWords = (owner: boolean) =>
+  owner
+    ? 'Its send time passed before it was made. Plan next 15 days for new emails.'
+    : 'Its send time passed before it was made. Only the owner can plan new emails.'
 
 /** One planned email's status and action, from its latest build. */
 function emailState(
@@ -202,19 +207,27 @@ function emailState(
     owner ? ({ kind: 'create', label } as const) : null
   if (!build)
     return passed
-      ? { status: { kind: 'needs_you', reason: passedWords }, action: null }
-      : { status: { kind: 'planned' }, action: create('Create email') }
-  if (build.state === 'failed') {
-    const reason = build.reason ?? 'We could not create this email.'
-    return passed
       ? {
-          status: { kind: 'needs_you', reason: `${reason} ${passedWords}` },
+          status: { kind: 'needs_you', reason: passedWords(owner) },
           action: null
         }
-      : {
-          status: { kind: 'needs_you', reason },
-          action: create('Try again')
-        }
+      : { status: { kind: 'planned' }, action: create('Create email') }
+  if (build.state === 'failed') {
+    // Its time passed: that is what to act on (the build's own reason may
+    // say Try again, which no longer helps).
+    if (passed)
+      return {
+        status: { kind: 'needs_you', reason: passedWords(owner) },
+        action: null
+      }
+    const reason = build.reason ?? 'We could not create this email.'
+    return {
+      status: {
+        kind: 'needs_you',
+        reason: owner ? reason : `${reason} Only the owner can try again.`
+      },
+      action: create('Try again')
+    }
   }
   if (build.state === 'drafted')
     return {
@@ -275,6 +288,9 @@ export function planScreen(
           leftOut: run.pulse.leftOut.map(
             (l) => `${l.code} is not offered: ${l.why}`
           ),
+          none: run.pulse.offers.length
+            ? null
+            : 'No offers can run in these days.',
           canPick: owner
         }
       : {
@@ -342,7 +358,11 @@ export function planScreen(
         : 'planned'
     const day = byDate.get(e.date)
     if (!day) byDate.set(e.date, { date: e.date, state, slot: e.slot })
-    else if (dayRank[state] > dayRank[day.state]) day.state = state
+    // The day is the furthest of its emails, and opens that one.
+    else if (dayRank[state] > dayRank[day.state]) {
+      day.state = state
+      day.slot = e.slot
+    }
   }
   const days: PlanDay[] = fifteenDays(run.startOn).map(
     (date) => byDate.get(date) ?? { date, state: 'none', slot: null }

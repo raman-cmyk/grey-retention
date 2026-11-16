@@ -129,6 +129,7 @@ describe('the Plan screen (UI-PLAN-a)', () => {
       ],
       offers: [{ id: 'o1', label: '10% off with CANDLE10, until Mon 30 Nov' }],
       leftOut: ['SUMMER20 is not offered: it ended on 1 Sep.'],
+      none: null,
       canPick: true
     })
     expect(
@@ -281,6 +282,30 @@ describe('the Plan screen (UI-PLAN-a)', () => {
     expect(screen.days.find((d) => d.date === '2026-11-27')!.state).toBe(
       'in_klaviyo'
     )
+    // Two the same day: the day is the furthest, and opens it.
+    const two = plan(
+      run({
+        plan: {
+          ...run().plan!,
+          slots: [slot('2026-11-17', { time: '09:00' }), slot('2026-11-17')]
+        } as PlanRun['plan'],
+        sendPassed: [false, false],
+        builds: {
+          1: {
+            id: 'b1',
+            state: 'drafted',
+            step: 'push',
+            sampleDraft: false,
+            reason: null
+          }
+        }
+      })
+    )
+    expect(two.days[0]).toEqual({
+      date: '2026-11-17',
+      state: 'in_klaviyo',
+      slot: 1
+    })
     expect(screen.counts).toEqual({ inKlaviyo: 1, sampleDrafts: 1, planned: 2 })
   })
 
@@ -313,7 +338,7 @@ describe('the Plan screen (UI-PLAN-a)', () => {
       status: {
         kind: 'needs_you',
         reason:
-          'Its words did not pass the checks. Its send time passed before it was made. Plan next 15 days for new emails.'
+          'Its send time passed before it was made. Plan next 15 days for new emails.'
       },
       action: null
     })
@@ -356,7 +381,12 @@ describe('the Plan screen (UI-PLAN-a)', () => {
     )
     const by = (s: number) => screen.emails.find((e) => e.slot === s)!
     expect(by(1).action).toBeNull()
-    expect(by(0).action).toBeNull()
+    expect(by(0)).toMatchObject({
+      action: null,
+      status: {
+        reason: 'We could not create this email. Only the owner can try again.'
+      }
+    })
     expect(by(2).action).toEqual({ kind: 'open', buildId: 'b2' })
     expect(screen.emails.some((e) => e.next)).toBe(false)
     expect(screen.canPlan).toBe(false)
