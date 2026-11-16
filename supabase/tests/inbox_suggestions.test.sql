@@ -1,5 +1,5 @@
 begin;
-select plan(24);
+select plan(38);
 
 -- ONB-065a and REAL-01a: the inbox brands a workspace may be
 -- suggested, asked for by the app's server only, and the brands the owner
@@ -39,6 +39,10 @@ create function pg_temp.ask(t text, since interval default '30 days') returns se
 $$;
 select set_config('test.wick',(select id::text from public.competitor_captures where domain='wick.example'),true);
 select set_config('test.followed',(select id::text from public.competitor_captures where domain='followed.example'),true);
+select set_config('test.bark',(select id::text from public.competitor_captures where domain='bark.example'),true);
+select set_config('test.pending',(select id::text from public.competitor_captures where domain='pending.example'),true);
+select set_config('test.dropped',(select id::text from public.competitor_captures where domain='dropped.example'),true);
+select set_config('test.real',(select id::text from public.competitor_captures where domain='realbrand.test'),true);
 select pg_temp.email('bark.example', '1 day', 'pet');
 select pg_temp.email('bark.example', '3 days');
 select pg_temp.email('bark.example', '5 days');
@@ -65,6 +69,15 @@ set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
 select throws_ok($$select * from pg_temp.ask('00000000-0000-4000-8000-000000000101')$$,'42501',null,
   'a member cannot list inbox brands directly');
+reset role;
+-- The function itself also asks who is calling, past its grant.
+set local role service_role;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select throws_ok($$select * from pg_temp.ask('00000000-0000-4000-8000-000000000101')$$,'42501',null,
+  'a member''s session is refused by the function too');
+select set_config('request.jwt.claims','{}',true);
+select throws_ok($$select * from pg_temp.ask('00000000-0000-4000-8000-000000000101')$$,'42501',null,
+  'and so is a call with no session at all');
 reset role;
 
 set local role service_role;
@@ -96,6 +109,8 @@ select throws_ok(format('select public.hide_competitor(%L,%L)','00000000-0000-40
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
 select throws_ok(format('select public.hide_competitor(%L,%L)','00000000-0000-4000-8000-000000000101',gen_random_uuid()),
   '23514',null,'an unknown brand cannot be hidden');
+select throws_ok(format('select public.hide_competitor(%L,%L)','00000000-0000-4000-8000-000000000101',
+  current_setting('test.real')),'23514',null,'nor a real brand by a sample store, which is never shown one');
 select lives_ok(format('select public.hide_competitor(%L,%L)','00000000-0000-4000-8000-000000000101',
   current_setting('test.wick')),'the owner hides a brand');
 select lives_ok(format('select public.hide_competitor(%L,%L)','00000000-0000-4000-8000-000000000101',
@@ -115,6 +130,12 @@ select is((select array_agg(x order by x) from pg_temp.ask('00000000-0000-4000-8
   array['bark.example','quiet.example'],'a hidden brand is never suggested');
 reset role;
 set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000005","role":"authenticated"}',true);
+select throws_ok(format('select public.unhide_competitor(%L,%L)','00000000-0000-4000-8000-000000000101',
+  current_setting('test.wick')),'42501',null,'staff cannot show a hidden brand again');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
+select throws_ok(format('select public.unhide_competitor(%L,%L)','00000000-0000-4000-8000-000000000101',
+  current_setting('test.wick')),'42501',null,'nor can another workspace''s owner');
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
 select lives_ok(format('select public.unhide_competitor(%L,%L)','00000000-0000-4000-8000-000000000101',
   current_setting('test.wick')),'the owner shows it again');
@@ -123,6 +144,44 @@ set local role service_role;
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
 select ok('wick.example' in (select pg_temp.ask('00000000-0000-4000-8000-000000000101')),'and it may be suggested again');
 reset role;
+
+-- Hiding stays in its own workspace.
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select lives_ok(format('select public.hide_competitor(%L,%L)','00000000-0000-4000-8000-000000000101',
+  current_setting('test.bark')),'the owner hides a brand another workspace follows');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
+select lives_ok(format('select public.hide_competitor(%L,%L)','00000000-0000-4000-8000-000000000102',
+  current_setting('test.pending')),'another workspace''s owner hides a brand in theirs');
+select is((select array_agg(capture_id::text) from public.competitor_hidden), array[current_setting('test.pending')],
+  'who sees only their own workspace''s hidden brands');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select ok(not exists(select 1 from public.competitor_hidden where tenant_id <> '00000000-0000-4000-8000-000000000101'),
+  'and this owner sees none of theirs');
+reset role;
+select is((select active from public.competitor_subscriptions where tenant_id='00000000-0000-4000-8000-000000000102'
+  and capture_id=current_setting('test.bark')::uuid),true,'the other workspace still follows the brand');
+
+-- Following a hidden brand again takes it off the hidden list.
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select lives_ok($$select public.subscribe_competitor('00000000-0000-4000-8000-000000000101','followed.example')$$,
+  'the owner follows a hidden brand again');
+select lives_ok(format('select public.hide_competitor(%L,%L)','00000000-0000-4000-8000-000000000101',
+  current_setting('test.dropped')),'and hides a brand it once followed');
+reset role;
+update public.competitor_subscriptions set active = true
+  where tenant_id = '00000000-0000-4000-8000-000000000101' and capture_id = current_setting('test.dropped')::uuid;
+select is((select array_agg(capture_id::text) from public.competitor_hidden where tenant_id='00000000-0000-4000-8000-000000000101'),
+  array[current_setting('test.bark')],'a brand followed again, either way, is no longer hidden');
+
+-- A paused workspace is suggested nothing.
+update public.tenants set status = 'paused' where id = '00000000-0000-4000-8000-000000000101';
+set local role service_role;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+select is((select count(*)::integer from pg_temp.ask('00000000-0000-4000-8000-000000000101')),0,'a paused workspace: nothing');
+reset role;
+update public.tenants set status = 'active' where id = '00000000-0000-4000-8000-000000000101';
 
 -- A real store (Raman, 16 Nov) gets real brands, never a sample one.
 update public.brand_profiles set synthetic = false, domain = 'north-studio.test'

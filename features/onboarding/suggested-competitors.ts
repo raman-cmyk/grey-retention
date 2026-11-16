@@ -18,9 +18,9 @@ import type { Database } from '@/lib/supabase/database.types'
  * two sides agree. Brands sending lately come first.
  * The database gives only brands the inbox is subscribed to, of the
  * store's own kind (real or sample, from its brand profile), never one
- * the workspace follows or once followed (`suggestable_inbox_brands`);
- * here the store's own website is left out too, and so is any brand the
- * owner hid. Real stores get the inbox's real brands (Raman, 16 Nov), only
+ * the workspace follows, once followed or the owner hid
+ * (`suggestable_inbox_brands`); here the store's own website is left out
+ * too. Real stores get the inbox's real brands (Raman, 16 Nov), only
  * of their own industry: a suggestion is a brand's name, website and how
  * often it sends, never an email. Not yet: following a real brand (its
  * emails cleaned of names and addresses, REAL-01b), signing the

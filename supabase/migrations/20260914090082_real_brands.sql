@@ -32,12 +32,16 @@ do $$ begin
 end $$;
 
 -- The owner hides a brand: it is never suggested again, and the workspace
--- stops following it. Hiding twice is fine.
+-- stops following it. Hiding twice is fine. Only a brand of the
+-- workspace's own kind (real or sample) or one it follows or once
+-- followed: the hidden list never names a brand it could not be shown.
 create or replace function public.hide_competitor(t uuid, capture uuid)
 returns void language plpgsql security definer set search_path = '' as $$
 begin
   perform private.require_member(t, true);
-  if not exists (select 1 from public.competitor_captures c where c.id = capture) then
+  if not exists (select 1 from public.competitor_captures c where c.id = capture
+      and (c.synthetic = (select b.synthetic from public.brand_profiles b where b.tenant_id = t)
+        or exists (select 1 from public.competitor_subscriptions s where s.tenant_id = t and s.capture_id = c.id))) then
     raise exception 'Unknown brand' using errcode = '23514';
   end if;
   insert into public.competitor_hidden(tenant_id, capture_id, hidden_by) values (t, capture, auth.uid())
@@ -55,6 +59,19 @@ begin
   delete from public.competitor_hidden h where h.tenant_id = t and h.capture_id = capture;
 end $$;
 
+-- Following a brand again (the owner's own choice) takes it off the hidden
+-- list, so a brand is never both followed and hidden.
+create or replace function private.unhide_followed_competitor()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  delete from public.competitor_hidden h where h.tenant_id = new.tenant_id and h.capture_id = new.capture_id;
+  return new;
+end $$;
+revoke all on function private.unhide_followed_competitor() from public, anon, authenticated;
+create trigger competitor_followed_unhides
+  after insert or update of active on public.competitor_subscriptions
+  for each row when (new.active) execute function private.unhide_followed_competitor();
+
 revoke all on function public.hide_competitor(uuid, uuid) from public, anon;
 revoke all on function public.unhide_competitor(uuid, uuid) from public, anon;
 grant execute on function public.hide_competitor(uuid, uuid) to authenticated;
@@ -71,7 +88,10 @@ declare sample boolean;
 begin
   if coalesce(auth.role(), '') <> 'service_role' then raise exception 'Access denied' using errcode = '42501'; end if;
   if t is null or since is null then raise exception 'Invalid request' using errcode = '23514'; end if;
-  select b.synthetic into sample from public.brand_profiles b where b.tenant_id = t;
+  -- A paused workspace is suggested nothing.
+  select b.synthetic into sample from public.brand_profiles b
+    join public.tenants w on w.id = b.tenant_id and w.status = 'active'
+    where b.tenant_id = t;
   -- No brand profile yet: it is not known whether the store is real.
   if sample is null then return; end if;
   return query
