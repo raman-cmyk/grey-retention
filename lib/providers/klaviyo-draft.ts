@@ -77,6 +77,12 @@ export type DraftResult =
       retryAfterSeconds?: number
       /** For `rejected` by the launch check: the failing check ids. */
       checks?: string[]
+      /**
+       * For `rejected` by the app's own checks before or while the draft
+       * goes in (never Klaviyo's own refusal of a request): why, as a
+       * short code (`pushRefusalWords`, REL-084c).
+       */
+      reason?: string
     }
 
 export interface DraftPusher {
@@ -102,7 +108,12 @@ export function fakeDraftPusher(
         v &&
         (v.length !== 2 || v[0]!.approach !== 'A' || v[1]!.approach !== 'B')
       )
-        return { ok: false, code: 'rejected', checks: ['variations'] }
+        return {
+          ok: false,
+          code: 'rejected',
+          checks: ['variations'],
+          reason: 'variations_invalid'
+        }
       return {
         ok: true,
         campaignId: `sample-draft-${input.idempotencyKey}`,

@@ -908,8 +908,23 @@ describe('failed steps', () => {
         { ok: false, code: 'unavailable' },
         { code: 'klaviyo_unavailable', final: false }
       ],
+      // Klaviyo's own refusal of a request: no reason.
       [
         { ok: false, code: 'rejected', checks: ['images'] },
+        { code: 'klaviyo_rejected', final: true }
+      ],
+      // REL-084c: the app's own check: this build keeps its reason.
+      [
+        {
+          ok: false,
+          code: 'rejected',
+          checks: ['images'],
+          reason: 'image_refused'
+        },
+        { code: 'klaviyo_refused_image_refused', final: true }
+      ],
+      [
+        { ok: false, code: 'rejected', reason: 'something_new' },
         { code: 'klaviyo_rejected', final: true }
       ],
       [

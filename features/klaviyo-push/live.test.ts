@@ -98,7 +98,8 @@ describe('the pusher "Create email" uses', () => {
       expect(await pusher.createDraft({ ...input, audienceId })).toEqual({
         ok: false,
         code: 'rejected',
-        checks: ['audience']
+        checks: ['audience'],
+        reason: 'audience_not_in_klaviyo'
       })
     expect(fetch).not.toHaveBeenCalled()
     expect(rpc).toHaveBeenCalledWith('save_klaviyo_push', {

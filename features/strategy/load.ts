@@ -1,6 +1,6 @@
 import 'server-only'
 import { allSteps } from '@/features/email-build/step-names'
-import { buildReason, pushReason } from '@/features/email-build/failure-words'
+import { buildReason } from '@/features/email-build/failure-words'
 import { planReason } from './failure-words'
 import { localTimeCandidates } from '@/lib/local-time'
 import { createClient } from '@/lib/supabase/server'
@@ -108,7 +108,7 @@ export async function latestPlanRun(
         .order('created_at', { ascending: false })
     let found = await db
       .from('email_builds')
-      .select('id,slot,state,step,sample_draft,error_code,push_key')
+      .select('id,slot,state,step,sample_draft,error_code')
       .eq('tenant_id', tenantId)
       .eq('run_id', row.id)
       .order('created_at', { ascending: false })
@@ -116,29 +116,9 @@ export async function latestPlanRun(
     // (REL-081, 42703 = no such column): the plan still loads, without it.
     if (found.error?.code === '42703')
       found = (await read(
-        'id,slot,state,sample_draft,error_code,push_key'
+        'id,slot,state,sample_draft,error_code'
       )) as unknown as typeof found
     if (found.error) return { ok: false }
-    // REL-084c: a draft Klaviyo, or the last check before it, refused says
-    // which refusal it was (the pusher keeps it on the push row).
-    const refusals = new Map<string, string>()
-    const refused = found.data
-      .filter(
-        (b) => b.state === 'failed' && b.error_code === 'klaviyo_rejected'
-      )
-      .map((b) => b.push_key)
-      .filter((k): k is string => typeof k === 'string')
-    if (refused.length) {
-      const pushes = await db
-        .from('klaviyo_draft_pushes')
-        .select('push_key,reason')
-        .eq('tenant_id', tenantId)
-        .eq('state', 'refused')
-        .in('push_key', [...new Set(refused)])
-      // Unreadable: the general words stand.
-      for (const p of pushes.error ? [] : (pushes.data ?? []))
-        if (p.reason) refusals.set(p.push_key, p.reason)
-    }
     for (const b of found.data) {
       if (b.slot in builds) continue
       const state = (buildStates as readonly string[]).includes(b.state)
@@ -152,12 +132,7 @@ export async function latestPlanRun(
           : 'sections',
         sampleDraft: b.sample_draft,
         // REL-084: a failed build always says why, in plain words.
-        reason:
-          state === 'failed'
-            ? ((b.error_code === 'klaviyo_rejected'
-                ? pushReason(refusals.get(b.push_key))
-                : null) ?? buildReason(b.error_code))
-            : null
+        reason: state === 'failed' ? buildReason(b.error_code) : null
       }
     }
   }
