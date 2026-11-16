@@ -22,12 +22,12 @@ import {
 import {
   OpenAiResponsesProvider,
   responsesRequestBody
-} from '@/features/email-generation/openai'
+} from '@/lib/providers/openai'
 import {
   costMicro as openAiCostMicro,
   estimateMicro as openAiEstimateMicro,
   maxRequestBytes as openAiMaxRequestBytes
-} from '@/features/email-generation/pricing'
+} from '@/lib/providers/openai-pricing'
 import { aiSetup, type AiSetup } from './setup'
 import type { BudgetFeature, BudgetLedger } from './budget-ledger'
 

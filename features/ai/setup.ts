@@ -9,7 +9,7 @@ import {
 import {
   isRewriteModel,
   type RewriteModel
-} from '@/features/email-generation/pricing'
+} from '@/lib/providers/openai-pricing'
 
 /**
  * REL-PRV: the second provider's model per purpose: only models in its
