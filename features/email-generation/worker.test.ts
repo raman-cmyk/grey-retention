@@ -10,8 +10,12 @@ import {
   rewriteAvailability,
   rewriteSetup
 } from './config'
-import { costMicro, estimateMicro, protocolOverheadTokens } from './pricing'
-import { responsesRequestBody } from './openai'
+import {
+  costMicro,
+  estimateMicro,
+  protocolOverheadTokens
+} from '@/lib/providers/openai-pricing'
+import { responsesRequestBody } from '@/lib/providers/openai'
 import {
   factChecks,
   interpretRewrite,
