@@ -167,4 +167,62 @@ describe('the design step with the design studio (DST-006c part 2b)', () => {
     await step(store, progress, undefined, plain)
     expect(plain.entries()).toEqual([])
   })
+
+  it('says once when the studio had no time for the email (DST-006e)', async () => {
+    const { store, progress } = await beforeDesign()
+    const fallbacks = memoryFallbackLog()
+    const out = await runBuildStep(
+      'design',
+      { planned, store, offers: sampleOffersFrom(start), progress },
+      {
+        tenantId,
+        callerKey: 'email-build:b1',
+        fallbacks,
+        clock,
+        studioSkipped: true
+      }
+    )
+    expect(out).toMatchObject({ ok: true, done: 'design' })
+    expect(fallbacks.entries()).toEqual([
+      expect.objectContaining({
+        reasonCode: 'studio_no_time',
+        fallback: 'Drew the email with its coded blocks.'
+      })
+    ])
+  })
+
+  it('says the studio stopped, not that it had no time, when its work is there (DST-006e)', async () => {
+    const { store, progress, blocks, hero } = await beforeDesign()
+    const first = (await runBuildStep(
+      'design',
+      { planned, store, offers: sampleOffersFrom(start), progress },
+      {
+        tenantId,
+        callerKey: 'email-build:b1',
+        fallbacks: memoryFallbackLog(),
+        studio: ports(blocks, hero),
+        clock
+      }
+    )) as { work: object }
+    const fallbacks = memoryFallbackLog()
+    await runBuildStep(
+      'design',
+      {
+        planned,
+        store,
+        offers: sampleOffersFrom(start),
+        progress: { ...progress, work: { design: first.work } }
+      },
+      {
+        tenantId,
+        callerKey: 'email-build:b1',
+        fallbacks,
+        clock,
+        studioSkipped: true
+      }
+    )
+    expect(fallbacks.entries().map((e) => e.reasonCode)).toEqual([
+      'studio_not_finished'
+    ])
+  })
 })

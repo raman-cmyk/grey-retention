@@ -1,4 +1,5 @@
 import 'server-only'
+import { createHash } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import type { BuildAgents } from '@/features/email-build/build'
@@ -184,9 +185,18 @@ export function studioPortsFor(
       if (!file) return null
       // Changed while it was read: not the picture the browser drew.
       if (!(await tagged(render))) return null
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      // A single upload's tag is its bytes' MD5: the bytes read are the
+      // tagged ones (a tag of another form is left to the checks above).
+      const tag = tagOf(render.etag) ?? ''
+      if (
+        /^[0-9a-f]{32}$/i.test(tag) &&
+        createHash('md5').update(bytes).digest('hex') !== tag.toLowerCase()
+      )
+        return null
       return {
         id: section,
-        bytes: new Uint8Array(await file.arrayBuffer()),
+        bytes,
         contentType: 'image/jpeg',
         width: renderWidth,
         height: render.height * renderScale
@@ -235,7 +245,12 @@ export function studioPortsFor(
         agent: 'design-studio',
         reasonCode: reason.startsWith('studio_') ? reason : `studio_${reason}`,
         reason: codedReasons[reason],
-        fallback: 'Drew the section as its coded block.',
+        fallback:
+          reason === 'storyboard_reordered'
+            ? 'Kept the email’s order, with the storyboard code makes.'
+            : reason === 'layout_changed'
+              ? 'Drew the email with its coded blocks.'
+              : 'Drew the section as its coded block.',
         attempts: 1,
         detail: { section },
         dedupeKey: `design-studio:${keyPart(input.callerKey)}:${keyPart(section)}:${reason}`

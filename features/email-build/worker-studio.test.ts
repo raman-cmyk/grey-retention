@@ -347,4 +347,64 @@ describe('a design step waiting for its pictures (DST-006b)', () => {
     })
     expect(runStep.mock.calls.at(-1)![2].studio).toBeUndefined()
   })
+
+  it('fails the try of a studio design step that threw: the sweep then draws it coded (DST-006e)', async () => {
+    runStep.mockRejectedValueOnce(new Error('storage down'))
+    const d = fakeDb()
+    await runEmailBuilds(d.db, {
+      fallbacks: memoryFallbackLog(),
+      first: d.first,
+      studio: true,
+      agents: {
+        memory: new InMemoryMemoryStore(),
+        log: new InMemoryRunLog(),
+        ai: vi.fn()
+      }
+    })
+    expect(named(d.calls, 'wait_email_round')).toEqual([])
+    expect(named(d.calls, 'fail_email_step')[0]!.args).toMatchObject({
+      final: false
+    })
+  })
+
+  it('tells the design step when the studio is on but this claim has no agents (DST-006e)', async () => {
+    // Agents that would run: the switch on and a live model set up.
+    vi.stubEnv('EMAIL_BUILD_AGENTS', 'on')
+    vi.stubEnv('AI_DEFAULT_PROVIDER', 'gemini')
+    vi.stubEnv('GEMINI_API_KEY', 'k'.repeat(39))
+    runStep.mockResolvedValueOnce(waits)
+    const d = fakeDb()
+    await runEmailBuilds(d.db, {
+      fallbacks: memoryFallbackLog(),
+      first: d.first,
+      studio: true,
+      agents: null
+    })
+    expect(runStep.mock.calls.at(-1)![2]).toMatchObject({ studioSkipped: true })
+    vi.unstubAllEnvs()
+    // The switch on but no live model: not "no time", nothing to say.
+    vi.stubEnv('EMAIL_BUILD_AGENTS', 'on')
+    vi.stubEnv('AI_DEFAULT_PROVIDER', 'fake')
+    runStep.mockResolvedValueOnce(waits)
+    const unready = fakeDb()
+    await runEmailBuilds(unready.db, {
+      fallbacks: memoryFallbackLog(),
+      first: unready.first,
+      studio: true,
+      agents: null
+    })
+    expect(runStep.mock.calls.at(-1)![2].studioSkipped).toBeUndefined()
+    vi.unstubAllEnvs()
+    vi.stubEnv('EMAIL_BUILD_AGENTS', 'off')
+    runStep.mockResolvedValueOnce(waits)
+    const off = fakeDb()
+    await runEmailBuilds(off.db, {
+      fallbacks: memoryFallbackLog(),
+      first: off.first,
+      studio: true,
+      agents: null
+    })
+    expect(runStep.mock.calls.at(-1)![2].studioSkipped).toBeUndefined()
+    vi.unstubAllEnvs()
+  })
 })

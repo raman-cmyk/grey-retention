@@ -10,6 +10,7 @@ import type { SectionBrief } from './designer'
 import type { BuildRender } from './waits'
 import { heroPicture, studioRound, type StudioPorts } from './rounds'
 import {
+  codeStoryboard,
   designable,
   storyboardShape,
   type Storyboard,
@@ -177,7 +178,7 @@ export async function studioDesignStep(
   if (saved.success) {
     storyboard = saved.data.studio.storyboard
   } else {
-    storyboard = await ports.storyboard({
+    const board: StoryboardInput = {
       mode: 'scratch',
       slot: input.slot,
       sections: input.sections.map((s, i) => ({
@@ -186,7 +187,17 @@ export async function studioDesignStep(
         purpose: s.purpose,
         products: s.products.length
       }))
-    })
+    }
+    storyboard = await ports.storyboard(board)
+    // The copy was checked in layer 1's order: a storyboard that moves the
+    // sections is replaced by code's own, which keeps it (DST-006e).
+    if (
+      storyboard &&
+      storyboard.sections.some((b, i) => b.id !== sectionId(i))
+    ) {
+      await ports.coded('email', 'storyboard_reordered')
+      storyboard = codeStoryboard(board)
+    }
   }
   const designed: { i: number; brief: SectionBrief }[] = []
   for (const board of storyboard?.sections ?? []) {

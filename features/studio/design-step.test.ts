@@ -2,6 +2,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
+const boards = vi.hoisted(() => ({ codeStoryboard: vi.fn() }))
+vi.mock('./storyboard', async (original) => ({
+  ...(await original<typeof import('./storyboard')>()),
+  codeStoryboard: boards.codeStoryboard
+}))
 import { sampleBlocks, sampleBrand } from '@/features/blocks/samples'
 import { renderEmail } from '@/features/blocks/render'
 import type { Block } from '@/features/blocks/catalog'
@@ -260,7 +265,7 @@ describe('the design step with the studio (DST-006c part 2a)', () => {
     expect(brief.words).not.toHaveProperty('eyebrow')
   })
 
-  it('keeps layer 1’s order, the one the copy was checked in, whatever the storyboard’s', async () => {
+  it('keeps layer 1’s order, the one the copy was checked in: a storyboard that moves sections is replaced by code’s own', async () => {
     const moved = {
       ...storyboard,
       sections: [
@@ -269,18 +274,25 @@ describe('the design step with the studio (DST-006c part 2a)', () => {
         storyboard.sections[1]!
       ]
     }
+    boards.codeStoryboard.mockReturnValueOnce(storyboard)
     const p = ports({ storyboard: vi.fn(async () => moved) })
-    const first = waitingOf(await studioDesignStep(input(), p))
-    const out = (await studioDesignStep(
-      input(first.work),
-      ports({}, [drawn])
-    )) as { blocks: Block[] }
-    expect(out.blocks.map((b) => b.type)).toEqual([
-      'header_logo',
-      'hero_product',
-      'footer'
-    ])
-    expect(out.blocks[1]!.content).toHaveProperty('picture')
+    const out = waitingOf(await studioDesignStep(input(), p))
+    expect(p.coded).toHaveBeenCalledWith('email', 'storyboard_reordered')
+    expect(boards.codeStoryboard).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'scratch' })
+    )
+    const kept = (out.work as { studio: { storyboard: Storyboard } }).studio
+      .storyboard
+    expect(kept.sections.map((s) => s.id)).toEqual(['s1', 's2', 's3'])
+    expect(p.design).toHaveBeenCalledTimes(1)
+    // When code's own fits none, the email is drawn coded.
+    boards.codeStoryboard.mockReturnValueOnce(null)
+    const none = ports({ storyboard: vi.fn(async () => moved) })
+    expect(await studioDesignStep(input(), none)).toEqual({
+      blocks,
+      pictures: 0
+    })
+    expect(none.design).not.toHaveBeenCalled()
   })
 
   it('keeps the build’s limits from work it cannot read, and goes on as a JSON round trip', async () => {

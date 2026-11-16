@@ -18,7 +18,7 @@ import {
   plannedEmail,
   type BuildAgents
 } from './build'
-import { buildAgentsFor } from './agents'
+import { buildAgentsFor, emailAgentsReady } from './agents'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { maxStepSaves, roundSteps, maxEmailBytes } from './step-names'
 import { buildCode, type BuildFailureCode } from './failure-words'
@@ -242,6 +242,14 @@ export async function runEmailBuilds(
             // this claim's budget and the job's deadline (REL-AI part 2b).
             until,
             clock: now,
+            // The owner's studio is on, but this claim has no agents (the
+            // sweep, after the click ran out of time): it says so (D16).
+            ...(studio &&
+            !agents &&
+            job.step === 'design' &&
+            emailAgentsReady(process.env)
+              ? { studioSkipped: true }
+              : {}),
             ...(studioStep && agents
               ? {
                   studio: studioPortsFor(db, {
