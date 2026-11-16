@@ -91,6 +91,12 @@ const ctx = (ai: AiCall) => {
 describe('the Section designer’s checks (DST-003b)', () => {
   it('a section drawn from the words and photo given passes, with the storyboard’s size and the words as its alt', () => {
     expect(designProblems(good, brief)).toEqual([])
+    // DST-PIC #13: a colour off the brand's palette is sent back by name.
+    expect(
+      designProblems({ ...good, css: `${good.css}.sub{color:#16a34a}` }, brief)
+    ).toEqual([
+      'The section uses #16a34a, off the brand’s palette: use the brand’s colours (#1a1a1a, #f6f3ee, #c2410c, #1f2933), a lighter or darker shade of one, or a neutral.'
+    ])
     const section = designedFrom(good, brief)
     expect(section).toMatchObject({ id: 's2', height: 640, fonts: [] })
     expect(sectionProblems(section, ['cdn.shop.example'])).toEqual([])
