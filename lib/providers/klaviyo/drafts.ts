@@ -165,6 +165,33 @@ export async function templateHtml(client: KlaviyoClient, id: string) {
   )
 }
 
+/** A template's HTML and plain text (TXT-001e); null when Klaviyo no longer has it. */
+export async function templateParts(client: KlaviyoClient, id: string) {
+  let body: unknown
+  try {
+    body = await client.get(
+      `/api/templates/${kid.parse(id)}?fields[template]=html,text`,
+      'templates:read'
+    )
+  } catch (error) {
+    if (gone(error)) return null
+    throw error
+  }
+  const a = parsed(
+    z.object({
+      data: z.object({
+        attributes: z.object({
+          html: z.string().nullish(),
+          text: z.string().nullish()
+        })
+      })
+    }),
+    body,
+    '/api/templates/'
+  ).data.attributes
+  return a.html == null ? null : { html: a.html, text: a.text ?? null }
+}
+
 export async function deleteTemplate(client: KlaviyoClient, id: string) {
   kid.parse(id)
   await client.write('DELETE', `/api/templates/${id}`, null, 'templates:write')

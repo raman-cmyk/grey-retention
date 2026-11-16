@@ -20,6 +20,7 @@ import {
   readDraft,
   setEvenTest,
   templateHtml,
+  templateParts,
   updateVariation,
   type DraftRead,
   type VariationContent
@@ -32,6 +33,7 @@ import type {
 import {
   audienceOk,
   finalChecks,
+  designHash,
   htmlHash,
   imageSources,
   preflight,
@@ -248,11 +250,44 @@ const shownText = (m: Shown) =>
       return `${v}:${template}:${html}${writing ? ':w' : ''}`
     })
     .join(',') || null
-/** A template's HTML as Klaviyo keeps it, fingerprinted; null without one. */
-async function htmlSeen(client: KlaviyoClient, templateId: string | null) {
+/**
+ * A template as Klaviyo keeps it, fingerprinted; null without one. With
+ * `withText` (a text email, TXT-001e) its plain text counts too, so an
+ * owner's edit of the text alone is seen; a designed email's never does
+ * (Klaviyo may make its own text later).
+ */
+async function htmlSeen(
+  client: KlaviyoClient,
+  templateId: string | null,
+  withText = false
+) {
   if (!templateId) return null
+  if (withText) {
+    const parts = await templateParts(client, templateId)
+    return parts === null
+      ? null
+      : designHash(parts.html, parts.text ?? '').slice(0, 16)
+  }
   const html = await templateHtml(client, templateId)
   return html === null ? null : htmlHash(html).slice(0, 16)
+}
+
+/**
+ * Whether a template still shows what we recorded (`fingerprint`), with or
+ * without its plain text (TXT-001e): a push of the same email as a letter,
+ * then as a designed one (or back), is never taken for an owner's edit.
+ */
+async function stillOurs(
+  client: KlaviyoClient,
+  templateId: string,
+  fingerprint: string
+) {
+  const parts = await templateParts(client, templateId)
+  return (
+    parts !== null &&
+    (htmlHash(parts.html).slice(0, 16) === fingerprint ||
+      designHash(parts.html, parts.text ?? '').slice(0, 16) === fingerprint)
+  )
 }
 
 /** The client, refusing to start a request that might not end in time. */
@@ -386,6 +421,8 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
   if (input.sample) throw new Refused('sample_email', ['sample'])
   if (!audienceOk(input.audienceId))
     throw new Refused('audience_not_in_klaviyo', ['audience'])
+  // TXT-001e: a text email's design is its HTML and its plain text.
+  const withText = input.text !== undefined
   const ref = refOf(input)
   if (!ref) throw new Refused('no_push_lease', ['lease'])
 
@@ -571,7 +608,7 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
       if (!w) continue
       const ours =
         v.templateId === w.template
-          ? (await htmlSeen(client, v.templateId)) === w.html
+          ? await stillOurs(client, v.templateId, w.html)
           : w.writing
       if (ours) continue
       logger.warn('Klaviyo push: a design was changed in Klaviyo', {
@@ -624,7 +661,7 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     await save({ images: { [src]: url } })
   }
   const htmls = wanted.map((d) => withImages(d.html, p.images))
-  const hashes = htmls.map(htmlHash)
+  const hashes = htmls.map((h, i) => designHash(h, wanted[i]!.text))
 
   // 3. The final checks on exactly the HTML sent.
   const moved = new Set(Object.values(p.images))
@@ -716,11 +753,13 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     for (const v of vs) {
       // Not strict: one Klaviyo cannot show now is recorded later.
       const html = strict
-        ? await htmlSeen(client, v.templateId)
-        : await htmlSeen(client, v.templateId).catch((error: unknown) => {
-            if (error instanceof KlaviyoError) return null
-            throw error
-          })
+        ? await htmlSeen(client, v.templateId, withText)
+        : await htmlSeen(client, v.templateId, withText).catch(
+            (error: unknown) => {
+              if (error instanceof KlaviyoError) return null
+              throw error
+            }
+          )
       if (html && v.templateId)
         m[v.id] = { template: v.templateId, html, writing: false }
       else if (strict) {
@@ -1028,12 +1067,27 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
       shown.templateId !== t.id &&
       left() >= 3 * callMs
     ) {
-      const html = await templateHtml(client, shown.templateId).catch(
-        () => null
-      )
-      if (html !== null && htmlHash(html) === t.hash) gone = await removed(t)
-      else if (html === null)
+      // Klaviyo's copy is ours when it shows the same design: its HTML,
+      // and a text email's plain text (TXT-001e).
+      const copy = withText
+        ? await templateParts(client, shown.templateId).catch(() => null)
+        : await templateHtml(client, shown.templateId)
+            .then((html) => (html === null ? null : { html, text: null }))
+            .catch(() => null)
+      const same =
+        copy !== null &&
+        designHash(copy.html, withText ? (copy.text ?? '') : undefined) ===
+          t.hash
+      if (same) gone = await removed(t)
+      else if (copy === null)
         logger.warn('Klaviyo push: a template was left for now', {
+          build: ref.build
+        })
+      else if (withText)
+        // A text email's copy that is not ours byte for byte (its HTML or
+        // its plain text): ours is kept, and said (the first real push
+        // shows whether Klaviyo keeps the text).
+        logger.warn('Klaviyo push: a text email’s copy differs from ours', {
           build: ref.build
         })
     }

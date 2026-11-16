@@ -77,6 +77,27 @@ export function footerProblems(html: string) {
  */
 export const textUnsubscribeTag = '{% unsubscribe_link %}'
 
+/**
+ * What a plain-text part's footer lacks (TXT-001e): the brand, its
+ * address, and the unsubscribe and preferences links as URL-only tags (a
+ * reader of the text alone gets the same footer); and a tag that writes
+ * HTML (an `<a>` in plain text). Empty: none.
+ */
+export function textFooterProblems(text: string) {
+  const problems: string[] = []
+  if (!/\{\{\s*organization\.name\s*\}\}/.test(text))
+    problems.push('The brand name is missing.')
+  if (!/\{\{\s*organization\.full_address\s*\}\}/.test(text))
+    problems.push('The store address is missing.')
+  if (!/\{%\s*unsubscribe_link\s*%\}/.test(text))
+    problems.push('The unsubscribe link is missing.')
+  if (!/\{%\s*manage_preferences_link\s*%\}/.test(text))
+    problems.push('The preferences link is missing.')
+  if (/\{%\s*(?:unsubscribe|manage_preferences|web_view)(?:\s|%)/.test(text))
+    problems.push('A tag writes HTML into the plain text.')
+  return problems
+}
+
 const klaviyoId = /^[A-Za-z0-9_-]{1,64}$/
 
 /** A Klaviyo list or segment id, never the sample store's own audiences. */
@@ -98,7 +119,7 @@ export function preflight(
     return { reason: 'audience_not_in_klaviyo', check: 'audience' }
   if (
     htmls.some((h) => footerProblems(h).length) ||
-    texts.some((t) => !t.includes(textUnsubscribeTag))
+    texts.some((t) => textFooterProblems(t).length)
   )
     return { reason: 'footer_missing', check: 'footer' }
   if (htmls.some((h) => Buffer.byteLength(h, 'utf8') > gmailClipBytes))
@@ -152,3 +173,24 @@ export function finalChecks(
 /** A fingerprint of one design's HTML (a changed design gets a new template). */
 export const htmlHash = (html: string) =>
   createHash('sha256').update(html).digest('hex')
+
+/** A plain-text part as Klaviyo may keep it: line endings and trailing spaces aside. */
+const textKept = (text: string) =>
+  text
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+$/gm, '')
+    .trimEnd()
+
+/**
+ * A fingerprint of one design (TXT-001e): its HTML, and its plain-text
+ * part when it has one, so a new text is a new template and an owner's
+ * edit of the text is seen. A design without a text is `htmlHash`.
+ */
+export const designHash = (html: string, text?: string | null) =>
+  text === undefined || text === null
+    ? htmlHash(html)
+    : createHash('sha256')
+        .update(html)
+        .update('\u0000')
+        .update(textKept(text))
+        .digest('hex')
