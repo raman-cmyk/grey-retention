@@ -4,25 +4,36 @@ import { readCss } from './css'
 
 /**
  * DST-PIC #13 (owner pick, "Stay on palette"): a designed section's colours
- * come from the brand's palette. Neutrals (white, black, greys) are always
- * fine; any other colour must be a brand colour or a lighter or darker
- * shade of one (its hue within `hueSlack` degrees and its saturation within
- * `saturationSlack`: a vivid colour is no shade of a near-grey one). An off-palette colour
- * is named back to the Section designer with the brand's colours, as its
- * other problems are, so the next try fixes it; a section that keeps
- * failing is drawn as its coded block (D16).
+ * come from the brand's palette. A neutral (white, black, a grey, a cream:
+ * little colour of its own) is always fine; any other colour must be a
+ * brand colour or a lighter or darker shade of one: its hue within
+ * `hueSlack` degrees and no more colourful than the brand colour by
+ * `chromaSlack`. Colour is measured as chroma (the spread between the
+ * strongest and weakest of red, green and blue, as the brand kit's roles
+ * are found), which stays small for greys and creams and only falls when a
+ * colour is mixed with white or black. An off-palette colour is named back
+ * to the Section designer with the brand's colours, as its other problems
+ * are, so the next try fixes it; a section that keeps failing is drawn as
+ * its coded block (D16). A colour written in a way this reader cannot read
+ * for sure (`oklch()`, a relative colour, `calc()` inside) is refused
+ * rather than guessed at, as the styles are; a colour name or a system
+ * colour is asked for by its hex.
  */
 
 type Rgb = [number, number, number]
+export type Colour =
+  | { rgb: Rgb; clear: boolean }
+  /** A colour name or a system colour: asked for by its hex. */
+  | 'named'
+  /** A colour this reader does not read for sure. */
+  | 'unread'
 
 /** How far (degrees) a shade's hue may be from its brand colour's. */
 export const hueSlack = 15
-/** And its saturation (HSL, 0 to 1): a lighter or darker shade keeps about it. */
-export const saturationSlack = 0.3
-/** Below this saturation (HSL), or this light or dark, a colour is a neutral. */
-const neutralSaturation = 0.12
-const neutralLight = 0.96
-const neutralDark = 0.06
+/** Below this chroma (0 to 1) a colour is a neutral. */
+export const neutralChroma = 0.12
+/** How much more colourful than its brand colour a shade may be. */
+export const chromaSlack = 0.15
 
 /** Words that name no colour of their own. */
 const noColour = new Set([
@@ -38,7 +49,7 @@ const namedNeutrals: Record<string, Rgb> = {
   white: [255, 255, 255],
   black: [0, 0, 0]
 }
-/** The CSS colour names (CSS Color 4): only these words in a value are colours. */
+/** The CSS colour names (CSS Color 4) and system colours: only these words in a value are colours. */
 const colourNames = new Set(
   `aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue
   blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk
@@ -57,7 +68,9 @@ const colourNames = new Set(
   powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown
   seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen
   steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke yellow
-  yellowgreen`.split(/\s+/)
+  yellowgreen canvas canvastext linktext visitedtext activetext buttonface buttontext
+  buttonborder field fieldtext highlight highlighttext selecteditem selecteditemtext mark
+  marktext graytext accentcolor accentcolortext`.split(/\s+/)
 )
 /** Properties whose value names fonts, never colours. */
 const fontProperties = new Set([
@@ -75,17 +88,42 @@ const paintAttributes = new Set([
   'lighting-color',
   'color'
 ])
-const colourToken = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?)\([^)]*\)|\b[a-z]+\b/gi
+/** Colour functions: rgb and hsl are read, the rest refused. */
+const colourFunctions =
+  'rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark|device-cmyk'
+const colourToken = new RegExp(
+  `\\b(?:${colourFunctions})\\([^()]*(?:\\([^()]*\\)[^()]*)*\\)|#[0-9a-f]{3,8}\\b|\\b[a-z]+\\b`,
+  'gi'
+)
 
 const clamp = (n: number, lo: number, hi: number) =>
   Math.min(hi, Math.max(lo, n))
 
-/** A number or a percentage of `max`. */
+/** A plain number, a percentage of `max`, or `none` (0); null for anything else. */
 function channel(part: string, max: number) {
-  const p = part.trim()
+  const p = part.trim().toLowerCase()
+  if (p === 'none') return 0
+  if (!/^[+-]?(?:\d+\.?\d*|\.\d+)%?$/.test(p)) return null
   const n = Number.parseFloat(p)
-  if (!Number.isFinite(n)) return null
   return p.endsWith('%') ? (n / 100) * max : n
+}
+
+/** A hue in degrees from `deg` (or no unit), `turn`, `rad` or `grad`, or `none`. */
+function hue(part: string) {
+  const p = part.trim().toLowerCase()
+  if (p === 'none') return 0
+  const m = /^([+-]?(?:\d+\.?\d*|\.\d+))(deg|turn|rad|grad)?$/.exec(p)
+  if (!m) return null
+  const n = Number.parseFloat(m[1]!)
+  const deg =
+    m[2] === 'turn'
+      ? n * 360
+      : m[2] === 'rad'
+        ? (n * 180) / Math.PI
+        : m[2] === 'grad'
+          ? n * 0.9
+          : n
+  return ((deg % 360) + 360) % 360
 }
 
 function hslToRgb(h: number, s: number, l: number): Rgb {
@@ -96,11 +134,11 @@ function hslToRgb(h: number, s: number, l: number): Rgb {
   return [f(0), f(8), f(4)].map((x) => Math.round(x * 255)) as Rgb
 }
 
-/** A colour's red, green and blue (0 to 255), or null for no colour of its own. */
-export function parseColour(token: string): Rgb | 'named' | null {
+/** A colour's red, green and blue (0 to 255) and whether it paints nothing; null for no colour of its own. */
+export function parseColour(token: string): Colour | null {
   const t = token.trim().toLowerCase()
   if (noColour.has(t)) return null
-  if (t in namedNeutrals) return namedNeutrals[t]!
+  if (t in namedNeutrals) return { rgb: namedNeutrals[t]!, clear: false }
   if (colourNames.has(t)) return 'named'
   const hex = /^#([0-9a-f]{3,8})$/.exec(t)?.[1]
   if (hex) {
@@ -110,49 +148,53 @@ export function parseColour(token: string): Rgb | 'named' | null {
         : hex.length === 6 || hex.length === 8
           ? hex
           : null
-    if (!full) return null
-    return [0, 2, 4].map((i) =>
+    if (!full) return 'unread'
+    const rgb = [0, 2, 4].map((i) =>
       Number.parseInt(full.slice(i, i + 2), 16)
     ) as Rgb
+    return { rgb, clear: full.length === 8 && full.endsWith('00') }
   }
-  const fn = /^(rgba?|hsla?)\(([^)]*)\)$/.exec(t)
-  if (!fn) return null
+  const fn = /^(rgba?|hsla?)\(([^()]*)\)$/.exec(t)
+  if (!fn) return 'unread'
   const parts = fn[2]!.split(/[\s,/]+/).filter(Boolean)
-  if (parts.length < 3) return null
+  if (parts.length < 3 || parts.length > 4) return 'unread'
+  const alpha = parts[3] === undefined ? 1 : channel(parts[3], 1)
+  if (alpha === null) return 'unread'
+  const clear = alpha <= 0
   if (fn[1]!.startsWith('rgb')) {
     const rgb = parts.slice(0, 3).map((p) => channel(p, 255))
-    if (rgb.some((x) => x === null)) return null
-    return rgb.map((x) => Math.round(clamp(x!, 0, 255))) as Rgb
+    if (rgb.some((x) => x === null)) return 'unread'
+    return {
+      rgb: rgb.map((x) => Math.round(clamp(x!, 0, 255))) as Rgb,
+      clear
+    }
   }
-  const h = Number.parseFloat(parts[0]!)
-  const s = channel(parts[1]!, 1)
-  const l = channel(parts[2]!, 1)
-  if (!Number.isFinite(h) || s === null || l === null) return null
-  return hslToRgb(((h % 360) + 360) % 360, clamp(s, 0, 1), clamp(l, 0, 1))
+  // HSL's saturation and lightness are percentages, a plain number too.
+  const percent = (p: string) =>
+    channel(/%$/.test(p) || p === 'none' ? p : `${p}%`, 1)
+  const h = hue(parts[0]!)
+  const s = percent(parts[1]!)
+  const l = percent(parts[2]!)
+  if (h === null || s === null || l === null) return 'unread'
+  return { rgb: hslToRgb(h, clamp(s, 0, 1), clamp(l, 0, 1)), clear }
 }
 
-/** Hue (degrees), saturation and lightness (0 to 1). */
-function hsl([r, g, b]: Rgb) {
+/** Hue (degrees) and chroma (0 to 1). */
+function hueChroma([r, g, b]: Rgb) {
   const [R, G, B] = [r / 255, g / 255, b / 255]
   const max = Math.max(R, G, B)
   const min = Math.min(R, G, B)
-  const l = (max + min) / 2
-  const d = max - min
-  if (!d) return { h: 0, s: 0, l }
-  const s = d / (1 - Math.abs(2 * l - 1))
+  const c = max - min
+  if (!c) return { h: 0, c: 0 }
   const h =
     max === R
-      ? ((G - B) / d) % 6
+      ? ((G - B) / c) % 6
       : max === G
-        ? (B - R) / d + 2
-        : (R - G) / d + 4
-  return { h: (h * 60 + 360) % 360, s, l }
+        ? (B - R) / c + 2
+        : (R - G) / c + 4
+  return { h: (h * 60 + 360) % 360, c }
 }
 
-const neutral = (c: Rgb) => {
-  const { s, l } = hsl(c)
-  return s < neutralSaturation || l > neutralLight || l < neutralDark
-}
 const hueGap = (a: number, b: number) => {
   const d = Math.abs(a - b) % 360
   return d > 180 ? 360 - d : d
@@ -198,8 +240,7 @@ const hex = ([r, g, b]: Rgb) =>
 
 /**
  * What is off the brand's palette, in plain words (empty: all on it).
- * `palette` is the brand's colours (hex); a named colour other than white
- * and black is asked for by its hex.
+ * `palette` is the brand's colours (hex).
  */
 export function paletteProblems(
   section: { html: string; css: string },
@@ -207,10 +248,11 @@ export function paletteProblems(
 ): string[] {
   const brand = palette.flatMap((p) => {
     const c = p ? parseColour(p) : null
-    return c && c !== 'named' ? [c] : []
+    return c && typeof c === 'object' ? [c.rgb] : []
   })
-  const shades = brand.filter((c) => !neutral(c)).map(hsl)
+  const shades = brand.map(hueChroma).filter((b) => b.c >= neutralChroma)
   const off = new Set<string>()
+  const unread = new Set<string>()
   let named = false
   for (const token of coloursUsed(section)) {
     const c = parseColour(token)
@@ -219,27 +261,39 @@ export function paletteProblems(
       named = true
       continue
     }
-    if (neutral(c)) continue
-    const { h, s } = hsl(c)
+    if (c === 'unread') {
+      unread.add(token.slice(0, 40))
+      continue
+    }
+    if (c.clear) continue
+    const { h, c: chroma } = hueChroma(c.rgb)
+    if (chroma < neutralChroma) continue
     if (
       !shades.some(
-        (b) =>
-          hueGap(b.h, h) <= hueSlack && Math.abs(b.s - s) <= saturationSlack
+        (b) => hueGap(b.h, h) <= hueSlack && chroma <= b.c + chromaSlack
       )
     )
-      off.add(hex(c))
+      off.add(hex(c.rgb))
   }
   const own = [...new Set(brand.map(hex))].join(', ')
   const problems: string[] = []
   if (off.size) {
-    const list = [...off].slice(0, 3)
+    const list = [...off]
+    const more = list.length > 3 ? ` and ${list.length - 3} more` : ''
     problems.push(
-      `The section uses ${list.join(', ')}, off the brand’s palette: use the brand’s colours${own ? ` (${own})` : ''}, a lighter or darker shade of one, or a neutral.`
+      `The section uses ${list.slice(0, 3).join(', ')}${more}, off the brand’s palette: use the brand’s colours${own ? ` (${own})` : ''}, a lighter or darker shade of one, or a neutral.`
     )
   }
   if (named)
     problems.push(
       'Name colours by their hex (or white and black), from the brand’s palette.'
+    )
+  if (unread.size)
+    problems.push(
+      `Write each colour as a hex (or rgb, hsl): ${[...unread]
+        .slice(0, 3)
+        .map((u) => `“${u}”`)
+        .join(', ')} cannot be read for sure.`
     )
   return problems
 }
