@@ -34,6 +34,8 @@ export type DraftFaults = {
    * "assign template" does) or points at ours (false).
    */
   copiesTemplates?: boolean
+  /** Klaviyo's copy of a template drops its plain text (TXT-001e). */
+  dropsCopyText?: boolean
   /** Klaviyo makes a message of its own with each campaign. */
   autoMessage?: boolean
   /** Klaviyo renames the variations it is given. */
@@ -96,7 +98,10 @@ type Variation = {
 }
 
 export type FakeDraftAccount = {
-  templates: Map<string, { name: string; html: string; created: string }>
+  templates: Map<
+    string,
+    { name: string; html: string; text?: string; created: string }
+  >
   images: Map<string, { from: string; url: string }>
   campaigns: Map<string, Campaign>
   messages: Map<string, Message>
@@ -199,6 +204,7 @@ export function fakeDraftAccount(
       html: account.faults.changesCopies
         ? `${source.html}<!-- copy -->`
         : source.html,
+      ...(account.faults.dropsCopyText ? { text: undefined } : {}),
       created: now().toISOString()
     })
     return copy
@@ -300,13 +306,17 @@ export function fakeDraftAccount(
         !attributes ||
         !str(attributes.name) ||
         attributes.editor_type !== 'CODE' ||
-        !str(attributes.html)
+        !str(attributes.html) ||
+        (attributes.text !== undefined && !str(attributes.text))
       )
         return bad()
       const tid = id('Tpl')
       account.templates.set(tid, {
         name: attributes.name as string,
         html: attributes.html as string,
+        ...(attributes.text !== undefined
+          ? { text: attributes.text as string }
+          : {}),
         created: now().toISOString()
       })
       if (account.faults.loseTemplate && firstTime('lose template'))
@@ -352,11 +362,18 @@ export function fakeDraftAccount(
         (account.faults.copyReadGone && template[1]!.startsWith('TplCopy'))
       )
         return refused(404, 'not_found')
+      // Only the fields asked for (Klaviyo's sparse fieldsets).
+      const fields = new URL(request.url).searchParams.get('fields[template]')
       return json(200, {
         data: {
           type: 'template',
           id: template[1],
-          attributes: { html: t.html }
+          attributes: {
+            html: t.html,
+            ...(fields?.split(',').includes('text')
+              ? { text: t.text ?? null }
+              : {})
+          }
         }
       })
     }
