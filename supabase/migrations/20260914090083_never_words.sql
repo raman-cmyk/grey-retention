@@ -3,16 +3,19 @@
 -- (PIC-29 part 1, `learnNeverWords`): those he took out often enough are
 -- never used again (`never`); the others are watched. A phrase is GROS's
 -- own words (one to four of them), never the owner's or a customer's. At
--- most 100 of each a workspace. Only the history read (`brand.read_history`)
--- writes them, under its own lease, replacing the list an older read kept
--- (never a newer read's); the workspace's active members read them.
+-- most 100 of each a workspace, 160,000 characters in all. Only the history
+-- read (`brand.read_history`) writes them, under its own lease, replacing
+-- the list an older read kept (never a newer read's); the workspace's
+-- active members read them.
 
 create table public.brand_never_words (
   tenant_id uuid not null references public.tenants(id),
+  -- One to four words, one space between, no space or control character
+  -- anywhere else, in one Unicode spelling (as the learner writes them).
   phrase text not null check (
     char_length(phrase) between 1 and 170
-    and phrase !~ '[\n\r\t]'
-    and phrase = btrim(phrase)
+    and phrase ~ '^[^[:space:][:cntrl:]]+( [^[:space:][:cntrl:]]+){0,3}$'
+    and phrase is nfkc normalized
   ),
   state text not null check (state in ('never', 'watched')),
   -- The emails he took it out of, and those he left it in.
@@ -22,6 +25,8 @@ create table public.brand_never_words (
   instead jsonb not null default '[]' check (
     jsonb_typeof(instead) = 'array' and jsonb_array_length(instead) <= 3
   ),
+  -- Never used only when taken out at least twice, more often than kept.
+  check (state <> 'never' or (removed >= 2 and removed > kept)),
   -- The history read that learned them.
   run_id uuid not null,
   read_at timestamptz not null default now(),
@@ -57,7 +62,7 @@ begin
     raise exception 'Invalid never words' using errcode = '23514';
   end if;
   if jsonb_typeof(words) is distinct from 'array' or jsonb_array_length(words) > 200
-    or length(words::text) > 100000 then
+    or length(words::text) > 160000 then
     raise exception 'Invalid never words' using errcode = '23514';
   end if;
   if exists (
@@ -66,16 +71,20 @@ begin
       or not (e ?& array['phrase','state','removed','kept','instead'])
       or exists (select 1 from jsonb_object_keys(e) k where not (k = any (keys)))
       or jsonb_typeof(e->'phrase') <> 'string' or char_length(e->>'phrase') not between 1 and 170
-      or (e->>'phrase') ~ '[\n\r\t]' or (e->>'phrase') <> btrim(e->>'phrase')
+      or (e->>'phrase') !~ '^[^[:space:][:cntrl:]]+( [^[:space:][:cntrl:]]+){0,3}$'
+      or not ((e->>'phrase') is nfkc normalized)
       or jsonb_typeof(e->'state') <> 'string' or (e->>'state') not in ('never','watched')
       or jsonb_typeof(e->'removed') <> 'number' or (e->>'removed') !~ '^[0-9]{1,6}$'
       or (e->>'removed')::integer not between 1 and 100000
       or jsonb_typeof(e->'kept') <> 'number' or (e->>'kept') !~ '^[0-9]{1,6}$'
       or (e->>'kept')::integer > 100000
+      or ((e->>'state') = 'never'
+        and ((e->>'removed')::integer < 2 or (e->>'removed')::integer <= (e->>'kept')::integer))
       or jsonb_typeof(e->'instead') <> 'array' or jsonb_array_length(e->'instead') > 3
       or exists (
         select 1 from jsonb_array_elements(e->'instead') i
-        where jsonb_typeof(i) <> 'string' or char_length(i #>> '{}') > 170 or (i #>> '{}') ~ '[\n\r\t]'
+        where jsonb_typeof(i) <> 'string' or char_length(i #>> '{}') not between 1 and 170
+          or (i #>> '{}') !~ '^[^[:space:][:cntrl:]]+( [^[:space:][:cntrl:]]+){0,3}$'
       )
   ) then
     raise exception 'Invalid never words' using errcode = '23514';

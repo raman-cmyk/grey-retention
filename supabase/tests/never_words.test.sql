@@ -1,5 +1,5 @@
 begin;
-select plan(52);
+select plan(71);
 
 -- PIC-29 part 2a: the words this brand never uses, kept by the history
 -- read. Owner ...01 and staff ...05 are in workspace 101 (a synthetic
@@ -43,8 +43,8 @@ select null from (select set_config('test.expired',pg_temp.job('00000000-0000-40
 -- Grants: only the worker records; browser roles never write the table.
 select ok(not bool_or(has_function_privilege(r,'public.record_never_words(uuid,uuid,jsonb)','execute'))
   and has_function_privilege('service_role','public.record_never_words(uuid,uuid,jsonb)','execute'),
-  'only the worker records voice samples') from unnest(array['anon','authenticated']) r;
-select ok(not bool_or(has_table_privilege(r,'public.brand_never_words',p)),'browser roles cannot write the samples')
+  'only the worker records never words') from unnest(array['anon','authenticated']) r;
+select ok(not bool_or(has_table_privilege(r,'public.brand_never_words',p)),'browser roles cannot write the list')
   from unnest(array['anon','authenticated']) r, unnest(array['insert','update','delete','truncate','references','trigger']) p;
 select ok(not has_table_privilege('anon','public.brand_never_words','select'),'anonymous visitors cannot read them');
 select ok(current_setting('server_version_num')::integer < 170000
@@ -56,11 +56,11 @@ select ok((select relrowsecurity from pg_class where oid='public.brand_never_wor
 -- without the worker's sign-in.
 set local role authenticated;
 select pg_temp.as_owner('00000000-0000-4000-8000-000000000001');
-select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.v('MsgA08')))$$,'42501',null,'an owner cannot record samples');
+select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.v('amazing')))$$,'42501',null,'an owner cannot record words');
 reset role;
 set local role service_role;
 select set_config('request.jwt.claims','{}',true);
-select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.v('MsgA08')))$$,'42501',null,
+select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.v('amazing')))$$,'42501',null,
   'nor the worker''s role without its sign-in');
 reset role;
 
@@ -80,6 +80,21 @@ select throws_ok(format('select pg_temp.record(%L::jsonb)', x),'23514',null,'ref
     jsonb_build_array(pg_temp.v(''))::text,
     jsonb_build_array(pg_temp.v(' amazing'))::text,
     jsonb_build_array(pg_temp.v(E'two\nlines'))::text,
+    jsonb_build_array(pg_temp.v('two  spaces'))::text,
+    jsonb_build_array(pg_temp.v('trailing '))::text,
+    jsonb_build_array(pg_temp.v(E'a\u001b[31mb'))::text,
+    jsonb_build_array(pg_temp.v(E'\u3000'))::text,
+    jsonb_build_array(pg_temp.v('one two three four five'))::text,
+    jsonb_build_array(pg_temp.v(E'cafe\u0301'))::text,
+    jsonb_build_array(pg_temp.v('amazing','{"removed":100001}'))::text,
+    jsonb_build_array(pg_temp.v('amazing','{"kept":100001}'))::text,
+    jsonb_build_array(pg_temp.v('amazing','{"state":3}'))::text,
+    jsonb_build_array(pg_temp.v('amazing','{"removed":1}'))::text,
+    jsonb_build_array(pg_temp.v('amazing','{"removed":3,"kept":3}'))::text,
+    jsonb_build_array(pg_temp.v('amazing',jsonb_build_object('instead',jsonb_build_array(repeat('a',171)))))::text,
+    jsonb_build_array(pg_temp.v('amazing',jsonb_build_object('instead',jsonb_build_array(E'two\nlines'))))::text,
+    jsonb_build_array(pg_temp.v('amazing','{"instead":[""]}'))::text,
+
     jsonb_build_array(pg_temp.v(repeat('a',171)))::text,
     jsonb_build_array(pg_temp.v('amazing','{"phrase":8}'))::text,
     jsonb_build_array(pg_temp.v('amazing','{"state":"banned"}'))::text,
@@ -147,6 +162,20 @@ select is(pg_temp.record('[]',current_setting('test.mid102')),0,'a read older th
 reset role;
 select is(pg_temp.count('00000000-0000-4000-8000-000000000102'),1,'and the list stays');
 
+-- An older read than a stored empty history keeps nothing either; a read
+-- recording twice replaces its own list.
+update public.klaviyo_history set state='empty' where tenant_id='00000000-0000-4000-8000-000000000102';
+set local role service_role;
+select pg_temp.as_worker();
+select is(pg_temp.record('[]',current_setting('test.mid102')),0,'a read older than a stored empty history writes nothing');
+select null from (select set_config('test.twice',pg_temp.job('00000000-0000-4000-8000-000000000101','never-twice','2 minutes'),true)) x;
+select is(pg_temp.record(jsonb_build_array(pg_temp.v('first')),current_setting('test.twice')),1,'a read records');
+select is(pg_temp.record(jsonb_build_array(pg_temp.v('second'),pg_temp.v('third')),current_setting('test.twice')),2,
+  'and records again, replacing its own list');
+reset role;
+select is((select string_agg(phrase,',' order by phrase) from public.brand_never_words where tenant_id='00000000-0000-4000-8000-000000000101'),
+  'second,third','only its newer list stays');
+
 -- The caps exactly: 100 never used and 100 watched.
 set local role service_role;
 select pg_temp.as_worker();
@@ -156,9 +185,16 @@ select is(pg_temp.record((select jsonb_agg(pg_temp.v('word'||i)) || jsonb_agg(pg
 select null from (select set_config('test.job4',pg_temp.job('00000000-0000-4000-8000-000000000101','never-4','30 seconds'),true)) x;
 select is(pg_temp.record(jsonb_build_array(pg_temp.v(repeat('a',170)),pg_temp.v('Ünïcode wörd',
     '{"instead":["one","two","three"]}')),current_setting('test.job4')),2,'the longest phrase, any script, three swaps');
+select null from (select set_config('test.job6',pg_temp.job('00000000-0000-4000-8000-000000000101','never-6','20 seconds'),true)) x;
+select is(pg_temp.record((select jsonb_agg(pg_temp.v(lpad(i::text,3,'0')||repeat('x',167),jsonb_build_object(
+    'state',case when i<=100 then 'never' else 'watched' end,
+    'instead',jsonb_build_array(repeat('y',170),repeat('z',170),repeat('q',170))))) from generate_series(1,200) i),
+  current_setting('test.job6')),200,'the largest list there can be fits the total');
 reset role;
 
 -- A read that learned none clears them; never another workspace's.
+set local role service_role;
+select pg_temp.as_worker();
 select null from (select set_config('test.job5',pg_temp.job('00000000-0000-4000-8000-000000000101','never-5','10 seconds'),true)) x;
 select is(pg_temp.record('[]',current_setting('test.job5')),0,'a read that learned none');
 reset role;

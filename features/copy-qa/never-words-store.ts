@@ -11,38 +11,53 @@ import { maxNeverWords, type NeverWord, type NeverWords } from './never-words'
  * Only the history read writes them, under its lease; members read them.
  */
 
+/** One to four words, one space between, as the learner writes them. */
+const words = /^[^\s\p{Cc}]+( [^\s\p{Cc}]+){0,3}$/u
+const phrase = z
+  .string()
+  .min(1)
+  .max(170)
+  .refine((p) => words.test(p) && p === p.normalize('NFKC'))
 const word = z.strictObject({
-  phrase: z
-    .string()
-    .min(1)
-    .max(170)
-    .refine((p) => p === p.trim() && !/[\n\r\t]/.test(p)),
+  phrase,
   removed: z.number().int().min(1).max(100_000),
   kept: z.number().int().min(0).max(100_000),
-  instead: z
-    .array(
-      z
-        .string()
-        .max(170)
-        .refine((t) => !/[\n\r\t]/.test(t))
-    )
-    .max(3)
+  instead: z.array(phrase).max(3)
 })
+/** The table's total for one list. */
+const maxListChars = 160_000
 
 /** The list as the table keeps it: each phrase once, at most 100 of each. */
 export function neverWordsToKeep(learned: NeverWords): NeverWords {
   const seen = new Set<string>()
-  const keep = (list: readonly NeverWord[]) =>
+  const keep = (list: readonly NeverWord[], never: boolean) =>
     (Array.isArray(list) ? list : []).flatMap((w): NeverWord[] => {
-      const parsed = word.safeParse(w)
+      // A swap the table cannot keep goes, never the word with it.
+      const swaps =
+        w && Array.isArray(w.instead)
+          ? w.instead.filter((t: unknown) => phrase.safeParse(t).success)
+          : w?.instead
+      const parsed = word.safeParse(w ? { ...w, instead: swaps } : w)
       if (!parsed.success || seen.has(parsed.data.phrase)) return []
+      // Never used only when taken out twice or more, more often than kept.
+      if (
+        never &&
+        (parsed.data.removed < 2 || parsed.data.removed <= parsed.data.kept)
+      )
+        return []
       seen.add(parsed.data.phrase)
       return [parsed.data]
     })
-  return {
-    never: keep(learned?.never ?? []).slice(0, maxNeverWords),
-    watched: keep(learned?.watched ?? []).slice(0, maxNeverWords)
+  const list = {
+    never: keep(learned?.never ?? [], true).slice(0, maxNeverWords),
+    watched: keep(learned?.watched ?? [], false).slice(0, maxNeverWords)
   }
+  // Within the table's total: the watched go first, the last first.
+  const size = () =>
+    JSON.stringify([...list.never, ...list.watched]).length + 400 * 2
+  while (size() > maxListChars && list.watched.length) list.watched.pop()
+  while (size() > maxListChars && list.never.length) list.never.pop()
+  return list
 }
 
 /**

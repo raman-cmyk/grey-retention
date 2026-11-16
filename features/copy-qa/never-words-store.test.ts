@@ -39,6 +39,36 @@ describe('the words this brand never uses, kept per workspace (PIC-29 part 2a)',
       maxNeverWords
     )
     expect(neverWordsToKeep(null as never)).toEqual({ never: [], watched: [] })
+    // As the table checks it: one to four words, one spelling; a "never"
+    // word taken out twice or more, more often than kept; a bad swap goes
+    // alone.
+    expect(
+      neverWordsToKeep({
+        never: [
+          w('two  spaces'),
+          w('one two three four five'),
+          w('cafe\u0301'),
+          w('once', { removed: 1 }),
+          w('as often', { removed: 3, kept: 3 }),
+          w('swapped', { instead: ['ok', 'two\nlines', ''] })
+        ],
+        watched: [w('once', { removed: 1 })]
+      })
+    ).toEqual({
+      never: [w('swapped', { instead: ['ok'] })],
+      watched: [w('once', { removed: 1 })]
+    })
+    // Within the table's 160,000 characters, the watched go first.
+    const big = (p: string) =>
+      w(`${p}${'x'.repeat(160)}`, {
+        instead: ['y'.repeat(170), 'z'.repeat(170), 'q'.repeat(170)]
+      })
+    const huge = neverWordsToKeep({
+      never: Array.from({ length: 100 }, (_, i) => big(`n${i}`)),
+      watched: Array.from({ length: 100 }, (_, i) => big(`w${i}`))
+    })
+    expect(JSON.stringify(huge).length).toBeLessThanOrEqual(160_000)
+    expect(huge.never).toHaveLength(100)
   })
 
   it('records the list under the history read’s lease, each with its state', async () => {
