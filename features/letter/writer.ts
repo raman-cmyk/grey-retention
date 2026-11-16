@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { runAgent, type AgentDefinition } from '@/features/agents/runtime'
 import {
   amount,
+  factLines,
   customerWordsRules,
   oneLine,
   storeLink,
@@ -468,7 +469,10 @@ export async function writeLetter(
         ctx.industry,
         [
           brief.brandName,
-          ...brief.locked.input.products.map((p) => p.title)
+          ...brief.locked.input.products.map((p) => p.title),
+          ...factLines(brief.locked.input.facts).map((f) =>
+            f.replace(/[.!?]$/, '')
+          )
         ].flatMap((t) => [t, clean(t, 2_000)])
       )
     ]

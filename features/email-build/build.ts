@@ -589,8 +589,12 @@ export async function copyStep(
           ),
           ...readingFindings(draft, store.industry, [
             ...protectedText(locked, store.brand.name),
-            // The facts the writer must use word for word.
-            ...factLines(locked.input.facts)
+            // The facts the writer must use word for word (with or without
+            // their full stop).
+            ...factLines(locked.input.facts).flatMap((f) => [
+              f,
+              f.replace(/[.!?]$/, '')
+            ])
           ])
         ],
         // Saved by an older app in another shape: the rounds start over.

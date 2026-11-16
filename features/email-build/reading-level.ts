@@ -88,6 +88,8 @@ export function syllables(word: string) {
   let w = word.toLowerCase().replace(/'.*$/, '')
   if (w.length <= 3) return 1
   w = w.replace(/(?:[^laeiouy]es|ed)$/, '')
+  // A plural after a silent e ("sales", "styles") reads as its word.
+  if (/[aeiouy][^aeiouy]es$/.test(w)) w = w.slice(0, -1)
   // A silent e ("sale", "style"), never a consonant's "-le" ("candle").
   if (/e$/.test(w) && !/[^aeiouy]le$/.test(w)) w = w.slice(0, -1)
   const groups = w.replace(/^y/, '').match(/[aeiouy]{1,2}/g)?.length ?? 0

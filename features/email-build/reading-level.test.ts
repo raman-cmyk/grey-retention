@@ -163,7 +163,8 @@ describe('length and reading level per industry (DST-PIC #28)', () => {
     expect(['sale', 'style', 'while', 'smile'].map(syllables)).toEqual([
       1, 1, 1, 1
     ])
-    expect(['candle', 'little'].map(syllables)).toEqual([2, 2])
+    expect(['candle', 'little', 'candles'].map(syllables)).toEqual([2, 2, 2])
+    expect(['sales', 'styles', 'smiles'].map(syllables)).toEqual([1, 1, 1])
     const faq = {
       blocks: [
         {
