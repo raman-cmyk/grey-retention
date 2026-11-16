@@ -527,6 +527,8 @@ describe('designed or text emails (TXT-001f, D26)', () => {
     })
     const { ctx, fallbacks } = context(ai)
     const plan = await planFifteenDays(input, ctx)
+    // What code fixes costs no paid revision: the planner answers once.
+    expect(callsOf(ai, 'calendar-planner')).toHaveLength(1)
     expect(plan.dropped).toBe(0)
     expect(plan.slots.map((s) => [s.emailType, s.format])).toEqual([
       ['offer', undefined],

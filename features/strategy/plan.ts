@@ -573,7 +573,8 @@ export function calendarProblems(
   })
   // D26: at most one email in `textShareOneIn` is a text email (rounded
   // down: a plan of 4 has one, a plan of 2 none); the latest ones over it,
-  // by date, have to change. Emails already sent or scheduled do not count.
+  // by date, have to change. The emails already planned before this plan
+  // (`input.existing`) do not count.
   const textMost = Math.floor(slots.length / textShareOneIn)
   slots
     .map((s, i) => ({ s, i }))
@@ -711,6 +712,12 @@ function textFixed(slot: Slot, problems: readonly Problem[]): Slot | null {
   }
   return { ...slot, productIds: slot.productIds.slice(0, 1) }
 }
+
+/** The slots that would be dropped: a problem code cannot fix. */
+const blocking = (issues: Map<number, Problem[]>) =>
+  [...issues.values()].filter((list) =>
+    list.some((p) => !textRules.has(p.rule))
+  ).length
 
 /**
  * The slots that ship: without the given problems, then checked again
@@ -1043,9 +1050,10 @@ export async function planFifteenDays(
         )
       }
     }
-    if (!best || issues.size <= best.issues.size) best = { slots, issues }
-    if (!issues.size || source.planner === 'code' || round === criticRounds)
-      break
+    // Problems code fixes itself (the text rules) never cost a round.
+    const failing = blocking(issues)
+    if (!best || failing <= blocking(best.issues)) best = { slots, issues }
+    if (!failing || source.planner === 'code' || round === criticRounds) break
     previous = { slots, problems: describeIssues(issues) }
   }
   if (!best?.slots.length) source.critic = 'skipped'
@@ -1086,7 +1094,7 @@ export async function planFifteenDays(
       'calendar-rules',
       'text_changed',
       `${count(changed)} broke the text email rules.`,
-      'Changed them to fit: a designed email instead, or the text email with its lead product only.',
+      `Changed ${changed === 1 ? 'it' : 'them'} to fit: a designed email instead, or the text email with its lead product only.`,
       criticRounds,
       { changed }
     )
