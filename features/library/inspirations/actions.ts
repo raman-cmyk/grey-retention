@@ -19,7 +19,7 @@ async function ownerSession() {
   return { context, db } as const
 }
 
-const refresh = () => revalidatePath('/library/inspirations')
+const refresh = () => revalidatePath('/inspiration')
 
 type Db = NonNullable<Awaited<ReturnType<typeof createClient>>>
 
@@ -34,7 +34,7 @@ async function requestEmails(db: Db, tenantId: string, subscription: string) {
 }
 
 const retryText = (domain: string) =>
-  `Tracking ${domain}, but we could not ask for their emails yet. Click Track again to retry.`
+  `Following ${domain}, but we could not ask for their emails yet. Click Follow again to retry.`
 
 /** "+ Track": follow a competitor's emails, then ask for their emails. */
 export async function trackDomain(
@@ -99,7 +99,7 @@ export async function trackDomain(
   refresh()
   if (!queued) return { error: retryText(domain) }
   return {
-    message: `Tracking ${domain}. It shows PENDING until their emails arrive.`
+    message: `Following ${domain}. Its newsletters usually arrive within 1–7 days.`
   }
 }
 

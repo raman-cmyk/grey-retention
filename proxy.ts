@@ -71,6 +71,7 @@ export const config = {
     '/copy-review/:path*',
     '/competitor-agent/:path*',
     '/library/:path*',
+    '/inspiration/:path*',
     '/connections/:path*',
     '/feedback/:path*',
     '/gros/:path*',

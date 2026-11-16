@@ -18,7 +18,7 @@ import { Mark } from './mark'
 export const navItems = [
   { key: 'home', label: 'Home', href: '/home' },
   { key: 'plan', label: 'Plan', href: '/plan' as Route },
-  { key: 'inspiration', label: 'Inspiration', href: '/inspiration' as Route },
+  { key: 'inspiration', label: 'Inspiration', href: '/inspiration' },
   { key: 'audiences', label: 'Audiences', href: '/audiences' as Route },
   { key: 'results', label: 'Results', href: '/results' as Route }
 ] as const

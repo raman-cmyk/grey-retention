@@ -64,7 +64,7 @@ describe('trackDomain', () => {
       )
     ).toEqual({
       message:
-        'Tracking northwind.example. It shows PENDING until their emails arrive.'
+        'Following northwind.example. Its newsletters usually arrive within 1–7 days.'
     })
     // No label or rules: a stopped domain keeps its own.
     expect(rpc).toHaveBeenNthCalledWith(1, 'subscribe_competitor', {
@@ -76,7 +76,7 @@ describe('trackDomain', () => {
       kind: 'competitors.capture',
       subscription
     })
-    expect(revalidatePath).toHaveBeenCalledWith('/library/inspirations')
+    expect(revalidatePath).toHaveBeenCalledWith('/inspiration')
   })
 
   it('refuses anything that is not a domain, and real domains in sample mode', async () => {
@@ -116,7 +116,7 @@ describe('trackDomain', () => {
     expect(
       (await trackDomain({}, form({ domain: 'northwind.example' }))).error
     ).toBe(
-      'Tracking northwind.example, but we could not ask for their emails yet. Click Track again to retry.'
+      'Following northwind.example, but we could not ask for their emails yet. Click Follow again to retry.'
     )
   })
 

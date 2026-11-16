@@ -405,7 +405,7 @@ test('INB-002 a sample inbox email keeps its images and its 600px screenshot sho
 
   // The owner, who follows northwind.example, sees the picture in Inspiration.
   await login(page, 'owner')
-  await page.goto('/library/inspirations')
+  await page.goto('/inspiration')
   const card = page.getByAltText('Screenshot of Spring layers are here')
   await expect(card).toBeVisible()
   // The picture loads lazily, once on screen; its real size is the stored one.
