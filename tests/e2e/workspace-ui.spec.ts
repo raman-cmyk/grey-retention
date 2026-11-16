@@ -5,8 +5,11 @@ test('workspace sidebar, account menu and mobile drawer work with keyboard and s
   page
 }, info) => {
   await login(page)
+  // Sign-in lands on Home (the GROS top bar); the old shell is on the
+  // screens not rebuilt yet, such as the plan.
+  await page.goto('/plan')
   await expect(
-    page.getByRole('heading', { name: 'Dashboard', exact: true })
+    page.getByRole('heading', { name: 'Plan next 15 days', level: 1 })
   ).toBeVisible()
   const mobile = info.project.name === 'mobile-chromium'
 
@@ -20,7 +23,7 @@ test('workspace sidebar, account menu and mobile drawer work with keyboard and s
       name: 'Client workspace navigation'
     })
     await expect(
-      nav.getByRole('link', { name: 'Dashboard', exact: true })
+      nav.getByRole('link', { name: 'Plan next 15 days', exact: true })
     ).toHaveAttribute('aria-current', 'page')
     const agents = nav.getByRole('button', { name: 'Agents', exact: true })
     await agents.click()
@@ -33,10 +36,15 @@ test('workspace sidebar, account menu and mobile drawer work with keyboard and s
     await toggle.click()
     await page.reload()
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    const rail = page.getByRole('link', { name: 'Dashboard', exact: true })
+    const rail = page.getByRole('link', {
+      name: 'Plan next 15 days',
+      exact: true
+    })
     await expect(rail).toHaveAttribute('aria-current', 'page')
     await rail.hover()
-    await expect(page.getByTestId('rail-tooltip')).toHaveText('Dashboard')
+    await expect(page.getByTestId('rail-tooltip')).toHaveText(
+      'Plan next 15 days'
+    )
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-expanded', 'true')
     // The open Agents group survived the reload.
@@ -127,7 +135,7 @@ test('core workspace surfaces render without overflow', async ({
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   for (const [path, heading] of [
-    ['/dashboard', 'Dashboard'],
+    ['/home', /^Good (morning|afternoon|evening), /],
     ['/campaign-agent', 'Campaigns'],
     ['/brand', 'Brand & Store'],
     ['/assets', 'Brand assets'],
@@ -140,7 +148,7 @@ test('core workspace surfaces render without overflow', async ({
     ['/team', 'Team'],
     ['/support', 'Support'],
     ['/settings', 'Settings']
-  ]) {
+  ] as [string, string | RegExp][]) {
     await page.goto(path)
     await expect(
       page.getByRole('heading', { name: heading, exact: true })
@@ -152,17 +160,13 @@ test('core workspace surfaces render without overflow', async ({
       path
     ).toBe(true)
     if (
-      [
-        '/dashboard',
-        '/campaign-agent',
-        '/assets',
-        '/gros',
-        '/reports'
-      ].includes(path)
+      ['/home', '/campaign-agent', '/assets', '/gros', '/reports'].includes(
+        path
+      )
     ) {
       await page.screenshot({
         path: `.audit/ui-002-${path.slice(1)}-${info.project.name}.png`,
-        fullPage: path === '/dashboard' || path === '/gros'
+        fullPage: path === '/home' || path === '/gros'
       })
     }
   }
@@ -188,5 +192,5 @@ test('guided setup can be revisited without changing saved brand details', async
     )
   ).toBe(true)
   await page.getByRole('link', { name: 'Exit setup' }).click()
-  await expect(page).toHaveURL(/\/dashboard$/)
+  await expect(page).toHaveURL(/\/home$/)
 })

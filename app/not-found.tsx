@@ -15,7 +15,7 @@ export default function NotFound() {
           Route does not exist or moved to another workspace.
         </p>
         <Button asChild className="mt-8">
-          <Link href="/dashboard">Return to workspace</Link>
+          <Link href="/home">Return to workspace</Link>
         </Button>
       </div>
     </main>

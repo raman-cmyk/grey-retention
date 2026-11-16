@@ -36,7 +36,7 @@ describe('disconnecting Klaviyo', () => {
       status: 'disconnected'
     })
     expect(revalidatePath).toHaveBeenCalledWith('/connections')
-    expect(revalidatePath).toHaveBeenCalledWith('/dashboard')
+    expect(revalidatePath).toHaveBeenCalledWith('/home')
   })
 
   it.each(['admin', 'staff'])('is refused to %s', async (tenantRole) => {
