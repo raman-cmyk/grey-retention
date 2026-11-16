@@ -196,6 +196,16 @@ const short = (key: string) => key.replace(/-/g, '').slice(0, 8)
 const templateName = (key: string, approach: 'A' | 'B', hash: string) =>
   `GROS ${short(key)} ${approach} ${hash.slice(0, 8)}`
 
+/**
+ * A subject of a subject test, as Klaviyo shows it: one line of at most 120
+ * characters, never a template tag (Klaviyo renders subjects as templates),
+ * markup or a control character.
+ */
+const testSubject = (subject: string) => {
+  const s = norm(subject)
+  return !!s && s.length <= 120 && !/[{}<>\u0000-\u001f\u007f]/.test(subject)
+}
+
 type Design = {
   approach: 'A' | 'B'
   html: string
@@ -230,8 +240,8 @@ function designsOf(input: DraftInput): Design[] {
     a.subject !== undefined ||
     (b.subject !== undefined &&
       (b.html !== a.html ||
-        !/^[^\n\r]{1,120}$/.test(b.subject) ||
-        !norm(b.subject) ||
+        !testSubject(b.subject) ||
+        !testSubject(input.subject) ||
         norm(b.subject).toLowerCase() === norm(input.subject).toLowerCase()))
   )
     throw new Refused('variations_invalid', ['variations'])
@@ -492,13 +502,33 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
   }
   /**
    * Which variation is which design: as recorded when made (from Klaviyo's
-   * answer to the create), else by our name, else by what it shows (its
-   * template's HTML is one of ours). Never by the order Klaviyo lists them.
+   * answer to the create), else by our name, else (a subject test, whose
+   * halves show the same HTML) by its subject when each matches exactly
+   * one, else by what it shows (its template's HTML is one of ours). Never
+   * by the order Klaviyo lists them.
    */
   const identify = async (r: DraftRead, via: KlaviyoClient) => {
     let a = named(r, 'A')
     let b = named(r, 'B')
     if (b && b.id === a?.id) b = undefined
+    // The input as given: this runs before the designs are checked.
+    const subjectB = input.variations?.[1]?.subject
+    if (r.variations.length === 2 && (!a || !b) && subjectB !== undefined) {
+      const by = (s: string) =>
+        r.variations.filter((v) => norm(v.subject) === norm(s))
+      const [onlyA, ...moreA] = by(input.subject)
+      const [onlyB, ...moreB] = by(subjectB)
+      if (
+        onlyA &&
+        onlyB &&
+        !moreA.length &&
+        !moreB.length &&
+        onlyA.id !== onlyB.id
+      ) {
+        if (!a && onlyA.id !== b?.id) a = onlyA
+        if (!b && onlyB.id !== a?.id) b = onlyB
+      }
+    }
     if (r.variations.length === 2 && (!a || !b))
       for (const v of r.variations) {
         if (v.id === a?.id || v.id === b?.id || !v.templateId) continue
@@ -612,7 +642,13 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     // What we sent counts too: a draft never read back since its create.
     const changed =
       (!!p.written || !!p.target) &&
-      read.variations.some((v) => !allowed.has(seen(v)))
+      (read.variations.some((v) => !allowed.has(seen(v))) ||
+        // With no write of ours under way the draft shows exactly what we
+        // wrote: a subject test's two subjects, never one of them twice
+        // (the owner moving A's subject to B is his change).
+        (!p.target &&
+          !!p.written &&
+          fingerprints(read.variations) !== p.written))
     if (p.ab === 'pending') read = await settle(read)
     if (changed) return close(read)
     if (

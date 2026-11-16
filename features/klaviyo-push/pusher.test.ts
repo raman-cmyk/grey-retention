@@ -431,6 +431,57 @@ describe('the live Klaviyo draft push', () => {
       expect(b!.subject).toBe('The owner wrote this')
     })
 
+    it('never touches the draft once the owner gives both halves one subject, or takes A out', async () => {
+      const both = setup()
+      await both.pusher.createDraft(subjects())
+      const [a] = variationsOf(both.account)
+      a!.subject = 'Ready for knitwear weather?'
+      expect(await both.pusher.createDraft(subjects())).toMatchObject({
+        ok: false,
+        reason: 'externally_modified'
+      })
+      expect(variationsOf(both.account)[0]!.subject).toBe(
+        'Ready for knitwear weather?'
+      )
+      const out = setup()
+      await out.pusher.createDraft(subjects())
+      const [, message] = only(out.account.messages)
+      out.account.variations.delete(message.variationIds[0]!)
+      message.variationIds = message.variationIds.slice(1)
+      message.winnerPercentage = null
+      expect(await out.pusher.createDraft(subjects())).toMatchObject({
+        ok: false,
+        reason: 'externally_modified'
+      })
+      expect(variationsOf(out.account).map((v) => v.subject)).toEqual([
+        'Ready for knitwear weather?'
+      ])
+    })
+
+    it('tells the halves apart by their subjects when Klaviyo renames them and an answer was lost', async () => {
+      const untilDone = async (p: ReturnType<typeof setup>['pusher']) => {
+        let r = await p.createDraft(subjects())
+        for (let n = 0; !r.ok && r.code === 'rate_limited' && n < 10; n++)
+          r = await p.createDraft(subjects())
+        return r
+      }
+      for (const faults of [
+        { dropCreateIds: true, renameVariations: true },
+        { loseMessage: true, renameVariations: true }
+      ]) {
+        const { account, pusher } = setup(faults)
+        expect(await untilDone(pusher), JSON.stringify(faults)).toMatchObject({
+          ok: true,
+          designs: 'both'
+        })
+        expect(
+          variationsOf(account)
+            .map((v) => v.subject)
+            .sort()
+        ).toEqual(['20% off knitwear', 'Ready for knitwear weather?'])
+      }
+    })
+
     it('keeps the first subject alone when Klaviyo refuses the even test', async () => {
       const { account, pusher } = setup({ abTest: 'refused' })
       expect(await pusher.createDraft(subjects())).toMatchObject({
@@ -463,7 +514,17 @@ describe('the live Klaviyo draft push', () => {
         [
           { approach: 'A' as const, html: one },
           { approach: 'B' as const, html: one, subject: 'x'.repeat(121) }
-        ]
+        ],
+        // A template tag, markup or a control character: never in Klaviyo.
+        ...[
+          '{{ first_name }}, ready for knitwear?',
+          '{% if x %}Hi{% endif %}',
+          'Knitwear <b>now</b>',
+          'Knitwear\u0000 now'
+        ].map((subject) => [
+          { approach: 'A' as const, html: one },
+          { approach: 'B' as const, html: one, subject }
+        ])
       ]) {
         const { account, pusher } = setup()
         expect(await pusher.createDraft(input({ variations }))).toEqual({

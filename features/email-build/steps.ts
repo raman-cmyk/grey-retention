@@ -9,6 +9,7 @@ import {
   copyStep,
   designStep,
   sectionsStep,
+  subjectText,
   type BuildCtx,
   type BuiltEmail,
   type CopyOutput,
@@ -600,7 +601,11 @@ function withSubjectB(email: BuiltEmail, copy: CopyOutput): BuiltEmail {
   if (email.designA || email.text !== undefined || !copy.written) return email
   const lab = savedLab.safeParse(copy.subjectLab)
   const b = lab.success ? lab.data.b?.subject : undefined
-  if (!b || b.toLowerCase() === email.subject.trim().toLowerCase()) return email
+  // Compared as the pusher compares them (spaces as one, any case), and
+  // safe store text as the copy step checked it (no tag, no markup).
+  const same = (x: string) => x.trim().replace(/\s+/g, ' ').toLowerCase()
+  if (!b || subjectText(b) !== b || same(b) === same(email.subject))
+    return email
   return { ...email, subjectB: b }
 }
 
