@@ -1,6 +1,7 @@
-import { hiddenChars, oneLine } from '@/features/assembly/assemble'
+import { amount, hiddenChars, oneLine } from '@/features/assembly/assemble'
 import { usableMaterial } from '@/features/assembly/inputs'
-import { typedLink } from '@/features/email-build/inspect'
+import { checkCopy } from '@/features/copy-qa/check'
+import { strayPrices, typedLink } from '@/features/email-build/inspect'
 import type { LetterProblem } from './checks'
 import {
   letterText,
@@ -24,8 +25,12 @@ import type { LetterBrief } from './writer'
  * A kind fits a brief or not (`kindFits`): a founder note needs the
  * founder's own note, and a quick question or a launch teaser never
  * carries an offer. A founder note never tells a story of the writer's:
- * the founder's own note is placed in it word for word, as the designed
- * founder note section places it (`placedNote`).
+ * the founder's own note is placed in it word for word (`placedNote`),
+ * and only a note that passes copy QA's discount, code, claim and banned
+ * word rules and the price check on its own (as the designed founder note
+ * section's words are judged with the email): the writer is never sent
+ * back for words it cannot change, so a note that fails is no founder
+ * note.
  *
  * The kinds hold for the writer's letters only: the plain letter (no AI,
  * or after the rewrites) is the same short note for every kind.
@@ -135,7 +140,29 @@ export function founderNote(brief: LetterBrief): string[] | null {
   )
   if (!plain) return null
   const words = note.reduce((n, p) => n + wordCount(p), 0)
-  return words <= maxNoteWords ? note.map((p) => p.trim()) : null
+  if (words > maxNoteWords) return null
+  // The hard rules hold for the founder's words too (VISION §3 rules 6, 7).
+  const input = brief.locked.input
+  const qa = checkCopy({
+    draft: {
+      subject: '',
+      preview: '',
+      blocks: note.map((text, i) => ({ id: `note-${i + 1}`, text }))
+    },
+    facts: input.facts,
+    maxDiscountPercent: input.maxDiscountPercent,
+    codes: [...input.codes],
+    productNames: [...input.products.map((p) => p.title), brief.brandName],
+    sendAt: input.sendAt
+  })
+  const prices = new Set(
+    input.products
+      .map((p) => amount(p.price))
+      .filter((n): n is number => n !== null)
+  )
+  if (qa.failures.length || note.some((p) => strayPrices(p, prices).length))
+    return null
+  return note.map((p) => p.trim())
 }
 
 /** Why a kind does not fit the brief (null: it fits). */
@@ -151,16 +178,74 @@ export function kindFits(
 
 /** The brief's kind when it fits, else none (a plain short letter). */
 export const kindOf = (brief: LetterBrief): LetterKind | undefined =>
-  brief.kind && !kindFits(brief.kind, brief) ? brief.kind : undefined
+  brief.kind &&
+  Object.hasOwn(kindSpecs, brief.kind) &&
+  !kindFits(brief.kind, brief)
+    ? brief.kind
+    : undefined
 
 /** The founder's note a founder note places, else none. */
 export const placedNote = (brief: LetterBrief) =>
   kindOf(brief) === 'founder_note' ? founderNote(brief) : null
 
-/** The words that lay guilt on a reader who has been away. */
-const guilt =
-  /\byou (?:haven['’]t|have not|hadn['’]t|had not)\b|\bwe(?:['’]ve| have)? noticed\b|\bwhere (?:have )?you been\b|\bwhere you['’]ve been\b|\bsince you last\b|\byou(?:['’]ve| have)? (?:been away|forgotten|forgot|stopped|left us)\b/i
+/** The most paragraphs of a founder note's writer: the note goes between. */
+export const founderParagraphs = 3
+
+/** The letter as `letterFrom` makes it: the note right after paragraph 1. */
+const placedIn = (letter: Letter, note: readonly string[]) =>
+  letter.body.length > note.length &&
+  note.every((p, i) => letter.body[1 + i] === p)
+
+/**
+ * The paragraphs the writer wrote: the body without the founder's placed
+ * note (found where it is placed, never by its words, so a paragraph that
+ * copies it is still the writer's).
+ */
+export function writerBody(letter: Letter, brief: LetterBrief): string[] {
+  const note = placedNote(brief)
+  return note && placedIn(letter, note)
+    ? [letter.body[0]!, ...letter.body.slice(1 + note.length)]
+    : letter.body
+}
+
+/** The rules the Letter writer is told for its kind, with their numbers. */
+export function kindRules(brief: LetterBrief): string[] {
+  const kind = kindOf(brief)
+  if (!kind) return []
+  const spec = kindSpecs[kind]
+  const note = placedNote(brief)
+  const noted = note ? note.reduce((n, p) => n + wordCount(p), 0) : 0
+  const length = note
+    ? `The founder’s note has ${noted} words; with yours the letter is ${letterWords.min} to ${letterWords.max} words: write ${Math.max(0, letterWords.min - noted)} to ${letterWords.max - noted} words of your own, in at most ${founderParagraphs} paragraphs.`
+    : `Write ${spec.words.min} to ${spec.words.max} words in the paragraphs and the P.S. together.`
+  return [...spec.rules, length]
+}
+
+/** Words that lay guilt on a reader who has been away (absence, never warmth). */
+const absent =
+  '(?:bought|ordered|shopped|opened|read|visited|been back|been in|come back|came back|stopped by|clicked)'
+const guilt = new RegExp(
+  [
+    `\\byou (?:haven['’]t|have not|hadn['’]t|had not|didn['’]t|did not)(?: \\w+)? ${absent}\\b`,
+    `\\bwe(?:['’]ve| have)? noticed (?:that )?you\\b`,
+    `\\bwhere (?:have )?you been\\b`,
+    `\\bwhere you['’]ve been\\b`,
+    `\\bsince you last ${absent}\\b`,
+    `\\byou(?:['’]ve| have)? (?:been away|forgotten (?:about )?us|forgot (?:about )?us|left us|stopped (?:buying|ordering|shopping|opening|reading|visiting))\\b`
+  ].join('|'),
+  'i'
+)
 const firstPerson = /\b(?:i|i['’]m|i['’]ve|i['’]d|i['’]ll|my|me)\b/i
+/** Thanks, as words ("Thanksgiving" and "thankfully" thank no one). */
+const thanks = /\b(?:thank you|thank-you|thanks|grateful|appreciate)\b/i
+
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** `text` with the store's own words (its name, titles) blanked out. */
+const masked = (text: string, own: readonly string[]) =>
+  own
+    .filter((t) => t.trim().length >= 2)
+    .sort((a, b) => b.length - a.length)
+    .reduce((t, o) => t.replace(new RegExp(escape(o), 'gi'), ' '), text)
 
 /**
  * What a written letter breaks of its kind's rules, in plain words for the
@@ -176,10 +261,15 @@ export function kindProblems(
   const spec = kindSpecs[kind]
   const problems: LetterProblem[] = []
   const add = (rule: string, reason: string) => problems.push({ rule, reason })
-  const note = new Set(placedNote(brief) ?? [])
-  const own = letterText(letter).filter((t) => !note.has(t))
+  const note = placedNote(brief) ?? []
+  const own = [
+    ...writerBody(letter, brief),
+    ...(letter.ps ? [letterText(letter).at(-1)!] : [])
+  ]
   const words = letterText(letter).reduce((n, t) => n + wordCount(t), 0)
-  if (words < spec.words.min || words > spec.words.max)
+  // The letter's own limits have their own reason (`letterProblems`).
+  const inLetter = words >= letterWords.min && words <= letterWords.max
+  if (inLetter && (words < spec.words.min || words > spec.words.max))
     add(
       'kind_length',
       `A ${spec.name.toLowerCase()} is ${spec.words.min} to ${spec.words.max} words; this one is ${words}.`
@@ -192,18 +282,26 @@ export function kindProblems(
     )
   if (letter.offer && !spec.offer)
     add('kind_offer', `A ${spec.name.toLowerCase()} never has an offer.`)
-  const seen = own.map(seenText)
+  const store = [
+    brief.brandName,
+    ...brief.locked.input.products.map((p) => p.title)
+  ]
+  const seen = own.map((t) => masked(seenText(t), store))
   if (kind === 'founder_note') {
     if (!seen.some((t) => firstPerson.test(t)))
       add(
         'kind_first_person',
         'The founder writes a founder note: write your paragraphs in the first person ("I").'
       )
-    const at = letter.body.indexOf([...note][0] ?? '')
-    if (at < 0 || [...note].some((p, i) => letter.body[at + i] !== p))
+    if (own.some((t) => note.some((p) => t.includes(p))))
       add(
-        'kind_note_changed',
-        'The founder’s own note must stay in the letter word for word.'
+        'kind_note_quoted',
+        'Never repeat the founder’s note: the system places it once, after your first paragraph.'
+      )
+    if (writerBody(letter, brief).length > founderParagraphs)
+      add(
+        'kind_paragraphs',
+        `Write at most ${founderParagraphs} paragraphs of your own: the founder’s note goes between them.`
       )
   }
   if (kind === 'quick_question') {
@@ -217,11 +315,15 @@ export function kindProblems(
     if (asked > 2)
       add(
         'kind_questions',
-        `A quick question asks one question; this letter asks ${asked}.`
+        `A quick question asks one question; this letter has ${asked} question marks.`
       )
   }
   if (kind === 'we_miss_you') {
-    const all = [letter.subject, letter.preheader, ...seen].join('\n')
+    const all = [
+      masked(letter.subject, store),
+      masked(letter.preheader, store),
+      ...seen
+    ].join('\n')
     const found = all.match(guilt)
     if (found)
       add(
@@ -231,7 +333,7 @@ export function kindProblems(
   }
   if (kind === 'thank_you') {
     const first = letter.body[0] ?? ''
-    if (!/\bthank/i.test(`${letter.greeting ?? ''} ${seenText(first)}`))
+    if (!thanks.test(`${letter.greeting ?? ''} ${seenText(first)}`))
       add(
         'kind_thanks',
         'A thank-you thanks the reader in the greeting or the first paragraph.'

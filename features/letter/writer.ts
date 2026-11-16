@@ -19,10 +19,13 @@ import type { FallbackLog } from '@/features/fallback/log'
 import type { AgentCtx } from '@/features/strategy/retry'
 import { letterProblems, type LetterProblem } from './checks'
 import {
+  founderParagraphs,
   kindOf,
   kindProblems,
+  kindRules,
   kindSpecs,
   placedNote,
+  writerBody,
   type LetterKind
 } from './kinds'
 import {
@@ -161,8 +164,8 @@ export const letterWriter = (
   instructions: [
     ...letterInstructions,
     ...customerWordsRules(brief.locked.input),
-    // DST-PIC #24: the kind's own rules, when it fits.
-    ...(kindOf(brief) ? kindSpecs[kindOf(brief)!].rules : [])
+    // DST-PIC #24: the kind's own rules, with their numbers, when it fits.
+    ...kindRules(brief)
   ].join('\n'),
   task: ({ brief, feedback }) =>
     writerData(
@@ -215,11 +218,12 @@ export function letterFindings(
   brief: LetterBrief
 ): LetterProblem[] {
   const input = brief.locked.input
-  // The founder's placed note is the founder's own words, never the writer's.
+  // The founder's placed note is the founder's own words, checked on its
+  // own before it is placed (`founderNote`), never the writer's.
   const note = placedNote(brief) ?? []
   const parts = [
     letter.greeting ?? '',
-    ...letter.body.filter((p) => !note.includes(p)),
+    ...writerBody(letter, brief),
     letter.offer ? offerLine(letter.offer) : '',
     letter.signoff,
     letter.ps ?? ''
@@ -393,7 +397,8 @@ const letterRuleWords: Record<string, string> = {
   kind_links: 'more links than its kind has',
   kind_offer: 'an offer its kind never has',
   kind_first_person: 'a founder note not in the first person',
-  kind_note_changed: 'the founder’s note changed',
+  kind_note_quoted: 'the founder’s note repeated',
+  kind_paragraphs: 'too many paragraphs around the founder’s note',
   kind_question: 'a quick question with no question',
   kind_questions: 'more than one question',
   kind_guilt: 'words that make the reader feel guilty',
@@ -415,7 +420,9 @@ const wordsFor = (rules: readonly string[]) =>
 /** A zod issue on the letter in words the writer can act on. */
 function partReason(issue: z.core.$ZodIssue) {
   if (issue.code === 'too_big' && typeof issue.maximum === 'number')
-    return `Keep it to ${issue.maximum} characters or fewer.`
+    return issue.origin === 'array'
+      ? `Keep it to ${issue.maximum} paragraphs or fewer.`
+      : `Keep it to ${issue.maximum} characters or fewer.`
   if (issue.code === 'too_small') return 'Never leave it empty.'
   return 'Write it as plain words.'
 }
@@ -464,6 +471,20 @@ export async function writeLetter(
           {
             field: 'letter',
             reason: 'The answer did not match the required JSON shape.'
+          }
+        ]
+      })
+      continue
+    }
+    // A founder note: the writer's own paragraphs go around the note.
+    if (placedNote(brief) && result.output.body.length > founderParagraphs) {
+      cause = 'check_failed'
+      rounds.push({
+        rules: ['kind_paragraphs'],
+        feedback: [
+          {
+            field: 'body',
+            reason: `Write at most ${founderParagraphs} paragraphs of your own: the founder’s note goes between them.`
           }
         ]
       })

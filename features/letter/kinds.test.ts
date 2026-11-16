@@ -98,16 +98,16 @@ const ok = (content: unknown): AiRunResult => ({
   settled: true
 })
 const filler = (n: number) =>
-  Array.from({ length: n }, (_, i) =>
-    i % 8 === 7 ? 'evening.' : 'quiet'
-  ).join(' ')
+  Array.from({ length: n }, (_, i) => (i % 8 === 7 ? 'light.' : 'warm')).join(
+    ' '
+  )
 const answer = (over: Partial<LetterAnswer> = {}): LetterAnswer => ({
   subject: 'A note about our cedar candle',
   preheader: 'Why we made it, and how it fills a room at night.',
   greeting: 'Hi there,',
   body: [
     'Thank you for reading along with us this year, it means a great deal.',
-    `Quiet ${filler(50)}`,
+    `Warm ${filler(50)}`,
     'If you would like one this week, [the candle is here](1).'
   ],
   signoff: 'Warmly,',
@@ -214,16 +214,16 @@ describe('the kinds of text email (DST-PIC #24)', () => {
       rulesOf(brief, {
         body: [
           'Thank you for reading along. [The candle](1) and [the shop](2).',
-          `Quiet ${filler(50)}`
+          `Warm ${filler(50)}`
         ]
       })
     ).toContain('kind_links')
     expect(
-      rulesOf(brief, { body: [`Quiet ${filler(150)}`, 'Thank you.'] })
+      rulesOf(brief, { body: [`Warm ${filler(150)}`, 'Thank you.'] })
     ).toContain('kind_length')
     expect(
       rulesOf(brief, {
-        body: [`Quiet ${filler(60)}`, 'Is it this? Or that? Or the other?']
+        body: [`Warm ${filler(60)}`, 'Is it this? Or that? Or the other?']
       })
     ).toContain('kind_questions')
   })
@@ -234,7 +234,7 @@ describe('the kinds of text email (DST-PIC #24)', () => {
       answer({
         body: [
           'I wanted to write to you myself this week.',
-          `Quiet ${filler(45)}`,
+          `Warm ${filler(45)}`,
           'If you would like one, [the candle is here](1).'
         ]
       })
@@ -254,7 +254,7 @@ describe('the kinds of text email (DST-PIC #24)', () => {
       rulesOf(brief, {
         body: [
           'We wanted to write to you this week.',
-          `Quiet ${filler(45)}`,
+          `Warm ${filler(45)}`,
           'If you would like one, [the candle is here](1).'
         ],
         ps: 'Reply and tell us.'
@@ -273,7 +273,7 @@ describe('the kinds of text email (DST-PIC #24)', () => {
       'It has been months since you last ordered.'
     ])
       expect(
-        rulesOf(brief, { body: [words, `Quiet ${filler(60)}`] }),
+        rulesOf(brief, { body: [words, `Warm ${filler(60)}`] }),
         words
       ).toContain('kind_guilt')
   })
@@ -283,17 +283,14 @@ describe('the kinds of text email (DST-PIC #24)', () => {
     expect(rulesOf(brief, {})).toEqual([])
     expect(
       rulesOf(brief, {
-        body: [
-          'We have something new for you this week.',
-          `Quiet ${filler(60)}`
-        ]
+        body: ['We have something new for you this week.', `Warm ${filler(60)}`]
       })
     ).toEqual(['kind_thanks'])
     expect(
       rulesOf(brief, {
         body: [
           'Thank you for being here: [see the candle](1).',
-          `Quiet ${filler(60)}`
+          `Warm ${filler(60)}`
         ]
       })
     ).toEqual(['kind_first_link'])
@@ -301,9 +298,95 @@ describe('the kinds of text email (DST-PIC #24)', () => {
 
   it('a letter the writer keeps breaking its kind with: the plain letter, which has no kind', async () => {
     const brief = await briefFor('thank_you')
-    const ai = modelOf([answer({ body: ['Hello.', `Quiet ${filler(60)}`] })])
+    const ai = modelOf([answer({ body: ['Hello.', `Warm ${filler(60)}`] })])
     const made = await writeLetter(brief, ctxWith(ai))
     expect(made.status).toBe('plain')
     expect(ai).toHaveBeenCalledTimes(4)
+  })
+
+  it('places only a founder’s note that passes the hard rules on its own', async () => {
+    for (const odd of [
+      ['Use code FRIENDS50 for 50% off everything this week.'],
+      ['Our candle is clinically proven to help you sleep.'],
+      ['Every candle is only $5 this week.']
+    ])
+      expect(
+        founderNote(await briefFor('founder_note', { note: odd })),
+        odd[0]
+      ).toBeNull()
+  })
+
+  it('a founder note: at most three paragraphs of the writer’s, and the note never repeated', async () => {
+    const brief = await briefFor('founder_note')
+    const long = answer({
+      body: [
+        'I wanted to write to you myself.',
+        `Warm ${filler(10)}`,
+        `Warm ${filler(10)}`,
+        'Here is [the candle](1).'
+      ]
+    })
+    const ai = modelOf([long, answer()])
+    const made = await writeLetter(brief, ctxWith(ai))
+    expect(made.status).toBe('written')
+    expect(ai.mock.calls[1]![0].request.user).toContain(
+      'Write at most 3 paragraphs of your own'
+    )
+    expect(ai.mock.calls[0]![0].request.system).toMatch(
+      /The founder’s note has \d+ words; with yours the letter is 80 to 250 words/
+    )
+    expect(
+      rulesOf(brief, {
+        body: [note[0]!, `I am glad. ${filler(40)}`, 'Here is [the candle](1).']
+      })
+    ).toContain('kind_note_quoted')
+  })
+
+  it('tells the writer its kind’s words in numbers', async () => {
+    const brief = await briefFor('quick_question', { offer: false })
+    const ai = modelOf([answer()])
+    await writeLetter(brief, ctxWith(ai))
+    expect(ai.mock.calls[0]![0].request.system).toContain(
+      'Write 80 to 150 words in the paragraphs and the P.S. together.'
+    )
+  })
+
+  it('never takes warm words for guilt, nor a holiday for thanks', async () => {
+    const miss = await briefFor('we_miss_you')
+    for (const words of [
+      'If you haven’t tried the new scent yet, now is a good time.',
+      'You haven’t missed a thing, we promise.',
+      'We noticed the evenings getting darker this week.',
+      'You have stopped by the studio before, and we loved it.',
+      'It has been a while since you last heard from us.'
+    ])
+      expect(
+        rulesOf(miss, { body: [words, `Warm ${filler(60)}`] }),
+        words
+      ).not.toContain('kind_guilt')
+    const thank = await briefFor('thank_you')
+    expect(
+      rulesOf(thank, {
+        body: [
+          'Thanksgiving is coming, and so is winter.',
+          `Warm ${filler(60)}`
+        ]
+      })
+    ).toContain('kind_thanks')
+    expect(
+      rulesOf(thank, {
+        body: ['We are so grateful you are here.', `Warm ${filler(60)}`]
+      })
+    ).not.toContain('kind_thanks')
+  })
+
+  it('a kind it does not know is no kind', async () => {
+    for (const kind of ['newsletter', 'toString'])
+      expect(
+        kindOf({
+          ...(await briefFor(undefined)),
+          kind: kind as LetterKind
+        })
+      ).toBeUndefined()
   })
 })
