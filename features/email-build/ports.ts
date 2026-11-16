@@ -1,3 +1,4 @@
+import type { FounderVoice } from '@/features/letter/voice/profile'
 import type { PastSubject } from './subject-traits'
 import type { BlockBrand } from '@/features/blocks/brand'
 import { sampleBrand } from '@/features/blocks/samples'
@@ -85,6 +86,12 @@ export type Store = {
    * stays disallowed (`allowedBlockTypes`).
    */
   confirmed?: NonNullable<AssemblyInput['confirmed']>
+  /**
+   * PIC-23 part 3b: how the founder writes, measured from the owner's own
+   * sent emails (`founderVoice`), for the Letter writer. Absent for the
+   * sample store, before a history read and when the letters say too little.
+   */
+  founderVoice?: FounderVoice
 }
 
 /**
