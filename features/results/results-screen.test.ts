@@ -7,6 +7,8 @@ import { loadResultsScreen } from './results-screen-load'
 vi.mock('server-only', () => ({}))
 
 const tenant = '00000000-0000-4000-8000-000000000101'
+const usd = { currency: 'USD', timezone: 'UTC' }
+const plain = { currency: null, timezone: 'UTC' }
 const n = (over: Partial<ResultLine['totals'] & object> = {}) => ({
   recipients: 1240,
   opens: 471,
@@ -36,12 +38,12 @@ const line = (over: Partial<ResultLine> = {}): ResultLine => ({
 
 describe('the Results page (UI-RES-a)', () => {
   it('says when results cannot be read, or nothing went to Klaviyo yet', () => {
-    expect(resultsScreen(null, 'USD')).toEqual({ kind: 'error' })
-    expect(resultsScreen([], 'USD')).toEqual({ kind: 'empty' })
+    expect(resultsScreen(null, usd)).toEqual({ kind: 'error' })
+    expect(resultsScreen([], usd)).toEqual({ kind: 'empty' })
   })
 
   it('shows a sent email’s numbers the short way', () => {
-    expect(resultEmail(line(), 'USD')).toEqual({
+    expect(resultEmail(line(), usd)).toEqual({
       buildId: 'b1',
       title: '20% off knitwear',
       day: 'Tue 17',
@@ -62,19 +64,19 @@ describe('the Results page (UI-RES-a)', () => {
   })
 
   it('says how sure the numbers are, never a made-up 0', () => {
-    expect(resultEmail(line({ final: false }), 'USD').note).toBe(
+    expect(resultEmail(line({ final: false }), usd).note).toBe(
       'Numbers can still change: they are read for three days after the send.'
     )
-    expect(resultEmail(line({ complete: false }), 'USD').note).toBe(
+    expect(resultEmail(line({ complete: false }), usd).note).toBe(
       'Some numbers could not be read from Klaviyo.'
     )
-    expect(resultEmail(line({ totals: null }), 'USD')).toMatchObject({
+    expect(resultEmail(line({ totals: null }), usd)).toMatchObject({
       numbers: null,
       note: 'Klaviyo has no numbers for it yet.'
     })
     // Orders not read: no sales, no orders, the rest still shown.
     expect(
-      resultEmail(line({ totals: n({ orders: null, revenue: null }) }), 'USD')
+      resultEmail(line({ totals: n({ orders: null, revenue: null }) }), usd)
         .numbers
     ).toMatchObject({ sent: '1,240', sales: null, orders: null })
   })
@@ -102,13 +104,19 @@ describe('the Results page (UI-RES-a)', () => {
           topSection: { block: 'unknown_block', clicks: 3 }
         })
       ],
-      null
+      plain
     )
     if (screen.kind !== 'results') throw new Error('expected results')
-    expect(screen.counts).toEqual({ sent: 1, waiting: 1, other: 1 })
+    expect(screen.counts).toEqual({
+      sent: 1,
+      scheduled: 1,
+      draft: 0,
+      sample: 0,
+      other: 1
+    })
     expect(screen.sample).toBe(false)
     expect(screen.emails[1]).toMatchObject({
-      state: 'waiting',
+      state: 'scheduled',
       day: 'Fri 20',
       note: null
     })
@@ -131,7 +139,7 @@ describe('the Results page (UI-RES-a)', () => {
             verdict
           }
         }),
-        'USD'
+        usd
       ).ab
     expect(ab('b')).toMatchObject({
       verdict: 'Version B got more clicks: 2.4% against 1.8%.',
@@ -147,18 +155,77 @@ describe('the Results page (UI-RES-a)', () => {
       winner: null
     })
     expect(ab('too_early')?.verdict).toBe(
+      'Too few people or clicks to pick a winner: it takes 100 people on each version and 30 clicks.'
+    )
+    // Still being read: too early, not too few.
+    expect(
+      resultEmail(
+        line({
+          final: false,
+          ab: { a: n(), b: n(), verdict: 'too_early' }
+        }),
+        usd
+      ).ab?.verdict
+    ).toBe(
       'Too early to pick a winner: it takes three days of results, 100 people on each version and 30 clicks.'
     )
   })
 
-  it('marks the page as examples only when every email is the sample store’s', () => {
-    const all = resultsScreen([line({ sample: true })], 'USD')
+  it('never shows a sample email as sent, alone or among real ones', () => {
+    const all = resultsScreen([line({ sample: true })], usd)
     const mixed = resultsScreen(
       [line({ sample: true }), line({ buildId: 'b2' })],
-      'USD'
+      usd
     )
     expect(all.kind === 'results' && all.sample).toBe(true)
-    expect(mixed.kind === 'results' && mixed.sample).toBe(false)
+    if (mixed.kind !== 'results') throw new Error('expected results')
+    expect(mixed.sample).toBe(false)
+    expect(mixed.counts).toMatchObject({ sent: 1, sample: 1 })
+    expect(mixed.emails[0]).toMatchObject({
+      state: 'sample',
+      statusText: 'Sample: not sent',
+      note: 'A sample: this email was never sent, and its numbers are examples.'
+    })
+  })
+
+  it('tells a draft to schedule from a scheduled one, and an email still sending', () => {
+    expect(
+      resultEmail(
+        line({ status: 'draft', statusText: 'Draft in Klaviyo', totals: null }),
+        usd
+      )
+    ).toMatchObject({
+      state: 'draft',
+      statusText: 'Draft in Klaviyo: ready for you to schedule'
+    })
+    expect(
+      resultEmail(line({ status: 'sending', statusText: 'Sending' }), usd)
+    ).toMatchObject({
+      state: 'sent',
+      note: 'Still sending: the numbers will change.'
+    })
+    expect(resultEmail(line({ final: false, complete: false }), usd).note).toBe(
+      'Numbers can still change: they are read for three days after the send. Some numbers could not be read from Klaviyo.'
+    )
+  })
+
+  it('names the send day in the store’s time zone', () => {
+    // 6 pm in Los Angeles on Tue 17 is Wed 18 in UTC.
+    const at = line({
+      sentAt: '2026-11-18T02:00:00Z',
+      plannedDay: '2026-11-17'
+    })
+    expect(resultEmail(at, usd).day).toBe('Wed 18')
+    expect(
+      resultEmail(at, { currency: 'USD', timezone: 'America/Los_Angeles' }).day
+    ).toBe('Tue 17')
+  })
+
+  it('never shows a rate Klaviyo did not give as 0%', () => {
+    expect(
+      resultEmail(line({ totals: n({ openRate: null, clickRate: null }) }), usd)
+        .numbers
+    ).toMatchObject({ opened: null, clicked: null })
   })
 
   it('writes rates and money the short way', () => {
@@ -169,6 +236,9 @@ describe('the Results page (UI-RES-a)', () => {
     expect(money(412.5, 'EUR')).toBe('€412.50')
     expect(money(412, 'usd')).toBe('412.00')
     expect(money(null, 'USD')).toBeNull()
+    // A currency's own decimals.
+    expect(money(412.5, 'JPY')).toBe('¥413')
+    expect(money(412, 'JPY')).toBe('¥412')
   })
 })
 
@@ -245,7 +315,8 @@ describe('loading the Results page (UI-RES-a)', () => {
     expect(calls.filter(([c]) => c === 'eq')).toEqual([
       ['eq', ['tenant_id', tenant]],
       ['eq', ['tenant_id', tenant]],
-      ['eq', ['provider', 'klaviyo']]
+      ['eq', ['provider', 'klaviyo']],
+      ['eq', ['id', tenant]]
     ])
   })
 

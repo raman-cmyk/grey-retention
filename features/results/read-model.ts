@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import { listEmailResults, type EmailResult } from './read'
 import { pullsAfterSend, type EmailStatus, type StoredResult } from './sync'
+import { minClicks, minRecipients } from './thresholds'
 
 type Db = SupabaseClient<Database>
 
@@ -54,8 +55,7 @@ export type ResultLine = {
   topSection: { block: string; clicks: number } | null
 }
 
-export const minRecipients = 100
-export const minClicks = 30
+export { minClicks, minRecipients } from './thresholds'
 const statusWords: Record<EmailStatus, string> = {
   draft: 'Draft in Klaviyo',
   scheduled: 'Scheduled in Klaviyo',
@@ -100,8 +100,9 @@ export function numbers(results: StoredResult[]): Numbers | null {
     revenue: known('conversion_value')
       ? Math.round(sum('conversion_value') * 100) / 100
       : null,
-    openRate: delivered ? opens / delivered : null,
-    clickRate: delivered ? clicks / delivered : null
+    // UI-RES-a: a count Klaviyo did not give is no rate, never a made-up 0.
+    openRate: delivered && known('opens_unique') ? opens / delivered : null,
+    clickRate: delivered && known('clicks_unique') ? clicks / delivered : null
   }
 }
 

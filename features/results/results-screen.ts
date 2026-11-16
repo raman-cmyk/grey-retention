@@ -1,9 +1,5 @@
-import {
-  minClicks,
-  minRecipients,
-  type Numbers,
-  type ResultLine
-} from './read-model'
+import type { Numbers, ResultLine } from './read-model'
+import { minClicks, minRecipients } from './thresholds'
 
 /**
  * UI-RES-a (the owner's request of 16 November: a basic working UI on
@@ -19,20 +15,30 @@ export type ResultsScreen =
   | { kind: 'empty' }
   | {
       kind: 'results'
-      /** Results of the sample store: the page says they are examples. */
+      /** Every line is the sample store's: the page says they are examples. */
       sample: boolean
-      /** "3 sent · 1 waiting to send", for the page's label. */
-      counts: { sent: number; waiting: number; other: number }
+      /** "3 sent · 1 scheduled · 2 drafts", for the page's label; samples apart. */
+      counts: {
+        sent: number
+        scheduled: number
+        draft: number
+        sample: number
+        other: number
+      }
       emails: ResultEmail[]
     }
 
 export type ResultEmail = {
   buildId: string
   title: string
-  /** "Tue 17" (its send day, else its planned day), or null. */
+  /** "Tue 17" (its send day in store time, else its planned day), or null. */
   day: string | null
-  /** Sent, waiting (a draft or scheduled), or other (cancelled, deleted, not sent). */
-  state: 'sent' | 'waiting' | 'other'
+  /**
+   * Sent (or sending); scheduled; a draft for the owner to schedule (D17);
+   * a sample (the sample store's, never sent: its numbers are examples);
+   * or other (cancelled, deleted, not sent).
+   */
+  state: 'sent' | 'scheduled' | 'draft' | 'sample' | 'other'
   statusText: string
   /** Its numbers, or null before Klaviyo has any. */
   numbers: NumberWords | null
@@ -64,6 +70,9 @@ export type AbWords = {
 
 const count = new Intl.NumberFormat('en-US')
 
+/** The Klaviyo account's currency (null: plain amounts) and the store's time zone. */
+export type Place = { currency: string | null; timezone: string }
+
 /** "38%", or "2.1%" under 10%. */
 export function percent(rate: number | null): string | null {
   if (rate === null || !Number.isFinite(rate)) return null
@@ -71,15 +80,22 @@ export function percent(rate: number | null): string | null {
   return `${p < 10 ? (Math.round(p * 10) / 10).toString() : Math.round(p)}%`
 }
 
-/** "$412" in the account's currency; "412.00" when it is not known. */
+/** "$412" in the account's currency (its own decimals); "412.00" when it is not known. */
 export function money(amount: number | null, currency: string | null) {
   if (amount === null || !Number.isFinite(amount)) return null
   if (currency && /^[A-Z]{3}$/.test(currency))
     try {
+      const digits =
+        new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency
+        }).resolvedOptions().maximumFractionDigits ?? 2
+      const whole = Math.round(amount * 10 ** digits) % 10 ** digits === 0
       return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency,
-        maximumFractionDigits: amount % 1 === 0 ? 0 : 2
+        minimumFractionDigits: whole ? 0 : digits,
+        maximumFractionDigits: whole ? 0 : digits
       }).format(amount)
     } catch {
       // An unknown code: the plain amount below.
@@ -119,18 +135,22 @@ const blockWords: Record<string, string> = {
   footer: 'The footer'
 }
 
-const dayOf = new Intl.DateTimeFormat('en-US', {
-  weekday: 'short',
-  day: 'numeric',
-  timeZone: 'UTC'
-})
-/** "Tue 17" for 2026-11-17 (the plan's own day, or the send's UTC day). */
-function dayLabel(date: string | null) {
-  const t = date
-    ? Date.parse(date.length === 10 ? `${date}T00:00:00Z` : date)
-    : NaN
+/** "Tue 17": a plan's day as it is, a send time in the store's time zone. */
+function dayLabel(date: string | null, timeZone: string) {
+  if (!date) return null
+  const plain = date.length === 10
+  const t = Date.parse(plain ? `${date}T12:00:00Z` : date)
   if (Number.isNaN(t)) return null
-  const parts = dayOf.formatToParts(new Date(t))
+  let parts: Intl.DateTimeFormatPart[]
+  try {
+    parts = new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      day: 'numeric',
+      timeZone: plain ? 'UTC' : timeZone
+    }).formatToParts(new Date(t))
+  } catch {
+    return null
+  }
   const weekday = parts.find((p) => p.type === 'weekday')?.value ?? ''
   const day = parts.find((p) => p.type === 'day')?.value ?? ''
   return `${weekday} ${day}`.trim() || null
@@ -143,7 +163,9 @@ function abWords(line: ResultLine, currency: string | null): AbWords | null {
     a: `Version A got more clicks: ${percent(a.clickRate)} against ${percent(b.clickRate)}.`,
     b: `Version B got more clicks: ${percent(b.clickRate)} against ${percent(a.clickRate)}.`,
     even: 'Versions A and B got about the same clicks.',
-    too_early: `Too early to pick a winner: it takes three days of results, ${minRecipients} people on each version and ${minClicks} clicks.`
+    too_early: line.final
+      ? `Too few people or clicks to pick a winner: it takes ${minRecipients} people on each version and ${minClicks} clicks.`
+      : `Too early to pick a winner: it takes three days of results, ${minRecipients} people on each version and ${minClicks} clicks.`
   }
   return {
     a: wordsOf(a, currency),
@@ -154,25 +176,34 @@ function abWords(line: ResultLine, currency: string | null): AbWords | null {
 }
 
 function noteOf(line: ResultLine): string | null {
-  if (line.status !== 'sent') return null
+  if (line.sample)
+    return 'A sample: this email was never sent, and its numbers are examples.'
+  if (line.status !== 'sent' && line.status !== 'sending') return null
   if (!line.totals) return 'Klaviyo has no numbers for it yet.'
+  const missing = line.complete
+    ? ''
+    : ' Some numbers could not be read from Klaviyo.'
+  if (line.status === 'sending')
+    return `Still sending: the numbers will change.${missing}`
   if (!line.final)
-    return 'Numbers can still change: they are read for three days after the send.'
-  if (!line.complete) return 'Some numbers could not be read from Klaviyo.'
-  return null
+    return `Numbers can still change: they are read for three days after the send.${missing}`
+  return missing.trim() || null
 }
 
 /** One Results line as the page shows it. */
 export function resultEmail(
   line: ResultLine,
-  currency: string | null
+  { currency, timezone }: Place
 ): ResultEmail {
-  const state: ResultEmail['state'] =
-    line.status === 'sent' || line.status === 'sending'
+  const state: ResultEmail['state'] = line.sample
+    ? 'sample'
+    : line.status === 'sent' || line.status === 'sending'
       ? 'sent'
-      : line.status === 'draft' || line.status === 'scheduled'
-        ? 'waiting'
-        : 'other'
+      : line.status === 'scheduled'
+        ? 'scheduled'
+        : line.status === 'draft'
+          ? 'draft'
+          : 'other'
   const top =
     line.topSection && Object.hasOwn(blockWords, line.topSection.block)
       ? `${blockWords[line.topSection.block]} got the most clicks (${count.format(line.topSection.clicks)}).`
@@ -180,9 +211,13 @@ export function resultEmail(
   return {
     buildId: line.buildId,
     title: line.subject ?? 'An email from your plan',
-    day: dayLabel(line.sentAt) ?? dayLabel(line.plannedDay),
+    day: dayLabel(line.sentAt, timezone) ?? dayLabel(line.plannedDay, timezone),
     state,
-    statusText: line.statusText,
+    statusText: line.sample
+      ? 'Sample: not sent'
+      : line.status === 'draft' && !line.statusText.includes('(')
+        ? 'Draft in Klaviyo: ready for you to schedule'
+        : line.statusText,
     numbers: line.totals ? wordsOf(line.totals, currency) : null,
     note: noteOf(line),
     ab: abWords(line, currency),
@@ -194,18 +229,22 @@ export function resultEmail(
 /** The Results page from its lines (null: they could not be read). */
 export function resultsScreen(
   lines: readonly ResultLine[] | null,
-  currency: string | null
+  place: Place
 ): ResultsScreen {
   if (!lines) return { kind: 'error' }
   if (!lines.length) return { kind: 'empty' }
-  const emails = lines.map((l) => resultEmail(l, currency))
+  const emails = lines.map((l) => resultEmail(l, place))
+  const n = (state: ResultEmail['state']) =>
+    emails.filter((e) => e.state === state).length
   return {
     kind: 'results',
     sample: lines.every((l) => l.sample),
     counts: {
-      sent: emails.filter((e) => e.state === 'sent').length,
-      waiting: emails.filter((e) => e.state === 'waiting').length,
-      other: emails.filter((e) => e.state === 'other').length
+      sent: n('sent'),
+      scheduled: n('scheduled'),
+      draft: n('draft'),
+      sample: n('sample'),
+      other: n('other')
     },
     emails
   }
