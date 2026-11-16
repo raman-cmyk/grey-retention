@@ -2650,6 +2650,17 @@ Append entries using this exact shape:
 - Known issues: link reachability is not checked (a store link that answers 404 passes); the worker never passes `contentChecked` to the pusher, so a live push is refused (QAG-001's release QA is not wired; the push owner's decision); builds pushed before this deploy were not checked; `buildEmail` and the A/B test call `designStep` without these checks (not wired in production; EML-AB must add them). Review fixes: the offer read as copy QA reads it (names and approved claims masked; `drawnText` shared with the golden set), 10 KB kept for Klaviyo's links, a link to the store's own host, widths read in the markup only, the studio's fallback line only once its coded email passes, the reason clipped, "Try again" in the owner's words; tests for a coded email that fails, both failing, and the worker's final failure.
 - Next consumer: DST-005b (the preview); DST-006d.
 
+### 2026-11-16 — DST-005b part 2b-3 — the route for the email's views
+
+- Status: review (then 2c, the runner)
+- Branch/worktree: `claude/dst-005b-view-route`, on DST-005b part 2b-2.
+- Commit(s): see the DST-005b part 2b-3 pull request.
+- Changed contracts: see Global decision DST-005b part 2b. New route `app/api/internal/studio/previews/route.ts` (cron secret): GET hands out one view, GET `?peek=1` counts the views waiting, POST records one result; thin, as the section route.
+- Migrations: none.
+- Verification run: format, lint with no warnings, typecheck, `preview-jobs.test.ts` (19, the route's 5: it answers only the cron secret, says when the server has no database, peeks without claiming, hands out a view without caching, records a drawn view, cut or not, or its failure, refuses anything else with 400, says 409 when the lease moved on, 422 when a report does not match (and fails the attempt), 500 otherwise).
+- Known issues: none beyond part 2b's.
+- Next consumer: DST-005b part 2c (the runner).
+
 ### 2026-11-16 — DST-005b part 2b-2 — handing out the email's views
 
 - Status: review (2b-3: the route; then 2c, the runner)
