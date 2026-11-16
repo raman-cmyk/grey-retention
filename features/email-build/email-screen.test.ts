@@ -174,7 +174,7 @@ describe('an email’s page (UI-EMAIL-a)', () => {
     expect(designs.designs.map((d) => d.name)).toEqual(['Design A', 'Design B'])
     expect(designs.designs[0].html).toContain('<p>A</p>')
     expect(designs.notes).toEqual([
-      'A test of two designs: half the audience gets each, and Results shows which got more clicks.'
+      'A test of two designs: half the audience gets each, and Results shows which got more clicks once there are enough results.'
     ])
     const subjects = emailScreen(
       row({ email: email({ subjectB: 'Cedar, for cold nights' }) })
@@ -182,9 +182,21 @@ describe('an email’s page (UI-EMAIL-a)', () => {
     expect(subjects).toMatchObject({
       subjectB: 'Cedar, for cold nights',
       notes: [
-        'A test of two subjects: half the audience gets each, and Results shows which got more clicks.'
+        'A test of two subjects: half the audience gets each, and Results shows which got more clicks once there are enough results.'
       ]
     })
+    // A sample draft was never sent: no test claimed, design A alone.
+    const sample = emailScreen(
+      row({
+        sampleDraft: true,
+        email: email({ approach: 'B', designA: '<p>A</p>', subjectB: 'x' })
+      })
+    )
+    if (sample.kind !== 'email') throw new Error('expected an email')
+    expect(sample.designs).toHaveLength(1)
+    expect(sample.designs[0].html).toContain('<p>A</p>')
+    expect(sample.subjectB).toBeNull()
+    expect(sample.notes).toEqual([])
     // The draft could hold only one: no test claimed, design A alone.
     const oneDesign = emailScreen(
       row({ email: email({ approach: 'B', designA: '<p>A</p>' }) }),
@@ -233,7 +245,7 @@ describe('an email’s page (UI-EMAIL-a)', () => {
       kind: 'unreadable',
       message:
         'This email is in Klaviyo as a draft, but it was made by an older version of the app, so it cannot be shown here. Open it in Klaviyo to see it.',
-      klaviyo: { campaignId: 'kc1', name: 'your email' }
+      klaviyo: { campaignId: 'kc1', name: null }
     })
     expect(
       emailScreen(row({ email: { name: 'old' }, sampleDraft: true }))

@@ -64,7 +64,12 @@ export type EmailView = {
 }
 
 /** Open in Klaviyo: Klaviyo's campaigns list, where the draft is by its name. */
-export type KlaviyoLink = { campaignId: string; href: string; name: string }
+/** `name` is the draft's name in Klaviyo, when this app can read it. */
+export type KlaviyoLink = {
+  campaignId: string
+  href: string
+  name: string | null
+}
 
 export type EmailScreen =
   /** Not made yet: what the team is doing, step by step. */
@@ -197,11 +202,11 @@ function notesOf(
     )
   if (view && view.designs.length > 1)
     notes.push(
-      'A test of two designs: half the audience gets each, and Results shows which got more clicks.'
+      'A test of two designs: half the audience gets each, and Results shows which got more clicks once there are enough results.'
     )
   if (view?.subjectB)
     notes.push(
-      'A test of two subjects: half the audience gets each, and Results shows which got more clicks.'
+      'A test of two subjects: half the audience gets each, and Results shows which got more clicks once there are enough results.'
     )
   for (const line of log)
     // The Content locker's line says what the email's changes say above.
@@ -229,10 +234,17 @@ const safeHtml = (html: string) =>
   previewHtml(previewFooterTags(html, null)).html
 
 /** The email as the previews show it, without a test Klaviyo does not hold. */
-function viewOf(email: BuiltEmail, log: readonly EmailLogLine[]): EmailView {
+function viewOf(
+  email: BuiltEmail,
+  log: readonly EmailLogLine[],
+  sampleDraft: boolean
+): EmailView {
   const format = email.format === 'text' ? 'text' : 'designed'
-  const designTest = !!email.designA && !log.some((l) => l.code === oneDesign)
+  // A sample draft was never sent: no test runs (Results has only A).
+  const designTest =
+    !sampleDraft && !!email.designA && !log.some((l) => l.code === oneDesign)
   const subjectTest =
+    !sampleDraft &&
     !email.designA &&
     !!email.subjectB &&
     !log.some((l) => l.code === oneSubject)
@@ -266,7 +278,7 @@ export function emailScreen(
 ): EmailScreen {
   const parsed = builtEmail.safeParse(row.email)
   const email = parsed.success ? parsed.data : null
-  const view = email ? viewOf(email, log) : null
+  const view = email ? viewOf(email, log, row.sampleDraft) : null
   const format = view?.format ?? row.format
   const steps = runSteps(row, format)
   const notes = notesOf(email, view, log)
@@ -276,7 +288,7 @@ export function emailScreen(
       ? {
           campaignId: row.klaviyoCampaignId,
           href: klaviyoCampaignsUrl,
-          name: email?.name ?? 'your email'
+          name: email?.name ?? null
         }
       : null
   if (row.state === 'failed')
