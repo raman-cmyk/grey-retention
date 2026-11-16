@@ -69,6 +69,12 @@ export const readingRule = (industry: string | null | undefined) => {
 }
 
 const englishWord = /^[a-z]+(?:'[a-z]+)?$/
+/** English's commonest words: a quarter or more of most English text. */
+const commonEnglish = new Set(
+  'a an the and or but of to in on at for with from by as is are was be it its this that you your we our us i my they their he she not no so if all can will just'.split(
+    ' '
+  )
+)
 
 /** The syllables of an English word, by its groups of vowels. */
 export function syllables(word: string) {
@@ -85,7 +91,8 @@ export function syllables(word: string) {
 /**
  * The text's Flesch-Kincaid grade, rounded to one decimal; null when it is
  * not English enough (fewer than 85 in 100 words are plain English
- * letters) or has fewer than `minGradeWords` words.
+ * letters, or fewer than 10 in 100 are English's commonest words) or has
+ * fewer than `minGradeWords` words.
  */
 export function readingGrade(text: string): number | null {
   const words = (
@@ -99,6 +106,9 @@ export function readingGrade(text: string): number | null {
   if (words.length < minGradeWords) return null
   const english = words.filter((w) => englishWord.test(w))
   if (english.length * 100 < words.length * 85) return null
+  // Plain letters are not enough: German or Dutch is mostly a to z too.
+  const common = words.filter((w) => commonEnglish.has(w)).length
+  if (common * 100 < words.length * 10) return null
   const sentences = Math.max(
     1,
     text.split(/[.!?]+(?:\s|$)|\n+/).filter((s) => /[\p{L}\p{N}]/u.test(s))
