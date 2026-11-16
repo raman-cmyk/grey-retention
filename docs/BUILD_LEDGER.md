@@ -2653,6 +2653,17 @@ Append entries using this exact shape:
 - Known issues: link reachability is not checked (a store link that answers 404 passes); the worker never passes `contentChecked` to the pusher, so a live push is refused (QAG-001's release QA is not wired; the push owner's decision); builds pushed before this deploy were not checked; `buildEmail` and the A/B test call `designStep` without these checks (not wired in production; EML-AB must add them). Review fixes: the offer read as copy QA reads it (names and approved claims masked; `drawnText` shared with the golden set), 10 KB kept for Klaviyo's links, a link to the store's own host, widths read in the markup only, the studio's fallback line only once its coded email passes, the reason clipped, "Try again" in the owner's words; tests for a coded email that fails, both failing, and the worker's final failure.
 - Next consumer: DST-005b (the preview); DST-006d.
 
+### 2026-11-16 — DST-006d part 2a — the whole-email check's readers and ports
+
+- Status: review (2b: the check; 2c: "Create email")
+- Branch/worktree: `claude/dst-006d-views-ports-2a`, on DST-006d part 1.
+- Commit(s): see the DST-006d part 2a pull request.
+- Changed contracts: `buildViews` (`features/studio/waits.ts`): the build's email views in its own workspace, a row it cannot trust read as failed. `emailPortsFor`, `EmailViewPorts`, `DrawnView`, `viewKey` (`features/studio/live-ports.ts`). `studioWaits.views` (9).
+- Migrations: none (DST-005b part 2a's `email_renders`).
+- Verification run: format, lint with no warnings, typecheck, the studio's unit tests (`waits.test.ts`: each view in its own shape, the read's filters, rows it cannot trust; `live-ports.test.ts`: the key, the three views asked for under the build's lease with the brand, this version's views only, a picture read back only while its tag, size, MD5 and JPEG bytes are the ones recorded, storage down throws, the critic through the build's metered AI).
+- Known issues: nothing calls them yet (2c).
+- Next consumer: DST-006d part 2b (the check).
+
 ### 2026-11-16 — DST-006d part 1 — the Design critic on the whole email
 
 - Status: review (part 2: the views' readers and ports, the check, "Create email")

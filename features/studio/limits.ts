@@ -14,7 +14,9 @@ export const studioWaits = {
   /** Waits per design step: the studio's rounds are 3 at most. */
   perStep: 6,
   /** Pictures per build. */
-  renders: 12
+  renders: 12,
+  /** The email's views per build (DST-005b: three views of three versions). */
+  views: 9
 }
 
 /** A section that cannot be drawn: the caller's mistake, never queued. */

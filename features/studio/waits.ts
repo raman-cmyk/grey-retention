@@ -177,3 +177,98 @@ export async function buildRenders(
     ]
   })
 }
+
+const viewRow = z.object({
+  id: z.uuid(),
+  render_key: z.string(),
+  view: z.enum(['desktop', 'phone', 'dark']),
+  state: z.string(),
+  failure: z.string().nullable(),
+  path: z.string().nullable(),
+  height: z.int().nullable(),
+  cut: z.boolean().nullable(),
+  wide: z.boolean().nullable(),
+  bytes: z.int().nullable(),
+  etag: z.string().nullable()
+})
+
+/** One view of the build's email as the database holds it (DST-005b). */
+export type BuildView =
+  | { id: string; key: string; view: EmailViewName; state: 'queued' }
+  | {
+      id: string
+      key: string
+      view: EmailViewName
+      state: 'drawn'
+      /** In the private `studio-renders` bucket: email/<id>.jpg. */
+      path: string
+      /** CSS px at the view's width (one picture pixel each). */
+      height: number
+      cut: boolean
+      wide: boolean
+      bytes: number
+      /** The stored picture's tag when it was recorded: compared before use. */
+      etag: string
+    }
+  | {
+      id: string
+      key: string
+      view: EmailViewName
+      state: 'failed'
+      failure: string
+    }
+export type EmailViewName = 'desktop' | 'phone' | 'dark'
+
+/**
+ * DST-006d part 2a: the views of the build's email, oldest first, in the
+ * build's own shape, read in its own workspace only. A row the database
+ * should never hold (drawn without its picture, at another path, or cut
+ * below the limit) reads as failed; one that cannot be read at all is left
+ * out.
+ */
+export async function buildViews(
+  db: Db,
+  input: { tenant: string; build: string }
+): Promise<BuildView[]> {
+  const { data, error } = await db
+    .from('email_renders')
+    .select('id,render_key,view,state,failure,path,height,cut,wide,bytes,etag')
+    .eq('tenant_id', input.tenant)
+    .eq('build_id', input.build)
+    .order('created_at')
+    .order('id')
+    .limit(studioWaits.views)
+  if (error) throw error
+  return (data ?? []).flatMap((raw): BuildView[] => {
+    const row = viewRow.safeParse(raw)
+    if (!row.success) return []
+    const r = row.data
+    const at = { id: r.id, key: r.render_key, view: r.view }
+    if (r.state === 'queued') return [{ ...at, state: 'queued' }]
+    if (
+      r.state === 'drawn' &&
+      r.path === `email/${r.id}.jpg` &&
+      r.height &&
+      r.height >= 1 &&
+      r.height <= 6_000 &&
+      r.cut !== null &&
+      (!r.cut || r.height === 6_000) &&
+      r.wide !== null &&
+      r.bytes &&
+      r.etag
+    )
+      return [
+        {
+          ...at,
+          state: 'drawn',
+          path: r.path,
+          height: r.height,
+          cut: r.cut,
+          wide: r.wide,
+          bytes: r.bytes,
+          etag: r.etag
+        }
+      ]
+    return [{ ...at, state: 'failed', failure: r.failure ?? 'unreadable' }]
+  })
+}
