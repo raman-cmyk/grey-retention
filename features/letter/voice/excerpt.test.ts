@@ -221,4 +221,59 @@ describe('the owner’s words as a voice excerpt (PIC-23)', () => {
     const mobile = `<p class="mobile-hidden">${letter.replace(/\n+/g, ' ')}</p>`
     expect(excerpt(body({ html: mobile, editor: 'code' }))).not.toBeNull()
   })
+
+  it('keeps a founder’s habits whole: a dash sign-off, a star, a saying, a list, a logo (round 3)', () => {
+    const habits = `${letter}\n— Maya\n\nP.S. The new colours land on Friday, and I think you will love the green one most of all.\n\n⭐ The overshirt is our bestseller this year, and it still gets checked by hand.\n"Measure twice, cut once." My grandmother said it every day in her little sewing room.\n- soft cotton that lasts\n- buttons sewn on twice\nThat is all from me this week. Write back any time.`
+    const text = excerpt(body({ text: habits }))!.text
+    for (const line of [
+      'P.S. The new colours',
+      'The overshirt is our bestseller',
+      'My grandmother said',
+      'soft cotton that lasts',
+      'That is all from me'
+    ])
+      expect(text, line).toContain(line)
+    const promo = `<img alt="Northstar Goods" src="logo.png"><img alt="Starter kit" src="kit.png"><img alt="Celebrating ten years" src="preview.png"><p>${letter.replace(/\n+/g, '</p><p>')}</p>`
+    expect(excerpt(body({ html: promo, editor: 'code' }))?.text).toContain(
+      'Warmly'
+    )
+  })
+
+  it('protects the store’s words as whole words only, never a customer’s name around them', () => {
+    const own = ['Cedar Goods', 'Ruby', 'Jo', 'Ella', 'Lee', 'Set']
+    const typed = `${letter}\nThis week Ruby Thompson, Joanne Smith, Isabella Ross, Kathleen Ward and Seth Rivers all wrote to us about the Ruby ring.`
+    const text = excerptOf(body({ text: typed }), own)!.text
+    expect(text).not.toMatch(/Thompson|Joanne|Isabella|Kathleen|Seth/)
+    expect(text).toContain('the Ruby ring')
+    // A large catalogue stays fast.
+    const titles = Array.from(
+      { length: 20_000 },
+      (_, i) => `Product ${i} Deluxe`
+    )
+    const many = `${letter}\n${'Jordan Sample and Priya Kumar wrote back. '.repeat(2_000)}`
+    const start = performance.now()
+    excerptOf(body({ text: many }), titles)
+    expect(performance.now() - start).toBeLessThan(3_000)
+  })
+
+  it('keeps the owner’s Title Case words, and finds more name shapes', () => {
+    const typed = `${letter}\nHappy Thanksgiving and Merry Christmas to all of you. Thank You for this year.\nLast Tuesday we shipped early. This Friday there is Free Shipping on the whole shop.\nOur Story: how two friends started with one machine.\nPro Tip: wash it cold and hang it to dry.\nRonald McDonald, Sean O'Brien, Vincent van Gogh, J. Sample, A.J. Rivers, Mrs. Sample, Dr. Rivers, JORDAN SAMPLE and Mary-Kate Olsen came by.`
+    const text = excerpt(body({ text: typed }))!.text
+    for (const words of [
+      'Happy Thanksgiving',
+      'Merry Christmas',
+      'Thank You',
+      'Last Tuesday',
+      'This Friday',
+      'Free Shipping',
+      'Our Story: how two friends',
+      'Pro Tip: wash it cold'
+    ])
+      expect(text, words).toContain(words)
+    expect(text).not.toMatch(
+      /Ronald|McDonald|O'Brien|Gogh|Sample|Rivers|JORDAN|Olsen|Mary-Kate/
+    )
+    const loop = `{% for item in event.items %}{{ item.name }}{% empty %}Hi Jordan Sample{% endfor %}\n${letter}`
+    expect(excerpt(body({ text: loop }))!.text).not.toContain('Jordan')
+  })
 })

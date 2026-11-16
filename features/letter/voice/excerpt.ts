@@ -107,12 +107,17 @@ function hidden(e: T.Element) {
 /** A line that marks a review the HTML held (a quote block, star pictures). */
 export const reviewMark = '@@review@@'
 const quoteBlocks = new Set(['blockquote', 'cite', 'figcaption', 'q'])
+const reviewWords =
+  /\b\d?\s*stars?\b|\brating\b|\breviews?\b|\btestimonials?\b/i
 const starPicture = (e: T.Element) =>
-  e.tagName === 'img' &&
-  /star|rating|review/i.test(
-    `${attr(e, 'alt')} ${attr(e, 'src')} ${attr(e, 'class')}`
-  )
-
+  (e.tagName === 'img' &&
+    reviewWords.test(`${attr(e, 'alt')} ${attr(e, 'src')}`)) ||
+  attr(e, 'class')
+    .toLowerCase()
+    .split(/\s+/)
+    .some((c) =>
+      /(?:^|[-_])(?:reviews?|testimonials?|rating)(?:$|[-_])/.test(c)
+    )
 /** The most tags of a template read (a real email has far fewer). */
 const maxTags = 6_000
 
@@ -249,8 +254,14 @@ function untag(text: string) {
     /\{%-?\s*endif\s*-?%\}/gi,
     true
   )
+  const loops = dropBetween(
+    branches,
+    /\{%-?\s*empty\s*-?%\}/gi,
+    /\{%-?\s*endfor\s*-?%\}/gi,
+    true
+  )
   return (
-    branches
+    loops
       .split('\n')
       .map((line) => (footerTag.test(line) ? footerMark : line))
       .join('\n')
@@ -263,51 +274,68 @@ function untag(text: string) {
 
 // ---------------------------------------------------------------- reviews
 
-/** Stars: the glyphs anywhere, a number of stars at the start of a line. */
-const stars =
-  /[★☆⭐]|^\s*[1-5](?:\.\d)?\s?(?:stars?|\/\s?5|out of 5)\b|\bstar rating\b/i
+/** Stars: a run of them, a line that is mostly stars, or a rating first. */
+const starGlyphs = /[★☆⭐]/gu
+const starRun = /[★☆⭐]{3,}/u
+const ratingFirst =
+  /^\s*[1-5](?:\.\d)?\s?(?:stars?|\/\s?5|out of 5)\b|\bstar rating\b/i
+function starLine(line: string) {
+  if (starRun.test(line) || ratingFirst.test(line)) return true
+  const glyphs = line.match(starGlyphs)?.length ?? 0
+  return glyphs > 0 && glyphs * 2 >= line.replace(/\s+/g, '').length
+}
 /** A quotation: double quotes or guillemets (an apostrophe is not one). */
-const startsQuoted = /^[★☆⭐\s]*["“”«„]/
+const startsQuoted = /^["“”«„]/
 const reviewLine =
-  /\bverified (?:buyer|customer|purchase|review(?:er)?)\b|^\s*(?:customer |our )?reviews?\s*(?:by\b|:)|^\s*reviewed by\b|^\s*[—–~-]\s*\S/i
+  /\bverified (?:buyer|customer|purchase|review(?:er)?)\b|^\s*(?:customer |our )?reviews?\s*(?:by\b|:)|^\s*reviewed by\b/i
 /** How much of a line is inside double quotes (an inch mark is not). */
 function quotedShare(line: string) {
   const spans = line.match(/["“„«][^"“”„«»\n]{1,300}["”»]/g) ?? []
   const inside = spans.reduce((n, s) => n + s.length, 0)
   return line.length ? inside / line.length : 0
 }
-/** Lines that follow a review and still belong to it (its text, its name). */
-const reviewTail = 2
-const shortLine = (line: string) => line.split(/\s+/).length <= 30
+const wordsIn = (line: string) => line.split(/\s+/).filter(Boolean).length
 
-/** The text's lines, each review out with its quote, stars and name. */
-function withoutReviews(lines: readonly string[]) {
+/** The text's lines, each review out with its stars, its quote and its name. */
+function withoutReviews(lines: readonly string[], own: Own) {
   const kept: string[] = []
-  let tail = 0
+  let after = false
   for (const line of lines) {
     if (!line) {
       kept.push('')
       continue
     }
+    // "— Jordan Sample": a name signed under a quote, dropped on its own.
+    const dashName = /^\s*[—–~-]\s*(.+)$/.exec(line)
+    if (
+      dashName &&
+      wordsIn(dashName[1]!) <= 5 &&
+      hasName(dashName[1]!, own) &&
+      after
+    ) {
+      after = false
+      continue
+    }
     const review =
       line === reviewMark ||
-      stars.test(line) ||
-      startsQuoted.test(line) ||
-      quotedShare(line) > 0.5 ||
+      starLine(line) ||
+      (startsQuoted.test(line) && quotedShare(line) > 0.5) ||
       reviewLine.test(line)
     if (review) {
       // A name kept just above a review was its writer.
-      while (kept.length && !kept.at(-1)) kept.pop()
-      if (kept.length && names.test(kept.at(-1)!) && shortLine(kept.at(-1)!))
-        kept.pop()
-      tail = reviewTail
+      let at = kept.length - 1
+      while (at >= 0 && !kept[at]) at--
+      if (at >= 0 && wordsIn(kept[at]!) <= 5 && hasName(kept[at]!, own))
+        kept.splice(at, 1)
+      after = true
       continue
     }
-    if (tail > 0 && shortLine(line)) {
-      tail--
+    // The one line after a review: its name, or its few words.
+    if (after && (wordsIn(line) <= 8 || hasName(line, own))) {
+      after = false
       continue
     }
-    tail = 0
+    after = false
     kept.push(line)
   }
   return kept
@@ -346,29 +374,62 @@ function phones(text: string) {
   )
 }
 
+// ---------------------------------------------------------------- names
+
+/** The store's own words, by their runs of one to three words. */
+type Own = ReadonlySet<string>
+function ownWords(own: readonly string[]): Own {
+  const set = new Set<string>()
+  for (const phrase of own.slice(0, 50_000)) {
+    const words = phrase.toLowerCase().split(/\s+/).filter(Boolean)
+    for (let i = 0; i < words.length && i < 40; i++)
+      for (let n = 1; n <= 3 && i + n <= words.length; n++)
+        set.add(words.slice(i, i + n).join(' '))
+  }
+  return set
+}
+
 /** Words of the calendar: a capitalised pair of them is no one's name. */
 const calendar = new Set(
-  "monday tuesday wednesday thursday friday saturday sunday january february march april may june july august september october november december black cyber small business christmas easter new year eve day mother’s mother's father’s father's valentine’s valentine's thanksgiving halloween boxing labor labour memorial independence spring summer autumn fall winter sale".split(
+  "monday tuesday wednesday thursday friday saturday sunday january february march april may june july august september october november december black cyber small business christmas easter new year eve day mother's father's valentine's thanksgiving halloween boxing labor labour memorial independence spring summer autumn fall winter".split(
     ' '
   )
 )
-/** Two or three capitalised words, or a name and an initial: a name. */
-const names =
-  /(?<![\p{L}\p{N}])[\p{Lu}][\p{Ll}'’-]{1,20}(?:\s+(?:[\p{Lu}][\p{Ll}'’-]{1,20}|[\p{Lu}]\.)){1,2}(?![\p{L}\p{N}])/u
-const namesAll = new RegExp(names.source, 'gu')
+/** Common words a heading or a greeting is made of: never a name. */
+const common = new Set(
+  'a an the this that these next last first our your my his her their its all every each happy merry thank thanks dear hi hello hey welcome good great best top big little new free pro fun quick early final special limited meet shop sale gift gifts tip tips fact story news note notes update team love from with and or for of to in on at by is are was here now today tonight back thoughts morning evening weekend week month season holiday holidays edition collection'.split(
+    ' '
+  )
+)
+const titles = '(?:Mr|Mrs|Ms|Mx|Dr|Miss|Prof)\\.?'
+const particles = '(?:de|da|di|du|la|le|van|von|der|den|del|dos|das|al)'
+/** A name's part: a capitalised word (McDonald, O'Brien, Mary-Kate) or initials. */
+const part = "(?:[\\p{Lu}][\\p{L}'’-]{1,24}|[\\p{Lu}]\\.(?:\\s?[\\p{Lu}]\\.)?)"
+const namesAll = new RegExp(
+  `(?<![\\p{L}\\p{N}])(?:${titles}\\s+${part}(?:\\s+${part})?|${part}(?:\\s+(?:${particles}\\s+){0,3}${part}){1,2})(?![\\p{L}\\p{N}])`,
+  'gu'
+)
+
+/** Is this match a person's name (not the store's words, a date, a heading)? */
+function personal(found: string, own: Own) {
+  const lower = found
+    .toLowerCase()
+    .replace(/[’]/g, "'")
+    .replace(/[.,]+$/, '')
+  if (own.has(lower)) return false
+  const words = lower.split(/\s+/)
+  if (words.every((w) => calendar.has(w))) return false
+  if (words.some((w) => common.has(w))) return false
+  return true
+}
+const hasName = (line: string, own: Own) =>
+  [...line.matchAll(namesAll)].some((m) => personal(m[0], own))
 
 /** People's names out, the store's own words and the calendar's kept. */
-function withoutNames(line: string, own: readonly string[]) {
-  const ours = own.map((o) => o.trim().toLowerCase()).filter(Boolean)
-  return line.replace(namesAll, (found) => {
-    const lower = found.toLowerCase()
-    if (ours.some((o) => o.includes(lower) || lower.includes(o))) return found
-    if (lower.split(/\s+/).every((w) => calendar.has(w))) return found
-    return '[name]'
-  })
-}
+const withoutNames = (line: string, own: Own) =>
+  line.replace(namesAll, (found) => (personal(found, own) ? '[name]' : found))
 
-const redact = (line: string, own: readonly string[]) =>
+const redact = (line: string, own: Own) =>
   withoutNames(
     phones(
       line
@@ -396,23 +457,19 @@ function cut(text: string, max: number) {
   return (last >= 0xd800 && last <= 0xdbff ? kept.slice(0, -1) : kept).trimEnd()
 }
 
-function excerptOf(source: string, own: readonly string[]) {
+function excerptOf(source: string, own: Own) {
   const lines = untag(visible(source))
     .split('\n')
     .map((line) => line.replace(/[ \t]+/g, ' ').trim())
     .filter((line) => line !== footerMark && !footerWords.test(line))
   return (
-    withoutReviews(lines)
+    withoutReviews(lines, own)
       .map((line) => (line ? redact(line, own) : line))
       // A line with an address is about the address, never voice; a line
-      // that names someone before a colon is their words; a line with none
-      // of the owner's words (only placeholders) says nothing.
+      // with none of the owner's words (only placeholders) says nothing.
       .filter(
         (line) =>
-          !line ||
-          (!addresses.some((a) => a.test(line)) &&
-            !/^\[name\][^.!?:]{0,40}:/.test(line) &&
-            count(line) > 0)
+          !line || (!addresses.some((a) => a.test(line)) && count(line) > 0)
       )
       .join('\n')
       .replace(/\n{3,}/g, '\n\n')
@@ -429,14 +486,15 @@ export function voiceExcerpt(
   body: MessageBody,
   own: readonly string[] = []
 ): VoiceExcerpt | null {
+  const ours = ownWords(own)
   // The plain-text part when it says enough, else the HTML.
   const fromText = body.text?.trim()
-    ? excerptOf(body.text.slice(0, GMAIL_CLIP_BYTES), own)
+    ? excerptOf(body.text.slice(0, GMAIL_CLIP_BYTES), ours)
     : ''
   const text =
     count(fromText) >= minExcerptWords
       ? fromText
-      : excerptOf(visibleLines(body.html), own)
+      : excerptOf(visibleLines(body.html), ours)
   const kept = cut(text, maxExcerptChars)
   const words = count(kept)
   if (words < minExcerptWords) return null
