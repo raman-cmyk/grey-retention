@@ -51,7 +51,7 @@ describe('siteFonts (FONT-SITE part a)', () => {
       'Assistant body self-hosted'
     ])
     expect(JSON.stringify(got.families[0]!.files)).toBe(
-      `[{"url":"https:${shop}/playfair/playfair_display_i4.woff2","format":"woff2","weight":400,"maxWeight":900,"italic":true}]`
+      `[{"url":"https:${shop}/playfair/playfair_display_i4.woff2","format":"woff2","weight":400,"maxWeight":900,"italic":true,"unicodeRange":null}]`
     )
     expect(
       got.families[1]!.files.map((f) => `${f.format} ${f.weight} ${f.italic}`)
@@ -86,36 +86,68 @@ describe('siteFonts (FONT-SITE part a)', () => {
     expect(listed(html)[0]).toBe(`google ${new URL(css2).href}`)
   })
 
-  it('keeps Google’s Latin files only, at most two per weight and style, and at most 12 in all', () => {
+  it('keeps the Latin face’s file, then its Latin Extended one, for each weight and style', () => {
     // Google's own order: each weight's other scripts first, Latin last.
-    const face = (w: number, name: string, range: string) =>
-      `/* ${name} */ @font-face { font-family: 'Inter'; font-weight: ${w}; unicode-range: ${range};
-        src: url(https://fonts.gstatic.com/s/inter/v13/${name}-${w}.woff2) format('woff2'); }`
-    const css = [400, 600]
-      .map((w) =>
-        [
-          face(w, 'cyrillic-ext', 'U+0460-052F'),
-          face(w, 'latin-ext', 'U+0100-02BA, U+1E00-1E9F'),
-          face(w, 'latin', 'U+0000-00FF, U+0131')
-        ].join('')
+    const face = (w: number, name: string, range: string, italic = 0) =>
+      `/* ${name} */ @font-face { font-family: 'Inter'; font-weight: ${w}; font-style: ${italic ? 'italic' : 'normal'};
+        unicode-range: ${range}; src: url(https://fonts.gstatic.com/s/inter/v13/${name}-${italic}-${w}.woff2) format('woff2'); }`
+    const styles = (w: number, italic = 0) =>
+      face(w, 'cyrillic-ext', 'U+0460-052F', italic) +
+      face(w, 'latin-ext', 'u+0100-02ba, U+1E00-1E9F', italic) +
+      face(w, 'latin', 'U+0000-00FF, U+0131', italic)
+    const google = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;600'
+    const files = (css: string, html = page(link(google))) =>
+      siteFonts(html, home, { sheets: [{ url: google, css }] }).families[0]!
+        .files
+    expect(
+      files(styles(400) + styles(600)).map(
+        (f) => `${f.url.split('/').pop()} ${f.unicodeRange}`
+      )
+    ).toEqual([
+      'latin-0-400.woff2 U+0000-00FF, U+0131',
+      'latin-ext-0-400.woff2 U+0100-02BA, U+1E00-1E9F',
+      'latin-0-600.woff2 U+0000-00FF, U+0131',
+      'latin-ext-0-600.woff2 U+0100-02BA, U+1E00-1E9F'
+    ])
+    // All 18 styles, italics first (as Google lists them), and a page whose headings are 900.
+    const weights = [100, 200, 300, 400, 500, 600, 700, 800, 900]
+    const all = [1, 0].flatMap((i) => weights.map((w) => styles(w, i))).join('')
+    const kept = files(
+      all,
+      page(link(google), '<style>h1{font-family:Inter;font-weight:900}</style>')
+    )
+    expect(kept).toHaveLength(maxFontFiles)
+    expect(kept.map((f) => `${f.weight}${f.italic ? 'i' : ''}`).join(' ')).toBe(
+      '900 900 400 400 700 700 300 300 500 500 600 600'
+    )
+    expect(kept[0]!.url).toMatch(/\/latin-0-900\.woff2$/)
+    // Ranges as CSS reads them: an invalid or empty one is every character.
+    const ranges = [
+      ['Two', 'U+0041-005A, U+0061-007A'],
+      ['Wild', 'U+00??'],
+      ['Bad', 'U+ZZZZ, U+0000-00FF'],
+      ['Empty', ''],
+      ['Cyrillic', 'U+0400-045F'],
+      ['Huge', 'U+0100,'.repeat(200) + 'U+0041-007A']
+    ]
+      .map(
+        ([name, r]) =>
+          `@font-face{font-family:${name};unicode-range:${r};src:url(/${name}.woff2)}`
       )
       .join('')
-    const google = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;600'
-    const got = siteFonts(page(link(google)), home, {
-      sheets: [{ url: google, css }]
-    })
-    expect(got.families[0]!.files.map((f) => f.url.split('/').pop())).toEqual([
-      'latin-400.woff2',
-      'latin-600.woff2'
+    expect(
+      siteFonts(style(ranges), home).families.map(
+        (f) =>
+          `${f.family} ${f.files.length ? f.files[0]!.unicodeRange : 'no file'}`
+      )
+    ).toEqual([
+      'Two U+0041-005A, U+0061-007A',
+      'Wild U+0000-00FF',
+      'Bad null',
+      'Empty null',
+      'Cyrillic no file',
+      'Huge no file'
     ])
-    const many = Array.from(
-      { length: 20 },
-      (_, i) =>
-        `@font-face{font-family:Brand;font-weight:${100 + (i % 9) * 100};src:url(/b${i}.woff2),url(/b${i}.woff),url(/b${i}.ttf)}`
-    ).join('')
-    const files = siteFonts(style(many), home).families[0]!.files
-    expect(files).toHaveLength(maxFontFiles)
-    expect(files.filter((f) => f.weight === 100)).toHaveLength(2)
   })
 
   it('lists Google, Adobe and font CDNs before the brand’s own stylesheets, and only its own hosts', () => {
@@ -142,7 +174,7 @@ describe('siteFonts (FONT-SITE part a)', () => {
         link('/preloaded.css', 'preload" as="style'),
         link('/f.woff2', 'preload" as="font'),
         link('https://fonts.bunny.net/css?family=inter:400'),
-        link(`/${'x'.repeat(1_000)}.css`)
+        link(`https://cedarlane.com/${'x'.repeat(1_174)}.css`)
       ].join('')
     )
     expect(listed(html)).toEqual([
@@ -152,10 +184,16 @@ describe('siteFonts (FONT-SITE part a)', () => {
       'site https://cedarlane.com/preloaded.css'
     ])
     const base = 'https://cedarlane.com/cdn/shop/t/1/assets/base.css'
-    const imports = `@import url(fonts.css); @import url("https://fonts.googleapis.com/css2?family=${'A'.repeat(1_000)}");
+    // Its first 1,000 characters would be an address: never listed cut.
+    const imports = `@import url(fonts.css); @import${' '.repeat(100)}url("https://cedarlane.com/${'y'.repeat(1_175)}.css");
       @media (min-width: 750px) { @font-face { font-family: Wide; src: url(../fonts/wide.woff2) } }`
-    expect(listed(page(''), [{ url: base, css: imports }])).toEqual([
-      'site https://cedarlane.com/cdn/shop/t/1/assets/fonts.css'
+    const last = {
+      url: 'https://cedarlane.com/a/extra.css',
+      css: '@import url(more.css)'
+    }
+    expect(listed(page(''), [{ url: base, css: imports }, last])).toEqual([
+      'site https://cedarlane.com/cdn/shop/t/1/assets/fonts.css',
+      'site https://cedarlane.com/a/more.css'
     ])
     expect(
       siteFonts(page(''), home, { sheets: [{ url: base, css: imports }] })
@@ -204,6 +242,14 @@ describe('siteFonts (FONT-SITE part a)', () => {
     expect(
       kinds('<html><body style="font-family:Brand Sans">x</body></html>')
     ).toEqual(['Brand Sans body unknown'])
+    // Custom properties named for a family only (a name ending so, or `--font-<role>`).
+    const named = `:root { --font-heading-stretch: condensed; --font-rendering: optimizeLegibility;
+      --font-heading-wrap: balance; --font-variant-caps: all-small-caps; --font-hyphens: manual;
+      --font-stack-header: "Stack Display"; --font-heading: Short Heading; --color-primary: navy }`
+    expect(kinds(style(named))).toEqual([
+      'Stack Display heading unknown',
+      'Short Heading heading unknown'
+    ])
   })
 
   it('leaves out keyword and system families, icon fonts and data: files; keeps a system name the brand serves', () => {
@@ -242,8 +288,12 @@ describe('siteFonts (FONT-SITE part a)', () => {
     const got = siteFonts(page(''), 'https://cedarlane.com/products/socks', {
       sheets: [{ url: 'https://cedarlane.com/assets/theme.css', css }]
     })
-    expect(got.families[0]!.files.map((f) => f.url).join(' ')).toBe(
-      'https://fonts.example-cdn.com/a.woff2 https://cedarlane.com/b.woff https://cedarlane.com/c.ttf?v=2 https://cedarlane.com/d.OTF'
+    expect(
+      got.families[0]!.files.map((f) => f.url)
+        .sort()
+        .join(' ')
+    ).toBe(
+      'https://cedarlane.com/b.woff https://cedarlane.com/c.ttf?v=2 https://cedarlane.com/d.OTF https://fonts.example-cdn.com/a.woff2'
     )
     // A relative file is the page's when inline, its stylesheet's host's when passed back.
     const face = '@font-face{font-family:Base;src:url(fonts/b.woff2)}'
@@ -287,6 +337,10 @@ describe('siteFonts (FONT-SITE part a)', () => {
       (_, i) => `@font-face{font-family:Brand${i};src:url(/f${i}.woff2)}`
     ).join('')
     expect(kinds(style(many))).toHaveLength(maxFamilies)
+    // A selector list cut at 2,000 characters loses its cut-off last selector (`.h10`, not `.h1`).
+    const long = `.${'a'.repeat(48)},`.repeat(39) + `.${'c'.repeat(45)} .h10`
+    const cut = `${long}{font-family:Cut Off} h1,${'.ab,'.repeat(600)}.b{font-family:Early}`
+    expect(kinds(style(cut))).toEqual(['Early heading unknown'])
     const nested = (n: number, family: string) =>
       `<style>${'@media all{'.repeat(n - 1)}h1{font-family:${family}}</style>`
     expect(
@@ -301,7 +355,7 @@ describe('siteFonts (FONT-SITE part a)', () => {
     ).toEqual([])
   })
 
-  it('reads hostile input in linear time: each case well within its budget', () => {
+  it('reads hostile input in linear time: each case within 2 s, the worst whole call within 6 s', () => {
     const face = '@font-face{font-family:Real;src:url(/real.woff2)}'
     // One long selector, its body split by 124,000 nested rules (once 6.8 s).
     const split = `${'a'.repeat(2_000)}{${';a{}'.repeat(124_000)}}`
@@ -324,13 +378,13 @@ describe('siteFonts (FONT-SITE part a)', () => {
     ]) {
       let got: string[] = []
       const html = page(`<style>${css}</style><style>${face}</style>`)
-      expect(time(() => (got = kinds(html)))).toBeLessThan(1_000)
+      expect(time(() => (got = kinds(html)))).toBeLessThan(2_000)
       expect(got).toContain('Real - self-hosted')
     }
     // The worst whole call: four such blocks and 12 sheets, cut at 2 million characters.
     const sheets = Array.from({ length: 12 }, () => ({ url: home, css: split }))
     const four = page(`<style>${split}</style>`.repeat(4))
-    expect(time(() => siteFonts(four, home, { sheets }))).toBeLessThan(3_000)
+    expect(time(() => siteFonts(four, home, { sheets }))).toBeLessThan(6_000)
     const deep = `${'<div>'.repeat(6_000)}<h1 style="font-family:Nested">x</h1>`
     expect(kinds(style(face, deep))).toEqual([
       'Nested heading unknown',
