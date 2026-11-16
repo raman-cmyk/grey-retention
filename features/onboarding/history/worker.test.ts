@@ -25,7 +25,10 @@ const job = {
 } as unknown as Job
 const now = Date.parse('2026-11-11T12:00:00Z')
 
-function database(timezone: string | null = null) {
+function database(
+  timezone: string | null = null,
+  voice: { pushes?: string[]; products?: string[] } = {}
+) {
   const calls: { name: string; args: Record<string, unknown> }[] = []
   const chain = (row: Record<string, unknown>) => {
     const c = {
@@ -35,13 +38,36 @@ function database(timezone: string | null = null) {
     }
     return c
   }
+  // PIC-23 part 2b: the campaigns GROS drafted and the products' titles.
+  const list = (rows: Record<string, unknown>[]) => {
+    const c = {
+      select: () => c,
+      eq: () => c,
+      not: () => c,
+      is: () => c,
+      limit: () => c,
+      then: (done: (r: { data: unknown; error: null }) => unknown) =>
+        done({ data: rows, error: null })
+    }
+    return c
+  }
   return {
     calls,
     db: {
       from: (table: string) =>
-        chain(
-          table === 'tenants' ? { timezone } : { brand_name: 'Cedar Goods' }
-        ),
+        table === 'klaviyo_draft_pushes'
+          ? list((voice.pushes ?? []).map((campaign_id) => ({ campaign_id })))
+          : table === 'products'
+            ? list(
+                (voice.products ?? ['Weekend Knit']).map((title) => ({
+                  title
+                }))
+              )
+            : chain(
+                table === 'tenants'
+                  ? { timezone }
+                  : { brand_name: 'Cedar Goods' }
+              ),
       rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
         calls.push({ name, args })
         return { data: {}, error: null }
@@ -76,19 +102,24 @@ const read = async (
     live?: boolean
     ask?: Ask | null
     clock?: () => number
+    voice?: { pushes?: string[]; products?: string[] }
+    templatesGone?: string[]
+    noTemplateScope?: boolean
   } = {}
 ) => {
   const recordedAnswers = recordedHistoryTransport({
     now: new Date(now),
     fail: options.fail,
     variationsApart: options.variationsApart,
-    reportsCut: options.reportsCut
+    reportsCut: options.reportsCut,
+    templatesGone: options.templatesGone,
+    noTemplateScope: options.noTemplateScope
   })
   const transport = (async (request) =>
     options.instead?.(decodeURIComponent(request.url)) ??
     recordedAnswers(request)) as typeof recordedAnswers
   transport.calls = recordedAnswers.calls
-  const { db, calls } = database(options.timezone ?? null)
+  const { db, calls } = database(options.timezone ?? null, options.voice)
   const waits: number[] = []
   const run = await readBrandHistory(db, job, {
     client: klaviyoClient('pk_SAMPLE0123456789abcdefghij', {
@@ -579,5 +610,54 @@ describe('readBrandHistory', () => {
       expect(run.analysis).toBe('skipped')
       expect(stored.findings.map((f) => f.pass)).toEqual(['code', 'code'])
     }
+  })
+
+  it("keeps the owner's voice from the letter they sent, before the history, never GROS's own drafts", async () => {
+    const { calls } = await read()
+    const names = calls.map((c) => c.name)
+    expect(names.indexOf('record_voice_samples')).toBeGreaterThanOrEqual(0)
+    expect(names.indexOf('record_voice_samples')).toBeLessThan(
+      names.indexOf('record_klaviyo_history')
+    )
+    const voice = calls.find((c) => c.name === 'record_voice_samples')!.args
+    expect(voice).toMatchObject({ job: 'job-1', lease: 'lease-1' })
+    const samples = voice.samples as {
+      messageId: string
+      text: string
+      weight: number
+      sentAt: string | null
+    }[]
+    // The founder's letter only: the designed emails say too little, and
+    // the one with a customer's name and email says too little once they go.
+    expect(samples.map((x) => x.messageId)).toEqual(['MsgA08'])
+    expect(samples[0]!.weight).toBe(3)
+    expect(samples[0]!.text.startsWith('Hi [first name],')).toBe(true)
+    expect(samples[0]!.text).toContain('I started Cedar Goods in my garage')
+    expect(samples[0]!.sentAt).toMatch(/^2026-/)
+    expect(JSON.stringify(samples)).not.toMatch(/Jordan|someone@example/)
+
+    // A campaign GROS drafted is never the owner's voice: none left clears them.
+    const ours = await read({ voice: { pushes: ['CmpA08'] } })
+    expect(
+      ours.calls.find((c) => c.name === 'record_voice_samples')!.args.samples
+    ).toEqual([])
+  })
+
+  it('keeps the earlier samples when the key cannot read templates or Klaviyo slows down, and stores the history', async () => {
+    const scope = await read({ noTemplateScope: true })
+    expect(scope.calls.map((c) => c.name)).not.toContain('record_voice_samples')
+    expect(scope.stored.summary.state).toBe('ready')
+    const slow = await read({
+      fail: {
+        on: 'templates',
+        with: {
+          status: 429,
+          headers: { 'retry-after': '30' },
+          body: JSON.stringify({ errors: [{ status: 429 }] })
+        }
+      }
+    })
+    expect(slow.calls.map((c) => c.name)).not.toContain('record_voice_samples')
+    expect(slow.stored.summary.state).toBe('ready')
   })
 })
