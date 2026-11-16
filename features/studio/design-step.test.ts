@@ -168,6 +168,59 @@ describe('the design step with the studio (DST-006c part 2a)', () => {
     expect(html).not.toContain('>Meet the Washed Linen Throw<')
   })
 
+  it('returns its work with the link it signed, and reuses that link for the same picture on a later claim (DST-006d)', async () => {
+    const first = waitingOf(await studioDesignStep(input(), ports()))
+    const p = ports({}, [drawn])
+    const out = (await studioDesignStep(input(first.work), p)) as {
+      work: {
+        studio: { signed: unknown; rounds: { until: number; waits: number } }
+      }
+      budget: { until: number; waits: number }
+    }
+    expect(out.work.studio.signed).toEqual({ s2: { render, src: signed } })
+    expect(out.budget).toEqual({
+      until: out.work.studio.rounds.until,
+      waits: out.work.studio.rounds.waits
+    })
+    // As the database keeps it: the same link, never signed again.
+    const saved = JSON.parse(JSON.stringify(out.work))
+    const again = ports({}, [drawn])
+    const next = (await studioDesignStep(input(saved), again)) as {
+      blocks: Block[]
+    }
+    expect(again.sign).not.toHaveBeenCalled()
+    expect(
+      (next.blocks[1]!.content as { picture: { src: string } }).picture.src
+    ).toBe(signed)
+    // A link kept for another picture, or one that is not https, is signed again.
+    for (const kept of [
+      { s2: { render: '00000009-3333-4333-8333-333333333333', src: signed } },
+      { s2: { render, src: 'http://db.example/x.jpg' } }
+    ]) {
+      const p2 = ports({}, [drawn])
+      await studioDesignStep(
+        input({ studio: { ...saved.studio, signed: kept } }),
+        p2
+      )
+      expect(p2.sign).toHaveBeenCalledWith(drawn)
+    }
+    // Links it cannot read: the work is read afresh (a new storyboard), never a stray link used.
+    const p3 = ports({}, [drawn])
+    await studioDesignStep(
+      input({ studio: { ...saved.studio, signed: { s2: 'nonsense' } } }),
+      p3
+    )
+    expect(p3.storyboard).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns no work when nothing has its picture (DST-006d)', async () => {
+    const coded = await studioDesignStep(
+      input(),
+      ports({ storyboard: vi.fn(async () => null) })
+    )
+    expect(coded).toEqual({ blocks, pictures: 0 })
+  })
+
   it('draws the email coded when no storyboard fits, nothing is designed, or the hero has no https photo', async () => {
     for (const p of [
       ports({ storyboard: vi.fn(async () => null) }),
