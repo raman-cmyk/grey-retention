@@ -5,7 +5,9 @@ import {
   learnFrom,
   pastSubjects,
   subjectLab,
+  testMargin,
   traitsOf,
+  worthTesting,
   type PastSubject
 } from './subject-lab'
 
@@ -69,8 +71,10 @@ const questionsWin: PastSubject[] = [
 /** The question's lift: 5 points, shrunk by d² / (d² + se²). */
 const squares = (rates: number[], m: number) =>
   rates.reduce((n, r) => n + (r - m) ** 2, 0)
+const pooled = (squares(questionRates, 0.31) + squares(otherRates, 0.26)) / 10
 const se2 =
-  ((squares(questionRates, 0.31) + squares(otherRates, 0.26)) / 10) * (2 / 6)
+  Math.max(pooled, squares(questionRates, 0.31) / 5) / 6 +
+  Math.max(pooled, squares(otherRates, 0.26) / 5) / 6
 const questionLift = (0.05 * 0.05 ** 2) / (0.05 ** 2 + se2)
 
 describe('traitsOf', () => {
@@ -123,8 +127,12 @@ describe('traitsOf', () => {
       traitsOf('{% if first_name %}Hello{% endif %} from the studio', brand)
     ).toContain('short')
     // A brand with a character no one sees still matches.
-    const hidden = `Cedar${String.fromCodePoint(0x200b)} Goods`
-    expect(traitsOf('Cedar Goods turns ten', hidden)).toContain('brand')
+    for (const c of [0x200b, 0x2066, 0x0007]) {
+      const hidden = `Cedar${String.fromCodePoint(c)} Goods`
+      expect(traitsOf('Cedar Goods turns ten', hidden), `${c}`).toContain(
+        'brand'
+      )
+    }
   })
 
   it('never reads an ordinary subject as a deadline, something new, an emoji or lower case', () => {
@@ -140,7 +148,12 @@ describe('traitsOf', () => {
       'Sale ends tonight',
       'Ends Sunday: the linen sale',
       'Today only: free shipping',
-      'Last chance for linen'
+      'Last chance for linen',
+      'Ends in 3 hours',
+      '24 hours only',
+      'Only today: linen',
+      'Offer ends this weekend',
+      'Sale ends 11/30'
     ])
       expect(traitsOf(subject, brand), subject).toContain('deadline')
     for (const subject of [
@@ -150,6 +163,8 @@ describe('traitsOf', () => {
     ])
       expect(traitsOf(subject, brand), subject).not.toContain('new')
     expect(traitsOf('Just in: the oak tray', brand)).toContain('new')
+    for (const subject of ['The Launcher bag', 'Our launchpad is open'])
+      expect(traitsOf(subject, brand), subject).not.toContain('new')
     for (const subject of [
       'Made with GORE-TEX® fabric',
       'Cedar Goods™ linen',
@@ -323,15 +338,25 @@ describe('subjectLab', () => {
       brand,
       fits: (s, i) => {
         tried.push([s, i])
-        return s !== 'Ready for linen weather?'
+        return !/weather/i.test(s)
       }
     })
     expect(tried).toHaveLength(labSize)
     expect(tried[0]).toEqual(['Ready for linen weather?', 0])
-    expect(tried[1]).toEqual(['Linen idea 1', 5])
-    expect(lab.ranked).toHaveLength(labSize - 1)
+    // Its other spelling is tried too: it did not fit the first time.
+    expect(tried[1]).toEqual(['ready for linen weather?', 1])
+    expect(tried[2]).toEqual(['Linen idea 1', 5])
+    expect(lab.ranked).toHaveLength(labSize - 2)
     expect(lab.ranked.some((r) => r.subject.includes('weather'))).toBe(false)
     expect(lab.ranked.find((r) => r.subject === 'Linen idea 3')?.index).toBe(7)
+    // The same subject with another preview line fits the second time.
+    const previews = ['Linen is back for good', 'Six colours, made slowly']
+    const paired = subjectLab(
+      ['Linen is back', 'Linen is back'],
+      learnFrom([], brand),
+      { brand, fits: (s, i) => !previews[i]!.startsWith(s) }
+    )
+    expect(paired.a).toMatchObject({ subject: 'Linen is back', index: 1 })
   })
 
   it('tests nothing when the ideas are one idea or B would cost too much', () => {
@@ -360,5 +385,40 @@ describe('subjectLab', () => {
 
     const none = subjectLab([], learnFrom(questionsWin, brand), { brand })
     expect(none).toMatchObject({ a: null, b: null, ranked: [] })
+  })
+
+  it('never lets one lucky email among three decide A', () => {
+    const past = Array.from({ length: 100 }, (_, i) => {
+      if (i >= 97)
+        return {
+          subject: `Linen 🌿 ${i}`,
+          recipients: i === 97 ? 150 : 900,
+          openRate: [0.85, 0.22, 0.2][i - 97]!
+        }
+      const question = i % 3 === 0
+      return {
+        subject: question ? `Linen ${i}?` : `Linen ${i}`,
+        recipients: 900,
+        openRate:
+          0.28 + (((i * 37) % 17) / 16 - 0.5) * 0.16 + (question ? 0.04 : 0)
+      }
+    })
+    const evidence = learnFrom(past, brand)
+    expect(evidence.traits.emoji!.lift).toBeLessThan(0.06)
+    const lab = subjectLab(
+      ['Linen weather 🌿', 'Ready for linen weather?'],
+      evidence,
+      {
+        brand
+      }
+    )
+    expect(lab.b).not.toBeNull()
+  })
+
+  it('tests a B exactly 5 points below A, and none further', () => {
+    expect(testMargin).toBe(0.05)
+    expect(worthTesting(0.075, 0.025)).toBe(true)
+    expect(worthTesting(0.07500000000000001, 0.025)).toBe(true)
+    expect(worthTesting(0.075, 0.0249)).toBe(false)
   })
 })

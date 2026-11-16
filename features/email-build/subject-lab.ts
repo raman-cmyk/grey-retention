@@ -1,3 +1,4 @@
+import { hiddenChars } from '@/features/assembly/assemble'
 import {
   minRecipients,
   offerWords,
@@ -42,7 +43,7 @@ const minSpread = 0.01
 const maxLift = 0.15
 /** A B expected this far below A (5 points of open rate) is not worth the test. */
 export const testMargin = 0.05
-/** Two subjects sharing this share of their words are one idea. */
+/** Two subjects with this share of both their words in common are one idea. */
 const sameIdea = 0.6
 /** The longest subject the lab weighs (the Copywriter keeps under 80). */
 const maxSubjectChars = 120
@@ -92,7 +93,7 @@ export const traitWords: Record<SubjectTrait, string> = {
 
 /**
  * Rules of thumb for a trait the store's own emails say nothing about,
- * kept small so the store's evidence always wins: a phone shows about 35
+ * kept small, and never for a trait the store's emails show: a phone shows about 35
  * characters of a subject, and an exclamation mark reads as shouting.
  */
 const ruleOfThumb: Partial<Record<SubjectTrait, number>> = {
@@ -117,16 +118,16 @@ const firstNameTag =
 const storeTag = /^\{\{\s*organization\.name\b/i
 /** A deadline, as a phrase: "ends tonight", "last chance", never "the story never ends". */
 const deadline =
-  /\b(?:(?:ends?|ending|closes?|closing)\s+(?:today|tonight|tomorrow|soon|at midnight|on \w+day|\w+day)|(?:today|tonight) only|last (?:chance|call|day|hours?)|final (?:hours?|day|call)|hours? left|only \d+ left|hurry|don['’]t miss|until midnight)\b/i
+  /\b(?:(?:ends?|ending|closes?|closing)\s+(?:today|tonight|tomorrow|soon|at midnight|on \w+day|\w+day|this (?:week|weekend)|in \d+ (?:hours?|days?)|\d{1,2}\/\d{1,2})|(?:today|tonight) only|only today|\d+ hours? (?:only|left)|last (?:chance|call|day|hours?)|final (?:hours?|day|call)|hours? left|only \d+ left|hurry|don['’]t miss|until midnight)\b/i
 /** Something new, never "New Year", "New York" or "just in time". */
 const somethingNew =
-  /\b(?:new\b(?!\s+(?:year|years|york|zealand|jersey|mexico|orleans|hampshire)\b)|just (?:in\b(?!\s+time\b)|landed|dropped|arrived)|introducing|launch(?:es|ed|ing)?|first look|back in stock|restock(?:ed)?)/i
+  /\b(?:new\b(?!\s+(?:year|years|york|zealand|jersey|mexico|orleans|hampshire)\b)|just (?:in\b(?!\s+time\b)|landed|dropped|arrived)|introducing|launch(?:es|ed|ing)?|first look|back in stock|restock(?:ed)?)\b/i
 const you = /\b(?:you|your|yours|yourself|yourselves|you['’](?:re|ll|ve|d))\b/i
 /** A picture character, a flag or a keycap; never ©, ® or ™. */
 const emoji =
   /(?![©®™])\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20e3/u
-/** Characters a reader never sees (as `subjectText` drops them). */
-const unseen = /[\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/g
+/** Characters a reader never sees (as `subjectText` drops them), and a soft hyphen. */
+const unseen = new RegExp(`${hiddenChars.source}|\u00ad`, 'g')
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -242,8 +243,9 @@ const usable = (p: PastSubject) =>
 /**
  * Each trait's open rate with it and without it in the store's own
  * emails, once per plan. The difference is shrunk by how sure it is: by
- * d² / (d² + se²), where se is the noise of that difference (the store's
- * spread of open rates within the two groups, at least 1 point, for as
+ * d² / (d² + se²), where se is the noise of that difference (each
+ * group's own spread of open rates, never below the store's, at least 1
+ * point, for as
  * many emails as each side has). A trait shown by fewer than `minPerSide`
  * emails on either side says nothing; fewer than `minPastEmails` emails in
  * all say nothing at all (rules of thumb only).
@@ -271,14 +273,17 @@ export function learnFrom(
     const withRate = mean(yes)
     const withoutRate = mean(no)
     const diff = withRate - withoutRate
-    const spread = Math.max(
-      minSpread,
-      Math.sqrt(
-        (squares(yes, withRate) + squares(no, withoutRate)) /
-          (yes.length + no.length - 2)
-      )
+    // Each side's own spread, never below the store's: one lucky email
+    // among three is noise, not a trait.
+    const ssYes = squares(yes, withRate)
+    const ssNo = squares(no, withoutRate)
+    const pooled = Math.max(
+      minSpread ** 2,
+      (ssYes + ssNo) / (yes.length + no.length - 2)
     )
-    const noise = spread ** 2 * (1 / yes.length + 1 / no.length)
+    const noise =
+      Math.max(pooled, ssYes / (yes.length - 1)) / yes.length +
+      Math.max(pooled, ssNo / (no.length - 1)) / no.length
     const shrunk = diff === 0 ? 0 : (diff * diff ** 2) / (diff ** 2 + noise)
     traits[trait] = {
       withRate,
@@ -338,6 +343,7 @@ const keyOf = (subject: string) =>
 const wordsOf = (subject: string) =>
   new Set(
     subject
+      .replace(logic, ' ')
       .replace(tag, ' ')
       .toLowerCase()
       .split(/[^\p{L}\p{N}]+/u)
@@ -403,12 +409,18 @@ function ranked(
   }
 }
 
+/** Whether a B this far below A is worth half the audience (`testMargin`). */
+export const worthTesting = (a: number, b: number) =>
+  b >= a - testMargin - epsilon
+
 /**
  * Weighs up to `labSize` subject ideas (the writer's order: its own pick
  * first) and keeps the best two. `fits` is the caller's checks (the copy
  * checks, a subject another email of the plan has, the preview line): an
  * idea that fails them is never weighed. Ideas the same but for case and
- * spacing count once; an empty or very long one is left out.
+ * spacing count once (the same subject again is tried while none of its
+ * spellings fitted: another preview line may); an empty or very long one
+ * is left out. At most `labSize` ideas are tried.
  */
 export function subjectLab(
   ideas: readonly string[],
@@ -419,24 +431,25 @@ export function subjectLab(
     fits?: (subject: string, index: number) => boolean
   }
 ): SubjectLab {
+  const fits = input.fits ?? (() => true)
+  // An idea that fits is kept once; the same subject again is tried again
+  // only while none of its spellings fitted (another preview line may).
   const seen = new Set<string>()
-  const kept: { subject: string; index: number }[] = []
+  const order: RankedSubject[] = []
+  let tried = 0
   ideas.forEach((idea, index) => {
-    if (kept.length >= labSize || typeof idea !== 'string') return
+    if (tried >= labSize || typeof idea !== 'string') return
     const subject = idea.replace(/\s+/g, ' ').trim()
     const key = keyOf(subject)
     if (!subject || subject.length > maxSubjectChars || seen.has(key)) return
+    tried++
+    if (!fits(subject, index)) return
     seen.add(key)
-    kept.push({ subject, index })
+    order.push(ranked(subject, index, evidence, input.brand))
   })
-  const fits = input.fits ?? (() => true)
-  const order = kept
-    .filter((k) => fits(k.subject, k.index))
-    .map((k) => ranked(k.subject, k.index, evidence, input.brand))
-  // A stable sort: equal scores keep the writer's order.
-  const best = [...order].sort((x, y) =>
-    Math.abs(y.score - x.score) < epsilon ? 0 : y.score - x.score
-  )
+  // A stable sort on rounded scores: equal scores keep the writer's order.
+  const rounded = (r: RankedSubject) => Math.round(r.score * 1e6)
+  const best = [...order].sort((x, y) => rounded(y) - rounded(x))
   const a = best[0] ?? null
   const b =
     (a &&
@@ -444,7 +457,7 @@ export function subjectLab(
         .slice(1)
         .find(
           (r) =>
-            r.score >= a.score - testMargin - epsilon &&
+            worthTesting(a.score, r.score) &&
             overlap(r.subject, a.subject) < sameIdea &&
             (r.traits.length !== a.traits.length ||
               r.traits.some((t) => !a.traits.includes(t)))
