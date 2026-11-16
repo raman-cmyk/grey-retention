@@ -24,9 +24,12 @@ import { claims } from './words'
  *   ONB-105), with their own stars, their exact words (at most `maxQuote`
  *   characters, never cut) and the reviewer's first name and last initial
  *   (`reviewerName`), best rated and newest first, at most 3.
- * - Only while the brand has a verified review source (copy QA's
- *   `reviewsVerified`): the strip shows each review's stars, and copy QA
- *   refuses stars without one.
+ * - With or without a verified review source (REL-ONB2 part b, the
+ *   owner's rule of 16 November: from the store's own sources only,
+ *   nothing invented): each review is the store's own words with its own
+ *   stars, so the strip may show them. Copy QA's `reviewsVerified` still
+ *   guards ratings and counts anywhere else ("4.9 from 2,000 reviews"),
+ *   and the Brand inspector lets only the strip's own stars through.
  * - Never a quote naming someone (another customer, a member of staff, the
  *   reviewer themself: `namesIn`), never spam words, and every word judged
  *   by copy QA at least as strictly as the Brand inspector will judge the
@@ -211,7 +214,6 @@ const signs = (quote: string, author: string) =>
     .some((w) => phrase(quote, w))
 
 function reviews(parts: MaterialParts): ConfirmedReview[] {
-  if (!parts.facts.reviewsVerified) return []
   const seen = new Set<string>()
   return parts.findings
     .flatMap((f) => {
@@ -228,8 +230,10 @@ function reviews(parts: MaterialParts): ConfirmedReview[] {
       if (!author || value.rating === undefined) return []
       if (Array.from(quote).length > maxQuote || signs(quote, value.author))
         return []
-      // Judged as the Brand inspector will (`copyDraftOf`: name and stars too).
-      const shown = `${quote}\n${author}\nRated ${value.rating} out of 5`
+      // Judged as the Brand inspector will (`copyDraftOf`: the name too).
+      // The strip's own stars are the review's, never a claim (they pass
+      // the inspector; `brandCopyDraft`), so they are not judged here.
+      const shown = `${quote}\n${author}`
       if (!safe(quote, parts, shown) || claims.test(author)) return []
       const review = { quote, author, rating: value.rating }
       return [{ review, date: value.date ?? '' }]

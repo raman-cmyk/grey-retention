@@ -16,7 +16,10 @@ import {
   type CopyFeedback,
   type Draft
 } from '@/features/assembly/assemble'
-import { usableMaterial } from '@/features/assembly/inputs'
+import {
+  usableMaterial,
+  type ConfirmedReview
+} from '@/features/assembly/inputs'
 import {
   agentTries,
   failedWords,
@@ -293,11 +296,68 @@ export function emailChecks(
   return out
 }
 
+/** A confirmed review as one key: its words, its name and its stars. */
+const reviewKey = (r: unknown) => {
+  const { quote, author, rating } = (r ?? {}) as Record<string, unknown>
+  return typeof quote === 'string' &&
+    typeof author === 'string' &&
+    typeof rating === 'number'
+    ? JSON.stringify([quote, author, rating])
+    : null
+}
+
+/**
+ * The reviews a review strip shows when they are all the store's own
+ * confirmed reviews (REL-ONB2 part b), or null: any other block, an empty
+ * strip, or one with a review that is not the store's.
+ */
+export function ownStripReviews(
+  block: Draft['blocks'][number] | undefined,
+  own: readonly ConfirmedReview[]
+): ConfirmedReview[] | null {
+  const reviews = (block?.content as { reviews?: unknown } | undefined)?.reviews
+  const keys = new Set(own.map(reviewKey))
+  return block?.type === 'review_strip' &&
+    Array.isArray(reviews) &&
+    reviews.length > 0 &&
+    reviews.every((r) => keys.has(reviewKey(r)))
+    ? (reviews as ConfirmedReview[])
+    : null
+}
+
+/**
+ * The draft as copy QA reads it (`copyDraftOf`), without the stars of a
+ * review strip that shows only the store's own confirmed reviews (REL-ONB2
+ * part b): those stars are the reviews' own, read word for word from the
+ * store's pages, never a rating the writer claims. Every other word is
+ * judged, the strip's heading and quotes included, and a strip showing any
+ * other review keeps its stars, so copy QA still refuses them without a
+ * verified review source.
+ */
+export function brandCopyDraft(draft: Draft, own: readonly ConfirmedReview[]) {
+  const copy = copyDraftOf(draft)
+  return {
+    ...copy,
+    blocks: copy.blocks.map((block, i) => {
+      const reviews = ownStripReviews(draft.blocks[i], own)
+      if (!reviews) return block
+      const stars = new Set(reviews.map((r) => `Rated ${r.rating} out of 5`))
+      return {
+        ...block,
+        text: block.text
+          .split('\n')
+          .filter((line) => !stars.has(line))
+          .join('\n')
+      }
+    })
+  }
+}
+
 /** The Brand inspector's code: copy QA (ASM-002) on the locked facts. */
 export function brandChecks(draft: Draft, locked: LockedContent): Finding[] {
   const input = locked.input
   return checkCopy({
-    draft: copyDraftOf(draft),
+    draft: brandCopyDraft(draft, usableMaterial(input).reviews),
     facts: input.facts,
     maxDiscountPercent: input.maxDiscountPercent,
     codes: [...input.codes],

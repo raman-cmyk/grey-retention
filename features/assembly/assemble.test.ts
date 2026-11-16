@@ -228,12 +228,13 @@ describe('what the email may use', () => {
         'founder_note'
       ])
     )
-    // Reviews count only with a verified review source.
-    expect(rich(false)).not.toContain('review_strip')
+    // The store's own reviews need no verified review source (REL-ONB2 b).
+    expect(rich(false)).toContain('review_strip')
     const material = usableMaterial(
       input({ facts: { ...unknownFacts, reviewsVerified: true }, confirmed })
     )
     expect(material.reviews).toHaveLength(1)
+    expect(usableMaterial(input({ confirmed })).reviews).toEqual([review])
     // A photo that would not pass the block is left out, not the note.
     expect(material.founder).toMatchObject({ name: 'Sam', photo: undefined })
     expect(

@@ -435,6 +435,35 @@ describe('the golden properties catch a worse email', () => {
     ])
   })
 
+  it('the store’s own reviews show their own stars, and no other review does (REL-ONB2 part b)', async () => {
+    const r = await resultOf('launch')
+    expect(r.run.store.facts.reviewsVerified).toBe(false)
+    const own = {
+      quote: 'So cosy on cold mornings.',
+      author: 'Priya S.',
+      rating: 5
+    }
+    const stars = async (shown: typeof own) => {
+      const run = structuredClone(r.run)
+      if (!run.result.ok) throw new Error('launch did not build')
+      run.store = { ...run.store, confirmed: { reviews: [own] } }
+      run.result.draft.blocks.push({
+        type: 'review_strip',
+        content: { heading: 'What customers say', reviews: [shown] }
+      } as (typeof run.result.draft.blocks)[number])
+      run.result.email.html = run.result.email.html.replace(
+        '</body>',
+        `<table><tr data-block="review_strip"><td><span role="img" aria-label="${shown.rating} out of 5 stars">${'★'.repeat(shown.rating)}${'☆'.repeat(5 - shown.rating)}</span><p>${shown.quote}</p><p>${shown.author}</p></td></tr></table></body>`
+      )
+      return goldenProblems(r.brief, run).filter((p) =>
+        p.includes('unverified_review')
+      )
+    }
+    expect(await stars(own)).toEqual([])
+    // Another review's stars, as drafted and as drawn: refused.
+    expect(await stars({ ...own, rating: 4 })).toHaveLength(2)
+  })
+
   it('a build that stopped, a code in the log', async () => {
     const r = await resultOf('gift-guide')
     expect(

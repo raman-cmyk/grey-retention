@@ -155,8 +155,20 @@ describe('storeMaterial (REL-ONB2 part a)', () => {
       ).toBe(true)
   })
 
-  it('carries no review while the brand has no verified review source (copy QA refuses their stars)', () => {
-    expect(material([review(warm)], { facts: unknownFacts })).toBeUndefined()
+  it('carries the store’s own reviews without a verified review source, and still leaves out one whose words claim stars (REL-ONB2 part b)', () => {
+    expect(material([review(warm)], { facts: unknownFacts })?.reviews).toEqual([
+      { quote: warm, author: 'Jordan S.', rating: 5 }
+    ])
+    // Stars in the words themselves are a rating copy QA refuses without a
+    // verified review source; only the strip's own stars pass the inspector.
+    expect(
+      material([review('So warm and soft, 5 stars from me.')], {
+        facts: unknownFacts
+      })
+    ).toBeUndefined()
+    expect(
+      material([review('So warm and soft, 5 stars from me.')])?.reviews
+    ).toHaveLength(1)
   })
 
   it('leaves out every review it would have to change or that an email may not say', () => {

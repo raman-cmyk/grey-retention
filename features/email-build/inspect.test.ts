@@ -16,6 +16,7 @@ import { unknownFacts, type CatalogProduct } from '@/features/assembly/inputs'
 import { assembleLocked, assembleLockedPlain } from '@/features/assembly/modes'
 import { lockContent, type LockedContent, type LockInput } from './content'
 import {
+  brandChecks,
   brandInspectorAgent,
   checkInspection,
   codeFindings,
@@ -884,6 +885,47 @@ describe('the email checks (code)', () => {
     const draft = await draftOf(locked, answer)
     expect(JSON.stringify(draft.blocks)).toContain('A total winner')
     expect(emailChecks(draft, locked, brand.name)).toEqual([])
+  })
+
+  it('lets a review strip show the store’s own stars without a verified review source, and no other stars (REL-ONB2 part b)', async () => {
+    const review = {
+      quote: 'So cosy on cold mornings.',
+      author: 'Ana',
+      rating: 5
+    }
+    const raw = lockInput({
+      facts: unknownFacts,
+      confirmed: { reviews: [review] }
+    })
+    raw.sections.sections.splice(3, 0, {
+      family: 'review_strip',
+      variantId: 'review_strip/seed',
+      purpose: 'What customers say.'
+    })
+    const locked = await lock(raw)
+    const answer = words()
+    answer.blocks.splice(3, 0, {
+      type: 'review_strip',
+      reason: 'Reviews.',
+      words: { heading: 'What people say' }
+    })
+    const draft = await draftOf(locked, answer)
+    const unverified = (d: Draft) =>
+      brandChecks(d, locked).filter((f) => f.rule === 'unverified_review')
+    expect(JSON.stringify(draft.blocks)).toContain('So cosy on cold mornings.')
+    expect(unverified(draft)).toEqual([])
+    expect(emailChecks(draft, locked, brand.name)).toEqual([])
+    // A review that is not the store's own keeps its stars: refused.
+    const strip = draft.blocks.findIndex((b) => b.type === 'review_strip')
+    const other = structuredClone(draft)
+    ;(other.blocks[strip]!.content as { reviews: (typeof review)[] }).reviews =
+      [{ ...review, rating: 4 }]
+    expect(unverified(other).map((f) => f.field)).toEqual([
+      `block:${strip + 1}-review_strip`
+    ])
+    // Stars written anywhere else are still refused.
+    const claim = { ...draft, subject: 'Rated 5 stars by our customers' }
+    expect(unverified(claim).map((f) => f.field)).toEqual(['subject'])
   })
 
   it('check subject and preview lengths', async () => {
