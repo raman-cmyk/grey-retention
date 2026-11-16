@@ -317,7 +317,12 @@ async function failed(
     } catch {
       // The refusal stands without its note.
     }
-    return { ok: false, code: 'rejected', checks: error.checks }
+    return {
+      ok: false,
+      code: 'rejected',
+      checks: error.checks,
+      reason: error.reason
+    }
   }
   if (error instanceof KlaviyoError) {
     logger.warn('Klaviyo push stopped', {
