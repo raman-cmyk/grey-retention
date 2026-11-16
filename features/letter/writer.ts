@@ -107,7 +107,7 @@ export const letterInstructions = [
   'Never write a price, a discount code or its end date: when there is an offer, the system adds its line after the letter. You may mention it in words.',
   'Name a product only by its title as given.',
   'A greeting such as "Hi there," (never a name), a sign-off such as "Warmly,", and a P.S. that adds one small thing. Leave greeting or ps empty only when they do not fit. The name that signs is added by the system: never sign.',
-  'For the inbox: a subject of at most 60 characters with no word in capitals and at most one exclamation mark; a preview line of 20 to 140 characters that says what the subject does not, never the subject’s words again (name a product in one of them only). Never a spam word such as "act now", "click here", "risk-free" or "winner".',
+  'For the inbox: a subject of at most 60 characters with no word in capitals and at most one exclamation mark; a preview line of 20 to 140 characters that says what the subject does not and never repeats it (the brand’s name may be in both; name a product in one of them only). Never a spam word such as "act now", "click here", "risk-free" or "winner".',
   'Invite a reply when it fits: replies reach a person.',
   'Never write { or }.',
   ...sharedRules
