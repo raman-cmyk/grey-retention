@@ -156,7 +156,7 @@ const noise =
 
 const ipv4 = /^\d{1,3}(?:\.\d{1,3}){3}$/
 /** A host every subscriber can reach: a public name, never a private one. */
-const publicHost = (host: string) =>
+export const publicHost = (host: string) =>
   host.includes('.') &&
   !host.endsWith('.') &&
   !ipv4.test(host) &&

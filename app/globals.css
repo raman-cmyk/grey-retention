@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import './styles/tokens.css';
+@import './styles/gros.css';
 
 /*
  * Semantic variables used by every component. The white-label

@@ -97,7 +97,8 @@ const badCss =
 const inlineImage =
   /^data:image\/(?:png|jpeg|gif|webp);base64,[a-z0-9+/]+={0,2}$/i
 const sameDocument = /^#[A-Za-z][\w-]{0,60}$/
-const fontFamily = /^[A-Za-z0-9][A-Za-z0-9 -]{0,59}$/
+/** A web font name a section may load (also the site reader's, FONT-SITE). */
+export const fontFamily = /^[A-Za-z0-9][A-Za-z0-9 -]{0,59}$/
 
 /** An https link on one of `hosts` (no port), or a small inline picture. */
 function allowedUrl(url: string, hosts: readonly string[]) {
