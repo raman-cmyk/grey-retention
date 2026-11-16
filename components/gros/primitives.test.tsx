@@ -196,14 +196,17 @@ describe('EmptyState and ErrorState (UI-DS)', () => {
 
 describe('Mark (UI-DS)', () => {
   it('is named for screen readers', () => {
-    const { container } = render(<Mark size={36} />)
+    render(<Mark size={36} />)
     expect(screen.getByRole('img', { name: 'GROS' })).toHaveAttribute(
       'width',
       '36'
     )
     cleanup()
-    render(<Mark decorative />)
+    const { container } = render(<Mark decorative />)
     expect(screen.queryByRole('img')).toBeNull()
-    expect(container).toBeDefined()
+    expect(container.querySelector('svg')).toHaveAttribute(
+      'aria-hidden',
+      'true'
+    )
   })
 })
