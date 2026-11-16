@@ -288,6 +288,39 @@ describe('building and pushing (code-only, fake pusher)', () => {
       }
     })
 
+    it('pushes the lab’s subject B on the one design as a second variation, and says so when the draft holds the first only (PIC-26 part 3b)', async () => {
+      const { coded, email } = await pair()
+      const tested: BuiltEmail = {
+        ...coded,
+        subjectB: 'Ready for the weekend?'
+      }
+      const pusher = fakeDraftPusher()
+      const { fallbacks } = await push(tested, pusher)
+      expect(pusher.calls[0]!.variations).toEqual([
+        { approach: 'A', html: coded.html },
+        { approach: 'B', html: coded.html, subject: 'Ready for the weekend?' }
+      ])
+      expect(fallbacks.entries()).toEqual([])
+      const alone = await push(tested, fakeDraftPusher({ designs: 'A' }))
+      expect(alone.fallbacks.entries()).toEqual([
+        expect.objectContaining({
+          agent: 'ab-test',
+          reasonCode: 'ab_one_subject',
+          reason: 'This email’s Klaviyo draft could not hold both subjects.',
+          fallback:
+            'The draft in Klaviyo has the first subject only, with no A/B test.',
+          dedupeKey: 'ab-test:key-1:one-subject'
+        })
+      ])
+      // One test an email: beside a design test, the designs only.
+      const both = fakeDraftPusher()
+      await push({ ...email, subjectB: 'Ready for the weekend?' }, both)
+      expect(both.calls[0]!.variations).toEqual([
+        { approach: 'A', html: coded.html },
+        { approach: 'B', html: email.html }
+      ])
+    })
+
     it('pushes a text email with its own plain-text part, and a designed one without (TXT-001d)', async () => {
       const { coded } = await pair()
       const letter: BuiltEmail = {
@@ -620,6 +653,30 @@ describe('saved steps (REL-081)', () => {
     expect(copy.draft.subject).not.toBe(own)
   })
 
+  it('counts another email’s subject B as taken: half its audience gets it (PIC-26 part 3b)', async () => {
+    const { saved } = await fullRun()
+    const own = (saved.copy as { draft: { subject: string } }).draft.subject
+    for (const taken of [
+      { built: null, saved: null, builtB: own },
+      { built: null, saved: null, savedB: own }
+    ]) {
+      const { db, calls } = fakeDb(
+        [
+          step({
+            step: 'copy',
+            progress: { sections: saved.sections, content: saved.content }
+          })
+        ],
+        {},
+        { email_builds: [taken] }
+      )
+      await runEmailBuilds(db, { limit: 1, fallbacks: memoryFallbackLog() })
+      const copy = calls.find((c) => c.fn === 'finish_email_step')!.args
+        .output as { draft: { subject: string } }
+      expect(copy.draft.subject).not.toBe(own)
+    }
+  })
+
   it('reads the plan’s other subjects once, at the copy step, from this plan only (REL-AI)', async () => {
     const { db, calls } = fakeDb([step()])
     await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
@@ -630,7 +687,7 @@ describe('saved steps (REL-081)', () => {
     ).toEqual([
       [
         'email_builds.select',
-        'built:email->>subject,saved:progress->copy->draft->>subject,letter:progress->copy->letter->>subject'
+        'built:email->>subject,saved:progress->copy->draft->>subject,letter:progress->copy->letter->>subject,builtB:email->>subjectB,savedB:progress->copy->subjectLab->b->>subject'
       ],
       ['email_builds.eq', 'tenant_id', tenant],
       ['email_builds.eq', 'run_id', 'run-1'],
