@@ -3,6 +3,7 @@ import type { Correction } from '@/features/onboarding/brand-book-corrections'
 import type { CatalogEntry } from '@/features/onboarding/catalog/read'
 import { claimsSafetyPhrases } from '@/features/onboarding/claims-safety'
 import type { Finding } from '@/features/onboarding/findings'
+import { sampleStoreFrom } from '@/features/email-build/ports'
 
 vi.mock('server-only', () => ({}))
 const reads = vi.hoisted(() => ({
@@ -366,6 +367,56 @@ describe('storeFrom (ONB-057b part 2)', () => {
       background: '#fafafa',
       ink: '#121212'
     })
+  })
+
+  it('gives "Create email" the store’s own reviews, from this website only, and nothing the sample store has (REL-ONB2)', async () => {
+    const cosy = 'So cosy on cold mornings, and it washes well.'
+    const started = 'We started Cedar Lane in a small workshop in 2016.'
+    const page = 'https://shop.example/p/1'
+    const material = [
+      found(
+        'review_platform',
+        { name: 'Judge.me', verified: true },
+        {
+          source: 'reviews'
+        }
+      ),
+      found(
+        'quotable_review',
+        { author: 'Priya Shah', url: page, rating: 5 },
+        {
+          source: 'reviews',
+          evidence: { url: page, quote: cosy }
+        }
+      ),
+      found(
+        'offering',
+        {},
+        {
+          evidence: {
+            url: 'https://www.shop.example/pages/about',
+            quote: started,
+            page: 'about'
+          }
+        }
+      )
+    ]
+    const own = (over: Partial<Parts> = {}) =>
+      storeFrom(
+        parts({ findings: [...parts().findings, ...material], ...over })
+      )
+    // The about page's words are no founder's note (part a has none).
+    expect(own().confirmed).toEqual({
+      reviews: [{ quote: cosy, author: 'Priya S.', rating: 5 }]
+    })
+    // Read before the owner changed his website, or none: no material.
+    for (const domain of ['new-shop.example', 'not a domain'])
+      expect(own({ domain })).not.toHaveProperty('confirmed')
+    expect(storeFrom(parts())).not.toHaveProperty('confirmed')
+    // The sample store keeps none.
+    expect(
+      await sampleStoreFrom('2026-11-16').read(tenantId)
+    ).not.toHaveProperty('confirmed')
   })
 })
 
