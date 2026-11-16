@@ -344,7 +344,7 @@ const assemblyFor = (
   ...(store.customerWords?.length
     ? { customerWords: store.customerWords }
     : {}),
-  // REL-ONB2: the store's own reviews, note and photo, placed by code.
+  // REL-ONB2: the store's own reviews, placed word for word by code.
   ...(store.confirmed ? { confirmed: store.confirmed } : {})
 })
 

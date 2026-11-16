@@ -250,5 +250,5 @@ export function customerWords(
 export const customerWordsData = (phrases: readonly CustomerPhrase[]) =>
   phrases.map((p) => p.phrase)
 
-/** REL-ONB2: the same results and body words keep a quoted review or note safe. */
-export { results as resultWords, body as bodyWords }
+/** REL-ONB2: the same checks keep a quoted review safe. */
+export { results as resultWords, body as bodyWords, namesSomeone }

@@ -79,10 +79,10 @@ export type Store = {
    */
   pastSubjects?: PastSubject[]
   /**
-   * REL-ONB2: the store's own material for its blocks (reviews, a note in
-   * its own words, a lifestyle photo; `storeMaterial`), only from what its
-   * readers kept. Absent for the sample store and when a source has none,
-   * so the block stays disallowed (`allowedBlockTypes`).
+   * REL-ONB2: the store's own material for its blocks (its quotable
+   * reviews so far; `storeMaterial`), only from what its readers kept.
+   * Absent for the sample store and when a source has none, so the block
+   * stays disallowed (`allowedBlockTypes`).
    */
   confirmed?: NonNullable<AssemblyInput['confirmed']>
 }

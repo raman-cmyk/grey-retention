@@ -369,7 +369,7 @@ describe('storeFrom (ONB-057b part 2)', () => {
     })
   })
 
-  it('gives "Create email" the store’s own reviews and about-page words, from this website only, and nothing the sample store has (REL-ONB2)', async () => {
+  it('gives "Create email" the store’s own reviews, from this website only, and nothing the sample store has (REL-ONB2)', async () => {
     const cosy = 'So cosy on cold mornings, and it washes well.'
     const started = 'We started Cedar Lane in a small workshop in 2016.'
     const page = 'https://shop.example/p/1'
@@ -405,9 +405,9 @@ describe('storeFrom (ONB-057b part 2)', () => {
       storeFrom(
         parts({ findings: [...parts().findings, ...material], ...over })
       )
+    // The about page's words are no founder's note (part a has none).
     expect(own().confirmed).toEqual({
-      reviews: [{ quote: cosy, author: 'Priya S.', rating: 5 }],
-      founder: { name: 'Cedar Lane', note: [started] }
+      reviews: [{ quote: cosy, author: 'Priya S.', rating: 5 }]
     })
     // Read before the owner changed his website, or none: no material.
     for (const domain of ['new-shop.example', 'not a domain'])

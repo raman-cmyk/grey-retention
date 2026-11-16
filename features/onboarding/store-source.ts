@@ -58,9 +58,8 @@ import type { Database } from '@/lib/supabase/database.types'
  * - Industry: from what the brand sells, as the owner corrected it.
  * - Customer words: the reviews' own phrases, checked like copy (ONB-061).
  * - Material for its blocks (REL-ONB2, `storeMaterial`): its quotable
- *   reviews and a note in its own words from its about page, only from
- *   this same website; none when a source has none (no customer photos:
- *   no reader keeps them).
+ *   reviews, only from this same website, checked like copy; none without
+ *   any.
  *
  * It is `sample` while the catalog was read from the fake Klaviyo. A
  * paused read (Klaviyo refused the key) keeps the last read's products. A
@@ -168,7 +167,6 @@ export function storeFrom(parts: OwnStoreParts): Store {
         host: domain.replace(/^www\./, ''),
         live,
         findings,
-        corrections: parts.corrections,
         facts,
         productNames: products.map((p) => p.title)
       })

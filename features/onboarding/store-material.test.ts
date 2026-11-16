@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { allowedBlockTypes, unknownFacts } from '@/features/assembly/inputs'
-import type { Correction } from './brand-book-corrections'
+import { checkCopy } from '@/features/copy-qa/check'
 import type { Finding } from './findings'
 import {
   maxQuote,
@@ -13,9 +13,7 @@ const site = 'https://shop.example'
 const warm = 'Warm without being bulky, I wear it all weekend.'
 const cosy = 'So cosy on cold mornings, and it washes well.'
 const solid = 'The colour is lovely and the knit feels solid.'
-const started = 'We started Cedar Lane in a small workshop in 2016.'
-const layers =
-  'We design for people who would rather buy one good layer than five quick ones.'
+const scarf = 'So soft, my 100% Merino Scarf goes with everything.'
 type Over = Record<string, unknown>
 const review = (quote: string, value: Over = {}, over: Over = {}) =>
   ({
@@ -28,30 +26,20 @@ const review = (quote: string, value: Over = {}, over: Over = {}) =>
     pass: 'code',
     ...over
   }) as unknown as Finding
-const about = (quote: string, over: Over = {}, page = 'about') =>
-  ({
-    topic: 'offering',
-    source: 'site',
-    statement: `It says: ${quote.slice(0, 40)}`,
-    value: {},
-    evidence: { url: `${site}/pages/about`, quote, page },
-    confidence: 0.8,
-    pass: 'model',
-    ...over
-  }) as unknown as Finding
+const on = (url: string) => ({ evidence: { url, quote: warm } })
 const verified = {
   topic: 'review_platform',
   source: 'reviews',
   value: { name: 'Judge.me', verified: true }
 } as unknown as Finding
+const facts = { ...unknownFacts, reviewsVerified: true }
 const parts = (over: Partial<MaterialParts> = {}): MaterialParts => ({
   brandName: 'Cedar Lane',
   host: 'shop.example',
   live: true,
   findings: [],
-  corrections: [],
-  facts: { ...unknownFacts, reviewsVerified: true },
-  productNames: ['Weekend Knit'],
+  facts,
+  productNames: ['Weekend Knit', '100% Merino Scarf'],
   ...over
 })
 const material = (findings: Finding[], over: Partial<MaterialParts> = {}) =>
@@ -67,6 +55,7 @@ describe('reviewerName (REL-ONB2)', () => {
     ['J. Smith', 'J. S.'],
     ['Dr. Jane Smith', 'Jane S.'],
     ['Mrs Ann Lee', 'Ann L.'],
+    ['Ines Andersson', 'Ines A.'],
     ['Zoë Ångström', 'Zoë Å.']
   ])('names %j as %j', (author, shown) => {
     expect(reviewerName(author)).toBe(shown)
@@ -80,37 +69,38 @@ describe('reviewerName (REL-ONB2)', () => {
     'jo@example.com',
     '@jordan',
     'Jordan & Sam',
+    'Kate and Sam',
+    'Jordan from Leeds',
+    'Sarah in London',
+    'Jordan Smith Jr.',
+    'John Smith III',
     'One Two Three Four Five',
     'Abcdefghijklmnopqrstuvwxyzabcdefg'
-  ])('names no one for %j', (author) => {
+  ])('names no one for %j (never an initial made up)', (author) => {
     expect(reviewerName(author)).toBeNull()
   })
 })
 
 describe('storeMaterial (REL-ONB2 part a)', () => {
-  it('allows each material block exactly when its material is there', () => {
+  it('allows the review strip exactly when there are reviews, and no other material block', () => {
     const allowed = (confirmed: ReturnType<typeof storeMaterial>) =>
       allowedBlockTypes({
-        brief: { campaignType: 'story', goal: 'Our story' },
+        brief: { campaignType: 'launch', goal: 'New knits' },
         products: [],
         codes: [],
         maxDiscountPercent: 0,
         sendAt: '2026-12-01T10:00:00Z',
         timezone: 'UTC',
-        facts: { ...unknownFacts, reviewsVerified: true },
+        facts,
         confirmed
       })
     const none = material([])
     expect(none).toBeUndefined()
-    for (const type of ['review_strip', 'founder_note', 'ugc_grid'])
-      expect(allowed(none)).not.toContain(type)
-    const both = allowed(material([verified, review(warm), about(started)]))
-    expect(both).toEqual(
-      expect.arrayContaining(['review_strip', 'founder_note'])
-    )
-    // No customer photos: no reader keeps any.
-    expect(both).not.toContain('ugc_grid')
-    expect(both).not.toContain('hero_image')
+    expect(allowed(none)).not.toContain('review_strip')
+    const some = allowed(material([verified, review(warm)]))
+    expect(some).toContain('review_strip')
+    for (const type of ['founder_note', 'ugc_grid', 'hero_image'])
+      expect(some).not.toContain(type)
   })
 
   it('quotes the reviews word for word with their own stars, best and newest first, at most 3, each once, by first name and initial', () => {
@@ -132,6 +122,28 @@ describe('storeMaterial (REL-ONB2 part a)', () => {
         { quote: warm, author: 'Jordan S.', rating: 4 }
       ]
     })
+    // Each passes the Brand inspector's copy QA in an email that places
+    // no product (it masks only the products an email places).
+    for (const r of got!.reviews!)
+      expect(
+        checkCopy({
+          draft: {
+            subject: '',
+            preview: '',
+            blocks: [
+              {
+                id: '1-review_strip',
+                text: `${r.quote}\n${r.author}\nRated ${r.rating} out of 5`
+              }
+            ]
+          },
+          facts,
+          maxDiscountPercent: 0,
+          codes: [],
+          productNames: [],
+          sendAt: '2026-12-01T10:00:00Z'
+        }).pass
+      ).toBe(true)
   })
 
   it('carries no review while the brand has no verified review source (copy QA refuses their stars)', () => {
@@ -141,93 +153,44 @@ describe('storeMaterial (REL-ONB2 part a)', () => {
   it('leaves out every review it would have to change or that an email may not say', () => {
     const long = `${'Warm and soft. '.repeat(14)}Lovely.`
     expect(long.length).toBeGreaterThan(maxQuote)
-    const elsewhere = { url: 'https://other.example/p/1', quote: warm }
     const left = [
       review(warm, { rating: undefined }), // no stars of its own
       review(long), // never cut
       review(warm, { author: 'Verified Buyer' }),
-      review(warm, {}, { evidence: elsewhere }),
+      review(warm, { author: 'Jordan from Leeds' }),
       review(warm, { author: 'Natural Sam' }), // copy QA reads the name too
+      review(warm, {}, on('https://other.example/p/1')),
       review(warm, {}, { pass: 'sample' }), // in a live workspace
-      review(warm, {}, { confidence: 0.3 }),
-      // What copy QA refuses, a claim, a result, the body, a code, a link.
+      review(warm, {}, { confidence: 0.55 }), // less sure than a fact
+      // Someone named: the reviewer, another customer, the staff.
+      review('Jordan Smith here, I wear this jumper every weekend.'),
+      review('jordan here, and it is so warm on cold days.'),
+      review('Sarah Jones in the shop helped me choose the colour.'),
+      review('Maria helped me pick the size and it fits well.'),
+      // What copy QA refuses, a claim, a result, the body, spam, a code, a link.
       review('Arrived fast and free shipping too, love it.'),
       review('The best jumper I have ever owned, honestly.'),
       review('This cured my eczema in a week, amazing.'),
       review('My skin feels so much better in this wool.'),
+      review('Act now, click here, it is amazing and so warm.'),
       review('Use code SAVE20 at checkout for 20% off.'),
-      review('Read more at https://blog.example now.')
+      review('Read more at https://blog.example now.'),
+      // A catalog title is no excuse: the email may not place it.
+      review(scarf)
     ]
     expect(material([verified, ...left])).toBeUndefined()
-    // The store's own website, `www.` and subdomains aside.
-    const sub = { url: 'https://reviews.shop.example/p/1', quote: warm }
-    expect(
-      material([verified, review(warm, {}, { evidence: sub })])?.reviews
-    ).toHaveLength(1)
   })
 
-  it('writes a note from whole sentences of the brand’s own about page, at most 2, signed with its name', () => {
-    expect(
-      material([
-        about(started, { confidence: 0.9 }),
-        about(layers),
-        about('Every piece is knitted by a team of six in our studio.', {
-          confidence: 0.6
-        })
-      ])
-    ).toEqual({ founder: { name: 'Cedar Lane', note: [started, layers] } })
-  })
-
-  it('writes no note from anything but the brand’s own whole, plain sentences on its about page', () => {
-    const elsewhere = {
-      url: 'https://other.example/pages/about',
-      quote: started,
-      page: 'about'
-    }
-    const left = [
-      about(started, {}, 'home'),
-      about(started, { evidence: elsewhere }),
-      about(started, { topic: 'claim', value: { subject: 'brand' } }),
-      about(started, { pass: 'sample' }), // in a live workspace
-      about('started in a small workshop in 2016'),
-      about('Small workshop.'),
-      // Not the brand's own voice, leaning on the sentence before, or a
-      // line the Brand book would not show (so the owner could not fix it).
-      about('Cedar Lane started in a small workshop in 2016.'),
-      about('That shed is still where we make every knit.'),
-      about(started, { statement: 'It started in 2016 with 3 people.' }),
-      about('Our organic cotton is grown without any pesticides.'),
-      about('Orders over $75 ship free to your door, always.'),
-      about('We make the best knitwear in the whole country.')
-    ]
-    expect(material(left)).toBeUndefined()
-    // No brand name: no one to sign it.
-    expect(material([about(started)], { brandName: ' ' })).toBeUndefined()
-  })
-
-  it('never uses a line the owner removed or replaced in the Brand book', () => {
-    const line = about(started)
-    const correction = (over: Partial<Correction>): Correction => ({
-      id: 'c1',
-      section: 'offering',
-      original: `  ${line.statement.toUpperCase()} `,
-      action: 'remove',
-      value: null,
-      createdAt: '2026-11-15T10:00:00Z',
-      ...over
-    })
-    for (const action of ['remove', 'replace'] as const)
-      expect(
-        material([line], {
-          corrections: [correction({ action, value: 'Knitwear.' })]
-        })
-      ).toBeUndefined()
-    // Another section's line, or an added one, leaves it.
-    for (const c of [
-      correction({ section: 'voice' }),
-      correction({ action: 'add', original: null, value: 'Knitwear.' })
-    ])
-      expect(material([line], { corrections: [c] })?.founder).toBeDefined()
+  it('reads only the store’s own website or its subdomains, never its parent or a sibling', () => {
+    const store = { host: 'cedar.myshopify.com' }
+    const at = (url: string) =>
+      material([verified, review(warm, {}, on(url))], store)?.reviews ?? []
+    expect(at('https://cedar.myshopify.com/p/1')).toHaveLength(1)
+    expect(at('https://www.cedar.myshopify.com/p/1')).toHaveLength(1)
+    expect(at('https://reviews.cedar.myshopify.com/p/1')).toHaveLength(1)
+    expect(at('https://myshopify.com/p/1')).toEqual([])
+    expect(at('https://other.myshopify.com/p/1')).toEqual([])
+    expect(at('https://cedar.myshopify.com.evil.example/p/1')).toEqual([])
   })
 
   it('uses the sample rules’ findings only in a sample workspace', () => {
