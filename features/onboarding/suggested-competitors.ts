@@ -18,12 +18,14 @@ import type { Database } from '@/lib/supabase/database.types'
  * two sides agree. Brands sending lately come first.
  * The database gives only brands the inbox is subscribed to, of the
  * store's own kind (real or sample, from its brand profile), never one
- * the workspace follows or once followed (`suggestable_inbox_brands`);
- * here the store's own website is left out too. For now only the sample
- * store gets suggestions: who may see the inbox's real brands waits for
- * Raman, with following a real brand (the follow command takes sample
- * domains only) and signing the inbox up to new brands. Not yet: "similar
- * size" (the store's own size is not known yet).
+ * the workspace follows, once followed or the owner hid
+ * (`suggestable_inbox_brands`); here the store's own website is left out
+ * too. Real stores get the inbox's real brands (Raman, 16 Nov), only
+ * of their own industry: a suggestion is a brand's name, website and how
+ * often it sends, never an email. Not yet: following a real brand (its
+ * emails cleaned of names and addresses, REAL-01b), signing the
+ * inbox up to new brands, and "similar size" (the store's own size is not
+ * known yet).
  */
 export const maxSuggestions = 10
 /** How far back "sending lately" looks. */
@@ -147,31 +149,36 @@ export function suggestCompetitors(input: {
 type Db = SupabaseClient<Database>
 
 /**
- * The workspace's suggestions, read with the person's own client: his
- * workspace's rows under its row rules, the inbox's brands through
- * `suggestable_inbox_brands` (members of the workspace only). No brand
- * profile yet: nothing (it is not known whether the store is real). A
- * failed read throws.
+ * The workspace's suggestions. The workspace's own rows are read with the
+ * person's own client (`db`, row rules: a person who is not a member sees
+ * no profile, and gets nothing); only then are the inbox's brands asked
+ * for, with the server's client (`service`; `suggestable_inbox_brands` is
+ * the server's only, so no member can list brands of another industry).
+ * No brand profile yet: nothing (it is not known whether the store is
+ * real). A failed read throws.
  */
 export async function readCompetitorSuggestions(
   db: Db,
   tenantId: string,
-  { now = new Date() }: { now?: Date } = {}
+  { service, now = new Date() }: { service: Db; now?: Date }
 ): Promise<CompetitorSuggestion[]> {
   const since = new Date(now.getTime() - recentDays * 86_400_000).toISOString()
-  const [profile, findings, corrections, brands] = await Promise.all([
+  const [profile, findings, corrections] = await Promise.all([
     db
       .from('brand_profiles')
       .select('domain,synthetic')
       .eq('tenant_id', tenantId)
       .maybeSingle(),
     listFindings(db, tenantId, { topic: 'offering' }),
-    listCorrections(db, tenantId),
-    db.rpc('suggestable_inbox_brands', { t: tenantId, since })
+    listCorrections(db, tenantId)
   ])
   if (profile.error) throw profile.error
-  if (brands.error) throw brands.error
   if (!profile.data) return []
+  const brands = await service.rpc('suggestable_inbox_brands', {
+    t: tenantId,
+    since
+  })
+  if (brands.error) throw brands.error
   // A real store never counts what the sample rules found.
   const live = !profile.data.synthetic
   const own = live ? findings.filter((f) => f.pass !== 'sample') : findings
@@ -192,6 +199,24 @@ export async function readCompetitorSuggestions(
       labelled: labelCounts(b.labels)
     }))
   })
+}
+
+/**
+ * The owner hides a brand (never suggested again; no longer followed), or
+ * shows it again. With the owner's own client: the database checks he is
+ * the workspace's owner. A refused or failed call throws.
+ */
+export async function setBrandHidden(
+  db: Db,
+  tenantId: string,
+  captureId: string,
+  hidden: boolean
+): Promise<void> {
+  const args = { t: tenantId, capture: captureId }
+  const { error } = hidden
+    ? await db.rpc('hide_competitor', args)
+    : await db.rpc('unhide_competitor', args)
+  if (error) throw error
 }
 
 /** The database's label counts, only known industries and whole counts. */

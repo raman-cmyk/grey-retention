@@ -93,6 +93,8 @@ const writes = (system: string, n: number) => ({
 const model = (
   opts: {
     writer?: (call: Parameters<AiCall>[0]) => AiRunResult
+    /** An inspector's answer (none: it finds nothing). */
+    inspector?: (who: string, call: Parameters<AiCall>[0]) => unknown
     clock?: { t: number; step: number }
   } = {}
 ) => {
@@ -105,7 +107,7 @@ const model = (
         ? opts.writer(call)
         : answer(writes(call.request.system, ++n))
     if (who === 'brand-inspector' || who === 'email-inspector')
-      return answer({ problems: [] })
+      return answer(opts.inspector?.(who, call) ?? { problems: [] })
     return { ok: false, code: 'setup_required' }
   })
 }
@@ -809,11 +811,18 @@ describe('the subject line lab on the Copywriter’s words (PIC-26 part 2)', () 
       answer({ ...writes(call.request.system, 1), subjectIdeas: ideas })
   const copy = async (
     ideas: unknown,
-    over: { past?: typeof past; taken?: string[] } = {}
+    over: {
+      past?: typeof past
+      taken?: string[]
+      inspector?: NonNullable<Parameters<typeof model>[0]>['inspector']
+    } = {}
   ) => {
     const s = { ...(await store()), pastSubjects: over.past ?? past }
     const saved = await savedSteps(s)
-    const ai = model({ writer: ideasWriter(ideas) })
+    const ai = model({
+      writer: ideasWriter(ideas),
+      ...(over.inspector ? { inspector: over.inspector } : {})
+    })
     const result = await runBuildStep(
       'copy',
       {
@@ -881,6 +890,30 @@ describe('the subject line lab on the Copywriter’s words (PIC-26 part 2)', () 
     })
   })
 
+  it('never weighs an idea an inspector flags, however the store’s opens favour it (part 3a)', async () => {
+    const { ai, out } = await copy(['Ready for the weekend?'], {
+      inspector: (who) =>
+        who === 'email-inspector'
+          ? {
+              problems: [
+                {
+                  field: 'idea-1',
+                  quote: 'Ready for the weekend?',
+                  reason: 'It says nothing about the email.',
+                  fix: ''
+                }
+              ]
+            }
+          : { problems: [] }
+    })
+    expect(out.draft.subject).toBe('Quiet evenings, picked for you 1')
+    expect(out.subjectLab).toMatchObject({ weighed: 1, b: null })
+    // One write: a flagged idea never sends the email back.
+    expect(
+      ai.mock.calls.filter((c) => c[0].callerKey.startsWith('copywriter:'))
+    ).toHaveLength(1)
+  })
+
   it('keeps the writer’s own subject without past emails, the lab’s pick to test beside it', async () => {
     const none = await copy(undefined, { past: [] })
     expect(none.out.draft.subject).toBe('Quiet evenings, picked for you 1')
@@ -899,6 +932,51 @@ describe('the subject line lab on the Copywriter’s words (PIC-26 part 2)', () 
       a: { subject: 'Quiet evenings, picked for you 1', expected: null },
       b: { subject: 'Ready for the weekend?', expected: null }
     })
+  })
+
+  it('tests B against the subject in the one-design email it builds, never on plain copy (PIC-26 part 3b)', async () => {
+    const { out } = await copy(['Ready for the weekend?'])
+    expect(out.subjectLab?.b?.subject).toBe('Quiet evenings, picked for you 1')
+    const s = { ...(await store()), pastSubjects: past }
+    const progress = { ...(await savedSteps(s)), copy: out }
+    const design = await runBuildStep(
+      'design',
+      { planned, store: s, offers: sampleOffers, progress },
+      ctxWith(null)
+    )
+    expect(design).toMatchObject({
+      ok: true,
+      done: 'design',
+      email: {
+        subject: 'Ready for the weekend?',
+        subjectB: 'Quiet evenings, picked for you 1'
+      }
+    })
+    // Plain copy: no lab, no test.
+    const plain = await runBuildStep(
+      'copy',
+      {
+        planned,
+        store: s,
+        offers: sampleOffers,
+        progress: await savedSteps(s)
+      },
+      ctxWith(null)
+    )
+    if (!plain.ok || !('output' in plain)) throw new Error('copy failed')
+    const plainDesign = await runBuildStep(
+      'design',
+      {
+        planned,
+        store: s,
+        offers: sampleOffers,
+        progress: { ...(await savedSteps(s)), copy: plain.output }
+      },
+      ctxWith(null)
+    )
+    expect(
+      (plainDesign as { email?: Record<string, unknown> }).email
+    ).not.toHaveProperty('subjectB')
   })
 
   it('weighs nothing for plain copy, which keeps its own subject', async () => {
