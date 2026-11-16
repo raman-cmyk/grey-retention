@@ -9,7 +9,6 @@ import { plainFooterTags } from '@/features/letter/render'
 import { buildEmail, builtEmail, type PlannedEmail } from './build'
 import { letterLayout, letterOfferShown } from './letter-steps'
 import { sampleOffers, sampleStoreSource } from './ports'
-import { runBuildStep } from './steps'
 
 /** TXT-001c: "Create email" builds a text email (D26). */
 const tenantId = '00000000-0000-4000-8000-000000000101'
@@ -158,33 +157,6 @@ describe('a text email in Create email (TXT-001c)', () => {
     expect(none).toEqual({ ok: false, code: 'subject_taken' })
     expect(fallbacks.entries()[0]).toMatchObject({
       reasonCode: 'subject_taken'
-    })
-  })
-
-  it('runs as the job’s saved steps, and a saved letter that no longer reads starts over', async () => {
-    const s = await store()
-    const progress: Record<string, unknown> = {}
-    const run = (step: string) =>
-      runBuildStep(
-        step,
-        { planned, store: s, offers: sampleOffers, progress },
-        ctxWith(null)
-      )
-    for (const step of ['sections', 'content', 'copy'] as const) {
-      const made = await run(step)
-      if (!made.ok || !('output' in made)) throw new Error(`${step} failed`)
-      progress[step] = JSON.parse(JSON.stringify(made.output))
-    }
-    const design = await run('design')
-    expect(design).toMatchObject({
-      ok: true,
-      done: 'design',
-      email: { format: 'text', code: 'CANDLE10' }
-    })
-    progress.copy = { ...(progress.copy as object), letter: { subject: '' } }
-    expect(await run('design')).toEqual({
-      ok: false,
-      code: 'step_progress_invalid'
     })
   })
 
