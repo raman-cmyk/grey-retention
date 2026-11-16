@@ -292,6 +292,23 @@ describe('the Letter writer (TXT-001 part 2)', () => {
     ])
   })
 
+  it('a letter kept too hard to read ends in the plain letter, logged in fixed words (DST-PIC #28)', async () => {
+    const brief = await briefFor()
+    const fallbacks = memoryFallbackLog()
+    const hard =
+      'Our meticulously formulated aromatic composition harmonizes complementary botanical constituents, and it delivers an extraordinarily sophisticated olfactory experience for the discerning individual. Additionally, our environmentally conscious manufacturing methodology prioritizes responsibly harvested ingredients.'
+    const ai = modelOf([
+      () => ok({ ...good, body: [hard, hard, good.body.at(-1)!] })
+    ])
+    const result = await writeLetter(brief, { ...ctxWith(ai), fallbacks })
+    expect(result).toMatchObject({ status: 'plain', tries: 4 })
+    expect(fallbacks.entries()[0]).toMatchObject({
+      reason:
+        'The letter still failed the checks after every rewrite: words too hard to read.',
+      detail: expect.objectContaining({ rules: ['reading_level'] })
+    })
+  })
+
   it('a model that cannot answer: the plain letter at once', async () => {
     const brief = await briefFor()
     const fallbacks = memoryFallbackLog()

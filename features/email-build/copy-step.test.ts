@@ -347,6 +347,47 @@ describe('the copy step with the agents (REL-AI part 2b)', () => {
     expect(result.ok && result.email.html).toContain('Made for slow evenings')
   })
 
+  it('a Copywriter that keeps a section too long ends in plain copy, logged by its rule (DST-PIC #28)', async () => {
+    const long = Array.from({ length: 14 }, () => 'We picked it for you.').join(
+      ' '
+    )
+    const ai = model({
+      writer: (call) => {
+        const written = writes(call.request.system, 1)
+        return answer({
+          ...written,
+          blocks: written.blocks.map((b) =>
+            b.type === 'product_feature'
+              ? { ...b, words: { ...b.words, body: long } }
+              : b.type === 'text' || b.type === 'image_text'
+                ? { ...b, words: { ...b.words, paras: [long] } }
+                : b
+          )
+        })
+      }
+    })
+    const fallbacks = memoryFallbackLog()
+    const s = await store()
+    const result = await buildEmail(
+      {
+        planned: { ...planned, emailType: 'story', offer: null },
+        store: { ...s, industry: 'apparel' },
+        offers: sampleOffers
+      },
+      ctxWith(agentsWith(ai), { fallbacks })
+    )
+    // The plain copy is never held to it: the email builds.
+    expect(result.ok && result.email.copy).toBe('plain')
+    expect(
+      fallbacks.entries().find((e) => e.agent === 'copy-inspectors')
+    ).toMatchObject({
+      reasonCode: 'copy_plain_fallback',
+      detail: expect.objectContaining({
+        rules: expect.arrayContaining(['section_words'])
+      })
+    })
+  })
+
   it('sends back a section over its industry’s words, and tells the Copywriter the targets (DST-PIC #28)', async () => {
     let n = 0
     const long = Array.from({ length: 14 }, () => 'We picked it for you.').join(
@@ -382,7 +423,7 @@ describe('the copy step with the agents (REL-AI part 2b)', () => {
       c[0].callerKey.startsWith('copywriter:')
     )![0].request.system
     expect(first).toContain(
-      'Write for a reader of school grade 7 or below: short sentences and plain, everyday words. Keep each section to 50 words at most.'
+      'Write for a reader of school grade 7 or below: short sentences and plain, everyday words. Keep each block to 50 words at most (a steps or faq block to 80).'
     )
     // The long section went back once, and the rewrite was kept.
     expect(n).toBe(2)

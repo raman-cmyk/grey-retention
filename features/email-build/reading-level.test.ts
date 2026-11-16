@@ -41,7 +41,7 @@ describe('length and reading level per industry (DST-PIC #28)', () => {
     expect(readingTarget(null)).toEqual(readingTargets.other)
     expect(readingTarget('toString')).toEqual(readingTargets.other)
     expect(readingRule('apparel')).toBe(
-      'Write for a reader of school grade 7 or below: short sentences and plain, everyday words. Keep each section to 50 words at most.'
+      'Write for a reader of school grade 7 or below: short sentences and plain, everyday words. Keep each block to 50 words at most (a steps or faq block to 80).'
     )
   })
 
@@ -73,7 +73,7 @@ describe('length and reading level per industry (DST-PIC #28)', () => {
         rule: 'section_words',
         field: '1-text',
         reason:
-          'This section has 65 words; keep it to 50 at most: say less, in short sentences.'
+          'This block has 65 words; keep it to 50 at most: say less, in short sentences.'
       }
     ])
     expect(readingFindings(blocks(hard), 'electronics')).toEqual([
@@ -81,7 +81,7 @@ describe('length and reading level per industry (DST-PIC #28)', () => {
         rule: 'reading_level',
         field: 'email',
         reason: expect.stringMatching(
-          /^The words read at school grade \d+; write for grade 9: shorter sentences and plainer words\.$/
+          /^The words read at school grade [\d.]+; write for grade 9: shorter sentences and plainer words\.$/
         )
       })
     ])
@@ -114,9 +114,78 @@ describe('length and reading level per industry (DST-PIC #28)', () => {
       {
         rule: 'reading_level',
         reason: expect.stringMatching(
-          /^The letter reads at school grade \d+; write for grade 7/
+          /^The letter reads at school grade [\d.]+; write for grade 7/
         )
       }
     ])
+  })
+
+  it('reads each line on its own: a step or a heading without a full stop is never one long sentence', () => {
+    const step = (title: string, text: string) => ({ title, text })
+    const steps = (end: string) =>
+      ({
+        blocks: [
+          {
+            type: 'steps',
+            content: {
+              heading: `How to care for it${end}`,
+              items: [
+                step(
+                  `Trim the wick${end}`,
+                  `Keep it short so it burns clean${end}`
+                ),
+                step(
+                  `Light it for an hour${end}`,
+                  `Let the top melt all the way${end}`
+                ),
+                step(
+                  `Keep it away from wind${end}`,
+                  `A draft makes it smoke${end}`
+                ),
+                step(
+                  `Put it out with care${end}`,
+                  `Use a lid, not your breath${end}`
+                ),
+                step(
+                  `Store it in a cool place${end}`,
+                  `Heat can soften the wax${end}`
+                )
+              ]
+            }
+          }
+        ]
+      }) as unknown as Pick<Draft, 'blocks'>
+    expect(readingFindings(steps(''), 'accessories')).toEqual([])
+    expect(readingFindings(steps('.'), 'accessories')).toEqual([])
+  })
+
+  it('counts a silent e once, and a list block may hold more words', () => {
+    expect(['sale', 'style', 'while', 'smile'].map(syllables)).toEqual([
+      1, 1, 1, 1
+    ])
+    expect(['candle', 'little'].map(syllables)).toEqual([2, 2])
+    const faq = {
+      blocks: [
+        {
+          type: 'faq',
+          content: {
+            items: Array.from({ length: 5 }, () => ({
+              question: 'How long does it burn for you?',
+              answer: 'About fifty hours, if you trim it.'
+            }))
+          }
+        }
+      ]
+    } as unknown as Pick<Draft, 'blocks'>
+    // 70 words: over a text block's 50, within a list block's 80.
+    expect(readingFindings(faq, 'apparel')).toEqual([])
+  })
+
+  it('masks a store’s word only as a whole word', () => {
+    const words = Array.from({ length: 12 }, () => 'A long walk home.').join(
+      ' '
+    )
+    // "On" never splits "long" into two words.
+    expect(readingFindings(blocks(words), 'apparel', ['On'])).toEqual([])
   })
 })

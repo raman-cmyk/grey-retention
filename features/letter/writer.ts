@@ -463,10 +463,14 @@ export async function writeLetter(
       ...checks(letter.data),
       ...letterFindings(letter.data, brief),
       // DST-PIC #28: the industry's reading level (the writer's words).
-      ...letterReading(letterText(letter.data).map(seenText), ctx.industry, [
-        brief.brandName,
-        ...brief.locked.input.products.map((p) => p.title)
-      ])
+      ...letterReading(
+        letterText(letter.data).map(seenText),
+        ctx.industry,
+        [
+          brief.brandName,
+          ...brief.locked.input.products.map((p) => p.title)
+        ].flatMap((t) => [t, clean(t, 2_000)])
+      )
     ]
     if (!found.length)
       return { status: 'written', letter: letter.data, tries, runId }

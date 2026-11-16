@@ -37,6 +37,7 @@ import { designA } from './design'
 import { letterCopyStep, letterDesignStep, letterLayout } from './letter-steps'
 import {
   AssemblyError,
+  factLines,
   hiddenChars,
   type Draft
 } from '@/features/assembly/assemble'
@@ -586,11 +587,11 @@ export async function copyStep(
             draft,
             locked.input.products.map((p) => p.title)
           ),
-          ...readingFindings(
-            draft,
-            store.industry,
-            protectedText(locked, store.brand.name)
-          )
+          ...readingFindings(draft, store.industry, [
+            ...protectedText(locked, store.brand.name),
+            // The facts the writer must use word for word.
+            ...factLines(locked.input.facts)
+          ])
         ],
         // Saved by an older app in another shape: the rounds start over.
         ...(saved.success ? { work: saved.data as unknown as CopyWork } : {}),

@@ -57,6 +57,13 @@ export const readingTarget = (industry: string | null | undefined) =>
     ? readingTargets[industry as Industry]
     : readingTargets.other
 
+/** A list block (steps, questions and answers) holds this much more. */
+export const listShare = 1.6
+const lists = new Set<BlockType>(['steps', 'faq'])
+/** The most words a block of this type should hold. */
+export const blockWordsFor = (type: BlockType, t: ReadingTarget) =>
+  lists.has(type) ? Math.round(t.sectionWords * listShare) : t.sectionWords
+
 /** The fewest words a reading level is read from. */
 export const minGradeWords = 40
 /** How far over its grade a draft may read and still pass. */
@@ -65,7 +72,7 @@ export const gradeSlack = 2
 /** What the writer is told. */
 export const readingRule = (industry: string | null | undefined) => {
   const t = readingTarget(industry)
-  return `Write for a reader of school grade ${t.grade} or below: short sentences and plain, everyday words. Keep each section to ${t.sectionWords} words at most.`
+  return `Write for a reader of school grade ${t.grade} or below: short sentences and plain, everyday words. Keep each block to ${t.sectionWords} words at most (a steps or faq block to ${Math.round(t.sectionWords * listShare)}).`
 }
 
 const englishWord = /^[a-z]+(?:'[a-z]+)?$/
@@ -78,13 +85,12 @@ const commonEnglish = new Set(
 
 /** The syllables of an English word, by its groups of vowels. */
 export function syllables(word: string) {
-  const w = word.toLowerCase().replace(/'.*$/, '')
+  let w = word.toLowerCase().replace(/'.*$/, '')
   if (w.length <= 3) return 1
-  const groups =
-    w
-      .replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '')
-      .replace(/^y/, '')
-      .match(/[aeiouy]{1,2}/g)?.length ?? 0
+  w = w.replace(/(?:[^laeiouy]es|ed)$/, '')
+  // A silent e ("sale", "style"), never a consonant's "-le" ("candle").
+  if (/e$/.test(w) && !/[^aeiouy]le$/.test(w)) w = w.slice(0, -1)
+  const groups = w.replace(/^y/, '').match(/[aeiouy]{1,2}/g)?.length ?? 0
   return Math.max(1, groups)
 }
 
@@ -125,11 +131,22 @@ const wordCount = (text: string) =>
   text.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** `text` with the store's words out, as whole words (never inside one). */
 const masked = (text: string, own: readonly string[]) =>
   own
     .filter((t) => t.trim().length >= 2)
     .sort((a, b) => b.length - a.length)
-    .reduce((t, o) => t.replace(new RegExp(escape(o), 'gi'), ' '), text)
+    .reduce(
+      (t, o) =>
+        t.replace(
+          new RegExp(
+            `(?<![\\p{L}\\p{N}])${escape(o)}(?![\\p{L}\\p{N}])`,
+            'giu'
+          ),
+          ' '
+        ),
+      text
+    )
 
 /** Sections whose words are the store's, never the writer's. */
 const placed = new Set<BlockType>([
@@ -155,15 +172,20 @@ export function readingFindings(
   const texts: string[] = []
   draft.blocks.forEach((block, i) => {
     if (placed.has(block.type)) return
-    const text = masked(visibleText(blockWords(block).join('\n')), own)
+    // Each line its own: a heading or a step without a full stop is never
+    // read as one sentence with the next.
+    const text = blockWords(block)
+      .map((line) => masked(visibleText(line), own))
+      .join('\n')
     texts.push(text)
     const n = wordCount(text)
-    if (n > t.sectionWords)
+    const most = blockWordsFor(block.type, t)
+    if (n > most)
       out.push({
         by: 'code',
         rule: 'section_words',
         field: `${i + 1}-${block.type}`,
-        reason: `This section has ${n} words; keep it to ${t.sectionWords} at most: say less, in short sentences.`
+        reason: `This block has ${n} words; keep it to ${most} at most: say less, in short sentences.`
       })
   })
   const grade = readingGrade(texts.join('\n'))
@@ -172,7 +194,7 @@ export function readingFindings(
       by: 'code',
       rule: 'reading_level',
       field: 'email',
-      reason: `The words read at school grade ${Math.round(grade)}; write for grade ${t.grade}: shorter sentences and plainer words.`
+      reason: `The words read at school grade ${grade}; write for grade ${t.grade}: shorter sentences and plainer words.`
     })
   return out
 }
@@ -192,7 +214,7 @@ export function letterReading(
     ? [
         {
           rule: 'reading_level',
-          reason: `The letter reads at school grade ${Math.round(grade)}; write for grade ${t.grade}: shorter sentences and plainer words.`
+          reason: `The letter reads at school grade ${grade}; write for grade ${t.grade}: shorter sentences and plainer words.`
         }
       ]
     : []
