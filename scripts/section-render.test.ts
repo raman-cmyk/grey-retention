@@ -1,7 +1,15 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
 import type { Browser } from '@playwright/test'
-import { loadableOrigins, maxBytes, renderSection } from './section-render.mjs'
+import {
+  emailWindow,
+  loadableOrigins,
+  maxBytes,
+  maxEmailBytes,
+  maxEmailHeight,
+  renderEmail,
+  renderSection
+} from './section-render.mjs'
 
 /** A fake browser that records what the renderer asks of it. */
 function fakeBrowser(
@@ -9,6 +17,9 @@ function fakeBrowser(
     setContent?: () => Promise<void>
     screenshot?: () => Promise<Buffer>
     url?: string
+    /** What the browser measures (DST-005b), or a failure to. */
+    layout?: { width: number; height: number } | 'throw'
+    close?: () => Promise<void>
   } = {}
 ) {
   const seen: {
@@ -16,6 +27,7 @@ function fakeBrowser(
     route?: (route: unknown) => Promise<unknown>
     shot?: Record<string, unknown>
     closed: boolean
+    detached?: boolean
   } = { closed: false }
   const page = {
     route: async (_: string, handler: (route: unknown) => Promise<unknown>) => {
@@ -36,8 +48,25 @@ function fakeBrowser(
       seen.context = opts
       return {
         newPage: async () => page,
+        newCDPSession: async () => ({
+          send: async (method: string) => {
+            if (method !== 'Page.getLayoutMetrics' || over.layout === 'throw')
+              throw new Error('Protocol error')
+            return {
+              cssContentSize: {
+                x: 0,
+                y: 0,
+                ...(over.layout ?? { width: 600, height: 1200 })
+              }
+            }
+          },
+          detach: async () => {
+            seen.detached = true
+          }
+        }),
         close: async () => {
           seen.closed = true
+          await over.close?.()
         }
       }
     }
@@ -186,5 +215,150 @@ describe('the designed-section browser (DST-001)', () => {
     await expect(
       renderSection(browser, { ...input, height: 2000 })
     ).rejects.toThrow('failed')
+  })
+})
+
+describe('the whole-email browser (DST-005b)', () => {
+  const email = {
+    document: '<!doctype html><p>Hi</p>',
+    origins: ['https://cdn.shop.example']
+  }
+
+  it('draws each view as a plain page of its width, JavaScript off, one pixel a CSS px, in its colour scheme', async () => {
+    for (const [view, width, colorScheme] of [
+      ['desktop', 600, 'light'],
+      ['phone', 375, 'light'],
+      ['dark', 600, 'dark']
+    ] as const) {
+      const { browser, page, seen } = fakeBrowser({
+        layout: { width, height: 1200 }
+      })
+      const out = await renderEmail(browser, { ...email, view })
+      expect(seen.context).toMatchObject({
+        viewport: { width, height: emailWindow },
+        deviceScaleFactor: 1,
+        isMobile: false,
+        hasTouch: false,
+        colorScheme,
+        javaScriptEnabled: false,
+        serviceWorkers: 'block'
+      })
+      expect(page.setContent).toHaveBeenCalledWith(email.document, {
+        waitUntil: 'load',
+        timeout: 30_000
+      })
+      expect(seen.shot).toMatchObject({
+        type: 'jpeg',
+        quality: 85,
+        fullPage: true,
+        clip: { x: 0, y: 0, width, height: 1200 }
+      })
+      expect(out).toEqual({
+        image: Buffer.from([1, 2, 3]),
+        contentType: 'image/jpeg',
+        width,
+        height: 1200,
+        cut: false,
+        wide: false
+      })
+      expect(seen.detached).toBe(true)
+      expect(seen.closed).toBe(true)
+    }
+  })
+
+  it('cuts an email taller than the limit and says something is wider than the view, as the browser measures them', async () => {
+    const { browser, seen } = fakeBrowser({
+      layout: { width: 700.4, height: 7000 }
+    })
+    expect(
+      await renderEmail(browser, { ...email, view: 'desktop' })
+    ).toMatchObject({
+      width: 600,
+      height: maxEmailHeight,
+      cut: true,
+      wide: true
+    })
+    expect(seen.shot).toMatchObject({
+      clip: { x: 0, y: 0, width: 600, height: maxEmailHeight }
+    })
+  })
+
+  it('refuses an unknown view, and a page that would reach out past the guard, before opening anything', async () => {
+    for (const view of ['tablet', 'toString', '__proto__', 'constructor', 7]) {
+      const { browser, seen } = fakeBrowser()
+      await expect(
+        renderEmail(browser, { ...email, view: view as 'desktop' })
+      ).rejects.toThrow('failed')
+      expect(seen.context).toBeUndefined()
+    }
+    for (const document of [
+      '<link rel="prefetch" href="https://evil.example/x">',
+      '<LINK/rel=dns-prefetch href=//evil.example>',
+      '<meta http-equiv="&#114;efresh" content="0;url=https://evil.example">',
+      '<iframe src="https://evil.example"></iframe>',
+      '<p srcdoc="x">',
+      '<object data="https://evil.example/x"></object>',
+      '<embed src="https://evil.example/x">'
+    ]) {
+      const { browser, seen } = fakeBrowser()
+      await expect(
+        renderEmail(browser, { ...email, document, view: 'desktop' })
+      ).rejects.toThrow('navigated')
+      expect(seen.context).toBeUndefined()
+    }
+  })
+
+  it('stops for a page that navigated, timed out, failed, measured empty or a picture too large, and always closes', async () => {
+    const cases: [Parameters<typeof fakeBrowser>[0], string][] = [
+      [{ url: 'https://evil.example/' }, 'navigated'],
+      [
+        {
+          setContent: async () => {
+            throw new Error('Timeout 30000ms exceeded.')
+          }
+        },
+        'timeout'
+      ],
+      [
+        {
+          setContent: async () => {
+            throw new Error('net::ERR_FAILED')
+          }
+        },
+        'failed'
+      ],
+      [{ layout: 'throw' }, 'failed'],
+      [{ layout: { width: 600, height: emailWindow } }, 'failed'],
+      [{ layout: { width: 600, height: Number.NaN } }, 'failed'],
+      [
+        {
+          screenshot: async () => {
+            throw new Error('Timeout 30000ms exceeded.')
+          }
+        },
+        'timeout'
+      ],
+      [
+        { screenshot: async () => Buffer.alloc(maxEmailBytes + 1) },
+        'too_large'
+      ],
+      // A browser that died while closing keeps the real reason.
+      [
+        {
+          url: 'https://evil.example/',
+          close: async () => {
+            throw new Error('Target closed')
+          }
+        },
+        'navigated'
+      ]
+    ]
+    for (const [over, reason] of cases) {
+      const { browser, seen } = fakeBrowser(over)
+      await expect(
+        renderEmail(browser, { ...email, view: 'phone' })
+      ).rejects.toThrow(reason)
+      expect(seen.closed).toBe(true)
+    }
   })
 })

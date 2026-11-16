@@ -40,22 +40,18 @@ const reason = (error) =>
     : 'failed'
 
 /**
- * Draws one section page and returns its JPEG (1,200 px wide, `height` × 2
- * tall). Throws `timeout`, `failed`, `navigated` or `too_large`.
+ * A page that loads only `origins` (and inline pictures), never follows a
+ * redirect and never navigates, with JavaScript off and no service
+ * workers: the one way this script opens what it draws.
  */
-export async function renderSection(
-  browser,
-  { document, height, origins },
-  timeoutMs = 20_000
-) {
-  if (!Number.isInteger(height) || height < minHeight || height > maxHeight)
-    throw new Error('failed')
-  const allowed = loadableOrigins(origins)
+async function lockedPage(browser, options, timeoutMs) {
+  const allowed = loadableOrigins(options.origins)
   const context = await browser.newContext({
-    viewport: { width, height },
-    deviceScaleFactor: scale,
-    isMobile: false,
+    viewport: options.viewport,
+    deviceScaleFactor: options.scale,
+    isMobile: options.isMobile ?? false,
     hasTouch: false,
+    colorScheme: options.colorScheme ?? 'light',
     javaScriptEnabled: false,
     serviceWorkers: 'block'
   })
@@ -87,6 +83,30 @@ export async function renderSection(
         return route.abort()
       }
     })
+    return { context, page }
+  } catch (error) {
+    await context.close().catch(() => {})
+    throw error
+  }
+}
+
+/**
+ * Draws one section page and returns its JPEG (1,200 px wide, `height` × 2
+ * tall). Throws `timeout`, `failed`, `navigated` or `too_large`.
+ */
+export async function renderSection(
+  browser,
+  { document, height, origins },
+  timeoutMs = 20_000
+) {
+  if (!Number.isInteger(height) || height < minHeight || height > maxHeight)
+    throw new Error('failed')
+  const { context, page } = await lockedPage(
+    browser,
+    { viewport: { width, height }, scale, origins },
+    timeoutMs
+  )
+  try {
     try {
       await page.setContent(document, { waitUntil: 'load', timeout: timeoutMs })
     } catch (error) {
@@ -114,6 +134,130 @@ export async function renderSection(
       height: height * scale
     }
   } finally {
-    await context.close()
+    await context.close().catch(() => {})
+  }
+}
+
+/**
+ * DST-005b: the views of a whole built email the owner's preview shows:
+ * at 600 (desktop), at 375 (a phone's width: the email's own media queries
+ * apply), and at 600 in dark mode (what a reader sees where the inbox
+ * honours the email's own colour scheme; a client that forces its own
+ * inversion, as Gmail's app, is not drawn). Each is a plain page of that
+ * width, never the browser's mobile mode: that lays a page out at 980 px
+ * without a viewport tag and zooms out a wide one, so the email's height
+ * would be measured wrong.
+ */
+export const emailViews = Object.freeze({
+  desktop: Object.freeze({ width: 600, colorScheme: 'light' }),
+  phone: Object.freeze({ width: 375, colorScheme: 'light' }),
+  dark: Object.freeze({ width: 600, colorScheme: 'dark' })
+})
+/** An email is drawn at most this tall (CSS px); a longer one is cut. */
+export const maxEmailHeight = 6_000
+/** A whole email's picture (one pixel a CSS px): the studio bucket's limit. */
+export const maxEmailBytes = 3 * 1024 * 1024
+/**
+ * The email is laid out in a window this short: the browser never reports
+ * a page shorter than its window, so the email's own height shows. A page
+ * no taller (empty, or one that scrolls inside itself) is not drawn.
+ */
+export const emailWindow = 100
+
+/**
+ * What would reach out from the page on its own, past the route guard: a
+ * <link> (prefetch, preconnect and DNS prefetch skip request
+ * interception), a meta http-equiv (a refresh navigates; its value may be
+ * written with entities), and frames, objects and `srcdoc` (a page inside
+ * the page). A built email has none (email apps ignore them anyway); a
+ * page with one is refused, never drawn.
+ */
+const reachesOut =
+  /<link\b|\bhttp-equiv\b|<(?:iframe|frame|frameset|object|embed|portal|fencedframe)\b|\bsrcdoc\b/i
+
+/** The page's laid-out size (CSS px), as the browser measures it, never the page's own words. */
+async function layoutSize(context, page) {
+  const cdp = await context.newCDPSession(page)
+  try {
+    const { cssContentSize } = await cdp.send('Page.getLayoutMetrics')
+    return cssContentSize
+  } finally {
+    await cdp.detach().catch(() => {})
+  }
+}
+
+/**
+ * Draws a whole built email in one view, as the sections are drawn
+ * (JavaScript off, only its own origins, no redirect, no navigation), at
+ * its full height up to `maxEmailHeight`, as a JPEG. `cut` says a longer
+ * one was cut; `wide` says something in it is wider than the view (the
+ * picture keeps the view's width). Throws `navigated` for a page that
+ * would reach out on its own or that navigated, `timeout`, `failed` (an
+ * unknown view, an empty page) or `too_large`.
+ */
+export async function renderEmail(
+  browser,
+  { document, view, origins },
+  timeoutMs = 30_000
+) {
+  if (typeof view !== 'string' || !Object.hasOwn(emailViews, view))
+    throw new Error('failed')
+  if (typeof document !== 'string') throw new Error('failed')
+  if (reachesOut.test(document)) throw new Error('navigated')
+  const v = emailViews[view]
+  const { context, page } = await lockedPage(
+    browser,
+    {
+      viewport: { width: v.width, height: emailWindow },
+      scale: 1,
+      colorScheme: v.colorScheme,
+      origins
+    },
+    timeoutMs
+  )
+  try {
+    try {
+      await page.setContent(document, { waitUntil: 'load', timeout: timeoutMs })
+    } catch (error) {
+      throw new Error(reason(error))
+    }
+    if (page.url() !== 'about:blank') throw new Error('navigated')
+    let size
+    try {
+      size = await layoutSize(context, page)
+    } catch {
+      throw new Error('failed')
+    }
+    const measured = Math.ceil(Number(size?.height))
+    const across = Math.ceil(Number(size?.width))
+    if (!(measured > emailWindow) || !Number.isFinite(across))
+      throw new Error('failed')
+    const height = Math.min(measured, maxEmailHeight)
+    let image
+    try {
+      image = await page.screenshot({
+        type: 'jpeg',
+        quality,
+        // The whole page, cut at the limit (a clip alone stops at the
+        // window).
+        fullPage: true,
+        clip: { x: 0, y: 0, width: v.width, height },
+        animations: 'disabled',
+        timeout: timeoutMs
+      })
+    } catch (error) {
+      throw new Error(reason(error))
+    }
+    if (image.byteLength > maxEmailBytes) throw new Error('too_large')
+    return {
+      image,
+      contentType: 'image/jpeg',
+      width: v.width,
+      height,
+      cut: measured > maxEmailHeight,
+      wide: across > v.width
+    }
+  } finally {
+    await context.close().catch(() => {})
   }
 }

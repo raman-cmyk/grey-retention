@@ -1,7 +1,11 @@
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { test, expect } from '@playwright/test'
-import { renderSection } from '../../scripts/section-render.mjs'
+import {
+  maxEmailHeight,
+  renderEmail,
+  renderSection
+} from '../../scripts/section-render.mjs'
 
 // DST-001: the designed-section browser in real Chromium. One local server
 // plays the section's own picture host (one of its addresses redirects
@@ -84,4 +88,109 @@ test('draws a section at 1,200 px wide, loading only its own pictures and never 
   )
   // Neither directly nor through the redirect.
   expect(outsideHits).toEqual([])
+})
+
+// DST-005b: a whole built email in its three views, in real Chromium.
+test.describe('the whole-email browser (DST-005b)', () => {
+  const email = (body: string) =>
+    `<!doctype html><html><head><meta name="viewport" content="width=device-width"><style>body{margin:0}.tall{height:500px}.wide{height:300px}@media (prefers-color-scheme: dark){.tall{height:1000px}}@media (max-width:420px){.wide{height:900px}}</style></head><body>${body}</body></html>`
+
+  test('draws it at its full height: 600 wide, 375 for a phone, and dark mode as the email declares it', async ({
+    browser
+  }) => {
+    const body = `<div class="tall"></div><div class="wide"></div><img src="${ownBase}/a.png" alt="x" width="10" height="10" style="display:block"><img src="${outsideBase}/b.png" alt="y" width="10" height="10" style="display:block">`
+    const origins = [ownBase]
+    const desktop = await renderEmail(browser, {
+      document: email(body),
+      view: 'desktop',
+      origins
+    })
+    expect(desktop).toMatchObject({
+      width: 600,
+      height: 820,
+      cut: false,
+      wide: false
+    })
+    expect(jpegSize(desktop.image)).toEqual({ width: 600, height: 820 })
+    const phone = await renderEmail(browser, {
+      document: email(body),
+      view: 'phone',
+      origins
+    })
+    // The phone's own layout (its media query) is drawn, at 375.
+    expect(phone).toMatchObject({ width: 375, height: 820 + 600, wide: false })
+    expect(jpegSize(phone.image)).toEqual({ width: 375, height: 1420 })
+    const dark = await renderEmail(browser, {
+      document: email(body),
+      view: 'dark',
+      origins
+    })
+    expect(dark.height).toBe(820 + 500)
+    // Only its own pictures load.
+    expect(ownHits).toContain('/a.png')
+    expect(outsideHits).toEqual([])
+  })
+
+  test('measures a short email as it is, and says when something is wider than the view', async ({
+    browser
+  }) => {
+    const short = await renderEmail(browser, {
+      document: email('<div style="height:200px"></div>'),
+      view: 'desktop',
+      origins: []
+    })
+    expect(short).toMatchObject({ height: 200, cut: false, wide: false })
+    expect(jpegSize(short.image)?.height).toBe(200)
+    // A 600 px table on a phone: drawn at 375, and said to be wide.
+    const wide = await renderEmail(browser, {
+      document: email(
+        '<table width="600" cellpadding="0" cellspacing="0" style="width:600px"><tr><td style="height:400px">x</td></tr></table>'
+      ),
+      view: 'phone',
+      origins: []
+    })
+    expect(wide).toMatchObject({ width: 375, height: 400, wide: true })
+    expect(jpegSize(wide.image)?.width).toBe(375)
+    // An empty page, or one that scrolls inside itself, is not drawn.
+    for (const page of [
+      email(''),
+      '<!doctype html><html><head><style>html{overflow:hidden;height:100%}body{height:100%;overflow:auto;margin:0}</style></head><body><div style="height:3000px"></div></body></html>'
+    ])
+      await expect(
+        renderEmail(browser, { document: page, view: 'desktop', origins: [] })
+      ).rejects.toThrow('failed')
+  })
+
+  test('cuts an email taller than the limit, and says so', async ({
+    browser
+  }) => {
+    const long = await renderEmail(browser, {
+      document: email('<div style="height:7000px"></div>'),
+      view: 'desktop',
+      origins: []
+    })
+    expect(long).toMatchObject({ height: maxEmailHeight, cut: true })
+    expect(jpegSize(long.image)?.height).toBe(maxEmailHeight)
+  })
+
+  test('never draws a page that would reach out past the guard', async ({
+    browser
+  }) => {
+    outsideHits = []
+    for (const head of [
+      `<link rel="prefetch" href="${outsideBase}/prefetch">`,
+      `<LINK rel=preconnect href="${outsideBase}">`,
+      `<meta http-equiv="refresh" content="0;url=${outsideBase}/away">`,
+      `<iframe srcdoc="&lt;link rel=prefetch href=${outsideBase}/inner&gt;"></iframe>`
+    ])
+      await expect(
+        renderEmail(browser, {
+          document: email(`${head}<div style="height:300px"></div>`),
+          view: 'desktop',
+          origins: [ownBase]
+        })
+      ).rejects.toThrow('navigated')
+    await new Promise((done) => setTimeout(done, 300))
+    expect(outsideHits).toEqual([])
+  })
 })
