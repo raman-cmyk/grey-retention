@@ -41,6 +41,34 @@ describe('ActionButton (UI-HOMEb)', () => {
     )
   })
 
+  it('can say which item it is for, always starting with its visible words (UI-LRNb)', () => {
+    const action = async () => ({})
+    render(
+      <>
+        <ActionButton
+          action={action}
+          label="Pin"
+          spokenLabel="Lead with one product"
+        />
+        <ActionButton
+          action={action}
+          label="Remove"
+          spokenLabel="Remove: All caps subjects"
+        />
+        <ActionButton action={action} label="Unpin" />
+      </>
+    )
+    expect(
+      screen.getByRole('button', { name: 'Pin: Lead with one product' })
+    ).toHaveTextContent(/^Pin$/)
+    expect(
+      screen.getByRole('button', { name: 'Remove: All caps subjects' })
+    ).toHaveTextContent(/^Remove$/)
+    expect(screen.getByRole('button', { name: 'Unpin' })).not.toHaveAttribute(
+      'aria-label'
+    )
+  })
+
   it('shows no error after a success', async () => {
     const user = userEvent.setup()
     render(<ActionButton action={async () => ({})} label="Plan next 15 days" />)

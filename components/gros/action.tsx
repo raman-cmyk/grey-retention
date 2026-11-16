@@ -23,7 +23,8 @@ export function ActionButton({
   label,
   kind = 'main',
   size = 'app',
-  fields = {}
+  fields = {},
+  spokenLabel
 }: {
   action: ServerAction
   /** The button's words, kept while the action runs. */
@@ -32,6 +33,11 @@ export function ActionButton({
   size?: ButtonSize
   /** Hidden values the action reads (a run and a slot). */
   fields?: Record<string, string>
+  /**
+   * What a screen reader says when many buttons share a label: Pin: Lead
+   * with one product. It always starts with the visible label.
+   */
+  spokenLabel?: string
 }) {
   const [state, dispatch, pending] = useActionState(action, {})
   const errorId = useId()
@@ -47,6 +53,11 @@ export function ActionButton({
       ))}
       <Submit
         label={label}
+        spoken={
+          spokenLabel === undefined || spokenLabel.startsWith(label)
+            ? spokenLabel
+            : `${label}: ${spokenLabel}`
+        }
         kind={kind}
         size={size}
         describedBy={error ? errorId : undefined}
@@ -64,11 +75,13 @@ export function ActionButton({
 
 function Submit({
   label,
+  spoken,
   kind,
   size,
   describedBy
 }: {
   label: string
+  spoken?: string
   kind: Exclude<ButtonKind, 'round'>
   size: ButtonSize
   describedBy?: string
@@ -79,6 +92,7 @@ function Submit({
     <button
       type="submit"
       disabled={pending || !hydrated}
+      aria-label={spoken}
       aria-describedby={describedBy}
       className={buttonClasses(kind, size)}
     >

@@ -341,6 +341,9 @@ describe('Home screen (UI-HOMEb)', () => {
   it('names what GROS learned, and the offers', () => {
     render(<HomeScreen view={view()} />)
     const learned = card('What GROS learned')
+    expect(
+      within(learned).getByRole('link', { name: 'Open what GROS learned' })
+    ).toHaveAttribute('href', '/learned')
     expect(learned).toHaveTextContent('DoLead with one product')
     expect(learned).toHaveTextContent('AvoidAll caps subjects')
     const offers = card('Biggest discount')
