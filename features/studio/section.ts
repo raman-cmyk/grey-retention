@@ -49,6 +49,12 @@ export const maxSectionHeight = 1600
 export const maxSectionHtml = 60_000
 export const maxSectionCss = 30_000
 export const maxSectionFonts = 4
+/**
+ * DST-PIC #11 (owner pick): at most this many type sizes in one designed
+ * section (a headline, a line under it and a small label), so its text has
+ * one clear order.
+ */
+export const maxTypeSizes = 3
 
 /** HTML elements a picture may use. */
 const htmlElements = new Set(
@@ -112,7 +118,33 @@ export function srcsetUrls(value: string) {
   return urls
 }
 
-type Found = { problems: string[]; urls: string[] }
+type Found = { problems: string[]; urls: string[]; sizes?: Set<string> }
+
+/** A CSS font size as one key (`32px`, `2em`, `large`), or null. */
+function sizeKey(value: string) {
+  const v = value.trim().toLowerCase()
+  const n = /^(\d*\.?\d+)(px|pt|em|rem|%|vw|vh|vmin|vmax|ex|ch)?$/.exec(v)
+  if (n) return `${Number(n[1])}${n[2] ?? 'px'}`
+  return /^(?:xx-small|x-small|small|medium|large|x-large|xx-large|xxx-large|larger|smaller)$/.test(
+    v
+  ) || /^(?:calc|clamp|min|max)\(/.test(v)
+    ? v.replace(/\s+/g, ' ')
+    : null
+}
+
+/**
+ * The size in a `font` shorthand: its first part with a unit or a size
+ * keyword, before its `/line-height` (a bare number there is the weight).
+ */
+function shorthandSize(value: string) {
+  for (const part of value.trim().split(/\s+/)) {
+    const size = part.split('/')[0] ?? ''
+    if (/^\d*\.?\d+$/.test(size)) continue
+    const key = sizeKey(size)
+    if (key) return key
+  }
+  return null
+}
 
 function checkCss(
   css: string,
@@ -127,6 +159,15 @@ function checkCss(
   // (an SVG `url(#id)`) is read for its links only.
   const read = readCss(css, where !== 'styles')
   if (read.unread || where !== 'attributes') f.problems.push(...read.problems)
+  for (const d of read.declarations) {
+    const key =
+      d.property === 'font-size'
+        ? sizeKey(d.value.replace(/\s*!important$/i, ''))
+        : d.property === 'font'
+          ? shorthandSize(d.value)
+          : null
+    if (key) f.sizes?.add(key)
+  }
   for (const url of read.urls)
     if (!sameDocument.test(url)) {
       f.urls.push(url)
@@ -174,6 +215,10 @@ function walk(node: T.ParentNode, hosts: readonly string[], f: Found) {
         )
         continue
       }
+      if (name === 'font-size') {
+        const key = sizeKey(value)
+        if (key) f.sizes?.add(key)
+      }
       if (name === 'style') checkCss(value, 'inline styles', hosts, f)
       else if (name === 'src') {
         if (tag === 'img') checkUrl(value.trim(), hosts, f)
@@ -208,7 +253,7 @@ export function sectionProblems(
   const parsed = designedSection.safeParse(input)
   if (!parsed.success) return ['The section is not in the shape a section has.']
   const section = parsed.data
-  const f: Found = { problems: [], urls: [] }
+  const f: Found = { problems: [], urls: [], sizes: new Set() }
   if (!/^[a-z0-9-]{1,40}$/i.test(section.id))
     f.problems.push('The section has no usable name.')
   if (
@@ -227,6 +272,10 @@ export function sectionProblems(
   if (f.problems.some((p) => p.endsWith('too long.'))) return f.problems
   checkCss(section.css, 'styles', hosts, f)
   walk(parseFragment(section.html), hosts, f)
+  if (f.sizes!.size > maxTypeSizes)
+    f.problems.push(
+      `The section uses ${f.sizes!.size} type sizes; use at most ${maxTypeSizes} (a headline, a line under it and a small label).`
+    )
   const fonts = section.fonts ?? []
   if (fonts.length > maxSectionFonts)
     f.problems.push(`A section uses at most ${maxSectionFonts} web fonts.`)

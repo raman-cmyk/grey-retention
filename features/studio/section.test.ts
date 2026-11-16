@@ -261,3 +261,39 @@ describe('a designed section (DST-001)', () => {
     expect(page).toContain(`<div id="gr-section">${good.html}</div>`)
   })
 })
+
+describe('typography in a designed section (DST-PIC #11)', () => {
+  const sized = (css: string, html = '<h1>Hi</h1>') =>
+    sectionProblems(with_({ css, html }), hosts).filter((p) =>
+      p.includes('type sizes')
+    )
+  it('takes at most three type sizes, however they are written', () => {
+    expect(
+      sized('h1{font-size:48px}p{font-size:18px}small{font-size:12px}')
+    ).toEqual([])
+    // The same size twice, and a bare weight in the shorthand, count once.
+    expect(
+      sized(
+        'h1{font:700 48px/1.1 Georgia,serif}h2{font-size:48.0px}p{font-size:18px !important}small{font-size:12px}'
+      )
+    ).toEqual([])
+    expect(
+      sized(
+        'h1{font-size:48px}h2{font-size:32px}p{font-size:18px}small{font-size:12px}'
+      )
+    ).toEqual([
+      'The section uses 4 type sizes; use at most 3 (a headline, a line under it and a small label).'
+    ])
+  })
+
+  it('counts the sizes in inline styles, the shorthand and SVG text too', () => {
+    expect(
+      sized(
+        'h1{font-size:48px}',
+        '<h1>Hi</h1><p style="font: italic 20px Georgia">Line</p><small style="font-size:12px">x</small><svg viewBox="0 0 10 10"><text font-size="9">A</text></svg>'
+      )
+    ).toEqual([
+      'The section uses 4 type sizes; use at most 3 (a headline, a line under it and a small label).'
+    ])
+  })
+})
