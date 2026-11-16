@@ -184,6 +184,7 @@ describe('the Results page (UI-RES-a)', () => {
     expect(mixed.emails[0]).toMatchObject({
       state: 'sample',
       statusText: 'Sample: not sent',
+      topSection: null,
       note: 'A sample: this email was never sent, and its numbers are examples.'
     })
   })
@@ -198,6 +199,12 @@ describe('the Results page (UI-RES-a)', () => {
       state: 'draft',
       statusText: 'Draft in Klaviyo: ready for you to schedule'
     })
+    expect(
+      resultEmail(
+        line({ status: 'draft', statusText: 'Draft in Klaviyo', totals: null }),
+        { ...usd, today: '2026-11-18' }
+      ).statusText
+    ).toBe('Draft in Klaviyo: its planned day has passed')
     expect(
       resultEmail(line({ status: 'sending', statusText: 'Sending' }), usd)
     ).toMatchObject({

@@ -71,7 +71,12 @@ export type AbWords = {
 const count = new Intl.NumberFormat('en-US')
 
 /** The Klaviyo account's currency (null: plain amounts) and the store's time zone. */
-export type Place = { currency: string | null; timezone: string }
+export type Place = {
+  currency: string | null
+  timezone: string
+  /** Today in store time (YYYY-MM-DD): a draft past its day says so. */
+  today?: string
+}
 
 /** "38%", or "2.1%" under 10%. */
 export function percent(rate: number | null): string | null {
@@ -193,7 +198,7 @@ function noteOf(line: ResultLine): string | null {
 /** One Results line as the page shows it. */
 export function resultEmail(
   line: ResultLine,
-  { currency, timezone }: Place
+  { currency, timezone, today }: Place
 ): ResultEmail {
   const state: ResultEmail['state'] = line.sample
     ? 'sample'
@@ -205,7 +210,10 @@ export function resultEmail(
           ? 'draft'
           : 'other'
   const top =
-    line.topSection && Object.hasOwn(blockWords, line.topSection.block)
+    // A sample's clicks are examples: no "most clicks" fact.
+    !line.sample &&
+    line.topSection &&
+    Object.hasOwn(blockWords, line.topSection.block)
       ? `${blockWords[line.topSection.block]} got the most clicks (${count.format(line.topSection.clicks)}).`
       : null
   return {
@@ -216,7 +224,9 @@ export function resultEmail(
     statusText: line.sample
       ? 'Sample: not sent'
       : line.status === 'draft' && !line.statusText.includes('(')
-        ? 'Draft in Klaviyo: ready for you to schedule'
+        ? today && line.plannedDay && line.plannedDay < today
+          ? 'Draft in Klaviyo: its planned day has passed'
+          : 'Draft in Klaviyo: ready for you to schedule'
         : line.statusText,
     numbers: line.totals ? wordsOf(line.totals, currency) : null,
     note: noteOf(line),

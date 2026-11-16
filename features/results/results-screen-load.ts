@@ -31,5 +31,13 @@ export async function loadResultsScreen(
   const currency = connection.error
     ? null
     : (connection.data?.account_currency ?? null)
-  return resultsScreen(lines, { currency, timezone })
+  let today: string | undefined
+  try {
+    today = new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(
+      new Date()
+    )
+  } catch {
+    today = undefined
+  }
+  return resultsScreen(lines, { currency, timezone, today })
 }
