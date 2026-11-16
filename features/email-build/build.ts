@@ -21,7 +21,12 @@ import {
   seedVariants,
   type SectionPlan
 } from './sections'
-import { lockContent, type ChangeKey, type LockedContent } from './content'
+import {
+  lockContent,
+  type ChangeKey,
+  type LockedContent,
+  type LockedOffer
+} from './content'
 import {
   codeFindings,
   copyRounds,
@@ -33,6 +38,9 @@ import {
 import { copywriterRun } from './copywriter'
 import { headlineFindings } from './headline-fit'
 import { readingFindings } from './reading-level'
+import { subjectLab, subjectLabVersion } from './subject-lab'
+import { learnFrom, traitsOf, type SubjectTrait } from './subject-traits'
+import { offerWords } from '@/features/onboarding/history/facts'
 import { agentCallMs, maxStepSaves } from './step-names'
 import { designA } from './design'
 import { letterCopyStep, letterDesignStep, letterLayout } from './letter-steps'
@@ -195,6 +203,128 @@ export type CopyOutput = {
   changes: ChangeKey[]
   /** The Copywriter's words passed every check (REL-AI part 2b). */
   written?: boolean
+  /**
+   * PIC-26 part 2: what the subject line lab picked among the writer's
+   * subjects (A is the draft's subject) and the one worth testing against
+   * it (B; part 3 sends it as a 50/50 test), with why.
+   */
+  subjectLab?: SubjectPick
+}
+
+export type SubjectPick = {
+  version: string
+  /** True when the store's own past emails weighed the ideas. */
+  learned: boolean
+  /** The ideas weighed (the writer's own and its other ideas that fit). */
+  weighed: number
+  a: { subject: string; expected: number | null; why: string[] }
+  b: { subject: string; expected: number | null; why: string[] } | null
+  /** The traits A and B differ in: what a test of them teaches. */
+  tests: SubjectTrait[]
+}
+
+/** Words that state a price or a discount, in any form (an idea's claim). */
+const priceTalk =
+  /\b(?:half|price[sd]?|pricing|free|cheap(?:er|est)?|bargains?|markdowns?|reduced|off|save|savings?|discount(?:s|ed)?|deals?|sale|bogo|clearance|coupons?|promo|less|lower|lowest|(?:two|2) for (?:one|1))\b|[%$€£¥₹]|\d\s*(?:percent|per cent)\b/i
+
+/**
+ * Scarcity, urgency and claims an idea never makes (the writer's own
+ * subject is the inspectors' to judge): "almost gone", "this weekend
+ * only", "our bestseller", "handmade".
+ */
+const claimTalk =
+  /\b(?:almost gone|selling (?:out|fast)|sold out|going fast|while (?:they|stocks?|supplies) lasts?|(?:week(?:end)?|today|tonight|day)s? only|only (?:a few|\d+) left|(?:a )?few left|limited(?: stock| edition| time| run)?|before (?:it['’]?s|they['’]?re) gone|back in stock|low stock|last (?:one|few|chance)|best[- ]?sell(?:ing|ers?)|best|most (?:popular|loved)|(?:everyone['’]?s|fan|customer|crowd) favou?rites?|hand[- ]?made|small[- ]batch(?:es)?|award[- ]winning|loved by|number one|guaranteed?|organic|natural|sustainable|vegan|eco)\b|#\s?1\b/i
+
+/**
+ * True when an idea talks about price other than by the email's own offer
+ * ("10% off", "save 10%"): "Half price on everything" for a 10% code, or
+ * any price for an email with none.
+ */
+export function claimsPrice(subject: string, offer: LockedOffer | null) {
+  const own = offer
+    ? new RegExp(
+        `\\b(?:save |take |get |extra )?${String(offer.percent).replace('.', '\\.')}\\s?(?:%|percent\\b|per cent\\b)(?:\\s?off\\b)?`,
+        'gi'
+      )
+    : null
+  const rest = own ? subject.replace(own, ' ') : subject
+  // An offer the code does not give: "buy one, get one", "a free gift".
+  return priceTalk.test(rest) || offerWords.test(rest)
+}
+
+/**
+ * PIC-26 part 2: the subject line lab on the Copywriter's draft. Its own
+ * subject (judged by the inspectors) and its other ideas are weighed by
+ * the store's own opens (`store.pastSubjects`, PIC-26 part 1); an idea is
+ * weighed only when no other email of the plan has it, it is safe store
+ * text, assembly's word checks found nothing in it (the offer's percent
+ * only, no shipping or claim), the email's code checks pass with it as the
+ * subject, it talks about price or an offer only by the offer's own
+ * percent (`claimsPrice`), it makes no scarcity, urgency or product claim
+ * (`claimTalk`) and no deadline, and it says nothing new or of an offer
+ * the inspected subject does not (claims only the inspectors judge). Only the store's own opens move the subject: with
+ * no history the writer's own stays, and the lab's pick is still kept.
+ * The draft keeps the best as its subject; the ideas never stay in it.
+ */
+export function pickSubject(
+  draft: Draft,
+  input: {
+    locked: LockedContent
+    brandName: string
+    taken: ReadonlySet<string>
+    past: Store['pastSubjects']
+  }
+): { draft: Draft; pick: SubjectPick | null } {
+  const { subjectIdeas, ...kept } = draft
+  const ideas = [
+    draft.subject,
+    ...(Array.isArray(subjectIdeas)
+      ? subjectIdeas.filter((i): i is string => typeof i === 'string')
+      : [])
+  ]
+  const own = new Set(traitsOf(draft.subject, input.brandName))
+  const claims = (subject: string) =>
+    claimTalk.test(subject) ||
+    traitsOf(subject, input.brandName).some(
+      (t) =>
+        // Never a deadline (the writer's rule for ideas), whatever its own says.
+        t === 'deadline' ||
+        (!own.has(t) && (t === 'new' || (t === 'offer' && !input.locked.offer)))
+    )
+  const lab = subjectLab(ideas, learnFrom(input.past ?? [], input.brandName), {
+    brand: input.brandName,
+    // Without the store's own opens, rules of thumb never move the subject.
+    keepFirst: true,
+    fits: (subject, index) =>
+      // The writer's own subject passed every check already.
+      index === 0 ||
+      (!input.taken.has(subjectKey(subject)) &&
+        subjectText(subject) === subject &&
+        !claims(subject) &&
+        !claimsPrice(subject, input.locked.offer) &&
+        !codeFindings(
+          { status: 'ready', draft: { ...kept, subject } },
+          input.locked,
+          input.brandName
+        ).length)
+  })
+  if (!lab.a) return { draft: kept, pick: null }
+  const side = (r: NonNullable<typeof lab.a>) => ({
+    subject: r.subject,
+    expected: r.expected,
+    why: r.why
+  })
+  return {
+    draft: { ...kept, subject: lab.a.subject },
+    pick: {
+      version: subjectLabVersion,
+      learned: lab.learned,
+      weighed: lab.ranked.length,
+      a: side(lab.a),
+      b: lab.b ? side(lab.b) : null,
+      tests: lab.tests
+    }
+  }
 }
 
 type StepInput = { planned: PlannedEmail; store: Store }
@@ -636,8 +766,23 @@ export async function copyStep(
       return null
     })
     if (made?.status === 'paused') return { ok: true, work: made.work }
-    if (made?.status === 'passed')
-      return { ok: true, output: { draft: made.draft, changes, written: true } }
+    if (made?.status === 'passed') {
+      const { draft, pick } = pickSubject(made.draft, {
+        locked,
+        brandName: store.brand.name,
+        taken,
+        past: store.pastSubjects
+      })
+      return {
+        ok: true,
+        output: {
+          draft,
+          changes,
+          written: true,
+          ...(pick ? { subjectLab: pick } : {})
+        }
+      }
+    }
     if (made?.status === 'failed') return { ok: false, code: 'copy_failed' }
     // A busy AI: no job runs the agents later (the sweep has none), so the
     // email gets plain copy now, with the reason, not later without one.

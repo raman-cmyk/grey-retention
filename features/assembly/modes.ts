@@ -18,6 +18,7 @@ import {
   oneLine,
   productTakes,
   storeLink,
+  subjectIdeasOf,
   writerData,
   writerGuide,
   writerRules,
@@ -333,9 +334,14 @@ function checkFixed(content: unknown, steps: readonly LayoutStep[]): Written {
     )
   )
     throw fail(`Write exactly ${steps.length} blocks in this order: ${order}.`)
+  const ideas = subjectIdeasOf(
+    (content as { subjectIdeas?: unknown }).subjectIdeas,
+    subject
+  )
   return {
     subject,
     preheader,
+    ...(ideas.length ? { subjectIdeas: ideas } : {}),
     blocks: blocks.map((b, i) => ({
       type: steps[i].type,
       reason: steps[i].reason,
