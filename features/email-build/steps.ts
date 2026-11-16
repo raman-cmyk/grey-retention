@@ -581,7 +581,27 @@ export async function runBuildStep(
       detail: {},
       dedupeKey: `design-studio:${keyPart(ctx.callerKey)}:${coded.key}`
     })
-  return made.ok ? { ok: true, done: 'design', email: made.email } : made
+  return made.ok
+    ? { ok: true, done: 'design', email: withSubjectB(made.email, plain) }
+    : made
+}
+
+/** The lab's B as saved with the copy step (PIC-26 part 2). */
+const savedLab = z.object({
+  b: z.object({ subject: z.string().trim().min(1).max(120) }).nullable()
+})
+
+/**
+ * PIC-26 part 3b: an email with one design tests the lab's B against its
+ * subject, half the audience each. Never beside a design test (one test
+ * an email), never on plain copy (it has no lab), never B the same as A.
+ */
+function withSubjectB(email: BuiltEmail, copy: CopyOutput): BuiltEmail {
+  if (email.designA || email.text !== undefined || !copy.written) return email
+  const lab = savedLab.safeParse(copy.subjectLab)
+  const b = lab.success ? lab.data.b?.subject : undefined
+  if (!b || b.toLowerCase() === email.subject.trim().toLowerCase()) return email
+  return { ...email, subjectB: b }
 }
 
 /**

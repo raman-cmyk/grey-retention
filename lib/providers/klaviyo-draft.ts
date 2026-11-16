@@ -43,8 +43,10 @@ export type DraftInput = {
    * subject, preheader and audience. They go into ONE draft campaign with
    * two variations sent to half the audience each and no winner picked
    * (the owner still schedules it). Without it the draft has `html` only.
+   * PIC-26 part 3b: a subject test is the same with one design twice and
+   * B's own `subject` (A's is `subject`).
    */
-  variations?: { approach: 'A' | 'B'; html: string }[]
+  variations?: { approach: 'A' | 'B'; html: string; subject?: string }[]
   /**
    * TXT-001e: a text email's own plain-text part (Klaviyo's tags in its
    * footer), put on its template beside the HTML. One design only: never

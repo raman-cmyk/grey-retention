@@ -380,6 +380,103 @@ describe('the live Klaviyo draft push', () => {
       ])
     })
 
+  describe('a subject test (PIC-26 part 3b)', () => {
+    const one = page('A', [hero, knit])
+    const subjects = (over: Partial<DraftInput> = {}) =>
+      input({
+        variations: [
+          { approach: 'A', html: one },
+          { approach: 'B', html: one, subject: 'Ready for knitwear weather?' }
+        ],
+        ...over
+      })
+
+    it('puts both subjects on the one design into one draft, half the audience each, verified', async () => {
+      const { account, memory, pusher } = setup()
+      expect(await pusher.createDraft(subjects())).toMatchObject({
+        ok: true,
+        designs: 'both'
+      })
+      const [, message] = only(account.messages)
+      expect(message.winnerPercentage).toBe(0)
+      const [a, b] = variationsOf(account)
+      expect([a!.subject, b!.subject]).toEqual([
+        '20% off knitwear',
+        'Ready for knitwear weather?'
+      ])
+      expect(b!.preview).toBe(a!.preview)
+      // Each variation its own template of the same design.
+      expect(a!.templateId).not.toBe(b!.templateId)
+      expect(account.templates.get(b!.templateId!)!.html).toBe(
+        account.templates.get(a!.templateId!)!.html
+      )
+      expect(memory.row()).toMatchObject({ designs: 'both', ab: 'verified' })
+      // The same key again changes nothing.
+      const before = writes(account).length
+      expect(await pusher.createDraft(subjects())).toMatchObject({ ok: true })
+      expect(writes(account)).toHaveLength(before)
+    })
+
+    it('never touches subject B once the owner changed it in Klaviyo', async () => {
+      const { account, pusher } = setup()
+      await pusher.createDraft(subjects())
+      const [, b] = variationsOf(account)
+      b!.subject = 'The owner wrote this'
+      expect(await pusher.createDraft(subjects())).toEqual({
+        ok: false,
+        code: 'rejected',
+        checks: ['externally_modified'],
+        reason: 'externally_modified'
+      })
+      expect(b!.subject).toBe('The owner wrote this')
+    })
+
+    it('keeps the first subject alone when Klaviyo refuses the even test', async () => {
+      const { account, pusher } = setup({ abTest: 'refused' })
+      expect(await pusher.createDraft(subjects())).toMatchObject({
+        ok: true,
+        designs: 'A'
+      })
+      expect(variationsOf(account).map((v) => v.subject)).toEqual([
+        '20% off knitwear'
+      ])
+    })
+
+    it('refuses a subject test that is not one: a second design, A’s subject again, a subject on A, two lines', async () => {
+      for (const variations of [
+        [
+          { approach: 'A' as const, html: one },
+          { approach: 'B' as const, html: page('B', [knit]), subject: 'Other' }
+        ],
+        [
+          { approach: 'A' as const, html: one },
+          { approach: 'B' as const, html: one, subject: ' 20% OFF knitwear ' }
+        ],
+        [
+          { approach: 'A' as const, html: one, subject: 'Mine' },
+          { approach: 'B' as const, html: one, subject: 'Other' }
+        ],
+        [
+          { approach: 'A' as const, html: one },
+          { approach: 'B' as const, html: one, subject: 'Two\nlines' }
+        ],
+        [
+          { approach: 'A' as const, html: one },
+          { approach: 'B' as const, html: one, subject: 'x'.repeat(121) }
+        ]
+      ]) {
+        const { account, pusher } = setup()
+        expect(await pusher.createDraft(input({ variations }))).toEqual({
+          ok: false,
+          code: 'rejected',
+          checks: ['variations'],
+          reason: 'variations_invalid'
+        })
+        expect(writes(account)).toHaveLength(0)
+      }
+    })
+  })
+
   it('refuses, and says so loudly, when Klaviyo keeps its own test and design B cannot be taken out', async () => {
     const { account, pusher } = setup({
       abTest: 'ignored',

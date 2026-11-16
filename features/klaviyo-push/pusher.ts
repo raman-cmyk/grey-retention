@@ -196,11 +196,19 @@ const short = (key: string) => key.replace(/-/g, '').slice(0, 8)
 const templateName = (key: string, approach: 'A' | 'B', hash: string) =>
   `GROS ${short(key)} ${approach} ${hash.slice(0, 8)}`
 
-type Design = { approach: 'A' | 'B'; html: string; text?: string }
+type Design = {
+  approach: 'A' | 'B'
+  html: string
+  text?: string
+  /** PIC-26 part 3b: B's own subject in a subject test. */
+  subject?: string
+}
 
 /**
  * The designs asked for: two for an A/B test (A first), else the one, with
- * a text email's plain-text part (TXT-001e; never with a test).
+ * a text email's plain-text part (TXT-001e; never with a test). A subject
+ * test (PIC-26 part 3b) is the one design twice, B with its own subject,
+ * one line under 120 characters and not A's.
  */
 function designsOf(input: DraftInput): Design[] {
   if (!input.variations)
@@ -218,10 +226,23 @@ function designsOf(input: DraftInput): Design[] {
     more.length ||
     a.approach !== 'A' ||
     b.approach !== 'B' ||
-    input.text !== undefined
+    input.text !== undefined ||
+    a.subject !== undefined ||
+    (b.subject !== undefined &&
+      (b.html !== a.html ||
+        !/^[^\n\r]{1,120}$/.test(b.subject) ||
+        !norm(b.subject) ||
+        norm(b.subject).toLowerCase() === norm(input.subject).toLowerCase()))
   )
     throw new Refused('variations_invalid', ['variations'])
-  return [a, b]
+  return [
+    { approach: 'A', html: a.html },
+    {
+      approach: 'B',
+      html: b.html,
+      ...(b.subject !== undefined ? { subject: norm(b.subject) } : {})
+    }
+  ]
 }
 
 const setOf = (s: string | null) => new Set(s ? s.split(',') : [])
@@ -772,9 +793,11 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     }
     await save({ shown: shownText(m) })
   }
+  /** Variation i's subject: B's own in a subject test (PIC-26 part 3b). */
+  const subjectOf = (i: number) => wanted[i]?.subject ?? input.subject
   const content = (i: number, templateId: string): VariationContent => ({
     name: designName(wanted[i]!.approach),
-    subject: input.subject,
+    subject: subjectOf(i),
     preview: input.preheader,
     templateId
   })
@@ -979,7 +1002,7 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
       const same = on?.hash === hashes[i]
       if (
         same &&
-        norm(v.subject) === norm(input.subject) &&
+        norm(v.subject) === norm(subjectOf(i)) &&
         norm(v.preview) === norm(input.preheader)
       ) {
         // Changed by an earlier run whose read back never came: recorded now.
