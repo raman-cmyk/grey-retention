@@ -21,7 +21,7 @@ import {
 import { buildAgentsFor, emailAgentsReady } from './agents'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { maxStepSaves, roundSteps, maxEmailBytes } from './step-names'
-import { buildCode, type BuildFailureCode } from './failure-words'
+import { buildCode, refusedCode, type BuildFailureCode } from './failure-words'
 import { type SavedOffers, type StoreSource } from './ports'
 import {
   noPhotos,
@@ -462,8 +462,12 @@ export async function runEmailBuilds(
           lease: { build: job.id, token: job.lease_token }
         })
         if (!pushed.ok) {
+          // REL-084c: a refusal by the app's own checks keeps its reason,
+          // on this build (an earlier try's push row may still say another).
           await fail(
-            `klaviyo_${pushed.code}`,
+            pushed.code === 'rejected'
+              ? refusedCode(pushed.reason)
+              : `klaviyo_${pushed.code}`,
             pushed.code === 'auth' || pushed.code === 'rejected',
             pushed.retryAfterSeconds
           )
