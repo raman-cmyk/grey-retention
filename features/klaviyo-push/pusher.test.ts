@@ -10,6 +10,10 @@ import {
   type FakeDraftAccount
 } from '@/lib/providers/klaviyo/recorded-drafts'
 import { fakeDraftPusher, type DraftInput } from '@/lib/providers/klaviyo-draft'
+import { sampleBrand } from '@/features/blocks/samples'
+import { letterSchema } from '@/features/letter/letter'
+import { plainFooterTags, renderLetter } from '@/features/letter/render'
+import { textFooterProblems, textUnsubscribeTag } from './html'
 import {
   liveDraftPusher,
   pushMark,
@@ -28,6 +32,8 @@ const page = (title: string, pictures: string[]) =>
     .join(
       ''
     )}<a href="https://cedar.example/p/1">Shop</a>${footer}</body></html>`
+/** A text email's plain-text part, as the letter writes it (TXT-001e). */
+const plain = `Hi there,\n\nA short note from the shop.\n\nWarmly,\nMaya\n\n-- \n{{ organization.name }}, {{ organization.full_address }}\nUnsubscribe: ${textUnsubscribeTag}\nPreferences: {% manage_preferences_link %}\n`
 const hero = 'https://cedar.example/images/hero.jpg?w=600&amp;h=400'
 const knit = 'https://cedar.example/images/knit.jpg'
 const input = (over: Partial<DraftInput> = {}): DraftInput => ({
@@ -250,6 +256,88 @@ describe('the live Klaviyo draft push', () => {
       { id: 'footer', pass: true, problems: [] },
       { id: 'size', pass: true, problems: [] }
     ])
+  })
+
+  it('puts a text email’s plain-text part on its template beside the HTML (TXT-001e)', async () => {
+    const { account, pusher } = setup()
+    const result = await pusher.createDraft(input({ text: plain }))
+    expect(result).toMatchObject({ ok: true })
+    const [variation] = variationsOf(account)
+    // Klaviyo's copy keeps it, word for word.
+    expect(account.templates.get(variation!.templateId!)).toMatchObject({
+      text: plain
+    })
+    // A designed email sends none: Klaviyo makes its own.
+    const designed = setup()
+    await designed.pusher.createDraft(input())
+    const [other] = variationsOf(designed.account)
+    expect(
+      designed.account.templates.get(other!.templateId!)
+    ).not.toHaveProperty('text')
+  })
+
+  it('keeps a text email’s plain text current: a new text, a lost answer, a text taken away (TXT-001e)', async () => {
+    const textOf = (account: FakeDraftAccount) =>
+      account.templates.get(variationsOf(account)[0]!.templateId!)?.text
+    const newer = plain.replace('A short note', 'A newer note')
+    // The same HTML with a new text: the draft shows the new text.
+    const a = setup()
+    await a.pusher.createDraft(input({ text: plain }))
+    expect(await a.pusher.createDraft(input({ text: newer }))).toMatchObject({
+      ok: true
+    })
+    expect(textOf(a.account)).toBe(newer)
+    // A template whose answer was lost is found only for the same text.
+    const b = setup({ loseTemplate: true })
+    await b.pusher.createDraft(input({ text: plain }))
+    expect(await b.pusher.createDraft(input({ text: newer }))).toMatchObject({
+      ok: true
+    })
+    expect(textOf(b.account)).toBe(newer)
+    // Pushed again as a designed email: no text of the letter's is left.
+    const c = setup()
+    await c.pusher.createDraft(input({ text: plain }))
+    expect(await c.pusher.createDraft(input())).toMatchObject({ ok: true })
+    expect(textOf(c.account)).toBeUndefined()
+  })
+
+  it('never overwrites the owner’s edit of a text email’s plain text (TXT-001e)', async () => {
+    const { account, pusher } = setup()
+    expect((await pusher.createDraft(input({ text: plain }))).ok).toBe(true)
+    const copy = account.templates.get(variationsOf(account)[0]!.templateId!)!
+    copy.text = `${plain}The owner wrote this.`
+    const before = writes(account).length
+    expect(
+      await pusher.createDraft(input({ html: page('A2', [hero]), text: plain }))
+    ).toMatchObject({ ok: false, reason: 'externally_modified' })
+    expect(writes(account)).toHaveLength(before)
+    expect(copy.text).toContain('The owner wrote this.')
+  })
+
+  it('takes the letter’s own plain text, and never its preview (TXT-001e)', () => {
+    const letter = letterSchema.parse({
+      subject: 'A note',
+      preheader: 'Why we made it, and how it fills a room.',
+      body: ['Hello from the shop.'],
+      signoff: 'Warmly,',
+      signature: 'Maya',
+      links: []
+    })
+    const brand = { ...sampleBrand, name: 'Cedar Lane' }
+    const klaviyo = renderLetter(letter, { brand, mode: 'klaviyo' })
+    const preview = renderLetter(letter, { brand, mode: 'preview' })
+    expect(textUnsubscribeTag).toBe(plainFooterTags.unsubscribe)
+    expect(textFooterProblems(klaviyo.text)).toEqual([])
+    expect(textFooterProblems(preview.text)).not.toEqual([])
+  })
+
+  it('keeps its own template when Klaviyo’s copy drops the plain text (TXT-001e)', async () => {
+    const { account, pusher } = setup({ dropsCopyText: true })
+    expect((await pusher.createDraft(input({ text: plain }))).ok).toBe(true)
+    // Ours (with the text) is not deleted: the copy is not the same design.
+    expect([...account.templates.values()].some((t) => t.text === plain)).toBe(
+      true
+    )
   })
 
   it('puts an A/B design test into one draft: both designs and an even split with no winner, in one request, verified', async () => {
@@ -849,6 +937,23 @@ describe('the live Klaviyo draft push', () => {
         { variations: [{ approach: 'A', html: page('A', []) }] },
         ['variations'],
         'variations_invalid'
+      ],
+      // TXT-001e: a plain-text part is one design's, with its unsubscribe link.
+      [{ ...ab(), text: plain }, ['variations'], 'variations_invalid'],
+      [
+        { text: plain.replace(textUnsubscribeTag, '') },
+        ['footer'],
+        'footer_missing'
+      ],
+      [
+        { text: plain.replace('{{ organization.full_address }}', '') },
+        ['footer'],
+        'footer_missing'
+      ],
+      [
+        { text: `${plain}{% unsubscribe 'Unsubscribe' %}` },
+        ['footer'],
+        'footer_missing'
       ],
       [
         {
@@ -1491,6 +1596,9 @@ describe('the fake pusher', () => {
       checks: ['variations'],
       reason: 'variations_invalid'
     })
+    expect(
+      await fakeDraftPusher().createDraft(ab({ text: plain }))
+    ).toMatchObject({ ok: false, reason: 'variations_invalid' })
     expect(
       await fakeDraftPusher({ designs: 'A' }).createDraft(ab())
     ).toMatchObject({ ok: true, designs: 'A' })
