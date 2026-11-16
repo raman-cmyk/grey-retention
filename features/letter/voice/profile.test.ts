@@ -269,6 +269,28 @@ describe('founderVoice (PIC-23 part 3a)', () => {
       expect(of(line), line).toContain(line)
   })
 
+  it('keeps no greeting or sign-off with an offer, a deadline or a name (PIC-23 part 3b)', () => {
+    for (const [greeting, signoff] of [
+      ['Sale ends tonight!', 'Last chance!'],
+      ['Only a few left!', 'Free gift inside!'],
+      ['Hi Sarah,', 'Love Maya,'],
+      ['Maya here!', 'With love from Maya!'],
+      ['This weekend only!', 'One day only!'],
+      ['It ends at midnight!', 'Just a few hours left!'],
+      ['Now or never!', 'See you at midnight!']
+    ]) {
+      const voice = founderVoice([
+        sample(`${greeting}\n${body}\n${signoff}`, 3, 'MsgS1'),
+        sample(`${greeting}\n${body}\n${signoff}`, 3, 'MsgS2')
+      ])!
+      expect([voice.greeting, voice.signoff], greeting).toEqual([null, null])
+    }
+    // The store's own name may be in one, as a whole.
+    expect(
+      founderVoice([sample(`Hi from Cedar Goods,\n${body}\nWarmly,`)], own)
+    ).toMatchObject({ greeting: 'Hi from Cedar Goods,', signoff: 'Warmly,' })
+  })
+
   it('lets the letters decide the greeting and sign-off, and keeps a sign-off written in lower case', () => {
     const letters = [1, 2, 3, 4, 5].map((n) =>
       sample(`Hi,\n${body}\nWarmly,\nMaya`, 3, `MsgL${n}`)
