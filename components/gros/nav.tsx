@@ -16,7 +16,7 @@ import { Mark } from './mark'
 // Typed routes: the addresses of screens not built yet are cast until
 // each screen lands (then the cast goes, and the build checks the address).
 export const navItems = [
-  { key: 'home', label: 'Home', href: '/home' as Route },
+  { key: 'home', label: 'Home', href: '/home' },
   { key: 'plan', label: 'Plan', href: '/plan' as Route },
   { key: 'inspiration', label: 'Inspiration', href: '/inspiration' as Route },
   { key: 'audiences', label: 'Audiences', href: '/audiences' as Route },

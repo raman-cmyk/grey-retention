@@ -64,11 +64,9 @@ describe('signing in after the session ran out', () => {
   })
 
   it('lands on the usual page without a safe page to go back to', async () => {
-    expect(await landsOn('client', form())).toBe('/dashboard')
-    expect(await landsOn('client', form('https://evil.example/'))).toBe(
-      '/dashboard'
-    )
-    expect(await landsOn('client', form('/admin/clients'))).toBe('/dashboard')
+    expect(await landsOn('client', form())).toBe('/home')
+    expect(await landsOn('client', form('https://evil.example/'))).toBe('/home')
+    expect(await landsOn('client', form('/admin/clients'))).toBe('/home')
     expect(await landsOn('admin', form('/plan'))).toBe('/admin/dashboard')
     expect(await landsOn('designer', form('//evil.example'))).toBe(
       '/designer/dashboard'

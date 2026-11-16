@@ -75,8 +75,11 @@ test('a new owner creates a workspace and resumes saved brand setup', async ({
     fullPage: true
   })
   await page.getByRole('link', { name: 'Exit setup' }).click()
-  await expect(page).toHaveURL(/\/dashboard$/)
+  await expect(page).toHaveURL(/\/home$/)
   await expect(
-    page.getByRole('heading', { name: 'New here? Start with one email.' })
+    page.getByRole('heading', {
+      level: 1,
+      name: /^Good (morning|afternoon|evening), /
+    })
   ).toBeVisible()
 })

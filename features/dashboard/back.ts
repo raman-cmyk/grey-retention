@@ -1,17 +1,11 @@
 import type { Route } from 'next'
-import { parseTab } from './klaviyo-card'
 
 /**
- * Where "Back to dashboard" goes from a Klaviyo detail page: the tab the
- * owner came from, scrolled to the Klaviyo card (docs/OWNER_JOURNEYS.md
- * Job 5 fix). Anything unexpected goes to the top of the dashboard.
+ * Where "Back" goes from a Klaviyo detail page. The old dashboard and its
+ * Klaviyo tabs are retired (UI-HOMEb): Home, until Audiences (lists and
+ * segments) and Results (campaigns, flows, metrics) take these pages.
  */
 export function dashboardBack(from: unknown): { href: Route; label: string } {
-  const tab = parseTab(from)
-  return tab !== 'overview'
-    ? {
-        href: `/dashboard?tab=${tab}#klaviyo-data` as Route,
-        label: 'Back to dashboard'
-      }
-    : { href: '/dashboard', label: 'Back to dashboard' }
+  void from
+  return { href: '/home' as Route, label: 'Back to Home' }
 }

@@ -20,7 +20,7 @@ import { parseShellState, shellCookieName } from './shell-state'
 import { ShellFrame } from './sidebar'
 
 const { location } = vi.hoisted(() => ({
-  location: { pathname: '/dashboard' }
+  location: { pathname: '/home' }
 }))
 vi.mock('next/navigation', () => ({ usePathname: () => location.pathname }))
 vi.mock('@/features/auth/presentation/actions', () => ({
@@ -73,7 +73,7 @@ const desktopNav = () =>
 
 beforeAll(installDialogPolyfill)
 beforeEach(() => {
-  location.pathname = '/dashboard'
+  location.pathname = '/home'
   document.cookie = `${shellCookieName}=; max-age=0; path=/`
 })
 afterEach(cleanup)
@@ -93,7 +93,7 @@ describe('sidebar (expanded)', () => {
       .slice(0, 7)
       .map((link) => link.textContent)
     expect(labels).toEqual([
-      'Dashboard',
+      'Home',
       'Brand & Store',
       'Plan next 15 days',
       'Campaigns',
@@ -102,7 +102,7 @@ describe('sidebar (expanded)', () => {
       'Support'
     ])
     expect(
-      within(desktopNav()).getByRole('link', { name: 'Dashboard' })
+      within(desktopNav()).getByRole('link', { name: 'Home' })
     ).toHaveAttribute('aria-current', 'page')
   })
 
@@ -160,15 +160,15 @@ describe('sidebar (expanded)', () => {
   })
 
   it.each([
-    ['/lists/abc', 'Dashboard'],
-    ['/segments/abc', 'Dashboard'],
-    ['/flows/abc', 'Dashboard'],
-    ['/flow-messages/abc', 'Dashboard'],
-    ['/metrics/abc', 'Dashboard'],
+    ['/lists/abc', 'Home'],
+    ['/segments/abc', 'Home'],
+    ['/flows/abc', 'Home'],
+    ['/flow-messages/abc', 'Home'],
+    ['/metrics/abc', 'Home'],
     ['/campaign-drafts', 'Campaigns'],
     ['/campaign-drafts/new', 'Campaigns'],
     ['/campaigns/abc', 'Campaigns'],
-    ['/campaigns/klaviyo/CMPspr001', 'Dashboard'],
+    ['/campaigns/klaviyo/CMPspr001', 'Home'],
     ['/gros/thread-1', 'Ask GROS']
   ])('highlights the parent area on %s', (pathname, label) => {
     location.pathname = pathname
@@ -243,12 +243,12 @@ describe('sidebar (collapsed)', () => {
     )
     expect(cookieState().collapsed).toBe(true)
     const nav = within(desktopNav())
-    const dashboard = nav.getByRole('link', { name: 'Dashboard' })
+    const dashboard = nav.getByRole('link', { name: 'Home' })
     expect(dashboard).toHaveAttribute('aria-current', 'page')
     expect(dashboard).toHaveTextContent('')
     expect(screen.queryByTestId('rail-tooltip')).not.toBeInTheDocument()
     await userEvent.hover(dashboard)
-    expect(screen.getByTestId('rail-tooltip')).toHaveTextContent('Dashboard')
+    expect(screen.getByTestId('rail-tooltip')).toHaveTextContent('Home')
     await userEvent.unhover(dashboard)
     expect(screen.queryByTestId('rail-tooltip')).not.toBeInTheDocument()
     const expand = screen.getByRole('button', { name: 'Toggle sidebar' })

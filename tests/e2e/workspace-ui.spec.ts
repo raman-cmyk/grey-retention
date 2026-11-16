@@ -127,7 +127,7 @@ test('core workspace surfaces render without overflow', async ({
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   for (const [path, heading] of [
-    ['/dashboard', 'Dashboard'],
+    ['/home', /^Good (morning|afternoon|evening), /],
     ['/campaign-agent', 'Campaigns'],
     ['/brand', 'Brand & Store'],
     ['/assets', 'Brand assets'],
@@ -140,7 +140,7 @@ test('core workspace surfaces render without overflow', async ({
     ['/team', 'Team'],
     ['/support', 'Support'],
     ['/settings', 'Settings']
-  ]) {
+  ] as [string, string | RegExp][]) {
     await page.goto(path)
     await expect(
       page.getByRole('heading', { name: heading, exact: true })
@@ -152,17 +152,13 @@ test('core workspace surfaces render without overflow', async ({
       path
     ).toBe(true)
     if (
-      [
-        '/dashboard',
-        '/campaign-agent',
-        '/assets',
-        '/gros',
-        '/reports'
-      ].includes(path)
+      ['/home', '/campaign-agent', '/assets', '/gros', '/reports'].includes(
+        path
+      )
     ) {
       await page.screenshot({
         path: `.audit/ui-002-${path.slice(1)}-${info.project.name}.png`,
-        fullPage: path === '/dashboard' || path === '/gros'
+        fullPage: path === '/home' || path === '/gros'
       })
     }
   }
@@ -188,5 +184,5 @@ test('guided setup can be revisited without changing saved brand details', async
     )
   ).toBe(true)
   await page.getByRole('link', { name: 'Exit setup' }).click()
-  await expect(page).toHaveURL(/\/dashboard$/)
+  await expect(page).toHaveURL(/\/home$/)
 })
