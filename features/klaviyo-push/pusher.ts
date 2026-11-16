@@ -196,11 +196,29 @@ const short = (key: string) => key.replace(/-/g, '').slice(0, 8)
 const templateName = (key: string, approach: 'A' | 'B', hash: string) =>
   `GROS ${short(key)} ${approach} ${hash.slice(0, 8)}`
 
-type Design = { approach: 'A' | 'B'; html: string; text?: string }
+/**
+ * A subject of a subject test, as Klaviyo shows it: one line of at most 120
+ * characters, never a template tag (Klaviyo renders subjects as templates),
+ * markup or a control character.
+ */
+const testSubject = (subject: string) => {
+  const s = norm(subject)
+  return !!s && s.length <= 120 && !/[{}<>\u0000-\u001f\u007f]/.test(subject)
+}
+
+type Design = {
+  approach: 'A' | 'B'
+  html: string
+  text?: string
+  /** PIC-26 part 3b: B's own subject in a subject test. */
+  subject?: string
+}
 
 /**
  * The designs asked for: two for an A/B test (A first), else the one, with
- * a text email's plain-text part (TXT-001e; never with a test).
+ * a text email's plain-text part (TXT-001e; never with a test). A subject
+ * test (PIC-26 part 3b) is the one design twice, B with its own subject,
+ * one line under 120 characters and not A's.
  */
 function designsOf(input: DraftInput): Design[] {
   if (!input.variations)
@@ -218,10 +236,23 @@ function designsOf(input: DraftInput): Design[] {
     more.length ||
     a.approach !== 'A' ||
     b.approach !== 'B' ||
-    input.text !== undefined
+    input.text !== undefined ||
+    a.subject !== undefined ||
+    (b.subject !== undefined &&
+      (b.html !== a.html ||
+        !testSubject(b.subject) ||
+        !testSubject(input.subject) ||
+        norm(b.subject).toLowerCase() === norm(input.subject).toLowerCase()))
   )
     throw new Refused('variations_invalid', ['variations'])
-  return [a, b]
+  return [
+    { approach: 'A', html: a.html },
+    {
+      approach: 'B',
+      html: b.html,
+      ...(b.subject !== undefined ? { subject: norm(b.subject) } : {})
+    }
+  ]
 }
 
 const setOf = (s: string | null) => new Set(s ? s.split(',') : [])
@@ -471,13 +502,33 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
   }
   /**
    * Which variation is which design: as recorded when made (from Klaviyo's
-   * answer to the create), else by our name, else by what it shows (its
-   * template's HTML is one of ours). Never by the order Klaviyo lists them.
+   * answer to the create), else by our name, else (a subject test, whose
+   * halves show the same HTML) by its subject when each matches exactly
+   * one, else by what it shows (its template's HTML is one of ours). Never
+   * by the order Klaviyo lists them.
    */
   const identify = async (r: DraftRead, via: KlaviyoClient) => {
     let a = named(r, 'A')
     let b = named(r, 'B')
     if (b && b.id === a?.id) b = undefined
+    // The input as given: this runs before the designs are checked.
+    const subjectB = input.variations?.[1]?.subject
+    if (r.variations.length === 2 && (!a || !b) && subjectB !== undefined) {
+      const by = (s: string) =>
+        r.variations.filter((v) => norm(v.subject) === norm(s))
+      const [onlyA, ...moreA] = by(input.subject)
+      const [onlyB, ...moreB] = by(subjectB)
+      if (
+        onlyA &&
+        onlyB &&
+        !moreA.length &&
+        !moreB.length &&
+        onlyA.id !== onlyB.id
+      ) {
+        if (!a && onlyA.id !== b?.id) a = onlyA
+        if (!b && onlyB.id !== a?.id) b = onlyB
+      }
+    }
     if (r.variations.length === 2 && (!a || !b))
       for (const v of r.variations) {
         if (v.id === a?.id || v.id === b?.id || !v.templateId) continue
@@ -591,7 +642,13 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     // What we sent counts too: a draft never read back since its create.
     const changed =
       (!!p.written || !!p.target) &&
-      read.variations.some((v) => !allowed.has(seen(v)))
+      (read.variations.some((v) => !allowed.has(seen(v))) ||
+        // With no write of ours under way the draft shows exactly what we
+        // wrote: a subject test's two subjects, never one of them twice
+        // (the owner moving A's subject to B is his change).
+        (!p.target &&
+          !!p.written &&
+          fingerprints(read.variations) !== p.written))
     if (p.ab === 'pending') read = await settle(read)
     if (changed) return close(read)
     if (
@@ -772,9 +829,11 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
     }
     await save({ shown: shownText(m) })
   }
+  /** Variation i's subject: B's own in a subject test (PIC-26 part 3b). */
+  const subjectOf = (i: number) => wanted[i]?.subject ?? input.subject
   const content = (i: number, templateId: string): VariationContent => ({
     name: designName(wanted[i]!.approach),
-    subject: input.subject,
+    subject: subjectOf(i),
     preview: input.preheader,
     templateId
   })
@@ -979,7 +1038,7 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
       const same = on?.hash === hashes[i]
       if (
         same &&
-        norm(v.subject) === norm(input.subject) &&
+        norm(v.subject) === norm(subjectOf(i)) &&
         norm(v.preview) === norm(input.preheader)
       ) {
         // Changed by an earlier run whose read back never came: recorded now.
