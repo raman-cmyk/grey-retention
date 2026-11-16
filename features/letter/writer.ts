@@ -24,6 +24,16 @@ import type { FallbackLog } from '@/features/fallback/log'
 import type { AgentCtx } from '@/features/strategy/retry'
 import { letterProblems, type LetterProblem } from './checks'
 import {
+  founderParagraphs,
+  kindOf,
+  kindProblems,
+  kindRules,
+  kindSpecs,
+  placedNote,
+  writerBody,
+  type LetterKind
+} from './kinds'
+import {
   letterSchema,
   letterText,
   letterWords,
@@ -53,6 +63,8 @@ export type LetterBrief = {
   brandName: string
   /** The store's home page (`BlockBrand.site`). */
   site: string
+  /** DST-PIC #24: its kind (`letterKinds`), when the plan gives one. */
+  kind?: LetterKind
 }
 
 /** Store text as a letter shows it: one line, no hidden characters. */
@@ -160,6 +172,9 @@ export const letterWriter = (
   instructions: [
     ...letterInstructions,
     ...customerWordsRules(brief.locked.input),
+    // DST-PIC #24: the kind's own rules, with their numbers, when it fits.
+    ...kindRules(brief),
+    // DST-PIC #28: the industry’s reading level.
     readingRule(industry)
   ].join('\n'),
   task: ({ brief, feedback }) =>
@@ -171,7 +186,10 @@ export const letterWriter = (
         offer: brief.locked.offer
           ? `${brief.locked.offer.percent}% off, with a code the system adds after the letter`
           : null,
-        signedBy: letterSigner(brief).signature
+        signedBy: letterSigner(brief).signature,
+        ...(kindOf(brief) ? { kind: kindSpecs[kindOf(brief)!].name } : {}),
+        // The founder's own words, placed by the system (never the writer's).
+        ...(placedNote(brief) ? { founderNote: placedNote(brief) } : {})
       },
       feedback
     ),
@@ -187,11 +205,15 @@ export const letterWriter = (
 export function letterFrom(answer: LetterAnswer, brief: LetterBrief) {
   const opt = (s: string) => (s.trim() ? s : undefined)
   const offer = offerOf(brief)
+  // A founder note: the founder's own note after the first paragraph.
+  const note = placedNote(brief)
   return letterSchema.safeParse({
     subject: answer.subject,
     preheader: answer.preheader,
     greeting: opt(answer.greeting),
-    body: answer.body,
+    body: note
+      ? [...answer.body.slice(0, 1), ...note, ...answer.body.slice(1)]
+      : answer.body,
     signoff: answer.signoff,
     ...letterSigner(brief),
     ps: opt(answer.ps),
@@ -206,9 +228,12 @@ export function letterFindings(
   brief: LetterBrief
 ): LetterProblem[] {
   const input = brief.locked.input
+  // The founder's placed note is the founder's own words, checked on its
+  // own before it is placed (`founderNote`), never the writer's.
+  const note = placedNote(brief) ?? []
   const parts = [
     letter.greeting ?? '',
-    ...letter.body,
+    ...writerBody(letter, brief),
     letter.offer ? offerLine(letter.offer) : '',
     letter.signoff,
     letter.ps ?? ''
@@ -234,7 +259,8 @@ export function letterFindings(
     brief.brandName,
     ...input.products.map((p) => p.title),
     signer.signature,
-    ...(signer.role ? [signer.role] : [])
+    ...(signer.role ? [signer.role] : []),
+    ...note
   ].flatMap((t) => [t, clean(t, 2_000)])
   // Prices are the system's (ASM-001): one the writer writes must be a
   // locked product's own.
@@ -378,6 +404,17 @@ const letterRuleWords: Record<string, string> = {
   preview_length: 'a preview line of the wrong length',
   preview_markup: 'markup in the preview line',
   preview_repeats_subject: 'a preview line that repeats the subject',
+  kind_length: 'a length its kind does not have',
+  kind_links: 'more links than its kind has',
+  kind_offer: 'an offer its kind never has',
+  kind_first_person: 'a founder note not in the first person',
+  kind_note_quoted: 'the founder’s note repeated',
+  kind_paragraphs: 'too many paragraphs around the founder’s note',
+  kind_question: 'a quick question with no question',
+  kind_questions: 'more than one question',
+  kind_guilt: 'words that make the reader feel guilty',
+  kind_thanks: 'a thank-you that does not thank',
+  kind_first_link: 'a link before the thanks',
   wrong_price: 'a price that is not the product’s',
   subject_taken: 'a subject another email of the plan has'
 }
@@ -394,7 +431,9 @@ const wordsFor = (rules: readonly string[]) =>
 /** A zod issue on the letter in words the writer can act on. */
 function partReason(issue: z.core.$ZodIssue) {
   if (issue.code === 'too_big' && typeof issue.maximum === 'number')
-    return `Keep it to ${issue.maximum} characters or fewer.`
+    return issue.origin === 'array'
+      ? `Keep it to ${issue.maximum} paragraphs or fewer.`
+      : `Keep it to ${issue.maximum} characters or fewer.`
   if (issue.code === 'too_small') return 'Never leave it empty.'
   return 'Write it as plain words.'
 }
@@ -448,6 +487,20 @@ export async function writeLetter(
       })
       continue
     }
+    // A founder note: the writer's own paragraphs go around the note.
+    if (placedNote(brief) && result.output.body.length > founderParagraphs) {
+      cause = 'check_failed'
+      rounds.push({
+        rules: ['kind_paragraphs'],
+        feedback: [
+          {
+            field: 'body',
+            reason: `Write at most ${founderParagraphs} paragraphs of your own: the founder’s note goes between them.`
+          }
+        ]
+      })
+      continue
+    }
     const letter = letterFrom(result.output, brief)
     if (!letter.success) {
       cause = 'check_failed'
@@ -463,9 +516,15 @@ export async function writeLetter(
     const found = [
       ...checks(letter.data),
       ...letterFindings(letter.data, brief),
+      // DST-PIC #24: its kind's rules (the plain letter has no kind).
+      ...kindProblems(letter.data, brief),
       // DST-PIC #28: the industry's reading level (the writer's words).
       ...letterReading(
-        letterText(letter.data).map(seenText),
+        // The writer's words only: never the founder's placed note.
+        [
+          ...writerBody(letter.data, brief),
+          ...letterText(letter.data).slice(letter.data.body.length)
+        ].map(seenText),
         ctx.industry,
         [
           brief.brandName,
