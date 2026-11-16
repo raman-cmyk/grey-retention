@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { emailFormats, type EmailFormat } from '@/features/strategy/plan'
 import { InMemoryMemoryStore, type MemoryStore } from '@/features/agents/memory'
 import {
   InMemoryRunLog,
@@ -52,12 +53,10 @@ import { offersAt, type Store } from './ports'
  * in part 2c.
  */
 
-/** D26: the two kinds of email the build makes. */
-export const emailFormats = ['designed', 'text'] as const
-export type EmailFormat = (typeof emailFormats)[number]
+// D26: the two kinds of email (the plan's, TXT-001f).
+export { emailFormats, type EmailFormat }
 
 /** The planned email this build is for (a slot of STR-003's stored plan). */
-
 export const plannedEmail = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   time: z.string().regex(/^\d{2}:\d{2}$/),
