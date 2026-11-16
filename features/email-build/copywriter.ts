@@ -14,7 +14,7 @@ import { readingRule } from './reading-level'
  * The build has agents only with a live model (`buildAgentsFor`); the
  * answer says which provider gave it.
  */
-export const copywriterVersion = '2026-11-16.3'
+export const copywriterVersion = '2026-11-16.4'
 
 export function copywriterRun(
   agents: BuildAgents,

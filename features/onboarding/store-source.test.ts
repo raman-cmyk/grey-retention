@@ -434,8 +434,92 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
       ['catalog_status', 'eq', 'tenant_id', tenantId],
       ['brand_profiles', 'eq', 'tenant_id', tenantId],
       ['brand_kits', 'eq', 'tenant_id', tenantId],
-      ['brand_logos', 'eq', 'tenant_id', tenantId]
+      ['brand_logos', 'eq', 'tenant_id', tenantId],
+      ['klaviyo_history', 'eq', 'tenant_id', tenantId]
     ])
+  })
+
+  it('gives the subject line lab the store’s past subjects, from the same account as its catalog (PIC-26 part 2)', async () => {
+    const sentEmail = {
+      id: 'MsgA01',
+      campaignId: 'CmpA01',
+      name: null,
+      subject: 'Ready for the weekend?',
+      preview: null,
+      sentAt: '2026-10-01T10:00:00.000Z',
+      offer: false,
+      collecting: false,
+      abTest: false,
+      strategy: 'static',
+      recipients: 900,
+      opens: 300,
+      clicks: 20,
+      orders: 1,
+      revenue: 50,
+      revenuePerRecipient: 0.05,
+      openRate: 0.33,
+      clickRate: 0.02,
+      unsubscribeRate: 0
+    }
+    const snapshot = {
+      currency: 'USD',
+      timezone: 'UTC',
+      sendsPerWeek: 1,
+      usualSendTime: '10:00',
+      sent: [sentEmail],
+      scheduled: [],
+      flows: [],
+      audiences: [],
+      flowsRead: true,
+      window: { sentDays: 365, sentCap: 300, flowDays: 90 },
+      parts: {
+        sent: true,
+        scheduled: true,
+        audiences: true,
+        campaignReport: true,
+        flows: true,
+        flowReport: true,
+        lists: true,
+        segments: true
+      }
+    }
+    const history = (live: boolean) => ({
+      data: {
+        snapshot,
+        state: 'ready',
+        reason: null,
+        read_at: '2026-11-01T10:00:00Z',
+        complete: true,
+        live
+      },
+      error: null
+    })
+    const live = fakeDb({
+      catalog_status: status(),
+      ...own,
+      klaviyo_history: history(true)
+    })
+    expect((await ownStoreSource(live.db).read(tenantId)).pastSubjects).toEqual(
+      [{ subject: 'Ready for the weekend?', recipients: 900, openRate: 0.33 }]
+    )
+    // A live store never learns from the sample account's emails.
+    const sampled = fakeDb({
+      catalog_status: status(),
+      ...own,
+      klaviyo_history: history(false)
+    })
+    expect(
+      (await ownStoreSource(sampled.db).read(tenantId)).pastSubjects
+    ).toBeUndefined()
+    // An unreadable history leaves the lab to its rules of thumb.
+    const broken = fakeDb({
+      catalog_status: status(),
+      ...own,
+      klaviyo_history: failed
+    })
+    expect(
+      (await ownStoreSource(broken.db).read(tenantId)).pastSubjects
+    ).toBeUndefined()
   })
 
   it('reads only the fake Klaviyo’s products while the catalog was read fake', async () => {

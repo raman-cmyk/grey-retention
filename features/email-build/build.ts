@@ -33,6 +33,8 @@ import {
 import { copywriterRun } from './copywriter'
 import { headlineFindings } from './headline-fit'
 import { readingFindings } from './reading-level'
+import { subjectLab, subjectLabVersion } from './subject-lab'
+import { learnFrom, type SubjectTrait } from './subject-traits'
 import { agentCallMs, maxStepSaves } from './step-names'
 import { designA } from './design'
 import { letterCopyStep, letterDesignStep, letterLayout } from './letter-steps'
@@ -195,6 +197,76 @@ export type CopyOutput = {
   changes: ChangeKey[]
   /** The Copywriter's words passed every check (REL-AI part 2b). */
   written?: boolean
+  /**
+   * PIC-26 part 2: what the subject line lab picked among the writer's
+   * subjects (A is the draft's subject) and the one worth testing against
+   * it (B; part 3 sends it as a 50/50 test), with why.
+   */
+  subjectLab?: SubjectPick
+}
+
+export type SubjectPick = {
+  version: string
+  /** True when the store's own past emails weighed the ideas. */
+  learned: boolean
+  /** The ideas weighed (the writer's own and its other ideas that fit). */
+  weighed: number
+  a: { subject: string; expected: number | null; why: string[] }
+  b: { subject: string; expected: number | null; why: string[] } | null
+  /** The traits A and B differ in: what a test of them teaches. */
+  tests: SubjectTrait[]
+}
+
+/**
+ * PIC-26 part 2: the subject line lab on the Copywriter's draft. Its own
+ * subject (judged by the inspectors) and its other ideas are weighed by
+ * the store's own opens (`store.pastSubjects`, PIC-26 part 1); an idea is
+ * weighed only when no other email of the plan has it, it is safe store
+ * text and every code check passes with it in the draft (the copy checks,
+ * the preview line pairing with it). The draft keeps the best as its
+ * subject; the ideas never stay in the draft.
+ */
+export function pickSubject(
+  draft: Draft,
+  input: {
+    locked: LockedContent
+    brandName: string
+    taken: ReadonlySet<string>
+    past: Store['pastSubjects']
+  }
+): { draft: Draft; pick: SubjectPick | null } {
+  const { subjectIdeas, ...kept } = draft
+  const ideas = [draft.subject, ...(subjectIdeas ?? [])]
+  const lab = subjectLab(ideas, learnFrom(input.past ?? [], input.brandName), {
+    brand: input.brandName,
+    fits: (subject, index) =>
+      // The writer's own subject passed every check already.
+      index === 0 ||
+      (!input.taken.has(subjectKey(subject)) &&
+        subjectText(subject) === subject &&
+        !codeFindings(
+          { status: 'ready', draft: { ...kept, subject } },
+          input.locked,
+          input.brandName
+        ).length)
+  })
+  if (!lab.a) return { draft: kept, pick: null }
+  const side = (r: NonNullable<typeof lab.a>) => ({
+    subject: r.subject,
+    expected: r.expected,
+    why: r.why
+  })
+  return {
+    draft: { ...kept, subject: lab.a.subject },
+    pick: {
+      version: subjectLabVersion,
+      learned: lab.learned,
+      weighed: lab.ranked.length,
+      a: side(lab.a),
+      b: lab.b ? side(lab.b) : null,
+      tests: lab.tests
+    }
+  }
 }
 
 type StepInput = { planned: PlannedEmail; store: Store }
@@ -636,8 +708,23 @@ export async function copyStep(
       return null
     })
     if (made?.status === 'paused') return { ok: true, work: made.work }
-    if (made?.status === 'passed')
-      return { ok: true, output: { draft: made.draft, changes, written: true } }
+    if (made?.status === 'passed') {
+      const { draft, pick } = pickSubject(made.draft, {
+        locked,
+        brandName: store.brand.name,
+        taken,
+        past: store.pastSubjects
+      })
+      return {
+        ok: true,
+        output: {
+          draft,
+          changes,
+          written: true,
+          ...(pick ? { subjectLab: pick } : {})
+        }
+      }
+    }
     if (made?.status === 'failed') return { ok: false, code: 'copy_failed' }
     // A busy AI: no job runs the agents later (the sweep has none), so the
     // email gets plain copy now, with the reason, not later without one.

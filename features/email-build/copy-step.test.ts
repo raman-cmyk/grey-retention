@@ -14,6 +14,7 @@ import {
   type PlannedEmail
 } from './build'
 import { runBuildStep } from './steps'
+import type { CopyOutput } from './build'
 import { sampleOffers, sampleStoreSource } from './ports'
 
 /**
@@ -784,5 +785,89 @@ describe('a build that started in time (REL-DAT)', () => {
       ctxWith(null, late)
     )
     expect(copy).toMatchObject({ ok: true, done: 'copy' })
+  })
+})
+
+describe('the subject line lab on the Copywriter’s words (PIC-26 part 2)', () => {
+  /** A store whose question subjects opened more, as a store's go up and down. */
+  const past = [
+    ...[0.36, 0.26, 0.34, 0.28, 0.32, 0.3].map((openRate, i) => ({
+      subject: `Question ${['one', 'two', 'three', 'four', 'five', 'six'][i]}?`,
+      recipients: 800,
+      openRate
+    })),
+    ...[0.3, 0.22, 0.28, 0.24, 0.26, 0.26].map((openRate, i) => ({
+      subject: `A note ${['one', 'two', 'three', 'four', 'five', 'six'][i]}`,
+      recipients: 800,
+      openRate
+    }))
+  ]
+  const ideasWriter =
+    (ideas: unknown) =>
+    (call: Parameters<AiCall>[0]): AiRunResult =>
+      answer({ ...writes(call.request.system, 1), subjectIdeas: ideas })
+  const copy = async (
+    ideas: unknown,
+    over: { past?: typeof past; taken?: string[] } = {}
+  ) => {
+    const s = { ...(await store()), pastSubjects: over.past ?? past }
+    const saved = await savedSteps(s)
+    const ai = model({ writer: ideasWriter(ideas) })
+    const result = await runBuildStep(
+      'copy',
+      {
+        planned,
+        store: s,
+        offers: sampleOffers,
+        progress: saved,
+        taken: over.taken ?? []
+      },
+      ctxWith(agentsWith(ai))
+    )
+    expect(result).toMatchObject({ ok: true, done: 'copy' })
+    return {
+      ai,
+      out: (result as unknown as { output: CopyOutput }).output
+    }
+  }
+
+  it('keeps the idea the store’s own opens point to, and the writer’s own to test against it', async () => {
+    const { ai, out } = await copy(
+      [
+        'Ready for the weekend?',
+        'Quiet evenings, picked for you 1',
+        'SHOP NOW!!!',
+        'Taken already',
+        42
+      ],
+      { taken: ['Taken already'] }
+    )
+    expect(out.draft.subject).toBe('Ready for the weekend?')
+    expect(out.draft.subjectIdeas).toBeUndefined()
+    expect(out.subjectLab).toMatchObject({
+      learned: true,
+      // The writer's own and the question: shouting, a taken subject,
+      // a repeat and a number are never weighed.
+      weighed: 2,
+      a: { subject: 'Ready for the weekend?' },
+      b: { subject: 'Quiet evenings, picked for you 1' },
+      tests: ['short', 'question', 'number', 'you']
+    })
+    expect(out.subjectLab!.a.why[0]).toMatch(
+      /^Subjects that ask a question: 31% opened, the others 26%/
+    )
+    // The Copywriter was asked for its ideas.
+    expect(ai.mock.calls[0]![0].request.system).toContain('subjectIdeas')
+  })
+
+  it('keeps the writer’s own subject without past emails or other ideas', async () => {
+    const none = await copy(undefined, { past: [] })
+    expect(none.out.draft.subject).toBe('Quiet evenings, picked for you 1')
+    expect(none.out.subjectLab).toMatchObject({
+      learned: false,
+      weighed: 1,
+      b: null,
+      tests: []
+    })
   })
 })
