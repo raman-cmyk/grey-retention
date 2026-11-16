@@ -69,6 +69,10 @@ describe('retireRule (UI-LRNa)', () => {
     expect((await retireRule({}, form({ rule, revision: '2' }))).error).toMatch(
       /changed in another window/
     )
+    fail('PT409', 'not_active')
+    expect((await retireRule({}, form({ rule, revision: '2' }))).error).toBe(
+      'GROS no longer uses this rule. Open Learned again.'
+    )
     fail('42501')
     expect((await retireRule({}, form({ rule, revision: '2' }))).error).toMatch(
       /Only this workspace’s owner/
