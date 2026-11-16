@@ -31,7 +31,7 @@ export function buttonClasses(
   size: ButtonSize = 'app'
 ) {
   const base =
-    'inline-flex shrink-0 cursor-pointer items-center justify-center gap-[var(--space-2)] rounded-[var(--radius-pill)] gros-fade disabled:cursor-not-allowed disabled:opacity-40'
+    'inline-flex shrink-0 cursor-pointer items-center justify-center gap-[var(--space-2)] rounded-[var(--radius-pill)] disabled:cursor-not-allowed disabled:opacity-40'
   if (kind === 'round')
     return cn(
       base,
@@ -41,7 +41,8 @@ export function buttonClasses(
     base,
     kinds[kind],
     sizes[size],
-    kind === 'quiet' && 'px-[var(--space-3)]'
+    // Quiet actions (Change, Edit) are the small 44 px kind, weight 500.
+    kind === 'quiet' && 'h-[var(--control-sm)] px-[var(--space-3)]'
   )
 }
 
@@ -63,9 +64,9 @@ export function Button({
   return (
     <button
       type={type}
+      {...rest}
       className={cn(buttonClasses(kind, size), className)}
       aria-label={kind === 'round' ? label : undefined}
-      {...rest}
     >
       {kind === 'round' ? (
         <ArrowRight aria-hidden size={24} strokeWidth={2} />

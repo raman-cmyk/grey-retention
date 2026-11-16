@@ -17,6 +17,7 @@ export function Field({
   onPage = false,
   id,
   className,
+  'aria-describedby': describedBy,
   ...input
 }: Omit<InputHTMLAttributes<HTMLInputElement>, 'children'> & {
   label: string
@@ -28,6 +29,12 @@ export function Field({
   const own = useId()
   const fieldId = id ?? own
   const errorId = `${fieldId}-error`
+  const foundId = `${fieldId}-found`
+  const shown = found && !error
+  const description =
+    [describedBy, error ? errorId : null, shown ? foundId : null]
+      .filter(Boolean)
+      .join(' ') || undefined
   return (
     <div className={cn('flex flex-col gap-[var(--space-2)]', className)}>
       <label htmlFor={fieldId} className="gros-field-label text-[var(--ink)]">
@@ -35,20 +42,22 @@ export function Field({
       </label>
       <div className="relative">
         <input
+          {...input}
           id={fieldId}
           aria-invalid={error ? true : undefined}
-          aria-describedby={error ? errorId : undefined}
+          aria-describedby={description}
           className={cn(
-            'gros-input w-full text-[var(--ink)]',
+            'gros-input w-full text-[var(--ink)] focus:bg-[var(--white)]',
             onPage ? 'bg-[var(--white)]' : 'bg-[var(--mist)]',
-            found && 'pr-[var(--space-12)]'
+            shown && 'pr-[var(--space-12)]'
           )}
-          {...input}
         />
-        {found && !error ? (
+        {shown ? (
           <span className="gros-found absolute top-1/2 right-[var(--space-4)] flex -translate-y-1/2 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--lime)] text-[var(--forest)]">
-            <Check aria-hidden size={16} strokeWidth={2.5} />
-            <span className="sr-only">Found</span>
+            <Check aria-hidden size={16} strokeWidth={2} />
+            <span id={foundId} className="sr-only">
+              Found
+            </span>
           </span>
         ) : null}
       </div>

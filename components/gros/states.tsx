@@ -1,3 +1,4 @@
+import { TriangleAlert } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Card } from './card'
 
@@ -39,17 +40,15 @@ export function ErrorState({
 }) {
   return (
     <Card>
-      <div
-        role="alert"
-        className="flex flex-col items-start gap-[var(--space-5)]"
-      >
+      <div className="flex flex-col items-start gap-[var(--space-5)]">
         <span
           aria-hidden
-          className="gros-error-mark type-heading flex items-center justify-center rounded-[var(--radius-pill)] bg-[var(--signal-soft)] text-[var(--signal-ink)]"
+          className="gros-error-mark flex items-center justify-center rounded-[var(--radius-pill)] bg-[var(--signal-soft)] text-[var(--signal-ink)]"
         >
-          !
+          <TriangleAlert size={22} strokeWidth={2} />
         </span>
-        <div className="flex flex-col gap-[var(--space-2)]">
+        {/* Only what happened and what to do is read out, not the button. */}
+        <div role="alert" className="flex flex-col gap-[var(--space-2)]">
           <h2 className="type-heading">{title}</h2>
           <p className="type-body text-[var(--stone)]">{reason}</p>
         </div>

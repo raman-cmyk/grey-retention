@@ -12,11 +12,12 @@ afterEach(cleanup)
 
 describe('Button (UI-DS)', () => {
   it('is a labelled, keyboard-operable pill in the five kinds', async () => {
+    const user = userEvent.setup()
     const onClick = vi.fn()
     render(<Button label="Plan next 15 days" onClick={onClick} />)
     const button = screen.getByRole('button', { name: 'Plan next 15 days' })
     button.focus()
-    await userEvent.keyboard('{Enter}')
+    await user.keyboard('{Enter}')
     expect(onClick).toHaveBeenCalledOnce()
     expect(button).toHaveAttribute('type', 'button')
     expect(buttonClasses('main')).toContain('bg-[var(--forest)]')
@@ -25,6 +26,17 @@ describe('Button (UI-DS)', () => {
     expect(buttonClasses('quiet')).toContain('text-[var(--stone)]')
     expect(buttonClasses('main', 'focus')).toContain('h-[var(--control-lg)]')
     expect(buttonClasses('main', 'row')).toContain('h-[var(--control-sm)]')
+    // Quiet actions are the small kind, weight 500 (the utility wins).
+    expect(buttonClasses('quiet')).toContain('h-[var(--control-sm)]')
+    expect(buttonClasses('quiet')).not.toContain('h-[var(--control-md)]')
+    expect(buttonClasses('quiet')).toContain('font-medium')
+  })
+
+  it('keeps its own label when a caller passes another', () => {
+    render(<Button kind="round" label="Open the plan" aria-label="Go" />)
+    expect(
+      screen.getByRole('button', { name: 'Open the plan' })
+    ).toBeInTheDocument()
   })
 
   it('gives the round open button a spoken label and only an arrow to see', () => {
@@ -41,9 +53,14 @@ describe('Button (UI-DS)', () => {
     expect(link.className).toContain('gros-button-outline')
   })
 
-  it('is plainly disabled', () => {
-    render(<Button label="Create email" disabled />)
-    expect(screen.getByRole('button', { name: 'Create email' })).toBeDisabled()
+  it('is plainly disabled, and does nothing', async () => {
+    const user = userEvent.setup()
+    const onClick = vi.fn()
+    render(<Button label="Create email" disabled onClick={onClick} />)
+    const button = screen.getByRole('button', { name: 'Create email' })
+    expect(button).toBeDisabled()
+    await user.click(button)
+    expect(onClick).not.toHaveBeenCalled()
   })
 })
 
@@ -72,8 +89,29 @@ describe('Field (UI-DS)', () => {
       <Field label="Your store" defaultValue="cedarlane.com" found onPage />
     )
     expect(screen.getByText('Found')).toBeInTheDocument()
-    expect(screen.getByLabelText('Your store').className).toContain(
-      'bg-[var(--white)]'
+    const input = screen.getByLabelText('Your store')
+    expect(input.className).toContain('bg-[var(--white)]')
+    expect(input).toHaveAccessibleDescription('Found')
+    // Room for the check, so a long value never runs under it.
+    expect(input.className).toContain('pr-[var(--space-12)]')
+  })
+
+  it('shows no check while the value is wrong, and keeps a caller’s description', () => {
+    render(
+      <>
+        <p id="hint">Your web address</p>
+        <Field
+          label="Your store"
+          defaultValue="cedar"
+          found
+          error="Add the whole address, like cedarlane.com"
+          aria-describedby="hint"
+        />
+      </>
+    )
+    expect(screen.queryByText('Found')).toBeNull()
+    expect(screen.getByLabelText('Your store')).toHaveAccessibleDescription(
+      'Your web address Add the whole address, like cedarlane.com'
     )
   })
 })
@@ -150,18 +188,22 @@ describe('EmptyState and ErrorState (UI-DS)', () => {
     const alert = screen.getByRole('alert')
     expect(alert).toHaveTextContent('Klaviyo key stopped working')
     expect(alert).toHaveTextContent('Your emails are safe.')
-    expect(
-      screen.getByRole('button', { name: 'Reconnect' })
-    ).toBeInTheDocument()
+    // The button is not read out as part of the alert.
+    const button = screen.getByRole('button', { name: 'Reconnect' })
+    expect(alert).not.toContainElement(button)
   })
 })
 
 describe('Mark (UI-DS)', () => {
   it('is named for screen readers', () => {
-    render(<Mark size={36} />)
+    const { container } = render(<Mark size={36} />)
     expect(screen.getByRole('img', { name: 'GROS' })).toHaveAttribute(
       'width',
       '36'
     )
+    cleanup()
+    render(<Mark decorative />)
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(container).toBeDefined()
   })
 })
