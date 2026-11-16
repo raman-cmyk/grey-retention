@@ -13,15 +13,20 @@ import { Mark } from './mark'
  * sidebar. On a narrow screen the three parts wrap onto their own lines;
  * nothing hides behind a menu icon.
  */
-// Typed routes: the addresses of screens not built yet are cast until
-// each screen lands (then the cast goes, and the build checks the address).
+// Until each GROS screen lands, an item opens the old screen that does its
+// job today (typed routes check every address), and an item with no screen
+// at all yet is left out of the bar rather than leading nowhere.
 export const navItems = [
   { key: 'home', label: 'Home', href: '/home' },
-  { key: 'plan', label: 'Plan', href: '/plan' as Route },
+  { key: 'plan', label: 'Plan', href: '/plan' },
   { key: 'inspiration', label: 'Inspiration', href: '/inspiration' },
-  { key: 'audiences', label: 'Audiences', href: '/audiences' as Route },
-  { key: 'results', label: 'Results', href: '/results' as Route }
-] as const
+  { key: 'audiences', label: 'Audiences', href: null },
+  { key: 'results', label: 'Results', href: '/reports' }
+] as const satisfies readonly {
+  key: string
+  label: string
+  href: Route | null
+}[]
 export type NavKey = (typeof navItems)[number]['key']
 /** The page's place in the bar: a menu item, or one of the two buttons. */
 export type NavPlace = NavKey | 'settings' | 'ask'
@@ -50,22 +55,26 @@ export function TopBar({
       </div>
       <nav aria-label="Main">
         <ul className="gros-menu flex flex-wrap items-center rounded-[var(--radius-pill)] bg-[var(--white)]">
-          {navItems.map((item) => (
-            <li key={item.key}>
-              <Link
-                href={item.href}
-                aria-current={here(item.key)}
-                className={cn(
-                  'gros-menu-item gros-mark inline-flex items-center rounded-[var(--radius-pill)]',
-                  item.key === current
-                    ? 'bg-[var(--lime)] font-semibold text-[var(--forest)]'
-                    : 'font-medium text-[var(--stone)]'
-                )}
-              >
-                {item.label}
-              </Link>
-            </li>
-          ))}
+          {navItems
+            .flatMap((item) =>
+              item.href ? [{ ...item, href: item.href }] : []
+            )
+            .map((item) => (
+              <li key={item.key}>
+                <Link
+                  href={item.href}
+                  aria-current={here(item.key)}
+                  className={cn(
+                    'gros-menu-item gros-mark inline-flex items-center rounded-[var(--radius-pill)]',
+                    item.key === current
+                      ? 'bg-[var(--lime)] font-semibold text-[var(--forest)]'
+                      : 'font-medium text-[var(--stone)]'
+                  )}
+                >
+                  {item.label}
+                </Link>
+              </li>
+            ))}
         </ul>
       </nav>
       <div className="flex items-center gap-[var(--space-2)]">

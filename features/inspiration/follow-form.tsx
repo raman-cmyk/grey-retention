@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react'
 import { useFormStatus } from 'react-dom'
+import { useHydrated } from '@/components/ui/use-hydrated'
 import type { ActionResult } from '@/components/gros/action'
 import { buttonClasses } from '@/components/gros/button'
 import { Field } from '@/components/gros/input'
@@ -46,14 +47,16 @@ export function FollowForm() {
 }
 
 function Submit() {
+  // Keeps its word while working, and waits for the page's JavaScript.
   const { pending } = useFormStatus()
+  const hydrated = useHydrated()
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={pending || !hydrated}
       className={buttonClasses('main', 'focus')}
     >
-      {pending ? 'Following…' : 'Follow'}
+      Follow
     </button>
   )
 }

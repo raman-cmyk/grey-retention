@@ -5,7 +5,7 @@ import { ButtonLink } from '@/components/gros/button'
 import { Card, Tile } from '@/components/gros/card'
 import { DayStrip } from '@/components/gros/day-strip'
 import { ListRow, RowList, TextThumb } from '@/components/gros/list-row'
-import { AppPage, CardRow } from '@/components/gros/nav'
+import { AppPage, CardRow, defaultAssistant } from '@/components/gros/nav'
 import { Status } from '@/components/gros/status'
 import { createEmail } from '@/features/email-build/actions'
 import { startPlan } from '@/features/strategy/actions'
@@ -17,9 +17,16 @@ import type { HomeSlot, HomeView } from './read-model'
  * 15 days and Create email are the owner's clicks (D17); staff see the
  * same screen without them.
  */
-export function HomeScreen({ view }: { view: HomeView }) {
+export function HomeScreen({
+  view,
+  assistant = defaultAssistant
+}: {
+  view: HomeView
+  /** The assistant's name (the white label may rename it). */
+  assistant?: string
+}) {
   return (
-    <AppPage current="home" title={view.greeting}>
+    <AppPage current="home" title={view.greeting} assistant={assistant}>
       <CardRow>
         <NumbersCard view={view} />
         <PlanCard view={view} />
@@ -27,7 +34,7 @@ export function HomeScreen({ view }: { view: HomeView }) {
       <CardRow>
         <NextCard view={view} />
         <div className="flex flex-col gap-[var(--space-5)]">
-          <LearnedCard view={view} />
+          <LearnedCard view={view} assistant={assistant} />
           <OffersCard view={view} />
         </div>
       </CardRow>
@@ -75,7 +82,9 @@ function NumbersCard({ view }: { view: HomeView }) {
     return (
       <Card tone="lime" label={label}>
         <p className="type-label">{label}</p>
-        <p className="type-title mt-[var(--space-3)]">No emails sent yet</p>
+        <p className="type-title mt-[var(--space-3)]">
+          No emails sent in 30 days
+        </p>
       </Card>
     )
   return (
@@ -128,13 +137,15 @@ function PlanCard({ view }: { view: HomeView }) {
       plan.state === 'unreadable' ||
       plan.outOfDate ||
       plan.ended)
+  // Only the owner can plan again, so only the owner is told to.
+  const again = view.owner ? ' Plan the next 15 days again.' : ''
   const note =
     plan.state === 'failed'
       ? (plan.reason ?? 'The plan could not be made.')
       : plan.state === 'unreadable'
-        ? 'This plan could not be shown. Plan the next 15 days again.'
+        ? `This plan could not be shown.${again}`
         : plan.outOfDate
-          ? 'These 15 days have begun. Plan the next 15 days again.'
+          ? `These 15 days have begun.${again}`
           : plan.ended
             ? 'These 15 days are over.'
             : null
@@ -173,11 +184,7 @@ function PlanCard({ view }: { view: HomeView }) {
           </p>
         ) : null}
         {canPlan ? (
-          <ActionButton
-            action={startPlan}
-            label="Plan next 15 days"
-            pendingLabel="Starting the plan…"
-          />
+          <ActionButton action={startPlan} label="Plan next 15 days" />
         ) : plan.state === 'offers_ready' && view.owner ? (
           <ButtonLink href={planHref} label="Pick the offers" />
         ) : plan.state !== 'none' ? (
@@ -215,7 +222,6 @@ function SlotEnd({
       <ActionButton
         action={createEmail}
         label={slot.status === 'failed' ? 'Try again' : 'Create email'}
-        pendingLabel="Starting…"
         kind={next ? 'main' : 'outline'}
         size="row"
         fields={{ run: runId, slot: String(slot.slot) }}
@@ -239,9 +245,11 @@ function NextCard({ view }: { view: HomeView }) {
         <h2 className="type-heading">{title}</h2>
         {next.length === 0 || !plan?.runId ? (
           <p className="type-body text-[var(--stone)]">
-            {plan?.state === 'planned'
-              ? 'Every planned email is in Klaviyo or its day has passed.'
-              : 'No emails planned yet.'}
+            {!plan
+              ? 'The plan could not be read. Open Home again in a minute.'
+              : plan.state === 'planned'
+                ? 'Every planned email is in Klaviyo or its day has passed.'
+                : 'No emails planned yet.'}
           </p>
         ) : (
           <RowList label={title}>
@@ -273,8 +281,14 @@ function NextCard({ view }: { view: HomeView }) {
   )
 }
 
-function LearnedCard({ view }: { view: HomeView }) {
-  const title = 'What GROS learned'
+function LearnedCard({
+  view,
+  assistant
+}: {
+  view: HomeView
+  assistant: string
+}) {
+  const title = `What ${assistant} learned`
   return (
     <Card size="small" label={title}>
       <div className="flex flex-col gap-[var(--space-4)]">
@@ -316,7 +330,7 @@ function LearnedCard({ view }: { view: HomeView }) {
 const settingsHref = '/settings' as Route
 
 function OffersCard({ view }: { view: HomeView }) {
-  const label = 'Max discount'
+  const label = 'Biggest discount'
   const o = view.offers
   if (view.unread.includes('offers') || !o)
     return (
@@ -345,7 +359,7 @@ function OffersCard({ view }: { view: HomeView }) {
         </div>
         {view.owner ? (
           o.maxDiscountPercent === null ? (
-            <ButtonLink href={settingsHref} label="Set max discount" />
+            <ButtonLink href={settingsHref} label="Set biggest discount" />
           ) : (
             <ButtonLink
               href={settingsHref}

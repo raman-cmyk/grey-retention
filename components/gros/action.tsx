@@ -1,14 +1,16 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useId } from 'react'
 import { useFormStatus } from 'react-dom'
+import { useHydrated } from '@/components/ui/use-hydrated'
 import { buttonClasses, type ButtonKind, type ButtonSize } from './button'
 
 /**
  * A GROS button that runs a server action (Plan next 15 days, Create email).
- * It keeps its words while working (the page shows the progress), cannot
- * be pressed twice, and says what went wrong under itself, in the action's
- * own plain words.
+ * It keeps its words while working (BRAND.md: the page shows the progress),
+ * cannot be pressed twice or before the page's JavaScript runs (a native
+ * post would lose the action's answer), and says what went wrong under
+ * itself, in the action's own plain words.
  */
 export type ActionResult = { error?: string; message?: string }
 export type ServerAction = (
@@ -19,24 +21,25 @@ export type ServerAction = (
 export function ActionButton({
   action,
   label,
-  pendingLabel,
   kind = 'main',
   size = 'app',
   fields = {}
 }: {
   action: ServerAction
+  /** The button's words, kept while the action runs. */
   label: string
-  /** What the button says while the action runs: Starting… */
-  pendingLabel: string
   kind?: Exclude<ButtonKind, 'round'>
   size?: ButtonSize
   /** Hidden values the action reads (a run and a slot). */
   fields?: Record<string, string>
 }) {
-  const [state, dispatch] = useActionState(action, {})
+  const [state, dispatch, pending] = useActionState(action, {})
+  const errorId = useId()
+  const error = pending ? null : (state.error ?? null)
   return (
     <form
       action={dispatch}
+      aria-busy={pending}
       className="flex flex-col items-start gap-[var(--space-2)]"
     >
       {Object.entries(fields).map(([name, value]) => (
@@ -44,15 +47,16 @@ export function ActionButton({
       ))}
       <Submit
         label={label}
-        pendingLabel={pendingLabel}
         kind={kind}
         size={size}
+        describedBy={error ? errorId : undefined}
       />
       <p
+        id={errorId}
         aria-live="polite"
         className="type-caption text-[var(--signal-ink)] empty:hidden"
       >
-        {state.error ?? ''}
+        {error ?? ''}
       </p>
     </form>
   )
@@ -60,24 +64,25 @@ export function ActionButton({
 
 function Submit({
   label,
-  pendingLabel,
   kind,
-  size
+  size,
+  describedBy
 }: {
   label: string
-  pendingLabel: string
   kind: Exclude<ButtonKind, 'round'>
   size: ButtonSize
+  describedBy?: string
 }) {
   const { pending } = useFormStatus()
+  const hydrated = useHydrated()
   return (
     <button
       type="submit"
-      disabled={pending}
-      aria-disabled={pending}
+      disabled={pending || !hydrated}
+      aria-describedby={describedBy}
       className={buttonClasses(kind, size)}
     >
-      {pending ? pendingLabel : label}
+      {label}
     </button>
   )
 }

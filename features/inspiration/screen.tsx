@@ -93,7 +93,6 @@ function FollowedCard({ view }: { view: InspirationView }) {
                       <ActionButton
                         action={stopTracking}
                         label="Stop"
-                        pendingLabel="Stopping…"
                         kind="outline"
                         size="row"
                         fields={{
@@ -160,7 +159,6 @@ function SuggestionsCard({ view }: { view: InspirationView }) {
                         <ActionButton
                           action={trackDomain}
                           label="Follow"
-                          pendingLabel="Following…"
                           kind="outline"
                           size="row"
                           fields={{ domain: s.domain }}
@@ -169,7 +167,6 @@ function SuggestionsCard({ view }: { view: InspirationView }) {
                       <ActionButton
                         action={hideBrand}
                         label="Hide"
-                        pendingLabel="Hiding…"
                         kind="quiet"
                         size="row"
                         fields={{ capture: s.captureId }}

@@ -263,17 +263,19 @@ describe('homeView: the plan (UI-HOMEa)', () => {
     })
     // The failed email's day shows nothing; the row says why.
     expect(days[4]!.state).toBe('none')
+    // An email in Klaviyo leaves the list; the next one moves up.
     expect(
       homeView(
         input({
           run: run({
             builds: {
-              6: build('build-6', 'push_queued', { step: 'design' })
+              0: build('build-0', 'drafted', { step: 'push' }),
+              2: build('build-2', 'drafted', { step: 'push' })
             }
           })
         })
-      ).plan!.next.find((s) => s.slot === 6)
-    ).toBeUndefined()
+      ).plan!.next.map((s) => s.title)
+    ).toEqual(['A note from us', 'Gift guide', 'Back in stock'])
     expect(
       homeView(
         input({
@@ -359,6 +361,8 @@ describe('homeView: the plan (UI-HOMEa)', () => {
       'failed',
       'No products yet.'
     ])
+    // Its days began too (stale), but it says why it failed instead.
+    expect(failed.outOfDate).toBe(false)
     expect(homeView(input({ run: run({ plan: null }) })).plan!.state).toBe(
       'unreadable'
     )
