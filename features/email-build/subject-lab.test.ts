@@ -111,6 +111,22 @@ describe('subjectLab', () => {
     expect(lab.ranked.map((r) => r.subject).at(-1)).toBe(ideas[3])
   })
 
+  it('keeps the first idea as A without past emails when asked, rules of thumb choosing only B', () => {
+    const order = [ideas[3]!, ideas[0]!, ideas[1]!]
+    const none = learnFrom([], brand)
+    expect(subjectLab(order, none, { brand }).a?.subject).not.toBe(ideas[3])
+    const kept = subjectLab(order, none, { brand, keepFirst: true })
+    expect(kept.a).toMatchObject({ subject: ideas[3], index: 0 })
+    expect(kept.b?.subject).not.toBe(ideas[3])
+    // With the store's own opens, the best is A all the same.
+    expect(
+      subjectLab(order, learnFrom(questionsWin, brand), {
+        brand,
+        keepFirst: true
+      }).a?.subject
+    ).toBe('Ready for linen weather?')
+  })
+
   it('weighs only ideas that fit, each once, at most ten, and says where each was', () => {
     const many = [
       '  Ready   for linen weather? ',
