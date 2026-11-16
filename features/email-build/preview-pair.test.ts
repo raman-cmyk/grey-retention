@@ -1,4 +1,8 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest'
+import { memoryFallbackLog } from '@/features/fallback/log'
+import { buildEmail, type PlannedEmail } from './build'
+import { sampleOffers, sampleStoreSource } from './ports'
 import { previewRepeat } from './preview-pair'
 
 /** DST-PIC #27: the preview text pairs with the subject, never repeats it. */
@@ -113,4 +117,124 @@ describe('preview text that adds something (DST-PIC #27)', () => {
     ])
       expect(repeats(subject, letter), subject).toBeNull()
   })
+
+  it('reads the brand’s name as words: never inside a word, a possessive, any spacing', () => {
+    // A short name is never cut out of other words ("an" in "and").
+    expect(
+      previewRepeat(
+        'Candles and lanterns',
+        'Lanterns and candles for the long winter nights',
+        'An'
+      )
+    ).toBeNull()
+    expect(
+      repeats('Cedar Lane’s cosy throws', 'Cedar Lane’s throws, in cosy wool')
+    ).toBeNull()
+    expect(
+      previewRepeat(
+        'News from Blue Ridge\u00a0Candle Co',
+        'A short note from Blue Ridge Candle Co.',
+        'Blue Ridge\u00a0Candle Co'
+      )
+    ).toBeNull()
+    // A name the builder cut at its limit, mid-word.
+    const long =
+      'The Very Long Name of the Old Cedar Lane Candle and Soap Company'
+    expect(
+      previewRepeat(
+        `News from ${long}`,
+        `A short note from ${long.slice(0, 60)}.`,
+        long
+      )
+    ).toBeNull()
+  })
+
+  it('reads a word with its marks, and one apostrophe as the other', () => {
+    expect(
+      previewRepeat(
+        'नई मोमबत्ती',
+        'सर्दियों के लिए हाथ से बनी मोमबत्ती तैयार है'
+      )
+    ).toBeNull()
+    expect(
+      previewRepeat(
+        "Don't miss the candles",
+        'Don’t miss the candles: three new scents'
+      )
+    ).toMatch(/repeats the whole subject/)
+    // A subject that is only the name, and the same again with a full stop.
+    expect(
+      previewRepeat(
+        'Cedar Lane Candle Company',
+        'Cedar Lane Candle Company.',
+        'Cedar Lane Candle Company'
+      )
+    ).toMatch(/repeats the subject/)
+  })
+})
+
+/** The builders' own lines, for names a store can have (DST-PIC #27). */
+const tenantId = '00000000-0000-4000-8000-000000000101'
+const inDays = (n: number) => {
+  const d = new Date()
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+const planned: PlannedEmail = {
+  date: inDays(2),
+  time: '10:00',
+  emailType: 'launch',
+  angle: 'Meet the linen throw',
+  products: [{ id: 'p-linen-throw', title: 'Linen throw' }],
+  offer: null,
+  audience: { id: 'sample-engaged', label: 'Engaged subscribers (sample)' }
+}
+const oddNames = [
+  'Blue Ridge\u00a0Candle Co',
+  'Night & Day  Tea Co.',
+  'Old Cedar\tLane Candles',
+  'Old\u200bCedar Lane Candle',
+  'The Very Long Name of the Old Cedar Lane Candle and Soap Company Limited',
+  'Old Cedar  Lane Candle Soap Works',
+  'An',
+  'Cedar Lane’s'
+]
+
+describe('the plain copy and the plain letter pass, whatever the name (DST-PIC #27)', () => {
+  it.each(oddNames)(
+    '%j: every subject the plain copy and the plain letter can use',
+    async (name) => {
+      const read = await sampleStoreSource.read(tenantId)
+      const store = { ...read, brand: { ...read.brand, name } }
+      for (const slot of [
+        ...(['launch', 'story', 'bestseller'] as const).map((emailType) => ({
+          ...planned,
+          emailType
+        })),
+        { ...planned, format: 'text' as const }
+      ]) {
+        // Each subject taken in turn, until none is left: never a copy failure.
+        const taken: string[] = []
+        for (;;) {
+          const fallbacks = memoryFallbackLog()
+          const made = await buildEmail(
+            { planned: slot, store, offers: sampleOffers, taken },
+            { tenantId, callerKey: 'email-build:b1', fallbacks }
+          )
+          if (!made.ok) {
+            expect(made.code, `${slot.emailType} ${slot.format ?? ''}`).toBe(
+              'subject_taken'
+            )
+            break
+          }
+          expect(
+            previewRepeat(made.email.subject, made.email.preheader, name)
+          ).toBeNull()
+          taken.push(made.email.subject)
+          expect(taken.length).toBeLessThan(20)
+        }
+        expect(taken.length).toBeGreaterThan(0)
+      }
+    }
+  )
 })

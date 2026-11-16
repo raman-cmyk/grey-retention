@@ -1,3 +1,5 @@
+import { hiddenChars } from '@/features/assembly/assemble'
+
 /**
  * DST-PIC #27 ("Preview text that adds something"): the preview text pairs
  * with the subject and never repeats it. The inbox shows the two side by
@@ -13,10 +15,14 @@
  * - it has at least 3 of the subject's words that say something, and 3 of
  *   every 4 of them (a plural counts as its word).
  *
- * The brand's name is left out first: it is the sender, shown beside the
- * subject in every inbox, so naming it in both lines repeats nothing.
- * A product's title counts: when both lines name the product, the writer
- * is told to name it in one only.
+ * The brand's name is left out first, as words: it is the sender, shown
+ * beside the subject in every inbox, so naming it in both lines repeats
+ * nothing. Both lines and the name are read as the email builders write
+ * them (`oneLine`: any run of spaces as one, hidden characters dropped,
+ * the name cut at its limit, its last word maybe cut too), so the plain
+ * copy's fixed lines pass for every name a store can have. A product's
+ * title counts: when both lines name the product, the writer is told to
+ * name it in one only.
  */
 
 /** Words too common to say anything on their own. */
@@ -66,16 +72,46 @@ const plainWords = new Set([
   'your'
 ])
 
-const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const hidden = new RegExp(hiddenChars.source, 'gu')
 
-/** The words a reader sees, in order: lower case, a possessive dropped. */
+/**
+ * The words a reader sees, in order: lower case, hidden characters out,
+ * one apostrophe, a possessive dropped; a word keeps its marks (an accent
+ * written apart, Devanagari's vowel signs).
+ */
 const wordsOf = (text: string) =>
   (
     text
       .normalize('NFKC')
+      // As `oneLine`: spaces (a tab too) first, then hidden characters.
+      .replace(/\s+/g, ' ')
+      .replace(hidden, '')
+      .replace(/’/g, "'")
       .toLowerCase()
-      .match(/[\p{L}\p{N}]+(?:['’]\p{L}+)*/gu) ?? []
-  ).map((w) => w.replace(/['’]s$/u, ''))
+      .match(/[\p{L}\p{N}][\p{L}\p{M}\p{N}]*(?:'[\p{L}\p{M}]+)*/gu) ?? []
+  ).map((w) => w.replace(/'s$/u, ''))
+
+/**
+ * `words` without the brand's name: each run of its words (at least two,
+ * or its one word), and a name cut short with the start of its next word.
+ */
+function withoutBrand(words: readonly string[], brand: readonly string[]) {
+  if (!brand.length) return [...words]
+  const least = Math.min(brand.length, 2)
+  const out: string[] = []
+  for (let i = 0; i < words.length;) {
+    let k = 0
+    while (k < brand.length && words[i + k] === brand[k]) k++
+    if (k < least) {
+      out.push(words[i]!)
+      i++
+      continue
+    }
+    const next = words[i + k]
+    i += k + (k < brand.length && next && brand[k]!.startsWith(next) ? 1 : 0)
+  }
+  return out
+}
 
 /** A word and its plural read as one ("candles" is "candle"). */
 const stem = (word: string) =>
@@ -96,19 +132,18 @@ export function previewRepeat(
   preview: string,
   brand = ''
 ): string | null {
+  const same =
+    'The preview text repeats the subject: add something the subject does not say.'
   const plain = (a: string) => a.replace(/\s+/g, ' ').trim().toLowerCase()
-  if (plain(subject) && plain(subject) === plain(preview))
-    return 'The preview text repeats the subject: add something the subject does not say.'
-  const sender = brand.trim()
-  const strip = (text: string) =>
-    sender.length >= 2
-      ? text.replace(new RegExp(escape(sender), 'giu'), ' ')
-      : text
-  const s = wordsOf(strip(subject))
-  const p = wordsOf(strip(preview))
+  if (plain(subject) && plain(subject) === plain(preview)) return same
+  // The same words, the brand's included (a subject that is only the name).
+  const all = { s: wordsOf(subject), p: wordsOf(preview) }
+  if (all.s.length && all.s.join(' ') === all.p.join(' ')) return same
+  const sender = wordsOf(brand)
+  const s = withoutBrand(all.s, sender)
+  const p = withoutBrand(all.p, sender)
   if (!s.length || !p.length) return null
-  if (s.join(' ') === p.join(' '))
-    return 'The preview text repeats the subject: add something the subject does not say.'
+  if (s.join(' ') === p.join(' ')) return same
   if (says(s) && holds(p, s))
     return 'The preview text repeats the whole subject: leave the subject’s words out of it and say what the subject does not.'
   if (says(p) && holds(s, p))

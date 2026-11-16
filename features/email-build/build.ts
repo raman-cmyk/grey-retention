@@ -31,6 +31,7 @@ import { copywriterRun } from './copywriter'
 import { headlineFindings } from './headline-fit'
 import { agentCallMs, maxStepSaves } from './step-names'
 import { designA } from './design'
+import { letterCopyStep, letterDesignStep, letterLayout } from './letter-steps'
 import {
   AssemblyError,
   hiddenChars,
@@ -51,7 +52,12 @@ import { offersAt, type Store } from './ports'
  * in part 2c.
  */
 
+/** D26: the two kinds of email the build makes. */
+export const emailFormats = ['designed', 'text'] as const
+export type EmailFormat = (typeof emailFormats)[number]
+
 /** The planned email this build is for (a slot of STR-003's stored plan). */
+
 export const plannedEmail = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   time: z.string().regex(/^\d{2}:\d{2}$/),
@@ -70,7 +76,12 @@ export const plannedEmail = z.object({
   offer: z
     .object({ id: z.string(), code: z.string(), percent: z.number() })
     .nullable(),
-  audience: z.object({ id: z.string(), label: z.string() })
+  audience: z.object({ id: z.string(), label: z.string() }),
+  /**
+   * D26 (TXT-001c): a designed email or a text email (a short letter).
+   * Missing on slots planned before it: designed.
+   */
+  format: z.enum(emailFormats).optional()
 })
 export type PlannedEmail = z.infer<typeof plannedEmail>
 
@@ -84,6 +95,13 @@ export const builtEmail = z.object({
   subject: z.string().min(1).max(120),
   preheader: z.string().max(200),
   html: z.string().min(1).max(200_000),
+  /**
+   * TXT-001c: a text email's own plain-text part (Klaviyo's tags for its
+   * footer). Missing on designed emails and on emails built before it.
+   */
+  text: z.string().min(1).max(100_000).optional(),
+  /** D26: missing on emails built before it, and on designed ones. */
+  format: z.enum(emailFormats).optional(),
   approach: z.enum(['A', 'B']),
   copy: z.enum(['written', 'plain']),
   plannedSendAt: z.string(),
@@ -139,6 +157,10 @@ const dayName = (date: string) =>
 
 const typeName = (type: PlannedEmail['emailType']) =>
   type.charAt(0).toUpperCase() + type.slice(1)
+
+/** The email's name in Klaviyo: its day and type, e.g. "Tue 18 Nov · Offer". */
+export const emailName = (planned: PlannedEmail) =>
+  `${dayName(planned.date)} · ${typeName(planned.emailType)}`
 
 /**
  * REL-081: "Create email" runs as saved steps, each its own short job:
@@ -342,17 +364,21 @@ export async function sectionsStep(
     library: seedVariants
   }
   // REL-AI part 2: the Section planner when the agents are on (it checks,
-  // retries and falls back to the safe plan itself, logged); else code.
-  const layout = ctx.agents
-    ? await planSections(sectionInput, {
-        tenantId: ctx.tenantId,
-        callerKey: ctx.callerKey,
-        memory: ctx.agents.memory,
-        log: ctx.agents.log,
-        ai: ctx.agents.ai,
-        fallbacks: ctx.fallbacks
-      })
-    : codeSectionPlan(sectionInput)
+  // retries and falls back to the safe plan itself, logged); else code. A
+  // text email (TXT-001c) skips it: only what the letter locks.
+  const layout =
+    planned.format === 'text'
+      ? letterLayout(planned)
+      : ctx.agents
+        ? await planSections(sectionInput, {
+            tenantId: ctx.tenantId,
+            callerKey: ctx.callerKey,
+            memory: ctx.agents.memory,
+            log: ctx.agents.log,
+            ai: ctx.agents.ai,
+            fallbacks: ctx.fallbacks
+          })
+        : codeSectionPlan(sectionInput)
   return {
     ok: true,
     output: {
@@ -379,8 +405,9 @@ export async function contentStep(
       site: store.brand.site
     },
     // REL-AI part 2: the Content locker agent places the products when the
-    // agents are on (checked, retried, else code's placement, logged).
-    ctx.agents
+    // agents are on (checked, retried, else code's placement, logged). A
+    // text email locks only its lead product: code places it, no AI call.
+    ctx.agents && planned.format !== 'text'
       ? {
           ...ctx,
           industry: store.industry,
@@ -470,7 +497,7 @@ export function uniqueSubject(
 }
 
 /** A model call ends this long after it starts, with its database calls. */
-const callSlackMs = 2_000
+export const callSlackMs = 2_000
 
 /** REL-AI: a subject another email of the plan has goes back to the writer. */
 const takenSubject =
@@ -678,7 +705,7 @@ export function designStep(
     email: {
       sample,
       ai: (input.ai ?? false) || copy.written === true,
-      name: `${dayName(planned.date)} · ${typeName(planned.emailType)}`,
+      name: emailName(planned),
       subject: draft.subject,
       preheader: draft.preheader,
       html,
@@ -791,11 +818,38 @@ export type BuildCtx = {
   clock?: () => number
 }
 
+/** A text email's four steps at once (TXT-001c). */
+async function buildLetterEmail(
+  input: StepInput & { offers: OfferSource; taken?: readonly string[] },
+  ctx: BuildCtx
+): Promise<BuildResult> {
+  const sections = await sectionsStep(input, ctx)
+  if (!sections.ok) return sections
+  const locked = await contentStep({ ...input, sections: sections.output }, ctx)
+  // No time limit here (`ctx.until`): the rewrites run to their end.
+  const copy = await letterCopyStep(
+    { store: input.store, locked, taken: input.taken },
+    { ...ctx, until: undefined }
+  )
+  if (!copy.ok) return copy
+  return letterDesignStep({
+    planned: input.planned,
+    store: input.store,
+    sendAt: sections.output.sendAt,
+    sample: input.store.sample,
+    copy: copy.output,
+    rules: sections.output.rules,
+    ai: locked.source === 'agent' || copy.output.written === true,
+    name: emailName(input.planned)
+  })
+}
+
 /** All four build steps at once (tests and tools; the job saves each). */
 export async function buildEmail(
   input: StepInput & { offers: OfferSource; taken?: readonly string[] },
   ctx: BuildCtx
 ): Promise<BuildResult> {
+  if (input.planned.format === 'text') return buildLetterEmail(input, ctx)
   const made = await lockedDraft(input, ctx)
   if (!made.ok) return made
   return designStep({
