@@ -46,6 +46,12 @@ export type DraftInput = {
    */
   variations?: { approach: 'A' | 'B'; html: string }[]
   /**
+   * TXT-001e: a text email's own plain-text part (Klaviyo's tags in its
+   * footer), put on its template beside the HTML. One design only: never
+   * with `variations`. Without it Klaviyo makes the text part itself.
+   */
+  text?: string
+  /**
    * The build's push lease (PSH-001): the live pusher saves each step it
    * makes in Klaviyo under it, so a run that lost its lease saves nothing
    * and two runs never both make a draft. The fake ignores it.
@@ -92,7 +98,8 @@ export interface DraftPusher {
 
 /**
  * The fake pusher: no Klaviyo call; the same key gives the same id. Like
- * the live one it refuses variations that are not exactly A then B, and
+ * the live one it refuses variations that are not exactly A then B (or
+ * that come with a plain-text part), and
  * `designs: 'A'` makes it answer as if Klaviyo refused the even test (to
  * test alternating the designs).
  */
@@ -107,7 +114,10 @@ export function fakeDraftPusher(
       const v = input.variations
       if (
         v &&
-        (v.length !== 2 || v[0]!.approach !== 'A' || v[1]!.approach !== 'B')
+        (v.length !== 2 ||
+          v[0]!.approach !== 'A' ||
+          v[1]!.approach !== 'B' ||
+          input.text !== undefined)
       )
         return {
           ok: false,
