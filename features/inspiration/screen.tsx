@@ -9,11 +9,11 @@ import {
   TextThumb
 } from '@/components/gros/list-row'
 import { AppPage, CardRow } from '@/components/gros/nav'
-import { Status } from '@/components/gros/status'
 import {
   stopTracking,
   trackDomain
 } from '@/features/library/inspirations/actions'
+import type { TrackedDomain } from '@/features/library/reference-library/data'
 import { referenceHref } from '@/features/library/reference-library/model'
 import { hideBrand } from './actions'
 import { FollowForm } from './follow-form'
@@ -55,6 +55,13 @@ function BrandThumb({ name }: { name: string }) {
   )
 }
 
+/** How following a brand is going, in words (not one of the four statuses). */
+const followWords: Record<TrackedDomain['status'], string> = {
+  live: '',
+  pending: 'Waiting for its first email',
+  error: 'Its emails could not be brought in'
+}
+
 const perWeek = (n: number) =>
   n < 1 ? 'less than one a week' : `${Math.round(n)} a week`
 
@@ -83,9 +90,11 @@ function FollowedCard({ view }: { view: InspirationView }) {
                   thumbnail={<BrandThumb name={t.label} />}
                   title={t.label}
                   details={[
-                    t.domain,
+                    t.label === t.domain ? '' : t.domain,
                     t.emails === 1 ? '1 email' : `${t.emails} emails`,
                     summary ? `Sends ${perWeek(summary.perWeek)}` : '',
+                    // In words, for everyone: these are not email statuses.
+                    followWords[t.status],
                     t.sample ? 'Sample' : ''
                   ]}
                   end={
@@ -101,13 +110,7 @@ function FollowedCard({ view }: { view: InspirationView }) {
                           domain: t.domain
                         }}
                       />
-                    ) : t.status === 'error' ? (
-                      <Status kind="needs_you" />
-                    ) : t.status === 'pending' ? (
-                      <Status kind="working" word="Waiting" />
-                    ) : (
-                      <Status kind="planned" />
-                    )
+                    ) : null
                   }
                 />
               )
@@ -119,8 +122,8 @@ function FollowedCard({ view }: { view: InspirationView }) {
             <FollowForm />
           ) : (
             <p className="type-caption text-[var(--stone)]">
-              You follow 10 brands, the most at a time. Stop one to follow
-              another.
+              You follow {view.limit} brands, the most at a time. Stop one to
+              follow another.
             </p>
           )
         ) : null}

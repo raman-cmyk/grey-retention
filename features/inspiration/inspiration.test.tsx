@@ -2,9 +2,6 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
-vi.mock('next/font/google', () => ({
-  Urbanist: () => ({ variable: 'urbanist-variable' })
-}))
 const mocks = vi.hoisted(() => ({
   referenceLibrary: vi.fn(),
   readCompetitorSuggestions: vi.fn(),
@@ -67,7 +64,7 @@ const item = (
   id,
   tab: 'competitors' as const,
   source: 'competitor' as const,
-  format: 'designed' as never,
+  format: 'design' as const,
   title: `Email ${id}`,
   domain: 'northwind.example',
   from: 'Northwind',
@@ -89,11 +86,11 @@ const library = (
     item('b', '2026-11-12T10:00:00Z'),
     item('t', '2026-11-13T10:00:00Z', {
       source: 'template',
-      tab: 'templates' as never
+      tab: 'best'
     }),
     item('i', '2026-11-11T10:00:00Z', {
       source: 'import',
-      tab: 'yours' as never,
+      tab: 'yours',
       from: 'You'
     })
   ],
@@ -148,7 +145,7 @@ describe('inspirationView (UI-INSa)', () => {
   it('lists followed brands, suggestions not yet followed and the newest emails', () => {
     const view = inspirationView(input())
     expect(view.owner).toBe(true)
-    expect(view.slotsLeft).toBe(9)
+    expect([view.limit, view.slotsLeft]).toEqual([10, 9])
     expect(view.suggestions.map((s) => [s.domain, s.followable])).toEqual([
       ['bark.example', true],
       // A real brand: suggested and hideable, not followable yet (REAL-01b).
@@ -227,10 +224,34 @@ describe('hideBrand (UI-INSa)', () => {
     expect((await hideBrand({}, form(id))).error).toMatch(/owner/)
     mocks.requireRequestContext.mockResolvedValue(context)
     expect((await hideBrand({}, form('not-an-id'))).error).toMatch(/Reload/)
+    mocks.createClient.mockResolvedValue(null)
+    expect((await hideBrand({}, form(id))).error).toBe('Please sign in again.')
     mocks.createClient.mockResolvedValue({})
-    mocks.setBrandHidden.mockRejectedValue({ code: '42501' })
-    expect((await hideBrand({}, form(id))).error).toMatch(/could not be hidden/)
-    expect(mocks.setBrandHidden).toHaveBeenCalledTimes(1)
+    // The database's own refusals, in the owner's words.
+    for (const [code, words] of [
+      ['42501', 'Only the workspace owner can hide a brand.'],
+      ['23514', 'That brand is no longer suggested. Open Inspiration again.'],
+      ['XX000', 'That brand could not be hidden. Try again.']
+    ]) {
+      mocks.setBrandHidden.mockRejectedValueOnce({ code })
+      expect((await hideBrand({}, form(id))).error).toBe(words)
+    }
+    expect(mocks.setBrandHidden).toHaveBeenCalledTimes(3)
+    expect(mocks.revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('keeps nothing in the demo', async () => {
+    vi.stubEnv('AUTH_MODE', 'demo')
+    try {
+      mocks.requireRequestContext.mockResolvedValue(context)
+      mocks.createClient.mockResolvedValue({})
+      expect((await hideBrand({}, form(id))).error).toBe(
+        'Please sign in again.'
+      )
+      expect(mocks.setBrandHidden).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })
 
@@ -266,9 +287,12 @@ describe('Inspiration screen (UI-INSa)', () => {
     const [sample, real] = within(region('Brands like yours')).getAllByRole(
       'listitem'
     )
+    const follow = within(sample!).getByRole('button', { name: 'Follow' })
     expect(
-      within(sample!).getByRole('button', { name: 'Follow' })
-    ).toBeInTheDocument()
+      Object.fromEntries(
+        new FormData(follow.closest('form')!) as unknown as [string, string][]
+      )
+    ).toEqual({ domain: 'bark.example' })
     expect(
       within(sample!).getByRole('button', { name: 'Hide' })
     ).toBeInTheDocument()
@@ -306,9 +330,57 @@ describe('Inspiration screen (UI-INSa)', () => {
     expect(screen.queryByRole('button')).toBeNull()
     expect(screen.queryByLabelText('Brand website')).toBeNull()
     expect(screen.queryByRole('link', { name: 'Use this design' })).toBeNull()
-    expect(
-      within(region('Brands you follow')).getByText('Planned')
-    ).toBeInTheDocument()
+    // Following is not an email: no status pill, for staff either.
+    expect(region('Brands you follow')).not.toHaveTextContent(
+      /Planned|In Klaviyo|Working|Needs you/
+    )
+  })
+
+  it('says in words, for everyone, how following each brand is going', () => {
+    const tracked = library().tracked[0]!
+    const view = (tenantRole: 'owner' | 'staff') =>
+      inspirationView(
+        input({
+          context: { ...context, tenantRole },
+          library: library({
+            tracked: [
+              { ...tracked, subscriptionId: 'live', status: 'live' },
+              {
+                ...tracked,
+                subscriptionId: 'new',
+                domain: 'new.example',
+                label: 'new.example',
+                status: 'pending',
+                emails: 0
+              },
+              {
+                ...tracked,
+                subscriptionId: 'bad',
+                domain: 'bad.example',
+                label: 'Bad Co',
+                status: 'error',
+                emails: 0
+              }
+            ]
+          })
+        })
+      )
+    for (const role of ['owner', 'staff'] as const) {
+      render(<InspirationScreen view={view(role)} timezone="UTC" />)
+      const [live, pending, failed] = within(
+        region('Brands you follow')
+      ).getAllByRole('listitem')
+      expect(live).toHaveTextContent('northwind.example · 10 emails · Sample')
+      // A brand named after its website says it once.
+      expect(pending).toHaveTextContent(
+        '0 emails · Waiting for its first email · Sample'
+      )
+      expect(pending).not.toHaveTextContent('new.example · 0')
+      expect(failed).toHaveTextContent(
+        'bad.example · 0 emails · Its emails could not be brought in'
+      )
+      cleanup()
+    }
   })
 
   it('says when nothing is followed, suggested or read, and when every slot is used', () => {
@@ -353,7 +425,7 @@ describe('Inspiration screen (UI-INSa)', () => {
       />
     )
     expect(region('Brands you follow')).toHaveTextContent(
-      'You follow 10 brands'
+      'You follow 10 brands, the most at a time.'
     )
     expect(screen.queryByLabelText('Brand website')).toBeNull()
     expect(

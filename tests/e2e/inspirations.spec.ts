@@ -32,7 +32,7 @@ test('UI-INSa owner follows a brand, sees its emails, builds from one and stops'
   await page.getByRole('button', { name: 'Follow', exact: true }).click()
   await expect(
     page.getByText(
-      /only sample domains that end in \.example can be tracked, for example/
+      /only sample brands, whose websites end in \.example, for example/
     )
   ).toBeVisible()
   await expect(field).toHaveValue('brand.com')
@@ -44,7 +44,8 @@ test('UI-INSa owner follows a brand, sees its emails, builds from one and stops'
   await page.getByRole('button', { name: 'Follow', exact: true }).click()
   await expect(page.getByText(`Following ${domain}.`)).toBeVisible()
   const brands = followed.getByRole('list', { name: 'Brands you follow' })
-  await expect(brands.getByText(domain, { exact: false })).toBeVisible()
+  // The row's title is the brand's website; its details repeat it.
+  await expect(brands.getByText(domain, { exact: true })).toBeVisible()
 
   // The sample capture brings 10 sample emails (the scheduled worker does
   // this in the app; here the operator button runs it now).

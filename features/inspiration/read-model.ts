@@ -15,8 +15,17 @@ import {
   readCompetitorSuggestions,
   type CompetitorSuggestion
 } from '@/features/onboarding/suggested-competitors'
+import { validTimezone } from '@/lib/brand-time'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+
+/** The latest emails shown, newest first. */
+export const latestEmails = 12
+
+export type InspirationSuggestion = CompetitorSuggestion & {
+  /** A sample brand: this workspace can follow it now. */
+  followable: boolean
+}
 
 /**
  * Inspiration (master handoff section 11): the brands the workspace
@@ -25,19 +34,15 @@ import { createServiceClient } from '@/lib/supabase/service'
  * are read with the member's own client; only the inbox's brand list is
  * read with the server's client, after the member's own profile read
  * (`readCompetitorSuggestions`), and never reaches the browser beyond a
- * brand's name, website and reason. Each part that cannot be read is
+ * brand's name, website and reason (and, on the owner's page, the id its
+ * Hide sends back, which the database checks again). Each part that cannot be read is
  * marked; the others still show.
  */
-export const latestEmails = 12
-
-export type InspirationSuggestion = CompetitorSuggestion & {
-  /** A sample brand: this workspace can follow it now. */
-  followable: boolean
-}
-
 export type InspirationView = {
   owner: boolean
   tracked: ReferenceLibraryData['tracked']
+  /** The most brands a workspace follows at a time. */
+  limit: number
   /** How many more brands it may follow. */
   slotsLeft: number
   summaries: Record<string, TrackedSummary['summary']>
@@ -65,11 +70,13 @@ export function inspirationView(input: InspirationInput): InspirationView {
   return {
     owner: input.context.tenantRole === 'owner',
     tracked,
+    limit: domainLimit,
     slotsLeft: Math.max(0, domainLimit - tracked.length),
     summaries: Object.fromEntries(
       library
         ? trackedSummaries(library.tracked, library.factsByDomain, {
-            timezone: input.context.timezone,
+            // A timezone that is not one must not fail the whole page.
+            timezone: validTimezone(input.context.timezone),
             now: input.now
           }).map((s) => [s.domain, s.summary])
         : []

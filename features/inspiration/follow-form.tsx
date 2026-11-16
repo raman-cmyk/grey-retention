@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useEffect, useRef } from 'react'
 import { useFormStatus } from 'react-dom'
 import { useHydrated } from '@/components/ui/use-hydrated'
 import type { ActionResult } from '@/components/gros/action'
@@ -18,11 +18,19 @@ export function FollowForm() {
     trackDomain,
     {}
   )
+  const form = useRef<HTMLFormElement>(null)
+  // A followed brand empties the field; a refused one stays to correct.
+  useEffect(() => {
+    if (!state.message || state.error) return
+    const field = form.current?.elements.namedItem('domain')
+    if (field instanceof HTMLInputElement) field.value = ''
+  }, [state])
   return (
     <form
+      ref={form}
       action={dispatch}
-      // React empties the field after the action: keep what the owner typed
-      // (a refused website stays there to correct).
+      // React empties the field after every action: the effect above
+      // decides instead.
       onReset={(event) => event.preventDefault()}
       className="flex flex-col gap-[var(--space-3)]"
     >
@@ -37,11 +45,16 @@ export function FollowForm() {
         />
         <Submit />
       </div>
-      {state.message ? (
-        <p aria-live="polite" className="type-caption text-[var(--ink-soft)]">
-          {state.message}
-        </p>
-      ) : null}
+      {/* Always in the page, so screen readers hear each answer. */}
+      <p
+        aria-live="polite"
+        className="type-caption text-[var(--ink-soft)] empty:hidden"
+      >
+        {state.message ?? ''}
+      </p>
+      <p aria-live="assertive" className="sr-only">
+        {state.error ?? ''}
+      </p>
     </form>
   )
 }
@@ -54,7 +67,7 @@ function Submit() {
     <button
       type="submit"
       disabled={pending || !hydrated}
-      className={buttonClasses('main', 'focus')}
+      className={buttonClasses('main', 'app')}
     >
       Follow
     </button>
