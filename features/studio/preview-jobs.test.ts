@@ -1,7 +1,11 @@
 // @vitest-environment node
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { NextRequest } from 'next/server'
 
 vi.mock('server-only', () => ({}))
+const service = vi.hoisted(() => ({ createServiceClient: vi.fn() }))
+vi.mock('@/lib/supabase/service', () => service)
+import { GET, POST } from '@/app/api/internal/studio/previews/route'
 import { klaviyoFooterTags } from '@/features/blocks/klaviyo-tags'
 import {
   emailOrigins,
@@ -357,5 +361,143 @@ describe('handing out views to draw (DST-005b)', () => {
       lease,
       failure: 'failed'
     })
+  })
+})
+
+describe('the preview route (DST-005b)', () => {
+  const secret = 's'.repeat(40)
+  const auth = { authorization: `Bearer ${secret}` }
+  const req = (
+    method: string,
+    init: { url?: string; body?: string; headers?: Record<string, string> } = {}
+  ) =>
+    new NextRequest(
+      init.url ?? 'https://app.test/api/internal/studio/previews',
+      { method, body: init.body, headers: init.headers ?? auth }
+    )
+  const post = (body: unknown) =>
+    POST(
+      req('POST', {
+        body: typeof body === 'string' ? body : JSON.stringify(body)
+      })
+    )
+  const drawn = {
+    job,
+    lease,
+    height: 2100,
+    cut: false,
+    wide: false,
+    bytes: 90_000
+  }
+  beforeEach(() => vi.stubEnv('CRON_SECRET', secret))
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    service.createServiceClient.mockReset()
+  })
+
+  it('answers only the cron secret, and says when the server has no database', async () => {
+    expect((await GET(req('GET', { headers: {} }))).status).toBe(401)
+    expect(
+      (
+        await POST(
+          req('POST', { headers: { authorization: 'Bearer x' }, body: '{}' })
+        )
+      ).status
+    ).toBe(401)
+    service.createServiceClient.mockReturnValue(null)
+    expect((await GET(req('GET'))).status).toBe(503)
+    expect((await post(drawn)).status).toBe(503)
+  })
+
+  it('peeks without claiming, hands out views, and says when it cannot', async () => {
+    const d = database()
+    service.createServiceClient.mockReturnValue(d)
+    const peek = await GET(
+      req('GET', {
+        url: 'https://app.test/api/internal/studio/previews?peek=1'
+      })
+    )
+    expect(await peek.json()).toEqual({ waiting: 2 })
+    expect(d.calls).toEqual([])
+    const got = await GET(req('GET'))
+    expect(got.headers.get('cache-control')).toBe('no-store')
+    expect((await got.json()).jobs).toEqual([handed])
+    service.createServiceClient.mockReturnValue(
+      database({ rpcError: { claim_platform_job: 'XX000' } })
+    )
+    const down = await GET(req('GET'))
+    expect(down.status).toBe(500)
+    expect(await down.json()).toEqual({
+      error: 'Preview jobs unavailable; they stay queued.'
+    })
+  })
+
+  it('records a drawn view, cut or not, or its failure', async () => {
+    const d = database()
+    service.createServiceClient.mockReturnValue(d)
+    expect(await (await post(drawn)).json()).toEqual({ ok: true })
+    expect(last(d, 'record_email_render')).toEqual(drawn)
+    await post({ ...drawn, height: 6000, cut: true, wide: true })
+    expect(last(d, 'record_email_render')).toMatchObject({
+      cut: true,
+      wide: true
+    })
+    await post({ job, lease, failure: 'timeout' })
+    expect(last(d, 'fail_email_render')).toEqual({
+      job,
+      lease,
+      failure: 'timeout'
+    })
+  })
+
+  it('refuses anything else: not JSON, unknown fields, a refusal claimed by the browser, out of range, too large', async () => {
+    service.createServiceClient.mockReturnValue(database())
+    for (const body of [
+      'not json',
+      { job, lease, failure: 'gone' },
+      { job, lease, failure: 'refused' },
+      { ...drawn, bytes: 4_000_000 },
+      { ...drawn, height: 6001 },
+      { ...drawn, cut: 'no' },
+      { job, lease, height: 2100, bytes: 90_000 },
+      { job, lease, height: 2100, cut: false, bytes: 90_000 },
+      { ...drawn, extra: 1 },
+      JSON.stringify({ job, lease, failure: 'timeout' }) + ' '.repeat(2_000)
+    ])
+      expect((await post(body)).status).toBe(400)
+    expect(
+      (
+        await POST(
+          req('POST', {
+            body: JSON.stringify({ job, lease, failure: 'timeout' }),
+            headers: { ...auth, 'content-length': '2001' }
+          })
+        )
+      ).status
+    ).toBe(400)
+  })
+
+  it('says 409 when the lease moved on, 422 (and fails the attempt) when the report does not match, 500 otherwise', async () => {
+    service.createServiceClient.mockReturnValue(
+      database({ rpcError: { record_email_render: 'PT409' } })
+    )
+    const moved = await post(drawn)
+    expect(moved.status).toBe(409)
+    expect(await moved.json()).toEqual({
+      error: 'Preview not recorded',
+      code: 'PT409'
+    })
+    const wrong = database({ rpcError: { record_email_render: '23514' } })
+    service.createServiceClient.mockReturnValue(wrong)
+    expect((await post(drawn)).status).toBe(422)
+    expect(last(wrong, 'fail_email_render')).toEqual({
+      job,
+      lease,
+      failure: 'failed'
+    })
+    service.createServiceClient.mockReturnValue(
+      database({ rpcError: { fail_email_render: 'XX000' } })
+    )
+    expect((await post({ job, lease, failure: 'timeout' })).status).toBe(500)
   })
 })
