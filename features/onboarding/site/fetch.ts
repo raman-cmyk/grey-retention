@@ -2,6 +2,7 @@ import 'server-only'
 import { createImageFetcher } from '@/features/inbox/image-fetch'
 import type { ImageFetcher } from '@/lib/providers/image-fetch'
 import { siteHosts } from './fetch-hosts'
+import { fontCdns, maxCss, type Sheet } from './fonts'
 import { maxLogoBytes } from './logos'
 import { samplePage } from './sample'
 
@@ -30,6 +31,12 @@ export interface SiteFetcher {
    * Only the live reader has it: the sample site keeps no logo.
    */
   picture?(url: string): Promise<Uint8Array | null>
+  /**
+   * One stylesheet a page links, as read (FONT-SITE part b), or null when
+   * it cannot be read. Only the live reader has it: the sample site keeps
+   * no font.
+   */
+  stylesheet?(url: string): Promise<Sheet | null>
 }
 
 /** Largest page read. */
@@ -53,6 +60,44 @@ export const logoFetchOptions = {
   userAgent: 'Mozilla/5.0 (compatible; BrandReader/1.0)'
 }
 
+/** Longest one stylesheet may take. */
+export const sheetTimeoutMs = 3_000
+
+/**
+ * The hosts a brand's stylesheets are read from (FONT-SITE part b): its
+ * own host and subdomains, its store platform's (`cdn.shopify.com`) and
+ * the font services part a lists; never another site's.
+ */
+export function sheetHosts(domain: string) {
+  const own = siteHosts(domain)
+  return (host: string) =>
+    own.has(host) || fontServices.has(host) || fontCdns.has(host)
+}
+const fontServices = new Set([
+  'cdn.shopify.com',
+  'fonts.googleapis.com',
+  'use.typekit.net'
+])
+const google = (host: string) => host === 'fonts.googleapis.com'
+
+/**
+ * The guards for a stylesheet: https on 443 (also on every redirect), the
+ * stylesheet hosts only, CSS only. Google Fonts writes its CSS for the
+ * browser that asks, so it is asked as a browser that reads WOFF2.
+ */
+export function sheetFetchOptions(domain: string, forGoogle = false) {
+  return {
+    ports: ['443'],
+    protocols: ['https:' as const],
+    accept: 'text/css,*/*;q=0.1',
+    types: /^\s*text\/css\b/i,
+    userAgent: forGoogle
+      ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+      : 'Mozilla/5.0 (compatible; BrandReader/1.0)',
+    allowHost: forGoogle ? google : sheetHosts(domain)
+  }
+}
+
 /**
  * The guards of the live reader for one brand: https only (also on every
  * redirect), port 443, the brand's own host and its `www.`, HTML only.
@@ -71,18 +116,42 @@ export function siteFetchOptions(domain: string) {
 
 /**
  * The live reader for one brand: pages over https on 443 from its own
- * host only; logo pictures over https on 443 from any public host.
+ * host only; logo pictures over https on 443 from any public host;
+ * stylesheets over https on 443 from the stylesheet hosts only.
  */
 export function liveSiteFetcher(
   domain: string,
   fetcher?: ImageFetcher,
-  pictures?: ImageFetcher
+  pictures?: ImageFetcher,
+  sheets?: { own: ImageFetcher; google: ImageFetcher }
 ): SiteFetcher {
   const hosts = siteHosts(domain)
   const http = fetcher ?? createImageFetcher(siteFetchOptions(domain))
   const images = pictures ?? createImageFetcher(logoFetchOptions)
+  const css = sheets ?? {
+    own: createImageFetcher(sheetFetchOptions(domain)),
+    google: createImageFetcher(sheetFetchOptions(domain, true))
+  }
+  const sheetHost = sheetHosts(domain)
   return {
     live: true,
+    async stylesheet(url) {
+      let host: string
+      try {
+        const u = new URL(url)
+        host = u.protocol === 'https:' ? u.hostname : ''
+      } catch {
+        return null
+      }
+      if (!sheetHost(host)) return null
+      const got = await (google(host) ? css.google : css.own)
+        .fetch(url, { maxBytes: maxCss, timeoutMs: sheetTimeoutMs })
+        .catch(() => null)
+      if (!got?.ok) return null
+      const text = new TextDecoder('utf-8', { fatal: false }).decode(got.bytes)
+      // A binary body sent as CSS is not a stylesheet.
+      return text.includes('\u0000') ? null : { url: got.url ?? url, css: text }
+    },
     async picture(url) {
       if (!url.startsWith('https://')) return null
       const got = await images
