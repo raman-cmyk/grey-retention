@@ -4,17 +4,14 @@ import { newOwner } from './new-owner'
 // STR-003 part 2: "Plan next 15 days" on the sample store (fake AI).
 test('STR-003 owner plans the next 15 days and picks an offer', async ({
   page
-}, info) => {
+}) => {
   test.setTimeout(90_000)
   await newOwner(page, { prefix: 'plan', name: 'Plan studio' })
-  if (info.project.name.startsWith('mobile')) {
-    await page.getByRole('button', { name: 'Open navigation' }).click()
-    await page
-      .locator('dialog[open]')
-      .getByRole('link', { name: 'Plan next 15 days' })
-      .click()
-  } else
-    await page.getByRole('link', { name: 'Plan next 15 days' }).first().click()
+  // Home's top bar opens the plan, on a laptop and a phone alike.
+  await page
+    .getByRole('navigation', { name: 'Main' })
+    .getByRole('link', { name: 'Plan', exact: true })
+    .click()
   await expect(page).toHaveURL(/\/plan$/)
   await expect(
     page.getByRole('heading', { name: 'Plan next 15 days', level: 1 })
