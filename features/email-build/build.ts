@@ -26,16 +26,19 @@ import {
   codeFindings,
   copyRounds,
   copyWork,
+  protectedText,
   type CopyWork,
   type Finding
 } from './inspect'
 import { copywriterRun } from './copywriter'
 import { headlineFindings } from './headline-fit'
+import { readingFindings } from './reading-level'
 import { agentCallMs, maxStepSaves } from './step-names'
 import { designA } from './design'
 import { letterCopyStep, letterDesignStep, letterLayout } from './letter-steps'
 import {
   AssemblyError,
+  factLines,
   hiddenChars,
   type Draft
 } from '@/features/assembly/assemble'
@@ -580,12 +583,23 @@ export async function copyStep(
           ),
         plain: () => assembleLockedPlain(locked.input, store.brand, steps),
         checks: takenSubject(taken),
-        // DST-PIC #20: the Copywriter's headlines fit their sections.
-        laterChecks: (draft) =>
-          headlineFindings(
+        // DST-PIC #20: the Copywriter's headlines fit their sections;
+        // #28: its sections' words and reading level, by industry.
+        laterChecks: (draft) => [
+          ...headlineFindings(
             draft,
             locked.input.products.map((p) => p.title)
           ),
+          ...readingFindings(draft, store.industry, [
+            ...protectedText(locked, store.brand.name),
+            // The facts the writer must use word for word (with or without
+            // their full stop).
+            ...factLines(locked.input.facts).flatMap((f) => [
+              f,
+              f.replace(/[.!?]$/, '')
+            ])
+          ])
+        ],
         // Saved by an older app in another shape: the rounds start over.
         ...(saved.success ? { work: saved.data as unknown as CopyWork } : {}),
         ...(until !== undefined
