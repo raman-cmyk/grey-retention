@@ -861,12 +861,17 @@ describe('the subject line lab on the Copywriter’s words (PIC-26 part 2)', () 
     expect(ai.mock.calls[0]![0].request.system).toContain('subjectIdeas')
   })
 
-  it('never weighs an idea that claims a price, a deadline or something new the email does not', async () => {
+  it('never weighs an idea that claims a price, scarcity, a deadline or something new the email does not', async () => {
     const { out } = await copy([
       '20 percent off, quiet nights',
       'Half price on everything',
+      'Buy one, get one',
       'Last chance, ends tonight',
       'New: the winter candles',
+      'Almost gone: cedar candles',
+      'This weekend only',
+      'Our bestselling candle',
+      // The ninth and last idea the lab weighs.
       'Ready for the weekend?'
     ])
     expect(out.draft.subject).toBe('Ready for the weekend?')
@@ -926,6 +931,7 @@ describe('claimsPrice (PIC-26 part 2)', () => {
       '10% off candles tonight',
       'Save 10% on the cedar candle',
       '10 percent off, quiet nights',
+      'Up to 10% off',
       'Ready for the weekend?'
     ])
       expect(claimsPrice(subject, offer), subject).toBe(false)
@@ -935,7 +941,15 @@ describe('claimsPrice (PIC-26 part 2)', () => {
       '10% off, and free gifts',
       '110% cozy',
       'Candles from $5',
-      'Our winter sale'
+      'Our winter sale',
+      // An offer the code does not give.
+      'Buy one, get one',
+      'A gift with your order',
+      'Gift with purchase',
+      'Use code at checkout',
+      'Two for one candles',
+      '2 for 1 candles',
+      'Quiet nights, for less'
     ])
       expect(claimsPrice(subject, offer), subject).toBe(true)
   })

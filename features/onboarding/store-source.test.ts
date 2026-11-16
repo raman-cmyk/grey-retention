@@ -495,6 +495,11 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
     expect((await ownStoreSource(live.db).read(tenantId)).pastSubjects).toEqual(
       [{ subject: 'Ready for the weekend?', recipients: 900, openRate: 0.33 }]
     )
+    // Only the sent emails of the history are read, never the whole snapshot.
+    expect(live.asked).toContainEqual([
+      'klaviyo_history',
+      'live,sent:snapshot->sent'
+    ])
     // A live store never learns from the sample account's emails.
     const sampled = fakeDb({
       catalog_status: status(),

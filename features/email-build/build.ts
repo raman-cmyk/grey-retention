@@ -40,6 +40,7 @@ import { headlineFindings } from './headline-fit'
 import { readingFindings } from './reading-level'
 import { subjectLab, subjectLabVersion } from './subject-lab'
 import { learnFrom, traitsOf, type SubjectTrait } from './subject-traits'
+import { offerWords } from '@/features/onboarding/history/facts'
 import { agentCallMs, maxStepSaves } from './step-names'
 import { designA } from './design'
 import { letterCopyStep, letterDesignStep, letterLayout } from './letter-steps'
@@ -224,7 +225,15 @@ export type SubjectPick = {
 
 /** Words that state a price or a discount, in any form (an idea's claim). */
 const priceTalk =
-  /\b(?:half|price[sd]?|pricing|free|cheap(?:er|est)?|bargains?|markdowns?|reduced|off|save|savings?|discount(?:s|ed)?|deals?|sale|bogo|clearance|coupons?|promo)\b|[%$€£¥₹]|\d\s*(?:percent|per cent)\b/i
+  /\b(?:half|price[sd]?|pricing|free|cheap(?:er|est)?|bargains?|markdowns?|reduced|off|save|savings?|discount(?:s|ed)?|deals?|sale|bogo|clearance|coupons?|promo|less|lower|lowest|(?:two|2) for (?:one|1))\b|[%$€£¥₹]|\d\s*(?:percent|per cent)\b/i
+
+/**
+ * Scarcity, urgency and claims an idea never makes (the writer's own
+ * subject is the inspectors' to judge): "almost gone", "this weekend
+ * only", "our bestseller", "handmade".
+ */
+const claimTalk =
+  /\b(?:almost gone|selling (?:out|fast)|sold out|going fast|while (?:they|stocks?|supplies) lasts?|(?:week(?:end)?|today|tonight|day)s? only|only (?:a few|\d+) left|(?:a )?few left|limited(?: stock| edition| time| run)?|before (?:it'?s|they'?re) gone|back in stock|low stock|last (?:one|few|chance)|best[- ]?sell(?:ing|ers?)|best|most (?:popular|loved)|(?:everyone'?s|fan|customer|crowd) favou?rites?|hand[- ]?made|small[- ]batch(?:es)?|award[- ]winning|loved by|number one|guaranteed?|organic|natural|sustainable|vegan|eco)\b|#\s?1\b/i
 
 /**
  * True when an idea talks about price other than by the email's own offer
@@ -238,7 +247,9 @@ export function claimsPrice(subject: string, offer: LockedOffer | null) {
         'gi'
       )
     : null
-  return priceTalk.test(own ? subject.replace(own, ' ') : subject)
+  const rest = own ? subject.replace(own, ' ') : subject
+  // An offer the code does not give: "buy one, get one", "a free gift".
+  return priceTalk.test(rest) || offerWords.test(rest)
 }
 
 /**
@@ -248,10 +259,10 @@ export function claimsPrice(subject: string, offer: LockedOffer | null) {
  * weighed only when no other email of the plan has it, it is safe store
  * text, assembly's word checks found nothing in it (the offer's percent
  * only, no shipping or claim), the email's code checks pass with it as the
- * subject, it talks about price only by the offer's own percent
- * (`claimsPrice`), and it says nothing the inspected subject does not: no
- * deadline, no offer when the email has none, nothing new (claims only
- * the inspectors judge). Only the store's own opens move the subject: with
+ * subject, it talks about price or an offer only by the offer's own
+ * percent (`claimsPrice`), it makes no scarcity, urgency or product claim
+ * (`claimTalk`) and no deadline, and it says nothing new or of an offer
+ * the inspected subject does not (claims only the inspectors judge). Only the store's own opens move the subject: with
  * no history the writer's own stays, and the lab's pick is still kept.
  * The draft keeps the best as its subject; the ideas never stay in it.
  */
@@ -273,12 +284,12 @@ export function pickSubject(
   ]
   const own = new Set(traitsOf(draft.subject, input.brandName))
   const claims = (subject: string) =>
+    claimTalk.test(subject) ||
     traitsOf(subject, input.brandName).some(
       (t) =>
-        !own.has(t) &&
-        (t === 'deadline' ||
-          t === 'new' ||
-          (t === 'offer' && !input.locked.offer))
+        // Never a deadline (the writer's rule for ideas), whatever its own says.
+        t === 'deadline' ||
+        (!own.has(t) && (t === 'new' || (t === 'offer' && !input.locked.offer)))
     )
   const lab = subjectLab(ideas, learnFrom(input.past ?? [], input.brandName), {
     brand: input.brandName,
