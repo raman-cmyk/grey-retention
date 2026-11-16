@@ -26,6 +26,8 @@ import {
   type Slot
 } from './plan'
 import { sampleCompetitors, sampleStore } from './sample'
+import { storedPlan } from './stored'
+import { plannedEmail } from '@/features/email-build/build'
 
 const tenantId = '00000000-0000-4000-8000-000000000101'
 const start = '2026-11-16'
@@ -392,9 +394,9 @@ describe('designed or text emails (TXT-001f, D26)', () => {
       brief.actions
     )
     expect(texts(problems, 1)).toEqual([])
-    expect(texts(problems, 2)).toEqual([
+    expect(texts(problems, 2)).toContain(
       'a text email names one product at most.'
-    ])
+    )
     // Three text emails in four: the third is over the share.
     const many = calendarProblems(
       [
@@ -406,10 +408,164 @@ describe('designed or text emails (TXT-001f, D26)', () => {
       input,
       brief.actions
     )
-    expect(texts(many, 2)).toEqual([
-      'at most 2 of these 4 emails may be text emails.'
-    ])
+    // One in three, rounded down: one of four, the latest ones over it.
+    for (const i of [1, 2])
+      expect(texts(many, i)).toEqual([
+        'at most 1 of these 4 emails may be text emails.'
+      ])
     expect(texts(many, 0)).toEqual([])
+  })
+
+  it('counts one in three rounded down: none in a plan of 1 or 2, one in 3 to 5, two in 6', () => {
+    const text = (date: string) => slot({ format: 'text', date })
+    const dates = ['2026-11-16', '2026-11-17', '2026-11-19', '2026-11-20']
+    const share = (n: number) =>
+      [
+        ...calendarProblems(
+          Array.from({ length: n }, (_, i) =>
+            i < 2 ? text(dates[i]!) : slot({ date: dates[i % 4]! })
+          ),
+          input,
+          brief.actions
+        ).values()
+      ]
+        .flat()
+        .filter((p) => p.rule === 'text_share').length
+    // Two text emails in each plan: over the share by 2, 2, 1, 1.
+    expect([1, 2, 3, 4].map(share)).toEqual([1, 2, 1, 1])
+    expect(
+      calendarProblems([text('2026-11-20')], input, brief.actions)
+        .get(0)
+        ?.filter((p) => p.rule === 'text_share')
+        .map((p) => p.text)
+    ).toEqual(['a plan of 1 email has no text email (one in 3 at most).'])
+  })
+
+  it('fixes a slot that breaks only the text rules, never drops it, and says why others went', () => {
+    const many = [
+      slot({ ...storySlot, format: 'text', date: '2026-11-18' }),
+      slot({ format: 'text', productIds: ['p-oak-tray', 'p-wool-cushion'] }),
+      offerSlot,
+      { ...giftSlot, format: 'text' as const }
+    ]
+    const { kept, dropped, changed } = keepPassing(
+      many,
+      calendarProblems(many, input, brief.actions),
+      input,
+      brief.actions
+    )
+    expect(dropped).toEqual([])
+    expect(changed).toBe(2)
+    // The first text email (by date) stays text; the later ones are designed.
+    expect(kept.map((s) => [s.date, s.format, s.productIds])).toEqual([
+      ['2026-11-18', 'text', []],
+      ['2026-11-20', undefined, ['p-oak-tray', 'p-wool-cushion']],
+      ['2026-11-17', undefined, ['p-cedar-candle']],
+      ['2026-11-23', undefined, ['p-linen-throw', 'p-wool-cushion']]
+    ])
+    // A text email with two products keeps its lead product.
+    const two = [
+      slot({ format: 'text', productIds: ['p-oak-tray', 'p-wool-cushion'] }),
+      offerSlot,
+      storySlot
+    ]
+    expect(
+      keepPassing(
+        two,
+        calendarProblems(two, input, brief.actions),
+        input,
+        brief.actions
+      ).kept[0]
+    ).toMatchObject({ format: 'text', productIds: ['p-oak-tray'] })
+  })
+
+  it('keeps a text email that other emails’ drops would push over the share, as a designed one', () => {
+    const six = [
+      slot({ ...storySlot, format: 'text', date: '2026-11-18' }),
+      slot({ format: 'text', date: '2026-11-20' }),
+      offerSlot,
+      slot({ date: '2026-11-21' }),
+      slot({ date: '2026-11-22' }),
+      giftSlot
+    ]
+    const roomy = { ...input, sendsPerWeek: 6 }
+    expect(calendarProblems(six, roomy, brief.actions).size).toBe(0)
+    // The critic drops three designed emails: three are left, one may be text.
+    const critic = new Map(
+      [3, 4, 5].map((i) => [i, [{ rule: 'critic' as const, text: 'Weak.' }]])
+    )
+    const { kept, dropped, changed } = keepPassing(
+      six,
+      critic,
+      roomy,
+      brief.actions
+    )
+    expect(dropped).toHaveLength(3)
+    expect(dropped.flat().every((p) => p.rule === 'critic')).toBe(true)
+    expect(changed).toBe(1)
+    expect(kept.map((s) => s.format)).toEqual(['text', undefined, undefined])
+  })
+
+  it('logs the text emails code changed, and the plan keeps them', async () => {
+    const ai = agents({
+      'brief-writer': [brief],
+      'calendar-planner': [
+        {
+          slots: [
+            offerSlot,
+            { ...storySlot, format: 'text' },
+            slot({
+              format: 'text',
+              productIds: ['p-oak-tray', 'p-wool-cushion']
+            }),
+            giftSlot
+          ]
+        },
+        'refused'
+      ],
+      'strategy-critic': [{ issues: [] }]
+    })
+    const { ctx, fallbacks } = context(ai)
+    const plan = await planFifteenDays(input, ctx)
+    expect(plan.dropped).toBe(0)
+    expect(plan.slots.map((s) => [s.emailType, s.format])).toEqual([
+      ['offer', undefined],
+      ['story', 'text'],
+      ['launch', undefined],
+      ['gift guide', undefined]
+    ])
+    expect(fallbacks.entries()).toContainEqual(
+      expect.objectContaining({
+        agent: 'calendar-rules',
+        reasonCode: 'text_changed',
+        reason: 'One email broke the text email rules.',
+        detail: { changed: 1 }
+      })
+    )
+  })
+
+  it('a planned text email reaches Create email as one, a designed one with no format', async () => {
+    const ai = agents({
+      'brief-writer': [brief],
+      'calendar-planner': [
+        {
+          slots: [
+            { ...offerSlot, format: 'designed' },
+            { ...storySlot, format: 'text' },
+            slot({}),
+            giftSlot
+          ]
+        }
+      ],
+      'strategy-critic': [{ issues: [] }]
+    })
+    const plan = await planFifteenDays(input, context(ai).ctx)
+    const saved = storedPlan.parse(plan)
+    const read = saved.slots.map((s) => plannedEmail.parse(s).format)
+    expect(read).toEqual([undefined, 'text', undefined, undefined])
+    expect(
+      plannedEmail.safeParse({ ...saved.slots[1], format: 'html' }).success
+    ).toBe(false)
   })
 
   it('plans the text emails the planner chose, the rest designed', async () => {
@@ -437,7 +593,9 @@ describe('designed or text emails (TXT-001f, D26)', () => {
     const system = ai.mock.calls.find(
       (c) => c[0].callerKey.split(':')[0] === 'calendar-planner'
     )![0].request.system
-    expect(system).toContain('At most one email in 3 is a text email.')
+    expect(system).toContain(
+      'At most one email in 3 is a text email (a plan of fewer than 3 emails has none).'
+    )
   })
 
   it('the plain plan (no AI) is all designed emails', () => {
