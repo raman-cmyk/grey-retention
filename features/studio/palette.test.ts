@@ -70,6 +70,17 @@ describe('the brand’s palette in a designed section (DST-PIC #13)', () => {
       'hsl(16,59%,45%)',
       'oklch(0.6 0.1 30)'
     ])
+    // Brackets two deep inside a colour: refused, never skipped.
+    const deep = 'rgb(calc(min(0,1)) 87 255)'
+    expect(
+      coloursUsed({
+        css: `.a{color:${deep}}`,
+        html: `<svg viewBox="0 0 1 1"><rect fill="${deep}"/></svg>`
+      })
+    ).toEqual([deep, deep])
+    expect(offOf(`.a{background:${deep} }`, terracotta)).toEqual([
+      `Write each colour as a hex (or rgb, hsl): “${deep}” cannot be read for sure.`
+    ])
   })
 
   it('takes the brand’s colours, their lighter and darker shades and neutrals', () => {

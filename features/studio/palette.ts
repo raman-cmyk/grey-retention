@@ -95,6 +95,18 @@ const colourToken = new RegExp(
   `\\b(?:${colourFunctions})\\([^()]*(?:\\([^()]*\\)[^()]*)*\\)|#[0-9a-f]{3,8}\\b|\\b[a-z]+\\b`,
   'gi'
 )
+/** Where a colour function starts: one nested too deep for `colourToken` is refused, never skipped. */
+const colourCall = new RegExp(`\\b(?:${colourFunctions})\\(`, 'gi')
+
+/** The call starting at `at`, to its closing bracket. */
+function callAt(text: string, at: number) {
+  let depth = 0
+  for (let i = at; i < text.length; i++) {
+    if (text[i] === '(') depth++
+    else if (text[i] === ')' && --depth === 0) return text.slice(at, i + 1)
+  }
+  return text.slice(at)
+}
 
 const clamp = (n: number, lo: number, hi: number) =>
   Math.min(hi, Math.max(lo, n))
@@ -222,16 +234,22 @@ export function coloursUsed(section: { html: string; css: string }) {
   }
   walk(parseFragment(section.html))
   const found: string[] = []
-  for (const value of values)
+  for (const value of values) {
     // A `url(#id)` points at an SVG part, never a colour.
-    for (const m of value
-      .replace(/url\([^)]*\)/gi, ' ')
-      .matchAll(colourToken)) {
+    const text = value.replace(/url\([^)]*\)/gi, ' ')
+    const read: [number, number][] = []
+    for (const m of text.matchAll(colourToken)) {
       const token = m[0]
+      if (token.includes('(')) read.push([m.index, m.index + token.length])
       if (/^[a-z]+$/i.test(token) && !colourNames.has(token.toLowerCase()))
         continue
       found.push(token)
     }
+    // A colour function with brackets two deep inside: never skipped.
+    for (const m of text.matchAll(colourCall))
+      if (!read.some(([from, to]) => m.index >= from && m.index < to))
+        found.push(callAt(text, m.index))
+  }
   return found
 }
 
