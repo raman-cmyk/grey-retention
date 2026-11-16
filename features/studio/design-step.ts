@@ -209,7 +209,12 @@ export async function studioDesignStep(
         id: sectionId(i),
         family: s.family,
         purpose: s.purpose,
-        products: s.products.length
+        products: s.products.length,
+        // DST-007: its height is the block it is drawn as (plain copy
+        // draws steps and questions as text).
+        ...(input.blocks[i]!.type !== s.family
+          ? { drawn: input.blocks[i]!.type }
+          : {})
       }))
     }
     storyboard = await ports.storyboard(board)
