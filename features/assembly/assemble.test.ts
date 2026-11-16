@@ -1148,4 +1148,19 @@ describe('the phrases the owner takes out (PIC-29 part 2c)', () => {
       wordProblems(printed('A truly amazing candle') as never, input(), placed)
     ).toEqual([])
   })
+
+  it('sends a live writer’s draft back through the engine, never the sample writer’s', async () => {
+    const learned = news({ neverWords: ['hello there'] })
+    const rewrite = await build(learned, live(said(['Hello there.'])))
+    expect(rewrite.status).toBe('rewrite')
+    expect(reasons(rewrite)).toContain(
+      '"hello there" is a phrase the owner takes out of these emails: use other words.'
+    )
+    // The sample writer's words are code's own: no throw, still a sample.
+    const fake = await build(
+      { ...input(), neverWords: ['meet the', 'picked for you'] },
+      sample
+    )
+    expect(fake.status).toBe('sample')
+  })
 })
