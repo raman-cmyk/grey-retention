@@ -140,6 +140,31 @@ describe('the design step with the studio (DST-006c part 2a)', () => {
     expect(out.seconds).toBeGreaterThanOrEqual(60)
   })
 
+  it('gives the storyboard the block a section is drawn as: steps in plain copy as text (DST-007)', async () => {
+    const p = ports()
+    await studioDesignStep(
+      {
+        ...input(),
+        sections: [
+          ...input().sections.slice(0, 2),
+          { family: 'steps' as const, purpose: 'How to', products: [] },
+          input().sections[2]!
+        ],
+        blocks: [blocks[0]!, blocks[1]!, sampleBlocks.text, blocks[2]!]
+      },
+      p
+    )
+    const board = vi.mocked(p.storyboard).mock.calls[0]![0]
+    expect(board.sections[2]).toEqual({
+      id: 's3',
+      family: 'steps',
+      purpose: 'How to',
+      products: 0,
+      drawn: 'text'
+    })
+    expect(board.sections[1]).not.toHaveProperty('drawn')
+  })
+
   it('goes on from its work without storyboarding again, and draws the hero as its picture', async () => {
     const first = waitingOf(await studioDesignStep(input(), ports()))
     const p = ports({}, [drawn])
