@@ -92,9 +92,9 @@ const ok = (content: unknown): AiRunResult => ({
   settled: true
 })
 const filler = (n: number) =>
-  Array.from({ length: n }, (_, i) =>
-    i % 8 === 7 ? 'evening.' : 'quiet'
-  ).join(' ')
+  Array.from({ length: n }, (_, i) => (i % 8 === 7 ? 'light.' : 'warm')).join(
+    ' '
+  )
 /** A letter that passes every check. */
 const good: LetterAnswer = {
   subject: 'A note about our cedar candle',
@@ -102,7 +102,7 @@ const good: LetterAnswer = {
   greeting: 'Hi there,',
   body: [
     'We poured the first cedar candle in our own kitchen, for the long dark evenings.',
-    `Quiet ${filler(60)}`,
+    `Warm ${filler(60)}`,
     'If you would like one this week, [the candle is here](1), with a little off.'
   ],
   signoff: 'Warmly,',
@@ -217,6 +217,22 @@ describe('the Letter writer (TXT-001 part 2)', () => {
     expect(again).toMatch(/shipping/i)
   })
 
+  it('tells the writer its industry’s reading level, and sends back a letter over it (DST-PIC #28)', async () => {
+    const brief = await briefFor()
+    const hard =
+      'Our meticulously formulated aromatic composition harmonizes complementary botanical constituents, and it delivers an extraordinarily sophisticated olfactory experience for the discerning individual. Additionally, our environmentally conscious manufacturing methodology prioritizes responsibly harvested ingredients.'
+    const ai = modelOf([
+      () => ok({ ...good, body: [hard, hard, good.body.at(-1)!] }),
+      () => ok(good)
+    ])
+    const result = await writeLetter(brief, ctxWith(ai))
+    expect(result).toMatchObject({ status: 'written', tries: 2 })
+    expect(ai.mock.calls[0]![0].request.system).toContain(
+      'Write for a reader of school grade 7 or below'
+    )
+    expect(userOf(ai, 1)).toContain('The letter reads at school grade')
+  })
+
   it('sends the caller’s own checks back too (the plan’s other subjects)', async () => {
     const brief = await briefFor()
     const ai = modelOf([
@@ -274,6 +290,23 @@ describe('the Letter writer (TXT-001 part 2)', () => {
         dedupeKey: 'letter-writer:email-build-b1'
       })
     ])
+  })
+
+  it('a letter kept too hard to read ends in the plain letter, logged in fixed words (DST-PIC #28)', async () => {
+    const brief = await briefFor()
+    const fallbacks = memoryFallbackLog()
+    const hard =
+      'Our meticulously formulated aromatic composition harmonizes complementary botanical constituents, and it delivers an extraordinarily sophisticated olfactory experience for the discerning individual. Additionally, our environmentally conscious manufacturing methodology prioritizes responsibly harvested ingredients.'
+    const ai = modelOf([
+      () => ok({ ...good, body: [hard, hard, good.body.at(-1)!] })
+    ])
+    const result = await writeLetter(brief, { ...ctxWith(ai), fallbacks })
+    expect(result).toMatchObject({ status: 'plain', tries: 4 })
+    expect(fallbacks.entries()[0]).toMatchObject({
+      reason:
+        'The letter still failed the checks after every rewrite: words too hard to read.',
+      detail: expect.objectContaining({ rules: ['reading_level'] })
+    })
   })
 
   it('a model that cannot answer: the plain letter at once', async () => {
