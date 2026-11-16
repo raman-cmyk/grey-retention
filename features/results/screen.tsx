@@ -145,6 +145,12 @@ export function rowDetails(e: ResultEmail): string[] {
   ].filter(Boolean)
 }
 
+/** The row's pill, or an empty end when none of the four is true. */
+function Pill({ email }: { email: ResultEmail }) {
+  const kind = pillOf(email)
+  return kind ? <Status kind={kind} /> : <span aria-hidden />
+}
+
 function EmailsCard({ view }: { view: Results }) {
   const title = 'Every email'
   return (
@@ -158,9 +164,7 @@ function EmailsCard({ view }: { view: Results }) {
               thumbnail={<TextThumb />}
               title={e.title}
               details={rowDetails(e)}
-              end={
-                pillOf(e) ? <Status kind={pillOf(e)!} /> : <span aria-hidden />
-              }
+              end={<Pill email={e} />}
             />
           ))}
         </RowList>

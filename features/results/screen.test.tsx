@@ -183,4 +183,41 @@ describe('the Results screen (UI-RES-b)', () => {
       )
     ).toBeInTheDocument()
   })
+
+  it('puts how sure the numbers are before the numbers, so a cut line keeps it', () => {
+    const [email] = (
+      resultsScreen(
+        [line({ status: 'sending', statusText: 'Sending' })],
+        place
+      ) as Extract<ReturnType<typeof resultsScreen>, { kind: 'results' }>
+    ).emails
+    const details = rowDetails(email!)
+    expect(details[2]).toBe('Still sending: the numbers will change.')
+    expect(details.indexOf('1,240 sent')).toBeGreaterThan(2)
+  })
+
+  it('says a sample’s A versus B result is an example', () => {
+    render(
+      <ResultsScreen
+        view={resultsScreen(
+          [
+            line({
+              sample: true,
+              ab: {
+                a: { ...totals, clickRate: 0.018 },
+                b: { ...totals, clickRate: 0.024 },
+                verdict: 'b'
+              }
+            })
+          ],
+          place
+        )}
+      />
+    )
+    expect(
+      screen.getByText(
+        'An example: Version B got more clicks: 2.4% against 1.8%.'
+      )
+    ).toBeInTheDocument()
+  })
 })

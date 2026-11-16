@@ -10,9 +10,9 @@ test.describe('Results (UI-RES-b)', () => {
     await expect(
       page.getByRole('heading', { level: 1, name: 'Results' })
     ).toBeVisible()
-    await expect(
-      page.getByRole('link', { name: 'Results', exact: true })
-    ).toHaveAttribute('aria-current', 'page')
+    const menuItem = page.getByRole('link', { name: 'Results', exact: true })
+    await expect(menuItem).toHaveAttribute('aria-current', 'page')
+    await expect(menuItem).toHaveAttribute('href', '/results')
     await expect(
       page.getByRole('heading', { name: 'No results yet' })
     ).toBeVisible()
