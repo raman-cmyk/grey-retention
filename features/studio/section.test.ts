@@ -284,6 +284,12 @@ describe('typography in a designed section (DST-PIC #11)', () => {
         'h1{font-size:48px}h2{font-size:32px}p{font-size:18px}small{font-size:12px}'
       )
     ).toEqual([four])
+    // A size of 0 (closing the gaps between inline blocks) is no size.
+    expect(
+      problems(
+        '.row{font-size:0}.wrap{font-size:0px}h1{font-size:48px}p{font-size:18px}small{font-size:12px}'
+      )
+    ).toEqual([])
   })
 
   it('counts the sizes in inline styles, the shorthand and SVG text, not an HTML attribute', () => {

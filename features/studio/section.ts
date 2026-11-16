@@ -161,15 +161,18 @@ function checkCss(
   if (read.unread || where !== 'attributes') f.problems.push(...read.problems)
   for (const d of read.declarations) {
     if (d.property !== 'font-size' && d.property !== 'font') continue
+    // A size of 0 closes the gaps between inline blocks: no text, no size.
     const px =
       d.property === 'font-size'
-        ? pxSize.exec(d.value.trim())?.[1]
+        ? d.value.trim() === '0'
+          ? '0'
+          : pxSize.exec(d.value.trim())?.[1]
         : shorthandSize(d.value)
     if (px === undefined || px === null)
       f.problems.push(
         `${sizeWords}: “${d.property}: ${d.value.trim().slice(0, 40)}” is not.`
       )
-    else f.sizes.add(Number(px))
+    else if (Number(px) > 0) f.sizes.add(Number(px))
   }
   for (const url of read.urls)
     if (!sameDocument.test(url)) {
@@ -221,8 +224,9 @@ function walk(node: T.ParentNode, hosts: readonly string[], f: Found) {
       if (name === 'font-size' && svg) {
         // SVG text: a plain number is px.
         const n = /^(\d+(?:\.\d+)?)(?:px)?$/.exec(value.trim())
-        if (n) f.sizes.add(Number(n[1]))
-        else
+        if (n) {
+          if (Number(n[1]) > 0) f.sizes.add(Number(n[1]))
+        } else
           f.problems.push(
             `${sizeWords}: the SVG font-size “${value.trim().slice(0, 40)}” is not.`
           )
