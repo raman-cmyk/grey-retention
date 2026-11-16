@@ -277,6 +277,9 @@ describe('CI workflows', () => {
     const crons = [...text.matchAll(/- cron: '([^']+)'/g)].map((m) => m[1]!)
     expect(crons).toEqual(['5-55/10 * * * *'])
     expect(text).toContain('/api/internal/studio/renders?peek=1')
+    // DST-005b: the emails' views waiting wake the run too.
+    expect(text).toContain('/api/internal/studio/previews?peek=1')
+    expect(text).toContain('waiting=$((sections + views))')
     expect(text).toContain('node scripts/studio-renders.mjs')
     // Nothing is checked out or installed until the app says work is waiting.
     const steps = `\n${text.split('\n    steps:\n')[1]!}`

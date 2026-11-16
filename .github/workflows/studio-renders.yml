@@ -5,8 +5,10 @@ name: Studio renders
 # asks the live app for sections to draw (with CRON_SECRET), draws each one in
 # Chromium with JavaScript off and only that section's own origins allowed
 # (scripts/section-render.mjs), and uploads the picture through its signed
-# upload link. The repository is public, so its logs are too: it prints counts
-# only, never a section, a link or the secret.
+# upload link. Then it draws the built emails' views waiting (DST-005b:
+# desktop, phone, dark) the same way. The repository is public, so its logs
+# are too: it prints counts only, never a section, an email, a link or the
+# secret.
 #
 # Off until turned on, exactly like the scheduled jobs
 # (docs/SCHEDULED_JOBS_RUNBOOK.md): the same CRON_SECRET repository secret
@@ -76,8 +78,11 @@ jobs:
             return 1
           }
           call '/api/internal/studio/renders?peek=1' peek.json 30 || exit 1
-          waiting=$(jq -r '.waiting // 0' peek.json)
-          echo "Sections waiting: $waiting"
+          call '/api/internal/studio/previews?peek=1' views.json 30 || exit 1
+          sections=$(jq -r '(.waiting | numbers) // 0' peek.json)
+          views=$(jq -r '(.waiting | numbers) // 0' views.json)
+          waiting=$((sections + views))
+          echo "Sections waiting: $sections. Email views waiting: $views."
           echo "waiting=$waiting" >> "$GITHUB_OUTPUT"
           # DST-006b: with nothing to draw, the designs waiting for pictures
           # drawn earlier go on now (after drawing, the script does this).

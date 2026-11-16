@@ -11,6 +11,18 @@ export type RenderJob = {
   upload: string
 }
 
+/** One view of a built email to draw, as the app hands it out (DST-005b). */
+export type PreviewJob = {
+  job: string
+  lease: string
+  render: string
+  document: string
+  view: 'desktop' | 'phone' | 'dark'
+  origins: string[]
+  upload: string
+}
+
+type Counts = { drawn: number; failed: number; lost: number }
 export const perRun: number
 export const runBudgetMs: number
 export const leaseMs: number
@@ -21,7 +33,7 @@ export function run(input: {
   browser: Browser
   log?: (line: string) => void
   now?: () => number
-}): Promise<{ drawn: number; failed: number; lost: number }>
+}): Promise<Counts & { views: Counts }>
 export const carryOnMs: number
 export function carryOn(input: {
   base: string

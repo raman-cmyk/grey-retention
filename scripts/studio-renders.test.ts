@@ -2,7 +2,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Browser } from '@playwright/test'
 
-const draw = vi.hoisted(() => ({ renderSection: vi.fn() }))
+const draw = vi.hoisted(() => ({
+  renderSection: vi.fn(),
+  renderEmail: vi.fn()
+}))
 vi.mock('./section-render.mjs', () => draw)
 import {
   carryOn,
@@ -32,10 +35,24 @@ type Call = {
   raw?: unknown
   headers: Record<string, string>
 }
-/** The app hands out `jobs` one per call, then none; uploads answer `upload`. */
+/** One view of a built email to draw (DST-005b). */
+const view = (n: number) => ({
+  job: `v${n}`,
+  lease: `w${n}`,
+  render: `e${n}`,
+  document: '<!doctype html><p>email</p>',
+  view: 'phone',
+  origins: ['https://cdn.shop.example'],
+  upload: `https://db.test/upload/email/e${n}.jpg?token=x${n}`
+})
+/**
+ * The app hands out `jobs` sections one per call, then none, and `views`
+ * the same way; uploads answer `upload`.
+ */
 function app(
   options: {
     jobs?: number
+    views?: number
     upload?: number
     post?: number
     get?: number
@@ -43,7 +60,9 @@ function app(
   } = {}
 ) {
   let left = options.jobs ?? 1
+  let viewsLeft = options.views ?? 0
   let n = 0
+  let v = 0
   const calls: Call[] = []
   vi.stubGlobal(
     'fetch',
@@ -61,6 +80,8 @@ function app(
       if (call.method === 'POST')
         return Response.json({ ok: true }, { status: options.post ?? 200 })
       if (options.get) return Response.json({}, { status: options.get })
+      if (url.endsWith('/api/internal/studio/previews'))
+        return Response.json({ jobs: viewsLeft-- > 0 ? [view(++v)] : [] })
       return Response.json({
         jobs: left-- > 0 ? [job(++n, options.link)] : []
       })
@@ -75,12 +96,18 @@ const picture = {
   height: 640
 }
 const quiet = () => {}
-const counts = (line: string) => [[line]]
+const none = { drawn: 0, failed: 0, lost: 0 }
+/** The run's two lines: its sections, then its email views. */
+const counts = (
+  line: string,
+  views = 'Email views drawn: 0. Failed: 0. Not recorded: 0.'
+) => [[line], [views]]
 
 describe('the section browser job (DST-001c)', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     draw.renderSection.mockReset()
+    draw.renderEmail.mockReset()
   })
 
   it('draws each section, uploads it as a JPEG through its own link and reports its size, logging counts only', async () => {
@@ -90,7 +117,8 @@ describe('the section browser job (DST-001c)', () => {
     expect(await run({ base, secret, browser, log })).toEqual({
       drawn: 2,
       failed: 0,
-      lost: 0
+      lost: 0,
+      views: none
     })
     expect(draw.renderSection).toHaveBeenCalledWith(browser, {
       document: '<!doctype html><p>x</p>',
@@ -104,7 +132,8 @@ describe('the section browser job (DST-001c)', () => {
       ['GET', `${base}/api/internal/studio/renders`],
       ['PUT', 'https://db.test/upload/render/r2.jpg?token=u2'],
       ['POST', `${base}/api/internal/studio/renders`],
-      ['GET', `${base}/api/internal/studio/renders`]
+      ['GET', `${base}/api/internal/studio/renders`],
+      ['GET', `${base}/api/internal/studio/previews`]
     ])
     expect(calls[2].body).toEqual({
       job: 'j1',
@@ -142,7 +171,8 @@ describe('the section browser job (DST-001c)', () => {
       expect(await run({ base, secret, browser, log })).toEqual({
         drawn: 0,
         failed: 1,
-        lost: 0
+        lost: 0,
+        views: none
       })
       expect(calls.find((c) => c.method === 'POST')?.body).toEqual({
         job: 'j1',
@@ -166,7 +196,8 @@ describe('the section browser job (DST-001c)', () => {
       expect(await run({ base, secret, browser, log: quiet })).toEqual({
         drawn: 0,
         failed: 1,
-        lost: 0
+        lost: 0,
+        views: none
       })
       expect(calls.find((c) => c.method === 'POST')?.body).toEqual({
         job: 'j1',
@@ -185,7 +216,8 @@ describe('the section browser job (DST-001c)', () => {
     expect(await run({ base, secret, browser, log })).toEqual({
       drawn: 0,
       failed: 0,
-      lost: 2
+      lost: 2,
+      views: none
     })
     expect(log.mock.calls).toEqual(
       counts('Sections drawn: 0. Failed: 0. Not recorded: 2.')
@@ -233,6 +265,77 @@ describe('the section browser job (DST-001c)', () => {
     ).toBeLessThan(5)
   })
 
+  it('then draws the email’s views, uploads each through its own link and reports its height and cut (DST-005b)', async () => {
+    const calls = app({ jobs: 1, views: 2 })
+    draw.renderSection.mockResolvedValue(picture)
+    draw.renderEmail
+      .mockResolvedValueOnce({
+        ...picture,
+        width: 375,
+        height: 2100,
+        cut: false,
+        wide: true
+      })
+      .mockRejectedValueOnce(new Error('too_large'))
+    const log = vi.fn()
+    expect(await run({ base, secret, browser, log })).toEqual({
+      drawn: 1,
+      failed: 0,
+      lost: 0,
+      views: { drawn: 1, failed: 1, lost: 0 }
+    })
+    expect(draw.renderEmail).toHaveBeenCalledWith(browser, {
+      document: '<!doctype html><p>email</p>',
+      view: 'phone',
+      origins: ['https://cdn.shop.example']
+    })
+    const previews = `${base}/api/internal/studio/previews`
+    expect(calls.slice(3).map((c) => [c.method, c.url])).toEqual([
+      ['GET', `${base}/api/internal/studio/renders`],
+      ['GET', previews],
+      ['PUT', 'https://db.test/upload/email/e1.jpg?token=x1'],
+      ['POST', previews],
+      ['GET', previews],
+      ['POST', previews],
+      ['GET', previews]
+    ])
+    expect(
+      calls
+        .filter((c) => c.method === 'POST' && c.url === previews)
+        .map((c) => c.body)
+    ).toEqual([
+      {
+        job: 'v1',
+        lease: 'w1',
+        height: 2100,
+        cut: false,
+        wide: true,
+        bytes: 4
+      },
+      { job: 'v2', lease: 'w2', failure: 'too_large' }
+    ])
+    expect(log.mock.calls).toEqual(
+      counts(
+        'Sections drawn: 1. Failed: 0. Not recorded: 0.',
+        'Email views drawn: 1. Failed: 1. Not recorded: 0.'
+      )
+    )
+  })
+
+  it('counts sections and views together against perRun', async () => {
+    app({ jobs: perRun - 1, views: 5 })
+    draw.renderSection.mockResolvedValue(picture)
+    draw.renderEmail.mockResolvedValue({
+      ...picture,
+      height: 900,
+      cut: false,
+      wide: false
+    })
+    const done = await run({ base, secret, browser, log: quiet })
+    expect(done.drawn).toBe(perRun - 1)
+    expect(done.views.drawn).toBe(1)
+  })
+
   it('then carries on the designs waiting for their pictures, logging a count only (DST-006b)', async () => {
     for (const [answer, line, builds] of [
       [{ off: false, builds: 2, ran: 3 }, 'Designs carried on: 2.', 2],
@@ -256,7 +359,7 @@ describe('the section browser job (DST-001c)', () => {
         redirect: 'error',
         headers: { authorization: `Bearer ${secret}` }
       })
-      expect(log.mock.calls).toEqual(counts(line))
+      expect(log.mock.calls).toEqual([[line]])
       vi.unstubAllGlobals()
     }
     // The studio's job runs up to 2 minutes; an app error is the run's error.
