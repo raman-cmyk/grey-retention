@@ -14,7 +14,7 @@ export function bareAddress(value: string | null | undefined) {
 }
 
 /** Gmail ignores dots in the local part and treats googlemail.com as gmail. */
-function canonical(local: string, domain: string) {
+export function canonical(local: string, domain: string) {
   const d = domain === 'googlemail.com' ? 'gmail.com' : domain
   return {
     local: gmailDomains.has(d) ? local.replace(/\./g, '') : local,

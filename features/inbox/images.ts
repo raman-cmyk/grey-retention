@@ -28,7 +28,7 @@ const entities: Record<string, string> = {
   '#34': '"'
 }
 /** Decodes the few entities that appear inside attribute values. */
-const decode = (value: string) =>
+export const decode = (value: string) =>
   value.replace(/&(amp|quot|apos|lt|gt|#39|#x27|#34);/gi, (_, e: string) =>
     String(entities[e.toLowerCase()])
   )

@@ -37,7 +37,9 @@ const serverEnvironmentSchema = z.object({
   // checks the values and never logs them. `fake` (default) or `gmail_imap`.
   INBOX_TRANSPORT: z.string().optional(),
   INBOX_IMAP_USER: z.string().optional(),
-  INBOX_IMAP_APP_PASSWORD: z.string().optional()
+  INBOX_IMAP_APP_PASSWORD: z.string().optional(),
+  // REAL-01b1: names the inbox subscribed with, comma separated (not secret).
+  INBOX_SUBSCRIBER_NAMES: z.string().optional()
 })
 
 let parsedEnvironment: z.infer<typeof serverEnvironmentSchema> | undefined
