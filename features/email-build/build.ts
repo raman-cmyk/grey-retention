@@ -1,4 +1,3 @@
-import { headlineFindings } from './headline-fit'
 import { z } from 'zod'
 import { InMemoryMemoryStore, type MemoryStore } from '@/features/agents/memory'
 import {
@@ -29,6 +28,7 @@ import {
   type Finding
 } from './inspect'
 import { copywriterRun } from './copywriter'
+import { headlineFindings } from './headline-fit'
 import { agentCallMs, maxStepSaves } from './step-names'
 import { designA } from './design'
 import {
@@ -538,11 +538,13 @@ export async function copyStep(
             feedback
           ),
         plain: () => assembleLockedPlain(locked.input, store.brand, steps),
+        checks: takenSubject(taken),
         // DST-PIC #20: the Copywriter's headlines fit their sections.
-        checks: (draft) => [
-          ...takenSubject(taken)(draft),
-          ...headlineFindings(draft)
-        ],
+        laterChecks: (draft) =>
+          headlineFindings(
+            draft,
+            locked.input.products.map((p) => p.title)
+          ),
         // Saved by an older app in another shape: the rounds start over.
         ...(saved.success ? { work: saved.data as unknown as CopyWork } : {}),
         ...(until !== undefined
