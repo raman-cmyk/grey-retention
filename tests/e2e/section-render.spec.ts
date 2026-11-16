@@ -1,6 +1,8 @@
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { test, expect } from '@playwright/test'
+import { test, expect, type Browser } from '@playwright/test'
+import { renderEmail as buildEmail } from '../../features/blocks/render'
+import { sampleBlocks, sampleBrand } from '../../features/blocks/samples'
 import {
   maxEmailHeight,
   renderEmail,
@@ -90,6 +92,33 @@ test('draws a section at 1,200 px wide, loading only its own pictures and never 
   expect(outsideHits).toEqual([])
 })
 
+/** The colours at the left and right edges of a JPEG, halfway down (read in a page of its own). */
+async function edges(browser: Browser, jpeg: Buffer) {
+  const context = await browser.newContext()
+  try {
+    const page = await context.newPage()
+    await page.setContent(
+      `<img id="i" src="data:image/jpeg;base64,${jpeg.toString('base64')}">`
+    )
+    await page.waitForFunction(
+      () => (document.getElementById('i') as HTMLImageElement).complete
+    )
+    return await page.evaluate(() => {
+      const img = document.getElementById('i') as HTMLImageElement
+      const canvas = document.createElement('canvas')
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const g = canvas.getContext('2d')!
+      g.drawImage(img, 0, 0)
+      const y = Math.floor(img.naturalHeight / 2)
+      const at = (x: number) => [...g.getImageData(x, y, 1, 1).data.slice(0, 3)]
+      return [at(1), at(img.naturalWidth - 2)]
+    })
+  } finally {
+    await context.close()
+  }
+}
+
 // DST-005b: a whole built email in its three views, in real Chromium.
 test.describe('the whole-email browser (DST-005b)', () => {
   const email = (body: string) =>
@@ -131,7 +160,86 @@ test.describe('the whole-email browser (DST-005b)', () => {
     expect(outsideHits).toEqual([])
   })
 
-  test('measures a short email as it is, and says when something is wider than the view', async ({
+  test('lays desktop out wider than the phone layout, as a desktop inbox does (DST-007)', async ({
+    browser
+  }) => {
+    // A real built email (the app's own blocks and phone layout): its
+    // three-column grid side by side on desktop and dark, stacked on a phone.
+    const built = buildEmail({
+      blocks: [sampleBlocks.header_logo, sampleBlocks.product_grid_3col],
+      brand: sampleBrand,
+      mode: 'preview'
+    })
+    const desktop = await renderEmail(browser, {
+      document: built,
+      view: 'desktop',
+      origins: []
+    })
+    const dark = await renderEmail(browser, {
+      document: built,
+      view: 'dark',
+      origins: []
+    })
+    const phone = await renderEmail(browser, {
+      document: built,
+      view: 'phone',
+      origins: []
+    })
+    expect(desktop).toMatchObject({ width: 600, wide: false })
+    expect(dark).toMatchObject({ width: 600, height: desktop.height })
+    expect(phone).toMatchObject({ width: 375, wide: false })
+    // Measured in plain pages: at 700 the desktop layout, at 600 already
+    // the phone one (taller: the grid stacks). Desktop is the first.
+    const at = async (width: number) => {
+      const context = await browser.newContext({
+        viewport: { width, height: 100 }
+      })
+      try {
+        const page = await context.newPage()
+        await page.setContent(built)
+        return await page.evaluate(() =>
+          Math.ceil(document.documentElement.getBoundingClientRect().height)
+        )
+      } finally {
+        await context.close()
+      }
+    }
+    expect(Math.abs(desktop.height - (await at(700)))).toBeLessThanOrEqual(1)
+    expect(await at(600)).toBeGreaterThan(desktop.height + 200)
+    // The picture is the email's own 600 px, from the middle of its
+    // window: both edges are the email, never the page around it.
+    const framed = (inside: string) =>
+      `<!doctype html><html><head><style>body{margin:0;background:#ff0000}</style></head><body><table width="100%" cellpadding="0" cellspacing="0" bgcolor="#ff0000"><tr><td align="center"><table class="gr-wrap" width="600" cellpadding="0" cellspacing="0" style="width:600px;background:#00ff00"><tr>${inside}</tr></table></td></tr></table></body></html>`
+    const centred = await renderEmail(browser, {
+      document: framed('<td style="height:300px">&nbsp;</td>'),
+      view: 'desktop',
+      origins: []
+    })
+    expect(centred).toMatchObject({ width: 600, height: 300, wide: false })
+    const [left, right] = await edges(browser, centred.image)
+    for (const [r, g, b] of [left, right]) {
+      expect(g).toBeGreaterThan(200)
+      expect(r + b).toBeLessThan(80)
+    }
+    // A frame grown past 600 by what is in it is cut by the picture: wide.
+    const grown = await renderEmail(browser, {
+      document: framed(
+        '<td><div style="width:300px;padding:0 20px;height:300px"></div></td><td><div style="width:300px;padding:0 20px;height:300px"></div></td>'
+      ),
+      view: 'desktop',
+      origins: []
+    })
+    expect(grown).toMatchObject({ width: 600, wide: true })
+    // Wider than its 700 px window: wide on desktop too.
+    const wide = await renderEmail(browser, {
+      document: email('<div style="width:760px;height:300px"></div>'),
+      view: 'desktop',
+      origins: []
+    })
+    expect(wide).toMatchObject({ width: 600, height: 300, wide: true })
+  })
+
+  test('measures a short email as it is, and says when something is wider than its window', async ({
     browser
   }) => {
     const short = await renderEmail(browser, {

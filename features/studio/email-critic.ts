@@ -76,7 +76,7 @@ export type EmailPicture = {
   height: number
   /** Taller than the browser draws: only its top is shown. */
   cut: boolean
-  /** Something in it is wider than the view. */
+  /** Wider than its window, or its frame wider than the part drawn (DST-007). */
   wide: boolean
 }
 
