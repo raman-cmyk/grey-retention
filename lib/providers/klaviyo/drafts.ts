@@ -75,11 +75,12 @@ export type VariationContent = {
 
 export const designName = (approach: 'A' | 'B') => `Design ${approach}`
 
-/** An HTML template (the "code" editor); its id. */
+/** An HTML template (the "code" editor), with its plain-text part when given (TXT-001e); its id. */
 export async function createTemplate(
   client: KlaviyoClient,
   name: string,
-  html: string
+  html: string,
+  text?: string
 ) {
   const body = await client.write(
     'POST',
@@ -87,7 +88,12 @@ export async function createTemplate(
     {
       data: {
         type: 'template',
-        attributes: { name: name.slice(0, 120), editor_type: 'CODE', html }
+        attributes: {
+          name: name.slice(0, 120),
+          editor_type: 'CODE',
+          html,
+          ...(text !== undefined ? { text } : {})
+        }
       }
     },
     'templates:write'
@@ -157,6 +163,33 @@ export async function templateHtml(client: KlaviyoClient, id: string) {
       '/api/templates/'
     ).data.attributes.html ?? null
   )
+}
+
+/** A template's HTML and plain text (TXT-001e); null when Klaviyo no longer has it. */
+export async function templateParts(client: KlaviyoClient, id: string) {
+  let body: unknown
+  try {
+    body = await client.get(
+      `/api/templates/${kid.parse(id)}?fields[template]=html,text`,
+      'templates:read'
+    )
+  } catch (error) {
+    if (gone(error)) return null
+    throw error
+  }
+  const a = parsed(
+    z.object({
+      data: z.object({
+        attributes: z.object({
+          html: z.string().nullish(),
+          text: z.string().nullish()
+        })
+      })
+    }),
+    body,
+    '/api/templates/'
+  ).data.attributes
+  return a.html == null ? null : { html: a.html, text: a.text ?? null }
 }
 
 export async function deleteTemplate(client: KlaviyoClient, id: string) {

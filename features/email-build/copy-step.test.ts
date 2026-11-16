@@ -90,7 +90,7 @@ const writes = (system: string, n: number) => ({
  */
 const model = (
   opts: {
-    writer?: () => AiRunResult
+    writer?: (call: Parameters<AiCall>[0]) => AiRunResult
     clock?: { t: number; step: number }
   } = {}
 ) => {
@@ -100,7 +100,7 @@ const model = (
     const who = call.callerKey.split(':')[0]
     if (who === 'copywriter')
       return opts.writer
-        ? opts.writer()
+        ? opts.writer(call)
         : answer(writes(call.request.system, ++n))
     if (who === 'brand-inspector' || who === 'email-inspector')
       return answer({ problems: [] })
@@ -258,6 +258,114 @@ describe('the copy step with the agents (REL-AI part 2b)', () => {
     expect(userOf(ai, 'copywriter', 1)).toContain(
       'Another email in this plan already has this subject'
     )
+  })
+
+  it('sends a heading too long for its section back to the Copywriter, to use fewer words (DST-PIC #20)', async () => {
+    let n = 0
+    const long =
+      'More to love from our shop this week, picked for your quiet evenings'
+    const ai = model({
+      writer: (call) => {
+        const written = writes(call.request.system, ++n)
+        return answer({
+          ...written,
+          blocks: written.blocks.map((b) =>
+            b.type === 'product_grid_2col' && n === 1
+              ? { ...b, words: { ...b.words, heading: long } }
+              : b
+          )
+        })
+      }
+    })
+    const result = await buildEmail(
+      { planned, store: await store(), offers: sampleOffers },
+      ctxWith(agentsWith(ai))
+    )
+    expect(result.ok).toBe(true)
+    expect(userOf(ai, 'copywriter', 1)).toContain(
+      `The heading is ${long.length} characters; at most 60. Use fewer, shorter words.`
+    )
+    expect(result.ok && result.email.html).not.toContain(long)
+    // The Copywriter's second draft, not plain copy.
+    expect(result.ok && result.email).toMatchObject({
+      copy: 'written',
+      subject: 'Quiet evenings, picked for you 2'
+    })
+  })
+
+  /** A launch whose product's title is too long for a hero's headline. */
+  const towel = 'Organic Cotton Waffle Bath Towel, Set of Two in Oat'
+  const longLaunch = async () => {
+    const s = await store()
+    const id = planned.products[0]!.id
+    return {
+      planned: {
+        ...planned,
+        emailType: 'launch' as const,
+        offer: null,
+        products: planned.products.map((p) =>
+          p.id === id ? { ...p, title: towel } : p
+        )
+      },
+      store: {
+        ...s,
+        products: s.products.map((p) =>
+          p.id === id ? { ...p, title: towel } : p
+        )
+      },
+      offers: sampleOffers
+    }
+  }
+  /** The Copywriter naming the product in the hero, in rounds up to `until`. */
+  const naming = (until: number) => {
+    let n = 0
+    return model({
+      writer: (call) => {
+        const written = writes(call.request.system, ++n)
+        return answer({
+          ...written,
+          blocks: written.blocks.map((b) =>
+            b.type === 'hero_product' && n <= until
+              ? { ...b, words: { ...b.words, headline: `Meet the ${towel}` } }
+              : b
+          )
+        })
+      }
+    })
+  }
+
+  it('tells the Copywriter to leave a long product title out of the hero’s headline (DST-PIC #20)', async () => {
+    const ai = naming(1)
+    const result = await buildEmail(await longLaunch(), ctxWith(agentsWith(ai)))
+    expect(userOf(ai, 'copywriter', 1)).toContain(
+      'The headline is 60 characters with the product’s title in it; at most 45. Leave the title out (the picture shows the product) and write about the product in a few words.'
+    )
+    expect(result.ok && result.email).toMatchObject({
+      copy: 'written',
+      subject: 'Quiet evenings, picked for you 2'
+    })
+    expect(result.ok && result.email.html).toContain('Made for slow evenings')
+  })
+
+  it('a hero headline still too long after every rewrite: plain copy, which names the product by its title', async () => {
+    const fallbacks = memoryFallbackLog()
+    const result = await buildEmail(
+      await longLaunch(),
+      ctxWith(agentsWith(naming(99)), { fallbacks })
+    )
+    expect(result.ok && result.email.copy).toBe('plain')
+    expect(result.ok && result.email.html).toContain(towel)
+    expect(
+      fallbacks.entries().find((e) => e.agent === 'copy-inspectors')
+    ).toMatchObject({
+      reasonCode: 'copy_plain_fallback',
+      detail: expect.objectContaining({
+        rules: expect.arrayContaining(['headline_too_long'])
+      })
+    })
+    // Without the agents, the same email builds in plain copy.
+    const plain = await buildEmail(await longLaunch(), ctxWith(null))
+    expect(plain.ok && plain.email.html).toContain(towel)
   })
 
   it('saves its rounds when the next call would not fit, and the next claim goes on without paying twice', async () => {
