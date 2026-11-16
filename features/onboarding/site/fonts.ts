@@ -1,24 +1,27 @@
 import { parse, type DefaultTreeAdapterTypes as T } from 'parse5'
+import { fontFamily as fontName } from '@/features/studio/section'
 import { siteHosts } from './fetch-hosts'
 import { absolute, words } from './logos'
 import { publicHost } from './photos'
 
 /**
- * The brand's real fonts, the site part (owner pick #3, FONT-SITE part a):
- * the fonts one of the brand's own pages sets its headings and body text
- * in, and where their web-font files are. Pure: the Site reader fetches
- * the page; part b keeps the fonts and fetches the stylesheets listed
- * here (read back through `sheets`, with the same caps); the design
- * studio loads them. Every
- * page and stylesheet is untrusted: values are cut before they are read,
- * CSS is scanned once left to right (no recursion, no pattern a hostile
- * text can make slow), and bad CSS or HTML gives fewer fonts, never an error.
+ * The brand's real fonts, the site part (owner pick #3, FONT-SITE part a,
+ * ledger row FONT-a): the fonts one of the brand's own pages sets its
+ * headings and body text in, and where their web-font files are. Pure:
+ * the Site reader fetches the page; part b keeps the fonts and fetches
+ * the stylesheets listed here (read back through `sheets`); the design
+ * studio loads them. Every page and stylesheet is untrusted: a value too
+ * long to read whole is refused or dropped, never cut and used; CSS is
+ * scanned once left to right, each selector read once, at most
+ * `maxTotalCss` characters a call, with no recursion; bad CSS or HTML
+ * gives fewer fonts, never an error.
  */
 
 /** Who serves a family's files; `system` is a `local()` font only. */
 export type FontKind = 'google' | 'adobe' | 'self-hosted' | 'system' | 'unknown'
+export type FontRole = 'heading' | 'body'
 export type FontFile = {
-  /** Absolute https on a public host: a WOFF2, WOFF, TTF or OTF file. */
+  /** Absolute https on a public host: a WOFF2, WOFF, TTF or OTF file that has the Latin letters. */
   url: string
   format: (typeof formats)[number]
   /** 100 to 900; a variable font's range runs to `maxWeight`. */
@@ -27,57 +30,63 @@ export type FontFile = {
   italic: boolean
 }
 export type SiteFont = {
-  /** As the design studio takes a name: letters, digits, spaces and hyphens, at most 60. */
+  /** As the design studio takes a name (its `fontFamily` rule). */
   family: string
   /** What the page sets in it (none: the page only loads it). */
-  roles: Role[]
+  roles: FontRole[]
   kind: FontKind
   files: FontFile[]
 }
 export type FontStylesheet = {
   url: string
-  from: 'google' | 'adobe' | 'site' | 'cdn'
+  from: 'google' | 'adobe' | 'cdn' | 'site'
 }
 export type SiteFonts = { families: SiteFont[]; stylesheets: FontStylesheet[] }
 type FontFace = { family: string; files: FontFile[]; local: boolean }
-type Role = 'heading' | 'body'
+/** A stylesheet part b read: the address it came from (after redirects) and its text. */
+type Sheet = { url: string; css: string }
 
-/** Most families, files per family and stylesheets kept; most CSS read per block or sheet. */
+/** Most families, files per family and stylesheets kept. */
 export const maxFamilies = 8
 export const maxFontFiles = 12
 export const maxStylesheets = 12
+/** Most CSS read per block or sheet, and in all in one call; deepest nesting read. */
 export const maxCss = 500_000
+export const maxTotalCss = 2_000_000
+export const maxDepth = 64
 /** Most faces, font declarations, custom properties and links read. */
 const maxFound = 500
 const maxAttr = 500
 const maxValue = 2_000
-const maxDepth = 64
 const maxFontUrl = 1_000
+/** Files kept per weight and style: its best format and one fallback. */
+const maxPerStyle = 2
 
 const formats = ['woff2', 'woff', 'truetype', 'opentype'] as const
 const extensions = ['woff2', 'woff', 'ttf', 'otf']
+const listOrder: FontStylesheet['from'][] = ['google', 'adobe', 'cdn', 'site']
 const set = (list: string) => new Set(list.split('|'))
-/** The design studio's own rule for a font name (`features/studio/section.ts`). */
-const fontName = /^[A-Za-z0-9][A-Za-z0-9 -]{0,59}$/
-/** Keywords and system stacks: never a brand's choice. */
+/** Keywords (of families, and of other font values custom properties hold): never a family. */
 const generic = set(
-  'serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-serif|ui-sans-serif|ui-monospace|ui-rounded|math|emoji|fangsong|inherit|initial|unset|revert|revert-layer|-apple-system|blinkmacsystemfont|default|none|normal|bold|italic'
+  'serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-serif|ui-sans-serif|ui-monospace|ui-rounded|math|emoji|fangsong|inherit|initial|unset|revert|revert-layer|-apple-system|blinkmacsystemfont|default|none|normal|bold|bolder|lighter|italic|oblique|small-caps|auto|block|swap|fallback|optional|left|right|center|start|end|justify|uppercase|lowercase|capitalize|small|medium|large|smaller|larger'
 )
-/** Fonts on most computers and phones: kept only when the brand serves a file. */
+/** Fonts on most computers and phones: kept only when the brand serves them. */
 const installed = set(
   'arial|arial black|helvetica|helvetica neue|segoe ui|sf pro|sf pro display|sf pro text|tahoma|verdana|georgia|times|times new roman|courier|courier new|trebuchet ms|lucida grande|lucida sans unicode|impact|palatino|oxygen|oxygen-sans|ubuntu|cantarell|droid sans|menlo|monaco|consolas'
 )
-/** Words of an icon font's name (Font Awesome, Material Icons, icomoon, slick…). */
+/** Words of an icon font's name (Material Icons and Symbols, icomoon, slick…). */
 const iconWords = set(
-  'icon|icons|icomoon|glyph|glyphs|glyphicons|awesome|fontawesome|symbols|ionicons|dashicons|fontello|themify|eicons|revicons|socicon|entypo|typicons|linearicons|star|stars|slick|feather|emoji'
+  'icon|icons|icomoon|glyph|glyphs|glyphicons|fontawesome|symbols|ionicons|dashicons|fontello|themify|eicons|revicons|socicon|entypo|typicons|linearicons|slick|emoji|judgeme|jdgm'
 )
+/** Icon fonts by their whole name, spaces and hyphens aside ("Font Awesome 6 Free" starts so). */
+const iconNames = /^(?:fontawesome|feather$|stars?$)/
 const headingWords = set(
   'h0|h1|h2|h3|h4|h5|h6|heading|headings|headline|headlines|title|titles'
 )
 const bodyWords = set('body|base|text|paragraph|copy')
 /** Words of a custom property about a font that holds no family (`--font-heading-weight`). */
 const notFamily = set(
-  'size|sizes|weight|style|scale|height|line|spacing|letter|color|variation|feature|features|smoothing|transform|case'
+  'size|sizes|weight|style|scale|height|line|spacing|letter|color|variation|feature|features|smoothing|transform|case|align|alignment|decoration|indent|offset|width'
 )
 const fontCdns = set(
   'fonts.bunny.net|fast.fonts.net|cloud.typography.com|fonts.cdnfonts.com'
@@ -100,6 +109,9 @@ const textOf = (n: T.Element) =>
   children(n)
     .map((t) => ('value' in t ? t.value : ''))
     .join('')
+/** At most `n` characters, never a part cut off: what follows the last `sep` is dropped. */
+const cutAt = (text: string, n: number, sep: string) =>
+  text.length <= n ? text : text.slice(0, text.lastIndexOf(sep, n - 1) + 1)
 
 /** Where a CSS string that starts at `i` ends (its quote, a line end, or the end). */
 function stringEnd(s: string, i: number) {
@@ -111,7 +123,7 @@ function stringEnd(s: string, i: number) {
 }
 
 /** Splits at `sep` outside strings and brackets. */
-function split(text: string, sep: ',' | ';') {
+function split(text: string, sep: ',' | ';' | ' ') {
   const out: string[] = []
   let parens = 0
   let from = 0
@@ -128,31 +140,38 @@ function split(text: string, sep: ',' | ';') {
   return [...out, text.slice(from)]
 }
 
+/** CSS without its comments (a `/*` in a string is no comment). */
 function uncommented(css: string) {
   let out = ''
-  for (let i = 0; ;) {
-    const open = css.indexOf('/*', i)
-    if (open < 0) return out + css.slice(i)
-    out += css.slice(i, open) + ' '
-    const close = css.indexOf('*/', open + 2)
-    if (close < 0) return out
-    i = close + 2
+  let from = 0
+  for (let i = 0; i < css.length; i++) {
+    if (css[i] === '"' || css[i] === "'") i = stringEnd(css, i)
+    else if (css[i] === '/' && css[i + 1] === '*') {
+      out += css.slice(from, i) + ' '
+      const close = css.indexOf('*/', i + 2)
+      if (close < 0) return out
+      i = close + 1
+      from = close + 2
+    }
   }
+  return out + css.slice(from)
 }
 
 /**
- * Reads CSS once, left to right: each rule's own prelude (`h1`,
- * `@font-face`) with its declarations, and each top-level statement
- * (`@import …`). Strings and brackets are skipped as CSS reads them;
- * nesting deeper than `maxDepth` is counted, not read.
+ * Reads CSS once, left to right: each rule's prelude (`h1`, `@font-face`)
+ * read once by `open`, then its declarations by `rule` (in parts, when
+ * nested rules split them), and each top-level statement (`@import …`).
+ * Strings and brackets are skipped as CSS reads them; nesting deeper than
+ * `maxDepth` is counted, not read; a rule never closed is not read.
  */
-function scanCss(
+function scanCss<C>(
   css: string,
-  rule: (prelude: string, body: string) => void,
+  open: (prelude: string) => C,
+  rule: (at: C, body: string) => void,
   statement: (text: string) => void
 ) {
-  const s = uncommented(css.slice(0, maxCss))
-  const preludes: string[] = []
+  const s = uncommented(css)
+  const opened: C[] = []
   let [depth, start, semi, parens] = [0, 0, -1, 0]
   for (let i = 0; i < s.length; i++) {
     const c = s[i]
@@ -167,9 +186,9 @@ function scanCss(
       // A nested rule ends its parent's declarations before it.
       const head = c === '{' && semi >= start ? semi + 1 : c === '{' ? start : i
       if (depth > 0 && depth <= maxDepth && head > start)
-        rule(preludes[depth - 1]!, s.slice(start, head))
+        rule(opened[depth - 1]!, s.slice(start, head))
       if (c === '{' && depth < maxDepth)
-        preludes[depth] = s.slice(head, Math.min(i, head + maxValue)).trim()
+        opened[depth] = open(cutAt(s.slice(head, i), maxValue, ',').trim())
       depth = c === '{' ? depth + 1 : Math.max(0, depth - 1)
       ;[start, semi, parens] = [i + 1, -1, 0]
     }
@@ -181,24 +200,29 @@ function declarations(body: string): [string, string][] {
     const colon = part.indexOf(':')
     if (colon < 0) return []
     let value = part.slice(colon + 1).trim()
-    if (value.slice(-10).toLowerCase() === '!important')
-      value = value.slice(0, -10).trim()
+    const bang = value.lastIndexOf('!')
+    if (bang >= 0 && /^!\s*important$/i.test(value.slice(bang)))
+      value = value.slice(0, bang).trim()
     const name = part.slice(0, colon).trim()
     // Custom properties keep their case, as CSS reads them.
     return [[name.startsWith('--') ? name : name.toLowerCase(), value]]
   })
 }
 
-/** A family name the studio can take, or null: a keyword, a system stack, an icon font. */
+/** A family name the studio can take, or null: a keyword, an unquoted number, an icon font. */
 function familyName(raw: string) {
-  let name = raw.slice(0, maxValue).trim()
-  if (/^["']/.test(name) && name.length > 1 && name.endsWith(name[0]!))
-    name = name.slice(1, -1)
+  if (raw.length > maxValue) return null
+  let name = raw.trim()
+  const quoted =
+    /^["']/.test(name) && name.length > 1 && name.endsWith(name[0]!)
+  if (quoted) name = name.slice(1, -1)
   name = name.replace(/\s+/g, ' ').trim()
-  if (generic.has(name.toLowerCase()) || !fontName.test(name)) return null
-  if (/^\d+$/.test(name) || words(name).some((w) => iconWords.has(w)))
-    return null
-  return name
+  const lower = name.toLowerCase()
+  if (generic.has(lower) || !fontName.test(name)) return null
+  // Unquoted, a name never starts with a digit (`20px`, `2rem` are sizes).
+  if ((!quoted && /^\d/.test(name)) || /^\d+$/.test(name)) return null
+  if (iconNames.test(lower.replace(/[\s-]/g, ''))) return null
+  return words(name).some((w) => iconWords.has(w)) ? null : name
 }
 
 const varRef = /^var\(\s*(--[\w-]{1,100})\s*(?:,([^]*))?\)$/i
@@ -206,8 +230,8 @@ const varRef = /^var\(\s*(--[\w-]{1,100})\s*(?:,([^]*))?\)$/i
 /** The family a value sets: its list's first (the rest are fallbacks), through `var()`s. */
 function resolve(value: string, props: Map<string, string>) {
   let v = value
-  for (let hop = 0; hop < 4; hop++) {
-    const first = (split(v.slice(0, maxValue), ',')[0] ?? '').trim()
+  for (let hop = 0; hop < 4 && v.length <= maxValue; hop++) {
+    const first = (split(v, ',')[0] ?? '').trim()
     const ref = varRef.exec(first)
     if (!ref) return familyName(first)
     v = props.get(ref[1]!) ?? ref[2] ?? ''
@@ -215,21 +239,28 @@ function resolve(value: string, props: Map<string, string>) {
   return null
 }
 
+const fontSize =
+  /^(?:[\d.]+(?:px|r?em|%|pt|pc|vw|vh|vmin|vmax|ch|ex)|(?:x{1,3}-)?(?:small|large)|medium|smaller|larger|(?:calc|clamp|min|max)\(.*\))$/i
+
 /** The family list of a `font` shorthand: what follows its size (and line height). */
 function shorthand(value: string) {
-  const v = value.slice(0, maxValue)
-  const size =
-    /(?:^|\s)[\d.]+(?:px|r?em|%|pt|pc|vw|vh|vmin|vmax|ch|ex)(?:\s*\/\s*[^\s,"']+)?\s+/i.exec(
-      v
-    )
-  return size ? v.slice(size.index + size[0].length) : ''
+  if (value.length > maxValue) return ''
+  const t = split(value.replace(/\//g, ' / ').replace(/\s+/g, ' ').trim(), ' ')
+  // A `var()` is the size only before a line height.
+  const size = t.findIndex(
+    (x, i) => fontSize.test(x) || (/^var\(/i.test(x) && t[i + 1] === '/')
+  )
+  if (size < 0) return ''
+  return t.slice(t[size + 1] === '/' ? size + 3 : size + 1).join(' ')
 }
 
 /** What a selector list sets: headings (`h1`, `.h2`, `.section-heading`), the body (`html`, `body`, `:root`). */
-function selectorRoles(prelude: string): Role[] {
-  const roles = new Set<Role>()
+function selectorRoles(prelude: string): FontRole[] {
+  const roles = new Set<FontRole>()
   for (const selector of split(prelude, ',').slice(0, 50)) {
-    const parts = selector.trim().split(/[\s>+~]+/)
+    // What a selector excludes or only contains is not what it sets.
+    const own = selector.replace(/:(?:not|has)\([^()]*\)/gi, '').trim()
+    const parts = own.split(/[\s>+~]+/)
     const last = parts[parts.length - 1] ?? ''
     const tag = /^[a-z][a-z0-9]*/i.exec(last)?.[0].toLowerCase()
     if (last === ':root' || tag === 'html' || tag === 'body') roles.add('body')
@@ -239,7 +270,7 @@ function selectorRoles(prelude: string): Role[] {
 }
 
 /** A custom property naming a font family: its role (null: none), or undefined when it names none. */
-function propRole(name: string): Role | null | undefined {
+function propRole(name: string): FontRole | null | undefined {
   const w = words(name)
   const font = w.some((x) => ['font', 'family', 'typeface', 'ff'].includes(x))
   // `type` alone names a font only beside a role (`--typeHeaderPrimary`).
@@ -280,21 +311,31 @@ function fontFile(entry: string, base: string) {
   return u && format ? { url: u.href, format } : null
 }
 
+/** Whether a face's `unicode-range` (none: every character) has the Latin letters A to z. */
+function latin(range: string | undefined) {
+  if (range === undefined) return true
+  return split(range, ',').some((r) => {
+    const m = /^u\+([0-9a-f?]{1,6})(?:-([0-9a-f]{1,6}))?$/i.exec(r.trim())
+    const lo = parseInt(m?.[1]?.replace(/\?/g, '0') ?? '', 16)
+    const hi = parseInt((m?.[2] ?? m?.[1])?.replace(/\?/g, 'f') ?? '', 16)
+    return lo <= 0x41 && hi >= 0x7a
+  })
+}
+
 function readFace(body: string, base: string): FontFace | null {
   const d = new Map(declarations(body))
   const family = familyName(d.get('font-family') ?? '')
   if (!family) return null
   const [weight, maxWeight] = (d.get('font-weight') ?? '')
-    .slice(0, 100)
     .toLowerCase()
-    .split(/\s+/)
+    .split(/\s+/, 2)
     .map((p) => (p === 'bold' ? 700 : p === 'normal' ? 400 : Number(p)))
     .filter((n) => n >= 1 && n <= 1000)
     .map((n) => Math.min(900, Math.max(100, Math.round(n))))
   const italic = /^(?:italic|oblique)\b/i.test(d.get('font-style') ?? '')
   const entries = split(d.get('src') ?? '', ',').map((e) => e.trim())
-  const files = entries
-    .slice(0, 20)
+  // A face for other scripts (Google's Cyrillic, Greek…) has no file the studio can use.
+  const files = (latin(d.get('unicode-range')) ? entries.slice(0, 20) : [])
     .map((e) => fontFile(e, base))
     .filter((f) => f !== null)
     .slice(0, 4)
@@ -309,70 +350,71 @@ function readFace(body: string, base: string): FontFace | null {
 }
 
 type Found = {
-  usages: { role: Role | null; value: string }[]
+  usages: { role: FontRole | null; value: string }[]
   props: Map<string, string>
   faces: FontFace[]
   links: [string | null, string][]
+  /** CSS characters still to read in this call. */
+  budget: number
 }
 
 /** What a rule's or a style attribute's declarations say about fonts. */
-function fontDeclarations(body: string, roles: readonly Role[], f: Found) {
-  const note = (role: Role | null, value: string) => {
-    if (f.usages.length < maxFound) f.usages.push({ role, value })
-  }
+function fontDeclarations(body: string, roles: readonly FontRole[], f: Found) {
   for (const [name, value] of declarations(body)) {
+    const room = f.usages.length < maxFound
     if (name.startsWith('--')) {
       if (f.props.size < maxFound && !f.props.has(name))
-        f.props.set(name, value.slice(0, maxValue))
-      const role = propRole(name)
-      if (role !== undefined) note(role, value)
-    } else if (name === 'font-family' || name === 'font')
-      for (const role of roles)
-        note(role, name === 'font' ? shorthand(value) : value)
+        f.props.set(name, value)
+      const role = room ? propRole(name) : undefined
+      if (role !== undefined) f.usages.push({ role, value })
+    } else if (room && (name === 'font-family' || name === 'font')) {
+      const list = name === 'font' ? shorthand(value) : value
+      for (const role of roles) f.usages.push({ role, value: list })
+    }
   }
 }
 
 function readCss(css: string, base: string, f: Found) {
+  const text = css.slice(0, Math.min(maxCss, f.budget))
+  f.budget -= text.length
   scanCss(
-    css,
-    (prelude, body) => {
-      const face = prelude.toLowerCase() === '@font-face'
-      if (!face) fontDeclarations(body, selectorRoles(prelude), f)
+    text,
+    // A face (null) or the roles of a rule, read once per rule.
+    (prelude) =>
+      prelude.toLowerCase() === '@font-face' ? null : selectorRoles(prelude),
+    (roles, body) => {
+      if (roles) fontDeclarations(body, roles, f)
       else if (f.faces.length < maxFound) {
-        const read = readFace(body, base)
-        if (read) f.faces.push(read)
+        const face = readFace(body, base)
+        if (face) f.faces.push(face)
       }
     },
     (statement) => {
-      const at = /^\s*@import\s+(?:url\(\s*)?["']?([^"')\s]+)/i.exec(
-        statement.slice(0, maxFontUrl + 100)
-      )
-      if (at) f.links.push([at[1]!, base])
+      // A whole address only: one longer than the studio takes is refused, never cut.
+      const at =
+        /^\s*@import\s+(?:url\(\s*)?["']?([^"'()\s]{1,1000})["')\s]/i.exec(
+          statement.slice(0, maxFontUrl + 100)
+        )
+      if (at && f.links.length < maxFound) f.links.push([at[1]!, base])
     }
   )
 }
-
-const found = (): Found => ({
-  usages: [],
-  props: new Map(),
-  faces: [],
-  links: []
-})
 
 /**
  * The brand's fonts on one page, heading fonts first, then body fonts,
  * then fonts it only loads, each with its kind and files: from the page's
  * own `<style>` blocks and `style` attributes, its Google Fonts links, and
- * the `sheets` passed back (part b fetches `stylesheets`). Never keyword
- * or system families (Arial, `-apple-system`), icon fonts, `data:` files,
- * or files that are not WOFF2, WOFF, TTF or OTF over https on a public
- * host. Stylesheets listed: Google's, Adobe's, known font CDNs', and the
- * brand's own host's (and its store platform's).
+ * the `sheets` passed back (part b fetches `stylesheets`; each `url` is
+ * the address it was read from, after redirects, as its addresses are read
+ * from it). Never keyword or system families (Arial, `-apple-system`),
+ * icon fonts, `data:` files, or files that are not WOFF2, WOFF, TTF or OTF
+ * over https on a public host. Stylesheets listed: Google's, Adobe's,
+ * known font CDNs', then the brand's own host's (and its store platform's).
  */
 export function siteFonts(
   html: string,
   page: string,
-  { sheets = [] }: { sheets?: readonly { url: string; css: string }[] } = {}
+  { sheets = [] }: { sheets?: readonly Sheet[] } = {}
 ): SiteFonts {
   try {
     return read(html, page, sheets)
@@ -381,13 +423,15 @@ export function siteFonts(
   }
 }
 
-function read(
-  html: string,
-  page: string,
-  sheets: readonly { url: string; css: string }[]
-): SiteFonts {
+function read(html: string, page: string, sheets: readonly Sheet[]) {
   const own = siteHosts(new URL(page).hostname)
-  const f = found()
+  const f: Found = {
+    usages: [],
+    props: new Map(),
+    faces: [],
+    links: [],
+    budget: maxTotalCss
+  }
   // Walked with a list, not recursion: a page nested thousands deep is still read.
   const stack = [...children(parse(html.slice(0, 2_000_000)))].reverse()
   while (stack.length) {
@@ -410,7 +454,7 @@ function read(
     }
     const role = /^h[1-6]$/.test(tag) ? 'heading' : 'body'
     if (role === 'heading' || tag === 'body' || tag === 'html')
-      fontDeclarations(short(c, 'style') ?? '', [role], f)
+      fontDeclarations(cutAt(attr(c, 'style') ?? '', maxAttr, ';'), [role], f)
     const kids = children(c)
     for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]!)
   }
@@ -420,28 +464,29 @@ function read(
   const google: string[] = []
   const listed = new Map<string, FontStylesheet['from']>()
   for (const [href, base] of f.links.slice(0, maxFound)) {
-    const u = publicHttps(absolute(href?.slice(0, maxFontUrl) ?? null, base))
-    if (!u || listed.size >= maxStylesheets) continue
-    const host = u.hostname
-    if (host === 'fonts.googleapis.com' && /^\/css2?$/.test(u.pathname)) {
-      const named = u.searchParams
+    const u = href && href.length <= maxFontUrl ? absolute(href, base) : null
+    const url = publicHttps(u)
+    const host = url?.hostname ?? ''
+    if (!url || listed.has(url.href)) continue
+    if (host === 'fonts.googleapis.com' && /^\/css2?$/.test(url.pathname)) {
+      const named = url.searchParams
         .getAll('family')
         .slice(0, 10)
         .flatMap((v) => v.split('|').slice(0, 10))
         .map((v) => familyName(v.split(':')[0]!))
         .filter((n) => n !== null)
       google.push(...named)
-      if (named.length) listed.set(u.href, 'google')
+      if (named.length) listed.set(url.href, 'google')
     } else if (host === 'use.typekit.net') {
-      if (/^\/[a-z0-9]{1,20}\.css$/i.test(u.pathname))
-        listed.set(u.href, 'adobe')
-    } else if (fontCdns.has(host)) listed.set(u.href, 'cdn')
+      if (/^\/[a-z0-9]{1,20}\.css$/i.test(url.pathname))
+        listed.set(url.href, 'adobe')
+    } else if (fontCdns.has(host)) listed.set(url.href, 'cdn')
     else if (own.has(host) || host === 'cdn.shopify.com')
-      listed.set(u.href, 'site')
+      listed.set(url.href, 'site')
   }
 
   type Entry = Pick<SiteFont, 'family' | 'files'> &
-    Record<'first' | Role, number> & { local: boolean; google: boolean }
+    Record<'first' | FontRole, number> & { local: boolean; google: boolean }
   const byKey = new Map<string, Entry>()
   const entry = (family: string) => {
     const key = family.toLowerCase()
@@ -466,20 +511,28 @@ function read(
     const e = entry(face.family)
     e.family = face.family // the site's own spelling, as its files declare it
     e.local ||= face.local
-    for (const file of face.files)
+    for (const file of face.files) {
+      const style = e.files.filter(
+        (x) => x.weight === file.weight && x.italic === file.italic
+      )
       if (
         e.files.length < maxFontFiles &&
+        style.length < maxPerStyle &&
         !e.files.some((x) => x.url === file.url)
       )
         e.files.push(file)
+    }
   }
   for (const name of google) entry(name).google = true
 
   // Heading fonts first, then body fonts, then the rest, each as found.
   const rank = (e: Entry) => Math.min(e.heading, 1e6 + e.body, 2e6 + e.first)
   const families = [...byKey.values()]
-    // A font on most devices counts only when the brand serves its own file.
-    .filter((e) => e.files.length || !installed.has(e.family.toLowerCase()))
+    // A font on most devices counts only when the brand serves it (or Google does).
+    .filter(
+      (e) =>
+        e.files.length || e.google || !installed.has(e.family.toLowerCase())
+    )
     .sort((a, b) => rank(a) - rank(b))
     .slice(0, maxFamilies)
     .map((e) => ({
@@ -494,8 +547,10 @@ function read(
             : 'unknown',
       files: e.files
     }))
-  return {
-    families,
-    stylesheets: [...listed].map(([url, from]) => ({ url, from }))
-  }
+  // Font services first, so the brand's own stylesheets never crowd them out.
+  const stylesheets = [...listed]
+    .map(([url, from]) => ({ url, from }))
+    .sort((a, b) => listOrder.indexOf(a.from) - listOrder.indexOf(b.from))
+    .slice(0, maxStylesheets)
+  return { families, stylesheets }
 }
