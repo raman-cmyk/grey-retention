@@ -288,6 +288,21 @@ describe('building and pushing (code-only, fake pusher)', () => {
       }
     })
 
+    it('pushes a text email with its own plain-text part, and a designed one without (TXT-001d)', async () => {
+      const { coded } = await pair()
+      const letter: BuiltEmail = {
+        ...coded,
+        format: 'text',
+        text: 'Hi there,\n\n-- \n{{ organization.name }}\n'
+      }
+      const withText = fakeDraftPusher()
+      await push(letter, withText)
+      expect(withText.calls[0]!.text).toBe(letter.text)
+      const without = fakeDraftPusher()
+      await push(coded, without)
+      expect(without.calls[0]).not.toHaveProperty('text')
+    })
+
     it('fits both designs at Gmail’s size in what is stored', async () => {
       const { coded } = await pair()
       // Each design at the hard checks' most (Gmail's 102 kB less 10 kB),
@@ -615,7 +630,7 @@ describe('saved steps (REL-081)', () => {
     ).toEqual([
       [
         'email_builds.select',
-        'built:email->>subject,saved:progress->copy->draft->>subject'
+        'built:email->>subject,saved:progress->copy->draft->>subject,letter:progress->copy->letter->>subject'
       ],
       ['email_builds.eq', 'tenant_id', tenant],
       ['email_builds.eq', 'run_id', 'run-1'],
