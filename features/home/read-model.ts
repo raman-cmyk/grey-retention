@@ -227,7 +227,9 @@ function planOf(
     state,
     runId: run?.id ?? null,
     reason: run?.state === 'failed' ? run.reason : null,
-    outOfDate: !!run && run.stale && run.state !== 'planned',
+    // A run still being made (or waiting for offers) whose days began.
+    outOfDate:
+      state === 'working' || state === 'offers_ready' ? run!.stale : false,
     ended: state === 'planned' && !!run?.plan && run.plan.end < today,
     start,
     days,
