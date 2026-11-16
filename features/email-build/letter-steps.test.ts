@@ -14,6 +14,7 @@ import {
   letterOfferShown
 } from './letter-steps'
 import { sampleOffers, sampleStoreSource } from './ports'
+import { runBuildStep } from './steps'
 
 /** TXT-001c: "Create email" builds a text email (D26). */
 const tenantId = '00000000-0000-4000-8000-000000000101'
@@ -165,6 +166,33 @@ describe('a text email in Create email (TXT-001c)', () => {
     })
   })
 
+  it('runs as the job’s saved steps, and a saved letter that no longer reads starts over', async () => {
+    const s = await store()
+    const progress: Record<string, unknown> = {}
+    const run = (step: string) =>
+      runBuildStep(
+        step,
+        { planned, store: s, offers: sampleOffers, progress },
+        ctxWith(null)
+      )
+    for (const step of ['sections', 'content', 'copy'] as const) {
+      const made = await run(step)
+      if (!made.ok || !('output' in made)) throw new Error(`${step} failed`)
+      progress[step] = JSON.parse(JSON.stringify(made.output))
+    }
+    const design = await run('design')
+    expect(design).toMatchObject({
+      ok: true,
+      done: 'design',
+      email: { format: 'text', code: 'CANDLE10' }
+    })
+    progress.copy = { ...(progress.copy as object), letter: { subject: '' } }
+    expect(await run('design')).toEqual({
+      ok: false,
+      code: 'step_progress_invalid'
+    })
+  })
+
   it('locks the lead product without asking the Content locker (one answer only)', async () => {
     const ai = model()
     await buildEmail(
@@ -296,6 +324,80 @@ describe('a text email in Create email (TXT-001c)', () => {
         }
       })
     ).toEqual({ ok: false, code: 'render_failed' })
+  })
+
+  it('the job’s design step: the code still working, the hard checks, the format unchanged (TXT-001d)', async () => {
+    const s = await store()
+    /** The steps before design, saved, then the design step with `over`. */
+    const design = async (over: {
+      store?: typeof s
+      offers?: typeof sampleOffers
+      planned?: PlannedEmail
+    }) => {
+      const progress: Record<string, unknown> = {}
+      for (const step of ['sections', 'content', 'copy'] as const) {
+        const made = await runBuildStep(
+          step,
+          { planned, store: over.store ?? s, offers: sampleOffers, progress },
+          ctxWith(null)
+        )
+        if (!made.ok || !('output' in made)) throw new Error(step)
+        progress[step] = JSON.parse(JSON.stringify(made.output))
+      }
+      const fallbacks = memoryFallbackLog()
+      const result = await runBuildStep(
+        'design',
+        {
+          planned: over.planned ?? planned,
+          store: over.store ?? s,
+          offers: over.offers ?? sampleOffers,
+          progress
+        },
+        ctxWith(null, fallbacks)
+      )
+      return { result, fallbacks }
+    }
+    // The code switched off in Settings since the first step.
+    const off = {
+      async offers() {
+        return { maxDiscountPercent: 20, codes: [] }
+      }
+    } as unknown as typeof sampleOffers
+    expect((await design({ offers: off })).result).toEqual({
+      ok: false,
+      code: 'offer_unsafe'
+    })
+    // Settings that cannot be read now.
+    const unread = {
+      async offers() {
+        throw new Error('down')
+      }
+    } as unknown as typeof sampleOffers
+    expect((await design({ offers: unread })).result).toEqual({
+      ok: false,
+      code: 'offers_unreadable'
+    })
+    // A product link that is not https fails the hard checks, logged.
+    const http = {
+      ...s,
+      products: s.products.map((p) => ({
+        ...p,
+        url: p.url.replace('https:', 'http:')
+      }))
+    }
+    const checked = await design({ store: http })
+    expect(checked.result).toEqual({ ok: false, code: 'hard_check_failed' })
+    expect(checked.fallbacks.entries()[0]).toMatchObject({
+      agent: 'email-checks',
+      reasonCode: 'hard_check_links'
+    })
+    // The slot switched to a designed email since the first step.
+    const designed: PlannedEmail = { ...planned }
+    delete designed.format
+    expect((await design({ planned: designed })).result).toEqual({
+      ok: false,
+      code: 'format_changed'
+    })
   })
 
   it('shows only a working code within the max, at its own percent', () => {
