@@ -467,6 +467,8 @@ export async function runEmailBuilds(
                 ]
               }
             : {}),
+          // TXT-001d: a text email's own plain-text part (TXT-001e).
+          ...(email.data.text !== undefined ? { text: email.data.text } : {}),
           // The live pusher saves its steps under this build's lease (PSH-001).
           lease: { build: job.id, token: job.lease_token }
         })
