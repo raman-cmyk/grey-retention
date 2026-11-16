@@ -1083,13 +1083,35 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
         logger.warn('Klaviyo push: a template was left for now', {
           build: ref.build
         })
-      else if (withText)
-        // A text email's copy that is not ours byte for byte (its HTML or
-        // its plain text): ours is kept, and said (the first real push
-        // shows whether Klaviyo keeps the text).
-        logger.warn('Klaviyo push: a text email’s copy differs from ours', {
-          build: ref.build
-        })
+      else if (withText) {
+        // A text email's copy that is not ours: ours is kept, and which
+        // part differs is said (the first real push shows whether Klaviyo
+        // keeps the text; a rewritten HTML alone is Klaviyo's usual copy).
+        const ourText = wanted[0]?.text
+        const text =
+          copy.text === null
+            ? 'missing'
+            : ourText !== undefined &&
+                designHash('', copy.text) === designHash('', ourText)
+              ? 'same'
+              : 'differs'
+        const html =
+          htmls[0] !== undefined && htmlHash(copy.html) === htmlHash(htmls[0])
+            ? 'same'
+            : 'differs'
+        if (text === 'same')
+          logger.warn('Klaviyo push: a text email’s copy differs from ours', {
+            build: ref.build,
+            html,
+            text
+          })
+        else
+          logger.error('Klaviyo push: a text email’s copy lost its text', {
+            build: ref.build,
+            html,
+            text
+          })
+      }
     }
     // Deleted ones are kept only while a variation shows their design.
     if (!gone || shown) kept.push({ ...t, deleted: gone })

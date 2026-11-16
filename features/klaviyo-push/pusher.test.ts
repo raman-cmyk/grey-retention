@@ -10,7 +10,10 @@ import {
   type FakeDraftAccount
 } from '@/lib/providers/klaviyo/recorded-drafts'
 import { fakeDraftPusher, type DraftInput } from '@/lib/providers/klaviyo-draft'
-import { textUnsubscribeTag } from './html'
+import { sampleBrand } from '@/features/blocks/samples'
+import { letterSchema } from '@/features/letter/letter'
+import { plainFooterTags, renderLetter } from '@/features/letter/render'
+import { textFooterProblems, textUnsubscribeTag } from './html'
 import {
   liveDraftPusher,
   pushMark,
@@ -309,6 +312,23 @@ describe('the live Klaviyo draft push', () => {
     ).toMatchObject({ ok: false, reason: 'externally_modified' })
     expect(writes(account)).toHaveLength(before)
     expect(copy.text).toContain('The owner wrote this.')
+  })
+
+  it('takes the letter’s own plain text, and never its preview (TXT-001e)', () => {
+    const letter = letterSchema.parse({
+      subject: 'A note',
+      preheader: 'Why we made it, and how it fills a room.',
+      body: ['Hello from the shop.'],
+      signoff: 'Warmly,',
+      signature: 'Maya',
+      links: []
+    })
+    const brand = { ...sampleBrand, name: 'Cedar Lane' }
+    const klaviyo = renderLetter(letter, { brand, mode: 'klaviyo' })
+    const preview = renderLetter(letter, { brand, mode: 'preview' })
+    expect(textUnsubscribeTag).toBe(plainFooterTags.unsubscribe)
+    expect(textFooterProblems(klaviyo.text)).toEqual([])
+    expect(textFooterProblems(preview.text)).not.toEqual([])
   })
 
   it('keeps its own template when Klaviyo’s copy drops the plain text (TXT-001e)', async () => {
