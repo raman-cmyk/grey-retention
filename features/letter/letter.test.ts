@@ -138,6 +138,21 @@ describe('a text email drawn as a letter (TXT-001)', () => {
         mode: 'klaviyo'
       }).text
     ).toContain('\n\nP.S. And one more.\n')
+    const own = (ps: string) =>
+      renderLetter(letter({ ps }), { brand, mode: 'klaviyo' })
+    expect(own('Ps and qs matter.').text).toContain(
+      '\n\nP.S. Ps and qs matter.\n'
+    )
+    expect(own('PS: a note.').text).toContain('\n\nP.S. a note.\n')
+    expect(own('P.S.').text).not.toContain('P.S.')
+    expect(own('P.S.').html).not.toContain('P.S.')
+    // A tab is a space in both parts.
+    expect(
+      renderLetter(letter({ body: [`Tab\there. ${words(80)}`] }), {
+        brand,
+        mode: 'klaviyo'
+      }).text
+    ).toContain('Tab here.')
     // Klaviyo mode sends only pictures uploaded to Klaviyo.
     expect(() =>
       renderLetter(letter(), {
@@ -244,6 +259,10 @@ describe('the text checks (TXT-001)', () => {
     expect(rules({ signoff: 'See [you](2)' })).toEqual(['link_outside_letter'])
     expect(rules({ body: [`${words(80)} [ ](1)`] })).toEqual(['empty_link'])
     expect(rules({ body: [`${words(80)} [0](0)`] })).toEqual(['unknown_link'])
+    // Prose with brackets is prose.
+    expect(rules({ body: [`${words(80)} The [sic] (really) word.`] })).toEqual(
+      []
+    )
     // No link at all is fine: a quick question asks only for a reply.
     expect(rules({ body: [words(90)] })).toEqual([])
     expect(
@@ -251,6 +270,26 @@ describe('the text checks (TXT-001)', () => {
         letter({ body: [`${words(80)} [here](3) and [here](3)`] })
       ).map((p) => p.reason)
     ).toEqual(['“here” points to a link that does not exist: use (1).'])
+  })
+
+  it('checks the name that signs like every other part, unless it is the store’s', () => {
+    const rules = (over: Partial<Letter>, own: string[] = []) =>
+      letterProblems(letter(over), own).map((p) => p.rule)
+    expect(rules({ signature: '[Maya](1)' })).toEqual(['link_outside_letter'])
+    expect(rules({ signature: 'Maya {{ first_name }}' })).toEqual([
+      'template_marks'
+    ])
+    expect(rules({ role: 'Founder, hello@cedar-lane.example' })).toEqual([
+      'address_in_text'
+    ])
+    expect(rules({ role: 'Founder, act now' })).toEqual(['spam_words'])
+    expect(rules({ signature: 'Maya \u202e' })).toEqual(['hidden_characters'])
+    // The store's own founder, as the caller gives it.
+    expect(
+      rules({ role: 'Founder, Ritual.co' }, ['Founder, Ritual.co'])
+    ).toEqual([])
+    // A P.S. that is only its mark.
+    expect(rules({ ps: 'P.S.' })).toEqual(['empty_ps'])
   })
 
   it('never asks the writer to change the store’s own words', () => {
@@ -325,7 +364,20 @@ describe('the text checks (TXT-001)', () => {
       '.maya@cedar-lane.example'
     ])
       expect(replyToProblem(odd), odd).toMatch(/is not an email address/)
-    // A real name that starts like one is still a real inbox.
-    expect(replyToProblem('norepair@cedar-lane.example')).toBeNull()
+    // A real name that starts like one is still a real inbox, and a brand
+    // called Bounce is a brand.
+    for (const real of [
+      'norepair@cedar-lane.example',
+      "o'neill@cedar-lane.example",
+      'maya@bounce.example',
+      'info@postmaster.example',
+      'bounce.house@cedar-lane.example'
+    ])
+      expect(replyToProblem(real), real).toBeNull()
+    for (const system of [
+      'postmaster@cedar-lane.example',
+      'mailer-daemon@cedar-lane.example'
+    ])
+      expect(replyToProblem(system), system).toMatch(/which nobody reads/)
   })
 })
