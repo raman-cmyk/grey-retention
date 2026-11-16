@@ -11,6 +11,9 @@ import {
   type PlannedEmail
 } from './build'
 import { localTimeCandidates } from '@/lib/local-time'
+import { unknownFacts } from '@/features/assembly/inputs'
+import type { Finding } from '@/features/onboarding/findings'
+import { storeMaterial } from '@/features/onboarding/store-material'
 import { fakeDraftPusher } from '@/lib/providers/klaviyo-draft'
 import { previewFooterTags } from '@/features/blocks/klaviyo-tags'
 import { footerProblems, preflight } from '@/features/klaviyo-push/html'
@@ -528,6 +531,102 @@ describe('a code an email may carry (REL-OFF)', () => {
       codeWorks('CANDLE10', rules({ expiresAt: '2026-11-17T10:00:01Z' }), at)
     ).toBe(true)
     expect(codeWorks('CANDLE10', rules({ expiresAt: 'soon' }), at)).toBe(false)
+  })
+})
+
+describe('the store’s own material (REL-ONB2)', () => {
+  const cosy = 'So cosy on cold mornings, and it washes well.'
+  const scarf = 'So soft, my 100% Merino Scarf goes with everything.'
+  const facts = { ...unknownFacts, reviewsVerified: true }
+  const reviews = [{ quote: cosy, author: 'Priya S.', rating: 5 }]
+  type Over = Partial<Awaited<ReturnType<typeof sampleStoreSource.read>>>
+  const ctx = () => ({
+    tenantId,
+    callerKey: 'email-build:b1',
+    fallbacks: memoryFallbackLog()
+  })
+  const input = async (over: Over, emailType: PlannedEmail['emailType']) => ({
+    planned: planned({ emailType, offer: null }),
+    store: { ...(await sampleStoreSource.read(tenantId)), ...over },
+    offers: sampleOffers
+  })
+  const block = async (
+    type: string,
+    over: Over = {},
+    emailType: PlannedEmail['emailType'] = 'launch'
+  ) => {
+    const made = await lockedDraft(await input(over, emailType), ctx())
+    if (!made.ok) throw new Error(made.code)
+    return made.draft.blocks.find((b) => b.type === type)?.content as
+      Record<string, unknown> | undefined
+  }
+
+  it('quotes the reviews as written only once the brand has a verified review source, and makes the email', async () => {
+    const confirmed = { reviews }
+    expect(
+      (await block('review_strip', { confirmed, facts }))?.reviews
+    ).toEqual(reviews)
+    expect(await block('review_strip', { confirmed })).toBeUndefined()
+    const built = await buildEmail(
+      await input({ confirmed, facts }, 'launch'),
+      ctx()
+    )
+    expect(built.ok && built.email.html).toContain(cosy)
+  })
+
+  it('leaves out a review the Brand inspector would refuse, so the email is still made', async () => {
+    // A catalog title with a percent: the inspector masks only the
+    // products the email places, so placed as it is, no email is made.
+    const placed = await buildEmail(
+      await input(
+        {
+          confirmed: { reviews: [{ ...reviews[0], quote: scarf }] },
+          facts
+        },
+        'launch'
+      ),
+      ctx()
+    )
+    expect(placed).toEqual({ ok: false, code: 'copy_failed' })
+    // The store's material never carries it.
+    const review = (quote: string) =>
+      ({
+        topic: 'quotable_review',
+        source: 'reviews',
+        statement: 'A review an email may quote.',
+        value: { author: 'Priya', url: 'https://shop.example/p/1', rating: 5 },
+        evidence: { url: 'https://shop.example/p/1', quote },
+        confidence: 0.9,
+        pass: 'code'
+      }) as unknown as Finding
+    const confirmed = storeMaterial({
+      brandName: 'Cedar Lane',
+      host: 'shop.example',
+      live: true,
+      findings: [review(scarf), review(cosy)],
+      facts,
+      productNames: ['100% Merino Scarf']
+    })
+    expect(confirmed?.reviews?.map((r) => r.quote)).toEqual([cosy])
+    const built = await buildEmail(
+      await input({ confirmed, facts }, 'launch'),
+      ctx()
+    )
+    expect(built.ok && built.email.html).toContain(cosy)
+  })
+
+  it('has no material block without the material', async () => {
+    for (const type of ['story', 'launch'] as const)
+      for (const family of [
+        'founder_note',
+        'review_strip',
+        'ugc_grid',
+        'hero_image'
+      ])
+        expect(
+          await block(family, {}, type),
+          `${type} ${family}`
+        ).toBeUndefined()
   })
 })
 

@@ -127,6 +127,32 @@ describe('a text email in Create email (TXT-001c)', () => {
     expect(who).toContain('letter-writer')
   })
 
+  it('gives the Letter writer the store’s founder voice (PIC-23 part 3b)', async () => {
+    const ai = model()
+    const voiced = {
+      ...(await store()),
+      founderVoice: {
+        greeting: 'Hi,',
+        signoff: 'Warmly,',
+        writesAs: 'I' as const,
+        sentenceWords: 9,
+        exclamations: 'never' as const,
+        contractions: 'never' as const,
+        examples: ['Every shirt still gets checked by hand before it ships.'],
+        from: { samples: 1, words: 44 }
+      }
+    }
+    const made = await buildEmail(
+      { planned, store: voiced, offers: sampleOffers },
+      ctxWith(ai)
+    )
+    expect(made.ok).toBe(true)
+    const call = ai.mock.calls.find((c) =>
+      c[0].callerKey.startsWith('letter-writer:')
+    )![0]
+    expect(call.request.user).toContain('"founderVoice":{"greeting":"Hi,"')
+  })
+
   it('locks only what the letter shows: the lead product and the offer', () => {
     expect(letterLayout(planned).sections.map((s) => s.family)).toEqual([
       'product_feature',

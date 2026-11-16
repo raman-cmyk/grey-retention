@@ -27,11 +27,17 @@ import { withClaimsSafety } from '@/features/onboarding/claims-safety'
 import { customerWords } from '@/features/onboarding/customer-words'
 import { z } from 'zod'
 import { pastSubjects } from '@/features/email-build/subject-traits'
+import { founderVoice } from '@/features/letter/voice/profile'
+import {
+  readVoiceSamples,
+  type VoiceSample
+} from '@/features/letter/voice/samples'
 import {
   sentEmail,
   type HistorySnapshot
 } from '@/features/onboarding/history/facts'
 import { listFindings, type Finding } from '@/features/onboarding/findings'
+import { storeMaterial } from '@/features/onboarding/store-material'
 import { industryFrom } from '@/features/onboarding/strategy-data'
 import { workspaceTimezone } from '@/features/strategy/offers'
 import type { Industry } from '@/features/intelligence/taxonomy'
@@ -56,6 +62,9 @@ import type { Database } from '@/lib/supabase/database.types'
  *   (ONB-062). Anything unknown stays unknown, so copy QA refuses it.
  * - Industry: from what the brand sells, as the owner corrected it.
  * - Customer words: the reviews' own phrases, checked like copy (ONB-061).
+ * - Material for its blocks (REL-ONB2, `storeMaterial`): its quotable
+ *   reviews, only from this same website, checked like copy; none without
+ *   any.
  *
  * It is `sample` while the catalog was read from the fake Klaviyo. A
  * paused read (Klaviyo refused the key) keeps the last read's products. A
@@ -86,6 +95,11 @@ export type OwnStoreParts = {
    * (ONB-103), when it was read from the same account as the catalog.
    */
   history?: Pick<HistorySnapshot, 'sent'> | null
+  /**
+   * PIC-23 part 3b: the owner's own words the history read kept, when the
+   * history was read from the same account as the catalog.
+   */
+  voice?: readonly VoiceSample[] | null
 }
 
 /**
@@ -156,6 +170,17 @@ export function storeFrom(parts: OwnStoreParts): Store {
     hostname.test(domain)
       ? parts.logos
       : null
+  // REL-ONB2: only from this website (the owner may have changed it).
+  const confirmed = hostname.test(domain)
+    ? storeMaterial({
+        brandName: name,
+        host: domain.replace(/^www\./, ''),
+        live,
+        findings,
+        facts,
+        productNames: products.map((p) => p.title)
+      })
+    : undefined
   return {
     sample: !parts.status.live,
     brand: brandFromKit({
@@ -175,8 +200,19 @@ export function storeFrom(parts: OwnStoreParts): Store {
       live,
       names: [name, ...products.map((p) => p.title)].filter(Boolean)
     }).map((p) => p.phrase),
-    ...(parts.history ? { pastSubjects: pastSubjects(parts.history) } : {})
+    ...(parts.history ? { pastSubjects: pastSubjects(parts.history) } : {}),
+    ...(confirmed ? { confirmed } : {}),
+    ...voiceOf(parts.voice, [name, ...products.map((p) => p.title)])
   }
+}
+
+/** The founder's voice, its examples free to name the store's own words. */
+const voiceOf = (
+  samples: readonly VoiceSample[] | null | undefined,
+  own: readonly string[]
+) => {
+  const voice = samples?.length ? founderVoice(samples, own) : null
+  return voice ? { founderVoice: voice } : {}
 }
 
 /** Which store a plan was made from (`strategy_runs.plan`). */
@@ -236,7 +272,8 @@ export function ownStoreSource(db: Db): StoreSource {
         profile,
         kit,
         logos,
-        history
+        history,
+        voice
       ] = await Promise.all([
         workspaceTimezone(db, tenantId),
         listCatalog(db, tenantId, { featurableOnly: true, synthetic: !live }),
@@ -260,6 +297,13 @@ export function ownStoreSource(db: Db): StoreSource {
         // PIC-26 part 2: optional; without it the lab uses rules of thumb.
         historySent(db, tenantId).catch((error: unknown) => {
           logger.warn('Klaviyo history unreadable', {
+            code: String((error as { code?: unknown })?.code ?? 'unknown')
+          })
+          return null
+        }),
+        // PIC-23 part 3b: optional; without it the letter has no voice.
+        readVoiceSamples(db, tenantId).catch((error: unknown) => {
+          logger.warn('Voice samples unreadable', {
             code: String((error as { code?: unknown })?.code ?? 'unknown')
           })
           return null
@@ -289,7 +333,17 @@ export function ownStoreSource(db: Db): StoreSource {
         corrections,
         // The history of the same account as the catalog (a live store
         // never learns from the sample account's emails).
-        history: history && history.live === live ? history : null
+        history: history && history.live === live ? history : null,
+        // The owner's words are the history read's: of the same account,
+        // and only of the emails that history holds (a sample kept from an
+        // earlier read, or another account's, is never the voice).
+        voice:
+          history && history.live === live && voice
+            ? (() => {
+                const sent = new Set(history.sent.map((e) => e.id))
+                return voice.filter((s) => sent.has(s.messageId))
+              })()
+            : null
       })
     }
   }

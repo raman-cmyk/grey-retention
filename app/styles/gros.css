@@ -1,0 +1,311 @@
+/*
+ * GROS design tokens (docs/design/BRAND.md, draft 1), with the names given
+ * there. Scoped to `.gros` (set by `grosRoot()` on the outermost element of
+ * every GROS screen) until the old screens are retired, so the old pages
+ * keep their look. `--line` and `--radius-*` share their names with the old
+ * theme's: inside `.gros` the GROS values win, so an old component never
+ * goes inside a GROS screen. Components use these variables only: no raw
+ * colours or sizes. The measures BRAND.md gives for one component only (an
+ * input's 19 px text, a status pill's 36 px) are the `.gros-*` classes
+ * below, so they too live here and nowhere else.
+ *
+ * Everything sits in Tailwind's layers (tokens in `base`, the classes in
+ * `components`), so a component's utilities still win over these classes.
+ */
+@layer base {
+  .gros {
+    --lime: #b9f26c;
+    --lime-deep: #a7e455;
+    --lime-tile: #cdf696;
+    --lime-soft: #e3f8c4;
+    --forest: #14401f;
+    --ink: #0f1410;
+    --ink-soft: #3f463e;
+    --stone: #5f665e;
+    --mist: #f2f3f0;
+    --white: #ffffff;
+    --line: #e3e6de;
+    --signal: #e5541b;
+    --signal-ink: #9a3412;
+    --signal-soft: #fce9e0;
+
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-7: 28px;
+    --space-8: 32px;
+    --space-10: 40px;
+    --space-12: 48px;
+
+    --radius-sm: 12px;
+    --radius-md: 18px;
+    --radius-lg: 28px;
+    --radius-xl: 36px;
+    --radius-pill: 999px;
+
+    --control-sm: 44px;
+    --control-md: 52px;
+    --control-lg: 60px;
+    --control-round: 64px;
+    --page-max: 1320px;
+    --focus-ring: 2px;
+    /* The old screens' link focus rule (globals.css) reads --focus: forest here. */
+    --focus: var(--forest);
+
+    font-family: var(--font-urbanist), ui-sans-serif, system-ui, sans-serif;
+    font-size: 17px;
+    line-height: 1.4;
+    color: var(--ink);
+    background: var(--mist);
+  }
+
+  /* Focus: a 2 px forest ring, 2 px away (rule 29). */
+  .gros :focus-visible {
+    outline: var(--focus-ring) solid var(--forest);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Type styles. */
+  .gros .type-number-xl {
+    font-size: 84px;
+    line-height: 0.9;
+    font-weight: 500;
+    letter-spacing: -0.04em;
+  }
+  .gros .type-number-lg {
+    font-size: 60px;
+    line-height: 1;
+    font-weight: 500;
+    letter-spacing: -0.03em;
+  }
+  .gros .type-number-md {
+    font-size: 28px;
+    line-height: 1.1;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+  .gros .type-display {
+    font-size: 60px;
+    line-height: 1.02;
+    font-weight: 500;
+    letter-spacing: -0.03em;
+  }
+  .gros .type-title {
+    font-size: 44px;
+    line-height: 1.05;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+  .gros .type-page-title {
+    font-size: 26px;
+    line-height: 1.2;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  .gros .type-heading {
+    font-size: 22px;
+    line-height: 1.2;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+  .gros .type-body {
+    font-size: 17px;
+    line-height: 1.4;
+    font-weight: 400;
+    letter-spacing: 0;
+  }
+  .gros .type-body-strong {
+    font-size: 17px;
+    line-height: 1.4;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+  .gros .type-label {
+    font-size: 15px;
+    line-height: 1.3;
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+  .gros .type-caption {
+    font-size: 14px;
+    line-height: 1.3;
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+
+  /* Button sizes and the outline kind. */
+  .gros .gros-button-row {
+    font-size: 15px;
+  }
+  .gros .gros-button-outline {
+    border: 1.5px solid var(--forest);
+  }
+
+  /*
+ * Input: 60 px, 22 px side padding, 19 px text, a 2 px forest ring on focus
+ * (the white fill on focus is the component's), a signal ring when wrong.
+ * A wrong field keeps its signal ring and shows the focus ring outside it.
+ */
+  .gros .gros-input {
+    height: var(--control-lg);
+    padding: 0 22px;
+    font-size: 19px;
+    border: 2px solid transparent;
+    border-radius: var(--radius-md);
+  }
+  .gros .gros-input:focus {
+    border-color: var(--forest);
+    outline: none;
+  }
+  .gros .gros-input[aria-invalid='true'] {
+    border-color: var(--signal);
+  }
+  .gros .gros-input[aria-invalid='true']:focus {
+    outline: var(--focus-ring) solid var(--forest);
+    outline-offset: 2px;
+  }
+  .gros .gros-field-label {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .gros .gros-found {
+    width: 28px;
+    height: 28px;
+  }
+
+  /* Tile padding: 16 by 18 px. */
+  .gros .gros-tile {
+    padding: var(--space-4) 18px;
+  }
+
+  /* Status pill: 36 px tall, 14 px sides, an 8 px dot. */
+  .gros .gros-status {
+    height: 36px;
+    padding: 0 14px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .gros .gros-status-dot {
+    width: 8px;
+    height: 8px;
+  }
+  .gros .gros-status-dot-ring {
+    box-shadow: 0 0 0 1.5px var(--forest);
+  }
+
+  /* Change badge: a 30 px white pill beside a number. */
+  .gros .gros-badge {
+    height: 30px;
+    padding: 0 var(--space-3);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  /* The lime card's rings, bleeding off its top right corner. */
+  .gros .gros-rings {
+    width: 220px;
+    height: 220px;
+    top: calc(var(--space-12) * -1);
+    right: calc(var(--space-12) * -1);
+  }
+
+  /* Error mark: a 44 px signal-soft circle. */
+  .gros .gros-error-mark {
+    width: var(--control-sm);
+    height: var(--control-sm);
+  }
+
+  /* Nav: a white pill menu with 6 px padding; items 44 px, 22 px sides, 16 px. */
+  .gros .gros-menu {
+    padding: 6px;
+  }
+  .gros .gros-menu-item {
+    height: var(--control-sm);
+    padding: 0 22px;
+    font-size: 16px;
+  }
+
+  /* List rows: 12 px padding, 14 px between parts, 10 px between rows. */
+  .gros .gros-rows {
+    gap: 10px;
+  }
+  .gros .gros-row {
+    padding: var(--space-3);
+    gap: 14px;
+  }
+  .gros .gros-thumb {
+    width: var(--control-sm);
+    height: 56px;
+  }
+
+  /* Day strip: 15 cells 6 px apart, 44 px tall, the day number 15 px. */
+  .gros .gros-days {
+    gap: 6px;
+  }
+  .gros .gros-day {
+    height: var(--control-sm);
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  /* Step cards: at least 116 px, 16 px padding, 10 px apart, a 30 px circle. */
+  .gros .gros-steps {
+    gap: 10px;
+    /* As many in a row as fit a one-word name (Discount) and its padding. */
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  }
+  .gros .gros-step {
+    min-height: 116px;
+    padding: var(--space-4);
+  }
+  .gros .gros-step-circle {
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .gros .gros-step-circle-todo {
+    box-shadow: inset 0 0 0 1.5px var(--forest);
+  }
+
+  /* Progress: a 10 px bar; 32 px step circles. */
+  .gros .gros-bar {
+    height: 10px;
+  }
+  .gros .gros-progress-circle {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* A row's words keep room for the title; the action wraps below them. */
+  .gros .gros-row-words {
+    min-width: calc(var(--space-12) * 3);
+  }
+  /* A text email's thumbnail: three lines, the last one shorter. */
+  .gros .gros-text-line,
+  .gros .gros-text-line-short {
+    height: var(--space-1);
+  }
+  .gros .gros-text-line {
+    width: 100%;
+  }
+  .gros .gros-text-line-short {
+    width: 66%;
+  }
+
+  /*
+   * Marks whose color is their meaning (day cells, legend dots, the bar, the
+   * current menu item, step circles) keep their colors when the system
+   * forces its own; each also has its words for screen readers.
+   */
+  @media (forced-colors: active) {
+    .gros .gros-mark {
+      forced-color-adjust: none;
+    }
+  }
+}
