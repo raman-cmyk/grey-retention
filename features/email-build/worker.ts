@@ -458,6 +458,15 @@ export async function runEmailBuilds(
           plannedSendAt: email.data.plannedSendAt,
           audienceId: email.data.audienceId,
           sample: email.data.sample,
+          // EML-AB: both designs in one draft, half the audience each.
+          ...(email.data.designA && email.data.approach === 'B'
+            ? {
+                variations: [
+                  { approach: 'A' as const, html: email.data.designA },
+                  { approach: 'B' as const, html: email.data.html }
+                ]
+              }
+            : {}),
           // The live pusher saves its steps under this build's lease (PSH-001).
           lease: { build: job.id, token: job.lease_token }
         })
@@ -482,6 +491,24 @@ export async function runEmailBuilds(
           sample: pushed.sample
         })
         if (done.error) throw done.error
+        // EML-AB: the draft could not hold both designs (Klaviyo refused
+        // the even test, or the draft was made with one design before), so
+        // it has design A only; the owner's log says so, once per planned
+        // email (its push key). Written after the push is recorded: a crash
+        // between the two loses this line, never the draft.
+        if (pushed.designs === 'A')
+          await fallbacks.record({
+            tenantId: job.tenant_id,
+            campaignId: null,
+            agent: 'ab-test',
+            reasonCode: 'ab_one_design',
+            reason: 'This email’s Klaviyo draft could not hold both designs.',
+            fallback:
+              'The draft in Klaviyo has the coded design only, with no A/B test.',
+            attempts: 1,
+            detail: {},
+            dedupeKey: `ab-test:${job.push_key}:one-design`
+          })
       }
       moved = job.id
       ran++
