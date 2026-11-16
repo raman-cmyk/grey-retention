@@ -138,7 +138,15 @@ export const builtEmail = z.object({
    * draft with the two as variations, half the audience each, no winner
    * picked. Missing when only one design goes.
    */
-  designA: z.string().min(1).max(200_000).optional()
+  designA: z.string().min(1).max(200_000).optional(),
+  /**
+   * PIC-26 part 3b: the subject the subject line lab picked to test against
+   * this one (B, judged by both inspectors, PIC-26 part 3a), on an email
+   * with one design: one Klaviyo draft with the two subjects as
+   * variations, half the audience each, no winner picked. Never with
+   * `designA` (one test an email) or on a text email.
+   */
+  subjectB: z.string().min(1).max(120).optional()
 })
 export type BuiltEmail = z.infer<typeof builtEmail>
 

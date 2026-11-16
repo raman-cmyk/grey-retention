@@ -466,7 +466,19 @@ export async function runEmailBuilds(
                   { approach: 'B' as const, html: email.data.html }
                 ]
               }
-            : {}),
+            : // PIC-26 part 3b: or its two subjects, on the one design.
+              email.data.subjectB && email.data.text === undefined
+              ? {
+                  variations: [
+                    { approach: 'A' as const, html: email.data.html },
+                    {
+                      approach: 'B' as const,
+                      html: email.data.html,
+                      subject: email.data.subjectB
+                    }
+                  ]
+                }
+              : {}),
           // TXT-001d: a text email's own plain-text part (TXT-001e).
           ...(email.data.text !== undefined ? { text: email.data.text } : {}),
           // The live pusher saves its steps under this build's lease (PSH-001).
@@ -498,19 +510,37 @@ export async function runEmailBuilds(
         // it has design A only; the owner's log says so, once per planned
         // email (its push key). Written after the push is recorded: a crash
         // between the two loses this line, never the draft.
+        const subjectTest = !email.data.designA && !!email.data.subjectB
         if (pushed.designs === 'A')
-          await fallbacks.record({
-            tenantId: job.tenant_id,
-            campaignId: null,
-            agent: 'ab-test',
-            reasonCode: 'ab_one_design',
-            reason: 'This email’s Klaviyo draft could not hold both designs.',
-            fallback:
-              'The draft in Klaviyo has the coded design only, with no A/B test.',
-            attempts: 1,
-            detail: {},
-            dedupeKey: `ab-test:${job.push_key}:one-design`
-          })
+          await fallbacks.record(
+            subjectTest
+              ? {
+                  tenantId: job.tenant_id,
+                  campaignId: null,
+                  agent: 'ab-test',
+                  reasonCode: 'ab_one_subject',
+                  reason:
+                    'This email’s Klaviyo draft could not hold both subjects.',
+                  fallback:
+                    'The draft in Klaviyo has the first subject only, with no A/B test.',
+                  attempts: 1,
+                  detail: {},
+                  dedupeKey: `ab-test:${job.push_key}:one-subject`
+                }
+              : {
+                  tenantId: job.tenant_id,
+                  campaignId: null,
+                  agent: 'ab-test',
+                  reasonCode: 'ab_one_design',
+                  reason:
+                    'This email’s Klaviyo draft could not hold both designs.',
+                  fallback:
+                    'The draft in Klaviyo has the coded design only, with no A/B test.',
+                  attempts: 1,
+                  detail: {},
+                  dedupeKey: `ab-test:${job.push_key}:one-design`
+                }
+          )
       }
       moved = job.id
       ran++
@@ -538,7 +568,7 @@ export async function planSubjects(
   const { data, error } = await db
     .from('email_builds')
     .select(
-      'built:email->>subject,saved:progress->copy->draft->>subject,letter:progress->copy->letter->>subject'
+      'built:email->>subject,saved:progress->copy->draft->>subject,letter:progress->copy->letter->>subject,builtB:email->>subjectB,savedB:progress->copy->subjectLab->b->>subject'
     )
     .eq('tenant_id', job.tenant_id)
     .eq('run_id', job.run_id)
@@ -551,9 +581,12 @@ export async function planSubjects(
     saved: string | null
     /** TXT-001d: a text email's saved letter. */
     letter?: string | null
+    /** PIC-26 part 3b: the subject it tests, half the audience gets it too. */
+    builtB?: string | null
+    savedB?: string | null
   }[]
   return rows.flatMap((r) =>
-    [r.built, r.saved, r.letter].filter(
+    [r.built, r.saved, r.letter, r.builtB, r.savedB].filter(
       (x): x is string => typeof x === 'string'
     )
   )
