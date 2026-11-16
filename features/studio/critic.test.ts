@@ -283,18 +283,27 @@ describe('the critic’s verdict (DST-004a)', () => {
   })
 
   it('leaves out the photo’s own print only when the critic had the photo', () => {
-    const printed = { ...good, photoText: ['100% FSC OAK'] }
+    // A number, a percent or a price is never taken as print on its word.
+    const numbered = { ...good, photoText: ['100% FSC OAK'] }
+    expect(
+      criticProblems(
+        { ...numbered, texts: [...good.texts, '100% FSC OAK'] },
+        brief,
+        true
+      ).pass
+    ).toBe(false)
+    const printed = { ...good, photoText: ['FSC OAK'] }
     expect(criticProblems(printed, brief, true).pass).toBe(true)
     // Also when the critic lists it as drawn text too.
     expect(
       criticProblems(
-        { ...printed, texts: [...good.texts, '100% FSC OAK'] },
+        { ...printed, texts: [...good.texts, 'FSC OAK'] },
         brief,
         true
       ).pass
     ).toBe(true)
     expect(criticProblems(printed, brief, false).problems).toEqual([
-      'The picture shows “100% fsc oak”, which is not the copy: draw only the words given.'
+      'The picture shows “fsc oak”, which is not the copy: draw only the words given.'
     ])
   })
 })

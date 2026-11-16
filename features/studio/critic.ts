@@ -190,8 +190,13 @@ export function criticProblems(
 ): Verdict {
   const problems: string[] = []
   // With the photo, a block the critic also gave as the photo's print is
-  // the photo's; without it, the photo's print counts as drawn.
-  const printed = new Set(answer.photoText.map((t) => squash(readWords(t))))
+  // the photo's; without it, the photo's print counts as drawn. A number,
+  // a percent or a price is never taken on the critic's word as print.
+  const printed = new Set(
+    answer.photoText
+      .filter((t) => !/[\d%$€£¥₹]/.test(t))
+      .map((t) => squash(readWords(t)))
+  )
   const read = readsAsCopy(
     photo
       ? answer.texts.filter((t) => !printed.has(squash(readWords(t))))

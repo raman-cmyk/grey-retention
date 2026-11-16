@@ -8,8 +8,8 @@ export const runtime = 'nodejs'
 export const maxDuration = 120
 /**
  * The steps' deadline, as the click's 110 s inside 120: a step is claimed
- * only while a whole one (50 s) still fits before it, so every step ends
- * inside the route's time.
+ * only while 50 s still fit before it, and every step (the studio's design
+ * step has up to 90 s) ends by this deadline, inside the route's time.
  */
 const budgetMs = 105_000
 const noStore = { 'cache-control': 'no-store' }

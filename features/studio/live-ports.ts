@@ -13,6 +13,9 @@ import { requestSectionRender } from './render-jobs'
 import { codedReasons } from './rounds'
 import { storyboardFor } from './storyboard'
 import { buildRenders, type BuildRender } from './waits'
+import type { ImageFetcher } from '@/lib/providers/image-fetch'
+import { createImageFetcher } from '@/features/inbox/image-fetch'
+import type { AiImage } from '@/lib/providers/contracts'
 
 /**
  * DST-006c part 2b: the studio's ports in the email build (D25), for the
@@ -24,6 +27,13 @@ import { buildRenders, type BuildRender } from './waits'
 
 type Db = SupabaseClient<Database>
 const bucket = 'studio-renders'
+/**
+ * The studio's design step's time in one claim: the Art director's or the
+ * critic's 3 tries, the product's photo and the picture read back fit,
+ * inside the click's 110 s and the studio job's 105 s (the claims' own
+ * deadlines still bound it; the sweep never runs the studio).
+ */
+export const studioStepMs = 90_000
 /** A slack after each agent call, as the build's other agent steps keep. */
 const callSlackMs = 2_000
 /**
@@ -32,6 +42,51 @@ const callSlackMs = 2_000
  * wait for its day.
  */
 export const pictureLinkSeconds = 365 * 24 * 60 * 60
+/**
+ * The picture the email links to: a copy at a path no upload link
+ * reaches (the browser's link uploads to render/<id>.jpg for 2 hours).
+ */
+export const finalPath = (render: string) => `final/${render}.jpg`
+/** The product's own photo for the critic: small and quick, or none. */
+const photoLimits = { maxBytes: 3 * 1024 * 1024, timeoutMs: 8_000 }
+/** The critic's tries, as the rounds count them (`fits(3)`). */
+const criticCalls = 3
+/**
+ * The studio's own photo fetcher (the inbox's guards: public hosts only,
+ * ports 80 and 443, redirects checked, size and time capped), asking only
+ * for what the critic takes, over https.
+ */
+export const studioPhotos: ImageFetcher = createImageFetcher({
+  accept: 'image/jpeg,image/png,image/webp',
+  protocols: ['https:']
+})
+/** A sample store's photos are never fetched: the critic goes without. */
+export const noPhotos: ImageFetcher = {
+  fetch: async () => ({ ok: false, failure: 'blocked' })
+}
+
+/** The photo's type by its bytes, as the critic takes them; else null. */
+export function photoOf(bytes: Uint8Array): AiImage | null {
+  const b = bytes
+  const type =
+    b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff
+      ? 'image/jpeg'
+      : b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47
+        ? 'image/png'
+        : b[0] === 0x52 &&
+            b[1] === 0x49 &&
+            b[2] === 0x46 &&
+            b[3] === 0x46 &&
+            b[8] === 0x57 &&
+            b[9] === 0x45 &&
+            b[10] === 0x42 &&
+            b[11] === 0x50
+          ? 'image/webp'
+          : null
+  return type
+    ? { mediaType: type, base64: Buffer.from(b).toString('base64') }
+    : null
+}
 
 /** A storage tag as stored (`"abc"`) or as read (`abc`), compared alike; never empty. */
 const tagOf = (etag: string | undefined | null) => {
@@ -61,6 +116,8 @@ export function studioPortsFor(
     callerKey: string
     /** The store's industry, for the agents' do's and don'ts. */
     industry: string | null
+    /** Reads the product's own photo for the critic (the live fetcher). */
+    photos: ImageFetcher
     until: number
     now: () => number
   }
@@ -77,6 +134,23 @@ export function studioPortsFor(
   const fits = (calls = 1) =>
     input.now() + calls * agentCallMs + callSlackMs <= input.until
   const files = () => db.storage.from(bucket)
+  /** One fetch per photo per claim; none when its time would not fit. */
+  const photos = new Map<string, Promise<AiImage | null>>()
+  const photoFor = (url: string) => {
+    const left =
+      input.until - input.now() - criticCalls * agentCallMs - callSlackMs
+    const timeoutMs = Math.min(photoLimits.timeoutMs, left)
+    if (timeoutMs < 1_000) return Promise.resolve(null)
+    let got = photos.get(url)
+    if (!got) {
+      got = input.photos
+        .fetch(url, { ...photoLimits, timeoutMs })
+        .then((r) => (r.ok ? photoOf(r.bytes) : null))
+        .catch(() => null)
+      photos.set(url, got)
+    }
+    return got
+  }
   /** The render's stored file, only while its tag is the one recorded. */
   const tagged = async (render: Extract<BuildRender, { state: 'drawn' }>) => {
     const info = stored(await files().info(render.path))
@@ -87,7 +161,13 @@ export function studioPortsFor(
     storyboard: (board) => storyboardFor(board, ctx),
     design: (brief, from) =>
       designSection(brief, { ...ctx, fits: () => fits() }, from),
-    critique: (brief, image) => critiqueSection({ brief, image }, ctx),
+    async critique(brief, image) {
+      // The product's own photo, so print on it is not read as drawn
+      // words; without it (unreadable, too large, slow), the print counts
+      // (the safe side).
+      const photo = await photoFor(brief.image.url)
+      return critiqueSection({ brief, image, ...(photo ? { photo } : {}) }, ctx)
+    },
     request: ({ key, section, hosts }) =>
       requestSectionRender(db, {
         build: input.build,
@@ -126,11 +206,20 @@ export function studioPortsFor(
           r.path === render.path &&
           r.etag === render.etag
       )
-      if (!drawn || !(await tagged(drawn))) return null
-      const signed = await files().createSignedUrl(
-        drawn.path,
-        pictureLinkSeconds
-      )
+      if (!drawn) return null
+      // The copy the email links to, made from the picture as recorded:
+      // its tag is checked before and after, and the copy's after.
+      const final = finalPath(drawn.id)
+      const copied = { ...drawn, path: final }
+      if (!(await tagged(copied))) {
+        if (!(await tagged(drawn))) return null
+        const copy = await files().copy(drawn.path, final)
+        const e = copy.error as { statusCode?: string | number } | null
+        // Made by an earlier claim: its tag decides below.
+        if (e && String(e.statusCode) !== '409') throw copy.error
+        if (!(await tagged(drawn)) || !(await tagged(copied))) return null
+      }
+      const signed = await files().createSignedUrl(final, pictureLinkSeconds)
       const url = stored(signed)?.signedUrl
       if (!url) return null
       try {
