@@ -16,7 +16,7 @@ import { FocusShell, StepCards, onboardingSteps } from './steps'
 afterEach(cleanup)
 
 describe('TopBar and AppPage (UI-DS)', () => {
-  it('has the menu items whose screens exist, the current one marked, and Ask GROS and Settings', () => {
+  it('has the five menu items, the current one marked, and Ask GROS and Settings', () => {
     render(<TopBar current="inspiration" title="Inspiration" />)
     expect(
       screen.getByRole('heading', { level: 1, name: 'Inspiration' })
@@ -26,7 +26,7 @@ describe('TopBar and AppPage (UI-DS)', () => {
       'Home',
       'Plan',
       'Inspiration',
-      // Audiences has no screen yet, so it is left out rather than a dead link.
+      'Audiences',
       'Results'
     ])
     const here = menu.getByRole('link', { name: 'Inspiration' })

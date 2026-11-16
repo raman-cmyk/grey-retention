@@ -14,27 +14,27 @@ import {
   loadKlaviyo,
   NotConnected
 } from '@/features/klaviyo-detail/parts'
+import { backToAudiences } from '@/features/klaviyo-detail/source'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Segment' }
 
 export default async function SegmentPage({
-  params,
-  searchParams
+  params
 }: {
   params: Promise<{ segmentId: string }>
-  searchParams: Promise<{ from?: string | string[] }>
+  searchParams?: Promise<{ from?: string | string[] }>
 }) {
-  const [{ segmentId }, { from }, { timezone, data }] = await Promise.all([
+  const [{ segmentId }, { timezone, data }] = await Promise.all([
     params,
-    searchParams,
     loadKlaviyo()
   ])
-  if (data.state !== 'sample') return <NotConnected from={from} data={data} />
+  if (data.state !== 'sample')
+    return <NotConnected back={backToAudiences} data={data} />
   const segment = data.snapshot.segments.find((s) => s.id === segmentId)
   if (!segment) notFound()
   return (
-    <KlaviyoDetail from={from}>
+    <KlaviyoDetail back={backToAudiences}>
       <DetailHero
         icon={Filter}
         kind="Segment"

@@ -43,3 +43,11 @@ const homeHref: Route = '/home'
 
 /** The way back from a detail page: Home. */
 export const backHome = { href: homeHref, label: 'Back to Home' } as const
+
+const audiencesHref: Route = '/audiences'
+
+/** The way back from a segment's or a list's page: Audiences (UI-AUDa). */
+export const backToAudiences = {
+  href: audiencesHref,
+  label: 'Back to Audiences'
+} as const

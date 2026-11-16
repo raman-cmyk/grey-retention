@@ -12,29 +12,29 @@ import {
   loadKlaviyo,
   NotConnected
 } from '@/features/klaviyo-detail/parts'
+import { backToAudiences } from '@/features/klaviyo-detail/source'
 import { optInWords } from '@/features/klaviyo-detail/words'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'List' }
 
 export default async function ListPage({
-  params,
-  searchParams
+  params
 }: {
   params: Promise<{ listId: string }>
-  searchParams: Promise<{ from?: string | string[] }>
+  searchParams?: Promise<{ from?: string | string[] }>
 }) {
-  const [{ listId }, { from }, { timezone, data }] = await Promise.all([
+  const [{ listId }, { timezone, data }] = await Promise.all([
     params,
-    searchParams,
     loadKlaviyo()
   ])
-  if (data.state !== 'sample') return <NotConnected from={from} data={data} />
+  if (data.state !== 'sample')
+    return <NotConnected back={backToAudiences} data={data} />
   const list = data.snapshot.lists.find((l) => l.id === listId)
   if (!list) notFound()
   const optIn = optInWords(list.optIn)
   return (
-    <KlaviyoDetail from={from}>
+    <KlaviyoDetail back={backToAudiences}>
       <DetailHero icon={List} kind="List" title={list.name} />
       <div className="grid gap-5 sm:grid-cols-2">
         <InfoCard
