@@ -12,7 +12,7 @@ import {
   type EmailViewPorts
 } from '@/features/studio/email-check'
 import type { EmailVerdict } from '@/features/studio/email-critic'
-import type { PlannedEmail } from './build'
+import { builtEmail, type BuiltEmail, type PlannedEmail } from './build'
 import { sampleOffersFrom, sampleStoreFrom } from './ports'
 import { runBuildStep } from './steps'
 
@@ -147,9 +147,54 @@ describe('the design step with the design studio (DST-006c part 2b)', () => {
     }
     const next = await step(store, saved, ports(blocks, hero, [drawn]))
     expect(next).toMatchObject({ ok: true, done: 'design' })
-    const html = (next as { email: { html: string } }).email.html
-    expect(html).toContain('alt="Meet the throw"')
-    expect(html).toContain(signed.replace(/&/g, '&amp;').split('?')[0])
+    const email = (next as { email: BuiltEmail }).email
+    expect(email.html).toContain('alt="Meet the throw"')
+    expect(email.html).toContain(signed.replace(/&/g, '&amp;').split('?')[0])
+    // EML-AB: design B, with its coded blocks as design A (the product's
+    // own photo, no studio picture), stored as the job stores it.
+    expect(email.approach).toBe('B')
+    expect(email.designA).toContain(photo)
+    expect(email.designA).not.toContain(signed.split('?')[0])
+    expect(builtEmail.parse(JSON.parse(JSON.stringify(email)))).toEqual(email)
+  })
+
+  it('sends the designed email alone, logged, when its coded design fails a hard check (EML-AB)', async () => {
+    const { store, progress, blocks, hero } = await beforeDesign()
+    // The coded hero's own words show an offer over the max; the studio's
+    // picture shows none of them.
+    ;(blocks[hero]!.content as { headline: string }).headline =
+      'Take 90% off everything'
+    const first = (await step(store, progress, ports(blocks, hero))) as {
+      work: object
+    }
+    const drawn: BuildRender = {
+      id: render,
+      key: 'k',
+      state: 'drawn',
+      path: `render/${render}.jpg`,
+      height: 640,
+      bytes: 1,
+      etag: 'e'
+    }
+    const fallbacks = memoryFallbackLog()
+    const out = await step(
+      store,
+      { ...progress, work: { design: first.work } },
+      ports(blocks, hero, [drawn]),
+      fallbacks
+    )
+    expect(out).toMatchObject({ ok: true, done: 'design' })
+    const email = (out as { email: BuiltEmail }).email
+    expect(email.approach).toBe('B')
+    expect(email).not.toHaveProperty('designA')
+    expect(fallbacks.entries()).toEqual([
+      expect.objectContaining({
+        agent: 'ab-test',
+        reasonCode: 'ab_no_coded',
+        reason: 'Its coded design did not pass the email checks.',
+        fallback: 'Sent only the designed email to Klaviyo, with no A/B test.'
+      })
+    ])
   })
 
   it('draws the email coded, saying so once, when the studio’s work is there without its ports', async () => {
@@ -439,8 +484,10 @@ describe('the design step judges the studio’s email whole (DST-006d part 2c)',
     expect(studio.sign).not.toHaveBeenCalled()
     expect(views.views.mock.calls[0]![0]).toBe(asked.ask.mock.calls[0]![0])
     expect(views.judge).toHaveBeenCalledTimes(1)
-    const html = (out as { email: { html: string } }).email.html
-    expect(html).toContain(signed.split('?')[0])
+    const email = (out as { email: BuiltEmail }).email
+    expect(email.html).toContain(signed.split('?')[0])
+    // EML-AB: the passed email is design B, its coded blocks design A.
+    expect(email).toMatchObject({ approach: 'B', designA: expect.any(String) })
     expect(fallbacks.entries()).toEqual([])
   })
 
@@ -475,6 +522,11 @@ describe('the design step judges the studio’s email whole (DST-006d part 2c)',
     expect(out).toMatchObject({ ok: true, done: 'design' })
     const html = (out as { email: { html: string } }).email.html
     expect(html).not.toContain(signed.split('?')[0])
+    // Coded only: one design, no A/B test.
+    expect((out as { email: BuiltEmail }).email).toMatchObject({
+      approach: 'A'
+    })
+    expect((out as { email: BuiltEmail }).email).not.toHaveProperty('designA')
     expect(fallbacks.entries()).toEqual([
       expect.objectContaining({
         agent: 'design-studio',

@@ -488,6 +488,35 @@ export async function runBuildStep(
     })
     return { ok: false, code: 'hard_check_failed' }
   }
+  // EML-AB (D21): the studio's email passed every check, so it goes as
+  // design B beside its coded blocks as design A (the same content and
+  // words, through the same hard checks), in one Klaviyo draft, half the
+  // audience each, no winner picked. Each is under Gmail's size (DST-005),
+  // so both fit what is stored. Short of A, B goes alone, logged.
+  if (made.ok && studioEmail && made.email === studioEmail) {
+    const a = draw(plain)
+    const coded = a.ok && !checksOf(a.email.html).length ? a.email.html : null
+    made = {
+      ok: true,
+      email: {
+        ...made.email,
+        approach: 'B',
+        ...(coded ? { designA: coded } : {})
+      }
+    }
+    if (!coded)
+      await ctx.fallbacks.record({
+        tenantId: ctx.tenantId,
+        campaignId: ctx.campaignId ?? null,
+        agent: 'ab-test',
+        reasonCode: 'ab_no_coded',
+        reason: 'Its coded design did not pass the email checks.',
+        fallback: 'Sent only the designed email to Klaviyo, with no A/B test.',
+        attempts: 1,
+        detail: {},
+        dedupeKey: `ab-test:${keyPart(ctx.callerKey)}`
+      })
+  }
   if (made.ok && coded)
     await ctx.fallbacks.record({
       tenantId: ctx.tenantId,

@@ -216,6 +216,59 @@ describe('building and pushing (code-only, fake pusher)', () => {
     })
   })
 
+  it('pushes the studio’s email and its coded design as one draft, half the audience each (EML-AB)', async () => {
+    const coded = await built()
+    const email: BuiltEmail = {
+      ...coded,
+      approach: 'B',
+      html: coded.html.replace('</body>', '<!-- designed --></body>'),
+      designA: coded.html
+    }
+    const pusher = fakeDraftPusher()
+    const fallbacks = memoryFallbackLog()
+    const { db, calls } = fakeDb([
+      step({ state: 'push_queued', step: 'push', email })
+    ])
+    expect(await runEmailBuilds(db, { pusher, fallbacks })).toEqual({ ran: 1 })
+    expect(pusher.calls[0]!.variations).toEqual([
+      { approach: 'A', html: coded.html },
+      { approach: 'B', html: email.html }
+    ])
+    expect(calls.some((c) => c.fn === 'finish_email_push')).toBe(true)
+    expect(fallbacks.entries()).toEqual([])
+    // Klaviyo would not take the even test: design A only, logged.
+    const onlyA = fakeDraftPusher({ designs: 'A' })
+    const logged = memoryFallbackLog()
+    const again = fakeDb([step({ state: 'push_queued', step: 'push', email })])
+    await runEmailBuilds(again.db, { pusher: onlyA, fallbacks: logged })
+    expect(again.calls.some((c) => c.fn === 'finish_email_push')).toBe(true)
+    expect(logged.entries()).toEqual([
+      expect.objectContaining({
+        agent: 'ab-test',
+        reasonCode: 'ab_even_refused',
+        reason: 'Klaviyo would not split the two designs half and half.',
+        fallback: 'The draft in Klaviyo has the coded design only.'
+      })
+    ])
+    // One design (coded, a designed one without its coded design, or a
+    // coded one that carries a second): no test.
+    for (const one of [
+      coded,
+      { ...email, designA: undefined },
+      { ...coded, designA: email.html }
+    ]) {
+      const single = fakeDraftPusher()
+      const db1 = fakeDb([
+        step({ state: 'push_queued', step: 'push', email: one })
+      ])
+      await runEmailBuilds(db1.db, {
+        pusher: single,
+        fallbacks: memoryFallbackLog()
+      })
+      expect(single.calls[0]).not.toHaveProperty('variations')
+    }
+  })
+
   it('runs the owner’s own build, then its push, and nothing else', async () => {
     const email = await built()
     const { db, calls } = fakeDb([

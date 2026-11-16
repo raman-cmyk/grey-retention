@@ -458,6 +458,15 @@ export async function runEmailBuilds(
           plannedSendAt: email.data.plannedSendAt,
           audienceId: email.data.audienceId,
           sample: email.data.sample,
+          // EML-AB: both designs in one draft, half the audience each.
+          ...(email.data.designA && email.data.approach === 'B'
+            ? {
+                variations: [
+                  { approach: 'A' as const, html: email.data.designA },
+                  { approach: 'B' as const, html: email.data.html }
+                ]
+              }
+            : {}),
           // The live pusher saves its steps under this build's lease (PSH-001).
           lease: { build: job.id, token: job.lease_token }
         })
@@ -482,6 +491,20 @@ export async function runEmailBuilds(
           sample: pushed.sample
         })
         if (done.error) throw done.error
+        // EML-AB: Klaviyo would not take an even test of the two designs,
+        // so the draft has design A only (the owner's log says so).
+        if (pushed.designs === 'A')
+          await fallbacks.record({
+            tenantId: job.tenant_id,
+            campaignId: null,
+            agent: 'ab-test',
+            reasonCode: 'ab_even_refused',
+            reason: 'Klaviyo would not split the two designs half and half.',
+            fallback: 'The draft in Klaviyo has the coded design only.',
+            attempts: 1,
+            detail: {},
+            dedupeKey: `ab-test:${job.id}:even`
+          })
       }
       moved = job.id
       ran++
