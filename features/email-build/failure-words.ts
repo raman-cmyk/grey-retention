@@ -77,7 +77,7 @@ export const pushRefusalWords = {
   not_a_draft:
     'Its campaign in Klaviyo is no longer a draft (it was scheduled or sent), so it was left alone.',
   campaign_ambiguous:
-    'The app could not tell for sure which draft in Klaviyo is this email’s, so it changed nothing there.',
+    'The app could not tell for sure which draft in Klaviyo is this email’s, so it left the draft alone.',
   audience_changed:
     'Its audience changed after its draft was made, so the draft was left as it is. Plan again.',
   // While it was being put into Klaviyo.
