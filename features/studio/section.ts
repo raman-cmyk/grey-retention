@@ -62,7 +62,16 @@ export const maxTypeSizes = 3
  * at 600), rounded up.
  */
 export const phoneTextPx = 14
-export const minPictureTextPx = Math.ceil(phoneTextPx / (375 / sectionWidth))
+/** A phone's width, as the inbox preview draws it (DST-005b). */
+export const phoneWidth = 375
+/** On a phone, a size the picture sets (px at 600). */
+export const onPhone = (px: number) => (px * phoneWidth) / sectionWidth
+/** The round size the Section designer is told to stay at or above. */
+export const minPictureTextPx = Math.ceil(
+  (phoneTextPx * sectionWidth) / phoneWidth
+)
+/** Text given no size (the section's page sets it): 15 px on a phone. */
+export const baseTextPx = 24
 
 /** HTML elements a picture may use. */
 const htmlElements = new Set(
@@ -131,8 +140,8 @@ type Found = {
   urls: string[]
   /** The font sizes it sets, in px (DST-PIC #11). */
   sizes: Set<number>
-  /** Those its styles set (SVG text is in its viewBox's units; DST-PIC #16). */
-  styled?: number[]
+  /** Those set in px on the picture (not in an SVG viewBox's units; DST-PIC #16). */
+  styled: number[]
 }
 
 /**
@@ -151,6 +160,7 @@ function shorthandSize(value: string) {
   for (const part of value.trim().split(/\s+/)) {
     const n = /^(\d+(?:\.\d+)?)px(?:\/\S+)?$/.exec(part)
     if (n) return Number(n[1])
+    if (/^0(?:\/\S+)?$/.test(part)) return 0
     if (part.includes('(')) return null
   }
   return null
@@ -160,7 +170,9 @@ function checkCss(
   css: string,
   where: string,
   hosts: readonly string[],
-  f: Found
+  f: Found,
+  /** Its sizes are px on the picture (not in an SVG viewBox's units). */
+  picturePx = true
 ) {
   if (badCss.test(css))
     f.problems.push(`The section’s ${where} load or run something.`)
@@ -184,7 +196,7 @@ function checkCss(
       )
     else if (Number(px) > 0) {
       f.sizes.add(Number(px))
-      f.styled?.push(Number(px))
+      if (picturePx) f.styled.push(Number(px))
     }
   }
   for (const url of read.urls)
@@ -205,13 +217,24 @@ function checkUrl(url: string, hosts: readonly string[], f: Found) {
     )
 }
 
-function walk(node: T.ParentNode, hosts: readonly string[], f: Found) {
+function walk(
+  node: T.ParentNode,
+  hosts: readonly string[],
+  f: Found,
+  /** Inside an <svg> with a viewBox: its sizes are in the viewBox's units. */
+  scaled = false
+) {
   for (const child of node.childNodes) {
     if (child.nodeName === '#text' || child.nodeName === '#comment') continue
     if (!('tagName' in child)) continue
     const el = child as T.Element
     const tag = el.tagName.toLowerCase()
     const svg = el.namespaceURI === 'http://www.w3.org/2000/svg'
+    const inScale =
+      scaled ||
+      (svg &&
+        tag === 'svg' &&
+        el.attrs.some((a) => a.name.toLowerCase() === 'viewbox'))
     const known = svg ? svgElements.has(tag) : htmlElements.has(tag)
     if (!known) {
       f.problems.push(
@@ -238,13 +261,17 @@ function walk(node: T.ParentNode, hosts: readonly string[], f: Found) {
         // SVG text: a plain number is px.
         const n = /^(\d+(?:\.\d+)?)(?:px)?$/.exec(value.trim())
         if (n) {
-          if (Number(n[1]) > 0) f.sizes.add(Number(n[1]))
+          if (Number(n[1]) > 0) {
+            f.sizes.add(Number(n[1]))
+            if (!inScale) f.styled.push(Number(n[1]))
+          }
         } else
           f.problems.push(
             `${sizeWords}: the SVG font-size “${value.trim().slice(0, 40)}” is not.`
           )
       }
-      if (name === 'style') checkCss(value, 'inline styles', hosts, f)
+      if (name === 'style')
+        checkCss(value, 'inline styles', hosts, f, !(svg && inScale))
       else if (name === 'src') {
         if (tag === 'img') checkUrl(value.trim(), hosts, f)
         else f.problems.push(`A <${tag}> has no picture to load.`)
@@ -262,7 +289,7 @@ function walk(node: T.ParentNode, hosts: readonly string[], f: Found) {
       } else if (/url\s*\(/i.test(value))
         checkCss(value, 'attributes', hosts, f)
     }
-    walk(el, hosts, f)
+    walk(el, hosts, f, inScale)
   }
 }
 
@@ -297,11 +324,18 @@ export function sectionProblems(
   if (f.problems.some((p) => p.endsWith('too long.'))) return f.problems
   checkCss(section.css, 'styles', hosts, f)
   walk(parseFragment(section.html), hosts, f)
-  const smallest = Math.min(...f.styled!)
-  if (smallest < minPictureTextPx)
+  const small = [...new Set(f.styled)]
+    .filter((px) => onPhone(px) < phoneTextPx)
+    .sort((x, y) => y - x)
+  if (small.length) {
+    const words = (list: number[]) =>
+      list
+        .map((px) => `${Math.round(px * 10) / 10} px`)
+        .join(list.length === 2 ? ' and ' : ', ')
     f.problems.push(
-      `Text set at ${smallest} px shows at ${Math.round(smallest * 6.25) / 10} px on a phone: set text at ${minPictureTextPx} px or more (${phoneTextPx} px on a phone).`
+      `Text set at ${words(small)} shows at ${words(small.map(onPhone))} on a phone: set text at ${minPictureTextPx} px or more (${phoneTextPx} px on a phone).`
     )
+  }
   if (f.sizes.size > maxTypeSizes)
     f.problems.push(
       `The section uses ${f.sizes.size} type sizes (${[...f.sizes]
@@ -337,7 +371,7 @@ export function sectionUrls(
   section: DesignedSection,
   hosts: readonly string[]
 ) {
-  const f: Found = { problems: [], urls: [], sizes: new Set() }
+  const f: Found = { problems: [], urls: [], sizes: new Set(), styled: [] }
   checkCss(section.css, 'styles', hosts, f)
   walk(parseFragment(section.html), hosts, f)
   return [...f.urls, ...(section.fonts ?? []).map((x) => x.url)]
@@ -355,5 +389,5 @@ export function sectionDocument(section: DesignedSection) {
         `@font-face{font-family:"${font.family}";src:url("${new URL(font.url).href}");font-weight:${font.weight ?? 400};font-style:${font.italic ? 'italic' : 'normal'};font-display:block}`
     )
     .join('')
-  return `<!doctype html><html><head><meta charset="utf-8"><style>${faces}html,body{margin:0;padding:0;background:#ffffff;font-size:16px}li{list-style:none}:where(#gr-section) :where(h1,h2,h3,h4,h5,h6,small,big,sub,sup){font-size:inherit}#gr-section{position:relative;width:${sectionWidth}px;height:${section.height}px;overflow:hidden}${section.css}</style></head><body><div id="gr-section">${section.html}</div></body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${faces}html,body{margin:0;padding:0;background:#ffffff;font-size:${baseTextPx}px}li{list-style:none}:where(#gr-section) :where(h1,h2,h3,h4,h5,h6,small,big,sub,sup){font-size:inherit}#gr-section{position:relative;width:${sectionWidth}px;height:${section.height}px;overflow:hidden}${section.css}</style></head><body><div id="gr-section">${section.html}</div></body></html>`
 }

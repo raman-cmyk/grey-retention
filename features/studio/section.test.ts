@@ -337,41 +337,45 @@ describe('typography in a designed section (DST-PIC #11)', () => {
 })
 
 describe('a designed section on a phone (DST-PIC #16)', () => {
-  const small = (css: string) =>
-    sectionProblems(
-      with_({ css, html: '<h1>Hi</h1><p>Line</p>' }),
-      hosts
-    ).filter((p) => p.includes('on a phone'))
-  it('refuses text a phone would show under 14 px (23 px or more at 600)', () => {
+  const phone = (css: string, html = '<h1>Hi</h1><p>Line</p>') =>
+    sectionProblems(with_({ css, html }), hosts).filter((p) =>
+      p.includes('on a phone')
+    )
+  const says = (sizes: string, phones: string) =>
+    `Text set at ${sizes} shows at ${phones} on a phone: set text at 23 px or more (14 px on a phone).`
+  it('refuses text a phone shows under 14 px, naming every such size', () => {
     expect(minPictureTextPx).toBe(23)
-    expect(small('h1{font-size:48px}p{font-size:23px}')).toEqual([])
-    expect(small('h1{font-size:48px}p{font-size:16px}')).toEqual([
-      'Text set at 16 px shows at 10 px on a phone: set text at 23 px or more (14 px on a phone).'
-    ])
-    // The shorthand and inline styles; SVG text is in its viewBox's units,
-    // left to the critic's phone view.
-    expect(small('p{font:italic 16px/1.4 Georgia}')).toEqual([
-      'Text set at 16 px shows at 10 px on a phone: set text at 23 px or more (14 px on a phone).'
-    ])
+    expect(phone('h1{font-size:48px}p{font-size:23px}')).toEqual([])
+    // 22.4 px is exactly 14 px on a phone; a little less is not.
+    expect(phone('p{font-size:22.4px}')).toEqual([])
+    expect(phone('p{font-size:22.3px}')).toEqual([says('22.3 px', '13.9 px')])
     expect(
-      sectionProblems(
-        with_({
-          css: 'h1{font-size:48px}',
-          html: '<h1>Hi</h1><small style="font-size:13px">x</small><svg viewBox="0 0 10 10"><text font-size="2">A</text></svg>'
-        }),
-        hosts
-      ).filter((p) => p.includes('on a phone'))
-    ).toEqual([
-      'Text set at 13 px shows at 8.1 px on a phone: set text at 23 px or more (14 px on a phone).'
+      phone('h1{font-size:48px}p{font-size:16px}small{font-size:13px}')
+    ).toEqual([says('16 px and 13 px', '10 px and 8.1 px')])
+    // The shorthand, and a size of 0 (no text) is never too small.
+    expect(phone('p{font:italic 16px/1.4 Georgia}')).toEqual([
+      says('16 px', '10 px')
     ])
+    expect(phone('.row{font-size:0;font:0/0 a}h1{font-size:48px}')).toEqual([])
+  })
+
+  it('reads SVG text in px only where its <svg> has no viewBox', () => {
+    // Under a viewBox the sizes are its units: left to the critic's view.
     expect(
-      sectionProblems(
-        with_({
-          css: 'h1{font-size:48px}',
-          html: '<h1>Hi</h1><svg viewBox="0 0 10 10"><text font-size="2">A</text></svg>'
-        }),
-        hosts
-      ).filter((p) => p.includes('on a phone'))
+      phone(
+        'h1{font-size:48px}',
+        '<h1>Hi</h1><svg viewBox="0 0 10 10" width="600"><text font-size="2" style="font-size:2px">A</text></svg>'
+      )
     ).toEqual([])
+    expect(
+      phone(
+        'h1{font-size:48px}',
+        '<h1>Hi</h1><svg width="600" height="100"><text font-size="12">A</text></svg><small style="font-size:13px">x</small>'
+      )
+    ).toEqual([says('13 px and 12 px', '8.1 px and 7.5 px')])
+  })
+
+  it('draws text given no size at 24 px, 15 px on a phone', () => {
+    expect(sectionDocument(good)).toContain('font-size:24px}')
   })
 })
