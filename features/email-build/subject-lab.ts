@@ -13,8 +13,9 @@ import {
  * How it weighs: each subject has traits (short, a question, an offer, the
  * reader's first name …). From the store's sent emails (`pastSubjects`),
  * each trait's open rate with it and without it is compared, and the
- * difference is shrunk by how few emails show it (`learnFrom`), so three
- * lucky emails never outweigh forty. A subject's score is the sum of its
+ * difference is shrunk by how sure it is (`learnFrom`): a difference no
+ * bigger than the store's own ups and downs, for as few emails as show
+ * it, counts for little. A subject's score is the sum of its
  * traits' differences; a trait the store's emails say nothing about counts
  * only by a small rule of thumb (a long subject is cut on a phone). Ties
  * keep the writer's order. Plain code, no AI: the same ideas and the same
@@ -35,8 +36,8 @@ export const labSize = 10
 export const minPastEmails = 10
 /** A trait needs this many past emails with it, and as many without. */
 export const minPerSide = 3
-/** Evidence is shrunk toward nothing as if this many emails showed none. */
-const shrinkBy = 5
+/** The least spread a store's open rates are taken to have (1 point). */
+const minSpread = 0.01
 /** No trait moves a score by more than this (15 points of open rate). */
 const maxLift = 0.15
 /** A B expected this far below A (5 points of open rate) is not worth the test. */
@@ -47,6 +48,13 @@ const sameIdea = 0.6
 const maxSubjectChars = 120
 /** At most this many past emails are read (a year's history holds 300). */
 const maxPast = 300
+/** A past subject longer than this is not read (the history keeps 300). */
+const maxPastChars = 300
+/** Comparing two scores: a difference smaller than this is none. */
+const epsilon = 1e-9
+
+/** The lab's version, kept with what it picks, to credit results later. */
+export const subjectLabVersion = '2026-11-16.1'
 
 export const subjectTraits = [
   'short',
@@ -102,21 +110,31 @@ const ruleWords: Partial<Record<SubjectTrait, string>> = {
 
 /** A Klaviyo tag in a subject (`{{ first_name|default:'there' }}`). */
 const tag = /\{\{[^{}]{0,200}\}\}/g
+/** Klaviyo's logic tags (`{% if first_name %}`): never seen by a reader. */
+const logic = /\{%[^{}]{0,200}%\}/g
 const firstNameTag =
-  /^\{\{\s*(?:person\.)?first_?name\b|^\{\{\s*person\|lookup:\s*['"]first_?name/i
+  /^\{\{\s*(?:person\.)?first[ _]?name\b|^\{\{\s*person\|lookup:\s*['"]first[ _]?name/i
 const storeTag = /^\{\{\s*organization\.name\b/i
+/** A deadline, as a phrase: "ends tonight", "last chance", never "the story never ends". */
 const deadline =
-  /\b(?:today|tonight|tomorrow|midnight|last (?:chance|call|day|hours?)|final (?:hours?|day|call)|ends|ending|hours? left|only \d+ left|hurry|don['’]t miss)\b/i
+  /\b(?:(?:ends?|ending|closes?|closing)\s+(?:today|tonight|tomorrow|soon|at midnight|on \w+day|\w+day)|(?:today|tonight) only|last (?:chance|call|day|hours?)|final (?:hours?|day|call)|hours? left|only \d+ left|hurry|don['’]t miss|until midnight)\b/i
+/** Something new, never "New Year", "New York" or "just in time". */
 const somethingNew =
-  /\b(?:new|just (?:in|landed|dropped|arrived)|introducing|launch(?:es|ed|ing)?|first look|back in stock|restock(?:ed)?)\b/i
-const you = /\b(?:you|your|yours|you['’](?:re|ll|ve|d))\b/i
-const emoji = /\p{Extended_Pictographic}/u
+  /\b(?:new\b(?!\s+(?:year|years|york|zealand|jersey|mexico|orleans|hampshire)\b)|just (?:in\b(?!\s+time\b)|landed|dropped|arrived)|introducing|launch(?:es|ed|ing)?|first look|back in stock|restock(?:ed)?)/i
+const you = /\b(?:you|your|yours|yourself|yourselves|you['’](?:re|ll|ve|d))\b/i
+/** A picture character, a flag or a keycap; never ©, ® or ™. */
+const emoji =
+  /(?![©®™])\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20e3/u
+/** Characters a reader never sees (as `subjectText` drops them). */
+const unseen = /[\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/g
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /** The subject as a reader sees it: a first name for its tag, the store's name for its own. */
 function shown(subject: string, brand: string) {
   return subject
+    .replace(unseen, '')
+    .replace(logic, ' ')
     .replace(tag, (t) =>
       firstNameTag.test(t) ? 'Alex' : storeTag.test(t) ? brand : ''
     )
@@ -126,7 +144,7 @@ function shown(subject: string, brand: string) {
 
 /** What a subject does, by plain code (`subjectTraits`). */
 export function traitsOf(subject: string, brand: string): SubjectTrait[] {
-  const name = brand.replace(/\s+/g, ' ').trim()
+  const name = brand.replace(unseen, '').replace(/\s+/g, ' ').trim()
   const text = shown(subject, name)
   const chars = Array.from(text).length
   const found = new Set<SubjectTrait>()
@@ -148,9 +166,11 @@ export function traitsOf(subject: string, brand: string): SubjectTrait[] {
   )
     found.add('brand')
   if (deadline.test(text)) found.add('deadline')
-  // All lower case, a tag's name aside ("{{ first_name }}, your order").
-  const bare = subject.replace(tag, ' ')
-  if (/\p{L}/u.test(bare) && !/\p{Lu}/u.test(bare)) found.add('lowercase')
+  // All lower case, a tag's name aside ("{{ first_name }}, your order");
+  // a script without capitals is not lower case.
+  const bare = subject.replace(logic, ' ').replace(tag, ' ')
+  if (/\p{Ll}/u.test(bare) && !/[\p{Lu}\p{Lt}]/u.test(bare))
+    found.add('lowercase')
   if (somethingNew.test(text)) found.add('new')
   if (you.test(text)) found.add('you')
   return subjectTraits.filter((t) => found.has(t))
@@ -167,8 +187,9 @@ export type PastSubject = {
 
 /**
  * The sent emails whose subject and opens can teach: a subject, an open
- * rate, enough recipients (`minRecipients`), not an A/B test (its rate
- * mixes two subjects) and not still collecting its results.
+ * rate above 0 (no opens at all is opens not tracked), enough recipients
+ * (`minRecipients`), not an A/B test (its rate mixes two subjects) and not
+ * still collecting its results.
  */
 export function pastSubjects(
   history: Pick<HistorySnapshot, 'sent'>
@@ -176,6 +197,7 @@ export function pastSubjects(
   return history.sent.flatMap((e) =>
     e.subject?.trim() &&
     e.openRate !== null &&
+    e.openRate > 0 &&
     e.recipients !== null &&
     e.recipients >= minRecipients &&
     !e.abTest &&
@@ -192,7 +214,7 @@ export type TraitEvidence = {
   withoutRate: number
   withCount: number
   withoutCount: number
-  /** The difference, shrunk by how few emails show it (open rate, -0.15 to 0.15). */
+  /** The difference, shrunk by how sure it is (open rate, -0.15 to 0.15). */
   lift: number
 }
 
@@ -210,17 +232,21 @@ const mean = (values: readonly number[]) =>
 const usable = (p: PastSubject) =>
   typeof p.subject === 'string' &&
   p.subject.trim() !== '' &&
+  p.subject.length <= maxPastChars &&
   Number.isFinite(p.openRate) &&
-  p.openRate >= 0 &&
+  p.openRate > 0 &&
   p.openRate <= 1 &&
   Number.isFinite(p.recipients) &&
   p.recipients >= minRecipients
 
 /**
  * Each trait's open rate with it and without it in the store's own
- * emails, once per plan. A trait shown by fewer than `minPerSide` emails
- * on either side says nothing; fewer than `minPastEmails` emails in all
- * say nothing at all (rules of thumb only).
+ * emails, once per plan. The difference is shrunk by how sure it is: by
+ * d² / (d² + se²), where se is the noise of that difference (the store's
+ * spread of open rates within the two groups, at least 1 point, for as
+ * many emails as each side has). A trait shown by fewer than `minPerSide`
+ * emails on either side says nothing; fewer than `minPastEmails` emails in
+ * all say nothing at all (rules of thumb only).
  */
 export function learnFrom(
   past: readonly PastSubject[],
@@ -236,16 +262,24 @@ export function learnFrom(
   if (rows.length < minPastEmails)
     return { emails: rows.length, meanOpenRate: null, traits: {} }
   const traits: SubjectEvidence['traits'] = {}
+  const squares = (values: readonly number[], m: number) =>
+    values.reduce((n, v) => n + (v - m) ** 2, 0)
   for (const trait of subjectTraits) {
     const yes = rows.filter((r) => r.traits.has(trait)).map((r) => r.rate)
     const no = rows.filter((r) => !r.traits.has(trait)).map((r) => r.rate)
     if (yes.length < minPerSide || no.length < minPerSide) continue
     const withRate = mean(yes)
     const withoutRate = mean(no)
-    const shrunk =
-      (withRate - withoutRate) *
-      (yes.length / (yes.length + shrinkBy)) *
-      (no.length / (no.length + shrinkBy))
+    const diff = withRate - withoutRate
+    const spread = Math.max(
+      minSpread,
+      Math.sqrt(
+        (squares(yes, withRate) + squares(no, withoutRate)) /
+          (yes.length + no.length - 2)
+      )
+    )
+    const noise = spread ** 2 * (1 / yes.length + 1 / no.length)
+    const shrunk = diff === 0 ? 0 : (diff * diff ** 2) / (diff ** 2 + noise)
     traits[trait] = {
       withRate,
       withoutRate,
@@ -265,10 +299,16 @@ export function learnFrom(
 
 export type RankedSubject = {
   subject: string
+  /** Where the idea was in the list given (to find its preview line again). */
+  index: number
   traits: SubjectTrait[]
   /** The sum of its traits' lifts and rules of thumb (open rate). */
   score: number
-  /** The open rate the store's emails point to; null without evidence. */
+  /**
+   * The open rate the store's emails point to (their mean, moved by each
+   * trait the store's emails show, by how much more or less it has it than
+   * they do); null without evidence.
+   */
   expected: number | null
   /** Why, in the owner's words: at most three reasons, the strongest first. */
   why: string[]
@@ -290,6 +330,7 @@ export type SubjectLab = {
 }
 
 const percent = (rate: number) => `${Math.round(rate * 100)}%`
+// As `subjectKey` in build.ts, kept here: build.ts will import this file.
 const keyOf = (subject: string) =>
   subject.replace(/\s+/g, ' ').trim().toLowerCase()
 
@@ -312,20 +353,30 @@ function overlap(a: string, b: string) {
 
 function ranked(
   subject: string,
+  index: number,
   evidence: SubjectEvidence,
   brand: string
 ): RankedSubject {
   const traits = traitsOf(subject, brand)
   const learned = evidence.meanOpenRate !== null
   let score = 0
+  // The mean already holds each trait as often as the store used it: an
+  // idea moves from it by how much more (or less) it has the trait.
   let lifted = 0
+  for (const [trait, seen] of Object.entries(evidence.traits)) {
+    const share = seen.withCount / (seen.withCount + seen.withoutCount)
+    lifted +=
+      ((traits.includes(trait as SubjectTrait) ? 1 : 0) - share) * seen.lift
+  }
   const reasons: { weight: number; text: string }[] = []
   for (const trait of traits) {
     const seen = evidence.traits[trait]
     if (seen) {
       score += seen.lift
-      lifted += seen.lift
-      if (Math.abs(seen.lift) >= 0.005)
+      if (
+        Math.abs(seen.lift) >= 0.005 &&
+        percent(seen.withRate) !== percent(seen.withoutRate)
+      )
         reasons.push({
           weight: Math.abs(seen.lift),
           text: `${traitWords[trait]}: ${percent(seen.withRate)} opened, the others ${percent(seen.withoutRate)} (${seen.withCount} of ${evidence.emails} emails).`
@@ -339,6 +390,7 @@ function ranked(
   }
   return {
     subject,
+    index,
     traits,
     score,
     expected: learned
@@ -361,25 +413,30 @@ function ranked(
 export function subjectLab(
   ideas: readonly string[],
   evidence: SubjectEvidence,
-  input: { brand: string; fits?: (subject: string) => boolean }
+  input: {
+    brand: string
+    /** The caller's checks, with the idea's place in the list given. */
+    fits?: (subject: string, index: number) => boolean
+  }
 ): SubjectLab {
   const seen = new Set<string>()
-  const kept: string[] = []
-  for (const idea of ideas) {
-    if (kept.length >= labSize) break
-    if (typeof idea !== 'string') continue
+  const kept: { subject: string; index: number }[] = []
+  ideas.forEach((idea, index) => {
+    if (kept.length >= labSize || typeof idea !== 'string') return
     const subject = idea.replace(/\s+/g, ' ').trim()
     const key = keyOf(subject)
-    if (!subject || subject.length > maxSubjectChars || seen.has(key)) continue
+    if (!subject || subject.length > maxSubjectChars || seen.has(key)) return
     seen.add(key)
-    kept.push(subject)
-  }
+    kept.push({ subject, index })
+  })
   const fits = input.fits ?? (() => true)
   const order = kept
-    .filter((s) => fits(s))
-    .map((s) => ranked(s, evidence, input.brand))
+    .filter((k) => fits(k.subject, k.index))
+    .map((k) => ranked(k.subject, k.index, evidence, input.brand))
   // A stable sort: equal scores keep the writer's order.
-  const best = [...order].sort((x, y) => y.score - x.score)
+  const best = [...order].sort((x, y) =>
+    Math.abs(y.score - x.score) < epsilon ? 0 : y.score - x.score
+  )
   const a = best[0] ?? null
   const b =
     (a &&
@@ -387,7 +444,7 @@ export function subjectLab(
         .slice(1)
         .find(
           (r) =>
-            r.score >= a.score - testMargin &&
+            r.score >= a.score - testMargin - epsilon &&
             overlap(r.subject, a.subject) < sameIdea &&
             (r.traits.length !== a.traits.length ||
               r.traits.some((t) => !a.traits.includes(t)))
