@@ -1,5 +1,5 @@
 begin;
-select plan(6);
+select plan(9);
 
 -- TXT-001d: a text email's copy step saves a letter; its subject is
 -- checked as a designed email's draft subject is (REL-AI1b).
@@ -57,6 +57,35 @@ set local role service_role;
 select is(pg_temp.save('00000000-0000-4000-8000-00000000c402',
   '{"draft":{"subject":"A note from Cedar"}}'),
   'design','a designed email saves a free subject, as before');
+reset role;
+select pg_temp.again('00000000-0000-4000-8000-00000000c403');
+set local role service_role;
+select throws_ok($$select pg_temp.save('00000000-0000-4000-8000-00000000c403',
+  '{"draft":{"subject":"Free one"},"letter":{"subject":"Another free one"}}')$$,
+  '22023','A copy step saves a draft or a letter','a copy step with both a draft and a letter is refused');
+reset role;
+select pg_temp.again('00000000-0000-4000-8000-00000000c403');
+set local role service_role;
+select throws_ok($$select pg_temp.save('00000000-0000-4000-8000-00000000c403',
+  '{"letter":{"subject":"A NOTE from Cedar"}}')$$,
+  'PT409',null,'a letter cannot take a saved draft''s subject');
+reset role;
+select pg_temp.again('00000000-0000-4000-8000-00000000c403');
+-- The job reads why: the detail says the subject is taken.
+create function pg_temp.detail(b text, output jsonb) returns text language plpgsql as $$
+declare d text;
+begin
+  perform pg_temp.save(b, output);
+  return null;
+exception when sqlstate 'PT409' then
+  get stacked diagnostics d = pg_exception_detail;
+  return d;
+end $$;
+grant execute on function pg_temp.detail(text, jsonb) to service_role;
+set local role service_role;
+select is(pg_temp.detail('00000000-0000-4000-8000-00000000c403',
+  '{"letter":{"subject":"A short note about the Cedar candle"}}'),
+  'subject_taken','a taken subject says so in its detail');
 reset role;
 
 select * from finish();

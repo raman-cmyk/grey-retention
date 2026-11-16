@@ -4,7 +4,8 @@
 -- a letter's saved subject, so another email of the plan could take it.
 -- It now reads either, the same way: case and spacing aside, one copy
 -- step at a time per plan (tenant, plan, then build), PT409 when another
--- email of the plan has the subject. Nothing else changes.
+-- email of the plan has the subject; a copy step with both a draft and a
+-- letter is refused (22023). Nothing else changes.
 -- * The number is chosen at merge time (D24).
 
 create or replace function public.finish_email_step(build uuid, lease uuid, done text, output jsonb)
@@ -40,7 +41,11 @@ begin
     raise exception 'A step''s output is an object' using errcode = '22023';
   end if;
   if done = 'copy' then
-    -- A designed email's subject, or a text email's letter's (TXT-001d).
+    -- A designed email's subject, or a text email's letter's (TXT-001d):
+    -- one of them, so the subject checked is the one that ships.
+    if output ? 'draft' and output ? 'letter' then
+      raise exception 'A copy step saves a draft or a letter' using errcode = '22023';
+    end if;
     subject := private.subject_key(coalesce(output->'draft'->>'subject', output->'letter'->>'subject'));
     if subject = '' then
       raise exception 'A copy step needs its subject' using errcode = '22023';
