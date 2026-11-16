@@ -484,14 +484,7 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
       }
     }
     const history = (live: boolean) => ({
-      data: {
-        snapshot,
-        state: 'ready',
-        reason: null,
-        read_at: '2026-11-01T10:00:00Z',
-        complete: true,
-        live
-      },
+      data: { live, sent: snapshot.sent },
       error: null
     })
     const live = fakeDb({

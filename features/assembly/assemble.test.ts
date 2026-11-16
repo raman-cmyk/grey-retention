@@ -22,6 +22,9 @@ import {
   writerRequest,
   maxWriterPhrases,
   maxWriterPhraseLength,
+  maxSubjectIdeas,
+  subjectIdeasOf,
+  writtenSchema,
   type RunAi
 } from './assemble'
 import {
@@ -1038,5 +1041,60 @@ describe('a hero the design studio drew (DST-006a)', () => {
     expect(words).toContain('Meet the cedar tray')
     expect(words).toContain('Shop now')
     expect(words).not.toMatch(/https?:\/\/|33333333|Picture alt words/)
+  })
+})
+
+describe('the subject ideas (PIC-26 part 2)', () => {
+  it('keeps each idea once, on one line, under 80 characters, never the subject itself, at most nine', () => {
+    expect(subjectIdeasOf('Ready?', 'Meet the balm')).toEqual([])
+    expect(
+      subjectIdeasOf(
+        [
+          'Ready?',
+          '  Ready? ',
+          'Meet the balm',
+          42,
+          'x'.repeat(81),
+          'Two\nlines',
+          ''
+        ],
+        'Meet  the balm'
+      )
+    ).toEqual(['Ready?', 'Two lines'])
+    expect(
+      subjectIdeasOf(
+        Array.from({ length: 12 }, (_, i) => `Idea ${i}`),
+        'Meet the balm'
+      )
+    ).toHaveLength(maxSubjectIdeas)
+  })
+
+  it('asks for them after the blocks, and drops one the subject’s word checks refuse', async () => {
+    expect(
+      Object.keys(writtenSchema(['text']).definition.properties).at(-1)
+    ).toBe('subjectIdeas')
+    const draft = await build(
+      withCode('WELCOME15'),
+      live(
+        answer(
+          [
+            { type: 'offer_banner', reason: 'x', words: {} },
+            text({ paras: ['Soft balm for dry hands.'] })
+          ],
+          {
+            subjectIdeas: [
+              'Take 25% off',
+              '15% off the balm',
+              'Ready for winter?'
+            ]
+          }
+        )
+      )
+    )
+    expect(draft.status).toBe('ready')
+    expect(draft.subjectIdeas).toEqual([
+      '15% off the balm',
+      'Ready for winter?'
+    ])
   })
 })

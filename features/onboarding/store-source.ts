@@ -25,9 +25,12 @@ import {
 } from '@/features/onboarding/catalog/read'
 import { withClaimsSafety } from '@/features/onboarding/claims-safety'
 import { customerWords } from '@/features/onboarding/customer-words'
-import { readKlaviyoHistory } from '@/features/onboarding/history/read'
+import { z } from 'zod'
 import { pastSubjects } from '@/features/email-build/subject-traits'
-import type { HistorySnapshot } from '@/features/onboarding/history/facts'
+import {
+  sentEmail,
+  type HistorySnapshot
+} from '@/features/onboarding/history/facts'
 import { listFindings, type Finding } from '@/features/onboarding/findings'
 import { industryFrom } from '@/features/onboarding/strategy-data'
 import { workspaceTimezone } from '@/features/strategy/offers'
@@ -82,7 +85,29 @@ export type OwnStoreParts = {
    * PIC-26 part 2: the Klaviyo history the store's emails were read into
    * (ONB-103), when it was read from the same account as the catalog.
    */
-  history?: HistorySnapshot | null
+  history?: Pick<HistorySnapshot, 'sent'> | null
+}
+
+/**
+ * PIC-26 part 2: only the sent emails of the stored Klaviyo history
+ * (never the whole snapshot), and whether they came from the live
+ * account; null when there is none or it is of a shape this version does
+ * not know.
+ */
+async function historySent(
+  db: Db,
+  tenantId: string
+): Promise<{ live: boolean; sent: HistorySnapshot['sent'] } | null> {
+  const { data, error } = await db
+    .from('klaviyo_history')
+    .select('live,sent:snapshot->sent')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  const row = data as unknown as { live: boolean; sent: unknown }
+  const sent = z.array(sentEmail).max(300).safeParse(row.sent)
+  return sent.success ? { live: row.live === true, sent: sent.data } : null
 }
 
 const hostname =
@@ -233,7 +258,7 @@ export function ownStoreSource(db: Db): StoreSource {
           .eq('tenant_id', tenantId)
           .maybeSingle(),
         // PIC-26 part 2: optional; without it the lab uses rules of thumb.
-        readKlaviyoHistory(db, tenantId).catch((error: unknown) => {
+        historySent(db, tenantId).catch((error: unknown) => {
           logger.warn('Klaviyo history unreadable', {
             code: String((error as { code?: unknown })?.code ?? 'unknown')
           })
@@ -264,7 +289,7 @@ export function ownStoreSource(db: Db): StoreSource {
         corrections,
         // The history of the same account as the catalog (a live store
         // never learns from the sample account's emails).
-        history: history && history.live === live ? history.history : null
+        history: history && history.live === live ? history : null
       })
     }
   }

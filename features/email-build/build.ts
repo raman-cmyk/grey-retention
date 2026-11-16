@@ -21,7 +21,12 @@ import {
   seedVariants,
   type SectionPlan
 } from './sections'
-import { lockContent, type ChangeKey, type LockedContent } from './content'
+import {
+  lockContent,
+  type ChangeKey,
+  type LockedContent,
+  type LockedOffer
+} from './content'
 import {
   codeFindings,
   copyRounds,
@@ -34,7 +39,7 @@ import { copywriterRun } from './copywriter'
 import { headlineFindings } from './headline-fit'
 import { readingFindings } from './reading-level'
 import { subjectLab, subjectLabVersion } from './subject-lab'
-import { learnFrom, type SubjectTrait } from './subject-traits'
+import { learnFrom, traitsOf, type SubjectTrait } from './subject-traits'
 import { agentCallMs, maxStepSaves } from './step-names'
 import { designA } from './design'
 import { letterCopyStep, letterDesignStep, letterLayout } from './letter-steps'
@@ -217,14 +222,38 @@ export type SubjectPick = {
   tests: SubjectTrait[]
 }
 
+/** Words that state a price or a discount, in any form (an idea's claim). */
+const priceTalk =
+  /\b(?:half|price[sd]?|pricing|free|cheap(?:er|est)?|bargains?|markdowns?|reduced|off|save|savings?|discount(?:s|ed)?|deals?|sale|bogo|clearance|coupons?|promo)\b|[%$€£¥₹]|\d\s*(?:percent|per cent)\b/i
+
+/**
+ * True when an idea talks about price other than by the email's own offer
+ * ("10% off", "save 10%"): "Half price on everything" for a 10% code, or
+ * any price for an email with none.
+ */
+export function claimsPrice(subject: string, offer: LockedOffer | null) {
+  const own = offer
+    ? new RegExp(
+        `\\b(?:save |take |get |extra )?${String(offer.percent).replace('.', '\\.')}\\s?(?:%|percent\\b|per cent\\b)(?:\\s?off\\b)?`,
+        'gi'
+      )
+    : null
+  return priceTalk.test(own ? subject.replace(own, ' ') : subject)
+}
+
 /**
  * PIC-26 part 2: the subject line lab on the Copywriter's draft. Its own
  * subject (judged by the inspectors) and its other ideas are weighed by
  * the store's own opens (`store.pastSubjects`, PIC-26 part 1); an idea is
  * weighed only when no other email of the plan has it, it is safe store
- * text and every code check passes with it in the draft (the copy checks,
- * the preview line pairing with it). The draft keeps the best as its
- * subject; the ideas never stay in the draft.
+ * text, assembly's word checks found nothing in it (the offer's percent
+ * only, no shipping or claim), the email's code checks pass with it as the
+ * subject, it talks about price only by the offer's own percent
+ * (`claimsPrice`), and it says nothing the inspected subject does not: no
+ * deadline, no offer when the email has none, nothing new (claims only
+ * the inspectors judge). Only the store's own opens move the subject: with
+ * no history the writer's own stays, and the lab's pick is still kept.
+ * The draft keeps the best as its subject; the ideas never stay in it.
  */
 export function pickSubject(
   draft: Draft,
@@ -236,14 +265,32 @@ export function pickSubject(
   }
 ): { draft: Draft; pick: SubjectPick | null } {
   const { subjectIdeas, ...kept } = draft
-  const ideas = [draft.subject, ...(subjectIdeas ?? [])]
+  const ideas = [
+    draft.subject,
+    ...(Array.isArray(subjectIdeas)
+      ? subjectIdeas.filter((i): i is string => typeof i === 'string')
+      : [])
+  ]
+  const own = new Set(traitsOf(draft.subject, input.brandName))
+  const claims = (subject: string) =>
+    traitsOf(subject, input.brandName).some(
+      (t) =>
+        !own.has(t) &&
+        (t === 'deadline' ||
+          t === 'new' ||
+          (t === 'offer' && !input.locked.offer))
+    )
   const lab = subjectLab(ideas, learnFrom(input.past ?? [], input.brandName), {
     brand: input.brandName,
+    // Without the store's own opens, rules of thumb never move the subject.
+    keepFirst: true,
     fits: (subject, index) =>
       // The writer's own subject passed every check already.
       index === 0 ||
       (!input.taken.has(subjectKey(subject)) &&
         subjectText(subject) === subject &&
+        !claims(subject) &&
+        !claimsPrice(subject, input.locked.offer) &&
         !codeFindings(
           { status: 'ready', draft: { ...kept, subject } },
           input.locked,

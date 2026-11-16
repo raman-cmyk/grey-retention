@@ -6,6 +6,7 @@ import type { AiRunResult } from '@/features/ai/run'
 import { memoryFallbackLog } from '@/features/fallback/log'
 import {
   buildEmail,
+  claimsPrice,
   contentStep,
   lockedDraft,
   sectionsStep,
@@ -860,7 +861,22 @@ describe('the subject line lab on the Copywriter’s words (PIC-26 part 2)', () 
     expect(ai.mock.calls[0]![0].request.system).toContain('subjectIdeas')
   })
 
-  it('keeps the writer’s own subject without past emails or other ideas', async () => {
+  it('never weighs an idea that claims a price, a deadline or something new the email does not', async () => {
+    const { out } = await copy([
+      '20 percent off, quiet nights',
+      'Half price on everything',
+      'Last chance, ends tonight',
+      'New: the winter candles',
+      'Ready for the weekend?'
+    ])
+    expect(out.draft.subject).toBe('Ready for the weekend?')
+    expect(out.subjectLab).toMatchObject({
+      weighed: 2,
+      b: { subject: 'Quiet evenings, picked for you 1' }
+    })
+  })
+
+  it('keeps the writer’s own subject without past emails, the lab’s pick to test beside it', async () => {
     const none = await copy(undefined, { past: [] })
     expect(none.out.draft.subject).toBe('Quiet evenings, picked for you 1')
     expect(none.out.subjectLab).toMatchObject({
@@ -869,5 +885,63 @@ describe('the subject line lab on the Copywriter’s words (PIC-26 part 2)', () 
       b: null,
       tests: []
     })
+    // Rules of thumb never move the subject: only the store's own opens do.
+    const ideas = await copy(['Ready for the weekend?'], { past: [] })
+    expect(ideas.out.draft.subject).toBe('Quiet evenings, picked for you 1')
+    expect(ideas.out.subjectLab).toMatchObject({
+      learned: false,
+      weighed: 2,
+      a: { subject: 'Quiet evenings, picked for you 1', expected: null },
+      b: { subject: 'Ready for the weekend?', expected: null }
+    })
+  })
+
+  it('weighs nothing for plain copy, which keeps its own subject', async () => {
+    const progress = await savedSteps()
+    const plain = await runBuildStep(
+      'copy',
+      { planned, store: await store(), offers: sampleOffers, progress },
+      ctxWith(null)
+    )
+    if (!plain.ok || !('output' in plain)) throw new Error('copy failed')
+    const out = plain.output as unknown as CopyOutput
+    expect(out.written).toBeFalsy()
+    expect(out.subjectLab).toBeUndefined()
+    expect(out.draft.subjectIdeas).toBeUndefined()
+  })
+})
+
+describe('claimsPrice (PIC-26 part 2)', () => {
+  const offer = {
+    id: 'offer:CANDLE10',
+    code: 'CANDLE10',
+    percent: 10,
+    endsAt: null,
+    ends: null,
+    from: 'discount codes' as const
+  }
+
+  it('lets an idea name the offer only by its own percent', () => {
+    for (const subject of [
+      '10% off candles tonight',
+      'Save 10% on the cedar candle',
+      '10 percent off, quiet nights',
+      'Ready for the weekend?'
+    ])
+      expect(claimsPrice(subject, offer), subject).toBe(false)
+    for (const subject of [
+      'Half price on everything',
+      '20 percent off, quiet nights',
+      '10% off, and free gifts',
+      '110% cozy',
+      'Candles from $5',
+      'Our winter sale'
+    ])
+      expect(claimsPrice(subject, offer), subject).toBe(true)
+  })
+
+  it('refuses any price for an email without an offer', () => {
+    expect(claimsPrice('10% off candles tonight', null)).toBe(true)
+    expect(claimsPrice('Ready for the weekend?', null)).toBe(false)
   })
 })
