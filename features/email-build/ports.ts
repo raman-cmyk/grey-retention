@@ -3,6 +3,7 @@ import type { BlockBrand } from '@/features/blocks/brand'
 import { sampleBrand } from '@/features/blocks/samples'
 import {
   unknownFacts,
+  type AssemblyInput,
   type BrandFacts,
   type CatalogProduct,
   type DiscountCode
@@ -77,6 +78,13 @@ export type Store = {
    * Absent for the sample store and before a history read.
    */
   pastSubjects?: PastSubject[]
+  /**
+   * REL-ONB2: the store's own material for its blocks (reviews, a note in
+   * its own words, a lifestyle photo; `storeMaterial`), only from what its
+   * readers kept. Absent for the sample store and when a source has none,
+   * so the block stays disallowed (`allowedBlockTypes`).
+   */
+  confirmed?: NonNullable<AssemblyInput['confirmed']>
 }
 
 /**

@@ -32,6 +32,7 @@ import {
   type HistorySnapshot
 } from '@/features/onboarding/history/facts'
 import { listFindings, type Finding } from '@/features/onboarding/findings'
+import { storeMaterial } from '@/features/onboarding/store-material'
 import { industryFrom } from '@/features/onboarding/strategy-data'
 import { workspaceTimezone } from '@/features/strategy/offers'
 import type { Industry } from '@/features/intelligence/taxonomy'
@@ -56,6 +57,10 @@ import type { Database } from '@/lib/supabase/database.types'
  *   (ONB-062). Anything unknown stays unknown, so copy QA refuses it.
  * - Industry: from what the brand sells, as the owner corrected it.
  * - Customer words: the reviews' own phrases, checked like copy (ONB-061).
+ * - Material for its blocks (REL-ONB2, `storeMaterial`): its quotable
+ *   reviews and a note in its own words from its about page, only from
+ *   this same website; none when a source has none (no customer photos:
+ *   no reader keeps them).
  *
  * It is `sample` while the catalog was read from the fake Klaviyo. A
  * paused read (Klaviyo refused the key) keeps the last read's products. A
@@ -156,6 +161,18 @@ export function storeFrom(parts: OwnStoreParts): Store {
     hostname.test(domain)
       ? parts.logos
       : null
+  // REL-ONB2: only from this website (the owner may have changed it).
+  const confirmed = hostname.test(domain)
+    ? storeMaterial({
+        brandName: name,
+        host: domain.replace(/^www\./, ''),
+        live,
+        findings,
+        corrections: parts.corrections,
+        facts,
+        productNames: products.map((p) => p.title)
+      })
+    : undefined
   return {
     sample: !parts.status.live,
     brand: brandFromKit({
@@ -175,7 +192,8 @@ export function storeFrom(parts: OwnStoreParts): Store {
       live,
       names: [name, ...products.map((p) => p.title)].filter(Boolean)
     }).map((p) => p.phrase),
-    ...(parts.history ? { pastSubjects: pastSubjects(parts.history) } : {})
+    ...(parts.history ? { pastSubjects: pastSubjects(parts.history) } : {}),
+    ...(confirmed ? { confirmed } : {})
   }
 }
 

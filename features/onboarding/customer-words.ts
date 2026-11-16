@@ -249,3 +249,6 @@ export function customerWords(
 /** What the writer's data gets: the phrases alone (JSON keeps them data). */
 export const customerWordsData = (phrases: readonly CustomerPhrase[]) =>
   phrases.map((p) => p.phrase)
+
+/** REL-ONB2: the same results and body words keep a quoted review or note safe. */
+export { results as resultWords, body as bodyWords }

@@ -11,6 +11,7 @@ import {
   type PlannedEmail
 } from './build'
 import { localTimeCandidates } from '@/lib/local-time'
+import { unknownFacts } from '@/features/assembly/inputs'
 import { fakeDraftPusher } from '@/lib/providers/klaviyo-draft'
 import { previewFooterTags } from '@/features/blocks/klaviyo-tags'
 import { footerProblems, preflight } from '@/features/klaviyo-push/html'
@@ -528,6 +529,58 @@ describe('a code an email may carry (REL-OFF)', () => {
       codeWorks('CANDLE10', rules({ expiresAt: '2026-11-17T10:00:01Z' }), at)
     ).toBe(true)
     expect(codeWorks('CANDLE10', rules({ expiresAt: 'soon' }), at)).toBe(false)
+  })
+})
+
+describe('the store’s own material (REL-ONB2)', () => {
+  const note = 'Cedar Lane started in a small workshop in 2016.'
+  const reviews = [
+    { quote: 'So cosy, and it washes well.', author: 'Priya S.', rating: 5 }
+  ]
+  const confirmed = { reviews, founder: { name: 'Cedar Lane', note: [note] } }
+  type Over = Partial<Awaited<ReturnType<typeof sampleStoreSource.read>>>
+  const ctx = () => ({
+    tenantId,
+    callerKey: 'email-build:b1',
+    fallbacks: memoryFallbackLog()
+  })
+  const input = async (emailType: PlannedEmail['emailType'], over: Over) => ({
+    planned: planned({ emailType, offer: null }),
+    store: { ...(await sampleStoreSource.read(tenantId)), ...over },
+    offers: sampleOffers
+  })
+  const block = async (
+    emailType: PlannedEmail['emailType'],
+    type: string,
+    over: Over = {}
+  ) => {
+    const made = await lockedDraft(await input(emailType, over), ctx())
+    if (!made.ok) throw new Error(made.code)
+    return made.draft.blocks.find((b) => b.type === type)?.content as
+      Record<string, unknown> | undefined
+  }
+
+  it('places the brand’s own note word for word, signed with its name, and makes the email', async () => {
+    expect(await block('story', 'founder_note', { confirmed })).toMatchObject({
+      paras: [note],
+      signoff: 'Cedar Lane'
+    })
+    const built = await buildEmail(await input('story', { confirmed }), ctx())
+    expect(built.ok && built.email.html).toContain(note)
+  })
+
+  it('quotes the reviews as written only once the brand has a verified review source', async () => {
+    const facts = { ...unknownFacts, reviewsVerified: true }
+    expect(
+      (await block('launch', 'review_strip', { confirmed, facts }))?.reviews
+    ).toEqual(reviews)
+    expect(await block('launch', 'review_strip', { confirmed })).toBeUndefined()
+  })
+
+  it('has none of these blocks without the material', async () => {
+    for (const type of ['story', 'launch'] as const)
+      for (const family of ['founder_note', 'review_strip', 'ugc_grid'])
+        expect(await block(type, family), `${type} ${family}`).toBeUndefined()
   })
 })
 

@@ -341,7 +341,11 @@ const assemblyFor = (
   timezone: saved.timezone,
   facts: store.facts,
   // ONB-061: the customers' own words, for the Copywriter to borrow.
-  ...(store.customerWords?.length ? { customerWords: store.customerWords } : {})
+  ...(store.customerWords?.length
+    ? { customerWords: store.customerWords }
+    : {}),
+  // REL-ONB2: the store's own reviews, note and photo, placed by code.
+  ...(store.confirmed ? { confirmed: store.confirmed } : {})
 })
 
 /**
