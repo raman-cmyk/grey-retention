@@ -1,16 +1,18 @@
 'use client'
 
-import { useActionState, type ReactNode } from 'react'
+import { useActionState, useId, type ReactNode } from 'react'
 import { useFormStatus } from 'react-dom'
+import { useHydrated } from '@/components/ui/use-hydrated'
 import { cn } from '@/lib/utils'
 import { buttonClasses, type ButtonKind, type ButtonSize } from './button'
 
 /**
  * A GROS button that runs a server action (Plan next 15 days, Create email).
- * It keeps its words while working (the page shows the progress), cannot
- * be pressed twice, and says under itself what went wrong (or what was
- * done), in the action's own plain words. With `children` (GROS `Field`s)
- * it is a small form: the fields sit above the button.
+ * It keeps its words while working (BRAND.md: the page shows the progress),
+ * cannot be pressed twice or before the page's JavaScript runs (a native
+ * post would lose the action's answer), and says under itself what went
+ * wrong (or what was done), in the action's own plain words. With
+ * `children` (GROS `Field`s) it is a small form: the fields sit above it.
  */
 export type ActionResult = { error?: string; message?: string }
 export type ServerAction = (
@@ -21,7 +23,6 @@ export type ServerAction = (
 export function ActionButton({
   action,
   label,
-  pendingLabel,
   kind = 'main',
   size = 'app',
   fields = {},
@@ -30,9 +31,8 @@ export function ActionButton({
   confirm
 }: {
   action: ServerAction
+  /** The button's words, kept while the action runs. */
   label: string
-  /** What the button says while the action runs: Starting… */
-  pendingLabel: string
   kind?: Exclude<ButtonKind, 'round'>
   size?: ButtonSize
   /** Hidden values the action reads (a run and a slot). */
@@ -44,10 +44,14 @@ export function ActionButton({
   /** Asked first (Disconnect): No stops the action. */
   confirm?: string
 }) {
-  const [state, dispatch] = useActionState(action, {})
+  const [state, dispatch, pending] = useActionState(action, {})
+  const answerId = useId()
+  // The last answer, hidden while a new one is on its way.
+  const answer = pending ? null : (state.error ?? state.message ?? null)
   return (
     <form
       action={dispatch}
+      aria-busy={pending}
       onReset={keep ? (event) => event.preventDefault() : undefined}
       onSubmit={
         confirm
@@ -71,18 +75,19 @@ export function ActionButton({
       ) : null}
       <Submit
         label={label}
-        pendingLabel={pendingLabel}
         kind={kind}
         size={size}
+        describedBy={answer ? answerId : undefined}
       />
       <p
+        id={answerId}
         aria-live="polite"
         className={cn(
           'type-caption empty:hidden',
           state.error ? 'text-[var(--signal-ink)]' : 'text-[var(--ink)]'
         )}
       >
-        {state.error ?? state.message ?? ''}
+        {answer ?? ''}
       </p>
     </form>
   )
@@ -90,24 +95,25 @@ export function ActionButton({
 
 function Submit({
   label,
-  pendingLabel,
   kind,
-  size
+  size,
+  describedBy
 }: {
   label: string
-  pendingLabel: string
   kind: Exclude<ButtonKind, 'round'>
   size: ButtonSize
+  describedBy?: string
 }) {
   const { pending } = useFormStatus()
+  const hydrated = useHydrated()
   return (
     <button
       type="submit"
-      disabled={pending}
-      aria-disabled={pending}
+      disabled={pending || !hydrated}
+      aria-describedby={describedBy}
       className={buttonClasses(kind, size)}
     >
-      {pending ? pendingLabel : label}
+      {label}
     </button>
   )
 }

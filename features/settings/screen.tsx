@@ -95,7 +95,6 @@ function MaxDiscountCard({ view }: { view: SettingsView }) {
               <ActionButton
                 action={saveMaxDiscount}
                 label="Save max discount"
-                pendingLabel="Saving…"
                 fields={{ revision: String(offers.revision) }}
               >
                 <Field
@@ -173,7 +172,6 @@ function CodesCard({ view }: { view: SettingsView }) {
                     <ActionButton
                       action={retireDiscountCode}
                       label="Retire"
-                      pendingLabel="Retiring…"
                       kind="quiet"
                       size="row"
                       fields={{ id: code.id }}
@@ -185,11 +183,7 @@ function CodesCard({ view }: { view: SettingsView }) {
           </RowList>
         )}
         {offers && view.editor ? (
-          <ActionButton
-            action={addDiscountCode}
-            label="Add code"
-            pendingLabel="Adding…"
-          >
+          <ActionButton action={addDiscountCode} label="Add code">
             <div className="grid gap-[var(--space-4)] sm:grid-cols-3">
               <Field
                 label="Code"
@@ -259,7 +253,9 @@ function KlaviyoCard({ view }: { view: SettingsView }) {
       <div className="flex flex-col gap-[var(--space-5)]">
         <div className="flex flex-wrap items-center justify-between gap-[var(--space-3)]">
           <Title text={title} />
-          <Status kind={working ? 'in_klaviyo' : 'needs_you'} />
+          {/* A working connection needs no pill (In Klaviyo is a draft's
+              word); Needs you only when the owner must act. */}
+          {!working && view.owner ? <Status kind="needs_you" /> : null}
         </div>
         {linked || problem ? (
           <div className="flex flex-col gap-[var(--space-1)]">
@@ -293,7 +289,6 @@ function KlaviyoCard({ view }: { view: SettingsView }) {
             label={
               working ? 'Change key' : problem ? 'Reconnect' : 'Connect Klaviyo'
             }
-            pendingLabel="Checking…"
             kind={working ? 'outline' : 'main'}
           >
             <Field
@@ -316,7 +311,6 @@ function KlaviyoCard({ view }: { view: SettingsView }) {
           <ActionButton
             action={disconnectKlaviyo}
             label="Disconnect"
-            pendingLabel="Disconnecting…"
             kind="quiet"
             confirm="Disconnect Klaviyo? GROS stops reading it and the key is deleted here. Drafts already in Klaviyo stay there."
           />
@@ -369,7 +363,6 @@ function TimezoneCard({ view }: { view: SettingsView }) {
                   <ActionButton
                     action={switchToKlaviyoTimezone}
                     label="Use Klaviyo’s timezone"
-                    pendingLabel="Saving…"
                     fields={{
                       klaviyoTimezone: zone.klaviyo.zone,
                       expected: zone.saved
@@ -382,7 +375,6 @@ function TimezoneCard({ view }: { view: SettingsView }) {
               <ActionButton
                 action={saveBrandTimezone}
                 label="Save timezone"
-                pendingLabel="Saving…"
                 kind={zone.klaviyo ? 'outline' : 'main'}
                 fields={{ expected: zone.saved }}
                 keep

@@ -4,11 +4,10 @@ import type { Route } from 'next'
 import type { ReactNode } from 'react'
 import { Card } from '@/components/ui/card'
 import { DetailPage } from '@/components/ui/detail-page'
-import { dashboardBack } from '@/features/dashboard/back'
 import { Notice } from '@/components/ui/workspace'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { klaviyoData, type KlaviyoData } from '@/features/klaviyo-data/reader'
-import { sourceLine } from '@/features/dashboard/sections'
+import { backHome, sourceLine } from './source'
 import { validTimezone } from '@/lib/brand-time'
 import { SampleNote } from './sample-note'
 
@@ -24,18 +23,18 @@ export async function loadKlaviyo() {
   return { context, timezone, now, data }
 }
 
-/** Detail-page frame: back to the dashboard tab and the sample-data note. */
+/** Detail-page frame: back to Home (or `back`) and the sample-data note. */
 export function KlaviyoDetail({
-  from,
   back: backTo,
   children
 }: {
-  from: unknown
-  /** Overrides the dashboard back link (e.g. back to the planner). */
+  /** The old dashboard tab the owner came from; Back now goes Home. */
+  from?: unknown
+  /** Overrides the Home back link (e.g. back to the planner). */
   back?: { href: Route; label: string } | null
   children: ReactNode
 }) {
-  const back = backTo ?? dashboardBack(from)
+  const back = backTo ?? backHome
   return (
     <DetailPage backHref={back.href} backLabel={back.label}>
       <SampleNote />
@@ -45,15 +44,14 @@ export function KlaviyoDetail({
 }
 
 export function NotConnected({
-  from,
   back: backTo,
   data
 }: {
-  from: unknown
+  from?: unknown
   back?: { href: Route; label: string } | null
   data: Exclude<KlaviyoData, { state: 'sample' }>
 }) {
-  const back = backTo ?? dashboardBack(from)
+  const back = backTo ?? backHome
   return (
     <DetailPage backHref={back.href} backLabel={back.label}>
       <h1 className="tracking-display font-serif text-[1.875rem] leading-tight font-normal">

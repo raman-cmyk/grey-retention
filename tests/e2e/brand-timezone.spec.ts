@@ -16,7 +16,7 @@ async function connectSampleKlaviyo(page: Page) {
   await expect(
     card.getByText(/Klaviyo connected with sample data/)
   ).toBeVisible()
-  await expect(card.getByText('In Klaviyo')).toBeVisible()
+  await expect(card.getByText('Needs you')).toHaveCount(0)
   await expect(card.getByText(`Key ${key.slice(0, 8)}••••••••`)).toBeVisible()
   expect(await page.content()).not.toContain(key)
 }

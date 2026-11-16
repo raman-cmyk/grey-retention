@@ -138,7 +138,7 @@ describe('Home screen (UI-HOMEb)', () => {
     cleanup()
     render(<HomeScreen view={view({ numbers: null })} />)
     expect(card('Email revenue, last 30 days')).toHaveTextContent(
-      'No emails sent yet'
+      'No emails sent in 30 days'
     )
     cleanup()
     render(<HomeScreen view={view({ numbers: null, unread: ['numbers'] })} />)
@@ -232,6 +232,91 @@ describe('Home screen (UI-HOMEb)', () => {
     )
   })
 
+  it('says the plan is being made, waits for offers, or is out of date, with the owner’s next step', () => {
+    render(
+      <HomeScreen
+        view={view({
+          plan: { ...view().plan!, state: 'working', next: [] }
+        })}
+      />
+    )
+    const plan = () => card('Your next 15 days')
+    expect(within(plan()).getByText('Planning')).toBeInTheDocument()
+    expect(
+      within(plan()).getByRole('link', { name: 'Open plan' })
+    ).toBeVisible()
+    cleanup()
+    render(
+      <HomeScreen
+        view={view({
+          plan: { ...view().plan!, state: 'offers_ready', next: [] }
+        })}
+      />
+    )
+    expect(within(plan()).getByText('Needs you')).toBeInTheDocument()
+    expect(
+      within(plan()).getByRole('link', { name: 'Pick the offers' })
+    ).toHaveAttribute('href', '/plan')
+    cleanup()
+    render(
+      <HomeScreen
+        view={view({
+          plan: { ...view().plan!, state: 'working', outOfDate: true, next: [] }
+        })}
+      />
+    )
+    expect(plan()).toHaveTextContent(
+      'These 15 days have begun. Plan the next 15 days again.'
+    )
+    expect(
+      within(plan()).getByRole('button', { name: 'Plan next 15 days' })
+    ).toBeInTheDocument()
+    cleanup()
+    render(
+      <HomeScreen view={view({ plan: { ...view().plan!, ended: true } })} />
+    )
+    expect(
+      within(plan()).getByRole('button', { name: 'Plan next 15 days' })
+    ).toBeInTheDocument()
+    cleanup()
+    render(
+      <HomeScreen
+        view={view({
+          plan: { ...view().plan!, state: 'unreadable', next: [] }
+        })}
+      />
+    )
+    expect(plan()).toHaveTextContent('This plan could not be shown.')
+  })
+
+  it('tells staff nothing they cannot do, and says when the plan could not be read', () => {
+    render(
+      <HomeScreen
+        view={view({
+          owner: false,
+          plan: { ...view().plan!, state: 'none', runId: null, next: [] }
+        })}
+      />
+    )
+    expect(screen.queryByRole('button')).toBeNull()
+    cleanup()
+    render(
+      <HomeScreen
+        view={view({
+          owner: false,
+          plan: { ...view().plan!, state: 'working', outOfDate: true, next: [] }
+        })}
+      />
+    )
+    expect(card('Your next 15 days')).toHaveTextContent(
+      'These 15 days have begun.'
+    )
+    expect(card('Your next 15 days')).not.toHaveTextContent('Plan the next')
+    cleanup()
+    render(<HomeScreen view={view({ plan: null, unread: ['plan'] })} />)
+    expect(card('Next emails')).toHaveTextContent('The plan could not be read.')
+  })
+
   it('shows staff the same plan, without the owner’s buttons', () => {
     render(
       <HomeScreen
@@ -249,7 +334,7 @@ describe('Home screen (UI-HOMEb)', () => {
     ).toBeNull()
     expect(within(card('Next emails')).getAllByText('Planned')).toHaveLength(2)
     expect(
-      within(card('Max discount')).queryByRole('link', { name: 'Change' })
+      within(card('Biggest discount')).queryByRole('link', { name: 'Change' })
     ).toBeNull()
   })
 
@@ -258,7 +343,7 @@ describe('Home screen (UI-HOMEb)', () => {
     const learned = card('What GROS learned')
     expect(learned).toHaveTextContent('DoLead with one product')
     expect(learned).toHaveTextContent('AvoidAll caps subjects')
-    const offers = card('Max discount')
+    const offers = card('Biggest discount')
     expect(offers).toHaveTextContent('20%')
     expect(offers).toHaveTextContent('1 code running')
     expect(
@@ -275,8 +360,8 @@ describe('Home screen (UI-HOMEb)', () => {
     )
     expect(card('What GROS learned')).toHaveTextContent('Nothing yet.')
     expect(
-      within(card('Max discount')).getByRole('link', {
-        name: 'Set max discount'
+      within(card('Biggest discount')).getByRole('link', {
+        name: 'Set biggest discount'
       })
     ).toBeInTheDocument()
     cleanup()
@@ -285,7 +370,7 @@ describe('Home screen (UI-HOMEb)', () => {
         view={view({ offers: null, unread: ['offers', 'learned'] })}
       />
     )
-    expect(card('Max discount')).toHaveTextContent(
+    expect(card('Biggest discount')).toHaveTextContent(
       'The offers could not be read just now.'
     )
     expect(card('What GROS learned')).toHaveTextContent(

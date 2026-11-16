@@ -153,7 +153,7 @@ describe('Settings screen (UI-SETa)', () => {
   it('shows a working Klaviyo connection by its masked hint, never the key', () => {
     const { container } = render(<SettingsScreen view={view()} />)
     const klaviyo = card('Klaviyo')
-    expect(within(klaviyo).getByText('In Klaviyo')).toBeInTheDocument()
+    expect(within(klaviyo).queryByText(/In Klaviyo|Needs you/)).toBeNull()
     expect(klaviyo).toHaveTextContent('Cedar Lane (sample)')
     expect(klaviyo).toHaveTextContent('Key pk_abcde••••••••1234')
     const field = within(klaviyo).getByLabelText('New private API key')
@@ -276,6 +276,18 @@ describe('Settings screen (UI-SETa)', () => {
     expect(card('Klaviyo')).toHaveTextContent(
       'Only the workspace owner can change Klaviyo.'
     )
+    cleanup()
+    // Only the owner can fix Klaviyo, so only the owner is told Needs you.
+    render(
+      <SettingsScreen
+        view={view({
+          owner: false,
+          klaviyo: { ...view().klaviyo!, status: 'expired' }
+        })}
+      />
+    )
+    expect(card('Klaviyo')).toHaveTextContent('This connection has expired.')
+    expect(within(card('Klaviyo')).queryByText('Needs you')).toBeNull()
     cleanup()
     render(
       <SettingsScreen
