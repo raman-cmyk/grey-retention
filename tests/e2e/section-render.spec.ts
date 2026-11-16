@@ -1,7 +1,11 @@
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { test, expect } from '@playwright/test'
-import { renderSection } from '../../scripts/section-render.mjs'
+import {
+  maxEmailHeight,
+  renderEmail,
+  renderSection
+} from '../../scripts/section-render.mjs'
 
 // DST-001: the designed-section browser in real Chromium. One local server
 // plays the section's own picture host (one of its addresses redirects
@@ -84,4 +88,57 @@ test('draws a section at 1,200 px wide, loading only its own pictures and never 
   )
   // Neither directly nor through the redirect.
   expect(outsideHits).toEqual([])
+})
+
+// DST-005b: a whole built email in its three views, in real Chromium.
+test.describe('the whole-email browser (DST-005b)', () => {
+  const email = (body: string) =>
+    `<!doctype html><html><head><meta name="viewport" content="width=device-width"><style>body{margin:0}.tall{height:500px}.wide{height:300px}@media (prefers-color-scheme: dark){.tall{height:1000px}}@media (max-width:420px){.wide{height:900px}}</style></head><body>${body}</body></html>`
+
+  test('draws it at its full height: 600 wide, 375 as a phone, and dark mode as the email declares it', async ({
+    browser
+  }) => {
+    const body = `<div class="tall"></div><div class="wide"></div><img src="${ownBase}/a.png" alt="x" width="10" height="10"><img src="${outsideBase}/b.png" alt="y" width="10" height="10">`
+    const origins = [ownBase]
+    const desktop = await renderEmail(browser, {
+      document: email(body),
+      view: 'desktop',
+      origins
+    })
+    expect(desktop).toMatchObject({ width: 600, cut: false })
+    expect(jpegSize(desktop.image)).toEqual({
+      width: 600,
+      height: desktop.height
+    })
+    const phone = await renderEmail(browser, {
+      document: email(body),
+      view: 'phone',
+      origins
+    })
+    expect(phone.width).toBe(375)
+    expect(jpegSize(phone.image)?.width).toBe(375)
+    // The phone's own layout (its media query) is drawn.
+    expect(phone.height).toBeGreaterThan(desktop.height)
+    const dark = await renderEmail(browser, {
+      document: email(body),
+      view: 'dark',
+      origins
+    })
+    expect(dark.height).toBe(desktop.height + 500)
+    // Only its own pictures load.
+    expect(ownHits).toContain('/a.png')
+    expect(outsideHits).toEqual([])
+  })
+
+  test('cuts an email taller than the limit, and says so', async ({
+    browser
+  }) => {
+    const long = await renderEmail(browser, {
+      document: email('<div style="height:7000px"></div>'),
+      view: 'desktop',
+      origins: []
+    })
+    expect(long).toMatchObject({ height: maxEmailHeight, cut: true })
+    expect(jpegSize(long.image)?.height).toBe(maxEmailHeight)
+  })
 })

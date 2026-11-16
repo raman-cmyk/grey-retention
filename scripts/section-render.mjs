@@ -40,22 +40,18 @@ const reason = (error) =>
     : 'failed'
 
 /**
- * Draws one section page and returns its JPEG (1,200 px wide, `height` × 2
- * tall). Throws `timeout`, `failed`, `navigated` or `too_large`.
+ * A page that loads only `origins` (and inline pictures), never follows a
+ * redirect and never navigates, with JavaScript off and no service
+ * workers: the one way this script opens what it draws.
  */
-export async function renderSection(
-  browser,
-  { document, height, origins },
-  timeoutMs = 20_000
-) {
-  if (!Number.isInteger(height) || height < minHeight || height > maxHeight)
-    throw new Error('failed')
-  const allowed = loadableOrigins(origins)
+async function lockedPage(browser, options, timeoutMs) {
+  const allowed = loadableOrigins(options.origins)
   const context = await browser.newContext({
-    viewport: { width, height },
-    deviceScaleFactor: scale,
-    isMobile: false,
+    viewport: options.viewport,
+    deviceScaleFactor: options.scale,
+    isMobile: options.isMobile ?? false,
     hasTouch: false,
+    colorScheme: options.colorScheme ?? 'light',
     javaScriptEnabled: false,
     serviceWorkers: 'block'
   })
@@ -87,6 +83,30 @@ export async function renderSection(
         return route.abort()
       }
     })
+    return { context, page }
+  } catch (error) {
+    await context.close()
+    throw error
+  }
+}
+
+/**
+ * Draws one section page and returns its JPEG (1,200 px wide, `height` × 2
+ * tall). Throws `timeout`, `failed`, `navigated` or `too_large`.
+ */
+export async function renderSection(
+  browser,
+  { document, height, origins },
+  timeoutMs = 20_000
+) {
+  if (!Number.isInteger(height) || height < minHeight || height > maxHeight)
+    throw new Error('failed')
+  const { context, page } = await lockedPage(
+    browser,
+    { viewport: { width, height }, scale, origins },
+    timeoutMs
+  )
+  try {
     try {
       await page.setContent(document, { waitUntil: 'load', timeout: timeoutMs })
     } catch (error) {
@@ -112,6 +132,92 @@ export async function renderSection(
       contentType: 'image/jpeg',
       width: width * scale,
       height: height * scale
+    }
+  } finally {
+    await context.close()
+  }
+}
+
+/**
+ * DST-005b: the views of a whole built email the owner's preview shows:
+ * at 600 (desktop), at 375 as a phone, and at 600 in dark mode (what a
+ * reader sees where the inbox honours the email's own colour scheme; a
+ * client that forces its own inversion, as Gmail's app, is not drawn).
+ */
+export const emailViews = {
+  desktop: { width: 600, isMobile: false, colorScheme: 'light' },
+  phone: { width: 375, isMobile: true, colorScheme: 'light' },
+  dark: { width: 600, isMobile: false, colorScheme: 'dark' }
+}
+/** An email is drawn at most this tall (CSS px); a longer one is cut. */
+export const maxEmailHeight = 6_000
+/** A whole email's picture, at its own size (one pixel a CSS px). */
+export const maxEmailBytes = 5 * 1024 * 1024
+
+/**
+ * Draws a whole built email in one view, as the sections are drawn
+ * (JavaScript off, only its own origins, no redirect, no navigation), at
+ * its full height up to `maxEmailHeight`, as a JPEG. Its height is
+ * measured in the page; `cut` says a longer one was cut. Throws
+ * `timeout`, `failed`, `navigated` or `too_large`.
+ */
+export async function renderEmail(
+  browser,
+  { document, view, origins },
+  timeoutMs = 30_000
+) {
+  const v = emailViews[view]
+  if (!v) throw new Error('failed')
+  const { context, page } = await lockedPage(
+    browser,
+    {
+      viewport: { width: v.width, height: 800 },
+      scale: 1,
+      isMobile: v.isMobile,
+      colorScheme: v.colorScheme,
+      origins
+    },
+    timeoutMs
+  )
+  try {
+    try {
+      await page.setContent(document, { waitUntil: 'load', timeout: timeoutMs })
+    } catch (error) {
+      throw new Error(reason(error))
+    }
+    if (page.url() !== 'about:blank') throw new Error('navigated')
+    let measured
+    try {
+      measured = await page.evaluate(() =>
+        Math.ceil(document.documentElement.scrollHeight)
+      )
+    } catch {
+      throw new Error('failed')
+    }
+    if (!Number.isInteger(measured) || measured < 1) throw new Error('failed')
+    const height = Math.min(measured, maxEmailHeight)
+    let image
+    try {
+      image = await page.screenshot({
+        type: 'jpeg',
+        quality,
+        // The whole page, cut at the limit (a clip alone stops at the
+        // viewport).
+        fullPage: true,
+        clip: { x: 0, y: 0, width: v.width, height },
+        animations: 'disabled',
+        timeout: timeoutMs
+      })
+    } catch (error) {
+      throw new Error(reason(error))
+    }
+    if (image.byteLength > maxEmailBytes) throw new Error('too_large')
+    return {
+      image,
+      contentType: 'image/jpeg',
+      width: v.width,
+      height,
+      cut: measured > maxEmailHeight
     }
   } finally {
     await context.close()
