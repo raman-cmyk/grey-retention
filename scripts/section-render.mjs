@@ -143,15 +143,21 @@ export async function renderSection(
  * at 600 (desktop), at 375 (a phone's width: the email's own media queries
  * apply), and at 600 in dark mode (what a reader sees where the inbox
  * honours the email's own colour scheme; a client that forces its own
- * inversion, as Gmail's app, is not drawn). Each is a plain page of that
- * width, never the browser's mobile mode: that lays a page out at 980 px
- * without a viewport tag and zooms out a wide one, so the email's height
- * would be measured wrong.
+ * inversion, as Gmail's app, is not drawn). Each is a plain page, never
+ * the browser's mobile mode: that lays a page out at 980 px without a
+ * viewport tag and zooms out a wide one, so the email's height would be
+ * measured wrong.
+ *
+ * DST-007: a desktop inbox shows the 600 px email in a wider pane, and the
+ * email's phone layout takes over under 620 px (`features/blocks/render.ts`),
+ * so desktop and dark are laid out in a `window` 700 px wide and the
+ * email's 600 px are drawn from its middle (a built email is centred). The
+ * phone is laid out at its own width.
  */
 export const emailViews = Object.freeze({
-  desktop: Object.freeze({ width: 600, colorScheme: 'light' }),
-  phone: Object.freeze({ width: 375, colorScheme: 'light' }),
-  dark: Object.freeze({ width: 600, colorScheme: 'dark' })
+  desktop: Object.freeze({ width: 600, window: 700, colorScheme: 'light' }),
+  phone: Object.freeze({ width: 375, window: 375, colorScheme: 'light' }),
+  dark: Object.freeze({ width: 600, window: 700, colorScheme: 'dark' })
 })
 /** An email is drawn at most this tall (CSS px); a longer one is cut. */
 export const maxEmailHeight = 6_000
@@ -190,8 +196,9 @@ async function layoutSize(context, page) {
  * Draws a whole built email in one view, as the sections are drawn
  * (JavaScript off, only its own origins, no redirect, no navigation), at
  * its full height up to `maxEmailHeight`, as a JPEG. `cut` says a longer
- * one was cut; `wide` says something in it is wider than the view (the
- * picture keeps the view's width). Throws `navigated` for a page that
+ * one was cut; `wide` says the page is wider than its window, 375 on a
+ * phone and 700 on desktop (the picture keeps the view's width; markup
+ * wider than 600 is refused before any view, DST-005). Throws `navigated` for a page that
  * would reach out on its own or that navigated, `timeout`, `failed` (an
  * unknown view, an empty page) or `too_large`.
  */
@@ -208,7 +215,7 @@ export async function renderEmail(
   const { context, page } = await lockedPage(
     browser,
     {
-      viewport: { width: v.width, height: emailWindow },
+      viewport: { width: v.window, height: emailWindow },
       scale: 1,
       colorScheme: v.colorScheme,
       origins
@@ -241,7 +248,8 @@ export async function renderEmail(
         // The whole page, cut at the limit (a clip alone stops at the
         // window).
         fullPage: true,
-        clip: { x: 0, y: 0, width: v.width, height },
+        // The email's own width, from the middle of its window.
+        clip: { x: (v.window - v.width) / 2, y: 0, width: v.width, height },
         animations: 'disabled',
         timeout: timeoutMs
       })
@@ -255,7 +263,7 @@ export async function renderEmail(
       width: v.width,
       height,
       cut: measured > maxEmailHeight,
-      wide: across > v.width
+      wide: across > v.window
     }
   } finally {
     await context.close().catch(() => {})

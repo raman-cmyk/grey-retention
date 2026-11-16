@@ -131,6 +131,40 @@ test.describe('the whole-email browser (DST-005b)', () => {
     expect(outsideHits).toEqual([])
   })
 
+  test('lays desktop out wider than the phone layout, as a desktop inbox does (DST-007)', async ({
+    browser
+  }) => {
+    // Two columns side by side, stacked under 620 px (the email's phone
+    // layout, as `features/blocks/render.ts` writes it).
+    const columns = `<!doctype html><html><head><style>body{margin:0}.col{display:inline-block;width:300px;height:400px;vertical-align:top}.a{background:#c96}.b{background:#369}@media only screen and (max-width:620px){.wrap,.col{display:block!important;width:100%!important}}</style></head><body><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center"><table class="wrap" width="600" cellpadding="0" cellspacing="0" style="width:600px;font-size:0"><tr><td><div class="col a"></div><div class="col b"></div></td></tr></table></td></tr></table></body></html>`
+    const desktop = await renderEmail(browser, {
+      document: columns,
+      view: 'desktop',
+      origins: []
+    })
+    expect(desktop).toMatchObject({ width: 600, height: 400, wide: false })
+    expect(jpegSize(desktop.image)).toEqual({ width: 600, height: 400 })
+    const dark = await renderEmail(browser, {
+      document: columns,
+      view: 'dark',
+      origins: []
+    })
+    expect(dark).toMatchObject({ width: 600, height: 400 })
+    const phone = await renderEmail(browser, {
+      document: columns,
+      view: 'phone',
+      origins: []
+    })
+    expect(phone).toMatchObject({ width: 375, height: 800, wide: false })
+    // Wider than its 700 px window: wide on desktop too.
+    const wide = await renderEmail(browser, {
+      document: email('<div style="width:760px;height:300px"></div>'),
+      view: 'desktop',
+      origins: []
+    })
+    expect(wide).toMatchObject({ width: 600, height: 300, wide: true })
+  })
+
   test('measures a short email as it is, and says when something is wider than the view', async ({
     browser
   }) => {

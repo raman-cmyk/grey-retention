@@ -224,18 +224,20 @@ describe('the whole-email browser (DST-005b)', () => {
     origins: ['https://cdn.shop.example']
   }
 
-  it('draws each view as a plain page of its width, JavaScript off, one pixel a CSS px, in its colour scheme', async () => {
-    for (const [view, width, colorScheme] of [
-      ['desktop', 600, 'light'],
-      ['phone', 375, 'light'],
-      ['dark', 600, 'dark']
+  it('draws each view as a plain page in its window, JavaScript off, one pixel a CSS px, in its colour scheme', async () => {
+    // Desktop and dark: a 700 px window, wider than the email's phone
+    // layout (under 620), and the email's 600 px from its middle (DST-007).
+    for (const [view, width, window, colorScheme] of [
+      ['desktop', 600, 700, 'light'],
+      ['phone', 375, 375, 'light'],
+      ['dark', 600, 700, 'dark']
     ] as const) {
       const { browser, page, seen } = fakeBrowser({
-        layout: { width, height: 1200 }
+        layout: { width: window, height: 1200 }
       })
       const out = await renderEmail(browser, { ...email, view })
       expect(seen.context).toMatchObject({
-        viewport: { width, height: emailWindow },
+        viewport: { width: window, height: emailWindow },
         deviceScaleFactor: 1,
         isMobile: false,
         hasTouch: false,
@@ -251,7 +253,7 @@ describe('the whole-email browser (DST-005b)', () => {
         type: 'jpeg',
         quality: 85,
         fullPage: true,
-        clip: { x: 0, y: 0, width, height: 1200 }
+        clip: { x: (window - width) / 2, y: 0, width, height: 1200 }
       })
       expect(out).toEqual({
         image: Buffer.from([1, 2, 3]),
@@ -266,7 +268,17 @@ describe('the whole-email browser (DST-005b)', () => {
     }
   })
 
-  it('cuts an email taller than the limit and says something is wider than the view, as the browser measures them', async () => {
+  it('cuts an email taller than the limit and says it is wider than its window, as the browser measures them', async () => {
+    // Wider than the email but inside the desktop window: not wide.
+    expect(
+      await renderEmail(
+        fakeBrowser({ layout: { width: 700, height: 900 } }).browser,
+        {
+          ...email,
+          view: 'desktop'
+        }
+      )
+    ).toMatchObject({ width: 600, wide: false })
     const { browser, seen } = fakeBrowser({
       layout: { width: 700.4, height: 7000 }
     })
@@ -279,7 +291,7 @@ describe('the whole-email browser (DST-005b)', () => {
       wide: true
     })
     expect(seen.shot).toMatchObject({
-      clip: { x: 0, y: 0, width: 600, height: maxEmailHeight }
+      clip: { x: 50, y: 0, width: 600, height: maxEmailHeight }
     })
   })
 

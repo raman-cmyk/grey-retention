@@ -19,7 +19,10 @@ export function renderSection(
 }>
 export type EmailView = 'desktop' | 'phone' | 'dark'
 export const emailViews: Readonly<
-  Record<EmailView, Readonly<{ width: number; colorScheme: 'light' | 'dark' }>>
+  Record<
+    EmailView,
+    Readonly<{ width: number; window: number; colorScheme: 'light' | 'dark' }>
+  >
 >
 export const maxEmailHeight: number
 export const maxEmailBytes: number
