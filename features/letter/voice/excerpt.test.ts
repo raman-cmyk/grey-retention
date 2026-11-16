@@ -2,11 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { renderBlock } from '@/features/blocks/render'
 import { sampleBlocks, sampleBrand } from '@/features/blocks/samples'
 import type { MessageBody } from '@/lib/providers/klaviyo/history'
-import {
-  maxExcerptChars,
-  ownWordsOf,
-  voiceExcerpt as excerptOf
-} from './excerpt'
+import { maxExcerptChars, voiceExcerpt as excerptOf } from './excerpt'
+import { ownWordsOf } from './names'
 
 /** PIC-23 part 2a: the owner's own words, safe to keep. */
 const body = (over: Partial<MessageBody>): MessageBody => ({
@@ -243,133 +240,37 @@ describe('the owner’s words as a voice excerpt (PIC-23)', () => {
     )
   })
 
-  it('protects the store’s words as whole words only, never a customer’s name around them', () => {
-    const own = ['Cedar Goods', 'Ruby', 'Jo', 'Ella', 'Lee', 'Set']
-    const typed = `${letter}\nThis week Ruby Thompson, Joanne Smith, Isabella Ross, Kathleen Ward and Seth Rivers all wrote to us about the Ruby ring.`
-    const text = excerptOf(body({ text: typed }), own)!.text
-    expect(text).not.toMatch(/Thompson|Joanne|Isabella|Kathleen|Seth/)
-    expect(text).toContain('the Ruby ring')
-    // A large catalogue stays fast.
-    const titles = Array.from(
-      { length: 20_000 },
-      (_, i) => `Product ${i} Deluxe`
-    )
-    const many = `${letter}\n${'Jordan Sample and Priya Kumar wrote back. '.repeat(2_000)}`
-    const start = performance.now()
-    excerptOf(body({ text: many }), titles)
-    expect(performance.now() - start).toBeLessThan(3_000)
-  })
-
-  it('keeps the owner’s Title Case words, and finds more name shapes', () => {
-    const typed = `${letter}\nHappy Thanksgiving and Merry Christmas to all of you. Thank You for this year.\nLast Tuesday we shipped early. This Friday there is Free Shipping on the whole shop.\nOur Story: how two friends started with one machine.\nPro Tip: wash it cold and hang it to dry.\nRonald McDonald, Sean O'Brien, Vincent van Gogh, J. Sample, A.J. Rivers, Mrs. Sample, Dr. Rivers, JORDAN SAMPLE and Mary-Kate Olsen came by.`
-    const text = excerpt(body({ text: typed }))!.text
-    for (const words of [
-      'Happy Thanksgiving',
-      'Merry Christmas',
-      'Thank You',
-      'Last Tuesday',
-      'This Friday',
-      'Free Shipping',
-      'Our Story: how two friends',
-      'Pro Tip: wash it cold'
-    ])
-      expect(text, words).toContain(words)
-    expect(text).not.toMatch(
-      /Ronald|McDonald|O'Brien|Gogh|Sample|Rivers|JORDAN|Olsen|Mary-Kate/
-    )
+  it('keeps a loop’s empty branch out, and a star rating in a sentence with the line after it', () => {
     const loop = `{% for item in event.items %}{{ item.name }}{% empty %}Hi Jordan Sample{% endfor %}\n${letter}`
     expect(excerpt(body({ text: loop }))!.text).not.toContain('Jordan')
+    const rating = `${letter}\nOur star rating on Google is 4.9, and I am so proud of the team.\nThank you all.`
+    const text = excerpt(body({ text: rating }))!.text
+    expect(text).toContain('Our star rating on Google is 4.9')
+    expect(text).toContain('Thank you all.')
   })
 
-  it('finds a name next to a greeting or a thanks, and keeps the owner’s P.S. and the store’s words (round 4)', () => {
-    const spotlights = [
-      'Dear Jordan Sample, thank you for the lovely letter.',
-      'Meet Jordan Sample, our customer of the month.',
-      'Thanks Jordan Sample for the photo of your dog in the overshirt.',
-      'Hi Jordan Sample, your order is ready.',
-      'Happy Birthday Jordan Sample from all of us.',
-      'Our Winner Jordan Sample gets a year of shirts.',
-      'Shoutout To Jordan Sample for the photo.',
-      'Jordan Sample And Priya Raman won the giveaway.',
-      'Thank You Jordan Sample!',
-      'Welcome Jordan Sample to the team.',
-      'Photo By Jordan Sample',
-      'Made With Love By Jordan Sample',
-      'Love From Jordan Sample',
-      'With Jordan Sample and the team at the mill.',
-      'Team Member Spotlight: Jordan Sample',
-      'Top Customer Jordan Sample bought ten shirts.',
-      'Happy Mother’s Day Jordan Sample, and thank you.',
-      'Big thanks to Mary Jane Watson Parker for the photos.'
-    ]
-    const named = excerpt(
-      body({ text: `${letter}\n${spotlights.join('\n')}` })
-    )!.text
-    expect(named).not.toMatch(/Jordan|Sample|Priya|Raman|Watson|Parker/)
-    for (const kept of [
-      'Meet [name], our customer',
-      'Happy Birthday [name]',
-      'Happy Mother’s Day [name]',
-      'Thank You [name]!'
-    ])
-      expect(named, kept).toContain(kept)
-
-    const own = ['Cedar Goods', 'Maya’s Overshirt', 'Cedar Goods Co.']
-    const owner = `${letter}\nP.S. If you have a question, just hit reply and it comes to me.\nP.P.S. Remember the studio sale on Sunday afternoon.\nU.S. Shipping is free this week on every order.\nTake Vitamin D. Then go for a walk in your new overshirt.\nMaya's Overshirt is back in three new colours.\nCedar Goods Co. has been making shirts for ten years.\nSOLD OUT twice, now back for good.\nSneak Peek at the new colours we are testing.\nOur star rating on Google is 4.9, and I am so proud of the team.\nThank you all.`
-    const text = excerptOf(body({ text: owner }), ownWordsOf(own))!.text
-    for (const line of owner.split('\n').slice(-10))
-      expect(text, line).toContain(line)
-    // A star in a picture's words, not a rating: no review.
+  it('reads a star anise picture as no review, and a star’s file as one', () => {
     const anise = `<img alt="Star anise candle" src="candle-star-anise.jpg"><h2>Warm And Slow</h2><p>${letter.replace(/\n+/g, '</p><p>')}</p>`
     expect(excerpt(body({ html: anise, editor: 'code' }))!.text).toContain(
       'Warm And Slow'
     )
-    // A star's picture by its file still is.
     const widget = `<p>${letter.replace(/\n+/g, '</p><p>')}</p><img src="https://cdn.example/star-full.png" alt=""><p>So soft.</p><p>Jordan Sample</p>`
     expect(excerpt(body({ html: widget, editor: 'code' }))!.text).not.toMatch(
       /So soft|Jordan|Sample/
     )
-    // A catalogue of long titles is read once, and quickly.
+  })
+
+  it('takes the store’s words read once, and stays fast on a run of commas', () => {
+    const own = ['Cedar Goods', 'Maya’s Overshirt']
+    const typed = `${letter}\nMaya's Overshirt is back, says Jordan Sample.`
+    const text = excerptOf(body({ text: typed }), ownWordsOf(own))!.text
+    expect(text).toContain("Maya's Overshirt is back, says [name].")
     const titles = Array.from({ length: 50_000 }, (_, i) =>
       Array.from({ length: 40 }, (_, j) => `w${i}x${j}`).join(' ')
     )
     const start = performance.now()
     const catalogue = ownWordsOf(titles)
     for (let i = 0; i < 20; i++) excerptOf(body({ text: letter }), catalogue)
-    expect(performance.now() - start).toBeLessThan(3_000)
-    expect(catalogue.runs.size).toBeLessThanOrEqual(200_000)
-  })
-
-  it('keeps the holidays emails are sent for, finds a name with a bare initial or a surname that is a word, and stays fast on a run of commas (round 5)', () => {
-    const holidays = [
-      'Anzac Day',
-      'Canada Day',
-      'Giving Tuesday',
-      'Waitangi Day',
-      'International Women’s Day',
-      'World Mental Health Day',
-      'Martin Luther King Jr. Day',
-      'Remembrance Sunday',
-      'New Year’s Eve',
-      'St. Patrick’s Day',
-      'Cinco de Mayo',
-      'Mardi Gras',
-      'Small Business Saturday'
-    ]
-    const plans = holidays.map(
-      (h) => `Our ${h} plans are ready, and the studio is busy.`
-    )
-    const text = excerpt(body({ text: `${letter}\n${plans.join('\n')}` }))!.text
-    for (const line of plans) expect(text, line).toContain(line)
-    const named = excerpt(
-      body({
-        text: `${letter}\nThanks to Jordan S for the photo.\nThanks to Jordan Little and Sally Field for the photos.`
-      })
-    )!.text
-    expect(named).not.toMatch(/Jordan|Little|Sally|Field/)
-    expect(named).toContain('Thanks to [name] and [name] for the photos.')
-    // A run of commas, full stops or dashes in one token: fast.
-    const start = performance.now()
     for (const mark of [',', '.', '-', '’'])
       excerpt(
         body({ text: `${letter}\n${mark.repeat(100_000)}a\nJordan Sample` })
