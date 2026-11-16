@@ -19,6 +19,7 @@ const {
   hostOf,
   maxSuggestions,
   readCompetitorSuggestions,
+  setBrandHidden,
   suggestCompetitors
 } = await import('./suggested-competitors')
 type InboxBrand = Parameters<typeof brandIndustry>[0]
@@ -268,6 +269,7 @@ describe('readCompetitorSuggestions (ONB-065a)', () => {
       }
     })
     const got = await readCompetitorSuggestions(db, tenantId, {
+      service: db,
       now: new Date('2026-11-15T12:00:00Z')
     })
     expect(got).toEqual([
@@ -318,13 +320,17 @@ describe('readCompetitorSuggestions (ONB-065a)', () => {
         createdAt: '2026-11-15T09:00:00Z'
       }
     ])
-    const got = await readCompetitorSuggestions(store().db, tenantId)
+    const got = await readCompetitorSuggestions(store().db, tenantId, {
+      service: store().db
+    })
     expect(got.map((s) => [s.domain, s.industry])).toEqual([
       ['wick.example', 'home']
     ])
     // Without his correction it is pet: the sample's candles do not count.
     reads.corrections.mockResolvedValue([])
-    const plain = await readCompetitorSuggestions(store().db, tenantId)
+    const plain = await readCompetitorSuggestions(store().db, tenantId, {
+      service: store().db
+    })
     expect(plain.map((s) => [s.domain, s.industry])).toEqual([
       ['bark.example', 'pet']
     ])
@@ -354,7 +360,7 @@ describe('readCompetitorSuggestions (ONB-065a)', () => {
         error: null
       }
     })
-    const got = await readCompetitorSuggestions(db, tenantId)
+    const got = await readCompetitorSuggestions(db, tenantId, { service: db })
     expect(got.map((s) => s.captureId)).toEqual(['s1'])
   })
 
@@ -362,7 +368,9 @@ describe('readCompetitorSuggestions (ONB-065a)', () => {
     reads.findings.mockResolvedValue([offering])
     reads.corrections.mockResolvedValue([])
     const { db } = store({ brand_profiles: { data: null, error: null } })
-    expect(await readCompetitorSuggestions(db, tenantId)).toEqual([])
+    expect(
+      await readCompetitorSuggestions(db, tenantId, { service: db })
+    ).toEqual([])
   })
 
   it('throws a read that fails', async () => {
@@ -371,15 +379,78 @@ describe('readCompetitorSuggestions (ONB-065a)', () => {
     const failed = { data: null, error: { code: 'PGRST000' } }
     for (const table of ['brand_profiles', 'suggestable_inbox_brands'])
       await expect(
-        readCompetitorSuggestions(store({ [table]: failed }).db, tenantId)
+        readCompetitorSuggestions(store({ [table]: failed }).db, tenantId, {
+          service: store({ [table]: failed }).db
+        })
       ).rejects.toMatchObject({ code: 'PGRST000' })
     reads.corrections.mockRejectedValueOnce({ code: 'PGRST001' })
     await expect(
-      readCompetitorSuggestions(store().db, tenantId)
+      readCompetitorSuggestions(store().db, tenantId, { service: store().db })
     ).rejects.toMatchObject({ code: 'PGRST001' })
     reads.findings.mockRejectedValueOnce({ code: 'PGRST002' })
     await expect(
-      readCompetitorSuggestions(store().db, tenantId)
+      readCompetitorSuggestions(store().db, tenantId, { service: store().db })
     ).rejects.toMatchObject({ code: 'PGRST002' })
+  })
+
+  it('asks for the inbox’s brands with the server’s client only, after the member’s own read found the store', async () => {
+    reads.findings.mockResolvedValue([offering])
+    reads.corrections.mockResolvedValue([])
+    const own = store()
+    const server = store()
+    await readCompetitorSuggestions(own.db, tenantId, { service: server.db })
+    expect(own.asked.map((a) => a[0])).not.toContain('suggestable_inbox_brands')
+    expect(server.asked.map((a) => a[0])).toEqual(['suggestable_inbox_brands'])
+    // Not a member (the profile is not his to read): nothing is asked.
+    const stranger = store({ brand_profiles: { data: null, error: null } })
+    const unused = store()
+    expect(
+      await readCompetitorSuggestions(stranger.db, tenantId, {
+        service: unused.db
+      })
+    ).toEqual([])
+    expect(unused.asked).toEqual([])
+  })
+
+  it('suggests a real store the inbox’s real brands of its industry', async () => {
+    reads.findings.mockResolvedValue([offering])
+    reads.corrections.mockResolvedValue([])
+    const { db } = store({
+      suggestable_inbox_brands: {
+        data: [
+          row({ id: 'r1', domain: 'barkreal.com', niche: 'Dog treats' }),
+          row({ id: 'r2', domain: 'wickreal.com', niche: 'Scented candles' })
+        ],
+        error: null
+      }
+    })
+    const got = await readCompetitorSuggestions(db, tenantId, { service: db })
+    expect(got.map((s) => [s.captureId, s.industry])).toEqual([['r1', 'pet']])
+  })
+})
+
+describe('setBrandHidden (REAL-01a)', () => {
+  it('hides or shows a brand with the owner’s own client, and throws a refusal', async () => {
+    const calls: [string, unknown][] = []
+    const db = {
+      rpc: async (name: string, args: unknown) => (
+        calls.push([name, args]),
+        { data: null, error: null }
+      )
+    } as never
+    await setBrandHidden(db, 't1', 'c1', true)
+    await setBrandHidden(db, 't1', 'c1', false)
+    expect(calls).toEqual([
+      ['hide_competitor', { t: 't1', capture: 'c1' }],
+      ['unhide_competitor', { t: 't1', capture: 'c1' }]
+    ])
+    const refused = {
+      rpc: async () => ({ data: null, error: { code: '42501' } })
+    } as never
+    await expect(
+      setBrandHidden(refused, 't1', 'c1', true)
+    ).rejects.toMatchObject({
+      code: '42501'
+    })
   })
 })

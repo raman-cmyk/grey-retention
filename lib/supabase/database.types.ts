@@ -2414,6 +2414,49 @@ export type Database = {
           }
         ]
       }
+      competitor_hidden: {
+        Row: {
+          capture_id: string
+          hidden_at: string
+          hidden_by: string
+          tenant_id: string
+        }
+        Insert: {
+          capture_id: string
+          hidden_at?: string
+          hidden_by: string
+          tenant_id: string
+        }
+        Update: {
+          capture_id?: string
+          hidden_at?: string
+          hidden_by?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'competitor_hidden_capture_id_fkey'
+            columns: ['capture_id']
+            isOneToOne: false
+            referencedRelation: 'competitor_captures'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'competitor_hidden_hidden_by_fkey'
+            columns: ['hidden_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'competitor_hidden_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       competitor_sender_domains: {
         Row: {
           capture_id: string
@@ -7845,6 +7888,10 @@ export type Database = {
         }
         Returns: Json
       }
+      hide_competitor: {
+        Args: { capture: string; t: string }
+        Returns: undefined
+      }
       import_pasted_reference: {
         Args: { input: Json; request_key: string; t: string }
         Returns: string
@@ -8586,6 +8633,10 @@ export type Database = {
           status: Database['public']['Enums']['membership_status']
           updated_at: string
         }[]
+      }
+      unhide_competitor: {
+        Args: { capture: string; t: string }
+        Returns: undefined
       }
       update_competitor_subscription: {
         Args: {
