@@ -217,6 +217,25 @@ describe('the Letter writer (TXT-001 part 2)', () => {
     expect(again).toMatch(/shipping/i)
   })
 
+  it('sends the caller’s own checks back too (the plan’s other subjects)', async () => {
+    const brief = await briefFor()
+    const ai = modelOf([
+      () => ok(good),
+      () => ok({ ...good, subject: 'Another note about the candle' })
+    ])
+    const result = await writeLetter(brief, ctxWith(ai), (letter) =>
+      letter.subject === good.subject
+        ? [{ rule: 'subject_taken', reason: 'Another email has this subject.' }]
+        : []
+    )
+    expect(result).toMatchObject({
+      status: 'written',
+      tries: 2,
+      letter: { subject: 'Another note about the candle' }
+    })
+    expect(userOf(ai, 1)).toContain('Another email has this subject.')
+  })
+
   it('names a part over its limit, and an answer in the wrong shape, then tries again', async () => {
     const brief = await briefFor()
     const ai = modelOf([
