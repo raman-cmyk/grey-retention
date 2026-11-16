@@ -85,6 +85,7 @@ begin
         select 1 from jsonb_array_elements(e->'instead') i
         where jsonb_typeof(i) <> 'string' or char_length(i #>> '{}') not between 1 and 170
           or (i #>> '{}') !~ '^[^[:space:][:cntrl:]]+( [^[:space:][:cntrl:]]+){0,3}$'
+          or not ((i #>> '{}') is nfkc normalized)
       )
   ) then
     raise exception 'Invalid never words' using errcode = '23514';
