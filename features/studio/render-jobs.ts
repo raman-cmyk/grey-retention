@@ -119,6 +119,16 @@ type Lease = { id: string; lease_token: string; subject_key: string }
 const logged = (what: string, code: string | undefined) =>
   logger.error(what, { code: code ?? 'render_job_error' })
 
+/** The job closed as done: its render is gone, so nothing is left to try. */
+const settle = async (db: Db, job: string, lease: string, why: string) => {
+  const { error } = await db.rpc('finish_platform_job', {
+    job,
+    lease,
+    outcome: { settled: why }
+  })
+  if (error) logged('A render job could not be finished', error.code)
+}
+
 const fail = async (
   db: Db,
   job: string,
@@ -126,7 +136,11 @@ const fail = async (
   failure: RenderFailure
 ) => {
   const { error } = await db.rpc('fail_section_render', { job, lease, failure })
-  if (error) logged('A render could not be failed', error.code)
+  if (!error) return
+  logged('A render could not be failed', error.code)
+  // The render went with its build meanwhile: the job is closed, never
+  // left to its lease (DST-005b review).
+  if (error.code === 'PT409') await settle(db, job, lease, 'gone')
 }
 
 /**
@@ -168,24 +182,25 @@ async function handOut(db: Db, job: Lease): Promise<RenderJob | null> {
     .select('id,build_id,section,origins,state')
     .eq('id', job.subject_key)
     .maybeSingle()
-  if (row.error || !row.data) {
+  if (row.error) {
+    // Unreadable now: tried again later.
     const { error } = await db.rpc('fail_platform_job', {
       job: job.id,
       lease: job.lease_token,
-      failure: row.error ? 'unavailable' : 'protocol',
-      error_code: row.error ? 'render_read_failed' : 'render_missing'
+      failure: 'unavailable',
+      error_code: 'render_read_failed'
     })
     if (error) logged('A render job could not be failed', error.code)
     return null
   }
+  if (!row.data) {
+    // Gone with its build: nothing to draw, ever (no retries, no ops task).
+    await settle(db, job.id, job.lease_token, 'gone')
+    return null
+  }
   if (row.data.state !== 'queued') {
     // Already drawn or failed: the job has nothing left to do.
-    const { error } = await db.rpc('finish_platform_job', {
-      job: job.id,
-      lease: job.lease_token,
-      outcome: { settled: row.data.state }
-    })
-    if (error) logged('A render job could not be finished', error.code)
+    await settle(db, job.id, job.lease_token, row.data.state)
     return null
   }
   const build = await db

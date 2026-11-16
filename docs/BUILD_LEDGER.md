@@ -2650,6 +2650,17 @@ Append entries using this exact shape:
 - Known issues: link reachability is not checked (a store link that answers 404 passes); the worker never passes `contentChecked` to the pusher, so a live push is refused (QAG-001's release QA is not wired; the push owner's decision); builds pushed before this deploy were not checked; `buildEmail` and the A/B test call `designStep` without these checks (not wired in production; EML-AB must add them). Review fixes: the offer read as copy QA reads it (names and approved claims masked; `drawnText` shared with the golden set), 10 KB kept for Klaviyo's links, a link to the store's own host, widths read in the markup only, the studio's fallback line only once its coded email passes, the reason clipped, "Try again" in the owner's words; tests for a coded email that fails, both failing, and the worker's final failure.
 - Next consumer: DST-005b (the preview); DST-006d.
 
+### 2026-11-16 — DST-005b part 2b-2 — handing out the email's views
+
+- Status: review (2b-3: the route; then 2c, the runner)
+- Branch/worktree: `claude/dst-005b-view-handout`, on DST-005b part 2b-1.
+- Commit(s): see the DST-005b part 2b-2 pull request.
+- Changed contracts: see Global decision DST-005b part 2b. `features/studio/preview-jobs.ts` gains `previewJobs`, `previewsWaiting`, `previewResult`, `finishPreview` and `PreviewJob`. `render-jobs.ts`: a render gone with its build closes its job (`settled: gone`), also when it goes between the two reads, instead of failing it for a retry.
+- Migrations: none (part 2a's).
+- Verification run: format, lint with no warnings, typecheck, `preview-jobs.test.ts` and `render-jobs.test.ts` (28: one view handed out with its page, view, origins and upload link, read by its own id and build; every way a view is settled or refused; a deleted build's job closed at once, also between the two reads; stored origins compared with the page's own; only the email's views counted as waiting).
+- Known issues: the pictures stay in storage after their build is deleted (as sections'); the hand-out checks the build is still building, not that it is on its design step (as sections'). Review fixes: a deleted build's job closed at once (it was retried 3 times and opened an ops task), the stored origins compared with the page's own (an IP address passed), the tests check each read's filters.
+- Next consumer: DST-005b part 2b-3 (the route).
+
 ### 2026-11-16 — DST-005b part 2b-1 — asking for the email's views
 
 - Status: review (2b-2: the hand-out; 2b-3: the route; then 2c, the runner)

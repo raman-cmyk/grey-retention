@@ -6,6 +6,8 @@ import { klaviyoFooterTags } from '@/features/blocks/klaviyo-tags'
 import {
   emailOrigins,
   EmailNotDrawable,
+  previewJobs,
+  previewsWaiting,
   requestEmailRender
 } from './preview-jobs'
 
@@ -103,7 +105,19 @@ function database(
   }
 }
 type Fake = ReturnType<typeof database>
-const db = (d: Fake) => d as unknown as Parameters<typeof requestEmailRender>[0]
+const db = (d: Fake) => d as unknown as Parameters<typeof previewJobs>[0]
+const handed = {
+  job,
+  lease,
+  render,
+  document: page,
+  view: 'phone',
+  origins: ['https://img.shop.example', 'https://cdn.shop.example'],
+  upload: `https://db.test/upload/studio-renders/email/${render}.jpg?token=t`
+}
+const last = (d: Fake, name: string) =>
+  d.calls.filter((c) => c.name === name).at(-1)?.args
+
 describe('the hosts an email’s pictures come from (DST-005b)', () => {
   it('reads src, srcset, background and CSS links, https hosts once each', () => {
     expect(
@@ -201,5 +215,147 @@ describe('asking for a view of the email (DST-005b)', () => {
   it('passes on the command’s refusals (another email under the key, the wrong step)', async () => {
     const d = database({ rpcError: { request_email_render: 'PT409' } })
     await expect(ask(d)).rejects.toMatchObject({ code: 'PT409' })
+  })
+})
+
+describe('handing out views to draw (DST-005b)', () => {
+  it('hands out one view: its page, its view, its origins, its upload link', async () => {
+    const d = database({ rows: [queued, queued] })
+    expect(await previewJobs(db(d))).toEqual([handed])
+    expect(d.calls.filter((c) => c.name === 'claim_platform_job')).toEqual([
+      { name: 'claim_platform_job', args: { kinds: ['studio.preview'] } }
+    ])
+    // The job's own view, then that view's own build.
+    expect(d.reads).toEqual([
+      { table: 'email_renders', filters: [['eq', 'id', render]] },
+      { table: 'email_builds', filters: [['eq', 'id', build]] }
+    ])
+  })
+
+  it('closes the job of a view gone with its build, at once, never retried', async () => {
+    const d = database({ rows: [null] })
+    expect(await previewJobs(db(d))).toEqual([])
+    expect(last(d, 'finish_platform_job')).toEqual({
+      job,
+      lease,
+      outcome: { settled: 'gone' }
+    })
+    expect(last(d, 'fail_platform_job')).toBeUndefined()
+    // Gone between the two reads: refusing it finds no view, so the job is closed.
+    const race = database({
+      buildState: 'failed',
+      rpcError: { fail_email_render: 'PT409' }
+    })
+    expect(await previewJobs(db(race))).toEqual([])
+    expect(last(race, 'finish_platform_job')).toEqual({
+      job,
+      lease,
+      outcome: { settled: 'gone' }
+    })
+  })
+
+  it('refuses a view whose stored origins are not exactly the ones its page loads, or whose page would reach out', async () => {
+    for (const row of [
+      { ...queued, origins: ['https://10.0.0.5'] },
+      { ...queued, origins: [...queued.origins, 'https://extra.example'] },
+      { ...queued, origins: ['https://cdn.shop.example'] },
+      {
+        ...queued,
+        document: `${page}<link rel="prefetch" href="https://evil.example/">`
+      }
+    ]) {
+      const d = database({ rows: [row] })
+      expect(await previewJobs(db(d))).toEqual([])
+      expect(last(d, 'fail_email_render')).toEqual({
+        job,
+        lease,
+        failure: 'refused'
+      })
+    }
+  })
+
+  it('claims on past a view it cannot hand out, so one bad view never stops the run', async () => {
+    const d = database({
+      rows: [
+        null,
+        'error',
+        { ...queued, state: 'drawn' },
+        { ...queued, view: 'tablet' },
+        { ...queued, origins: ['http://cdn.shop.example'] },
+        queued
+      ]
+    })
+    expect(await previewJobs(db(d))).toEqual([])
+    expect(
+      d.calls.map((c) => [
+        c.name,
+        c.args.failure ?? c.args.error_code ?? c.args.outcome ?? ''
+      ])
+    ).toEqual([
+      ['claim_platform_job', ''],
+      ['finish_platform_job', { settled: 'gone' }],
+      ['claim_platform_job', ''],
+      ['fail_platform_job', 'unavailable'],
+      ['claim_platform_job', ''],
+      ['finish_platform_job', { settled: 'drawn' }],
+      ['claim_platform_job', ''],
+      ['fail_email_render', 'refused'],
+      ['claim_platform_job', ''],
+      ['fail_email_render', 'refused']
+    ])
+    // A sixth claim is never made: five a call.
+    const next = database({ rows: [null, queued] })
+    expect(await previewJobs(db(next))).toEqual([handed])
+  })
+
+  it('stops when nothing is waiting, and counts only the email’s views waiting', async () => {
+    expect(await previewJobs(db(database({ rows: [] })))).toEqual([])
+    const d = database()
+    expect(await previewsWaiting(db(d))).toBe(2)
+    expect(d.reads[0]).toMatchObject({
+      table: 'platform_jobs',
+      filters: [
+        ['eq', 'kind', 'studio.preview'],
+        ['or', expect.any(String)]
+      ]
+    })
+  })
+
+  it('never draws for a build that no longer wants the view, or a page that can no longer be drawn', async () => {
+    const gone = database({ buildState: 'push_queued' })
+    expect(await previewJobs(db(gone))).toEqual([])
+    expect(last(gone, 'fail_email_render')).toEqual({
+      job,
+      lease,
+      failure: 'refused'
+    })
+    const many = Array.from(
+      { length: 9 },
+      (_, i) => `<img src="https://h${i}.example/a.jpg">`
+    ).join('')
+    const wide = database({ rows: [{ ...queued, document: many }] })
+    expect(await previewJobs(db(wide))).toEqual([])
+    expect(last(wide, 'fail_email_render')).toEqual({
+      job,
+      lease,
+      failure: 'refused'
+    })
+  })
+
+  it('fails a view whose upload link cannot be signed, or whose hand-out throws', async () => {
+    const noLink = database({ uploadError: true })
+    expect(await previewJobs(db(noLink))).toEqual([])
+    expect(last(noLink, 'fail_email_render')).toEqual({
+      job,
+      lease,
+      failure: 'upload_failed'
+    })
+    const boom = database({ rows: ['throw'] })
+    expect(await previewJobs(db(boom))).toEqual([])
+    expect(last(boom, 'fail_email_render')).toEqual({
+      job,
+      lease,
+      failure: 'failed'
+    })
   })
 })
