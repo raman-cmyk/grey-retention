@@ -10,6 +10,9 @@ import { emailLinks } from '@/features/release-qa/checks'
 import type { BuiltEmail, SectionsOutput } from '../build'
 import type { Store } from '../ports'
 import { goldenCodes, type GoldenBrief } from './briefs'
+import { drawnText } from '../drawn-text'
+
+export { drawnText }
 
 /**
  * REL-EVL: what every golden email must be, as plain problems (empty
@@ -48,45 +51,6 @@ const templateTag = /\{\{|\{%|%\}|\}\}/
  */
 const footerTag =
   /\{\{\s*organization\.(?:name|full_address)\s*\}\}|\{%\s*(?:unsubscribe|manage_preferences|web_view)\b[^%]*%\}/g
-
-const named: Record<string, string> = {
-  amp: '&',
-  nbsp: ' ',
-  quot: '"',
-  apos: "'",
-  lt: '<',
-  gt: '>',
-  rarr: '→',
-  middot: '·',
-  zwnj: '',
-  percnt: '%',
-  euro: '€',
-  pound: '£'
-}
-
-/**
- * What a reader sees: the visible text (no comments, styles or tags),
- * entities read, tabs and line breaks as spaces before hidden characters
- * go (so two words never join), one space, compatible forms (a fullwidth
- * "％" is "%").
- */
-export function drawnText(html: string) {
-  return html
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, n: string) =>
-      String.fromCodePoint(parseInt(n, 16))
-    )
-    .replace(/&([a-z]+);/gi, (m, name: string) => named[name] ?? m)
-    .replace(/\s+/g, ' ')
-    .replace(new RegExp(hiddenChars.source, 'g'), '')
-    .replace(/\u034f/g, '')
-    .normalize('NFKC')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
 
 const hostOf = (url: string) => {
   try {

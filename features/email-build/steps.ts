@@ -19,7 +19,8 @@ import {
   studioDesignStep,
   type StudioStepPorts
 } from '@/features/studio/design-step'
-import { keyPart } from '@/features/fallback/entry'
+import { clip, keyPart } from '@/features/fallback/entry'
+import { hardProblems } from './hard-checks'
 import type { Store } from './ports'
 import { buildSteps, type BuildStep, type RoundStep } from './step-names'
 
@@ -145,6 +146,7 @@ export type StepResult =
         | 'step_progress_invalid'
         | 'step_unknown'
         | 'store_changed'
+        | 'hard_check_failed'
     }
 
 const unreadable = { ok: false, code: 'step_progress_invalid' } as const
@@ -285,7 +287,8 @@ export async function runBuildStep(
     if (now === 'unreadable') return { ok: false, code: 'offers_unreadable' }
     if (now === 'unsafe') return { ok: false, code: 'offer_unsafe' }
   }
-  let drawn = copy.data as unknown as CopyOutput
+  const plain = copy.data as unknown as CopyOutput
+  let drawn = plain
   const saved = roundsOf(progress.data, 'design').work as
     { studio?: unknown } | undefined
   if (ctx.studio) {
@@ -335,15 +338,77 @@ export async function runBuildStep(
             key: 'no-time'
           }
         : null
-  const made = designStep({
-    planned,
-    store,
-    sendAt: sections.sendAt,
-    sample: sections.sample,
-    copy: drawn,
-    rules: sections.rules,
-    ai: sections.layout.source === 'agent' || content?.source === 'agent'
-  })
+  const draw = (from: CopyOutput) =>
+    designStep({
+      planned,
+      store,
+      sendAt: sections.sendAt,
+      sample: sections.sample,
+      copy: from,
+      rules: sections.rules,
+      ai: sections.layout.source === 'agent' || content?.source === 'agent'
+    })
+  // DST-005: the hard checks on the email as drawn, before it is stored.
+  const hostOf = (url: string | undefined) => {
+    try {
+      return url ? [new URL(url).hostname.toLowerCase()] : []
+    } catch {
+      return []
+    }
+  }
+  const checksOf = (html: string) =>
+    hardProblems(html, {
+      maxDiscountPercent: sections.rules.maxDiscountPercent,
+      known: [
+        store.brand.name,
+        ...store.products.map((p) => p.title),
+        ...store.facts.approvedClaims
+      ],
+      storeHosts: [
+        ...new Set([
+          ...hostOf(store.brand.site),
+          ...store.products.flatMap((p) => hostOf(p.url))
+        ])
+      ]
+    })
+  let made = draw(drawn)
+  let problems = made.ok ? checksOf(made.email.html) : []
+  const pictured = drawn.draft.blocks.some(
+    (b) => (b?.content as { picture?: unknown } | undefined)?.picture
+  )
+  if (made.ok && problems.length && pictured) {
+    // The studio's email failed one: its coded blocks instead (D16),
+    // logged once they pass.
+    const failed = problems
+    made = draw(plain)
+    problems = made.ok ? checksOf(made.email.html) : []
+    if (made.ok && !problems.length)
+      await ctx.fallbacks.record({
+        tenantId: ctx.tenantId,
+        campaignId: ctx.campaignId ?? null,
+        agent: 'email-checks',
+        reasonCode: `hard_check_${failed[0]!.check}`,
+        reason: failed[0]!.problem,
+        fallback: 'Drew the email with its coded blocks.',
+        attempts: 1,
+        detail: { checks: failed.map((p) => p.check) },
+        dedupeKey: `email-checks:${keyPart(ctx.callerKey)}:studio`
+      })
+  }
+  if (made.ok && problems.length) {
+    await ctx.fallbacks.record({
+      tenantId: ctx.tenantId,
+      campaignId: ctx.campaignId ?? null,
+      agent: 'email-checks',
+      reasonCode: `hard_check_${problems[0]!.check}`,
+      reason: clip(problems.map((p) => p.problem).join(' '), 500),
+      fallback: 'No email was stored; trying again makes it again.',
+      attempts: 1,
+      detail: { checks: problems.map((p) => p.check) },
+      dedupeKey: `email-checks:${keyPart(ctx.callerKey)}:coded`
+    })
+    return { ok: false, code: 'hard_check_failed' }
+  }
   if (made.ok && coded)
     await ctx.fallbacks.record({
       tenantId: ctx.tenantId,

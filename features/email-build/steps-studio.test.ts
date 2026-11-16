@@ -61,7 +61,8 @@ async function beforeDesign() {
 function ports(
   blocks: Block[],
   hero: number,
-  renders: BuildRender[] = []
+  renders: BuildRender[] = [],
+  alt = 'Meet the throw'
 ): StudioStepPorts {
   const storyboard: Storyboard = {
     source: 'code',
@@ -85,7 +86,7 @@ function ports(
         html: `<img src="${photo}" alt=""><h1>Meet the throw</h1>`,
         css: ''
       },
-      alt: 'Meet the throw',
+      alt,
       runId: 'run-1'
     })),
     request: vi.fn(async () => render),
@@ -223,6 +224,92 @@ describe('the design step with the design studio (DST-006c part 2b)', () => {
     )
     expect(fallbacks.entries().map((e) => e.reasonCode)).toEqual([
       'studio_not_finished'
+    ])
+  })
+
+  it('draws the email coded, logged, when the studio’s email fails a hard check (DST-005)', async () => {
+    const { store, progress, blocks, hero } = await beforeDesign()
+    // A picture whose words show an offer over the max (none here).
+    const alt = 'Save 90% off the throw'
+    const first = (await step(
+      store,
+      progress,
+      ports(blocks, hero, [], alt)
+    )) as { work: object }
+    const drawn: BuildRender = {
+      id: render,
+      key: 'k',
+      state: 'drawn',
+      path: `render/${render}.jpg`,
+      height: 640,
+      bytes: 1,
+      etag: 'e'
+    }
+    const fallbacks = memoryFallbackLog()
+    const out = await step(
+      store,
+      { ...progress, work: { design: first.work } },
+      ports(blocks, hero, [drawn], alt),
+      fallbacks
+    )
+    expect(out).toMatchObject({ ok: true, done: 'design' })
+    const html = (out as { email: { html: string } }).email.html
+    expect(html).not.toContain(alt)
+    expect(fallbacks.entries()).toEqual([
+      expect.objectContaining({
+        agent: 'email-checks',
+        reasonCode: 'hard_check_offer',
+        fallback: 'Drew the email with its coded blocks.'
+      })
+    ])
+  })
+
+  it('stops a coded email that fails a hard check, in plain words, logged; a studio one that fails with it says nothing more (DST-005)', async () => {
+    const { store, progress, blocks, hero } = await beforeDesign()
+    // An offer drawn over the max (none here), in the hero's own words.
+    ;(blocks[hero]!.content as { headline: string }).headline =
+      'Take 90% off everything'
+    const fallbacks = memoryFallbackLog()
+    expect(await step(store, progress, undefined, fallbacks)).toEqual({
+      ok: false,
+      code: 'hard_check_failed'
+    })
+    expect(fallbacks.entries()).toEqual([
+      expect.objectContaining({
+        agent: 'email-checks',
+        reasonCode: 'hard_check_offer',
+        reason: expect.stringContaining('90%'),
+        fallback: 'No email was stored; trying again makes it again.'
+      })
+    ])
+    // The studio's email fails too: its coded redraw fails the same way,
+    // so no line says it was drawn.
+    const alt = 'Take 90% off everything'
+    const first = (await step(
+      store,
+      progress,
+      ports(blocks, hero, [], alt)
+    )) as { work: object }
+    const drawn: BuildRender = {
+      id: render,
+      key: 'k',
+      state: 'drawn',
+      path: `render/${render}.jpg`,
+      height: 640,
+      bytes: 1,
+      etag: 'e'
+    }
+    const both = memoryFallbackLog()
+    expect(
+      await step(
+        store,
+        { ...progress, work: { design: first.work } },
+        ports(blocks, hero, [drawn], alt),
+        both
+      )
+    ).toEqual({ ok: false, code: 'hard_check_failed' })
+    expect(both.entries().map((e) => e.dedupeKey)).toEqual([
+      expect.stringMatching(/:coded$/)
     ])
   })
 })
