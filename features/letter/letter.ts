@@ -30,10 +30,26 @@ export const letterSchema = z.object({
   role: line(80).optional(),
   /** The P.S., without its "P.S." (optional). */
   ps: line(400).optional(),
+  /**
+   * The locked offer, placed by code after the letter as its own line (the
+   * writer never writes a code or its end).
+   */
+  offer: z
+    .object({
+      code: line(40),
+      percent: z.int().min(1).max(100),
+      /** "Ends November 22 at 11:59 PM PST" (optional). */
+      ends: line(80).optional()
+    })
+    .optional(),
   /** The store's links the text may point to, numbered from 1 (code's). */
   links: z.array(z.object({ url: z.string().trim().min(1).max(2000) })).max(4)
 })
 export type Letter = z.infer<typeof letterSchema>
+
+/** The offer's own line: "Use the code CANDLE10 for 10% off. Ends …". */
+export const offerLine = (offer: NonNullable<Letter['offer']>) =>
+  `Use the code ${offer.code} for ${offer.percent}% off.${offer.ends ? ` ${offer.ends.replace(/\.?$/, '.')}` : ''}`
 
 /**
  * A link in the text: `[the words](n)`. Its words are on one line, at
