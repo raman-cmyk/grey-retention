@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { voiceExcerpt } from './excerpt'
-import { founderVoice, maxVoiceExamples, minVoiceWords } from './profile'
+import {
+  founderVoice,
+  maxVoiceCharsRead,
+  maxVoiceExamples,
+  minVoiceWords
+} from './profile'
 import type { VoiceSample } from './samples'
 
 const sample = (
@@ -15,6 +20,8 @@ const sample = (
   sentAt: null
 })
 
+const own = ['Cedar Goods', 'Linen Overshirt']
+
 /** The recorded account's founder letter, as the history read keeps it. */
 const letter = voiceExcerpt(
   {
@@ -25,12 +32,21 @@ const letter = voiceExcerpt(
     truncated: false,
     updated: null
   } as never,
-  ['Cedar Goods']
+  own
 )!
+
+/** A plain letter body of about 60 words, as a founder writes. */
+const body = [
+  'We spent the whole summer testing new dyes for the winter shirts.',
+  'The deep green took the longest, and we think it was worth it.',
+  'Each piece is cut and sewn in our studio, one at a time.',
+  'We hope one of them keeps you warm on the cold mornings ahead.',
+  'Write back and tell us which colour you would pick.'
+].join(' ')
 
 describe('founderVoice (PIC-23 part 3a)', () => {
   it('reads the founder’s greeting, sign-off, "I" and sentences from their letter', () => {
-    expect(founderVoice([sample(letter.text)])).toEqual({
+    expect(founderVoice([sample(letter.text)], own)).toEqual({
       greeting: 'Hi,',
       signoff: 'Warmly,',
       writesAs: 'I',
@@ -46,23 +62,22 @@ describe('founderVoice (PIC-23 part 3a)', () => {
     })
   })
 
-  it('says nothing from designed emails or from too few words', () => {
-    const designed = sample(
-      'Loved by you\nOur softest overshirt is back, in four colours, for the cold mornings ahead. Shop the overshirt and the rest of the autumn layers today, before the weekend.',
-      1
-    )
+  it('says nothing from designed emails, from too few words, or from no list', () => {
+    const designed = sample(`Loved by you\n${body}`, 1)
     expect(founderVoice([designed])).toBeNull()
     expect(
       founderVoice([sample('Hi,\nWe made a new candle. Come see.\nBest,')])
     ).toBeNull()
     expect(founderVoice([])).toBeNull()
+    expect(founderVoice(null as never)).toBeNull()
+    expect(founderVoice('text' as never)).toBeNull()
     expect(minVoiceWords).toBe(40)
   })
 
-  it('reads a team that writes as "we", with the greeting it uses most, "!" and contractions', () => {
+  it('reads a team that writes as "we", with "!" and contractions, each example once', () => {
     const team = (greeting: string, n: number) =>
       sample(
-        `${greeting}\n\nWe're so glad you're here! We've been busy in the studio all week, and we can't wait to show you what we made. It's our favourite batch yet!\n\nWe hope you love it as much as we do.\n\nTalk soon,\nThe team`,
+        `${greeting}\n\nWe're so glad you're here! We've been busy in the studio all week, and we can't wait to show you what we made. It's our favourite batch of the whole year!\n\nWe hope you love it as much as we do.\n\nTalk soon,\nThe team`,
         3,
         `Msg${n}`
       )
@@ -70,7 +85,7 @@ describe('founderVoice (PIC-23 part 3a)', () => {
       team('Hey friends,', 1),
       team('Hello [first name],', 2),
       team('Hey friends,', 3)
-    ])
+    ])!
     expect(voice).toMatchObject({
       greeting: 'Hey friends,',
       signoff: 'Talk soon,',
@@ -79,52 +94,141 @@ describe('founderVoice (PIC-23 part 3a)', () => {
       contractions: 'often',
       from: { samples: 3 }
     })
-    // The same sentence of three emails is one example.
-    expect(new Set(voice!.examples).size).toBe(voice!.examples.length)
+    expect(new Set(voice.examples).size).toBe(voice.examples.length)
   })
 
-  it('reads the letters first, never an example with a number or a placeholder, at most five, and ignores bad input', () => {
+  it('keeps a greeting or sign-off used in at least half the emails, with "!" too', () => {
+    const plain = (n: number) => sample(body, 3, `MsgP${n}`)
+    // One coded email's line never decides for three letters.
+    expect(
+      founderVoice([
+        plain(1),
+        plain(2),
+        plain(3),
+        sample(`Hey there,\n${body}\nShop the sale,`, 2, 'MsgC')
+      ])
+    ).toMatchObject({ greeting: null, signoff: null })
+    // "Hi [first name]!" and "Cheers!" are a greeting and a sign-off, never sentences.
+    const cheery = founderVoice([sample(`Hi [first name]!\n${body}\nCheers!`)])!
+    expect(cheery).toMatchObject({
+      greeting: 'Hi!',
+      signoff: 'Cheers!',
+      exclamations: 'never'
+    })
+    // A placeholder in the middle, a dash alone, a comma line fourth from the end: none.
+    expect(
+      founderVoice([
+        sample(
+          `Hello [first name] and [last name],\n${body}\nWarmly,\nMaya\nP.S. More soon.\nBye.`
+        )
+      ])
+    ).toMatchObject({ greeting: null, signoff: null })
+    expect(
+      founderVoice([sample(`Hi - [first name],\n${body}`)])!.greeting
+    ).toBeNull()
+    // Other scripts' commas.
+    expect(
+      founderVoice([sample(`Bonjour à tous，\n${body}\nÀ bientôt،`)])
+    ).toMatchObject({ greeting: 'Bonjour à tous，', signoff: 'À bientôt،' })
+  })
+
+  it('never gives an example that holds a name, a quote, a code, an offer, a link or a fragment', () => {
+    const risky = sample(
+      [
+        'Hi [first name],',
+        'Use code WELCOME at checkout for a little thank you from us.',
+        'Everything in the shop is half price until Sunday night.',
+        'Come and see the new pieces at cedargoods.studio this week.',
+        'My sister Anna sewed the first hundred bags with me last spring.',
+        'I love this note from a customer: "The softest shirt I own, I wear it every single day."',
+        'Sarah wrote to tell me her shirt survived a whole year of camping.',
+        'Thanks to Priya and Tom for packing every order this busy week.',
+        'The softest overshirt we have ever made',
+        'I started this shop in my garage with one old',
+        'sewing machine and a lot of patience, and it still runs well.',
+        'Warmly, Maya and the whole team at the studio'
+      ].join('\n'),
+      3,
+      'MsgR'
+    )
+    const voice = founderVoice([risky], own)!
+    expect(voice.examples).toEqual([
+      // A line wrapped inside a sentence is read as one sentence.
+      'I started this shop in my garage with one old sewing machine and a lot of patience, and it still runs well.'
+    ])
+    expect(voice.examples.join(' ')).not.toMatch(
+      /Anna|Sarah|Priya|Tom|Maya|WELCOME|half|studio\b|"/
+    )
+  })
+
+  it('reads the letters first, at most five examples of 6 to 25 words, and passes over a sample too long', () => {
     const coded = sample(
-      'Our autumn knits are back on the shelves, a little thicker this year.\nFree returns for 30 days on every knit we make for you.\nCome by the shop and say hello to the whole team soon.',
+      'Our autumn knits are back on the shelves and a little thicker this year.\nCome by the shop and say hello to the whole team soon.',
       2,
       'MsgC'
     )
     const long = sample(
       [
-        'Hi [first name], it was lovely to see you at the market last week.',
+        'It was lovely to see you at the market last week.',
         'The candles you liked are made from the same soy wax as always.',
         'I pour each one by hand in the studio behind our little shop.',
         'They burn slowly and smell like cedar and rain on a warm evening.',
         'I hope one of them finds a place in your home this winter.',
         'I would love to hear which scent you pick for the colder nights.',
-        'Write back any time, I read every single message myself.'
+        'Write back any time.',
+        'I read every single message myself, usually with a cup of tea in the morning before the shop opens and the phone starts ringing again.'
       ].join(' '),
       3,
       'MsgL'
     )
+    const huge = sample('word '.repeat(maxVoiceCharsRead / 5 + 1), 3, 'MsgH')
     const voice = founderVoice([
       coded,
+      huge,
       null as never,
       { text: 42, weight: 3 } as never,
       long
     ])!
     expect(voice.from.samples).toBe(2)
     expect(voice.examples).toHaveLength(maxVoiceExamples)
-    // The letter's sentences come before the coded email's.
     expect(voice.examples[0]).toBe(
-      'The candles you liked are made from the same soy wax as always.'
+      'It was lovely to see you at the market last week.'
     )
-    expect(voice.examples.join(' ')).not.toMatch(/\[|\d/)
+    // Five words, or twenty-six: never an example.
+    expect(voice.examples).not.toContain('Write back any time.')
+    expect(voice.examples.join(' ')).not.toMatch(/cup of tea/)
     expect(voice.writesAs).toBe('I')
   })
 
-  it('keeps no greeting or sign-off that is a sentence, a number or a link', () => {
-    const voice = founderVoice([
-      sample(
-        'Our new linen arrived this morning, and it is lovely.\nWe pressed every piece by hand before it went on the shelf for you.\nSee it in the shop this week, or write to us with a question about it.\nCall 555,'
-      )
-    ])!
-    expect(voice.greeting).toBeNull()
-    expect(voice.signoff).toBeNull()
+  it('says nothing of "I", "we" or contractions for a store that writes another language', () => {
+    const italian = sample(
+      'Ciao,\nAbbiamo scelto i tessuti più morbidi per i nostri clienti di sempre. Tutti i capi sono cuciti a mano nel nostro piccolo laboratorio di città. Speriamo che i nuovi colori vi piacciano quanto piacciono a noi. Scriveteci quando volete, leggiamo tutti i messaggi con calma.\nA presto,\nIl team'
+    )
+    expect(founderVoice([italian])).toMatchObject({
+      greeting: 'Ciao,',
+      signoff: 'A presto,',
+      writesAs: null,
+      contractions: null
+    })
+    // Mixed "I" and "we": neither.
+    expect(
+      founderVoice([
+        sample(
+          'I made the first batch myself this spring. We packed every order together in the studio. I chose the colours with care for the season. We hope you like the way they turned out. We will make more of them before the end of the winter months.'
+        )
+      ])!.writesAs
+    ).toBeNull()
+  })
+
+  it('reads hostile text at once', () => {
+    const runs = [
+      'a' + '🎉'.repeat(29_000) + 'b',
+      'a' + '-'.repeat(59_000) + 'b',
+      `${'"'.repeat(20_000)}.${'"'.repeat(20_000)}x`,
+      `${'Hi [first name] '.repeat(3_000)},`
+    ]
+    const start = performance.now()
+    for (const text of runs) founderVoice([sample(text), sample(body, 2, 'M2')])
+    expect(performance.now() - start).toBeLessThan(1_500)
   })
 })
