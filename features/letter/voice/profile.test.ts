@@ -251,6 +251,24 @@ describe('founderVoice (PIC-23 part 3a)', () => {
       ).not.toContain(line)
   })
 
+  it('lets an example name the store’s own words only as a whole run of a title (round 3)', () => {
+    const titles = ['Cedar Goods', 'The Emma Dress', 'Rose Candle']
+    const of = (line: string) =>
+      founderVoice([sample(`${line} ${body}`)], titles)!.examples
+    // A person named like one word of a title: never.
+    for (const line of [
+      'Emma from our studio picked every one of the new colours.',
+      'Thanks to Rose and the team for packing each order by hand.'
+    ])
+      expect(of(line), line).not.toContain(line)
+    // The title, or two of its words together: yes.
+    for (const line of [
+      'The Emma Dress is the one I wear most days at the studio.',
+      'We pour every Rose Candle by hand in the back of the shop.'
+    ])
+      expect(of(line), line).toContain(line)
+  })
+
   it('lets the letters decide the greeting and sign-off, and keeps a sign-off written in lower case', () => {
     const letters = [1, 2, 3, 4, 5].map((n) =>
       sample(`Hi,\n${body}\nWarmly,\nMaya`, 3, `MsgL${n}`)

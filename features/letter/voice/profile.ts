@@ -42,7 +42,7 @@ export type FounderVoice = {
 
 export type Frequency = 'never' | 'sometimes' | 'often'
 
-export const founderVoiceVersion = '2026-11-16.2'
+export const founderVoiceVersion = '2026-11-16.3'
 
 /** Fewer of the owner's words than this say nothing about a voice. */
 export const minVoiceWords = 40
@@ -232,18 +232,44 @@ const linkLike = /\p{L}\.\p{L}|[/@#]|\bwww\b|https?/iu
  */
 const quoted = /["“”„«»‹›「」『』‘]|(?:^|[^\p{L}])['’]/u
 
-/** The store's own words (its name, its product titles), lower case. */
+/** A run of the store's words is at most this many words. */
+const maxOwnRun = 4
+
+/**
+ * The store's own words (its name, its product titles), lower case: each
+ * run of two to four words of a title ("cedar goods", "emma dress") and a
+ * title of one word, never one word of a longer title ("Emma" of "The Emma
+ * Dress" is a person's name as often as the dress).
+ */
 function ownSet(own: readonly unknown[]) {
   const set = new Set<string>()
   if (!Array.isArray(own)) return set
   for (const phrase of own.slice(0, maxOwn)) {
     if (typeof phrase !== 'string') continue
-    for (const w of phrase.split(/\s+/).slice(0, maxOwnWords)) {
-      const b = bare(w).toLowerCase()
-      if (b) set.add(b)
-    }
+    const words = phrase
+      .split(/\s+/)
+      .slice(0, maxOwnWords)
+      .map((w) => bare(w).toLowerCase())
+      .filter(Boolean)
+    if (words.length === 1) set.add(words[0]!)
+    for (let a = 0; a < words.length; a++)
+      for (let n = 2; n <= maxOwnRun && a + n <= words.length; n++)
+        set.add(words.slice(a, a + n).join(' '))
   }
   return set
+}
+
+/** Whether the word at `k` is part of a run of the store's own words. */
+function inOwnRun(
+  bares: readonly string[],
+  k: number,
+  ours: ReadonlySet<string>
+) {
+  if (ours.has(bares[k]!)) return true
+  for (let n = 2; n <= maxOwnRun; n++)
+    for (let a = Math.max(0, k - n + 1); a <= k && a + n <= bares.length; a++)
+      if (ours.has(bares.slice(a, a + n).join(' '))) return true
+  return false
 }
 
 /** How the owner writes, or null when their letters and coded emails say too little. */
@@ -365,11 +391,12 @@ function safeExample(s: string, ours: ReadonlySet<string>) {
   // A whole sentence: a capital first letter where the script has one.
   const first = [...s].find((c) => /\p{L}/u.test(c))
   if (first && first !== first.toUpperCase()) return false
+  const bares = words.map((w) => bare(w).toLowerCase())
   return words.every((w, k) => {
     const b = bare(w)
     if (!b) return w.length <= maxTokenChars
-    if (iForm.test(b) || ours.has(b.toLowerCase())) return true
     if (b[0] === b[0]!.toLowerCase()) return true
+    if (iForm.test(b) || inOwnRun(bares, k, ours)) return true
     // A capitalised word: only a common first word, never a name.
     const lower = b.toLowerCase()
     return k === 0 && starters.has(lower)
