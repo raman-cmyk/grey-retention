@@ -6,6 +6,7 @@ import {
 } from '@/features/letter/checks'
 import { letterSchema, type Letter } from '@/features/letter/letter'
 import { renderLetter } from '@/features/letter/render'
+import { kindFits, type LetterKind } from '@/features/letter/kinds'
 import {
   letterFindings,
   plainLetter,
@@ -80,11 +81,24 @@ export type LetterCopy = {
 }
 
 /** The letter's brief from the locked content. */
-const briefOf = (store: Store, locked: LockedContent): LetterBrief => ({
+const briefOf = (
+  store: Store,
+  locked: LockedContent,
+  kind?: LetterKind
+): LetterBrief => ({
   locked,
   brandName: store.brand.name,
-  site: store.brand.site
+  site: store.brand.site,
+  ...(kind ? { kind } : {})
 })
+
+/** Why a planned kind became no kind, in the owner's words (DST-PIC #24). */
+const kindDropped = {
+  kind_needs_founder_note:
+    'The planned founder note had no founder’s note it could use (one confirmed, short, and passing the checks).',
+  kind_never_offers:
+    'The planned kind of letter never carries an offer, and this email has one.'
+} as const
 
 /** The plain letter's subjects, in order: facts only, never a claim. */
 function plainSubjects(store: Store, locked: LockedContent, letter: Letter) {
@@ -109,6 +123,8 @@ export async function letterCopyStep(
     locked: LockedContent
     /** Subjects the plan's other emails use (REL-AI). */
     taken?: readonly string[]
+    /** DST-PIC #24: the planned kind of letter. */
+    kind?: LetterKind
   },
   ctx: BuildCtx
 ): Promise<
@@ -116,7 +132,25 @@ export async function letterCopyStep(
   | { ok: false; code: 'copy_failed' | 'subject_taken' }
 > {
   const { store, locked } = input
-  const brief = briefOf(store, locked)
+  const brief = briefOf(store, locked, input.kind)
+  // A planned kind that does not fit is a short letter of no kind, logged
+  // (only the Letter writer reads a kind).
+  const unfit = input.kind && ctx.agents ? kindFits(input.kind, brief) : null
+  // Logged once a letter is written (no email, nothing to say about it).
+  const logUnfit = async () => {
+    if (unfit)
+      await ctx.fallbacks.record({
+        tenantId: ctx.tenantId,
+        campaignId: ctx.campaignId ?? null,
+        agent: 'letter-writer',
+        reasonCode: 'letter_kind_dropped',
+        reason: kindDropped[unfit],
+        fallback: 'Wrote a short letter of no kind instead.',
+        attempts: 1,
+        detail: { kind: input.kind ?? null, why: unfit },
+        dedupeKey: `letter-writer:kind:${keyPart(ctx.callerKey)}`
+      })
+  }
   const taken = new Set((input.taken ?? []).map(subjectKey))
   const changes = [
     ...new Set(locked.changes.map((c): ChangeKey => c.key))
@@ -154,11 +188,13 @@ export async function letterCopyStep(
       },
       takenProblem
     )
-    if (made.status === 'written')
+    if (made.status === 'written') {
+      await logUnfit()
       return {
         ok: true,
         output: { letter: made.letter, productIds, changes, written: true }
       }
+    }
     if (made.status === 'failed') return { ok: false, code: 'copy_failed' }
     plain = made.letter
   } else {
@@ -203,6 +239,7 @@ export async function letterCopyStep(
     })
     return { ok: false, code: 'subject_taken' }
   }
+  await logUnfit()
   return { ok: true, output: { letter: free, productIds, changes } }
 }
 

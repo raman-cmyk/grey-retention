@@ -607,6 +607,168 @@ describe('designed or text emails (TXT-001f, D26)', () => {
   })
 })
 
+describe('the kind of each text email (DST-PIC #24)', () => {
+  it('asks the planner for each text email’s kind, and tells it when a founder note fits', async () => {
+    const ai = agents({
+      'brief-writer': [brief],
+      'calendar-planner': [
+        {
+          slots: [
+            { ...offerSlot, format: 'designed', letterKind: 'none' },
+            { ...storySlot, format: 'text', letterKind: 'quick_question' },
+            { ...slot({}), letterKind: 'none' },
+            giftSlot
+          ]
+        }
+      ],
+      'strategy-critic': [{ issues: [] }]
+    })
+    const plan = await planFifteenDays(
+      { ...input, founderNote: true },
+      context(ai).ctx
+    )
+    expect(plan.slots.map((s) => [s.format, s.letterKind])).toEqual([
+      [undefined, undefined],
+      ['text', 'quick_question'],
+      [undefined, undefined],
+      [undefined, undefined]
+    ])
+    const call = callsOf(ai, 'calendar-planner')[0]![0]
+    expect(call.request.system).toContain(
+      '"quick_question" (One simple question for the reader to answer by reply; no offer)'
+    )
+    expect(call.request.user).toContain('"founder_note_available":true')
+    const required = (
+      calendarPlannerAgent.schema.definition as {
+        properties: { slots: { items: { required: string[] } } }
+      }
+    ).properties.slots.items.required
+    expect(required).toContain('letterKind')
+    // Saved, then read by Create email, the kind stays.
+    const saved = storedPlan.parse(plan)
+    expect(plannedEmail.parse(saved.slots[1]).letterKind).toBe('quick_question')
+  })
+
+  it('a kind that does not fit is dropped by code, never the email', () => {
+    const slots = [
+      // A designed email with a kind.
+      { ...offerSlot, letterKind: 'thank_you' as const },
+      // A founder note for a store without the founder's note.
+      slot({ ...storySlot, format: 'text', letterKind: 'founder_note' }),
+      slot({}),
+      giftSlot
+    ]
+    const problems = calendarProblems(slots, input, brief.actions)
+    expect(texts(problems, 0)).toEqual(['only a text email has a letterKind.'])
+    expect(texts(problems, 1)).toEqual([
+      'a founder note needs founder_note_available.'
+    ])
+    const { kept, dropped, changed, kinds } = keepPassing(
+      slots,
+      problems,
+      input,
+      brief.actions
+    )
+    expect(dropped).toEqual([])
+    // Kinds dropped are counted apart from text emails changed.
+    expect([changed, kinds]).toEqual([0, 2])
+    expect(kept.map((s) => [s.format, s.letterKind])).toEqual([
+      [undefined, undefined],
+      ['text', undefined],
+      [undefined, undefined],
+      [undefined, undefined]
+    ])
+  })
+
+  it('a question or a teaser never carries an offer; a text email made designed loses its kind', () => {
+    const asked = [
+      slot({
+        ...offerSlot,
+        format: 'text',
+        productIds: ['p-cedar-candle'],
+        letterKind: 'quick_question'
+      }),
+      storySlot,
+      giftSlot
+    ]
+    expect(texts(calendarProblems(asked, input, brief.actions), 0)).toContain(
+      'a quick_question never carries an offer.'
+    )
+    const teased = asked.map((x, i) =>
+      i === 0 ? { ...x, letterKind: 'launch_teaser' as const } : x
+    )
+    expect(texts(calendarProblems(teased, input, brief.actions), 0)).toContain(
+      'a launch_teaser never carries an offer.'
+    )
+    const two = [
+      slot({ ...storySlot, format: 'text', letterKind: 'thank_you' }),
+      slot({ format: 'text', letterKind: 'we_miss_you' }),
+      offerSlot,
+      giftSlot
+    ]
+    const { kept } = keepPassing(
+      two,
+      calendarProblems(two, input, brief.actions),
+      input,
+      brief.actions
+    )
+    expect(kept.map((s) => [s.format, s.letterKind])).toEqual([
+      ['text', 'thank_you'],
+      [undefined, undefined],
+      [undefined, undefined],
+      [undefined, undefined]
+    ])
+  })
+})
+
+describe('the kinds the planner gets wrong (DST-PIC #24)', () => {
+  it('logs a kind code dropped apart, and reads a value that is no kind as none', async () => {
+    const ai = agents({
+      'brief-writer': [brief],
+      'calendar-planner': [
+        {
+          slots: [
+            { ...offerSlot, format: 'designed', letterKind: 'thank_you' },
+            { ...storySlot, format: 'text', letterKind: 'newsletter' },
+            { ...slot({}), letterKind: 'none' },
+            giftSlot
+          ]
+        }
+      ],
+      'strategy-critic': [{ issues: [] }]
+    })
+    const { ctx, fallbacks } = context(ai)
+    const plan = await planFifteenDays(input, ctx)
+    // The planner answered once: an unknown kind never fails its answer.
+    expect(callsOf(ai, 'calendar-planner')).toHaveLength(1)
+    expect(plan.slots.map((s) => [s.format, s.letterKind])).toEqual([
+      [undefined, undefined],
+      ['text', undefined],
+      [undefined, undefined],
+      [undefined, undefined]
+    ])
+    expect(fallbacks.entries()).toContainEqual(
+      expect.objectContaining({
+        agent: 'calendar-rules',
+        reasonCode: 'kind_dropped',
+        reason: 'One email had a kind of letter that did not fit.',
+        fallback: 'Removed the kind: it is a short letter of no kind.',
+        detail: { kinds: 1 }
+      })
+    )
+    expect(fallbacks.entries().map((e) => e.reasonCode)).not.toContain(
+      'text_changed'
+    )
+    // A saved plan with a value that is no kind still reads.
+    expect(
+      plannedEmail.parse({
+        ...storedPlan.parse(plan).slots[1],
+        letterKind: 'x'
+      }).letterKind
+    ).toBeUndefined()
+  })
+})
+
 describe('what ships is checked again after every drop', () => {
   it('drops the offer when a dropped email leaves it over 40% of its week', () => {
     const slots = [
