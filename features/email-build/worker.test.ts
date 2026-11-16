@@ -615,7 +615,7 @@ describe('saved steps (REL-081)', () => {
     ).toEqual([
       [
         'email_builds.select',
-        'built:email->>subject,saved:progress->copy->draft->>subject'
+        'built:email->>subject,saved:progress->copy->draft->>subject,letter:progress->copy->letter->>subject'
       ],
       ['email_builds.eq', 'tenant_id', tenant],
       ['email_builds.eq', 'run_id', 'run-1'],

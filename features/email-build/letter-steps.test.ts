@@ -7,7 +7,12 @@ import { klaviyoFooterTags } from '@/features/blocks/klaviyo-tags'
 import { memoryFallbackLog } from '@/features/fallback/log'
 import { plainFooterTags } from '@/features/letter/render'
 import { buildEmail, builtEmail, type PlannedEmail } from './build'
-import { letterLayout, letterOfferShown } from './letter-steps'
+import { letterSchema } from '@/features/letter/letter'
+import {
+  letterDesignStep,
+  letterLayout,
+  letterOfferShown
+} from './letter-steps'
 import { sampleOffers, sampleStoreSource } from './ports'
 import { runBuildStep } from './steps'
 
@@ -185,6 +190,213 @@ describe('a text email in Create email (TXT-001c)', () => {
     expect(await run('design')).toEqual({
       ok: false,
       code: 'step_progress_invalid'
+    })
+  })
+
+  it('locks the lead product without asking the Content locker (one answer only)', async () => {
+    const ai = model()
+    await buildEmail(
+      {
+        planned: {
+          ...planned,
+          products: [
+            { id: 'p-cedar-candle', title: 'Cedar candle' },
+            { id: 'p-linen-throw', title: 'Linen throw' }
+          ]
+        },
+        store: await store(),
+        offers: sampleOffers
+      },
+      ctxWith(ai)
+    )
+    const who = ai.mock.calls.map((c) => c[0].callerKey.split(':')[0])
+    expect(who).not.toContain('content-locker')
+  })
+
+  it('tells the Letter writer the plan’s other subjects', async () => {
+    let n = 0
+    const ai = vi.fn<AiCall>(async (call) =>
+      call.callerKey.startsWith('letter-writer:')
+        ? ok({
+            ...letterAnswer,
+            subject: ++n === 1 ? 'Taken already' : 'A note about our candle'
+          })
+        : { ok: false, code: 'setup_required' }
+    )
+    const made = await buildEmail(
+      {
+        planned,
+        store: await store(),
+        offers: sampleOffers,
+        taken: ['Taken already']
+      },
+      ctxWith(ai)
+    )
+    expect(made.ok && made.email.subject).toBe('A note about our candle')
+    const writer = ai.mock.calls.filter((c) =>
+      c[0].callerKey.startsWith('letter-writer:')
+    )
+    expect(writer[1]![0].request.user).toContain(
+      'Another email in this plan already has this subject'
+    )
+  })
+
+  it('builds no email when the plain letter fails its checks, logged', async () => {
+    const s = await store()
+    const fallbacks = memoryFallbackLog()
+    const made = await buildEmail(
+      {
+        planned,
+        store: { ...s, facts: { ...s.facts, bannedPhrases: ['short note'] } },
+        offers: sampleOffers
+      },
+      ctxWith(null, fallbacks)
+    )
+    expect(made).toEqual({ ok: false, code: 'copy_failed' })
+    expect(fallbacks.entries()[0]).toMatchObject({
+      agent: 'email-build',
+      reasonCode: 'copy_failed'
+    })
+  })
+
+  it('a planned offer that is not a working code: a letter without its line, logged', async () => {
+    const fallbacks = memoryFallbackLog()
+    const made = await buildEmail(
+      {
+        planned: {
+          ...planned,
+          offer: { id: 'offer:NOPE20', code: 'NOPE20', percent: 20 }
+        },
+        store: await store(),
+        offers: sampleOffers
+      },
+      ctxWith(null, fallbacks)
+    )
+    expect(made.ok && made.email).toMatchObject({ code: null, offer: null })
+    expect(made.ok && made.email.html).not.toContain('Use the code')
+    expect(fallbacks.entries().map((e) => e.agent)).toContain('content-locker')
+  })
+
+  it('refuses a code that is not the one locked, and a logo not in Klaviyo', async () => {
+    const made = await buildEmail(
+      { planned, store: await store(), offers: sampleOffers },
+      ctxWith(null)
+    )
+    if (!made.ok) throw new Error('build')
+    const s = await store()
+    const copy = {
+      letter: letterSchema.parse({
+        subject: 'A note',
+        preheader: 'Why we made it, and how it fills a room.',
+        body: ['Hello.'],
+        signoff: 'Warmly,',
+        signature: 'Maya',
+        offer: { code: 'CANDLE10', percent: 10 },
+        links: []
+      }),
+      productIds: [],
+      changes: []
+    }
+    const base = {
+      planned,
+      store: s,
+      sendAt: '2030-01-01T10:00:00Z',
+      sample: true,
+      copy,
+      name: 'Tue · Offer'
+    }
+    expect(
+      letterDesignStep({
+        ...base,
+        rules: { maxDiscountPercent: 20, codes: [] }
+      })
+    ).toEqual({ ok: false, code: 'offer_unsafe' })
+    expect(
+      letterDesignStep({
+        ...base,
+        store: {
+          ...s,
+          brand: { ...s.brand, logo: 'data:image/png;base64,iVBORw0KGgo=' }
+        },
+        rules: {
+          maxDiscountPercent: 20,
+          codes: [{ code: 'CANDLE10', percent: 10, expiresAt: null }]
+        }
+      })
+    ).toEqual({ ok: false, code: 'render_failed' })
+  })
+
+  it('the job’s design step: the code still working, the hard checks, the format unchanged (TXT-001d)', async () => {
+    const s = await store()
+    /** The steps before design, saved, then the design step with `over`. */
+    const design = async (over: {
+      store?: typeof s
+      offers?: typeof sampleOffers
+      planned?: PlannedEmail
+    }) => {
+      const progress: Record<string, unknown> = {}
+      for (const step of ['sections', 'content', 'copy'] as const) {
+        const made = await runBuildStep(
+          step,
+          { planned, store: over.store ?? s, offers: sampleOffers, progress },
+          ctxWith(null)
+        )
+        if (!made.ok || !('output' in made)) throw new Error(step)
+        progress[step] = JSON.parse(JSON.stringify(made.output))
+      }
+      const fallbacks = memoryFallbackLog()
+      const result = await runBuildStep(
+        'design',
+        {
+          planned: over.planned ?? planned,
+          store: over.store ?? s,
+          offers: over.offers ?? sampleOffers,
+          progress
+        },
+        ctxWith(null, fallbacks)
+      )
+      return { result, fallbacks }
+    }
+    // The code switched off in Settings since the first step.
+    const off = {
+      async offers() {
+        return { maxDiscountPercent: 20, codes: [] }
+      }
+    } as unknown as typeof sampleOffers
+    expect((await design({ offers: off })).result).toEqual({
+      ok: false,
+      code: 'offer_unsafe'
+    })
+    // Settings that cannot be read now.
+    const unread = {
+      async offers() {
+        throw new Error('down')
+      }
+    } as unknown as typeof sampleOffers
+    expect((await design({ offers: unread })).result).toEqual({
+      ok: false,
+      code: 'offers_unreadable'
+    })
+    // A product link that is not https fails the hard checks, logged.
+    const http = {
+      ...s,
+      products: s.products.map((p) => ({
+        ...p,
+        url: p.url.replace('https:', 'http:')
+      }))
+    }
+    const checked = await design({ store: http })
+    expect(checked.result).toEqual({ ok: false, code: 'hard_check_failed' })
+    expect(checked.fallbacks.entries()[0]).toMatchObject({
+      agent: 'email-checks',
+      reasonCode: 'hard_check_links'
+    })
+    // The slot switched to a designed email since the first step.
+    const designed: PlannedEmail = { ...planned }
+    delete designed.format
+    expect((await design({ planned: designed })).result).toEqual({
+      ok: false,
+      code: 'format_changed'
     })
   })
 

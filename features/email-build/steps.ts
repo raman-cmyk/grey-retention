@@ -111,7 +111,7 @@ const copySaved = z.looseObject({
   changes: z.array(z.string()).max(40),
   written: z.boolean().optional()
 })
-/** A text email's saved copy step (TXT-001c): its letter, checked again. */
+/** A text email's saved copy step (TXT-001d): its letter, checked again. */
 const letterSaved = z.looseObject({
   letter: z.unknown(),
   productIds: z.array(z.string()).max(12),
@@ -166,6 +166,7 @@ export type StepResult =
         | 'step_progress_invalid'
         | 'step_unknown'
         | 'store_changed'
+        | 'format_changed'
         | 'hard_check_failed'
     }
 
@@ -278,7 +279,12 @@ export async function runBuildStep(
       ? {
           ok: true,
           done: 'sections',
-          output: { ...made.output, store: storeFingerprint(store) }
+          output: {
+            ...made.output,
+            store: storeFingerprint(store),
+            // TXT-001d: a later step of another format starts over.
+            format: planned.format ?? 'designed'
+          }
         }
       : made
   }
@@ -291,6 +297,11 @@ export async function runBuildStep(
     (sections.store !== undefined && sections.store !== storeFingerprint(store))
   )
     return { ok: false, code: 'store_changed' }
+  // TXT-001d (D26): the slot switched between designed and text since the
+  // first step: its saved steps are another email's. Missing before it.
+  const format = (progress.data.sections as { format?: unknown }).format
+  if (format !== undefined && format !== (planned.format ?? 'designed'))
+    return { ok: false, code: 'format_changed' }
   if (step === 'content')
     return {
       ok: true,
@@ -300,7 +311,7 @@ export async function runBuildStep(
   if (step === 'copy') {
     const locked = contentSaved.safeParse(progress.data.content)
     if (!locked.success) return unreadable
-    // TXT-001c: a text email's letter, written or plain.
+    // TXT-001d: a text email's letter, written or plain.
     if (planned.format === 'text') {
       const made = await letterCopyStep(
         {
@@ -573,7 +584,7 @@ export async function runBuildStep(
 }
 
 /**
- * TXT-001c: a text email's design step: its saved letter checked again,
+ * TXT-001d: a text email’s design step: its saved letter checked again,
  * its code still a working one (REL-OFF), drawn as a letter, then the
  * hard checks every email gets. No studio: a letter has no pictures.
  */
