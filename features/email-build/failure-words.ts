@@ -56,3 +56,49 @@ export const buildCode = (code: string): BuildFailureCode =>
 /** Plain words for a failed build: its own, or the plain fallback. */
 export const buildReason = (code: string | null) =>
   buildFailureWords[buildCode(code ?? '')]
+
+/**
+ * REL-084c: why Klaviyo, or the last check before it, refused the draft,
+ * by the pusher's own reason (`klaviyo_draft_pushes.reason`, PSH-001), in
+ * place of the one word `klaviyo_rejected` gives a dozen refusals. Fixed
+ * words: never Klaviyo's own message.
+ */
+export const pushRefusalWords = {
+  // Before Klaviyo is called.
+  sample_email:
+    'It was made from the sample store, so it never goes to Klaviyo.',
+  audience_not_in_klaviyo:
+    'Its audience is not one of your Klaviyo lists or segments. Plan again.',
+  no_push_lease:
+    'The app could not hold this email while sending it to Klaviyo. Try again.',
+  variations_invalid: 'Its two designs were not both complete. Try again.',
+  content_not_checked:
+    'Its last content checks had not run, so it was not sent to Klaviyo.',
+  footer_missing:
+    'Its footer was missing Klaviyo’s unsubscribe link or your address.',
+  too_big_for_gmail: 'It was too large: Gmail would cut it off.',
+  image_not_importable: 'One of its pictures could not be copied into Klaviyo.',
+  too_many_pictures: 'It had more pictures than Klaviyo takes in one email.',
+  // The draft already in Klaviyo.
+  externally_modified:
+    'Its draft was changed or deleted in Klaviyo, so it was left as it is.',
+  not_a_draft:
+    'Its campaign in Klaviyo is no longer a draft (it was scheduled or sent), so it was left alone.',
+  campaign_ambiguous:
+    'Its draft in Klaviyo has more than one message, so it was left alone.',
+  audience_changed:
+    'Its audience changed after its draft was made, so the draft was left as it is. Plan again.',
+  // While it was being put into Klaviyo.
+  image_refused: 'Klaviyo would not take one of its pictures.',
+  final_checks:
+    'The last check before Klaviyo found a problem (its size, footer or pictures). Try again.',
+  designs_unknown:
+    'Its two designs could not be told apart in Klaviyo. Try again later.',
+  ab_test_unsafe: 'Its A/B test could not be set up safely in Klaviyo.'
+} as const satisfies Record<string, string>
+
+/** The words for a push refusal the pusher stored, or null for one it did not. */
+export const pushReason = (reason: string | null | undefined) =>
+  reason && Object.hasOwn(pushRefusalWords, reason)
+    ? pushRefusalWords[reason as keyof typeof pushRefusalWords]
+    : null
