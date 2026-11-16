@@ -407,4 +407,14 @@ describe('a design step waiting for its pictures (DST-006b)', () => {
     expect(runStep.mock.calls.at(-1)![2].studioSkipped).toBeUndefined()
     vi.unstubAllEnvs()
   })
+
+  it('fails an email that did not pass the hard checks for good (DST-005)', async () => {
+    runStep.mockResolvedValueOnce({ ok: false, code: 'hard_check_failed' })
+    const d = fakeDb()
+    await run(d)
+    expect(named(d.calls, 'fail_email_step')[0]!.args).toMatchObject({
+      code: 'hard_check_failed',
+      final: true
+    })
+  })
 })

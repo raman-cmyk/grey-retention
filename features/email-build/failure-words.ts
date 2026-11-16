@@ -22,7 +22,7 @@ export const buildFailureWords = {
   built_email_invalid: 'The finished email was not complete.',
   email_too_large: 'It came out too large to save.',
   hard_check_failed:
-    'It did not pass the email checks (its size, width, links, pictures’ words, footer or offer).',
+    'It did not pass the email checks (size, width, links, pictures’ words, footer or offer). Try again.',
   step_output_invalid: 'One of its steps could not be saved.',
   step_progress_invalid:
     'The app was updated while this email was being made. Try again.',

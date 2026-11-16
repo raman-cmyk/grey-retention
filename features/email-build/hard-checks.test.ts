@@ -125,4 +125,58 @@ describe('the hard checks on a drawn email (DST-005)', () => {
       'The email shows 40%, over your max of 20%.'
     )
   })
+
+  it('read an offer as copy QA does: product names and approved claims are no offer, every other way of writing one is', async () => {
+    const html = await built()
+    const known = [
+      'Up to 60% recycled fibres',
+      'Get 100% organic cotton',
+      'Bundle (30% off)'
+    ]
+    const offer = (more: string, max = 20) =>
+      hardProblems(add(html, more), { maxDiscountPercent: max, known }).map(
+        (p) => p.check
+      )
+    expect(offer('<p>Made with up to 60% recycled fibres.</p>')).toEqual([])
+    expect(offer('<p>Get 100% organic cotton in every throw.</p>')).toEqual([])
+    expect(offer('<p>Bundle (30% off) is back</p>')).toEqual([])
+    for (const drawn of [
+      '<p>40 percent off</p>',
+      '<p>40％ off</p>',
+      '<p>4\u200b0% off</p>',
+      '<p>Extra 40%</p>',
+      '<p>The 40% sale</p>',
+      '<p>Now -40%</p>',
+      '<p>40%-off</p>',
+      '<p>40&percnt; off</p>'
+    ])
+      expect(offer(drawn)).toEqual(['offer'])
+    expect(offer('<p>Take 12.5% off</p>', 10)).toEqual(['offer'])
+    expect(offer('<p>Take 10% off</p>', 10)).toEqual([])
+  })
+
+  it('want a link to the store itself when its hosts are known', async () => {
+    const html = await built()
+    const away = html.replace(
+      /href="https:\/\/[^"/]+/g,
+      'href="https://elsewhere.example'
+    )
+    const storeHosts = ['cedar-lane.example']
+    expect(
+      hardProblems(away, { maxDiscountPercent: 20, storeHosts }).map(
+        (p) => p.problem
+      )
+    ).toContain('The email has no link to the store.')
+    expect(hardProblems(html, { maxDiscountPercent: 20, storeHosts })).toEqual(
+      []
+    )
+  })
+
+  it('leave room for Klaviyo’s links under Gmail’s limit, and read widths in the markup only', async () => {
+    const html = await built()
+    expect(checks(add(html, `<p>${'x'.repeat(95 * 1024)}</p>`))).toEqual([
+      'weight'
+    ])
+    expect(checks(add(html, '<p>Set width: 700px on the box.</p>'))).toEqual([])
+  })
 })
