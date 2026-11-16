@@ -6,7 +6,7 @@ export default function ResultsLoading() {
   return (
     <AppPage current="results" title="Results">
       <Card>
-        <p aria-live="polite" className="type-heading">
+        <p role="status" className="type-heading">
           Opening Results
         </p>
       </Card>

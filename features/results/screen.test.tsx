@@ -6,7 +6,7 @@ vi.mock('next/font/google', () => ({
 }))
 import type { ResultLine } from './read-model'
 import { resultsScreen } from './results-screen'
-import { ResultsScreen, rowDetails } from './screen'
+import { ResultsScreen, pillOf, rowDetails } from './screen'
 
 afterEach(cleanup)
 
@@ -89,11 +89,20 @@ describe('the Results screen (UI-RES-b)', () => {
     // A sample is never In Klaviyo, and never counted as sent.
     expect(rows.getAllByText('In Klaviyo')).toHaveLength(1)
     expect(rows.getByText('Planned')).toBeInTheDocument()
-    expect(rows.getByText(/Sample: not sent/)).toBeInTheDocument()
+    expect(
+      rows.getByText(
+        'Tue 17 · Sample, never sent: example numbers · 1,240 people · 38% opened · 2.1% clicked'
+      )
+    ).toBeInTheDocument()
     const counts = screen.getByRole('region', {
-      name: 'Your emails in Klaviyo'
+      name: 'Your emails'
     })
     expect(within(counts).getByText('email sent')).toBeInTheDocument()
+    expect(
+      within(counts).getByText(
+        'One sample email below was never sent: its numbers are examples.'
+      )
+    ).toBeInTheDocument()
     expect(
       screen.getByText('Version B got more clicks: 2.4% against 1.8%.')
     ).toBeInTheDocument()
@@ -121,5 +130,60 @@ describe('the Results screen (UI-RES-b)', () => {
       '2.1% clicked',
       'The products got the most clicks (14).'
     ])
+  })
+
+  it('gives each row one of the four pills, or none when none is true', () => {
+    const emails = (
+      resultsScreen(
+        [
+          line({
+            buildId: 'a',
+            status: 'scheduled',
+            statusText: 'Scheduled in Klaviyo'
+          }),
+          line({
+            buildId: 'b',
+            status: 'draft',
+            statusText: 'Draft in Klaviyo'
+          }),
+          line({
+            buildId: 'c',
+            status: 'cancelled',
+            statusText: 'Cancelled in Klaviyo'
+          }),
+          line({
+            buildId: 'd',
+            status: 'deleted',
+            statusText: 'Deleted in Klaviyo'
+          }),
+          line({
+            buildId: 'e',
+            status: 'stale',
+            statusText: 'Not sent: its day has passed'
+          }),
+          line({ buildId: 'f', sample: true })
+        ],
+        place
+      ) as Extract<ReturnType<typeof resultsScreen>, { kind: 'results' }>
+    ).emails
+    expect(emails.map(pillOf)).toEqual([
+      'in_klaviyo',
+      'in_klaviyo',
+      'in_klaviyo',
+      null,
+      null,
+      'planned'
+    ])
+  })
+
+  it('tells the owner when every email is a sample', () => {
+    render(
+      <ResultsScreen view={resultsScreen([line({ sample: true })], place)} />
+    )
+    expect(
+      screen.getByText(
+        'These are the sample store’s emails: none was sent, and their numbers are examples.'
+      )
+    ).toBeInTheDocument()
   })
 })
