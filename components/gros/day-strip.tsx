@@ -6,7 +6,8 @@ import { cn } from '@/lib/utils'
  * DayStrip (BRAND.md): the 15 days of a plan in one row, so the owner sees
  * the rhythm of sends at a glance. Always 15 days. A day with an email
  * opens it; a day without one does nothing. Each cell has its own words
- * for screen readers, and the legend says what the colors mean.
+ * for screen readers, and the legend says what the colors mean. The cells
+ * keep their colors in a forced-colors mode (`gros-mark`).
  */
 export const planDays = 15
 export type DayState = 'none' | 'planned' | 'in_klaviyo'
@@ -30,19 +31,39 @@ const looks: Record<DayState, { cell: string; dot: string; word: string }> = {
   }
 }
 
+const letterOf = new Intl.DateTimeFormat('en-US', {
+  weekday: 'narrow',
+  timeZone: 'UTC'
+})
+const wordsOf = new Intl.DateTimeFormat('en-US', {
+  weekday: 'long',
+  month: 'long',
+  day: 'numeric',
+  timeZone: 'UTC'
+})
+const shortOf = new Intl.DateTimeFormat('en-US', {
+  month: 'long',
+  day: 'numeric',
+  timeZone: 'UTC'
+})
+
 /** `start` is the plan's first day, YYYY-MM-DD, in the store's own time. */
 export function planDates(start: string) {
   const first = Date.parse(`${start}T00:00:00Z`)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || Number.isNaN(first))
-    throw new RangeError('A plan starts on a YYYY-MM-DD day')
+  // A day that does not exist (30 February) is refused, not rolled on.
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(start) ||
+    Number.isNaN(first) ||
+    new Date(first).toISOString().slice(0, 10) !== start
+  )
+    throw new RangeError('A plan starts on a real YYYY-MM-DD day')
   return Array.from({ length: planDays }, (_, i) => {
     const day = new Date(first + i * 86_400_000)
-    const say = (o: Intl.DateTimeFormatOptions) =>
-      day.toLocaleDateString('en-US', { ...o, timeZone: 'UTC' })
     return {
-      letter: say({ weekday: 'narrow' }),
+      letter: letterOf.format(day),
       number: day.getUTCDate(),
-      words: say({ weekday: 'long', month: 'long', day: 'numeric' })
+      words: wordsOf.format(day),
+      short: shortOf.format(day)
     }
   })
 }
@@ -70,7 +91,7 @@ export function DayStrip({
             <span
               aria-hidden
               className={cn(
-                'gros-status-dot rounded-[var(--radius-pill)]',
+                'gros-status-dot gros-mark rounded-[var(--radius-pill)]',
                 looks[s].dot
               )}
             />
@@ -78,13 +99,16 @@ export function DayStrip({
           </li>
         ))}
       </ul>
-      <ol aria-label="The next 15 days" className="gros-days grid grid-cols-15">
+      <ol
+        aria-label={`${dates[0]!.short} to ${dates.at(-1)!.short}`}
+        className="gros-days grid grid-cols-15"
+      >
         {dates.map((d, i) => {
           const day = days[i] ?? { state: 'none' }
           const look = looks[day.state]
           const words = `${d.words}: ${look.word}`
           const cell = cn(
-            'gros-day flex items-center justify-center rounded-[var(--radius-sm)]',
+            'gros-day gros-mark flex w-full items-center justify-center rounded-[var(--radius-sm)]',
             look.cell
           )
           return (
@@ -100,12 +124,12 @@ export function DayStrip({
                   href={day.href}
                   aria-label={words}
                   title={words}
-                  className={cn(cell, 'w-full')}
+                  className={cell}
                 >
                   {d.number}
                 </Link>
               ) : (
-                <span title={words} className={cn(cell, 'w-full')}>
+                <span title={words} className={cell}>
                   <span aria-hidden>{d.number}</span>
                   <span className="sr-only">{words}</span>
                 </span>

@@ -5,11 +5,13 @@ import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { grosRoot } from './font'
 import { Mark } from './mark'
+import { defaultAssistant } from './nav'
 
 /**
  * StepCard (BRAND.md): the onboarding steps at the bottom of the lime
  * panel: which one the owner is on and which are done. A done step can be
- * clicked to go back; a step ahead cannot. Names are one word.
+ * clicked to go back; a step ahead cannot. Names are one word. Five in one
+ * row wherever the panel has room for the longest name, else they wrap.
  */
 export const onboardingSteps = [
   'Store',
@@ -30,10 +32,7 @@ export function StepCards({
   current: number
 }) {
   return (
-    <ol
-      aria-label="Steps"
-      className="gros-steps grid grid-cols-2 sm:grid-cols-5"
-    >
+    <ol aria-label="Steps" className="gros-steps grid">
       {steps.map((step, i) => {
         const state = i < current ? 'done' : i === current ? 'now' : 'todo'
         const body = (
@@ -41,7 +40,7 @@ export function StepCards({
             <span
               aria-hidden
               className={cn(
-                'gros-step-circle flex items-center justify-center rounded-[var(--radius-pill)]',
+                'gros-step-circle gros-mark flex items-center justify-center rounded-[var(--radius-pill)]',
                 state === 'todo'
                   ? 'gros-step-circle-todo text-[var(--forest)]'
                   : 'bg-[var(--forest)] text-[var(--white)]'
@@ -50,17 +49,16 @@ export function StepCards({
               {state === 'done' ? <Check size={18} strokeWidth={2} /> : i + 1}
             </span>
             <span className="type-body-strong">{step.name}</span>
-            <span className="sr-only">
-              {state === 'done'
-                ? ', done'
-                : state === 'now'
-                  ? ', now'
-                  : ', to do'}
-            </span>
+            {/* "Now" is said by aria-current; done and to do are said here. */}
+            {state !== 'now' ? (
+              <span className="sr-only">
+                {state === 'done' ? ', done' : ', to do'}
+              </span>
+            ) : null}
           </>
         )
         const look = cn(
-          'gros-step flex h-full flex-col justify-between rounded-[var(--radius-md)]',
+          'gros-step gros-mark flex h-full flex-col justify-between rounded-[var(--radius-md)]',
           state === 'now'
             ? 'bg-[var(--white)] text-[var(--ink)]'
             : 'bg-[var(--lime-tile)] text-[var(--forest)]'
@@ -91,10 +89,12 @@ export function StepCards({
  */
 export function FocusShell({
   panel,
+  assistant = defaultAssistant,
   children
 }: {
   /** The lime panel's content under the mark, usually StepCards. */
   panel?: ReactNode
+  assistant?: string
   children: ReactNode
 }) {
   return (
@@ -104,13 +104,16 @@ export function FocusShell({
       )}
     >
       <div className="grid w-full max-w-[var(--page-max)] grid-cols-1 gap-[var(--space-3)] rounded-[var(--radius-xl)] bg-[var(--white)] p-[var(--space-3)] lg:grid-cols-2">
-        <div className="relative flex flex-col justify-between gap-[var(--space-10)] overflow-hidden rounded-[var(--radius-lg)] bg-[var(--lime)] p-[var(--space-10)] text-[var(--forest)]">
+        <aside
+          aria-label="Where you are"
+          className="relative flex flex-col justify-between gap-[var(--space-10)] overflow-hidden rounded-[var(--radius-lg)] bg-[var(--lime)] p-[var(--space-10)] text-[var(--forest)]"
+        >
           <div className="relative flex items-center gap-[var(--space-3)]">
             <Mark size={44} decorative />
-            <span className="type-heading">GROS</span>
+            <span className="type-heading">{assistant}</span>
           </div>
           <div className="relative">{panel}</div>
-        </div>
+        </aside>
         <main className="flex flex-col justify-center gap-[var(--space-7)] p-[var(--space-8)]">
           {children}
         </main>

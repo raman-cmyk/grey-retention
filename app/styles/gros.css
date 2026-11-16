@@ -256,6 +256,8 @@
   /* Step cards: at least 116 px, 16 px padding, 10 px apart, a 30 px circle. */
   .gros .gros-steps {
     gap: 10px;
+    /* As many in a row as fit a one-word name (Discount) and its padding. */
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
   }
   .gros .gros-step {
     min-height: 116px;
@@ -278,5 +280,32 @@
   .gros .gros-progress-circle {
     width: 32px;
     height: 32px;
+  }
+
+  /* A row's words keep room for the title; the action wraps below them. */
+  .gros .gros-row-words {
+    min-width: calc(var(--space-12) * 3);
+  }
+  /* A text email's thumbnail: three lines, the last one shorter. */
+  .gros .gros-text-line,
+  .gros .gros-text-line-short {
+    height: var(--space-1);
+  }
+  .gros .gros-text-line {
+    width: 100%;
+  }
+  .gros .gros-text-line-short {
+    width: 66%;
+  }
+
+  /*
+   * Marks whose color is their meaning (day cells, legend dots, the bar, the
+   * current menu item, step circles) keep their colors when the system
+   * forces its own; each also has its words for screen readers.
+   */
+  @media (forced-colors: active) {
+    .gros .gros-mark {
+      forced-color-adjust: none;
+    }
   }
 }

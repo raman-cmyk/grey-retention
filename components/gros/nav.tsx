@@ -23,58 +23,64 @@ export const navItems = [
   { key: 'results', label: 'Results', href: '/results' as Route }
 ] as const
 export type NavKey = (typeof navItems)[number]['key']
+/** The page's place in the bar: a menu item, or one of the two buttons. */
+export type NavPlace = NavKey | 'settings' | 'ask'
 export const settingsHref: Route = '/settings'
 export const askHref: Route = '/gros'
+/** The assistant's name (the white label may rename it). */
+export const defaultAssistant = 'GROS'
 
 export function TopBar({
   current,
-  title
+  title,
+  assistant = defaultAssistant
 }: {
-  /** The page's menu item; none for a page outside the five (Settings). */
-  current?: NavKey
+  current?: NavPlace
   /** The page title; on Home it greets the store. */
   title: string
+  assistant?: string
 }) {
+  const here = (place: NavPlace) => (place === current ? 'page' : undefined)
   return (
     <header className="flex flex-wrap items-center justify-between gap-[var(--space-4)] py-[var(--space-6)]">
       <div className="flex min-w-0 items-center gap-[var(--space-3)]">
         <Mark size={44} />
-        <h1 className="type-page-title truncate">{title}</h1>
+        {/* The whole title wraps rather than losing the store's name. */}
+        <h1 className="type-page-title min-w-0 break-words">{title}</h1>
       </div>
       <nav aria-label="Main">
         <ul className="gros-menu flex flex-wrap items-center rounded-[var(--radius-pill)] bg-[var(--white)]">
-          {navItems.map((item) => {
-            const here = item.key === current
-            return (
-              <li key={item.key}>
-                <Link
-                  href={item.href}
-                  aria-current={here ? 'page' : undefined}
-                  className={cn(
-                    'gros-menu-item inline-flex items-center rounded-[var(--radius-pill)]',
-                    here
-                      ? 'bg-[var(--lime)] font-semibold text-[var(--forest)]'
-                      : 'font-medium text-[var(--stone)]'
-                  )}
-                >
-                  {item.label}
-                </Link>
-              </li>
-            )
-          })}
+          {navItems.map((item) => (
+            <li key={item.key}>
+              <Link
+                href={item.href}
+                aria-current={here(item.key)}
+                className={cn(
+                  'gros-menu-item gros-mark inline-flex items-center rounded-[var(--radius-pill)]',
+                  item.key === current
+                    ? 'bg-[var(--lime)] font-semibold text-[var(--forest)]'
+                    : 'font-medium text-[var(--stone)]'
+                )}
+              >
+                {item.label}
+              </Link>
+            </li>
+          ))}
         </ul>
       </nav>
       <div className="flex items-center gap-[var(--space-2)]">
         <Link
           href={askHref}
+          aria-current={here('ask')}
           className="type-body-strong inline-flex h-[var(--control-md)] items-center gap-[var(--space-2)] rounded-[var(--radius-pill)] bg-[var(--white)] px-[var(--space-6)] text-[var(--ink)]"
         >
           <MessageCircle aria-hidden size={20} strokeWidth={2} />
-          Ask GROS
+          Ask {assistant}
         </Link>
         <Link
           href={settingsHref}
           aria-label="Settings"
+          aria-current={here('settings')}
           className="inline-flex size-[var(--control-md)] items-center justify-center rounded-[var(--radius-pill)] bg-[var(--white)] text-[var(--ink)]"
         >
           <Settings aria-hidden size={22} strokeWidth={2} />
@@ -85,30 +91,45 @@ export function TopBar({
 }
 
 /**
- * An app page: the mist page, the top bar, then rows of cards 20 px apart,
- * at most 1320 px wide with a 24 px gutter. Cards stack in one column on a
- * narrow screen; nothing scrolls sideways.
+ * An app page: the mist page, a skip link, the top bar, then rows of cards
+ * 20 px apart; the content at most 1320 px wide inside a 24 px gutter.
+ * Cards stack in one column on a narrow screen; nothing scrolls sideways.
+ * GROS screens live in their own route group (no old AppShell around them).
  */
 export function AppPage({
   current,
   title,
+  assistant,
   children
 }: {
-  current?: NavKey
+  current?: NavPlace
   title: string
+  assistant?: string
   children: ReactNode
 }) {
   return (
     <div className={grosRoot('min-h-dvh')}>
-      <div className="mx-auto w-full max-w-[var(--page-max)] px-[var(--space-6)] pb-[var(--space-12)]">
-        <TopBar current={current} title={title} />
-        <main className="flex flex-col gap-[var(--space-5)]">{children}</main>
+      <a
+        href="#main-content"
+        className="type-body-strong sr-only rounded-[var(--radius-pill)] bg-[var(--forest)] px-[var(--space-6)] py-[var(--space-3)] text-[var(--white)] focus:not-sr-only focus:absolute focus:top-[var(--space-4)] focus:left-[var(--space-4)]"
+      >
+        Skip to content
+      </a>
+      <div className="mx-auto w-full max-w-[calc(var(--page-max)+var(--space-6)*2)] px-[var(--space-6)] pb-[var(--space-12)]">
+        <TopBar current={current} title={title} assistant={assistant} />
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex flex-col gap-[var(--space-5)] outline-none"
+        >
+          {children}
+        </main>
       </div>
     </div>
   )
 }
 
-/** Cards side by side on a laptop, one column on a narrow screen. */
+/** Cards side by side on a laptop, one column below it. */
 export function CardRow({
   children,
   columns = 2
@@ -120,7 +141,7 @@ export function CardRow({
     <div
       className={cn(
         'grid grid-cols-1 gap-[var(--space-5)]',
-        columns === 3 ? 'lg:grid-cols-3' : 'md:grid-cols-2'
+        columns === 3 ? 'xl:grid-cols-3' : 'lg:grid-cols-2'
       )}
     >
       {children}

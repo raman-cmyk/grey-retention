@@ -4,9 +4,10 @@ import { cn } from '@/lib/utils'
 /**
  * ListRow (BRAND.md): one email (or code, segment or rule) as a thumbnail,
  * a title, one line of details and one action on the right: a button, or a
- * status pill when there is nothing to do. The row that is next has a
- * lime-soft background (and the forest button); only one row in a list is
- * next. No divider lines: rows sit 10 px apart.
+ * status pill when there is nothing to do. Only the row that is next has a
+ * fill (lime-soft, with the forest button); only one row in a list is
+ * next. No divider lines: rows sit 10 px apart. On a narrow screen the
+ * action drops under the words instead of squeezing the title.
  */
 export function ListRow({
   thumbnail,
@@ -26,12 +27,12 @@ export function ListRow({
   return (
     <li
       className={cn(
-        'gros-row flex items-center rounded-[var(--radius-md)]',
-        next ? 'bg-[var(--lime-soft)]' : 'bg-[var(--mist)]'
+        'gros-row flex flex-wrap items-center rounded-[var(--radius-md)]',
+        next && 'bg-[var(--lime-soft)]'
       )}
     >
       {thumbnail}
-      <div className="flex min-w-0 flex-1 flex-col gap-[var(--space-1)]">
+      <div className="gros-row-words flex min-w-0 flex-1 flex-col gap-[var(--space-1)]">
         <p className="type-body-strong truncate">{title}</p>
         <p
           className={cn(
@@ -82,14 +83,19 @@ export function TextThumb() {
   return (
     <span
       aria-hidden
-      className="gros-thumb flex shrink-0 flex-col justify-center gap-[var(--space-1)] rounded-[var(--radius-sm)] bg-[var(--white)] px-[var(--space-2)]"
+      className="gros-thumb flex shrink-0 flex-col justify-center gap-[var(--space-1)] rounded-[var(--radius-sm)] bg-[var(--mist)] px-[var(--space-2)]"
     >
-      {['w-full', 'w-full', 'w-2/3'].map((w, i) => (
-        <span
-          key={i}
-          className={cn('h-1 rounded-[var(--radius-pill)] bg-[var(--line)]', w)}
-        />
-      ))}
+      {['gros-text-line', 'gros-text-line', 'gros-text-line-short'].map(
+        (line, i) => (
+          <span
+            key={i}
+            className={cn(
+              line,
+              'rounded-[var(--radius-pill)] bg-[var(--stone)]'
+            )}
+          />
+        )
+      )}
     </span>
   )
 }

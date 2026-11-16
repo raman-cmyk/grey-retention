@@ -6,8 +6,8 @@ import { cn } from '@/lib/utils'
  * Progress (BRAND.md): how every long job is shown: a title, one bar, and
  * the real steps in plain words with the current one marked. The bar moves
  * per finished step and never fakes movement: no spinner, no percentage,
- * no time estimate. A failed step turns into what happened and a way to
- * try again; finished steps stay done.
+ * no time estimate. A failed step turns into the error state (what
+ * happened and what to do, then one Try again); finished steps stay done.
  */
 export type ProgressState = 'done' | 'now' | 'next' | 'failed'
 export type ProgressStep = {
@@ -32,51 +32,57 @@ export function Progress({
   /** What is being made: Creating your email. */
   title: string
   steps: readonly ProgressStep[]
-  /** The Try again button, shown on a failed step. */
+  /** The one Try again button, shown on the first failed step. */
   retry?: ReactNode
 }) {
   const done = steps.filter((s) => s.state === 'done').length
+  const firstFailed = steps.findIndex((s) => s.state === 'failed')
   return (
     <div className="flex flex-col gap-[var(--space-6)]">
       <h2 className="type-heading">{title}</h2>
-      <div
-        role="progressbar"
-        aria-label={title}
-        aria-valuemin={0}
-        aria-valuemax={steps.length}
-        aria-valuenow={done}
-        aria-valuetext={`${done} of ${steps.length} steps done`}
-        className="gros-bar overflow-hidden rounded-[var(--radius-pill)] bg-[var(--mist)]"
-      >
+      {steps.length > 0 ? (
         <div
-          className="h-full rounded-[var(--radius-pill)] bg-[var(--forest)]"
-          style={{
-            width: `${steps.length ? (done / steps.length) * 100 : 0}%`
-          }}
-        />
-      </div>
+          role="progressbar"
+          aria-label={title}
+          aria-valuemin={0}
+          aria-valuemax={steps.length}
+          aria-valuenow={done}
+          aria-valuetext={`${done} of ${steps.length} steps done`}
+          className="gros-bar overflow-hidden rounded-[var(--radius-pill)] bg-[var(--mist)]"
+        >
+          <div
+            className="gros-mark h-full rounded-[var(--radius-pill)] bg-[var(--forest)]"
+            style={{ width: `${(done / steps.length) * 100}%` }}
+          />
+        </div>
+      ) : null}
       <ol className="flex flex-col gap-[var(--space-4)]">
         {steps.map((step, i) =>
           step.state === 'failed' ? (
             <li
               key={i}
-              role="alert"
               className="flex items-start gap-[var(--space-4)] rounded-[var(--radius-md)] bg-[var(--signal-soft)] p-[var(--space-4)]"
             >
               <span
                 aria-hidden
-                className="gros-progress-circle flex shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--white)] text-[var(--signal-ink)]"
+                className="gros-error-mark gros-mark flex shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--white)] text-[var(--signal-ink)]"
               >
-                <TriangleAlert size={18} strokeWidth={2} />
+                <TriangleAlert size={22} strokeWidth={2} />
               </span>
-              <div className="flex flex-1 flex-col gap-[var(--space-2)]">
-                <p className="type-body-strong text-[var(--signal-ink)]">
-                  {step.text}
-                </p>
-                {step.reason ? (
-                  <p className="type-body text-[var(--ink)]">{step.reason}</p>
-                ) : null}
-                {retry}
+              <div className="flex flex-1 flex-col items-start gap-[var(--space-3)]">
+                {/* Only what happened and what to do is read out. */}
+                <div
+                  role="alert"
+                  className="flex flex-col gap-[var(--space-1)]"
+                >
+                  <p className="type-body-strong text-[var(--signal-ink)]">
+                    {step.text}
+                  </p>
+                  {step.reason ? (
+                    <p className="type-body text-[var(--ink)]">{step.reason}</p>
+                  ) : null}
+                </div>
+                {i === firstFailed ? retry : null}
               </div>
             </li>
           ) : (
@@ -84,7 +90,7 @@ export function Progress({
               <span
                 aria-hidden
                 className={cn(
-                  'gros-progress-circle flex shrink-0 items-center justify-center rounded-[var(--radius-pill)]',
+                  'gros-progress-circle gros-mark flex shrink-0 items-center justify-center rounded-[var(--radius-pill)]',
                   step.state === 'done' &&
                     'bg-[var(--lime)] text-[var(--forest)]',
                   step.state === 'now' && 'bg-[var(--forest)]',
