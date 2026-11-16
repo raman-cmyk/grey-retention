@@ -134,5 +134,5 @@ export async function acceptInvite(
     secure: process.env.NODE_ENV === 'production',
     path: '/'
   })
-  redirect('/dashboard')
+  redirect('/home')
 }

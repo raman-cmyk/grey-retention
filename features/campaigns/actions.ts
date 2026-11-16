@@ -69,7 +69,7 @@ export async function saveCampaign(
     return failure(e)
   }
   revalidatePath('/campaign-agent')
-  revalidatePath('/dashboard')
+  revalidatePath('/home')
   revalidatePath(`/campaigns/${id}`)
   redirect(`/campaigns/${id}` as Route)
 }
@@ -89,7 +89,7 @@ export async function approveCalendar(
     if (error) throw error
     revalidatePath(`/campaigns/${id}`)
     revalidatePath('/campaign-agent')
-    revalidatePath('/dashboard')
+    revalidatePath('/home')
     return { message: 'Calendar version approved.' }
   } catch (e) {
     return failure(e)

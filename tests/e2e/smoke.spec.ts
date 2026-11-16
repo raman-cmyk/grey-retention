@@ -10,39 +10,43 @@ test('client login presents a labelled access form', async ({ page }) => {
   await expect(page.getByLabel('Password')).toBeVisible()
 })
 
-test('workspace overview adapts to desktop and mobile viewports', async ({
+test('Home adapts to desktop and mobile viewports (UI-HOMEb)', async ({
   page
-}, testInfo) => {
+}) => {
   await login(page)
   await expect(
-    page.getByRole('heading', { name: 'Dashboard', exact: true })
+    page.getByRole('heading', {
+      level: 1,
+      name: /^Good (morning|afternoon|evening), /
+    })
   ).toBeVisible()
   await expect(
-    page.getByRole('heading', { name: 'Campaign workspace' })
+    page.getByRole('heading', { name: 'Your next 15 days' })
   ).toBeVisible()
-
-  if (testInfo.project.name === 'mobile-chromium') {
-    await expect(page.getByText('Autumn field notes').first()).toBeVisible()
-    await page.getByRole('button', { name: 'Open navigation' }).click()
-    await expect(
-      page.getByRole('navigation', {
-        name: 'Client workspace mobile navigation'
-      })
-    ).toBeVisible()
-  } else {
-    await expect(
-      page
-        .getByRole('navigation', { name: 'Client workspace navigation' })
-        .getByRole('link', { name: 'Dashboard', exact: true })
-    ).toHaveAttribute('aria-current', 'page')
-  }
+  await expect(page.getByRole('heading', { name: 'Next emails' })).toBeVisible()
+  // The GROS top bar wraps on a phone; nothing hides behind a menu button.
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Main' })
+      .getByRole('link', { name: 'Home', exact: true })
+  ).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible()
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth
+    )
+  ).toBe(true)
 })
 
 test('authenticated identities remain separated by role surface', async ({
   page
 }) => {
   const cases = [
-    { surface: 'client', path: '/dashboard', heading: 'Dashboard' },
+    {
+      surface: 'client',
+      path: '/home',
+      heading: /^Good (morning|afternoon|evening), /
+    },
     {
       surface: 'admin',
       path: '/admin/dashboard',
