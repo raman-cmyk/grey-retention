@@ -38,7 +38,7 @@ const serverEnvironmentSchema = z.object({
   INBOX_TRANSPORT: z.string().optional(),
   INBOX_IMAP_USER: z.string().optional(),
   INBOX_IMAP_APP_PASSWORD: z.string().optional(),
-  // REAL-01b1: names the inbox subscribed with, comma separated (not secret).
+  // REAL-1b1: names the inbox subscribed with, comma separated (not secret).
   INBOX_SUBSCRIBER_NAMES: z.string().optional()
 })
 

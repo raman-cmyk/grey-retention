@@ -9,27 +9,40 @@ export type InboxConfig = (
 ) & {
   /** The names the inbox subscribed with (`INBOX_SUBSCRIBER_NAMES`). */
   subscriberNames?: string[]
+  /**
+   * The inbox's own address from `INBOX_IMAP_USER`, also while the inbox
+   * cannot be read, so the privacy cleaner always knows it.
+   */
+  inboxAddresses?: string[]
 }
 
 type Env = Record<string, string | undefined>
 
 /**
- * REAL-01b1: `INBOX_SUBSCRIBER_NAMES` (optional, not secret) lists the
- * names the inbox subscribed to newsletters with, comma separated (e.g.
- * "Sam Rivera, Sam"), so the privacy cleaner removes them from real
- * brands' emails. At most 20 names of 2 to 100 characters; never logged.
+ * REAL-1b1: `INBOX_SUBSCRIBER_NAMES` (optional, not secret) lists the names
+ * the inbox subscribed to newsletters with, comma separated (e.g. "Sam
+ * Rivera, Sam"), so the privacy cleaner removes them from real brands'
+ * emails wherever they appear. Use a persona's name, never a common word
+ * ("Rose", "May"): every whole-word copy of it is removed. At most 20 names
+ * of 2 to 100 characters; never logged.
  */
 export function subscriberNames(env: Env = process.env) {
   return (env.INBOX_SUBSCRIBER_NAMES ?? '')
+    .normalize('NFC')
     .split(',')
     .map((n) => n.replace(/\s+/g, ' ').trim())
     .filter((n) => n.length >= 2 && n.length <= 100)
     .slice(0, 20)
 }
 
-/** The inbox to read (see `inboxTransport`) and its subscriber names. */
+/** The inbox to read (see `inboxTransport`), its address and its names. */
 export function inboxConfig(env: Env = process.env): InboxConfig {
-  return { ...inboxTransport(env), subscriberNames: subscriberNames(env) }
+  const user = (env.INBOX_IMAP_USER ?? '').trim().toLowerCase()
+  return {
+    ...inboxTransport(env),
+    subscriberNames: subscriberNames(env),
+    inboxAddresses: /^[^@\s]+@[^@\s]+$/.test(user) ? [user] : []
+  }
 }
 
 /** True for a Supabase URL on this machine (local development and tests). */
