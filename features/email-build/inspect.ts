@@ -182,8 +182,8 @@ export function lockedLinks(locked: LockedContent) {
 
 const markup = new RegExp(`[{}<>]|${hiddenChars.source}`)
 
-/** A web address or an email address typed into words. */
-const typedLink =
+/** A web address or an email address typed into words (TXT-001 reuses it). */
+export const typedLink =
   /\bhttps?:\/\/\S+|\bwww\.\S+|\b[\w.+-]+@[\w-]+\.[\w.-]+|\b[a-z0-9-]+\.(?:com|net|org|io|co|shop|store|us|uk|de|fr|ca|au|nz|in)(?:\/\S*)?\b/i
 
 /**
