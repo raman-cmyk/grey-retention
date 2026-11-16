@@ -6,6 +6,7 @@ import {
   listsPath,
   messagesPath,
   segmentsPath,
+  templateBodyPath,
   variationsPath
 } from './history'
 import { recorded } from './recorded'
@@ -206,7 +207,43 @@ export type HistoryScenario = {
   variationsApart?: boolean
   /** The reports say there is more than one page. */
   reportsCut?: boolean
+  /** PIC-23: these messages' templates are gone (404). */
+  templatesGone?: string[]
+  /** PIC-23: the key cannot read templates (403). */
+  noTemplateScope?: boolean
 }
+
+/**
+ * PIC-23: the words of the sent emails, as Klaviyo keeps each template
+ * (all made up). The founder's letter is a plain-text editor's, with a
+ * template tag and a signature; one email holds a name and an address the
+ * owner typed, which the caller must redact; the rest are designed.
+ */
+const bodies: Record<
+  string,
+  { editor: string; html: string; text: string | null }
+> = {
+  MsgA08: {
+    editor: 'SIMPLE',
+    html: '<p>Hi {{ first_name|default:"friend" }},</p><p>I started Cedar Goods in my garage with one sewing machine and a lot of stubbornness. Every shirt still gets checked by hand before it ships.</p><p>Thank you for being here. If you ever have a question, just hit reply. I read every one.</p><p>Warmly,<br>Maya</p>',
+    text: 'Hi {{ first_name|default:"friend" }},\n\nI started Cedar Goods in my garage with one sewing machine and a lot of stubbornness. Every shirt still gets checked by hand before it ships.\n\nThank you for being here. If you ever have a question, just hit reply. I read every one.\n\nWarmly,\nMaya'
+  },
+  MsgA05: {
+    editor: 'USER_DRAGGABLE',
+    html: '<div style="display:none">Our customers’ favourite layers</div><h1>Loved by you</h1><p>“The overshirt I wear every day.” Jordan Sample, someone@example.com</p><a href="https://cedar.example/layers">Shop now</a>',
+    text: null
+  },
+  MsgA03: {
+    editor: 'CODE',
+    html: '<h1>How we make the Weekend Knit</h1><p>We knit it slowly, on old machines, so it keeps its shape.</p>',
+    text: null
+  }
+}
+const designed = (e: { id: string; subject: string }) => ({
+  editor: 'SYSTEM_DRAGGABLE',
+  html: `<h1>${e.subject}</h1><p>See what is new this week.</p><a href="https://cedar.example">Shop now</a>`,
+  text: null
+})
 
 const variationIds = (e: Email) =>
   e.testSubject ? [`varA${e.id}`, `varB${e.id}`] : [`varA${e.id}`]
@@ -258,7 +295,8 @@ export function historyRecordings(options: HistoryScenario = {}) {
             subject: i ? e.testSubject : e.subject,
             preview_text: e.preview,
             from_label: 'Cedar Goods',
-            from_email: 'hello@cedar.example'
+            from_email: 'hello@cedar.example',
+            template_id: i ? `TplB${e.id}` : `Tpl${e.id}`
           }
         }
       }
@@ -299,6 +337,31 @@ export function historyRecordings(options: HistoryScenario = {}) {
     scheduled: page(
       scheduledEmails.map((e) => message(e, 'scheduled')),
       { included: included(scheduledEmails) }
+    ),
+    /** PIC-23: each variation's template, by id, as Klaviyo keeps it. */
+    templates: new Map(
+      [...sentEmails, ...scheduledEmails].flatMap((e) =>
+        variationIds(e).map((_, i) => {
+          const id = i ? `TplB${e.id}` : `Tpl${e.id}`
+          const b = bodies[e.id] ?? designed(e)
+          return [
+            id,
+            json(200, {
+              data: {
+                type: 'template',
+                id,
+                attributes: {
+                  editor_type: b.editor,
+                  html: i ? `${b.html}<p>(variation B)</p>` : b.html,
+                  text: b.text,
+                  updated: '2026-01-01T00:00:00+00:00'
+                }
+              },
+              links: { self: `https://a.klaviyo.com/api/templates/${id}` }
+            })
+          ] as const
+        })
+      )
     ),
     /** Each message's variations, asked for one message at a time. */
     variations: new Map(
@@ -494,6 +557,7 @@ export type HistoryFailure =
   | 'lists'
   | 'segments'
   | 'variations'
+  | 'templates'
 
 /**
  * A transport answering from the recordings, like Klaviyo: the account,
@@ -533,6 +597,15 @@ export function recordedHistoryTransport(
     if (path === segmentsPath) return fail('segments') ?? r.segments
     for (const [id, answer] of r.variations)
       if (path === variationsPath(id)) return fail('variations') ?? answer
+    for (const [id, answer] of r.templates)
+      if (path === templateBodyPath(id)) {
+        if (options.noTemplateScope)
+          return json(403, {
+            errors: [{ status: 403, code: 'permission_denied' }]
+          })
+        if (options.templatesGone?.some((m) => id.endsWith(m))) return notFound
+        return fail('templates') ?? answer
+      }
     return notFound
   }) as KlaviyoTransport & { calls: string[] }
   transport.calls = calls
