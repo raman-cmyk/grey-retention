@@ -90,7 +90,7 @@ const writes = (system: string, n: number) => ({
  */
 const model = (
   opts: {
-    writer?: () => AiRunResult
+    writer?: (call: Parameters<AiCall>[0]) => AiRunResult
     clock?: { t: number; step: number }
   } = {}
 ) => {
@@ -100,7 +100,7 @@ const model = (
     const who = call.callerKey.split(':')[0]
     if (who === 'copywriter')
       return opts.writer
-        ? opts.writer()
+        ? opts.writer(call)
         : answer(writes(call.request.system, ++n))
     if (who === 'brand-inspector' || who === 'email-inspector')
       return answer({ problems: [] })
@@ -258,6 +258,34 @@ describe('the copy step with the agents (REL-AI part 2b)', () => {
     expect(userOf(ai, 'copywriter', 1)).toContain(
       'Another email in this plan already has this subject'
     )
+  })
+
+  it('sends a heading too long for its section back to the Copywriter, to use fewer words (DST-PIC #20)', async () => {
+    let n = 0
+    const long =
+      'More to love from our shop this week, picked for your quiet evenings'
+    const ai = model({
+      writer: (call) => {
+        const written = writes(call.request.system, ++n)
+        return answer({
+          ...written,
+          blocks: written.blocks.map((b) =>
+            b.type === 'product_grid_2col' && n === 1
+              ? { ...b, words: { ...b.words, heading: long } }
+              : b
+          )
+        })
+      }
+    })
+    const result = await buildEmail(
+      { planned, store: await store(), offers: sampleOffers },
+      ctxWith(agentsWith(ai))
+    )
+    expect(result.ok).toBe(true)
+    expect(userOf(ai, 'copywriter', 1)).toContain(
+      `The heading is ${long.length} characters; at most 60. Use fewer, shorter words.`
+    )
+    expect(result.ok && result.email.html).not.toContain(long)
   })
 
   it('saves its rounds when the next call would not fit, and the next claim goes on without paying twice', async () => {
