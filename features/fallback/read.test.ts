@@ -24,16 +24,26 @@ function fakeDb(result: { data: unknown; error: unknown }) {
 }
 
 describe('the workspace fallback log (REL-084)', () => {
-  it('reads the workspace’s own lines, newest first, in plain words', async () => {
+  it('reads the workspace’s own lines, newest first, in the owner’s words', async () => {
     const { db, calls } = fakeDb({
       data: [
         {
           id: 'f1',
           agent: 'content-locker',
+          reason_code: 'content_replaced',
           reason: 'a planned product is no longer in the catalog.',
           fallback: 'used another product.',
           occurrences: 2,
           last_seen_at: '2026-11-15T00:00:00Z'
+        },
+        {
+          id: 'f2',
+          agent: 'design-critic',
+          reason_code: 'email_critic_answer_invalid',
+          reason: 'The Design critic kept answering in the wrong shape.',
+          fallback: 'Drew the email with its coded blocks.',
+          occurrences: 1,
+          last_seen_at: '2026-11-14T00:00:00Z'
         }
       ],
       error: null
@@ -44,16 +54,29 @@ describe('the workspace fallback log (REL-084)', () => {
         {
           id: 'f1',
           agent: 'content-locker',
+          who: 'Choosing the email’s content',
           reason: 'a planned product is no longer in the catalog.',
           instead: 'used another product.',
           times: 2,
           lastSeen: '2026-11-15T00:00:00Z'
+        },
+        {
+          id: 'f2',
+          agent: 'design-critic',
+          who: 'The design studio',
+          reason: 'The AI kept giving answers we could not use.',
+          instead: 'Drew the email with its coded blocks.',
+          times: 1,
+          lastSeen: '2026-11-14T00:00:00Z'
         }
       ]
     })
     expect(calls).toEqual([
       ['from', ['agent_fallbacks']],
-      ['select', ['id,agent,reason,fallback,occurrences,last_seen_at']],
+      [
+        'select',
+        ['id,agent,reason_code,reason,fallback,occurrences,last_seen_at']
+      ],
       ['eq', ['tenant_id', tenant]],
       ['order', ['last_seen_at', { ascending: false }]],
       ['order', ['id']],
