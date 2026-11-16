@@ -33,6 +33,12 @@ export const emailTypes = [
 ] as const
 export type EmailType = (typeof emailTypes)[number]
 
+/** D26: a designed email, or a text email (a short personal letter). */
+export const emailFormats = ['designed', 'text'] as const
+export type EmailFormat = (typeof emailFormats)[number]
+/** At most one email in this many is a text email (TXT-001f). */
+export const textShareOneIn = 3
+
 /** Local send times the planner may use. */
 export const sendHours = { from: '07:00', to: '21:00' } as const
 /** The shared planning policy (features/workflow/domain/policy.ts). */
@@ -146,6 +152,8 @@ export type Slot = {
   productIds: string[]
   offerId: string | null
   audienceId: string
+  /** D26 (TXT-001f): missing (the code calendar's, older plans): designed. */
+  format?: EmailFormat
 }
 
 export type PlannedSlot = {
@@ -156,6 +164,8 @@ export type PlannedSlot = {
   products: { id: string; title: string }[]
   offer: { id: string; code: string; percent: number } | null
   audience: { id: string; label: string }
+  /** D26: a text email; missing: a designed one. */
+  format?: 'text'
   /** Why this email: the brief's goal and the facts behind it. */
   why: string
   evidence: { id: string; fact: string }[]
@@ -349,7 +359,10 @@ const slotSchema = z.strictObject({
   angle: z.string().trim().min(3).max(80),
   productIds: z.array(z.string().min(1).max(120)).max(3),
   offerId: z.string().min(1).max(120).nullable(),
-  audienceId: z.string().min(1).max(120)
+  audienceId: z.string().min(1).max(120),
+  // Asked for (the answer shape requires it); an answer that leaves it out
+  // (a provider that does not enforce the shape) is a designed email.
+  format: z.enum(emailFormats).optional()
 })
 const slotAnswer = z.strictObject({
   slots: z.array(slotSchema).min(1).max(10)
@@ -378,13 +391,14 @@ export function productsForPlanner(input: PlanInput) {
 
 export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
   name: 'calendar-planner',
-  version: '2026-11-11.2',
+  version: '2026-11-16.1',
   // AGENT_MAP.md models: the Calendar planner runs on 2.5 Pro.
   purpose: 'plan',
   usesBrandBook: true,
   instructions: [
     'You are the Calendar planner for a small online store that sends marketing emails.',
-    'Turn the brief into email slots for the next 15 days: for each, the action it serves (actionIndex), date, local send time, email type, a short angle in plain words, up to three products, the offer (or null) and the audience.',
+    'Turn the brief into email slots for the next 15 days: for each, the action it serves (actionIndex), date, local send time, email type, a short angle in plain words, up to three products, the offer (or null), the audience and the format.',
+    `Format: "designed" for an email with pictures and sections, or "text" for a short personal letter from the store (a story, a note from the founder, a quick question, a thank-you, a reminder about one product). A text email names one product at most. At most one email in ${textShareOneIn} is a text email (a plan of fewer than ${textShareOneIn} emails has none).`,
     'Use only the products, offers and audiences given, by id. Never use a day with no emails, or a product before its availableFrom day.',
     `Keep to sends_per_week. An email of type "offer" carries an offer; other types carry none. Offers: at most ${offerSharePercent}% of a week’s emails, and at least ${offerSpacingDays} days apart. One email per audience per day. Send times between ${sendHours.from} and ${sendHours.to}.`,
     'If previous_plan is given, revise it: fix every problem listed against its slotIndex and keep what works.',
@@ -434,7 +448,8 @@ export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
               angle: { type: 'string' },
               productIds: { type: 'array', items: { type: 'string' } },
               offerId: { type: ['string', 'null'] },
-              audienceId: { type: 'string' }
+              audienceId: { type: 'string' },
+              format: { type: 'string', enum: [...emailFormats] }
             },
             required: [
               'actionIndex',
@@ -444,7 +459,8 @@ export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
               'angle',
               'productIds',
               'offerId',
-              'audienceId'
+              'audienceId',
+              'format'
             ]
           }
         }
@@ -473,6 +489,8 @@ export type CalendarRule =
   | 'unknown_audience'
   | 'stated_fact'
   | 'send_time'
+  | 'text_products'
+  | 'text_share'
   | 'same_day'
   | 'weekly_cap'
   | 'audience_cap'
@@ -550,7 +568,33 @@ export function calendarProblems(
       )
     const stated = statedFact(s.angle, codes)
     if (stated) add(i, 'stated_fact', `the angle writes ${stated}.`)
+    if (s.format === 'text' && s.productIds.length > 1)
+      add(i, 'text_products', 'a text email names one product at most.')
   })
+  // D26: at most one email in `textShareOneIn` is a text email (rounded
+  // down: a plan of 4 has one, a plan of 2 none); the latest ones over it,
+  // by date, have to change. The emails already planned before this plan
+  // (`input.existing`) do not count.
+  const textMost = Math.floor(slots.length / textShareOneIn)
+  slots
+    .map((s, i) => ({ s, i }))
+    .filter(({ s }) => s.format === 'text')
+    .sort(
+      (a, b) =>
+        a.s.date.localeCompare(b.s.date) ||
+        a.s.time.localeCompare(b.s.time) ||
+        a.i - b.i
+    )
+    .slice(textMost)
+    .forEach(({ i }) =>
+      add(
+        i,
+        'text_share',
+        textMost
+          ? `at most ${textMost} of these ${slots.length} emails may be text emails.`
+          : `a plan of ${slots.length} ${slots.length === 1 ? 'email' : 'emails'} has no text email (one in ${textShareOneIn} at most).`
+      )
+    )
   // Across slots: one per audience per day, sends per week, and the shared
   // planning guards (audience cap, spacing between offers).
   const rows = [
@@ -651,10 +695,37 @@ export function calendarProblems(
   return problems
 }
 
+const textRules = new Set<Problem['rule']>(['text_products', 'text_share'])
+
+/**
+ * D26 (D16, fall back safely): a slot that breaks only the text rules is
+ * fixed by code, never dropped: a text email over the share becomes a
+ * designed one, and one with more products keeps only its lead product.
+ * Null when it breaks another rule too (it is dropped).
+ */
+function textFixed(slot: Slot, problems: readonly Problem[]): Slot | null {
+  if (problems.some((p) => !textRules.has(p.rule))) return null
+  if (problems.some((p) => p.rule === 'text_share')) {
+    const designed = { ...slot }
+    delete designed.format
+    return designed
+  }
+  return { ...slot, productIds: slot.productIds.slice(0, 1) }
+}
+
+/** The slots that would be dropped: a problem code cannot fix. */
+const blocking = (issues: Map<number, Problem[]>) =>
+  [...issues.values()].filter((list) =>
+    list.some((p) => !textRules.has(p.rule))
+  ).length
+
 /**
  * The slots that ship: without the given problems, then checked again
- * until nothing new fails. Dropping a slot can raise a week's offer share,
- * so one pass is not enough; each pass only removes, so this ends.
+ * until nothing new fails. Dropping a slot can raise a week's offer share
+ * (or lower the plan's text emails allowed), so one pass is not enough. A
+ * slot that breaks only the text rules is fixed instead (`textFixed`,
+ * counted in `changed`). Each pass removes a slot, a text email or a
+ * product, so this ends.
  */
 export function keepPassing(
   slots: Slot[],
@@ -663,19 +734,27 @@ export function keepPassing(
   brief: BriefAction[]
 ) {
   const dropped: Problem[][] = []
-  let kept = slots.filter((_, i) => {
-    if (issues.has(i)) dropped.push(issues.get(i)!)
-    return !issues.has(i)
-  })
+  let changed = 0
+  const settle = (list: Slot[], found: Map<number, Problem[]>) =>
+    list.flatMap((s, i) => {
+      const problems = found.get(i)
+      if (!problems) return [s]
+      const fixed = textFixed(s, problems)
+      if (fixed) {
+        changed++
+        return [fixed]
+      }
+      // The owner reads why it was dropped, never a text rule code fixes.
+      dropped.push(problems.filter((p) => !textRules.has(p.rule)))
+      return []
+    })
+  let kept = settle(slots, issues)
   for (;;) {
     const again = calendarProblems(kept, input, brief)
     if (!again.size) break
-    kept = kept.filter((_, i) => {
-      if (again.has(i)) dropped.push(again.get(i)!)
-      return !again.has(i)
-    })
+    kept = settle(kept, again)
   }
-  return { kept, dropped }
+  return { kept, dropped, changed }
 }
 
 /** A plain calendar from the brief: one slot per action, where it fits. */
@@ -971,15 +1050,16 @@ export async function planFifteenDays(
         )
       }
     }
-    if (!best || issues.size <= best.issues.size) best = { slots, issues }
-    if (!issues.size || source.planner === 'code' || round === criticRounds)
-      break
+    // Problems code fixes itself (the text rules) never cost a round.
+    const failing = blocking(issues)
+    if (!best || failing <= blocking(best.issues)) best = { slots, issues }
+    if (!failing || source.planner === 'code' || round === criticRounds) break
     previous = { slots, problems: describeIssues(issues) }
   }
   if (!best?.slots.length) source.critic = 'skipped'
 
   // 3. What still fails is dropped, and the rest is checked again.
-  const { kept, dropped } = keepPassing(
+  const { kept, dropped, changed } = keepPassing(
     best?.slots ?? [],
     best?.issues ?? new Map(),
     input,
@@ -1008,6 +1088,15 @@ export async function planFifteenDays(
           )
         ].sort()
       }
+    )
+  if (changed)
+    await log(
+      'calendar-rules',
+      'text_changed',
+      `${count(changed)} broke the text email rules.`,
+      `Changed ${changed === 1 ? 'it' : 'them'} to fit: a designed email instead, or the text email with its lead product only.`,
+      criticRounds,
+      { changed }
     )
   if (byCritic)
     await log(
@@ -1041,6 +1130,8 @@ export const ruleWords: Record<CalendarRule | 'critic', string> = {
   unknown_audience: 'there is no audience to send it to',
   stated_fact: 'its idea stated a number your store has not confirmed',
   send_time: 'its time is outside your send hours',
+  text_products: 'it was a text email with more than one product',
+  text_share: 'too many of the plan’s emails were text emails',
   same_day: 'that audience already gets an email that day',
   weekly_cap: 'that week already has as many emails as you chose',
   audience_cap: 'that audience already gets enough emails that week',
@@ -1129,6 +1220,7 @@ function planOutput(
           ? { id: offer.id, code: offer.code, percent: offer.percent }
           : null,
         audience: audiences.get(s.audienceId)!,
+        ...(s.format === 'text' ? { format: 'text' as const } : {}),
         why: action.goal,
         evidence: action.evidenceIds
           .filter((id) => facts.has(id))
