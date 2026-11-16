@@ -40,7 +40,7 @@ const maxSubjectChars = 120
 const epsilon = 1e-9
 
 /** The lab's version, kept with what it picks, to credit results later. */
-export const subjectLabVersion = '2026-11-16.1'
+export const subjectLabVersion = '2026-11-16.2'
 
 /**
  * Rules of thumb for a trait the store's own emails say nothing about,
@@ -185,6 +185,11 @@ export function subjectLab(
     brand: string
     /** The caller's checks, with the idea's place in the list given. */
     fits?: (subject: string, index: number) => boolean
+    /**
+     * Without the store's own opens, the first idea that fits stays A (the
+     * writer's own pick): rules of thumb only choose what to test against it.
+     */
+    keepFirst?: boolean
   }
 ): SubjectLab {
   const fits = input.fits ?? (() => true)
@@ -206,11 +211,12 @@ export function subjectLab(
   // A stable sort on rounded scores: equal scores keep the writer's order.
   const rounded = (r: RankedSubject) => Math.round(r.score * 1e6)
   const best = [...order].sort((x, y) => rounded(y) - rounded(x))
-  const a = best[0] ?? null
+  const learned = evidence.meanOpenRate !== null
+  const a = (input.keepFirst && !learned ? order[0] : best[0]) ?? null
   const b =
     (a &&
       best
-        .slice(1)
+        .filter((r) => r !== a)
         .find(
           (r) =>
             worthTesting(a.score, r.score) &&
@@ -230,7 +236,7 @@ export function subjectLab(
     b,
     tests,
     ranked: best,
-    learned: evidence.meanOpenRate !== null,
+    learned,
     emails: evidence.emails
   }
 }
