@@ -446,7 +446,7 @@ export const artDirectorAgent: AgentDefinition<
   z.infer<typeof storyboardShape>
 > = {
   name: 'art-director',
-  version: '2026-11-16.4',
+  version: '2026-11-16.5',
   // AGENT_MAP.md models: the Art director runs on 2.5 Pro.
   purpose: 'plan',
   instructions: [
