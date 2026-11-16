@@ -20,6 +20,12 @@ import {
   type StudioStepPorts
 } from '@/features/studio/design-step'
 import { clip, keyPart } from '@/features/fallback/entry'
+import {
+  checkWholeEmail,
+  emailCheckReasons,
+  emailViewsMs,
+  viewKey
+} from '@/features/studio/email-check'
 import { hardProblems } from './hard-checks'
 import type { Store } from './ports'
 import { buildSteps, type BuildStep, type RoundStep } from './step-names'
@@ -291,6 +297,9 @@ export async function runBuildStep(
   let drawn = plain
   const saved = roundsOf(progress.data, 'design').work as
     { studio?: unknown } | undefined
+  /** The studio's outcome once its pictures are in (DST-006d). */
+  let studioDone:
+    { work?: object; budget?: { until: number; waits: number } } | undefined
   if (ctx.studio) {
     // DST-006c: the designed heroes from the studio, the rest coded.
     const locked = (progress.data.content as LockedContent | undefined)
@@ -319,6 +328,7 @@ export async function runBuildStep(
         seconds: studio.waiting.seconds
       }
     drawn = { ...drawn, draft: { ...drawn.draft, blocks: studio.blocks } }
+    studioDone = studio
   }
   // The studio's work without its ports (its time up, the switch turned
   // off, or a try that threw), or the studio on with no agents for this
@@ -376,6 +386,9 @@ export async function runBuildStep(
   const pictured = drawn.draft.blocks.some(
     (b) => (b?.content as { picture?: unknown } | undefined)?.picture
   )
+  /** The studio's email, drawn and through the hard checks. */
+  const studioEmail =
+    made.ok && !problems.length && pictured ? made.email : null
   if (made.ok && problems.length && pictured) {
     // The studio's email failed one: its coded blocks instead (D16),
     // logged once they pass.
@@ -394,6 +407,72 @@ export async function runBuildStep(
         detail: { checks: failed.map((p) => p.check) },
         dedupeKey: `email-checks:${keyPart(ctx.callerKey)}:studio`
       })
+  }
+  // DST-006d: the studio's email is judged whole, from its inbox views,
+  // before it is stored; short of a pass it is drawn with its coded blocks
+  // (D16), and the owner's log says why in fixed words (never the critic's
+  // own: it may read the email's words, a code among them).
+  const views = ctx.studio?.email
+  if (studioEmail && views && studioDone?.work && studioDone.budget) {
+    // The views' own window, from when they were first asked for (kept in
+    // the work); the rounds' time is theirs.
+    const kept = (saved as { studio?: { views?: { until?: unknown } } })?.studio
+      ?.views?.until
+    const viewsUntil =
+      Number.isSafeInteger(kept) && (kept as number) > 0
+        ? (kept as number)
+        : ctx.studio!.now() + emailViewsMs
+    const check = await checkWholeEmail(
+      {
+        html: studioEmail.html,
+        key: viewKey(studioEmail.html),
+        until: viewsUntil,
+        waits: studioDone.budget.waits
+      },
+      { ...views, fits: ctx.studio!.fits, now: ctx.studio!.now }
+    )
+    if ('wait' in check || 'paused' in check) {
+      // Saved as the studio's own waits are: one more of its 6.
+      const work = studioDone.work as {
+        studio: { rounds: { waits: number } & object }
+      }
+      return {
+        ok: true,
+        waiting: 'design',
+        work: {
+          studio: {
+            ...work.studio,
+            rounds: {
+              ...work.studio.rounds,
+              waits: work.studio.rounds.waits + 1
+            },
+            views: { until: viewsUntil }
+          }
+        },
+        seconds: 'wait' in check ? check.wait.seconds : check.paused.seconds
+      }
+    }
+    if (!check.pass) {
+      made = draw(plain)
+      problems = made.ok ? checksOf(made.email.html) : []
+      if (made.ok && !problems.length)
+        await ctx.fallbacks.record({
+          tenantId: ctx.tenantId,
+          campaignId: ctx.campaignId ?? null,
+          agent: 'design-studio',
+          reasonCode: `email_${check.reason}`,
+          reason: clip(
+            check.problem
+              ? `${emailCheckReasons[check.reason]} ${check.problem}`
+              : emailCheckReasons[check.reason],
+            500
+          ),
+          fallback: 'Drew the email with its coded blocks.',
+          attempts: 1,
+          detail: {},
+          dedupeKey: `design-studio:${keyPart(ctx.callerKey)}:email-check`
+        })
+    }
   }
   if (made.ok && problems.length) {
     await ctx.fallbacks.record({

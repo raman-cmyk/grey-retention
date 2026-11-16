@@ -26,6 +26,7 @@ import { type SavedOffers, type StoreSource } from './ports'
 import {
   noPhotos,
   studioPhotos,
+  emailPortsFor,
   studioPortsFor,
   studioStepMs
 } from '@/features/studio/live-ports'
@@ -252,19 +253,36 @@ export async function runEmailBuilds(
               : {}),
             ...(studioStep && agents
               ? {
-                  studio: studioPortsFor(db, {
-                    tenant: job.tenant_id,
-                    build: job.id,
-                    lease: job.lease_token,
-                    agents,
-                    fallbacks,
-                    callerKey: `email-build:${job.id}`,
-                    industry: store.industry ?? null,
-                    // A sample store's photos are never fetched.
-                    photos: store.sample ? noPhotos : studioPhotos,
-                    until,
-                    now
-                  })
+                  studio: {
+                    ...studioPortsFor(db, {
+                      tenant: job.tenant_id,
+                      build: job.id,
+                      lease: job.lease_token,
+                      agents,
+                      fallbacks,
+                      callerKey: `email-build:${job.id}`,
+                      industry: store.industry ?? null,
+                      // A sample store's photos are never fetched.
+                      photos: store.sample ? noPhotos : studioPhotos,
+                      until,
+                      now
+                    }),
+                    // DST-006d: the email judged whole from its inbox views.
+                    email: emailPortsFor(db, {
+                      tenant: job.tenant_id,
+                      build: job.id,
+                      lease: job.lease_token,
+                      agents,
+                      fallbacks,
+                      callerKey: `email-build:${job.id}`,
+                      industry: store.industry ?? null,
+                      email: {
+                        emailType: planned.data.emailType,
+                        angle: planned.data.angle,
+                        brand: store.brand.name
+                      }
+                    })
+                  }
                 }
               : {})
           }

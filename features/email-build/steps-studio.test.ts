@@ -6,7 +6,12 @@ import { memoryFallbackLog } from '@/features/fallback/log'
 import type { Block } from '@/features/blocks/catalog'
 import type { StudioStepPorts } from '@/features/studio/design-step'
 import type { Storyboard } from '@/features/studio/storyboard'
-import type { BuildRender } from '@/features/studio/waits'
+import type { BuildRender, BuildView } from '@/features/studio/waits'
+import {
+  emailViewsMs,
+  type EmailViewPorts
+} from '@/features/studio/email-check'
+import type { EmailVerdict } from '@/features/studio/email-critic'
 import type { PlannedEmail } from './build'
 import { sampleOffersFrom, sampleStoreFrom } from './ports'
 import { runBuildStep } from './steps'
@@ -309,6 +314,298 @@ describe('the design step with the design studio (DST-006c part 2b)', () => {
       )
     ).toEqual({ ok: false, code: 'hard_check_failed' })
     expect(both.entries().map((e) => e.dedupeKey)).toEqual([
+      expect.stringMatching(/:coded$/)
+    ])
+  })
+})
+
+describe('the design step judges the studio’s email whole (DST-006d part 2c)', () => {
+  const drawnRender: BuildRender = {
+    id: render,
+    key: 'k',
+    state: 'drawn',
+    path: `render/${render}.jpg`,
+    height: 640,
+    bytes: 1,
+    etag: 'e'
+  }
+  const nines = {
+    hierarchy: 9,
+    spacing: 9,
+    contrast: 9,
+    alignment: 9,
+    product: 9,
+    button: 9,
+    phone: 9
+  }
+  const view = (v: 'desktop' | 'phone' | 'dark', n: number): BuildView => ({
+    id: `0000000${n}-3333-4333-8333-333333333333`,
+    key: 'any',
+    view: v,
+    state: 'drawn',
+    path: `email/0000000${n}-3333-4333-8333-333333333333.jpg`,
+    height: 2100,
+    cut: false,
+    wide: false,
+    bytes: 1,
+    etag: 'v'
+  })
+  const emailPorts = (
+    views: BuildView[],
+    verdict: EmailVerdict | null = {
+      pass: true,
+      scores: {} as never,
+      problems: []
+    }
+  ) =>
+    ({
+      ask: vi.fn<EmailViewPorts['ask']>(async () => {}),
+      views: vi.fn(async (key: string) => views.map((v) => ({ ...v, key }))),
+      picture: vi.fn(async (v) => ({
+        bytes: new Uint8Array([1]),
+        contentType: 'image/jpeg' as const,
+        width: v.view === 'phone' ? 375 : 600,
+        height: 2100,
+        cut: false,
+        wide: false
+      })),
+      judge: vi.fn<EmailViewPorts['judge']>(async () => verdict)
+    }) satisfies EmailViewPorts
+  const step = (
+    store: Awaited<ReturnType<typeof beforeDesign>>['store'],
+    progress: unknown,
+    studio: StudioStepPorts,
+    fallbacks = memoryFallbackLog()
+  ) =>
+    runBuildStep(
+      'design',
+      { planned, store, offers: sampleOffersFrom(start), progress },
+      { tenantId, callerKey: 'email-build:b1', fallbacks, studio, clock }
+    )
+  /** The steps to the point the hero's picture is in, as saved. */
+  async function pictured() {
+    const { store, progress, blocks, hero } = await beforeDesign()
+    const first = (await step(store, progress, ports(blocks, hero))) as {
+      work: object
+    }
+    const saved = { ...progress, work: { design: { ...first.work, saves: 0 } } }
+    return { store, saved, blocks, hero }
+  }
+
+  it('asks for the email’s views and waits, saving its signed link and one more wait', async () => {
+    const { store, saved, blocks, hero } = await pictured()
+    const email = emailPorts([])
+    const studio = { ...ports(blocks, hero, [drawnRender]), email }
+    const out = await step(store, saved, studio)
+    expect(out).toMatchObject({ ok: true, waiting: 'design' })
+    expect(email.ask).toHaveBeenCalledTimes(1)
+    const [key, html] = email.ask.mock.calls[0]!
+    expect(key).toMatch(/^e-[0-9a-f]{24}$/)
+    expect(html).toContain('alt="Meet the throw"')
+    const work = (out as { work: { studio: Record<string, unknown> } }).work
+    expect(work.studio.signed).toEqual({
+      [`s${hero + 1}`]: { render, src: signed }
+    })
+    expect((work.studio.rounds as { waits: number }).waits).toBe(
+      (
+        saved.work.design as unknown as {
+          studio: { rounds: { waits: number } }
+        }
+      ).studio.rounds.waits + 1
+    )
+  })
+
+  it('then, with the same email on the next claim, stores it once the critic passes it', async () => {
+    const { store, saved, blocks, hero } = await pictured()
+    const asked = emailPorts([])
+    const first = await step(store, saved, {
+      ...ports(blocks, hero, [drawnRender]),
+      email: asked
+    })
+    const again = {
+      ...saved,
+      work: { design: { ...(first as { work: object }).work, saves: 1 } }
+    }
+    const views = emailPorts([
+      view('desktop', 1),
+      view('phone', 2),
+      view('dark', 3)
+    ])
+    const studio = { ...ports(blocks, hero, [drawnRender]), email: views }
+    const fallbacks = memoryFallbackLog()
+    const out = await step(store, again, studio, fallbacks)
+    expect(out).toMatchObject({ ok: true, done: 'design' })
+    // The link signed before, so the same email and the same views.
+    expect(studio.sign).not.toHaveBeenCalled()
+    expect(views.views.mock.calls[0]![0]).toBe(asked.ask.mock.calls[0]![0])
+    expect(views.judge).toHaveBeenCalledTimes(1)
+    const html = (out as { email: { html: string } }).email.html
+    expect(html).toContain(signed.split('?')[0])
+    expect(fallbacks.entries()).toEqual([])
+  })
+
+  it('draws the coded email when the critic does not pass it, logging fixed words only', async () => {
+    const { store, saved, blocks, hero } = await pictured()
+    const first = await step(store, saved, {
+      ...ports(blocks, hero, [drawnRender]),
+      email: emailPorts([])
+    })
+    const again = {
+      ...saved,
+      work: { design: { ...(first as { work: object }).work, saves: 1 } }
+    }
+    const failing = emailPorts(
+      [view('desktop', 1), view('phone', 2), view('dark', 3)],
+      {
+        pass: false,
+        scores: { ...nines, button: 6 },
+        problems: [
+          'The button (easy to see and tap, clear words) scored 6 of 10.',
+          'Show the code SAVE20 bigger.'
+        ]
+      }
+    )
+    const fallbacks = memoryFallbackLog()
+    const out = await step(
+      store,
+      again,
+      { ...ports(blocks, hero, [drawnRender]), email: failing },
+      fallbacks
+    )
+    expect(out).toMatchObject({ ok: true, done: 'design' })
+    const html = (out as { email: { html: string } }).email.html
+    expect(html).not.toContain(signed.split('?')[0])
+    expect(fallbacks.entries()).toEqual([
+      expect.objectContaining({
+        agent: 'design-studio',
+        reasonCode: 'email_not_passed',
+        reason:
+          'The whole email did not pass the Design critic. The button (easy to see and tap, clear words) scored 6 of 10.',
+        fallback: 'Drew the email with its coded blocks.'
+      })
+    ])
+    expect(JSON.stringify(fallbacks.entries())).not.toContain('SAVE20')
+  })
+
+  /** Three claims: the picture asked for, then drawn and the views asked for. */
+  async function viewsAsked(blocks?: (b: Block[], hero: number) => void) {
+    const { store, progress, blocks: b, hero } = await beforeDesign()
+    blocks?.(b, hero)
+    const first = (await step(store, progress, ports(b, hero))) as {
+      work: object
+    }
+    const saved = { ...progress, work: { design: { ...first.work, saves: 0 } } }
+    const asked = emailPorts([])
+    const second = (await step(store, saved, {
+      ...ports(b, hero, [drawnRender]),
+      email: asked
+    })) as { work: { studio: Record<string, unknown> } }
+    const again = {
+      ...progress,
+      work: { design: { ...second.work, saves: 1 } }
+    }
+    return { store, blocks: b, hero, asked, second, again }
+  }
+
+  it('waits again for a view still drawing, keeping the links signed and the views’ window', async () => {
+    const { store, blocks, hero, second, again } = await viewsAsked()
+    const drawing = emailPorts([
+      view('desktop', 1),
+      view('phone', 2),
+      {
+        id: '00000003-3333-4333-8333-333333333333',
+        key: 'any',
+        view: 'dark',
+        state: 'queued'
+      }
+    ])
+    const out = await step(store, again, {
+      ...ports(blocks, hero, [drawnRender]),
+      email: drawing
+    })
+    expect(out).toMatchObject({ ok: true, waiting: 'design' })
+    const work = (out as { work: { studio: Record<string, unknown> } }).work
+    expect(work.studio.signed).toEqual(second.work.studio.signed)
+    expect(work.studio.views).toEqual(second.work.studio.views)
+    // From the studio's own clock when they were first asked for.
+    expect((work.studio.views as { until: number }).until).toBe(
+      1_000_000 + emailViewsMs
+    )
+  })
+
+  it('pauses for the critic’s tries when this claim has no room, saved as one more wait', async () => {
+    const { store, blocks, hero, second, again } = await viewsAsked()
+    const ready = emailPorts([
+      view('desktop', 1),
+      view('phone', 2),
+      view('dark', 3)
+    ])
+    const out = await step(store, again, {
+      ...ports(blocks, hero, [drawnRender]),
+      fits: () => false,
+      email: ready
+    })
+    expect(out).toMatchObject({ ok: true, waiting: 'design' })
+    expect(ready.judge).not.toHaveBeenCalled()
+    const rounds = (out as { work: { studio: { rounds: { waits: number } } } })
+      .work.studio.rounds
+    expect(rounds.waits).toBe(
+      (second.work.studio.rounds as { waits: number }).waits + 1
+    )
+  })
+
+  it('draws the coded email, logged, when no wait is left for the views', async () => {
+    const { store, progress, blocks, hero } = await beforeDesign()
+    const first = (await step(store, progress, ports(blocks, hero))) as {
+      work: { studio: { rounds: { waits: number } } }
+    }
+    // The design step's 6 waits spent before the views are asked for.
+    const spent = structuredClone(first.work)
+    spent.studio.rounds.waits = 6
+    const saved = { ...progress, work: { design: { ...spent, saves: 0 } } }
+    const email = emailPorts([])
+    const fallbacks = memoryFallbackLog()
+    const out = await step(
+      store,
+      saved,
+      { ...ports(blocks, hero, [drawnRender]), email },
+      fallbacks
+    )
+    expect(out).toMatchObject({ ok: true, done: 'design' })
+    expect(email.ask).not.toHaveBeenCalled()
+    expect((out as { email: { html: string } }).email.html).not.toContain(
+      signed.split('?')[0]
+    )
+    expect(fallbacks.entries()).toEqual([
+      expect.objectContaining({
+        agent: 'design-studio',
+        reasonCode: 'email_no_time_left',
+        reason: 'The design studio had no time left to check the whole email.'
+      })
+    ])
+  })
+
+  it('fails the build, with only the hard check’s line, when the coded redraw after the critic fails a hard check', async () => {
+    // The hero's live words show an offer over the max (none here); the
+    // studio's picture shows its own words, so only the coded email fails.
+    const { store, blocks, hero, again } = await viewsAsked((b, h) => {
+      ;(b[h]!.content as { headline: string }).headline =
+        'Take 90% off everything'
+    })
+    const failing = emailPorts(
+      [view('desktop', 1), view('phone', 2), view('dark', 3)],
+      { pass: false, scores: { ...nines, button: 5 }, problems: [] }
+    )
+    const fallbacks = memoryFallbackLog()
+    expect(
+      await step(
+        store,
+        again,
+        { ...ports(blocks, hero, [drawnRender]), email: failing },
+        fallbacks
+      )
+    ).toEqual({ ok: false, code: 'hard_check_failed' })
+    expect(fallbacks.entries().map((e) => e.dedupeKey)).toEqual([
       expect.stringMatching(/:coded$/)
     ])
   })

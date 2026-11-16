@@ -15,6 +15,18 @@ vi.mock('./steps', async (original) => ({
   ...(await original<typeof import('./steps')>()),
   runBuildStep: runStep
 }))
+// DST-006d: the email ports as the worker builds them (the real ones).
+const emailPorts = vi.hoisted(() => ({ calls: [] as unknown[][] }))
+vi.mock('@/features/studio/live-ports', async (original) => {
+  const real = await original<typeof import('@/features/studio/live-ports')>()
+  return {
+    ...real,
+    emailPortsFor: (...args: Parameters<typeof real.emailPortsFor>) => {
+      emailPorts.calls.push(args)
+      return real.emailPortsFor(...args)
+    }
+  }
+})
 import { memoryFallbackLog } from '@/features/fallback/log'
 import { InMemoryMemoryStore } from '@/features/agents/memory'
 import { InMemoryRunLog } from '@/features/agents/runtime'
@@ -296,6 +308,23 @@ describe('a design step waiting for its pictures (DST-006b)', () => {
       })
       expect(runStep.mock.calls.at(-1)![2].studio !== undefined).toBe(given)
     }
+    // DST-006d: with the studio, the email ports under the build's own
+    // lease, for its planned email and its store's brand.
+    const withStudio = runStep.mock.calls.findLast((c) => c[2].studio)![2]
+      .studio
+    for (const port of ['ask', 'views', 'picture', 'judge'])
+      expect(typeof withStudio.email[port]).toBe('function')
+    expect(emailPorts.calls.at(-1)![1]).toMatchObject({
+      tenant,
+      build: 'build-1',
+      lease: 'lease-1',
+      callerKey: 'email-build:build-1',
+      email: {
+        emailType: planned.emailType,
+        angle: planned.angle,
+        brand: expect.any(String)
+      }
+    })
     // The studio's design step has its longer time (DST-006e).
     runStep.mockResolvedValueOnce(waits)
     const timed = fakeDb()

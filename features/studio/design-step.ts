@@ -7,6 +7,7 @@ import {
 import type { BlockBrand } from '@/features/blocks/brand'
 import type { EmailType } from '@/features/strategy/plan'
 import type { SectionBrief } from './designer'
+import type { EmailViewPorts } from './email-check'
 import type { BuildRender } from './waits'
 import { heroPicture, studioRound, type StudioPorts } from './rounds'
 import {
@@ -53,13 +54,29 @@ export type StudioStepPorts = StudioPorts & {
   sign: (
     render: Extract<BuildRender, { state: 'drawn' }>
   ) => Promise<string | null>
+  /**
+   * DST-006d: the whole-email check's ports (its views and the critic on
+   * the whole email); without them a studio email is stored unjudged as a
+   * whole.
+   */
+  email?: EmailViewPorts
 }
 
 export type StudioStepOutcome =
   /** Save `work` as the design step's work and wait (`wait_email_round`). */
   | { waiting: { work: object; seconds: number } }
-  /** The blocks to draw: heroes with their pictures, the rest coded. */
-  | { blocks: Block[]; pictures: number }
+  /**
+   * The blocks to draw: heroes with their pictures, the rest coded. With
+   * pictures, `work` is the studio's work to save should the step wait
+   * again (DST-006d: for the email's views), with the links it signed, and
+   * `budget` the studio's time and waits so far.
+   */
+  | {
+      blocks: Block[]
+      pictures: number
+      work?: object
+      budget?: { until: number; waits: number }
+    }
 
 /** The studio's part of the design step's work. */
 const savedStep = z.object({
@@ -68,7 +85,14 @@ const savedStep = z.object({
     storyboard: storyboardShape
       .extend({ source: z.enum(['agent', 'code']) })
       .nullable(),
-    rounds: z.unknown().optional()
+    rounds: z.unknown().optional(),
+    /**
+     * DST-006d: each picture's signed link, once made: the email is drawn
+     * the same on every claim, so its views are of the email stored.
+     */
+    signed: z
+      .record(z.string(), z.object({ render: z.uuid(), src: z.string() }))
+      .optional()
   })
 })
 
@@ -225,6 +249,8 @@ export async function studioDesignStep(
   const blocks = [...input.blocks]
   let pictures = 0
   let renders: BuildRender[] | undefined
+  const kept = saved.success ? (saved.data.studio.signed ?? {}) : {}
+  const signed: Record<string, { render: string; src: string }> = {}
   for (const s of out.done.sections) {
     if (s.state !== 'done' || !s.render) continue
     const d = designed.find((x) => x.brief.board.id === s.id)
@@ -235,7 +261,14 @@ export async function studioDesignStep(
       (r): r is Extract<BuildRender, { state: 'drawn' }> =>
         r.id === s.render && r.state === 'drawn' && r.height === s.height
     )
-    const src = drawn ? await ports.sign(drawn) : null
+    // The link signed on an earlier claim for this same picture, else a new one.
+    const before = kept[s.id]
+    const src = drawn
+      ? before?.render === drawn.id && https(before.src)
+        ? before.src
+        : await ports.sign(drawn)
+      : null
+    if (drawn && src) signed[s.id] = { render: drawn.id, src }
     const picture = src ? heroPicture(s, src) : null
     const bg = backgroundOf(d.brief.board.tone, input.brand)
     const block = blocks[d.i]!
@@ -250,5 +283,11 @@ export async function studioDesignStep(
       pictures++
     } else await ports.coded(s.id, 'picture_unusable')
   }
-  return { blocks, pictures }
+  if (!pictures) return { blocks, pictures }
+  return {
+    blocks,
+    pictures,
+    work: { studio: { storyboard, rounds: out.done, signed } },
+    budget: { until: out.done.until, waits: out.done.waits }
+  }
 }
