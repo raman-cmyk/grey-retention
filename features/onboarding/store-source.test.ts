@@ -450,8 +450,29 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
       words: 45,
       sent_at: '2026-10-01T10:00:00Z'
     }
-    const history = (live: boolean) => ({
-      data: { live, sent: [] },
+    const sentEmail = (id: string) => ({
+      id,
+      campaignId: `C${id}`,
+      name: null,
+      subject: 'A note from our founder',
+      preview: null,
+      sentAt: '2026-10-01T10:00:00.000Z',
+      offer: false,
+      collecting: false,
+      abTest: false,
+      strategy: 'static',
+      recipients: 900,
+      opens: 300,
+      clicks: 20,
+      orders: 1,
+      revenue: 50,
+      revenuePerRecipient: 0.05,
+      openRate: 0.33,
+      clickRate: 0.02,
+      unsubscribeRate: 0
+    })
+    const history = (live: boolean, ids = ['MsgA08']) => ({
+      data: { live, sent: ids.map(sentEmail) },
       error: null
     })
     const samples = { data: [letter], error: null }
@@ -475,6 +496,13 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
     // and an unreadable history or samples give no voice.
     for (const answers of <Record<string, Answer>[]>[
       { klaviyo_history: history(false), brand_voice_samples: samples },
+      // A sample of an email this history does not hold (an earlier read's,
+      // or another account's): never the voice.
+      {
+        klaviyo_history: history(true, ['MsgB01']),
+        brand_voice_samples: samples
+      },
+      { klaviyo_history: history(true, []), brand_voice_samples: samples },
       { klaviyo_history: failed, brand_voice_samples: samples },
       { brand_voice_samples: samples },
       { klaviyo_history: history(true), brand_voice_samples: failed }

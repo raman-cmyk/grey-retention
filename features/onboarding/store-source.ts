@@ -318,8 +318,16 @@ export function ownStoreSource(db: Db): StoreSource {
         // The history of the same account as the catalog (a live store
         // never learns from the sample account's emails).
         history: history && history.live === live ? history : null,
-        // The owner's words are the history read's: of the same account.
-        voice: history && history.live === live ? voice : null
+        // The owner's words are the history read's: of the same account,
+        // and only of the emails that history holds (a sample kept from an
+        // earlier read, or another account's, is never the voice).
+        voice:
+          history && history.live === live && voice
+            ? (() => {
+                const sent = new Set(history.sent.map((e) => e.id))
+                return voice.filter((s) => sent.has(s.messageId))
+              })()
+            : null
       })
     }
   }

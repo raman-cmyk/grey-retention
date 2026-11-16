@@ -74,19 +74,68 @@ export type LetterBrief = {
  * PIC-23 part 3b: the founder's voice in the writer's data, in plain
  * words, and the rule that goes with it (none without a voice).
  */
-const voiceData = (voice: FounderVoice) => ({
+const voiceData = (voice: FounderVoice, brief: LetterBrief) => ({
   ...(voice.greeting ? { greeting: voice.greeting } : {}),
   ...(voice.signoff ? { signoff: voice.signoff } : {}),
-  ...(voice.writesAs ? { writesAs: voice.writesAs } : {}),
+  // "I" only when a confirmed founder signs; never "we" in a founder note
+  // (it is the founder's, in the first person).
+  ...(writesAsFits(voice.writesAs, brief) ? { writesAs: voice.writesAs } : {}),
   wordsPerSentence: voice.sentenceWords,
   exclamationMarks: voice.exclamations,
   ...(voice.contractions ? { contractions: voice.contractions } : {}),
   examples: voice.examples
 })
+const writesAsFits = (
+  writesAs: FounderVoice['writesAs'],
+  brief: LetterBrief
+) =>
+  writesAs === 'I'
+    ? !!brief.locked.input.confirmed?.founder?.name
+    : writesAs === 'we'
+      ? kindOf(brief) !== 'founder_note'
+      : false
+
+/** Words of a text, lower case, for finding a copied example. */
+const flat = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[^\p{L}\p{N}']+/gu, ' ')
+    .trim()
+/** Eight of an example's words in a row are a copy. */
+const copiedRun = 8
+
+/**
+ * PIC-23 part 3b: the founder's examples show the voice; one copied into
+ * the letter (whole, or eight of its words in a row) is a problem.
+ */
+function voiceProblems(letter: Letter, brief: LetterBrief): LetterProblem[] {
+  const examples = brief.voice?.examples ?? []
+  if (!examples.length) return []
+  const text = ` ${flat(letterText(letter).map(seenText).join(' '))} `
+  const copied = examples.some((example) => {
+    const words = flat(example).split(' ').filter(Boolean)
+    if (words.length <= copiedRun) return text.includes(` ${words.join(' ')} `)
+    for (let i = 0; i + copiedRun <= words.length; i++)
+      if (text.includes(` ${words.slice(i, i + copiedRun).join(' ')} `))
+        return true
+    return false
+  })
+  return copied
+    ? [
+        {
+          rule: 'voice_example_copied',
+          reason:
+            'Write in the founder’s voice with your own words: never copy one of their example sentences.'
+        }
+      ]
+    : []
+}
+
 const voiceRules = (brief: LetterBrief) =>
   brief.voice
     ? [
-        'Write the way the founder writes ("founderVoice", from their own emails): their greeting and sign-off when they fit the other rules, "I" or "we" as they write, sentences of about their length, exclamation marks and contractions as often as they use them. Its examples show how they sound: never copy one, and never take a fact from one.'
+        'Write the way the founder writes ("founderVoice", from their own emails), when it fits the other rules: their greeting and sign-off, "I" or "we" when it is given, sentences of about their length, exclamation marks and contractions as often as they use them. Its examples show how they sound: never copy one, and never take a fact from one.'
       ]
     : []
 
@@ -215,7 +264,7 @@ export const letterWriter = (
         ...(kindOf(brief) ? { kind: kindSpecs[kindOf(brief)!].name } : {}),
         // The founder's own words, placed by the system (never the writer's).
         ...(placedNote(brief) ? { founderNote: placedNote(brief) } : {}),
-        ...(brief.voice ? { founderVoice: voiceData(brief.voice) } : {})
+        ...(brief.voice ? { founderVoice: voiceData(brief.voice, brief) } : {})
       },
       feedback
     ),
@@ -544,6 +593,8 @@ export async function writeLetter(
       ...letterFindings(letter.data, brief),
       // DST-PIC #24: its kind's rules (the plain letter has no kind).
       ...kindProblems(letter.data, brief),
+      // PIC-23 part 3b: never a copy of the founder's example.
+      ...voiceProblems(letter.data, brief),
       // DST-PIC #28: the industry's reading level (the writer's words).
       ...letterReading(
         // The writer's words only: never the founder's placed note.

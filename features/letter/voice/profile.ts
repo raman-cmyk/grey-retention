@@ -221,6 +221,16 @@ const starters = new Set(
     ' '
   )
 )
+/**
+ * The words a greeting or sign-off may start with, in the languages stores
+ * write in (never a name: "Maya here!" is none).
+ */
+const closers = new Set(
+  'hi hello hey heya hiya howdy dear greetings good morning evening warmly warm warmest best cheers love lots thanks thank talk see speak until till take with yours sincerely kind kindest regards all xo xx bye happy bonjour salut coucou chers chère cher chères à a bisous amitiés cordialement merci hola buenos buenas querido querida queridos queridas saludos besos abrazos gracias un una ciao buongiorno salve cari care caro cara grazie hallo hoi liebe lieber liebes viele herzliche grüße bis tschüss danke olá oi obrigado obrigada abraços beijos até'.split(
+    ' '
+  )
+)
+
 /** Talk of an offer, a code or a deadline, in words: never an example. */
 const offerTalk =
   /\b(?:codes?|coupons?|promo|discount(?:s|ed)?|half|price[sd]?|free|sale|off|deals?|save|savings?|percent|per cent|cheap(?:er|est)?|less|lower|mark(?:ed)? down|markdowns?|clearance|clearing|reduced|bargains?|on us|no (?:extra )?cost|complimentary|gifts?|two for one|bogo|last chance|ends? (?:tonight|today|tomorrow|soon)|(?:today|tonight) only|while (?:they|stocks?|supplies) lasts?|before (?:it['’]?s|they['’]?re|they) go(?:ne)?|limited|sold out|selling (?:out|fast)|few left|stock)\b/i
@@ -346,6 +356,10 @@ export function founderVoice(
           : null
 
   const ours = ownSet(own)
+  // A greeting or sign-off is shown to an AI as the founder's: the same
+  // word checks as an example (never an offer, a deadline or a name).
+  const safe = (line: string | null) =>
+    line && safeClosing(line, ours) ? line : null
   const examples: string[] = []
   const taken = new Set<string>()
   for (const s of sentences) {
@@ -358,8 +372,8 @@ export function founderVoice(
   }
 
   return {
-    greeting: most(closers.map((p) => p.greeting)),
-    signoff: most(closers.map((p) => p.signoff)),
+    greeting: safe(most(closers.map((p) => p.greeting))),
+    signoff: safe(most(closers.map((p) => p.signoff))),
     writesAs,
     sentenceWords: Math.round(words / sentences.length),
     exclamations: frequency(
@@ -373,6 +387,24 @@ export function founderVoice(
     examples,
     from: { samples: read.length, words }
   }
+}
+
+/**
+ * Whether a greeting or sign-off is safe to show an AI as the founder's:
+ * no offer, deadline or code in words, a first word a greeting or sign-off
+ * starts with (`closers`, `starters`), and no other capitalised word but
+ * the store's own ("Hi Sarah," and "Love Maya," are none).
+ */
+function safeClosing(line: string, ours: ReadonlySet<string>) {
+  if (offerTalk.test(line) || offerWords.test(line)) return false
+  const words = wordsIn(line.slice(0, -1))
+  const bares = words.map((w) => bare(w).toLowerCase())
+  return words.every((w, k) => {
+    const b = bare(w)
+    if (!b) return false
+    if (k === 0) return closers.has(bares[0]!) || starters.has(bares[0]!)
+    return b[0] === b[0]!.toLowerCase() || inOwnRun(bares, k, ours)
+  })
 }
 
 /**
