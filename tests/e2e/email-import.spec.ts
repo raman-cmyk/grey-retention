@@ -140,18 +140,15 @@ test('owner uploads an .eml, copies and edits it, and downloads the exact origin
   browser
 }, info) => {
   const db = await newOwner(page, { prefix: 'file-eml', name: 'File studio' })
-  // A real signed-in workspace is not labelled as a demo, and the dashboard
-  // says plainly where its Klaviyo numbers come from (UIR-002/UIR-003 moved
-  // this from the old shell status line into the dashboard header).
+  // A real signed-in workspace lands on Home and is not labelled as a demo.
+  await expect(
+    page.getByRole('heading', {
+      level: 1,
+      name: /^Good (morning|afternoon|evening), /
+    })
+  ).toBeVisible()
   await expect(page.getByText('Demo workspace')).toHaveCount(0)
   await expect(page.getByText('Synthetic data only')).toHaveCount(0)
-  await expect(
-    page
-      .getByText(
-        /Sample Klaviyo data: made up for this preview|Klaviyo is not connected yet\./
-      )
-      .first()
-  ).toBeVisible()
   await expect(page.getByText(/live providers remain disabled/)).toHaveCount(0)
   const external = watchExternal(page)
   const subject = `Autumn layers ${randomUUID().slice(0, 8)}`

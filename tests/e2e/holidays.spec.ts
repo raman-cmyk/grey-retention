@@ -19,7 +19,8 @@ test('UIR-012 owner adds, edits and deletes an entry and picks a country', async
 }) => {
   await newOwner(page, { prefix: 'holidays', name: 'Holidays studio' })
   // The sidebar links here now (not to Settings).
-  await page.goto('/dashboard')
+  // (A page still on the old shell: Home has the GROS top bar.)
+  await page.goto('/plan')
   await expect(
     page
       .locator('a[href="/holidays"]', { hasText: 'Holidays & Events' })

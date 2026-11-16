@@ -113,7 +113,7 @@ export async function reportingAction(
     revalidatePath('/reports')
     revalidatePath('/campaigns', 'layout')
     revalidatePath('/settings')
-    revalidatePath('/dashboard')
+    revalidatePath('/home')
     return {
       message:
         'Synthetic reporting operation persisted. No measured revenue, real send or paid AI.'

@@ -32,7 +32,7 @@ export async function GettingStarted({ step }: { step?: string }) {
           {error ?? references.error ?? 'Setup could not be loaded. Try again.'}
         </Notice>
         <RetrySetup />
-        <Link href="/dashboard" className="block text-sm underline">
+        <Link href="/home" className="block text-sm underline">
           Go to workspace
         </Link>
       </div>
@@ -54,7 +54,7 @@ export async function GettingStarted({ step }: { step?: string }) {
     <div>
       <div className="mb-7 flex items-center justify-between gap-3 text-xs text-[var(--text-muted)]">
         <span>{context.tenantName}</span>
-        <Link href="/dashboard" className="underline underline-offset-4">
+        <Link href="/home" className="underline underline-offset-4">
           Exit setup
         </Link>
       </div>
@@ -273,7 +273,7 @@ export async function GettingStarted({ step }: { step?: string }) {
             </Link>
           </Button>
           <Link
-            href={data.campaigns.length ? '/dashboard' : '/first-draft'}
+            href={data.campaigns.length ? '/home' : '/first-draft'}
             className="mt-5 block text-sm text-[var(--text-muted)] underline underline-offset-4"
           >
             {data.campaigns.length
