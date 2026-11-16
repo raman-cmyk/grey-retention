@@ -88,6 +88,17 @@ describe('the plan read model', () => {
     expect(read.ok && read.run?.builds[0].reason).toBe(
       'Klaviyo could not be reached. Try again later.'
     )
+    // REL-084c: refused by the app's own checks, said by that build's reason.
+    buildOver = { state: 'failed', error_code: 'klaviyo_refused_final_checks' }
+    read = await latestPlanRun(run.id, 'UTC')
+    expect(read.ok && read.run?.builds[0].reason).toBe(
+      'The last check before Klaviyo found a problem (its size, footer or pictures). Try again.'
+    )
+    buildOver = { state: 'failed', error_code: 'klaviyo_refused_toString' }
+    read = await latestPlanRun(run.id, 'UTC')
+    expect(read.ok && read.run?.builds[0].reason).toBe(
+      'Something went wrong while it was being made. Try again.'
+    )
     buildOver = { state: 'failed', error_code: 'something_new' }
     read = await latestPlanRun(run.id, 'UTC')
     expect(read.ok && read.run?.builds[0].reason).toBe(

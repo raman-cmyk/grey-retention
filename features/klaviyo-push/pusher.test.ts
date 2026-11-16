@@ -300,7 +300,8 @@ describe('the live Klaviyo draft push', () => {
     expect(await pusher.createDraft(ab())).toEqual({
       ok: false,
       code: 'rejected',
-      checks: ['ab_test']
+      checks: ['ab_test'],
+      reason: 'ab_test_unsafe'
     })
     expect(console.error).toHaveBeenCalled()
     expect(variationsOf(account)).toHaveLength(2)
@@ -470,7 +471,8 @@ describe('the live Klaviyo draft push', () => {
     expect(await scheduled.pusher.createDraft(input())).toEqual({
       ok: false,
       code: 'rejected',
-      checks: ['not_draft']
+      checks: ['not_draft'],
+      reason: 'not_a_draft'
     })
     expect(writes(scheduled.account)).toHaveLength(before)
 
@@ -481,7 +483,8 @@ describe('the live Klaviyo draft push', () => {
       expect(await deleted.pusher.createDraft(input())).toEqual({
         ok: false,
         code: 'rejected',
-        checks: ['externally_modified']
+        checks: ['externally_modified'],
+        reason: 'externally_modified'
       })
     expect(deleted.account.campaigns.size).toBe(1)
 
@@ -492,7 +495,8 @@ describe('the live Klaviyo draft push', () => {
     expect(await edited.pusher.createDraft(input())).toEqual({
       ok: false,
       code: 'rejected',
-      checks: ['externally_modified']
+      checks: ['externally_modified'],
+      reason: 'externally_modified'
     })
     expect(variation!.subject).toBe('The owner wrote this')
   })
@@ -508,7 +512,12 @@ describe('the live Klaviyo draft push', () => {
     // "Try again" with a new design: the owner's design stays.
     expect(
       await pusher.createDraft(input({ html: page('A2', [hero]) }))
-    ).toEqual({ ok: false, code: 'rejected', checks: ['externally_modified'] })
+    ).toEqual({
+      ok: false,
+      code: 'rejected',
+      checks: ['externally_modified'],
+      reason: 'externally_modified'
+    })
     expect(writes(account)).toHaveLength(before)
     expect(variationsOf(account)[0]!.templateId).toBe(variation!.templateId)
     expect(copy.html).toContain('The owner wrote this')
@@ -574,7 +583,8 @@ describe('the live Klaviyo draft push', () => {
     expect(await pusher.createDraft(update)).toEqual({
       ok: false,
       code: 'rejected',
-      checks: ['externally_modified']
+      checks: ['externally_modified'],
+      reason: 'externally_modified'
     })
     expect(account.templates.get(b.templateId!)!.html).toContain(
       'The owner wrote this'
@@ -601,7 +611,8 @@ describe('the live Klaviyo draft push', () => {
     expect(await pusher.createDraft(update)).toEqual({
       ok: false,
       code: 'rejected',
-      checks: ['externally_modified']
+      checks: ['externally_modified'],
+      reason: 'externally_modified'
     })
     expect(b.templateId).toBe('TplOwner')
   })
@@ -629,7 +640,8 @@ describe('the live Klaviyo draft push', () => {
     expect(await pusher.createDraft(two('A3', 'B3'))).toEqual({
       ok: false,
       code: 'rejected',
-      checks: ['externally_modified']
+      checks: ['externally_modified'],
+      reason: 'externally_modified'
     })
     expect(account.templates.get(a.templateId!)!.html).toContain(
       'The owner wrote this'
@@ -666,7 +678,8 @@ describe('the live Klaviyo draft push', () => {
     expect(await pusher.createDraft(two('A3', 'B3'))).toEqual({
       ok: false,
       code: 'rejected',
-      checks: ['externally_modified']
+      checks: ['externally_modified'],
+      reason: 'externally_modified'
     })
     expect(copy.html).toContain('The owner wrote this')
   })
@@ -688,7 +701,8 @@ describe('the live Klaviyo draft push', () => {
     expect(await pusher.createDraft(next)).toEqual({
       ok: false,
       code: 'rejected',
-      checks: ['externally_modified']
+      checks: ['externally_modified'],
+      reason: 'externally_modified'
     })
     expect(variation!.templateId).toBe('TplOwner')
   })
@@ -709,7 +723,12 @@ describe('the live Klaviyo draft push', () => {
     clock.now += 60 * 60_000
     expect(
       await pusher.createDraft(input({ html: page('A2', [hero]) }))
-    ).toEqual({ ok: false, code: 'rejected', checks: ['externally_modified'] })
+    ).toEqual({
+      ok: false,
+      code: 'rejected',
+      checks: ['externally_modified'],
+      reason: 'externally_modified'
+    })
     expect(copy.html).toContain('The owner wrote this')
   })
 
@@ -738,7 +757,12 @@ describe('the live Klaviyo draft push', () => {
     variation!.templateId = 'TplOwner'
     expect(
       await pusher.createDraft(input({ html: page('A2', [hero]) }))
-    ).toEqual({ ok: false, code: 'rejected', checks: ['externally_modified'] })
+    ).toEqual({
+      ok: false,
+      code: 'rejected',
+      checks: ['externally_modified'],
+      reason: 'externally_modified'
+    })
     expect(variation!.templateId).toBe('TplOwner')
   })
 
@@ -765,7 +789,12 @@ describe('the live Klaviyo draft push', () => {
     const calls = account.calls.length
     expect(
       await pusher.createDraft(input({ audienceId: 'sample-engaged' }))
-    ).toEqual({ ok: false, code: 'rejected', checks: ['audience'] })
+    ).toEqual({
+      ok: false,
+      code: 'rejected',
+      checks: ['audience'],
+      reason: 'audience_not_in_klaviyo'
+    })
     expect(account.calls).toHaveLength(calls)
   })
 
@@ -786,16 +815,25 @@ describe('the live Klaviyo draft push', () => {
   })
 
   it('refuses, without calling Klaviyo, what must never reach it', async () => {
-    for (const [over, checks] of [
-      [{ sample: true }, ['sample']],
-      [{ lease: undefined }, ['lease']],
-      [{ audienceId: 'sample-engaged' }, ['audience']],
-      [{ audienceId: 'sample engaged' }, ['audience']],
+    for (const [over, checks, reason] of [
+      [{ sample: true }, ['sample'], 'sample_email'],
+      [{ lease: undefined }, ['lease'], 'no_push_lease'],
+      [
+        { audienceId: 'sample-engaged' },
+        ['audience'],
+        'audience_not_in_klaviyo'
+      ],
+      [
+        { audienceId: 'sample engaged' },
+        ['audience'],
+        'audience_not_in_klaviyo'
+      ],
       [
         {
           html: '<html><p>{% unsubscribe %} {{ organization.full_address }}</p></html>'
         },
-        ['footer']
+        ['footer'],
+        'footer_missing'
       ],
       [
         {
@@ -804,11 +842,13 @@ describe('the live Klaviyo draft push', () => {
             { approach: 'A', html: page('A', []) }
           ]
         },
-        ['variations']
+        ['variations'],
+        'variations_invalid'
       ],
       [
         { variations: [{ approach: 'A', html: page('A', []) }] },
-        ['variations']
+        ['variations'],
+        'variations_invalid'
       ],
       [
         {
@@ -820,19 +860,40 @@ describe('the live Klaviyo draft push', () => {
             )
           )
         },
-        ['images']
+        ['images'],
+        'too_many_pictures'
       ],
-      [{ html: page('A', ['http://cedar.example/a.jpg']) }, ['images']],
-      [{ html: page('A', ['data:image/png;base64,AAAA']) }, ['images']],
-      [{ html: page('A', ['https://cedar.example/a.webp']) }, ['images']],
-      [{ html: `<img src=https://cedar.example/a.jpg>${footer}` }, ['images']],
-      [{ html: page('A' + 'x'.repeat(110 * 1024), []) }, ['size']]
-    ] as [Partial<DraftInput>, string[]][]) {
+      [
+        { html: page('A', ['http://cedar.example/a.jpg']) },
+        ['images'],
+        'image_not_importable'
+      ],
+      [
+        { html: page('A', ['data:image/png;base64,AAAA']) },
+        ['images'],
+        'image_not_importable'
+      ],
+      [
+        { html: page('A', ['https://cedar.example/a.webp']) },
+        ['images'],
+        'image_not_importable'
+      ],
+      [
+        { html: `<img src=https://cedar.example/a.jpg>${footer}` },
+        ['images'],
+        'image_not_importable'
+      ],
+      [
+        { html: page('A' + 'x'.repeat(110 * 1024), []) },
+        ['size'],
+        'too_big_for_gmail'
+      ]
+    ] as [Partial<DraftInput>, string[], string][]) {
       const { account, pusher } = setup()
       expect(
         await pusher.createDraft(input(over)),
         JSON.stringify(checks)
-      ).toEqual({ ok: false, code: 'rejected', checks })
+      ).toEqual({ ok: false, code: 'rejected', checks, reason })
       expect(account.calls).toEqual([])
     }
   })
@@ -841,13 +902,23 @@ describe('the live Klaviyo draft push', () => {
     const missing = setup()
     expect(
       await missing.pusher.createDraft(input({ audienceId: 'SegGone' }))
-    ).toEqual({ ok: false, code: 'rejected', checks: ['audience'] })
+    ).toEqual({
+      ok: false,
+      code: 'rejected',
+      checks: ['audience'],
+      reason: 'audience_not_in_klaviyo'
+    })
     expect(writes(missing.account)).toEqual([])
     const changed = setup()
     await changed.pusher.createDraft(input())
     expect(
       await changed.pusher.createDraft(input({ audienceId: 'SegVIP' }))
-    ).toEqual({ ok: false, code: 'rejected', checks: ['audience'] })
+    ).toEqual({
+      ok: false,
+      code: 'rejected',
+      checks: ['audience'],
+      reason: 'audience_changed'
+    })
   })
 
   it('refuses a picture Klaviyo will not import', async () => {
@@ -855,7 +926,8 @@ describe('the live Klaviyo draft push', () => {
     expect(await pusher.createDraft(input())).toEqual({
       ok: false,
       code: 'rejected',
-      checks: ['images']
+      checks: ['images'],
+      reason: 'image_refused'
     })
     expect(account.campaigns.size).toBe(0)
   })
@@ -1046,7 +1118,8 @@ describe('an A/B draft when Klaviyo answers oddly (the third review)', () => {
     expect(await pusher.createDraft(ab({ contentChecked: false }))).toEqual({
       ok: false,
       code: 'rejected',
-      checks: ['release_qa']
+      checks: ['release_qa'],
+      reason: 'content_not_checked'
     })
     expect(variationsOf(account)).toHaveLength(1)
     expect(shows(account, 'A')).toBe(true)
@@ -1126,7 +1199,8 @@ describe('an A/B draft when Klaviyo answers oddly (the third review)', () => {
     expect(await pusher.createDraft(ab())).toEqual({
       ok: false,
       code: 'rejected',
-      checks: ['externally_modified']
+      checks: ['externally_modified'],
+      reason: 'externally_modified'
     })
     expect(console.error).toHaveBeenCalled()
   })
@@ -1145,7 +1219,8 @@ describe('an A/B draft left half made (the fourth review)', () => {
     expect(await pusher.createDraft(ab({ contentChecked: false }))).toEqual({
       ok: false,
       code: 'rejected',
-      checks: ['release_qa']
+      checks: ['release_qa'],
+      reason: 'content_not_checked'
     })
     expect(variationsOf(account)).toHaveLength(1)
     expect(only(account.messages)[1].winnerPercentage).toBeNull()
@@ -1189,7 +1264,8 @@ describe('an A/B draft left half made (the fourth review)', () => {
     expect(await pusher.createDraft(ab())).toEqual({
       ok: false,
       code: 'rejected',
-      checks: ['externally_modified']
+      checks: ['externally_modified'],
+      reason: 'externally_modified'
     })
     expect(variationsOf(account).map((v) => v.subject)).toEqual([
       'The owner wrote this'
@@ -1276,7 +1352,8 @@ describe('an A/B draft left half made (the fourth review)', () => {
     expect(await unknown.pusher.createDraft(ab())).toEqual({
       ok: false,
       code: 'rejected',
-      checks: ['ab_test']
+      checks: ['ab_test'],
+      reason: 'ab_test_unsafe'
     })
     expect(console.error).toHaveBeenCalled()
     expect(only(unknown.account.messages)[1].winnerPercentage).toBe(0)
@@ -1292,7 +1369,8 @@ describe('an A/B draft left half made (the fourth review)', () => {
     expect(await pusher.createDraft(ab())).toEqual({
       ok: false,
       code: 'rejected',
-      checks: ['externally_modified']
+      checks: ['externally_modified'],
+      reason: 'externally_modified'
     })
     expect(
       account.calls.filter((c) =>
@@ -1354,7 +1432,8 @@ describe('an A/B draft when Klaviyo stays odd (the fifth review)', () => {
       expect(await pusher.createDraft(ab())).toEqual({
         ok: false,
         code: 'rejected',
-        checks: ['ab_test']
+        checks: ['ab_test'],
+        reason: 'designs_unknown'
       })
     expect(memory.row()?.reason).toBe('designs_unknown')
     expect(only(account.messages)[1].winnerPercentage).toBe(0)
@@ -1374,7 +1453,12 @@ describe('an A/B draft when Klaviyo stays odd (the fifth review)', () => {
       clock.now += 2 * 60_000
       result = await pusher.createDraft(ab())
     }
-    expect(result).toEqual({ ok: false, code: 'rejected', checks: ['ab_test'] })
+    expect(result).toEqual({
+      ok: false,
+      code: 'rejected',
+      checks: ['ab_test'],
+      reason: 'ab_test_unsafe'
+    })
     expect(runs).toBeLessThanOrEqual(7)
     expect(memory.row()).toMatchObject({ reason: 'ab_test_unsafe' })
     expect(only(account.messages)[1].winnerPercentage).toBe(0)
@@ -1384,7 +1468,8 @@ describe('an A/B draft when Klaviyo stays odd (the fifth review)', () => {
     expect(await pusher.createDraft(ab())).toEqual({
       ok: false,
       code: 'rejected',
-      checks: ['ab_test']
+      checks: ['ab_test'],
+      reason: 'ab_test_unsafe'
     })
   })
 })
@@ -1400,7 +1485,12 @@ describe('the fake pusher', () => {
           ]
         })
       )
-    ).toEqual({ ok: false, code: 'rejected', checks: ['variations'] })
+    ).toEqual({
+      ok: false,
+      code: 'rejected',
+      checks: ['variations'],
+      reason: 'variations_invalid'
+    })
     expect(
       await fakeDraftPusher({ designs: 'A' }).createDraft(ab())
     ).toMatchObject({ ok: true, designs: 'A' })
