@@ -65,6 +65,7 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - Which segment events/fields are reliably available in the initial Klaviyo integration?
 - What belongs in the central chat versus dedicated campaign/audience tools?
 - Which layout, component system and navigation best deliver the selected calm, minimal light direction?
+- Onboarding (16 Nov 2026, UI-ONBa): may the owner skip the Klaviyo step with "Later"? **Proposal, built as such until decided:** no. Every plan and email reads the store from Klaviyo (VISION sections 5 and 10), so the Klaviyo step is done only when Klaviyo is connected. Rivals can be skipped (following a real brand is not built yet); discount codes are optional.
 
 ## Discussion log
 

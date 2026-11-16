@@ -1,0 +1,119 @@
+import type { KlaviyoState } from '@/features/settings/read-model'
+
+/**
+ * The onboarding flow (UI-ONBa, docs/design/BRAND.md StepCard): five steps,
+ * Store, Brand, Klaviyo, Discount and Rivals. A step is done only by a
+ * saved record, never a browser flag:
+ *
+ * - Store: the brand's website is saved (`brand_profiles.domain`, read as
+ *   the readers read it, `siteDomain`).
+ * - Brand: the owner confirmed what GROS found on that same website
+ *   (`onboarding_steps.brand_site`); a website changed later needs a new
+ *   look.
+ * - Klaviyo: connected and working, as Settings judges it (`klaviyoWorking`).
+ *   It cannot be skipped: every plan and email reads the store from it
+ *   (VISION section 5 and section 10, "nothing works without it").
+ * - Discount: a max discount is saved (0 counts: emails then offer none).
+ *   Codes are optional (VISION section 10).
+ * - Rivals: at least one brand followed, or the owner's explicit skip.
+ *
+ * The step that is Now is the first one not done; coming back opens it. A
+ * done step can be opened again; a step ahead cannot. Finishing is its own
+ * saved mark, set only once every step is done.
+ */
+export const setupSteps = [
+  { key: 'store', name: 'Store' },
+  { key: 'brand', name: 'Brand' },
+  { key: 'klaviyo', name: 'Klaviyo' },
+  { key: 'discount', name: 'Discount' },
+  { key: 'rivals', name: 'Rivals' }
+] as const
+
+export type SetupStepKey = (typeof setupSteps)[number]['key']
+/** What the right side of the screen shows: a step, or the finish. */
+export type SetupPlace = SetupStepKey | 'finish'
+
+/** The saved records the steps are read from. */
+export type SetupRecords = {
+  /** The website as saved (`brand_profiles.domain`); null without a brand. */
+  domain: string | null
+  /** The website the owner confirmed the brand for (`onboarding_steps`). */
+  confirmedSite: string | null
+  klaviyoWorking: boolean
+  /** A max discount is saved (`brand_offers`). */
+  maxDiscountSet: boolean
+  /** Brands the workspace follows now. */
+  following: number
+  rivalsSkipped: boolean
+  finished: boolean
+}
+
+export type SetupFlow = {
+  steps: { key: SetupStepKey; name: string; done: boolean }[]
+  /** The index of the step that is Now; the number of steps when all are done. */
+  current: number
+  allDone: boolean
+  finished: boolean
+}
+
+const host = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/
+
+/**
+ * A website as the readers read it (the database's `private.site_domain`):
+ * lower case, without `www.`; null unless it is a plain host name.
+ */
+export function siteDomain(domain: string | null | undefined): string | null {
+  const d = (domain ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, '')
+  return host.test(d) && !/^[0-9.]+$/.test(d) ? d : null
+}
+
+/**
+ * Klaviyo works for GROS: connected, its key not refused, and with live
+ * keys on (KLAVIYO_MODE=live) a real key, not the sample connection. The
+ * same rule as the Klaviyo card in Settings.
+ */
+export function klaviyoWorking(
+  klaviyo: KlaviyoState | null,
+  liveKeys: boolean
+): boolean {
+  return (
+    !!klaviyo &&
+    klaviyo.status === 'connected' &&
+    klaviyo.keyStatus !== 'refused' &&
+    !(liveKeys && klaviyo.mode !== 'live')
+  )
+}
+
+/** The five steps from the saved records. Pure. */
+export function setupFlow(records: SetupRecords): SetupFlow {
+  const site = siteDomain(records.domain)
+  const done: Record<SetupStepKey, boolean> = {
+    store: site !== null,
+    brand: site !== null && records.confirmedSite === site,
+    klaviyo: records.klaviyoWorking,
+    discount: records.maxDiscountSet,
+    rivals: records.following > 0 || records.rivalsSkipped
+  }
+  const steps = setupSteps.map((s) => ({ ...s, done: done[s.key] }))
+  const now = steps.findIndex((s) => !s.done)
+  return {
+    steps,
+    current: now === -1 ? steps.length : now,
+    allDone: now === -1,
+    finished: records.finished
+  }
+}
+
+/**
+ * Where the screen opens: the step asked for when it is done or Now (going
+ * back), else the step that is Now, or the finish once every step is done.
+ * A step ahead of Now is never opened.
+ */
+export function openPlace(flow: SetupFlow, asked?: string | null): SetupPlace {
+  const index = flow.steps.findIndex((s) => s.key === asked)
+  if (index !== -1 && index <= flow.current) return flow.steps[index]!.key
+  return flow.steps[flow.current]?.key ?? 'finish'
+}
