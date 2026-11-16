@@ -1285,6 +1285,54 @@ export type Database = {
           }
         ]
       }
+      brand_voice_samples: {
+        Row: {
+          message_id: string
+          read_at: string
+          run_id: string
+          sent_at: string | null
+          tenant_id: string
+          text: string
+          weight: number
+          words: number
+        }
+        Insert: {
+          message_id: string
+          read_at?: string
+          run_id: string
+          sent_at?: string | null
+          tenant_id: string
+          text: string
+          weight: number
+          words: number
+        }
+        Update: {
+          message_id?: string
+          read_at?: string
+          run_id?: string
+          sent_at?: string | null
+          tenant_id?: string
+          text?: string
+          weight?: number
+          words?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_voice_samples_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: false
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_voice_samples_tenant_id_run_id_fkey'
+            columns: ['tenant_id', 'run_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       budget_alerts: {
         Row: {
           created_at: string
@@ -8075,6 +8123,10 @@ export type Database = {
       record_site_photos: {
         Args: { job: string; lease: string; photos: Json }
         Returns: boolean
+      }
+      record_voice_samples: {
+        Args: { job: string; lease: string; samples: Json }
+        Returns: number
       }
       recover_expired_usage: { Args: { t: string }; Returns: number }
       refresh_catalog_stock: {
