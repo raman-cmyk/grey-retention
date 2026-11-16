@@ -121,7 +121,7 @@ const deadline =
   /\b(?:(?:ends?|ending|closes?|closing)\s+(?:today|tonight|tomorrow|soon|at midnight|on \w+day|\w+day|this (?:week|weekend)|in \d+ (?:hours?|days?)|\d{1,2}\/\d{1,2})|(?:today|tonight) only|only today|\d+ hours? (?:only|left)|last (?:chance|call|day|hours?)|final (?:hours?|day|call)|hours? left|only \d+ left|hurry|don['’]t miss|until midnight)\b/i
 /** Something new, never "New Year", "New York" or "just in time". */
 const somethingNew =
-  /\b(?:new\b(?!\s+(?:year|years|york|zealand|jersey|mexico|orleans|hampshire)\b)|just (?:in\b(?!\s+time\b)|landed|dropped|arrived)|introducing|launch(?:es|ed|ing)?|first look|back in stock|restock(?:ed)?)\b/i
+  /\b(?:new\b(?!\s+(?:year|years|york|zealand|jersey|mexico|orleans|hampshire)\b)|just (?:in\b(?!\s+time\b)|landed|dropped|arrived)|introducing|launch(?:es|ed|ing)?|first look|back in stock|restock(?:ed|ing)?)\b/i
 const you = /\b(?:you|your|yours|yourself|yourselves|you['’](?:re|ll|ve|d))\b/i
 /** A picture character, a flag or a keycap; never ©, ® or ™. */
 const emoji =
@@ -133,7 +133,9 @@ const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /** The subject as a reader sees it: a first name for its tag, the store's name for its own. */
 function shown(subject: string, brand: string) {
+  // Spaces first (a tab or a line break is one), then what no one sees.
   return subject
+    .replace(/\s+/g, ' ')
     .replace(unseen, '')
     .replace(logic, ' ')
     .replace(tag, (t) =>
@@ -145,7 +147,11 @@ function shown(subject: string, brand: string) {
 
 /** What a subject does, by plain code (`subjectTraits`). */
 export function traitsOf(subject: string, brand: string): SubjectTrait[] {
-  const name = brand.replace(unseen, '').replace(/\s+/g, ' ').trim()
+  const name = brand
+    .replace(/\s+/g, ' ')
+    .replace(unseen, '')
+    .replace(/\s+/g, ' ')
+    .trim()
   const text = shown(subject, name)
   const chars = Array.from(text).length
   const found = new Set<SubjectTrait>()
@@ -245,10 +251,9 @@ const usable = (p: PastSubject) =>
  * emails, once per plan. The difference is shrunk by how sure it is: by
  * d² / (d² + se²), where se is the noise of that difference (each
  * group's own spread of open rates, never below the store's, at least 1
- * point, for as
- * many emails as each side has). A trait shown by fewer than `minPerSide`
- * emails on either side says nothing; fewer than `minPastEmails` emails in
- * all say nothing at all (rules of thumb only).
+ * point, for as many emails as each side has). A trait shown by fewer
+ * than `minPerSide` emails on either side says nothing; fewer than
+ * `minPastEmails` emails in all say nothing at all (rules of thumb only).
  */
 export function learnFrom(
   past: readonly PastSubject[],

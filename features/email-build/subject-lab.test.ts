@@ -127,7 +127,7 @@ describe('traitsOf', () => {
       traitsOf('{% if first_name %}Hello{% endif %} from the studio', brand)
     ).toContain('short')
     // A brand with a character no one sees still matches.
-    for (const c of [0x200b, 0x2066, 0x0007]) {
+    for (const c of [0x200b, 0x2066, 0x0007, 0x09, 0x0a]) {
       const hidden = `Cedar${String.fromCodePoint(c)} Goods`
       expect(traitsOf('Cedar Goods turns ten', hidden), `${c}`).toContain(
         'brand'
@@ -163,6 +163,12 @@ describe('traitsOf', () => {
     ])
       expect(traitsOf(subject, brand), subject).not.toContain('new')
     expect(traitsOf('Just in: the oak tray', brand)).toContain('new')
+    expect(traitsOf('Restocking now', brand)).toContain('new')
+    // A tab or a line break is a space, never glue.
+    expect(traitsOf('Sale\tends tonight', brand)).toEqual(
+      expect.arrayContaining(['offer', 'deadline'])
+    )
+    expect(traitsOf('Shop\r\nCedar Goods', brand)).toContain('brand')
     for (const subject of ['The Launcher bag', 'Our launchpad is open'])
       expect(traitsOf(subject, brand), subject).not.toContain('new')
     for (const subject of [
