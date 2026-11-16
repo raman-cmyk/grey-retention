@@ -12,6 +12,7 @@ import type { BuiltEmail, SectionsOutput } from '../build'
 import type { Store } from '../ports'
 import { goldenCodes, type GoldenBrief } from './briefs'
 import { drawnText } from '../drawn-text'
+import { previewRepeat } from '../preview-pair'
 
 export { drawnText }
 
@@ -169,6 +170,9 @@ export function goldenProblems(brief: GoldenBrief, run: GoldenRun): string[] {
   // The lines in the inbox.
   problems.push(...lineProblems('subject', email.subject, 80))
   problems.push(...lineProblems('preview text', email.preheader, 140))
+  // DST-PIC #27: the preview pairs with the subject, never repeats it.
+  if (previewRepeat(email.subject, email.preheader, store.brand.name))
+    problems.push('The preview text repeats the subject.')
   if (email.subject !== draft.subject || email.preheader !== draft.preheader)
     problems.push('The stored subject or preview is not the checked one.')
   for (const j of junk)

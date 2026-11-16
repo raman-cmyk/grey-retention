@@ -25,6 +25,7 @@ import {
   type TriesSoFar
 } from '@/features/strategy/retry'
 import type { LockedContent } from './content'
+import { previewRepeat } from './preview-pair'
 
 /**
  * EML-003, the end of layer 2 (AGENT_MAP.md §4, decisions D16 and D21): the
@@ -242,12 +243,9 @@ export function emailChecks(
       'preview',
       `The preview text has ${preview.length} characters: write ${previewRange.min} to ${previewRange.max} so the inbox shows a useful line.`
     )
-  if (preview && preview.toLowerCase() === subject.toLowerCase())
-    add(
-      'preview_repeats_subject',
-      'preview',
-      'The preview text repeats the subject: add something the subject does not say.'
-    )
+  // DST-PIC #27: the preview pairs with the subject, never repeats it.
+  const repeat = previewRepeat(draft.subject, draft.preheader, brandName)
+  if (repeat) add('preview_repeats_subject', 'preview', repeat)
   for (const { field, text } of fields) {
     for (const words of spamPhrases)
       if (phrase(text, words))

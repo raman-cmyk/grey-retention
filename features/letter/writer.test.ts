@@ -442,6 +442,21 @@ describe('the facts in a written letter (TXT-001 part 2)', () => {
     if (!letter.success) throw new Error('letter')
     return letterFindings(letter.data, brief).map((f) => f.rule)
   }
+  it('sends back a preview line that repeats the subject (DST-PIC #27)', async () => {
+    const brief = await briefFor()
+    expect(
+      rulesOf(brief, {
+        preheader: 'A note about our cedar candle, from the kitchen.'
+      })
+    ).toEqual(['preview_repeats_subject'])
+    expect(
+      rulesOf(brief, {
+        subject: `A note from ${brief.brandName}`,
+        preheader: `${brief.brandName} poured this one by hand, for long nights.`
+      })
+    ).toEqual([])
+  })
+
   it('takes the offer in words, never a percent, a price or a code it was not given', async () => {
     const brief = await briefFor()
     expect(rulesOf(brief, {})).toEqual([])

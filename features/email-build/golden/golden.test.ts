@@ -289,6 +289,15 @@ describe('the golden properties catch a worse email', () => {
     )
   })
 
+  it('a preview text that repeats the subject (DST-PIC #27)', async () => {
+    expect(
+      await spoiled('story', (b) => {
+        b.email.preheader = `${b.email.subject}, and more.`
+        b.draft.preheader = b.email.preheader
+      })
+    ).toEqual(expect.arrayContaining(['The preview text repeats the subject.']))
+  })
+
   it('the push’s checks: the five footer tags (not in a comment), size', async () => {
     expect(
       await spoiled('odd-names', (b) => {
