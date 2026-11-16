@@ -23,6 +23,7 @@ import { keyPart, ruleWords } from '@/features/fallback/entry'
 import type { FallbackLog } from '@/features/fallback/log'
 import type { AgentCtx } from '@/features/strategy/retry'
 import { letterProblems, type LetterProblem } from './checks'
+import type { FounderVoice } from './voice/profile'
 import {
   founderParagraphs,
   kindOf,
@@ -55,7 +56,7 @@ import {
  * plainer letter that code writes from the store's name and product only,
  * logged (D16). Nothing waits for a person.
  */
-export const letterWriterVersion = '2026-11-16.4'
+export const letterWriterVersion = '2026-11-16.5'
 
 export type LetterBrief = {
   /** The locked content: its products, offer, facts and founder. */
@@ -65,7 +66,91 @@ export type LetterBrief = {
   site: string
   /** DST-PIC #24: its kind (`letterKinds`), when the plan gives one. */
   kind?: LetterKind
+  /** PIC-23 part 3b: how the founder writes, from their own sent emails. */
+  voice?: FounderVoice
 }
+
+/**
+ * PIC-23 part 3b: the founder's voice in the writer's data, in plain
+ * words, and the rule that goes with it (none without a voice).
+ */
+const voiceData = (voice: FounderVoice, brief: LetterBrief) => ({
+  ...(voice.greeting ? { greeting: voice.greeting } : {}),
+  ...(voice.signoff ? { signoff: voice.signoff } : {}),
+  // "I" only when a confirmed founder signs; never "we" in a founder note
+  // (it is the founder's, in the first person).
+  ...(writesAsFits(voice.writesAs, brief) ? { writesAs: voice.writesAs } : {}),
+  wordsPerSentence: voice.sentenceWords,
+  exclamationMarks: voice.exclamations,
+  ...(voice.contractions ? { contractions: voice.contractions } : {}),
+  examples: voice.examples
+})
+const writesAsFits = (
+  writesAs: FounderVoice['writesAs'],
+  brief: LetterBrief
+) =>
+  writesAs === 'I'
+    ? // The name that signs, as the letter shows it (`letterSigner`).
+      !!clean(brief.locked.input.confirmed?.founder?.name ?? '', 80)
+    : writesAs === 'we'
+      ? kindOf(brief) !== 'founder_note'
+      : false
+
+/** Words of a text, lower case, for finding a copied example. */
+const flat = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[^\p{L}\p{N}']+/gu, ' ')
+    .trim()
+/** Eight of an example's words in a row are a copy. */
+const copiedRun = 8
+
+/**
+ * PIC-23 part 3b: the founder's examples show the voice; one copied into
+ * the letter (whole, or eight of its words in a row) is a problem.
+ */
+function voiceProblems(letter: Letter, brief: LetterBrief): LetterProblem[] {
+  const examples = brief.voice?.examples ?? []
+  if (!examples.length) return []
+  // The writer's own words only: never the founder's placed note.
+  const own = [
+    letter.subject,
+    letter.preheader,
+    ...writerBody(letter, brief),
+    letter.ps
+  ]
+  const text = ` ${flat(
+    own
+      .filter((t): t is string => typeof t === 'string')
+      .map(seenText)
+      .join(' ')
+  )} `
+  const copied = examples.some((example) => {
+    const words = flat(example).split(' ').filter(Boolean)
+    if (words.length <= copiedRun) return text.includes(` ${words.join(' ')} `)
+    for (let i = 0; i + copiedRun <= words.length; i++)
+      if (text.includes(` ${words.slice(i, i + copiedRun).join(' ')} `))
+        return true
+    return false
+  })
+  return copied
+    ? [
+        {
+          rule: 'voice_example_copied',
+          reason:
+            'Write in the founder’s voice with your own words: never copy one of their example sentences.'
+        }
+      ]
+    : []
+}
+
+const voiceRules = (brief: LetterBrief) =>
+  brief.voice
+    ? [
+        'Write the way the founder writes ("founderVoice", from their own emails), when it fits the other rules: their greeting and sign-off, "I" or "we" when it is given, sentences of about their length, exclamation marks and contractions as often as they use them. Its examples show how they sound: never copy one, and never take a fact from one.'
+      ]
+    : []
 
 /** Store text as a letter shows it: one line, no hidden characters. */
 const clean = (text: string, max: number) => oneLine(text, max)
@@ -174,6 +259,8 @@ export const letterWriter = (
     ...customerWordsRules(brief.locked.input),
     // DST-PIC #24: the kind's own rules, with their numbers, when it fits.
     ...kindRules(brief),
+    // PIC-23 part 3b: the founder's own voice, when their emails show it.
+    ...voiceRules(brief),
     // DST-PIC #28: the industry’s reading level.
     readingRule(industry)
   ].join('\n'),
@@ -189,7 +276,8 @@ export const letterWriter = (
         signedBy: letterSigner(brief).signature,
         ...(kindOf(brief) ? { kind: kindSpecs[kindOf(brief)!].name } : {}),
         // The founder's own words, placed by the system (never the writer's).
-        ...(placedNote(brief) ? { founderNote: placedNote(brief) } : {})
+        ...(placedNote(brief) ? { founderNote: placedNote(brief) } : {}),
+        ...(brief.voice ? { founderVoice: voiceData(brief.voice, brief) } : {})
       },
       feedback
     ),
@@ -409,6 +497,7 @@ const letterRuleWords: Record<string, string> = {
   kind_offer: 'an offer its kind never has',
   kind_first_person: 'a founder note not in the first person',
   kind_note_quoted: 'the founder’s note repeated',
+  voice_example_copied: 'a sentence of the founder’s copied',
   kind_paragraphs: 'too many paragraphs around the founder’s note',
   kind_question: 'a quick question with no question',
   kind_questions: 'more than one question',
@@ -518,6 +607,8 @@ export async function writeLetter(
       ...letterFindings(letter.data, brief),
       // DST-PIC #24: its kind's rules (the plain letter has no kind).
       ...kindProblems(letter.data, brief),
+      // PIC-23 part 3b: never a copy of the founder's example.
+      ...voiceProblems(letter.data, brief),
       // DST-PIC #28: the industry's reading level (the writer's words).
       ...letterReading(
         // The writer's words only: never the founder's placed note.

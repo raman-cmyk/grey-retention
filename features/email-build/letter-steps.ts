@@ -89,7 +89,9 @@ const briefOf = (
   locked,
   brandName: store.brand.name,
   site: store.brand.site,
-  ...(kind ? { kind } : {})
+  ...(kind ? { kind } : {}),
+  // PIC-23 part 3b: the founder's voice, when their emails show it.
+  ...(store.founderVoice ? { voice: store.founderVoice } : {})
 })
 
 /** Why a planned kind became no kind, in the owner's words (DST-PIC #24). */
