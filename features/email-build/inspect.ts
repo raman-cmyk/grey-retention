@@ -585,10 +585,12 @@ export function checkInspection(
     ])
   )
   const problems: string[] = []
+  let own = 0
   answer.problems.forEach((p, i) => {
     // PIC-26 part 3a: any problem with an idea drops the idea, quoted
-    // well or not; it never makes the inspector answer again.
-    if (isIdeaField(p.field)) return
+    // well or not; it never makes the inspector answer again. Only the
+    // email's first ten are kept (`inspect`), so only they are checked.
+    if (isIdeaField(p.field) || ++own > maxOwnProblems) return
     const text = full.get(p.field)
     if (text === undefined)
       problems.push(
@@ -726,7 +728,24 @@ async function inspect(
       }
     }
   if (result.ok) {
-    const problems = result.output.problems
+    // An idea's problem quoting the writer's subject, not the idea, is the
+    // subject's (filed under the wrong field).
+    const ideas = ideasOf(task.draft)
+    const subject = norm(
+      mask(task.draft.subject, protectedText(task.locked, task.brandName))
+    )
+    const field = (p: { field: string; quote: string }) =>
+      isIdeaField(p.field) &&
+      !norm(ideas[Number(p.field.slice(5)) - 1] ?? '').includes(
+        norm(p.quote)
+      ) &&
+      subject.includes(norm(p.quote))
+        ? 'subject'
+        : p.field
+    const problems = result.output.problems.map((p) => ({
+      ...p,
+      field: field(p)
+    }))
     return [
       // The email's own, at most ten, then its ideas'.
       ...problems.filter((p) => !isIdeaField(p.field)).slice(0, maxOwnProblems),
@@ -828,10 +847,7 @@ export const copyWork = z.object({
       findings,
       next: z.enum(['brand-inspector', 'email-inspector']),
       /** PIC-26 part 3a: the ideas an inspector refused, never cut. */
-      refusedIdeas: z
-        .array(z.string().regex(/^idea-[1-9]$/))
-        .max(9)
-        .optional(),
+      refusedIdeas: z.array(z.string().regex(ideaField)).max(9).optional(),
       /** Saved by a version whose inspectors judge the ideas too. */
       ideasJudged: z.literal(true).optional(),
       tries: z

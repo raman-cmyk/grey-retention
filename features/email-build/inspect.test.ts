@@ -680,6 +680,28 @@ describe('the subject ideas, judged with the email (PIC-26 part 3a)', () => {
     ])
   })
 
+  it('reads an idea’s problem that quotes the writer’s subject, not the idea, as the subject’s', async () => {
+    const locked = await lock()
+    const ai = inspectors(
+      flag('idea-1', 'favourite candle'),
+      { problems: [] },
+      { problems: [] },
+      { problems: [] }
+    )
+    const run = writer(
+      words({ subjectIdeas: ideas }),
+      words({ subject: 'Slow evenings, 10% off', subjectIdeas: ideas })
+    )
+    const { ctx } = context(ai)
+    const result = await writeAndInspect(build(locked, run), ctx)
+    expect(result.status).toBe('passed')
+    // The email went back once, about its subject; idea 1 was kept.
+    expect(run).toHaveBeenCalledTimes(2)
+    expect(userOf(run, 1)).toContain('subject')
+    if (result.status === 'passed')
+      expect(result.draft.subjectIdeas).toEqual(ideas)
+  })
+
   it('drops an idea whose problem is misquoted, without asking again', async () => {
     const locked = await lock()
     const ai = inspectors(flag('idea-1', 'not in it'), { problems: [] })
@@ -1019,7 +1041,7 @@ describe('rounds saved between claims (REL-AI part 2b)', () => {
     expect(ai.mock.calls.map((c) => c[0].purpose)).toEqual(['review', 'label'])
   })
 
-  it('keeps the ideas an inspector refused when it saves between the two, however it cuts the findings (PIC-26 part 3a)', async () => {
+  it('keeps the ideas an inspector refused when it saves between the two, apart from its findings (PIC-26 part 3a)', async () => {
     const locked = await lock()
     const ideas = [
       'A quiet evening, picked for you',
