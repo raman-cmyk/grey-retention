@@ -168,6 +168,13 @@ describe('the subject, the preview line and whole rewrites (PIC-29, round 2)', (
         sent: ['Our linen shirts are sewn by hand.']
       })
     ).toEqual([{ phrase: 'amazing', instead: '' }])
+    // And beside words only added, however many.
+    expect(
+      removedPhrases({
+        drafted: ['Our amazing linen shirts are here.'],
+        sent: ['Our linen shirts are here, sewn by hand in Porto.']
+      })
+    ).toEqual([{ phrase: 'amazing', instead: '' }])
   })
 
   it('never learns a phrase holding the store’s own word or a form of it', () => {

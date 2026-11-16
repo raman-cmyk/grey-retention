@@ -9,8 +9,8 @@
  * (`removedPhrases`), and only when they are gone from the whole email he
  * sent: a word moved, a sentence split, a comma made a full stop or a word
  * said once instead of twice is no removal. A sentence rewritten (more
- * than three changes, one over four words, or under 40% of its words
- * kept) or dropped says nothing about a word.
+ * than three changes, one over four words that takes words out, or under
+ * 40% of its words kept) or dropped says nothing about a word.
  *
  * Across emails (`learnNeverWords`), a phrase the owner took out of two
  * emails or more (a single word: three, and at least four letters), and
@@ -320,9 +320,9 @@ const isNumber = (w: string) => /\p{N}/u.test(w)
  * whole email he sent; never a number, a placeholder, a phrase holding
  * one of the store's own content words (`keep`) or a form of one, filler
  * alone, a single word of fewer than four letters, or a word swapped for
- * another form of itself. A pair with a change over four words, or one
- * keeping under 40% of the longer sentence's words, is a rewrite: nothing
- * in it is learned.
+ * another form of itself. A pair with a change over four words (words
+ * only added aside), or one keeping under 40% of the longer sentence's
+ * words, is a rewrite: nothing in it is learned.
  */
 export function removedPhrases(
   edit: Pick<OwnerEdit, 'drafted' | 'sent'>,
@@ -366,7 +366,8 @@ function removedFrom(
       spans.some(
         (s) =>
           s.removed.length > maxSpan ||
-          s.added.length > maxSpan ||
+          // Words only added hide no removal ("…, sewn by hand in Porto").
+          (s.added.length > maxSpan && s.removed.length > 0) ||
           (s.atStart && s.atEnd)
       )
     )
