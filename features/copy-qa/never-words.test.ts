@@ -122,6 +122,66 @@ describe('the words the owner took out of one email (PIC-29)', () => {
   })
 })
 
+describe('the subject, the preview line and whole rewrites (PIC-29, round 2)', () => {
+  it('pairs the subject and the preview line by their line, never by their place among sentences', () => {
+    expect(
+      removedPhrases({
+        drafted: [
+          'Linen is back',
+          'Soft shirts for warm summer days',
+          'Our linen shirts are sewn slowly for warm days.'
+        ],
+        sent: ['Linen is back', '', 'Our linen shirts are sewn for warm days.']
+      })
+    ).toEqual([{ phrase: 'slowly', instead: '' }])
+  })
+
+  it('learns nothing from a sentence rewritten whole that shares only light words', () => {
+    none(['The wait is over.'], ['The cedar edit is live.'])
+    none(
+      ['Our winter range is perfect for gifting.'],
+      ['Our story is simple for once.']
+    )
+  })
+
+  it('never learns a phrase holding the store’s own word or a form of it', () => {
+    expect(
+      removedPhrases(
+        {
+          drafted: ['Our candles are back in the studio.'],
+          sent: ['Our trays are back in the studio.']
+        },
+        ['Cedar Candle']
+      )
+    ).toEqual([])
+    // The system's own words, once part 2 passes them as the store's.
+    expect(
+      removedPhrases(
+        {
+          drafted: ['Use code LINEN10 at checkout.'],
+          sent: ['Enter LINEN10 at checkout.']
+        },
+        ['Use code']
+      )
+    ).toEqual([])
+  })
+
+  it('splits sentences in other scripts, and reads a dotted capital I as one letter', () => {
+    expect(
+      removedPhrases({
+        drafted: ['यो कपडा सुन्दर छ।नयाँ कपडा आयो।'],
+        sent: ['यो कपडा छ।नयाँ कपडा आयो।']
+      })
+    ).toEqual([{ phrase: 'सुन्दर', instead: '' }])
+    expect(
+      removedPhrases({
+        drafted: ['Our İnanılmaz linen shirts are here.'],
+        sent: ['Our linen shirts are here.']
+      })
+    ).toEqual([{ phrase: 'inanılmaz', instead: '' }])
+  })
+})
+
 describe('the words this brand never uses (PIC-29)', () => {
   const notes = ['one', 'two', 'three', 'four']
   const draftedWith = (words: string, n: number) => [

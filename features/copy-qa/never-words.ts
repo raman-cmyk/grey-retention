@@ -67,7 +67,7 @@ const maxSpan = 4
 /** Body sentences are the same sentence when they share this share of the shorter's words. */
 const sameSentence = 0.5
 /** A subject or a preview line is the same when they share this share. */
-const sameLine = 0.3
+const sameLine = 0.5
 /** More changes than this in one sentence is a rewrite. */
 const maxChanges = 3
 /** Sentences longer than this are not compared word by word. */
@@ -91,14 +91,19 @@ const edges = new Set(
  */
 const alone = new Set([
   ...edges,
-  ..."not no nor don't doesn't didn't isn't aren't wasn't won't can't couldn't shouldn't wouldn't it's you're we're they're i'm i've i'll we'll you'll that's there's let's will would can could should shall may might must do does did done have has had get got make made new shop sale free off more most all any every each some one two out up".split(
+  ..."not no nor don't doesn't didn't isn't aren't wasn't won't can't couldn't shouldn't wouldn't it's you're we're they're i'm i've i'll we'll you'll that's there's let's will would can could should shall may might must do does did done have has had get got make made new shop sale free off more most all any every each some one two out up code save discount offer order checkout today".split(
     ' '
   )
 ])
 
 /** NFKC, lower case, one apostrophe: as copy QA must read text too (part 2). */
 const norm = (text: string) =>
-  text.normalize('NFKC').toLowerCase().replace(/[’‘]/g, "'")
+  text
+    .normalize('NFKC')
+    .toLowerCase()
+    // "İ" lower-cased keeps a dot of its own: one "i", as copy QA reads it.
+    .replace(/i\u0307/g, 'i')
+    .replace(/[’‘]/g, "'")
 /** A line's words: letters (with their marks), digits, apostrophes and hyphens inside a word. */
 const wordsOf = (text: string) =>
   norm(text)
@@ -106,24 +111,50 @@ const wordsOf = (text: string) =>
     .replace(/\[[^\]]{1,40}\]/g, ' ')
     .match(/[\p{L}\p{M}\p{N}]+(?:['-][\p{L}\p{M}\p{N}]+)*/gu) ?? []
 
-type Sentence = { words: string[]; set: Set<string>; text: string }
+type Sentence = {
+  words: string[]
+  /** Its content words (light words left out): what makes two alike. */
+  set: Set<string>
+  text: string
+  /** The line it is on (0 the subject, 1 the preview line), and whether it opens it. */
+  line: number
+  first: boolean
+}
+
+/** A sentence ends at . ! ? and, in other scripts, at । ॥ 。 ؟ */
+const sentenceEnd = /(?<=[.!?])\s+|(?<=[।॥。؟])\s*/
 
 /** A text's sentences (a line is at least one), each with its word set. */
 function sentencesOf(lines: readonly string[]) {
   const out: Sentence[] = []
   let total = 0
-  for (const line of lines.slice(0, maxLines)) {
-    if (typeof line !== 'string') continue
-    for (const part of line.split(/(?<=[.!?])\s+/)) {
+  lines.slice(0, maxLines).forEach((line, index) => {
+    if (typeof line !== 'string') return
+    let first = true
+    for (const part of line.split(sentenceEnd)) {
       const words = wordsOf(part)
       if (!words.length) continue
       total += words.length
-      if (total > maxWords || out.length >= maxSentences) return out
-      out.push({ words, set: new Set(words), text: words.join(' ') })
+      if (total > maxWords || out.length >= maxSentences) return
+      out.push({
+        words,
+        set: new Set(words.filter((w) => !edges.has(w))),
+        text: words.join(' '),
+        line: index,
+        first
+      })
+      first = false
     }
-  }
+  })
   return out
 }
+
+/** Every word of a text, up to many more than are compared (for "is it still there"). */
+const allWordsOf = (lines: readonly string[]) =>
+  lines
+    .slice(0, maxLines)
+    .flatMap((l) => (typeof l === 'string' ? wordsOf(l) : []))
+    .slice(0, maxWords * 4)
 
 /** Every run of one to four words of a text, for "is it still there". */
 function groupsOf(words: readonly string[]) {
@@ -134,7 +165,7 @@ function groupsOf(words: readonly string[]) {
   return groups
 }
 
-/** How alike two sentences are: their shared words over the shorter's. */
+/** How alike two sentences are: their shared content words over the shorter's. */
 function likeness(a: Sentence, b: Sentence) {
   let shared = 0
   for (const w of a.set) if (b.set.has(w)) shared++
@@ -240,18 +271,24 @@ function pairsOf(drafted: Sentence[], sent: Sentence[], heads: boolean) {
     freeS.delete(match)
   }
   // Then the subject with the subject, the preview line with the preview
-  // line (when neither is an unchanged sentence of the other's).
+  // line: the first sentence of each line (when neither is an unchanged
+  // sentence of the other's).
   if (heads)
-    for (const k of [0, 1])
+    for (const line of [0, 1]) {
+      const d = drafted.findIndex((x) => x.line === line && x.first)
+      const t = sent.findIndex((x) => x.line === line && x.first)
       if (
-        freeD.has(k) &&
-        freeS.has(k) &&
-        likeness(drafted[k]!, sent[k]!) >= sameLine
+        d >= 0 &&
+        t >= 0 &&
+        freeD.has(d) &&
+        freeS.has(t) &&
+        likeness(drafted[d]!, sent[t]!) >= sameLine
       ) {
-        pairs.push([drafted[k]!, sent[k]!])
-        freeD.delete(k)
-        freeS.delete(k)
+        pairs.push([drafted[d]!, sent[t]!])
+        freeD.delete(d)
+        freeS.delete(t)
       }
+    }
   // Then the closest pairs first.
   const scored: { d: number; s: number; score: number }[] = []
   for (const d of freeD)
@@ -282,15 +319,30 @@ export function removedPhrases(
   edit: Pick<OwnerEdit, 'drafted' | 'sent'>,
   keep: readonly string[] = []
 ): { phrase: string; instead: string }[] {
-  const ours = keep
-    .filter((k): k is string => typeof k === 'string')
-    .map((k) => ` ${wordsOf(k).join(' ')} `)
-    .filter((k) => k.trim())
-  return removedFrom(sentencesOf(edit.drafted), sentencesOf(edit.sent), ours)
+  return removedFrom(
+    sentencesOf(edit.drafted),
+    sentencesOf(edit.sent),
+    allWordsOf(edit.sent),
+    storeWords(keep)
+  )
 }
 
-function removedFrom(drafted: Sentence[], sent: Sentence[], ours: string[]) {
-  const still = groupsOf(sent.flatMap((s) => s.words))
+/** The store's own words (its name, its products), each word once. */
+const storeWords = (keep: readonly string[]) =>
+  new Set(
+    keep
+      .filter((k): k is string => typeof k === 'string')
+      .flatMap((k) => wordsOf(k))
+      .filter((w) => !edges.has(w))
+  )
+
+function removedFrom(
+  drafted: Sentence[],
+  sent: Sentence[],
+  sentWords: string[],
+  ours: ReadonlySet<string>
+) {
+  const still = groupsOf(sentWords)
   const found = new Map<string, string>()
   for (const [a, b] of pairsOf(drafted, sent, true)) {
     if (a.words.length > maxSentenceWords || b.words.length > maxSentenceWords)
@@ -310,7 +362,7 @@ function removedFrom(drafted: Sentence[], sent: Sentence[], ours: string[]) {
         core.length === 1 &&
         (alone.has(core[0]!) ||
           core[0]!.includes("'") ||
-          Array.from(core[0]!).length < minWordLetters)
+          (core[0]!.match(/\p{L}/gu)?.length ?? 0) < minWordLetters)
       )
         continue
       // A word swapped for another form of itself is grammar, not a word.
@@ -318,8 +370,11 @@ function removedFrom(drafted: Sentence[], sent: Sentence[], ours: string[]) {
       const phrase = core.join(' ')
       // Still in the email he sent: moved, not taken out.
       if (still.has(phrase)) continue
-      const padded = ` ${phrase} `
-      if (ours.some((o) => o.includes(padded) || padded.includes(o))) continue
+      // A store word in it, or a form of one ("candles" for its candle).
+      if (
+        core.some((w) => ours.has(w) || [...ours].some((o) => sameWord(w, o)))
+      )
+        continue
       const instead = [...span.added]
       while (instead.length && edges.has(instead[0]!)) instead.shift()
       while (instead.length && edges.has(instead.at(-1)!)) instead.pop()
@@ -341,13 +396,10 @@ export function learnNeverWords(
   edits: readonly OwnerEdit[],
   keep: readonly string[] = []
 ): NeverWords {
-  const ours = keep
-    .filter((k): k is string => typeof k === 'string')
-    .map((k) => ` ${wordsOf(k).join(' ')} `)
-    .filter((k) => k.trim())
+  const ours = storeWords(keep)
   const ids = new Set<string>()
   const texts = new Set<string>()
-  const read: { drafted: Set<string>; sent: Set<string> }[] = []
+  const read: OwnerEdit[] = []
   const seen = new Map<string, NeverWord>()
   for (const e of edits) {
     if (
@@ -365,11 +417,13 @@ export function learnNeverWords(
     if (texts.has(key)) continue
     ids.add(e.messageId)
     texts.add(key)
-    read.push({
-      drafted: groupsOf(drafted.flatMap((s) => s.words)),
-      sent: groupsOf(sent.flatMap((s) => s.words))
-    })
-    for (const { phrase, instead } of removedFrom(drafted, sent, ours)) {
+    read.push(e)
+    for (const { phrase, instead } of removedFrom(
+      drafted,
+      sent,
+      allWordsOf(e.sent),
+      ours
+    )) {
       const word = seen.get(phrase) ?? {
         phrase,
         removed: 0,
@@ -381,11 +435,15 @@ export function learnNeverWords(
       seen.set(phrase, word)
     }
   }
-  // Left in: GROS wrote it and it went out.
-  for (const email of read)
-    for (const word of seen.values())
-      if (email.drafted.has(word.phrase) && email.sent.has(word.phrase))
-        word.kept++
+  // Left in: GROS wrote it and it went out (each email's words built
+  // again here and let go, never all kept at once).
+  if (seen.size)
+    for (const e of read) {
+      const drafted = groupsOf(allWordsOf(e.drafted))
+      const sent = groupsOf(allWordsOf(e.sent))
+      for (const word of seen.values())
+        if (drafted.has(word.phrase) && sent.has(word.phrase)) word.kept++
+    }
   const all = [...seen.values()].sort(
     (a, b) => b.removed - a.removed || a.kept - b.kept
   )
