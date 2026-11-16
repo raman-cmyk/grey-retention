@@ -1,3 +1,9 @@
+import {
+  klaviyoFooterTags,
+  previewFooterTags
+} from '@/features/blocks/klaviyo-tags'
+import { previewHtml } from '@/features/email-generation/html'
+import { plainFooterTags } from '@/features/letter/render'
 import { builtEmail, type BuiltEmail } from './build'
 import { changeWords, type ChangeKey } from './content'
 import { allSteps } from './step-names'
@@ -7,14 +13,18 @@ import { allSteps } from './step-names'
  * docs/design/BRAND.md): what an email's own page shows, for a designed
  * email and a text email alike: its previews (desktop, phone and dark), its
  * run log in plain words (the steps it went through, and every change the
- * team made on the way), and Open in Klaviyo. Pure: the page reads the
- * build and its log lines and draws this with the GROS components.
+ * team made on the way), and Open in Klaviyo. Pure, and run on the server
+ * (it reads the whole build): the page gets the screen object and draws it
+ * with the GROS components. Its HTML and text are preview-safe: Klaviyo's
+ * tags as placeholders, active content and outside loads removed.
  */
 export type EmailRow = {
   id: string
   state: 'build_queued' | 'push_queued' | 'drafted' | 'failed' | string
   step: string | null
   email: unknown
+  /** The planned slot's format, for an email not built yet. */
+  format: 'designed' | 'text'
   klaviyoCampaignId: string | null
   sampleDraft: boolean
   /** Why it failed, already in the owner's words (REL-084). */
@@ -23,62 +33,96 @@ export type EmailRow = {
 
 /**
  * A fallback line of this build, already in the owner's words
- * (`ownerLine`); `code` is the line's reason code.
+ * (`ownerLine`); `agent` and `code` are the line's own.
  */
-export type EmailLogLine = { code: string; reason: string; instead: string }
+export type EmailLogLine = {
+  agent: string
+  code: string
+  reason: string
+  instead: string
+}
 
 export type RunStep = {
   label: string
   state: 'done' | 'now' | 'next' | 'failed'
 }
 
+/** What the email says and looks like, as the previews show it. */
+export type EmailView = {
+  title: string
+  format: 'designed' | 'text'
+  subject: string
+  /** PIC-26: the subject half the audience gets, when Klaviyo holds the test. */
+  subjectB: string | null
+  preview: string
+  /** The sample store's email: the page says its products are examples. */
+  sample: boolean
+  /** The designs to preview: one, or A and B of a design test Klaviyo holds. */
+  designs: { name: string; html: string }[]
+  /** A text email's own plain-text part. */
+  text: string | null
+}
+
+/** Open in Klaviyo: Klaviyo's campaigns list, where the draft is by its name. */
+export type KlaviyoLink = { campaignId: string; href: string; name: string }
+
 export type EmailScreen =
   /** Not made yet: what the team is doing, step by step. */
-  | { kind: 'working'; steps: RunStep[]; notes: string[] }
-  /** It stopped: the step that failed says why; finished steps stay done. */
-  | { kind: 'failed'; reason: string; steps: RunStep[]; notes: string[] }
   | {
-      kind: 'email'
-      title: string
+      kind: 'working'
       format: 'designed' | 'text'
-      subject: string
-      /** PIC-26: the subject half the audience gets in a subject test. */
-      subjectB: string | null
-      preview: string
-      /** In Klaviyo, or still being put there. */
-      status: 'in_klaviyo' | 'working'
-      /** The sample store's email, or a sample draft: the page says so. */
-      sample: boolean
-      sampleDraft: boolean
-      /** Open in Klaviyo: only for a real draft in Klaviyo, found by its name. */
-      klaviyo: { campaignId: string; href: string; name: string } | null
-      /** The designs to preview: one, or A and B of a design test. */
-      designs: { name: string; html: string }[]
-      /** A text email's own plain-text part. */
-      text: string | null
       steps: RunStep[]
       notes: string[]
     }
+  /** It stopped: why, the step that failed; the email when it was made. */
+  | {
+      kind: 'failed'
+      format: 'designed' | 'text'
+      reason: string
+      steps: RunStep[]
+      notes: string[]
+      email: EmailView | null
+    }
+  /** In Klaviyo as a draft, but stored the way an older version of the app stored it. */
+  | {
+      kind: 'unreadable'
+      message: string
+      klaviyo: KlaviyoLink | null
+      steps: RunStep[]
+      notes: string[]
+    }
+  | (EmailView & {
+      kind: 'email'
+      /**
+       * In Klaviyo as a draft; a sample draft (Klaviyo not connected:
+       * nothing was sent to it); or still being put there.
+       */
+      status: 'in_klaviyo' | 'sample_draft' | 'working'
+      /** Open in Klaviyo: only for a real draft in Klaviyo. */
+      klaviyo: KlaviyoLink | null
+      steps: RunStep[]
+      notes: string[]
+    })
 
-/** Each build step in the owner's words: done, and running now. */
+/** Each build step in the owner's words: done, and still to do (now, next, failed). */
 const stepWords: Record<
   (typeof allSteps)[number],
-  { done: string; now: string; text?: { done: string; now: string } }
+  { done: string; doing: string; text?: { done: string; doing: string } }
 > = {
-  sections: { done: 'Planned the sections', now: 'Planning the sections' },
+  sections: { done: 'Planned the sections', doing: 'Planning the sections' },
   content: {
     done: 'Chose the products and the offer',
-    now: 'Choosing the products and the offer'
+    doing: 'Choosing the products and the offer'
   },
-  copy: { done: 'Wrote the words', now: 'Writing the words' },
+  copy: { done: 'Wrote the words', doing: 'Writing the words' },
   design: {
     done: 'Designed the email',
-    now: 'Designing the email',
-    text: { done: 'Laid out the letter', now: 'Laying out the letter' }
+    doing: 'Designing the email',
+    text: { done: 'Laid out the letter', doing: 'Laying out the letter' }
   },
   push: {
     done: 'Put it in Klaviyo as a draft',
-    now: 'Putting it in Klaviyo as a draft'
+    doing: 'Putting it in Klaviyo as a draft'
   }
 }
 
@@ -115,21 +159,35 @@ export function runSteps(
             ? 'failed'
             : 'now'
           : 'next'
-    return { label: state === 'now' ? words.now : words.done, state }
+    return { label: state === 'done' ? words.done : words.doing, state }
   })
 }
 
+/** The A/B test Klaviyo could not hold (the push's own log lines). */
+const oneSubject = 'ab_one_subject'
+const oneDesign = 'ab_one_design'
+/** The steps whose log line already says the words are plain. */
+const copyAgents = new Set(['copywriter', 'copy-inspectors', 'letter-writer'])
+
 /** What the team changed on the way, in the owner's words, each once. */
-function notesOf(email: BuiltEmail | null, log: readonly EmailLogLine[]) {
+function notesOf(
+  email: BuiltEmail | null,
+  view: EmailView | null,
+  log: readonly EmailLogLine[]
+) {
   const notes: string[] = []
   if (email?.copy === 'plain')
-    notes.push(
-      email.ai
-        ? 'Its words are plain words built from your store’s facts: the AI writer could not be used.'
-        : 'The AI was not used for this email: its words are plain words built from your store’s facts.'
-    )
-  const changes = (email?.changes ?? []).filter(
-    (c): c is ChangeKey => c in changeWords
+    if (!email.ai)
+      notes.push(
+        'The AI was not used for this email: its words are plain words built from your store’s facts.'
+      )
+    // The copy step's own line says why, when there is one.
+    else if (!log.some((l) => copyAgents.has(l.agent)))
+      notes.push(
+        'Its words are plain words built from your store’s facts: the AI writer could not be used.'
+      )
+  const changes = (email?.changes ?? []).filter((c): c is ChangeKey =>
+    Object.hasOwn(changeWords, c)
   )
   if (changes.length)
     notes.push(
@@ -137,19 +195,68 @@ function notesOf(email: BuiltEmail | null, log: readonly EmailLogLine[]) {
         ...new Set(changes.map((c) => changeWords[c]))
       ].join('; ')}.`
     )
-  if (email?.designA)
+  if (view && view.designs.length > 1)
     notes.push(
-      'A test of two designs: half the audience gets each, no winner picked.'
+      'A test of two designs: half the audience gets each, and Results shows which got more clicks.'
     )
-  if (email?.subjectB && !email.designA)
+  if (view?.subjectB)
     notes.push(
-      'A test of two subjects: half the audience gets each, no winner picked.'
+      'A test of two subjects: half the audience gets each, and Results shows which got more clicks.'
     )
   for (const line of log)
     // The Content locker's line says what the email's changes say above.
     if (!(changes.length && line.code === 'content_replaced'))
       notes.push(`${line.reason} ${line.instead}`.replace(/\s+/g, ' ').trim())
   return [...new Set(notes.filter(Boolean))].slice(0, 20)
+}
+
+/** A text part as the page shows it: Klaviyo's tags as plain words. */
+export function previewText(text: string) {
+  return text
+    .split(plainFooterTags.unsubscribe)
+    .join('Unsubscribe link')
+    .split(plainFooterTags.preferences)
+    .join('Preferences link')
+    .split(klaviyoFooterTags.organization)
+    .join('Your brand')
+    .split(klaviyoFooterTags.address)
+    .join('Your store address (Klaviyo adds it when it sends)')
+    .replace(/\{\{\s*first_name[^{}]{0,200}\}\}/g, '[first name]')
+    .replace(/\{\{[^{}]{0,500}\}\}|\{%[^{}]{0,500}%\}/g, '')
+}
+
+const safeHtml = (html: string) =>
+  previewHtml(previewFooterTags(html, null)).html
+
+/** The email as the previews show it, without a test Klaviyo does not hold. */
+function viewOf(email: BuiltEmail, log: readonly EmailLogLine[]): EmailView {
+  const format = email.format === 'text' ? 'text' : 'designed'
+  const designTest = !!email.designA && !log.some((l) => l.code === oneDesign)
+  const subjectTest =
+    !email.designA &&
+    !!email.subjectB &&
+    !log.some((l) => l.code === oneSubject)
+  return {
+    title: email.name,
+    format,
+    subject: email.subject,
+    subjectB: subjectTest ? email.subjectB! : null,
+    preview: email.preheader,
+    sample: email.sample,
+    // One design only: the draft holds the coded one (design A).
+    designs: designTest
+      ? [
+          { name: 'Design A', html: safeHtml(email.designA!) },
+          { name: 'Design B', html: safeHtml(email.html) }
+        ]
+      : [
+          {
+            name: format === 'text' ? 'The letter' : 'The email',
+            html: safeHtml(email.designA ?? email.html)
+          }
+        ],
+    text: email.text ? previewText(email.text) : null
+  }
 }
 
 /** The email's page from its build row and its log lines (see above). */
@@ -159,57 +266,49 @@ export function emailScreen(
 ): EmailScreen {
   const parsed = builtEmail.safeParse(row.email)
   const email = parsed.success ? parsed.data : null
-  const format = email?.format === 'text' ? 'text' : 'designed'
+  const view = email ? viewOf(email, log) : null
+  const format = view?.format ?? row.format
   const steps = runSteps(row, format)
-  const notes = notesOf(email, log)
+  const notes = notesOf(email, view, log)
+  const drafted = row.state === 'drafted'
+  const klaviyo =
+    drafted && !row.sampleDraft && row.klaviyoCampaignId
+      ? {
+          campaignId: row.klaviyoCampaignId,
+          href: klaviyoCampaignsUrl,
+          name: email?.name ?? 'your email'
+        }
+      : null
   if (row.state === 'failed')
     return {
       kind: 'failed',
+      format,
       reason: row.reason ?? 'We could not create this email. Try again.',
+      steps,
+      notes,
+      email: view
+    }
+  // Made, but stored the way this app no longer reads: never "working".
+  if (!view && drafted)
+    return {
+      kind: 'unreadable',
+      message: row.sampleDraft
+        ? 'This sample draft was made by an older version of the app, so it cannot be shown here.'
+        : `This email is in Klaviyo as a draft, but it was made by an older version of the app, so it cannot be shown here.${klaviyo ? ' Open it in Klaviyo to see it.' : ''}`,
+      klaviyo,
       steps,
       notes
     }
-  const drafted = row.state === 'drafted'
-  // Made, but not readable by this version of the app: say so, never "working".
-  if (!email)
-    return drafted
-      ? {
-          kind: 'failed',
-          reason: 'This email could not be read. Make it again from the plan.',
-          steps,
-          notes
-        }
-      : { kind: 'working', steps, notes }
+  if (!view) return { kind: 'working', format, steps, notes }
   return {
     kind: 'email',
-    title: email.name,
-    format,
-    subject: email.subject,
-    subjectB: email.designA ? null : (email.subjectB ?? null),
-    preview: email.preheader,
-    status: drafted ? 'in_klaviyo' : 'working',
-    sample: email.sample,
-    sampleDraft: row.sampleDraft,
-    klaviyo:
-      drafted && !row.sampleDraft && row.klaviyoCampaignId
-        ? {
-            campaignId: row.klaviyoCampaignId,
-            href: klaviyoCampaignsUrl,
-            name: email.name
-          }
-        : null,
-    designs: email.designA
-      ? [
-          { name: 'Design A', html: email.designA },
-          { name: 'Design B', html: email.html }
-        ]
-      : [
-          {
-            name: format === 'text' ? 'The letter' : 'The email',
-            html: email.html
-          }
-        ],
-    text: email.text ?? null,
+    ...view,
+    status: drafted
+      ? row.sampleDraft
+        ? 'sample_draft'
+        : 'in_klaviyo'
+      : 'working',
+    klaviyo,
     steps,
     notes
   }

@@ -1,12 +1,19 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
-import { emailScreen, klaviyoCampaignsUrl, runSteps } from './email-screen'
+import {
+  emailScreen,
+  klaviyoCampaignsUrl,
+  previewText,
+  runSteps,
+  type EmailLogLine
+} from './email-screen'
 import { loadEmailScreen } from './email-screen-load'
 
 vi.mock('server-only', () => ({}))
 
 const tenant = '00000000-0000-4000-8000-000000000101'
 const buildId = '00000000-0000-4000-8000-00000000b001'
+const runId = '00000000-0000-4000-8000-00000000a001'
 const pushKey = '00000000-0000-4000-8000-00000000c001'
 
 const email = (over: Record<string, unknown> = {}) => ({
@@ -31,26 +38,31 @@ const row = (over: Record<string, unknown> = {}) => ({
   state: 'drafted',
   step: 'push',
   email: email(),
+  format: 'designed' as const,
   klaviyoCampaignId: 'kc1',
   sampleDraft: false,
   reason: null,
   ...over
 })
 
+const line = (code: string, agent = 'ab-test'): EmailLogLine => ({
+  agent,
+  code,
+  reason: `Reason ${code}.`,
+  instead: `Instead ${code}.`
+})
+
 describe('an email’s page (UI-EMAIL-a)', () => {
-  it('shows the steps in plain words: done, now and next', () => {
+  it('shows the steps in plain words: past tense only once done', () => {
     expect(
       runSteps({ state: 'build_queued', step: 'copy' }, 'designed')
     ).toEqual([
       { label: 'Planned the sections', state: 'done' },
       { label: 'Chose the products and the offer', state: 'done' },
       { label: 'Writing the words', state: 'now' },
-      { label: 'Designed the email', state: 'next' },
-      { label: 'Put it in Klaviyo as a draft', state: 'next' }
+      { label: 'Designing the email', state: 'next' },
+      { label: 'Putting it in Klaviyo as a draft', state: 'next' }
     ])
-    expect(
-      runSteps({ state: 'build_queued', step: 'design' }, 'text')[3]
-    ).toEqual({ label: 'Laying out the letter', state: 'now' })
     expect(
       runSteps({ state: 'drafted', step: 'push' }, 'designed').every(
         (s) => s.state === 'done'
@@ -62,13 +74,23 @@ describe('an email’s page (UI-EMAIL-a)', () => {
     ).toEqual({ label: 'Planning the sections', state: 'now' })
   })
 
-  it('says the email is being made, or why it stopped and where', () => {
-    expect(
-      emailScreen(row({ state: 'build_queued', step: 'sections', email: null }))
-    ).toMatchObject({
-      kind: 'working',
-      steps: [{ label: 'Planning the sections', state: 'now' }, {}, {}, {}, {}]
+  it('says a text email is being laid out as a letter before it is built', () => {
+    const screen = emailScreen(
+      row({
+        state: 'build_queued',
+        step: 'design',
+        email: null,
+        format: 'text'
+      })
+    )
+    expect(screen).toMatchObject({ kind: 'working', format: 'text' })
+    expect(screen.steps[3]).toEqual({
+      label: 'Laying out the letter',
+      state: 'now'
     })
+  })
+
+  it('says why it stopped and where, keeping the email when it was made', () => {
     const failed = emailScreen(
       row({
         state: 'failed',
@@ -79,7 +101,8 @@ describe('an email’s page (UI-EMAIL-a)', () => {
     )
     expect(failed).toMatchObject({
       kind: 'failed',
-      reason: 'Its design could not be drawn.'
+      reason: 'Its design could not be drawn.',
+      email: null
     })
     expect(failed.steps.map((s) => s.state)).toEqual([
       'done',
@@ -88,19 +111,25 @@ describe('an email’s page (UI-EMAIL-a)', () => {
       'failed',
       'next'
     ])
-    expect(failed.steps[3].label).toBe('Designed the email')
-    expect(emailScreen(row({ email: { name: 'old' } }))).toMatchObject({
+    expect(failed.steps[3].label).toBe('Designing the email')
+    // A push refused: the owner still sees what was made.
+    expect(
+      emailScreen(row({ state: 'failed', step: 'push', reason: null }))
+    ).toMatchObject({
       kind: 'failed',
-      reason: 'This email could not be read. Make it again from the plan.'
-    })
-    expect(emailScreen(row({ state: 'failed', reason: null }))).toMatchObject({
-      kind: 'failed',
-      reason: 'We could not create this email. Try again.'
+      reason: 'We could not create this email. Try again.',
+      email: { subject: 'Our cedar candle is back' }
     })
   })
 
-  it('previews a drafted email, with Open in Klaviyo only for a real draft', () => {
-    const screen = emailScreen(row())
+  it('previews a drafted email safely, with Open in Klaviyo only for a real draft', () => {
+    const screen = emailScreen(
+      row({
+        email: email({
+          html: '<p>B</p><script>x()</script><p>{% unsubscribe "Unsubscribe" %}</p>'
+        })
+      })
+    )
     expect(screen).toMatchObject({
       kind: 'email',
       title: 'Bestseller: Cedar candle',
@@ -110,19 +139,23 @@ describe('an email’s page (UI-EMAIL-a)', () => {
       preview: 'Warm nights start here.',
       status: 'in_klaviyo',
       sample: false,
-      sampleDraft: false,
       klaviyo: {
         campaignId: 'kc1',
         href: klaviyoCampaignsUrl,
         name: 'Bestseller: Cedar candle'
       },
-      designs: [{ name: 'The email', html: '<p>B</p>' }],
       text: null,
       notes: []
     })
-    // A sample draft, a draft still being pushed, or no campaign: no link.
+    if (screen.kind !== 'email') throw new Error('expected an email')
+    expect(screen.designs).toHaveLength(1)
+    expect(screen.designs[0].name).toBe('The email')
+    expect(screen.designs[0].html).toContain('<p>B</p>')
+    expect(screen.designs[0].html).not.toMatch(/<script|\{%/)
+    expect(screen.designs[0].html).toContain('Unsubscribe')
+    // A sample draft is not in Klaviyo; a push in progress or no campaign: no link.
     expect(emailScreen(row({ sampleDraft: true }))).toMatchObject({
-      sampleDraft: true,
+      status: 'sample_draft',
       klaviyo: null
     })
     expect(
@@ -133,40 +166,78 @@ describe('an email’s page (UI-EMAIL-a)', () => {
     })
   })
 
-  it('shows both designs of a design test, and both subjects of a subject test', () => {
+  it('shows a test only when Klaviyo holds it', () => {
     const designs = emailScreen(
       row({ email: email({ approach: 'B', designA: '<p>A</p>' }) })
     )
-    expect(designs).toMatchObject({
-      designs: [
-        { name: 'Design A', html: '<p>A</p>' },
-        { name: 'Design B', html: '<p>B</p>' }
-      ],
-      subjectB: null,
-      notes: [
-        'A test of two designs: half the audience gets each, no winner picked.'
-      ]
-    })
-    expect(
-      emailScreen(row({ email: email({ subjectB: 'Cedar, for cold nights' }) }))
-    ).toMatchObject({
+    if (designs.kind !== 'email') throw new Error('expected an email')
+    expect(designs.designs.map((d) => d.name)).toEqual(['Design A', 'Design B'])
+    expect(designs.designs[0].html).toContain('<p>A</p>')
+    expect(designs.notes).toEqual([
+      'A test of two designs: half the audience gets each, and Results shows which got more clicks.'
+    ])
+    const subjects = emailScreen(
+      row({ email: email({ subjectB: 'Cedar, for cold nights' }) })
+    )
+    expect(subjects).toMatchObject({
       subjectB: 'Cedar, for cold nights',
       notes: [
-        'A test of two subjects: half the audience gets each, no winner picked.'
+        'A test of two subjects: half the audience gets each, and Results shows which got more clicks.'
       ]
+    })
+    // The draft could hold only one: no test claimed, design A alone.
+    const oneDesign = emailScreen(
+      row({ email: email({ approach: 'B', designA: '<p>A</p>' }) }),
+      [line('ab_one_design')]
+    )
+    if (oneDesign.kind !== 'email') throw new Error('expected an email')
+    expect(oneDesign.designs).toHaveLength(1)
+    expect(oneDesign.designs[0].html).toContain('<p>A</p>')
+    expect(oneDesign.notes).toEqual([
+      'Reason ab_one_design. Instead ab_one_design.'
+    ])
+    expect(
+      emailScreen(
+        row({ email: email({ subjectB: 'Cedar, for cold nights' }) }),
+        [line('ab_one_subject')]
+      )
+    ).toMatchObject({
+      subjectB: null,
+      notes: ['Reason ab_one_subject. Instead ab_one_subject.']
     })
   })
 
-  it('shows a text email’s letter and its own plain-text part', () => {
+  it('shows a text email’s letter and its plain-text part without Klaviyo’s tags', () => {
     const screen = emailScreen(
-      row({ email: email({ format: 'text', text: 'Hi,\nA note from me.' }) })
+      row({
+        email: email({
+          format: 'text',
+          text: 'Hi {{ first_name|default:"friend" }},\nA note from me.\n{{ organization.name }}\nUnsubscribe: {% unsubscribe_link %}'
+        })
+      })
     )
     expect(screen).toMatchObject({
       format: 'text',
-      designs: [{ name: 'The letter', html: '<p>B</p>' }],
-      text: 'Hi,\nA note from me.'
+      text: 'Hi [first name],\nA note from me.\nYour brand\nUnsubscribe: Unsubscribe link'
     })
+    if (screen.kind !== 'email') throw new Error('expected an email')
+    expect(screen.designs[0].name).toBe('The letter')
     expect(screen.steps[3].label).toBe('Laid out the letter')
+    expect(previewText('{% manage_preferences_link %} {% other %}')).toBe(
+      'Preferences link '
+    )
+  })
+
+  it('says a draft it cannot read is in Klaviyo, and keeps Open in Klaviyo', () => {
+    expect(emailScreen(row({ email: { name: 'old' } }))).toMatchObject({
+      kind: 'unreadable',
+      message:
+        'This email is in Klaviyo as a draft, but it was made by an older version of the app, so it cannot be shown here. Open it in Klaviyo to see it.',
+      klaviyo: { campaignId: 'kc1', name: 'your email' }
+    })
+    expect(
+      emailScreen(row({ email: { name: 'old' }, sampleDraft: true }))
+    ).toMatchObject({ kind: 'unreadable', klaviyo: null })
   })
 
   it('writes every change the team made, each once', () => {
@@ -175,42 +246,36 @@ describe('an email’s page (UI-EMAIL-a)', () => {
         email: email({
           copy: 'plain',
           ai: false,
-          changes: ['offer_ended', 'offer_ended', 'not_a_change']
+          changes: ['offer_ended', 'offer_ended', 'not_a_change', 'toString']
         })
       }),
-      [
-        {
-          code: 'content_replaced',
-          reason: 'The planned code ends before the email sends.',
-          instead: 'Sent no offer.'
-        },
-        {
-          code: 'ab_one_subject',
-          reason: 'This email’s Klaviyo draft could not hold both subjects.',
-          instead: 'The draft in Klaviyo has the first subject only.'
-        },
-        {
-          code: 'ab_one_subject',
-          reason: 'This email’s Klaviyo draft could not hold both subjects.',
-          instead: 'The draft in Klaviyo has the first subject only.'
-        }
-      ]
+      [line('content_replaced', 'content-locker'), line('x'), line('x')]
     )
     expect(screen.notes).toEqual([
       'The AI was not used for this email: its words are plain words built from your store’s facts.',
       'Some planned content could not be used, so safer choices were made: the planned code ends before the email sends.',
-      'This email’s Klaviyo draft could not hold both subjects. The draft in Klaviyo has the first subject only.'
+      'Reason x. Instead x.'
+    ])
+    // The AI could not write: the copy step's own line says why, once.
+    expect(
+      emailScreen(row({ email: email({ copy: 'plain', ai: true }) }), [
+        line('copy_ai_busy', 'copy-inspectors')
+      ]).notes
+    ).toEqual(['Reason copy_ai_busy. Instead copy_ai_busy.'])
+    expect(
+      emailScreen(row({ email: email({ copy: 'plain', ai: true }) })).notes
+    ).toEqual([
+      'Its words are plain words built from your store’s facts: the AI writer could not be used.'
     ])
   })
 })
 
-/** A query that records its calls and answers with the table's result. */
+/** Each table's answers in turn, once awaited; records every call. */
 function fakeDb(results: Record<string, { data: unknown; error: unknown }[]>) {
-  const calls: [string, unknown[]][] = []
+  const calls: [string, string, unknown[]][] = []
   const db = {
     from: (table: string) => {
-      calls.push(['from', [table]])
-      const result = results[table].shift()!
+      const result = results[table]?.shift() ?? { data: null, error: null }
       const query: Record<string, unknown> = {
         then: (done: (r: unknown) => unknown) =>
           Promise.resolve(result).then(done),
@@ -218,7 +283,7 @@ function fakeDb(results: Record<string, { data: unknown; error: unknown }[]>) {
       }
       for (const name of ['select', 'eq', 'like', 'order', 'limit'])
         query[name] = (...args: unknown[]) => {
-          calls.push([name, args])
+          calls.push([table, name, args])
           return query
         }
       return query
@@ -229,6 +294,8 @@ function fakeDb(results: Record<string, { data: unknown; error: unknown }[]>) {
 
 const buildRow = (over: Record<string, unknown> = {}) => ({
   id: buildId,
+  run_id: runId,
+  slot: 1,
   state: 'drafted',
   step: 'push',
   email: email({ subjectB: 'Cedar, for cold nights' }),
@@ -238,56 +305,89 @@ const buildRow = (over: Record<string, unknown> = {}) => ({
   push_key: pushKey,
   ...over
 })
+const fallback = (code: string, at: string, agent = 'copy-inspectors') => ({
+  agent,
+  reason_code: code,
+  reason: `Reason ${code}.`,
+  fallback: `Instead ${code}.`,
+  last_seen_at: at
+})
+const plan = {
+  data: { plan: { slots: [{}, { format: 'text' }] } },
+  error: null
+}
 
 describe('loading an email’s page (UI-EMAIL-a)', () => {
-  it('reads the workspace’s build and its own log lines, oldest first', async () => {
+  it('reads the workspace’s build, its slot and its own log lines, tenant first', async () => {
     const { db, calls } = fakeDb({
       email_builds: [{ data: buildRow(), error: null }],
+      strategy_runs: [plan],
       agent_fallbacks: [
         {
-          data: [
-            {
-              agent: 'copy-inspectors',
-              reason_code: 'inspector_busy',
-              reason: 'The inspectors were busy.',
-              fallback: 'Checked the words with the code checks.',
-              last_seen_at: '2026-11-16T10:00:02Z'
-            }
-          ],
+          data: [fallback('inspector_busy', '2026-11-16T10:00:02Z')],
           error: null
         },
         {
-          data: [
-            {
-              agent: 'ab-test',
-              reason_code: 'ab_one_subject',
-              reason:
-                'This email’s Klaviyo draft could not hold both subjects.',
-              fallback: 'The draft in Klaviyo has the first subject only.',
-              last_seen_at: '2026-11-16T10:00:01Z'
-            }
-          ],
+          data: [fallback('ab_one_subject', '2026-11-16T10:00:01Z', 'ab-test')],
           error: null
         }
       ]
     })
     const out = await loadEmailScreen(db, tenant, buildId)
-    expect(out.ok && out.screen?.kind).toBe('email')
-    expect(out.ok && out.screen?.notes.slice(1)).toEqual([
-      'This email’s Klaviyo draft could not hold both subjects. The draft in Klaviyo has the first subject only.',
-      'The inspectors were busy. Checked the words with the code checks.'
+    // Oldest first; the subject test Klaviyo could not hold is not claimed.
+    expect(out).toMatchObject({
+      ok: true,
+      screen: {
+        kind: 'email',
+        subjectB: null,
+        notes: [
+          'Reason ab_one_subject. Instead ab_one_subject.',
+          'Reason inspector_busy. Instead inspector_busy.'
+        ]
+      }
+    })
+    expect(calls.filter(([, n]) => n === 'eq')).toEqual([
+      ['email_builds', 'eq', ['tenant_id', tenant]],
+      ['email_builds', 'eq', ['id', buildId]],
+      ['strategy_runs', 'eq', ['tenant_id', tenant]],
+      ['strategy_runs', 'eq', ['id', runId]],
+      ['agent_fallbacks', 'eq', ['tenant_id', tenant]],
+      ['agent_fallbacks', 'eq', ['tenant_id', tenant]]
     ])
-    // Tenant first on every read; the build's lines and its push's test.
-    expect(calls.filter(([n]) => n === 'eq')).toEqual([
-      ['eq', ['tenant_id', tenant]],
-      ['eq', ['id', buildId]],
-      ['eq', ['tenant_id', tenant]],
-      ['eq', ['tenant_id', tenant]]
+    expect(calls.filter(([, n]) => n === 'like')).toEqual([
+      ['agent_fallbacks', 'like', ['dedupe_key', `%email-build-${buildId}%`]],
+      ['agent_fallbacks', 'like', ['dedupe_key', `ab-test:${pushKey}:%`]]
     ])
-    expect(calls.filter(([n]) => n === 'like')).toEqual([
-      ['like', ['dedupe_key', `%email-build-${buildId}%`]],
-      ['like', ['dedupe_key', `ab-test:${pushKey}:%`]]
-    ])
+  })
+
+  it('keeps the newest 20 lines, and a text email’s steps before it is built', async () => {
+    const many = Array.from({ length: 25 }, (_, i) =>
+      fallback(`c${i}`, `2026-11-16T10:00:${String(i).padStart(2, '0')}Z`)
+    )
+    const { db } = fakeDb({
+      email_builds: [
+        {
+          data: buildRow({
+            state: 'build_queued',
+            step: 'design',
+            email: null
+          }),
+          error: null
+        }
+      ],
+      strategy_runs: [plan],
+      agent_fallbacks: [
+        { data: many, error: null },
+        { data: [], error: null }
+      ]
+    })
+    const out = await loadEmailScreen(db, tenant, buildId)
+    if (!out.ok || out.screen?.kind !== 'working')
+      throw new Error('expected working')
+    expect(out.screen.format).toBe('text')
+    expect(out.screen.steps[3].label).toBe('Laying out the letter')
+    expect(out.screen.notes[0]).toBe('Reason c5. Instead c5.')
+    expect(out.screen.notes.at(-1)).toBe('Reason c24. Instead c24.')
   })
 
   it('says why a failed build stopped, in the owner’s words', async () => {
@@ -303,44 +403,41 @@ describe('loading an email’s page (UI-EMAIL-a)', () => {
           error: null
         }
       ],
-      agent_fallbacks: [
-        { data: [], error: null },
-        { data: [], error: null }
-      ]
+      strategy_runs: [{ data: null, error: null }]
     })
     expect(await loadEmailScreen(db, tenant, buildId)).toMatchObject({
       ok: true,
-      screen: { kind: 'failed', reason: 'Its design could not be drawn.' }
+      screen: {
+        kind: 'failed',
+        format: 'designed',
+        reason: 'Its design could not be drawn.'
+      }
     })
   })
 
-  it('has no page for a build it cannot see, and fails closed on an error', async () => {
-    expect(
-      await loadEmailScreen(
-        fakeDb({ email_builds: [{ data: null, error: null }] }).db,
-        tenant,
-        buildId
-      )
-    ).toEqual({ ok: true, screen: null })
-    expect(
-      await loadEmailScreen(
-        fakeDb({ email_builds: [{ data: null, error: { message: 'x' } }] }).db,
-        tenant,
-        buildId
-      )
-    ).toEqual({ ok: false })
-    expect(
-      await loadEmailScreen(
-        fakeDb({
+  it('has no page for a build it cannot see, and fails closed on any error', async () => {
+    const load = (results: Parameters<typeof fakeDb>[0]) =>
+      loadEmailScreen(fakeDb(results).db, tenant, buildId)
+    const ok = { data: [], error: null }
+    const bad = { data: null, error: { message: 'x' } }
+    expect(await load({ email_builds: [{ data: null, error: null }] })).toEqual(
+      {
+        ok: true,
+        screen: null
+      }
+    )
+    expect(await load({ email_builds: [bad] })).toEqual({ ok: false })
+    for (const [run, own, test] of [
+      [bad, ok, ok],
+      [plan, bad, ok],
+      [plan, ok, bad]
+    ])
+      expect(
+        await load({
           email_builds: [{ data: buildRow(), error: null }],
-          agent_fallbacks: [
-            { data: [], error: null },
-            { data: null, error: { message: 'x' } }
-          ]
-        }).db,
-        tenant,
-        buildId
-      )
-    ).toEqual({ ok: false })
+          strategy_runs: [run],
+          agent_fallbacks: [own, test]
+        })
+      ).toEqual({ ok: false })
   })
 })
