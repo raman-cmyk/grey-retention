@@ -18,12 +18,12 @@ export function renderSection(
   height: number
 }>
 export type EmailView = 'desktop' | 'phone' | 'dark'
-export const emailViews: Record<
-  EmailView,
-  { width: number; isMobile: boolean; colorScheme: 'light' | 'dark' }
+export const emailViews: Readonly<
+  Record<EmailView, Readonly<{ width: number; colorScheme: 'light' | 'dark' }>>
 >
 export const maxEmailHeight: number
 export const maxEmailBytes: number
+export const emailWindow: number
 export function renderEmail(
   browser: Browser,
   input: { document: string; view: EmailView; origins: readonly string[] },
@@ -34,4 +34,5 @@ export function renderEmail(
   width: number
   height: number
   cut: boolean
+  wide: boolean
 }>
