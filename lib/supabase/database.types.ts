@@ -3408,6 +3408,71 @@ export type Database = {
           }
         ]
       }
+      email_renders: {
+        Row: {
+          build_id: string
+          bytes: number | null
+          created_at: string
+          cut: boolean | null
+          document: string
+          etag: string | null
+          failure: string | null
+          finished_at: string | null
+          height: number | null
+          id: string
+          origins: string[]
+          path: string | null
+          render_key: string
+          state: string
+          tenant_id: string
+          view: string
+        }
+        Insert: {
+          build_id: string
+          bytes?: number | null
+          created_at?: string
+          cut?: boolean | null
+          document: string
+          etag?: string | null
+          failure?: string | null
+          finished_at?: string | null
+          height?: number | null
+          id?: string
+          origins: string[]
+          path?: string | null
+          render_key: string
+          state?: string
+          tenant_id: string
+          view: string
+        }
+        Update: {
+          build_id?: string
+          bytes?: number | null
+          created_at?: string
+          cut?: boolean | null
+          document?: string
+          etag?: string | null
+          failure?: string | null
+          finished_at?: string | null
+          height?: number | null
+          id?: string
+          origins?: string[]
+          path?: string | null
+          render_key?: string
+          state?: string
+          tenant_id?: string
+          view?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'email_renders_tenant_id_build_id_fkey'
+            columns: ['tenant_id', 'build_id']
+            isOneToOne: false
+            referencedRelation: 'email_builds'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       email_result_revisions: {
         Row: {
           body_text: string
@@ -7549,6 +7614,10 @@ export type Database = {
         Args: { failure: Json; job: string; lease: string }
         Returns: string
       }
+      fail_email_render: {
+        Args: { failure: string; job: string; lease: string }
+        Returns: undefined
+      }
       fail_email_step: {
         Args: {
           build: string
@@ -7849,6 +7918,16 @@ export type Database = {
         }
         Returns: undefined
       }
+      record_email_render: {
+        Args: {
+          bytes: number
+          cut: boolean
+          height: number
+          job: string
+          lease: string
+        }
+        Returns: undefined
+      }
       record_fallback: {
         Args: {
           agent_key: string
@@ -8019,6 +8098,17 @@ export type Database = {
           ticket: string
         }
         Returns: undefined
+      }
+      request_email_render: {
+        Args: {
+          build: string
+          document: string
+          email_view: string
+          lease: string
+          origins: string[]
+          render_key: string
+        }
+        Returns: string
       }
       request_email_rewrite: {
         Args: {
