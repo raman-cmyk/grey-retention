@@ -485,10 +485,10 @@ describe('designed or text emails (TXT-001f, D26)', () => {
       slot({ format: 'text', date: '2026-11-20' }),
       offerSlot,
       slot({ date: '2026-11-21' }),
-      slot({ date: '2026-11-22' }),
-      giftSlot
+      giftSlot,
+      slot({ ...giftSlot, date: '2026-11-24' })
     ]
-    const roomy = { ...input, sendsPerWeek: 6 }
+    const roomy = { ...input, sendsPerWeek: 4 as const }
     expect(calendarProblems(six, roomy, brief.actions).size).toBe(0)
     // The critic drops three designed emails: three are left, one may be text.
     const critic = new Map(
