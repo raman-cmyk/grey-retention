@@ -36,6 +36,15 @@ export const emailAgentsOn = (env: NodeJS.ProcessEnv) =>
   env.EMAIL_BUILD_AGENTS?.trim() === 'on'
 
 /**
+ * Whether the agents would run: the owner's switch on and a live model set
+ * up (as `buildAgentsFor`), whatever this claim was given (DST-006e).
+ */
+export function emailAgentsReady(env: NodeJS.ProcessEnv = process.env) {
+  const setup = aiSetup('copy', env)
+  return emailAgentsOn(env) && setup.provider !== 'fake' && setup.ready
+}
+
+/**
  * The build's agents, or null for the code-only path: when the switch is
  * off, or no live model is set up (the fake), the build stays on the code
  * path and nothing is metered or logged, as the inbox and onboarding
@@ -47,9 +56,7 @@ export function buildAgentsFor(
   db: SupabaseClient<Database>,
   env: NodeJS.ProcessEnv = process.env
 ): BuildAgents | null {
-  const setup = aiSetup('copy', env)
-  if (!emailAgentsOn(env) || setup.provider === 'fake' || !setup.ready)
-    return null
+  if (!emailAgentsReady(env)) return null
   const capped = agentEnv(env)
   const ledger = new SupabaseBudgetLedger(db)
   return {

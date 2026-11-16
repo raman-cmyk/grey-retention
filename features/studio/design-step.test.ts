@@ -2,6 +2,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
+const boards = vi.hoisted(() => ({ codeStoryboard: vi.fn() }))
+vi.mock('./storyboard', async (original) => ({
+  ...(await original<typeof import('./storyboard')>()),
+  codeStoryboard: boards.codeStoryboard
+}))
 import { sampleBlocks, sampleBrand } from '@/features/blocks/samples'
 import { renderEmail } from '@/features/blocks/render'
 import type { Block } from '@/features/blocks/catalog'
@@ -269,18 +274,25 @@ describe('the design step with the studio (DST-006c part 2a)', () => {
         storyboard.sections[1]!
       ]
     }
+    boards.codeStoryboard.mockReturnValueOnce(storyboard)
     const p = ports({ storyboard: vi.fn(async () => moved) })
-    const out = await studioDesignStep(input(), p)
+    const out = waitingOf(await studioDesignStep(input(), p))
     expect(p.coded).toHaveBeenCalledWith('email', 'storyboard_reordered')
-    // Code's own storyboard keeps layer 1's order (or fits none: coded).
-    const saved =
-      'waiting' in out
-        ? (out.waiting.work as { studio: { storyboard: Storyboard | null } })
-            .studio.storyboard
-        : null
-    if (saved)
-      expect(saved.sections.map((s) => s.id)).toEqual(['s1', 's2', 's3'])
-    else expect(out).toEqual({ blocks, pictures: 0 })
+    expect(boards.codeStoryboard).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'scratch' })
+    )
+    const kept = (out.work as { studio: { storyboard: Storyboard } }).studio
+      .storyboard
+    expect(kept.sections.map((s) => s.id)).toEqual(['s1', 's2', 's3'])
+    expect(p.design).toHaveBeenCalledTimes(1)
+    // When code's own fits none, the email is drawn coded.
+    boards.codeStoryboard.mockReturnValueOnce(null)
+    const none = ports({ storyboard: vi.fn(async () => moved) })
+    expect(await studioDesignStep(input(), none)).toEqual({
+      blocks,
+      pictures: 0
+    })
+    expect(none.design).not.toHaveBeenCalled()
   })
 
   it('keeps the build’s limits from work it cannot read, and goes on as a JSON round trip', async () => {

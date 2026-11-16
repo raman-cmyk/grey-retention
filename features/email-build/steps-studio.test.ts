@@ -190,4 +190,39 @@ describe('the design step with the design studio (DST-006c part 2b)', () => {
       })
     ])
   })
+
+  it('says the studio stopped, not that it had no time, when its work is there (DST-006e)', async () => {
+    const { store, progress, blocks, hero } = await beforeDesign()
+    const first = (await runBuildStep(
+      'design',
+      { planned, store, offers: sampleOffersFrom(start), progress },
+      {
+        tenantId,
+        callerKey: 'email-build:b1',
+        fallbacks: memoryFallbackLog(),
+        studio: ports(blocks, hero),
+        clock
+      }
+    )) as { work: object }
+    const fallbacks = memoryFallbackLog()
+    await runBuildStep(
+      'design',
+      {
+        planned,
+        store,
+        offers: sampleOffersFrom(start),
+        progress: { ...progress, work: { design: first.work } }
+      },
+      {
+        tenantId,
+        callerKey: 'email-build:b1',
+        fallbacks,
+        clock,
+        studioSkipped: true
+      }
+    )
+    expect(fallbacks.entries().map((e) => e.reasonCode)).toEqual([
+      'studio_not_finished'
+    ])
+  })
 })

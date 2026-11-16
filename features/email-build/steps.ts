@@ -316,33 +316,25 @@ export async function runBuildStep(
         seconds: studio.waiting.seconds
       }
     drawn = { ...drawn, draft: { ...drawn.draft, blocks: studio.blocks } }
-  } else if (saved?.studio) {
-    // The studio's work, past its time (or its switch turned off): the
-    // email is drawn coded, and the owner's log says so once (D16).
-    await ctx.fallbacks.record({
-      tenantId: ctx.tenantId,
-      campaignId: ctx.campaignId ?? null,
-      agent: 'design-studio',
-      reasonCode: 'studio_not_finished',
-      reason: 'The design studio stopped before it finished.',
-      fallback: 'Drew the email with its coded blocks.',
-      attempts: 1,
-      detail: {},
-      dedupeKey: `design-studio:${keyPart(ctx.callerKey)}:not-finished`
-    })
-  } else if (ctx.studioSkipped) {
-    await ctx.fallbacks.record({
-      tenantId: ctx.tenantId,
-      campaignId: ctx.campaignId ?? null,
-      agent: 'design-studio',
-      reasonCode: 'studio_no_time',
-      reason: 'The design studio had no time left for this email.',
-      fallback: 'Drew the email with its coded blocks.',
-      attempts: 1,
-      detail: {},
-      dedupeKey: `design-studio:${keyPart(ctx.callerKey)}:no-time`
-    })
   }
+  // The studio's work without its ports (its time up, the switch turned
+  // off, or a try that threw), or the studio on with no agents for this
+  // claim: drawn coded, and the owner's log says so once (D16), after the
+  // email is drawn.
+  const coded =
+    !ctx.studio && saved?.studio
+      ? {
+          reasonCode: 'studio_not_finished',
+          reason: 'The design studio stopped before it finished.',
+          key: 'not-finished'
+        }
+      : !ctx.studio && ctx.studioSkipped
+        ? {
+            reasonCode: 'studio_no_time',
+            reason: 'The design studio had no time left for this email.',
+            key: 'no-time'
+          }
+        : null
   const made = designStep({
     planned,
     store,
@@ -352,5 +344,17 @@ export async function runBuildStep(
     rules: sections.rules,
     ai: sections.layout.source === 'agent' || content?.source === 'agent'
   })
+  if (made.ok && coded)
+    await ctx.fallbacks.record({
+      tenantId: ctx.tenantId,
+      campaignId: ctx.campaignId ?? null,
+      agent: 'design-studio',
+      reasonCode: coded.reasonCode,
+      reason: coded.reason,
+      fallback: 'Drew the email with its coded blocks.',
+      attempts: 1,
+      detail: {},
+      dedupeKey: `design-studio:${keyPart(ctx.callerKey)}:${coded.key}`
+    })
   return made.ok ? { ok: true, done: 'design', email: made.email } : made
 }

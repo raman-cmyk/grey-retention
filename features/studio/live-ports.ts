@@ -245,7 +245,12 @@ export function studioPortsFor(
         agent: 'design-studio',
         reasonCode: reason.startsWith('studio_') ? reason : `studio_${reason}`,
         reason: codedReasons[reason],
-        fallback: 'Drew the section as its coded block.',
+        fallback:
+          reason === 'storyboard_reordered'
+            ? 'Kept the email’s order, with the storyboard code makes.'
+            : reason === 'layout_changed'
+              ? 'Drew the email with its coded blocks.'
+              : 'Drew the section as its coded block.',
         attempts: 1,
         detail: { section },
         dedupeKey: `design-studio:${keyPart(input.callerKey)}:${keyPart(section)}:${reason}`

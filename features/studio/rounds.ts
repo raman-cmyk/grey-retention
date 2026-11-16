@@ -55,7 +55,7 @@ export const codedReasons = {
   not_designable: 'The section had no https photo to design with.',
   layout_changed: 'The email’s sections and its draft did not match.',
   storyboard_reordered:
-    'The Art director moved the sections: the email keeps its own order and its coded storyboard.'
+    'The Art director moved the sections: the email keeps its own order.'
 } as const
 export type CodedReason = keyof typeof codedReasons
 

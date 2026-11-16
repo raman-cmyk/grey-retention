@@ -18,7 +18,7 @@ import {
   plannedEmail,
   type BuildAgents
 } from './build'
-import { buildAgentsFor, emailAgentsOn } from './agents'
+import { buildAgentsFor, emailAgentsReady } from './agents'
 import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { maxStepSaves, roundSteps, maxEmailBytes } from './step-names'
 import { buildCode, type BuildFailureCode } from './failure-words'
@@ -36,8 +36,6 @@ import {
 } from '@/features/studio/waits'
 
 type Db = SupabaseClient<Database>
-/** A studio design step that threw waits this long before the studio tries it again. */
-const studioRetrySeconds = 120
 /** A build claimed by the design studio (DST-006b), as `claim_email_build` returns one. */
 type ClaimedBuild = NonNullable<Awaited<ReturnType<typeof claimWaitingDesign>>>
 
@@ -183,8 +181,6 @@ export async function runEmailBuilds(
     /** A finish the database refused: shape and size errors cannot change on a retry. */
     const refused = (error: { code?: string }) =>
       error.code === '22023' || error.code === '23514'
-    /** The studio ran this design step: a throw waits for it again. */
-    let studioRunning = false
     try {
       if (job.state === 'build_queued') {
         const planned = plannedEmail.safeParse(job.planned)
@@ -221,7 +217,6 @@ export async function runEmailBuilds(
         // DST-006e: the studio's design step has longer (its critic's tries
         // and the product's photo); the claims' own deadlines still bound it.
         const studioStep = studio && agents && job.step === 'design'
-        studioRunning = !!studioStep
         const until = Math.min(
           started + (studioStep ? studioStepMs : stepBudgetMs),
           deps.deadline ?? Number.POSITIVE_INFINITY
@@ -252,7 +247,7 @@ export async function runEmailBuilds(
             ...(studio &&
             !agents &&
             job.step === 'design' &&
-            emailAgentsOn(process.env)
+            emailAgentsReady(process.env)
               ? { studioSkipped: true }
               : {}),
             ...(studioStep && agents
@@ -473,23 +468,6 @@ export async function runEmailBuilds(
       const code = stepCode(error)
       if (buildCode(code) !== code)
         logger.error('Email build step threw', { build: job.id, code })
-      // DST-006e: a studio design step that threw (storage or an agent
-      // down) waits from its saved work, so the studio tries it again; the
-      // design step's 6 waits bound it, then the sweep draws it coded.
-      if (studioRunning) {
-        const saved = (job.progress as { work?: { design?: object } } | null)
-          ?.work?.design
-        const work = Object.fromEntries(
-          Object.entries(saved ?? {}).filter(([k]) => k !== 'saves')
-        )
-        const waited = await waitForPictures(db, {
-          build: job.id,
-          lease: job.lease_token,
-          work,
-          seconds: studioRetrySeconds
-        }).catch(() => null)
-        if (waited?.ok || (waited && waited.reason === 'lease')) continue
-      }
       await fail(buildCode(code), false)
     }
   }
