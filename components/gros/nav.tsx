@@ -15,13 +15,13 @@ import { Mark } from './mark'
  * nothing hides behind a menu icon.
  */
 // Until each GROS screen lands, an item opens the old screen that does its
-// job today (typed routes check every address), and an item with no screen
-// at all yet is left out of the bar rather than leading nowhere.
+// job today (typed routes check every address). An item with no screen at
+// all (none today) is left out of the bar rather than leading nowhere.
 export const navItems = [
   { key: 'home', label: 'Home', href: '/home' },
   { key: 'plan', label: 'Plan', href: '/plan' },
   { key: 'inspiration', label: 'Inspiration', href: '/inspiration' },
-  { key: 'audiences', label: 'Audiences', href: null },
+  { key: 'audiences', label: 'Audiences', href: '/audiences' },
   { key: 'results', label: 'Results', href: '/results' }
 ] as const satisfies readonly {
   key: string
