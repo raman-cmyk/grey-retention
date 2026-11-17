@@ -20,7 +20,7 @@ export async function login(page: Page, role: AccountRole = 'owner') {
       ? /\/admin\/dashboard/
       : role === 'designer'
         ? /\/designer\/dashboard/
-        : /\/dashboard/,
+        : /\/home/,
     { timeout: 15_000 }
   )
 }

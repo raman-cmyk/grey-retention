@@ -54,12 +54,9 @@ test('owner creates and reopens the same original draft without integrations', a
     delivery_state: 'not_ready',
     audience_id: null
   })
-  await page.goto('/dashboard')
-  await page
-    .getByRole('link', { name: new RegExp(title) })
-    .first()
-    .click()
-  await expect(page).toHaveURL(savedUrl)
+  // The old dashboard's campaign list is retired with it (UI-HOMEb): the
+  // saved campaign keeps its own page.
+  await page.goto(savedUrl)
   await page.reload()
   await expect(
     page.getByRole('heading', { name: title, exact: true })

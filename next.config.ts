@@ -42,6 +42,11 @@ const nextConfig: NextConfig = {
   // The IMAP client (INB-001) loads its parts at run time; keep it unbundled.
   serverExternalPackages: ['imapflow'],
   experimental: { serverActions: { bodySizeLimit: '12mb' } },
+  // UI-HOMEb: the old dashboard is retired; its address (and old
+  // bookmarks and emails pointing at it) opens Home.
+  async redirects() {
+    return [{ source: '/dashboard', destination: '/home', permanent: false }]
+  },
   async headers() {
     return [
       { source: '/(.*)', headers: securityHeaders },

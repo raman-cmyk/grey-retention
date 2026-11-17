@@ -92,7 +92,7 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
   return {
     profileHref: '/profile',
     primary: [
-      { label: 'Dashboard', href: '/dashboard', icon: 'dashboard' },
+      { label: 'Home', href: '/home', icon: 'dashboard' },
       { label: 'Brand & Store', href: '/brand', icon: 'brand' },
       { label: 'Plan next 15 days', href: '/plan', icon: 'plan' },
       { label: 'Campaigns', href: '/campaign-agent', icon: 'campaigns' },
@@ -176,8 +176,8 @@ export const designerNavigation: ShellNavigation = {
 
 // Child pages highlight their parent area (OWNER_JOURNEYS.md §2 fix).
 const parentAreas: Record<string, readonly string[]> = {
-  // Klaviyo detail pages belong to the dashboard.
-  '/dashboard': [
+  // Klaviyo detail pages belong to Home (until Audiences and Results).
+  '/home': [
     '/campaigns/klaviyo',
     '/lists',
     '/segments',

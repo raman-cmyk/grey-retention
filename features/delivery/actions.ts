@@ -104,7 +104,7 @@ export async function deliveryAction(
     revalidatePath('/settings')
     revalidatePath('/campaigns', 'layout')
     revalidatePath('/campaign-agent')
-    revalidatePath('/dashboard')
+    revalidatePath('/home')
     return {
       message:
         x.kind === 'reschedule'

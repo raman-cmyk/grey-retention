@@ -81,14 +81,14 @@ afterEach(() => {
 })
 
 describe('Klaviyo detail pages (§4)', () => {
-  it('list: plain sign-up method, back to the Lists tab, sample note', async () => {
+  it('list: plain sign-up method, back to Audiences, sample note', async () => {
     render(await ListPage(props('listId', 'LSTnews01', 'lists')))
     expect(
       screen.getByRole('heading', { level: 1, name: 'Newsletter' })
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('link', { name: 'Back to dashboard' })
-    ).toHaveAttribute('href', '/dashboard?tab=lists#klaviyo-data')
+      screen.getByRole('link', { name: 'Back to Audiences' })
+    ).toHaveAttribute('href', '/audiences')
     expect(screen.getByText('Double opt-in')).toBeInTheDocument()
     expect(screen.getByText(/Sample Klaviyo data/)).toBeInTheDocument()
     const main = screen.getByText('Sign-up method').closest('section')!
@@ -96,8 +96,11 @@ describe('Klaviyo detail pages (§4)', () => {
     expect(screen.getByText(/Flow triggers · 1 item/)).toBeInTheDocument()
   })
 
-  it('segment: active and starred pills, rules as a sentence, JSON only in Advanced', async () => {
+  it('segment: active and starred pills, rules as a sentence, JSON only in Advanced, back to Audiences', async () => {
     render(await SegmentPage(props('segmentId', 'SEGeng030')))
+    expect(
+      screen.getByRole('link', { name: 'Back to Audiences' })
+    ).toHaveAttribute('href', '/audiences')
     expect(screen.getByText('Active')).toBeInTheDocument()
     expect(screen.getByText('Starred')).toBeInTheDocument()
     const rules = screen.getByRole('region', {

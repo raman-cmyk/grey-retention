@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { MessageCircle, Settings } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
+import { Card } from './card'
 import { grosRoot } from './font'
 import { Mark } from './mark'
 
@@ -13,15 +14,20 @@ import { Mark } from './mark'
  * sidebar. On a narrow screen the three parts wrap onto their own lines;
  * nothing hides behind a menu icon.
  */
-// Typed routes: the addresses of screens not built yet are cast until
-// each screen lands (then the cast goes, and the build checks the address).
+// Until each GROS screen lands, an item opens the old screen that does its
+// job today (typed routes check every address). An item with no screen at
+// all (none today) is left out of the bar rather than leading nowhere.
 export const navItems = [
-  { key: 'home', label: 'Home', href: '/home' as Route },
-  { key: 'plan', label: 'Plan', href: '/plan' as Route },
-  { key: 'inspiration', label: 'Inspiration', href: '/inspiration' as Route },
-  { key: 'audiences', label: 'Audiences', href: '/audiences' as Route },
-  { key: 'results', label: 'Results', href: '/results' as Route }
-] as const
+  { key: 'home', label: 'Home', href: '/home' },
+  { key: 'plan', label: 'Plan', href: '/plan' },
+  { key: 'inspiration', label: 'Inspiration', href: '/library/inspirations' },
+  { key: 'audiences', label: 'Audiences', href: '/audiences' },
+  { key: 'results', label: 'Results', href: '/results' }
+] as const satisfies readonly {
+  key: string
+  label: string
+  href: Route | null
+}[]
 export type NavKey = (typeof navItems)[number]['key']
 /** The page's place in the bar: a menu item, or one of the two buttons. */
 export type NavPlace = NavKey | 'settings' | 'ask'
@@ -50,22 +56,26 @@ export function TopBar({
       </div>
       <nav aria-label="Main">
         <ul className="gros-menu flex flex-wrap items-center rounded-[var(--radius-pill)] bg-[var(--white)]">
-          {navItems.map((item) => (
-            <li key={item.key}>
-              <Link
-                href={item.href}
-                aria-current={here(item.key)}
-                className={cn(
-                  'gros-menu-item gros-mark inline-flex items-center rounded-[var(--radius-pill)]',
-                  item.key === current
-                    ? 'bg-[var(--lime)] font-semibold text-[var(--forest)]'
-                    : 'font-medium text-[var(--stone)]'
-                )}
-              >
-                {item.label}
-              </Link>
-            </li>
-          ))}
+          {navItems
+            .flatMap((item) =>
+              item.href ? [{ ...item, href: item.href }] : []
+            )
+            .map((item) => (
+              <li key={item.key}>
+                <Link
+                  href={item.href}
+                  aria-current={here(item.key)}
+                  className={cn(
+                    'gros-menu-item gros-mark inline-flex items-center rounded-[var(--radius-pill)]',
+                    item.key === current
+                      ? 'bg-[var(--lime)] font-semibold text-[var(--forest)]'
+                      : 'font-medium text-[var(--stone)]'
+                  )}
+                >
+                  {item.label}
+                </Link>
+              </li>
+            ))}
         </ul>
       </nav>
       <div className="flex items-center gap-[var(--space-2)]">
@@ -124,6 +134,41 @@ export function AppPage({
         >
           {children}
         </main>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A GROS page while its data is read (a route's `loading.tsx`): the bar at
+ * once and one card saying what opens. It draws no `<main>` and no skip
+ * link: while the page streams in, Next keeps the page hidden beside this
+ * fallback, and the page alone holds the one `main#main-content` (two
+ * would confuse screen readers and the browser tests).
+ */
+export function LoadingPage({
+  current,
+  title,
+  words,
+  assistant
+}: {
+  current?: NavPlace
+  title: string
+  /** What is opening, in the owner's words: "Opening Home". */
+  words: string
+  assistant?: string
+}) {
+  return (
+    <div className={grosRoot('min-h-dvh')}>
+      <div className="mx-auto w-full max-w-[calc(var(--page-max)+var(--space-6)*2)] px-[var(--space-6)] pb-[var(--space-12)]">
+        <TopBar current={current} title={title} assistant={assistant} />
+        <div aria-busy="true" className="flex flex-col gap-[var(--space-5)]">
+          <Card>
+            <p aria-live="polite" className="type-heading">
+              {words}
+            </p>
+          </Card>
+        </div>
       </div>
     </div>
   )

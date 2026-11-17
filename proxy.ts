@@ -53,7 +53,8 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/dashboard/:path*',
+    '/home/:path*',
+    '/audiences/:path*',
     // The Klaviyo detail pages (UIR-004): read-only pages that dashboard rows
     // open, often in a new tab. Pages full of server actions stay out until
     // the session refresh is proven safe for them in the browser journeys.
@@ -67,6 +68,8 @@ export const config = {
     '/store/:path*',
     '/campaign-agent/:path*',
     '/plan/:path*',
+    // UI-RES-b: Results, a read with no server actions.
+    '/results/:path*',
     // Retired by D17 (RET-002): answered with a 404 above.
     '/copy-review/:path*',
     '/competitor-agent/:path*',
