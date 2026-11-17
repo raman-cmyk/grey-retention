@@ -222,6 +222,8 @@ export type SectionsOutput = {
     reason: string
     reference: ReturnType<typeof referenceDna>['reference']
     refIndex: (number | null)[]
+    /** DST-004b: each reference section's stored picture; missing before it. */
+    images?: (string | null)[]
   }
 }
 export type CopyOutput = {
@@ -1166,7 +1168,8 @@ async function chooseReference(
       mode: want.mode,
       reason: pick.reason,
       reference: dna.reference,
-      refIndex: dna.refIndex
+      refIndex: dna.refIndex,
+      images: dna.images
     },
     layout: dna.layout
   }

@@ -102,7 +102,9 @@ const sectionsSaved = z.looseObject({
           })
         )
         .max(40),
-      refIndex: z.array(z.number().int().min(0).nullable()).max(40)
+      refIndex: z.array(z.number().int().min(0).nullable()).max(40),
+      // DST-004b: each reference section's stored picture; missing before it.
+      images: z.array(z.string().max(300).nullable()).max(40).optional()
     })
     .optional()
 })
@@ -422,7 +424,10 @@ export async function runBuildStep(
                   tone: r.tone,
                   height: r.height
                 })),
-                refIndex: sections.reference.refIndex
+                refIndex: sections.reference.refIndex,
+                ...(sections.reference.images
+                  ? { images: sections.reference.images }
+                  : {})
               }
             }
           : {})
