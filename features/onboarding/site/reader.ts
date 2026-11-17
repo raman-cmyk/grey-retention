@@ -11,10 +11,10 @@ import {
   aboutPage,
   firstPerson,
   introduced,
+  noteOn,
   onPage,
   personName,
-  roleOf,
-  wholeSentences
+  roleOf
 } from './founder'
 import { fold, type ReadPage } from './pages'
 
@@ -181,7 +181,7 @@ function founderFinding(
   brand: string
 ): { finding: FindingInput; at: number } | null {
   if (page.kind !== 'about' || !aboutPage(page.url)) return null
-  const spot = wholeSentences(page.text, f.quote)
+  const spot = noteOn(page, f.quote)
   const name = fold(f.name ?? '')
   // The brand's own name is no one else's (and may hold the founder's).
   const own = brand.trim() ? [fold(brand)] : []

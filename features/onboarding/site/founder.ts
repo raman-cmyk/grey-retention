@@ -21,9 +21,12 @@ import { fold } from './pages'
  * - it is tied to the founder by their own words (`introduced`): they
  *   introduce themself in it, just before it in its block, or in the block
  *   right before it ("<h2>Hi, I'm Maya!</h2>"), with no other block, name,
- *   quote or third person in between; or it is signed by them, at its own
- *   end ("“I test every sample.” – Maya") or in the block right after it
- *   ("— Maya", "Love, Maya"). Anyone else's name there refuses it;
+ *   quote or third person in between, and never for a quotation; or it is
+ *   signed by them with a dash or a closing, at its own end ("“I test every
+ *   sample.” – Maya") or in the block right after it ("— Maya", "Love,
+ *   Maya"), with nothing after the name but a role ("founder of Cedar
+ *   Lane"). A block before it that introduces or names someone else, or a
+ *   credit or caption naming anyone else after it, refuses it;
  * - the founder's name is a person's (`personName`) on the page word for
  *   word (`onPage`), and a role is kept only from a block that also names
  *   them (`roleOf`).
@@ -53,10 +56,11 @@ const pattern = (quote: string) =>
 
 /** An About page by its address, in any locale: never reviews or a customer's story. */
 const aboutPath =
-  /^(?:\/[a-z]{2}(?:-[a-z]{2})?)?(?:\/pages)?\/(?:about|about-us|our-story|story|our-founder|meet-the-founder)\/?$/i
+  /^(?:\/[a-z]{2}(?:-[a-z]{2})?)?(?:\/pages)?\/(about(?:-[a-z0-9]+)*|our-story|story|the-story|our-founder|meet-the-founder|meet-the-maker|who-we-are)\/?$/i
 export function aboutPage(url: string): boolean {
   try {
-    return aboutPath.test(new URL(url).pathname)
+    const page = aboutPath.exec(new URL(url).pathname)
+    return !!page && !/review|testimonial|customer/i.test(page[1]!)
   } catch {
     return false
   }
@@ -106,6 +110,8 @@ export type Spot = {
   /** The block right before the one it starts in, and right after the one it ends in. */
   previous?: string
   next?: string
+  /** It is in one of the page's block quotes: someone quoted. */
+  quoted?: boolean
 }
 
 /**
@@ -158,6 +164,17 @@ export function wholeSentences(text: string, quote: string): Spot | null {
   return null
 }
 
+/** `wholeSentences` on a read page, marked when it sits in one of the page's block quotes. */
+export function noteOn(
+  page: { text: string; quotes?: readonly string[] },
+  quote: string
+): Spot | null {
+  const spot = wholeSentences(page.text, quote)
+  if (!spot) return null
+  const quoted = (page.quotes ?? []).some((q) => fold(q).includes(spot.note))
+  return { ...spot, quoted }
+}
+
 const titles = /^(?:dr|mr|mrs|ms|miss|mx|prof|sir|dame)\.?$/i
 /** The name's own words, without a title ("Dr. Maya Lee": Maya, Lee). */
 const nameWords = (name: string) =>
@@ -207,17 +224,31 @@ const nameForms = (name: string) => {
     .sort((a, b) => b.length - a.length)
 }
 
-/** "I'm Maya", "I am Maya Lee", "My name is Maya", "This is Maya", "Maya here". */
-function introductions(name: string): RegExp | null {
+/**
+ * "I'm Maya", "I am Maya Lee", "My name is Maya", "Maya here", and in the
+ * note itself "This is Maya" (before a note it may present someone else's
+ * words: "This is Maya." then a customer's).
+ */
+function introductions(name: string, inNote = true): RegExp | null {
   if (!nameWords(name).length) return null
   const who = nameForms(name)
     .map((w) => escape(w).replace(/ /g, '\\s+'))
     .join('|')
+  const lead = inNote
+    ? String.raw`I['’]m|I am|[Mm]y name is|[Mm]y name['’]s|[Tt]his is`
+    : String.raw`I['’]m|I am|[Mm]y name is|[Mm]y name['’]s`
   return new RegExp(
-    String.raw`(?<![\p{L}\p{N}])(?:(?:I['’]m|I am|[Mm]y name is|[Mm]y name['’]s|[Tt]his is)\s+(?:${who})|(?:${who})\s+here)(?![\p{L}\p{N}])`,
+    String.raw`(?<![\p{L}\p{N}])(?:(?:${lead})\s+(?:${who})|(?:${who})\s+here)(?![\p{L}\p{N}])`,
     'gu'
   )
 }
+
+const word = String.raw`\p{Lu}[\p{L}\p{M}'’-]*`
+/** Anyone introducing themself: "I'm Tom", "My name is Ana Ruiz", "Hi, Tom here". */
+const anyIntro = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])(?:(?:I['’]m|I am|[Mm]y name is|[Mm]y name['’]s|[Tt]his is)\s+(${word}(?:\s+${word}){0,3})|(?:^|(?:hi|hello|hey)[,!]?\s+)(${word}(?:\s+${word}){0,3})\s+here)(?![\p{L}\p{N}])`,
+  'giu'
+)
 
 const notLetter = String.raw`[^\p{L}\p{N}'’]`
 const firstPersonWord = new RegExp(
@@ -275,13 +306,40 @@ const dash = /^[–—-]\s*/u
 /** Short closings before a sign-off's name ("Love, Maya", "xx Maya"). */
 const closing =
   /^(?:(?:with\s+)?love,?|thanks,|thank\s+you,|warmly,|x{1,3})\s+/iu
+const roles = new Set(
+  'founder co-founder cofounder owner maker designer creator'.split(' ')
+)
 
 /**
- * Whom a sign-off credits: a block (or the rest of one) that is only a
- * name, after an optional dash or short closing and before an optional
- * role ("— Maya", "Love, Maya", "Maya Lee, founder of Cedar Lane").
- * "founder" for the founder's own name, "other" for anyone else's (or
- * anything after a dash), null for words that are no sign-off.
+ * Only a role after a sign-off's name: "founder", "co-founder and maker",
+ * "founder & owner", "owner of Cedar Lane" (the store's own name only).
+ * Anything else ("a happy customer", "packing orders", "at the studio")
+ * is no role.
+ */
+function roleOnly(text: string, own: ReadonlySet<string>) {
+  const t = text.trim().replace(/[.!]+$/, '')
+  if (!t) return true
+  const [, kinds = '', of] = /^(.*?)(?:\s+of\s+(.+))?$/iu.exec(t) ?? []
+  const words = kinds.split(/\s*(?:,|&|\/|\s)\s*/u).filter(Boolean)
+  return (
+    words.some((w) => roles.has(w.toLowerCase())) &&
+    words.every(
+      (w) => roles.has(w.toLowerCase()) || /^(?:and|the)$/i.test(w)
+    ) &&
+    (of === undefined ||
+      fold(of)
+        .split(' ')
+        .every((w) => own.has(w)))
+  )
+}
+
+/**
+ * Whom a line credits. A sign-off, with a dash or a short closing ("—
+ * Maya", "Love, Maya"): "founder" for the founder's own name with at most
+ * a role after it, "other" for anything else. A line without one is no
+ * credit (a heading of the founder's name is not their signature), but a
+ * short one naming someone else ("Tom Hart", "Anna, a customer") is
+ * "other": a caption or a credit to them.
  */
 function creditOf(
   text: string,
@@ -289,29 +347,50 @@ function creditOf(
   own: ReadonlySet<string>
 ): 'founder' | 'other' | null {
   const t = fold(text)
-  const dashed = dash.test(t)
-  const [who = '', ...rest] = t
-    .replace(dash, '')
-    .replace(closing, '')
-    .split(',')
+  const body = t.replace(dash, '')
+  const signed = body !== t || closing.test(body)
+  const [who = '', ...rest] = body.replace(closing, '').split(',')
   const person = who.replace(/[.!]+$/, '').trim()
-  const role = rest.join(',').match(capitals) ?? []
-  if (
-    nameForms(name).includes(person) &&
-    role.every((w) => own.has(w.replace(/[.!]+$/, '')))
-  )
-    return 'founder'
-  return dashed || personName(person) ? 'other' : null
+  const founder = nameForms(name).includes(person)
+  if (signed)
+    return founder && roleOnly(rest.join(','), own) ? 'founder' : 'other'
+  return !founder && t.split(' ').length <= 8 && personName(person)
+    ? 'other'
+    : null
+}
+
+/**
+ * Whether a text introduces or names someone else: "Hi, I'm Tom!", "Tom
+ * here", or a line of another's name ("Tom Hart", "Tom Hart, designer").
+ */
+function namesAnother(
+  text: string | undefined,
+  name: string,
+  own: ReadonlySet<string>,
+  line: boolean
+): boolean {
+  if (!text) return false
+  const forms = nameForms(name)
+  for (const m of text.matchAll(anyIntro)) {
+    const who = fold(m[1] ?? m[2] ?? '')
+    const theirs = forms.some((f) => who === f || who.startsWith(`${f} `))
+    if (!theirs && personName(who) && !who.split(' ').every((w) => own.has(w)))
+      return true
+  }
+  return line && creditOf(text, name, own) === 'other'
 }
 
 /**
  * Whether the note is tied to the founder in the page's own words: it
- * introduces them itself; the sentence just before it in its block does,
- * or the block right before it does when it starts its own, with no one
- * else named, quoted or written about in between; or it is signed by them
+ * introduces them itself; it is signed by them, with a dash or a closing,
  * at its own end ("– Maya") or in the block right after it ("— Maya",
- * "Love, Maya"). A credit to anyone else, or an attribution ("says Tom"),
- * refuses it. The store's own names (`allowed`) are no one else's.
+ * "Love, Maya"); or, when it is no quotation, the sentence just before it
+ * in its block introduces them, or the block right before it does when it
+ * starts its own, with no one else named, quoted or written about in
+ * between and no colon presenting it. Refused, whatever credit follows:
+ * a block before it that introduces or names someone else, a credit or
+ * caption naming anyone else after it, an attribution ("says Tom"). The
+ * store's own names (`allowed`) are no one else's.
  */
 export function introduced(
   spot: Spot,
@@ -326,7 +405,12 @@ export function introduced(
     )
   )
   const tail = spot.after.trim()
-  if (/^,?\s*(?:says|said|writes|wrote)(?![\p{L}\p{N}])/iu.test(tail))
+  if (
+    /^,?\s*(?:says|said|writes|wrote)(?![\p{L}\p{N}])/iu.test(tail) ||
+    // Someone else introduced or named before it.
+    namesAnother(spot.previous, name, own, true) ||
+    namesAnother(spot.before, name, own, false)
+  )
     return false
   // Signed at its own end, or in the block right after it when it ends its own.
   const credit = tail
@@ -340,11 +424,14 @@ export function introduced(
   if (credit === 'founder' || new RegExp(intro.source, 'u').test(spot.note))
     return true
   // Introduced just before it: in its block, or in the block right before
-  // when it starts its own.
-  const here = [...spot.before.matchAll(intro)].at(-1)
+  // when it starts its own; never for a quotation (someone else's words
+  // the founder presents).
+  if (spot.quoted || /^["“«‘']/u.test(spot.note)) return false
+  const before = introductions(name, false)!
+  const here = [...spot.before.matchAll(before)].at(-1)
   const there =
     !here && spot.before === '' && spot.previous !== undefined
-      ? [...spot.previous.matchAll(intro)].at(-1)
+      ? [...spot.previous.matchAll(before)].at(-1)
       : undefined
   const last = here ?? there
   if (!last) return false
@@ -353,7 +440,9 @@ export function introduced(
     : `${spot.previous!.slice(last.index + last[0].length)} `
   const inner = between.trimEnd()
   return (
-    // Only the rest of the sentence that introduces them.
+    // Only the rest of the sentence that introduces them, never a colon
+    // presenting what follows ("…what you told me:").
+    !inner.endsWith(':') &&
     !/[.!?…]["'”’»)\]]*\s/u.test(inner.slice(0, -1)) &&
     !aboutSomeone.test(between) &&
     (between.match(capitals) ?? []).every(

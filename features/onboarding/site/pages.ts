@@ -14,6 +14,11 @@ export type ReadPage = {
   language: string
   text: string
   links: { href: string; text: string }[]
+  /**
+   * The words of its block quotes (REL-ONB2 part d: someone quoted, never
+   * a note the page's writer introduced), at most 50.
+   */
+  quotes?: string[]
 }
 
 /** Most characters of text kept per page (the agent reads at most this). */
@@ -92,6 +97,7 @@ export function readPage(
   let language = 'en'
   const parts: string[] = []
   const links: ReadPage['links'] = []
+  const quotes: string[] = []
   // The title and description come from the page's head only (an icon's
   // own <title> in the body is not the page's).
   const head = (n: Node) => {
@@ -117,6 +123,8 @@ export function readPage(
         continue
       }
       if (!isElement(c) || unseen.has(c.tagName) || hidden(c)) continue
+      if (c.tagName === 'blockquote' && quotes.length < 50)
+        quotes.push(fold(textOf(c)))
       if (c.tagName === 'a') {
         const href = attr(c, 'href')
         if (href) links.push({ href, text: fold(textOf(c)).slice(0, 80) })
@@ -135,7 +143,7 @@ export function readPage(
     .filter(Boolean)
     .join('\n')
     .slice(0, maxPageText)
-  return { url, kind, title, description, language, text, links }
+  return { url, kind, title, description, language, text, links, quotes }
 }
 
 function textOf(n: Node): string {
