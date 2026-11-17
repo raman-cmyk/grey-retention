@@ -576,7 +576,7 @@ describe('homeReadModel (UI-HOMEa)', () => {
     expect((await homeReadModel(context, now)).unread).toContain('plan')
   })
 
-  it('reads only the rules agents use now, surest first, three of them', async () => {
+  it('reads only the rules agents use now, pinned first, then surest, three of them', async () => {
     const { db, calls } = database({
       agent_memory_rules: {
         data: [
@@ -604,10 +604,13 @@ describe('homeReadModel (UI-HOMEa)', () => {
       filters: [
         ['eq', 'tenant_id', 'tenant-1'],
         ['eq', 'status', 'active'],
-        ['gte', 'confidence', 0.5],
-        ['or', 'expires_at.is.null,expires_at.gt.2026-11-16T15:00:00.000Z']
+        [
+          'or',
+          'pinned.is.true,and(confidence.gte.0.5,or(expires_at.is.null,expires_at.gt.2026-11-16T15:00:00.000Z))'
+        ]
       ],
       orders: [
+        ['pinned', { ascending: false }],
         ['confidence', { ascending: false }],
         ['created_at', { ascending: false }]
       ],

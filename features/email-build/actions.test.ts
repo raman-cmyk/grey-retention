@@ -48,6 +48,47 @@ describe('creating an email', () => {
     expect(redirect).toHaveBeenCalledWith('/plan')
   })
 
+  it('makes it in the owner’s mode, and leaves Scratch to the command’s default', async () => {
+    for (const mode of ['copy', 'remix'] as const) {
+      await createEmail({}, form({ run, slot: '1', mode }))
+      expect(rpc).toHaveBeenLastCalledWith('create_email_build', {
+        t: tenantId,
+        run,
+        slot: 1,
+        mode
+      })
+    }
+    await createEmail({}, form({ run, slot: '1', mode: 'scratch' }))
+    expect(rpc).toHaveBeenLastCalledWith('create_email_build', {
+      t: tenantId,
+      run,
+      slot: 1
+    })
+  })
+
+  it('asks for Copy, Remix or Scratch when the mode is not one of them', async () => {
+    for (const mode of ['paste', ''])
+      expect(await createEmail({}, form({ run, slot: '0', mode }))).toEqual({
+        error: 'Choose Copy, Remix or Scratch.'
+      })
+    // A broken email and a broken mode: the email comes first.
+    expect(
+      await createEmail({}, form({ run: 'x', slot: '0', mode: 'paste' }))
+    ).toEqual({ error: 'Choose an email from the plan.' })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('refuses staff before anything, whatever the mode', async () => {
+    auth.requireRequestContext.mockResolvedValue({
+      tenantId,
+      tenantRole: 'staff'
+    })
+    expect(
+      await createEmail({}, form({ run, slot: '0', mode: 'copy' }))
+    ).toEqual({ error: 'Only this workspace’s owner creates emails.' })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
   it('is the owner’s only', async () => {
     auth.requireRequestContext.mockResolvedValue({
       tenantId,
@@ -83,6 +124,22 @@ describe('creating an email', () => {
         'This email could not be made after 5 tries. Plan again for new emails.'
       ],
       [{ code: '22023' }, 'This plan has no such email. Reload the page.'],
+      [
+        {
+          code: '22023',
+          message: 'A text email is written, not copied or remixed',
+          hint: 'build_mode_text'
+        },
+        'A text email is written as a letter, not copied or remixed. Create it as it is.'
+      ],
+      [
+        {
+          code: '22023',
+          message: 'Choose Copy, Remix or Scratch',
+          hint: 'build_mode_unknown'
+        },
+        'Choose Copy, Remix or Scratch.'
+      ],
       [{ code: 'XX000' }, 'We could not create the email. Try again.']
     ] as const
     for (const [error, message] of cases) {

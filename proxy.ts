@@ -55,6 +55,7 @@ export const config = {
   matcher: [
     '/home/:path*',
     '/audiences/:path*',
+    '/learned/:path*',
     // The Klaviyo detail pages (UIR-004): read-only pages that dashboard rows
     // open, often in a new tab. Pages full of server actions stay out until
     // the session refresh is proven safe for them in the browser journeys.
