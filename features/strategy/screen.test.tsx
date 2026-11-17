@@ -288,6 +288,53 @@ describe('the Plan screen (UI-PLAN-b)', () => {
     ])
   })
 
+  it('lets the owner choose how a designed email is made, and not a text one (DST-002b)', () => {
+    const { container } = render(
+      <PlanScreen
+        view={planScreen(
+          run({
+            plan: {
+              ...run().plan!,
+              slots: [
+                slot('2026-11-17'),
+                slot('2026-11-20', { format: 'text', letterKind: 'note' })
+              ]
+            } as PlanRun['plan']
+          }),
+          owner
+        )}
+      />
+    )
+    const forms = [...container.querySelectorAll('form')].filter((f) =>
+      f.querySelector('input[name="slot"]')
+    )
+    const designed = forms.find(
+      (f) =>
+        (f.querySelector('input[name="slot"]') as HTMLInputElement).value ===
+        '0'
+    )!
+    const pick = designed.querySelector(
+      'select[name="mode"]'
+    ) as HTMLSelectElement
+    expect(pick).not.toBeNull()
+    expect(pick.value).toBe('scratch')
+    expect(pick.getAttribute('aria-label')).toMatch(/^How to make /)
+    expect([...pick.options].map((o) => [o.value, o.text])).toEqual([
+      ['scratch', 'From scratch'],
+      ['copy', 'Copy an inspiration email'],
+      ['remix', 'Remix an inspiration email']
+    ])
+    // The choice travels with the run and the slot.
+    pick.value = 'copy'
+    expect(new FormData(designed).get('mode')).toBe('copy')
+    const text = forms.find(
+      (f) =>
+        (f.querySelector('input[name="slot"]') as HTMLInputElement).value ===
+        '1'
+    )!
+    expect(text.querySelector('select[name="mode"]')).toBeNull()
+  })
+
   it('lists what needs the owner in full, and says a made email is in Klaviyo', () => {
     render(
       <PlanScreen
