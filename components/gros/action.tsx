@@ -4,6 +4,7 @@ import {
   createContext,
   use,
   useActionState,
+  useCallback,
   useEffect,
   useId,
   useRef,
@@ -23,7 +24,8 @@ import { buttonClasses, type ButtonKind, type ButtonSize } from './button'
  * wrong (or what was done), in the action's own plain words. With
  * `children` (GROS `Field`s) it is a small form: the fields sit above it.
  * Inside `ActionAnswers` the answer shows in the card's one place instead,
- * so it stays when the button goes with the change it made (Remove).
+ * so it stays when the button goes with the change it made (Remove), and
+ * the cursor moves to it then rather than falling to the page.
  */
 export type ActionResult = { error?: string; message?: string }
 export type ServerAction = (
@@ -36,6 +38,8 @@ const Answers = createContext<{
   id: string
   answer: Answer
   say: (answer: Answer) => void
+  /** A button is on the page (true) or has gone (false). */
+  here: (from: string, on: boolean) => void
 } | null>(null)
 
 const words = (a: ActionResult | null) => a?.error ?? a?.message ?? null
@@ -61,14 +65,52 @@ function AnswerLine({
   )
 }
 
-/** One place for the answers of a card's buttons, after its content. */
+/**
+ * One place for the answers of a card's buttons, after its content. The
+ * line is always there (a live region that comes and goes may not be read
+ * out); the cursor moves to it when the button that answered has gone.
+ */
 export function ActionAnswers({ children }: { children: ReactNode }) {
   const id = useId()
   const [answer, say] = useState<Answer>({})
+  const line = useRef<HTMLParagraphElement>(null)
+  const latest = useRef<Answer>({})
+  const mounted = useRef(new Set<string>())
+  const focusIfGone = useCallback((a: Answer) => {
+    const lost =
+      !document.activeElement || document.activeElement === document.body
+    if (a.from && words(a) && !mounted.current.has(a.from) && lost)
+      line.current?.focus()
+  }, [])
+  useEffect(() => {
+    latest.current = answer
+    focusIfGone(answer)
+  }, [answer, focusIfGone])
+  const here = useCallback(
+    (from: string, on: boolean) => {
+      if (on) mounted.current.add(from)
+      else {
+        mounted.current.delete(from)
+        focusIfGone(latest.current)
+      }
+    },
+    [focusIfGone]
+  )
   return (
-    <Answers value={{ id, answer, say }}>
+    <Answers value={{ id, answer, say, here }}>
       {children}
-      <AnswerLine id={id} answer={answer} />
+      <p
+        ref={line}
+        id={id}
+        tabIndex={-1}
+        aria-live="polite"
+        className={cn(
+          'type-caption',
+          answer.error ? 'text-[var(--signal-ink)]' : 'text-[var(--ink)]'
+        )}
+      >
+        {words(answer) ?? ''}
+      </p>
     </Answers>
   )
 }
@@ -123,6 +165,11 @@ export function ActionButton({
   useEffect(() => {
     if (pending) say?.({})
   }, [pending, say])
+  const here = area?.here
+  useEffect(() => {
+    here?.(me, true)
+    return () => here?.(me, false)
+  }, [here, me])
   const own = useId()
   const answer = pending ? null : area ? null : state
   const describedBy = area
@@ -162,7 +209,7 @@ export function ActionButton({
       <Submit
         label={label}
         spoken={
-          spokenLabel === undefined || spokenLabel.startsWith(label)
+          spokenLabel === undefined || spokenLabel.startsWith(`${label}:`)
             ? spokenLabel
             : `${label}: ${spokenLabel}`
         }

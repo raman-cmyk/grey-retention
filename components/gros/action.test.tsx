@@ -139,12 +139,21 @@ describe('ActionButton (UI-HOMEb)', () => {
           label="Remove"
           spokenLabel="Remove: BIG30"
         />
+        <ActionButton
+          action={disconnect}
+          label="Remove"
+          spokenLabel="Remove the code"
+        />
       </>
     )
     expect(
       screen.getByRole('button', { name: 'Remove: WELCOME15' })
     ).toHaveTextContent('Remove')
     expect(screen.getByRole('button', { name: 'Remove: BIG30' })).toBeVisible()
+    // A code that starts with the label is still named after the button.
+    expect(
+      screen.getByRole('button', { name: 'Remove: Remove the code' })
+    ).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Disconnect' }))
     expect(ask).toHaveBeenCalledWith('Disconnect?')
     expect(disconnect).not.toHaveBeenCalled()
@@ -175,13 +184,64 @@ describe('ActionButton (UI-HOMEb)', () => {
         </ActionAnswers>
       )
     }
-    render(<Codes />)
+    const { container } = render(<Codes />)
+    // The line is there, empty, before any answer (a live region to read).
+    expect(container.querySelector('p[aria-live]')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Remove: WELCOME15' }))
-    await waitFor(() =>
-      expect(
-        screen.getByText('Removed. New emails will not use it.')
-      ).toBeVisible()
+    const answer = await screen.findByText(
+      'Removed. New emails will not use it.'
     )
     expect(screen.queryByRole('button')).toBeNull()
+    // The cursor goes to the answer, not to the page.
+    await waitFor(() => expect(answer).toHaveFocus())
+  })
+
+  it('hides a card’s old answer while a new press runs, and keeps cards apart', async () => {
+    const user = userEvent.setup()
+    let finish: (v: { message: string }) => void = () => {}
+    const slow = () =>
+      new Promise<{ message: string }>((done) => {
+        finish = done
+      })
+    render(
+      <>
+        <section aria-label="Codes">
+          <ActionAnswers>
+            <ActionButton
+              action={async () => ({ message: 'Added.' })}
+              label="Add"
+            />
+            <ActionButton action={slow} label="Remove" />
+          </ActionAnswers>
+        </section>
+        <section aria-label="Timezone">
+          <ActionAnswers>
+            <ActionButton
+              action={async () => ({ error: 'Choose a timezone.' })}
+              label="Save"
+            />
+          </ActionAnswers>
+        </section>
+      </>
+    )
+    const codes = screen.getByRole('region', { name: 'Codes' })
+    const zone = screen.getByRole('region', { name: 'Timezone' })
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+    await waitFor(() => expect(codes).toHaveTextContent('Added.'))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(zone).toHaveTextContent('Choose a timezone.'))
+    expect(codes).toHaveTextContent('Added.')
+    expect(codes).not.toHaveTextContent('Choose a timezone.')
+    await user.click(screen.getByRole('button', { name: 'Remove' }))
+    await waitFor(() => expect(codes).not.toHaveTextContent('Added.'))
+    finish({ message: 'Removed.' })
+    await waitFor(() => expect(codes).toHaveTextContent('Removed.'))
+    expect(
+      screen.getByRole('button', { name: 'Remove' })
+    ).toHaveAccessibleDescription('Removed.')
+    expect(
+      screen.getByRole('button', { name: 'Add' })
+    ).not.toHaveAccessibleDescription()
+    expect(zone).toHaveTextContent('Choose a timezone.')
   })
 })

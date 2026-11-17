@@ -30,12 +30,19 @@ import { saveBrandTimezone, switchToKlaviyoTimezone } from './timezone-actions'
  * card's answers show in one place (`ActionAnswers`), so an answer stays
  * when its button goes with the change it made (Remove, Disconnect).
  */
-export function SettingsScreen({ view }: { view: SettingsView }) {
+export function SettingsScreen({
+  view,
+  assistant = defaultAssistant
+}: {
+  view: SettingsView
+  /** The assistant's name (the white label may rename it). */
+  assistant?: string
+}) {
   return (
-    <AppPage current="settings" title="Settings">
+    <AppPage current="settings" title="Settings" assistant={assistant}>
       <CardRow>
         <MaxDiscountCard view={view} />
-        <KlaviyoCard view={view} />
+        <KlaviyoCard view={view} assistant={assistant} />
       </CardRow>
       <CardRow>
         <CodesCard view={view} />
@@ -140,7 +147,7 @@ function codeDetails(
     `${code.percent}% off`,
     date ? `${code.ended ? 'Ended' : 'Until'} ${date}` : 'No end date',
     !code.ended && max !== null && code.percent > max
-      ? 'Above your max, not used'
+      ? 'Above your biggest discount, not used'
       : ''
   ]
 }
@@ -226,7 +233,13 @@ const secret = {
   'data-lpignore': 'true'
 } as const
 
-function KlaviyoCard({ view }: { view: SettingsView }) {
+function KlaviyoCard({
+  view,
+  assistant
+}: {
+  view: SettingsView
+  assistant: string
+}) {
   const title = 'Klaviyo'
   const k = view.klaviyo
   if (!k)
@@ -294,8 +307,8 @@ function KlaviyoCard({ view }: { view: SettingsView }) {
               ) : null}
               {working && later.length ? (
                 <p className="type-caption text-[var(--stone)]">
-                  Later, to {later.join(' and ')}, {defaultAssistant} needs a
-                  key with more access.
+                  Later, to {later.join(' and ')}, {assistant} needs a key with
+                  more access.
                 </p>
               ) : null}
             </div>
@@ -331,7 +344,7 @@ function KlaviyoCard({ view }: { view: SettingsView }) {
               action={disconnectKlaviyo}
               label="Disconnect"
               kind="quiet"
-              confirm={`Disconnect Klaviyo? ${defaultAssistant} stops reading it and the key is deleted here. Drafts already in Klaviyo stay there.`}
+              confirm={`Disconnect Klaviyo? ${assistant} stops reading it and the key is deleted here. Drafts already in Klaviyo stay there.`}
             />
           ) : null}
         </ActionAnswers>
@@ -351,7 +364,7 @@ function TimezoneCard({ view }: { view: SettingsView }) {
   const title = 'Timezone'
   const zone = view.timezone
   // The sample connection's timezone is the sample's, so say so.
-  const sample = view.klaviyo?.mode !== 'live' ? ' (sample connection)' : ''
+  const sample = view.klaviyo?.mode === 'sample' ? ' (sample connection)' : ''
   // Nothing is kept in the demo, so it offers no change.
   const owner = view.owner && !view.demo
   return (

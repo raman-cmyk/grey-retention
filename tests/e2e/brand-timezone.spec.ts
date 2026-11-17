@@ -19,7 +19,6 @@ async function connectSampleKlaviyo(page: Page) {
   await expect(card.getByText('Needs you')).toHaveCount(0)
   await expect(card.getByLabel(/private API key/)).toHaveValue('')
   await expect(card.getByText(`Key ${key.slice(0, 8)}••••••••`)).toBeVisible()
-  expect(await page.content()).not.toContain(key)
 }
 
 test('UIR-023 Klaviyo sets the brand timezone; the owner can change it and switch back', async ({

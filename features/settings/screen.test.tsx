@@ -139,7 +139,7 @@ describe('Settings screen (UI-SETa)', () => {
     expect(rows[0]).toHaveTextContent('WELCOME15')
     expect(rows[0]).toHaveTextContent('15% off · No end date')
     expect(rows[1]).toHaveTextContent(
-      '30% off · Until Nov 30, 2026 · Above your max, not used'
+      '30% off · Until Nov 30, 2026 · Above your biggest discount, not used'
     )
     expect(rows[2]).toHaveTextContent('10% off · Ended Nov 1, 2026')
     expect(
@@ -274,6 +274,19 @@ describe('Settings screen (UI-SETa)', () => {
       within(card('Timezone')).getByRole('button', { name: 'Save timezone' })
         .className
     ).toContain('gros-button-outline')
+    cleanup()
+    // Sample only when the connection is the sample one, not when unread.
+    render(
+      <SettingsScreen
+        view={view({
+          klaviyo: null,
+          unread: ['klaviyo'],
+          timezone: { ...view().timezone!, source: 'klaviyo' }
+        })}
+      />
+    )
+    expect(card('Timezone')).toHaveTextContent('From your Klaviyo account.')
+    expect(card('Timezone')).not.toHaveTextContent('sample connection')
   })
 
   it('shows the team and the account, linking to their pages', () => {
