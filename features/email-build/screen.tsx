@@ -53,6 +53,7 @@ function Body({ view }: { view: View }) {
           />
           <KeepFresh />
           <Notes notes={view.notes} />
+          <div className="mt-[var(--space-6)]">{backToPlan}</div>
         </Card>
       )
     case 'failed':
@@ -60,7 +61,11 @@ function Body({ view }: { view: View }) {
         <>
           <Card>
             <Progress
-              title="This email was not made"
+              title={
+                view.email
+                  ? 'This email was not put in Klaviyo'
+                  : 'This email was not made'
+              }
               steps={view.steps.map((s) => ({
                 text: s.label,
                 state: s.state,
@@ -88,7 +93,7 @@ function Body({ view }: { view: View }) {
         <>
           <CardRow>
             <Summary view={view} />
-            <Card label="How it was made">
+            <Card>
               <h2 className="type-heading">How it was made</h2>
               <ul className="mt-[var(--space-5)] flex flex-col gap-[var(--space-2)]">
                 {view.steps.map((s) => (
@@ -117,6 +122,7 @@ function KlaviyoButton({ link }: { link: KlaviyoLink }) {
       className={buttonClasses('main', 'app')}
     >
       Open in Klaviyo
+      <span className="sr-only"> (opens in a new tab)</span>
     </a>
   )
 }
@@ -175,7 +181,9 @@ function Summary({ view }: { view: Extract<View, { kind: 'email' }> }) {
         <p className="type-caption mt-[var(--space-3)] text-[var(--stone)]">
           {view.klaviyo.name
             ? `In Klaviyo’s campaigns, it is called “${view.klaviyo.name}”.`
-            : 'Find it in Klaviyo’s campaigns.'}
+            : 'Find it in Klaviyo’s campaigns.'}{' '}
+          It waits there as a draft: you schedule it in Klaviyo when you are
+          ready.
         </p>
       )}
     </Card>
@@ -187,13 +195,13 @@ function Designs({ email }: { email: EmailView }) {
   return (
     <>
       {email.designs.map((d) => (
-        <Card key={d.name} label={d.name}>
+        <Card key={d.name}>
           <h2 className="type-heading mb-[var(--space-5)]">{d.name}</h2>
           <EmailViews name={d.name} html={d.html} />
         </Card>
       ))}
       {email.text && (
-        <Card label="Its plain text">
+        <Card>
           <h2 className="type-heading">Its plain text</h2>
           <pre className="type-body mt-[var(--space-5)] whitespace-pre-wrap">
             {email.text}

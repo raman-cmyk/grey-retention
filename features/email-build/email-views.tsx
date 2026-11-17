@@ -13,14 +13,12 @@ const widths: Record<View, number> = { Desktop: 640, Phone: 375, Dark: 640 }
 /**
  * A dark inbox, roughly: the colours turned around as many apps do, the
  * pictures kept as they are. Inline styles are what the preview's own
- * Content-Security-Policy allows.
+ * Content-Security-Policy allows. The style goes at the very end, after
+ * everything the email holds, so nothing in the email can swallow it and
+ * it wins over the email's own styles.
  */
 export function darkDocument(html: string) {
-  const style =
-    '<style>html{background:#121212}body{filter:invert(1) hue-rotate(180deg)}img{filter:invert(1) hue-rotate(180deg)}</style>'
-  return /<\/head>/i.test(html)
-    ? html.replace(/<\/head>/i, `${style}</head>`)
-    : `${style}${html}`
+  return `${html}<style>html{background:#121212}body{filter:invert(1) hue-rotate(180deg)}img{filter:invert(1) hue-rotate(180deg)}</style>`
 }
 
 /**
@@ -50,7 +48,7 @@ export function EmailViews({ name, html }: { name: string; html: string }) {
     <div className="flex flex-col gap-[var(--space-4)]">
       <div
         role="group"
-        aria-label={`How to look at ${name}`}
+        aria-label={`${name}: how to look at it`}
         className="flex flex-wrap gap-[var(--space-2)]"
       >
         {views.map((v) => (

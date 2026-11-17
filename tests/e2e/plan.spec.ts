@@ -88,6 +88,15 @@ test('UI-PLAN-b owner plans the next 15 days, picks an offer and creates an emai
       path: `${process.env.PLAN_SHOT}/email-${info.project.name}.png`,
       fullPage: true
     })
+  // Another email id (another workspace's or none) is not found. The page
+  // streams behind its loading screen, so the status is 200 and the
+  // not-found page is what shows.
+  const emailUrl = page.url()
+  await page.goto('/plan/email/00000000-0000-4000-8000-000000000000')
+  await expect(
+    page.getByRole('heading', { name: 'Nothing is pinned here.' })
+  ).toBeVisible()
+  await page.goto(emailUrl)
   await page.getByRole('link', { name: 'Back to the plan' }).click()
   await expect(page).toHaveURL(/\/plan$/)
 

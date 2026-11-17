@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
@@ -49,12 +49,12 @@ describe('an email’s page (UI-EMAIL-b)', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Our cedar candle is back')).toBeInTheDocument()
     expect(screen.getByText('In Klaviyo')).toBeInTheDocument()
-    const open = screen.getByRole('link', { name: 'Open in Klaviyo' })
+    const open = screen.getByRole('link', { name: /^Open in Klaviyo/ })
     expect(open).toHaveAttribute('href', 'https://www.klaviyo.com/campaigns')
     expect(open).toHaveAttribute('target', '_blank')
     expect(
       screen.getByText(
-        'In Klaviyo’s campaigns, it is called “Bestseller: Cedar candle”.'
+        /^In Klaviyo’s campaigns, it is called “Bestseller: Cedar candle”\./
       )
     ).toBeInTheDocument()
     for (const v of ['Desktop', 'Phone', 'Dark'])
@@ -67,7 +67,69 @@ describe('an email’s page (UI-EMAIL-b)', () => {
     expect(screen.queryByText('In Klaviyo')).toBeNull()
     expect(screen.getByText('Planned')).toBeInTheDocument()
     expect(screen.getByText(/this is a sample draft/)).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Open in Klaviyo' })).toBeNull()
+    expect(screen.queryByRole('link', { name: /Open in Klaviyo/ })).toBeNull()
+    // Not even in the run log.
+    expect(screen.queryByText(/in Klaviyo as a draft/i)).toBeNull()
+    expect(
+      screen.getByText('Kept it as a sample draft (Klaviyo is not connected)')
+    ).toBeInTheDocument()
+  })
+
+  it('says a real draft waits in Klaviyo for the owner to schedule it', () => {
+    render(<EmailScreen view={emailScreen(row())} />)
+    expect(screen.getByText(/you schedule it in Klaviyo/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: /opens in a new tab/ })
+    ).toBeInTheDocument()
+  })
+
+  it('shows an email being put into Klaviyo as working, with the way back', () => {
+    render(
+      <EmailScreen
+        view={emailScreen(
+          row({ state: 'push_queued', klaviyoCampaignId: null })
+        )}
+      />
+    )
+    expect(screen.getByText('Adding to Klaviyo')).toBeInTheDocument()
+    expect(screen.queryByText('In Klaviyo')).toBeNull()
+    expect(screen.queryByRole('link', { name: /Open in Klaviyo/ })).toBeNull()
+    expect(
+      screen.getByRole('link', { name: 'Back to the plan' })
+    ).toBeInTheDocument()
+  })
+
+  it('shows designs A and B each with its own views, and subject B', () => {
+    render(
+      <EmailScreen
+        view={emailScreen(
+          row({
+            email: email({ designA: '<p>A</p>', subjectB: 'Other words' })
+          })
+        )}
+      />
+    )
+    expect(
+      screen.getByRole('heading', { name: 'Design A' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Design B' })
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Dark' })).toHaveLength(2)
+    // One test an email: the design test, not the subject test.
+    expect(screen.queryByText('Other words')).toBeNull()
+  })
+
+  it('shows subject B when the subject is the test', () => {
+    render(
+      <EmailScreen
+        view={emailScreen(row({ email: email({ subjectB: 'Other words' }) }))}
+      />
+    )
+    expect(
+      screen.getByText('Subject B (half the audience)')
+    ).toBeInTheDocument()
+    expect(screen.getByText('Other words')).toBeInTheDocument()
   })
 
   it('shows a text email’s plain text, and the steps while one is made', () => {
@@ -126,20 +188,54 @@ describe('an email’s page (UI-EMAIL-b)', () => {
     ).toHaveAttribute('href', '/plan')
   })
 
+  it('says a made email that stopped on the way was not put in Klaviyo', () => {
+    render(
+      <EmailScreen
+        view={emailScreen(
+          row({
+            state: 'failed',
+            klaviyoCampaignId: null,
+            reason: 'Klaviyo did not answer.'
+          })
+        )}
+      />
+    )
+    expect(
+      screen.getByRole('heading', { name: 'This email was not put in Klaviyo' })
+    ).toBeInTheDocument()
+    expect(screen.getByTitle('The email, desktop view')).toBeInTheDocument()
+  })
+
   it('says a draft it cannot read is in Klaviyo, and opens Klaviyo', () => {
     render(<EmailScreen view={emailScreen(row({ email: { name: 'old' } }))} />)
     expect(
       screen.getByRole('heading', { name: 'This email can’t be shown' })
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('link', { name: 'Open in Klaviyo' })
+      screen.getByRole('link', { name: /^Open in Klaviyo/ })
     ).toBeInTheDocument()
   })
 
-  it('turns a design’s colours around for the dark view, inside its head', () => {
-    expect(darkDocument('<html><head></head><body>x</body></html>')).toBe(
-      '<html><head><style>html{background:#121212}body{filter:invert(1) hue-rotate(180deg)}img{filter:invert(1) hue-rotate(180deg)}</style></head><body>x</body></html>'
+  it('turns a design’s colours around for the dark view, after everything', () => {
+    const dark = darkDocument('<html><head></head><body>x</body></html>')
+    expect(dark.startsWith('<html><head></head><body>x</body></html>')).toBe(
+      true
     )
-    expect(darkDocument('<p>x</p>').endsWith('<p>x</p>')).toBe(true)
+    expect(dark).toMatch(/<style>[^<]*invert\(1\)[^<]*<\/style>$/)
+  })
+
+  it('switches the frame to the dark view when Dark is pressed', () => {
+    render(<EmailScreen view={emailScreen(row())} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Dark' }))
+    expect(screen.getByRole('button', { name: 'Dark' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    const frame = screen.getByTitle('The email, dark view')
+    expect(frame.getAttribute('srcdoc')).toMatch(/invert\(1\)/)
+    expect(frame).toHaveAttribute('sandbox', '')
+    expect(
+      screen.getByText(/Roughly how an inbox in dark mode/)
+    ).toBeInTheDocument()
   })
 })
