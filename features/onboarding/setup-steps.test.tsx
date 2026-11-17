@@ -40,9 +40,16 @@ function view(over: Partial<SetupView> = {}): SetupView {
       rivalsSkipped: false,
       finished: false
     }),
-    brand: { name: 'Cedar Lane', domain: 'cedarlane.example', revision: 2 },
+    brand: {
+      name: 'Cedar Lane',
+      domain: 'cedarlane.example',
+      revision: 2,
+      voice: '',
+      prohibitions: ''
+    },
     klaviyo: klaviyo({ status: 'none', accountLabel: null, keyHint: null }),
     liveKeys: false,
+    keyCheck: 'sample',
     offers: {
       maxDiscountPercent: null,
       grossMarginPercent: null,
@@ -90,7 +97,8 @@ describe('KlaviyoStep (UI-ONBd)', () => {
       <KlaviyoStep
         view={view({
           klaviyo: klaviyo({ mode: 'live', keyStatus: 'refused' }),
-          liveKeys: true
+          liveKeys: true,
+          keyCheck: 'live'
         })}
       />
     )
@@ -102,12 +110,27 @@ describe('KlaviyoStep (UI-ONBd)', () => {
       screen.getByText('We check the key with Klaviyo, then keep it encrypted.')
     ).toBeVisible()
     cleanup()
-    render(<KlaviyoStep view={view({ klaviyo: klaviyo(), liveKeys: true })} />)
+    render(
+      <KlaviyoStep
+        view={view({ klaviyo: klaviyo(), liveKeys: true, keyCheck: 'live' })}
+      />
+    )
     expect(
       screen.getByText(
         'Sample connection. Paste your real key to connect your Klaviyo.'
       )
     ).toBeVisible()
+  })
+
+  it('says when connecting is not switched on (live adapters, no live Klaviyo)', () => {
+    render(<KlaviyoStep view={view({ keyCheck: 'off' })} />)
+    expect(
+      screen.getByText(
+        'Connecting Klaviyo is not switched on yet. Nothing was changed.'
+      )
+    ).toBeVisible()
+    expect(screen.queryByLabelText('Private API key')).toBeNull()
+    expect(screen.queryByText(/Sample mode/)).toBeNull()
   })
 
   it('gives staff the state only', () => {

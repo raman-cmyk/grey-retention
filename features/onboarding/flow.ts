@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { unstable_rethrow } from 'next/navigation'
 import type { ClientRequestContext } from '@/features/auth/domain/types'
 import { klaviyoMode } from '@/features/connections/live-klaviyo'
+import { connectionVerifier } from '@/features/connections/verifier'
 import { offersPage } from '@/features/offers/data'
 import type { ManagedOffers } from '@/features/offers/source'
 import { klaviyoState, type KlaviyoState } from '@/features/settings/read-model'
@@ -40,10 +41,23 @@ export type SetupView = {
   timezone: string
   flow: SetupFlow | null
   /** The brand as saved, with its revision for the next save. */
-  brand: { name: string; domain: string; revision: number } | null
+  brand: {
+    name: string
+    domain: string
+    revision: number
+    /** How emails should sound and what to avoid, as saved (optional). */
+    voice: string
+    prohibitions: string
+  } | null
   klaviyo: KlaviyoState | null
   /** A key is checked with Klaviyo itself (KLAVIYO_MODE=live), else its format only. */
   liveKeys: boolean
+  /**
+   * How a key is checked here: with Klaviyo (`live`), by its format only
+   * (`sample`, fake adapters), or not at all (`off`: live adapters without
+   * live Klaviyo, so connecting is not switched on).
+   */
+  keyCheck: 'live' | 'sample' | 'off'
   offers: ManagedOffers | null
   /** What was found for the saved website; null before one or when unreadable. */
   found: BrandFound | null
@@ -56,7 +70,7 @@ export async function setupRecords(db: Db, tenantId: string) {
   const [brand, marks, following, klaviyo] = await Promise.all([
     db
       .from('brand_profiles')
-      .select('brand_name,domain,revision')
+      .select('brand_name,domain,revision,voice,prohibitions')
       .eq('tenant_id', tenantId)
       .maybeSingle(),
     db
@@ -92,6 +106,7 @@ export async function setupReadModel(
   context: ClientRequestContext
 ): Promise<SetupView> {
   const liveKeys = klaviyoMode() === 'live'
+  const keyCheck = liveKeys ? 'live' : connectionVerifier() ? 'sample' : 'off'
   const view: SetupView = {
     state: 'unreadable',
     owner: context.tenantRole === 'owner',
@@ -101,6 +116,7 @@ export async function setupReadModel(
     brand: null,
     klaviyo: null,
     liveKeys,
+    keyCheck,
     offers: null,
     found: null,
     reading: null
@@ -139,7 +155,9 @@ export async function setupReadModel(
       ? {
           name: brand.brand_name,
           domain: brand.domain,
-          revision: brand.revision
+          revision: brand.revision,
+          voice: brand.voice,
+          prohibitions: brand.prohibitions
         }
       : null,
     klaviyo: records.klaviyo,

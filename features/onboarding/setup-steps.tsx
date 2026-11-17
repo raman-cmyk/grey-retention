@@ -55,6 +55,10 @@ export function KlaviyoStep({ view }: { view: SetupView }) {
         <OwnerOnly />
       ) : working ? (
         <ButtonLink href={setupPath()} label="Continue" size="focus" />
+      ) : view.keyCheck === 'off' ? (
+        <p className="type-body text-[var(--stone)]">
+          Connecting Klaviyo is not switched on yet. Nothing was changed.
+        </p>
       ) : (
         <>
           <SetupForm
@@ -73,7 +77,7 @@ export function KlaviyoStep({ view }: { view: SetupView }) {
             ]}
           />
           <p className="type-caption text-[var(--stone)]">
-            {view.liveKeys
+            {view.keyCheck === 'live'
               ? 'We check the key with Klaviyo, then keep it encrypted.'
               : 'Sample mode: we check the key’s format only and keep a masked hint.'}
           </p>

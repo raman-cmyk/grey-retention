@@ -62,7 +62,12 @@ export function Field({
         ) : null}
       </div>
       {error ? (
-        <p id={errorId} className="type-caption text-[var(--signal-ink)]">
+        // An alert is read out as it appears, so the owner hears what to fix.
+        <p
+          id={errorId}
+          role="alert"
+          className="type-caption text-[var(--signal-ink)]"
+        >
           {error}
         </p>
       ) : null}

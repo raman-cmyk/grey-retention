@@ -16,6 +16,7 @@ import { unknownFacts, type CatalogProduct } from '@/features/assembly/inputs'
 import { assembleLocked, assembleLockedPlain } from '@/features/assembly/modes'
 import { lockContent, type LockedContent, type LockInput } from './content'
 import {
+  brandChecks,
   brandInspectorAgent,
   checkInspection,
   codeFindings,
@@ -884,6 +885,97 @@ describe('the email checks (code)', () => {
     const draft = await draftOf(locked, answer)
     expect(JSON.stringify(draft.blocks)).toContain('A total winner')
     expect(emailChecks(draft, locked, brand.name)).toEqual([])
+  })
+
+  it('lets a review strip show the store’s own stars without a verified review source, and no other stars (REL-ONB2 part b)', async () => {
+    const review = {
+      quote: 'So cosy on cold mornings.',
+      author: 'Ana',
+      rating: 5
+    }
+    const raw = lockInput({
+      facts: unknownFacts,
+      confirmed: { reviews: [review] }
+    })
+    raw.sections.sections.splice(3, 0, {
+      family: 'review_strip',
+      variantId: 'review_strip/seed',
+      purpose: 'What customers say.'
+    })
+    const locked = await lock(raw)
+    const answer = words()
+    // The strip has no words of the writer's: code fills it.
+    answer.blocks.splice(3, 0, {
+      type: 'review_strip',
+      reason: 'Reviews.',
+      words: {}
+    })
+    const draft = await draftOf(locked, answer)
+    const unverified = (d: Draft) =>
+      brandChecks(d, locked).filter((f) => f.rule === 'unverified_review')
+    expect(JSON.stringify(draft.blocks)).toContain('So cosy on cold mornings.')
+    expect(unverified(draft)).toEqual([])
+    expect(emailChecks(draft, locked, brand.name)).toEqual([])
+    // A review that is not the store's own keeps its stars: refused.
+    const strip = draft.blocks.findIndex((b) => b.type === 'review_strip')
+    const other = structuredClone(draft)
+    ;(other.blocks[strip]!.content as { reviews: (typeof review)[] }).reviews =
+      [{ ...review, rating: 4 }]
+    expect(unverified(other).map((f) => f.field)).toEqual([
+      `block:${strip + 1}-review_strip`
+    ])
+    // Words, name and stars must all be the store's own; and every review
+    // of the strip, not one of them.
+    for (const changed of [
+      [{ ...review, author: 'Ann' }],
+      [{ ...review, quote: 'So cosy on cold nights.' }],
+      [review, { ...review, quote: 'Warm and soft, I love it.' }]
+    ]) {
+      const not = structuredClone(draft)
+      ;(not.blocks[strip]!.content as { reviews: (typeof review)[] }).reviews =
+        changed
+      expect(
+        unverified(not).map((f) => f.field),
+        JSON.stringify(changed)
+      ).toEqual([`block:${strip + 1}-review_strip`])
+    }
+    // Stars written anywhere else are still refused, a strip of the
+    // store's own reviews next to them or not.
+    const claim = { ...draft, subject: 'Rated 5 stars by our customers' }
+    expect(unverified(claim).map((f) => f.field)).toEqual(['subject'])
+    const grid = draft.blocks.findIndex((b) => b.type === 'product_grid_2col')
+    expect(grid).toBeGreaterThanOrEqual(0)
+    const elsewhere = structuredClone(draft)
+    const block = elsewhere.blocks[grid]!.content as Record<string, unknown>
+    block.heading = 'Rated 5 out of 5'
+    expect(unverified(elsewhere).map((f) => f.field)).toEqual([
+      `block:${grid + 1}-product_grid_2col`
+    ])
+    // The inspectors are shown the email as code judges it: the strip's
+    // words without its star lines, and its heading is the store's.
+    const task = { draft, locked, brandName: brand.name, problems: [] }
+    const shown = JSON.parse(brandInspectorAgent.task(task)).email.blocks
+    expect(JSON.stringify(shown)).toContain('So cosy on cold mornings.')
+    expect(JSON.stringify(shown)).not.toContain('Rated 5 out of 5')
+    expect(
+      checkInspection(
+        {
+          problems: [
+            {
+              field: `${strip + 1}-review_strip`,
+              quote: 'What customers say',
+              reason: 'Too plain.',
+              fix: 'Our customers'
+            }
+          ]
+        },
+        draft,
+        locked,
+        brand.name
+      )
+    ).toEqual([
+      "Problem 1: those words come from the store (a product, price, code, review or note) and cannot change; judge only the writer's words."
+    ])
   })
 
   it('check subject and preview lengths', async () => {

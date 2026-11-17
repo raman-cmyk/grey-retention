@@ -155,8 +155,20 @@ describe('storeMaterial (REL-ONB2 part a)', () => {
       ).toBe(true)
   })
 
-  it('carries no review while the brand has no verified review source (copy QA refuses their stars)', () => {
-    expect(material([review(warm)], { facts: unknownFacts })).toBeUndefined()
+  it('carries the store’s own reviews without a verified review source, and still leaves out one whose words claim stars (REL-ONB2 part b)', () => {
+    expect(material([review(warm)], { facts: unknownFacts })?.reviews).toEqual([
+      { quote: warm, author: 'Jordan S.', rating: 5 }
+    ])
+    // Stars in the words themselves are a rating copy QA refuses without a
+    // verified review source; only the strip's own stars pass the inspector.
+    expect(
+      material([review('So warm and soft, 5 stars from me.')], {
+        facts: unknownFacts
+      })
+    ).toBeUndefined()
+    expect(
+      material([review('So warm and soft, 5 stars from me.')])?.reviews
+    ).toHaveLength(1)
   })
 
   it('leaves out every review it would have to change or that an email may not say', () => {
@@ -225,5 +237,121 @@ describe('storeMaterial (REL-ONB2 part a)', () => {
     const sample = [verified, review(warm, {}, { pass: 'sample' })]
     expect(material(sample, { live: false })?.reviews).toHaveLength(1)
     expect(material(sample)).toBeUndefined()
+  })
+
+  const cdn = 'https://cdn.shopify.com/s/files/1'
+  const photo = (url: string, over: Record<string, unknown> = {}) => ({
+    url,
+    kind: 'lifestyle',
+    alt: 'A walk in the hills at dusk',
+    ...over
+  })
+  const withPhotos = (
+    photos: ReturnType<typeof photo>[],
+    over: Partial<MaterialParts> = {}
+  ) =>
+    storeMaterial(
+      parts({ catalogImages: [`${cdn}/knit.jpg`], photos, ...over })
+    )
+
+  it('heads the email with the first lifestyle photo of the store’s own pages an email can show (REL-ONB2 part c)', () => {
+    expect(
+      withPhotos([
+        // A catalog picture at another size, one an email cannot show, a
+        // product's photo: none is a lifestyle photo for the hero.
+        photo(`${cdn}/knit_800x.jpg`),
+        photo(`${cdn}/hills.webp`),
+        photo(`${cdn}/shelf.jpg`, { kind: 'product' }),
+        photo(`${cdn}/hills.jpg`),
+        photo(`${cdn}/beach.jpg`)
+      ])
+    ).toEqual({
+      lifestylePhoto: {
+        image: `${cdn}/hills.jpg`,
+        alt: 'A walk in the hills at dusk'
+      }
+    })
+    // Its own words only when they pass as the store's; else the brand's:
+    // none, too long, a file's name, one word or a claim.
+    for (const alt of [
+      null,
+      ' ',
+      'Our organic wool, naturally',
+      'x'.repeat(161),
+      'IMG_2034',
+      'banner_1_desktop',
+      'woman-in-sweater.jpg',
+      'Jordan'
+    ])
+      expect(
+        withPhotos([photo(`${cdn}/hills.jpg`, { alt })])?.lifestylePhoto?.alt,
+        String(alt)
+      ).toBe('Cedar Lane')
+    // A price, a discount or an offer in its words: it has them drawn in
+    // (copy QA cannot read a picture), so it never heads the email.
+    for (const alt of [
+      'Only $25 this week',
+      'Black Friday 50% off everything',
+      'Get 20 percent off',
+      'Our winter sale is on',
+      'Free shipping on knits',
+      'Use code WARM10'
+    ])
+      expect(
+        withPhotos([photo(`${cdn}/hills.jpg`, { alt })]),
+        alt
+      ).toBeUndefined()
+    // The next photo is taken instead.
+    expect(
+      withPhotos([
+        photo(`${cdn}/sale.jpg`, { alt: 'Winter sale' }),
+        photo(`${cdn}/hills.jpg`)
+      ])?.lifestylePhoto?.image
+    ).toBe(`${cdn}/hills.jpg`)
+    // Never a social card (often a logo or words), never another website's
+    // picture than the store's own hosts and its catalog's.
+    expect(
+      withPhotos([
+        photo(`${cdn}/card.jpg`, { source: 'share' }),
+        photo('https://images.pexels.com/photos/1/stock.jpeg'),
+        photo('https://otherbrand.com/press/feature.jpg'),
+        photo(`${cdn}/hills.jpg`, { source: 'page' })
+      ])?.lifestylePhoto?.image
+    ).toBe(`${cdn}/hills.jpg`)
+    // The brand's name is used only when it passes as the store's words.
+    expect(
+      withPhotos([photo(`${cdn}/hills.jpg`, { alt: null })], {
+        brandName: 'Save $5 Shop'
+      })
+    ).toBeUndefined()
+    // A sample workspace never gets a live read's photo; none kept, none.
+    expect(
+      withPhotos([photo(`${cdn}/hills.jpg`)], { live: false })
+    ).toBeUndefined()
+    expect(withPhotos([])).toBeUndefined()
+    expect(storeMaterial(parts())).toBeUndefined()
+  })
+
+  it('carries reviews and the photo together, and allows exactly their blocks', () => {
+    const both = withPhotos([photo(`${cdn}/hills.jpg`)], {
+      findings: [review(warm)]
+    })
+    expect(both?.reviews).toHaveLength(1)
+    expect(both?.lifestylePhoto?.image).toBe(`${cdn}/hills.jpg`)
+    const allowed = allowedBlockTypes({
+      brief: { campaignType: 'story', goal: 'Our story' },
+      products: [],
+      codes: [],
+      maxDiscountPercent: 0,
+      sendAt: '2026-12-01T10:00:00Z',
+      timezone: 'UTC',
+      facts,
+      confirmed: both
+    })
+    expect(allowed).toEqual(
+      expect.arrayContaining(['review_strip', 'hero_image'])
+    )
+    expect(allowed).not.toContain('founder_note')
+    expect(allowed).not.toContain('ugc_grid')
   })
 })

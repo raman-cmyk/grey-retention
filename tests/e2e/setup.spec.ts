@@ -38,12 +38,6 @@ test('UI-ONBb a new owner saves the store and comes back to the step that is Now
   await expect(
     page.getByRole('heading', { level: 1, name: 'Your brand' })
   ).toBeVisible()
-  // UI-ONBc: the readers are queued, and Progress says so in words.
-  await expect(
-    page.getByRole('heading', { name: 'Reading your store' })
-  ).toBeVisible()
-  await expect(page.getByText('Reading your website')).toBeVisible()
-  await expect(page.getByText('Products')).toBeVisible()
 
   // Coming back opens the step that is Now; a done step opens again.
   await page.reload()
@@ -60,12 +54,33 @@ test('UI-ONBb a new owner saves the store and comes back to the step that is Now
   await expect(steps.getByRole('link')).toHaveCount(1)
   expect(await page.evaluate(noSidewaysScroll)).toBe(true)
 
-  // UI-ONBc: the owner confirms what was found; Klaviyo is Now.
+  // UI-ONBc: the readers are queued, and Progress says so in words.
+  await expect(
+    page.getByRole('heading', { name: 'Reading your store' })
+  ).toBeVisible()
+  await expect(page.getByText('Reading your website')).toBeVisible()
+  await expect(page.getByText('Products')).toBeVisible()
+  // How emails should sound and what to avoid (VISION's brand facts) are
+  // asked here, optional, and kept.
+  await page
+    .getByLabel('How should your emails sound? (optional)')
+    .fill('Warm and clear')
+  await page
+    .getByLabel('Anything we should avoid? (optional)')
+    .fill('No medical claims')
   await page.getByRole('button', { name: 'Confirm brand' }).click()
   await expect(
     page.getByRole('heading', { level: 1, name: 'Connect Klaviyo' })
-  ).toBeVisible()
+  ).toBeFocused()
   await expect(steps.getByRole('link')).toHaveCount(2)
+  await steps.getByRole('link', { name: /Brand/ }).click()
+  await expect(
+    page.getByLabel('How should your emails sound? (optional)')
+  ).toHaveValue('Warm and clear')
+  await expect(
+    page.getByLabel('Anything we should avoid? (optional)')
+  ).toHaveValue('No medical claims')
+  await page.goto('/setup')
 
   // UI-ONBd: a wrong key is said under its field; the sample key connects.
   await page.getByLabel('Private API key').fill('not a key')
@@ -95,10 +110,13 @@ test('UI-ONBb a new owner saves the store and comes back to the step that is Now
 
 test('UI-ONBb staff see where setup is, with no buttons', async ({ page }) => {
   await login(page, 'staff')
-  await page.goto('/setup')
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Save store' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Confirm brand' })).toHaveCount(
-    0
-  )
+  await page.goto('/setup?step=store')
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Your store' })
+  ).toBeVisible()
+  await expect(
+    page.getByText('Only the workspace owner can change this.')
+  ).toBeVisible()
+  await expect(page.getByRole('main').getByRole('button')).toHaveCount(0)
+  await expect(page.getByRole('main').getByRole('textbox')).toHaveCount(0)
 })
