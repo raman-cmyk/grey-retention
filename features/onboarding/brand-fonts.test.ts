@@ -66,7 +66,8 @@ describe('studioFaces (FONT-b)', () => {
 function database(
   domain: string | null,
   kept: { domain: string; fonts: unknown } | null,
-  error: unknown = null
+  error: unknown = null,
+  failing = 'brand_fonts'
 ) {
   const rows: Record<string, unknown> = {
     brand_profiles: domain === null ? null : { domain },
@@ -85,7 +86,7 @@ function database(
           ),
           maybeSingle: async () => ({
             data: rows[table],
-            error: table === 'brand_fonts' ? error : null
+            error: table === failing ? error : null
           })
         }
         return chain
@@ -152,10 +153,13 @@ describe('brandFonts (FONT-b)', () => {
       expect(await brandFonts(database(domain, kept).db, tenantId)).toEqual([])
   })
 
-  it('throws when the fonts cannot be read', async () => {
-    const failed = database('cedarlane.com', null, { code: '42501' })
-    await expect(brandFonts(failed.db, tenantId)).rejects.toEqual({
-      code: '42501'
-    })
+  it('throws when the fonts or the website cannot be read', async () => {
+    for (const table of ['brand_fonts', 'brand_profiles']) {
+      const kept = { domain: 'cedarlane.com', fonts: [serif] }
+      const failed = database('cedarlane.com', kept, { code: '42501' }, table)
+      await expect(brandFonts(failed.db, tenantId), table).rejects.toEqual({
+        code: '42501'
+      })
+    }
   })
 })

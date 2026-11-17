@@ -22,6 +22,13 @@ export type ReadReview = {
   rating: number | null
   /** True when the review gives stars that could not be read (never quoted). */
   ratingUnclear: boolean
+  /**
+   * False when the page's own rating is no whole number of stars out of
+   * five (3.5, 8 of 10): `rating` is then rounded, so the review is never
+   * quoted with stars (REL-ONB2 part b: only the page's own stars). Absent
+   * means whole.
+   */
+  ratingExact?: boolean
   /** The day it was written (YYYY-MM-DD), when known. */
   date: string | null
   /** The brand's own page it was read on. */

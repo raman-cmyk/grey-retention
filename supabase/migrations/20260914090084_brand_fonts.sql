@@ -46,7 +46,7 @@ begin
         or (x->>'format') not in ('woff2','woff','truetype','opentype')
         or (x->>'weight')::numeric not between 100 and 900 or (x->>'weight')::numeric % 1 <> 0
         or (x ? 'maxWeight' and ((x->>'maxWeight')::numeric % 1 <> 0
-          or (x->>'maxWeight')::numeric <= (x->>'weight')::numeric or (x->>'maxWeight')::numeric > 900))
+          or (x->>'maxWeight')::numeric <= (x->>'weight')::numeric or (x->>'maxWeight')::numeric not between 100 and 900))
         or length(x->>'unicodeRange') not between 1 and 1000
         or (x->>'unicodeRange') !~ '^U\+[0-9A-F]{4,6}(-[0-9A-F]{4,6})?(, U\+[0-9A-F]{4,6}(-[0-9A-F]{4,6})?)*$' then
         return false;
@@ -73,9 +73,11 @@ create policy member_read on public.brand_fonts for select to authenticated usin
 revoke all on public.brand_fonts from public, anon;
 revoke insert, update, delete, truncate, references, trigger on public.brand_fonts from authenticated;
 grant select on public.brand_fonts to authenticated;
+-- The worker writes only through record_site_fonts, never directly.
+revoke insert, update, delete, truncate, references, trigger on public.brand_fonts from service_role;
 do $$ begin
   if current_setting('server_version_num')::integer >= 170000 then
-    execute 'revoke maintain on public.brand_fonts from authenticated';
+    execute 'revoke maintain on public.brand_fonts from public, anon, authenticated, service_role';
   end if;
 end $$;
 

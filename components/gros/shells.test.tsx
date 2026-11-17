@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Button } from './button'
 import { DayStrip, planDates } from './day-strip'
 import { EmailThumb, ListRow, RowList, TextThumb } from './list-row'
-import { AppPage, TopBar } from './nav'
+import { AppPage, LoadingPage, TopBar } from './nav'
 import { Progress } from './progress'
 import { Status } from './status'
 import { FocusShell, StepCards, onboardingSteps } from './steps'
@@ -12,7 +12,7 @@ import { FocusShell, StepCards, onboardingSteps } from './steps'
 afterEach(cleanup)
 
 describe('TopBar and AppPage (UI-DS)', () => {
-  it('has the menu items whose screens exist, the current one marked, and Ask GROS and Settings', () => {
+  it('has the five menu items, the current one marked, and Ask GROS and Settings', () => {
     render(<TopBar current="inspiration" title="Inspiration" />)
     expect(
       screen.getByRole('heading', { level: 1, name: 'Inspiration' })
@@ -22,7 +22,7 @@ describe('TopBar and AppPage (UI-DS)', () => {
       'Home',
       'Plan',
       'Inspiration',
-      // Audiences has no screen yet, so it is left out rather than a dead link.
+      'Audiences',
       'Results'
     ])
     const here = menu.getByRole('link', { name: 'Inspiration' })
@@ -70,6 +70,36 @@ describe('TopBar and AppPage (UI-DS)', () => {
         .getAllByRole('link')
         .some((l) => l.hasAttribute('aria-current'))
     ).toBe(false)
+  })
+})
+
+describe('LoadingPage (UI-LOAD)', () => {
+  it('draws the bar and what opens, but no main and no skip link, so the streamed page holds the only main', () => {
+    const { container } = render(
+      <>
+        <LoadingPage current="home" title="Home" words="Opening Home" />
+        <AppPage current="home" title="Home">
+          <p>Ready</p>
+        </AppPage>
+      </>
+    )
+    // Both at once, as while Next streams the page in beside its fallback.
+    expect(container.querySelectorAll('main')).toHaveLength(1)
+    expect(container.querySelectorAll('#main-content')).toHaveLength(1)
+    expect(
+      screen.getAllByRole('link', { name: 'Skip to content' })
+    ).toHaveLength(1)
+    const loading = container.firstElementChild!
+    expect(loading).toHaveClass('gros', 'urbanist-variable')
+    expect(
+      within(loading as HTMLElement).getByText('Opening Home')
+    ).toHaveAttribute('aria-live', 'polite')
+    expect(loading.querySelector('[aria-busy="true"]')).not.toBeNull()
+    expect(
+      within(
+        within(loading as HTMLElement).getByRole('navigation', { name: 'Main' })
+      ).getByRole('link', { name: 'Home' })
+    ).toHaveAttribute('aria-current', 'page')
   })
 })
 

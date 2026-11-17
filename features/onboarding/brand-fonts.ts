@@ -48,9 +48,10 @@ export function studioFaces(font: SiteFont): SectionFont[] {
  * The brand's web fonts (FONT-SITE part b), heading fonts first, as the
  * Site reader kept them from its newest live read (`brand_fonts`), each
  * with its faces for the design studio. None from a website other than
- * the workspace's current one. Called with the member's own client (row
- * rules), or with the worker's after the caller checked the person may
- * see this workspace. A failed read throws.
+ * the workspace's current one. The design studio (DST-003) passes the
+ * member's own client, so the row rules decide what it reads; the worker's
+ * client only after the caller checked the person may see this workspace.
+ * A failed read throws.
  */
 export async function brandFonts(
   db: Db,
