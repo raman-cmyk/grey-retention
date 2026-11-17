@@ -258,6 +258,40 @@ describe('StepCards and FocusShell (UI-DS)', () => {
     )
   })
 
+  it('marks each step by its own state when given, and the step shown as current (UI-ONBb)', () => {
+    render(
+      <StepCards
+        current={0}
+        shown={0}
+        steps={[
+          { name: 'Store' },
+          { name: 'Brand', done: false },
+          { name: 'Klaviyo', done: true },
+          { name: 'Discount', done: true, href: '/setup' as Route }
+        ]}
+      />
+    )
+    const card = (name: string) => screen.getByText(name).closest('li')!
+    expect(card('Store')).toHaveAttribute('aria-current', 'step')
+    expect(card('Brand')).toHaveTextContent(', to do')
+    expect(card('Klaviyo')).toHaveTextContent(', done')
+    // A done step is a link only where the caller gives one.
+    expect(screen.getByRole('link', { name: /Discount/ })).toBeVisible()
+    cleanup()
+    render(
+      <StepCards
+        current={1}
+        shown={0}
+        steps={[{ name: 'Store', href: '/setup' as Route }, { name: 'Brand' }]}
+      />
+    )
+    expect(screen.getByText('Store').closest('li')).toHaveAttribute(
+      'aria-current',
+      'step'
+    )
+    expect(screen.getByText('Brand').closest('li')).toHaveTextContent(', now')
+  })
+
   it('puts the steps in the lime panel and the one task on the right', () => {
     const { container } = render(
       <FocusShell panel={<StepCards current={0} steps={[{ name: 'Store' }]} />}>

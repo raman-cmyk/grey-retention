@@ -1,18 +1,19 @@
 import type { Route } from 'next'
-import type { ReactNode } from 'react'
 import { ButtonLink } from '@/components/gros/button'
 import { FocusShell, StepCards } from '@/components/gros/steps'
 import type { SetupView } from './flow'
-import type { SetupPlace, SetupStepKey } from './flow-model'
+import { maxWebsite, type SetupPlace } from './flow-model'
 import { saveStore } from './setup-actions'
 import { SetupError } from './setup-error'
-import { StoreForm } from './setup-form'
+import { SetupForm } from './setup-form'
+import { Facts, OwnerOnly, setupPath, Title } from './setup-parts'
 
 /**
  * Onboarding (UI-ONBb) on the GROS focused shell: the lime panel shows the
- * five steps (a done step links back, a step ahead does not), the right
- * side the step that is open, with one title and one main button. Only
- * the owner gets the buttons; staff see where setup is.
+ * five steps, each done or not by its own record (a done step before Now
+ * links back; a step ahead never does), the right side the step that is
+ * open, with one title and one main button. Only the owner gets the
+ * buttons; staff see where setup is.
  */
 export function SetupScreen({
   view,
@@ -36,14 +37,17 @@ export function SetupScreen({
         />
       </FocusShell>
     )
+  const shown = flow.steps.findIndex((s) => s.key === place)
   return (
     <FocusShell
       panel={
         <StepCards
           current={flow.current}
-          steps={flow.steps.map((s) => ({
+          shown={shown === -1 ? undefined : shown}
+          steps={flow.steps.map((s, i) => ({
             name: s.name,
-            href: s.done ? setupPath(s.key) : undefined
+            done: s.done,
+            href: s.done && i < flow.current ? setupPath(s.key) : undefined
           }))}
         />
       }
@@ -57,30 +61,34 @@ export function SetupScreen({
   )
 }
 
-export const setupPath = (step?: SetupStepKey) =>
-  (step ? `/setup?step=${step}` : '/setup') as Route
-
-function Title({ text }: { text: string }) {
-  return <h1 className="type-title">{text}</h1>
-}
-
-function OwnerOnly() {
-  return (
-    <p className="type-body text-[var(--stone)]">
-      Only the workspace owner can change this.
-    </p>
-  )
-}
-
 function StoreStep({ view }: { view: SetupView }) {
   return (
     <>
       <Title text="Your store" />
       {view.owner ? (
-        <StoreForm
+        <SetupForm
           action={saveStore}
-          name={view.brand?.name || view.workspaceName}
-          website={view.brand?.domain ?? ''}
+          label="Save store"
+          fields={[
+            {
+              name: 'name',
+              label: 'Store name',
+              defaultValue: view.brand?.name || view.workspaceName,
+              autoComplete: 'organization',
+              maxLength: 120,
+              required: true
+            },
+            {
+              name: 'website',
+              label: 'Website',
+              defaultValue: view.brand?.domain ?? '',
+              inputMode: 'url',
+              autoComplete: 'url',
+              spellCheck: false,
+              maxLength: maxWebsite,
+              required: true
+            }
+          ]}
         />
       ) : (
         <>
@@ -97,24 +105,7 @@ function StoreStep({ view }: { view: SetupView }) {
   )
 }
 
-/** Small mist boxes inside the white shell, a label over each value. */
-function Facts({ items }: { items: [string, ReactNode][] }) {
-  return (
-    <dl className="grid w-full gap-[var(--space-3)] sm:grid-cols-2">
-      {items.map(([label, value]) => (
-        <div
-          key={label}
-          className="gros-tile flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] bg-[var(--mist)]"
-        >
-          <dt className="type-label text-[var(--stone)]">{label}</dt>
-          <dd className="type-body-strong">{value}</dd>
-        </div>
-      ))}
-    </dl>
-  )
-}
-
-/** The steps still to be built on this screen (UI-ONBc and UI-ONBd). */
+/** The steps still to be built on this screen (UI-ONBc to UI-ONBe). */
 const later: Record<Exclude<SetupPlace, 'store'>, [string, string, Route]> = {
   brand: ['Your brand', 'Open brand', '/brand'],
   klaviyo: ['Connect Klaviyo', 'Open connections', '/connections'],

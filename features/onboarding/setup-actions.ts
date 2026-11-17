@@ -7,7 +7,7 @@ import { requireRequestContext } from '@/features/auth/application/request-conte
 import { getServerEnvironment } from '@/lib/env/server'
 import { createClient } from '@/lib/supabase/server'
 import { startAdsReading } from './ads/start'
-import { websiteOf } from './flow-model'
+import { maxWebsite, websiteOf } from './flow-model'
 import { startReviewsReading } from './reviews/start'
 import { startSiteReading } from './site/start'
 
@@ -18,10 +18,13 @@ import { startSiteReading } from './site/start'
  */
 export type SetupAnswer = {
   error?: string
-  fields?: Partial<Record<'name' | 'website', string>>
+  /** What was done, when the step stays open. */
+  message?: string
+  /** An error for one field, by the field's name. */
+  fields?: Record<string, string>
 }
 
-const ownerOnly = 'Only the workspace owner can set up GROS.'
+const ownerOnly = 'Only the workspace owner can set up your store.'
 const setupPath = '/setup' as Route
 
 async function ownerSession() {
@@ -45,7 +48,8 @@ const store = z.object({
     .max(120, 'Enter your store’s name, 2 to 120 letters.'),
   website: z
     .string()
-    .max(300, 'Enter your store’s website, like cedarlane.com.')
+    .trim()
+    .max(maxWebsite, 'Enter your store’s website, like cedarlane.com.')
 })
 
 /** The readers that need only the website: the site, its ads, its reviews. */

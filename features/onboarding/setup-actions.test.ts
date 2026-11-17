@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 const mocks = vi.hoisted(() => ({
+  env: { AUTH_MODE: 'supabase' as string },
   context: vi.fn(),
   createClient: vi.fn(),
   site: vi.fn(),
@@ -18,7 +19,7 @@ vi.mock('@/features/auth/application/request-context', () => ({
 }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: mocks.createClient }))
 vi.mock('@/lib/env/server', () => ({
-  getServerEnvironment: () => ({ AUTH_MODE: 'supabase' })
+  getServerEnvironment: () => mocks.env
 }))
 vi.mock('./site/start', () => ({ startSiteReading: mocks.site }))
 vi.mock('./ads/start', () => ({ startAdsReading: mocks.ads }))
@@ -72,6 +73,7 @@ const redirected = async (work: Promise<unknown>) =>
 describe('setup actions (UI-ONBb)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.env.AUTH_MODE = 'supabase'
     mocks.context.mockResolvedValue(owner)
     for (const start of [mocks.site, mocks.ads, mocks.reviews])
       start.mockResolvedValue({ ok: true, jobId: 'job' })
@@ -132,7 +134,9 @@ describe('setup actions (UI-ONBb)', () => {
   it('refuses staff and admins on the server', async () => {
     for (const tenantRole of ['staff', 'admin']) {
       mocks.context.mockResolvedValue({ ...owner, tenantRole })
-      const answer = { error: 'Only the workspace owner can set up GROS.' }
+      const answer = {
+        error: 'Only the workspace owner can set up your store.'
+      }
       expect(
         await saveStore(
           {},
@@ -169,5 +173,17 @@ describe('setup actions (UI-ONBb)', () => {
         )
       )
     ).toBe('/setup')
+  })
+
+  it('saves nothing in the demo', async () => {
+    mocks.env.AUTH_MODE = 'demo'
+    mocks.createClient.mockResolvedValue(database().db)
+    expect(
+      await saveStore(
+        {},
+        form({ name: 'Cedar Lane', website: 'cedarlane.example' })
+      )
+    ).toEqual({ error: 'Please sign in again. Nothing was changed.' })
+    expect(mocks.site).not.toHaveBeenCalled()
   })
 })

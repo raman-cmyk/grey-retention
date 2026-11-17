@@ -52,7 +52,13 @@ test('UI-ONBb a new owner saves the store and comes back to the step that is Now
 
 test('UI-ONBb staff see where setup is, with no buttons', async ({ page }) => {
   await login(page, 'staff')
-  await page.goto('/setup')
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Save store' })).toHaveCount(0)
+  await page.goto('/setup?step=store')
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Your store' })
+  ).toBeVisible()
+  await expect(
+    page.getByText('Only the workspace owner can change this.')
+  ).toBeVisible()
+  await expect(page.getByRole('main').getByRole('button')).toHaveCount(0)
+  await expect(page.getByRole('main').getByRole('textbox')).toHaveCount(0)
 })

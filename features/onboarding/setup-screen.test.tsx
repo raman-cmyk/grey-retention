@@ -1,4 +1,12 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
@@ -9,6 +17,7 @@ vi.mock('./setup-actions', () => ({
 
 import type { SetupView } from './flow'
 import { setupFlow, type SetupRecords } from './flow-model'
+import { SetupForm } from './setup-form'
 import { SetupScreen } from './setup-screen'
 
 afterEach(cleanup)
@@ -96,5 +105,83 @@ describe('SetupScreen (UI-ONBb)', () => {
       '/setup'
     )
     expect(screen.queryByRole('list', { name: 'Steps' })).toBeNull()
+  })
+
+  it('marks each step by its own record, and the step shown as current', () => {
+    // Klaviyo and a discount saved, no website yet: those two are done,
+    // Store is Now, and neither done step ahead is a link.
+    render(
+      <SetupScreen
+        view={view(
+          { brand: null },
+          {
+            ...none,
+            klaviyoWorking: true,
+            maxDiscountSet: true
+          }
+        )}
+        place="store"
+      />
+    )
+    const steps = screen.getByRole('list', { name: 'Steps' })
+    const card = (name: string) => within(steps).getByText(name).closest('li')!
+    expect(card('Klaviyo')).toHaveTextContent(', done')
+    expect(card('Discount')).toHaveTextContent(', done')
+    expect(card('Brand')).toHaveTextContent(', to do')
+    expect(card('Store')).toHaveAttribute('aria-current', 'step')
+    expect(within(steps).queryAllByRole('link')).toHaveLength(0)
+    cleanup()
+    // A done step opened again is the current one; Now still says so.
+    render(<SetupScreen view={view()} place="store" />)
+    const again = screen.getByRole('list', { name: 'Steps' })
+    expect(within(again).getByText('Store').closest('li')).toHaveAttribute(
+      'aria-current',
+      'step'
+    )
+    const now = within(again).getByText('Brand').closest('li')!
+    expect(now).not.toHaveAttribute('aria-current')
+    expect(now).toHaveTextContent(', now')
+  })
+
+  it('moves the focus to the new step’s title when the step changes', () => {
+    const { rerender } = render(
+      <SetupScreen view={view({}, { ...records, domain: '' })} place="store" />
+    )
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Your store' })
+    ).toHaveFocus()
+    rerender(<SetupScreen view={view()} place="brand" />)
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Your brand' })
+    ).toHaveFocus()
+  })
+})
+
+describe('SetupForm (UI-ONBb)', () => {
+  it('moves the focus to the first refused field, its error linked to it', async () => {
+    const action = vi.fn(async () => ({
+      fields: { website: 'Enter your store’s website, like cedarlane.com.' }
+    }))
+    render(
+      <SetupForm
+        action={action}
+        label="Save store"
+        fields={[
+          { name: 'name', label: 'Store name', defaultValue: 'Cedar Lane' },
+          { name: 'website', label: 'Website', defaultValue: 'not a site' }
+        ]}
+      />
+    )
+    const button = screen.getByRole('button', { name: 'Save store' })
+    await waitFor(() => expect(button).toBeEnabled())
+    await act(async () => fireEvent.click(button))
+    const website = screen.getByLabelText('Website')
+    await waitFor(() => expect(website).toHaveFocus())
+    expect(website).toHaveAttribute('aria-invalid', 'true')
+    expect(website).toHaveAccessibleDescription(
+      'Enter your store’s website, like cedarlane.com.'
+    )
+    // What was typed stays to be fixed.
+    expect(website).toHaveValue('not a site')
   })
 })
