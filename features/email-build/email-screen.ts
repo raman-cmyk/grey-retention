@@ -29,6 +29,12 @@ export type EmailRow = {
   sampleDraft: boolean
   /** Why it failed, already in the owner's words (REL-084). */
   reason: string | null
+  /**
+   * DST-002b: the inbox email it follows (Copy) or remixes, and why, in the
+   * owner's words (saved by the sections step). Missing: from scratch, or
+   * built before it.
+   */
+  referenceReason?: string | null
 }
 
 /**
@@ -186,9 +192,11 @@ const copyAgents = new Set(['copywriter', 'copy-inspectors', 'letter-writer'])
 function notesOf(
   email: BuiltEmail | null,
   view: EmailView | null,
-  log: readonly EmailLogLine[]
+  log: readonly EmailLogLine[],
+  referenceReason?: string | null
 ) {
-  const notes: string[] = []
+  // DST-002b: which inspiration email it follows comes first.
+  const notes: string[] = referenceReason ? [referenceReason] : []
   if (email?.copy === 'plain')
     if (!email.ai)
       notes.push(
@@ -216,10 +224,19 @@ function notesOf(
     notes.push(
       'A test of two subjects: half the audience gets each, and Results shows which got more clicks once there are enough results.'
     )
-  for (const line of log)
+  for (const line of log) {
     // The Content locker's line says what the email's changes say above.
-    if (!(changes.length && line.code === 'content_replaced'))
-      notes.push(`${line.reason} ${line.instead}`.replace(/\s+/g, ' ').trim())
+    if (changes.length && line.code === 'content_replaced') continue
+    // A try of the sections step that went from scratch, before a later
+    // try followed an inspiration email: the saved reason is the truth.
+    if (
+      referenceReason &&
+      line.agent === 'art-director' &&
+      line.code.startsWith('reference_')
+    )
+      continue
+    notes.push(`${line.reason} ${line.instead}`.replace(/\s+/g, ' ').trim())
+  }
   return [...new Set(notes.filter(Boolean))].slice(0, 20)
 }
 
@@ -289,7 +306,7 @@ export function emailScreen(
   const view = email ? viewOf(email, log, row.sampleDraft) : null
   const format = view?.format ?? row.format
   const steps = runSteps(row, format)
-  const notes = notesOf(email, view, log)
+  const notes = notesOf(email, view, log, row.referenceReason)
   const drafted = row.state === 'drafted'
   const klaviyo =
     drafted && !row.sampleDraft && row.klaviyoCampaignId
