@@ -175,7 +175,11 @@ test('UI-SETa staff see Settings without the owner’s controls', async ({
     // UI-SETb: staff see the team, but no button changes it.
     'Invite as',
     'Resend',
-    'Cancel invite'
+    'Cancel invite',
+    'Make Manager',
+    'Make Staff',
+    'Deactivate',
+    'Reactivate'
   ])
     await expect(page.getByRole('button', { name })).toHaveCount(0)
   const team = page.getByRole('region', { name: 'Team' })
