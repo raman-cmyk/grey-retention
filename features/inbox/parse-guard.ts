@@ -37,12 +37,19 @@ export type ParseLimits = { -readonly [K in keyof typeof parseLimits]: number }
 
 /** Where the deadline is read (a test's clock can tell them apart). */
 export type DeadlineCheck =
-  'start' | 'scan' | 'element' | 'walk' | 'block' | 'writer'
+  'start' | 'scan' | 'element' | 'walk' | 'block' | 'css' | 'strings' | 'writer'
 
 export type GuardOptions = {
-  /** Lower limits for this email (how a test proves each guard). */
+  /**
+   * Lower limits for this email (how a test proves each guard). A limit
+   * is never raised: a value above the default, or not a number, is
+   * ignored.
+   */
   limits?: Partial<ParseLimits>
-  /** The clock the deadline is read from, by check (`Date.now`). */
+  /**
+   * The clock the deadline is read from, by check (`Date.now`). It can
+   * only bring the deadline closer: real time still ends the work.
+   */
   clock?: (check: DeadlineCheck) => number
 }
 
@@ -51,6 +58,8 @@ export type Guard = {
   limits: ParseLimits
   now: (check: DeadlineCheck) => number
   until: number
+  /** By real time, which no passed clock extends. */
+  hard: number
 }
 
 export type ParseRefusal =
@@ -69,15 +78,35 @@ export class ParseRefused extends Error {
   }
 }
 
+/** The defaults, each lowered (never raised) by a finite given value. */
+export function lower<L extends Record<string, number>>(
+  defaults: L,
+  given: Partial<Record<keyof L, unknown>> = {}
+): L {
+  const out = { ...defaults }
+  for (const key of Object.keys(defaults) as (keyof L)[]) {
+    const v = given[key]
+    if (typeof v === 'number' && Number.isFinite(v))
+      out[key] = Math.min(defaults[key], v) as L[keyof L]
+  }
+  return out
+}
+
 /** The guard for one email, its deadline counted from now. */
 export function guardFor(options: GuardOptions = {}): Guard {
-  const limits = { ...parseLimits, ...options.limits }
+  const limits = lower(parseLimits, options.limits)
   const now = options.clock ?? (() => Date.now())
-  return { limits, now, until: now('start') + limits.ms }
+  return {
+    limits,
+    now,
+    until: now('start') + limits.ms,
+    hard: Date.now() + parseLimits.ms
+  }
 }
 
 export function checkTime(g: Guard, check: DeadlineCheck) {
-  if (g.now(check) > g.until) throw new ParseRefused('out_of_time')
+  if (g.now(check) > g.until || Date.now() > g.hard)
+    throw new ParseRefused('out_of_time')
 }
 
 const space = (c: string | undefined) =>
@@ -167,16 +196,14 @@ function guarded(g: Guard): TreeAdapter<DefaultTreeAdapterMap> {
 
 /**
  * parse5's `parse` behind the guard. Throws `ParseRefused` (with its
- * reason) instead of taking long; nothing else changes. The size limit
- * holds for an email's own HTML (`first`), not for a copy written again.
+ * reason) instead of taking long; nothing else changes.
  */
 export function guardedParse(
   html: string,
   g: Guard,
-  options: Omit<ParserOptions<DefaultTreeAdapterMap>, 'treeAdapter'> = {},
-  first = true
+  options: Omit<ParserOptions<DefaultTreeAdapterMap>, 'treeAdapter'> = {}
 ): T.Document {
-  if (first && html.length > g.limits.html) throw new ParseRefused('too_large')
+  if (html.length > g.limits.html) throw new ParseRefused('too_large')
   const refused = scan(html, g)
   if (refused) throw new ParseRefused(refused)
   return parse(html, { ...options, treeAdapter: guarded(g) })

@@ -1,6 +1,7 @@
 import { bareAddress, canonical } from './addresses'
 import { decode } from './images'
 import {
+  lower,
   parseLimits,
   type DeadlineCheck,
   type ParseLimits
@@ -24,9 +25,15 @@ export type CleanOptions = {
    * path. Any other picture is emptied (only stored copies are shown).
    */
   images?: { ref: string; path: string }[]
-  /** Lower limits for this call (how a test proves each guard). */
+  /**
+   * Lower limits for this call (how a test proves each guard). A limit is
+   * never raised: a value above the default, or not a number, is ignored.
+   */
   limits?: Partial<PrivacyLimits & ParseLimits>
-  /** The clock the HTML deadline is read from, by check (`Date.now`). */
+  /**
+   * The clock the HTML deadline is read from, by check (`Date.now`). It
+   * can only bring the deadline closer: real time still ends the work.
+   */
   clock?: (check: DeadlineCheck) => number
 }
 
@@ -70,7 +77,7 @@ const url = new RegExp(
  * blanks (NBSP, a line break) around @, a dot as well.
  */
 export const address = new RegExp(
-  String.raw`(?:${local}|"[^"\n]{1,64}")(?:${at}(?:${host}(?:\.${host})*|\[[\d.:a-f]{2,45}\])|\s{1,2}${at}\s{0,2}${domain}|${at}\s{1,2}${domain})`,
+  String.raw`(?:${local}|"[^"\n]{1,64}")(?:${at}(?:${domain}|\[[\d.:a-f]{2,45}\])|\s{1,2}${at}\s{0,2}${domain}|${at}\s{1,2}${domain})`,
   'giu'
 )
 const bracket = (w: string) =>
@@ -84,14 +91,6 @@ export const obfuscated = new RegExp(
   String.raw`${local}(?:${bracket('(?:at|@)')}${host}(?:(?:${bracket('dot')}|\.)${host})+|\s+at\s+(?:(?:${mailHosts})\.(?:${tlds})|${host}(?:\s+dot\s+${host}){0,3}\s+dot\s+(?:${tlds}))(?!${word}))`,
   'giu'
 )
-/** The few escapes an address hides behind, however often applied. */
-const encoded = /%(?:25|40|2b|2e|2d|5f|20)/gi
-function unescape(s: string) {
-  let out = s
-  for (let i = 0; i < 8 && /%(?:25|40|2b|2e|2d|5f|20)/i.test(out); i++)
-    out = out.replace(encoded, (e) => decodeURIComponent(e))
-  return out
-}
 const greeting = new RegExp(
   String.raw`(?<!${word})(hi|hey|hello|hiya|heya|howdy|dear)(,?[ \t\u{a0}]+)(${word}[\p{L}\p{N}.'’+_-]{0,63}(?:[ \t]\p{L}[\p{L}'’-]{0,39}){0,2})(?=[ \t\u{a0}]*(?:[,!?;:.\n—–-]|\p{Extended_Pictographic}|$))`,
   'giu'
@@ -101,6 +100,8 @@ export const greetingEnd =
 
 export type Rules = {
   locals: RegExp | null
+  /** The bare local part at any length (for picture addresses). */
+  localsAnyLength: RegExp | null
   local: RegExp | null
   names: RegExp | null
   nameSet: Set<string>
@@ -166,7 +167,7 @@ function compile(identity: InboxIdentity, options: CleanOptions): Rules {
   const local = locals.length
     ? String.raw`(?:${locals.join('|')})(?:\+[\p{L}\p{N}._-]+)?`
     : null
-  // "capture at inbox.example", "samriv [at] gmail": its own domain (or
+  // "capture at inbox.example", "samriv [at] example": its own domain (or
   // the domain's first word) after any at sign, so a short one goes too.
   const blank = String.raw`\s{0,3}`
   const atSign = String.raw`(?:${blank}${at}${blank}|${blank}[[({]${blank}(?:at|@)${blank}[\])}]${blank}|\s{1,3}at\s{1,3})`
@@ -188,16 +189,28 @@ function compile(identity: InboxIdentity, options: CleanOptions): Rules {
         ]
       : []
   })
-  const keep = (options.keep ?? []).map((k) => k.replace(/\s+/g, ' ').trim())
+  const nameSet = nameWords(identity.names)
+  const localWord = local ? new RegExp(`^${local}$`, 'iu') : null
+  // The brand's words are kept, but never one that is a name or the
+  // inbox's local part: keep cannot switch those rules off.
+  const keep = (options.keep ?? [])
+    .map((k) => k.replace(/\s+/g, ' ').trim())
+    .filter(
+      (k) =>
+        k && !nameSet.has(skeleton(k.toLowerCase()).text) && !localWord?.test(k)
+    )
   const images = new Map<string, string>()
   const rules: Rules = {
     locals: local
       ? new RegExp(String.raw`(?<![\p{L}\p{N}])${local}(?![\p{L}\p{N}])`, 'giu')
       : null,
-    local: local ? new RegExp(`^${local}$`, 'iu') : null,
-    names: anyOf([...nameWords(identity.names)]),
-    nameSet: nameWords(identity.names),
-    keep: anyOf(keep.filter(Boolean)),
+    localsAnyLength: local
+      ? new RegExp(String.raw`(?<![\p{L}\p{N}])${local}(?![\p{L}\p{N}])`, 'giu')
+      : null,
+    local: localWord,
+    names: anyOf([...nameSet]),
+    nameSet,
+    keep: anyOf(keep),
     own: owns.length
       ? new RegExp(
           String.raw`(?<![\p{L}\p{N}])(?:${owns.join('|')})(?![\p{L}\p{N}])`,
@@ -206,13 +219,13 @@ function compile(identity: InboxIdentity, options: CleanOptions): Rules {
       : null,
     images,
     stored: new Set(images.values()),
-    limits: { ...parseLimits, ...privacyLimits, ...options.limits },
+    limits: lower({ ...parseLimits, ...privacyLimits }, options.limits),
     now: options.clock ?? (() => Date.now())
   }
   // A personalised picture (its address names the person) is not shown,
   // not even its stored copy: such services draw the name into it.
   for (const { ref, path } of options.images ?? [])
-    if (!hit(ref, rules))
+    if (!pictureNames(ref, rules))
       for (const key of [ref.trim(), decode(ref).trim()]) images.set(key, path)
   rules.stored = new Set(images.values())
   return rules
@@ -232,12 +245,13 @@ export function rulesFor(identity: InboxIdentity, options = noOptions): Rules {
 
 /** Characters a reader never sees: format and default-ignorable ones. */
 const unseen = /^[\p{Cf}\p{Default_Ignorable_Code_Point}]$/u
-/** Anything the skeleton changes; text without any is read as it is. */
-const special =
-  /[\p{Cf}\p{Default_Ignorable_Code_Point}\u{370}-\u{52f}\u{2018}\u{2019}&]/u
-/** HTML character references in a text part ("samriv&#64;gmail.com"). */
+/** Text the skeleton changes: anything but plain ASCII, or "&" and "%". */
+const special = /[^\x00-\x7f]|[&%]/
+/** HTML character references in a text part ("samriv&#64;example.com"). */
 const entity =
-  /&(?:#(\d{1,7})|#x([\da-f]{1,6})|(commat|nbsp|amp|period|plus|lowbar|hyphen|dash|apos));/iy
+  /&(?:#(\d{1,7});?|#x([\da-f]{1,6});?|(commat|nbsp|amp|period|plus|lowbar|hyphen|dash|apos);)/iy
+/** A run of percent escapes ("%D0%90", "%2540"). */
+const percents = /(?:%(?:25)*[\da-f]{2})+/iy
 const named: Record<string, string> = {
   commat: '@',
   nbsp: '\u{a0}',
@@ -271,39 +285,87 @@ const lookalikes = new Map<string, string>([
   ['\u{2019}', "'"]
 ])
 
+/** A run of percent escapes, read as UTF-8, also when applied twice or more. */
+function percentRun(run: string) {
+  let out = run
+  for (let i = 0; i < 4 && /%[\da-f]{2}/i.test(out); i++) {
+    const once = out.replace(/%(?:25)+(?=[\da-f]{2})/gi, '%')
+    try {
+      out = decodeURIComponent(once)
+    } catch {
+      out = once.replace(/%([0-7][\da-f])/gi, (_, h: string) =>
+        String.fromCharCode(parseInt(h, 16))
+      )
+    }
+  }
+  return out
+}
+
+const folds = new Map<string, string>()
 /**
- * What a reader sees: invisible characters left out, compatibility forms
- * (full-width, mathematical letters) as plain ones (NFKC), lookalike
- * letters as Latin, character references decoded. `at` and `end` map a
- * position back to the characters it came from.
+ * One character as a reader matches it: compatibility forms as plain ones
+ * (NFKC), accents dropped, small letters (ß as ss, a final sigma as a
+ * sigma), lookalike letters as Latin, invisible ones left out.
+ */
+function fold(ch: string) {
+  let f = folds.get(ch)
+  if (f !== undefined) return f
+  f = ''
+  for (const c of ch.normalize('NFKC').normalize('NFD').toLowerCase())
+    if (!/\p{M}/u.test(c) && !unseen.test(c))
+      f +=
+        c === '\u{df}'
+          ? 'ss'
+          : c === '\u{3c2}'
+            ? '\u{3c3}'
+            : (lookalikes.get(c) ?? c)
+  if (folds.size > 50_000) folds.clear()
+  folds.set(ch, f)
+  return f
+}
+
+/**
+ * What a reader sees, for matching only (the text written is never this):
+ * each character folded (see `fold`), character references and percent
+ * escapes read. `at` and `end` map a position back to the characters it
+ * came from.
  */
 function skeleton(s: string) {
-  if (!special.test(s) && s.normalize('NFKC') === s)
+  if (!special.test(s))
     return { text: s, at: (i: number) => i, end: (i: number) => i + 1 }
   const starts: number[] = []
   const ends: number[] = []
   let text = ''
   for (let i = 0; i < s.length;) {
     entity.lastIndex = i
+    percents.lastIndex = i
     const ref = s[i] === '&' ? entity.exec(s) : null
-    const code = ref
-      ? ref[1]
+    const run = s[i] === '%' ? percents.exec(s) : null
+    let read: string
+    let next: number
+    if (ref) {
+      const code = ref[1]
         ? Number(ref[1])
         : ref[2]
           ? parseInt(ref[2], 16)
           : named[ref[3]!.toLowerCase()]!.codePointAt(0)!
-      : s.codePointAt(i)!
-    const next = ref ? i + ref[0].length : i + (code > 0xffff ? 2 : 1)
-    const ch = code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : ''
-    if (ch && !unseen.test(ch))
-      for (const c of ch.normalize('NFKC')) {
-        const folded = lookalikes.get(c) ?? c
-        text += folded
-        for (let k = 0; k < folded.length; k++) {
-          starts.push(i)
-          ends.push(next)
-        }
+      read = code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : ''
+      next = i + ref[0].length
+    } else if (run) {
+      read = percentRun(run[0])
+      next = i + run[0].length
+    } else {
+      read = String.fromCodePoint(s.codePointAt(i)!)
+      next = i + read.length
+    }
+    for (const ch of read) {
+      const folded = fold(ch)
+      text += folded
+      for (let k = 0; k < folded.length; k++) {
+        starts.push(i)
+        ends.push(next)
       }
+    }
     i = next
   }
   return {
@@ -359,8 +421,28 @@ export const scrub = (s: string, r: Rules, names = true) =>
  * the inbox's local part, or with `names` a name; escapes read.
  */
 export const hit = (value: string, r: Rules, names = true) =>
-  ranges(unescape(value), [...addressRules(r), names ? r.names : null], r)
-    .length > 0
+  ranges(value, [...addressRules(r), names ? r.names : null], r).length > 0
+
+/**
+ * Whether a picture's address names the person, so not even its stored
+ * copy is shown (services draw the name into it). Stricter than for
+ * words, as a false alarm costs one picture: the inbox's local part at
+ * any length, and long base64-looking parts read as text too.
+ */
+export function pictureNames(ref: string, r: Rules): boolean {
+  const all = [...addressRules(r), r.localsAnyLength, r.names]
+  if (ranges(ref, all, r).length) return true
+  for (const [token] of ref.matchAll(/[a-z\d+_-]{12,}={0,2}/gi)) {
+    let text = ''
+    try {
+      text = atob(token.replace(/-/g, '+').replace(/_/g, '/'))
+    } catch {
+      continue
+    }
+    if (/^[\x20-\x7e]+$/.test(text) && ranges(text, all, r).length) return true
+  }
+  return false
+}
 
 /** One of the inbox's names or its local part (any case, any lookalike). */
 export function isName(r: Rules, candidate: string) {
@@ -402,7 +484,9 @@ const anchors = /[\u{fff9}-\u{fffb}]/gu
 const parked = /\u{fff9}([\u{e000}-\u{f8ff}])\u{fffb}/gu
 
 function pass(input: string, r: Rules, edges: boolean) {
-  let s = unescape(input.normalize('NFC').replace(anchors, ''))
+  let s = input
+    .normalize('NFC')
+    .replace(anchors, '')
     .replace(sentTo, '')
     .replace(url, linkTail)
   s = remove(s, [address, obfuscated, r.own], r)
@@ -449,8 +533,17 @@ function cut(value: string, max: number) {
   return (at > max / 2 ? s.slice(0, at) : s).trimEnd()
 }
 
-const read = (value: string, max: number, r: Rules) =>
-  cut(value, max * r.limits.readFactor)
+/**
+ * The part read: cut at a blank, so no piece of a word (of an address)
+ * is left at its end; one long word is not read at all.
+ */
+function read(value: string, max: number, r: Rules) {
+  const limit = Math.max(0, Math.floor(max * r.limits.readFactor))
+  if (value.length <= limit) return value
+  const s = value.slice(0, limit)
+  if (/\s/.test(value[limit]!)) return s
+  return s.slice(0, Math.max(s.lastIndexOf(' '), s.lastIndexOf('\n'), 0))
+}
 
 export function cleanEmailText(
   text: string,

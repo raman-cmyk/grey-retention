@@ -2,6 +2,7 @@ import type { DefaultTreeAdapterTypes as T } from 'parse5'
 import {
   checkTime,
   guardedParse,
+  parseLimits,
   ParseRefused,
   type Guard
 } from './parse-guard'
@@ -108,7 +109,8 @@ function imageUrl(value: string, r: Rules) {
   const stored = r.images.get(v)
   if (stored !== undefined) return stored
   return r.stored.has(v) ||
-    /^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z\d+/=\s]*$/i.test(v)
+    (v.length <= 140_000 &&
+      /^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z\d+/=\s]*$/i.test(v))
     ? value
     : ''
 }
@@ -163,6 +165,15 @@ const unescapeCss = (css: string) =>
     }
   )
 
+/** A CSS string that is a link: a scheme, //, a path, or a file's name. */
+const cssLink =
+  /^\s*(?:[a-z][a-z\d+.-]*:\/\/|\/\/|(?:data|cid|javascript|vbscript|blob|file):|\/(?![\s/]))|\.(?:css|png|jpe?g|gif|webp|svg|woff2?|ttf|otf|eot)(?:[?#]|\s*$)/i
+/** A CSS string's words written back, quotes and backslashes escaped. */
+const cssQuote = (s: string, q: string) =>
+  s
+    .replace(/[\\\n\r\f]/g, (c) => (c === '\\' ? '\\\\' : ' '))
+    .replaceAll(q, `\\${q}`)
+
 /** How often CSS loads a file (an escape can hide one). */
 const loads = (css: string) =>
   (
@@ -175,11 +186,16 @@ const loads = (css: string) =>
  * Every url(...) (brackets and quotes inside included): its stored copy,
  * or none.
  */
-function cssLinks(css: string, r: Rules) {
+function cssLinks(css: string, r: Rules, g: Guard) {
   const lower = css.toLowerCase()
   let out = ''
   let from = 0
-  for (let i = lower.indexOf('url('); i >= 0; i = lower.indexOf('url(', from)) {
+  for (
+    let i = lower.indexOf('url('), n = 0;
+    i >= 0;
+    i = lower.indexOf('url(', from), n++
+  ) {
+    if ((n & 1023) === 0) checkTime(g, 'css')
     let j = i + 3
     for (let depth = 0, q = ''; j < css.length; j++) {
       const c = css[j]
@@ -205,9 +221,10 @@ function cssLinks(css: string, r: Rules) {
  * (@import, image-set) is its stored copy or nothing; any other loses
  * addresses and names (a font named like the person).
  */
-function cssStrings(css: string, r: Rules) {
+function cssStrings(css: string, r: Rules, g: Guard) {
   let out = ''
-  for (let i = 0; i < css.length;) {
+  for (let i = 0, n = 0; i < css.length; n++) {
+    if ((n & 1023) === 0) checkTime(g, 'strings')
     const a = css.indexOf('"', i)
     const b = css.indexOf("'", i)
     const start = a < 0 ? b : b < 0 ? a : Math.min(a, b)
@@ -219,9 +236,16 @@ function cssStrings(css: string, r: Rules) {
     const plain = unescapeCss(value)
     out += css.slice(i, start)
     if (j >= css.length || /\\[\n\r\f]/.test(value)) out += `${q}${q}`
-    else if (/^\s*(?:[a-z][a-z\d+.-]*:|\/)|[?#]/i.test(plain))
+    else if (
+      cssLink.test(plain) ||
+      /@import\s*$/i.test(css.slice(Math.max(0, start - 16), start))
+    )
       out += `${q}${imageUrl(plain, r)}${q}`
-    else out += `${q}${scrub(value, r)}${q}`
+    else {
+      // Read with its escapes ("Hi \53 am"): written plain when it changes.
+      const cleaned = scrub(plain, r)
+      out += `${q}${cleaned === plain ? value : cssQuote(cleaned, q)}${q}`
+    }
     i = j + 1
   }
   return out
@@ -236,13 +260,18 @@ function cssStrings(css: string, r: Rules) {
  * removed. Names go only from strings: a name may also be a CSS word
  * ("Georgia", "max-width").
  */
-function cleanCss(css: string, r: Rules) {
+function cleanCss(css: string, r: Rules, g: Guard) {
   if (loads(unescapeCss(css)) > loads(css)) return ''
   const plain = dropComments(css).replace(/<(?=[a-z/!?])/gi, '')
-  return scrub(cssStrings(cssLinks(plain, r), r), r, false)
+  return scrub(cssStrings(cssLinks(plain, r, g), r, g), r, false)
 }
 
-function cleanAttrs(el: T.Element, r: Rules, named: (s: string) => boolean) {
+function cleanAttrs(
+  el: T.Element,
+  r: Rules,
+  named: (s: string) => boolean,
+  g: Guard
+) {
   const tag = el.tagName
   el.attrs = el.attrs.flatMap((a): T.Element['attrs'] => {
     const name = a.name
@@ -262,7 +291,11 @@ function cleanAttrs(el: T.Element, r: Rules, named: (s: string) => boolean) {
     } else if (name === 'src' || name === 'background' || name === 'poster')
       value = imageUrl(value, r)
     else if (name === 'srcset') value = srcset(value, r)
-    else if (name === 'style') value = cleanCss(value, r)
+    else if (name === 'style') value = cleanCss(value, r, g)
+    // Class names, ids and font faces lose addresses but never names: a
+    // persona called "Max Georgia" keeps "max-w" and "Georgia".
+    else if (name === 'class' || name === 'id' || name === 'face')
+      value = scrub(value, r, false)
     else value = clean(value, r)
     return [value === a.value ? a : { ...a, value }]
   })
@@ -303,10 +336,10 @@ function cleanBlock(nodes: (T.TextNode | '\n')[], r: Rules, g: Guard) {
     }
     // Only what spans pieces: within one, each text's own cleaning (with
     // its greeting) does it.
-    const cuts = ranges(joined, [...addressRules(r), r.names], r).filter(
-      ([a, b]) => piece(a) !== piece(b - 1)
-    )
-    if (cuts.length) {
+    const across = ([a, b]: [number, number]) => piece(a) !== piece(b - 1)
+    const cuts = ranges(joined, addressRules(r), r).filter(across)
+    const names = ranges(joined, [r.names], r).filter(across)
+    if (cuts.length || names.length) {
       // Each match widens to the whole word it touches, so no piece of an
       // address is left beside it. One sweep: no character is read twice.
       const gone = new Uint8Array(joined.length)
@@ -319,6 +352,7 @@ function cleanBlock(nodes: (T.TextNode | '\n')[], r: Rules, g: Guard) {
         gone.fill(1, Math.max(a, reach), b)
         reach = b
       }
+      for (const [a, b] of names) gone.fill(1, a, b)
       let at = 0
       nodes.forEach((n, k) => {
         const v = parts[k]!
@@ -390,7 +424,7 @@ function cleanTree(doc: T.Document, r: Rules, g: Guard) {
     if (n.nodeName === '#text') {
       const parent = (n as T.TextNode).parentNode
       if (parent && isElement(parent) && parent.tagName === 'style')
-        (n as T.TextNode).value = cleanCss((n as T.TextNode).value, r)
+        (n as T.TextNode).value = cleanCss((n as T.TextNode).value, r, g)
       else block.push(n as T.TextNode)
       continue
     }
@@ -414,7 +448,7 @@ function cleanTree(doc: T.Document, r: Rules, g: Guard) {
       blockTags.has(n.tagName) &&
       !/(?:^|;)\s*display\s*:\s*inline/i.test(attr(n, 'style') ?? '')
     if (isBlock) endBlock()
-    cleanAttrs(n, r, namedAttr)
+    cleanAttrs(n, r, namedAttr, g)
     // A form keeps its look as a plain box, raw-text blocks become <pre>
     // (written escaped, so their words can never turn into tags).
     if (n.tagName === 'form') n.tagName = n.nodeName = 'div'
@@ -495,11 +529,12 @@ function serialize(doc: T.Document, g: Guard) {
 }
 
 /**
- * One round. The size limit holds for the email itself (`first`): escaping
- * may make the cleaned HTML longer, and that is read again as it is.
+ * One round. Every round holds the size limit, the last one too (it reads
+ * the cleaned copy), so a result is never longer than an email may be
+ * (escaping can make HTML longer): cleaned again, it is never refused.
  */
-function cleanOnce(html: string, r: Rules, g: Guard, first: boolean) {
-  const doc = guardedParse(html, g, { scriptingEnabled: false }, first)
+function cleanOnce(html: string, r: Rules, g: Guard) {
+  const doc = guardedParse(html, g, { scriptingEnabled: false })
   cleanTree(doc, r, g)
   return serialize(doc, g)
 }
@@ -538,12 +573,11 @@ export function cleanEmailHtml(
   const g: Guard = {
     limits: r.limits,
     now: r.now,
-    until: r.now('start') + r.limits.ms
+    until: r.now('start') + r.limits.ms,
+    hard: Date.now() + parseLimits.ms
   }
   try {
-    return settle(cleanOnce(html, r, g, true), (out) =>
-      cleanOnce(out, r, g, false)
-    )
+    return settle(cleanOnce(html, r, g), (out) => cleanOnce(out, r, g))
   } catch (error) {
     if (error instanceof ParseRefused) return null
     throw error
