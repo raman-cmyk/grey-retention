@@ -49,7 +49,9 @@ const createForm = z.object({
     .string()
     .regex(/^\d{1,2}$/)
     .transform(Number)
-    .pipe(z.int().min(0).max(19))
+    .pipe(z.int().min(0).max(19)),
+  // DST-002b: how a designed email is made; Scratch unless the owner chose.
+  mode: z.enum(['copy', 'remix', 'scratch']).default('scratch')
 })
 
 /**
@@ -66,15 +68,19 @@ export async function createEmail(
     return { error: 'Only this workspace’s owner creates emails.' }
   const parsed = createForm.safeParse({
     run: form.get('run'),
-    slot: form.get('slot')
+    slot: form.get('slot'),
+    mode: form.get('mode') ?? undefined
   })
   if (!parsed.success) return { error: 'Choose an email from the plan.' }
   const db = await createClient()
   if (!db) return { error: 'Creating emails is unavailable right now.' }
+  // Scratch is the command's default: it is left out, so a Scratch click
+  // reads the same before and after the migration that added the mode.
   const { data, error } = await db.rpc('create_email_build', {
     t: context.tenantId,
     run: parsed.data.run,
-    slot: parsed.data.slot
+    slot: parsed.data.slot,
+    ...(parsed.data.mode === 'scratch' ? {} : { mode: parsed.data.mode })
   })
   if (error?.code === 'PT409' && /failed 5 times/.test(error.message ?? ''))
     return {
@@ -86,6 +92,16 @@ export async function createEmail(
       error:
         'This email’s day has passed or the plan has changed. Plan again to create it.'
     }
+  if (error?.code === '22023' && /text email/.test(error.message ?? ''))
+    return {
+      error:
+        'A text email is written as a letter, not copied or remixed. Create it as it is.'
+    }
+  if (
+    error?.code === '22023' &&
+    /Copy, Remix or Scratch/.test(error.message ?? '')
+  )
+    return { error: 'Choose Copy, Remix or Scratch.' }
   if (error?.code === '22023')
     return { error: 'This plan has no such email. Reload the page.' }
   if (error || typeof data !== 'string')

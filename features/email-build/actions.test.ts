@@ -48,6 +48,24 @@ describe('creating an email', () => {
     expect(redirect).toHaveBeenCalledWith('/plan')
   })
 
+  it('makes it in the owner’s mode, and leaves Scratch to the command’s default', async () => {
+    for (const mode of ['copy', 'remix'] as const) {
+      await createEmail({}, form({ run, slot: '1', mode }))
+      expect(rpc).toHaveBeenLastCalledWith('create_email_build', {
+        t: tenantId,
+        run,
+        slot: 1,
+        mode
+      })
+    }
+    await createEmail({}, form({ run, slot: '1', mode: 'scratch' }))
+    expect(rpc).toHaveBeenLastCalledWith('create_email_build', {
+      t: tenantId,
+      run,
+      slot: 1
+    })
+  })
+
   it('is the owner’s only', async () => {
     auth.requireRequestContext.mockResolvedValue({
       tenantId,
@@ -64,7 +82,9 @@ describe('creating an email', () => {
       { run: 'x', slot: '0' },
       { run, slot: '-1' },
       { run, slot: '20' },
-      { run }
+      { run },
+      { run, slot: '0', mode: 'paste' },
+      { run, slot: '0', mode: '' }
     ])
       expect(await createEmail({}, form(fields))).toEqual({
         error: 'Choose an email from the plan.'
@@ -83,6 +103,17 @@ describe('creating an email', () => {
         'This email could not be made after 5 tries. Plan again for new emails.'
       ],
       [{ code: '22023' }, 'This plan has no such email. Reload the page.'],
+      [
+        {
+          code: '22023',
+          message: 'A text email is written, not copied or remixed'
+        },
+        'A text email is written as a letter, not copied or remixed. Create it as it is.'
+      ],
+      [
+        { code: '22023', message: 'Choose Copy, Remix or Scratch' },
+        'Choose Copy, Remix or Scratch.'
+      ],
       [{ code: 'XX000' }, 'We could not create the email. Try again.']
     ] as const
     for (const [error, message] of cases) {
