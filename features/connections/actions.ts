@@ -137,7 +137,7 @@ export async function connectKlaviyo(
   })
   if (saved.error) return { error: failed(saved.error.code) }
   revalidatePath('/connections')
-  revalidatePath('/dashboard')
+  revalidatePath('/home')
   return {
     message: verifier.live
       ? 'Klaviyo connected.'
@@ -167,7 +167,7 @@ async function connectLive(form: FormData): Promise<FormResult> {
   })
   if (result.message) {
     revalidatePath('/connections')
-    revalidatePath('/dashboard')
+    revalidatePath('/home')
   }
   return result
 }
@@ -199,7 +199,7 @@ export async function disconnectKlaviyo(): Promise<FormResult> {
           : 'We could not disconnect Klaviyo. Nothing was changed. Try again.'
     }
   revalidatePath('/connections')
-  revalidatePath('/dashboard')
+  revalidatePath('/home')
   return {
     message:
       'Klaviyo is disconnected: nothing new reads it until you connect it again (an email already going into Klaviyo may still finish in the next minute). Drafts already in Klaviyo stay there. The key is deleted here; it still works in Klaviyo until you delete it there.'

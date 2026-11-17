@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
   const next =
     requestedNext?.startsWith('/') && !requestedNext.startsWith('//')
       ? requestedNext
-      : '/dashboard'
+      : '/home'
 
   if (code) {
     const supabase = await createClient()
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
       ? await supabase.auth.exchangeCodeForSession(code)
       : { error: new Error('Authentication unavailable') }
     if (!error) {
-      if (next === '/dashboard') {
+      if (next === '/home') {
         const { data } = await supabase!.rpc('resolve_client_context', {
           requested_tenant_id: undefined
         })

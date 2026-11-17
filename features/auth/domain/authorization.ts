@@ -15,5 +15,5 @@ export function canManagePlatformAdmins(role: AdminRole) {
 export function authLanding(surface: AuthSurface) {
   if (surface === 'admin') return '/admin/dashboard' as const
   if (surface === 'designer') return '/designer/dashboard' as const
-  return '/dashboard' as const
+  return '/home' as const
 }

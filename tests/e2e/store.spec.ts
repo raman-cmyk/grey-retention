@@ -15,7 +15,7 @@ test('V2-D2 Shopify is hidden: no Store tab, and /store opens the Brand page', a
   for (const path of [
     '/brand',
     '/connections',
-    '/dashboard',
+    '/home',
     '/settings',
     '/gros',
     '/campaign-agent'

@@ -58,7 +58,7 @@ const workspaceSchema = z.object({
 })
 
 const landingBySurface: Record<AuthSurface, Route> = {
-  client: '/dashboard',
+  client: '/home',
   admin: '/admin/dashboard',
   designer: '/designer/dashboard'
 }

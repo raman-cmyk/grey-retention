@@ -26,10 +26,10 @@ test('BAS-003 a signed-out owner signs in and lands back on the page they opened
   await expect(page).toHaveURL(/\/plan$/, { timeout: 15_000 })
 })
 
-test('BAS-003 a sign-in link pointing at another site lands on the dashboard', async ({
+test('BAS-003 a sign-in link pointing at another site lands on Home', async ({
   page
 }) => {
   await page.goto('/login?next=https%3A%2F%2Fevil.example%2F')
   await signIn(page)
-  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 })
+  await expect(page).toHaveURL(/\/home$/, { timeout: 15_000 })
 })
