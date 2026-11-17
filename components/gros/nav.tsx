@@ -20,7 +20,7 @@ import { Mark } from './mark'
 export const navItems = [
   { key: 'home', label: 'Home', href: '/home' },
   { key: 'plan', label: 'Plan', href: '/plan' },
-  { key: 'inspiration', label: 'Inspiration', href: '/library/inspirations' },
+  { key: 'inspiration', label: 'Inspiration', href: '/inspiration' },
   { key: 'audiences', label: 'Audiences', href: '/audiences' },
   { key: 'results', label: 'Results', href: '/results' }
 ] as const satisfies readonly {
