@@ -410,6 +410,13 @@ describe("a review's own photos (REL-ONB2 part e)", () => {
     for (const image of [
       'https://images.example-cdn.com/maya.jpg',
       'https://cedar.myshopify.com.evil.com/maya.jpg',
+      // Host tricks: a browser reads `\` as `/`; an escaped host is no host.
+      'https://evil.example\\.cedar.myshopify.com/m.jpg',
+      'https://evil.example%2f.cedar.myshopify.com/m.jpg',
+      'https://evilcedar.myshopify.com/m.jpg',
+      'https://judgeme.imgix.net.evil.example/m.jpg',
+      'https://cedar.myshopify.com@evil.example/m.jpg',
+      'https://user@cedar.myshopify.com/m.jpg',
       'http://cedar.myshopify.com/maya.jpg',
       'https://cedar.myshopify.com/maya.webp',
       'https://cdn.shopify.com/s/files/1/9999/8888/7777/files/maya.jpg',

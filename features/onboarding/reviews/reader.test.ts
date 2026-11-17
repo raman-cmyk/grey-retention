@@ -227,6 +227,30 @@ describe('the photos customers posted with their reviews (REL-ONB2 part e)', () 
     expect(customerPhotos(many)).toHaveLength(maxReviewPhotos)
   })
 
+  it('keeps a photo once by its host and path, and Shopify CDN photos of one store folder, as the database does', () => {
+    const cdn = (folder: string, n: number) =>
+      `https://cdn.shopify.com/s/files/1/${folder}/files/${n}.jpg`
+    expect(
+      urls(
+        customerPhotos([
+          review({
+            photos: [
+              shot(1, '?auto=format'),
+              shot(1, '?auto=compress'),
+              cdn('0123/4567/8901', 2),
+              cdn('9999/9999', 3),
+              cdn('0123/4567/8901', 4)
+            ]
+          })
+        ])
+      )
+    ).toEqual([
+      shot(1, '?auto=format'),
+      cdn('0123/4567/8901', 2),
+      cdn('0123/4567/8901', 4)
+    ])
+  })
+
   it('leaves the product out rather than the photo when the value would be too long', () => {
     const found = customerPhotos([
       review({

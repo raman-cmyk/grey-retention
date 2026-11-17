@@ -1,4 +1,5 @@
 import { onDomain } from '@/lib/providers/ad-library'
+import { photoUrlPattern } from '../findings'
 import { emailPhotoUrl } from '../site/photos'
 
 /**
@@ -46,7 +47,8 @@ export function shopifyFolder(url: string): string | null {
 
 /**
  * A review photo's address as the page links it, kept only when an email
- * can show it (`emailPhotoUrl`, at most 500 characters) and its host is
+ * can show it (`emailPhotoUrl`, at most 500 characters), in the shape the
+ * database keeps (`photoUrlPattern`: a plain host, URL-safe characters) and its host is
  * the store's own domain (or a subdomain), the store's own folder on
  * Shopify's CDN (one its product's own pictures on the page use), or the
  * confirmed image host of a review app the page loads. Null for any other.
@@ -64,7 +66,12 @@ export function reviewPhoto(
   }
   if (url.protocol !== 'https:') return null
   const href = url.href
-  if (href.length > maxReviewPhotoUrl || !emailPhotoUrl(href)) return null
+  if (
+    href.length > maxReviewPhotoUrl ||
+    !photoUrlPattern.test(href) ||
+    !emailPhotoUrl(href)
+  )
+    return null
   const host = url.hostname
   const own =
     onDomain(host, store.domain) ||

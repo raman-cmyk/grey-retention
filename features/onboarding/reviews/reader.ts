@@ -10,7 +10,7 @@ import { findingInput, type FindingInput } from '../findings'
 import { fold } from '../site/pages'
 import { photoKey } from '../site/photos'
 import { asWritten, claims, plain, wellFormed } from '../words'
-import { maxReviewPhotos } from './photos'
+import { maxReviewPhotos, shopifyFolder } from './photos'
 
 /** The Reviews + social reader's prompt version. */
 export const reviewsReaderVersion = 'reviews-v1'
@@ -241,17 +241,24 @@ export function quotableReviews(reviews: ReadReview[]): CustomerFinding[] {
  * REL-ONB2 part e: the photos customers posted with the reviews kept by
  * the rules above (`keptReviews`: never a photo of a review left out, such
  * as one of three stars or less), in their order, each once at any size
- * (`photoKey`), at most `maxReviewPhotos`. Each is stored on its own with
- * the page and product it is of, never the reviewer's name or words.
+ * (`photoKey`) and by its host and path (the database's rule), those on
+ * Shopify's CDN in the first store folder only (the database keeps one a
+ * read), at most `maxReviewPhotos`. Each is stored on its own with the
+ * page and product it is of, never the reviewer's name or words.
  */
 export function customerPhotos(reviews: ReadReview[]): CustomerFinding[] {
   const seen = new Set<string>()
   const found: CustomerFinding[] = []
+  let folder: string | null = null
   for (const { r } of keptReviews(reviews))
     for (const url of r.photos ?? []) {
       if (found.length >= maxReviewPhotos) return found
-      const key = URL.canParse(url) ? photoKey(url) : null
-      if (key === null || seen.has(key)) continue
+      if (!URL.canParse(url)) continue
+      const u = new URL(url)
+      const keys = [photoKey(url), `${u.hostname}${u.pathname}`]
+      const inFolder = shopifyFolder(url)
+      if (keys.some((k) => seen.has(k))) continue
+      if (inFolder && folder && inFolder !== folder) continue
       const value = { url, page: r.url }
       const product = r.product?.trim()
       // The product when the page names it (left out when too long).
@@ -268,7 +275,8 @@ export function customerPhotos(reviews: ReadReview[]): CustomerFinding[] {
         )
         .find((f) => f.success)
       if (!finding?.success) continue
-      seen.add(key)
+      for (const k of keys) seen.add(k)
+      folder ??= inFolder
       found.push({ ...finding.data, source: 'reviews' })
     }
   return found

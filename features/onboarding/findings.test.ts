@@ -201,7 +201,18 @@ describe('the findings contract', () => {
           // Each short enough, too long together for the database.
           url: `${shop}/${'m'.repeat(420)}.jpg`,
           page: `${shop}/${'p'.repeat(440)}`
-        }
+        },
+        // A host a browser reads another way, or characters no URL has,
+        // as the database refuses them (`private.photo_url_ok`).
+        ...[
+          'https://evil.example\\.cedar-lane.example/m.jpg',
+          'https://evil.example%2f.cedar-lane.example/m.jpg',
+          'https://CEDAR-LANE.example/m.jpg',
+          'https://cedar-lane.example/m a.jpg',
+          'https://cedar-lane.example/<m>.jpg',
+          'https://cedar-lane.example/m\\x.jpg',
+          'https://cedar-lane.example/m.jpg?a=b\\c'
+        ].map((url) => ({ url, page: `${shop}/p` }))
       ]
     }
     for (const [topic, values] of Object.entries(good))
