@@ -15,76 +15,6 @@ const money = (value: number) =>
     currency: 'USD',
     maximumFractionDigits: 4
   }).format(value / 1000000)
-export async function BudgetPanel({ tenantId }: { tenantId: string }) {
-  const db = await createClient()
-  if (!db) return null
-  const [cycles, usage] = await Promise.all([
-    db
-      .from('package_cycles')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false })
-      .limit(12),
-    db.rpc('fixture_usage_summary', { t: tenantId })
-  ])
-  if (cycles.error || usage.error)
-    return <Notice error>Fixture usage unavailable.</Notice>
-  const current = cycles.data?.find((c) => c.state === 'active'),
-    totals = new Map<string, number>()
-  for (const r of usage.data ?? []) totals.set(r.feature, r.used_micro)
-  const dayTotal = (usage.data ?? []).reduce(
-    (total, r) => total + r.day_micro,
-    0
-  )
-  return (
-    <Panel title="Package and AI usage">
-      <Notice>
-        All amounts are synthetic allowances and simulated usage; no provider
-        charge or billing payment occurred. Reservations are atomic, alert at
-        80% and stop new generation at 100%. Approved delivery remains available
-        when AI budget is exhausted.
-      </Notice>
-      {current ? (
-        <>
-          <p className="my-4 text-sm">
-            {(current.snapshot as { name?: string }).name} ·{' '}
-            {money(current.used_micro)} used + {money(current.reserved_micro)}{' '}
-            reserved / {money(current.allocation_micro)} cycle allowance. Today:
-            used + reserved {money(dayTotal)} / daily allowance{' '}
-            {money(current.daily_micro)}. Ends{' '}
-            {new Date(current.ends_at).toLocaleDateString()}.
-          </p>
-          <DataTable
-            caption="Current synthetic usage by feature"
-            headers={['Feature', 'Simulated actual usage']}
-          >
-            {[...totals].map(([feature, value]) => (
-              <tr key={feature}>
-                <td className="p-3">{feature}</td>
-                <td className="p-3">{money(value)}</td>
-              </tr>
-            ))}
-          </DataTable>
-          <details className="mt-4 text-sm">
-            <summary>Immutable package cycle history</summary>
-            {cycles.data?.map((c) => (
-              <p key={c.id}>
-                {(c.snapshot as { name?: string }).name} · {c.state} ·{' '}
-                {money(c.used_micro)} / {money(c.allocation_micro)}
-              </p>
-            ))}
-          </details>
-        </>
-      ) : (
-        <Notice>
-          The fixture starter cycle initializes when you first dispatch
-          generation or ask GROS. Platform super admin can assign another
-          explicit fixture package.
-        </Notice>
-      )}
-    </Panel>
-  )
-}
 export async function InvitationPanel() {
   const db = await createClient()
   if (!db) return null
@@ -421,37 +351,5 @@ export async function OperatorPanel() {
       )}
       <SupportPanel admin />
     </div>
-  )
-}
-
-export async function NotificationPanel() {
-  const ctx = await requireRequestContext('client'),
-    db = await createClient()
-  if (!db) return null
-  const r = await db
-    .from('notifications')
-    .select('id,message,created_at')
-    .eq('tenant_id', ctx.tenantId)
-    .eq('recipient_id', ctx.userId)
-    .order('created_at', { ascending: false })
-    .limit(30)
-  return (
-    <Panel title="Your notifications">
-      {r.error ? (
-        <Notice error>Notifications unavailable.</Notice>
-      ) : (
-        <ul className="space-y-3 text-sm">
-          {r.data?.map((n) => (
-            <li key={n.id}>
-              {n.message}
-              <span className="block text-xs text-[var(--text-muted)]">
-                {new Date(n.created_at).toLocaleString()} · in-app persisted;
-                external email simulated
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Panel>
   )
 }

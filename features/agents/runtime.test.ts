@@ -119,6 +119,37 @@ describe('selectRules', () => {
     ).toHaveLength(maxRulesInPrompt)
   })
 
+  it('reads pinned rules first, never dropping them for confidence or age (UI-LRNa)', () => {
+    const rules = [
+      rule({ id: 'global', tenantId: null, confidence: 0.99 }),
+      rule({ id: 'sure', confidence: 0.95 }),
+      ...Array.from({ length: 30 }, () => rule({ confidence: 0.9 })),
+      rule({
+        id: 'pinned-old',
+        pinned: true,
+        confidence: 0.1,
+        expiresAt: '2026-11-10T00:00:00Z'
+      }),
+      rule({ id: 'pinned', pinned: true, confidence: 0.6 }),
+      rule({ id: 'pinned-retired', pinned: true, status: 'retired' }),
+      rule({
+        id: 'pinned-other-agent',
+        pinned: true,
+        appliesTo: ['copywriter']
+      })
+    ]
+    const ids = selectRules(rules, {
+      tenantId,
+      industry: null,
+      agent: 'x',
+      now
+    }).map((r) => r.id)
+    expect(ids.slice(0, 3)).toEqual(['pinned', 'pinned-old', 'sure'])
+    expect(ids).toHaveLength(maxRulesInPrompt)
+    expect(ids).not.toContain('pinned-retired')
+    expect(ids).not.toContain('pinned-other-agent')
+  })
+
   it('platform work (no tenant) sees industry and global rules only', () => {
     const rules = [
       rule({ id: 'brand' }),

@@ -25,16 +25,20 @@ alter table public.brand_findings drop constraint brand_findings_topic_check,
     'creative','landing_page','review_theme','objection','customer_words','quotable_review','founder'));
 
 -- The site's topics were an unnamed check (20260914090055): it is found by
--- what it says and replaced by a named one with the founder.
+-- what it says (exactly one, never the named one below) and replaced by a
+-- named one with the founder.
 do $$
-declare c text;
+declare c text; n integer := 0;
 begin
   for c in select conname from pg_constraint
       where conrelid = 'public.brand_findings'::regclass and contype = 'c'
+        and conname <> 'brand_findings_site_topics'
         and pg_get_constraintdef(oid) like '%source <> ''site''::text%'
   loop
     execute format('alter table public.brand_findings drop constraint %I', c);
+    n := n + 1;
   end loop;
+  if n <> 1 then raise exception 'Expected one site topics check, found %', n; end if;
 end $$;
 alter table public.brand_findings
   add constraint brand_findings_site_topics

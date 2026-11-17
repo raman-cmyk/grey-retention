@@ -137,6 +137,7 @@ export async function connectKlaviyo(
   })
   if (saved.error) return { error: failed(saved.error.code) }
   revalidatePath('/connections')
+  revalidatePath('/settings')
   revalidatePath('/home')
   return {
     message: verifier.live
@@ -167,6 +168,7 @@ async function connectLive(form: FormData): Promise<FormResult> {
   })
   if (result.message) {
     revalidatePath('/connections')
+    revalidatePath('/settings')
     revalidatePath('/home')
   }
   return result
@@ -199,6 +201,7 @@ export async function disconnectKlaviyo(): Promise<FormResult> {
           : 'We could not disconnect Klaviyo. Nothing was changed. Try again.'
     }
   revalidatePath('/connections')
+  revalidatePath('/settings')
   revalidatePath('/home')
   return {
     message:
