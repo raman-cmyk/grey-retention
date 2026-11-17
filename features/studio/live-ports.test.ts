@@ -406,6 +406,21 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
     ])
   })
 
+  it('says a copied email whose heights do not fit is designed from scratch (DST-002b)', async () => {
+    const { ports: p, fallbacks } = ports(storage())
+    await p.coded('email', 'reference_unfit')
+    expect(fallbacks.entries()).toEqual([
+      expect.objectContaining({
+        reasonCode: 'studio_reference_unfit',
+        reason:
+          'The copied email’s section heights do not fit this email’s sections.',
+        fallback:
+          'Designed the email’s heroes from scratch, in the copied order.',
+        detail: { section: 'email' }
+      })
+    ])
+  })
+
   it('knows a photo the critic takes by its bytes', () => {
     expect(
       photoOf(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0]))?.mediaType

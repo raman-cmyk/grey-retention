@@ -404,11 +404,22 @@ export async function runBuildStep(
           purpose: s.purpose,
           products: (Array.isArray(s.products) ? s.products : []).flatMap(
             (p) => (typeof p?.title === 'string' ? [{ title: p.title }] : [])
-          )
+          ),
+          ...(typeof s.source === 'number' ? { source: s.source } : {})
         })),
         blocks: drawn.draft.blocks,
         brand: store.brand,
-        saved
+        saved,
+        // DST-002b: the inbox email the sections step picked, if any.
+        ...(sections.reference
+          ? {
+              reference: {
+                mode: sections.reference.mode,
+                reference: sections.reference.reference,
+                refIndex: sections.reference.refIndex
+              }
+            }
+          : {})
       },
       ctx.studio
     )
