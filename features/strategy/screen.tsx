@@ -133,7 +133,10 @@ const dayOf = (d: Extract<View, { kind: 'plan' }>['days'][number]): Day => ({
 })
 
 function Plan({ view }: { view: Extract<View, { kind: 'plan' }> }) {
-  const working = view.emails.some((e) => e.status.kind === 'working')
+  const working = view.emails
+    .filter((e) => e.status.kind === 'working')
+    .map((e) => e.slot)
+  const needsYou = view.emails.filter((e) => e.status.kind === 'needs_you')
   const counts = [
     `${view.counts.inKlaviyo} in Klaviyo`,
     ...(view.counts.sampleDrafts
@@ -149,7 +152,10 @@ function Plan({ view }: { view: Extract<View, { kind: 'plan' }> }) {
         <div className="flex flex-wrap items-start justify-between gap-[var(--space-4)]">
           <div>
             <h2 className="type-heading">Your next 15 days</h2>
-            <p className="type-caption mt-[var(--space-2)] text-[var(--stone)]">
+            <p
+              aria-live="polite"
+              className="type-caption mt-[var(--space-2)] text-[var(--stone)]"
+            >
               {counts}
             </p>
           </div>
@@ -158,7 +164,7 @@ function Plan({ view }: { view: Extract<View, { kind: 'plan' }> }) {
         <div className="mt-[var(--space-6)]">
           <DayStrip start={view.startOn} days={view.days.map(dayOf)} />
         </div>
-        {(view.sample || view.noAi || view.notes.length > 0) && (
+        {
           <ul className="mt-[var(--space-5)] flex flex-col gap-[var(--space-2)]">
             {view.sample && (
               <li className="type-caption text-[var(--stone)]">
@@ -166,6 +172,9 @@ function Plan({ view }: { view: Extract<View, { kind: 'plan' }> }) {
                 the products and offers are examples.
               </li>
             )}
+            <li className="type-caption text-[var(--stone)]">
+              Send times are your store’s time.
+            </li>
             {view.noAi && (
               <li className="type-caption text-[var(--stone)]">
                 Planned from the store’s facts and similar brands’ timing: the
@@ -178,7 +187,7 @@ function Plan({ view }: { view: Extract<View, { kind: 'plan' }> }) {
               </li>
             ))}
           </ul>
-        )}
+        }
       </Card>
       <Card label="The emails">
         <h2 className="type-heading">The emails</h2>
@@ -200,7 +209,19 @@ function Plan({ view }: { view: Extract<View, { kind: 'plan' }> }) {
             </RowList>
           </div>
         )}
-        {working && <KeepFresh />}
+        {needsYou.length > 0 && (
+          <ul
+            aria-label="What needs you"
+            className="mt-[var(--space-5)] flex flex-col gap-[var(--space-2)]"
+          >
+            {needsYou.map((e) => (
+              <li key={e.slot} className="type-body text-[var(--signal-ink)]">
+                {`${e.day}, ${e.title}: ${e.status.kind === 'needs_you' ? e.status.reason : ''}`}
+              </li>
+            ))}
+          </ul>
+        )}
+        {working.length > 0 && <KeepFresh key={working.join(',')} />}
       </Card>
     </>
   )
@@ -213,6 +234,7 @@ export function emailDetails(e: PlanEmail): string[] {
     ...(e.status.kind === 'sample_draft'
       ? ['Sample draft, not in Klaviyo']
       : []),
+    ...(e.status.kind === 'in_klaviyo' ? ['In Klaviyo as a draft'] : []),
     ...(e.status.kind === 'needs_you' ? [e.status.reason] : []),
     e.why
   ]

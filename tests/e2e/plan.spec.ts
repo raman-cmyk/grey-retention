@@ -68,8 +68,16 @@ test('UI-PLAN-b owner plans the next 15 days, picks an offer and creates an emai
   ).toBeVisible({ timeout: 30_000 })
   await emails.getByRole('link', { name: 'Open' }).first().click()
   await expect(page).toHaveURL(/\/plan\/email\/[0-9a-f-]{36}$/)
+  await expect(
+    page.getByRole('heading', { name: 'Your email', level: 1 })
+  ).toBeVisible()
   await expect(page.getByText(/this is a sample draft/)).toBeVisible()
-  await page.goto('/plan')
+  await expect(
+    page.getByText(/The AI was not used for this email/)
+  ).toBeVisible()
+  await expect(page.locator('iframe[title^="The email: "]')).toBeVisible()
+  await page.getByRole('link', { name: 'Back to the plan' }).click()
+  await expect(page).toHaveURL(/\/plan$/)
 
   // Reloading keeps the plan; a new plan can start.
   await page.reload()
