@@ -144,6 +144,8 @@ export type StudioPorts = {
     key: string
     section: DesignedSection
     hosts: string[]
+    /** DST-004b2b: in Copy mode, the inbox section crop it rebuilds. */
+    reference?: string
   }) => Promise<string>
   /** The build's pictures, in its own workspace (`buildRenders`). */
   renders: () => Promise<BuildRender[]>
@@ -196,13 +198,20 @@ export const briefDigest = (brief: SectionBrief) =>
   createHash('sha256').update(JSON.stringify(brief)).digest('hex').slice(0, 16)
 
 /** A render key the database takes: the section, its round, its design. */
-export function renderKey(id: string, round: number, section: DesignedSection) {
+export function renderKey(
+  id: string,
+  round: number,
+  section: DesignedSection,
+  /** DST-004b2b: the crop it rebuilds: another reference is another render. */
+  reference?: string
+) {
   const name = id
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, '-')
     .slice(0, 24)
+  // Without a reference the key is as before, so saved work keeps its renders.
   const hash = createHash('sha256')
-    .update(JSON.stringify(section))
+    .update(JSON.stringify(section) + (reference ? `|${reference}` : ''))
     .digest('hex')
     .slice(0, 8)
   return `${name}-r${round}-${hash}`
@@ -374,10 +383,14 @@ export async function studioRound(
     }
     let render: string
     try {
+      // The match score reads the crop it rebuilds (Copy mode only).
+      const reference =
+        brief.mode === 'copy' ? brief.reference?.image : undefined
       render = await ports.request({
-        key: renderKey(s.id, s.round, made.section),
+        key: renderKey(s.id, s.round, made.section, reference),
         section: made.section,
-        hosts: briefHosts(brief)
+        hosts: briefHosts(brief),
+        ...(reference ? { reference } : {})
       })
     } catch (error) {
       const reason = refusal(error)

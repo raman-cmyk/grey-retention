@@ -52,7 +52,10 @@ const nextConfig: NextConfig = {
         source: '/library/inspirations',
         destination: '/inspiration',
         permanent: false
-      }
+      },
+      // UI-SETc: the old Team page is retired; the team and who changed
+      // what are on Settings.
+      { source: '/team', destination: '/settings', permanent: false }
     ]
   },
   async headers() {
