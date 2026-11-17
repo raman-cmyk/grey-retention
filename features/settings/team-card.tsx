@@ -14,7 +14,8 @@ import type { SettingsView } from './page-model'
 
 /**
  * The Team card on Settings (UI-SETb): who is on the team and, for the
- * owner and managers, the open invites. Staff see the members only. The
+ * owner and managers, the pending invites (open or expired; the tile
+ * counts the open ones). Staff see the members only. The
  * changes are still made on the old Team page.
  */
 export function TeamCard({
@@ -48,7 +49,7 @@ export function TeamCard({
             </RowList>
             {!team.canManage ? null : team.invites ? (
               team.invites.length ? (
-                <RowList label="Open invites">
+                <RowList label="Pending invites">
                   {team.invites.map((invite) => (
                     <InviteRow key={invite.id} invite={invite} now={team.now} />
                   ))}
@@ -56,8 +57,8 @@ export function TeamCard({
               ) : null
             ) : (
               <p className="type-body text-[var(--stone)]">
-                The open invites could not be read just now. Open Settings again
-                in a minute.
+                The pending invites could not be read just now. Open Settings
+                again in a minute.
               </p>
             )}
           </>

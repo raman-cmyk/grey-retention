@@ -241,7 +241,9 @@ describe('the Settings read model', () => {
       brandKit: { available: false }
     })
     expect(loaders.offersPage).toHaveBeenCalledWith(context)
-    expect(loaders.teamPage).toHaveBeenCalledWith(context)
+    expect(loaders.teamPage).toHaveBeenCalledWith(context, expect.any(Number), {
+      events: false
+    })
     // Every table read is for the signed-in workspace only.
     const tenants = filters.filter(([, c]) => c === 'tenant_id')
     expect(tenants.map(([t]) => t).sort()).toEqual([

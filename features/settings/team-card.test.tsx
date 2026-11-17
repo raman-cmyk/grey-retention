@@ -83,7 +83,7 @@ const teamCard = (over: Partial<Team> | null = {}) => (
 const card = () => screen.getByRole('region', { name: 'Team' })
 
 describe('Team card on Settings (UI-SETb)', () => {
-  it('shows a manager the team and the open invites', () => {
+  it('shows a manager the team and the pending invites', () => {
     render(teamCard())
     const c = card()
     expect(within(c).getByText('Members').parentElement).toHaveTextContent(
@@ -106,8 +106,10 @@ describe('Team card on Settings (UI-SETb)', () => {
     // No name: the email speaks for them.
     expect(rows[3]).toHaveTextContent('Staff · Deactivated')
     const invites = within(
-      within(c).getByRole('list', { name: 'Open invites' })
+      within(c).getByRole('list', { name: 'Pending invites' })
     ).getAllByRole('listitem')
+    // The tile counts open invites; the list also shows the expired one.
+    expect(invites).toHaveLength(2)
     expect(invites[0]).toHaveTextContent(
       'new@cedarlane.exampleInvited as Manager · Expires in 3 days'
     )
@@ -138,11 +140,11 @@ describe('Team card on Settings (UI-SETb)', () => {
     expect(within(card()).queryByRole('button')).toBeNull()
   })
 
-  it('says when the open invites could not be read, and still lists the team', () => {
+  it('says when the pending invites could not be read, and still lists the team', () => {
     render(teamCard({ invites: null, openInvites: null }))
     const c = card()
     expect(c).toHaveTextContent(
-      'The open invites could not be read just now. Open Settings again in a minute.'
+      'The pending invites could not be read just now. Open Settings again in a minute.'
     )
     expect(within(c).queryByText('Open invites')).toBeNull()
     expect(within(c).getByRole('list', { name: 'Members' })).toBeVisible()
@@ -151,7 +153,7 @@ describe('Team card on Settings (UI-SETb)', () => {
     render(teamCard({ invites: [], openInvites: 0 }))
     expect(card()).not.toHaveTextContent('could not be read')
     expect(
-      within(card()).queryByRole('list', { name: 'Open invites' })
+      within(card()).queryByRole('list', { name: 'Pending invites' })
     ).toBeNull()
   })
 })
