@@ -647,4 +647,44 @@ describe('storeMaterial: customers’ own photos (REL-ONB2 part e)', () => {
     )
     expect(photos(many)).toHaveLength(12)
   })
+
+  it('counts one picture once at any imgix size, and never the hero, a Site reader photo or a catalog picture at the other Shopify address', () => {
+    // One photo at three imgix sizes is one: no grid.
+    expect(
+      photos([
+        shot(`${imgix}/1.jpg?w=200`),
+        shot(`${imgix}/1.jpg?w=800`),
+        shot(`${imgix}/1.jpg?w=1200&dpr=2`)
+      ])
+    ).toBeUndefined()
+    const hero = `${folder}/hero-lifestyle.jpg`
+    const both = material([...three, shot(hero), shot(`${folder}/4.jpg`)], {
+      catalogImages: [
+        `${folder}/knit.jpg`,
+        // The same Shopify file as `${folder}/4.jpg`, on the store's address.
+        `${site}/cdn/shop/files/4.jpg`
+      ],
+      photos: [{ url: `${hero}?width=1600`, kind: 'lifestyle', alt: null }]
+    })
+    expect(both?.lifestylePhoto?.image).toBe(`${hero}?width=1600`)
+    expect(both?.customerPhotos?.map((p) => p.image)).toEqual(
+      three.map((f) => (f.value as { url: string }).url)
+    )
+  })
+
+  it('takes Shopify CDN photos only in the catalog’s own folder, and Judge.me photos of one folder', () => {
+    expect(
+      photos([
+        three[0]!,
+        three[1]!,
+        shot('https://cdn.shopify.com/s/files/1/9999/9999/files/x.jpg')
+      ])
+    ).toBeUndefined()
+    expect(
+      photos([
+        ...three,
+        shot('https://judgeme.imgix.net/other-shop/1.jpg')
+      ])?.map((p) => p.image)
+    ).toEqual(three.map((f) => (f.value as { url: string }).url))
+  })
 })

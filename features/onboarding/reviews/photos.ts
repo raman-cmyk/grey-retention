@@ -161,18 +161,28 @@ export function reviewPhoto(
 }
 
 /**
- * Whether a kept photo's host may be the store's at all, as the database
- * checks it (`private.review_photo_host_ok`): its own domain (or a
- * subdomain), a store's folder on Shopify's CDN, or a confirmed review app
- * host. A stored photo is read again with it.
+ * Whether a stored photo may be the store's, read again by "Create email"
+ * (stricter than the database's `private.review_photo_host_ok`): the
+ * address's shape (`photoUrlPattern`), then its own domain (or a
+ * subdomain), a folder on Shopify's CDN that the store's own catalog
+ * pictures use, or a confirmed review app host in a folder (one a store:
+ * the material keeps the first). The Judge.me folder's tie to the store
+ * (its Shopify name) is the reader's: the material cannot know the name.
  */
-export function reviewPhotoHost(url: string, domain: string): boolean {
+export function reviewPhotoHost(
+  url: string,
+  domain: string,
+  /** The store's folders on Shopify's CDN, as its catalog pictures show them. */
+  folders: ReadonlySet<string>
+): boolean {
+  if (!photoUrlPattern.test(url)) return false
   try {
     const host = new URL(url).hostname
     return (
       onDomain(host, domain) ||
-      shopifyFolder(url) !== null ||
-      Object.values(reviewAppPhotoHosts).some((h) => h.includes(host))
+      folders.has(shopifyFolder(url) ?? '') ||
+      (Object.values(reviewAppPhotoHosts).some((h) => h.includes(host)) &&
+        appFolder(url) !== null)
     )
   } catch {
     return false

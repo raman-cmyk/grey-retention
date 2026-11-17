@@ -15,7 +15,12 @@ import {
 import { onDomain } from '@/lib/providers/ad-library'
 import { bodyWords, namesSomeone, resultWords } from './customer-words'
 import type { Finding } from './findings'
-import { reviewPhotoHost } from './reviews/photos'
+import {
+  appFolder,
+  reviewPhotoHost,
+  reviewPhotoKey,
+  shopifyFolder
+} from './reviews/photos'
 import { firstPerson, personName } from './site/founder'
 import { emailPhotoUrl, photoKey } from './site/photos'
 import { claims } from './words'
@@ -490,23 +495,38 @@ function customerAlt(product: string | undefined, parts: MaterialParts) {
  * the Reviews reader kept with a review on the store's current website
  * (`customer_photo`, by code, of a live read, as sure as a fact), each an
  * email can show (`emailPhotoUrl`) on a host that may be the store's
- * (`reviewPhotoHost`), never a catalog picture at any size and each once
- * (`photoKey`), at most 12. Fewer than 3 is none (the grid needs 3), so
- * the block stays disallowed. Never for a sample workspace.
+ * (`reviewPhotoHost`: on Shopify's CDN only in a folder its catalog
+ * pictures use; on Judge.me's host only in the first photo's folder),
+ * never a catalog picture nor a photo the Site reader kept from its pages
+ * (so never the lifestyle hero), at any size, format or Shopify address,
+ * and each once (`reviewPhotoKey`), at most 12. Fewer than 3 is none (the
+ * grid needs 3), so the block stays disallowed. Never for a sample
+ * workspace.
  */
 function customerPhotos(parts: MaterialParts): ConfirmedPhoto[] {
   if (!parts.live) return []
-  const seen = new Set((parts.catalogImages ?? []).map(keyOf))
+  const catalog = parts.catalogImages ?? []
+  const folders = new Set(catalog.flatMap((u) => shopifyFolder(u) ?? []))
+  const key = (url: string) => (URL.canParse(url) ? reviewPhotoKey(url) : url)
+  const seen = new Set(
+    [...catalog, ...(parts.photos ?? []).map((p) => p.url)].map(key)
+  )
+  let judgeme: string | null = null
   const photos = parts.findings.flatMap((f) => {
     if (f.topic !== 'customer_photo' || f.source !== 'reviews') return []
     if (f.pass !== 'code' || f.confidence < minConfidence) return []
     const value = f.value as { url: string; page: string; product?: string }
     if (!onDomain(hostOf(value.page), parts.host)) return []
-    if (!emailPhotoUrl(value.url) || !reviewPhotoHost(value.url, parts.host))
+    if (
+      !emailPhotoUrl(value.url) ||
+      !reviewPhotoHost(value.url, parts.host, folders)
+    )
       return []
-    const key = keyOf(value.url)
-    if (seen.has(key)) return []
-    seen.add(key)
+    const folder = appFolder(value.url)
+    if (folder && (judgeme ?? folder) !== folder) return []
+    if (seen.has(key(value.url))) return []
+    seen.add(key(value.url))
+    judgeme ??= folder
     return [{ image: value.url, alt: customerAlt(value.product, parts) }]
   })
   return photos.length >= minCustomerPhotos
