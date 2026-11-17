@@ -45,15 +45,12 @@ export function FollowForm() {
         />
         <Submit />
       </div>
-      {/* Always in the page, so screen readers hear each answer. */}
-      <p
-        aria-live="polite"
-        className="type-caption text-[var(--ink-soft)] empty:hidden"
-      >
+      {/*
+        Always in the page (never display: none), so screen readers hear a
+        follow's answer; a refusal is the field's own alert.
+      */}
+      <p aria-live="polite" className="type-caption text-[var(--ink-soft)]">
         {state.message ?? ''}
-      </p>
-      <p aria-live="assertive" className="sr-only">
-        {state.error ?? ''}
       </p>
     </form>
   )

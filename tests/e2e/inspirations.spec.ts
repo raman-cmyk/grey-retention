@@ -44,7 +44,7 @@ test('UI-INSa owner follows a brand, sees its emails, builds from one and stops'
   await page.getByRole('button', { name: 'Follow', exact: true }).click()
   await expect(page.getByText(`Following ${domain}.`)).toBeVisible()
   const brands = followed.getByRole('list', { name: 'Brands you follow' })
-  // The row's title is the brand's website; its details repeat it.
+  // The row's title is the brand's website (its details then leave it out).
   await expect(brands.getByText(domain, { exact: true })).toBeVisible()
 
   // The sample capture brings 10 sample emails (the scheduled worker does

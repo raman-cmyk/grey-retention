@@ -505,15 +505,16 @@ test('INB-002 a sample inbox email keeps its images and its 600px screenshot sho
     )
   }
 
-  // The sample newsletter was sent a few days ago, so its brand summary
-  // (the last 90 days) shows it.
+  // The sample newsletter was sent a few days ago, so the brand's summary
+  // (the last 90 days) shows how often it sends, on its row in Brands you
+  // follow (UI-INSa).
   await page.reload()
-  const summary = page.getByRole('list', { name: 'Brand summaries' })
-  await expect(
-    summary.getByRole('heading', { name: 'northwind.example' })
-  ).toBeVisible()
-  await expect(summary.getByText(/in the last 90 days/)).toBeVisible()
-  await expect(summary.getByText('Sample')).toBeVisible()
+  const northwind = page
+    .getByRole('list', { name: 'Brands you follow' })
+    .getByRole('listitem')
+    .filter({ hasText: 'northwind.example' })
+  await expect(northwind).toContainText(/Sends (?:less than one|\d+) a week/)
+  await expect(northwind).toContainText('Sample')
 
   // Another workspace cannot read it.
   const accounts = localAccounts()
