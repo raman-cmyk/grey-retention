@@ -219,6 +219,19 @@ describe('the Settings read model', () => {
       ]
     })
     loaders.createClient.mockResolvedValue(db)
+    const team = await loaders.teamPage()
+    loaders.teamPage.mockClear()
+    loaders.teamPage.mockResolvedValue({
+      ...team,
+      events: [
+        {
+          id: 't1',
+          text: 'Invite saved for new@shop.example',
+          by: 'you',
+          at: '2026-11-15T09:00:00Z'
+        }
+      ]
+    })
     const model = await settingsReadModel(context)
     expect(model).toMatchObject({
       state: 'ready',
@@ -237,13 +250,18 @@ describe('the Settings read model', () => {
         now
       },
       account: { name: 'Raman', email: 'owner@shop.example' },
-      history: [{ text: 'Max discount changed from 15% to 20%', by: 'you' }],
+      // Who changed what: the record and the team's, newest first.
+      changes: {
+        items: [
+          { id: 't1', text: 'Invite saved for new@shop.example' },
+          { id: 'e1', text: 'Max discount changed from 15% to 20%', by: 'you' }
+        ],
+        partial: false
+      },
       brandKit: { available: false }
     })
     expect(loaders.offersPage).toHaveBeenCalledWith(context)
-    expect(loaders.teamPage).toHaveBeenCalledWith(context, expect.any(Number), {
-      events: false
-    })
+    expect(loaders.teamPage).toHaveBeenCalledWith(context)
     // Every table read is for the signed-in workspace only.
     const tenants = filters.filter(([, c]) => c === 'tenant_id')
     expect(tenants.map(([t]) => t).sort()).toEqual([
@@ -289,6 +307,14 @@ describe('the Settings read model', () => {
     })
   })
 
+  it('reads no changes for staff, who do not see them', async () => {
+    const { db, filters } = database({ workspace_events: [] })
+    loaders.createClient.mockResolvedValue(db)
+    const model = await settingsReadModel({ ...context, tenantRole: 'staff' })
+    expect(model.changes).toBeNull()
+    expect(filters.map(([t]) => t)).not.toContain('workspace_events')
+  })
+
   it('keeps the rest when one part fails', async () => {
     const { db } = database({}, ['workspace_connections'])
     loaders.createClient.mockResolvedValue(db)
@@ -307,8 +333,8 @@ describe('the Settings read model', () => {
       offers: null,
       klaviyo: null,
       team: null,
-      // The changes still show without the team.
-      history: [],
+      // The changes still show without the team, said to be partial.
+      changes: { items: [], partial: true },
       account: { name: 'Raman' }
     })
   })
