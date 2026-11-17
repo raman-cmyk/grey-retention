@@ -224,13 +224,26 @@ describe('the Settings read model', () => {
       state: 'ready',
       offers: { maxDiscountPercent: 20 },
       klaviyo: { status: 'none' },
-      team: { members: 1, openInvites: 1, canManage: true },
+      // Active members and invites not expired; the lists for the card.
+      team: {
+        members: 1,
+        openInvites: 1,
+        canManage: true,
+        roster: [
+          { id: 'm1', role: 'owner' },
+          { id: 'm2', status: 'inactive' }
+        ],
+        invites: [{ id: 'i1' }, { id: 'i2' }],
+        now
+      },
       account: { name: 'Raman', email: 'owner@shop.example' },
       history: [{ text: 'Max discount changed from 15% to 20%', by: 'you' }],
       brandKit: { available: false }
     })
     expect(loaders.offersPage).toHaveBeenCalledWith(context)
-    expect(loaders.teamPage).toHaveBeenCalledWith(context)
+    expect(loaders.teamPage).toHaveBeenCalledWith(context, expect.any(Number), {
+      events: false
+    })
     // Every table read is for the signed-in workspace only.
     const tenants = filters.filter(([, c]) => c === 'tenant_id')
     expect(tenants.map(([t]) => t).sort()).toEqual([
@@ -241,7 +254,7 @@ describe('the Settings read model', () => {
     expect(new Set(tenants.map(([, , v]) => v))).toEqual(new Set([tenant]))
   })
 
-  it('does not count invites for staff, who do not see them', async () => {
+  it('does not count or list invites for staff, who do not see them', async () => {
     const { db } = database({})
     loaders.createClient.mockResolvedValue(db)
     loaders.teamPage.mockResolvedValue({
@@ -255,7 +268,24 @@ describe('the Settings read model', () => {
     expect((await settingsReadModel(context)).team).toEqual({
       members: 0,
       openInvites: null,
-      canManage: false
+      canManage: false,
+      roster: [],
+      invites: null,
+      now
+    })
+    // A manager whose invites could not be read still gets the team.
+    loaders.teamPage.mockResolvedValue({
+      state: 'ready',
+      canManage: true,
+      now,
+      members: [],
+      invites: null,
+      events: null
+    })
+    expect((await settingsReadModel(context)).team).toMatchObject({
+      openInvites: null,
+      canManage: true,
+      invites: null
     })
   })
 
