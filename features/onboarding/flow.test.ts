@@ -278,6 +278,52 @@ describe('setupReadModel (UI-ONBa)', () => {
     expect(view.reading).toBeNull()
   })
 
+  it('lets Brand wait while the website is read, not once it was read or failed (UI-ONBc)', async () => {
+    const site = (status: string) =>
+      database({
+        ...ready,
+        onboarding_steps: {
+          data: {
+            brand_site: null,
+            rivals_skipped_at: null,
+            finished_at: null
+          },
+          error: null
+        },
+        tenants: {
+          data: { created_at: '2026-11-17T08:00:00Z', timezone: 'UTC' },
+          error: null
+        },
+        strategy_runs: { data: [], error: null },
+        job_runs: {
+          data: [
+            {
+              kind: 'brand.read_site',
+              status,
+              checkpoint: {},
+              failure_class: null,
+              created_at: '2026-11-17T09:00:00Z',
+              updated_at: '2026-11-17T09:00:00Z'
+            }
+          ],
+          error: null
+        }
+      }).db
+    mocks.offersPage.mockResolvedValue(offers(20))
+    for (const [status, waits] of [
+      ['queued', true],
+      ['running', true],
+      ['succeeded', false],
+      ['failed', false]
+    ] as const) {
+      mocks.createClient.mockResolvedValue(site(status))
+      const flow = (await setupReadModel(context)).flow!
+      expect(flow.steps[1]!.waiting).toBe(waits)
+      // Klaviyo and Discount are done here: while Brand waits, Rivals is Now.
+      expect(flow.current).toBe(waits ? 4 : 1)
+    }
+  })
+
   it('reads nothing found before a website is saved', async () => {
     const { db, calls } = database({
       ...ready,

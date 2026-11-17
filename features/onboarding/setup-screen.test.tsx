@@ -243,17 +243,47 @@ describe('the Brand step (UI-ONBc)', () => {
     expect(screen.queryByRole('button', { name: 'Confirm brand' })).toBeNull()
   })
 
-  it('waits for the website to be read before Confirm brand, in words', () => {
-    const waiting = view()
+  it('waits for the website to be read before Confirm brand, and lets him go on', () => {
+    const waiting = view({}, { ...records, siteReading: true })
     waiting.reading!.steps[0] = reader('site', 'waiting')
     render(<SetupScreen view={waiting} place="brand" />)
     expect(
-      screen.getByText('Reading your website. This can take a few minutes.')
+      screen.getByText(
+        'Reading your website. This can take a few hours. Go on with the next steps; we’ll ask you to confirm your brand when it’s read.'
+      )
     ).toBeVisible()
+    // Brand waits, so Klaviyo is Now: one main button there.
+    expect(
+      screen.getByRole('link', { name: 'Go on to Klaviyo' })
+    ).toHaveAttribute('href', '/setup?step=klaviyo')
     expect(screen.queryByRole('button', { name: 'Confirm brand' })).toBeNull()
     expect(
       screen.queryByLabelText('How should your emails sound? (optional)')
     ).toBeNull()
+    const steps = within(screen.getByRole('list', { name: 'Steps' }))
+    const brand = steps.getByRole('link', { name: /Brand/ })
+    expect(brand).toHaveAttribute('href', '/setup?step=brand')
+    expect(brand).toHaveTextContent('Reading your website')
+    expect(brand.closest('li')).toHaveAttribute('aria-current', 'step')
+    cleanup()
+    // With every other step done, Home is the way out.
+    const last = view(
+      {},
+      {
+        ...records,
+        siteReading: true,
+        klaviyoWorking: true,
+        maxDiscountSet: true,
+        rivalsSkipped: true
+      }
+    )
+    last.reading!.steps[0] = reader('site', 'working')
+    render(<SetupScreen view={last} place="brand" />)
+    expect(screen.getByRole('link', { name: 'Open Home' })).toHaveAttribute(
+      'href',
+      '/home'
+    )
+    expect(screen.queryByRole('link', { name: /Go on to/ })).toBeNull()
     cleanup()
     // A read that failed lets him confirm what there is.
     const failed = view()

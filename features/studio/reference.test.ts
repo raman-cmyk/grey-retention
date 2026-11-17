@@ -5,6 +5,7 @@ import {
   pickReference,
   plannedReference,
   rankReferences,
+  isPicturePath,
   referenceDna,
   sectionTone,
   type ReferenceEmail
@@ -100,6 +101,73 @@ describe('referenceDna', () => {
     ])
     // An unnamed part and the footer have no place in the reference.
     expect(dna.refIndex).toEqual([0, 1, 2, 3, null, null])
+    // No stored pictures in this email.
+    expect(dna.images).toEqual([null, null, null, null])
+  })
+
+  it('keeps each reference section’s stored picture, only from a safe path (DST-004b)', () => {
+    const dna = referenceDna(
+      email({
+        sections: [
+          {
+            blockType: 'header_logo',
+            height: 80,
+            image: 'sect/00000000-0000-4000-8000-0000000000a1/0.jpg'
+          },
+          { blockType: 'hero_image', height: 640, image: '../secret/x.jpg' },
+          {
+            blockType: 'unsure',
+            height: 90,
+            image: 'sect/00000000-0000-4000-8000-0000000000a1/2.jpg'
+          },
+          {
+            blockType: 'product_grid_2col',
+            height: 700,
+            image: 'https://evil.example/a.jpg'
+          },
+          {
+            blockType: 'text',
+            height: 200,
+            image: 'sect/00000000-0000-4000-8000-0000000000a1/4.jpg'
+          }
+        ]
+      })
+    )
+    // In step with the reference (the unnamed part has no place in it).
+    expect(dna.images).toEqual([
+      'sect/00000000-0000-4000-8000-0000000000a1/0.jpg',
+      null,
+      null,
+      'sect/00000000-0000-4000-8000-0000000000a1/4.jpg'
+    ])
+    expect(dna.reference).toHaveLength(4)
+  })
+
+  it('takes only a stored picture’s path', () => {
+    for (const p of [
+      'sect/00000000-0000-4000-8000-0000000000a1/0.jpg',
+      'sect/00000000-0000-4000-8000-0000000000a1/12.jpg'
+    ])
+      expect(isPicturePath(p)).toBe(true)
+    for (const p of [
+      // A whole email's screenshot, a kept image, another shape.
+      'shot/00000000-0000-4000-8000-0000000000a1.jpg',
+      'img/' + 'a'.repeat(64) + '.png',
+      'sect/00000000-0000-4000-8000-0000000000a1/123.jpg',
+      'sect/00000000-0000-4000-8000-0000000000a1/0.png',
+      'sect/m1/0.jpg',
+      'a',
+      '',
+      '/abs/x.jpg',
+      '../x.jpg',
+      'a/../b.jpg',
+      'https://x.example/a.jpg',
+      'a b.jpg',
+      'a'.repeat(301),
+      null,
+      7
+    ])
+      expect(isPicturePath(p)).toBe(false)
   })
 
   it('leaves out a section whose height is unknown or unreal', () => {
