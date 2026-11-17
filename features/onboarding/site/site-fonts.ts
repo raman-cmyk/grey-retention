@@ -51,26 +51,31 @@ export function sheetReader(
 /**
  * One page's fonts with its stylesheets: the sheets it links, then (one
  * level) those they `@import`, then the page read again with them all,
- * so the heading and body fonts its theme's CSS sets count. Null when its
- * fonts cannot be read (logged); never fails.
+ * so the heading and body fonts its theme's CSS sets count. A page that
+ * links none gives its own fonts. Null, so the caller can keep what it
+ * had, when it links stylesheets but none could be read (failed, too
+ * slow, over the caps), when `late()` says the time is up before a
+ * further read of it, or when its fonts cannot be read (logged). Never
+ * fails.
  */
 export async function pageFonts(
   page: { html: string; url: string },
-  sheet: (url: string) => Promise<Sheet | null>
+  sheet: (url: string) => Promise<Sheet | null>,
+  late: () => boolean = () => false
 ): Promise<SiteFont[] | null> {
   try {
     const first = siteFonts(page.html, page.url)
     const read = async (urls: string[]) =>
       (await Promise.all(urls.map(sheet))).filter((s) => s !== null)
     const linked = first.stylesheets.map((s) => s.url)
+    if (!linked.length) return first.families
     const sheets = await read(linked)
+    if (!sheets.length || late()) return null
     const imported = siteFonts('', page.url, { sheets })
       .stylesheets.map((s) => s.url)
       .filter((url) => !linked.includes(url))
     sheets.push(...(await read(imported)))
-    return sheets.length
-      ? siteFonts(page.html, page.url, { sheets }).families
-      : first.families
+    return late() ? null : siteFonts(page.html, page.url, { sheets }).families
   } catch (error) {
     logger.warn('Site fonts unreadable', {
       error: error instanceof Error ? error.name : 'unknown'

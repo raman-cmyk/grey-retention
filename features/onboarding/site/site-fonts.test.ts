@@ -194,14 +194,28 @@ describe('pageFonts (FONT-b)', () => {
     ])
   })
 
-  it('keeps the page’s own fonts when no stylesheet can be read', async () => {
-    const own = {
-      url: page.url,
-      html: `${page.html}<style>h1 { font-family: "Inline Serif" }</style>`
-    }
-    expect(await pageFonts(own, async () => null)).toEqual([
-      expect.objectContaining({ family: 'Inline Serif', roles: ['heading'] }),
-      expect.objectContaining({ family: 'Dawn Sans', kind: 'google' })
+  it('says nothing when it links stylesheets and none can be read, and gives its own fonts when it links none', async () => {
+    const own = '<style>h1 { font-family: "Inline Serif" }</style>'
+    // Null: the caller keeps what it had, never a weaker list.
+    expect(
+      await pageFonts({ ...page, html: page.html + own }, async () => null)
+    ).toBeNull()
+    expect(
+      await pageFonts({ url: page.url, html: own }, async () => {
+        throw new Error('never asked')
+      })
+    ).toEqual([
+      { family: 'Inline Serif', roles: ['heading'], kind: 'unknown', files: [] }
     ])
+  })
+
+  it('reads the page no further once the time is up', async () => {
+    let calls = 0
+    // Up after its linked sheets, or only before its last read.
+    for (const upAt of [1, 2]) {
+      calls = 0
+      expect(await pageFonts(page, load, () => ++calls >= upAt)).toBeNull()
+      expect(calls).toBe(upAt)
+    }
   })
 })
