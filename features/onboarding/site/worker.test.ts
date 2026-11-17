@@ -241,6 +241,64 @@ describe('readBrandSite', () => {
     expect(calls.map((c) => c.name)).not.toContain('record_site_findings')
   })
 
+  it("stores a founder's note from the About page marked as whole sentences, in the page's own letters (REL-ONB2 part d)", async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const sample = sampleSiteFetcher('cedar-lane.example')
+    const fetcher: SiteFetcher = {
+      live: false,
+      fetch: async (url) =>
+        url.endsWith('/pages/about')
+          ? {
+              ok: true,
+              url,
+              html: '<main><h1>Our story</h1><p>I’m Maya Lee. I started Cedar Lane in my spare room.</p></main>'
+            }
+          : sample.fetch(url)
+    }
+    const model = (async (
+      _def: unknown,
+      input: { page: { kind: string } }
+    ) => ({
+      ok: true,
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
+      content: {
+        findings:
+          input.page.kind === 'about'
+            ? [
+                {
+                  topic: 'founder',
+                  statement: 'Maya Lee started the store.',
+                  quote: "i'm Maya Lee. I started Cedar Lane in my spare room.",
+                  confidence: 0.8,
+                  name: 'Maya Lee'
+                }
+              ]
+            : []
+      }
+    })) as unknown as Ask
+    const { db, calls } = database()
+    await readBrandSite(db, job, {
+      fetcher: () => fetcher,
+      askFor: () => model
+    })
+    expect(
+      recorded(calls).findings.filter((f) => f.topic === 'founder')
+    ).toMatchObject([
+      {
+        value: { name: 'Maya Lee' },
+        evidence: {
+          url: 'https://cedar-lane.example/pages/about',
+          quote: 'I’m Maya Lee. I started Cedar Lane in my spare room.',
+          page: 'about',
+          whole: true
+        },
+        pass: 'model',
+        model: 'gemini-2.5-flash'
+      }
+    ])
+  })
+
   it('fails the job when the findings cannot be stored', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {})
     const { db } = database()
