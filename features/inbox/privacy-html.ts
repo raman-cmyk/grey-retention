@@ -1,10 +1,5 @@
-import {
-  defaultTreeAdapter,
-  parse,
-  type DefaultTreeAdapterMap,
-  type DefaultTreeAdapterTypes as T,
-  type TreeAdapter
-} from 'parse5'
+import type { DefaultTreeAdapterTypes as T } from 'parse5'
+import { checkTime, deadline, guardedParse, ParseRefused } from './parse-guard'
 import {
   address,
   clean,
@@ -12,7 +7,6 @@ import {
   hit,
   isName,
   obfuscated,
-  privacyLimits,
   ranges,
   rulesFor,
   scrub,
@@ -53,91 +47,8 @@ const linkAttrs = tags(
 /** The only tag and attribute names written: plain ones. */
 const plainName = /^[a-z][a-z\d-]*$/
 
-class Refused extends Error {}
-const late = (until: number) => Date.now() > until
-
 const space = (c: string | undefined) =>
   c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f'
-
-/**
- * Whether the tokenizer stays fast: it checks each attribute against the
- * tag's others (quadratic), so the attributes squared, summed over the
- * email's tags, are capped, and so are its tags. Attributes are counted as
- * the tokenizer splits them (blanks, "/", right after a quote).
- */
-function scannable(html: string, until: number) {
-  let count = 0
-  let work = 0
-  for (let i = html.indexOf('<'); i >= 0; i = html.indexOf('<', i)) {
-    let j = i + (html[i + 1] === '/' ? 2 : 1)
-    if (!/[a-z]/i.test(html[j] ?? '')) {
-      i = j
-      continue
-    }
-    if (++count > privacyLimits.tags || ((count & 4095) === 0 && late(until)))
-      return false
-    while (j < html.length && !space(html[j]) && !'/>'.includes(html[j]!)) j++
-    let attrs = 0
-    for (;;) {
-      while (space(html[j]) || html[j] === '/') j++
-      if (j >= html.length || html[j] === '>') break
-      attrs++
-      j++
-      while (j < html.length && !space(html[j]) && !'/>='.includes(html[j]!))
-        j++
-      while (space(html[j])) j++
-      if (html[j] !== '=') continue
-      j++
-      while (space(html[j])) j++
-      const q = html[j]
-      if (q === '"' || q === "'") {
-        const end = html.indexOf(q, j + 1)
-        j = end < 0 ? html.length : end + 1
-      } else while (j < html.length && !space(html[j]) && html[j] !== '>') j++
-    }
-    if ((work += attrs * attrs) > privacyLimits.attributeWork) return false
-    i = j + 1
-  }
-  return true
-}
-
-/**
- * The parser's own tree builder, counting as it builds: nesting deeper than
- * any email, too many attributes merged onto one element (repeated <html>
- * or <body> tags) or the deadline stop it.
- */
-function guarded(until: number): TreeAdapter<DefaultTreeAdapterMap> {
-  const depth = new WeakMap<object, number>()
-  const place = (parent: object, child: object) => {
-    const d = (depth.get(parent) ?? 0) + 1
-    if (d > privacyLimits.depth) throw new Refused()
-    depth.set(child, d)
-  }
-  return {
-    ...defaultTreeAdapter,
-    createElement(tagName, namespace, attrs) {
-      if (late(until)) throw new Refused()
-      return defaultTreeAdapter.createElement(tagName, namespace, attrs)
-    },
-    appendChild(parent, child) {
-      place(parent, child)
-      defaultTreeAdapter.appendChild(parent, child)
-    },
-    insertBefore(parent, child, reference) {
-      place(parent, child)
-      defaultTreeAdapter.insertBefore(parent, child, reference)
-    },
-    setTemplateContent(template, content) {
-      depth.set(content, depth.get(template) ?? 0)
-      defaultTreeAdapter.setTemplateContent(template, content)
-    },
-    adoptAttributes(element, attrs) {
-      if (element.attrs.length + attrs.length > privacyLimits.tagAttributes)
-        throw new Refused()
-      defaultTreeAdapter.adoptAttributes(element, attrs)
-    }
-  }
-}
 
 /** Open-tracking pixels: 1x1 or 0x0, or on a tracking address. */
 function trackingPixel(el: T.Element) {
@@ -407,7 +318,7 @@ function cleanTree(doc: T.Document, r: Rules, until: number) {
     block = []
   }
   for (let steps = 0; stack.length; steps++) {
-    if ((steps & 1023) === 0 && late(until)) throw new Refused()
+    if ((steps & 1023) === 0) checkTime(until)
     const n = stack.pop()!
     if (n === 'end') {
       endBlock()
@@ -485,7 +396,7 @@ function serialize(doc: T.Document, until: number) {
   const out: string[] = []
   const stack: (Node | string)[] = [...children(doc)].reverse()
   for (let steps = 0; stack.length; steps++) {
-    if ((steps & 4095) === 0 && late(until)) throw new Refused()
+    if ((steps & 4095) === 0) checkTime(until)
     const n = stack.pop()!
     if (typeof n === 'string') out.push(n)
     else if (n.nodeName === '#documentType') out.push(doctypes[doc.mode])
@@ -518,11 +429,7 @@ function serialize(doc: T.Document, until: number) {
 }
 
 function cleanOnce(html: string, r: Rules, until: number) {
-  if (html.length > privacyLimits.html || !scannable(html, until)) return null
-  const doc = parse(html, {
-    scriptingEnabled: false,
-    treeAdapter: guarded(until)
-  })
+  const doc = guardedParse(html, until, { scriptingEnabled: false })
   cleanTree(doc, r, until)
   return serialize(doc, until)
 }
@@ -557,11 +464,11 @@ export function cleanEmailHtml(
   options?: CleanOptions
 ) {
   const r = rulesFor(identity, options)
-  const until = Date.now() + privacyLimits.htmlMs
+  const until = deadline()
   try {
     return settle(cleanOnce(html, r, until), (out) => cleanOnce(out, r, until))
   } catch (error) {
-    if (error instanceof Refused) return null
+    if (error instanceof ParseRefused) return null
     throw error
   }
 }

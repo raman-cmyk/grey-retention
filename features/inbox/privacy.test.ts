@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 import { inboxConfig } from './config'
+import { parseLimits } from './parse-guard'
 import {
   cleanEmail,
   cleanEmailHtml,
@@ -29,17 +30,18 @@ const body = (html: string | null) =>
   html?.replace(/^.*<body>|<\/body>.*$/gs, '') ?? null
 
 /** Lowers one limit for a test, to prove that the guard holds. */
-function withLimit(
-  key: keyof typeof privacyLimits,
+function withLimit<L extends Record<string, number>>(
+  limits: L,
+  key: keyof L,
   value: number,
   run: () => void
 ) {
-  const was = privacyLimits[key]
-  privacyLimits[key] = value
+  const was = limits[key]
+  limits[key] = value as L[keyof L]
   try {
     run()
   } finally {
-    privacyLimits[key] = was
+    limits[key] = was
   }
 }
 
@@ -285,7 +287,7 @@ Northwind Outdoor, 1 Sample Street`)
     const text = cleanEmailText(`${'linen '.repeat(20_000)}end`, me)
     expect(text.length).toBeLessThanOrEqual(10_000)
     expect(text.endsWith('linen')).toBe(true)
-    withLimit('readFactor', 0.5, () =>
+    withLimit(privacyLimits, 'readFactor', 0.5, () =>
       expect(cleanEmailText('linen '.repeat(2_000), me).length).toBeLessThan(
         5_001
       )
@@ -489,13 +491,13 @@ describe('cleanEmail', () => {
   it('refuses HTML over each limit', () => {
     expect(cleanEmailHtml(klaviyo, me)).not.toBeNull()
     for (const [key, value] of [
-      ['htmlMs', -1],
+      ['ms', -1],
       ['tags', 5],
       ['html', 100],
       ['attributeWork', 3],
       ['depth', 3]
     ] as const)
-      withLimit(key, value, () =>
+      withLimit(parseLimits, key, value, () =>
         expect(cleanEmailHtml(klaviyo, me), key).toBeNull()
       )
   })

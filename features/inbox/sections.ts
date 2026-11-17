@@ -1,8 +1,12 @@
+import { serializeOuter, type DefaultTreeAdapterTypes as T } from 'parse5'
 import {
-  parse,
-  serializeOuter,
-  type DefaultTreeAdapterTypes as T
-} from 'parse5'
+  checkTime,
+  deadline,
+  guardedParse,
+  parseLimits,
+  ParseRefused,
+  type ParseRefusal
+} from './parse-guard'
 
 /**
  * Cuts an email into sections from its HTML structure (INB-003, VISION
@@ -36,6 +40,11 @@ export type SectionedEmail = {
   preheader: string | null
   /** Share of text sections (0..1), or null without sections. */
   textRatio: number | null
+  /**
+   * INB-SEC: why the HTML was not read (too large, too deep, too slow…);
+   * the email then has no sections.
+   */
+  refused?: ParseRefusal | 'unreadable'
 }
 
 type Node = T.ChildNode | T.ParentNode
@@ -356,10 +365,16 @@ const proseTags = new Set([
 export function sectionEmail(html: string): SectionedEmail {
   try {
     return sectioned(html)
-  } catch {
-    // A tree too odd to read (for example nested thousands deep) is kept
-    // whole: the email simply has no sections.
-    return { sections: [], markedHtml: html, preheader: null, textRatio: null }
+  } catch (error) {
+    // HTML the parser would be slow on (INB-SEC), or a tree too odd to
+    // read, is kept whole: the email simply has no sections, and says why.
+    return {
+      sections: [],
+      markedHtml: html,
+      preheader: null,
+      textRatio: null,
+      refused: error instanceof ParseRefused ? error.code : 'unreadable'
+    }
   }
 }
 
@@ -399,7 +414,12 @@ function marked(html: string, groups: { rows: T.Element[] }[]) {
 }
 
 function sectioned(html: string): SectionedEmail {
-  const doc = parse(html.slice(0, 2_000_000), { sourceCodeLocationInfo: true })
+  // Longer HTML is cut (its sections are in the part read), then read
+  // behind the parse guard, all within one deadline.
+  const until = deadline()
+  const doc = guardedParse(html.slice(0, parseLimits.html), until, {
+    sourceCodeLocationInfo: true
+  })
   let body: T.Element | null = null
   walk(doc, (el) => {
     if (el.tagName === 'body') {
@@ -421,6 +441,7 @@ function sectioned(html: string): SectionedEmail {
       else groups.push({ rows: [row], prose })
     }
   const kept = groups.slice(0, maxSections)
+  checkTime(until)
   const sections = kept.map((g, i) => sectionOf(g.rows, i + 1))
   return {
     sections,

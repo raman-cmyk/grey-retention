@@ -28,17 +28,6 @@ export const privacyLimits = {
   text: 10_000,
   /** Text read before cleaning, per limit (cut after a whole word). */
   readFactor: 4,
-  html: 4_000_000,
-  /** Start and end tags in one email. */
-  tags: 200_000,
-  /** Attributes merged onto one element (repeated <html> or <body>). */
-  tagAttributes: 1_000,
-  /** Attributes squared, summed over tags (the tokenizer's own work). */
-  attributeWork: 2_000_000,
-  /** Elements inside each other (emails nest a few dozen deep). */
-  depth: 256,
-  /** One deadline for all the rounds of one email's HTML. */
-  htmlMs: 8_000,
   /**
    * The inbox's bare local part ("sampleinbox") is removed as a word only
    * from this length on: a shorter one may be an ordinary word. With a
