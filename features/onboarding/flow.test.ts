@@ -45,6 +45,8 @@ function database(answers: Record<string, Answer>) {
       const chain = {
         select: () => chain,
         eq: (...args: unknown[]) => (call.filters.push(['eq', ...args]), chain),
+        is: (...args: unknown[]) => (call.filters.push(['is', ...args]), chain),
+        order: () => chain,
         limit: async () => answer,
         maybeSingle: async () => answer
       }
@@ -117,7 +119,11 @@ describe('setupReadModel (UI-ONBa)', () => {
     expect(view.klaviyo!.accountLabel).toBe('Sample account')
     expect(mocks.offersPage).toHaveBeenCalledWith(context)
     for (const call of calls)
-      expect(call.filters).toContainEqual(['eq', 'tenant_id', 'tenant-1'])
+      expect(call.filters).toContainEqual([
+        'eq',
+        call.table === 'tenants' ? 'id' : 'tenant_id',
+        'tenant-1'
+      ])
     expect(
       calls.find((c) => c.table === 'competitor_subscriptions')!.filters
     ).toContainEqual(['eq', 'active', true])
@@ -216,5 +222,55 @@ describe('setupReadModel (UI-ONBa)', () => {
     const view = await setupReadModel(context)
     expect(view.state).toBe('demo')
     expect(mocks.createClient).not.toHaveBeenCalled()
+  })
+
+  it('reads what was found for the saved website, and nothing made up', async () => {
+    const { db, calls } = database({
+      ...ready,
+      brand_kits: {
+        data: { colors: ['#1F3A2B', 'red; x', '#abc'], fonts: ['Lora', '<b>'] },
+        error: null
+      },
+      brand_logos: {
+        data: {
+          domain: 'old-site.example',
+          on_light: 'https://old-site.example/l.png'
+        },
+        error: null
+      },
+      catalog_status: { data: { live: false }, error: null },
+      products: { data: [{ title: 'Field overshirt' }], error: null }
+    })
+    mocks.createClient.mockResolvedValue(db)
+    mocks.offersPage.mockResolvedValue(offers(20))
+    const view = await setupReadModel(context)
+    expect(view.found).toEqual({
+      logo: null,
+      colors: ['#1F3A2B', '#abc'],
+      fonts: ['Lora'],
+      products: ['Field overshirt']
+    })
+    const products = calls.find((c) => c.table === 'products')!
+    expect(products.filters).toContainEqual(['eq', 'synthetic', true])
+    expect(products.filters).toContainEqual(['eq', 'tenant_id', 'tenant-1'])
+    // The readers' progress is read too (null here: no workspace row).
+    expect(calls.some((c) => c.table === 'job_runs')).toBe(true)
+    expect(view.reading).toBeNull()
+  })
+
+  it('reads nothing found before a website is saved', async () => {
+    const { db, calls } = database({
+      ...ready,
+      brand_profiles: {
+        data: { brand_name: 'Cedar Lane', domain: '', revision: 1 },
+        error: null
+      }
+    })
+    mocks.createClient.mockResolvedValue(db)
+    mocks.offersPage.mockResolvedValue(offers(null))
+    const view = await setupReadModel(context)
+    expect(view.found).toBeNull()
+    expect(view.reading).toBeNull()
+    expect(calls.some((c) => c.table === 'brand_kits')).toBe(false)
   })
 })

@@ -9,7 +9,14 @@ import { klaviyoState, type KlaviyoState } from '@/features/settings/read-model'
 import { getServerEnvironment } from '@/lib/env/server'
 import type { Database } from '@/lib/supabase/database.types'
 import { createClient } from '@/lib/supabase/server'
-import { klaviyoWorking, setupFlow, type SetupFlow } from './flow-model'
+import { readBrandFound, type BrandFound } from './brand-found'
+import {
+  klaviyoWorking,
+  setupFlow,
+  siteDomain,
+  type SetupFlow
+} from './flow-model'
+import { readOnboardingProgress, type OnboardingProgress } from './progress'
 
 type Db = SupabaseClient<Database>
 
@@ -19,8 +26,9 @@ type Db = SupabaseClient<Database>
  * connection and the offers, read with the signed-in member's own client
  * (row rules keep it to the workspace). Every step's state needs every
  * record: when one cannot be read, the flow is unreadable and the screen
- * says so, never a guess. The brand found on the website and the readers'
- * progress come with the Brand step (UI-ONBc).
+ * says so, never a guess. Once a website is saved it also reads what was
+ * found there (`readBrandFound`) and the readers' progress (UI-ONBc); each
+ * is null when it cannot be read, and the steps still show.
  */
 export type SetupView = {
   state: 'ready' | 'demo' | 'unreadable'
@@ -35,6 +43,10 @@ export type SetupView = {
   /** A key is checked with Klaviyo itself (KLAVIYO_MODE=live), else its format only. */
   liveKeys: boolean
   offers: ManagedOffers | null
+  /** What was found for the saved website; null before one or when unreadable. */
+  found: BrandFound | null
+  /** The readers' progress; null before a website or when unreadable. */
+  reading: OnboardingProgress | null
 }
 
 /** The records the steps are read from; null when one cannot be read. */
@@ -86,7 +98,9 @@ export async function setupReadModel(
     brand: null,
     klaviyo: null,
     liveKeys,
-    offers: null
+    offers: null,
+    found: null,
+    reading: null
   }
   if (getServerEnvironment().AUTH_MODE === 'demo')
     return { ...view, state: 'demo' }
@@ -99,6 +113,13 @@ export async function setupReadModel(
   // Discount is a step: without the offers its state is not known.
   if (!records || !offers) return view
   const { brand, marks } = records
+  const site = siteDomain(brand?.domain)
+  const [found, reading] = site
+    ? await Promise.all([
+        settle(readBrandFound(db, context.tenantId, site)),
+        settle(readOnboardingProgress(db, context.tenantId))
+      ])
+    : [null, null]
   return {
     ...view,
     state: 'ready',
@@ -119,6 +140,8 @@ export async function setupReadModel(
         }
       : null,
     klaviyo: records.klaviyo,
-    offers
+    offers,
+    found,
+    reading
   }
 }

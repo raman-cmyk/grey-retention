@@ -33,6 +33,12 @@ test('UI-ONBb a new owner saves the store and comes back to the step that is Now
   await expect(
     page.getByRole('heading', { level: 1, name: 'Your brand' })
   ).toBeVisible()
+  // UI-ONBc: the readers are queued, and Progress says so in words.
+  await expect(
+    page.getByRole('heading', { name: 'Reading your store' })
+  ).toBeVisible()
+  await expect(page.getByText('Reading your website')).toBeVisible()
+  await expect(page.getByText('Products')).toBeVisible()
 
   // Coming back opens the step that is Now; a done step opens again.
   await page.reload()
@@ -48,6 +54,13 @@ test('UI-ONBb a new owner saves the store and comes back to the step that is Now
 
   await expect(steps.getByRole('link')).toHaveCount(1)
   expect(await page.evaluate(noSidewaysScroll)).toBe(true)
+
+  // UI-ONBc: the owner confirms what was found; Klaviyo is Now.
+  await page.getByRole('button', { name: 'Confirm brand' }).click()
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Connect Klaviyo' })
+  ).toBeVisible()
+  await expect(steps.getByRole('link')).toHaveCount(2)
 })
 
 test('UI-ONBb staff see where setup is, with no buttons', async ({ page }) => {
@@ -55,4 +68,7 @@ test('UI-ONBb staff see where setup is, with no buttons', async ({ page }) => {
   await page.goto('/setup')
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Save store' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Confirm brand' })).toHaveCount(
+    0
+  )
 })

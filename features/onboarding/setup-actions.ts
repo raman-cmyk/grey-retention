@@ -119,3 +119,36 @@ export async function saveStore(
   revalidatePath(setupPath)
   redirect(setupPath)
 }
+
+/** Brand: the owner confirms what was found on the saved website. */
+export async function confirmBrand(): Promise<SetupAnswer> {
+  const session = await ownerSession()
+  if ('error' in session) return { error: session.error }
+  const saved = await session.db.rpc('save_onboarding_step', {
+    t: session.context.tenantId,
+    step: 'brand'
+  })
+  if (saved.error)
+    return {
+      error:
+        saved.error.code === 'PT409'
+          ? 'Save your store’s website first.'
+          : saved.error.code === '42501'
+            ? ownerOnly
+            : 'We could not save this step. Try again.'
+    }
+  revalidatePath(setupPath)
+  redirect(setupPath)
+}
+
+/** Reads the store again: a reader that failed, or never started. */
+export async function readStoreAgain(): Promise<SetupAnswer> {
+  const session = await ownerSession()
+  if ('error' in session) return { error: session.error }
+  if (!(await startReaders(session)))
+    return {
+      error: 'We could not start reading your store. Try again in a minute.'
+    }
+  revalidatePath(setupPath)
+  return {}
+}

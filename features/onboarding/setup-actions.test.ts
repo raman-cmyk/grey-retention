@@ -26,7 +26,7 @@ vi.mock('./reviews/start', () => ({ startReviewsReading: mocks.reviews }))
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }))
 
-import { saveStore } from './setup-actions'
+import { confirmBrand, readStoreAgain, saveStore } from './setup-actions'
 
 const owner = { tenantId: 'tenant-1', tenantRole: 'owner' }
 type Answer = { data: unknown; error: unknown }
@@ -139,6 +139,8 @@ describe('setup actions (UI-ONBb)', () => {
           form({ name: 'Cedar Lane', website: 'cedarlane.example' })
         )
       ).toEqual(answer)
+      expect(await confirmBrand()).toEqual(answer)
+      expect(await readStoreAgain()).toEqual(answer)
     }
     expect(mocks.createClient).not.toHaveBeenCalled()
   })
@@ -169,5 +171,30 @@ describe('setup actions (UI-ONBb)', () => {
         )
       )
     ).toBe('/setup')
+  })
+
+  it('confirms the brand for the session’s own workspace', async () => {
+    const { db, calls } = database()
+    mocks.createClient.mockResolvedValue(db)
+    expect(await redirected(confirmBrand())).toBe('/setup')
+    expect(calls.rpc).toEqual([
+      ['save_onboarding_step', { t: 'tenant-1', step: 'brand' }]
+    ])
+    mocks.createClient.mockResolvedValue(
+      database({ data: null, error: { code: 'PT409' } }).db
+    )
+    expect(await confirmBrand()).toEqual({
+      error: 'Save your store’s website first.'
+    })
+  })
+
+  it('reads the store again, and says when a reader cannot start', async () => {
+    const { db } = database()
+    mocks.createClient.mockResolvedValue(db)
+    expect(await readStoreAgain()).toEqual({})
+    mocks.ads.mockResolvedValue({ ok: false, code: 'unavailable' })
+    expect(await readStoreAgain()).toEqual({
+      error: 'We could not start reading your store. Try again in a minute.'
+    })
   })
 })
