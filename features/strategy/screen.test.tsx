@@ -316,7 +316,7 @@ describe('the Plan screen (UI-PLAN-b)', () => {
     )
     expect(
       within(screen.getByRole('list', { name: 'What needs you' })).getByText(
-        'Fri 20, Bestseller: Cedar candle: Its words did not pass the checks.'
+        'Fri 20, “Bestseller: Cedar candle”. Its words did not pass the checks.'
       )
     ).toBeInTheDocument()
     expect(screen.getByText(/In Klaviyo as a draft/)).toBeInTheDocument()

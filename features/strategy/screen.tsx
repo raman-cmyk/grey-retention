@@ -164,30 +164,28 @@ function Plan({ view }: { view: Extract<View, { kind: 'plan' }> }) {
         <div className="mt-[var(--space-6)]">
           <DayStrip start={view.startOn} days={view.days.map(dayOf)} />
         </div>
-        {
-          <ul className="mt-[var(--space-5)] flex flex-col gap-[var(--space-2)]">
-            {view.sample && (
-              <li className="type-caption text-[var(--stone)]">
-                Planned from the sample store until your own store is connected:
-                the products and offers are examples.
-              </li>
-            )}
+        <ul className="mt-[var(--space-5)] flex flex-col gap-[var(--space-2)]">
+          {view.sample && (
             <li className="type-caption text-[var(--stone)]">
-              Send times are your store’s time.
+              Planned from the sample store until your own store is connected:
+              the products and offers are examples.
             </li>
-            {view.noAi && (
-              <li className="type-caption text-[var(--stone)]">
-                Planned from the store’s facts and similar brands’ timing: the
-                AI was not used for this plan.
-              </li>
-            )}
-            {view.notes.map((n) => (
-              <li key={n} className="type-caption text-[var(--stone)]">
-                {n}
-              </li>
-            ))}
-          </ul>
-        }
+          )}
+          <li className="type-caption text-[var(--stone)]">
+            Send times are your store’s time.
+          </li>
+          {view.noAi && (
+            <li className="type-caption text-[var(--stone)]">
+              Planned from the store’s facts and similar brands’ timing: the AI
+              was not used for this plan.
+            </li>
+          )}
+          {view.notes.map((n) => (
+            <li key={n} className="type-caption text-[var(--stone)]">
+              {n}
+            </li>
+          ))}
+        </ul>
       </Card>
       <Card label="The emails">
         <h2 className="type-heading">The emails</h2>
@@ -209,18 +207,21 @@ function Plan({ view }: { view: Extract<View, { kind: 'plan' }> }) {
             </RowList>
           </div>
         )}
-        {needsYou.length > 0 && (
-          <ul
-            aria-label="What needs you"
-            className="mt-[var(--space-5)] flex flex-col gap-[var(--space-2)]"
-          >
-            {needsYou.map((e) => (
-              <li key={e.slot} className="type-body text-[var(--signal-ink)]">
-                {`${e.day}, ${e.title}: ${e.status.kind === 'needs_you' ? e.status.reason : ''}`}
-              </li>
-            ))}
-          </ul>
-        )}
+        {/* Always on the page, so a build that stops is announced. */}
+        <div aria-live="polite">
+          {needsYou.length > 0 && (
+            <ul
+              aria-label="What needs you"
+              className="mt-[var(--space-5)] flex flex-col gap-[var(--space-2)]"
+            >
+              {needsYou.map((e) => (
+                <li key={e.slot} className="type-body text-[var(--signal-ink)]">
+                  {`${e.day}, “${e.title}”. ${e.status.kind === 'needs_you' ? e.status.reason : ''}`}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         {working.length > 0 && <KeepFresh key={working.join(',')} />}
       </Card>
     </>
