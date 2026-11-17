@@ -135,6 +135,23 @@ describe('the reviews on the brand’s own product pages', () => {
     ])
   })
 
+  it('keeps a review’s photo on the store’s own domain, read on one of its subdomains (REL-ONB2 part e)', async () => {
+    const store = 'cedar.myshopify.com'
+    const page = `https://shop.${store}/products/p1`
+    const photo = `https://${store}/files/maya.jpg`
+    const { site } = fetcher({
+      [page]: `<html><script type="application/ld+json">${JSON.stringify({
+        '@type': 'Product',
+        name: 'Knit',
+        review: [{ author: 'Maya', reviewBody: 'Lovely.', image: photo }]
+      })}</script></html>`
+    })
+    const answer = await siteReviewSource(site, store, [page], time).reviews(
+      ask
+    )
+    expect(answer.ok && answer.reviews[0]?.photos).toEqual([photo])
+  })
+
   it('finds the product pages from the home page when the catalog has none', async () => {
     const home = `https://${domain}/`
     const { site, asked } = fetcher({

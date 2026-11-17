@@ -6,9 +6,11 @@ import {
   sampleReviews,
   type ReadReview
 } from '@/lib/providers/review-source'
+import { maxReviewPhotos } from './photos'
 import {
   analyseCustomers,
   checkedCustomerFindings,
+  customerPhotos,
   maxQuotable,
   platformFindings,
   quotableReviews
@@ -160,6 +162,81 @@ describe('the reviews an email may quote (chosen by code)', () => {
     expect(
       quotableReviews([review({ rating: 5, ratingExact: true })])
     ).toHaveLength(1)
+  })
+})
+
+describe('the photos customers posted with their reviews (REL-ONB2 part e)', () => {
+  const shot = (n: number, query = '') =>
+    `https://judgeme.imgix.net/cedar/${n}__photo.jpg${query}`
+  const urls = (found: ReturnType<typeof customerPhotos>) =>
+    found.map((f) => (f.value as { url: string }).url)
+
+  it('keeps each photo on its own with its page and product, never the reviewer’s name or words', () => {
+    const found = customerPhotos([review({ photos: [shot(1)] })])
+    expect(found).toEqual([
+      {
+        topic: 'customer_photo',
+        statement:
+          "A photo a customer posted with their review on the store's own page.",
+        value: {
+          url: shot(1),
+          page: 'https://cedar-lane.example/products/weekend-knit',
+          product: 'Weekend Knit'
+        },
+        evidence: {
+          ref: 'review-data:https://cedar-lane.example/products/weekend-knit'
+        },
+        confidence: 0.9,
+        source: 'reviews'
+      }
+    ])
+    expect(JSON.stringify(found)).not.toMatch(/Maya|soft/)
+  })
+
+  it('never keeps a photo of a review left out: three stars or less, no one’s name, rounded stars', () => {
+    for (const over of [
+      { rating: 3 },
+      { rating: 1 },
+      { author: 'Verified Buyer' },
+      { ratingUnclear: true },
+      { rating: 5, ratingExact: false },
+      { text: 'Love it!' }
+    ])
+      expect(
+        customerPhotos([review({ ...over, photos: [shot(1)] })]),
+        JSON.stringify(over)
+      ).toEqual([])
+  })
+
+  it('keeps the best rated and newest reviews’ photos first, each once at any size, at most 12', () => {
+    expect(
+      urls(
+        customerPhotos([
+          review({ id: 'r1', rating: 4, photos: [shot(1)] }),
+          review({ id: 'r2', photos: [shot(2), shot(3, '?width=400')] }),
+          review({ id: 'r3', photos: [shot(3), shot(2, '?width=200')] })
+        ])
+      )
+    ).toEqual([shot(2), shot(3, '?width=400'), shot(1)])
+    const many = Array.from({ length: 4 }, (_, n) =>
+      review({
+        id: `r${n + 1}`,
+        photos: [1, 2, 3, 4, 5].map((k) => shot(n * 10 + k))
+      })
+    )
+    expect(customerPhotos(many)).toHaveLength(maxReviewPhotos)
+  })
+
+  it('leaves the product out rather than the photo when the value would be too long', () => {
+    const found = customerPhotos([
+      review({
+        photos: [`https://judgeme.imgix.net/${'p'.repeat(440)}.jpg`],
+        url: `https://cedar-lane.example/products/${'k'.repeat(340)}`,
+        product: 'Weekend Knit '.repeat(9).trim()
+      })
+    ])
+    expect(found).toHaveLength(1)
+    expect(found[0]!.value).not.toHaveProperty('product')
   })
 })
 

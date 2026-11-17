@@ -139,6 +139,27 @@ export const topicValues = {
     })
     .strict(),
   /**
+   * A photo a customer posted with their review on the store's own product
+   * page (REL-ONB2 part e): the photo's address (a JPEG or PNG), the page
+   * and, when the page names it, the product; never the reviewer's name or
+   * words. Its evidence cites the page's review data (`ref`).
+   */
+  customer_photo: z
+    .object({
+      url: z
+        .url()
+        .max(500)
+        .regex(/^https:\/\/[^/:?#@]+\/[^?#]*\.(?:jpe?g|png)(?:[?#]|$)/i),
+      page: z
+        .url()
+        .max(500)
+        .refine((u) => u.startsWith('https://'), 'https only'),
+      product: z.string().max(120).regex(/\S/).optional()
+    })
+    .strict()
+    // As the database keeps it: a value of at most 1,000 characters.
+    .refine((v) => JSON.stringify(v).length <= 900, 'too long'),
+  /**
    * The founder's own words on the About page (REL-ONB2 part d): their
    * name and role as the page writes them; the note is the evidence's
    * quote, whole sentences of the page in its own letters (`whole`).
@@ -190,7 +211,8 @@ export const sourceTopics: Record<FindingSource, readonly FindingTopic[]> = {
     'review_theme',
     'objection',
     'customer_words',
-    'quotable_review'
+    'quotable_review',
+    'customer_photo'
   ],
   social: [
     'audience',
@@ -240,6 +262,9 @@ export const findingInput = z
     const about = 'quote' in f.evidence && f.evidence.page === 'about'
     if ((f.topic === 'founder') !== whole || (whole && !about))
       ctx.addIssue({ code: 'custom', message: 'whole sentences' })
+    // A customer's photo cites the page's review data, never words.
+    if (f.topic === 'customer_photo' && !('ref' in f.evidence))
+      ctx.addIssue({ code: 'custom', message: 'review data' })
   })
 export type FindingInput = z.infer<typeof findingInput>
 

@@ -362,6 +362,106 @@ describe('the review data a product page publishes', () => {
   })
 })
 
+describe("a review's own photos (REL-ONB2 part e)", () => {
+  // A public host: an email never shows a picture on `.example`.
+  const shopPage = 'https://cedar.myshopify.com/products/weekend-knit'
+  const folder = 'https://cdn.shopify.com/s/files/1/0123/4567/8901'
+  const judgeme = '<script src="https://cdn.judge.me/widget.js"></script>'
+  const photos = (image: unknown, more: Record<string, unknown> = {}) =>
+    pageReviews(
+      page(
+        [
+          product(
+            [{ author: 'Maya R.', reviewBody: 'So soft.', image, ...more }],
+            { image: [`${folder}/products/knit.jpg`] }
+          )
+        ],
+        judgeme
+      ),
+      shopPage,
+      now,
+      'cedar.myshopify.com'
+    ).reviews[0]?.photos
+  const imgix = 'https://judgeme.imgix.net/cedar-lane/1700000000__photo.jpg'
+
+  it('keeps photos on the store’s own hosts, its review app’s and its own folder on Shopify’s CDN', () => {
+    expect(
+      photos(
+        [
+          '/cdn/shop/files/maya.jpg',
+          { '@type': 'ImageObject', contentUrl: imgix }
+        ],
+        {
+          associatedMedia: [
+            { '@type': 'ImageObject', url: `${folder}/files/maya-2.png` },
+            'https://www.cedar.myshopify.com/m3.JPG'
+          ]
+        }
+      )
+    ).toEqual([
+      'https://cedar.myshopify.com/cdn/shop/files/maya.jpg',
+      imgix,
+      `${folder}/files/maya-2.png`,
+      'https://www.cedar.myshopify.com/m3.JPG'
+    ])
+  })
+
+  it('refuses any other host, http, a format an email cannot show, a video and the product’s own picture', () => {
+    for (const image of [
+      'https://images.example-cdn.com/maya.jpg',
+      'https://cedar.myshopify.com.evil.com/maya.jpg',
+      'http://cedar.myshopify.com/maya.jpg',
+      'https://cedar.myshopify.com/maya.webp',
+      'https://cdn.shopify.com/s/files/1/9999/8888/7777/files/maya.jpg',
+      {
+        '@type': 'VideoObject',
+        contentUrl: 'https://cedar.myshopify.com/v.jpg'
+      },
+      `${folder}/products/knit_800x.jpg`,
+      `https://cedar.myshopify.com/${'m'.repeat(500)}.jpg`
+    ])
+      expect(photos(image), JSON.stringify(image)).toBeUndefined()
+    // Never the reviewer's own picture.
+    expect(
+      photos(undefined, {
+        author: { '@type': 'Person', name: 'Maya R.', image: imgix }
+      })
+    ).toBeUndefined()
+  })
+
+  it('takes a review app’s host only when the page’s markup loads the app, never its data alone', () => {
+    const read = (extra: string) =>
+      pageReviews(
+        page(
+          [product([{ author: 'A', reviewBody: 'Fine.', image: imgix }])],
+          extra
+        ),
+        shopPage,
+        now
+      ).reviews[0]?.photos
+    expect(read(judgeme)).toEqual([imgix])
+    expect(read('')).toBeUndefined()
+    expect(
+      read('<script src="https://loox.io/widget/loox.js"></script>')
+    ).toBeUndefined()
+  })
+
+  it('keeps at most five a review, each once at any size', () => {
+    const own = (n: number) => `https://cedar.myshopify.com/r${n}.jpg`
+    expect(
+      photos([
+        own(1),
+        'https://cedar.myshopify.com/r1.jpg?width=400',
+        own(2),
+        own(3),
+        own(4),
+        own(5),
+        own(6)
+      ])
+    ).toEqual([own(1), own(2), own(3), own(4), own(5)])
+  })
+})
+
 describe('the words a reader sees', () => {
   it('decodes each entity once and takes out whole tags only', () => {
     expect(fold('Soft &amp;quot;knit&amp;quot;')).toBe('Soft &quot;knit&quot;')
