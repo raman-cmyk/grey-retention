@@ -7,6 +7,7 @@ import { saveStore } from './setup-actions'
 import { SetupError } from './setup-error'
 import { SetupForm } from './setup-form'
 import { Facts, OwnerOnly, setupPath, Title } from './setup-parts'
+import { StepFocus } from './setup-title'
 
 /**
  * Onboarding (UI-ONBb) on the GROS focused shell: the lime panel shows the
@@ -52,11 +53,13 @@ export function SetupScreen({
         />
       }
     >
-      {place === 'store' ? (
-        <StoreStep view={view} />
-      ) : (
-        <LaterStep place={place} />
-      )}
+      <StepFocus step={place}>
+        {place === 'store' ? (
+          <StoreStep view={view} />
+        ) : (
+          <LaterStep place={place} />
+        )}
+      </StepFocus>
     </FocusShell>
   )
 }

@@ -147,6 +147,20 @@ describe('setup actions (UI-ONBb)', () => {
     expect(mocks.createClient).not.toHaveBeenCalled()
   })
 
+  it('says the store changed in another window for a stale save (PT409)', async () => {
+    mocks.createClient.mockResolvedValue(
+      database({ data: null, error: { code: 'PT409' } }).db
+    )
+    expect(
+      await saveStore(
+        {},
+        form({ name: 'Cedar Lane', website: 'cedarlane.example' })
+      )
+    ).toEqual({
+      error: 'Your store was changed in another window. Open setup again.'
+    })
+  })
+
   it('says plainly when the save is refused, and starts no reader', async () => {
     const { db } = database({ data: null, error: { code: '40001' } })
     mocks.createClient.mockResolvedValue(db)

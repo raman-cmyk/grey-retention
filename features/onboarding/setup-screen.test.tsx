@@ -143,13 +143,14 @@ describe('SetupScreen (UI-ONBb)', () => {
     expect(now).toHaveTextContent(', now')
   })
 
-  it('moves the focus to the new step’s title when the step changes', () => {
+  it('moves the focus to the new step’s title only when the step changes', () => {
     const { rerender } = render(
       <SetupScreen view={view({}, { ...records, domain: '' })} place="store" />
     )
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'Your store' })
-    ).toHaveFocus()
+    const store = screen.getByRole('heading', { level: 1, name: 'Your store' })
+    // The first time setup opens, nothing moves the focus.
+    expect(store).not.toHaveFocus()
+    expect(store).toHaveAttribute('tabindex', '-1')
     rerender(<SetupScreen view={view()} place="brand" />)
     expect(
       screen.getByRole('heading', { level: 1, name: 'Your brand' })
