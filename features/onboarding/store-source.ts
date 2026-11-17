@@ -39,7 +39,10 @@ import {
   type HistorySnapshot
 } from '@/features/onboarding/history/facts'
 import { listFindings, type Finding } from '@/features/onboarding/findings'
-import { storeMaterial } from '@/features/onboarding/store-material'
+import {
+  storeMaterial,
+  type SitePhotoRow
+} from '@/features/onboarding/store-material'
 import { industryFrom } from '@/features/onboarding/strategy-data'
 import { workspaceTimezone } from '@/features/strategy/offers'
 import type { Industry } from '@/features/intelligence/taxonomy'
@@ -65,8 +68,8 @@ import type { Database } from '@/lib/supabase/database.types'
  * - Industry: from what the brand sells, as the owner corrected it.
  * - Customer words: the reviews' own phrases, checked like copy (ONB-061).
  * - Material for its blocks (REL-ONB2, `storeMaterial`): its quotable
- *   reviews, only from this same website, checked like copy; none without
- *   any.
+ *   reviews and a lifestyle photo the Site reader kept, only from this
+ *   same website, checked like copy; none without any.
  *
  * It is `sample` while the catalog was read from the fake Klaviyo. A
  * paused read (Klaviyo refused the key) keeps the last read's products. A
@@ -107,6 +110,39 @@ export type OwnStoreParts = {
    * owner's edits, when the history was read from the same account.
    */
   neverWords?: readonly string[] | null
+  /**
+   * REL-ONB2 part c: the lifestyle photos the Site reader kept (ONB-059b,
+   * `brand_photos`) and the website they were read from.
+   */
+  sitePhotos?: { domain: string; photos: readonly SitePhotoRow[] } | null
+}
+
+/**
+ * REL-ONB2 part c: the lifestyle photos of the kept set (in page order)
+ * and the website it was read from; null when no set was kept.
+ */
+async function siteLifestylePhotos(
+  db: Db,
+  tenantId: string
+): Promise<OwnStoreParts['sitePhotos']> {
+  const set = await db
+    .from('brand_photo_sets')
+    .select('domain,run_id')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (set.error) throw set.error
+  if (!set.data) return null
+  // The set's own photos only, never another read's.
+  const photos = await db
+    .from('brand_photos')
+    .select('url,kind,alt,source')
+    .eq('tenant_id', tenantId)
+    .eq('run_id', set.data.run_id)
+    .eq('kind', 'lifestyle')
+    .order('position', { ascending: true })
+    .limit(50)
+  if (photos.error) throw photos.error
+  return { domain: set.data.domain, photos: photos.data ?? [] }
 }
 
 /**
@@ -178,14 +214,20 @@ export function storeFrom(parts: OwnStoreParts): Store {
       ? parts.logos
       : null
   // REL-ONB2: only from this website (the owner may have changed it).
+  const host = domain.replace(/^www\./, '')
   const confirmed = hostname.test(domain)
     ? storeMaterial({
         brandName: name,
-        host: domain.replace(/^www\./, ''),
+        host,
         live,
         findings,
         facts,
-        productNames: products.map((p) => p.title)
+        productNames: products.map((p) => p.title),
+        catalogImages: parts.catalog.flatMap((p) => (p.image ? [p.image] : [])),
+        photos:
+          parts.sitePhotos?.domain.toLowerCase().replace(/^www\./, '') === host
+            ? parts.sitePhotos.photos
+            : []
       })
     : undefined
   return {
@@ -300,7 +342,8 @@ export function ownStoreSource(db: Db): StoreSource {
         logos,
         history,
         voice,
-        neverWords
+        neverWords,
+        sitePhotos
       ] = await Promise.all([
         workspaceTimezone(db, tenantId),
         listCatalog(db, tenantId, { featurableOnly: true, synthetic: !live }),
@@ -338,6 +381,13 @@ export function ownStoreSource(db: Db): StoreSource {
         // PIC-29 part 2c: optional; without it the writers avoid no more.
         readNeverWords(db, tenantId).catch((error: unknown) => {
           logger.warn('Never words unreadable', {
+            code: String((error as { code?: unknown })?.code ?? 'unknown')
+          })
+          return null
+        }),
+        // REL-ONB2 part c: optional; without them no photo hero.
+        siteLifestylePhotos(db, tenantId).catch((error: unknown) => {
+          logger.warn('Lifestyle photos unreadable for the email', {
             code: String((error as { code?: unknown })?.code ?? 'unknown')
           })
           return null
@@ -382,7 +432,8 @@ export function ownStoreSource(db: Db): StoreSource {
         neverWords:
           history && history.live === live && neverWords
             ? neverWords.never.map((w) => w.phrase)
-            : null
+            : null,
+        sitePhotos
       })
     }
   }

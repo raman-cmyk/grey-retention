@@ -4,6 +4,7 @@ import type { CatalogEntry } from '@/features/onboarding/catalog/read'
 import { claimsSafetyPhrases } from '@/features/onboarding/claims-safety'
 import type { Finding } from '@/features/onboarding/findings'
 import { sampleStoreFrom } from '@/features/email-build/ports'
+import { logger } from '@/lib/logger'
 
 vi.mock('server-only', () => ({}))
 const reads = vi.hoisted(() => ({
@@ -418,6 +419,52 @@ describe('storeFrom (ONB-057b part 2)', () => {
       await sampleStoreFrom('2026-11-16').read(tenantId)
     ).not.toHaveProperty('confirmed')
   })
+
+  it('heads "Create email" with a lifestyle photo the Site reader kept from this same website (REL-ONB2 part c)', () => {
+    const cdn = 'https://cdn.shopify.com/s/files/1'
+    const sitePhotos = (domain: string) => ({
+      domain,
+      photos: [
+        {
+          url: `${cdn}/hills.jpg`,
+          kind: 'lifestyle',
+          alt: 'A walk in the hills at dusk'
+        }
+      ]
+    })
+    // The catalog's pictures are on Shopify's file host, as a store's are.
+    const catalog = parts().catalog.map((e, i) =>
+      i === 0 ? { ...e, image: `${cdn}/knit.jpg` } : e
+    )
+    const live = (over: Partial<Parts> = {}) =>
+      storeFrom(
+        parts({ status: { live: true, currency: 'USD' }, catalog, ...over })
+      )
+    for (const domain of ['shop.example', 'www.shop.example'])
+      expect(live({ sitePhotos: sitePhotos(domain) }).confirmed).toEqual({
+        lifestylePhoto: {
+          image: `${cdn}/hills.jpg`,
+          alt: 'A walk in the hills at dusk'
+        }
+      })
+    // Read from the website before the owner changed it, or none kept.
+    expect(
+      live({ sitePhotos: sitePhotos('old-shop.example') })
+    ).not.toHaveProperty('confirmed')
+    expect(live({ sitePhotos: null })).not.toHaveProperty('confirmed')
+    // A catalog picture among the photos is never the hero.
+    expect(
+      live({
+        sitePhotos: {
+          domain: 'shop.example',
+          photos: [
+            { url: `${cdn}/knit.jpg`, kind: 'lifestyle', alt: null },
+            ...sitePhotos('shop.example').photos
+          ]
+        }
+      }).confirmed?.lifestylePhoto?.image
+    ).toBe(`${cdn}/hills.jpg`)
+  })
 })
 
 type Answer = { data: unknown; error: unknown }
@@ -427,8 +474,11 @@ function fakeDb(answers: Record<string, Answer>) {
     const chain = {
       select: (cols: string) => (asked.push([table, cols]), chain),
       eq: (...a: unknown[]) => (asked.push([table, 'eq', ...a]), chain),
-      order: () => chain,
-      limit: async () => answers[table] ?? { data: [], error: null },
+      order: (...a: unknown[]) => (asked.push([table, 'order', ...a]), chain),
+      limit: async (...a: unknown[]) => (
+        asked.push([table, 'limit', ...a]),
+        answers[table] ?? { data: [], error: null }
+      ),
       maybeSingle: async () => answers[table] ?? { data: null, error: null }
     }
     return chain
@@ -490,8 +540,71 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
       ['brand_logos', 'eq', 'tenant_id', tenantId],
       ['klaviyo_history', 'eq', 'tenant_id', tenantId],
       ['brand_voice_samples', 'eq', 'tenant_id', tenantId],
-      ['brand_never_words', 'eq', 'tenant_id', tenantId]
+      ['brand_never_words', 'eq', 'tenant_id', tenantId],
+      ['brand_photo_sets', 'eq', 'tenant_id', tenantId]
     ])
+  })
+
+  it('reads the kept set’s own lifestyle photos, and makes the store without them when they cannot be read (REL-ONB2 part c)', async () => {
+    const cdn = 'https://cdn.shopify.com/s/files/1'
+    const hills = {
+      url: `${cdn}/hills.jpg`,
+      kind: 'lifestyle',
+      alt: 'A walk in the hills',
+      source: 'page'
+    }
+    const photos = {
+      brand_photo_sets: {
+        data: { domain: 'shop.example', run_id: 'run-7' },
+        error: null
+      },
+      brand_photos: { data: [hills], error: null }
+    }
+    // The catalog's pictures are on Shopify's file host, as a store's are.
+    const catalog = parts().catalog.map((e, i) =>
+      i === 0 ? { ...e, image: `${cdn}/knit.jpg` } : e
+    )
+    const warn = vi.spyOn(logger, 'warn')
+    const read = async (answers: Record<string, Answer>) => {
+      reads.catalog.mockResolvedValueOnce([...catalog])
+      reads.findings.mockResolvedValueOnce([...parts().findings])
+      reads.corrections.mockResolvedValueOnce([])
+      const made = fakeDb({ catalog_status: status(), ...own, ...answers })
+      return { store: await ownStoreSource(made.db).read(tenantId), ...made }
+    }
+    const { store, asked } = await read(photos)
+    expect(store.confirmed).toEqual({
+      lifestylePhoto: { image: `${cdn}/hills.jpg`, alt: 'A walk in the hills' }
+    })
+    // The kept set's own lifestyle photos, in page order, at most 50.
+    expect(asked.filter((a) => a[0] === 'brand_photos')).toEqual([
+      ['brand_photos', 'url,kind,alt,source'],
+      ['brand_photos', 'eq', 'tenant_id', tenantId],
+      ['brand_photos', 'eq', 'run_id', 'run-7'],
+      ['brand_photos', 'eq', 'kind', 'lifestyle'],
+      ['brand_photos', 'order', 'position', { ascending: true }],
+      ['brand_photos', 'limit', 50]
+    ])
+    // A read that fails (even with rows) leaves the store whole, said in
+    // the log, with no photo hero.
+    const boom = { code: 'PGRST000' }
+    for (const broken of [
+      {
+        ...photos,
+        brand_photo_sets: { data: photos.brand_photo_sets.data, error: boom }
+      },
+      { ...photos, brand_photos: { data: [hills], error: boom } }
+    ]) {
+      warn.mockClear()
+      const { store: without } = await read(broken)
+      expect(without).not.toHaveProperty('confirmed')
+      expect(without.products).toHaveLength(4)
+      expect(warn).toHaveBeenCalledWith(
+        'Lifestyle photos unreadable for the email',
+        { code: 'PGRST000' }
+      )
+    }
+    warn.mockRestore()
   })
 
   it('gives the writers the phrases the owner takes out, apart from the banned ones (PIC-29 part 2c)', async () => {
