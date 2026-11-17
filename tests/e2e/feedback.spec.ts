@@ -9,7 +9,7 @@ test('UIR-020 owner sends a feature request and finds it again', async ({
   await newOwner(page, { prefix: 'feedback', name: 'Feedback studio' })
   // The sidebar links here now (no longer "Soon").
   // (A page still on the old shell: Home has the GROS top bar.)
-  await page.goto('/holidays')
+  await page.goto('/connections')
   await expect(
     page
       .locator('a[href="/feedback"]', { hasText: 'Request a Feature' })
