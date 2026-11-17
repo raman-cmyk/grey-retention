@@ -1,7 +1,5 @@
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-
-vi.mock('next/navigation', () => ({ usePathname: () => '/plan' }))
+import { afterEach, describe, expect, it } from 'vitest'
 
 import EmailLoading from './plan/email/[buildId]/loading'
 import PlanLoading from './plan/loading'
@@ -16,11 +14,16 @@ describe('lane A loading states', () => {
     ['Plan', PlanLoading, 'Opening your plan'],
     ['Results', ResultsLoading, 'Opening Results'],
     ['Email', EmailLoading, 'Opening your email']
-  ])('%s opens with the bar and one card, and no main', (_, Loading, words) => {
-    const { container } = render(<Loading />)
-    expect(screen.getByText(words)).toBeInTheDocument()
-    expect(screen.getByRole('navigation', { name: 'Main' })).toBeInTheDocument()
-    expect(container.querySelector('main')).toBeNull()
-    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
-  })
+  ])(
+    '%s opens with its words and the menu, busy, and no main',
+    (_, Loading, words) => {
+      const { container } = render(<Loading />)
+      expect(screen.getByText(words)).toBeInTheDocument()
+      expect(
+        screen.getByRole('navigation', { name: 'Main' })
+      ).toBeInTheDocument()
+      expect(container.querySelector('main')).toBeNull()
+      expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
+    }
+  )
 })
