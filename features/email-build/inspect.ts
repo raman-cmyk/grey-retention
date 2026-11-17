@@ -132,10 +132,18 @@ export function protectedText(locked: LockedContent, brandName: string) {
   )
 }
 
-/** The text with every store-owned phrase blanked out. */
+/**
+ * The text with every store-owned phrase blanked out, as whole words only
+ * (REL-ONB2 part d2): a founder or reviewer named "Li" never blanks the
+ * "li" of "Click" or "lifetime", so the writer's own words stay judged.
+ */
 export function mask(text: string, protect: readonly string[]) {
   let out = text
-  for (const p of protect) out = out.replace(new RegExp(escape(p), 'gi'), ' ')
+  for (const p of protect) {
+    const start = /^[\p{L}\p{N}]/u.test(p) ? '(?<![\\p{L}\\p{N}])' : ''
+    const end = /[\p{L}\p{N}]$/u.test(p) ? '(?![\\p{L}\\p{N}])' : ''
+    out = out.replace(new RegExp(`${start}${escape(p)}${end}`, 'giu'), ' ')
+  }
   return out
 }
 

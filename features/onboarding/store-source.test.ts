@@ -82,6 +82,22 @@ const found = (
     pass: 'model',
     ...over
   }) as unknown as Finding
+/** REL-ONB2 part d: a founder's note the Site reader kept, marked whole. */
+const founderNote = (quote: string, over: Record<string, unknown> = {}) =>
+  found(
+    'founder',
+    { name: 'Maya Lee', role: 'Founder' },
+    {
+      evidence: {
+        url: 'https://www.shop.example/pages/about',
+        quote,
+        page: 'about',
+        whole: true
+      },
+      createdAt: '2026-11-17T08:00:00.000Z',
+      ...over
+    }
+  )
 const sells = (statement: string, over: Record<string, unknown> = {}) =>
   found('offering', {}, { statement, ...over })
 const said = (quote: string) =>
@@ -465,6 +481,27 @@ describe('storeFrom (ONB-057b part 2)', () => {
       }).confirmed?.lifestylePhoto?.image
     ).toBe(`${cdn}/hills.jpg`)
   })
+
+  it('gives "Create email" the founder’s own note from this website’s About page, never the sample rules’ (REL-ONB2 part d2)', () => {
+    const note = 'I’m Maya Lee. I started Cedar Lane in my spare room in 2016.'
+    const own = (
+      over: Partial<Parts> = {},
+      extra: Record<string, unknown> = {}
+    ) =>
+      storeFrom(
+        parts({
+          findings: [...parts().findings, founderNote(note, extra)],
+          ...over
+        })
+      )
+    expect(own().confirmed).toEqual({
+      founder: { name: 'Maya Lee', role: 'Founder', note: [note] }
+    })
+    // Read before the owner changed his website: no note.
+    expect(own({ domain: 'new-shop.example' })).not.toHaveProperty('confirmed')
+    // A live store never counts the sample rules'.
+    expect(own({}, { pass: 'sample' })).not.toHaveProperty('confirmed')
+  })
 })
 
 type Answer = { data: unknown; error: unknown }
@@ -605,6 +642,22 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
       )
     }
     warn.mockRestore()
+  })
+
+  it('reads the founder’s note with the workspace’s own findings (REL-ONB2 part d2)', async () => {
+    const note = 'I started Cedar Lane in my spare room in 2016.'
+    reads.catalog.mockResolvedValueOnce([...parts().catalog])
+    reads.findings.mockResolvedValueOnce([
+      ...parts().findings,
+      founderNote(note)
+    ])
+    reads.corrections.mockResolvedValueOnce([])
+    const { db } = fakeDb({ catalog_status: status(), ...own })
+    const store = await ownStoreSource(db).read(tenantId)
+    expect(reads.findings).toHaveBeenLastCalledWith(db, tenantId)
+    expect(store.confirmed).toEqual({
+      founder: { name: 'Maya Lee', role: 'Founder', note: [note] }
+    })
   })
 
   it('gives the writers the phrases the owner takes out, apart from the banned ones (PIC-29 part 2c)', async () => {

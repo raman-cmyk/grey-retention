@@ -68,8 +68,9 @@ import type { Database } from '@/lib/supabase/database.types'
  * - Industry: from what the brand sells, as the owner corrected it.
  * - Customer words: the reviews' own phrases, checked like copy (ONB-061).
  * - Material for its blocks (REL-ONB2, `storeMaterial`): its quotable
- *   reviews and a lifestyle photo the Site reader kept, only from this
- *   same website, checked like copy; none without any.
+ *   reviews, a lifestyle photo the Site reader kept and the founder's own
+ *   note from its About page (read with its findings, by `tenant_id`),
+ *   only from this same website, checked like copy; none without any.
  *
  * It is `sample` while the catalog was read from the fake Klaviyo. A
  * paused read (Klaviyo refused the key) keeps the last read's products. A
