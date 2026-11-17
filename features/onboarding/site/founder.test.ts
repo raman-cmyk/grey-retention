@@ -53,10 +53,17 @@ describe('wholeSentences', () => {
       before: 'Hi, I’m Maya Lee, founder of Cedar Lane. ',
       after: ''
     })
-    // The page's own marks around a quoted sentence belong to it.
+    // The page's own marks around a quoted sentence belong to it; a dash
+    // credit after it is not stored.
     expect(note('I test every yarn myself.')).toBe(
       '“I test every yarn myself.”'
     )
+    expect(
+      wholeSentences(text, 'I still test every sample myself.')
+    ).toMatchObject({
+      note: '“I still test every sample myself.”',
+      after: ' – Maya'
+    })
   })
 
   it('refuses a part-sentence: a cut start or end, a run-on heading, an abbreviation’s stop, half a quote', () => {
@@ -73,7 +80,6 @@ describe('wholeSentences', () => {
       // After its stop comes more of the sentence, not the next one.
       'I started with one ball of wool…',
       'I open the studio at 9 a.m.',
-      'I still test every sample myself.',
       // Half of a quote, its marks unbalanced.
       'I knit every day.',
       ''
@@ -129,6 +135,15 @@ describe('firstPerson', () => {
 describe('introduced', () => {
   const spot = (quote: string) => wholeSentences(text, quote)!
   const own = ['Cedar Lane']
+  /** Whether a page's note is tied to Maya Lee, the store Cedar Lane. */
+  const tied = (html: string, quote: string) => {
+    const at = wholeSentences(
+      readPage(`<main>${html}</main>`, aboutUrl, 'about').text,
+      quote
+    )
+    return !!at && introduced(at, 'Maya Lee', own)
+  }
+  const started = 'I started Cedar Lane in my spare room in 2016.'
 
   it('ties the note to the founder by their own introduction: in it, or just before it in its block', () => {
     expect(
@@ -145,6 +160,73 @@ describe('introduced', () => {
         own
       )
     ).toBe(true)
+  })
+
+  it('ties it by an introduction in the block right before it, and never across another block, name or quote', () => {
+    expect(tied(`<h2>Hi, I’m Maya!</h2><p>${started}</p>`, started)).toBe(true)
+    expect(
+      tied(
+        `<p>Hi, I’m Maya Lee, founder of Cedar Lane.</p><p>${started}</p>`,
+        started
+      )
+    ).toBe(true)
+    for (const html of [
+      // Another block between them.
+      `<h2>Hi, I’m Maya!</h2><p>Every knit is made to last.</p><p>${started}</p>`,
+      // Another name, or a quote, after the introduction.
+      `<h2>Hi, I’m Maya! Tom is our designer.</h2><p>${started}</p>`,
+      `<h2>Hi, I’m Maya, and Tom says hello!</h2><p>${started}</p>`,
+      // The note not at the start of its block.
+      `<h2>Hi, I’m Maya!</h2><p>Every knit is made to last. ${started}</p>`
+    ])
+      expect(tied(html, started), html).toBe(false)
+  })
+
+  it('ties it by a sign-off of their name in the block right after it', () => {
+    for (const signoff of [
+      '— Maya',
+      '– Maya Lee',
+      'Maya',
+      'Love, Maya',
+      'With love, Maya',
+      'Thanks, Maya',
+      'xx Maya',
+      'Maya Lee, founder of Cedar Lane'
+    ])
+      expect(tied(`<p>${started}</p><p>${signoff}</p>`, started), signoff).toBe(
+        true
+      )
+    for (const signoff of [
+      '— Anna',
+      'Love, Anna',
+      'Anna',
+      'xx Anna Ruiz',
+      '— the team'
+    ])
+      expect(tied(`<p>${started}</p><p>${signoff}</p>`, started), signoff).toBe(
+        false
+      )
+    // Only a note that ends its block: the rest of the block is no one's.
+    expect(tied(`<p>${started} It was small.</p><p>— Maya</p>`, started)).toBe(
+      false
+    )
+  })
+
+  it('ties a quoted note by a dash and their name at its own end, never anyone else’s', () => {
+    const quoted = (credit: string) =>
+      tied(
+        `<blockquote>“I test every sample myself.” ${credit}</blockquote>`,
+        'I test every sample myself.'
+      )
+    expect(quoted('– Maya')).toBe(true)
+    expect(quoted('— Maya Lee, founder')).toBe(true)
+    for (const credit of [
+      '– Anna',
+      '– Anna, a customer',
+      '– Maya and Tom',
+      '- Tom'
+    ])
+      expect(quoted(credit), credit).toBe(false)
   })
 
   it('refuses a note no introduction of theirs gives them, or that someone else is named before or after', () => {
@@ -334,11 +416,6 @@ describe('checkedFindings: the founder', () => {
         raw({ quote: 'I draw every pattern by hand.' }),
         'after someone else'
       ],
-      [
-        about(),
-        raw({ quote: 'I still test every sample myself.' }),
-        'credited to a dash'
-      ],
       [about(), raw(), 'the store’s name unknown', ''],
       [about(), raw({ name: 'Jane Smith' }), 'a name not on the page'],
       [about(), raw({ name: 'maya lee' }), 'the model’s capitals for the name'],
@@ -364,6 +441,23 @@ describe('checkedFindings: the founder', () => {
     ]
     for (const [page, finding, why, brand] of cases)
       expect(check(page, [finding], brand).kept, why).toEqual([])
+  })
+
+  it('keeps a quoted note signed by a dash and their name, without the credit', () => {
+    const { kept } = check(about(), [
+      raw({ quote: 'I still test every sample myself.' })
+    ])
+    expect(kept.map((f) => 'quote' in f.evidence && f.evidence.quote)).toEqual([
+      '“I still test every sample myself.”'
+    ])
+    const anna = readPage(
+      '<main><blockquote>“I still test every sample myself.” – Anna</blockquote><p>Maya Lee</p></main>',
+      aboutUrl,
+      'about'
+    )
+    expect(
+      check(anna, [raw({ quote: 'I still test every sample myself.' })]).kept
+    ).toEqual([])
   })
 
   it('keeps every other topic as before, never marked whole', () => {

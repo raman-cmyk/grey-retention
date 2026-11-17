@@ -18,9 +18,12 @@ import { fold } from './pages'
  *   (`firstPerson`): an "I", "my" or "me"; never "she", "her", "his",
  *   "says", "wrote" and the like, and never a word of the founder's name
  *   outside their introduction of themself ("Maya taught me…" is a bio);
- * - the founder introduces themself in it, or just before it in the same
- *   block with no one else named in between, and nothing after it gives it
- *   to someone else (`introduced`: "Hi, I'm Maya Lee. I started…");
+ * - it is tied to the founder by their own words (`introduced`): they
+ *   introduce themself in it, just before it in its block, or in the block
+ *   right before it ("<h2>Hi, I'm Maya!</h2>"), with no other block, name,
+ *   quote or third person in between; or it is signed by them, at its own
+ *   end ("“I test every sample.” – Maya") or in the block right after it
+ *   ("— Maya", "Love, Maya"). Anyone else's name there refuses it;
  * - the founder's name is a person's (`personName`) on the page word for
  *   word (`onPage`), and a role is kept only from a block that also names
  *   them (`roleOf`).
@@ -76,8 +79,12 @@ const endsSentence = (text: string) => {
 
 /** A sentence starts with a capital or a number, after its opening marks. */
 const capital = /^["'“‘(«]*[\p{Lu}\p{N}]/u
-/** What may follow a sentence: its block's end, or a space and the next sentence. */
-const nextSentence = /^(?:$|\n| ["'“‘(«\p{Lu}\p{N}])/u
+/**
+ * What may follow a sentence: its block's end, a space and the next
+ * sentence, or a dash and a name crediting it ("… myself.” – Maya": the
+ * credit is not stored, and `introduced` takes only the founder's).
+ */
+const nextSentence = /^(?:$|\n| ["'“‘(«\p{Lu}\p{N}]| [–—-] ?\p{Lu})/u
 
 const count = (text: string, mark: string) => text.split(mark).length - 1
 /** Quote marks and brackets in pairs: never half of someone's quote. */
@@ -96,6 +103,9 @@ export type Spot = {
   /** The block it starts in, before it; the block it ends in, after it. */
   before: string
   after: string
+  /** The block right before the one it starts in, and right after the one it ends in. */
+  previous?: string
+  next?: string
 }
 
 /**
@@ -131,13 +141,19 @@ export function wholeSentences(text: string, quote: string): Spot | null {
         .split('\n')
         .slice(0, -1)
         .every((line) => endsSentence(line))
-    )
+    ) {
+      const blocks = page.split('\n')
+      const first = before.split('\n').length - 1
+      const last = page.slice(0, end).split('\n').length - 1
       return {
         note: fold(found),
         at: start,
         before: before.slice(before.lastIndexOf('\n') + 1),
-        after: after.split('\n')[0] ?? ''
+        after: after.split('\n')[0] ?? '',
+        previous: blocks[first - 1],
+        next: blocks[last + 1]
       }
+    }
   }
   return null
 }
@@ -180,16 +196,21 @@ export function personName(name: string): boolean {
   )
 }
 
-/** "I'm Maya", "I am Maya Lee", "My name is Maya", "This is Maya", "Maya here". */
-function introductions(name: string): RegExp | null {
+/** The founder as they may name themself: "Dr. Maya Lee", "Maya Lee", "Maya". */
+const nameForms = (name: string) => {
   const words = nameWords(name)
-  if (!words.length) return null
-  const who = [
+  return [
     fold(name),
     ...words.map((_, i) => words.slice(0, words.length - i).join(' '))
   ]
     .filter((w, i, all) => w && all.indexOf(w) === i)
     .sort((a, b) => b.length - a.length)
+}
+
+/** "I'm Maya", "I am Maya Lee", "My name is Maya", "This is Maya", "Maya here". */
+function introductions(name: string): RegExp | null {
+  if (!nameWords(name).length) return null
+  const who = nameForms(name)
     .map((w) => escape(w).replace(/ /g, '\\s+'))
     .join('|')
   return new RegExp(
@@ -250,12 +271,47 @@ const plainStarts = new Set(
 const capitals = /(?<![\p{L}\p{N}])\p{Lu}[\p{L}\p{M}'’-]*/gu
 const mine = /^I(?:['’](?:m|ve|d|ll))?$/u
 
+const dash = /^[–—-]\s*/u
+/** Short closings before a sign-off's name ("Love, Maya", "xx Maya"). */
+const closing =
+  /^(?:(?:with\s+)?love,?|thanks,|thank\s+you,|warmly,|x{1,3})\s+/iu
+
+/**
+ * Whom a sign-off credits: a block (or the rest of one) that is only a
+ * name, after an optional dash or short closing and before an optional
+ * role ("— Maya", "Love, Maya", "Maya Lee, founder of Cedar Lane").
+ * "founder" for the founder's own name, "other" for anyone else's (or
+ * anything after a dash), null for words that are no sign-off.
+ */
+function creditOf(
+  text: string,
+  name: string,
+  own: ReadonlySet<string>
+): 'founder' | 'other' | null {
+  const t = fold(text)
+  const dashed = dash.test(t)
+  const [who = '', ...rest] = t
+    .replace(dash, '')
+    .replace(closing, '')
+    .split(',')
+  const person = who.replace(/[.!]+$/, '').trim()
+  const role = rest.join(',').match(capitals) ?? []
+  if (
+    nameForms(name).includes(person) &&
+    role.every((w) => own.has(w.replace(/[.!]+$/, '')))
+  )
+    return 'founder'
+  return dashed || personName(person) ? 'other' : null
+}
+
 /**
  * Whether the note is tied to the founder in the page's own words: it
- * introduces them itself, or the sentence just before it in the same
- * block does, with no one else named, quoted or written about in between;
- * and nothing after it in its block gives it to someone else ("– Anna",
- * "says Tom"). The store's own names (`allowed`) are no one else's.
+ * introduces them itself; the sentence just before it in its block does,
+ * or the block right before it does when it starts its own, with no one
+ * else named, quoted or written about in between; or it is signed by them
+ * at its own end ("– Maya") or in the block right after it ("— Maya",
+ * "Love, Maya"). A credit to anyone else, or an attribution ("says Tom"),
+ * refuses it. The store's own names (`allowed`) are no one else's.
  */
 export function introduced(
   spot: Spot,
@@ -269,17 +325,32 @@ export function introduced(
       (w) => w.replace(/[.,]$/, '')
     )
   )
-  const tail = spot.after.trimStart()
-  const credited = /^[–—-]\s*(\p{Lu}[\p{L}\p{M}'’-]*)/u.exec(tail)
-  if (
-    /^,?\s*(?:says|said|writes|wrote)(?![\p{L}\p{N}])/iu.test(tail) ||
-    (credited && !own.has(credited[1]!))
-  )
+  const tail = spot.after.trim()
+  if (/^,?\s*(?:says|said|writes|wrote)(?![\p{L}\p{N}])/iu.test(tail))
     return false
-  if (new RegExp(intro.source, 'u').test(spot.note)) return true
-  const last = [...spot.before.matchAll(intro)].at(-1)
+  // Signed at its own end, or in the block right after it when it ends its own.
+  const credit = tail
+    ? dash.test(tail)
+      ? creditOf(tail, name, own)
+      : null
+    : spot.next !== undefined
+      ? creditOf(spot.next, name, own)
+      : null
+  if (credit === 'other') return false
+  if (credit === 'founder' || new RegExp(intro.source, 'u').test(spot.note))
+    return true
+  // Introduced just before it: in its block, or in the block right before
+  // when it starts its own.
+  const here = [...spot.before.matchAll(intro)].at(-1)
+  const there =
+    !here && spot.before === '' && spot.previous !== undefined
+      ? [...spot.previous.matchAll(intro)].at(-1)
+      : undefined
+  const last = here ?? there
   if (!last) return false
-  const between = spot.before.slice(last.index + last[0].length)
+  const between = here
+    ? spot.before.slice(here.index + here[0].length)
+    : `${spot.previous!.slice(last.index + last[0].length)} `
   const inner = between.trimEnd()
   return (
     // Only the rest of the sentence that introduces them.
