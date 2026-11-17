@@ -26,14 +26,16 @@ test('UC-05 guarded month review persists (the weekly copy batch is retired, D17
   }).format(eventSlot)
   const eventName = `Original studio day ${info.project.name}`
   await login(page, role)
-  await page.goto('/holidays')
-  await page.getByLabel('Name', { exact: true }).fill(eventName)
-  await page.getByLabel('Date', { exact: true }).fill(eventDate)
-  await page.getByLabel('Type', { exact: true }).selectOption('event')
-  await page
-    .getByLabel('Notes for the AI strategist (optional)')
+  // Holidays and events are a page under Settings (UI-SETd).
+  await page.goto('/settings/holidays')
+  const add = page.getByRole('region', { name: 'Add a date' })
+  await add.getByLabel('Name', { exact: true }).fill(eventName)
+  await add.getByLabel('Date', { exact: true }).fill(eventDate)
+  await add.getByLabel('Type', { exact: true }).selectOption('event')
+  await add
+    .getByLabel('Notes for GROS (optional)')
     .fill('Original owner-supplied event; no offer implied.')
-  await page.getByRole('button', { name: 'Add entry', exact: true }).click()
+  await add.getByRole('button', { name: 'Add date', exact: true }).click()
   await expect(page.getByText(`Added “${eventName}”.`)).toBeVisible()
   await expect(
     page.getByText('Original owner-supplied event; no offer implied.')

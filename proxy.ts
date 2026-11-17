@@ -77,14 +77,11 @@ export const config = {
     '/library/:path*',
     '/inspiration/:path*',
     '/connections/:path*',
-    '/feedback/:path*',
     '/gros/:path*',
-    '/holidays/:path*',
     '/onboarding/:path*',
     '/profile/:path*',
     '/settings/:path*',
     '/setup/:path*',
-    '/support/:path*',
     '/admin/:path*',
     '/designer/:path*'
   ]

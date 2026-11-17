@@ -41,7 +41,7 @@ function failed(
 
 /** Planning reads entries when it runs, so only this page needs a refresh. */
 function refresh() {
-  revalidatePath('/holidays')
+  revalidatePath('/settings/holidays')
 }
 
 /** "Add entry" and "Save" on an existing entry. */
