@@ -28,7 +28,7 @@ export function AudiencesScreen({
       {view.state === 'not_connected' ? (
         owner ? (
           <EmptyState
-            title="Connect Klaviyo"
+            title="Klaviyo not connected"
             action={<ButtonLink href={connectHref} label="Connect Klaviyo" />}
           />
         ) : (
@@ -55,27 +55,32 @@ export function AudiencesScreen({
       ) : view.state === 'unavailable' ? (
         <ErrorState
           title="Audiences could not be read"
-          reason={`${view.reason} Try again in a minute.`}
-          action={<ButtonLink href={audiencesHref} label="Try again" />}
+          reason={
+            view.retry ? `${view.reason} Try again in a minute.` : view.reason
+          }
+          action={
+            view.retry ? (
+              <ButtonLink href={audiencesHref} label="Try again" />
+            ) : null
+          }
         />
       ) : (
-        <>
-          <p className="type-caption text-[var(--stone)]">{view.source}</p>
-          <CardRow>
-            <AudienceCard
-              title="Segments"
-              empty="No segments in Klaviyo yet."
-              rows={view.segments}
-              href={(id) => `/segments/${encodeURIComponent(id)}` as Route}
-            />
-            <AudienceCard
-              title="Lists"
-              empty="No lists in Klaviyo yet."
-              rows={view.lists}
-              href={(id) => `/lists/${encodeURIComponent(id)}` as Route}
-            />
-          </CardRow>
-        </>
+        <CardRow>
+          <AudienceCard
+            title="Segments"
+            empty="No segments in Klaviyo yet."
+            source={view.source}
+            rows={view.segments}
+            href={(id) => `/segments/${encodeURIComponent(id)}` as Route}
+          />
+          <AudienceCard
+            title="Lists"
+            empty="No lists in Klaviyo yet."
+            source={view.source}
+            rows={view.lists}
+            href={(id) => `/lists/${encodeURIComponent(id)}` as Route}
+          />
+        </CardRow>
       )}
     </AppPage>
   )
@@ -98,19 +103,25 @@ function AudienceThumb() {
 function AudienceCard({
   title,
   empty,
+  source,
   rows,
   href
 }: {
   title: string
   /** What the card says when Klaviyo has none. */
   empty: string
+  /** Where its numbers come from (BRAND rule 1: on the card, not the page). */
+  source: string
   rows: AudienceRow[]
   href: (id: string) => Route
 }) {
   return (
     <Card label={title}>
       <div className="flex flex-col gap-[var(--space-5)]">
-        <h2 className="type-heading">{title}</h2>
+        <div className="flex flex-col gap-[var(--space-1)]">
+          <h2 className="type-heading">{title}</h2>
+          <p className="type-caption text-[var(--stone)]">{source}</p>
+        </div>
         {rows.length === 0 ? (
           <p className="type-body text-[var(--stone)]">{empty}</p>
         ) : (

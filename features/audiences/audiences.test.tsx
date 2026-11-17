@@ -98,11 +98,14 @@ describe('audiencesView (UI-AUDa)', () => {
       audiencesView({ state: 'not_connected', reason: 'unknown' }, now)
     ).toEqual({
       state: 'unavailable',
-      reason: "We couldn't check the Klaviyo connection."
+      reason: "We couldn't check the Klaviyo connection.",
+      retry: true
     })
+    // The live mode has no Klaviyo reader yet: trying again cannot help.
     expect(audiencesView({ state: 'unavailable' }, now)).toEqual({
       state: 'unavailable',
-      reason: "Klaviyo numbers aren't available in this version yet."
+      reason: "Klaviyo numbers aren't available in this version yet.",
+      retry: false
     })
   })
 
@@ -127,7 +130,8 @@ describe('audiencesView (UI-AUDa)', () => {
     mocks.klaviyoData.mockRejectedValue(new Error('down'))
     expect(await audiencesReadModel(context, now)).toEqual({
       state: 'unavailable',
-      reason: 'The audiences could not be read just now.'
+      reason: 'The audiences could not be read just now.',
+      retry: true
     })
   })
 })
@@ -141,8 +145,8 @@ describe('Audiences screen (UI-AUDa)', () => {
         { name: 'Audiences' }
       )
     ).toHaveAttribute('aria-current', 'page')
-    // Where the numbers come from is said once, above both cards.
-    expect(screen.getAllByText(/Sample Klaviyo data/)).toHaveLength(1)
+    // Where the numbers come from, on each card (BRAND rule 1).
+    expect(screen.getAllByText(/Sample Klaviyo data/)).toHaveLength(2)
     const segments = screen.getByRole('region', { name: 'Segments' })
     const [vip, lapsed] = within(segments).getAllByRole('listitem')
     expect(vip).toHaveTextContent(
@@ -182,7 +186,7 @@ describe('Audiences screen (UI-AUDa)', () => {
   it('sends the owner to connect Klaviyo; staff are told who does it', () => {
     render(<AudiencesScreen view={{ state: 'not_connected' }} owner />)
     expect(
-      screen.getByRole('heading', { name: 'Connect Klaviyo' })
+      screen.getByRole('heading', { name: 'Klaviyo not connected' })
     ).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: 'Connect Klaviyo' })
@@ -217,7 +221,8 @@ describe('Audiences screen (UI-AUDa)', () => {
       <AudiencesScreen
         view={{
           state: 'unavailable',
-          reason: 'The audiences could not be read just now.'
+          reason: 'The audiences could not be read just now.',
+          retry: true
         }}
         owner={false}
       />
@@ -229,5 +234,19 @@ describe('Audiences screen (UI-AUDa)', () => {
       'href',
       '/audiences'
     )
+    cleanup()
+    // Nothing to try again for: no Try again, no "in a minute".
+    render(
+      <AudiencesScreen
+        view={{
+          state: 'unavailable',
+          reason: "Klaviyo numbers aren't available in this version yet.",
+          retry: false
+        }}
+        owner
+      />
+    )
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Try again')
+    expect(screen.queryByRole('link', { name: 'Try again' })).toBeNull()
   })
 })

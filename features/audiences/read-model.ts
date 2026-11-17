@@ -35,8 +35,12 @@ export type AudiencesView =
   | { state: 'not_connected' }
   /** The saved key stopped working (expired or refused). */
   | { state: 'reconnect' }
-  /** The audiences could not be read: the reason, in the owner's words. */
-  | { state: 'unavailable'; reason: string }
+  /**
+   * The audiences could not be read: the reason, in the owner's words, and
+   * whether trying again can help (a failed read can; this version's live
+   * mode, which has no Klaviyo reader yet, cannot).
+   */
+  | { state: 'unavailable'; reason: string; retry: boolean }
 
 const byPeople = (a: AudienceRow, b: AudienceRow) =>
   Number(b.starred) - Number(a.starred) ||
@@ -53,11 +57,15 @@ export function audiencesView(data: KlaviyoData, now: Date): AudiencesView {
       return { state: 'reconnect' }
     // A connection that could not be checked is not "not connected".
     if (data.reason === 'unknown')
-      return { state: 'unavailable', reason: sourceLine(data, now) }
+      return {
+        state: 'unavailable',
+        reason: sourceLine(data, now),
+        retry: true
+      }
     return { state: 'not_connected' }
   }
   if (data.state !== 'sample')
-    return { state: 'unavailable', reason: sourceLine(data, now) }
+    return { state: 'unavailable', reason: sourceLine(data, now), retry: false }
   const snapshot = data.snapshot
   return {
     state: 'ready',
@@ -99,7 +107,8 @@ export async function audiencesReadModel(
   } catch {
     return {
       state: 'unavailable',
-      reason: 'The audiences could not be read just now.'
+      reason: 'The audiences could not be read just now.',
+      retry: true
     }
   }
 }

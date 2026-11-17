@@ -21,7 +21,7 @@ test('UI-AUDa Audiences asks a new store to connect Klaviyo, then lists segments
     page.getByRole('heading', { name: 'Audiences', level: 1 })
   ).toBeVisible()
   await expect(
-    page.getByRole('heading', { name: 'Connect Klaviyo', level: 2 })
+    page.getByRole('heading', { name: 'Klaviyo not connected', level: 2 })
   ).toBeVisible()
   await page.getByRole('link', { name: 'Connect Klaviyo', exact: true }).click()
   await expect(page).toHaveURL(/\/connections$/)
@@ -35,9 +35,9 @@ test('UI-AUDa Audiences asks a new store to connect Klaviyo, then lists segments
   ).toBeVisible()
 
   await page.goto('/audiences')
-  await expect(page.getByText(/Sample Klaviyo data/)).toBeVisible()
   const segments = page.getByRole('region', { name: 'Segments' })
   const lists = page.getByRole('region', { name: 'Lists' })
+  await expect(segments.getByText(/Sample Klaviyo data/)).toBeVisible()
   await expect(segments.getByRole('listitem').first()).toBeVisible()
   await expect(lists.getByRole('listitem').first()).toBeVisible()
   await segments.getByRole('link', { name: 'Open' }).first().click()
