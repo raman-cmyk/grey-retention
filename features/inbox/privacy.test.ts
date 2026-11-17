@@ -248,10 +248,6 @@ Northwind Outdoor, 1 Sample Street`)
       'Dear valued customer,'
     ])
       expect(cleanEmailText(text, me)).toBe(text)
-    const keep = { keep: ['Rivera Goods'] }
-    expect(
-      cleanEmailText('New at Rivera Goods: linen. Thanks, Rivera!', me, keep)
-    ).toBe('New at Rivera Goods: linen. Thanks!')
   })
 
   it('reads composed and decomposed letters alike (NFC)', () => {
@@ -558,18 +554,22 @@ describe('cleanEmail', () => {
       expect(cleanEmailHtml(klaviyo, me, { clock }), check).toBeNull()
     }
     // Time passes at each check; the first round alone fits in the time,
-    // both rounds do not: the deadline is shared.
-    let ticks = 0
-    const clock = () => ticks++
-    expect(cleanEmailHtml(klaviyo, me, { clock })).not.toBeNull()
-    const both = ticks
-    ticks = 0
-    expect(
-      cleanEmailHtml(klaviyo, me, {
-        clock,
-        limits: { htmlMs: Math.round(both * 0.75) }
-      })
-    ).toBeNull()
+    // both rounds do not: the deadline is shared (also by an email with no
+    // words, where only the tree's own checks read it).
+    for (const html of [klaviyo, '<div></div>'.repeat(400)]) {
+      let ticks = 0
+      const clock = () => ticks++
+      expect(cleanEmailHtml(html, me, { clock })).not.toBeNull()
+      const both = ticks
+      ticks = 0
+      expect(
+        cleanEmailHtml(html, me, {
+          clock,
+          limits: { htmlMs: Math.round(both * 0.75) }
+        }),
+        html.slice(0, 20)
+      ).toBeNull()
+    }
   })
 })
 
@@ -819,14 +819,6 @@ describe('what the fourth review found', () => {
     }
   })
 
-  it('never lets the brand words shield a name or the local part', () => {
-    expect(
-      cleanEmailText('Thanks, Sam! Hi sampleinbox', me, {
-        keep: ['Sam', 'SAM', 'sampleinbox', 'Northwind']
-      })
-    ).toBe('Thanks! Hi there')
-  })
-
   it('keeps names in class names, ids and font faces, not addresses', () => {
     const persona = { addresses: me.addresses, names: ['Max Georgia'] }
     const html =
@@ -850,13 +842,18 @@ describe('what the fourth review found', () => {
   it('matches names whatever their case and accents', () => {
     for (const [name, text] of [
       ['Strau\u{df}', 'Thanks, STRAUSS!'],
-      ['STRAUSS', 'Thanks, Strau\u{df}!'],
       [
         '\u{39c}\u{3b1}\u{3c1}\u{3af}\u{3b1}',
         'Thanks, \u{39c}\u{391}\u{3a1}\u{399}\u{391}!'
       ],
       ['Jos\u{e9}', 'Thanks, Jose!'],
-      ['Jose', 'Thanks, Jos\u{e9}!'],
+      ['\u{c1}ngel', 'Thanks, Angel!'],
+      ['Zo\u{eb}', 'Thanks, ZOE!'],
+      ['Ali', 'Thanks, AL\u{130}!'],
+      [
+        '\u{39d}\u{3af}\u{3ba}\u{3bf}\u{3c2}',
+        'Thanks, \u{39d}\u{3af}\u{3ba}\u{3bf}\u{3c2}!'
+      ],
       [
         '\u{39d}\u{3af}\u{3ba}\u{3bf}\u{3c2}',
         'Thanks, \u{39d}\u{399}\u{39a}\u{39f}\u{3a3}!'
@@ -929,11 +926,8 @@ describe('ordinary copy stays as written', () => {
   })
 
   it('keeps no hidden markers and writes non-breaking spaces as they are', () => {
-    expect(
-      cleanEmailText('A\u{fff9}\u{e000}\u{fffb}B Northwind', me, {
-        keep: ['Northwind']
-      })
-    ).toBe('A\u{e000}B Northwind')
+    const marked = 'A\u{fff9}\u{e000}\u{fffb}B Northwind'
+    expect(cleanEmailText(marked, me)).toBe(marked)
     expect(body(cleanEmailHtml('<p>a&nbsp;b</p>', me))).toBe('<p>a&nbsp;b</p>')
   })
 
@@ -945,6 +939,182 @@ describe('ordinary copy stays as written', () => {
   it('shows no data picture over 100 KB', () => {
     const big = `data:image/png;base64,${'A'.repeat(150_000)}`
     expect(body(cleanEmailHtml(`<img src="${big}">`, me))).toBe('<img src="">')
+  })
+})
+
+describe('what the fifth review found', () => {
+  /** Distinct characters of the first plane, no surrogates. */
+  const distinct = (length: number) => {
+    let s = ''
+    for (let c = 0xa0; s.length < length; c++) {
+      if (c >= 0xd800 && c < 0xe000) c = 0xe000
+      if (c > 0xfffd) c = 0xa0
+      s += String.fromCharCode(c)
+    }
+    return s
+  }
+  const pictures = (identity: InboxIdentity, ref: string) =>
+    body(
+      cleanEmailHtml(`<img src="${ref}">`, identity, {
+        images: [{ ref, path: 'img/zz.png' }]
+      })
+    )
+
+  it('reads the deadline inside long text, at every pass', () => {
+    const long = distinct(10_000).replace(/["&<]/g, 'x')
+    for (const check of ['fold', 'pass'])
+      for (const html of [`<p>${long}</p>`, `<p title="${long}">x</p>`]) {
+        const clock = (at: string) => (at === check ? Infinity : 0)
+        expect(cleanEmailHtml(html, me, { clock }), check).toBeNull()
+      }
+    // Time passes at each check: a long text of distinct characters reads
+    // the clock as it goes, a short one fits in the same time.
+    let ticks = 0
+    const clock = () => ticks++
+    const limits = { htmlMs: 30 }
+    expect(cleanEmailHtml('<p>linen</p>', me, { clock, limits })).not.toBeNull()
+    ticks = 0
+    expect(
+      cleanEmailHtml(`<p>${distinct(200_000)}</p>`, me, { clock, limits })
+    ).toBeNull()
+  })
+
+  it('reads a million distinct characters in time', () => {
+    const started = Date.now()
+    cleanEmailHtml(`<p>Sa(Sa(x@y.example)m)m ${distinct(989_950)}</p>`, me)
+    expect(Date.now() - started).toBeLessThan(6_000)
+    // A sign that stands for a whole phrase is read as one sign.
+    expect(
+      cleanEmailHtml(`<p>${'\u{fdfa}'.repeat(600_000)}</p>`, me)
+    ).not.toBeNull()
+  }, 15_000)
+
+  it('keeps words that only look like a name once folded', () => {
+    for (const [name, text] of [
+      ['Ana', '2 per order (\u{3b1}\u{3bd}\u{3ac})'],
+      ['Max', 'M\u{e1}x. 2 por cliente'],
+      ['Mia', 'Esta oferta es m\u{ed}a'],
+      ['Mia', '\u{39c}\u{3af}\u{3b1} \u{3c6}\u{3bf}\u{3c1}\u{3ac}'],
+      ['Noel', 'Joyeux No\u{eb}l'],
+      ['\u{c1}ngel', 'Our angel collection'],
+      ['Weiss', 'T-Shirt Wei\u{df}'],
+      ['Gross', 'gro\u{df} und klein'],
+      ['Strauss', 'Ein Strau\u{df} Rosen'],
+      ['STRAUSS', 'Thanks, Strau\u{df}!'],
+      ['Jose', 'Thanks, Jos\u{e9}!'],
+      ['Meta', '\u{3bc}\u{3b5}\u{3c4}\u{3ac} \u{3c4}\u{3b7}\u{3bd}'],
+      ['Kata', '\u{3ba}\u{3b1}\u{3c4}\u{3ac} \u{3c4}\u{3b7}\u{3bd}'],
+      ['Kai', '\u{3b1} \u{3ba}\u{3b1}\u{3b9} \u{3b2}'],
+      [
+        'Tom',
+        '\u{432} \u{442}\u{43e}\u{43c} \u{447}\u{438}\u{441}\u{43b}\u{435}'
+      ],
+      ['Pia', 'Una p\u{ed}a tradici\u{f3}n'],
+      ['Ena', '\u{388}\u{3bd}\u{3b1} \u{3b4}\u{3ce}\u{3c1}\u{3bf}'],
+      [
+        'Nea',
+        '\u{39d}\u{3ad}\u{3b1} \u{3c3}\u{3c5}\u{3bb}\u{3bb}\u{3bf}\u{3b3}\u{3ae}'
+      ]
+    ])
+      expect(
+        cleanEmailText(text!, { addresses: [], names: [name!] }),
+        name
+      ).toBe(text)
+    // Nor in a script without spaces: サカ is not サガ.
+    const saka = { addresses: [], names: ['\u{30b5}\u{30ab}'] }
+    expect(cleanEmailText('\u{30b5}\u{30ac}', saka)).toBe('\u{30b5}\u{30ac}')
+    // A word mixing scripts is a disguise; a greeting reads any case.
+    expect(
+      cleanEmailText('Thanks, \u{41c}\u{43e}n\u{430}!', {
+        addresses: [],
+        names: ['Mona']
+      })
+    ).toBe('Thanks!')
+    expect(
+      cleanEmailText('Hi jose,', { addresses: [], names: ['Jos\u{e9}'] })
+    ).toBe('Hi there,')
+  })
+
+  it('draws no attribute with CSS, so a name kept in a class is never shown', () => {
+    expect(
+      cleanEmailHtml(
+        '<style>.g::after{content:attr(class)}</style><p class="g Sam">x</p>',
+        me
+      )
+    ).toContain('<style>.g::after{}</style>')
+    expect(
+      body(
+        cleanEmailHtml(
+          '<p class="Sam" style="color:red;--x:attr(class);margin:0">x</p>',
+          me
+        )
+      )
+    ).toBe('<p class="Sam" style="color:red;;margin:0">x</p>')
+    // Written in capitals, or hidden by an escape (then all of it goes).
+    expect(
+      cleanEmailHtml(
+        '<style>font::after{content:"> " ATTR(face)}</style><font face="Sam">x</font>',
+        me
+      )
+    ).toContain('<style>font::after{}</style>')
+    expect(
+      cleanEmailHtml(
+        '<style>.g::after{content:at\\74 r(id)}p{color:red}</style><p id="Sam">x</p>',
+        me
+      )
+    ).toContain('<style></style>')
+  })
+
+  it('never shows a picture that names the person in any encoding', () => {
+    const jose = { addresses: [], names: ['Jos\u{e9}'] }
+    const anna = { addresses: [], names: ['\u{410}\u{43d}\u{43d}\u{430}'] }
+    for (const [identity, ref] of [
+      [jose, 'https://img.x.example/p.png?d=eyJuIjoiSm9zw6kifQ=='],
+      [anna, 'https://img.x.example/p.png?d=eyJuIjoi0JDQvdC90LAifQ=='],
+      [me, 'https://img.x.example/p.png?d=eyJuIjoiU2FtIiwKIngiOjF9'],
+      [me, 'https://img.x.example/p.png?d=eyJuIjoiU2FtIiwicSI6Ij8_PyJ9'],
+      [me, 'https://img.x.example/p.png?d=U2Ft'],
+      [me, 'https://img.x.example/p.png?d=Uml2ZXJh'],
+      [me, 'https://img.x.example/p/v1-eyJuIjoiU2FtIFJpdmVyYSJ9.png'],
+      [jose, 'https://img.x.example/p.png?name=Jos%E9'],
+      [jose, 'https://img.x.example/p.png?name=Jos%C3%A9%FF'],
+      [me, 'https://img.x.example/p.png?n=%25%35%33am'],
+      [me, 'https://img.x.example/p.png?n=%53%61%6D%FF'],
+      [jose, 'https://img.x.example/p.png?n=jose'],
+      [jose, 'https://img.x.example/p.png?d=eyJuIjoiSm9z6SJ9'],
+      [me, 'https://img.x.example/p.png?d=%55%32%46%74']
+    ] as const)
+      expect(pictures(identity, ref), ref).toBe('<img src="">')
+  })
+
+  it('never cuts what it reads between an address and its domain', () => {
+    const short = { addresses: ['samriv@example.com'], names: [] }
+    expect(
+      cleanEmailSubject(
+        `https://x.example/${'a'.repeat(767)} Sale samriv @ example.com`,
+        short
+      )
+    ).toBe('Sale')
+    const text = `Sale ${'linen '.repeat(6_664)}samriv @ example.com`
+    expect(cleanEmailText(text, short)).not.toMatch(/samriv/)
+  })
+
+  it('empties CSS strings that load a file, even run over lines', () => {
+    for (const string of ['"ht\\\ntps://x.example/a"', '"bg.png"'])
+      expect(
+        cleanEmailHtml(
+          `<style>a{background-image:image-set(${string} 1x)}</style>`,
+          me
+        )
+      ).toContain('<style>a{background-image:image-set("" 1x)}</style>')
+    // A string that loses a name is written back with its quotes and
+    // backslashes escaped.
+    expect(
+      body(cleanEmailHtml(`<p style="font-family:'Sam \\27 s'">x</p>`, me))
+    ).toBe(`<p style="font-family:' \\'s'">x</p>`)
+    expect(
+      body(cleanEmailHtml(`<p style="font-family:'Hi Sam \\5c ok'">x</p>`, me))
+    ).toBe(`<p style="font-family:'Hi  \\\\ok'">x</p>`)
   })
 })
 

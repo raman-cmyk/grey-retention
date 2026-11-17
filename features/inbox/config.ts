@@ -23,8 +23,14 @@ type Env = Record<string, string | undefined>
  * the inbox subscribed to newsletters with, comma separated (e.g. "Sam
  * Rivera, Sam"), so the privacy cleaner removes them from real brands'
  * emails wherever they appear. Use a persona's name, never a common word
- * ("Rose", "May"): every whole-word copy of it is removed. At most 20 names
- * of 2 to 100 characters; never logged.
+ * ("Rose", "May"): every whole-word copy of it is removed. A name is read
+ * one way only: in any case, and without an accent or ß it has when
+ * written like a name ("José" also goes as "Jose" or "JOSE", "Strauß" as
+ * "STRAUSS"), but never with one it lacks ("Noel" keeps "Noël", "Weiss"
+ * keeps "Weiß"), and never in a word of another script ("Tom" keeps the
+ * Russian "том"); only a word that mixes scripts is read as a disguise.
+ * Write it with its accents. At most 20 names of 2 to 100 characters;
+ * never logged.
  */
 export function subscriberNames(env: Env = process.env) {
   return (env.INBOX_SUBSCRIBER_NAMES ?? '')
