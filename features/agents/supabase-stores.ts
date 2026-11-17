@@ -67,7 +67,8 @@ function toRule(r: Row): MemoryRule | null {
     expiresAt: r.expires_at
       ? new Date(String(r.expires_at)).toISOString()
       : null,
-    createdAt: new Date(String(r.created_at)).toISOString()
+    createdAt: new Date(String(r.created_at)).toISOString(),
+    pinned: r.pinned === true
   })
   return parsed.success ? parsed.data : null
 }
@@ -87,7 +88,7 @@ export class SupabaseMemoryStore implements MemoryStore {
     const { data, error } = await this.db
       .from('agent_memory_rules')
       .select(
-        'id,tenant_id,industry,kind,rule,why,applies_to,confidence,source,evidence_count,status,expires_at,created_at'
+        'id,tenant_id,industry,kind,rule,why,applies_to,confidence,source,evidence_count,status,expires_at,created_at,pinned'
       )
       .or(parts.join(','))
       .eq('status', 'active')

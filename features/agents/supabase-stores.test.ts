@@ -84,6 +84,29 @@ describe('SupabaseMemoryStore', () => {
     ])
   })
 
+  it('reads pinned rules first, even unsure or past their end (UI-LRNa)', async () => {
+    const pinned = '00000000-0000-4000-8000-0000000000a3'
+    const { db } = fakeDb([
+      row(),
+      row({
+        id: pinned,
+        confidence: '0.10',
+        expires_at: '2026-11-01T00:00:00+00:00',
+        pinned: true
+      })
+    ])
+    const rules = await new SupabaseMemoryStore(db).rulesFor({
+      tenantId,
+      industry: null,
+      agent: 'x',
+      now
+    })
+    expect(rules.map((r) => [r.id, r.pinned])).toEqual([
+      [pinned, true],
+      ['00000000-0000-4000-8000-0000000000a1', false]
+    ])
+  })
+
   it('reads the newest Brand book', async () => {
     const { db } = fakeDb([], [{ version: 4, content: { returns: '30 days' } }])
     expect(await new SupabaseMemoryStore(db).brandBook(tenantId)).toEqual({
