@@ -6482,10 +6482,13 @@ export type Database = {
           etag: string | null
           failure: string | null
           finished_at: string | null
+          grid: Json | null
           height: number | null
           id: string
           origins: string[]
           path: string | null
+          reference_grid: Json | null
+          reference_path: string | null
           section: Json
           section_key: string
           state: string
@@ -6498,10 +6501,13 @@ export type Database = {
           etag?: string | null
           failure?: string | null
           finished_at?: string | null
+          grid?: Json | null
           height?: number | null
           id?: string
           origins: string[]
           path?: string | null
+          reference_grid?: Json | null
+          reference_path?: string | null
           section: Json
           section_key: string
           state?: string
@@ -6514,10 +6520,13 @@ export type Database = {
           etag?: string | null
           failure?: string | null
           finished_at?: string | null
+          grid?: Json | null
           height?: number | null
           id?: string
           origins?: string[]
           path?: string | null
+          reference_grid?: Json | null
+          reference_path?: string | null
           section?: Json
           section_key?: string
           state?: string
@@ -8255,7 +8264,14 @@ export type Database = {
         Returns: Json
       }
       record_section_render: {
-        Args: { bytes: number; height: number; job: string; lease: string }
+        Args: {
+          bytes: number
+          grid?: Json
+          height: number
+          job: string
+          lease: string
+          reference_grid?: Json
+        }
         Returns: undefined
       }
       record_section_tags: {
@@ -8364,6 +8380,7 @@ export type Database = {
           build: string
           lease: string
           origins: string[]
+          reference?: string
           section: Json
           section_key: string
         }

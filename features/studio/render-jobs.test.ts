@@ -7,10 +7,13 @@ const service = vi.hoisted(() => ({ createServiceClient: vi.fn() }))
 vi.mock('@/lib/supabase/service', () => service)
 import { GET, POST } from '@/app/api/internal/studio/renders/route'
 import {
+  maxRenderResultBytes,
+  referenceLinkSeconds,
   renderJobs,
   requestSectionRender,
   SectionNotDrawable
 } from './render-jobs'
+import { gridBudget } from './match'
 import { sectionDocument, type DesignedSection } from './section'
 
 const job = '11111111-1111-4111-8111-111111111111'
@@ -39,14 +42,18 @@ function database(
     rows?: Row[]
     buildState?: string
     uploadError?: boolean
+    /** DST-004b2b: the reference crop's link cannot be made. */
+    signError?: boolean
     rpcError?: Record<string, string>
   } = {}
 ) {
+  const signed: { bucket: string; path: string; seconds: number }[] = []
   const rows = [...(options.rows ?? [queued])]
   let current: Row = null
   const calls: { name: string; args: Record<string, unknown> }[] = []
   return {
     calls,
+    signed,
     rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
       calls.push({ name, args })
       if (options.rpcError?.[name])
@@ -95,7 +102,18 @@ function database(
                   signedUrl: `https://db.test/upload/${bucket}/${path}?token=t`
                 },
                 error: null
+              },
+        createSignedUrl: async (path: string, seconds: number) => {
+          signed.push({ bucket, path, seconds })
+          return options.signError
+            ? { data: null, error: { message: 'x' } }
+            : {
+                data: {
+                  signedUrl: `https://db.test/sign/${bucket}/${path}?token=r`
+                },
+                error: null
               }
+        }
       })
     }
   }
@@ -360,7 +378,8 @@ describe('the render route (DST-001b)', () => {
       { job, lease, failure: 'refused' },
       { job, lease, height: 640, bytes: 4_000_000 },
       { job, lease, height: 640, bytes: 1000, extra: 1 },
-      JSON.stringify({ job, lease, failure: 'timeout' }) + ' '.repeat(2_000)
+      JSON.stringify({ job, lease, failure: 'timeout' }) +
+        ' '.repeat(maxRenderResultBytes)
     ])
       expect((await post(body)).status).toBe(400)
     expect(
@@ -368,7 +387,10 @@ describe('the render route (DST-001b)', () => {
         await POST(
           req('POST', {
             body: JSON.stringify({ job, lease, failure: 'timeout' }),
-            headers: { ...auth, 'content-length': '2001' }
+            headers: {
+              ...auth,
+              'content-length': String(maxRenderResultBytes + 1)
+            }
           })
         )
       ).status
@@ -399,5 +421,140 @@ describe('the render route (DST-001b)', () => {
       database({ rpcError: { fail_section_render: 'XX000' } })
     )
     expect((await post({ job, lease, failure: 'timeout' })).status).toBe(500)
+  })
+})
+
+describe('the match score’s pictures in the render job (DST-004b2b)', () => {
+  const secret = 's'.repeat(40)
+  const post = (body: unknown) =>
+    POST(
+      new NextRequest('https://app.test/api/internal/studio/renders', {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { authorization: `Bearer ${secret}` }
+      })
+    )
+  beforeEach(() => vi.stubEnv('CRON_SECRET', secret))
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    service.createServiceClient.mockReset()
+  })
+  const crop = 'sect/00000000-0000-4000-8000-0000000000a1/1.jpg'
+  const grid = (w: number, h: number, v = 200) => ({
+    width: w,
+    height: h,
+    values: Array.from({ length: w * h }, () => v)
+  })
+  const askWith = (d: Fake, reference?: string) =>
+    requestSectionRender(db(d), {
+      build,
+      lease,
+      key: 's2-r1-abcd1234',
+      section,
+      hosts: ['cdn.shop.example'],
+      ...(reference !== undefined ? { reference } : {})
+    })
+
+  it('asks with the inbox section crop it rebuilds, and never another path', async () => {
+    const d = database()
+    await askWith(d, crop)
+    expect(last(d, 'request_section_render')).toMatchObject({ reference: crop })
+    for (const bad of [
+      'shot/00000000-0000-4000-8000-0000000000a1.jpg',
+      '../x.jpg',
+      ''
+    ]) {
+      const e = database()
+      await askWith(e, bad)
+      expect(last(e, 'request_section_render')).not.toHaveProperty('reference')
+    }
+    const none = database()
+    await askWith(none)
+    expect(last(none, 'request_section_render')).not.toHaveProperty('reference')
+  })
+
+  it('hands the browser a short link to the reference crop, or none when it cannot be made', async () => {
+    const d = database({ rows: [{ ...queued, reference_path: crop }] })
+    expect(await renderJobs(db(d))).toEqual([
+      {
+        ...handed,
+        reference: `https://db.test/sign/inbox-assets/${crop}?token=r`
+      }
+    ])
+    expect(d.signed).toEqual([
+      { bucket: 'inbox-assets', path: crop, seconds: referenceLinkSeconds }
+    ])
+    // The link fails: the section is still drawn, its match not measured.
+    const e = database({
+      rows: [{ ...queued, reference_path: crop }],
+      signError: true
+    })
+    expect(await renderJobs(db(e))).toEqual([handed])
+    // A path that is not a section crop is never signed.
+    const f = database({
+      rows: [{ ...queued, reference_path: 'img/abc.png' }]
+    })
+    expect(await renderJobs(db(f))).toEqual([handed])
+    expect(f.signed).toEqual([])
+    // No reference: no link.
+    const g = database()
+    expect(await renderJobs(db(g))).toEqual([handed])
+    expect(g.signed).toEqual([])
+  })
+
+  it('records the drawing’s grid and its reference’s; one that is not a grid is dropped, never the picture', async () => {
+    const d = database()
+    service.createServiceClient.mockReturnValue(d)
+    const drawn = { job, lease, height: 640, bytes: 1000 }
+    expect(
+      (
+        await post({
+          ...drawn,
+          grid: grid(48, 51),
+          referenceGrid: grid(48, 51, 240)
+        })
+      ).status
+    ).toBe(200)
+    expect(last(d, 'record_section_render')).toEqual({
+      ...drawn,
+      grid: grid(48, 51),
+      reference_grid: grid(48, 51, 240)
+    })
+    // Grids are optional, as before.
+    expect((await post(drawn)).status).toBe(200)
+    expect(last(d, 'record_section_render')).toEqual(drawn)
+    for (const bad of [
+      { width: 2, height: 2, values: [1, 2, 3] },
+      { width: 1, height: 1, values: [300] },
+      { width: 1, height: 1, values: [1.5] },
+      { width: 0, height: 1, values: [] },
+      { width: 1, height: 1, values: [1], note: 'x' },
+      grid(gridBudget.columns + 1, 2),
+      grid(2, gridBudget.rows + 1),
+      'grid'
+    ]) {
+      expect((await post({ ...drawn, grid: bad })).status).toBe(200)
+      expect(last(d, 'record_section_render')).toEqual(drawn)
+    }
+  })
+
+  it('takes two grids at the most the budget allows, inside the route’s limit', async () => {
+    const d = database()
+    service.createServiceClient.mockReturnValue(d)
+    const biggest = grid(gridBudget.columns, gridBudget.rows, 255)
+    const body = {
+      job,
+      lease,
+      height: 640,
+      bytes: 1000,
+      grid: biggest,
+      referenceGrid: biggest
+    }
+    expect(JSON.stringify(body).length).toBeLessThan(maxRenderResultBytes)
+    expect((await post(body)).status).toBe(200)
+    expect(last(d, 'record_section_render')).toMatchObject({
+      grid: biggest,
+      reference_grid: biggest
+    })
   })
 })
