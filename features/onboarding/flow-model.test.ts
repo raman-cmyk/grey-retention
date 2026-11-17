@@ -3,6 +3,7 @@ import type { KlaviyoState } from '@/features/settings/read-model'
 import {
   klaviyoWorking,
   openPlace,
+  setupDestination,
   setupFlow,
   siteDomain,
   websiteOf,
@@ -196,6 +197,31 @@ describe('setupFlow (UI-ONBa)', () => {
     expect(openPlace(flow)).toBe('finish')
     expect(openPlace(flow, 'rivals')).toBe('rivals')
     expect(setupFlow({ ...all, finished: true }).finished).toBe(true)
+  })
+
+  it('goes Home only once finished with every step still done (UI-ONBe)', () => {
+    expect(setupDestination(setupFlow({ ...all, finished: true }))).toBe('home')
+    expect(
+      setupDestination(setupFlow({ ...all, finished: true }), 'store')
+    ).toBe('store')
+    // A finished owner changed the website: the brand is looked at again.
+    const changed = setupFlow({
+      ...all,
+      domain: 'cedarlane-two.example',
+      finished: true
+    })
+    expect(setupDestination(changed)).toBe('brand')
+    expect(setupDestination(setupFlow(all))).toBe('finish')
+  })
+
+  it('keeps /setup on the finish, never Home, while Brand waits', () => {
+    const waiting = { ...all, confirmedSite: null, siteReading: true }
+    expect(setupDestination(setupFlow(waiting))).toBe('finish')
+    // A finished owner whose new website is read first: not Home either.
+    expect(setupDestination(setupFlow({ ...waiting, finished: true }))).toBe(
+      'finish'
+    )
+    expect(setupDestination(setupFlow(waiting), 'brand')).toBe('brand')
   })
 })
 

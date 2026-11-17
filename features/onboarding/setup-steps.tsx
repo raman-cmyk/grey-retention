@@ -1,21 +1,29 @@
-import { TicketPercent } from 'lucide-react'
+import { Store, TicketPercent } from 'lucide-react'
+import { ActionAnswers, ActionButton } from '@/components/gros/action'
 import { ButtonLink } from '@/components/gros/button'
 import { ListRow, RowList } from '@/components/gros/list-row'
 import { formatBrandDate } from '@/lib/brand-time'
 import type { SetupView } from './flow'
 import { klaviyoWorking } from './flow-model'
+import { maxFollowed, type SetupRivals } from './rivals'
 import {
   addSetupCode,
   connectSetupKlaviyo,
-  saveSetupDiscount
+  finishSetup,
+  followRival,
+  followSuggestion,
+  hideRival,
+  saveSetupDiscount,
+  skipRivals
 } from './setup-actions'
 import { SetupForm } from './setup-form'
 import { Facts, OwnerOnly, setupPath, Title } from './setup-parts'
 
 /**
- * The Klaviyo and Discount steps of `/setup` (UI-ONBd), on the actions the
- * Settings cards use: the owner's buttons only, a key never shown back
- * (only its masked hint), the offers as saved.
+ * The Klaviyo, Discount and Rivals steps of `/setup` and its finish
+ * (UI-ONBd, UI-ONBe), on the actions the Settings cards and the
+ * Inspiration page use: the owner's buttons only, a key never shown back
+ * (only its masked hint), the offers and followed brands as saved.
  */
 export function KlaviyoStep({ view }: { view: SetupView }) {
   const k = view.klaviyo
@@ -90,13 +98,13 @@ export function KlaviyoStep({ view }: { view: SetupView }) {
   )
 }
 
-function CodeThumb() {
+function Thumb({ icon: Icon }: { icon: typeof Store }) {
   return (
     <span
       aria-hidden
       className="gros-thumb flex shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--mist)] text-[var(--stone)]"
     >
-      <TicketPercent size={18} strokeWidth={2} />
+      <Icon size={18} strokeWidth={2} />
     </span>
   )
 }
@@ -144,7 +152,7 @@ export function DiscountStep({ view }: { view: SetupView }) {
             {codes.map((code) => (
               <ListRow
                 key={code.id}
-                thumbnail={<CodeThumb />}
+                thumbnail={<Thumb icon={TicketPercent} />}
                 title={code.code}
                 details={[
                   `${code.percent}% off`,
@@ -190,6 +198,164 @@ export function DiscountStep({ view }: { view: SetupView }) {
           />
         ) : null}
       </section>
+    </>
+  )
+}
+
+export function RivalsStep({
+  view,
+  rivals
+}: {
+  view: SetupView
+  rivals: SetupRivals | null
+}) {
+  const following = rivals?.following ?? []
+  // Follow only while there is room (the Inspiration page's own limit).
+  const room = following.length < maxFollowed
+  return (
+    <>
+      <Title text="Your rivals" />
+      {/* One place for the rows' answers, kept when the list empties. */}
+      <ActionAnswers>
+        {!rivals ? (
+          <p className="type-body text-[var(--stone)]">
+            Your rivals could not be read just now. Open setup again in a
+            minute.
+          </p>
+        ) : (
+          <>
+            {following.length ? (
+              <RowList label="Brands you follow">
+                {following.map((label) => (
+                  <ListRow
+                    key={label}
+                    thumbnail={<Thumb icon={Store} />}
+                    title={label}
+                    details={['Following']}
+                    end={null}
+                  />
+                ))}
+              </RowList>
+            ) : null}
+            <section
+              aria-labelledby="setup-suggested"
+              className="flex w-full flex-col gap-[var(--space-4)]"
+            >
+              <h2 id="setup-suggested" className="type-heading">
+                Brands like yours
+              </h2>
+              {rivals.suggestions === null ? (
+                <p className="type-body text-[var(--stone)]">
+                  Suggestions could not be read just now.
+                </p>
+              ) : rivals.suggestions.length === 0 ? (
+                <p className="type-body text-[var(--stone)]">
+                  No brands to suggest yet.
+                </p>
+              ) : (
+                <RowList label="Brands like yours">
+                  {rivals.suggestions.map((s) => (
+                    <ListRow
+                      key={s.captureId}
+                      thumbnail={<Thumb icon={Store} />}
+                      title={s.name}
+                      details={[s.domain, s.reason]}
+                      end={
+                        view.owner ? (
+                          <div className="flex flex-wrap gap-[var(--space-2)]">
+                            {s.followable && room ? (
+                              <ActionButton
+                                action={followSuggestion}
+                                label="Follow"
+                                spokenLabel={s.name}
+                                kind="outline"
+                                size="row"
+                                fields={{ domain: s.domain }}
+                              />
+                            ) : null}
+                            <ActionButton
+                              action={hideRival}
+                              label="Hide"
+                              spokenLabel={s.name}
+                              kind="quiet"
+                              size="row"
+                              fields={{ capture: s.captureId }}
+                            />
+                          </div>
+                        ) : null
+                      }
+                    />
+                  ))}
+                </RowList>
+              )}
+            </section>
+            {view.owner && rivals.sample && room ? (
+              <SetupForm
+                action={followRival}
+                label="Follow"
+                kind="outline"
+                fields={[
+                  {
+                    name: 'domain',
+                    label: 'A brand’s website',
+                    inputMode: 'url',
+                    autoComplete: 'off',
+                    spellCheck: false,
+                    maxLength: 300,
+                    required: true
+                  }
+                ]}
+              />
+            ) : null}
+          </>
+        )}
+        {!view.owner ? (
+          <OwnerOnly />
+        ) : following.length ? (
+          <ButtonLink href={setupPath()} label="Continue" size="focus" />
+        ) : (
+          <ActionButton
+            action={skipRivals}
+            label="Skip for now"
+            kind="outline"
+            size="focus"
+          />
+        )}
+      </ActionAnswers>
+    </>
+  )
+}
+
+/**
+ * The finish, once no step is left. While Brand still waits for the website
+ * to be read, Finish is not offered (it needs the brand confirmed, here and
+ * in the database): the owner is told when it comes, and Home is the way on.
+ */
+export function FinishStep({ view }: { view: SetupView }) {
+  const max = view.offers?.maxDiscountPercent ?? null
+  const waiting = !!view.flow?.steps.some((s) => s.waiting)
+  return (
+    <>
+      <Title text={waiting ? 'Almost ready' : 'Ready to plan'} />
+      <Facts
+        items={[
+          ['Store', view.brand?.domain || 'Not saved'],
+          ['Klaviyo', view.klaviyo?.accountLabel ?? 'Connected'],
+          ['Biggest discount', max === null ? 'Not set' : `${max}%`]
+        ]}
+      />
+      {waiting ? (
+        <p className="type-body text-[var(--stone)]">
+          We’ll ask you to confirm your brand once your website is read.
+        </p>
+      ) : null}
+      {!view.owner ? (
+        <OwnerOnly />
+      ) : waiting ? (
+        <ButtonLink href="/home" label="Open Home" size="focus" />
+      ) : (
+        <ActionButton action={finishSetup} label="Finish setup" size="focus" />
+      )}
     </>
   )
 }

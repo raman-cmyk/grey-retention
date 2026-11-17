@@ -1,4 +1,3 @@
-import type { Route } from 'next'
 import { ActionButton } from '@/components/gros/action'
 import { ButtonLink } from '@/components/gros/button'
 import { Progress, type ProgressStep } from '@/components/gros/progress'
@@ -11,8 +10,14 @@ import { confirmBrand, readStoreAgain, saveStore } from './setup-actions'
 import { SetupError } from './setup-error'
 import { SetupForm } from './setup-form'
 import { Facts, OwnerOnly, setupPath, Title } from './setup-parts'
-import { DiscountStep, KlaviyoStep } from './setup-steps'
+import type { SetupRivals } from './rivals'
 import { KeepLast, KeepShown } from './setup-keep'
+import {
+  DiscountStep,
+  FinishStep,
+  KlaviyoStep,
+  RivalsStep
+} from './setup-steps'
 import { StepFocus } from './setup-title'
 
 /**
@@ -24,10 +29,13 @@ import { StepFocus } from './setup-title'
  */
 export function SetupScreen({
   view,
-  place
+  place,
+  rivals = null
 }: {
   view: SetupView
   place: SetupPlace
+  /** The Rivals step's read, when it is open. */
+  rivals?: SetupRivals | null
 }) {
   const flow = view.flow
   if (!flow)
@@ -73,8 +81,10 @@ export function SetupScreen({
           <KlaviyoStep view={view} />
         ) : place === 'discount' ? (
           <DiscountStep view={view} />
+        ) : place === 'rivals' ? (
+          <RivalsStep view={view} rivals={rivals} />
         ) : (
-          <LaterStep place={place} />
+          <FinishStep view={view} />
         )}
       </StepFocus>
     </FocusShell>
@@ -355,21 +365,5 @@ function Swatches({ colors }: { colors: string[] }) {
         </span>
       ))}
     </span>
-  )
-}
-
-/** Rivals and the finish, still to be built here (UI-ONBe). */
-const later: Record<'rivals' | 'finish', [string, string, Route]> = {
-  rivals: ['Your rivals', 'Open inspiration', '/library/inspirations'],
-  finish: ['You are set', 'Go to Home', '/home']
-}
-
-function LaterStep({ place }: { place: 'rivals' | 'finish' }) {
-  const [title, button, href] = later[place]
-  return (
-    <>
-      <Title text={title} />
-      <ButtonLink href={href} label={button} size="focus" />
-    </>
   )
 }

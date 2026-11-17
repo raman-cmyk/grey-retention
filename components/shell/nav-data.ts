@@ -139,7 +139,7 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
         label: 'More tools',
         icon: 'more',
         items: [
-          { label: 'Get started', href: '/get-started', icon: 'start' },
+          { label: 'Get started', href: '/setup', icon: 'start' },
           {
             label: 'Templates & references',
             href: '/email-library',

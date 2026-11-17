@@ -7,12 +7,17 @@ import { requireRequestContext } from '@/features/auth/application/request-conte
 import { getServerEnvironment } from '@/lib/env/server'
 import { createClient } from '@/lib/supabase/server'
 import { connectKlaviyo } from '@/features/connections/actions'
+import { trackDomain } from '@/features/library/inspirations/actions'
+import { trackedDomainOf } from '@/features/library/inspirations/domain'
+import { hideBrand } from '@/features/inspiration/actions'
+import { defaultAssistant } from '@/components/gros/nav'
 import { addDiscountCode, saveMaxDiscount } from '@/features/offers/actions'
 import { parseCode, parseExpiry, parsePercent } from '@/features/offers/fields'
 import { startAdsReading } from './ads/start'
 import { startCatalogReading } from './catalog/start'
 import { startHistoryReading } from './history/start'
-import { maxBrandWords, maxWebsite, websiteOf } from './flow-model'
+import { setupReadModel } from './flow'
+import { maxBrandWords, maxWebsite, setupSteps, websiteOf } from './flow-model'
 import { startReviewsReading } from './reviews/start'
 import { startSiteReading } from './site/start'
 
@@ -299,4 +304,141 @@ export async function addSetupCode(
   if (added.error) return { error: added.error }
   revalidatePath(setupPath)
   return { message: added.message }
+}
+
+/** Whether the workspace follows a brand's website now. */
+async function follows(session: Session, typed: FormDataEntryValue | null) {
+  if (typeof typed !== 'string') return false
+  const { context, db } = session
+  const capture = await db
+    .from('competitor_captures')
+    .select('id')
+    .eq('domain', trackedDomainOf(typed))
+    .maybeSingle()
+  if (capture.error || !capture.data) return false
+  const followed = await db
+    .from('competitor_subscriptions')
+    .select('id')
+    .eq('tenant_id', context.tenantId)
+    .eq('capture_id', capture.data.id)
+    .eq('active', true)
+    .maybeSingle()
+  return !followed.error && !!followed.data
+}
+
+/**
+ * Rivals: follow a brand, by the Inspiration page's own action. A follow
+ * that was saved but could not yet ask for the brand's emails is followed
+ * all the same: its words are a note, not a refusal.
+ */
+async function follow(
+  form: FormData
+): Promise<SetupAnswer & { saved?: boolean }> {
+  const session = await ownerSession()
+  if ('error' in session) return { error: session.error }
+  const followed = await trackDomain({}, form)
+  const saved = !followed.error || (await follows(session, form.get('domain')))
+  if (!saved) return { error: followed.error }
+  revalidatePath(setupPath)
+  // Saved, but its emails were not asked for yet: the brand is already
+  // under the brands followed, so say what happens next, not "try again".
+  const typed = form.get('domain')
+  const domain = typeof typed === 'string' ? trackedDomainOf(typed) : ''
+  return {
+    message: followed.error
+      ? `Following ${domain}. We will try to read its emails again soon.`
+      : followed.message,
+    saved
+  }
+}
+
+/** Rivals: a website the owner types; its refusal goes under the field. */
+export async function followRival(
+  _state: SetupAnswer,
+  form: FormData
+): Promise<SetupAnswer> {
+  const followed = await follow(form)
+  return followed.error
+    ? { fields: { domain: followed.error } }
+    : { message: followed.message }
+}
+
+/** Rivals: Follow on a suggested brand's row. */
+export async function followSuggestion(
+  _state: SetupAnswer,
+  form: FormData
+): Promise<SetupAnswer> {
+  const followed = await follow(form)
+  return followed.error
+    ? { error: followed.error }
+    : { message: followed.message }
+}
+
+/**
+ * Rivals: Hide on a suggested brand's row (never suggested again), by the
+ * Inspiration page's own action and words.
+ */
+export async function hideRival(
+  _state: SetupAnswer,
+  form: FormData
+): Promise<SetupAnswer> {
+  const session = await ownerSession()
+  if ('error' in session) return { error: session.error }
+  const hidden = await hideBrand({}, form)
+  if (hidden.error)
+    return {
+      // Inspiration's words point to Inspiration; here they point to setup.
+      error: hidden.error.startsWith('That brand is no longer suggested')
+        ? 'That brand is no longer suggested here. Open setup again.'
+        : hidden.error
+    }
+  revalidatePath(setupPath)
+  return { message: `Hidden. ${defaultAssistant} will not suggest it again.` }
+}
+
+/** Rivals: the owner skips following a brand for now. */
+export async function skipRivals(): Promise<SetupAnswer> {
+  const session = await ownerSession()
+  if ('error' in session) return { error: session.error }
+  const saved = await session.db.rpc('save_onboarding_step', {
+    t: session.context.tenantId,
+    step: 'rivals'
+  })
+  if (saved.error) return { error: 'We could not save this step. Try again.' }
+  revalidatePath(setupPath)
+  redirect(setupPath)
+}
+
+/** The step a refused finish names, in the owner's words. */
+const unfinished = (key: string | undefined) => {
+  const name = setupSteps.find((s) => s.key === key)?.name
+  return name ? `Finish the ${name} step first.` : 'Finish every step first.'
+}
+
+/**
+ * Finish: only once every step is done, as the screen reads it (Klaviyo
+ * with the live-key rule) and as the database checks it again. Lands on
+ * Home.
+ */
+export async function finishSetup(): Promise<SetupAnswer> {
+  const session = await ownerSession()
+  if ('error' in session) return { error: session.error }
+  const view = await setupReadModel(session.context)
+  if (!view.flow)
+    return { error: 'We could not read your setup. Try again in a minute.' }
+  const todo = view.flow.steps.find((s) => !s.done)
+  if (todo) return { error: `Finish the ${todo.name} step first.` }
+  const saved = await session.db.rpc('save_onboarding_step', {
+    t: session.context.tenantId,
+    step: 'finish'
+  })
+  if (saved.error)
+    return {
+      error:
+        saved.error.code === 'PT409'
+          ? unfinished(saved.error.details)
+          : 'We could not finish setup. Try again.'
+    }
+  revalidatePath(setupPath)
+  redirect('/home' as Route)
 }

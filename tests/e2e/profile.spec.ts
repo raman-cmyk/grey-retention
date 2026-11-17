@@ -54,7 +54,7 @@ async function signIn(page: Page, email: string, password: string) {
   await page.getByLabel('Email', { exact: true }).fill(email)
   await page.getByLabel('Password', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await expect(page).toHaveURL(/\/(home|get-started)/)
+  await expect(page).toHaveURL(/\/(home|setup)/)
 }
 
 test('UIR-014 owner updates details and changes password with inline checks', async ({

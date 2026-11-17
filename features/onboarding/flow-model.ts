@@ -175,3 +175,16 @@ export function openPlace(flow: SetupFlow, asked?: string | null): SetupPlace {
   if (index !== -1 && index <= flow.current) return flow.steps[index]!.key
   return flow.steps[flow.current]?.key ?? 'finish'
 }
+
+/**
+ * Where `/setup` goes (UI-ONBe): Home only once setup is finished and every
+ * step still done (a finished owner who changed his website confirms the
+ * brand again first); else the place `openPlace` opens.
+ */
+export function setupDestination(
+  flow: SetupFlow,
+  asked?: string | null
+): SetupPlace | 'home' {
+  if (flow.finished && flow.allDone && !asked) return 'home'
+  return openPlace(flow, asked)
+}

@@ -1,17 +1,39 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 vi.mock('./setup-actions', () => ({
   connectSetupKlaviyo: vi.fn(async () => ({})),
   saveSetupDiscount: vi.fn(async () => ({})),
-  addSetupCode: vi.fn(async () => ({}))
+  addSetupCode: vi.fn(async () => ({})),
+  followRival: vi.fn(async () => ({})),
+  followSuggestion: vi.fn(async () => ({
+    message: 'Tracking northwind.example.'
+  })),
+  hideRival: vi.fn(async () => ({
+    message: 'Hidden. GROS will not suggest it again.'
+  })),
+  skipRivals: vi.fn(async () => ({})),
+  finishSetup: vi.fn(async () => ({}))
 }))
 
 import type { KlaviyoState } from '@/features/settings/read-model'
 import type { SetupView } from './flow'
 import { setupFlow } from './flow-model'
-import { DiscountStep, KlaviyoStep } from './setup-steps'
+import type { SetupRivals } from './rivals'
+import {
+  DiscountStep,
+  FinishStep,
+  KlaviyoStep,
+  RivalsStep
+} from './setup-steps'
 
 afterEach(cleanup)
 
@@ -219,6 +241,233 @@ describe('DiscountStep (UI-ONBd)', () => {
   it('gives staff the saved discount only', () => {
     render(<DiscountStep view={view({ owner: false })} />)
     expect(screen.getByText('Not set')).toBeVisible()
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+})
+
+const rivals = (over: Partial<SetupRivals> = {}): SetupRivals => ({
+  sample: true,
+  following: [],
+  suggestions: [
+    {
+      captureId: 'cap-1',
+      domain: 'northwind.example',
+      name: 'Northwind',
+      industry: 'apparel',
+      reason: 'Sells apparel like you',
+      followable: true
+    },
+    {
+      captureId: 'cap-2',
+      domain: 'realbrand.com',
+      name: 'Real Brand',
+      industry: 'apparel',
+      reason: 'Sells apparel like you',
+      followable: false
+    }
+  ],
+  ...over
+})
+
+describe('RivalsStep (UI-ONBe)', () => {
+  it('suggests brands like the store with Follow (sample brands only) and Hide, and a website field', () => {
+    render(<RivalsStep view={view()} rivals={rivals()} />)
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Your rivals' })
+    ).toBeVisible()
+    expect(screen.getByText('Northwind')).toBeVisible()
+    // Each row's buttons say the brand's name to a screen reader.
+    expect(
+      screen.getByRole('button', { name: 'Follow: Northwind' })
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: 'Follow: Real Brand' })
+    ).toBeNull()
+    expect(
+      screen.getByRole('button', { name: 'Hide: Real Brand' })
+    ).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Follow' })).toBeVisible()
+    expect(screen.getByLabelText('A brand’s website')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Skip for now' })).toBeVisible()
+    expect(screen.queryByRole('link', { name: 'Continue' })).toBeNull()
+  })
+
+  it('offers Follow only while there is room for another brand', () => {
+    render(
+      <RivalsStep
+        view={view()}
+        rivals={rivals({
+          following: Array.from({ length: 10 }, (_, i) => `b${i}.example`)
+        })}
+      />
+    )
+    expect(screen.queryByRole('button', { name: /^Follow/ })).toBeNull()
+    expect(screen.queryByLabelText('A brand’s website')).toBeNull()
+    expect(
+      screen.getByRole('button', { name: 'Hide: Northwind' })
+    ).toBeVisible()
+  })
+
+  it('gives a real store no website field (real brands are not followed yet)', () => {
+    render(
+      <RivalsStep
+        view={view()}
+        rivals={rivals({ sample: false, suggestions: [] })}
+      />
+    )
+    expect(screen.queryByLabelText('A brand’s website')).toBeNull()
+    expect(screen.getByText('No brands to suggest yet.')).toBeVisible()
+  })
+
+  it('lists the brands followed, with Continue', () => {
+    render(
+      <RivalsStep
+        view={view()}
+        rivals={rivals({ following: ['northwind.example'] })}
+      />
+    )
+    expect(screen.getByText('northwind.example')).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Continue' })).toHaveAttribute(
+      'href',
+      '/setup'
+    )
+    expect(screen.queryByRole('button', { name: 'Skip for now' })).toBeNull()
+  })
+
+  it('says when rivals or suggestions cannot be read, and gives staff no buttons', () => {
+    render(<RivalsStep view={view()} rivals={null} />)
+    expect(
+      screen.getByText(/Your rivals could not be read just now/)
+    ).toBeVisible()
+    cleanup()
+    render(<RivalsStep view={view()} rivals={rivals({ suggestions: null })} />)
+    expect(
+      screen.getByText('Suggestions could not be read just now.')
+    ).toBeVisible()
+    cleanup()
+    render(<RivalsStep view={view({ owner: false })} rivals={rivals()} />)
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+})
+
+describe('RivalsStep answers (UI-ONBe)', () => {
+  const one = (followable: boolean) =>
+    rivals({
+      suggestions: [
+        {
+          captureId: 'cap-1',
+          domain: 'northwind.example',
+          name: 'Northwind',
+          industry: 'apparel',
+          reason: 'Sells apparel like you',
+          followable
+        }
+      ]
+    })
+
+  it('keeps the answer when the last suggestion is hidden and the list empties', async () => {
+    const { rerender } = render(
+      <RivalsStep view={view()} rivals={one(false)} />
+    )
+    const hide = screen.getByRole('button', { name: 'Hide: Northwind' })
+    await waitFor(() => expect(hide).toBeEnabled())
+    await act(async () => fireEvent.click(hide))
+    await waitFor(() =>
+      expect(
+        screen.getByText('Hidden. GROS will not suggest it again.')
+      ).toBeVisible()
+    )
+    rerender(<RivalsStep view={view()} rivals={rivals({ suggestions: [] })} />)
+    expect(screen.getByText('No brands to suggest yet.')).toBeVisible()
+    expect(
+      screen.getByText('Hidden. GROS will not suggest it again.')
+    ).toBeVisible()
+  })
+
+  it('keeps the answer when the last suggestion is followed', async () => {
+    const { rerender } = render(<RivalsStep view={view()} rivals={one(true)} />)
+    const follow = screen.getByRole('button', { name: 'Follow: Northwind' })
+    await waitFor(() => expect(follow).toBeEnabled())
+    await act(async () => fireEvent.click(follow))
+    await waitFor(() =>
+      expect(screen.getByText('Tracking northwind.example.')).toBeVisible()
+    )
+    rerender(
+      <RivalsStep
+        view={view()}
+        rivals={rivals({ suggestions: [], following: ['northwind.example'] })}
+      />
+    )
+    expect(screen.getByText('Tracking northwind.example.')).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Continue' })).toBeVisible()
+  })
+})
+
+describe('FinishStep (UI-ONBe)', () => {
+  it('sums up what was set, with Finish setup for the owner only', () => {
+    render(
+      <FinishStep
+        view={view({
+          klaviyo: klaviyo(),
+          offers: {
+            maxDiscountPercent: 0,
+            grossMarginPercent: null,
+            marginFloorPercent: null,
+            revision: 1,
+            codes: []
+          }
+        })}
+      />
+    )
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Ready to plan' })
+    ).toBeVisible()
+    expect(screen.getByText('cedarlane.example')).toBeVisible()
+    expect(screen.getByText('Cedar Lane sample')).toBeVisible()
+    expect(screen.getByText('0%')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Finish setup' })).toBeVisible()
+    cleanup()
+    render(<FinishStep view={view({ owner: false })} />)
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('withholds Finish while Brand waits for the website, with Home as the way on', () => {
+    const waiting = view({
+      klaviyo: klaviyo(),
+      flow: setupFlow({
+        domain: 'cedarlane.example',
+        confirmedSite: null,
+        siteReading: true,
+        klaviyoWorking: true,
+        maxDiscountSet: true,
+        following: 0,
+        rivalsSkipped: true,
+        finished: false
+      })
+    })
+    render(<FinishStep view={waiting} />)
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Almost ready' })
+    ).toBeVisible()
+    expect(
+      screen.getByText(
+        'We’ll ask you to confirm your brand once your website is read.'
+      )
+    ).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Finish setup' })).toBeNull()
+    expect(screen.getByRole('link', { name: 'Open Home' })).toHaveAttribute(
+      'href',
+      '/home'
+    )
+    cleanup()
+    render(<FinishStep view={{ ...waiting, owner: false }} />)
+    expect(
+      screen.getByText(
+        'We’ll ask you to confirm your brand once your website is read.'
+      )
+    ).toBeVisible()
+    expect(screen.queryByRole('link')).toBeNull()
     expect(screen.queryByRole('button')).toBeNull()
   })
 })

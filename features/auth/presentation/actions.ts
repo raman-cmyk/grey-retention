@@ -108,12 +108,22 @@ export async function signIn(
   if (error) {
     return { status: 'error', message: 'Email or password is incorrect.' }
   }
-  if (surface === 'client' && !(await resolveRequestContext('client'))) {
+  const context =
+    surface === 'client' ? await resolveRequestContext('client') : null
+  if (surface === 'client' && !context) {
     redirect('/onboarding' as Route)
   }
   // Back to the page the session ran out on, when it is a safe one.
   const next = safeNext(surface, formData.get('next'))
-  redirect((next as Route | null) ?? landingBySurface[surface])
+  if (next) redirect(next as Route)
+  // An owner whose setup is neither finished nor done lands on it (UI-ONBe).
+  redirect(
+    context?.kind === 'client'
+      ? await import('@/features/onboarding/landing').then((m) =>
+          m.setupLanding(context)
+        )
+      : landingBySurface[surface]
+  )
 }
 
 export async function signOut() {
@@ -297,5 +307,5 @@ export async function createWorkspace(
     path: '/',
     maxAge: 60 * 60 * 24 * 30
   })
-  redirect('/get-started')
+  redirect('/setup')
 }
