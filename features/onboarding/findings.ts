@@ -137,6 +137,17 @@ export const topicValues = {
         .max(500)
         .refine((u) => u.startsWith('https://'), 'https only')
     })
+    .strict(),
+  /**
+   * The founder's own words on the About page (REL-ONB2 part d): their
+   * name and role as the page writes them; the note is the evidence's
+   * quote, whole sentences of the page in its own letters (`whole`).
+   */
+  founder: z
+    .object({
+      name: z.string().max(60).regex(/\S/),
+      role: z.string().max(60).regex(/\S/).optional()
+    })
     .strict()
 } as const
 export type FindingTopic = keyof typeof topicValues
@@ -156,7 +167,8 @@ export const sourceTopics: Record<FindingSource, readonly FindingTopic[]> = {
     'audience',
     'tone',
     'claim',
-    'contact'
+    'contact',
+    'founder'
   ],
   catalog: ['locale', 'price_band', 'offering', 'claim'],
   klaviyo_history: ['offering', 'audience', 'tone', 'claim', 'performance'],
@@ -199,7 +211,12 @@ export const evidenceSchema = z.union([
       .refine((u) => u.startsWith('https://'), 'https only'),
     /** Words exactly as the page shows them. */
     quote: z.string().min(1).max(300),
-    page: z.enum(sitePageKinds).optional()
+    page: z.enum(sitePageKinds).optional(),
+    /**
+     * The quote is whole sentences of the page, in the page's own letters
+     * (REL-ONB2 part d): marked by the Site reader on a founder's note only.
+     */
+    whole: z.literal(true).optional()
   }),
   z.object({ ref: z.string().min(1).max(200) })
 ])
@@ -217,6 +234,12 @@ export const findingInput = z
     const value = topicValues[f.topic].safeParse(f.value)
     if (!value.success)
       ctx.addIssue({ code: 'custom', message: `value for ${f.topic}` })
+    // A founder's note is whole sentences of the About page, and only it
+    // is marked so (`record_site_findings` holds the same rule).
+    const whole = 'quote' in f.evidence && f.evidence.whole === true
+    const about = 'quote' in f.evidence && f.evidence.page === 'about'
+    if ((f.topic === 'founder') !== whole || (whole && !about))
+      ctx.addIssue({ code: 'custom', message: 'whole sentences' })
   })
 export type FindingInput = z.infer<typeof findingInput>
 
