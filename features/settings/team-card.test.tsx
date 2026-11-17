@@ -224,14 +224,22 @@ describe('Team card on Settings (UI-SETb)', () => {
     ).toHaveAttribute('href', '/team')
   })
 
-  it('never lets a manager change their own access', () => {
-    render(teamCard({ roster: [{ ...ana, isMe: true }, sam] }))
+  it('never lets a manager change the owner or their own access', () => {
+    // A manager (Ana) looks: the owner is someone else.
+    render(
+      teamCard({
+        roster: [{ ...me, isMe: false }, { ...ana, isMe: true }, sam]
+      })
+    )
     const rows = within(
       within(card()).getByRole('list', { name: 'Members' })
     ).getAllByRole('listitem')
-    expect(rows[0]).toHaveTextContent('Ana Lee (you)')
+    expect(rows[0]).toHaveTextContent('Olive Owner')
+    expect(rows[0]).not.toHaveTextContent('(you)')
     expect(within(rows[0]!).queryByRole('button')).toBeNull()
-    expect(within(rows[1]!).getAllByRole('button')).toHaveLength(2)
+    expect(rows[1]).toHaveTextContent('Ana Lee (you)')
+    expect(within(rows[1]!).queryByRole('button')).toBeNull()
+    expect(within(rows[2]!).getAllByRole('button')).toHaveLength(2)
   })
 
   it('shows staff the team with no buttons, no invites and no form', () => {
@@ -449,7 +457,7 @@ describe('Team card on Settings (UI-SETb)', () => {
     })
     await user.click(make)
     expect(ask).toHaveBeenCalledWith(
-      'Make Sam Staff a Manager? Managers can invite people, change their access and see reports and usage.'
+      'Make Sam Staff a Manager? Managers can invite people, change their access and see reports and usage. Only the owner approves copy, designs and sending.'
     )
     expect(team.changeMember).not.toHaveBeenCalled()
     ask.mockReturnValue(true)
@@ -473,16 +481,22 @@ describe('Team card on Settings (UI-SETb)', () => {
 
   it('deactivates and reactivates only after the confirm', async () => {
     const user = userEvent.setup()
-    const ask = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const ask = vi.spyOn(window, 'confirm').mockReturnValue(false)
     team.changeMember
       .mockResolvedValueOnce({ message: 'Sam Staff was deactivated.' })
       .mockResolvedValueOnce({
         error: 'You cannot change your own access. Ask the owner.'
       })
     render(teamCard())
-    await user.click(
-      within(card()).getByRole('button', { name: 'Deactivate: Sam Staff' })
-    )
+    const deactivate = within(card()).getByRole('button', {
+      name: 'Deactivate: Sam Staff'
+    })
+    // No sends nothing.
+    await user.click(deactivate)
+    expect(ask).toHaveBeenCalledOnce()
+    expect(team.changeMember).not.toHaveBeenCalled()
+    ask.mockReturnValue(true)
+    await user.click(deactivate)
     expect(ask).toHaveBeenLastCalledWith(
       'Deactivate Sam Staff? They can no longer open this workspace. Their past work stays, and you can reactivate them later.'
     )

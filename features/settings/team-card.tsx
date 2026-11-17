@@ -12,6 +12,7 @@ import {
 import {
   expiryText,
   initial,
+  ownerOnlyNote,
   roleHelp,
   roleLabel,
   type PendingInvite,
@@ -164,7 +165,7 @@ function MemberRow({
               kind="outline"
               size="row"
               fields={{ ...same, change: 'role', role: next, status: 'active' }}
-              confirm={`Make ${name} ${next === 'admin' ? 'a Manager' : 'Staff'}? ${roleHelp[next]}`}
+              confirm={`Make ${name} ${next === 'admin' ? 'a Manager' : 'Staff'}? ${roleHelp[next]} ${ownerOnlyNote}`}
             />
             <ActionButton
               key={`off-${version}`}
