@@ -523,11 +523,33 @@ describe('the match score in the rounds (DST-004b)', () => {
       state: 'done',
       match: matchTarget + 1
     })
+    // A failed score goes with its picture: the next round has none yet.
     const low = waitOf((await judge(copy(), async () => 2)).out)
-    expect(low.sections[0]).toMatchObject({ round: 2, match: 2 })
-    // Not measured: no score kept.
-    const none = await judge(copy(), async () => null)
-    expect(doneOf(none.out).sections[0]).not.toHaveProperty('match')
+    expect(low.sections[0]).toMatchObject({ round: 2 })
+    expect(low.sections[0]).not.toHaveProperty('match')
+    // Not measured: no score kept, even over one saved before.
+    const saved = waitOf(await studioRound([copy()], null, ports()))
+    saved.sections[0]!.match = 3
+    const none = await studioRound([copy()], saved, {
+      ...ports({ renders: [drawn(1)] }),
+      match: async () => null
+    })
+    expect(doneOf(none).sections[0]).not.toHaveProperty('match')
+  })
+
+  it('codes a section with no score but the one that failed it (DST-004b2d)', async () => {
+    // Coded for another reason (here the picture cannot be read): no score.
+    const saved = waitOf(await studioRound([copy()], null, ports()))
+    saved.sections[0]!.match = 3
+    const out = await studioRound([copy()], saved, {
+      ...ports({ renders: [drawn(1)], picture: [null] }),
+      match: async () => 9
+    })
+    expect(doneOf(out).sections[0]).toMatchObject({
+      state: 'coded',
+      reason: 'picture_unusable'
+    })
+    expect(doneOf(out).sections[0]).not.toHaveProperty('match')
   })
 
   it('keeps the critic’s verdict when the match cannot be measured', async () => {
@@ -584,7 +606,12 @@ describe('the match score in the rounds (DST-004b)', () => {
         work = waitOf(out)
         continue
       }
-      expect(doneOf(out).sections[0]).toMatchObject({ state: 'coded' })
+      // Coded because of the match: its last score stays with it.
+      expect(doneOf(out).sections[0]).toMatchObject({
+        state: 'coded',
+        reason: 'match_failed',
+        match: 2
+      })
       // The critic passed it: the owner’s log says the match failed.
       expect(next.coded).toHaveBeenCalledWith('s2', 'match_failed')
       expect(next.coded).not.toHaveBeenCalledWith('s2', 'critic_failed')

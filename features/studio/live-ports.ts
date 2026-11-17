@@ -215,10 +215,12 @@ export function studioPortsFor(
     },
     async sign(render) {
       const drawn = (
-        await buildRenders(db, {
-          tenant: input.tenant,
-          build: input.build
-        })
+        await buildRenders(
+          db,
+          { tenant: input.tenant, build: input.build },
+          // Only to check the picture: never its grids.
+          { grids: false }
+        )
       ).find(
         // Read again: this build's, still drawn as the studio saw it.
         (r): r is Extract<BuildRender, { state: 'drawn' }> =>

@@ -286,6 +286,8 @@ export async function studioRound(
     s.reason = reason
     delete s.tries
     delete s.render
+    // A score is kept only for the picture it failed: never another's.
+    if (reason !== 'match_failed') delete s.match
     await ports.coded(s.id, reason)
   }
   let renders: BuildRender[] | undefined
@@ -350,6 +352,8 @@ export async function studioRound(
       s.problems = verdict.problems.slice(0, 20).map((p) => cut(p, 400))
       delete s.render
       delete s.alt
+      // The next round's picture gets its own score.
+      delete s.match
     }
     if (s.state !== 'design') continue
     // Out of time, or no wait left for the picture it would ask for (one

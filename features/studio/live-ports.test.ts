@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { matchScore } from './match'
 import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -222,7 +223,12 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
     expect(await ports(s).ports.sign(drawn)).toBe(
       `https://db.example/storage/v1/object/sign/studio-renders/${final}?token=t`
     )
-    expect(reads.buildRenders).toHaveBeenCalledWith(s.db, { tenant, build })
+    // Only to check the picture: never its grids (DST-004b2d).
+    expect(reads.buildRenders).toHaveBeenCalledWith(
+      s.db,
+      { tenant, build },
+      { grids: false }
+    )
     // Copied from the picture as recorded, checked before and after, and
     // the copy linked: no upload link reaches it.
     expect(s.calls.filter((c) => c[0] !== 'bucket')).toEqual([
@@ -414,6 +420,26 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
       reference: { tone: 'dark', height: 320, image: crop }
     } as unknown as Parameters<NonNullable<typeof p.match>>[0]
     expect(await p.match!(copied, render)).toBe(10)
+    // The drawing against the crop, never the other way round: the score
+    // takes its rows from the reference's proportions.
+    const wide = {
+      width: 24,
+      height: 4,
+      values: Array.from({ length: 96 }, (_, i) => (i % 24 < 12 ? 40 : 245))
+    }
+    const tall = {
+      width: 24,
+      height: 48,
+      values: Array.from({ length: 1152 }, (_, i) =>
+        Math.floor(i / 24) < 24 ? 40 : 245
+      )
+    }
+    const asked = await p.match!(copied, {
+      ...render,
+      grids: { drawn: wide, reference: tall, referencePath: crop }
+    })
+    expect(asked).toBe(matchScore(wide, tall))
+    expect(asked).not.toBe(matchScore(tall, wide))
     // Another crop's grids, or none: not measured.
     expect(
       await p.match!(

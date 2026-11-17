@@ -160,12 +160,16 @@ const gridsOf = (r: {
  */
 export async function buildRenders(
   db: Db,
-  input: { tenant: string; build: string }
+  input: { tenant: string; build: string },
+  /** DST-004b2d: read the grids too (the rounds); not to check a picture. */
+  { grids = true }: { grids?: boolean } = {}
 ): Promise<BuildRender[]> {
   const { data, error } = await db
     .from('section_renders')
     .select(
-      'id,section_key,state,failure,path,height,bytes,etag,reference_path,grid,reference_grid'
+      grids
+        ? 'id,section_key,state,failure,path,height,bytes,etag,reference_path,grid,reference_grid'
+        : 'id,section_key,state,failure,path,height,bytes,etag'
     )
     .eq('tenant_id', input.tenant)
     .eq('build_id', input.build)
