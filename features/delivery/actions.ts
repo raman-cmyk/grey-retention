@@ -101,7 +101,6 @@ export async function deliveryAction(
         job: x.id
       })
     if (r?.error) throw r.error
-    revalidatePath('/settings')
     revalidatePath('/campaigns', 'layout')
     revalidatePath('/campaign-agent')
     revalidatePath('/home')
