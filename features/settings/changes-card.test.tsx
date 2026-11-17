@@ -20,10 +20,15 @@ const items = [
 /** The card as Settings draws it; it reads only the changes and timezone. */
 const changesCard = (
   changes: SettingsView['changes'],
-  timezone = 'Asia/Kathmandu'
+  timezone: string | null = 'Asia/Kathmandu'
 ) => (
   <ChangesCard
-    view={{ changes, timezone: { saved: timezone } } as unknown as SettingsView}
+    view={
+      {
+        changes,
+        timezone: timezone ? { saved: timezone } : null
+      } as unknown as SettingsView
+    }
     unread={<p>Recent changes could not be read just now.</p>}
   />
 )
@@ -44,6 +49,11 @@ describe('Recent changes on Settings (UI-SETc)', () => {
     cleanup()
     render(changesCard({ items: items.slice(0, 1), partial: false }, 'UTC'))
     expect(card()).toHaveTextContent('by you · Nov 16, 2026 · 12:00 PM')
+    expect(card()).not.toHaveTextContent('UTC')
+    // An unknown timezone is said: the times are UTC.
+    cleanup()
+    render(changesCard({ items: items.slice(0, 1), partial: false }, null))
+    expect(card()).toHaveTextContent('by you · Nov 16, 2026 · 12:00 PM UTC')
   })
 
   it('says when there is nothing yet, or only part could be read', () => {

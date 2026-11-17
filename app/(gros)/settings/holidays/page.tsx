@@ -12,9 +12,9 @@ export const metadata: Metadata = { title: 'Holidays and events' }
 export default async function SettingsHolidaysPage({
   searchParams
 }: {
-  searchParams: Promise<{ edit?: string | string[] }>
+  searchParams: Promise<{ edit?: string | string[]; from?: string }>
 }) {
-  const [context, { edit }] = await Promise.all([
+  const [context, { edit, from }] = await Promise.all([
     requireRequestContext('client'),
     searchParams
   ])
@@ -25,6 +25,7 @@ export default async function SettingsHolidaysPage({
       page={page}
       owner={owner}
       editing={editingEntry(page.own, owner, edit)}
+      focusAdd={from === 'edit'}
     />
   )
 }

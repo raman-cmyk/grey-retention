@@ -1,4 +1,10 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -123,7 +129,27 @@ describe('Holidays and events under Settings (UI-SETd)', () => {
     })
     expect(
       within(edit).getByRole('link', { name: 'Stop editing' })
-    ).toHaveAttribute('href', '/settings/holidays')
+    ).toHaveAttribute('href', '/settings/holidays?from=edit')
+  })
+
+  it('leaves no Saved. behind after Stop editing, and puts the cursor in Name', async () => {
+    const user = userEvent.setup()
+    actions.saveHoliday.mockResolvedValueOnce({ message: 'Saved.' })
+    const { rerender } = render(
+      <HolidaysScreen page={page()} owner editing={drop} />
+    )
+    await user.click(screen.getByRole('button', { name: 'Save date' }))
+    await waitFor(() =>
+      expect(card('Edit Summer drop')).toHaveTextContent('Saved.')
+    )
+    // Stop editing opens the page with ?from=edit.
+    rerender(<HolidaysScreen page={page()} owner editing={null} focusAdd />)
+    expect(card('Add a date')).not.toHaveTextContent('Saved.')
+    expect(within(card('Add a date')).getByLabelText('Name')).toHaveFocus()
+    // Opening the page any other way leaves the cursor alone.
+    cleanup()
+    render(<HolidaysScreen page={page()} owner editing={null} />)
+    expect(within(card('Add a date')).getByLabelText('Name')).not.toHaveFocus()
   })
 
   it('asks before Delete: No sends nothing', async () => {
