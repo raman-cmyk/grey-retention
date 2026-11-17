@@ -18,9 +18,17 @@ import type { KlaviyoState } from '@/features/settings/read-model'
  *   Codes are optional (VISION section 10).
  * - Rivals: at least one brand followed, or the owner's explicit skip.
  *
- * The step that is Now is the first one not done; coming back opens it. A
- * done step can be opened again; a step ahead cannot. Finishing is its own
- * saved mark, set only once every step is done.
+ * Brand is confirmed only once the website was read (VISION section 5).
+ * While the read is queued or under way, Brand waits (`waiting`): it is not
+ * done and not Now, and the owner goes on with the steps after it (the
+ * readers run a few times a day, so a read can take hours). Once the read
+ * is done or failed, Brand is Now again.
+ *
+ * The step that is Now is the first one neither done nor waiting; coming
+ * back opens it. A done or waiting step can be opened again; a step ahead
+ * cannot. With only a waiting Brand left, nothing is Now: the finish opens
+ * and says the brand comes once the website is read. Finishing is its own
+ * saved mark, set only once every step is done (`allDone`).
  */
 export const setupSteps = [
   { key: 'store', name: 'Store' },
@@ -48,6 +56,11 @@ export type SetupRecords = {
   rivalsSkipped: boolean
   finished: boolean
   /**
+   * The website's read is queued or under way (the Site reader's newest
+   * read): Brand waits for it. Unknown counts as not reading.
+   */
+  siteReading?: boolean
+  /**
    * The workspace has its onboarding row: made after UI-ONBa. One from
    * before has none and is never sent to setup.
    */
@@ -55,9 +68,19 @@ export type SetupRecords = {
 }
 
 export type SetupFlow = {
-  steps: { key: SetupStepKey; name: string; done: boolean }[]
-  /** The index of the step that is Now; the number of steps when all are done. */
+  steps: {
+    key: SetupStepKey
+    name: string
+    done: boolean
+    /** Not done, and waiting for a read: Brand while its website is read. */
+    waiting: boolean
+  }[]
+  /**
+   * The index of the step that is Now: the first neither done nor waiting;
+   * the number of steps when none is left (all done, or only a waiting one).
+   */
   current: number
+  /** Every step done: only then can setup be finished. */
   allDone: boolean
   finished: boolean
   /** The workspace goes through onboarding (it has its row). */
@@ -122,21 +145,27 @@ export function setupFlow(records: SetupRecords): SetupFlow {
     discount: records.maxDiscountSet,
     rivals: records.following > 0 || records.rivalsSkipped
   }
-  const steps = setupSteps.map((s) => ({ ...s, done: done[s.key] }))
-  const now = steps.findIndex((s) => !s.done)
+  const steps = setupSteps.map((s) => ({
+    ...s,
+    done: done[s.key],
+    waiting:
+      s.key === 'brand' && done.store && !done.brand && !!records.siteReading
+  }))
+  const now = steps.findIndex((s) => !s.done && !s.waiting)
   return {
     steps,
     current: now === -1 ? steps.length : now,
-    allDone: now === -1,
+    allDone: steps.every((s) => s.done),
     finished: records.finished,
     tracked: records.tracked ?? false
   }
 }
 
 /**
- * Where the screen opens: the step asked for when it is done or Now (going
- * back), else the step that is Now, or the finish once every step is done.
- * A step ahead of Now is never opened.
+ * Where the screen opens: the step asked for when it is done, waiting or
+ * Now (going back), else the step that is Now, or the finish once no step
+ * is left (every step done, or only a waiting Brand). A step ahead of Now
+ * is never opened.
  */
 export function openPlace(flow: SetupFlow, asked?: string | null): SetupPlace {
   const index = flow.steps.findIndex((s) => s.key === asked)
