@@ -24,7 +24,7 @@ import {
  * admins change offers; only the owner changes Klaviyo and the timezone.
  */
 export type SettingsPart =
-  'offers' | 'klaviyo' | 'timezone' | 'team' | 'account'
+  'offers' | 'klaviyo' | 'timezone' | 'team' | 'account' | 'changes'
 
 export type SettingsView = {
   /** Nothing is kept in the demo: the cards say so. */
@@ -49,6 +49,8 @@ export type SettingsView = {
   } | null
   team: SettingsReadModel['team']
   account: SettingsReadModel['account']
+  /** Who changed what (UI-SETc): the owner and managers only. */
+  changes: SettingsReadModel['changes']
   unread: SettingsPart[]
 }
 
@@ -90,6 +92,7 @@ export function settingsView(input: SettingsInput): SettingsView {
       : null,
     team: read?.team ?? null,
     account: read?.account ?? null,
+    changes: read?.changes ?? null,
     unread: []
   }
   for (const part of [
@@ -100,6 +103,8 @@ export function settingsView(input: SettingsInput): SettingsView {
     'account'
   ] as const)
     if (view[part] === null) view.unread.push(part)
+  // Staff do not see the changes, so they are never missing for them.
+  if (view.editor && view.changes === null) view.unread.push('changes')
   return view
 }
 

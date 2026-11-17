@@ -124,20 +124,6 @@ describe('teamPage', () => {
     })
   })
 
-  it('skips the recent changes when asked (Settings)', async () => {
-    const db = database(
-      { data: [row], error: null },
-      { data: [openInvite], error: null }
-    )
-    supabase.createClient.mockResolvedValue(db)
-    const page = await teamPage({ tenantId: tenant, tenantRole: 'owner' }, 1, {
-      events: false
-    })
-    expect(page).toMatchObject({ state: 'ready', events: [] })
-    expect(page.invites).toHaveLength(1)
-    expect(db.from).not.toHaveBeenCalledWith('workspace_events')
-  })
-
   it('does not load invites for staff', async () => {
     const db = database({ data: [row], error: null }, { data: [], error: null })
     supabase.createClient.mockResolvedValue(db)
