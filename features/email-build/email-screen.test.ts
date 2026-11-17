@@ -394,7 +394,15 @@ describe('loading an email’s page (UI-EMAIL-a)', () => {
       strategy_runs: [plan],
       agent_fallbacks: [
         {
-          data: [fallback('inspector_busy', '2026-11-16T10:00:02Z')],
+          data: [
+            fallback('inspector_busy', '2026-11-16T10:00:02Z'),
+            // An earlier try of the sections step, from scratch.
+            fallback(
+              'reference_unreadable',
+              '2026-11-16T10:00:01Z',
+              'art-director'
+            )
+          ],
           error: null
         },
         { data: [], error: null }
@@ -407,29 +415,59 @@ describe('loading an email’s page (UI-EMAIL-a)', () => {
     expect(out.screen.notes).toContain(
       'Reason inspector_busy. Instead inspector_busy.'
     )
+    // Never "from scratch" beside the email it follows.
+    expect(out.screen.notes.join(' ')).not.toContain('reference_unreadable')
     // Read from the sections step's saved reference.
     expect(
       calls.find(([t, n]) => t === 'email_builds' && n === 'select')?.[2][0]
     ).toMatch(/referenceReason:progress->sections->reference->>reason/)
   })
 
-  it('shows nothing about an inspiration email when it was made from scratch', async () => {
+  it('says why it was made from scratch, and claims no inspiration email', async () => {
     const { db } = fakeDb({
       email_builds: [
         { data: buildRow({ referenceReason: null }), error: null }
       ],
       strategy_runs: [plan],
       agent_fallbacks: [
-        { data: [], error: null },
+        {
+          data: [
+            fallback('reference_none', '2026-11-16T10:00:01Z', 'art-director')
+          ],
+          error: null
+        },
         { data: [], error: null }
       ]
     })
     const out = await loadEmailScreen(db, tenant, buildId)
     if (!out.ok || out.screen?.kind !== 'email')
       throw new Error('expected email')
-    expect(
-      out.screen.notes.some((n) => /inspiration|We copy|We remix/.test(n))
-    ).toBe(false)
+    expect(out.screen.notes).toContain(
+      'Reason reference_none. Instead reference_none.'
+    )
+    expect(out.screen.notes.some((n) => /We copy|We remix/.test(n))).toBe(false)
+  })
+
+  it('shows at most 600 characters of the reason, and nothing that is not words', async () => {
+    const long = `We copy ${'a'.repeat(700)}`
+    const load = async (referenceReason: unknown) => {
+      const { db } = fakeDb({
+        email_builds: [{ data: buildRow({ referenceReason }), error: null }],
+        strategy_runs: [plan],
+        agent_fallbacks: [
+          { data: [], error: null },
+          { data: [], error: null }
+        ]
+      })
+      const out = await loadEmailScreen(db, tenant, buildId)
+      if (!out.ok || out.screen?.kind !== 'email')
+        throw new Error('expected email')
+      return out.screen.notes
+    }
+    expect((await load(long))[0]).toBe(long.slice(0, 600))
+    expect(await load({ reason: 'We copy x' })).toEqual(
+      expect.not.arrayContaining([expect.stringMatching(/We copy/)])
+    )
   })
 
   it('keeps the newest 20 lines, and a text email’s steps before it is built', async () => {

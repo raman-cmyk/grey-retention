@@ -224,10 +224,19 @@ function notesOf(
     notes.push(
       'A test of two subjects: half the audience gets each, and Results shows which got more clicks once there are enough results.'
     )
-  for (const line of log)
+  for (const line of log) {
     // The Content locker's line says what the email's changes say above.
-    if (!(changes.length && line.code === 'content_replaced'))
-      notes.push(`${line.reason} ${line.instead}`.replace(/\s+/g, ' ').trim())
+    if (changes.length && line.code === 'content_replaced') continue
+    // A try of the sections step that went from scratch, before a later
+    // try followed an inspiration email: the saved reason is the truth.
+    if (
+      referenceReason &&
+      line.agent === 'art-director' &&
+      line.code.startsWith('reference_')
+    )
+      continue
+    notes.push(`${line.reason} ${line.instead}`.replace(/\s+/g, ' ').trim())
+  }
   return [...new Set(notes.filter(Boolean))].slice(0, 20)
 }
 
