@@ -30,7 +30,9 @@ export const memoryRuleSchema = z.object({
   evidenceCount: z.number().int().min(0),
   status: z.enum(['active', 'expired', 'retired']),
   expiresAt: z.iso.datetime({ offset: true }).nullable(),
-  createdAt: z.iso.datetime({ offset: true })
+  createdAt: z.iso.datetime({ offset: true }),
+  /** The owner pinned it (UI-LRNa): read first, never dropped for confidence or age. */
+  pinned: z.boolean().optional()
 })
 export type MemoryRule = z.infer<typeof memoryRuleSchema>
 
@@ -53,9 +55,30 @@ export const maxRulesInPrompt = 20
 export const minConfidence = 0.5
 
 /**
- * Picks the rules an agent should read: active, not expired, meant for this
- * agent, confident enough. The brand's own rules come first, then its
- * industry's, then global ones; within each, higher confidence first.
+ * Agents use an active rule when the owner pinned it, or when it is
+ * confident enough and not past its end.
+ */
+export function inUse(
+  rule: Pick<MemoryRule, 'status' | 'pinned' | 'confidence' | 'expiresAt'>,
+  now: number
+) {
+  return (
+    rule.status === 'active' &&
+    (rule.pinned === true ||
+      (rule.confidence >= minConfidence &&
+        (rule.expiresAt === null || Date.parse(rule.expiresAt) > now)))
+  )
+}
+
+/** The same test as a PostgREST `or` filter, for reads of active rules. */
+export const inUseFilter = (now: Date) =>
+  `pinned.is.true,and(confidence.gte.${minConfidence},or(expires_at.is.null,expires_at.gt.${now.toISOString()}))`
+
+/**
+ * Picks the rules an agent should read: in use (above), meant for this
+ * agent. Pinned rules come first (at most 20 per workspace, so all fit), then
+ * the brand's own rules, then its industry's, then global ones; within
+ * each, higher confidence first.
  */
 export function selectRules(
   rules: readonly MemoryRule[],
@@ -72,9 +95,7 @@ export function selectRules(
   return rules
     .filter(
       (r) =>
-        r.status === 'active' &&
-        r.confidence >= minConfidence &&
-        (r.expiresAt === null || Date.parse(r.expiresAt) > now) &&
+        inUse(r, now) &&
         (r.appliesTo.length === 0 || r.appliesTo.includes(input.agent)) &&
         (r.tenantId === null || r.tenantId === input.tenantId) &&
         (r.tenantId !== null ||
@@ -83,6 +104,7 @@ export function selectRules(
     )
     .sort(
       (a, b) =>
+        Number(b.pinned === true) - Number(a.pinned === true) ||
         scope(a) - scope(b) ||
         b.confidence - a.confidence ||
         b.evidenceCount - a.evidenceCount
