@@ -37,7 +37,16 @@ export type ParseLimits = { -readonly [K in keyof typeof parseLimits]: number }
 
 /** Where the deadline is read (a test's clock can tell them apart). */
 export type DeadlineCheck =
-  'start' | 'scan' | 'element' | 'walk' | 'block' | 'css' | 'strings' | 'writer'
+  | 'start'
+  | 'scan'
+  | 'element'
+  | 'walk'
+  | 'block'
+  | 'css'
+  | 'strings'
+  | 'fold'
+  | 'pass'
+  | 'writer'
 
 export type GuardOptions = {
   /**

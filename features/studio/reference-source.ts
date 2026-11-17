@@ -54,6 +54,8 @@ export type ReferenceRows = {
     height: number | null
     purpose: string | null
     styles: string[] | null
+    /** DST-004b: the section's stored picture (`inbox-assets`). */
+    image_path: string | null
   }[]
   /** The brands' sends of the last year, tagged or not, for winners. */
   history: readonly { id: string; capture_id: string; facts: unknown }[]
@@ -130,7 +132,12 @@ export function toReferences(
           blockType: s.owner_block_type ?? s.block_type ?? 'unsure',
           height: s.height,
           purpose: s.purpose,
-          styles: s.styles ?? []
+          styles: s.styles ?? [],
+          // Only this email's own crop of this section.
+          image:
+            s.image_path === `sect/${s.inbox_message_id}/${s.ordinal}.jpg`
+              ? s.image_path
+              : null
         }))
     })
   }
@@ -251,7 +258,7 @@ export async function readReferenceRows(
             db
               .from('email_sections')
               .select(
-                'inbox_message_id, ordinal, block_type, owner_block_type, height, purpose, styles'
+                'inbox_message_id, ordinal, block_type, owner_block_type, height, purpose, styles, image_path'
               )
               .in('inbox_message_id', ids)
               .order('inbox_message_id', { ascending: true })

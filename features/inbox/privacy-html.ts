@@ -174,13 +174,41 @@ const cssQuote = (s: string, q: string) =>
     .replace(/[\\\n\r\f]/g, (c) => (c === '\\' ? '\\\\' : ' '))
     .replaceAll(q, `\\${q}`)
 
-/** How often CSS loads a file (an escape can hide one). */
+/** How often CSS loads a file or draws an attribute (an escape can hide one). */
 const loads = (css: string) =>
   (
     css
       .toLowerCase()
-      .match(/url\(|@import|image-set\(|image\(|expression\(/g) ?? []
+      .match(/url\(|@import|image-set\(|image\(|expression\(|attr\(/g) ?? []
   ).length
+
+/**
+ * Every declaration that draws an attribute (content: attr(class)) goes: a
+ * name kept in a class name, an id or a font face is never drawn. One
+ * sweep: no character is read twice.
+ */
+function dropAttr(css: string) {
+  const lower = css.toLowerCase()
+  const edge = (c: string | undefined) => c === ';' || c === '{' || c === '}'
+  let out = ''
+  let from = 0
+  for (
+    let i = lower.indexOf('attr');
+    i >= 0;
+    i = lower.indexOf('attr', Math.max(i + 4, from))
+  ) {
+    let j = i + 4
+    while (space(css[j])) j++
+    if (css[j] !== '(' || /[\w-]/.test(css[i - 1] ?? '')) continue
+    let a = i
+    while (a > from && !edge(css[a - 1])) a--
+    let b = j
+    while (b < css.length && !edge(css[b])) b++
+    out += css.slice(from, a)
+    from = b
+  }
+  return out + css.slice(from)
+}
 
 /**
  * Every url(...) (brackets and quotes inside included): its stored copy,
@@ -253,16 +281,16 @@ function cssStrings(css: string, r: Rules, g: Guard) {
 
 /**
  * CSS (a style attribute or a <style> block). CSS escapes that would hide a
- * way to load a file drop it all; otherwise no comments, no "<" that
- * could start a tag (so a block can never close early), every link its
- * stored copy or none,
- * every string read as above, and addresses and the inbox's local part
- * removed. Names go only from strings: a name may also be a CSS word
- * ("Georgia", "max-width").
+ * way to load a file or draw an attribute drop it all; otherwise no
+ * comments, no "<" that could start a tag (so a block can never close
+ * early), no declaration that draws an attribute, every link its stored
+ * copy or none, every string read as above, and addresses and the inbox's
+ * local part removed. Names go only from strings: a name may also be a CSS
+ * word ("Georgia", "max-width").
  */
 function cleanCss(css: string, r: Rules, g: Guard) {
   if (loads(unescapeCss(css)) > loads(css)) return ''
-  const plain = dropComments(css).replace(/<(?=[a-z/!?])/gi, '')
+  const plain = dropAttr(dropComments(css).replace(/<(?=[a-z/!?])/gi, ''))
   return scrub(cssStrings(cssLinks(plain, r, g), r, g), r, false)
 }
 
@@ -338,7 +366,7 @@ function cleanBlock(nodes: (T.TextNode | '\n')[], r: Rules, g: Guard) {
     // its greeting) does it.
     const across = ([a, b]: [number, number]) => piece(a) !== piece(b - 1)
     const cuts = ranges(joined, addressRules(r), r).filter(across)
-    const names = ranges(joined, [r.names], r).filter(across)
+    const names = ranges(joined, r.names, r).filter(across)
     if (cuts.length || names.length) {
       // Each match widens to the whole word it touches, so no piece of an
       // address is left beside it. One sweep: no character is read twice.
@@ -436,7 +464,7 @@ function cleanTree(doc: T.Document, r: Rules, g: Guard) {
       if (parent) parents.add(parent)
       continue
     }
-    // A tag named like the person, or not a plain name ("<sam@x.com>"),
+    // A tag named like the person, or not a plain name ("<sam@x.example>"),
     // goes; what is inside it stays.
     if (!plainName.test(n.tagName) || named(n.tagName)) {
       unwrapped.add(n)
@@ -568,14 +596,16 @@ export function cleanEmailHtml(
   identity: InboxIdentity,
   options?: CleanOptions
 ) {
-  const r = rulesFor(identity, options)
-  // One deadline for every round of this email.
+  const base = rulesFor(identity, options)
+  // One deadline for every round of this email, read by the text rules
+  // too (a long text node).
   const g: Guard = {
-    limits: r.limits,
-    now: r.now,
-    until: r.now('start') + r.limits.ms,
+    limits: base.limits,
+    now: base.now,
+    until: base.now('start') + base.limits.ms,
     hard: Date.now() + parseLimits.ms
   }
+  const r: Rules = { ...base, check: (at) => checkTime(g, at) }
   try {
     return settle(cleanOnce(html, r, g), (out) => cleanOnce(out, r, g))
   } catch (error) {

@@ -62,7 +62,16 @@ test('UI-PLAN-b owner plans the next 15 days, picks an offer and creates an emai
 
   // Create email on the next planned email builds it and puts it into
   // Klaviyo as a draft (the fake pusher: a sample draft, never In Klaviyo).
-  await emails.getByRole('button', { name: 'Create email' }).first().click()
+  // DST-002b: the owner asks to copy an inspiration email, on the first
+  // designed email (the one with the choice), and creates that one.
+  const designed = emails
+    .getByRole('listitem')
+    .filter({ has: page.getByRole('combobox') })
+    .first()
+  await designed
+    .getByRole('combobox', { name: /^How to make / })
+    .selectOption('copy')
+  await designed.getByRole('button', { name: 'Create email' }).click()
   await expect(
     emails.getByText(/Sample draft, not in Klaviyo/).first()
   ).toBeVisible({ timeout: 30_000 })
@@ -70,6 +79,10 @@ test('UI-PLAN-b owner plans the next 15 days, picks an offer and creates an emai
   await expect(page).toHaveURL(/\/plan\/email\/[0-9a-f-]{36}$/)
   // UI-EMAIL-b: the email's own page on the GROS screen.
   await expect(page.getByText(/this is a sample draft/)).toBeVisible()
+  // DST-002b: the owner asked to copy; the page says why it was not.
+  await expect(
+    page.getByText(/so this email is designed from scratch/).first()
+  ).toBeVisible()
   await expect(
     page.getByText(/The AI was not used for this email/).first()
   ).toBeVisible()

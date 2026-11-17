@@ -251,9 +251,11 @@ export function studioPortsFor(
         fallback:
           reason === 'storyboard_reordered'
             ? 'Kept the email’s order, with the storyboard code makes.'
-            : reason === 'layout_changed'
-              ? 'Drew the email with its coded blocks.'
-              : 'Drew the section as its coded block.',
+            : reason === 'reference_unfit'
+              ? 'Designed the email’s sections from scratch, in the copied order.'
+              : reason === 'layout_changed'
+                ? 'Drew the email with its coded blocks.'
+                : 'Drew the section as its coded block.',
         attempts: 1,
         detail: { section },
         dedupeKey: `design-studio:${keyPart(input.callerKey)}:${keyPart(section)}:${reason}`

@@ -5,6 +5,7 @@ import type { Verdict } from './critic'
 import { briefHosts, type DesignedResult, type SectionBrief } from './designer'
 import { maxSectionBytes, type RenderedSection } from './renderer'
 import { SectionNotDrawable, studioWaits } from './limits'
+import { isMatchScore, withMatch } from './match'
 import type { DesignedSection } from './section'
 import type { BuildRender } from './waits'
 
@@ -56,8 +57,12 @@ export const codedReasons = {
   studio_timed_out: 'The design studio ran out of time.',
   not_designable: 'The section had no https photo to design with.',
   layout_changed: 'The email’s sections and its draft did not match.',
+  match_failed:
+    'The picture still looked too little like the reference section after its last round.',
   storyboard_reordered:
-    'The Art director moved the sections: the email keeps its own order.'
+    'The Art director moved the sections: the email keeps its own order.',
+  reference_unfit:
+    'The copied email’s section heights do not fit this email’s sections.'
 } as const
 export type CodedReason = keyof typeof codedReasons
 
@@ -155,6 +160,15 @@ export type StudioPorts = {
     brief: SectionBrief,
     image: RenderedSection
   ) => Promise<Verdict | null>
+  /**
+   * DST-004b: in Copy mode, how much the drawn section looks like its
+   * reference section (`matchScore`, 1 to 10); null when it cannot be
+   * measured (then the critic's verdict stands). Missing: never measured.
+   */
+  match?: (
+    brief: SectionBrief,
+    image: RenderedSection
+  ) => Promise<number | null>
   /**
    * A section drawn as its coded block, with why: one line for the owner's
    * log per section (the agents log their own failures as well).
@@ -294,18 +308,30 @@ export async function studioRound(
         await code(s, 'picture_unusable')
         continue
       }
-      const verdict = await ports.critique(brief, picture)
-      if (!verdict) {
+      const judged = await ports.critique(brief, picture)
+      if (!judged) {
         await code(s, 'critic_unavailable')
         continue
       }
+      // DST-004b: a Copy section must also look like its reference. A
+      // match that cannot be measured (a port that fails, or a number that
+      // is not a score) leaves the critic's verdict: it never costs the
+      // critic's calls again.
+      const measured =
+        brief.mode === 'copy' && brief.reference && ports.match
+          ? await ports.match(brief, picture).catch(() => null)
+          : null
+      const verdict = isMatchScore(measured)
+        ? withMatch(judged, measured)
+        : judged
       if (verdict.pass) {
         s.state = 'done'
         s.height = render.height
         continue
       }
       if (s.round >= maxRounds) {
-        await code(s, 'critic_failed')
+        // The critic passed it: only the match failed.
+        await code(s, judged.pass ? 'match_failed' : 'critic_failed')
         continue
       }
       s.round++

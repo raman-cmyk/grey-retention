@@ -95,13 +95,16 @@ const sectionsSaved = z.looseObject({
       reference: z
         .array(
           z.looseObject({
-            family: z.string(),
+            family: z.string().max(40),
             tone: z.enum(['light', 'dark', 'accent']),
-            height: z.number().positive()
+            // `referenceDna` keeps whole heights up to 4,000 px.
+            height: z.number().int().positive().max(4_000)
           })
         )
         .max(40),
-      refIndex: z.array(z.number().int().min(0).nullable()).max(40)
+      refIndex: z.array(z.number().int().min(0).nullable()).max(40),
+      // DST-004b: each reference section's stored picture; missing before it.
+      images: z.array(z.string().max(300).nullable()).max(40).optional()
     })
     .optional()
 })
@@ -404,11 +407,30 @@ export async function runBuildStep(
           purpose: s.purpose,
           products: (Array.isArray(s.products) ? s.products : []).flatMap(
             (p) => (typeof p?.title === 'string' ? [{ title: p.title }] : [])
-          )
+          ),
+          ...(typeof s.source === 'number' ? { source: s.source } : {})
         })),
         blocks: drawn.draft.blocks,
         brand: store.brand,
-        saved
+        saved,
+        // DST-002b: the inbox email the sections step picked, if any.
+        ...(sections.reference
+          ? {
+              reference: {
+                mode: sections.reference.mode,
+                // Only what the storyboard reads, never other saved keys.
+                reference: sections.reference.reference.map((r) => ({
+                  family: r.family,
+                  tone: r.tone,
+                  height: r.height
+                })),
+                refIndex: sections.reference.refIndex,
+                ...(sections.reference.images
+                  ? { images: sections.reference.images }
+                  : {})
+              }
+            }
+          : {})
       },
       ctx.studio
     )

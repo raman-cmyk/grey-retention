@@ -9,6 +9,7 @@ import type { EmailType } from '@/features/strategy/plan'
 import type { SectionBrief } from './designer'
 import type { EmailViewPorts } from './email-check'
 import type { BuildRender } from './waits'
+import { isPicturePath, plannedReference } from './reference'
 import { heroPicture, studioRound, type StudioPorts } from './rounds'
 import {
   codeStoryboard,
@@ -36,12 +37,25 @@ export type StudioStepInput = {
     family: BlockType
     purpose: string
     products: { title: string }[]
+    /** Copy (DST-002b): its place in the reference email, when it follows one. */
+    source?: number
   }[]
   /** The copy step's draft blocks, one per section. */
   blocks: readonly Block[]
   brand: BlockBrand
   /** The design step's saved work (`progress.work.design`), if any. */
   saved: unknown
+  /**
+   * DST-002b: the inbox email the sections step picked for Copy or Remix
+   * (`SectionsOutput.reference`); missing for Scratch.
+   */
+  reference?: {
+    mode: 'copy' | 'remix'
+    reference: NonNullable<StoryboardInput['reference']>
+    refIndex: readonly (number | null)[]
+    /** DST-004b: each reference section's stored picture, for the match score. */
+    images?: readonly (string | null)[]
+  }
 }
 
 export type StudioStepPorts = StudioPorts & {
@@ -112,6 +126,7 @@ const https = (url: unknown): url is string => {
 /** The brief for one designed hero, in a fixed shape (its digest is its JSON). */
 function briefFor(
   input: StudioStepInput,
+  story: StoryboardInput,
   board: Storyboard['sections'][number],
   i: number
 ): SectionBrief | null {
@@ -135,8 +150,20 @@ function briefFor(
       : { headline: c.headline, ...(c.sub ? { sub: c.sub } : {}) }
   const title = input.sections[i]?.products[0]?.title ?? c.alt
   const b = input.brand
+  // Copy: the reference section's tone and height, as the storyboard keeps them.
+  const ref = story.sections[i]?.ref
+  const kept =
+    story.mode === 'copy' && ref !== undefined
+      ? story.reference?.[ref]
+      : undefined
+  // Pictures only in step with the reference: never another section's.
+  const images =
+    input.reference?.images?.length === input.reference?.reference.length
+      ? input.reference?.images
+      : undefined
+  const picture = ref === undefined ? undefined : images?.[ref]
   return {
-    mode: 'scratch',
+    mode: story.mode,
     slot: { emailType: input.slot.emailType, angle: input.slot.angle },
     board,
     family: block.type as SectionBrief['family'],
@@ -152,8 +179,64 @@ function briefFor(
       dark: b.dark,
       radius: b.radius
     },
-    fonts: []
+    fonts: [],
+    ...(kept
+      ? {
+          reference: {
+            tone: kept.tone,
+            height: kept.height,
+            // DST-004b: its stored picture, for the match score only.
+            ...(isPicturePath(picture) ? { image: picture } : {})
+          }
+        }
+      : {})
   }
+}
+
+/**
+ * The storyboard's input: layer 1's sections, and in Copy and Remix the
+ * reference each follows (`plannedReference`). A Copy whose reference
+ * heights no storyboard can keep (code's own cannot fit them) is
+ * storyboarded from scratch in the copied order, rather than drawn coded.
+ */
+function storyInput(input: StudioStepInput): {
+  story: StoryboardInput
+  unfit: boolean
+} {
+  const sections = input.sections.map((s, i) => ({
+    id: sectionId(i),
+    family: s.family,
+    purpose: s.purpose,
+    products: s.products.length,
+    // DST-007: its height is the block it is drawn as (plain copy
+    // draws steps and questions as text).
+    ...(input.blocks[i]!.type !== s.family
+      ? { drawn: input.blocks[i]!.type }
+      : {})
+  }))
+  const scratch: StoryboardInput = {
+    mode: 'scratch',
+    slot: input.slot,
+    sections
+  }
+  if (!input.reference) return { story: scratch, unfit: false }
+  const planned = plannedReference(input.reference, input.sections)
+  const story: StoryboardInput = {
+    mode: input.reference.mode,
+    slot: input.slot,
+    sections: sections.map((s, i) => {
+      const ref = planned.refs[i]
+      return ref === undefined ? s : { ...s, ref }
+    }),
+    reference: planned.reference
+  }
+  if (
+    story.mode === 'copy' &&
+    !codeStoryboard(story) &&
+    codeStoryboard(scratch)
+  )
+    return { story: scratch, unfit: true }
+  return { story, unfit: false }
 }
 
 /** Plain copy draws a steps or FAQ section as text (ASM-002). */
@@ -198,25 +281,13 @@ export async function studioDesignStep(
   // The build's limits are kept even when the rest of the work is not.
   const rounds = (input.saved as { studio?: { rounds?: unknown } } | null)
     ?.studio?.rounds
+  // The same input on every claim: the briefs are made from it again.
+  const { story: board, unfit } = storyInput(input)
   let storyboard: Storyboard | null
   if (saved.success) {
     storyboard = saved.data.studio.storyboard
   } else {
-    const board: StoryboardInput = {
-      mode: 'scratch',
-      slot: input.slot,
-      sections: input.sections.map((s, i) => ({
-        id: sectionId(i),
-        family: s.family,
-        purpose: s.purpose,
-        products: s.products.length,
-        // DST-007: its height is the block it is drawn as (plain copy
-        // draws steps and questions as text).
-        ...(input.blocks[i]!.type !== s.family
-          ? { drawn: input.blocks[i]!.type }
-          : {})
-      }))
-    }
+    if (unfit) await ports.coded('email', 'reference_unfit')
     storyboard = await ports.storyboard(board)
     // The copy was checked in layer 1's order: a storyboard that moves the
     // sections is replaced by code's own, which keeps it (DST-006e).
@@ -229,12 +300,12 @@ export async function studioDesignStep(
     }
   }
   const designed: { i: number; brief: SectionBrief }[] = []
-  for (const board of storyboard?.sections ?? []) {
-    if (board.render !== 'designed') continue
-    const i = Number(/^s(\d+)$/.exec(board.id)?.[1] ?? 0) - 1
-    const brief = i >= 0 ? briefFor(input, board, i) : null
+  for (const b of storyboard?.sections ?? []) {
+    if (b.render !== 'designed') continue
+    const i = Number(/^s(\d+)$/.exec(b.id)?.[1] ?? 0) - 1
+    const brief = i >= 0 ? briefFor(input, board, b, i) : null
     if (brief) designed.push({ i, brief })
-    else await ports.coded(board.id, 'not_designable')
+    else await ports.coded(b.id, 'not_designable')
   }
   if (!designed.length) return coded
   const out = await studioRound(
