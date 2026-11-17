@@ -75,7 +75,10 @@ test('UI-SETd the owner adds, edits and deletes a date and picks a country', asy
   await expect(saved.getByText('Saved.', { exact: true })).toBeVisible()
   await expect(dates.getByText(renamed, { exact: true })).toBeVisible()
   await saved.getByRole('link', { name: 'Stop editing' }).click()
-  await expect(page.getByRole('region', { name: 'Add a date' })).toBeVisible()
+  // No Saved. is left behind, and the cursor waits in Name.
+  const again = page.getByRole('region', { name: 'Add a date' })
+  await expect(again.getByLabel('Name', { exact: true })).toBeFocused()
+  await expect(again.getByText('Saved.', { exact: true })).toHaveCount(0)
 
   // Delete, after the confirm; the answer stays though the row has gone.
   page.once('dialog', (dialog) => void dialog.accept())

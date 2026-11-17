@@ -175,9 +175,20 @@ test('UI-SETb the owner invites, resends and cancels on the Team card', async ({
 test('UI-SETb the owner makes a teammate Manager, then Staff, and deactivates and reactivates them', async ({
   page
 }) => {
-  await ownerWithTeammate(page, { prefix: 'settings-mate', name: 'Mates' })
+  const mate = await ownerWithTeammate(page, {
+    prefix: 'settings-mate',
+    name: 'Mates'
+  })
   await page.goto('/settings')
   const team = page.getByRole('region', { name: 'Team' })
+  const email = team.getByLabel('Email', { exact: true })
+  const invite = async (refusal: RegExp | string) => {
+    await email.fill(mate.email)
+    await team.getByRole('button', { name: 'Invite as Staff' }).click()
+    await expect(team.getByRole('alert')).toContainText(refusal)
+  }
+  // Someone already on the team is not invited again.
+  await invite('This person is already on the team.')
   const row = team
     .getByRole('list', { name: 'Members' })
     .getByRole('listitem')
@@ -198,6 +209,8 @@ test('UI-SETb the owner makes a teammate Manager, then Staff, and deactivates an
   await press('Deactivate: Sam Teammate', 'Sam Teammate was deactivated.')
   await expect(row).toContainText('Deactivated')
   await expect(members).toHaveText('Members1')
+  // A deactivated teammate is reactivated, not invited again.
+  await invite(/Use Reactivate/)
   await press('Reactivate: Sam Teammate', 'Sam Teammate was reactivated.')
   await expect(row).not.toContainText('Deactivated')
   await page.reload()
@@ -205,6 +218,19 @@ test('UI-SETb the owner makes a teammate Manager, then Staff, and deactivates an
   await expect(
     row.getByRole('button', { name: 'Deactivate: Sam Teammate' })
   ).toBeVisible()
+  // Who changed what, each by you (UI-SETc).
+  const changes = page
+    .getByRole('region', { name: 'Recent changes' })
+    .getByRole('listitem')
+  for (const text of [
+    'Sam Teammate was reactivated',
+    'Sam Teammate was deactivated',
+    'Sam Teammate is now Staff',
+    'Sam Teammate is now a Manager'
+  ])
+    await expect(changes.filter({ hasText: text }).first()).toContainText(
+      'by you'
+    )
 })
 
 test('UI-SETa staff see Settings without the owner’s controls', async ({
