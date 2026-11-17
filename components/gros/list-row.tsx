@@ -14,10 +14,16 @@ export function ListRow({
   title,
   details,
   next = false,
+  wrap = false,
   end
 }: {
   thumbnail: ReactNode
   title: string
+  /**
+   * The whole title shows, on as many lines as it needs (a rule the owner
+   * may remove for good is read in full); otherwise it is cut to one line.
+   */
+  wrap?: boolean
   /** Joined with a middle dot: Fri 20 · Past buyers. */
   details: readonly string[]
   next?: boolean
@@ -33,7 +39,11 @@ export function ListRow({
     >
       {thumbnail}
       <div className="gros-row-words flex min-w-0 flex-1 flex-col gap-[var(--space-1)]">
-        <p className="type-body-strong truncate">{title}</p>
+        <p
+          className={cn('type-body-strong', wrap ? 'break-words' : 'truncate')}
+        >
+          {title}
+        </p>
         <p
           className={cn(
             'type-caption truncate',

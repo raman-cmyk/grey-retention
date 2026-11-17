@@ -85,7 +85,25 @@ const sectionsSaved = z.looseObject({
         })
       )
       .max(30)
-  })
+  }),
+  // DST-002b: the inbox email it follows; missing before it, or Scratch.
+  reference: z
+    .looseObject({
+      emailId: z.string().min(1).max(80),
+      mode: z.enum(['copy', 'remix']),
+      reason: z.string().min(1).max(600),
+      reference: z
+        .array(
+          z.looseObject({
+            family: z.string(),
+            tone: z.enum(['light', 'dark', 'accent']),
+            height: z.number().positive()
+          })
+        )
+        .max(40),
+      refIndex: z.array(z.number().int().min(0).nullable()).max(40)
+    })
+    .optional()
 })
 const contentSaved = z.looseObject({
   sections: z

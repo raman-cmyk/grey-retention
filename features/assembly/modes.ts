@@ -185,14 +185,21 @@ export function layoutSequence(
           : `The competitor has ${article(name(section))}; you don't have what it needs yet, so this is ${article(name(type))}.`
     })
   })
-  if (steps.length > maxBlocks - 1)
-    steps.splice(maxBlocks - 1).forEach((s) =>
-      dropped.push({
-        index: -1,
-        section: s.from,
-        reason: `Emails have at most ${maxBlocks} blocks.`
-      })
-    )
+  // Emails have at most `maxBlocks` blocks: the last sections give way,
+  // never the offer's (the email's discount stays, DST-002b).
+  const over: LayoutStep[] = []
+  while (steps.length > maxBlocks - 1) {
+    const at = steps.findLastIndex((s) => s.type !== 'offer_banner')
+    if (at < 0) break
+    over.unshift(...steps.splice(at, 1))
+  }
+  over.forEach((s) =>
+    dropped.push({
+      index: -1,
+      section: s.from,
+      reason: `Emails have at most ${maxBlocks} blocks.`
+    })
+  )
   steps.push({
     type: 'footer',
     from: 'footer',
