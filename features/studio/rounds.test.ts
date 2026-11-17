@@ -537,4 +537,44 @@ describe('the match score in the rounds (DST-004b)', () => {
     const { out } = await judge(copy())
     expect(doneOf(out).sections[0]).toMatchObject({ state: 'done' })
   })
+
+  it('keeps the critic’s verdict, once, when the port fails or answers no score', async () => {
+    const answers: (() => Promise<number | null>)[] = [
+      async () => {
+        throw new Error('The grid cannot be compared: bad values')
+      },
+      async () => Number.NaN,
+      async () => 0.8,
+      async () => 11
+    ]
+    for (const answer of answers) {
+      const { out, p } = await judge(copy(), answer)
+      expect(doneOf(out).sections[0]).toMatchObject({ state: 'done' })
+      // The critic is never asked again for the same picture.
+      expect(p.critique).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('codes a Copy section that still looks too little like it after its last round, and says so', async () => {
+    let work: StudioWork = waitOf(await studioRound([copy()], null, ports()))
+    const low = async () => 2
+    for (let round = 1; round <= maxRounds; round++) {
+      const next = {
+        ...ports({
+          renders: [{ ...drawn(round), id: uuid(round) }],
+          request: [uuid(round + 1)]
+        }),
+        match: low
+      }
+      const out = await studioRound([copy()], work, next)
+      if (round < maxRounds) {
+        work = waitOf(out)
+        continue
+      }
+      expect(doneOf(out).sections[0]).toMatchObject({ state: 'coded' })
+      // The critic passed it: the owner’s log says the match failed.
+      expect(next.coded).toHaveBeenCalledWith('s2', 'match_failed')
+      expect(next.coded).not.toHaveBeenCalledWith('s2', 'critic_failed')
+    }
+  })
 })

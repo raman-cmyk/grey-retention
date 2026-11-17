@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { Verdict } from './critic'
 import {
   gridProblem,
+  isMatchScore,
   matchScore,
   matchTarget,
   resample,
@@ -69,6 +70,51 @@ describe('the match score of a drawn section against its reference (DST-004b)', 
     )
     expect(matchScore(plain, plain)).toBe(10)
     expect(matchScore(busy, plain)).toBeLessThan(matchTarget)
+  })
+
+  it('never counts what the photo shows: the brand’s own photo in the same place matches', () => {
+    // Textured photos, different in every cell (a seeded random walk).
+    const photoOf = (seed: number) => {
+      let n = seed
+      const next = () => (n = (n * 16807) % 2147483647) / 2147483647
+      const cells = Array.from({ length: 64 }, () => 20 + next() * 190)
+      return (x: number, y: number) =>
+        cells[
+          Math.min(7, Math.floor(x * 8)) * 8 + Math.min(7, Math.floor(y * 8))
+        ]!
+    }
+    const words = (x: number, y: number) =>
+      y > 0.3 && y < 0.38 ? 30 : y > 0.5 && y < 0.55 ? 90 : 245
+    for (const width of [0.3, 0.5, 0.7]) {
+      const layout = (photo: (x: number, y: number) => number) =>
+        paint(120, 120, (x, y) =>
+          x < width && y > 0.1 && y < 0.9 ? photo(x / width, y) : words(x, y)
+        )
+      expect(
+        matchScore(layout(photoOf(99)), layout(photoOf(7))),
+        `photo ${width * 100}% wide`
+      ).toBeGreaterThanOrEqual(matchTarget)
+    }
+    // A full-bleed photo with the headline over it.
+    const bleed = (photo: (x: number, y: number) => number) =>
+      paint(120, 120, (x, y) =>
+        y > 0.4 && y < 0.48 && x > 0.1 && x < 0.9 ? 250 : photo(x, y)
+      )
+    expect(
+      matchScore(bleed(photoOf(3)), bleed(photoOf(11)))
+    ).toBeGreaterThanOrEqual(matchTarget)
+  })
+
+  it('is low when the content sits elsewhere, at the same brightness', () => {
+    const top = paint(48, 50, (_, y) => (y < 0.45 ? 40 : 245))
+    const bottom = paint(48, 50, (_, y) => (y > 0.55 ? 40 : 245))
+    expect(matchScore(bottom, top)).toBeLessThan(matchTarget)
+  })
+
+  it('takes only a whole score from 1 to 10', () => {
+    for (const n of [1, 6, 10]) expect(isMatchScore(n)).toBe(true)
+    for (const n of [0, 11, 5.5, 0.8, Number.NaN, '7', null])
+      expect(isMatchScore(n)).toBe(false)
   })
 
   it('keeps a picture’s light and dark areas when it is made smaller or larger', () => {

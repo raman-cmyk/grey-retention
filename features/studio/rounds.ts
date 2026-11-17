@@ -5,7 +5,7 @@ import type { Verdict } from './critic'
 import { briefHosts, type DesignedResult, type SectionBrief } from './designer'
 import { maxSectionBytes, type RenderedSection } from './renderer'
 import { SectionNotDrawable, studioWaits } from './limits'
-import { withMatch } from './match'
+import { isMatchScore, withMatch } from './match'
 import type { DesignedSection } from './section'
 import type { BuildRender } from './waits'
 
@@ -57,6 +57,8 @@ export const codedReasons = {
   studio_timed_out: 'The design studio ran out of time.',
   not_designable: 'The section had no https photo to design with.',
   layout_changed: 'The email’s sections and its draft did not match.',
+  match_failed:
+    'The picture still looked too little like the reference section after its last round.',
   storyboard_reordered:
     'The Art director moved the sections: the email keeps its own order.',
   reference_unfit:
@@ -311,19 +313,25 @@ export async function studioRound(
         await code(s, 'critic_unavailable')
         continue
       }
-      // DST-004b: a Copy section must also look like its reference.
-      const match =
+      // DST-004b: a Copy section must also look like its reference. A
+      // match that cannot be measured (a port that fails, or a number that
+      // is not a score) leaves the critic's verdict: it never costs the
+      // critic's calls again.
+      const measured =
         brief.mode === 'copy' && brief.reference && ports.match
-          ? await ports.match(brief, picture)
+          ? await ports.match(brief, picture).catch(() => null)
           : null
-      const verdict = match === null ? judged : withMatch(judged, match)
+      const verdict = isMatchScore(measured)
+        ? withMatch(judged, measured)
+        : judged
       if (verdict.pass) {
         s.state = 'done'
         s.height = render.height
         continue
       }
       if (s.round >= maxRounds) {
-        await code(s, 'critic_failed')
+        // The critic passed it: only the match failed.
+        await code(s, judged.pass ? 'match_failed' : 'critic_failed')
         continue
       }
       s.round++

@@ -10,9 +10,11 @@ import type { Verdict } from './critic'
  *
  * Both pictures come as small grey-level grids (`LumaGrid`, made where the
  * pictures are drawn: part 2). Code brings them to one size at the
- * reference's proportions and compares them the way SSIM does, over small
- * windows: brightness, contrast and structure. The score is 1 to 10; a
- * Copy section passes at `matchTarget` or more.
+ * reference's proportions and compares their layouts: which cells stand
+ * out from the background (the photo, the words, a shape), with small
+ * moves forgiven, and how light or dark the background is. What a photo
+ * shows never counts (Copy always has the brand's own photo). The score
+ * is 1 to 10; a Copy section passes at `matchTarget` or more.
  */
 
 /** A picture as grey levels (0 black to 255 white), row by row. */
@@ -94,71 +96,130 @@ export function resample(grid: LumaGrid, w: number, h: number): number[] {
   return out
 }
 
-/** SSIM's constants for 0–255 grey levels. */
-const c1 = (0.01 * 255) ** 2
-const c2 = (0.03 * 255) ** 2
-/** The window SSIM looks through, and how far it moves each time. */
-const window = 4
-const stride = 2
+/** How far from the background a cell is content (a tenth of the range). */
+const contentStep = 26
+/** How far a cell's content reaches its neighbours: small moves are forgiven. */
+const reach = 1
 
-/** The mean SSIM of two grids of the same size, over the windows. */
-function ssim(
+/** The width of the grey-level bands the background is found in. */
+const band = 16
+/** A background is real when this share of the cells is at its level. */
+const realGround = 0.25
+/** How close to the background level a flat background's cells are. */
+const flatStep = 10
+
+/**
+ * The picture’s background level: the grey level most of its edge cells
+ * share (the band holding the most of them, then the middle value inside
+ * it), and whether it is a real background (a quarter of all the cells
+ * within `flatStep` of its level, as a flat colour is). A photo spreads
+ * over many levels; a section's background is one. A section the photo
+ * fills has none, so its tone is not compared.
+ */
+function backgroundOf(values: readonly number[], w: number, h: number) {
+  const bands = new Map<number, number[]>()
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      if (!(y === 0 || x === 0 || y === h - 1 || x === w - 1)) continue
+      const v = values[y * w + x]!
+      const k = Math.min(15, Math.floor(v / band))
+      const list = bands.get(k) ?? []
+      list.push(v)
+      bands.set(k, list)
+    }
+  let best: number[] = []
+  for (const list of bands.values()) if (list.length > best.length) best = list
+  best.sort((p, q) => p - q)
+  const level = best[Math.floor(best.length / 2)] ?? 255
+  const share =
+    values.filter((v) => Math.abs(v - level) <= flatStep).length / values.length
+  return { level, real: share >= realGround }
+}
+
+/**
+ * Where the picture has content (a photo, words, a shape): a cell that
+ * stands out from the background, or has texture (its neighbours differ
+ * from it), is 1, else 0; then each is spread over its neighbours
+ * (`reach`), so a small move costs a little, not everything. What the
+ * content looks like inside (the photo) never counts.
+ */
+function contentMap(values: readonly number[], w: number, h: number) {
+  const bg = backgroundOf(values, w, h)
+  const ground = bg.level
+  const at = (x: number, y: number) => values[y * w + x]!
+  const solid: number[] = []
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const v = at(x, y)
+      let textured = false
+      for (const [dx, dy] of [
+        [1, 0],
+        [0, 1],
+        [-1, 0],
+        [0, -1]
+      ] as const) {
+        const xx = x + dx
+        const yy = y + dy
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue
+        if (Math.abs(at(xx, yy) - v) > contentStep) textured = true
+      }
+      solid.push(textured || Math.abs(v - ground) > contentStep ? 1 : 0)
+    }
+  const spread: number[] = []
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      let sum = 0
+      let n = 0
+      for (let dy = -reach; dy <= reach; dy++)
+        for (let dx = -reach; dx <= reach; dx++) {
+          const yy = y + dy
+          const xx = x + dx
+          if (yy < 0 || xx < 0 || yy >= h || xx >= w) continue
+          sum += solid[yy * w + xx]!
+          n++
+        }
+      spread.push(sum / n)
+    }
+  return { ground, real: bg.real, spread }
+}
+
+/**
+ * How much two pictures of the same size share their layout, 0 to 1:
+ * where their content sits (the weighted overlap of their content maps;
+ * two empty pictures share it fully), times how close their backgrounds
+ * are (a light background against a dark one shares nothing).
+ */
+export function layoutShare(
   a: readonly number[],
   b: readonly number[],
   w: number,
   h: number
 ) {
-  let total = 0
-  let windows = 0
-  const side = (n: number) => Math.min(window, n)
-  const ww = side(w)
-  const wh = side(h)
-  const starts = (n: number, s: number) => {
-    const list: number[] = []
-    for (let i = 0; i + s <= n; i += stride) list.push(i)
-    if (list.at(-1) !== n - s) list.push(n - s)
-    return list
+  const ma = contentMap(a, w, h)
+  const mb = contentMap(b, w, h)
+  let both = 0
+  let either = 0
+  for (let i = 0; i < w * h; i++) {
+    both += Math.min(ma.spread[i]!, mb.spread[i]!)
+    either += Math.max(ma.spread[i]!, mb.spread[i]!)
   }
-  for (const y0 of starts(h, wh))
-    for (const x0 of starts(w, ww)) {
-      let ma = 0
-      let mb = 0
-      const n = ww * wh
-      for (let y = y0; y < y0 + wh; y++)
-        for (let x = x0; x < x0 + ww; x++) {
-          ma += a[y * w + x]!
-          mb += b[y * w + x]!
-        }
-      ma /= n
-      mb /= n
-      let va = 0
-      let vb = 0
-      let cov = 0
-      for (let y = y0; y < y0 + wh; y++)
-        for (let x = x0; x < x0 + ww; x++) {
-          const da = a[y * w + x]! - ma
-          const db = b[y * w + x]! - mb
-          va += da * da
-          vb += db * db
-          cov += da * db
-        }
-      va /= n
-      vb /= n
-      cov /= n
-      total +=
-        ((2 * ma * mb + c1) * (2 * cov + c2)) /
-        ((ma * ma + mb * mb + c1) * (va + vb + c2))
-      windows++
-    }
-  return windows ? total / windows : 0
+  const overlap = either ? both / either : 1
+  // Light against dark shares nothing; a photo-filled section is not compared.
+  const tone =
+    ma.real && mb.real
+      ? 1 - Math.min(1, (2 * Math.abs(ma.ground - mb.ground)) / 255)
+      : 1
+  return overlap * tone
 }
 
 /**
  * How much the drawn section looks like its reference, 1 (nothing alike)
- * to 10 (the same layout of light and dark): both brought to
- * `matchColumns` wide at the reference's proportions, then their mean
- * SSIM (below 0, nothing alike) spread over 1 to 10. Throws for a grid
- * that cannot be compared (`gridProblem`): the caller's mistake.
+ * to 10 (the same layout): both brought to `matchColumns` wide at the
+ * reference's proportions, then where their content sits and how their
+ * backgrounds compare (`layoutShare`), spread over 1 to 10. What the
+ * photo shows and the words never count: a Copy rebuild has this brand's
+ * own. Throws for a grid that cannot be compared (`gridProblem`): the
+ * caller's mistake.
  */
 export function matchScore(drawn: LumaGrid, reference: LumaGrid): number {
   for (const g of [drawn, reference]) {
@@ -170,9 +231,18 @@ export function matchScore(drawn: LumaGrid, reference: LumaGrid): number {
     maxRows,
     Math.max(minRows, Math.round((w * reference.height) / reference.width))
   )
-  const s = ssim(resample(drawn, w, h), resample(reference, w, h), w, h)
-  return Math.min(10, Math.max(1, Math.round(1 + 9 * Math.max(0, s))))
+  const share = layoutShare(
+    resample(drawn, w, h),
+    resample(reference, w, h),
+    w,
+    h
+  )
+  return Math.min(10, Math.max(1, Math.round(1 + 9 * share)))
 }
+
+/** A score the rounds take: a whole number from 1 to 10, else none. */
+export const isMatchScore = (n: unknown): n is number =>
+  Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 10
 
 /**
  * The critic's verdict with the match score (Copy mode): below
