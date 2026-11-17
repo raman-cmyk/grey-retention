@@ -30,7 +30,22 @@ export type ReferenceSection = {
   height: number | null
   purpose?: string | null
   styles?: readonly string[]
+  /**
+   * DST-004b: where the section's picture is stored (`inbox-assets`),
+   * for the match score; never sent to an agent (workspace members can
+   * read it with the build's saved steps, as they can the email's id).
+   */
+  image?: string | null
 }
+
+/**
+ * A section picture's path exactly as the inbox stores it
+ * (`sect/<message id>/<ordinal>.jpg`, the `email_sections.image_path`
+ * check): never a whole email's screenshot (`shot/`) or a kept image
+ * (`img/`).
+ */
+export const isPicturePath = (p: unknown): p is string =>
+  typeof p === 'string' && /^sect\/[0-9a-f-]{36}\/[0-9]{1,2}\.jpg$/.test(p)
 
 /**
  * An inbox email that could be the reference. Only a brand the workspace
@@ -90,9 +105,12 @@ export function referenceDna(email: ReferenceEmail): {
   layout: CompetitorLayout
   reference: NonNullable<StoryboardInput['reference']>
   refIndex: (number | null)[]
+  /** DST-004b: each reference section's stored picture, or null. */
+  images: (string | null)[]
 } {
   const reference: NonNullable<StoryboardInput['reference']> = []
   const refIndex: (number | null)[] = []
+  const images: (string | null)[] = []
   const sections = email.sections.slice(0, 40)
   for (const s of sections) {
     if (
@@ -110,6 +128,7 @@ export function referenceDna(email: ReferenceEmail): {
       tone: designable.includes(family) ? sectionTone(s) : liveTone(family),
       height: Math.round(s.height)
     })
+    images.push(isPicturePath(s.image) ? s.image : null)
   }
   return {
     layout: {
@@ -117,7 +136,8 @@ export function referenceDna(email: ReferenceEmail): {
       ...(email.angle ? { angle: email.angle.slice(0, 400) } : {})
     },
     reference,
-    refIndex
+    refIndex,
+    images
   }
 }
 
