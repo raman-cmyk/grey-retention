@@ -19,6 +19,7 @@ import {
 import type { ManagedCode } from '@/features/offers/source'
 import { formatBrandDate } from '@/lib/brand-time'
 import type { SettingsPart, SettingsView } from './page-model'
+import { ChangesCard } from './changes-card'
 import { TeamCard } from './team-card'
 import { saveBrandTimezone, switchToKlaviyoTimezone } from './timezone-actions'
 
@@ -54,6 +55,13 @@ export function SettingsScreen({
         <TeamCard view={view} unread={<Unread view={view} part="team" />} />
         <AccountCard view={view} />
       </CardRow>
+      {/* Who changed what: the owner and managers only (UI-SETc). */}
+      {view.editor ? (
+        <ChangesCard
+          view={view}
+          unread={<Unread view={view} part="changes" />}
+        />
+      ) : null}
     </AppPage>
   )
 }
@@ -63,7 +71,8 @@ const unreadWords: Record<SettingsPart, string> = {
   klaviyo: 'The Klaviyo connection',
   timezone: 'The timezone',
   team: 'The team',
-  account: 'Your account'
+  account: 'Your account',
+  changes: 'Recent changes'
 }
 
 /** Why a card has nothing to show. */

@@ -146,10 +146,8 @@ describe('sidebar (expanded)', () => {
       'href',
       '/connections'
     )
-    expect(nav.getByRole('link', { name: 'Team' })).toHaveAttribute(
-      'href',
-      '/team'
-    )
+    // UI-SETc: the team is on Settings.
+    expect(nav.queryByRole('link', { name: 'Team' })).toBeNull()
     expect(
       nav.getByRole('link', { name: 'Request a Feature' })
     ).toHaveAttribute('href', '/feedback')
