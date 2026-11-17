@@ -12,7 +12,13 @@ import {
   type EmailViewPorts
 } from '@/features/studio/email-check'
 import type { EmailVerdict } from '@/features/studio/email-critic'
-import { builtEmail, type BuiltEmail, type PlannedEmail } from './build'
+import type { ReferenceEmail } from '@/features/studio/reference'
+import {
+  builtEmail,
+  type BuildCtx,
+  type BuiltEmail,
+  type PlannedEmail
+} from './build'
 import { sampleOffersFrom, sampleStoreFrom } from './ports'
 import { runBuildStep } from './steps'
 
@@ -39,7 +45,7 @@ const render = '00000001-3333-4333-8333-333333333333'
 const signed = `https://db.example/storage/v1/object/sign/studio-renders/render/${render}.jpg?token=t`
 
 /** The steps before design, as the job saves them, with an https hero photo. */
-async function beforeDesign() {
+async function beforeDesign(reference?: BuildCtx['reference']) {
   const store = await sampleStoreFrom(start).read(tenantId)
   const progress: Record<string, unknown> = {}
   for (const step of ['sections', 'content', 'copy'] as const) {
@@ -50,7 +56,9 @@ async function beforeDesign() {
         tenantId,
         callerKey: 'email-build:b1',
         fallbacks: memoryFallbackLog(),
-        clock
+        clock,
+        // DST-002b: the owner's Copy or Remix, for the sections step.
+        ...(reference ? { reference } : {})
       }
     )
     if (!made.ok || !('output' in made)) throw new Error(`${step} failed`)
@@ -661,5 +669,50 @@ describe('the design step judges the studio’s email whole (DST-006d part 2c)',
     expect(fallbacks.entries().map((e) => e.dedupeKey)).toEqual([
       expect.stringMatching(/:coded$/)
     ])
+  })
+
+  it('gives the studio the inbox email the sections step picked (DST-002b)', async () => {
+    const reference: ReferenceEmail = {
+      id: 'ref-1',
+      brandId: 'pine',
+      brand: 'Pine & Co',
+      synthetic: true,
+      subject: 'The new throw',
+      industry: 'home',
+      emailType: 'launch',
+      angle: 'new and soft',
+      receivedAt: '2026-02-20T09:00:00Z',
+      winner: false,
+      sections: [
+        { blockType: 'hero_image', height: 640, styles: ['dark'] },
+        { blockType: 'text', height: 200 },
+        { blockType: 'product_grid_2col', height: 700 },
+        { blockType: 'footer', height: 200 }
+      ]
+    }
+    const { store, progress, blocks, hero } = await beforeDesign({
+      mode: 'copy',
+      load: async () => ({ emails: [reference], followed: new Set() })
+    })
+    expect(progress.sections).toMatchObject({
+      reference: { emailId: 'ref-1', mode: 'copy' }
+    })
+    const studio = ports(blocks, hero)
+    await step(store, progress, studio)
+    const story = vi.mocked(studio.storyboard).mock.calls[0]![0]
+    expect(story.mode).toBe('copy')
+    // The hero follows the reference's first section, as the plan copied it.
+    expect(story.sections[hero]!.ref).toBe(0)
+    expect(story.reference?.[0]).toMatchObject({ height: 640 })
+    // The hero's brief keeps the reference's tone and height.
+    expect(vi.mocked(studio.design).mock.calls[0]![0]).toMatchObject({
+      mode: 'copy',
+      reference: { tone: 'dark', height: 640 }
+    })
+    // Scratch, as before, without one.
+    const plain = await beforeDesign()
+    const scratch = ports(plain.blocks, plain.hero)
+    await step(plain.store, plain.progress, scratch)
+    expect(vi.mocked(scratch.storyboard).mock.calls[0]![0].mode).toBe('scratch')
   })
 })
