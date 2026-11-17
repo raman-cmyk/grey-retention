@@ -3,6 +3,8 @@ import { blockTypes } from '@/features/blocks/catalog'
 import { copyPlan, seedVariants } from '@/features/email-build/sections'
 import {
   pickReference,
+  plannedReference,
+  rankReferences,
   referenceDna,
   sectionTone,
   type ReferenceEmail
@@ -47,30 +49,31 @@ const pick = (
 ) => pickReference(emails, s, { mode, now, followed })
 
 /** Copy all the way: the reference, the plan, code's storyboard. */
-function copyStoryboard(e: ReferenceEmail) {
+function copyStoryboard(
+  e: ReferenceEmail,
+  allowed: readonly (typeof blockTypes)[number][] = blockTypes
+) {
   const dna = referenceDna(e)
   const plan = copyPlan({
     mode: 'copy',
     industry: 'home',
     slot: { emailType: 'bestseller', angle: 'x', products: 4, offer: true },
-    allowed: blockTypes,
+    allowed,
     library: seedVariants,
     competitor: dna.layout
   })
+  const { reference, refs } = plannedReference(dna, plan.sections)
   const input: StoryboardInput = {
     mode: 'copy',
     slot: { emailType: 'bestseller', angle: 'x' },
-    sections: plan.sections.map((s, i) => {
-      const ref = s.source === undefined ? null : dna.refIndex[s.source]
-      return {
-        id: `s${i + 1}`,
-        family: s.family,
-        purpose: s.purpose,
-        products: s.family.startsWith('product_grid') ? 2 : 0,
-        ...(ref === null ? {} : { ref })
-      }
-    }),
-    reference: dna.reference
+    sections: plan.sections.map((s, i) => ({
+      id: `s${i + 1}`,
+      family: s.family,
+      purpose: s.purpose,
+      products: s.family.startsWith('product_grid') ? 2 : 0,
+      ...(refs[i] === undefined ? {} : { ref: refs[i] })
+    })),
+    reference
   }
   return { plan, input, board: codeStoryboard(input) }
 }
@@ -132,7 +135,7 @@ describe('referenceDna', () => {
     expect(dna.refIndex).toHaveLength(40)
   })
 
-  it('makes a dark hero after a dark section stand out as accent, and live sections keep their own tone', () => {
+  it('keeps each section’s own tone: a hero its tagged one, a live section its block’s', () => {
     const dna = referenceDna(
       email({
         sections: [
@@ -142,11 +145,7 @@ describe('referenceDna', () => {
         ]
       })
     )
-    expect(dna.reference.map((r) => r.tone)).toEqual([
-      'dark',
-      'accent',
-      'light'
-    ])
+    expect(dna.reference.map((r) => r.tone)).toEqual(['dark', 'dark', 'light'])
   })
 
   it('feeds Copy all the way to a storyboard code can draw', () => {
@@ -179,6 +178,64 @@ describe('referenceDna', () => {
     )
     expect(board).not.toBeNull()
     expect(storyboardProblems(board!, input)).toEqual([])
+  })
+
+  it('keeps Copy drawable when a stand-in puts a dark bar before a dark hero', () => {
+    // No offer to show: the offer banner's stand-in is the dark announcement bar.
+    const { plan, input, board } = copyStoryboard(
+      email({
+        sections: [
+          { blockType: 'offer_banner', height: 120, purpose: 'offer' },
+          { blockType: 'hero_image', height: 600, styles: ['dark'] },
+          { blockType: 'product_grid_2col', height: 700 }
+        ]
+      }),
+      blockTypes.filter((b) => b !== 'offer_banner')
+    )
+    expect(plan.sections.map((s) => s.family).slice(0, 3)).toEqual([
+      'header_logo',
+      'announcement_bar',
+      'hero_image'
+    ])
+    expect(input.reference?.[1].tone).toBe('accent')
+    expect(board).not.toBeNull()
+    expect(storyboardProblems(board!, input)).toEqual([])
+  })
+
+  it('keeps Copy drawable when a dark bar follows a dark hero', () => {
+    const { input, board } = copyStoryboard(
+      email({
+        sections: [
+          { blockType: 'header_logo', height: 80 },
+          { blockType: 'hero_image', height: 600, styles: ['dark'] },
+          { blockType: 'announcement_bar', height: 40 },
+          { blockType: 'product_grid_2col', height: 700 }
+        ]
+      })
+    )
+    expect(input.reference?.[1].tone).toBe('accent')
+    expect(board).not.toBeNull()
+    expect(storyboardProblems(board!, input)).toEqual([])
+  })
+
+  it('lets Copy try the next email when code cannot fit the whole first one', () => {
+    const tall = email({
+      id: 'tall',
+      winner: true,
+      sections: [
+        { blockType: 'hero_image', height: copyKeepable.max },
+        { blockType: 'hero_product', height: copyKeepable.max },
+        { blockType: 'product_grid_2col', height: 700 }
+      ]
+    })
+    const { picks } = rankReferences([tall, email({ id: 'fits' })], slot, {
+      mode: 'copy',
+      now,
+      followed
+    })
+    expect(picks.map((p) => p.email.id)).toEqual(['tall', 'fits'])
+    const drawable = picks.find((p) => copyStoryboard(p.email).board)
+    expect(drawable?.email.id).toBe('fits')
   })
 
   it('keeps an angle out when the email has none', () => {
@@ -267,14 +324,14 @@ describe('pickReference', () => {
     const p = pick([email({ industry: 'pet', emailType: 'sale' })])
     expect(p.email).toBeNull()
     expect(p.reason).toBe(
-      'None of the emails from the brands you follow is a home email or the same kind of email (bestseller), so this email is designed from scratch.'
+      'None of the emails from the brands you follow is a home email or a bestseller email, so this email is designed from scratch.'
     )
     const other = { industry: 'other', emailType: 'story' as const }
     expect(pick([email({ industry: 'other' })], 'remix', other).email).toBe(
       null
     )
     expect(pick([email({ industry: 'other' })], 'remix', other).reason).toBe(
-      'None of the emails from the brands you follow is the same kind of email (story), so this email is designed from scratch.'
+      'None of the emails from the brands you follow is a story email, so this email is designed from scratch.'
     )
     expect(
       pick([email()], 'remix', { industry: null, emailType: 'story' }).email
@@ -287,7 +344,7 @@ describe('pickReference', () => {
       pick([email({ id: 'sale', emailType: 'sale' })], 'remix', offer).email?.id
     ).toBe('sale')
     expect(pick([email()], 'remix', offer).reason).toMatch(
-      /^None of the emails from the brands you follow is an outdoor email or/
+      /^None of the emails from the brands you follow is an outdoor email or an offer email,/
     )
   })
 
@@ -307,7 +364,7 @@ describe('pickReference', () => {
       expect(pick([at(h)], 'remix').email).not.toBeNull()
     }
     expect(pick([at(null)], 'copy').reason).toBe(
-      'The emails from the brands you follow that are a home email or the same kind of email (bestseller) cannot be followed: their top pictures are too short or too tall to copy, so this email is designed from scratch.'
+      'The emails like it from the brands you follow cannot be followed: their top pictures are too short or too tall to copy, so this email is designed from scratch.'
     )
   })
 
@@ -319,6 +376,9 @@ describe('pickReference', () => {
     ).toMatch(/cannot be followed: they are more than a year old/)
     expect(none(email({ receivedAt: '2026-12-01T00:00:00Z' }))).toBeNull()
     expect(none(email({ receivedAt: 'yesterday' }))).toBeNull()
+    expect(pick([email({ receivedAt: 'yesterday' })]).reason).toMatch(
+      /cannot be followed: their dates cannot be read/
+    )
     // A few minutes ahead of this clock still counts.
     expect(none(email({ receivedAt: '2026-11-17T12:03:00Z' }))).not.toBeNull()
     const thin = email({

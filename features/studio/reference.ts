@@ -1,6 +1,6 @@
 import { oneLine } from '@/features/assembly/assemble'
 import type { CompetitorLayout } from '@/features/assembly/modes'
-import { isBlockType } from '@/features/blocks/catalog'
+import { isBlockType, type BlockType } from '@/features/blocks/catalog'
 import type { BuildMode } from '@/features/email-build/sections'
 import { layoutOf } from '@/features/inbox/winners'
 import type { EmailType as InboxEmailType } from '@/features/intelligence/taxonomy'
@@ -80,14 +80,11 @@ export function sectionTone(s: ReferenceSection): Tone {
 /**
  * What a build takes from its reference: the layout Copy follows and Remix
  * learns its structure from (sections in order, the angle as structure
- * only), the reference sections the Art director keeps to, and, for each
- * layout section, its place in that reference (null when it has none: an
- * unnamed part, a footer, an unknown height). A planned section's `source`
- * (Copy) is its layout index, so its storyboard `ref` is `refIndex[source]`.
- *
- * Tones are the ones the storyboard can keep: a live section keeps its
- * block's tone, and a dark hero right after a dark section stands out as
- * accent instead (two dark sections never touch).
+ * only), the reference sections with their own tones (a hero its tagged
+ * tone, a live section its block's), and, for each layout section, its
+ * place in that reference (null when it has none: an unnamed part, a
+ * footer, an unknown height). A planned section's `source` (Copy) is its
+ * layout index; `plannedReference` gives the storyboard what it keeps.
  */
 export function referenceDna(email: ReferenceEmail): {
   layout: CompetitorLayout
@@ -97,23 +94,22 @@ export function referenceDna(email: ReferenceEmail): {
   const reference: NonNullable<StoryboardInput['reference']> = []
   const refIndex: (number | null)[] = []
   const sections = email.sections.slice(0, 40)
-  let before: Tone | null = null
   for (const s of sections) {
-    if (!isBlockType(s.blockType) || s.blockType === 'footer') {
+    if (
+      !isBlockType(s.blockType) ||
+      s.blockType === 'footer' ||
+      !usableHeight(s.height)
+    ) {
       refIndex.push(null)
       continue
     }
     const family = s.blockType
-    const designed = designable.includes(family)
-    let tone = designed ? sectionTone(s) : liveTone(family)
-    if (designed && tone === 'dark' && before === 'dark') tone = 'accent'
-    before = tone
-    if (!usableHeight(s.height)) {
-      refIndex.push(null)
-      continue
-    }
     refIndex.push(reference.length)
-    reference.push({ family, tone, height: Math.round(s.height) })
+    reference.push({
+      family,
+      tone: designable.includes(family) ? sectionTone(s) : liveTone(family),
+      height: Math.round(s.height)
+    })
   }
   return {
     layout: {
@@ -123,6 +119,45 @@ export function referenceDna(email: ReferenceEmail): {
     reference,
     refIndex
   }
+}
+
+/**
+ * The reference as the storyboard of a Copy plan keeps it: each planned
+ * section's `ref` (from its `source`), and the tones a storyboard can keep
+ * next to the planned neighbours (a stand-in or a dropped section changes
+ * them): a dark hero beside a dark section, before or after, stands out as
+ * accent instead, since two dark sections never touch.
+ */
+export function plannedReference(
+  dna: ReturnType<typeof referenceDna>,
+  sections: readonly { family: BlockType; source?: number }[]
+): {
+  reference: NonNullable<StoryboardInput['reference']>
+  refs: (number | undefined)[]
+} {
+  const reference = dna.reference.map((r) => ({ ...r }))
+  const refs = sections.map((s) => {
+    const r = s.source === undefined ? null : dna.refIndex[s.source]
+    return r === null || r === undefined ? undefined : r
+  })
+  const toneAt = (i: number): Tone => {
+    const r = refs[i]
+    return designable.includes(sections[i].family) && r !== undefined
+      ? reference[r].tone
+      : liveTone(sections[i].family)
+  }
+  sections.forEach((s, i) => {
+    const r = refs[i]
+    if (r === undefined || !designable.includes(s.family)) return
+    if (reference[r].tone !== 'dark') return
+    const before = i > 0 && toneAt(i - 1) === 'dark'
+    const after =
+      i + 1 < sections.length &&
+      !designable.includes(sections[i + 1].family) &&
+      liveTone(sections[i + 1].family) === 'dark'
+    if (before || after) reference[r].tone = 'accent'
+  })
+  return { reference, refs }
 }
 
 /** The fewest content sections a reference needs to be worth following. */
@@ -152,7 +187,7 @@ export const sameKind: Record<EmailType, readonly InboxEmailType[]> = {
 export type ReferencePick =
   { email: ReferenceEmail; reason: string } | { email: null; reason: string }
 
-type Unfit = 'old' | 'thin' | 'heights'
+type Unfit = 'undated' | 'old' | 'thin' | 'heights'
 
 /**
  * Why an email cannot be the reference in this mode, or null when it can.
@@ -161,12 +196,9 @@ type Unfit = 'old' | 'thin' | 'heights'
  */
 function unfit(email: ReferenceEmail, mode: BuildMode, now: number) {
   const received = Date.parse(email.receivedAt)
-  if (
-    !Number.isFinite(received) ||
-    received > now + skewMs ||
-    now - received > maxAgeDays * dayMs
-  )
-    return 'old' satisfies Unfit
+  if (!Number.isFinite(received) || received > now + skewMs)
+    return 'undated' satisfies Unfit
+  if (now - received > maxAgeDays * dayMs) return 'old' satisfies Unfit
   const content = layoutOf(email.sections.map((s) => s.blockType)).filter(
     (b) => b !== 'unsure'
   )
@@ -199,22 +231,25 @@ const dateWords = new Intl.DateTimeFormat('en-GB', {
 
 const scratch = ', so this email is designed from scratch.'
 const unfitWords: Record<Unfit, string> = {
+  undated: 'their dates cannot be read',
   old: 'they are more than a year old',
   thin: 'their layouts are too short to follow',
   heights: 'their top pictures are too short or too tall to copy'
 }
 
 /**
- * The reference for one slot, among the inbox emails of brands the
- * workspace follows (or sample brands) that fit the mode: the most labels
- * shared with the slot first (its industry, its kind of email), then a
- * layout its brand keeps sending, then one sent in the last 90 days, then
- * the newest, then the id. An email that shares neither label is never
- * picked; an industry of "other", or none, is no match. Scratch has none.
- * The reason says, in the owner's words, which email and why, or why the
- * email is designed from scratch.
+ * The references for one slot, best first, among the inbox emails of
+ * brands the workspace follows (or sample brands) that fit the mode: the
+ * most labels shared with the slot first (its industry, its kind of
+ * email), then a layout its brand keeps sending, then one sent in the last
+ * 90 days, then the newest, then the id. An email that shares neither
+ * label is never offered; an industry of "other", or none, is no match.
+ * Each comes with its reason in the owner's words; when none fits,
+ * `reason` says why the email is designed from scratch. Copy tries them in
+ * order: code's storyboard of the whole email can still refuse one (the
+ * pictures' share, the email's height), and the next is tried.
  */
-export function pickReference(
+export function rankReferences(
   emails: readonly ReferenceEmail[],
   slot: { industry: string | null; emailType: EmailType },
   {
@@ -222,16 +257,16 @@ export function pickReference(
     now,
     followed
   }: { mode: BuildMode; now: number; followed: ReadonlySet<string> }
-): ReferencePick {
+): { picks: { email: ReferenceEmail; reason: string }[]; reason: string } {
   if (mode === 'scratch')
-    return { email: null, reason: 'Scratch emails have no reference.' }
+    return { picks: [], reason: 'Scratch emails have no reference.' }
   const industry =
     slot.industry && slot.industry !== 'other' ? slot.industry : null
   const kinds = sameKind[slot.emailType] as readonly string[]
   const shown = emails.filter((e) => e.synthetic || followed.has(e.brandId))
   if (!shown.length)
     return {
-      email: null,
+      picks: [],
       reason: `No email from the brands you follow is in the Inspiration inbox yet${scratch}`
     }
   const sharing = shown
@@ -243,13 +278,13 @@ export function pickReference(
     .filter((s) => s.sameIndustry || s.sameType)
   const labels = [
     industry ? `${an(words(industry))} email` : null,
-    `the same kind of email (${slot.emailType})`
+    `${an(slot.emailType)} email`
   ]
     .filter(Boolean)
     .join(' or ')
   if (!sharing.length)
     return {
-      email: null,
+      picks: [],
       reason: `None of the emails from the brands you follow is ${labels}${scratch}`
     }
   const why = new Map<Unfit, number>()
@@ -258,6 +293,13 @@ export function pickReference(
     if (no) why.set(no, (why.get(no) ?? 0) + 1)
     return !no
   })
+  if (!fit.length) {
+    const main = [...why.entries()].sort((a, b) => b[1] - a[1])[0][0]
+    return {
+      picks: [],
+      reason: `The emails like it from the brands you follow cannot be followed: ${unfitWords[main]}${scratch}`
+    }
+  }
   const shares = (s: (typeof fit)[number]) =>
     (s.sameIndustry ? 1 : 0) + (s.sameType ? 1 : 0)
   const recent = (e: ReferenceEmail) =>
@@ -270,26 +312,31 @@ export function pickReference(
       Date.parse(b.e.receivedAt) - Date.parse(a.e.receivedAt) ||
       (a.e.id < b.e.id ? -1 : a.e.id > b.e.id ? 1 : 0)
   )
-  const best = fit[0]
-  if (!best) {
-    const main = [...why.entries()].sort((a, b) => b[1] - a[1])[0][0]
-    return {
-      email: null,
-      reason: `The emails from the brands you follow that are ${labels} cannot be followed: ${unfitWords[main]}${scratch}`
-    }
-  }
-  const shared = [
-    best.sameIndustry && `the same industry (${words(industry!)})`,
-    best.sameType && 'the same kind of email'
-  ].filter(Boolean)
-  const subject = oneLine(best.e.subject, 80) || 'an email'
-  const brand = oneLine(best.e.brand, 60) || 'A brand you follow'
   return {
-    email: best.e,
-    reason: [
-      `${mode === 'copy' ? 'We copy' : 'We remix'} ${brand}’s email “${subject}” (${dateWords.format(Date.parse(best.e.receivedAt))}). It is ${shared.join(' and ')}`,
-      best.e.winner ? ', and a layout they send again and again' : '',
-      '.'
-    ].join('')
+    picks: fit.map((f) => {
+      const shared = [
+        f.sameIndustry && `the same industry (${words(industry!)})`,
+        f.sameType && 'the same kind of email'
+      ].filter(Boolean)
+      const subject = oneLine(f.e.subject, 80) || 'an email'
+      const brand = oneLine(f.e.brand, 60) || 'A brand you follow'
+      return {
+        email: f.e,
+        reason: [
+          `${mode === 'copy' ? 'We copy' : 'We remix'} ${brand}’s email “${subject}” (${dateWords.format(Date.parse(f.e.receivedAt))}). It is ${shared.join(' and ')}`,
+          f.e.winner ? ', and a layout they send again and again' : '',
+          '.'
+        ].join('')
+      }
+    }),
+    reason: ''
   }
+}
+
+/** The best reference for one slot (`rankReferences`), or why there is none. */
+export function pickReference(
+  ...args: Parameters<typeof rankReferences>
+): ReferencePick {
+  const { picks, reason } = rankReferences(...args)
+  return picks[0] ?? { email: null, reason }
 }
