@@ -32,6 +32,20 @@ const stars = (ratingValue: unknown, more: Record<string, unknown> = {}) =>
     url,
     now
   ).reviews.map((r) => [r.rating, r.ratingUnclear])[0]
+const exact = (ratingValue: unknown, more: Record<string, unknown> = {}) =>
+  pageReviews(
+    page([
+      product([
+        {
+          author: 'B',
+          reviewBody: 'Fine.',
+          reviewRating: { ratingValue, ...more }
+        }
+      ])
+    ]),
+    url,
+    now
+  ).reviews[0]?.ratingExact
 
 describe('the review data a product page publishes', () => {
   it('reads each review with its author, words, stars and day, and names the app', () => {
@@ -74,6 +88,7 @@ describe('the review data a product page publishes', () => {
         text: 'So soft & warm. It does not itch.',
         rating: 5,
         ratingUnclear: false,
+        ratingExact: true,
         date: '2026-10-01',
         url,
         product: 'Weekend Knit'
@@ -83,6 +98,7 @@ describe('the review data a product page publishes', () => {
         text: 'Runs large.',
         rating: 4,
         ratingUnclear: false,
+        ratingExact: true,
         date: null,
         url,
         product: 'Weekend Knit'
@@ -245,6 +261,17 @@ describe('the review data a product page publishes', () => {
     // Only a plain decimal: "0x5" is no five.
     expect(stars('0x5')).toEqual([null, true])
     expect(stars(' 4.5 ')).toEqual([5, false])
+    // Rounded ratings are said to be rounded (REL-ONB2 part b: an email
+    // shows only the page's own stars).
+    expect(exact(' 4.5 ')).toBe(false)
+    expect(exact(3.5)).toBe(false)
+    expect(exact('3.5/5')).toBe(false)
+    expect(exact(9, { bestRating: 10 })).toBe(false)
+    expect(exact(8, { bestRating: 10 })).toBe(false)
+    expect(exact('5')).toBe(true)
+    expect(exact('4 / 5')).toBe(true)
+    expect(exact(10, { bestRating: '10', worstRating: 0 })).toBe(true)
+    expect(exact(0, { bestRating: 10, worstRating: 0 })).toBe(true)
     expect(stars(3, { bestRating: 1 })).toEqual([null, true])
     // No stars given at all is not unclear.
     expect(
@@ -278,6 +305,7 @@ describe('the review data a product page publishes', () => {
         text: 'Fine.',
         rating: null,
         ratingUnclear: false,
+        ratingExact: true,
         date: null,
         url,
         product: null
