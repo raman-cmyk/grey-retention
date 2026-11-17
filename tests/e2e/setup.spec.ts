@@ -60,7 +60,9 @@ test('UI-ONBb a new owner saves the store and comes back to the step that is Now
   await expect(
     page.getByRole('heading', { name: 'Reading your store' })
   ).toBeVisible()
-  await expect(page.getByText('Reading your website')).toBeVisible()
+  await expect(
+    page.getByText('Reading your website', { exact: true })
+  ).toBeVisible()
   await expect(page.getByText('Products')).toBeVisible()
   // Confirm brand waits for the website to be read.
   await expect(
