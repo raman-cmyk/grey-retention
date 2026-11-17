@@ -237,8 +237,9 @@ export async function runEmailBuilds(
         const taken =
           job.step === 'copy' ? await planSubjects(db, job) : undefined
         // DST-002b: the owner's Copy or Remix, for the step that plans it.
+        // A text email is never copied or remixed (DST-002b1): no read.
         const reference =
-          job.step === 'sections'
+          job.step === 'sections' && planned.data.format !== 'text'
             ? await buildReference(
                 db,
                 job,
@@ -578,12 +579,6 @@ export async function runEmailBuilds(
   return { ran }
 }
 
-/**
- * The subjects the plan's other planned emails already have (REL-AI): a
- * stored email's, or a saved copy step's. A failed build's subject is free
- * again unless it reached the push (its Klaviyo draft may still carry it);
- * this email's own builds (its "Try again") never count.
- */
 type ReferenceLoader = (tenantId: string) => Promise<{
   emails: readonly ReferenceEmail[]
   followed: ReadonlySet<string>
@@ -623,6 +618,12 @@ export async function buildReference(
   } as const
 }
 
+/**
+ * The subjects the plan's other planned emails already have (REL-AI): a
+ * stored email's, or a saved copy step's. A failed build's subject is free
+ * again unless it reached the push (its Klaviyo draft may still carry it);
+ * this email's own builds (its "Try again") never count.
+ */
 export async function planSubjects(
   db: Db,
   job: { tenant_id: string; run_id: string; slot: number }

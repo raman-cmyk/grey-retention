@@ -1,5 +1,7 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { InMemoryMemoryStore } from '@/features/agents/memory'
+import { InMemoryRunLog, type AiCall } from '@/features/agents/runtime'
 import { memoryFallbackLog } from '@/features/fallback/log'
 import type { ReferenceEmail } from '@/features/studio/reference'
 import { sectionsStep, type BuildCtx, type PlannedEmail } from './build'
@@ -47,7 +49,8 @@ const reference = (over: Partial<ReferenceEmail> = {}): ReferenceEmail => ({
 
 async function run(
   ref: BuildCtx['reference'],
-  over: Partial<PlannedEmail> = {}
+  over: Partial<PlannedEmail> = {},
+  ai?: AiCall
 ) {
   const fallbacks = memoryFallbackLog()
   const store = await sampleStoreSource.read(tenantId)
@@ -57,7 +60,16 @@ async function run(
       tenantId,
       callerKey: 'email-build:b1',
       fallbacks,
-      ...(ref ? { reference: ref } : {})
+      ...(ref ? { reference: ref } : {}),
+      ...(ai
+        ? {
+            agents: {
+              memory: new InMemoryMemoryStore(),
+              log: new InMemoryRunLog(),
+              ai
+            }
+          }
+        : {})
     }
   )
   if (!made.ok) throw new Error(made.code)
@@ -121,7 +133,7 @@ describe('the sections step and the owner’s mode (DST-002b)', () => {
     expect(log[0]).toMatchObject({
       agent: 'art-director',
       reasonCode: 'reference_none',
-      fallback: 'Designed from scratch.',
+      fallback: 'No reference email was used.',
       detail: { mode: 'copy' }
     })
     expect(log[0].reason).toMatch(
@@ -155,6 +167,121 @@ describe('the sections step and the owner’s mode (DST-002b)', () => {
     expect(output.layout.mode).toBe('scratch')
     expect(read).toBe(false)
     expect(log.map((e) => e.reasonCode)).toEqual(['reference_remix_no_ai'])
+  })
+
+  it('copies an email with an offer only from one that shows an offer', async () => {
+    const noOffer = reference({
+      sections: [
+        { blockType: 'hero_image', height: 640 },
+        { blockType: 'product_grid_2col', height: 700 },
+        { blockType: 'text', height: 200 }
+      ]
+    })
+    const none = await run({ mode: 'copy', load: loads([noOffer]) })
+    expect(none.output.layout.mode).toBe('scratch')
+    expect(none.log.map((e) => e.reasonCode)).toEqual(['reference_no_offer'])
+    // An email without an offer may copy it.
+    const plain = await run(
+      { mode: 'copy', load: loads([noOffer]) },
+      { offer: null }
+    )
+    expect(plain.output.reference?.emailId).toBe('ref-1')
+    // The one that shows an offer is picked over a newer one that does not.
+    const both = await run({
+      mode: 'copy',
+      load: loads([
+        { ...noOffer, id: 'newer', receivedAt: new Date().toISOString() },
+        reference()
+      ])
+    })
+    expect(both.output.reference?.emailId).toBe('ref-1')
+  })
+
+  it('never copies more than an email’s 12 blocks', async () => {
+    const long = reference({
+      sections: [
+        { blockType: 'offer_banner', height: 120, purpose: 'offer' },
+        ...Array.from({ length: 14 }, () => ({
+          blockType: 'text',
+          height: 200
+        })),
+        { blockType: 'footer', height: 200 }
+      ]
+    })
+    const { output } = await run({ mode: 'copy', load: loads([long]) })
+    expect(output.layout.sections.length).toBeLessThanOrEqual(12)
+    expect(output.layout.sections[0].family).toBe('header_logo')
+    expect(output.layout.sections.at(-1)?.family).toBe('footer')
+    expect(
+      output.layout.dropped.some((d) => /at most 12 blocks/.test(d.reason))
+    ).toBe(true)
+  })
+
+  it('remixes the idea of an email with one, when the planner answers', async () => {
+    // The planner's answer: the safe plan's own variants.
+    const safe = (await run(undefined)).output.layout.sections
+    const answer = {
+      sections: safe.map((s) => ({
+        variantId: s.variantId,
+        purpose: s.purpose
+      }))
+    }
+    const ai = vi.fn<AiCall>(async () => ({
+      ok: true,
+      content: answer,
+      provider: 'fake',
+      model: 'fake',
+      costMicro: 0,
+      inputTokens: 10,
+      outputTokens: 10,
+      settled: true
+    }))
+    const { output, log } = await run(
+      { mode: 'remix', load: loads([reference()]) },
+      {},
+      ai
+    )
+    expect(output.layout).toMatchObject({ mode: 'remix', source: 'agent' })
+    expect(output.reference?.mode).toBe('remix')
+    expect(output.reference?.reason).toMatch(/^We remix Pine & Co’s email/)
+    const sent = JSON.parse(ai.mock.calls[0][0].request.user)
+    expect(sent.strategyNote).toBe('urgency')
+    expect(log).toEqual([])
+  })
+
+  it('makes a remix from scratch when the planner could not remix it, or the email has no idea', async () => {
+    const failing = vi.fn<AiCall>(async () => ({
+      ok: false,
+      code: 'cap_reached'
+    }))
+    const fell = await run(
+      { mode: 'remix', load: loads([reference()]) },
+      {},
+      failing
+    )
+    expect(fell.output.layout.mode).toBe('scratch')
+    expect(fell.output).not.toHaveProperty('reference')
+    expect(fell.log.map((e) => e.reasonCode)).toContain(
+      'reference_remix_planner'
+    )
+    const idea = await run(
+      { mode: 'remix', load: loads([reference({ angle: null })]) },
+      {},
+      failing
+    )
+    expect(idea.output).not.toHaveProperty('reference')
+    expect(idea.log.map((e) => e.reasonCode)).toContain('reference_no_idea')
+  })
+
+  it('keeps the read’s code, never its words, when the inbox cannot be read', async () => {
+    const { log } = await run({
+      mode: 'copy',
+      load: async () => {
+        throw new Error('secret words', { cause: { code: 'PGRST301' } })
+      }
+    })
+    expect(log[0].detail).toEqual({ mode: 'copy', cause: 'PGRST301' })
+    expect(JSON.stringify(log[0])).not.toContain('secret words')
   })
 
   it('leaves a text email and a Scratch build as they were', async () => {

@@ -747,6 +747,58 @@ describe('saved steps (REL-081)', () => {
     expect(output.reference).toMatchObject({ emailId: 'ref-1', mode: 'copy' })
   })
 
+  it('makes a Copy build all the way to its email, following its reference', async () => {
+    const { db, calls } = fakeDb(
+      [step()],
+      {},
+      { email_builds: [{ mode: 'copy' }] }
+    )
+    await runEmailBuilds(db, {
+      fallbacks: memoryFallbackLog(),
+      references: async () => ({
+        emails: [
+          {
+            id: 'ref-1',
+            brandId: 'pine',
+            brand: 'Pine & Co',
+            synthetic: true,
+            subject: 'The cedar launch',
+            industry: 'home',
+            emailType: 'launch',
+            angle: null,
+            receivedAt: new Date(Date.now() - 86_400_000).toISOString(),
+            winner: false,
+            sections: [
+              { blockType: 'announcement_bar', height: 40 },
+              { blockType: 'hero_product', height: 600 },
+              { blockType: 'text', height: 200 },
+              { blockType: 'product_feature', height: 500 },
+              { blockType: 'cta', height: 120 },
+              { blockType: 'footer', height: 200 }
+            ]
+          }
+        ],
+        followed: new Set<string>()
+      })
+    })
+    expect(failure(calls)).toBeUndefined()
+    const sections = calls.find(
+      (c) => c.fn === 'finish_email_step' && c.args.done === 'sections'
+    )!.args.output as { layout: { mode: string }; reference?: object }
+    expect(sections.layout.mode).toBe('copy')
+    expect(sections.reference).toMatchObject({ emailId: 'ref-1' })
+    expect(calls.find((c) => c.fn === 'finish_email_build')).toBeDefined()
+  })
+
+  it('tries the step again when the build’s mode cannot be read, and saves nothing', async () => {
+    const { db, calls } = fakeDb([step()], {
+      email_builds: { code: 'PGRST000' }
+    })
+    await runEmailBuilds(db, { limit: 1, fallbacks: memoryFallbackLog() })
+    expect(failure(calls)).toMatchObject({ final: false })
+    expect(calls.some((c) => c.fn === 'finish_email_step')).toBe(false)
+  })
+
   it('reads no inbox for a build made from scratch', async () => {
     const { db } = fakeDb([step()], {}, { email_builds: [{ mode: 'scratch' }] })
     let read = false
