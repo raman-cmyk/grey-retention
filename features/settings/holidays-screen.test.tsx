@@ -176,6 +176,7 @@ describe('Holidays and events under Settings (UI-SETd)', () => {
     expect(
       fieldsOf(within(platform).getByRole('button', { name: 'Save country' }))
     ).toEqual({ country: 'AU' })
+    expect(within(platform).getByLabelText('Country')).toHaveValue('AU')
     cleanup()
     render(
       <HolidaysScreen
@@ -188,6 +189,33 @@ describe('Holidays and events under Settings (UI-SETd)', () => {
     expect(card('Holidays in the plan')).toHaveTextContent(
       'No holidays in the next 90 days.'
     )
+  })
+
+  it('keeps the saved country after Save country', async () => {
+    const user = userEvent.setup()
+    actions.setHolidayCountry.mockResolvedValueOnce({
+      message: 'Country saved.'
+    })
+    const { rerender } = render(
+      <HolidaysScreen page={page({ country: 'INTL' })} owner editing={null} />
+    )
+    const country = () =>
+      within(card('Holidays in the plan')).getByLabelText('Country')
+    await user.selectOptions(country(), 'AU')
+    await user.click(screen.getByRole('button', { name: 'Save country' }))
+    await waitFor(() =>
+      expect(card('Holidays in the plan')).toHaveTextContent('Country saved.')
+    )
+    // The page comes back with the saved country: the select shows it.
+    rerender(
+      <HolidaysScreen
+        page={page({ country: 'AU', countrySource: 'saved' })}
+        owner
+        editing={null}
+      />
+    )
+    expect(country()).toHaveValue('AU')
+    expect(card('Holidays in the plan')).toHaveTextContent('Country saved.')
   })
 
   it('shows staff the dates and holidays with no buttons and no form', () => {

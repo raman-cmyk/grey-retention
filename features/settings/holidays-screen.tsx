@@ -330,6 +330,10 @@ function PlatformCard({ page, owner }: { page: HolidaysPage; owner: boolean }) {
           )}
           {owner ? (
             <ActionButton
+              // A select takes its default only when it mounts: after a save
+              // the form remounts with the saved country (the card keeps the
+              // answer, and the cursor goes to it).
+              key={page.country}
               action={setHolidayCountry}
               label="Save country"
               kind="outline"
