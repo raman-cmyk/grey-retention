@@ -5,6 +5,7 @@ import {
   aboutPage,
   firstPerson,
   introduced,
+  noteOn,
   onPage,
   personName,
   roleOf,
@@ -137,8 +138,8 @@ describe('introduced', () => {
   const own = ['Cedar Lane']
   /** Whether a page's note is tied to Maya Lee, the store Cedar Lane. */
   const tied = (html: string, quote: string) => {
-    const at = wholeSentences(
-      readPage(`<main>${html}</main>`, aboutUrl, 'about').text,
+    const at = noteOn(
+      readPage(`<main>${html}</main>`, aboutUrl, 'about'),
       quote
     )
     return !!at && introduced(at, 'Maya Lee', own)
@@ -182,24 +183,73 @@ describe('introduced', () => {
       expect(tied(html, started), html).toBe(false)
   })
 
+  it('never ties a quotation by the introduction before it, nor a note a colon or “This is” presents', () => {
+    const worn = 'I wear my scarf every single day.'
+    for (const html of [
+      `<h2>Hi, I’m Maya Lee!</h2><blockquote>“${worn}”</blockquote>`,
+      `<h2>Hi, I’m Maya Lee!</h2><blockquote>${worn}</blockquote>`,
+      `<p>Hi, I’m Maya Lee, and this is what you told me:</p><p>${worn}</p>`,
+      `<p>This is Maya.</p><p>${worn}</p>`,
+      `<p>This is Maya. ${worn}</p>`
+    ])
+      expect(tied(html, worn), html).toBe(false)
+    // The plain note after the same introduction is theirs.
+    expect(tied(`<h2>Hi, I’m Maya Lee!</h2><p>${worn}</p>`, worn)).toBe(true)
+  })
+
+  it('refuses a note after a block that introduces or names someone else, whatever credit follows', () => {
+    const packed = 'I pack every order by hand.'
+    const design = 'I design every pattern myself.'
+    const team = `<h3>Tom Hart</h3><p>${packed}</p><h3>Maya Lee</h3><p>${design}</p>`
+    // A "Meet the team" list: a heading of a name is no signature.
+    expect(tied(team, packed)).toBe(false)
+    expect(tied(team, design)).toBe(false)
+    for (const html of [
+      `<h2>Hi, I’m Tom!</h2><p>${packed}</p><p>— Maya</p>`,
+      `<p>Tom here.</p><p>${packed}</p><p>Love, Maya</p>`,
+      `<p>Tom Hart, designer</p><p>${packed}</p><p>— Maya</p>`,
+      // A testimonial, an answer or a list item under the founder's name.
+      `<blockquote>“I wear my scarf every single day.”</blockquote><h2>Maya Lee</h2>`,
+      `<h3>How do I wash it?</h3><p>${packed}</p><h2>Maya Lee</h2>`,
+      `<p>${packed}</p><ul><li>Maya Lee</li><li>Tom Hart</li></ul>`
+    ])
+      expect(
+        tied(
+          html,
+          html.includes('scarf') ? 'I wear my scarf every single day.' : packed
+        ),
+        html
+      ).toBe(false)
+  })
+
   it('ties it by a sign-off of their name in the block right after it', () => {
     for (const signoff of [
       '— Maya',
       '– Maya Lee',
-      'Maya',
       'Love, Maya',
       'With love, Maya',
       'Thanks, Maya',
       'xx Maya',
-      'Maya Lee, founder of Cedar Lane'
+      '— Maya Lee, founder of Cedar Lane',
+      '— Maya, co-founder and maker',
+      '– Maya, owner of Cedar Lane'
     ])
       expect(tied(`<p>${started}</p><p>${signoff}</p>`, started), signoff).toBe(
         true
       )
     for (const signoff of [
+      // Their name alone, or with words that are no role: no signature.
+      'Maya',
+      'Maya Lee, founder of Cedar Lane',
+      'Maya, at the studio',
+      '– Maya, a happy customer',
+      '— Maya, customer since 2019',
+      '— Maya, packing orders',
+      // Anyone else's.
       '— Anna',
       'Love, Anna',
       'Anna',
+      'Anna, our first customer',
       'xx Anna Ruiz',
       '— the team'
     ])
@@ -282,13 +332,22 @@ describe('aboutPage', () => {
       '/pages/about',
       '/about-us',
       '/pages/our-story',
-      '/en-gb/pages/about/'
+      '/en-gb/pages/about/',
+      '/pages/about-me',
+      '/pages/about-the-maker',
+      '/about-1',
+      '/pages/meet-the-maker',
+      '/pages/the-story',
+      '/pages/who-we-are'
     ])
       expect(aboutPage(`https://cedar-lane.example${path}`), path).toBe(true)
     for (const path of [
       '/pages/reviews',
       '/pages/testimonials',
       '/blogs/news/customer-story',
+      '/pages/customer-story',
+      '/pages/about-our-reviews',
+      '/pages/about-customers',
       '/pages/about/press',
       '/'
     ])
