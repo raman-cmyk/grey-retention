@@ -1,5 +1,5 @@
 begin;
-select plan(21);
+select plan(24);
 
 -- DST-004b2b: a render keeps the reference crop it was asked with and the
 -- two grey-level grids the browser read. Workspace 101: owner ...01.
@@ -85,6 +85,12 @@ select throws_ok($$select pg_temp.rec(current_setting('test.job'),current_settin
   '23514',null,'each a grey level from 0 to 255');
 select throws_ok($$select pg_temp.rec(current_setting('test.job'),current_setting('test.jl'),pg_temp.grid(300,1))$$,
   '23514',null,'at most 256 cells each way');
+select throws_ok($$select pg_temp.rec(current_setting('test.job'),current_setting('test.jl'),'{"width":1,"height":1,"values":[12.5]}')$$,
+  '23514',null,'whole grey levels only');
+select throws_ok($$select pg_temp.rec(current_setting('test.job'),current_setting('test.jl'),'{"width":1,"height":1,"values":["a"]}')$$,
+  '23514',null,'numbers only, never a cast error');
+select throws_ok($$select pg_temp.rec(current_setting('test.job'),current_setting('test.jl'),'{"width":1.5,"height":2,"values":[1,2,3]}')$$,
+  '23514',null,'a whole width');
 select throws_ok($$select pg_temp.rec(current_setting('test.job'),current_setting('test.jl'),
   '{"width":1,"height":1,"values":[1],"note":"x"}')$$,'23514',null,'and nothing else');
 select lives_ok($$select pg_temp.rec(current_setting('test.job'),current_setting('test.jl'),pg_temp.grid(48,51),pg_temp.grid(48,51,240))$$,

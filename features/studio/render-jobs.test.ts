@@ -13,6 +13,7 @@ import {
   requestSectionRender,
   SectionNotDrawable
 } from './render-jobs'
+import { gridBudget } from './match'
 import { sectionDocument, type DesignedSection } from './section'
 
 const job = '11111111-1111-4111-8111-111111111111'
@@ -501,7 +502,7 @@ describe('the match score’s pictures in the render job (DST-004b2b)', () => {
     expect(g.signed).toEqual([])
   })
 
-  it('records the drawing’s grid and its reference’s, and refuses one that is not a grid', async () => {
+  it('records the drawing’s grid and its reference’s; one that is not a grid is dropped, never the picture', async () => {
     const d = database()
     service.createServiceClient.mockReturnValue(d)
     const drawn = { job, lease, height: 640, bytes: 1000 }
@@ -527,8 +528,33 @@ describe('the match score’s pictures in the render job (DST-004b2b)', () => {
       { width: 1, height: 1, values: [300] },
       { width: 1, height: 1, values: [1.5] },
       { width: 0, height: 1, values: [] },
-      { width: 1, height: 1, values: [1], note: 'x' }
-    ])
-      expect((await post({ ...drawn, grid: bad })).status).toBe(400)
+      { width: 1, height: 1, values: [1], note: 'x' },
+      grid(gridBudget.columns + 1, 2),
+      grid(2, gridBudget.rows + 1),
+      'grid'
+    ]) {
+      expect((await post({ ...drawn, grid: bad })).status).toBe(200)
+      expect(last(d, 'record_section_render')).toEqual(drawn)
+    }
+  })
+
+  it('takes two grids at the most the budget allows, inside the route’s limit', async () => {
+    const d = database()
+    service.createServiceClient.mockReturnValue(d)
+    const biggest = grid(gridBudget.columns, gridBudget.rows, 255)
+    const body = {
+      job,
+      lease,
+      height: 640,
+      bytes: 1000,
+      grid: biggest,
+      referenceGrid: biggest
+    }
+    expect(JSON.stringify(body).length).toBeLessThan(maxRenderResultBytes)
+    expect((await post(body)).status).toBe(200)
+    expect(last(d, 'record_section_render')).toMatchObject({
+      grid: biggest,
+      reference_grid: biggest
+    })
   })
 })

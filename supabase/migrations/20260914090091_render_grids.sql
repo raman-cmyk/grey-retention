@@ -15,7 +15,7 @@
 -- commands; members read their own builds' renders as before. The number
 -- is chosen at merge time (D24).
 
--- A grid as the match score reads it: width and height 1 to 256, one grey
+-- A grid as the match score reads it: width and height 1 to 256, one whole grey
 -- level (0 to 255) per cell, row by row.
 create or replace function private.usable_grid(g jsonb)
 returns boolean language sql immutable set search_path = '' as $$
@@ -30,7 +30,8 @@ returns boolean language sql immutable set search_path = '' as $$
     and jsonb_array_length(g->'values') = (g->>'width')::integer * (g->>'height')::integer
     and not exists (
       select 1 from jsonb_array_elements(g->'values') v
-      where jsonb_typeof(v) <> 'number' or v::text::numeric not between 0 and 255)
+      where jsonb_typeof(v) <> 'number' or v::text::numeric not between 0 and 255
+        or v::text::numeric <> floor(v::text::numeric))
     and (select count(*) from jsonb_object_keys(g)) = 3
   )
 $$;

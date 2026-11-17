@@ -11,7 +11,7 @@ import {
 } from './section'
 import { maxSectionBytes } from './renderer'
 import { SectionNotDrawable } from './limits'
-import { gridProblem, type LumaGrid } from './match'
+import { gridBudget, gridProblem, type LumaGrid } from './match'
 import { isPicturePath } from './reference'
 
 export { SectionNotDrawable }
@@ -68,14 +68,14 @@ export type RenderJob = {
 }
 
 /**
- * The largest report a browser sends: two grids of 48 columns and up to
- * 128 rows (a section of 1,600 px at 600 wide), at most 4 bytes a value,
- * with room to spare.
+ * The largest report a browser sends: two grids at the most `gridBudget`
+ * allows (48 × 128 cells, at most 4 bytes a value: about 50 kB), with
+ * room to spare.
  */
 export const maxRenderResultBytes = 120_000
 
-/** How long the reference crop's link is valid: well inside a job's lease. */
-export const referenceLinkSeconds = 600
+/** How long the reference crop's link is valid: about a job's lease. */
+export const referenceLinkSeconds = 180
 
 const hostOf = (origin: string) => new URL(origin).hostname
 
@@ -116,6 +116,8 @@ export async function requestSectionRender(
     // Only an inbox section's own crop; anything else is never asked for.
     ...(isPicturePath(input.reference) ? { reference: input.reference } : {})
   })
+  if (input.reference !== undefined && !isPicturePath(input.reference))
+    logged('A reference path was refused', 'reference_path_refused')
   if (error) throw error
   return data
 }
@@ -299,14 +301,34 @@ const reported = [
   'upload_failed'
 ] as const
 
-/** A grey-level grid as the browser reads it (`LumaGrid`, checked whole). */
-const grid = z
+/**
+ * A grey-level grid as the browser makes it (`gridBudget`, whole grey
+ * levels, checked whole with `gridProblem`).
+ */
+export const reportedGrid = z
   .strictObject({
-    width: z.int().min(1).max(256),
-    height: z.int().min(1).max(256),
-    values: z.array(z.int().min(0).max(255)).max(65_536)
+    width: z.int().min(1).max(gridBudget.columns),
+    height: z.int().min(1).max(gridBudget.rows),
+    values: z
+      .array(z.int().min(0).max(255))
+      .max(gridBudget.columns * gridBudget.rows)
   })
   .refine((g) => gridProblem(g) === null, 'Not a grid')
+
+/**
+ * A grid the report carries: kept only when it is one. Any other value
+ * is dropped, never the report: the picture is still recorded, and its
+ * match is then not measured.
+ */
+const grid = z
+  .unknown()
+  .transform((g) => {
+    const ok = reportedGrid.safeParse(g)
+    if (!ok.success && g !== undefined)
+      logged('A reported grid was dropped', 'grid_dropped')
+    return ok.success ? ok.data : undefined
+  })
+  .optional()
 
 /** What the browser reports for one section: drawn, or why not. */
 export const renderResult = z.union([
@@ -316,8 +338,8 @@ export const renderResult = z.union([
     height: z.int().min(80).max(3200),
     bytes: z.int().min(1).max(maxSectionBytes),
     // DST-004b2b: the drawing's grid and, in Copy mode, its reference's.
-    grid: grid.optional(),
-    referenceGrid: grid.optional()
+    grid,
+    referenceGrid: grid
   }),
   z.strictObject({
     job: z.uuid(),

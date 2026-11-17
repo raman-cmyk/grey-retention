@@ -589,7 +589,17 @@ describe('asking for a Copy section’s picture with its reference (DST-004b2b)'
     }
     const p = ports()
     await studioRound([copied], null, p)
-    expect(p.request.mock.calls[0]![0]).toMatchObject({ reference: crop })
+    expect(p.request.mock.calls[0]![0]).toMatchObject({
+      reference: crop,
+      // Another reference is another render; none keeps the old key.
+      key: renderKey('s2', 1, designed('s2').section, crop)
+    })
+    expect(renderKey('s2', 1, designed('s2').section, crop)).not.toBe(
+      renderKey('s2', 1, designed('s2').section)
+    )
+    expect(
+      renderKey('s2', 1, designed('s2').section, crop.replace('1.jpg', '2.jpg'))
+    ).not.toBe(renderKey('s2', 1, designed('s2').section, crop))
     for (const b of [
       brief('s2'),
       { ...copied, mode: 'remix' as const },
