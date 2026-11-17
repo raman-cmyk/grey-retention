@@ -48,6 +48,7 @@ describe('the Results page (UI-RES-a)', () => {
       title: '20% off knitwear',
       day: 'Tue 17',
       state: 'sent',
+      status: 'sent',
       statusText: 'Sent',
       numbers: {
         sent: '1,240',

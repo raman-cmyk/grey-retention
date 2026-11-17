@@ -10,7 +10,7 @@ test('UIR-009 owner tracks a competitor, browses its emails and stops tracking',
   await newOwner(page, { prefix: 'inspire', name: 'Inspiration studio' })
   // The sidebar's Inspiration opens the library.
   // (A page still on the old shell: Home has the GROS top bar.)
-  await page.goto('/plan')
+  await page.goto('/holidays')
   await expect(
     page.locator('a[href="/library/inspirations"]').first()
   ).toBeAttached()
