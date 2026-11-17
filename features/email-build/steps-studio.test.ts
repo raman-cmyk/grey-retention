@@ -704,6 +704,11 @@ describe('the design step judges the studio’s email whole (DST-006d part 2c)',
     // The hero follows the reference's first section, as the plan copied it.
     expect(story.sections[hero]!.ref).toBe(0)
     expect(story.reference?.[0]).toMatchObject({ height: 640 })
+    // The hero's brief keeps the reference's tone and height.
+    expect(vi.mocked(studio.design).mock.calls[0]![0]).toMatchObject({
+      mode: 'copy',
+      reference: { tone: 'dark', height: 640 }
+    })
     // Scratch, as before, without one.
     const plain = await beforeDesign()
     const scratch = ports(plain.blocks, plain.hero)

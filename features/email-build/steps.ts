@@ -95,9 +95,10 @@ const sectionsSaved = z.looseObject({
       reference: z
         .array(
           z.looseObject({
-            family: z.string(),
+            family: z.string().max(40),
             tone: z.enum(['light', 'dark', 'accent']),
-            height: z.number().positive()
+            // `referenceDna` keeps whole heights up to 4,000 px.
+            height: z.number().int().positive().max(4_000)
           })
         )
         .max(40),
@@ -415,7 +416,12 @@ export async function runBuildStep(
           ? {
               reference: {
                 mode: sections.reference.mode,
-                reference: sections.reference.reference,
+                // Only what the storyboard reads, never other saved keys.
+                reference: sections.reference.reference.map((r) => ({
+                  family: r.family,
+                  tone: r.tone,
+                  height: r.height
+                })),
                 refIndex: sections.reference.refIndex
               }
             }

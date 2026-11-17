@@ -415,7 +415,7 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
         reason:
           'The copied email’s section heights do not fit this email’s sections.',
         fallback:
-          'Designed the email’s heroes from scratch, in the copied order.',
+          'Designed the email’s sections from scratch, in the copied order.',
         detail: { section: 'email' }
       })
     ])

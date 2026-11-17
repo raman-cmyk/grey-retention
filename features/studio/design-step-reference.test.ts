@@ -9,7 +9,11 @@ import {
   type StudioStepInput,
   type StudioStepPorts
 } from './design-step'
-import { codeStoryboard, type StoryboardInput } from './storyboard'
+import {
+  artDirectorAgent,
+  codeStoryboard,
+  type StoryboardInput
+} from './storyboard'
 
 /**
  * DST-002b part b2c: the design studio follows the inbox email the
@@ -146,13 +150,29 @@ describe('the design studio follows the reference email (DST-002b)', () => {
     expect(p.coded).not.toHaveBeenCalled()
   })
 
-  it('remixes: the Art director sees the reference; the hero is free in tone and height', async () => {
+  it('remixes: its own plan follows no section, the Art director sees the whole reference, the hero is free', async () => {
     const p = ports()
-    await studioDesignStep(input(followed('remix', 700, 'dark')), p)
+    // A Remix plan is the planner's own: its sections have no source.
+    const own = input(followed('remix', 700, 'dark'))
+    await studioDesignStep(
+      {
+        ...own,
+        sections: own.sections.map((s) => ({ ...s, source: undefined }))
+      },
+      p
+    )
     const story = storyOf(p)
     expect(story.mode).toBe('remix')
-    expect(story.sections[1]!.ref).toBe(0)
-    expect(story.reference).toHaveLength(3)
+    expect(story.sections.every((s) => s.ref === undefined)).toBe(true)
+    expect(story.reference).toEqual(followed('remix', 700, 'dark').reference)
+    const sent = JSON.parse(
+      artDirectorAgent.task({ input: story, problems: [] })
+    )
+    expect(sent.reference_email).toEqual([
+      { kind: 'hero_image', tone: 'dark', height: 700 },
+      { kind: 'product_grid_2col', tone: 'light', height: 700 },
+      { kind: 'text', tone: 'light', height: 200 }
+    ])
     const brief = briefOf(p)
     expect(brief.mode).toBe('remix')
     expect(brief).not.toHaveProperty('reference')
@@ -190,6 +210,49 @@ describe('the design studio follows the reference email (DST-002b)', () => {
     )
     expect(later.storyboard).not.toHaveBeenCalled()
     expect(later.coded).not.toHaveBeenCalledWith('email', 'reference_unfit')
+    // The same briefs: the rounds go on, nothing is designed or drawn again.
+    expect(later.design).not.toHaveBeenCalled()
+    expect(later.request).not.toHaveBeenCalled()
+  })
+
+  it('goes on with a copied email the same way on a later claim', async () => {
+    const copy = followed('copy', 700, 'dark')
+    const first = ports()
+    const out = (await studioDesignStep(input(copy), first)) as {
+      waiting: { work: object }
+    }
+    expect(first.design).toHaveBeenCalledTimes(1)
+    const later = ports()
+    await studioDesignStep(
+      input(copy, JSON.parse(JSON.stringify(out.waiting.work))),
+      later
+    )
+    expect(later.storyboard).not.toHaveBeenCalled()
+    expect(later.design).not.toHaveBeenCalled()
+    expect(later.request).not.toHaveBeenCalled()
+  })
+
+  it('follows nothing a section’s own bad place points to', async () => {
+    const p = ports()
+    const bad = input(followed('copy'))
+    await studioDesignStep(
+      {
+        ...bad,
+        sections: bad.sections.map((s, i) =>
+          i === 1 ? { ...s, source: 9 } : i === 2 ? { ...s, source: -1 } : s
+        )
+      },
+      p
+    )
+    const story = storyOf(p)
+    expect(story.sections.map((s) => s.ref)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      2,
+      undefined
+    ])
+    expect(briefOf(p)).not.toHaveProperty('reference')
   })
 
   it('follows nothing an index it does not hold points to (a saved reference read back)', async () => {

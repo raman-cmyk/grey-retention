@@ -252,7 +252,7 @@ export function studioPortsFor(
           reason === 'storyboard_reordered'
             ? 'Kept the email’s order, with the storyboard code makes.'
             : reason === 'reference_unfit'
-              ? 'Designed the email’s heroes from scratch, in the copied order.'
+              ? 'Designed the email’s sections from scratch, in the copied order.'
               : reason === 'layout_changed'
                 ? 'Drew the email with its coded blocks.'
                 : 'Drew the section as its coded block.',
