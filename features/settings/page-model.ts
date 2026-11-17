@@ -2,6 +2,12 @@ import 'server-only'
 import { unstable_rethrow } from 'next/navigation'
 import type { ClientRequestContext } from '@/features/auth/domain/types'
 import { klaviyoMode } from '@/features/connections/live-klaviyo'
+import {
+  feedbackPage,
+  requestLimit,
+  type FeedbackPage
+} from '@/features/feedback/data'
+import type { FeatureRequest } from '@/features/feedback/rules'
 import type { ManagedOffers } from '@/features/offers/source'
 import { timezoneWithOffset } from '@/lib/brand-time'
 import { localTime } from './defaults'
@@ -24,7 +30,14 @@ import {
  * admins change offers; only the owner changes Klaviyo and the timezone.
  */
 export type SettingsPart =
-  'offers' | 'klaviyo' | 'timezone' | 'team' | 'account' | 'changes'
+  | 'offers'
+  | 'klaviyo'
+  | 'timezone'
+  | 'team'
+  | 'account'
+  | 'changes'
+  | 'support'
+  | 'requests'
 
 export type SettingsView = {
   /** Nothing is kept in the demo: the cards say so. */
@@ -51,16 +64,39 @@ export type SettingsView = {
   account: SettingsReadModel['account']
   /** Who changed what (UI-SETc): the owner and managers only. */
   changes: SettingsReadModel['changes']
+  /**
+   * The workspace's support questions, latest activity first (UI-SETd):
+   * any member asks and replies. `more` when older ones are not shown;
+   * `tenantId` goes back with a reply, as the action asks.
+   */
+  support: {
+    threads: FeatureRequest[]
+    more: boolean
+    team: string
+    tenantId: string
+  } | null
+  /**
+   * The workspace's feature requests, latest activity first (UI-SETd): any
+   * member sends one. `more` when older ones are not shown.
+   */
+  requests: { items: FeatureRequest[]; more: boolean } | null
   unread: SettingsPart[]
 }
 
 export type SettingsInput = {
-  context: Pick<ClientRequestContext, 'tenantRole'>
+  context: Pick<ClientRequestContext, 'tenantRole' | 'tenantId'>
   now: Date
   read: SettingsReadModel | null
   zone: BrandTimezone | null
+  support: FeedbackPage | null
+  requests: FeedbackPage | null
   liveKeys: boolean
 }
+
+/** How many support threads and requests Settings shows until Show older. */
+export const supportLimit = 10
+/** What Settings shows in full (`?support=all`, `?requests=all`). */
+export type SettingsShow = { allSupport?: boolean; allRequests?: boolean }
 
 /** The Settings view from its parts. Pure, for tests. */
 export function settingsView(input: SettingsInput): SettingsView {
@@ -93,6 +129,19 @@ export function settingsView(input: SettingsInput): SettingsView {
     team: read?.team ?? null,
     account: read?.account ?? null,
     changes: read?.changes ?? null,
+    support:
+      input.support?.state === 'ready'
+        ? {
+            threads: input.support.requests,
+            more: input.support.more,
+            team: input.support.team,
+            tenantId: input.context.tenantId
+          }
+        : null,
+    requests:
+      input.requests?.state === 'ready'
+        ? { items: input.requests.requests, more: input.requests.more }
+        : null,
     unread: []
   }
   for (const part of [
@@ -100,7 +149,9 @@ export function settingsView(input: SettingsInput): SettingsView {
     'klaviyo',
     'timezone',
     'team',
-    'account'
+    'account',
+    'support',
+    'requests'
   ] as const)
     if (view[part] === null) view.unread.push(part)
   // Staff do not see the changes, so they are never missing for them.
@@ -118,17 +169,34 @@ const settle = <T>(work: Promise<T>) =>
 /** Settings for the signed-in member's workspace. */
 export async function settingsPageModel(
   context: ClientRequestContext,
-  now = new Date()
+  now = new Date(),
+  show: SettingsShow = {}
 ): Promise<SettingsView> {
-  const [read, zone] = await Promise.all([
+  const [read, zone, support, requests] = await Promise.all([
     settle(settingsReadModel(context)),
-    settle(brandTimezone(context))
+    settle(brandTimezone(context)),
+    // The latest activity first, so a reply on an old thread shows.
+    settle(
+      feedbackPage(context, now.getTime(), {
+        kind: 'support',
+        order: 'activity',
+        limit: show.allSupport ? requestLimit : supportLimit
+      })
+    ),
+    settle(
+      feedbackPage(context, now.getTime(), {
+        order: 'activity',
+        limit: show.allRequests ? requestLimit : supportLimit
+      })
+    )
   ])
   return settingsView({
     context,
     now,
     read,
     zone,
+    support,
+    requests,
     liveKeys: klaviyoMode() === 'live'
   })
 }

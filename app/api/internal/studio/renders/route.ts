@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { cronAuthorized } from '@/features/cron/gate'
 import {
   finishRender,
+  maxRenderResultBytes,
   renderJobs,
   renderResult,
   rendersWaiting
@@ -61,10 +62,11 @@ export async function POST(request: NextRequest) {
     return refuse('Unauthorized', 401)
   const db = createServiceClient()
   if (!db) return refuse('Server configuration unavailable', 503)
-  if (Number(request.headers.get('content-length') ?? 0) > 2_000)
+  if (Number(request.headers.get('content-length') ?? 0) > maxRenderResultBytes)
     return refuse('Invalid render result', 400)
   const body = await request.text()
-  if (body.length > 2_000) return refuse('Invalid render result', 400)
+  if (body.length > maxRenderResultBytes)
+    return refuse('Invalid render result', 400)
   let parsed: ReturnType<typeof renderResult.safeParse>
   try {
     parsed = renderResult.safeParse(JSON.parse(body))

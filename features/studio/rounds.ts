@@ -91,6 +91,8 @@ const sectionState = z
     alt: z.string().min(1).max(400).optional(),
     /** CSS px at 600 wide. */
     height: z.int().min(1).max(1600).optional(),
+    /** DST-004b2d: its last match score against its reference (Copy). */
+    match: z.int().min(1).max(10).optional(),
     reason: z.enum(Object.keys(codedReasons) as [CodedReason]).optional()
   })
   // Only the states the rounds make.
@@ -144,6 +146,8 @@ export type StudioPorts = {
     key: string
     section: DesignedSection
     hosts: string[]
+    /** DST-004b2b: in Copy mode, the inbox section crop it rebuilds. */
+    reference?: string
   }) => Promise<string>
   /** The build's pictures, in its own workspace (`buildRenders`). */
   renders: () => Promise<BuildRender[]>
@@ -165,10 +169,7 @@ export type StudioPorts = {
    * reference section (`matchScore`, 1 to 10); null when it cannot be
    * measured (then the critic's verdict stands). Missing: never measured.
    */
-  match?: (
-    brief: SectionBrief,
-    image: RenderedSection
-  ) => Promise<number | null>
+  match?: (brief: SectionBrief, render: DrawnRender) => Promise<number | null>
   /**
    * A section drawn as its coded block, with why: one line for the owner's
    * log per section (the agents log their own failures as well).
@@ -196,13 +197,20 @@ export const briefDigest = (brief: SectionBrief) =>
   createHash('sha256').update(JSON.stringify(brief)).digest('hex').slice(0, 16)
 
 /** A render key the database takes: the section, its round, its design. */
-export function renderKey(id: string, round: number, section: DesignedSection) {
+export function renderKey(
+  id: string,
+  round: number,
+  section: DesignedSection,
+  /** DST-004b2b: the crop it rebuilds: another reference is another render. */
+  reference?: string
+) {
   const name = id
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, '-')
     .slice(0, 24)
+  // Without a reference the key is as before, so saved work keeps its renders.
   const hash = createHash('sha256')
-    .update(JSON.stringify(section))
+    .update(JSON.stringify(section) + (reference ? `|${reference}` : ''))
     .digest('hex')
     .slice(0, 8)
   return `${name}-r${round}-${hash}`
@@ -278,6 +286,8 @@ export async function studioRound(
     s.reason = reason
     delete s.tries
     delete s.render
+    // A score is kept only for the picture it failed: never another's.
+    if (reason !== 'match_failed') delete s.match
     await ports.coded(s.id, reason)
   }
   let renders: BuildRender[] | undefined
@@ -319,11 +329,14 @@ export async function studioRound(
       // critic's calls again.
       const measured =
         brief.mode === 'copy' && brief.reference && ports.match
-          ? await ports.match(brief, picture).catch(() => null)
+          ? await ports.match(brief, render).catch(() => null)
           : null
       const verdict = isMatchScore(measured)
         ? withMatch(judged, measured)
         : judged
+      // DST-004b2d: the score is kept with the section (the design proof).
+      if (isMatchScore(measured)) s.match = measured
+      else delete s.match
       if (verdict.pass) {
         s.state = 'done'
         s.height = render.height
@@ -339,6 +352,8 @@ export async function studioRound(
       s.problems = verdict.problems.slice(0, 20).map((p) => cut(p, 400))
       delete s.render
       delete s.alt
+      // The next round's picture gets its own score.
+      delete s.match
     }
     if (s.state !== 'design') continue
     // Out of time, or no wait left for the picture it would ask for (one
@@ -374,10 +389,14 @@ export async function studioRound(
     }
     let render: string
     try {
+      // The match score reads the crop it rebuilds (Copy mode only).
+      const reference =
+        brief.mode === 'copy' ? brief.reference?.image : undefined
       render = await ports.request({
-        key: renderKey(s.id, s.round, made.section),
+        key: renderKey(s.id, s.round, made.section, reference),
         section: made.section,
-        hosts: briefHosts(brief)
+        hosts: briefHosts(brief),
+        ...(reference ? { reference } : {})
       })
     } catch (error) {
       const reason = refusal(error)

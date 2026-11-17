@@ -14,6 +14,7 @@ import type { DrawnView, EmailViewPorts } from './email-check'
 import { emailViewNames, requestEmailRender } from './preview-jobs'
 import { renderScale, renderWidth } from './renderer'
 import { requestSectionRender } from './render-jobs'
+import { matchScore } from './match'
 import { codedReasons } from './rounds'
 import { storyboardFor } from './storyboard'
 import { buildRenders, buildViews, type BuildRender } from './waits'
@@ -172,13 +173,20 @@ export function studioPortsFor(
       const photo = await photoFor(brief.image.url)
       return critiqueSection({ brief, image, ...(photo ? { photo } : {}) }, ctx)
     },
-    request: ({ key, section, hosts }) =>
+    // DST-004b2d: the score of the render's two grids, only when they are
+    // of the crop this brief rebuilds; none when the browser read none.
+    match: async (brief, render) =>
+      render.grids && render.grids.referencePath === brief.reference?.image
+        ? matchScore(render.grids.drawn, render.grids.reference)
+        : null,
+    request: ({ key, section, hosts, reference }) =>
       requestSectionRender(db, {
         build: input.build,
         lease: input.lease,
         key,
         section,
-        hosts
+        hosts,
+        ...(reference ? { reference } : {})
       }),
     renders: () =>
       buildRenders(db, { tenant: input.tenant, build: input.build }),
@@ -207,10 +215,12 @@ export function studioPortsFor(
     },
     async sign(render) {
       const drawn = (
-        await buildRenders(db, {
-          tenant: input.tenant,
-          build: input.build
-        })
+        await buildRenders(
+          db,
+          { tenant: input.tenant, build: input.build },
+          // Only to check the picture: never its grids.
+          { grids: false }
+        )
       ).find(
         // Read again: this build's, still drawn as the studio saw it.
         (r): r is Extract<BuildRender, { state: 'drawn' }> =>

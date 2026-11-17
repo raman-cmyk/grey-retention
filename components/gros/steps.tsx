@@ -9,9 +9,15 @@ import { defaultAssistant } from './nav'
 
 /**
  * StepCard (BRAND.md): the onboarding steps at the bottom of the lime
- * panel: which one the owner is on and which are done. A done step can be
- * clicked to go back; a step ahead cannot. Names are one word. Five in one
- * row wherever the panel has room for the longest name, else they wrap.
+ * panel: which one is Now and which are done. A done step can be clicked
+ * to go back; a step ahead cannot. Names are one word. Five in one row
+ * wherever the panel has room for the longest name, else they wrap.
+ * A step's own `done` says whether it is done (a step after Now can be
+ * done too); without it, the steps before Now are. `aria-current` marks
+ * the step shown (`shown`, Now by default), and each card says its state
+ * in words. A step that waits for GROS (`waiting`: Brand while the website
+ * is read) is not Now: its words show under its name, and it can be opened
+ * like a done step.
  */
 export const onboardingSteps = [
   'Store',
@@ -21,38 +27,66 @@ export const onboardingSteps = [
   'Rivals'
 ] as const
 
-export type Step = { name: string; href?: Route }
+export type Step = {
+  name: string
+  href?: Route
+  done?: boolean
+  /** What the step waits for, in words ("Reading your website"). */
+  waiting?: string
+}
 
 export function StepCards({
   steps,
-  current
+  current,
+  shown = current
 }: {
   steps: readonly Step[]
-  /** The index of the step the owner is on. */
+  /** The index of the step that is Now. */
   current: number
+  /** The index of the step on screen (a done one opened again); Now by default. */
+  shown?: number
 }) {
   return (
     <ol aria-label="Steps" className="gros-steps grid">
       {steps.map((step, i) => {
-        const state = i < current ? 'done' : i === current ? 'now' : 'todo'
+        const state =
+          i === current
+            ? 'now'
+            : step.waiting
+              ? 'waiting'
+              : (step.done ?? i < current)
+                ? 'done'
+                : 'todo'
         const body = (
           <>
             <span
               aria-hidden
               className={cn(
                 'gros-step-circle gros-mark flex items-center justify-center rounded-[var(--radius-pill)]',
-                state === 'todo'
+                state === 'todo' || state === 'waiting'
                   ? 'gros-step-circle-todo text-[var(--forest)]'
                   : 'bg-[var(--forest)] text-[var(--white)]'
               )}
             >
               {state === 'done' ? <Check size={18} strokeWidth={2} /> : i + 1}
             </span>
-            <span className="type-body-strong">{step.name}</span>
-            {/* "Now" is said by aria-current; done and to do are said here. */}
-            {state !== 'now' ? (
+            {state === 'waiting' ? (
+              <span className="flex flex-col">
+                <span className="type-body-strong">{step.name}</span>
+                <span className="sr-only">, </span>
+                <span className="type-caption">{step.waiting}</span>
+              </span>
+            ) : (
+              <span className="type-body-strong">{step.name}</span>
+            )}
+            {/* The step shown is said by aria-current; each state in words. */}
+            {state !== 'waiting' && (state !== 'now' || i !== shown) ? (
               <span className="sr-only">
-                {state === 'done' ? ', done' : ', to do'}
+                {state === 'done'
+                  ? ', done'
+                  : state === 'now'
+                    ? ', now'
+                    : ', to do'}
               </span>
             ) : null}
           </>
@@ -64,11 +98,8 @@ export function StepCards({
             : 'bg-[var(--lime-tile)] text-[var(--forest)]'
         )
         return (
-          <li
-            key={step.name}
-            aria-current={state === 'now' ? 'step' : undefined}
-          >
-            {state === 'done' && step.href ? (
+          <li key={step.name} aria-current={i === shown ? 'step' : undefined}>
+            {(state === 'done' || state === 'waiting') && step.href ? (
               <Link href={step.href} className={look}>
                 {body}
               </Link>

@@ -37,17 +37,40 @@ const schema = z.discriminatedUnion('kind', [
     package: z.uuid()
   })
 ])
+/**
+ * Plain words for a member's support question and reply on Settings
+ * (UI-SETd). The admins' queue keeps its own answers.
+ */
+const ticketWords = new Map<string, { invalid: string; done: string }>([
+  [
+    'open_ticket',
+    {
+      invalid: 'Write a subject of at least 2 characters, and your question.',
+      done: 'Sent to support. Their reply shows here.'
+    }
+  ],
+  ['reply_ticket', { invalid: 'Write your reply first.', done: 'Reply sent.' }]
+])
 export async function operationAction(
   _: FormResult,
   form: FormData
 ): Promise<FormResult> {
   const surface = form.get('surface') === 'admin' ? 'admin' : 'client',
     ctx = await requireRequestContext(surface),
-    v = schema.safeParse(Object.fromEntries(form))
-  if (!v.success) return { error: 'Check the operation fields.' }
+    v = schema.safeParse(Object.fromEntries(form)),
+    words =
+      surface === 'client'
+        ? ticketWords.get(String(form.get('kind')))
+        : undefined
+  if (!v.success)
+    return { error: words?.invalid ?? 'Check the operation fields.' }
   const db = await createClient()
   if (!db || process.env.AUTH_MODE === 'demo')
-    return { error: 'Supabase authentication required.' }
+    return {
+      error: words
+        ? 'Please sign in again. Nothing was sent.'
+        : 'Supabase authentication required.'
+    }
   const x = v.data
   const t = ctx.kind === 'client' ? ctx.tenantId : 'tenant' in x ? x.tenant : ''
   try {
@@ -76,10 +99,10 @@ export async function operationAction(
     if (x.kind === 'assign_package')
       r = await db.rpc('assign_fixture_package', { t, package: x.package })
     if (r?.error) throw r.error
-    for (const path of ['/team', '/settings', '/support', '/admin/operations'])
-      revalidatePath(path)
+    for (const path of ['/settings', '/admin/operations']) revalidatePath(path)
     return {
       message:
+        words?.done ??
         'Authorized operation persisted. External delivery and billing remain simulated.'
     }
   } catch (e) {
@@ -87,14 +110,18 @@ export async function operationAction(
     return {
       error:
         v.code === '42501'
-          ? 'Permission denied.'
+          ? words
+            ? 'This ticket is not open to you any more. Reload the page.'
+            : 'Permission denied.'
           : v.code === 'PT409'
             ? 'This version changed. Refresh before retrying.'
             : v.code === '23514'
               ? v.message
               : v.code === '23505'
                 ? 'An open invitation or definition already exists.'
-                : 'Operation could not be saved.'
+                : words
+                  ? 'We could not send this. Nothing was saved. Try again.'
+                  : 'Operation could not be saved.'
     }
   }
 }

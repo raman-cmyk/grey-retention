@@ -21,6 +21,7 @@
  */
 import { pathToFileURL } from 'node:url'
 import { renderEmail, renderSection } from './section-render.mjs'
+import { fetchCrop, lumaGrid } from './luma-grid.mjs'
 
 /**
  * Pictures drawn per run at most (sections and views together), and the
@@ -35,6 +36,8 @@ export const runBudgetMs = 6 * 60_000
 export const leaseMs = 120_000
 /** Time kept at the end of the lease for the report. */
 const reportMs = 15_000
+/** The lease time the grids need (both pictures read, the crop fetched). */
+export const gridsMs = 30_000
 /** What the browser may report; refusing a section is the app's decision. */
 const reasons = new Set(['timeout', 'failed', 'navigated', 'too_large'])
 
@@ -86,7 +89,20 @@ const kinds = {
         height: job.height,
         origins: job.origins
       }),
-    report: (drawn) => ({ height: drawn.height, bytes: drawn.image.byteLength })
+    report: (drawn) => ({
+      height: drawn.height,
+      bytes: drawn.image.byteLength
+    }),
+    // DST-004b2c: the match score's grids, when they can be read in time.
+    grids: async (browser, job, drawn, left) => {
+      if (left() < gridsMs) return {}
+      const grid = await lumaGrid(browser, drawn.image)
+      if (!grid) return {}
+      if (!job.reference || left() < gridsMs) return { grid }
+      const crop = await fetchCrop(job.reference).catch(() => null)
+      const referenceGrid = crop ? await lumaGrid(browser, crop) : null
+      return referenceGrid ? { grid, referenceGrid } : { grid }
+    }
   },
   view: {
     path: '/api/internal/studio/previews',
@@ -120,7 +136,13 @@ async function draw(browser, kind, job, leaseLeft) {
   } catch {
     return { ...at, failure: 'upload_failed' }
   }
-  return { ...at, ...kind.report(drawn) }
+  // The grids are extra: without them the picture is still reported.
+  const grids = kind.grids
+    ? await kind
+        .grids(browser, job, drawn, () => leaseLeft() - reportMs)
+        .catch(() => ({}))
+    : {}
+  return { ...at, ...kind.report(drawn), ...grids }
 }
 
 /**
@@ -140,6 +162,8 @@ export async function run({
 }) {
   const counts = { drawn: 0, failed: 0, lost: 0 }
   const views = { drawn: 0, failed: 0, lost: 0 }
+  // DST-004b2c: the grids read with the sections recorded (counts only).
+  const grids = { read: 0, reference: 0, asked: 0 }
   const until = now() + runBudgetMs
   const alive = () => !browser.isConnected || browser.isConnected()
   let n = 0
@@ -176,7 +200,14 @@ export async function run({
           )
           if (!recorded) tally.lost++
           else if ('failure' in report) tally.failed++
-          else tally.drawn++
+          else {
+            tally.drawn++
+            if (kind === kinds.section) {
+              if (report.grid) grids.read++
+              if (job.reference) grids.asked++
+              if (report.referenceGrid) grids.reference++
+            }
+          }
         }
       }
   } finally {
@@ -185,6 +216,9 @@ export async function run({
     )
     log(
       `Email views drawn: ${views.drawn}. Failed: ${views.failed}. Not recorded: ${views.lost}.`
+    )
+    log(
+      `Grids read: ${grids.read}. Reference grids read: ${grids.reference} of ${grids.asked}.`
     )
   }
   return { ...counts, views }
