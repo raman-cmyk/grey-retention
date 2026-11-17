@@ -172,13 +172,14 @@ export function studioPortsFor(
       const photo = await photoFor(brief.image.url)
       return critiqueSection({ brief, image, ...(photo ? { photo } : {}) }, ctx)
     },
-    request: ({ key, section, hosts }) =>
+    request: ({ key, section, hosts, reference }) =>
       requestSectionRender(db, {
         build: input.build,
         lease: input.lease,
         key,
         section,
-        hosts
+        hosts,
+        ...(reference ? { reference } : {})
       }),
     renders: () =>
       buildRenders(db, { tenant: input.tenant, build: input.build }),

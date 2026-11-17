@@ -85,7 +85,6 @@ export const config = {
     '/settings/:path*',
     '/setup/:path*',
     '/support/:path*',
-    '/team/:path*',
     '/admin/:path*',
     '/designer/:path*'
   ]

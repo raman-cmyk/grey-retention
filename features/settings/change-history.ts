@@ -275,3 +275,21 @@ export async function listChangeHistory(
       : []
   })
 }
+
+/**
+ * Settings' Recent changes (UI-SETc): the recorded changes and the team's
+ * (`teamPage`'s events, the same shape), newest first, at most `limit`.
+ * `partial` when one of the two could not be read; null when neither could.
+ */
+export function mergeChanges(
+  history: Change[] | null,
+  team: Change[] | null,
+  limit = 20
+): { items: Change[]; partial: boolean } | null {
+  if (!history && !team) return null
+  const time = (c: Change) => Date.parse(c.at) || 0
+  const items = [...(history ?? []), ...(team ?? [])]
+    .sort((a, b) => time(b) - time(a))
+    .slice(0, limit)
+  return { items, partial: !history || !team }
+}

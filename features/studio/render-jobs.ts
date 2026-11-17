@@ -11,6 +11,8 @@ import {
 } from './section'
 import { maxSectionBytes } from './renderer'
 import { SectionNotDrawable } from './limits'
+import { gridBudget, gridProblem, type LumaGrid } from './match'
+import { isPicturePath } from './reference'
 
 export { SectionNotDrawable }
 
@@ -56,7 +58,24 @@ export type RenderJob = {
    * a picture changed after that is caught before it is used (DST-006).
    */
   upload: string
+  /**
+   * DST-004b2b: in Copy mode, a short signed link to the reference
+   * section's crop in the Inspiration inbox, for its grid; missing when
+   * the render has none or the link could not be made (its match is
+   * then not measured).
+   */
+  reference?: string
 }
+
+/**
+ * The largest report a browser sends: two grids at the most `gridBudget`
+ * allows (48 × 128 cells, at most 4 bytes a value: about 50 kB), with
+ * room to spare.
+ */
+export const maxRenderResultBytes = 120_000
+
+/** How long the reference crop's link is valid: about a job's lease. */
+export const referenceLinkSeconds = 180
 
 const hostOf = (origin: string) => new URL(origin).hostname
 
@@ -74,6 +93,8 @@ export async function requestSectionRender(
     key: string
     section: DesignedSection
     hosts: readonly string[]
+    /** DST-004b2b: the inbox section crop it rebuilds (Copy mode). */
+    reference?: string
   }
 ): Promise<string> {
   const hosts = [...new Set(input.hosts)]
@@ -91,8 +112,12 @@ export async function requestSectionRender(
     lease: input.lease,
     section_key: input.key,
     section: input.section,
-    origins: hosts.map((h) => `https://${h}`)
+    origins: hosts.map((h) => `https://${h}`),
+    // Only an inbox section's own crop; anything else is never asked for.
+    ...(isPicturePath(input.reference) ? { reference: input.reference } : {})
   })
+  if (input.reference !== undefined && !isPicturePath(input.reference))
+    logged('A reference path was refused', 'reference_path_refused')
   if (error) throw error
   return data
 }
@@ -179,7 +204,7 @@ export async function renderJobs(db: Db): Promise<RenderJob[]> {
 async function handOut(db: Db, job: Lease): Promise<RenderJob | null> {
   const row = await db
     .from('section_renders')
-    .select('id,build_id,section,origins,state')
+    .select('id,build_id,section,origins,state,reference_path')
     .eq('id', job.subject_key)
     .maybeSingle()
   if (row.error) {
@@ -239,8 +264,29 @@ async function handOut(db: Db, job: Lease): Promise<RenderJob | null> {
     document: sectionDocument(section.data),
     height: section.data.height,
     origins,
-    upload: upload.data.signedUrl
+    upload: upload.data.signedUrl,
+    ...(await referenceLink(db, row.data.reference_path))
   }
+}
+
+/**
+ * The reference crop's short signed link, checked again; none when the
+ * render has no reference or the link cannot be made (the section is
+ * still drawn; its match is not measured).
+ */
+async function referenceLink(
+  db: Db,
+  path: string | null
+): Promise<{ reference?: string }> {
+  if (!isPicturePath(path)) return {}
+  const signed = await db.storage
+    .from('inbox-assets')
+    .createSignedUrl(path, referenceLinkSeconds)
+  if (signed.error || !signed.data?.signedUrl) {
+    logged('A reference link could not be made', 'reference_link_failed')
+    return {}
+  }
+  return { reference: signed.data.signedUrl }
 }
 
 /** Why a render was not drawn (as the command takes it). */
@@ -255,13 +301,45 @@ const reported = [
   'upload_failed'
 ] as const
 
+/**
+ * A grey-level grid as the browser makes it (`gridBudget`, whole grey
+ * levels, checked whole with `gridProblem`).
+ */
+export const reportedGrid = z
+  .strictObject({
+    width: z.int().min(1).max(gridBudget.columns),
+    height: z.int().min(1).max(gridBudget.rows),
+    values: z
+      .array(z.int().min(0).max(255))
+      .max(gridBudget.columns * gridBudget.rows)
+  })
+  .refine((g) => gridProblem(g) === null, 'Not a grid')
+
+/**
+ * A grid the report carries: kept only when it is one. Any other value
+ * is dropped, never the report: the picture is still recorded, and its
+ * match is then not measured.
+ */
+const grid = z
+  .unknown()
+  .transform((g) => {
+    const ok = reportedGrid.safeParse(g)
+    if (!ok.success && g !== undefined)
+      logged('A reported grid was dropped', 'grid_dropped')
+    return ok.success ? ok.data : undefined
+  })
+  .optional()
+
 /** What the browser reports for one section: drawn, or why not. */
 export const renderResult = z.union([
   z.strictObject({
     job: z.uuid(),
     lease: z.uuid(),
     height: z.int().min(80).max(3200),
-    bytes: z.int().min(1).max(maxSectionBytes)
+    bytes: z.int().min(1).max(maxSectionBytes),
+    // DST-004b2b: the drawing's grid and, in Copy mode, its reference's.
+    grid,
+    referenceGrid: grid
   }),
   z.strictObject({
     job: z.uuid(),
@@ -294,7 +372,11 @@ export async function finishRender(
     job: result.job,
     lease: result.lease,
     height: result.height,
-    bytes: result.bytes
+    bytes: result.bytes,
+    ...(result.grid ? { grid: result.grid satisfies LumaGrid } : {}),
+    ...(result.referenceGrid
+      ? { reference_grid: result.referenceGrid satisfies LumaGrid }
+      : {})
   })
   if (!error) return { ok: true }
   if (error.code === '23514') await fail(db, result.job, result.lease, 'failed')
