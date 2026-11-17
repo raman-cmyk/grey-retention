@@ -146,9 +146,8 @@ describe('sidebar (expanded)', () => {
     )
     // UI-SETc: the team is on Settings.
     expect(nav.queryByRole('link', { name: 'Team' })).toBeNull()
-    expect(
-      nav.getByRole('link', { name: 'Request a Feature' })
-    ).toHaveAttribute('href', '/feedback')
+    // UI-SETd: feature requests are a card on Settings.
+    expect(nav.queryByRole('link', { name: 'Request a Feature' })).toBeNull()
     await userEvent.click(nav.getByRole('button', { name: 'Workspace' }))
     expect(cookieState().groups.workspace).toBe(false)
     await userEvent.click(nav.getByRole('button', { name: 'Agents' }))

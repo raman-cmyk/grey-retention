@@ -104,6 +104,7 @@ describe('Settings page model (UI-SETa)', () => {
       read,
       zone,
       support,
+      requests: support,
       liveKeys: false
     })
     expect(view).toMatchObject({
@@ -125,6 +126,8 @@ describe('Settings page model (UI-SETa)', () => {
       team: 'Grey Retention team',
       tenantId: context.tenantId
     })
+    // And the ten newest feature requests.
+    expect(view.requests?.items).toHaveLength(10)
     expect(view.timezone).toEqual({
       saved: 'Asia/Kathmandu',
       label: 'Asia/Kathmandu (UTC+05:45)',
@@ -142,6 +145,7 @@ describe('Settings page model (UI-SETa)', () => {
         read,
         zone: { ...zone, klaviyoDiffers: false },
         support,
+        requests: support,
         liveKeys: false
       }).timezone?.klaviyo
     ).toBeNull()
@@ -155,6 +159,7 @@ describe('Settings page model (UI-SETa)', () => {
         read,
         zone,
         support,
+        requests: support,
         liveKeys: false
       })
     expect(as('admin')).toMatchObject({ owner: false, editor: true })
@@ -166,6 +171,7 @@ describe('Settings page model (UI-SETa)', () => {
       read: { ...read, changes: null },
       zone,
       support,
+      requests: support,
       liveKeys: false
     })
     expect(staff.unread).toEqual([])
@@ -178,6 +184,7 @@ describe('Settings page model (UI-SETa)', () => {
       read: { ...read, klaviyo: null, account: null },
       zone: null,
       support,
+      requests: support,
       liveKeys: false
     })
     expect(view.unread).toEqual(['klaviyo', 'timezone', 'account'])
@@ -190,9 +197,21 @@ describe('Settings page model (UI-SETa)', () => {
           read,
           zone,
           support: { ...support, requests: [], state },
+          requests: support,
           liveKeys: false
         }).unread
       ).toEqual(['support'])
+    expect(
+      settingsView({
+        context,
+        now,
+        read,
+        zone,
+        support,
+        requests: { ...support, requests: [], state: 'load_failed' },
+        liveKeys: false
+      }).unread
+    ).toEqual(['requests'])
     expect(view.offers).toEqual(read.offers)
     expect(
       settingsView({
@@ -209,6 +228,7 @@ describe('Settings page model (UI-SETa)', () => {
         },
         zone,
         support,
+        requests: support,
         liveKeys: false
       })
     ).toMatchObject({
@@ -235,6 +255,10 @@ describe('Settings page model (UI-SETa)', () => {
       kind: 'support',
       order: 'activity',
       limit: 200
+    })
+    expect(loaders.feedbackPage).toHaveBeenCalledWith(context, now.getTime(), {
+      order: 'activity',
+      limit: 10
     })
 
     loaders.brandTimezone.mockResolvedValue(zone)

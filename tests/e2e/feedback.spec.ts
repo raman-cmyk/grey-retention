@@ -3,106 +3,64 @@ import { test, expect } from '@playwright/test'
 import { login } from './accounts'
 import { newOwner } from './new-owner'
 
-test('UIR-020 owner sends a feature request and finds it again', async ({
+test('UI-SETd the owner sends a feature request on Settings and finds it again', async ({
   page
 }) => {
   await newOwner(page, { prefix: 'feedback', name: 'Feedback studio' })
-  // The sidebar links here now (no longer "Soon").
-  // (A page still on the old shell: Home has the GROS top bar.)
-  await page.goto('/connections')
-  await expect(
-    page
-      .locator('a[href="/feedback"]', { hasText: 'Request a Feature' })
-      .first()
-  ).toBeAttached()
+  // The old address opens Settings, where the card is.
   await page.goto('/feedback')
-  await expect(
-    page.getByRole('heading', { name: 'Feature Requests', level: 1 })
-  ).toBeVisible()
-  await expect(page).toHaveTitle(/Feature Requests/)
-  await expect(page.getByText('Nothing here yet')).toBeVisible()
-  await expect(page.getByRole('radio', { name: 'All 0' })).toBeChecked()
+  await expect(page).toHaveURL(/\/settings$/)
+  const requests = page.getByRole('region', { name: 'Feature requests' })
+  await expect(requests.getByText('No requests yet.')).toBeVisible()
 
-  // Cancel saves nothing.
-  await page.getByRole('button', { name: 'New request' }).first().click()
-  let dialog = page.getByRole('dialog', { name: 'Request a Feature' })
-  await expect(dialog.getByRole('button', { name: 'Send' })).toBeDisabled()
-  await dialog.getByRole('button', { name: 'Cancel' }).click()
-  await expect(dialog).toBeHidden()
-  await expect(page.getByText('Nothing here yet')).toBeVisible()
-
-  // Send stays disabled until subject and details are filled.
-  const subject = `Duplicate campaign ${randomUUID().slice(0, 6)}`
-  await page.getByRole('button', { name: 'New request' }).first().click()
-  dialog = page.getByRole('dialog', { name: 'Request a Feature' })
-  await expect(
-    dialog.getByRole('radio', { name: /Feature Request/ })
-  ).toBeChecked()
-  await dialog.getByRole('radio', { name: /Improve Existing/ }).check()
-  await dialog.getByLabel('Subject').fill(subject)
-  await expect(dialog.getByRole('button', { name: 'Send' })).toBeDisabled()
-  await dialog
-    .getByLabel('Details')
+  // A refusal says what to fix and keeps what was typed.
+  await requests.getByLabel('Type', { exact: true }).selectOption('improvement')
+  await requests.getByLabel('Subject', { exact: true }).fill('D')
+  await requests
+    .getByLabel('Details', { exact: true })
     .fill('So I can reuse last week’s email without starting over.')
-  await dialog.getByRole('button', { name: 'Send' }).click()
-  await expect(dialog).toBeHidden()
-  await expect(page.getByText('Thanks — your request was sent.')).toBeVisible()
+  await requests.getByRole('button', { name: 'Send request' }).click()
+  await expect(
+    requests.getByText('Subject: at least 2 characters.')
+  ).toBeVisible()
+  await expect(requests.getByLabel('Subject', { exact: true })).toHaveValue('D')
 
-  const item = page.getByRole('listitem').filter({ hasText: subject })
-  await expect(item).toContainText('Improve Existing')
-  await expect(item).toContainText('Open')
+  const subject = `Duplicate an email ${randomUUID().slice(0, 6)}`
+  await requests.getByLabel('Subject', { exact: true }).fill(subject)
+  await requests.getByRole('button', { name: 'Send request' }).click()
+  await expect(
+    requests.getByText('Thanks — your request was sent.')
+  ).toBeVisible()
+  await expect(requests.getByLabel('Subject', { exact: true })).toHaveValue('')
+  const item = requests
+    .getByRole('listitem')
+    .filter({ has: page.getByRole('heading', { name: subject }) })
+    .first()
+  await expect(item).toContainText('Improve Existing · Open')
   await expect(item).toContainText('You ·')
   await page.reload()
-  await expect(page.getByRole('radio', { name: 'Open 1' })).toBeVisible()
-  await page.getByPlaceholder('Search your requests…').fill('reuse last week')
-  await expect(
-    page.getByRole('listitem').filter({ hasText: subject })
-  ).toBeVisible()
-  await page.getByPlaceholder('Search your requests…').fill('no such thing')
-  await expect(page.getByText('No requests match.')).toBeVisible()
+  await expect(item).toContainText('reuse last week’s email')
 })
 
-test('UIR-020 staff can send requests too', async ({ page }, info) => {
+test('UI-SETd staff can send feature requests too', async ({ page }, info) => {
   test.skip(
     info.project.name.startsWith('mobile'),
     'Role check; one layout is enough'
   )
   await login(page, 'staff')
-  await page.goto('/feedback')
-  await page.getByRole('button', { name: 'New request' }).first().click()
-  const dialog = page.getByRole('dialog', { name: 'Request a Feature' })
+  await page.goto('/settings')
+  const requests = page.getByRole('region', { name: 'Feature requests' })
   const subject = `Staff idea ${randomUUID().slice(0, 6)}`
-  await dialog.getByRole('radio', { name: /Bug/ }).check()
-  await dialog.getByLabel('Subject').fill(subject)
-  await dialog.getByLabel('Details').fill('The preview is blank on my phone.')
-  await dialog.getByRole('button', { name: 'Send' }).click()
+  await requests.getByLabel('Type', { exact: true }).selectOption('bug')
+  await requests.getByLabel('Subject', { exact: true }).fill(subject)
+  await requests
+    .getByLabel('Details', { exact: true })
+    .fill('The preview is blank on my phone.')
+  await requests.getByRole('button', { name: 'Send request' }).click()
   await expect(
-    page.getByRole('listitem').filter({ hasText: subject })
-  ).toContainText('Bug')
-})
-
-test('UIR-020 Feature Requests fits 375px', async ({ page }, info) => {
-  test.skip(info.project.name.startsWith('mobile'), 'Sets its own viewport')
-  await page.setViewportSize({ width: 375, height: 812 })
-  await login(page, 'owner')
-  await page.goto('/feedback')
-  await expect(
-    page.getByRole('heading', { name: 'Feature Requests', level: 1 })
-  ).toBeVisible()
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth
-    )
-  ).toBe(true)
-  // The modal fits too, and closes with Escape when nothing was typed.
-  await page.getByRole('button', { name: 'New request' }).first().click()
-  const dialog = page.getByRole('dialog', { name: 'Request a Feature' })
-  await expect(dialog.getByRole('button', { name: 'Send' })).toBeVisible()
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth
-    )
-  ).toBe(true)
-  await page.keyboard.press('Escape')
-  await expect(dialog).toBeHidden()
+    requests
+      .getByRole('listitem')
+      .filter({ has: page.getByRole('heading', { name: subject }) })
+      .first()
+  ).toContainText('Bug · Open')
 })

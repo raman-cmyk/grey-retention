@@ -27,6 +27,9 @@ vi.mock('@/features/team/actions', () => ({
   cancelInvite: vi.fn(async () => ({})),
   changeMember: vi.fn(async () => ({}))
 }))
+vi.mock('@/features/feedback/actions', () => ({
+  sendFeatureRequest: vi.fn(async () => ({}))
+}))
 vi.mock('@/features/operations/actions', () => ({
   operationAction: vi.fn(async () => ({}))
 }))
@@ -120,6 +123,7 @@ function view(over: Partial<SettingsView> = {}): SettingsView {
       team: 'Grey Retention team',
       tenantId: 't1'
     },
+    requests: { items: [], more: false },
     unread: [],
     ...over
   }
@@ -416,15 +420,21 @@ describe('Settings screen (UI-SETa)', () => {
         })}
       />
     )
-    // Staff change nothing here, but any member may ask support (UI-SETd).
+    // Staff change nothing here, but any member may ask support and send
+    // a feature request (UI-SETd).
     expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
       'Log out',
-      'Send to support'
+      'Send to support',
+      'Send request'
     ])
     expect(
       screen
         .queryAllByRole('textbox')
-        .every((box) => card('Support').contains(box))
+        .every(
+          (box) =>
+            card('Support').contains(box) ||
+            card('Feature requests').contains(box)
+        )
     ).toBe(true)
     expect(card('Timezone')).toHaveTextContent(
       'The workspace owner can switch to it.'
@@ -448,6 +458,7 @@ describe('Settings screen (UI-SETa)', () => {
       account: null,
       changes: null,
       support: null,
+      requests: null,
       unread: [
         'offers',
         'klaviyo',
@@ -455,7 +466,8 @@ describe('Settings screen (UI-SETa)', () => {
         'team',
         'account',
         'changes',
-        'support'
+        'support',
+        'requests'
       ]
     })
     render(<SettingsScreen view={unread} />)
@@ -467,7 +479,8 @@ describe('Settings screen (UI-SETa)', () => {
       ['Team', 'The team could not be read just now.'],
       ['Account', 'Your account could not be read just now.'],
       ['Recent changes', 'Recent changes could not be read just now.'],
-      ['Support', 'Your support questions could not be read just now.']
+      ['Support', 'Your support questions could not be read just now.'],
+      ['Feature requests', 'Your feature requests could not be read just now.']
     ])
       expect(card(name)).toHaveTextContent(words)
     expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
@@ -475,7 +488,7 @@ describe('Settings screen (UI-SETa)', () => {
     ])
     cleanup()
     render(<SettingsScreen view={{ ...unread, demo: true }} />)
-    expect(screen.getAllByText('Nothing is kept in the demo.')).toHaveLength(8)
+    expect(screen.getAllByText('Nothing is kept in the demo.')).toHaveLength(9)
     cleanup()
     // The demo's timezone shows, but cannot be saved.
     render(

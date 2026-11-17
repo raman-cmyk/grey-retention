@@ -85,21 +85,3 @@ export const requestSchema = z.object({
     .refine((v) => length(v) >= 1, 'Details: tell us a little more.')
     .refine((v) => length(v) <= 5000, 'Details: at most 5000 characters.')
 })
-
-/** True when both fields have something in them (Send is enabled). */
-export const readyToSend = (subject: string, details: string) =>
-  subject.trim().length > 0 && details.trim().length > 0
-
-/** Search over subject, details and replies, ignoring case. */
-export function matches(request: FeatureRequest, query: string) {
-  const q = query.trim().toLocaleLowerCase()
-  if (!q) return true
-  return [
-    request.subject,
-    request.details,
-    ...request.replies.map((r) => r.body)
-  ]
-    .join('\n')
-    .toLocaleLowerCase()
-    .includes(q)
-}

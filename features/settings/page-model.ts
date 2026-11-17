@@ -30,7 +30,14 @@ import {
  * admins change offers; only the owner changes Klaviyo and the timezone.
  */
 export type SettingsPart =
-  'offers' | 'klaviyo' | 'timezone' | 'team' | 'account' | 'changes' | 'support'
+  | 'offers'
+  | 'klaviyo'
+  | 'timezone'
+  | 'team'
+  | 'account'
+  | 'changes'
+  | 'support'
+  | 'requests'
 
 export type SettingsView = {
   /** Nothing is kept in the demo: the cards say so. */
@@ -68,6 +75,11 @@ export type SettingsView = {
     team: string
     tenantId: string
   } | null
+  /**
+   * The workspace's feature requests, latest activity first (UI-SETd): any
+   * member sends one. `more` when older ones are not shown.
+   */
+  requests: { items: FeatureRequest[]; more: boolean } | null
   unread: SettingsPart[]
 }
 
@@ -77,13 +89,14 @@ export type SettingsInput = {
   read: SettingsReadModel | null
   zone: BrandTimezone | null
   support: FeedbackPage | null
+  requests: FeedbackPage | null
   liveKeys: boolean
 }
 
-/** How many support threads Settings shows until Show older. */
+/** How many support threads and requests Settings shows until Show older. */
 export const supportLimit = 10
-/** What Settings shows in full (`?support=all`). */
-export type SettingsShow = { allSupport?: boolean }
+/** What Settings shows in full (`?support=all`, `?requests=all`). */
+export type SettingsShow = { allSupport?: boolean; allRequests?: boolean }
 
 /** The Settings view from its parts. Pure, for tests. */
 export function settingsView(input: SettingsInput): SettingsView {
@@ -125,6 +138,10 @@ export function settingsView(input: SettingsInput): SettingsView {
             tenantId: input.context.tenantId
           }
         : null,
+    requests:
+      input.requests?.state === 'ready'
+        ? { items: input.requests.requests, more: input.requests.more }
+        : null,
     unread: []
   }
   for (const part of [
@@ -133,7 +150,8 @@ export function settingsView(input: SettingsInput): SettingsView {
     'timezone',
     'team',
     'account',
-    'support'
+    'support',
+    'requests'
   ] as const)
     if (view[part] === null) view.unread.push(part)
   // Staff do not see the changes, so they are never missing for them.
@@ -154,7 +172,7 @@ export async function settingsPageModel(
   now = new Date(),
   show: SettingsShow = {}
 ): Promise<SettingsView> {
-  const [read, zone, support] = await Promise.all([
+  const [read, zone, support, requests] = await Promise.all([
     settle(settingsReadModel(context)),
     settle(brandTimezone(context)),
     // The latest activity first, so a reply on an old thread shows.
@@ -164,6 +182,12 @@ export async function settingsPageModel(
         order: 'activity',
         limit: show.allSupport ? requestLimit : supportLimit
       })
+    ),
+    settle(
+      feedbackPage(context, now.getTime(), {
+        order: 'activity',
+        limit: show.allRequests ? requestLimit : supportLimit
+      })
     )
   ])
   return settingsView({
@@ -172,6 +196,7 @@ export async function settingsPageModel(
     read,
     zone,
     support,
+    requests,
     liveKeys: klaviyoMode() === 'live'
   })
 }

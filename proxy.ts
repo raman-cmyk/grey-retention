@@ -77,7 +77,6 @@ export const config = {
     '/library/:path*',
     '/inspiration/:path*',
     '/connections/:path*',
-    '/feedback/:path*',
     '/gros/:path*',
     '/onboarding/:path*',
     '/profile/:path*',

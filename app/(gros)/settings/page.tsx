@@ -9,17 +9,22 @@ export const metadata: Metadata = { title: 'Settings' }
 export default async function SettingsPage({
   searchParams
 }: {
-  searchParams: Promise<{ support?: string | string[] }>
+  searchParams: Promise<{
+    support?: string | string[]
+    requests?: string | string[]
+  }>
 }) {
-  const [context, { support }] = await Promise.all([
+  const [context, { support, requests }] = await Promise.all([
     requireRequestContext('client'),
     searchParams
   ])
-  // Show older (UI-SETd): ?support=all lists every support thread.
+  // Show older (UI-SETd): ?support=all lists every support thread, and
+  // ?requests=all every feature request.
   return (
     <SettingsScreen
       view={await settingsPageModel(context, new Date(), {
-        allSupport: support === 'all'
+        allSupport: support === 'all',
+        allRequests: requests === 'all'
       })}
     />
   )

@@ -1,13 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import {
-  categoryLabel,
-  matches,
-  readyToSend,
-  requestSchema,
-  statusOf,
-  type FeatureRequest
-} from './rules'
+import { categoryLabel, requestSchema, statusOf } from './rules'
 
 const check = (values: Partial<Record<string, string>>) => {
   const parsed = requestSchema.safeParse({
@@ -60,39 +53,5 @@ describe('feature request rules', () => {
     expect(check({ subject: '🎉'.repeat(200) })).toMatchObject({
       subject: '🎉'.repeat(200)
     })
-  })
-
-  it('enables Send only when both fields have text', () => {
-    expect(readyToSend('', '')).toBe(false)
-    expect(readyToSend('Idea', ' ')).toBe(false)
-    expect(readyToSend(' ', 'Details')).toBe(false)
-    expect(readyToSend('Idea', 'Details')).toBe(true)
-  })
-
-  it('searches subject, details and replies', () => {
-    const request: FeatureRequest = {
-      id: '1',
-      subject: 'Duplicate campaign',
-      category: 'feature',
-      status: 'open',
-      revision: 1,
-      createdAt: '2026-11-06T10:00:00Z',
-      by: 'You',
-      details: 'Reuse last week',
-      replies: [
-        {
-          id: 'r',
-          author: 'Grey Retention team',
-          fromTeam: true,
-          body: 'On our roadmap',
-          createdAt: '2026-11-06T11:00:00Z'
-        }
-      ]
-    }
-    expect(matches(request, '')).toBe(true)
-    expect(matches(request, 'DUPLICATE')).toBe(true)
-    expect(matches(request, 'last week')).toBe(true)
-    expect(matches(request, 'roadmap')).toBe(true)
-    expect(matches(request, 'invoice')).toBe(false)
   })
 })
