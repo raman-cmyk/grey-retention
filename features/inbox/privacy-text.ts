@@ -392,9 +392,11 @@ function compile(identity: InboxIdentity, options: CleanOptions): Rules {
     check: () => {}
   }
   // A personalised picture (its address names the person) is not shown,
-  // not even its stored copy: such services draw the name into it.
+  // not even its stored copy: such services draw the name into it. An
+  // address longer than any link is not read (it is read before any
+  // deadline), so its stored copy is not shown either.
   for (const { ref, path } of options.images ?? [])
-    if (!pictureNames(ref, rules))
+    if (ref.length <= pictureAddress && !pictureNames(ref, rules))
       for (const key of [ref.trim(), decode(ref).trim()]) images.set(key, path)
   rules.stored = new Set(images.values())
   return rules
@@ -413,6 +415,9 @@ function lower<L extends Record<string, number>>(
   }
   return out
 }
+
+/** The longest picture address read (links are far shorter). */
+const pictureAddress = 8_192
 
 const compiled = new WeakMap<InboxIdentity, WeakMap<CleanOptions, Rules>>()
 const noOptions: CleanOptions = {}

@@ -1227,6 +1227,19 @@ describe('what the sixth review found', () => {
       ).toBe('Thanks!')
   })
 
+  it('reads no picture address longer than any link', () => {
+    const long = `https://img.x.example/p.png?x=${'a'.repeat(9_000)}`
+    expect(pictures(me, long)).toBe('<img src="">')
+    // A megabyte address is not read at all, so it costs no time.
+    const started = Date.now()
+    cleanEmailHtml('<p>x</p>', me, {
+      images: [
+        { ref: `data:image/png;base64,${'U2Ft'.repeat(250_000)}`, path: 'a' }
+      ]
+    })
+    expect(Date.now() - started).toBeLessThan(1_000)
+  })
+
   it('reads a base64 part of any length and cuts on a whole word', () => {
     // "Sam Rivera" in base64 with "-v1" joined: read once the last odd
     // character is left out.
