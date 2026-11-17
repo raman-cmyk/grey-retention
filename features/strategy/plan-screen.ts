@@ -43,6 +43,8 @@ export type PlanScreen =
   | { kind: 'failed'; reason: string; canPlan: boolean }
   | {
       kind: 'plan'
+      /** The plan run, for Create email (UI-PLAN-b). */
+      runId: string
       /** Made from the sample store: the screen says so. */
       sample: boolean
       /** Planned from facts only: the AI was not used for this plan. */
@@ -373,6 +375,7 @@ export function planScreen(
   ).length
   return {
     kind: 'plan',
+    runId: run.id,
     sample: plan.sample === true,
     noAi: plan.source.brief === 'code' && plan.source.planner === 'code',
     notes: plan.notes,

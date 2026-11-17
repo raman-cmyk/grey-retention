@@ -39,6 +39,8 @@ export type ResultEmail = {
    * or other (cancelled, deleted, not sent).
    */
   state: 'sent' | 'scheduled' | 'draft' | 'sample' | 'other'
+  /** Klaviyo's own status of it (cancelled, deleted, not sent among the other). */
+  status: ResultLine['status']
   statusText: string
   /** Its numbers, or null before Klaviyo has any. */
   numbers: NumberWords | null
@@ -221,6 +223,7 @@ export function resultEmail(
     title: line.subject ?? 'An email from your plan',
     day: dayLabel(line.sentAt, timezone) ?? dayLabel(line.plannedDay, timezone),
     state,
+    status: line.status,
     statusText: line.sample
       ? 'Sample: not sent'
       : line.status === 'draft' && !line.statusText.includes('(')
