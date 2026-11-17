@@ -1,5 +1,5 @@
 begin;
-select plan(59);
+select plan(69);
 
 -- FONT-SITE part b: the brand's web fonts, kept by the Site reader's job.
 -- Owner ...01 and staff ...05 are in workspace 101; owner ...04 runs
@@ -36,7 +36,9 @@ select ok(not bool_or(has_function_privilege(r,'public.record_site_fonts(uuid,uu
   and has_function_privilege('service_role','public.record_site_fonts(uuid,uuid,jsonb)','execute'),
   'only the worker keeps fonts') from unnest(array['anon','authenticated']) r;
 select ok(not bool_or(has_table_privilege(r,'public.brand_fonts',p)),'browser roles cannot write fonts')
-  from unnest(array['anon','authenticated']) r, unnest(array['insert','update','delete','truncate','references','trigger']) p;
+  from unnest(array['anon','authenticated']) r, unnest(array['insert','update','delete','truncate','references','trigger','maintain']) p;
+select ok(not has_table_privilege('service_role','public.brand_fonts','insert,update,delete,truncate,references,trigger,maintain')
+  and has_table_privilege('service_role','public.brand_fonts','select'),'the worker reads fonts and writes them only through the command');
 select ok(not has_table_privilege('anon','public.brand_fonts','select'),'anonymous visitors cannot read them');
 select ok(not bool_or(has_function_privilege(r,'private.site_fonts_ok(jsonb)','execute')),'nor run the shape check')
   from unnest(array['anon','authenticated']) r;
@@ -55,6 +57,9 @@ select throws_ok(format('select pg_temp.keep(%L,%L)',current_setting('test.other
   'another reader''s job cannot keep fonts');
 select throws_ok(format('select pg_temp.keep(%L,%L)',current_setting('test.nosite'),'[]'),'23514',null,
   'a job without a real website keeps nothing');
+select throws_ok(format($$insert into public.brand_fonts(tenant_id,run_id,domain,fonts)
+  values('00000000-0000-4000-8000-000000000101',%L,'cedar-lane.example','[]')$$,current_setting('test.new')),'42501',null,
+  'nor writes the table directly');
 select throws_ok(format('select pg_temp.keep(%L,%L)',current_setting('test.new'),bad),'23514',null,'refused: '||why)
   from (values
     (null::jsonb, 'nothing'),
@@ -96,7 +101,24 @@ select throws_ok(format('select pg_temp.keep(%L,%L)',current_setting('test.new')
       pg_temp.file('https://cedar-lane.example/a.woff2') - 'unicodeRange')))), 'a file without its range'),
     (jsonb_build_array(pg_temp.font('Cedar',jsonb_build_object('files',jsonb_build_array(
       pg_temp.file('https://cedar-lane.example/a.woff2','{"unicodeRange":"latin"}'))))), 'a range the reader never writes'),
-    (jsonb_build_array(pg_temp.font('Cedar',jsonb_build_object('files','["x"]'::jsonb))), 'a file that is not an object')
+    (jsonb_build_array(pg_temp.font('Cedar',jsonb_build_object('files','["x"]'::jsonb))), 'a file that is not an object'),
+    (jsonb_build_array(pg_temp.font('Cedar',jsonb_build_object('files',jsonb_build_array(
+      pg_temp.file('https://cedar-lane.example/a.woff2','{"note":"x"}'))))), 'an unknown key in a file'),
+    (jsonb_build_array(pg_temp.font('Cedar',jsonb_build_object('files',jsonb_build_array(
+      pg_temp.file('https://cedar-lane.example/a.woff2','{"maxWeight":"900"}'))))), 'a variable range that is not a number'),
+    (jsonb_build_array(pg_temp.font('Cedar',jsonb_build_object('files',jsonb_build_array(
+      pg_temp.file('https://cedar-lane.example/a.woff2','{"maxWeight":700.5}'))))), 'a variable range that is not whole'),
+    (jsonb_build_array(pg_temp.font('Cedar',jsonb_build_object('files',jsonb_build_array(
+      pg_temp.file('https://cedar-lane.example/a.woff2','{"maxWeight":950}'))))), 'a variable range over 900'),
+    (jsonb_build_array(pg_temp.font('Cedar',jsonb_build_object('files',jsonb_build_array(
+      pg_temp.file('https://cedar-lane.example/a.woff2','{"weight":100,"maxWeight":50}'))))), 'a variable range under 100'),
+    (jsonb_build_array(pg_temp.font('Cedar',jsonb_build_object('files',jsonb_build_array(
+      pg_temp.file('https://cedar-lane.example/a.woff2',jsonb_build_object('unicodeRange',
+        'U+0041'||repeat(', U+0041',121)||repeat(', U+00041',3))))))), 'a range of 1,001 characters'),
+    -- Every address within 1,000 characters, but four bytes a letter: over 300,000 bytes in all.
+    ((select jsonb_agg(pg_temp.font('Cedar '||i,jsonb_build_object('files',
+      (select jsonb_agg(pg_temp.file('https://cedar-lane.example/'||i||'-'||n||repeat(chr(128512),960)||'.woff2',
+        jsonb_build_object('weight',100+n*50))) from generate_series(0,11) n)))) from generate_series(1,8) i), 'over 300,000 bytes')
   ) as x(bad, why);
 
 -- The most a list holds: 8 families of 12 files, a file address of 1,000
@@ -162,6 +184,9 @@ set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000005","role":"authenticated"}',true);
 select is((select fonts->0->>'family'||' '||domain from public.brand_fonts),'Dawn Sans cedar-lane.example',
   'staff read their workspace''s fonts and where they came from');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select is((select fonts->0->>'family'||' '||domain from public.brand_fonts),'Dawn Sans cedar-lane.example',
+  'so does its owner');
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
 select is((select count(*)::integer from public.brand_fonts),0,'another workspace''s owner reads none');
 reset role;

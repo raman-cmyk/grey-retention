@@ -138,9 +138,15 @@ const stepWords: Record<
  */
 export const klaviyoCampaignsUrl = 'https://www.klaviyo.com/campaigns'
 
+/** A sample draft's last step: it never reached Klaviyo. */
+const sampleSave = {
+  done: 'Kept it as a sample draft (Klaviyo is not connected)',
+  doing: 'Keeping it as a sample draft'
+}
+
 /** The run's steps, as far as the build got. */
 export function runSteps(
-  row: Pick<EmailRow, 'state' | 'step'>,
+  row: Pick<EmailRow, 'state' | 'step'> & { sampleDraft?: boolean },
   format: 'designed' | 'text'
 ): RunStep[] {
   const at = allSteps.indexOf(
@@ -152,9 +158,11 @@ export function runSteps(
   const failed = row.state === 'failed'
   return allSteps.map((step, i) => {
     const words =
-      format === 'text' && stepWords[step].text
-        ? stepWords[step].text!
-        : stepWords[step]
+      step === 'push' && row.sampleDraft
+        ? sampleSave
+        : format === 'text' && stepWords[step].text
+          ? stepWords[step].text!
+          : stepWords[step]
     const state: RunStep['state'] = drafted
       ? 'done'
       : i < at

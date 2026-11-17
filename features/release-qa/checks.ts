@@ -1,8 +1,10 @@
 import { checkCopy } from '@/features/copy-qa/check'
-import { copyDraftOf, type Draft } from '@/features/assembly/assemble'
+import type { Draft } from '@/features/assembly/assemble'
+import { brandCopyDraft } from '@/features/assembly/own-reviews'
 import type {
   BrandFacts,
   CatalogProduct,
+  ConfirmedReview,
   DiscountCode
 } from '@/features/assembly/inputs'
 import { localDateTime, localTimeCandidates } from '@/lib/local-time'
@@ -41,6 +43,12 @@ export type ReleaseCandidate = {
   codes: readonly DiscountCode[]
   maxDiscountPercent: number
   facts: BrandFacts
+  /**
+   * REL-ONB2 part b: the store's confirmed reviews the email may show with
+   * their own stars (`usableMaterial`), so a strip of them is no unverified
+   * rating; none means every star is judged.
+   */
+  confirmedReviews?: readonly ConfirmedReview[]
   /** Hosts the email may link to, e.g. ["example-store.com"]. */
   storeHosts: readonly string[]
   /** The 375px render the approval screen reuses; null if it failed. */
@@ -263,7 +271,8 @@ export async function runReleaseQa(
 
   // 7. Copy: facts sheet and banned words (ASM-002).
   const copy = checkCopy({
-    draft: copyDraftOf(c.draft),
+    // A strip of the store's own reviews keeps its words, not its stars.
+    draft: brandCopyDraft(c.draft, c.confirmedReviews ?? []),
     facts: c.facts,
     maxDiscountPercent: c.maxDiscountPercent,
     codes: [...c.codes],
