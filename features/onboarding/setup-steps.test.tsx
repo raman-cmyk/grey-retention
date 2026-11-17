@@ -125,10 +125,13 @@ describe('KlaviyoStep (UI-ONBd)', () => {
   it('says when connecting is not switched on (live adapters, no live Klaviyo)', () => {
     render(<KlaviyoStep view={view({ keyCheck: 'off' })} />)
     expect(
-      screen.getByText(
-        'Connecting Klaviyo is not switched on yet. Nothing was changed.'
-      )
+      screen.getByText('Connecting Klaviyo is not switched on yet.')
     ).toBeVisible()
+    // Not a dead end: Klaviyo cannot be skipped, so Home is one click away.
+    expect(screen.getByRole('link', { name: 'Open Home' })).toHaveAttribute(
+      'href',
+      '/home'
+    )
     expect(screen.queryByLabelText('Private API key')).toBeNull()
     expect(screen.queryByText(/Sample mode/)).toBeNull()
   })

@@ -196,6 +196,20 @@ describe('setup actions (UI-ONBb)', () => {
     expect(mocks.addDiscountCode).not.toHaveBeenCalled()
   })
 
+  it('says the store changed in another window for a stale save (PT409)', async () => {
+    mocks.createClient.mockResolvedValue(
+      database({ data: null, error: { code: 'PT409' } }).db
+    )
+    expect(
+      await saveStore(
+        {},
+        form({ name: 'Cedar Lane', website: 'cedarlane.example' })
+      )
+    ).toEqual({
+      error: 'Your store was changed in another window. Open setup again.'
+    })
+  })
+
   it('says plainly when the save is refused, and starts no reader', async () => {
     const { db } = database({ data: null, error: { code: '40001' } })
     mocks.createClient.mockResolvedValue(db)
@@ -313,6 +327,21 @@ describe('setup actions (UI-ONBb)', () => {
     ).toEqual({ fields: { voice: 'Keep it under 5000 characters.' } })
   })
 
+  it('says the website changed when the brand save is stale (PT409)', async () => {
+    mocks.createClient.mockResolvedValue(
+      database({ data: null, error: { code: 'PT409' } }).db
+    )
+    expect(
+      await confirmBrand(
+        {},
+        form({ site: 'cedarlane.example', voice: 'New words' })
+      )
+    ).toEqual({
+      error:
+        'Your website was changed in another window. Look at what was found again.'
+    })
+  })
+
   it('reads every reader again, the Klaviyo ones only once Klaviyo is connected', async () => {
     const { db } = database()
     mocks.createClient.mockResolvedValue(db)
@@ -383,6 +412,29 @@ describe('setup actions (UI-ONBb)', () => {
       }
     })
     expect(mocks.addDiscountCode).not.toHaveBeenCalled()
+  })
+
+  it('says a passed end date under its field', async () => {
+    mocks.createClient.mockResolvedValue(database().db)
+    mocks.context.mockResolvedValue({ ...owner, timezone: 'UTC' })
+    expect(
+      await addSetupCode(
+        {},
+        form({ code: 'OLD10', percent: '10', expires: '2020-01-01' })
+      )
+    ).toEqual({
+      fields: { expires: 'That end date has passed. Choose a later one.' }
+    })
+    expect(mocks.addDiscountCode).not.toHaveBeenCalled()
+    // The Settings action's own refusal lands there too.
+    mocks.addDiscountCode.mockResolvedValue({
+      error: 'That end date has passed. Choose a later one.'
+    })
+    expect(
+      await addSetupCode({}, form({ code: 'OLD10', percent: '10' }))
+    ).toEqual({
+      fields: { expires: 'That end date has passed. Choose a later one.' }
+    })
   })
 
   it('adds a code with the Settings action and stays on the step', async () => {

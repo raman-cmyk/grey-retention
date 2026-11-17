@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { expect, test } from '@playwright/test'
 import { login } from './accounts'
 import { newOwner } from './new-owner'
+import { runReaders } from './readers'
 
 // A made-up key in the private key's format: sample mode checks the format only.
 const sampleKey = () =>
@@ -11,7 +12,8 @@ const noSidewaysScroll = () =>
   document.documentElement.scrollWidth <= innerWidth
 
 test('UI-ONBb a new owner saves the store and comes back to the step that is Now', async ({
-  page
+  page,
+  request
 }) => {
   await newOwner(page, { prefix: 'setup', name: 'Setup studio' })
   await page.goto('/setup')
@@ -60,6 +62,15 @@ test('UI-ONBb a new owner saves the store and comes back to the step that is Now
   ).toBeVisible()
   await expect(page.getByText('Reading your website')).toBeVisible()
   await expect(page.getByText('Products')).toBeVisible()
+  // Confirm brand waits for the website to be read.
+  await expect(
+    page.getByText('Reading your website. This can take a few minutes.')
+  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Confirm brand' })).toHaveCount(
+    0
+  )
+  await runReaders(request)
+  await page.reload()
   // How emails should sound and what to avoid (VISION's brand facts) are
   // asked here, optional, and kept.
   await page

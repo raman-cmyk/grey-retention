@@ -56,9 +56,12 @@ export function KlaviyoStep({ view }: { view: SetupView }) {
       ) : working ? (
         <ButtonLink href={setupPath()} label="Continue" size="focus" />
       ) : view.keyCheck === 'off' ? (
-        <p className="type-body text-[var(--stone)]">
-          Connecting Klaviyo is not switched on yet. Nothing was changed.
-        </p>
+        <>
+          <p className="type-body text-[var(--stone)]">
+            Connecting Klaviyo is not switched on yet.
+          </p>
+          <ButtonLink href="/home" label="Open Home" size="focus" />
+        </>
       ) : (
         <>
           <SetupForm

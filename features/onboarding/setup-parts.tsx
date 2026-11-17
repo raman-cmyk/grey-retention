@@ -1,15 +1,21 @@
 import type { Route } from 'next'
 import type { ReactNode } from 'react'
 import type { SetupStepKey } from './flow-model'
-import { StepTitle } from './setup-title'
 
 /** The parts every setup step uses (UI-ONBb). */
 export const setupPath = (step?: SetupStepKey) =>
   (step ? `/setup?step=${step}` : '/setup') as Route
 
-/** The step's one `h1`; it takes the focus when the step changes. */
+/**
+ * The step's one `h1`, focusable by script only: `StepFocus` moves the
+ * focus to it when the step changes.
+ */
 export function Title({ text }: { text: string }) {
-  return <StepTitle text={text} />
+  return (
+    <h1 tabIndex={-1} className="type-title">
+      {text}
+    </h1>
+  )
 }
 
 /** What staff see instead of a step's buttons. */

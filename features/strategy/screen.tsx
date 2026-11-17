@@ -10,6 +10,7 @@ import { Status } from '@/components/gros/status'
 import { EmptyState, ErrorState } from '@/components/gros/states'
 import { createEmail } from '@/features/email-build/actions'
 import { startPlan } from './actions'
+import { ModePick } from './mode-pick'
 import { OfferPick } from './offer-pick'
 import type { PlanEmail, PlanScreen as View } from './plan-screen'
 import { KeepFresh } from './refresh'
@@ -252,7 +253,11 @@ function EmailEnd({ email: e, runId }: { email: PlanEmail; runId: string }) {
         size="row"
         kind={e.next ? 'main' : 'outline'}
         fields={{ run: runId, slot: String(e.slot) }}
-      />
+      >
+        {e.format === 'designed' ? (
+          <ModePick slot={e.slot} title={e.title} />
+        ) : null}
+      </ActionButton>
     )
   if (action?.kind === 'open' && e.status.kind !== 'working')
     return (

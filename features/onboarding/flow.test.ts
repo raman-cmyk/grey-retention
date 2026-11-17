@@ -111,6 +111,8 @@ describe('setupReadModel (UI-ONBa)', () => {
       false
     ])
     expect(view.flow!.current).toBe(4)
+    // The workspace has its onboarding row.
+    expect(view.flow!.tracked).toBe(true)
     expect(view.brand).toEqual({
       name: 'Cedar Lane',
       domain: 'cedarlane.example',
@@ -164,6 +166,8 @@ describe('setupReadModel (UI-ONBa)', () => {
     expect(view.brand).toBeNull()
     expect(view.flow!.current).toBe(0)
     expect(view.flow!.steps.every((s) => !s.done)).toBe(true)
+    // No row: a workspace from before onboarding.
+    expect(view.flow!.tracked).toBe(false)
     expect(view.klaviyo!.status).toBe('none')
   })
 
@@ -263,7 +267,8 @@ describe('setupReadModel (UI-ONBa)', () => {
       logo: null,
       colors: ['#1F3A2B', '#abc'],
       fonts: ['Lora'],
-      products: ['Field overshirt']
+      products: ['Field overshirt'],
+      catalogRead: true
     })
     const products = calls.find((c) => c.table === 'products')!
     expect(products.filters).toContainEqual(['eq', 'synthetic', true])
