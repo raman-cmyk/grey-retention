@@ -23,6 +23,11 @@ import { buildSteps, runBuildStep, stepBudgetMs } from './steps'
 import { maxStepSaves, roundSteps, maxEmailBytes } from './step-names'
 import { buildCode, refusedCode, type BuildFailureCode } from './failure-words'
 import { type SavedOffers, type StoreSource } from './ports'
+import type { ReferenceEmail } from '@/features/studio/reference'
+import {
+  readReferenceRows,
+  toReferences
+} from '@/features/studio/reference-source'
 import {
   noPhotos,
   studioPhotos,
@@ -99,6 +104,12 @@ export async function runEmailBuilds(
     /** Stop claiming after this time (ms since epoch). */
     deadline?: number
     now?: () => number
+    /**
+     * DST-002b: how a Copy or Remix build's references are read. Default:
+     * the Inspiration inbox with this service-role client
+     * (`readReferenceRows`, `toReferences`).
+     */
+    references?: ReferenceLoader
   } = {}
 ) {
   const pusher = deps.pusher ?? fakeDraftPusher()
@@ -225,6 +236,17 @@ export async function runEmailBuilds(
         // REL-AI: the copy step skips the subjects of the plan's other emails.
         const taken =
           job.step === 'copy' ? await planSubjects(db, job) : undefined
+        // DST-002b: the owner's Copy or Remix, for the step that plans it.
+        const reference =
+          job.step === 'sections'
+            ? await buildReference(
+                db,
+                job,
+                store.timezone,
+                now,
+                deps.references
+              )
+            : undefined
         const step = await runBuildStep(
           job.step ?? '',
           {
@@ -243,6 +265,7 @@ export async function runEmailBuilds(
             // this claim's budget and the job's deadline (REL-AI part 2b).
             until,
             clock: now,
+            ...(reference ? { reference } : {}),
             // The owner's studio is on, but this claim has no agents (the
             // sweep, after the click ran out of time): it says so (D16).
             ...(studio &&
@@ -561,6 +584,45 @@ export async function runEmailBuilds(
  * again unless it reached the push (its Klaviyo draft may still carry it);
  * this email's own builds (its "Try again") never count.
  */
+type ReferenceLoader = (tenantId: string) => Promise<{
+  emails: readonly ReferenceEmail[]
+  followed: ReadonlySet<string>
+}>
+
+/**
+ * DST-002b: the owner's Copy or Remix for a build, and how its references
+ * are read (the Inspiration inbox, service role, at the step's own time).
+ * Undefined: Scratch (the mode every build had before, and the default).
+ */
+export async function buildReference(
+  db: Db,
+  job: { id: string; tenant_id: string },
+  timezone: string,
+  now: () => number,
+  load?: ReferenceLoader
+) {
+  const { data, error } = await db
+    .from('email_builds')
+    .select('mode')
+    .eq('id', job.id)
+    .eq('tenant_id', job.tenant_id)
+  if (error) throw error
+  const mode = (data ?? [])[0]?.mode
+  if (mode !== 'copy' && mode !== 'remix') return undefined
+  return {
+    mode,
+    load: load
+      ? () => load(job.tenant_id)
+      : async () => {
+          const at = now()
+          return toReferences(await readReferenceRows(db, job.tenant_id, at), {
+            now: at,
+            timezone
+          })
+        }
+  } as const
+}
+
 export async function planSubjects(
   db: Db,
   job: { tenant_id: string; run_id: string; slot: number }

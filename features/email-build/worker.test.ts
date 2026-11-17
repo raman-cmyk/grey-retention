@@ -685,6 +685,10 @@ describe('saved steps (REL-081)', () => {
         .filter((c) => c.fn.startsWith('email_builds.'))
         .map((c) => [c.fn, ...(c.args.args as unknown[])])
     ).toEqual([
+      // DST-002b: the build's mode, once, at the sections step.
+      ['email_builds.select', 'mode'],
+      ['email_builds.eq', 'id', 'build-1'],
+      ['email_builds.eq', 'tenant_id', tenant],
       [
         'email_builds.select',
         'built:email->>subject,saved:progress->copy->draft->>subject,letter:progress->copy->letter->>subject,builtB:email->>subjectB,savedB:progress->copy->subjectLab->b->>subject'
@@ -694,6 +698,67 @@ describe('saved steps (REL-081)', () => {
       ['email_builds.neq', 'slot', 0],
       ['email_builds.or', 'state.neq.failed,email.not.is.null']
     ])
+  })
+
+  it('reads the inbox for a build the owner asked to copy, and keeps its reference (DST-002b)', async () => {
+    const { db, calls } = fakeDb(
+      [step()],
+      {},
+      { email_builds: [{ mode: 'copy' }] }
+    )
+    const read: string[] = []
+    await runEmailBuilds(db, {
+      limit: 1,
+      fallbacks: memoryFallbackLog(),
+      references: async (tenantId) => {
+        read.push(tenantId)
+        return {
+          emails: [
+            {
+              id: 'ref-1',
+              brandId: 'pine',
+              brand: 'Pine & Co',
+              synthetic: true,
+              subject: 'The cedar sale',
+              industry: 'home',
+              emailType: 'launch',
+              angle: null,
+              receivedAt: new Date(Date.now() - 86_400_000).toISOString(),
+              winner: false,
+              sections: [
+                { blockType: 'hero_product', height: 600 },
+                { blockType: 'product_feature', height: 500 },
+                { blockType: 'text', height: 200 }
+              ]
+            }
+          ],
+          followed: new Set<string>()
+        }
+      }
+    })
+    expect(read).toEqual([tenant])
+    const done = calls.find((c) => c.fn === 'finish_email_step')!.args
+    expect(done.done).toBe('sections')
+    const output = done.output as {
+      layout: { mode: string }
+      reference?: { emailId: string; mode: string }
+    }
+    expect(output.layout.mode).toBe('copy')
+    expect(output.reference).toMatchObject({ emailId: 'ref-1', mode: 'copy' })
+  })
+
+  it('reads no inbox for a build made from scratch', async () => {
+    const { db } = fakeDb([step()], {}, { email_builds: [{ mode: 'scratch' }] })
+    let read = false
+    await runEmailBuilds(db, {
+      limit: 1,
+      fallbacks: memoryFallbackLog(),
+      references: async () => {
+        read = true
+        return { emails: [], followed: new Set<string>() }
+      }
+    })
+    expect(read).toBe(false)
   })
 
   it('tries the copy step again when the plan’s subjects cannot be read', async () => {

@@ -17,10 +17,16 @@ import { localTimeCandidates } from '@/lib/local-time'
 import { letterKinds } from '@/features/letter/kind-list'
 import {
   codeSectionPlan,
+  copyPlan,
   planSections,
   seedVariants,
   type SectionPlan
 } from './sections'
+import {
+  rankReferences,
+  referenceDna,
+  type ReferenceEmail
+} from '@/features/studio/reference'
 import {
   lockContent,
   type ChangeKey,
@@ -205,6 +211,18 @@ export type SectionsOutput = {
   /** DSC-001: the max and the codes still working when this email sends. */
   rules: { maxDiscountPercent: number; codes: DiscountCode[] }
   layout: SectionPlan
+  /**
+   * DST-002b: the inbox email this one follows (Copy) or learns its
+   * structure from (Remix), why it was picked in the owner's words, and
+   * what the design studio keeps from it. Missing: made from scratch.
+   */
+  reference?: {
+    emailId: string
+    mode: 'copy' | 'remix'
+    reason: string
+    reference: ReturnType<typeof referenceDna>['reference']
+    refIndex: (number | null)[]
+  }
 }
 export type CopyOutput = {
   draft: Draft
@@ -500,8 +518,16 @@ export async function sectionsStep(
       ...(planned.offer ? { offerCode: planned.offer.code } : {})
     }
   })
+  // DST-002b: Copy or Remix from the inbox email picked for it, else Scratch.
+  const chosen = await chooseReference(
+    planned,
+    store,
+    ctx,
+    (ctx.clock ?? Date.now)()
+  )
   const sectionInput = {
-    mode: 'scratch' as const,
+    mode: chosen?.saved.mode ?? ('scratch' as const),
+    ...(chosen ? { competitor: chosen.layout } : {}),
     industry: store.industry,
     slot: {
       emailType: planned.emailType,
@@ -518,16 +544,19 @@ export async function sectionsStep(
   const layout =
     planned.format === 'text'
       ? letterLayout(planned)
-      : ctx.agents
-        ? await planSections(sectionInput, {
-            tenantId: ctx.tenantId,
-            callerKey: ctx.callerKey,
-            memory: ctx.agents.memory,
-            log: ctx.agents.log,
-            ai: ctx.agents.ai,
-            fallbacks: ctx.fallbacks
-          })
-        : codeSectionPlan(sectionInput)
+      : // Copy follows the reference's order: code alone (EML-001).
+        sectionInput.mode === 'copy'
+        ? copyPlan(sectionInput)
+        : ctx.agents
+          ? await planSections(sectionInput, {
+              tenantId: ctx.tenantId,
+              callerKey: ctx.callerKey,
+              memory: ctx.agents.memory,
+              log: ctx.agents.log,
+              ai: ctx.agents.ai,
+              fallbacks: ctx.fallbacks
+            })
+          : codeSectionPlan(sectionInput)
   return {
     ok: true,
     output: {
@@ -535,7 +564,8 @@ export async function sectionsStep(
       timezone: store.timezone,
       sample: store.sample,
       rules,
-      layout
+      layout,
+      ...(chosen ? { reference: chosen.saved } : {})
     }
   }
 }
@@ -996,6 +1026,82 @@ export type BuildCtx = {
    * for refusing a send time that has passed (REL-DAT).
    */
   clock?: () => number
+  /**
+   * DST-002b: the owner's Copy or Remix for this build, and the inbox's
+   * references the worker reads for it (service role). Missing: Scratch.
+   */
+  reference?: {
+    mode: 'copy' | 'remix'
+    load: () => Promise<{
+      emails: readonly ReferenceEmail[]
+      followed: ReadonlySet<string>
+    }>
+  }
+}
+
+/** Why an email the owner asked to copy or remix is made from scratch. */
+const scratchWords = {
+  reference_remix_no_ai:
+    'Remixing an email needs the AI email planner, which is off, so this email is designed from scratch.',
+  reference_unreadable:
+    'The Inspiration inbox could not be read just now, so this email is designed from scratch.'
+} as const
+
+/**
+ * DST-002b: the reference for a designed email the owner asked to copy or
+ * remix, or null (from scratch) with the reason in the run log (D16). Copy
+ * is code alone; Remix needs the Section planner (the agents).
+ */
+async function chooseReference(
+  planned: PlannedEmail,
+  store: Store,
+  ctx: BuildCtx,
+  now: number
+): Promise<{
+  saved: NonNullable<SectionsOutput['reference']>
+  layout: ReturnType<typeof referenceDna>['layout']
+} | null> {
+  const want = ctx.reference
+  if (!want || planned.format === 'text') return null
+  const scratch = async (reasonCode: string, reason: string) => {
+    await ctx.fallbacks
+      .record({
+        tenantId: ctx.tenantId,
+        campaignId: ctx.campaignId ?? null,
+        agent: 'art-director',
+        reasonCode,
+        reason,
+        fallback: 'Designed from scratch.',
+        attempts: 0,
+        detail: { mode: want.mode },
+        dedupeKey: `reference:${ctx.callerKey}`
+      })
+      .catch(() => undefined)
+    return null
+  }
+  if (want.mode === 'remix' && !ctx.agents)
+    return scratch('reference_remix_no_ai', scratchWords.reference_remix_no_ai)
+  const loaded = await want.load().catch(() => null)
+  if (!loaded)
+    return scratch('reference_unreadable', scratchWords.reference_unreadable)
+  const { picks, reason } = rankReferences(
+    loaded.emails,
+    { industry: store.industry, emailType: planned.emailType },
+    { mode: want.mode, now, followed: loaded.followed }
+  )
+  const pick = picks[0]
+  if (!pick) return scratch('reference_none', reason)
+  const dna = referenceDna(pick.email)
+  return {
+    saved: {
+      emailId: pick.email.id,
+      mode: want.mode,
+      reason: pick.reason,
+      reference: dna.reference,
+      refIndex: dna.refIndex
+    },
+    layout: dna.layout
+  }
 }
 
 /** A text email's four steps at once (TXT-001c). */
