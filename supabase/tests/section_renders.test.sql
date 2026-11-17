@@ -13,10 +13,10 @@ $$;
 -- Grants.
 select ok(not bool_or(has_function_privilege(r, f, 'execute')),'browser roles cannot ask for, record or fail a render')
   from unnest(array['anon','authenticated']) r,
-       unnest(array['public.request_section_render(uuid,uuid,text,jsonb,text[])','public.record_section_render(uuid,uuid,integer,integer)',
+       unnest(array['public.request_section_render(uuid,uuid,text,jsonb,text[],text)','public.record_section_render(uuid,uuid,integer,integer,jsonb,jsonb)',
                     'public.fail_section_render(uuid,uuid,text)']) f;
 select ok(bool_and(has_function_privilege('service_role', f, 'execute')),'jobs do')
-  from unnest(array['public.request_section_render(uuid,uuid,text,jsonb,text[])','public.record_section_render(uuid,uuid,integer,integer)',
+  from unnest(array['public.request_section_render(uuid,uuid,text,jsonb,text[],text)','public.record_section_render(uuid,uuid,integer,integer,jsonb,jsonb)',
                     'public.fail_section_render(uuid,uuid,text)']) f;
 select ok(not bool_or(has_function_privilege(r, 'private.leased_section_render(uuid,uuid)', 'execute')),'the lease helper is not callable')
   from unnest(array['anon','authenticated','service_role']) r;

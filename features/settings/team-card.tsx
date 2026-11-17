@@ -1,7 +1,6 @@
 import { Mail } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { ActionAnswers, ActionButton } from '@/components/gros/action'
-import { ButtonLink } from '@/components/gros/button'
 import { Card, Tile } from '@/components/gros/card'
 import { ListRow, RowList } from '@/components/gros/list-row'
 import {
@@ -31,7 +30,7 @@ import type { SettingsView } from './page-model'
  * (`ActionAnswers`), so an answer stays when its row or button goes with
  * the change it made (a cancelled invite, a new role), and a new answer
  * replaces the last; only a refusal about the address stays under Email.
- * "Who changed what" is still on the old Team page until UI-SETc.
+ * Who changed what is the Recent changes card (UI-SETc).
  */
 export function TeamCard({
   view,
@@ -87,15 +86,7 @@ export function TeamCard({
               )}
               {team.canManage ? <InviteForm /> : null}
             </ActionAnswers>
-            {team.canManage ? (
-              // Until UI-SETc brings who changed what onto Settings.
-              <ButtonLink
-                href="/team"
-                label="See team changes"
-                kind="quiet"
-                size="row"
-              />
-            ) : (
+            {team.canManage ? null : (
               <p className="type-body text-[var(--stone)]">
                 Only the owner or a manager can invite people and change access.
               </p>

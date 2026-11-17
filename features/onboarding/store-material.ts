@@ -15,6 +15,7 @@ import {
 import { onDomain } from '@/lib/providers/ad-library'
 import { bodyWords, namesSomeone, resultWords } from './customer-words'
 import type { Finding } from './findings'
+import { firstPerson, personName } from './site/founder'
 import { emailPhotoUrl, photoKey } from './site/photos'
 import { claims } from './words'
 
@@ -50,10 +51,15 @@ import { claims } from './words'
  *   they pass as the store's, else by the brand's name. Never for a sample
  *   workspace (no live read kept it), never made up.
  *
+ * - The founder's own note (`founder_note`, part d2): the newest note the
+ *   Site reader kept from the store's About page as whole sentences of the
+ *   page in its own letters (`whole`, part d1), in the first person, with
+ *   the founder's plain name and the role the page writes; its words judged
+ *   as the reviews' are (`safe`), with no offer word or price, naming no
+ *   one but the founder. Never for a sample workspace, never made up.
+ *
  * Not here: customer photos (`ugc_grid`; no reader keeps customers' own
- * photos, and a brand photo is never one) and a note in the brand's words
- * (`founder_note`; the Site reader does not yet mark a quote as a whole
- * sentence of the page in its own letters). A block whose material is
+ * photos, and a brand photo is never one). A block whose material is
  * absent stays disallowed (`allowedBlockTypes`).
  */
 
@@ -178,14 +184,24 @@ function namesIn(sentence: string, names: readonly string[]) {
  * products an email places, so this is at least as strict as it is.
  * Over-blocking is the safer mistake.
  */
-const safe = (text: string, parts: MaterialParts, judged = text) =>
+const safe = (
+  text: string,
+  parts: MaterialParts,
+  judged = text,
+  /** More names the words may use (the founder's own, in their note). */
+  own: readonly string[] = []
+) =>
   clean(text) &&
   !claims.test(text) &&
   !resultWords.test(text) &&
   !bodyWords.test(text) &&
   !spamPhrases.some((s) => phrase(text, s)) &&
   !sentences(text).some((s) =>
-    namesIn(s, [parts.brandName, ...parts.productNames])
+    namesIn(own.length ? ungreeted(s) : s, [
+      parts.brandName,
+      ...parts.productNames,
+      ...own
+    ])
   ) &&
   checkCopy({
     draft: {
@@ -295,6 +311,105 @@ function reviews(parts: MaterialParts): ConfirmedReview[] {
     .map(({ review }) => review)
 }
 
+/**
+ * A note's sentence without its greeting ("Hi, I'm Maya…" is read as
+ * "I'm Maya…"), so a greeting is never taken for a name; a name after it
+ * still is ("Hi Tom, …" leaves "Tom, …").
+ */
+const ungreeted = (sentence: string) =>
+  sentence
+    .replace(/^(["“‘']?)(?:hi|hello|hey)(?:[,!.]\s*|\s+(?=I\b))/iu, '$1')
+    // Thanking the reader for something names no one ("Thank you for
+    // supporting my small business!"); "Thanks Tom" still does.
+    .replace(
+      /(?<![\p{L}\p{N}])(?:thanks|thank you)(?=\s+for(?![\p{L}\p{N}]))/giu,
+      ''
+    )
+
+/**
+ * A founder as an email signs them: one person's plain name, as the page
+ * writes it (`personName`: every word a capital and two letters or more,
+ * never a common or role word; no digit, @, link or sign; at most 4 words;
+ * never the brand, a product, a team or a pair), else null.
+ */
+function founderName(name: string, parts: MaterialParts): string | null {
+  const n = name.trim()
+  const words = n.split(/\s+/)
+  const store = [parts.brandName, ...parts.productNames].map((t) =>
+    t.trim().toLowerCase()
+  )
+  return clean(n) &&
+    personName(n) &&
+    Array.from(n).length <= 60 &&
+    !/[\p{N}@]/u.test(n) &&
+    words.length <= 4 &&
+    words.every((w) => nameWord.test(w)) &&
+    !title.test(words.at(-1)!) &&
+    !noOne.test(n) &&
+    !claims.test(n) &&
+    !store.includes(n.toLowerCase())
+    ? n
+    : null
+}
+
+/**
+ * The founder's own note (part d2): the newest the Site reader kept as
+ * whole sentences of the store's About page (`whole: true`, part d1), sure
+ * as a fact, of a live read. Its words are the founder's, so they are
+ * judged and never changed: refused when they say an offer or a price
+ * (`offerWords`, `strayPrices`), name anyone but the founder (`namesIn`,
+ * the founder's own name words allowed) or fail what the reviews must pass
+ * (`safe`, judged with the name and role as the block shows them). A role
+ * that would not pass is left out; a name that is no plain name leaves the
+ * note out.
+ */
+function founder(parts: MaterialParts): Material['founder'] {
+  if (!parts.live) return undefined
+  const notes = parts.findings
+    .filter(
+      (f): f is Quoted =>
+        f.topic === 'founder' &&
+        f.source === 'site' &&
+        f.pass !== 'sample' &&
+        counts(f, parts) &&
+        f.evidence.whole === true &&
+        f.evidence.page === 'about'
+    )
+    // Newest first; a read keeps one note, the first on its page (part d1).
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+  for (const f of notes) {
+    const value = f.value as { name: string; role?: string }
+    const name = founderName(value.name, parts)
+    const note = f.evidence.quote.trim()
+    if (
+      !name ||
+      !note ||
+      Array.from(note).length > 600 ||
+      // The brand's own name may hold theirs ("Maya's Knits").
+      !firstPerson(note, name, [parts.brandName]) ||
+      offerWords.test(note) ||
+      strayPrices(note, new Set()).length > 0
+    )
+      continue
+    const own = [
+      name,
+      ...name.split(/\s+/).filter((w) => Array.from(w).length >= 2)
+    ]
+    const r = (value.role ?? '').trim()
+    const role =
+      r &&
+      Array.from(r).length <= 60 &&
+      !offerWords.test(r) &&
+      safe(r, parts, r, own)
+        ? r
+        : undefined
+    const shown = [note, name, ...(role ? [role] : [])].join('\n')
+    if (!safe(note, parts, shown, own)) continue
+    return { name, ...(role ? { role } : {}), note: [note] }
+  }
+  return undefined
+}
+
 /** Any size of the same picture is one picture; a bad address is its own. */
 const keyOf = (url: string) => {
   try {
@@ -349,9 +464,11 @@ function lifestylePhoto(parts: MaterialParts): ConfirmedPhoto | undefined {
 export function storeMaterial(parts: MaterialParts): Material | undefined {
   const quoted = reviews(parts)
   const photo = lifestylePhoto(parts)
+  const note = founder(parts)
   const material: Material = {
     ...(quoted.length ? { reviews: quoted } : {}),
-    ...(photo ? { lifestylePhoto: photo } : {})
+    ...(photo ? { lifestylePhoto: photo } : {}),
+    ...(note ? { founder: note } : {})
   }
   return Object.keys(material).length ? material : undefined
 }
