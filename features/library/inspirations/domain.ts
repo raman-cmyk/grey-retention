@@ -15,3 +15,6 @@ export const domainShape =
 
 /** Sample workspaces can only follow fictional `.example` domains. */
 export const isSampleDomain = (domain: string) => domain.endsWith('.example')
+
+/** The most brands followed at a time (the database checks it too). */
+export const domainLimit = 10
