@@ -82,6 +82,10 @@ describe('Field (UI-DS)', () => {
     expect(wrong).toHaveAccessibleDescription(
       'Add the whole address, like cedarlane.com'
     )
+    // Read out as it appears, so the owner hears what to fix.
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Add the whole address, like cedarlane.com'
+    )
   })
 
   it('shows a lime check when the value was found, and a white fill on the page', () => {

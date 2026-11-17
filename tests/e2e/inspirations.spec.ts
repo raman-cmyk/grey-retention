@@ -3,52 +3,50 @@ import { test, expect } from '@playwright/test'
 import { login } from './accounts'
 import { newOwner } from './new-owner'
 
-test('UIR-009 owner tracks a competitor, browses its emails and stops tracking', async ({
+test('UI-INSa owner follows a brand, sees its emails, builds from one and stops', async ({
   page
 }) => {
   test.setTimeout(90_000)
   await newOwner(page, { prefix: 'inspire', name: 'Inspiration studio' })
-  // The sidebar's Inspiration opens the library.
-  // (A page still on the old shell: Home has the GROS top bar.)
+  // The old shell's Inspiration link opens the new screen (a page still
+  // on the old shell: Home and Plan have the GROS top bar).
   await page.goto('/holidays')
-  await expect(
-    page.locator('a[href="/library/inspirations"]').first()
-  ).toBeAttached()
+  await expect(page.locator('a[href="/inspiration"]').first()).toBeAttached()
+  // The old address still opens it.
   await page.goto('/library/inspirations')
-  await expect(page).toHaveTitle(/Competitor Inspirations/)
+  await expect(page).toHaveURL(/\/inspiration$/)
+  await expect(page).toHaveTitle(/Inspiration/)
   await expect(
-    page.getByRole('heading', { name: 'Competitor Inspirations', level: 1 })
+    page.getByRole('heading', { name: 'Inspiration', level: 1 })
   ).toBeVisible()
+  const followed = page.getByRole('region', { name: 'Brands you follow' })
+  await expect(followed.getByText('No brands followed yet.')).toBeVisible()
   await expect(
-    page.getByRole('link', { name: 'Back to Campaigns' })
-  ).toHaveAttribute('href', '/campaign-agent')
-  await expect(
-    page.getByRole('heading', { name: /Your competitor domains \(0\/10\)/ })
+    page
+      .getByRole('region', { name: 'Latest emails' })
+      .getByText(/No emails yet/)
   ).toBeVisible()
-  await expect(page.getByText('No competitor emails yet')).toBeVisible()
 
-  // A real domain is refused in this sample workspace; the text stays.
-  const field = page.getByLabel('Competitor domain', { exact: true })
+  // A real website is refused in this sample workspace; the text stays.
+  const field = page.getByLabel('Brand website', { exact: true })
   await field.fill('brand.com')
-  await page.getByRole('button', { name: 'Track' }).click()
+  await page.getByRole('button', { name: 'Follow', exact: true }).click()
   await expect(
     page.getByText(
-      /only sample domains that end in \.example can be tracked, for example/
+      /only sample brands, whose websites end in \.example, for example/
     )
   ).toBeVisible()
   await expect(field).toHaveValue('brand.com')
 
-  // Letters only, so a search for an email's number matches that email.
   const domain = `northwind-${randomBytes(4)
     .toString('hex')
     .replace(/[0-9]/g, (d) => 'ghijklmnop'[Number(d)]!)}.example`
   await field.fill(`https://www.${domain}/`)
-  await page.getByRole('button', { name: 'Track' }).click()
-  await expect(page.getByText(`Tracking ${domain}.`)).toBeVisible()
-  const chips = page.getByRole('list', { name: 'Tracked domains' })
-  await expect(chips.getByText(domain, { exact: true })).toBeVisible()
-  await expect(chips.getByText('PENDING')).toBeVisible()
-  await expect(page.getByText(/usually takes 1–7 days/)).toBeVisible()
+  await page.getByRole('button', { name: 'Follow', exact: true }).click()
+  await expect(page.getByText(`Following ${domain}.`)).toBeVisible()
+  const brands = followed.getByRole('list', { name: 'Brands you follow' })
+  // The row's title is the brand's website (its details then leave it out).
+  await expect(brands.getByText(domain, { exact: true })).toBeVisible()
 
   // The sample capture brings 10 sample emails (the scheduled worker does
   // this in the app; here the operator button runs it now).
@@ -57,66 +55,29 @@ test('UIR-009 owner tracks a competitor, browses its emails and stops tracking',
   await expect(
     page.getByText('Reference job pass completed. Inspect persisted evidence.')
   ).toBeVisible()
-  await page.goto('/library/inspirations')
-  await expect(chips.getByText('LIVE')).toBeVisible()
-  await expect(page.getByRole('tab', { name: 'Competitors 10' })).toBeVisible()
-  await expect(page.getByRole('tab', { name: 'Yours 0' })).toBeVisible()
-  await expect(page.getByRole('tab', { name: 'Best picks 0' })).toBeVisible()
-  const cards = page
-    .getByRole('region', { name: 'Reference library' })
+  await page.goto('/inspiration')
+  await expect(brands.getByText(/10 emails/)).toBeVisible()
+  const emails = page
+    .getByRole('region', { name: 'Latest emails' })
     .getByRole('listitem')
-  await expect(cards).toHaveCount(10)
-  await expect(cards.first()).toContainText('Sample')
-
-  // Search and the Email Text filter, with a count.
-  await page.getByLabel('Search the library').fill('reference 3 from')
-  await expect(cards).toHaveCount(1)
-  await expect(page.getByText('1 email', { exact: true })).toBeVisible()
-  await page.getByLabel('Search the library').fill('')
-  await page.getByText('Email Text', { exact: true }).click()
-  await expect(page.getByRole('radio', { name: 'Email Text' })).toBeChecked()
-  await expect(cards).toHaveCount(10)
-
-  // The in-page preview is sandboxed and has no links.
-  await cards
-    .first()
-    .getByRole('button', { name: /Open the preview/ })
-    .click()
-  const dialog = page.getByRole('dialog')
-  const frame = dialog.locator('iframe').first()
-  await expect(frame).toHaveAttribute('sandbox', '')
-  expect(
-    await frame.evaluate(
-      (f: HTMLIFrameElement) => (f.srcdoc.match(/<a\b[^>]*href/gi) ?? []).length
-    )
-  ).toBe(0)
+  await expect(emails).toHaveCount(10)
+  await expect(emails.first()).toContainText('Sample')
   await expect(
-    dialog.getByRole('link', { name: /Use this design/ })
+    emails.first().getByRole('link', { name: 'Use this design' })
   ).toHaveAttribute('href', /^\/first-draft\?reference=/)
-  await page.keyboard.press('Escape')
-  await expect(dialog).toBeHidden()
 
-  // Empty tabs say so plainly.
-  await page.getByRole('tab', { name: 'Best picks 0' }).click()
-  await expect(page.getByText('No best picks uploaded yet.')).toBeVisible()
-
-  // Stop tracking asks first; its emails leave the library.
-  await page.getByRole('button', { name: `Remove ${domain}` }).click()
-  const confirm = page.getByRole('alertdialog', {
-    name: `Stop tracking ${domain}?`
-  })
-  await expect(
-    confirm.getByText('Its emails will disappear from your library.')
-  ).toBeVisible()
-  await confirm.getByRole('button', { name: 'Stop tracking' }).click()
-  await expect(
-    page.getByText(`Stopped tracking ${domain}. Its emails left your library.`)
-  ).toBeVisible()
+  // Stop: its emails leave the library.
+  await brands.getByRole('button', { name: 'Stop' }).click()
+  await expect(followed.getByText('No brands followed yet.')).toBeVisible()
   await page.reload()
-  await expect(page.getByRole('tab', { name: 'Competitors 0' })).toBeVisible()
+  await expect(
+    page
+      .getByRole('region', { name: 'Latest emails' })
+      .getByText(/No emails yet/)
+  ).toBeVisible()
 })
 
-test('UIR-009 staff browse the library but cannot track', async ({
+test('UI-INSa staff see Inspiration but cannot follow, stop, hide or build', async ({
   page
 }, info) => {
   test.skip(
@@ -124,42 +85,29 @@ test('UIR-009 staff browse the library but cannot track', async ({
     'Role check; one layout is enough'
   )
   await login(page, 'staff')
-  await page.goto('/library/inspirations')
+  await page.goto('/inspiration')
   await expect(
-    page.getByRole('heading', { name: 'Competitor Inspirations', level: 1 })
+    page.getByRole('heading', { name: 'Inspiration', level: 1 })
   ).toBeVisible()
-  await expect(
-    page.getByLabel('Competitor domain', { exact: true })
-  ).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /^Remove / })).toHaveCount(0)
-  await expect(page.getByRole('tablist', { name: 'Library' })).toBeVisible()
-  // Starting a draft is the owner's, so staff are not offered it.
-  await expect(page.getByRole('link', { name: /Use this design/ })).toHaveCount(
+  await expect(page.getByLabel('Brand website', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Hide' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Use this design' })).toHaveCount(
     0
   )
-  await expect(
-    page.getByText('the workspace owner can start a new draft from any card.')
-  ).toBeVisible()
 })
 
-test('UIR-009 Inspiration fits 375px and the tabs work by keyboard', async ({
-  page
-}, info) => {
+test('UI-INSa Inspiration fits 375px', async ({ page }, info) => {
   test.skip(info.project.name.startsWith('mobile'), 'Sets its own viewport')
   await page.setViewportSize({ width: 375, height: 812 })
   await login(page, 'owner')
-  await page.goto('/library/inspirations')
-  await expect(page.getByRole('tablist', { name: 'Library' })).toBeVisible()
+  await page.goto('/inspiration')
+  await expect(
+    page.getByRole('heading', { name: 'Brands you follow' })
+  ).toBeVisible()
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth
     )
   ).toBe(true)
-  await page.getByRole('tab', { selected: true }).focus()
-  await page.keyboard.press('ArrowRight')
-  await expect(page.getByRole('tab', { name: /^Yours/ })).toBeFocused()
-  await expect(page.getByRole('tab', { name: /^Yours/ })).toHaveAttribute(
-    'aria-selected',
-    'true'
-  )
 })
