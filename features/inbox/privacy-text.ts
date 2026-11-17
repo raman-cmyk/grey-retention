@@ -134,6 +134,8 @@ export type Rules = {
   names: RegExp[]
   /** The names in any case, an accent or ß they have missing or not. */
   anyName: RegExp | null
+  /** A name inside a longer word (pictures only). */
+  inside: RegExp | null
   /** One name or word of one, nothing else (`isName`). */
   whole: RegExp | null
   /** The inbox's own address, however its local part and domain are spaced. */
@@ -219,7 +221,9 @@ function anyOf(words: string[], how: Reading) {
   const plain = words.filter((w) => spaceless.test(w))
   const alternatives = [
     ...(spaced.length
-      ? [String.raw`(?<!${word})(?:${pattern(spaced)})(?:['’][sS])?(?!${word})`]
+      ? [
+          String.raw`(?<!${word})(?:${pattern(spaced)})(?:['’][sS]|\d+)?(?!${word})`
+        ]
       : []),
     ...plain
       .sort((a, b) => b.length - a.length)
@@ -231,6 +235,64 @@ function anyOf(words: string[], how: Reading) {
       )
   ]
   return alternatives.length ? new RegExp(alternatives.join('|'), 'gu') : null
+}
+
+/**
+ * The person's own name with its words joined (a merge field without a
+ * blank): at a capital ("SamRivera") or digits ("Sam2Rivera").
+ */
+function joinedNames(words: string[]) {
+  return words
+    .filter((w) => w.includes(' ') && !spaceless.test(w))
+    .map((w) => {
+      const [first, ...rest] = w.split(' ')
+      return (
+        fragment(first!, 'loose') +
+        rest
+          .map(
+            (n) => `(?:\\d+${fragment(n, 'loose')}|${fragment(n, 'capitals')})`
+          )
+          .join('')
+      )
+    })
+}
+
+/**
+ * Joined names as words (digits may follow), and a name word in a
+ * hashtag at a capital ("#TeamSam"; "#TeamSamsung" stays).
+ */
+function joinedOf(words: string[]) {
+  const joined = joinedNames(words)
+  const single = words.filter((w) => !w.includes(' ') && !spaceless.test(w))
+  const alternatives = [
+    ...(joined.length
+      ? [String.raw`(?<!${word})(?:${joined.join('|')})\d*(?!${word})`]
+      : []),
+    ...(single.length
+      ? [
+          String.raw`#[\p{L}\p{M}\p{N}_]*?(?<=[\p{Ll}\p{N}_])(?:${single.map((w) => fragment(w, 'capitals')).join('|')})(?![\p{Ll}\p{M}])`
+        ]
+      : [])
+  ]
+  return alternatives.length ? new RegExp(alternatives.join('|'), 'gu') : null
+}
+
+/**
+ * For pictures only (a wrong guess costs one picture): a name word of
+ * three letters or more, or a whole name without its blanks, anywhere,
+ * also inside a longer word ("?code=SAM20", "?n=samrivera").
+ */
+function insideOf(words: string[]) {
+  const parts = [
+    ...new Set(
+      words
+        .map((w) => w.replace(/ /g, ''))
+        .filter((w) => [...w.replace(/\p{M}/gu, '')].length >= 3)
+    )
+  ].sort((a, b) => b.length - a.length)
+  return parts.length
+    ? new RegExp(parts.map((w) => fragment(w, 'loose')).join('|'), 'gu')
+    : null
 }
 
 /** Text as names are compared: one blank, small letters, σ for ς. */
@@ -304,13 +366,16 @@ function compile(identity: InboxIdentity, options: CleanOptions): Rules {
       ? new RegExp(String.raw`(?<![\p{L}\p{N}])${local}(?![\p{L}\p{N}])`, 'giu')
       : null,
     local: local ? new RegExp(`^${local}$`, 'iu') : null,
-    names: [anyOf(words, 'exact'), anyOf(marked, 'capitals')].filter(
-      (re): re is RegExp => re !== null
-    ),
+    names: [
+      anyOf(words, 'exact'),
+      anyOf(marked, 'capitals'),
+      joinedOf(words)
+    ].filter((re): re is RegExp => re !== null),
+    inside: insideOf(words),
     anyName: anyOf(words, 'loose'),
     whole: words.length
       ? new RegExp(
-          `^(?:${words.map((w) => fragment(w, 'loose')).join('|')})$`,
+          `^(?:${[...words.map((w) => fragment(w, 'loose')), ...joinedNames(words)].join('|')})$`,
           'u'
         )
       : null,
@@ -363,6 +428,14 @@ export function rulesFor(identity: InboxIdentity, options = noOptions): Rules {
 
 /** Characters a reader never sees: format and default-ignorable ones. */
 const unseen = /[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu
+/**
+ * Marks read as if they were not there, in a name and in the text alike:
+ * Arabic vowel signs (harakat) and Hebrew points (niqqud), often written
+ * or left out, and the overlay marks (a stroke, a slash) and the dot
+ * below that only decorate a letter ("S̶a̶m̶", "Sạm").
+ */
+const soft =
+  /[\u{64b}-\u{65f}\u{670}\u{6d6}-\u{6dc}\u{6df}-\u{6e4}\u{6e7}\u{6e8}\u{6ea}-\u{6ed}\u{591}-\u{5bd}\u{5bf}\u{5c1}\u{5c2}\u{5c4}\u{5c5}\u{5c7}\u{323}\u{334}-\u{338}]/gu
 /** Text the skeleton changes: anything but plain ASCII, or "&" and "%". */
 const special = /[^\x00-\x7f]|[&%]/
 /** HTML character references in a text part ("samriv&#64;example.com"). */
@@ -427,51 +500,76 @@ const unmask = (text: string) =>
       )
     : text
 
-const strict = new TextDecoder('utf-8', { fatal: true })
-/** The UTF-8 length a byte starts, or 0 when it starts none. */
+/**
+ * The UTF-8 length a byte starts, or 0 when it starts none. An overlong
+ * form ("%C1%93" for S) is read as its character too: a lax server reads
+ * it so.
+ */
 const lead = (b: number) =>
-  b >= 0xc2 && b <= 0xdf
+  b >= 0xc0 && b <= 0xdf
     ? 2
     : b >= 0xe0 && b <= 0xef
       ? 3
-      : b >= 0xf0 && b <= 0xf4
+      : b >= 0xf0 && b <= 0xf7
         ? 4
         : 0
+
+/** The character a UTF-8 sequence starting at `k` stands for, or -1. */
+function utf8At(bytes: Uint8Array, k: number, n: number) {
+  if (!n || k + n > bytes.length) return -1
+  let code = bytes[k]! & (n === 2 ? 0x1f : n === 3 ? 0x0f : 0x07)
+  for (let j = 1; j < n; j++) {
+    const c = bytes[k + j]!
+    if ((c & 0xc0) !== 0x80) return -1
+    code = (code << 6) | (c & 0x3f)
+  }
+  // Nothing past the last character.
+  return code > 0x10ffff ? -1 : code
+}
+
+const hexValue = (c: number) => (c <= 0x39 ? c - 0x30 : (c | 0x20) - 0x57)
 
 /**
  * Percent escapes read one sequence at a time: a UTF-8 sequence as its
  * character, any other byte as Latin-1 ("Jos%E9"), or as `bad` when given;
- * also escapes applied twice or more ("%2553").
+ * also escapes applied twice or more ("%2553"). Read by hand (no decoder
+ * that throws), the deadline every 4,096 bytes.
  */
-function percentRun(run: string, bad?: string) {
+function percentRun(run: string, bad?: string, check?: Check) {
   let out = run
   for (let i = 0; i < 4 && /%[\da-f]{2}/i.test(out); i++)
     out = out
       .replace(/%(?:25)+(?=[\da-f]{2})/gi, '%')
       .replace(/(?:%[\da-f]{2})+/gi, (escapes) => {
-        const bytes = escapes
-          .split('%')
-          .slice(1)
-          .map((h) => parseInt(h, 16))
+        const bytes = new Uint8Array(escapes.length / 3)
+        for (let k = 0; k < bytes.length; k++)
+          bytes[k] =
+            hexValue(escapes.charCodeAt(3 * k + 1)) * 16 +
+            hexValue(escapes.charCodeAt(3 * k + 2))
+        const codes: number[] = []
         let read = ''
-        for (let k = 0; k < bytes.length;) {
+        for (let k = 0, due = 4_096; k < bytes.length;) {
+          if (k >= due) {
+            check?.('fold')
+            due += 4_096
+          }
           const b = bytes[k]!
           const n = lead(b)
-          if (b < 0x80 || (n && k + n <= bytes.length)) {
-            try {
-              read += strict.decode(
-                Uint8Array.from(bytes.slice(k, k + (n || 1)))
-              )
-              k += n || 1
-              continue
-            } catch {
-              // Not UTF-8: the byte alone, below.
-            }
+          const code = b < 0x80 ? b : utf8At(bytes, k, n)
+          if (code >= 0) k += b < 0x80 ? 1 : n
+          else k++
+          if (code >= 0) codes.push(code)
+          else if (bad === undefined) codes.push(b)
+          else {
+            read += String.fromCodePoint(...codes) + bad
+            codes.length = 0
           }
-          read += bad ?? String.fromCharCode(b)
-          k++
+          if (codes.length >= 4_096) {
+            read += String.fromCodePoint(...codes)
+            codes.length = 0
+          }
         }
-        return read
+        return read + String.fromCodePoint(...codes)
       })
   return out
 }
@@ -490,7 +588,10 @@ function fold(ch: string) {
   // The capital dotted I of Turkish is a capital i, not an i with an accent.
   let f = ch === '\u{130}' ? 'I' : ch.normalize('NFKD')
   if (f.length > 4) f = ch
-  return f.replace(unseen, '').replace(/[\u{2018}\u{2019}]/gu, "'")
+  return f
+    .replace(unseen, '')
+    .replace(soft, '')
+    .replace(/[\u{2018}\u{2019}]/gu, "'")
 }
 
 /** Where plain ASCII (but "&" and "%", which are read) ends. */
@@ -562,7 +663,7 @@ function skeleton(s: string, check?: Check, bad?: string) {
       i = next
     } else if (run) {
       const next = i + run[0].length
-      for (const ch of percentRun(run[0], bad)) put(fold(ch), i, next)
+      for (const ch of percentRun(run[0], bad, check)) put(fold(ch), i, next)
       i = next
     } else if (c >= 0xd800 && c <= 0xdbff && i + 1 < s.length) {
       const ch = String.fromCodePoint(s.codePointAt(i)!)
@@ -595,17 +696,42 @@ export function ranges(
   patterns: (RegExp | null)[],
   r: Rules
 ): [number, number][] {
-  const views = [skeleton(s, r.check)]
+  const views = [{ sk: skeleton(s, r.check), from: 0 }]
   // A byte that is no UTF-8 is read as Latin-1 ("Jos%E9") and also as a
-  // break, so it can neither hide a name nor join one to a word ("Sam%FF").
-  if (highByte.test(s)) views.push(skeleton(s, r.check, '\u{fffd}'))
+  // break, so it can neither hide a name nor join one to a word ("Sam%FF"):
+  // the second reading covers only the escapes and what is next to them.
+  for (const [a, b] of nearHighBytes(s))
+    views.push({ sk: skeleton(s.slice(a, b), r.check, '\u{fffd}'), from: a })
   const cuts: [number, number][] = []
-  for (const sk of views)
+  for (const { sk, from } of views)
     for (const re of patterns)
       for (const m of re ? sk.text.matchAll(re) : [])
-        if (m[0] && (re !== r.locals || ownLocal(m[0], r)))
-          cuts.push([sk.at(m.index), sk.end(m.index + m[0].length - 1)])
+        if (m[0] && (re !== r.locals || ownLocal(m[0], r))) {
+          let end = from + sk.end(m.index + m[0].length - 1)
+          // The accents of the last letter go with it.
+          while (end < s.length && mark.test(s[end]!)) end++
+          cuts.push([from + sk.at(m.index), end])
+        }
   return cuts.sort((a, b) => a[0] - b[0])
+}
+
+const mark = /\p{M}/u
+const percentRuns = new RegExp(percents.source, 'gi')
+
+/** The parts around percent escapes of bytes that are not ASCII. */
+function nearHighBytes(s: string) {
+  const near: [number, number][] = []
+  if (!highByte.test(s)) return near
+  percentRuns.lastIndex = 0
+  for (let m; (m = percentRuns.exec(s));) {
+    if (!highByte.test(m[0])) continue
+    const a = Math.max(0, m.index - 512)
+    const b = Math.min(s.length, m.index + m[0].length + 512)
+    const last = near.at(-1)
+    if (last && a <= last[1]) last[1] = b
+    else near.push([a, b])
+  }
+  return near
 }
 
 function remove(s: string, patterns: (RegExp | null)[], r: Rules) {
@@ -649,7 +775,7 @@ const utf8 = new TextDecoder()
  * at its own place), as UTF-8 and as Latin-1.
  */
 export function pictureNames(ref: string, r: Rules): boolean {
-  const all = [...addressRules(r), r.localsAnyLength, r.anyName]
+  const all = [...addressRules(r), r.localsAnyLength, r.anyName, r.inside]
   if (ranges(ref, all, r).length) return true
   const plain = ref.replace(new RegExp(percents.source, 'gi'), (run) =>
     percentRun(run)

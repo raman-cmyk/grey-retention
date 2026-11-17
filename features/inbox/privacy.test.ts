@@ -856,6 +856,10 @@ describe('what the fourth review found', () => {
       ],
       [
         '\u{39d}\u{3af}\u{3ba}\u{3bf}\u{3c2}',
+        'Thanks, \u{39d}\u{3af}\u{3ba}\u{3bf}\u{3c3}!'
+      ],
+      [
+        '\u{39d}\u{3af}\u{3ba}\u{3bf}\u{3c2}',
         'Thanks, \u{39d}\u{399}\u{39a}\u{39f}\u{3a3}!'
       ],
       ['Strau\u{df}', 'Thanks, STRAU\u{1e9e}!']
@@ -906,6 +910,9 @@ describe('ordinary copy stays as written', () => {
     ).toBe(
       '\u{30b5}\u{30e0}\u{30b9}\u{30f3}\u{306e}\u{65b0}\u{88fd}\u{54c1}\u{3001}\u{3055}\u{3093}'
     )
+    // Nor one that only ends with it.
+    const newsom = '\u{30cb}\u{30e5}\u{30fc}\u{30b5}\u{30e0}'
+    expect(cleanEmailText(newsom, sam)).toBe(newsom)
   })
 
   it('takes out only the name when it is cut by tags in a script without spaces', () => {
@@ -1137,6 +1144,102 @@ describe('what the fifth review found', () => {
     expect(
       body(cleanEmailHtml(`<p style="font-family:'Hi Sam \\5c ok'">x</p>`, me))
     ).toBe(`<p style="font-family:'Hi  \\\\ok'">x</p>`)
+  })
+})
+
+describe('what the sixth review found', () => {
+  const pictures = (identity: InboxIdentity, ref: string) =>
+    body(
+      cleanEmailHtml(`<img src="${ref}">`, identity, {
+        images: [{ ref, path: 'img/zz.png' }]
+      })
+    )
+
+  it('reads a long run of percent escapes in time', () => {
+    // The deadline is read inside one run: 2,000 four-byte characters are
+    // only 2,000 characters but 8,000 bytes.
+    for (const run of ['%E9'.repeat(10_000), '%F0%9F%98%80'.repeat(2_000)]) {
+      const clock = (at: string) => (at === 'fold' ? Infinity : 0)
+      expect(
+        cleanEmailHtml(`<p>${run}</p>`, me, { clock }),
+        run.slice(0, 6)
+      ).toBeNull()
+    }
+    let ticks = 0
+    const clock = () => ticks++
+    expect(
+      cleanEmailHtml(`<p>${'%E9'.repeat(200_000)}</p>`, me, {
+        clock,
+        limits: { htmlMs: 30 }
+      })
+    ).toBeNull()
+    // In real time: a million characters of bytes that are no UTF-8.
+    const started = Date.now()
+    cleanEmailHtml(`<p>Sa(Sa(x@y.example)m)m ${'%E9'.repeat(329_990)}</p>`, me)
+    expect(Date.now() - started).toBeLessThan(5_000)
+  }, 15_000)
+
+  it('removes a name joined to a code or to its other words', () => {
+    for (const [text, clean] of [
+      ['Your code SAM20 is ready', 'Your code is ready'],
+      ['Hi SamRivera,', 'Hi there,'],
+      ['Thanks, Sam2Rivera!', 'Thanks!'],
+      ['Join #TeamSam today', 'Join today'],
+      // Ordinary words stay.
+      ['Samsung, Samba and #TeamSamsung', 'Samsung, Samba and #TeamSamsung'],
+      ['samrivera.example', 'samrivera.example'],
+      // A byte that is no UTF-8 does not join a name to a word.
+      ['Thanks, Sam%FF!', 'Thanks, %FF!']
+    ])
+      expect(cleanEmailText(text!, me), text).toBe(clean)
+    // In a picture's address, a name inside a longer word is enough.
+    for (const ref of [
+      'https://img.x.example/p.png?code=SAM20',
+      'https://img.x.example/p.png?n=SamRivera',
+      // A byte that starts no full UTF-8 sequence, an overlong S.
+      'https://img.x.example/p.png?n=%E9%53%61%6D',
+      'https://img.x.example/p.png?n=%C1%93am'
+    ])
+      expect(pictures(me, ref), ref).toBe('<img src="">')
+  })
+
+  it('reads a name through marks that only decorate it', () => {
+    for (const [name, text] of [
+      ['Sam', 'Thanks S\u{336}a\u{336}m\u{336}!'],
+      ['Sam', 'Thanks Sa\u{323}m!'],
+      // Arabic vowel signs and Hebrew points, written or not.
+      [
+        '\u{645}\u{62d}\u{645}\u{62f}',
+        'Thanks \u{645}\u{64f}\u{62d}\u{64e}\u{645}\u{651}\u{64e}\u{62f}!'
+      ],
+      [
+        '\u{645}\u{64f}\u{62d}\u{64e}\u{645}\u{651}\u{64e}\u{62f}',
+        'Thanks \u{645}\u{62d}\u{645}\u{62f}!'
+      ],
+      [
+        '\u{5e9}\u{5e8}\u{5d4}',
+        'Thanks \u{5e9}\u{5b8}\u{5c2}\u{5e8}\u{5b8}\u{5d4}!'
+      ]
+    ])
+      expect(
+        cleanEmailText(text!, { addresses: [], names: [name!] }),
+        text
+      ).toBe('Thanks!')
+  })
+
+  it('reads a base64 part of any length and cuts on a whole word', () => {
+    // "Sam Rivera" in base64 with "-v1" joined: read once the last odd
+    // character is left out.
+    expect(
+      pictures(me, 'https://img.x.example/p.png?d=U2FtIFJpdmVyYQ-v1')
+    ).toBe('<img src="">')
+    expect(
+      cleanEmailSubject(`https://x.example/${'a'.repeat(772)} Sale Rivera`, me)
+    ).toBe('Sale')
+    // A function whose name only ends in "attr" draws nothing.
+    expect(cleanEmailHtml('<style>a{x:xattr(1)}</style>', me)).toContain(
+      '<style>a{x:xattr(1)}</style>'
+    )
   })
 })
 
