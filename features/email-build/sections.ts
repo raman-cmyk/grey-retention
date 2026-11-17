@@ -101,6 +101,8 @@ export type PlannedSection = {
   variantId: string
   /** What the section does here, in plain words. */
   purpose: string
+  /** Copy mode: its place in the competitor email's sections (DST-002b). */
+  source?: number
 }
 
 export type SectionPlan = {
@@ -159,7 +161,8 @@ export function copyPlan(input: SectionInput): SectionPlan {
       ...steps.map((s) => ({
         family: s.type,
         variantId: best(input, s.type).id,
-        purpose: s.reason
+        purpose: s.reason,
+        ...(s.index === undefined ? {} : { source: s.index })
       }))
     ],
     dropped,
