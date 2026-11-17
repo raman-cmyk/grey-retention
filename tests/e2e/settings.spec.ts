@@ -163,13 +163,12 @@ test('UI-SETb the owner invites, resends and cancels on the Team card', async ({
       .getByRole('listitem')
       .filter({ hasText: `Invite to ${newcomer} cancelled` })
   ).toContainText('by you')
-  // Until /team is retired, it shows the same.
-  await team.getByRole('link', { name: 'See team changes' }).click()
-  await expect(page).toHaveURL(/\/team$/)
+  // The old Team page is retired: its address opens Settings (UI-SETc).
+  await expect(team.getByRole('link')).toHaveCount(0)
+  await page.goto('/team')
+  await expect(page).toHaveURL(/\/settings$/)
   await expect(
-    page
-      .getByRole('region', { name: 'Recent team changes' })
-      .getByText(`Invite to ${newcomer} cancelled`, { exact: false })
+    page.getByRole('heading', { name: 'Settings', level: 1 })
   ).toBeVisible()
 })
 

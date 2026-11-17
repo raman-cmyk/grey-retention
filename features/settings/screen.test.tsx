@@ -322,13 +322,11 @@ describe('Settings screen (UI-SETa)', () => {
     expect(
       within(team).getByText('Open invites').parentElement
     ).toHaveTextContent('Open invites1')
-    // The team changes here (UI-SETb); who changed what is still on /team.
+    // The team changes here (UI-SETb); nothing leads to the old /team.
     expect(
       within(team).getByRole('button', { name: 'Invite as Staff' })
     ).toBeVisible()
-    expect(
-      within(team).getByRole('link', { name: 'See team changes' })
-    ).toHaveAttribute('href', '/team')
+    expect(within(team).queryByRole('link')).toBeNull()
     const account = card('Account')
     expect(account).toHaveTextContent('Sam Cedar')
     expect(account).toHaveTextContent('owner@cedarlane.example')

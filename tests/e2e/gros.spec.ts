@@ -129,28 +129,29 @@ test('UC-18 team invitation audit, event and support response survive refresh', 
   page
 }, info) => {
   await login(page)
-  await page.goto('/team')
+  // The team is on Settings (UI-SETb, UI-SETc).
+  await page.goto('/settings')
   const email = `synthetic-${info.project.name}-${Date.now()}@grey-retention.test`
-  const invite = page.getByRole('region', { name: 'Invite a teammate' })
-  await invite.getByLabel('Email', { exact: true }).fill(email)
-  await invite.getByRole('button', { name: 'Send invite', exact: true }).click()
-  const invitation = page
-    .getByRole('region', { name: /Pending invites/ })
+  const team = page.getByRole('region', { name: 'Team' })
+  await team.getByLabel('Email', { exact: true }).fill(email)
+  await team
+    .getByRole('button', { name: 'Invite as Staff', exact: true })
+    .click()
+  const invitation = team
+    .getByRole('list', { name: 'Pending invites' })
     .getByRole('listitem')
     .filter({ hasText: email })
   await expect(invitation).toBeVisible()
   await invitation
-    .getByRole('button', { name: `Cancel invite to ${email}`, exact: true })
+    .getByRole('button', { name: `Cancel invite: ${email}`, exact: true })
     .click()
   await expect(invitation).toHaveCount(0)
   await page.reload()
-  await expect(
-    page.getByRole('region', { name: /Pending invites/ }).getByText(email)
-  ).toHaveCount(0)
+  await expect(team.getByText(email)).toHaveCount(0)
   // The audit survives the refresh.
   await expect(
     page
-      .getByRole('region', { name: 'Recent team changes' })
+      .getByRole('region', { name: 'Recent changes' })
       .getByText(`Invite to ${email} cancelled`, { exact: false })
   ).toBeVisible()
   await page.goto('/holidays')
