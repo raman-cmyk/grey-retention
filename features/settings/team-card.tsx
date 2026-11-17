@@ -4,10 +4,16 @@ import { ActionAnswers, ActionButton } from '@/components/gros/action'
 import { ButtonLink } from '@/components/gros/button'
 import { Card, Tile } from '@/components/gros/card'
 import { ListRow, RowList } from '@/components/gros/list-row'
-import { cancelInvite, resendInvite } from '@/features/team/actions'
+import {
+  cancelInvite,
+  changeMember,
+  resendInvite
+} from '@/features/team/actions'
 import {
   expiryText,
   initial,
+  ownerOnlyNote,
+  roleHelp,
   roleLabel,
   type PendingInvite,
   type TeamMember
@@ -18,11 +24,12 @@ import type { SettingsView } from './page-model'
 /**
  * The Team card on Settings (UI-SETb): who is on the team and the pending
  * invites (open or expired; the tile counts the open ones), and for the
- * owner and managers the buttons that change them (invite, resend,
- * cancel), each calling the Team page's server actions, which check the
- * role again. Staff see the list only. The card's answers show in one line
- * after the invite form (`ActionAnswers`), so an answer stays when its row
- * goes with the change it made (a cancelled invite), and a new answer
+ * owner and managers the buttons that change them (invite, resend, cancel,
+ * make Manager or Staff, deactivate, reactivate), each calling the Team
+ * page's server actions, which check the role again. Staff see the list
+ * only. The card's answers show in one line after the invite form
+ * (`ActionAnswers`), so an answer stays when its row or button goes with
+ * the change it made (a cancelled invite, a new role), and a new answer
  * replaces the last; only a refusal about the address stays under Email.
  * "Who changed what" is still on the old Team page until UI-SETc.
  */
@@ -53,7 +60,11 @@ export function TeamCard({
             <ActionAnswers>
               <RowList label="Members">
                 {team.roster.map((member) => (
-                  <MemberRow key={member.id} member={member} />
+                  <MemberRow
+                    key={member.id}
+                    member={member}
+                    canManage={team.canManage}
+                  />
                 ))}
               </RowList>
               {!team.canManage ? null : team.invites ? (
@@ -107,9 +118,33 @@ function Thumb({ children }: { children: ReactNode }) {
   )
 }
 
-/** One person: their name or email, the email, the role, Deactivated. */
-function MemberRow({ member }: { member: TeamMember }) {
+const asRole = (member: TeamMember) =>
+  member.role === 'admin' ? ('admin' as const) : ('staff' as const)
+
+/**
+ * One person. The owner's row and your own have no buttons; a manager
+ * makes someone a Manager or Staff, deactivates or reactivates them, each
+ * after a browser confirm. A button that changes with its answer is
+ * remounted, so the cursor moves to the answer rather than onto the new
+ * button.
+ */
+function MemberRow({
+  member,
+  canManage
+}: {
+  member: TeamMember
+  canManage: boolean
+}) {
   const name = member.name || member.email
+  const editable = canManage && member.role !== 'owner' && !member.isMe
+  const role = asRole(member)
+  const next = role === 'admin' ? 'staff' : 'admin'
+  const same = {
+    id: member.id,
+    updatedAt: member.updatedAt,
+    name
+  }
+  const version = `${member.role}-${member.status}`
   return (
     <ListRow
       thumbnail={<Thumb>{initial(member)}</Thumb>}
@@ -119,7 +154,48 @@ function MemberRow({ member }: { member: TeamMember }) {
         roleLabel[member.role],
         member.status === 'inactive' ? 'Deactivated' : ''
       ]}
-      end={null}
+      end={
+        !editable ? null : member.status === 'active' ? (
+          <div className="flex flex-wrap gap-[var(--space-3)]">
+            <ActionButton
+              key={`role-${version}`}
+              action={changeMember}
+              label={next === 'admin' ? 'Make Manager' : 'Make Staff'}
+              spokenLabel={name}
+              kind="outline"
+              size="row"
+              fields={{ ...same, change: 'role', role: next, status: 'active' }}
+              confirm={`Make ${name} ${next === 'admin' ? 'a Manager' : 'Staff'}? ${roleHelp[next]} ${ownerOnlyNote}`}
+            />
+            <ActionButton
+              key={`off-${version}`}
+              action={changeMember}
+              label="Deactivate"
+              spokenLabel={name}
+              kind="quiet"
+              size="row"
+              fields={{
+                ...same,
+                change: 'deactivate',
+                role,
+                status: 'inactive'
+              }}
+              confirm={`Deactivate ${name}? They can no longer open this workspace. Their past work stays, and you can reactivate them later.`}
+            />
+          </div>
+        ) : (
+          <ActionButton
+            key={`on-${version}`}
+            action={changeMember}
+            label="Reactivate"
+            spokenLabel={name}
+            kind="outline"
+            size="row"
+            fields={{ ...same, change: 'reactivate', role, status: 'active' }}
+            confirm={`Reactivate ${name}? They can open this workspace again as ${roleLabel[role]}.`}
+          />
+        )
+      }
     />
   )
 }

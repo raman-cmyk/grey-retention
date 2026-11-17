@@ -136,6 +136,42 @@ describe('Team card on Settings (UI-SETb)', () => {
     expect(rows[2]).toHaveTextContent('ana@cedarlane.example · Manager')
     // No name: the email speaks for them.
     expect(rows[3]).toHaveTextContent('Staff · Deactivated')
+    // The owner's row and your own have no buttons; each other names its person.
+    expect(within(rows[0]!).queryByRole('button')).toBeNull()
+    expect(
+      fieldsOf(
+        within(rows[1]!).getByRole('button', {
+          name: 'Make Manager: Sam Staff'
+        })
+      )
+    ).toEqual({
+      id: 'm-sam',
+      updatedAt: '2026-11-06T11:00:00.123456+00:00',
+      name: 'Sam Staff',
+      change: 'role',
+      role: 'admin',
+      status: 'active'
+    })
+    expect(
+      fieldsOf(
+        within(rows[1]!).getByRole('button', { name: 'Deactivate: Sam Staff' })
+      )
+    ).toMatchObject({ change: 'deactivate', role: 'staff', status: 'inactive' })
+    expect(
+      fieldsOf(
+        within(rows[2]!).getByRole('button', { name: 'Make Staff: Ana Lee' })
+      )
+    ).toMatchObject({ change: 'role', role: 'staff', status: 'active' })
+    // A deactivated teammate can only come back.
+    const back = within(rows[3]!).getAllByRole('button')
+    expect(back.map((b) => b.getAttribute('aria-label'))).toEqual([
+      'Reactivate: gone@cedarlane.example'
+    ])
+    expect(fieldsOf(back[0]!)).toMatchObject({
+      name: 'gone@cedarlane.example',
+      change: 'reactivate',
+      status: 'active'
+    })
 
     const invites = within(
       within(c).getByRole('list', { name: 'Pending invites' })
@@ -186,6 +222,24 @@ describe('Team card on Settings (UI-SETb)', () => {
     expect(
       within(c).getByRole('link', { name: 'See team changes' })
     ).toHaveAttribute('href', '/team')
+  })
+
+  it('never lets a manager change the owner or their own access', () => {
+    // A manager (Ana) looks: the owner is someone else.
+    render(
+      teamCard({
+        roster: [{ ...me, isMe: false }, { ...ana, isMe: true }, sam]
+      })
+    )
+    const rows = within(
+      within(card()).getByRole('list', { name: 'Members' })
+    ).getAllByRole('listitem')
+    expect(rows[0]).toHaveTextContent('Olive Owner')
+    expect(rows[0]).not.toHaveTextContent('(you)')
+    expect(within(rows[0]!).queryByRole('button')).toBeNull()
+    expect(rows[1]).toHaveTextContent('Ana Lee (you)')
+    expect(within(rows[1]!).queryByRole('button')).toBeNull()
+    expect(within(rows[2]!).getAllByRole('button')).toHaveLength(2)
   })
 
   it('shows staff the team with no buttons, no invites and no form', () => {
@@ -389,6 +443,87 @@ describe('Team card on Settings (UI-SETb)', () => {
     expect(card()).not.toHaveTextContent('new@cedarlane.example')
     expect(answerLine()).toHaveTextContent('Invite cancelled.')
     await waitFor(() => expect(answerLine()).toHaveFocus())
+  })
+
+  it('changes a role after the confirm, and the cursor goes to the answer', async () => {
+    const user = userEvent.setup()
+    const ask = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    team.changeMember.mockResolvedValue({
+      message: 'Sam Staff is now a Manager.'
+    })
+    const { rerender } = render(teamCard())
+    const make = within(card()).getByRole('button', {
+      name: 'Make Manager: Sam Staff'
+    })
+    await user.click(make)
+    expect(ask).toHaveBeenCalledWith(
+      'Make Sam Staff a Manager? Managers can invite people, change their access and see reports and usage. Only the owner approves copy, designs and sending.'
+    )
+    expect(team.changeMember).not.toHaveBeenCalled()
+    ask.mockReturnValue(true)
+    await user.click(make)
+    await waitFor(() =>
+      expect(answerLine()).toHaveTextContent('Sam Staff is now a Manager.')
+    )
+    expect(sent(team.changeMember)).toMatchObject({
+      id: 'm-sam',
+      change: 'role',
+      role: 'admin'
+    })
+    // The page comes back with the new role: the button changed, so the
+    // cursor waits on the answer.
+    rerender(teamCard({ roster: [me, { ...sam, role: 'admin' }, ana, gone] }))
+    expect(
+      within(card()).getByRole('button', { name: 'Make Staff: Sam Staff' })
+    ).toBeVisible()
+    await waitFor(() => expect(answerLine()).toHaveFocus())
+  })
+
+  it('deactivates and reactivates only after the confirm', async () => {
+    const user = userEvent.setup()
+    const ask = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    team.changeMember
+      .mockResolvedValueOnce({ message: 'Sam Staff was deactivated.' })
+      .mockResolvedValueOnce({
+        error: 'You cannot change your own access. Ask the owner.'
+      })
+    render(teamCard())
+    const deactivate = within(card()).getByRole('button', {
+      name: 'Deactivate: Sam Staff'
+    })
+    // No sends nothing.
+    await user.click(deactivate)
+    expect(ask).toHaveBeenCalledOnce()
+    expect(team.changeMember).not.toHaveBeenCalled()
+    ask.mockReturnValue(true)
+    await user.click(deactivate)
+    expect(ask).toHaveBeenLastCalledWith(
+      'Deactivate Sam Staff? They can no longer open this workspace. Their past work stays, and you can reactivate them later.'
+    )
+    await waitFor(() =>
+      expect(answerLine()).toHaveTextContent('Sam Staff was deactivated.')
+    )
+    await user.click(
+      within(card()).getByRole('button', {
+        name: 'Reactivate: gone@cedarlane.example'
+      })
+    )
+    expect(ask).toHaveBeenLastCalledWith(
+      'Reactivate gone@cedarlane.example? They can open this workspace again as Staff.'
+    )
+    await waitFor(() =>
+      expect(answerLine()).toHaveTextContent(
+        'You cannot change your own access. Ask the owner.'
+      )
+    )
+    expect(
+      Object.fromEntries(
+        team.changeMember.mock.calls[1]![1] as FormData as unknown as [
+          string,
+          string
+        ][]
+      )
+    ).toMatchObject({ id: 'm-gone', change: 'reactivate', status: 'active' })
   })
 
   it('keeps the row when Cancel invite is refused, and the cursor on its button', async () => {

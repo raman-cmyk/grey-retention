@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { test, expect } from '@playwright/test'
 import { login } from './accounts'
-import { newOwner } from './new-owner'
+import { newOwner, ownerWithTeammate } from './new-owner'
 
 test('UI-SETa the owner sets the biggest discount and adds and removes a code', async ({
   page
@@ -152,6 +152,41 @@ test('UI-SETb the owner invites, resends and cancels on the Team card', async ({
   ).toBeVisible()
 })
 
+test('UI-SETb the owner makes a teammate Manager, then Staff, and deactivates and reactivates them', async ({
+  page
+}) => {
+  await ownerWithTeammate(page, { prefix: 'settings-mate', name: 'Mates' })
+  await page.goto('/settings')
+  const team = page.getByRole('region', { name: 'Team' })
+  const row = team
+    .getByRole('list', { name: 'Members' })
+    .getByRole('listitem')
+    .filter({ hasText: 'Sam Teammate' })
+  await expect(row).toContainText('· Staff')
+  const members = team.getByText('Members', { exact: true }).locator('..')
+  await expect(members).toHaveText('Members2')
+  // Each change asks first (the browser's confirm), then says what it did.
+  const press = async (name: string, answer: string) => {
+    page.once('dialog', (dialog) => void dialog.accept())
+    await row.getByRole('button', { name }).click()
+    await expect(team.getByText(answer)).toBeVisible()
+  }
+  await press('Make Manager: Sam Teammate', 'Sam Teammate is now a Manager.')
+  await expect(row).toContainText('· Manager')
+  await press('Make Staff: Sam Teammate', 'Sam Teammate is now Staff.')
+  await expect(row).toContainText('· Staff')
+  await press('Deactivate: Sam Teammate', 'Sam Teammate was deactivated.')
+  await expect(row).toContainText('Deactivated')
+  await expect(members).toHaveText('Members1')
+  await press('Reactivate: Sam Teammate', 'Sam Teammate was reactivated.')
+  await expect(row).not.toContainText('Deactivated')
+  await page.reload()
+  await expect(row).toContainText('· Staff')
+  await expect(
+    row.getByRole('button', { name: 'Deactivate: Sam Teammate' })
+  ).toBeVisible()
+})
+
 test('UI-SETa staff see Settings without the owner’s controls', async ({
   page
 }, info) => {
@@ -175,7 +210,11 @@ test('UI-SETa staff see Settings without the owner’s controls', async ({
     // UI-SETb: staff see the team, but no button changes it.
     'Invite as',
     'Resend',
-    'Cancel invite'
+    'Cancel invite',
+    'Make Manager',
+    'Make Staff',
+    'Deactivate',
+    'Reactivate'
   ])
     await expect(page.getByRole('button', { name })).toHaveCount(0)
   const team = page.getByRole('region', { name: 'Team' })

@@ -24,7 +24,8 @@ vi.mock('@/features/offers/actions', () => ({
 vi.mock('@/features/team/actions', () => ({
   inviteTeammate: vi.fn(async () => ({})),
   resendInvite: vi.fn(async () => ({})),
-  cancelInvite: vi.fn(async () => ({}))
+  cancelInvite: vi.fn(async () => ({})),
+  changeMember: vi.fn(async () => ({}))
 }))
 vi.mock('./timezone-actions', () => ({
   saveBrandTimezone: vi.fn(async () => ({})),
