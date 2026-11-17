@@ -259,10 +259,14 @@ const usablePhoto = (photo: ConfirmedPhoto | undefined) =>
   /^https:\/\//.test(photo.image)
 
 /**
- * The client's confirmed material that fits its blocks. Reviews count only
- * when the brand has a verified review source (copy QA's `reviewsVerified`);
- * a founder note needs the founder's own words; a photo that would not pass
- * the block schema is left out, so bad data never looks like a model error.
+ * The client's confirmed material that fits its blocks. Reviews are the
+ * store's own, word for word with their own stars, read from its own pages
+ * (REL-ONB2 part b, the owner's rule of 16 November: from the store's own
+ * sources only, nothing invented), so they need no verified review source
+ * (copy QA's `reviewsVerified` still guards ratings and counts written
+ * anywhere else); a founder note needs the founder's own words; a photo
+ * that would not pass the block schema is left out, so bad data never looks
+ * like a model error.
  */
 export function usableMaterial(input: AssemblyInput) {
   const c = input.confirmed ?? {}
@@ -277,9 +281,7 @@ export function usableMaterial(input: AssemblyInput) {
   const f = c.founder
   const note = (f?.note ?? []).filter((t) => t.trim() && t.length <= 600)
   return {
-    reviews: input.facts.reviewsVerified
-      ? (c.reviews ?? []).filter(review).slice(0, 3)
-      : [],
+    reviews: (c.reviews ?? []).filter(review).slice(0, 3),
     customerPhotos: (c.customerPhotos ?? []).filter(usablePhoto),
     founder:
       f && f.name.trim() && f.name.length <= 60 && note.length
