@@ -32,6 +32,13 @@ const maxRows = 72
 const minRows = 4
 /** The largest grid taken, each way. */
 export const maxGridSide = 256
+/**
+ * DST-004b2b: the grids the browser makes and the render job takes: at
+ * most this many columns and rows, each value a whole grey level (part
+ * 4b2c makes them: a taller crop is made shorter, as the score brings
+ * both to the reference's proportions anyway).
+ */
+export const gridBudget = { columns: 48, rows: 128 }
 /** A Copy section passes at this score or more (tuned with the design proof). */
 export const matchTarget = 6
 
