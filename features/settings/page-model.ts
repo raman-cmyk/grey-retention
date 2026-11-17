@@ -26,7 +26,14 @@ import {
  * admins change offers; only the owner changes Klaviyo and the timezone.
  */
 export type SettingsPart =
-  'offers' | 'klaviyo' | 'timezone' | 'team' | 'account' | 'changes' | 'support'
+  | 'offers'
+  | 'klaviyo'
+  | 'timezone'
+  | 'team'
+  | 'account'
+  | 'changes'
+  | 'support'
+  | 'requests'
 
 export type SettingsView = {
   /** Nothing is kept in the demo: the cards say so. */
@@ -62,6 +69,8 @@ export type SettingsView = {
     team: string
     tenantId: string
   } | null
+  /** The workspace's feature requests, newest first (UI-SETd): any member. */
+  requests: { items: FeatureRequest[] } | null
   unread: SettingsPart[]
 }
 
@@ -71,10 +80,11 @@ export type SettingsInput = {
   read: SettingsReadModel | null
   zone: BrandTimezone | null
   support: FeedbackPage | null
+  requests: FeedbackPage | null
   liveKeys: boolean
 }
 
-/** The support threads Settings shows, newest first. */
+/** The support threads and feature requests Settings shows, newest first. */
 export const supportLimit = 10
 
 /** The Settings view from its parts. Pure, for tests. */
@@ -116,6 +126,10 @@ export function settingsView(input: SettingsInput): SettingsView {
             tenantId: input.context.tenantId
           }
         : null,
+    requests:
+      input.requests?.state === 'ready'
+        ? { items: input.requests.requests.slice(0, supportLimit) }
+        : null,
     unread: []
   }
   for (const part of [
@@ -124,7 +138,8 @@ export function settingsView(input: SettingsInput): SettingsView {
     'timezone',
     'team',
     'account',
-    'support'
+    'support',
+    'requests'
   ] as const)
     if (view[part] === null) view.unread.push(part)
   // Staff do not see the changes, so they are never missing for them.
@@ -144,10 +159,11 @@ export async function settingsPageModel(
   context: ClientRequestContext,
   now = new Date()
 ): Promise<SettingsView> {
-  const [read, zone, support] = await Promise.all([
+  const [read, zone, support, requests] = await Promise.all([
     settle(settingsReadModel(context)),
     settle(brandTimezone(context)),
-    settle(feedbackPage(context, now.getTime(), { kind: 'support' }))
+    settle(feedbackPage(context, now.getTime(), { kind: 'support' })),
+    settle(feedbackPage(context, now.getTime()))
   ])
   return settingsView({
     context,
@@ -155,6 +171,7 @@ export async function settingsPageModel(
     read,
     zone,
     support,
+    requests,
     liveKeys: klaviyoMode() === 'live'
   })
 }

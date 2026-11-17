@@ -11,7 +11,7 @@ const text = (form: FormData, key: string) => {
   return typeof value === 'string' ? value : ''
 }
 
-/** "Send" in the Request a Feature modal. Any workspace member may send. */
+/** "Send request" on Settings' Feature requests. Any member may send. */
 export async function sendFeatureRequest(
   _state: FormResult,
   form: FormData
@@ -46,6 +46,6 @@ export async function sendFeatureRequest(
       return { error: 'Check the subject and details, then try again.' }
     return { error: 'We could not send this. Nothing was saved. Try again.' }
   }
-  revalidatePath('/feedback')
+  revalidatePath('/settings')
   return { message: 'Thanks — your request was sent.' }
 }

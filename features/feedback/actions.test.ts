@@ -47,7 +47,7 @@ describe('sendFeatureRequest', () => {
       subject: 'The preview is blank',
       details: 'It shows nothing on my phone.'
     })
-    expect(revalidatePath).toHaveBeenCalledWith('/feedback')
+    expect(revalidatePath).toHaveBeenCalledWith('/settings')
   })
 
   it('refuses bad input and the demo without saving', async () => {

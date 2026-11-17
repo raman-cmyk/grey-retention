@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { ActionAnswers, ActionButton } from '@/components/gros/action'
 import { Card } from '@/components/gros/card'
 import { Field } from '@/components/gros/input'
-import type { RequestStatus } from '@/features/feedback/rules'
+import type { FeatureRequest, RequestStatus } from '@/features/feedback/rules'
 import { operationAction } from '@/features/operations/actions'
 import { formatBrandDateTime } from '@/lib/brand-time'
 import type { SettingsView } from './page-model'
@@ -59,34 +59,7 @@ export function SupportCard({
                           {stateWord[thread.status]}
                         </p>
                       </div>
-                      <ol className="flex flex-col gap-[var(--space-3)]">
-                        {[
-                          {
-                            id: `${thread.id}-question`,
-                            author: thread.by,
-                            body: thread.details,
-                            createdAt: thread.createdAt
-                          },
-                          ...thread.replies
-                        ].map((message) => (
-                          <li
-                            key={message.id}
-                            className="flex flex-col gap-[var(--space-1)]"
-                          >
-                            <p className="type-caption text-[var(--stone)]">
-                              {[
-                                message.author,
-                                formatBrandDateTime(message.createdAt, zone)
-                              ]
-                                .filter(Boolean)
-                                .join(' · ')}
-                            </p>
-                            <p className="type-body break-words whitespace-pre-wrap">
-                              {message.body}
-                            </p>
-                          </li>
-                        ))}
-                      </ol>
+                      <Messages thread={thread} zone={zone} />
                       <ActionButton
                         action={operationAction}
                         label="Send reply"
@@ -156,10 +129,47 @@ const stateOf: Record<RequestStatus, string> = {
 }
 
 /**
+ * A ticket's messages, oldest first: the question, then the replies, each
+ * with its author and time in the brand's timezone (also Feature requests).
+ */
+export function Messages({
+  thread,
+  zone
+}: {
+  thread: FeatureRequest
+  zone: string
+}) {
+  return (
+    <ol className="flex flex-col gap-[var(--space-3)]">
+      {[
+        {
+          id: `${thread.id}-question`,
+          author: thread.by,
+          body: thread.details,
+          createdAt: thread.createdAt
+        },
+        ...thread.replies
+      ].map((message) => (
+        <li key={message.id} className="flex flex-col gap-[var(--space-1)]">
+          <p className="type-caption text-[var(--stone)]">
+            {[message.author, formatBrandDateTime(message.createdAt, zone)]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+          <p className="type-body break-words whitespace-pre-wrap">
+            {message.body}
+          </p>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+/**
  * A multi-line field with a real label, on the GROS tokens: mist on the
  * white card, white on a mist tile.
  */
-function TextBox({
+export function TextBox({
   label,
   name,
   rows,

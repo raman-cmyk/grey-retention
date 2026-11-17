@@ -125,12 +125,7 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
         defaultOpen: true,
         items: [
           { label: 'Settings', href: '/settings', icon: 'settings' },
-          { label: 'Connections', href: '/connections', icon: 'connections' },
-          {
-            label: 'Request a Feature',
-            href: '/feedback',
-            icon: 'feedback'
-          }
+          { label: 'Connections', href: '/connections', icon: 'connections' }
         ]
       },
       {
