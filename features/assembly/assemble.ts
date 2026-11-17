@@ -996,10 +996,10 @@ export function fill(
         break
       }
       case 'founder_note':
-        // Only the founder's own words, never the model's.
+        // Only the founder's own words, never the model's or code's: no
+        // greeting they did not write (REL-ONB2 part d2).
         content = {
           photo: c.founder?.photo,
-          greeting: 'Hi,',
           paras: c.founder?.note,
           signoff: c.founder?.name,
           role: c.founder?.role

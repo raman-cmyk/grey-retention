@@ -355,3 +355,153 @@ describe('storeMaterial (REL-ONB2 part a)', () => {
     expect(allowed).not.toContain('ugc_grid')
   })
 })
+
+describe('storeMaterial: the founder’s own note (REL-ONB2 part d2)', () => {
+  const note = 'I’m Maya Lee. I started Cedar Lane in my spare room in 2016.'
+  const founder = (
+    quote = note,
+    value: Over = {},
+    over: Over = {},
+    evidence: Over = {}
+  ) =>
+    ({
+      topic: 'founder',
+      source: 'site',
+      statement: 'Maya Lee writes why she started the store.',
+      value: { name: 'Maya Lee', role: 'Founder', ...value },
+      evidence: {
+        url: `${site}/pages/about`,
+        quote,
+        page: 'about',
+        whole: true,
+        ...evidence
+      },
+      confidence: 0.8,
+      pass: 'model',
+      createdAt: '2026-11-17T08:00:00.000Z',
+      ...over
+    }) as unknown as Finding
+  const allowed = (confirmed: ReturnType<typeof storeMaterial>) =>
+    allowedBlockTypes({
+      brief: { campaignType: 'story', goal: 'Our story' },
+      products: [],
+      codes: [],
+      maxDiscountPercent: 0,
+      sendAt: '2026-12-01T10:00:00Z',
+      timezone: 'UTC',
+      facts,
+      confirmed
+    })
+
+  it('signs the note with the founder’s name and role, word for word, and allows the founder note', () => {
+    const found = material([founder()])
+    expect(found).toEqual({
+      founder: { name: 'Maya Lee', role: 'Founder', note: [note] }
+    })
+    expect(allowed(found)).toContain('founder_note')
+    // A greeting is no name; the founder's own name words are theirs.
+    expect(
+      material([founder('Hi, I’m Maya. I knit every sample myself.')])?.founder
+        ?.note
+    ).toEqual(['Hi, I’m Maya. I knit every sample myself.'])
+    // Without a role on the page, none.
+    expect(material([founder(note, { role: undefined })])?.founder).toEqual({
+      name: 'Maya Lee',
+      note: [note]
+    })
+  })
+
+  it('takes the newest note that passes', () => {
+    const older = founder(
+      'I knit every sample myself.',
+      {},
+      { createdAt: '2026-11-01T08:00:00.000Z' }
+    )
+    expect(material([older, founder()])?.founder?.note).toEqual([note])
+    // The newest says an offer: the next one is the founder's own too.
+    const offer = founder(
+      'I wanted everyone to save, so use code WARM10.',
+      {},
+      { createdAt: '2026-11-18T08:00:00.000Z' }
+    )
+    expect(material([offer, older])?.founder?.note).toEqual([
+      'I knit every sample myself.'
+    ])
+  })
+
+  it.each([
+    ['not marked whole', founder(note, {}, {}, { whole: undefined })],
+    ['from another page', founder(note, {}, {}, { page: 'home' })],
+    [
+      'from another website',
+      founder(note, {}, {}, { url: 'https://other.example/pages/about' })
+    ],
+    ['less sure than a fact', founder(note, {}, { confidence: 0.5 })],
+    [
+      'the sample rules’ in a live workspace',
+      founder(note, {}, { pass: 'sample' })
+    ],
+    ['from another reader', founder(note, {}, { source: 'reviews' })],
+    ['a bio, not their note', founder('Maya founded Cedar Lane in 2016.')],
+    ['an offer', founder('I made it so you can get 20% off this winter.')],
+    ['free shipping', founder('I ship every order for free myself.')],
+    ['a code', founder('I love a deal, so use code WARM10.')],
+    ['a price', founder('I priced my first scarf at $45.')],
+    ['a claim', founder('I make the softest knit in the world.')],
+    ['a result on the body', founder('My wool cured my eczema.')],
+    ['spam words', founder('I say act now, my friends.')],
+    ['another person', founder('Tom, my neighbour, taught me to knit.')],
+    ['another person after a greeting', founder('Hi Tom, I knit every day.')],
+    ['a link', founder('I post my knits at cedarlane.com every day.')],
+    ['a name with digits', founder(note, { name: 'Maya 2016' })],
+    ['a name with @', founder(note, { name: '@maya' })],
+    ['a link for a name', founder(note, { name: 'maya.example' })],
+    ['two people', founder(note, { name: 'Maya and Sam' })],
+    ['a team', founder(note, { name: 'The Cedar Lane team' })],
+    ['the brand for a name', founder(note, { name: 'Cedar Lane' })]
+  ])('leaves the note out: %s', (_why, finding) => {
+    expect(material([finding])).toBeUndefined()
+  })
+
+  it('leaves out a role it could not show, never the note', () => {
+    for (const role of [
+      'Free spirit',
+      'Founder, the best in town',
+      'r'.repeat(61)
+    ])
+      expect(material([founder(note, { role })])?.founder).toEqual({
+        name: 'Maya Lee',
+        note: [note]
+      })
+  })
+
+  it('never gives a sample workspace a founder', () => {
+    expect(material([founder()], { live: false })).toBeUndefined()
+    expect(
+      material([founder(note, {}, { pass: 'sample' })], { live: false })
+    ).toBeUndefined()
+  })
+
+  it('passes copy QA with the store’s facts as the block shows it', () => {
+    const shown = material([founder()])!.founder!
+    expect(
+      checkCopy({
+        draft: {
+          subject: '',
+          preview: '',
+          blocks: [
+            {
+              id: 'founder',
+              text: [...shown.note!, shown.name, shown.role].join('\n')
+            }
+          ]
+        },
+        facts,
+        maxDiscountPercent: null,
+        codes: [],
+        productNames: [],
+        sendAt: '2026-12-01T10:00:00.000Z'
+      }).pass
+    ).toBe(true)
+  })
+})
