@@ -203,12 +203,14 @@ function column(el: T.Element) {
  * The content column: the outermost 500–760px container that holds most of
  * the email. MJML and similar builders stack one 600px box per section
  * instead; then all of those boxes, in order, are the content. The body
- * when there is neither.
+ * when there is neither. Each level weighs its own boxes again (columns
+ * nested in columns), so the deadline is read at each.
  */
-function contentRoots(body: T.Element): T.Element[] {
+function contentRoots(body: T.Element, g: Guard): T.Element[] {
   const total = weight(body)
   let best: T.Element[] | null = null
   const visit = (el: T.Element) => {
+    checkTime(g, 'column')
     if (best || hidden(el)) return false
     const stacked = elements(el).filter(column)
     if (
@@ -419,7 +421,8 @@ function marked(html: string, groups: { rows: T.Element[] }[]) {
 
 function sectioned(html: string, g: Guard): SectionedEmail {
   // Longer HTML is cut (its sections are in the part read), then read
-  // behind the parse guard, all within one deadline.
+  // behind the parse guard. The deadline is read while the content column
+  // is found and once the rows are; what follows is one pass over them.
   const doc = guardedParse(html.slice(0, g.limits.html), g, {
     sourceCodeLocationInfo: true
   })
@@ -433,7 +436,7 @@ function sectioned(html: string, g: Guard): SectionedEmail {
   if (!body)
     return { sections: [], markedHtml: html, preheader: null, textRatio: null }
   const groups: { rows: T.Element[]; prose: boolean }[] = []
-  for (const root of contentRoots(body))
+  for (const root of contentRoots(body, g))
     for (const row of rowsOf(root)) {
       const prose =
         root.tagName !== 'table' &&

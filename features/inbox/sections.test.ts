@@ -291,6 +291,17 @@ describe('sectionEmail behind the parse guard (INB-SEC)', () => {
     }
   })
 
+  it('reads columns nested in columns in time', () => {
+    // Each level is a 600px box under 60% of the words: every level is
+    // weighed again, so the deadline is read at each.
+    const depth = 199
+    const words = (n: number) => 'linen '.repeat(n)
+    const html = `<html><body><p>${words(66_000)}</p>${'<div style="width:600px">'.repeat(depth)}${words(96_000)}${'</div>'.repeat(depth)}</body></html>`
+    const started = Date.now()
+    sectionEmail(html)
+    expect(Date.now() - started).toBeLessThan(4_500)
+  })
+
   it('reads a huge flat email in time', () => {
     const started = Date.now()
     const flat = sectionEmail(
@@ -306,7 +317,7 @@ describe('sectionEmail behind the parse guard (INB-SEC)', () => {
       'out_of_time'
     )
     // Each check alone stops it: a clock that has run out there only.
-    for (const check of ['scan', 'element', 'walk'])
+    for (const check of ['scan', 'element', 'column', 'walk'])
       expect(
         sectionEmail(klaviyo, {
           clock: (at) => (at === check ? Infinity : 0)

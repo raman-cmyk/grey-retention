@@ -41,6 +41,7 @@ export type DeadlineCheck =
   | 'scan'
   | 'element'
   | 'walk'
+  | 'column'
   | 'block'
   | 'css'
   | 'strings'
