@@ -29,7 +29,10 @@ type Env = Record<string, string | undefined>
  * "STRAUSS"), but never with one it lacks ("Noel" keeps "Noël", "Weiss"
  * keeps "Weiß"), and never in a word of another script ("Tom" keeps the
  * Russian "том"); only a word that mixes scripts is read as a disguise.
- * Write it with its accents. At most 20 names of 2 to 100 characters;
+ * Arabic vowel signs, Hebrew points and marks that only decorate a
+ * letter never matter. A name word also goes with digits after it
+ * ("SAM20"), and the name with its words joined ("SamRivera") or in a
+ * hashtag ("#TeamSam"). Write it with its accents. At most 20 names of 2 to 100 characters;
  * never logged.
  */
 export function subscriberNames(env: Env = process.env) {

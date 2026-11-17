@@ -4,7 +4,12 @@ vi.mock('server-only', () => ({}))
 vi.mock('next/navigation', () => ({ unstable_rethrow: () => undefined }))
 const loaders = vi.hoisted(() => ({
   settingsReadModel: vi.fn(),
-  brandTimezone: vi.fn()
+  brandTimezone: vi.fn(),
+  feedbackPage: vi.fn()
+}))
+vi.mock('@/features/feedback/data', () => ({
+  feedbackPage: loaders.feedbackPage,
+  requestLimit: 200
 }))
 vi.mock('./read-model', () => ({
   settingsReadModel: loaders.settingsReadModel
@@ -50,7 +55,10 @@ const read = {
     now: 0
   },
   account: { name: 'Sam', email: 'owner@cedarlane.example' },
-  history: [],
+  changes: {
+    items: [{ id: 'e1', text: 'Code WELCOME15 added', by: 'you', at: '' }],
+    partial: false
+  },
   brandKit: { available: false as const, reason: '' }
 }
 const zone = {
@@ -61,15 +69,44 @@ const zone = {
   options: ['Asia/Kathmandu', 'Europe/London']
 }
 
+/** The support threads (UI-SETd), as `feedbackPage` reads them. */
+const thread = {
+  id: 't1',
+  subject: 'Klaviyo drafts',
+  category: null,
+  status: 'open' as const,
+  revision: 2,
+  createdAt: '2026-11-16T10:00:00Z',
+  by: 'You',
+  details: 'Where do my drafts go?',
+  replies: []
+}
+const support = {
+  requests: Array.from({ length: 10 }, (_, i) => ({ ...thread, id: `t${i}` })),
+  more: true,
+  team: 'Grey Retention team',
+  now: 0,
+  state: 'ready' as const
+}
+
 beforeEach(() => {
   vi.unstubAllEnvs()
   loaders.settingsReadModel.mockResolvedValue(read)
   loaders.brandTimezone.mockResolvedValue(zone)
+  loaders.feedbackPage.mockResolvedValue(support)
 })
 
 describe('Settings page model (UI-SETa)', () => {
   it('gives the owner every part, with the store’s time and Klaviyo’s zone', () => {
-    const view = settingsView({ context, now, read, zone, liveKeys: false })
+    const view = settingsView({
+      context,
+      now,
+      read,
+      zone,
+      support,
+      requests: support,
+      liveKeys: false
+    })
     expect(view).toMatchObject({
       demo: false,
       owner: true,
@@ -78,8 +115,19 @@ describe('Settings page model (UI-SETa)', () => {
       klaviyo: read.klaviyo,
       team: read.team,
       account: read.account,
+      changes: read.changes,
       unread: []
     })
+    // The threads as read, whether older ones exist, and the workspace for
+    // a reply.
+    expect(view.support?.threads).toHaveLength(10)
+    expect(view.support?.more).toBe(true)
+    expect(view.support).toMatchObject({
+      team: 'Grey Retention team',
+      tenantId: context.tenantId
+    })
+    // And the ten newest feature requests.
+    expect(view.requests?.items).toHaveLength(10)
     expect(view.timezone).toEqual({
       saved: 'Asia/Kathmandu',
       label: 'Asia/Kathmandu (UTC+05:45)',
@@ -96,6 +144,8 @@ describe('Settings page model (UI-SETa)', () => {
         now,
         read,
         zone: { ...zone, klaviyoDiffers: false },
+        support,
+        requests: support,
         liveKeys: false
       }).timezone?.klaviyo
     ).toBeNull()
@@ -104,14 +154,27 @@ describe('Settings page model (UI-SETa)', () => {
   it('follows the actions’ roles: admins change offers, staff nothing', () => {
     const as = (tenantRole: 'admin' | 'staff') =>
       settingsView({
-        context: { tenantRole },
+        context: { tenantRole, tenantId: context.tenantId },
         now,
         read,
         zone,
+        support,
+        requests: support,
         liveKeys: false
       })
     expect(as('admin')).toMatchObject({ owner: false, editor: true })
     expect(as('staff')).toMatchObject({ owner: false, editor: false })
+    // Staff do not see the changes, so they are never missing for them.
+    const staff = settingsView({
+      context: { tenantRole: 'staff', tenantId: context.tenantId },
+      now,
+      read: { ...read, changes: null },
+      zone,
+      support,
+      requests: support,
+      liveKeys: false
+    })
+    expect(staff.unread).toEqual([])
   })
 
   it('marks each part that could not be read, and the demo', () => {
@@ -120,9 +183,35 @@ describe('Settings page model (UI-SETa)', () => {
       now,
       read: { ...read, klaviyo: null, account: null },
       zone: null,
+      support,
+      requests: support,
       liveKeys: false
     })
     expect(view.unread).toEqual(['klaviyo', 'timezone', 'account'])
+    // Support that could not be read (or the demo's) is missing too.
+    for (const state of ['demo', 'load_failed'] as const)
+      expect(
+        settingsView({
+          context,
+          now,
+          read,
+          zone,
+          support: { ...support, requests: [], state },
+          requests: support,
+          liveKeys: false
+        }).unread
+      ).toEqual(['support'])
+    expect(
+      settingsView({
+        context,
+        now,
+        read,
+        zone,
+        support,
+        requests: { ...support, requests: [], state: 'load_failed' },
+        liveKeys: false
+      }).unread
+    ).toEqual(['requests'])
     expect(view.offers).toEqual(read.offers)
     expect(
       settingsView({
@@ -134,14 +223,17 @@ describe('Settings page model (UI-SETa)', () => {
           offers: null,
           klaviyo: null,
           team: null,
-          account: null
+          account: null,
+          changes: null
         },
         zone,
+        support,
+        requests: support,
         liveKeys: false
       })
     ).toMatchObject({
       demo: true,
-      unread: ['offers', 'klaviyo', 'team', 'account']
+      unread: ['offers', 'klaviyo', 'team', 'account', 'changes']
     })
   })
 
@@ -151,11 +243,34 @@ describe('Settings page model (UI-SETa)', () => {
     expect(noZone.unread).toEqual(['timezone'])
     expect(noZone.offers).toEqual(read.offers)
     expect(loaders.settingsReadModel).toHaveBeenCalledWith(context)
+    // Ten threads by latest activity, read in the query; all with Show older.
+    expect(loaders.feedbackPage).toHaveBeenCalledWith(context, now.getTime(), {
+      kind: 'support',
+      order: 'activity',
+      limit: 10
+    })
+    loaders.feedbackPage.mockClear()
+    await settingsPageModel(context, now, { allSupport: true })
+    expect(loaders.feedbackPage).toHaveBeenCalledWith(context, now.getTime(), {
+      kind: 'support',
+      order: 'activity',
+      limit: 200
+    })
+    expect(loaders.feedbackPage).toHaveBeenCalledWith(context, now.getTime(), {
+      order: 'activity',
+      limit: 10
+    })
 
     loaders.brandTimezone.mockResolvedValue(zone)
     loaders.settingsReadModel.mockRejectedValue(new Error('down'))
     const noRead = await settingsPageModel(context, now)
-    expect(noRead.unread).toEqual(['offers', 'klaviyo', 'team', 'account'])
+    expect(noRead.unread).toEqual([
+      'offers',
+      'klaviyo',
+      'team',
+      'account',
+      'changes'
+    ])
     expect(noRead.timezone?.saved).toBe('Asia/Kathmandu')
   })
 

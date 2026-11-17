@@ -19,6 +19,9 @@ import {
 import type { ManagedCode } from '@/features/offers/source'
 import { formatBrandDate } from '@/lib/brand-time'
 import type { SettingsPart, SettingsView } from './page-model'
+import { ChangesCard } from './changes-card'
+import { RequestsCard } from './requests-card'
+import { SupportCard } from './support-card'
 import { TeamCard } from './team-card'
 import { saveBrandTimezone, switchToKlaviyoTimezone } from './timezone-actions'
 
@@ -54,6 +57,21 @@ export function SettingsScreen({
         <TeamCard view={view} unread={<Unread view={view} part="team" />} />
         <AccountCard view={view} />
       </CardRow>
+      <CardRow>
+        <HolidaysCard assistant={assistant} />
+      </CardRow>
+      <SupportCard view={view} unread={<Unread view={view} part="support" />} />
+      <RequestsCard
+        view={view}
+        unread={<Unread view={view} part="requests" />}
+      />
+      {/* Who changed what: the owner and managers only (UI-SETc). */}
+      {view.editor ? (
+        <ChangesCard
+          view={view}
+          unread={<Unread view={view} part="changes" />}
+        />
+      ) : null}
     </AppPage>
   )
 }
@@ -63,7 +81,10 @@ const unreadWords: Record<SettingsPart, string> = {
   klaviyo: 'The Klaviyo connection',
   timezone: 'The timezone',
   team: 'The team',
-  account: 'Your account'
+  account: 'Your account',
+  changes: 'Recent changes',
+  support: 'Your support questions',
+  requests: 'Your feature requests'
 }
 
 /** Why a card has nothing to show. */
@@ -436,6 +457,26 @@ function TimezoneCard({ view }: { view: SettingsView }) {
             </>
           )}
         </ActionAnswers>
+      </div>
+    </Card>
+  )
+}
+
+/** Holidays and events have their own page under Settings (UI-SETd). */
+function HolidaysCard({ assistant }: { assistant: string }) {
+  const title = 'Holidays and events'
+  return (
+    <Card size="small" label={title}>
+      <div className="flex flex-col gap-[var(--space-5)]">
+        <Title text={title} />
+        <p className="type-body text-[var(--stone)]">
+          Your own dates, and the holidays {assistant} plans around.
+        </p>
+        <ButtonLink
+          href="/settings/holidays"
+          label="Open holidays"
+          kind="outline"
+        />
       </div>
     </Card>
   )

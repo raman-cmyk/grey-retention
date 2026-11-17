@@ -153,6 +153,58 @@ describe('a text email in Create email (TXT-001c)', () => {
     expect(call.request.user).toContain('"founderVoice":{"greeting":"Hi,"')
   })
 
+  it('never signs a letter as the store’s founder, writes it as them or makes it their note: their words are their About page’s (REL-ONB2 part d2)', async () => {
+    const note = 'I’m Maya Lee. I started the shop in my spare room in 2016.'
+    const founded = {
+      ...(await store()),
+      confirmed: {
+        founder: { name: 'Maya Lee', role: 'Founder', note: [note] }
+      },
+      founderVoice: {
+        greeting: 'Hi,',
+        signoff: 'Warmly,',
+        writesAs: 'I' as const,
+        sentenceWords: 9,
+        exclamations: 'never' as const,
+        contractions: 'never' as const,
+        examples: ['Every shirt still gets checked by hand before it ships.'],
+        from: { samples: 1, words: 44 }
+      }
+    }
+    for (const letterKind of [undefined, 'founder_note'] as const) {
+      const ai = model()
+      const fallbacks = memoryFallbackLog()
+      const made = await buildEmail(
+        {
+          planned: { ...planned, offer: null, letterKind },
+          store: founded,
+          offers: sampleOffers
+        },
+        ctxWith(ai, fallbacks)
+      )
+      expect(made.ok, letterKind).toBe(true)
+      if (!made.ok) return
+      const writer = ai.mock.calls.find((c) =>
+        c[0].callerKey.startsWith('letter-writer:')
+      )![0]
+      expect(writer.request.user).toContain(
+        `"signedBy":"The ${founded.brand.name} team"`
+      )
+      expect(writer.request.user).not.toContain('Maya')
+      expect(writer.request.user).not.toContain('"writesAs":"I"')
+      expect(writer.request.system).not.toContain(
+        'This letter is a founder note'
+      )
+      expect(made.email.html).not.toContain('Maya')
+      expect(made.email.html).toContain(`The ${founded.brand.name} team`)
+      expect(
+        fallbacks
+          .entries()
+          .filter((e) => e.reasonCode === 'letter_kind_dropped')
+      ).toHaveLength(letterKind ? 1 : 0)
+    }
+  })
+
   it('locks only what the letter shows: the lead product and the offer', () => {
     expect(letterLayout(planned).sections.map((s) => s.family)).toEqual([
       'product_feature',

@@ -79,7 +79,7 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('sidebar (expanded)', () => {
-  it('shows the workspace block and the seven main pages in order', () => {
+  it('shows the workspace block and the six main pages in order', () => {
     shell()
     const top = screen.getByTestId('shell-workspace')
     expect(within(top).getByText('Northwind Coffee')).toBeInTheDocument()
@@ -90,7 +90,7 @@ describe('sidebar (expanded)', () => {
     ).toHaveAttribute('aria-expanded', 'true')
     const labels = within(desktopNav())
       .getAllByRole('link')
-      .slice(0, 7)
+      .slice(0, 6)
       .map((link) => link.textContent)
     expect(labels).toEqual([
       'Home',
@@ -98,8 +98,7 @@ describe('sidebar (expanded)', () => {
       'Plan next 15 days',
       'Campaigns',
       'Ask GROS',
-      'Inspiration',
-      'Support'
+      'Inspiration'
     ])
     expect(
       within(desktopNav()).getByRole('link', { name: 'Home' })
@@ -139,20 +138,16 @@ describe('sidebar (expanded)', () => {
       'href',
       '/settings'
     )
-    expect(
-      nav.getByRole('link', { name: 'Holidays & Events' })
-    ).toHaveAttribute('href', '/holidays')
+    // UI-SETd: holidays and events are a page under Settings.
+    expect(nav.queryByRole('link', { name: 'Holidays & Events' })).toBeNull()
     expect(nav.getByRole('link', { name: 'Connections' })).toHaveAttribute(
       'href',
       '/connections'
     )
-    expect(nav.getByRole('link', { name: 'Team' })).toHaveAttribute(
-      'href',
-      '/team'
-    )
-    expect(
-      nav.getByRole('link', { name: 'Request a Feature' })
-    ).toHaveAttribute('href', '/feedback')
+    // UI-SETc: the team is on Settings.
+    expect(nav.queryByRole('link', { name: 'Team' })).toBeNull()
+    // UI-SETd: feature requests are a card on Settings.
+    expect(nav.queryByRole('link', { name: 'Request a Feature' })).toBeNull()
     await userEvent.click(nav.getByRole('button', { name: 'Workspace' }))
     expect(cookieState().groups.workspace).toBe(false)
     await userEvent.click(nav.getByRole('button', { name: 'Agents' }))
@@ -229,9 +224,12 @@ describe('sidebar (expanded)', () => {
       'aria-current',
       'page'
     )
+    // Only one entry is current (Holidays & Events, which shared it, is gone).
     expect(
-      nav.getByRole('link', { name: 'Holidays & Events' })
-    ).not.toHaveAttribute('aria-current')
+      nav
+        .getAllByRole('link')
+        .filter((link) => link.getAttribute('aria-current') === 'page')
+    ).toHaveLength(1)
   })
 })
 
@@ -428,9 +426,11 @@ describe('small screens', () => {
     await userEvent.click(
       screen.getByRole('button', { name: 'Open navigation' })
     )
-    const support = within(drawer).getByRole('link', { name: 'Support' })
-    support.addEventListener('click', (event) => event.preventDefault())
-    await userEvent.click(support)
+    const inspiration = within(drawer).getByRole('link', {
+      name: 'Inspiration'
+    })
+    inspiration.addEventListener('click', (event) => event.preventDefault())
+    await userEvent.click(inspiration)
     expect(drawer).not.toHaveAttribute('open')
     await userEvent.click(
       screen.getByRole('button', { name: 'Open navigation' })

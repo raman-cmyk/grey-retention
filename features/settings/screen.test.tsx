@@ -27,6 +27,12 @@ vi.mock('@/features/team/actions', () => ({
   cancelInvite: vi.fn(async () => ({})),
   changeMember: vi.fn(async () => ({}))
 }))
+vi.mock('@/features/feedback/actions', () => ({
+  sendFeatureRequest: vi.fn(async () => ({}))
+}))
+vi.mock('@/features/operations/actions', () => ({
+  operationAction: vi.fn(async () => ({}))
+}))
 vi.mock('./timezone-actions', () => ({
   saveBrandTimezone: vi.fn(async () => ({})),
   switchToKlaviyoTimezone: vi.fn(async () => ({}))
@@ -100,6 +106,24 @@ function view(over: Partial<SettingsView> = {}): SettingsView {
       now: 0
     },
     account: { name: 'Sam Cedar', email: 'owner@cedarlane.example' },
+    changes: {
+      items: [
+        {
+          id: 'e1',
+          text: 'Max discount set to 20%',
+          by: 'you',
+          at: '2026-11-16T12:00:00Z'
+        }
+      ],
+      partial: false
+    },
+    support: {
+      threads: [],
+      more: false,
+      team: 'Grey Retention team',
+      tenantId: 't1'
+    },
+    requests: { items: [], more: false },
     unread: [],
     ...over
   }
@@ -311,13 +335,20 @@ describe('Settings screen (UI-SETa)', () => {
     expect(
       within(team).getByText('Open invites').parentElement
     ).toHaveTextContent('Open invites1')
-    // The team changes here (UI-SETb); who changed what is still on /team.
+    // The team changes here (UI-SETb); nothing leads to the old /team.
     expect(
       within(team).getByRole('button', { name: 'Invite as Staff' })
     ).toBeVisible()
+    expect(within(team).queryByRole('link')).toBeNull()
+    // Holidays and events have their own page under Settings (UI-SETd).
+    expect(card('Holidays and events')).toHaveTextContent(
+      'Your own dates, and the holidays GROS plans around.'
+    )
     expect(
-      within(team).getByRole('link', { name: 'See team changes' })
-    ).toHaveAttribute('href', '/team')
+      within(card('Holidays and events')).getByRole('link', {
+        name: 'Open holidays'
+      })
+    ).toHaveAttribute('href', '/settings/holidays')
     const account = card('Account')
     expect(account).toHaveTextContent('Sam Cedar')
     expect(account).toHaveTextContent('owner@cedarlane.example')
@@ -341,6 +372,10 @@ describe('Settings screen (UI-SETa)', () => {
 
   it('lets an admin change offers only, and staff change nothing', () => {
     render(<SettingsScreen view={view({ owner: false })} />)
+    // Managers see who changed what, in the brand's timezone.
+    expect(card('Recent changes')).toHaveTextContent(
+      'Max discount set to 20%by you · Nov 16, 2026 · 5:45 PM'
+    )
     expect(
       screen.getByRole('button', { name: 'Save biggest discount' })
     ).toBeVisible()
@@ -385,10 +420,22 @@ describe('Settings screen (UI-SETa)', () => {
         })}
       />
     )
+    // Staff change nothing here, but any member may ask support and send
+    // a feature request (UI-SETd).
     expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
-      'Log out'
+      'Log out',
+      'Send to support',
+      'Send request'
     ])
-    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(
+      screen
+        .queryAllByRole('textbox')
+        .every(
+          (box) =>
+            card('Support').contains(box) ||
+            card('Feature requests').contains(box)
+        )
+    ).toBe(true)
     expect(card('Timezone')).toHaveTextContent(
       'The workspace owner can switch to it.'
     )
@@ -397,6 +444,9 @@ describe('Settings screen (UI-SETa)', () => {
       'Only the owner or a manager can invite people and change access.'
     )
     expect(within(card('Team')).queryByRole('link')).toBeNull()
+    // Staff see nothing of who changed what.
+    expect(screen.queryByRole('region', { name: 'Recent changes' })).toBeNull()
+    expect(screen.queryByText('Max discount set to 20%')).toBeNull()
   })
 
   it('says which parts could not be read, and that the demo keeps nothing', () => {
@@ -406,7 +456,19 @@ describe('Settings screen (UI-SETa)', () => {
       timezone: null,
       team: null,
       account: null,
-      unread: ['offers', 'klaviyo', 'timezone', 'team', 'account']
+      changes: null,
+      support: null,
+      requests: null,
+      unread: [
+        'offers',
+        'klaviyo',
+        'timezone',
+        'team',
+        'account',
+        'changes',
+        'support',
+        'requests'
+      ]
     })
     render(<SettingsScreen view={unread} />)
     for (const [name, words] of [
@@ -415,7 +477,10 @@ describe('Settings screen (UI-SETa)', () => {
       ['Klaviyo', 'The Klaviyo connection could not be read just now.'],
       ['Timezone', 'The timezone could not be read just now.'],
       ['Team', 'The team could not be read just now.'],
-      ['Account', 'Your account could not be read just now.']
+      ['Account', 'Your account could not be read just now.'],
+      ['Recent changes', 'Recent changes could not be read just now.'],
+      ['Support', 'Your support questions could not be read just now.'],
+      ['Feature requests', 'Your feature requests could not be read just now.']
     ])
       expect(card(name)).toHaveTextContent(words)
     expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
@@ -423,7 +488,7 @@ describe('Settings screen (UI-SETa)', () => {
     ])
     cleanup()
     render(<SettingsScreen view={{ ...unread, demo: true }} />)
-    expect(screen.getAllByText('Nothing is kept in the demo.')).toHaveLength(6)
+    expect(screen.getAllByText('Nothing is kept in the demo.')).toHaveLength(9)
     cleanup()
     // The demo's timezone shows, but cannot be saved.
     render(
