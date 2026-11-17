@@ -51,10 +51,12 @@ export async function saveMaxDiscount(
     if (error.code === 'PT409')
       return {
         error:
-          'The max discount changed in another window. Reload the page, then try again.'
+          'The biggest discount changed in another window. Reload the page, then try again.'
       }
     if (error.code === '42501') return { error: editorsOnly }
-    return { error: 'We could not save the max discount. Nothing was changed.' }
+    return {
+      error: 'We could not save the biggest discount. Nothing was changed.'
+    }
   }
   refresh()
   return {
