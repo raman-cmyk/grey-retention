@@ -7,6 +7,18 @@ const draw = vi.hoisted(() => ({
   renderEmail: vi.fn()
 }))
 vi.mock('./section-render.mjs', () => draw)
+// DST-004b2c: the grids (no grid unless a test gives one).
+const grids = vi.hoisted(() => ({
+  lumaGrid: vi.fn(
+    async (): Promise<{
+      width: number
+      height: number
+      values: number[]
+    } | null> => null
+  ),
+  fetchCrop: vi.fn(async () => new Uint8Array([1]))
+}))
+vi.mock('./luma-grid.mjs', () => grids)
 import {
   carryOn,
   carryOnMs,
@@ -59,6 +71,8 @@ function app(
     post?: number
     get?: number
     link?: string
+    /** DST-004b2c: the crop's signed link handed with each section. */
+    reference?: string
   } = {}
 ) {
   let left = options.jobs ?? 1
@@ -88,7 +102,15 @@ function app(
         return Response.json({ jobs: viewsLeft-- > 0 ? [view(++v)] : [] })
       }
       return Response.json({
-        jobs: left-- > 0 ? [job(++n, options.link)] : []
+        jobs:
+          left-- > 0
+            ? [
+                {
+                  ...job(++n, options.link),
+                  ...(options.reference ? { reference: options.reference } : {})
+                }
+              ]
+            : []
       })
     })
   )
@@ -105,14 +127,17 @@ const none = { drawn: 0, failed: 0, lost: 0 }
 /** The run's two lines: its sections, then its email views. */
 const counts = (
   line: string,
-  views = 'Email views drawn: 0. Failed: 0. Not recorded: 0.'
-) => [[line], [views]]
+  views = 'Email views drawn: 0. Failed: 0. Not recorded: 0.',
+  grids = 'Grids read: 0. Reference grids read: 0 of 0.'
+) => [[line], [views], [grids]]
 
 describe('the section browser job (DST-001c)', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     draw.renderSection.mockReset()
     draw.renderEmail.mockReset()
+    grids.lumaGrid.mockReset().mockResolvedValue(null)
+    grids.fetchCrop.mockReset().mockResolvedValue(new Uint8Array([1]))
   })
 
   it('draws each section, uploads it as a JPEG through its own link and reports its size, logging counts only', async () => {
@@ -431,6 +456,102 @@ describe('the section browser job (DST-001c)', () => {
     )
     await expect(carryOn({ base, secret, log: quiet })).rejects.toThrow(
       'The app answered 500.'
+    )
+  })
+
+  it('reports the drawing’s grid and its reference crop’s, never printing the crop’s link (DST-004b2c)', async () => {
+    const link = 'https://db.test/sign/inbox-assets/sect/x/1.jpg?token=SECRET'
+    const calls = app({ jobs: 1, reference: link })
+    draw.renderSection.mockResolvedValue(picture)
+    const own = { width: 48, height: 26, values: [] as number[] }
+    const theirs = { width: 48, height: 30, values: [] as number[] }
+    grids.lumaGrid.mockResolvedValueOnce(own).mockResolvedValueOnce(theirs)
+    grids.fetchCrop.mockResolvedValue(new Uint8Array([7]))
+    const log = vi.fn()
+    await run({ base, secret, browser, log })
+    expect(grids.lumaGrid).toHaveBeenNthCalledWith(1, browser, picture.image)
+    expect(grids.fetchCrop).toHaveBeenCalledWith(link)
+    expect(grids.lumaGrid).toHaveBeenNthCalledWith(
+      2,
+      browser,
+      new Uint8Array([7])
+    )
+    const report = calls.find((c) => c.method === 'POST')?.body
+    expect(report).toEqual({
+      job: 'j1',
+      lease: 'l1',
+      height: 640,
+      bytes: 4,
+      grid: own,
+      referenceGrid: theirs
+    })
+    expect(JSON.stringify(log.mock.calls)).not.toContain('SECRET')
+    // Counts only: both grids read, for the one section that asked.
+    expect(log.mock.calls.at(-1)).toEqual([
+      'Grids read: 1. Reference grids read: 1 of 1.'
+    ])
+  })
+
+  it('leaves the crop out when the lease runs short after its own grid', async () => {
+    const calls = app({ jobs: 1, reference: 'https://db.test/sign/x' })
+    draw.renderSection.mockResolvedValue(picture)
+    // Reading its own grid takes most of what is left of the lease.
+    let t = 0
+    grids.lumaGrid.mockImplementation(async () => {
+      t += 80_000
+      return { width: 1, height: 1, values: [3] }
+    })
+    const log = vi.fn()
+    await run({ base, secret, browser, log, now: () => t })
+    expect(grids.lumaGrid).toHaveBeenCalledTimes(1)
+    expect(grids.fetchCrop).not.toHaveBeenCalled()
+    expect(calls.find((c) => c.method === 'POST')?.body).toMatchObject({
+      grid: { width: 1, height: 1, values: [3] }
+    })
+    expect(log.mock.calls.at(-1)).toEqual([
+      'Grids read: 1. Reference grids read: 0 of 1.'
+    ])
+  })
+
+  it('reports the picture with what grids it could read: none, or only its own', async () => {
+    // The crop cannot be fetched: its own grid only.
+    let calls = app({ jobs: 1, reference: 'https://db.test/sign/x' })
+    draw.renderSection.mockResolvedValue(picture)
+    const own = { width: 1, height: 1, values: [3] }
+    grids.lumaGrid.mockResolvedValue(own)
+    grids.fetchCrop.mockRejectedValue(new Error('reference_failed'))
+    await run({ base, secret, browser, log: quiet })
+    expect(calls.find((c) => c.method === 'POST')?.body).toMatchObject({
+      grid: own
+    })
+    expect(calls.find((c) => c.method === 'POST')?.body).not.toHaveProperty(
+      'referenceGrid'
+    )
+    // Its own picture cannot be read: no grids, the crop never fetched.
+    grids.lumaGrid.mockReset().mockResolvedValue(null)
+    grids.fetchCrop.mockReset()
+    calls = app({ jobs: 1, reference: 'https://db.test/sign/x' })
+    await run({ base, secret, browser, log: quiet })
+    expect(calls.find((c) => c.method === 'POST')?.body).toEqual({
+      job: 'j1',
+      lease: 'l1',
+      height: 640,
+      bytes: 4
+    })
+    expect(grids.fetchCrop).not.toHaveBeenCalled()
+  })
+
+  it('leaves the grids out when the lease has too little time left for them', async () => {
+    const calls = app({ jobs: 1, reference: 'https://db.test/sign/x' })
+    draw.renderSection.mockResolvedValue(picture)
+    grids.lumaGrid.mockResolvedValue({ width: 1, height: 1, values: [3] })
+    // Each reading of the clock is a minute later: the lease is nearly gone.
+    let t = 0
+    const now = () => (t += 60_000)
+    await run({ base, secret, browser, log: quiet, now })
+    expect(grids.lumaGrid).not.toHaveBeenCalled()
+    expect(calls.find((c) => c.method === 'POST')?.body).not.toHaveProperty(
+      'grid'
     )
   })
 })

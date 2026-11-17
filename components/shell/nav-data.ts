@@ -101,8 +101,8 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
         label: 'Inspiration',
         href: '/inspiration',
         icon: 'inspirations'
-      },
-      { label: 'Support', href: '/support', icon: 'support' }
+      }
+      // UI-SETd: support is a card on Settings (Workspace, below).
     ],
     groups: [
       {
@@ -125,13 +125,7 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
         defaultOpen: true,
         items: [
           { label: 'Settings', href: '/settings', icon: 'settings' },
-          { label: 'Holidays & Events', href: '/holidays', icon: 'holidays' },
-          { label: 'Connections', href: '/connections', icon: 'connections' },
-          {
-            label: 'Request a Feature',
-            href: '/feedback',
-            icon: 'feedback'
-          }
+          { label: 'Connections', href: '/connections', icon: 'connections' }
         ]
       },
       {

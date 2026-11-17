@@ -154,7 +154,7 @@ export function AccountForm({
           help={
             <>
               Email is locked. Contact{' '}
-              <Link href="/support" className="underline">
+              <Link href="/settings#support" className="underline">
                 support
               </Link>{' '}
               if you need to change it.
