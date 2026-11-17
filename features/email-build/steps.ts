@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
+import { maxNeverWords } from '@/features/copy-qa/never-words'
 import type { OfferSource } from '@/features/offers/source'
 import {
   codeWorksNow,
@@ -97,7 +98,9 @@ const contentSaved = z.looseObject({
     sendAt: z.string(),
     timezone: z.string(),
     // ONB-061: the customers' words (REL-CW); missing before it.
-    customerWords: z.array(z.string()).max(40).optional()
+    customerWords: z.array(z.string()).max(40).optional(),
+    // PIC-29 part 2c: the learned phrases; missing before it.
+    neverWords: z.array(z.string()).max(maxNeverWords).optional()
   }),
   changes: z.array(z.looseObject({ key: z.string() }))
 })

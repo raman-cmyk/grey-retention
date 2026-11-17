@@ -4,6 +4,8 @@ import {
   amount,
   factLines,
   customerWordsRules,
+  neverWordsIn,
+  neverWordsRules,
   oneLine,
   storeLink,
   writerData,
@@ -56,7 +58,7 @@ import {
  * plainer letter that code writes from the store's name and product only,
  * logged (D16). Nothing waits for a person.
  */
-export const letterWriterVersion = '2026-11-16.5'
+export const letterWriterVersion = '2026-11-16.6'
 
 export type LetterBrief = {
   /** The locked content: its products, offer, facts and founder. */
@@ -143,6 +145,29 @@ function voiceProblems(letter: Letter, brief: LetterBrief): LetterProblem[] {
         }
       ]
     : []
+}
+
+/**
+ * PIC-29 part 2c: a phrase the owner takes out of GROS's emails, in the
+ * writer's own words (never the founder's placed note), goes back.
+ */
+function neverWordProblems(
+  letter: Letter,
+  brief: LetterBrief
+): LetterProblem[] {
+  const own = [
+    letter.subject,
+    letter.preheader,
+    ...writerBody(letter, brief),
+    letter.ps
+  ]
+    .filter((t): t is string => typeof t === 'string')
+    .map(seenText)
+    .join('\n')
+  return neverWordsIn(own, brief.locked.input).map((p) => ({
+    rule: 'never_word',
+    reason: `"${oneLine(p, 40)}" is a phrase the owner takes out of these emails: use other words.`
+  }))
 }
 
 const voiceRules = (brief: LetterBrief) =>
@@ -257,6 +282,7 @@ export const letterWriter = (
   instructions: [
     ...letterInstructions,
     ...customerWordsRules(brief.locked.input),
+    ...neverWordsRules(brief.locked.input),
     // DST-PIC #24: the kind's own rules, with their numbers, when it fits.
     ...kindRules(brief),
     // PIC-23 part 3b: the founder's own voice, when their emails show it.
@@ -498,6 +524,7 @@ const letterRuleWords: Record<string, string> = {
   kind_first_person: 'a founder note not in the first person',
   kind_note_quoted: 'the founder’s note repeated',
   voice_example_copied: 'a sentence of the founder’s copied',
+  never_word: 'a phrase the owner takes out',
   kind_paragraphs: 'too many paragraphs around the founder’s note',
   kind_question: 'a quick question with no question',
   kind_questions: 'more than one question',
@@ -609,6 +636,8 @@ export async function writeLetter(
       ...kindProblems(letter.data, brief),
       // PIC-23 part 3b: never a copy of the founder's example.
       ...voiceProblems(letter.data, brief),
+      // PIC-29 part 2c: never a phrase the owner takes out.
+      ...neverWordProblems(letter.data, brief),
       // DST-PIC #28: the industry's reading level (the writer's words).
       ...letterReading(
         // The writer's words only: never the founder's placed note.

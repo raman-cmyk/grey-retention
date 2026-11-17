@@ -81,14 +81,15 @@ afterEach(() => {
 })
 
 describe('Klaviyo detail pages (§4)', () => {
-  it('list: plain sign-up method, back to the Lists tab, sample note', async () => {
+  it('list: plain sign-up method, back to Home, sample note', async () => {
     render(await ListPage(props('listId', 'LSTnews01', 'lists')))
     expect(
       screen.getByRole('heading', { level: 1, name: 'Newsletter' })
     ).toBeInTheDocument()
-    expect(
-      screen.getByRole('link', { name: 'Back to dashboard' })
-    ).toHaveAttribute('href', '/dashboard?tab=lists#klaviyo-data')
+    expect(screen.getByRole('link', { name: 'Back to Home' })).toHaveAttribute(
+      'href',
+      '/home'
+    )
     expect(screen.getByText('Double opt-in')).toBeInTheDocument()
     expect(screen.getByText(/Sample Klaviyo data/)).toBeInTheDocument()
     const main = screen.getByText('Sign-up method').closest('section')!
