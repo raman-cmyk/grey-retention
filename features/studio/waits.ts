@@ -4,6 +4,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import { renderScale } from './renderer'
 import { studioWaits } from './limits'
+import { gridProblem, type LumaGrid } from './match'
+import { isPicturePath } from './reference'
 
 export { studioWaits }
 
@@ -103,7 +105,11 @@ const renderRow = z.object({
   path: z.string().nullable(),
   height: z.int().nullable(),
   bytes: z.int().nullable(),
-  etag: z.string().nullable()
+  etag: z.string().nullable(),
+  // DST-004b2d: the match score's grids (DST-004b2b), checked when read.
+  reference_path: z.string().nullable().optional(),
+  grid: z.unknown().optional(),
+  reference_grid: z.unknown().optional()
 })
 
 /** One of the build's pictures as the database holds it. */
@@ -120,8 +126,31 @@ export type BuildRender =
       bytes: number
       /** The stored picture's tag when it was recorded: compared before use. */
       etag: string
+      /**
+       * DST-004b2d: the drawing's grid and its reference crop's, with the
+       * crop it was asked with; only when both are grids the score reads.
+       */
+      grids?: { drawn: LumaGrid; reference: LumaGrid; referencePath: string }
     }
   | { id: string; key: string; state: 'failed'; failure: string }
+
+/** Both grids and the crop, only when each is what the score reads. */
+const gridsOf = (r: {
+  reference_path?: string | null
+  grid?: unknown
+  reference_grid?: unknown
+}) =>
+  isPicturePath(r.reference_path) &&
+  gridProblem(r.grid) === null &&
+  gridProblem(r.reference_grid) === null
+    ? {
+        grids: {
+          drawn: r.grid as LumaGrid,
+          reference: r.reference_grid as LumaGrid,
+          referencePath: r.reference_path
+        }
+      }
+    : {}
 
 /**
  * The build's pictures, oldest first, in the build's own shape, read in
@@ -135,7 +164,9 @@ export async function buildRenders(
 ): Promise<BuildRender[]> {
   const { data, error } = await db
     .from('section_renders')
-    .select('id,section_key,state,failure,path,height,bytes,etag')
+    .select(
+      'id,section_key,state,failure,path,height,bytes,etag,reference_path,grid,reference_grid'
+    )
     .eq('tenant_id', input.tenant)
     .eq('build_id', input.build)
     .order('created_at')
@@ -164,7 +195,8 @@ export async function buildRenders(
           path: r.path,
           height: r.height / renderScale,
           bytes: r.bytes,
-          etag: r.etag
+          etag: r.etag,
+          ...gridsOf(r)
         }
       ]
     return [

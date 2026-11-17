@@ -91,6 +91,8 @@ const sectionState = z
     alt: z.string().min(1).max(400).optional(),
     /** CSS px at 600 wide. */
     height: z.int().min(1).max(1600).optional(),
+    /** DST-004b2d: its last match score against its reference (Copy). */
+    match: z.int().min(1).max(10).optional(),
     reason: z.enum(Object.keys(codedReasons) as [CodedReason]).optional()
   })
   // Only the states the rounds make.
@@ -167,10 +169,7 @@ export type StudioPorts = {
    * reference section (`matchScore`, 1 to 10); null when it cannot be
    * measured (then the critic's verdict stands). Missing: never measured.
    */
-  match?: (
-    brief: SectionBrief,
-    image: RenderedSection
-  ) => Promise<number | null>
+  match?: (brief: SectionBrief, render: DrawnRender) => Promise<number | null>
   /**
    * A section drawn as its coded block, with why: one line for the owner's
    * log per section (the agents log their own failures as well).
@@ -328,11 +327,14 @@ export async function studioRound(
       // critic's calls again.
       const measured =
         brief.mode === 'copy' && brief.reference && ports.match
-          ? await ports.match(brief, picture).catch(() => null)
+          ? await ports.match(brief, render).catch(() => null)
           : null
       const verdict = isMatchScore(measured)
         ? withMatch(judged, measured)
         : judged
+      // DST-004b2d: the score is kept with the section (the design proof).
+      if (isMatchScore(measured)) s.match = measured
+      else delete s.match
       if (verdict.pass) {
         s.state = 'done'
         s.height = render.height

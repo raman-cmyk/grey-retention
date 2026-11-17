@@ -495,7 +495,7 @@ describe('the match score in the rounds (DST-004b)', () => {
     )
     const { out } = await judge(copy(), match)
     expect(doneOf(out).sections[0]).toMatchObject({ state: 'done' })
-    expect(match).toHaveBeenCalledWith(copy(), image)
+    expect(match).toHaveBeenCalledWith(copy(), drawn(1))
   })
 
   it('designs a Copy section again, told how to come closer, when it looks too little like it', async () => {
@@ -515,6 +515,19 @@ describe('the match score in the rounds (DST-004b)', () => {
         problems: [expect.stringMatching(/too little like the reference/)]
       })
     )
+  })
+
+  it('keeps the last score with the section, for the design proof (DST-004b2d)', async () => {
+    const { out } = await judge(copy(), async () => matchTarget + 1)
+    expect(doneOf(out).sections[0]).toMatchObject({
+      state: 'done',
+      match: matchTarget + 1
+    })
+    const low = waitOf((await judge(copy(), async () => 2)).out)
+    expect(low.sections[0]).toMatchObject({ round: 2, match: 2 })
+    // Not measured: no score kept.
+    const none = await judge(copy(), async () => null)
+    expect(doneOf(none.out).sections[0]).not.toHaveProperty('match')
   })
 
   it('keeps the critic’s verdict when the match cannot be measured', async () => {

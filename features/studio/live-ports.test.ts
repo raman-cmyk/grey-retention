@@ -391,6 +391,46 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
     expect(late.fits()).toBe(false)
   })
 
+  it('scores a render’s two grids, only for the crop the brief rebuilds (DST-004b2d)', async () => {
+    const { ports: p } = ports(storage())
+    const crop = 'sect/00000000-0000-4000-8000-0000000000a1/1.jpg'
+    const grid = {
+      width: 24,
+      height: 12,
+      values: Array.from({ length: 288 }, (_, i) => (i % 24 < 12 ? 40 : 245))
+    }
+    const render = {
+      id: '00000001-3333-4333-8333-333333333333',
+      key: 's2-r1-x',
+      state: 'drawn' as const,
+      path: 'render/00000001-3333-4333-8333-333333333333.jpg',
+      height: 320,
+      bytes: 1,
+      etag: 'e',
+      grids: { drawn: grid, reference: grid, referencePath: crop }
+    }
+    const copied = {
+      mode: 'copy',
+      reference: { tone: 'dark', height: 320, image: crop }
+    } as unknown as Parameters<NonNullable<typeof p.match>>[0]
+    expect(await p.match!(copied, render)).toBe(10)
+    // Another crop's grids, or none: not measured.
+    expect(
+      await p.match!(
+        {
+          ...copied,
+          reference: {
+            tone: 'dark',
+            height: 320,
+            image: crop.replace('1.jpg', '2.jpg')
+          }
+        },
+        render
+      )
+    ).toBeNull()
+    expect(await p.match!(copied, { ...render, grids: undefined })).toBeNull()
+  })
+
   it('logs each coded section once, in the owner’s words', async () => {
     const { ports: p, fallbacks } = ports(storage())
     await p.coded('s2', 'render_timed_out')
