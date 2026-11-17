@@ -15,6 +15,8 @@ import { emailViewNames, requestEmailRender } from './preview-jobs'
 import { renderScale, renderWidth } from './renderer'
 import { requestSectionRender } from './render-jobs'
 import { matchScore } from './match'
+import { isPicturePath } from './reference'
+import { pictureTimeoutMs, storedPicture } from '@/features/inbox/pictures'
 import { codedReasons } from './rounds'
 import { storyboardFor } from './storyboard'
 import { buildRenders, buildViews, type BuildRender } from './waits'
@@ -156,6 +158,29 @@ export function studioPortsFor(
     }
     return got
   }
+  /**
+   * DST-004c: the reference section's crop for the Section designer and
+   * the critic (Copy mode), read once per claim from the inbox; none when
+   * it cannot be read in time (they work without it, as before).
+   */
+  const crops = new Map<string, Promise<AiImage | undefined>>()
+  const referenceFor = (
+    brief: Parameters<StudioStepPorts['design']>[0],
+    /** The agent calls still to fit after it (the critic's 3, a design's 1). */
+    calls: number
+  ) => {
+    const path = brief.mode === 'copy' ? brief.reference?.image : undefined
+    if (!isPicturePath(path)) return Promise.resolve(undefined)
+    const left = input.until - input.now() - calls * agentCallMs - callSlackMs
+    const timeoutMs = Math.min(pictureTimeoutMs, left)
+    if (timeoutMs < 1_000) return Promise.resolve(undefined)
+    let got = crops.get(path)
+    if (!got) {
+      got = storedPicture(db, path, timeoutMs).catch(() => undefined)
+      crops.set(path, got)
+    }
+    return got
+  }
   /** The render's stored file, only while its tag is the one recorded. */
   const tagged = async (render: Extract<BuildRender, { state: 'drawn' }>) => {
     const info = stored(await files().info(render.path))
@@ -164,14 +189,29 @@ export function studioPortsFor(
   }
   return {
     storyboard: (board) => storyboardFor(board, ctx),
-    design: (brief, from) =>
-      designSection(brief, { ...ctx, fits: () => fits() }, from),
+    design: async (brief, from) =>
+      designSection(
+        brief,
+        { ...ctx, fits: () => fits() },
+        from,
+        await referenceFor(brief, 1)
+      ),
     async critique(brief, image) {
       // The product's own photo, so print on it is not read as drawn
       // words; without it (unreadable, too large, slow), the print counts
       // (the safe side).
       const photo = await photoFor(brief.image.url)
-      return critiqueSection({ brief, image, ...(photo ? { photo } : {}) }, ctx)
+      // DST-004c: in Copy mode, the reference section it rebuilds, side by side.
+      const reference = await referenceFor(brief, criticCalls)
+      return critiqueSection(
+        {
+          brief,
+          image,
+          ...(photo ? { photo } : {}),
+          ...(reference ? { reference } : {})
+        },
+        ctx
+      )
     },
     // DST-004b2d: the score of the render's two grids, only when they are
     // of the crop this brief rebuilds; none when the browser read none.
