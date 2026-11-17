@@ -129,16 +129,23 @@ export function referenceDna(email: ReferenceEmail): {
  * accent instead, since two dark sections never touch.
  */
 export function plannedReference(
-  dna: ReturnType<typeof referenceDna>,
+  dna: {
+    reference: NonNullable<StoryboardInput['reference']>
+    refIndex: readonly (number | null)[]
+  },
   sections: readonly { family: BlockType; source?: number }[]
 ): {
   reference: NonNullable<StoryboardInput['reference']>
   refs: (number | undefined)[]
 } {
   const reference = dna.reference.map((r) => ({ ...r }))
+  // A saved reference is read back from the build: an index it does not
+  // hold follows nothing.
   const refs = sections.map((s) => {
     const r = s.source === undefined ? null : dna.refIndex[s.source]
-    return r === null || r === undefined ? undefined : r
+    return typeof r === 'number' && r >= 0 && r < reference.length
+      ? r
+      : undefined
   })
   const toneAt = (i: number): Tone => {
     const r = refs[i]
