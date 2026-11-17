@@ -118,8 +118,9 @@ const mixedGround = 0.6
  * The picture’s background level: the grey level most of its edge cells
  * share (the band holding the most of them, then the middle value inside
  * it), and whether it is a real background (a quarter of all the cells
- * within `flatStep` of its level, as a flat colour is). A photo spreads over many levels; a section's background
- * is one. A section the photo fills has none, so its tone is not compared.
+ * within `flatStep` of its level, as a flat colour is). A photo spreads
+ * over many levels; a section's background is one. A section the photo
+ * fills has none.
  */
 function backgroundOf(values: readonly number[], w: number, h: number) {
   const bands = new Map<number, number[]>()
@@ -213,7 +214,7 @@ export function layoutShare(
     either += Math.max(ma.spread[i]!, mb.spread[i]!)
   }
   const overlap = either ? both / either : 1
-  // Light against dark shares nothing; a photo-filled section is not compared.
+  // Light against dark shares nothing; flat against filled about half.
   const tone =
     ma.real && mb.real
       ? 1 - Math.min(1, (2 * Math.abs(ma.ground - mb.ground)) / 255)
