@@ -24,6 +24,9 @@ export function OfferPick({
   return (
     <form
       action={dispatch}
+      // React resets a form after its action: a refused pick keeps the
+      // owner's ticks and choice, so the reason under the button is true.
+      onReset={(event) => event.preventDefault()}
       aria-busy={pending}
       className="flex flex-col gap-[var(--space-6)]"
     >

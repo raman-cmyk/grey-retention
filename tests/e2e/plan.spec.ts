@@ -70,6 +70,9 @@ test('UI-PLAN-b owner plans the next 15 days, picks an offer and creates an emai
   await expect(page).toHaveURL(/\/plan\/email\/[0-9a-f-]{36}$/)
   // UI-EMAIL-b: the email's own page on the GROS screen.
   await expect(page.getByText(/this is a sample draft/)).toBeVisible()
+  await expect(
+    page.getByText(/The AI was not used for this email/).first()
+  ).toBeVisible()
   await expect(page.getByText('Subject', { exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Open in Klaviyo' })).toHaveCount(
     0
