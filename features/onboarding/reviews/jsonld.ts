@@ -143,14 +143,17 @@ const day = (v: Json, now: number) => {
 /**
  * A review's stars on a scale of five: scaled from its own best and worst
  * ("4 of 10" is 2), "4/5" read as such; `unclear` when it gives a rating
- * that cannot be read or lies outside its scale.
+ * that cannot be read or lies outside its scale; `exact` when the page's
+ * own rating is a whole number of stars out of five (3.5 and 8 of 10 are
+ * rounded, so never shown as stars).
  */
 function stars(r: Record<string, Json>): {
   rating: number | null
   unclear: boolean
+  exact: boolean
 } {
   if (r.reviewRating === undefined || r.reviewRating === null)
-    return { rating: null, unclear: false }
+    return { rating: null, unclear: false, exact: true }
   const given = isObj(r.reviewRating)
     ? r.reviewRating
     : { ratingValue: r.reviewRating }
@@ -166,10 +169,12 @@ function stars(r: Record<string, Json>): {
     best = Number(slash[2])
   }
   if (value === null || best === null || worst === null || best <= worst)
-    return { rating: null, unclear: true }
-  if (value < worst || value > best) return { rating: null, unclear: true }
+    return { rating: null, unclear: true, exact: false }
+  if (value < worst || value > best)
+    return { rating: null, unclear: true, exact: false }
   const five = 1 + ((value - worst) / (best - worst)) * 4
-  return { rating: Math.round(five), unclear: false }
+  const rating = Math.round(five)
+  return { rating, unclear: false, exact: Math.abs(five - rating) < 1e-9 }
 }
 
 /** Every object in a structured-data value: lists, graphs and main entities opened. */
@@ -236,12 +241,13 @@ export function pageReviews(
     const key = `${author.toLowerCase()}\n${words.toLowerCase()}`
     if (seen.has(key)) return
     seen.add(key)
-    const { rating, unclear } = stars(r)
+    const { rating, unclear, exact } = stars(r)
     reviews.push({
       author,
       text: wellFormed(words.slice(0, maxReviewText)),
       rating,
       ratingUnclear: unclear,
+      ratingExact: exact,
       date: day(r.datePublished, now),
       url,
       product

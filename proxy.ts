@@ -54,6 +54,7 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     '/home/:path*',
+    '/audiences/:path*',
     '/learned/:path*',
     // The Klaviyo detail pages (UIR-004): read-only pages that dashboard rows
     // open, often in a new tab. Pages full of server actions stay out until
