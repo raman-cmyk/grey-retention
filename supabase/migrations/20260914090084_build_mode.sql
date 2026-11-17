@@ -9,9 +9,13 @@
 --   the same default, so the app before this change (which names t, run and
 --   slot only) keeps working while this migration and the new app deploy.
 -- * A text email (the plan's slot format 'text', D26) has no layout to copy
---   or remix: asking for one is refused.
--- * Clicking again on an email already being made returns that build; its
---   mode is the one it was started with.
+--   or remix: asking for one is refused, before any other check of the
+--   planned email (a missing format is a designed email). A future switch of
+--   a slot's format must rewrite that format in the plan.
+-- * The two new refusals carry a stable hint (`build_mode_unknown`,
+--   `build_mode_text`) the app reads instead of their words.
+-- * Clicking again on an email already being made (in any allowed mode)
+--   returns that build; its mode is the one it was started with.
 -- * The worker picks the reference email itself (the inbox is not a
 --   member's to read); nothing here names one.
 -- * The number is chosen at merge time (D24).
@@ -36,7 +40,7 @@ begin
   -- require_member locks the workspace row (tenant first), then the run.
   perform private.require_member(t, true);
   if mode is null or mode not in ('copy', 'remix', 'scratch') then
-    raise exception 'Choose Copy, Remix or Scratch' using errcode = '22023';
+    raise exception 'Choose Copy, Remix or Scratch' using errcode = '22023', hint = 'build_mode_unknown';
   end if;
   select * into r from public.strategy_runs s where s.id = run and s.tenant_id = t for update;
   if not found then raise exception 'Plan unavailable' using errcode = '42501'; end if;
@@ -52,7 +56,7 @@ begin
     raise exception 'This plan has no such email' using errcode = '22023';
   end if;
   if mode <> 'scratch' and r.plan->'slots'->slot->>'format' = 'text' then
-    raise exception 'A text email is written, not copied or remixed' using errcode = '22023';
+    raise exception 'A text email is written, not copied or remixed' using errcode = '22023', hint = 'build_mode_text';
   end if;
   select timezone into zone from public.tenants where id = t;
   begin

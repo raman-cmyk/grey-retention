@@ -71,7 +71,12 @@ export async function createEmail(
     slot: form.get('slot'),
     mode: form.get('mode') ?? undefined
   })
-  if (!parsed.success) return { error: 'Choose an email from the plan.' }
+  if (!parsed.success)
+    return {
+      error: parsed.error.issues.every((i) => i.path[0] === 'mode')
+        ? 'Choose Copy, Remix or Scratch.'
+        : 'Choose an email from the plan.'
+    }
   const db = await createClient()
   if (!db) return { error: 'Creating emails is unavailable right now.' }
   // Scratch is the command's default: it is left out, so a Scratch click
@@ -92,15 +97,13 @@ export async function createEmail(
       error:
         'This email’s day has passed or the plan has changed. Plan again to create it.'
     }
-  if (error?.code === '22023' && /text email/.test(error.message ?? ''))
+  // The command's stable hints, not its words (DST-002b1).
+  if (error?.code === '22023' && error.hint === 'build_mode_text')
     return {
       error:
         'A text email is written as a letter, not copied or remixed. Create it as it is.'
     }
-  if (
-    error?.code === '22023' &&
-    /Copy, Remix or Scratch/.test(error.message ?? '')
-  )
+  if (error?.code === '22023' && error.hint === 'build_mode_unknown')
     return { error: 'Choose Copy, Remix or Scratch.' }
   if (error?.code === '22023')
     return { error: 'This plan has no such email. Reload the page.' }
