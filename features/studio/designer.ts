@@ -72,8 +72,12 @@ export type SectionBrief = {
   >
   /** Web fonts it may load (the brand's real fonts, pick #3); none yet. */
   fonts: { family: string; url: string; weight?: number; italic?: boolean }[]
-  /** Copy mode: the reference section's tone and height. */
-  reference?: { tone: Tone; height: number }
+  /**
+   * Copy mode: the reference section's tone and height, and (DST-004b)
+   * where its picture is stored, for the match score; the path is never
+   * sent to an agent (members can read it with the build's saved steps).
+   */
+  reference?: { tone: Tone; height: number; image?: string }
 }
 
 const maxHtml = 16_000
@@ -460,7 +464,15 @@ export const sectionDesignerAgent: AgentDefinition<DesignTask, DesignAnswer> = {
         imagery: brief.board.imagery,
         white_space: brief.board.space,
         note: brief.board.note,
-        ...(brief.reference ? { reference: brief.reference } : {})
+        // The tone and height only: the stored picture's path is code's.
+        ...(brief.reference
+          ? {
+              reference: {
+                tone: brief.reference.tone,
+                height: brief.reference.height
+              }
+            }
+          : {})
       },
       words: brief.words,
       photo: brief.image,

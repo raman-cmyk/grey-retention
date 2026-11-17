@@ -111,6 +111,39 @@ describe('inviteTeammate', () => {
       ).toMatch(text)
     }
   })
+
+  it('marks only the refusals about the address for its field (UI-SETb)', async () => {
+    const invite = (email: string, role = 'staff') =>
+      inviteTeammate({}, form({ email, role }))
+    expect(await invite('nope')).toMatchObject({ field: 'email' })
+    expect(await invite('a@b.co', 'owner')).not.toHaveProperty('field')
+    for (const message of [
+      'Already a member',
+      'Already invited',
+      'Deactivated member'
+    ]) {
+      rpc.mockResolvedValueOnce({
+        data: null,
+        error: { code: 'PT409', message }
+      })
+      expect(await invite('a@b.co')).toMatchObject({ field: 'email' })
+    }
+    for (const error of [
+      { code: 'PT409', message: 'Stale' },
+      { code: '42501', message: 'Team administrator required' },
+      { code: 'XX000' }
+    ]) {
+      rpc.mockResolvedValueOnce({ data: null, error })
+      expect(await invite('a@b.co')).not.toHaveProperty('field')
+    }
+    signedInAs('staff')
+    expect(await invite('a@b.co')).toEqual({
+      error: 'Only the owner or a manager can change the team.'
+    })
+    signedInAs('owner')
+    env.values = { AUTH_MODE: 'demo' }
+    expect(await invite('a@b.co')).toEqual({ error: 'Please sign in again.' })
+  })
 })
 
 describe('resendInvite and cancelInvite', () => {

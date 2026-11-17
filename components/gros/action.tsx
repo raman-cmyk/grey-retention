@@ -115,6 +115,37 @@ export function ActionAnswers({ children }: { children: ReactNode }) {
   )
 }
 
+/**
+ * For a card's own form that is not an `ActionButton` (the invite form,
+ * whose refusals about the address go under its field): `tell` puts its
+ * answer in the card's one line, replacing any other button's, and
+ * `othersAnswered` says another button of the card answered since. While
+ * the form is on the page the card never moves the cursor for it. Null
+ * outside `ActionAnswers`.
+ */
+export function useCardAnswer() {
+  const area = use(Answers)
+  const me = useId()
+  const here = area?.here
+  useEffect(() => {
+    here?.(me, true)
+    return () => here?.(me, false)
+  }, [here, me])
+  const say = area?.say
+  const tell = useCallback(
+    (answer: ActionResult) => say?.({ ...answer, from: me }),
+    [say, me]
+  )
+  if (!area) return null
+  return {
+    tell,
+    othersAnswered:
+      area.answer.from !== undefined &&
+      area.answer.from !== me &&
+      words(area.answer) !== null
+  }
+}
+
 export function ActionButton({
   action,
   label,
