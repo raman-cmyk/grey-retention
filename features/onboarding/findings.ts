@@ -37,6 +37,16 @@ const currency = z.string().regex(/^[A-Z]{3}$/)
 const amount = z.number().nonnegative().max(1_000_000)
 const days = z.number().int().min(0).max(3_650)
 
+/**
+ * A customer's photo's address as the database keeps it
+ * (`private.photo_url_ok`): https, a plain host of lower-case labels
+ * (never a `\`, `%`, `@` or port a browser would read another way), then
+ * only URL-safe characters (no space, quote, `<`, `>` or `\`), never an
+ * `@` or `%40` (an email address), a JPEG or PNG.
+ */
+export const photoUrlPattern =
+  /^(?!.*%40)https:\/\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+\/[A-Za-z0-9._~!$&'()*+,;=:%/-]*\.(?:[jJ][pP][eE]?[gG]|[pP][nN][gG])(?:\?[A-Za-z0-9._~!$&'()*+,;=:%/?-]*)?(?:#[A-Za-z0-9._~!$&'()*+,;=:%/?-]*)?$/
+
 /** The value each topic holds: one fixed shape per topic. */
 export const topicValues = {
   free_shipping: z.discriminatedUnion('kind', [
@@ -146,10 +156,7 @@ export const topicValues = {
    */
   customer_photo: z
     .object({
-      url: z
-        .url()
-        .max(500)
-        .regex(/^https:\/\/[^/:?#@]+\/[^?#]*\.(?:jpe?g|png)(?:[?#]|$)/i),
+      url: z.url().max(500).regex(photoUrlPattern),
       page: z
         .url()
         .max(500)

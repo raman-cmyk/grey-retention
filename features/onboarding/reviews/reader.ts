@@ -8,9 +8,13 @@ import type {
 } from '@/lib/providers/review-source'
 import { findingInput, type FindingInput } from '../findings'
 import { fold } from '../site/pages'
-import { photoKey } from '../site/photos'
 import { asWritten, claims, plain, wellFormed } from '../words'
-import { maxReviewPhotos } from './photos'
+import {
+  appFolder,
+  maxReviewPhotos,
+  reviewPhotoKey,
+  shopifyFolder
+} from './photos'
 
 /** The Reviews + social reader's prompt version. */
 export const reviewsReaderVersion = 'reviews-v1'
@@ -239,19 +243,29 @@ export function quotableReviews(reviews: ReadReview[]): CustomerFinding[] {
 
 /**
  * REL-ONB2 part e: the photos customers posted with the reviews kept by
- * the rules above (`keptReviews`: never a photo of a review left out, such
- * as one of three stars or less), in their order, each once at any size
- * (`photoKey`), at most `maxReviewPhotos`. Each is stored on its own with
+ * the rules above (`keptReviews`: never a photo of a review left out),
+ * and only of a review with four or five whole stars of the page's own
+ * (never one without stars: a photo shows the product, so only a happy
+ * customer's), in their order, each once at any size or format
+ * (`reviewPhotoKey`, the database's rule), those on Shopify's CDN or a
+ * review app's host in the first folder there only (the database keeps
+ * one a read), at most `maxReviewPhotos`. Each is stored on its own with
  * the page and product it is of, never the reviewer's name or words.
  */
 export function customerPhotos(reviews: ReadReview[]): CustomerFinding[] {
   const seen = new Set<string>()
   const found: CustomerFinding[] = []
-  for (const { r } of keptReviews(reviews))
+  const folders = new Map<string, string>()
+  for (const { r } of keptReviews(reviews)) {
+    if (r.rating === null || r.rating < 4 || r.ratingExact === false) continue
     for (const url of r.photos ?? []) {
       if (found.length >= maxReviewPhotos) return found
-      const key = URL.canParse(url) ? photoKey(url) : null
-      if (key === null || seen.has(key)) continue
+      if (!URL.canParse(url)) continue
+      const key = reviewPhotoKey(url)
+      const host = new URL(url).hostname
+      const folder = shopifyFolder(url) ?? appFolder(url)
+      if (seen.has(key)) continue
+      if (folder && (folders.get(host) ?? folder) !== folder) continue
       const value = { url, page: r.url }
       const product = r.product?.trim()
       // The product when the page names it (left out when too long).
@@ -269,8 +283,10 @@ export function customerPhotos(reviews: ReadReview[]): CustomerFinding[] {
         .find((f) => f.success)
       if (!finding?.success) continue
       seen.add(key)
+      if (folder) folders.set(host, folder)
       found.push({ ...finding.data, source: 'reviews' })
     }
+  }
   return found
 }
 

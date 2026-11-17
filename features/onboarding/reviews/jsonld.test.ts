@@ -367,7 +367,11 @@ describe("a review's own photos (REL-ONB2 part e)", () => {
   const shopPage = 'https://cedar.myshopify.com/products/weekend-knit'
   const folder = 'https://cdn.shopify.com/s/files/1/0123/4567/8901'
   const judgeme = '<script src="https://cdn.judge.me/widget.js"></script>'
-  const photos = (image: unknown, more: Record<string, unknown> = {}) =>
+  const photos = (
+    image: unknown,
+    more: Record<string, unknown> = {},
+    extra = judgeme
+  ) =>
     pageReviews(
       page(
         [
@@ -376,49 +380,67 @@ describe("a review's own photos (REL-ONB2 part e)", () => {
             { image: [`${folder}/products/knit.jpg`] }
           )
         ],
-        judgeme
+        extra
       ),
       shopPage,
       now,
       'cedar.myshopify.com'
     ).reviews[0]?.photos
-  const imgix = 'https://judgeme.imgix.net/cedar-lane/1700000000__photo.jpg'
+  // Judge.me's folder is the store's Shopify name.
+  const imgix = 'https://judgeme.imgix.net/cedar/1700000000__photo.jpg'
 
   it('keeps photos on the store’s own hosts, its review app’s and its own folder on Shopify’s CDN', () => {
     expect(
       photos(
         [
-          '/cdn/shop/files/maya.jpg',
-          { '@type': 'ImageObject', contentUrl: imgix }
+          '/cdn/shop/files/knit-1.jpg',
+          { '@type': 'ImageObject', contentUrl: `${imgix}?auto=format&w=800` }
         ],
         {
           associatedMedia: [
-            { '@type': 'ImageObject', url: `${folder}/files/maya-2.png` },
-            'https://www.cedar.myshopify.com/m3.JPG'
+            { '@type': 'ImageObject', url: `${folder}/files/knit-2.png` },
+            'https://www.cedar.myshopify.com/knit-3.JPG'
           ]
         }
       )
     ).toEqual([
-      'https://cedar.myshopify.com/cdn/shop/files/maya.jpg',
-      imgix,
-      `${folder}/files/maya-2.png`,
-      'https://www.cedar.myshopify.com/m3.JPG'
+      'https://cedar.myshopify.com/cdn/shop/files/knit-1.jpg',
+      // Imgix's `auto` is taken out: it may serve WebP or AVIF.
+      `${imgix}?w=800`,
+      `${folder}/files/knit-2.png`,
+      'https://www.cedar.myshopify.com/knit-3.JPG'
     ])
   })
 
-  it('refuses any other host, http, a format an email cannot show, a video and the product’s own picture', () => {
+  it('refuses any other host, http, a format an email cannot show, a video, the product’s own picture and the reviewer’s name', () => {
     for (const image of [
-      'https://images.example-cdn.com/maya.jpg',
-      'https://cedar.myshopify.com.evil.com/maya.jpg',
-      'http://cedar.myshopify.com/maya.jpg',
-      'https://cedar.myshopify.com/maya.webp',
-      'https://cdn.shopify.com/s/files/1/9999/8888/7777/files/maya.jpg',
+      'https://images.example-cdn.com/knit-1.jpg',
+      'https://cedar.myshopify.com.evil.com/knit-1.jpg',
+      // Host tricks: a browser reads `\` as `/`; an escaped host is no host.
+      'https://evil.example\\.cedar.myshopify.com/m.jpg',
+      'https://evil.example%2f.cedar.myshopify.com/m.jpg',
+      'https://evilcedar.myshopify.com/m.jpg',
+      'https://judgeme.imgix.net.evil.example/m.jpg',
+      'https://cedar.myshopify.com@evil.example/m.jpg',
+      'https://user@cedar.myshopify.com/m.jpg',
+      'http://cedar.myshopify.com/knit-1.jpg',
+      'https://cedar.myshopify.com/knit-1.webp',
+      'https://cdn.shopify.com/s/files/1/9999/8888/7777/files/knit-1.jpg',
+      // Another store's folder on Judge.me's host.
+      'https://judgeme.imgix.net/other-shop/1__photo.jpg',
       {
         '@type': 'VideoObject',
         contentUrl: 'https://cedar.myshopify.com/v.jpg'
       },
+      // The product's own picture, at another size or on the store's address.
       `${folder}/products/knit_800x.jpg`,
-      `https://cedar.myshopify.com/${'m'.repeat(500)}.jpg`
+      'https://cedar.myshopify.com/cdn/shop/products/knit.jpg?v=2',
+      `https://cedar.myshopify.com/${'m'.repeat(500)}.jpg`,
+      // The reviewer's name or an email address in it.
+      'https://cedar.myshopify.com/1__maya_rodriguez__original.jpg',
+      'https://cedar.myshopify.com/r.jpg?reviewer=Maya%20Rodriguez',
+      'https://cedar.myshopify.com/maya.rodriguez@gmail.com.jpg',
+      'https://cedar.myshopify.com/r.jpg?by=jo%40mail.example'
     ])
       expect(photos(image), JSON.stringify(image)).toBeUndefined()
     // Never the reviewer's own picture.
@@ -429,37 +451,109 @@ describe("a review's own photos (REL-ONB2 part e)", () => {
     ).toBeUndefined()
   })
 
-  it('takes a review app’s host only when the page’s markup loads the app, never its data alone', () => {
-    const read = (extra: string) =>
+  it('takes a review app’s host only when the page’s own scripts or styles load it, never its words', () => {
+    for (const [extra, kept] of [
+      [judgeme, true],
+      ['<link rel="stylesheet" href="https://cdn.judge.me/w.css">', true],
+      ['', false],
+      ['<script src="https://loox.io/widget/loox.js"></script>', false],
+      ['<meta itemprop="reviewBody" content="Loved by judge.me fans">', false],
+      ['<script type="application/json">{"body":"judgeme"}</script>', false],
+      ['<img alt="judgeme fan" src="/a.png">', false],
+      ['<script>var src = "https://cdn.judge.me/widget.js"</script>', false]
+    ] as [string, boolean][])
+      expect(photos(imgix, {}, extra), extra).toEqual(
+        kept ? [imgix] : undefined
+      )
+  })
+
+  it('keeps a Judge.me photo only in the folder of the store’s Shopify name, as Shopify’s own script says it', () => {
+    const custom = (script: string, image: string) =>
       pageReviews(
         page(
-          [product([{ author: 'A', reviewBody: 'Fine.', image: imgix }])],
-          extra
+          [product([{ author: 'A', reviewBody: 'Fine.', image }])],
+          `${judgeme}${script}`
+        ),
+        'https://north-studio.com/products/a',
+        now,
+        'north-studio.com'
+      ).reviews[0]?.photos
+    const own = 'https://judgeme.imgix.net/north-studio/1__photo.jpg'
+    const shop = '<script>Shopify.shop = "north-studio.myshopify.com";</script>'
+    expect(custom(shop, own)).toEqual([own])
+    expect(custom(shop, imgix)).toBeUndefined()
+    // No word of the store's Shopify name: no folder is the store's.
+    expect(custom('', own)).toBeUndefined()
+  })
+
+  it('keeps photos only of a review of a product, never a testimonial of nothing', () => {
+    const review = (itemReviewed: unknown) =>
+      pageReviews(
+        page(
+          [
+            {
+              '@type': 'Review',
+              author: 'A',
+              reviewBody: 'Fine.',
+              image: 'https://cedar.myshopify.com/hero-lifestyle.jpg',
+              ...(itemReviewed ? { itemReviewed } : {})
+            }
+          ],
+          judgeme
         ),
         shopPage,
         now
-      ).reviews[0]?.photos
-    expect(read(judgeme)).toEqual([imgix])
-    expect(read('')).toBeUndefined()
+      ).reviews[0]
+    expect(review(undefined)?.photos).toBeUndefined()
+    expect(review({ name: 'Weekend Knit' })?.photos).toBeUndefined()
     expect(
-      read('<script src="https://loox.io/widget/loox.js"></script>')
-    ).toBeUndefined()
+      review({ '@type': 'Product', name: 'Weekend Knit' })?.photos
+    ).toEqual(['https://cedar.myshopify.com/hero-lifestyle.jpg'])
   })
 
-  it('keeps at most five a review, each once at any size', () => {
-    const own = (n: number) => `https://cedar.myshopify.com/r${n}.jpg`
+  it('keeps one picture once, at any imgix size and at either Shopify address, and at most five a review', () => {
+    expect(
+      photos([`${imgix}?w=200`, `${imgix}?w=800`], {
+        associatedMedia: `${imgix}?w=1200&dpr=2`
+      })
+    ).toEqual([`${imgix}?w=200`])
     expect(
       photos([
-        own(1),
-        'https://cedar.myshopify.com/r1.jpg?width=400',
-        own(2),
-        own(3),
-        own(4),
-        own(5),
-        own(6)
+        'https://cedar.myshopify.com/cdn/shop/files/knit-1.jpg',
+        `${folder}/files/knit-1_400x.jpg`
       ])
+    ).toEqual(['https://cedar.myshopify.com/cdn/shop/files/knit-1.jpg'])
+    const own = (n: number) => `https://cedar.myshopify.com/r${n}.jpg`
+    expect(
+      photos([own(1), `${own(1)}?width=400`, ...[2, 3, 4, 5, 6].map(own)])
     ).toEqual([own(1), own(2), own(3), own(4), own(5)])
   })
+
+  it('reads a page of thousands of product pictures and reviews in time, and markup nested deep', () => {
+    const variants = Array.from({ length: 8_000 }, (_, n) => ({
+      '@type': 'Product',
+      image: `https://cedar.myshopify.com/v/${n}.jpg`
+    }))
+    const reviews = Array.from({ length: 3_000 }, (_, n) => ({
+      author: `R${n}`,
+      reviewBody: 'Fine.',
+      image: `https://cedar.myshopify.com/r/${n}.jpg`
+    }))
+    const html = page([
+      { '@type': 'ProductGroup', hasVariant: variants, review: reviews }
+    ])
+    expect(html.length).toBeLessThan(1_000_000)
+    const started = performance.now()
+    const found = pageReviews(html, shopPage, now)
+    expect(performance.now() - started).toBeLessThan(3_000)
+    expect(found.reviews).toHaveLength(3_000)
+    // Only the first 100 reviews with a photo are looked at.
+    expect(found.reviews.filter((r) => r.photos).length).toBe(100)
+    // Deeper than a recursive walk can go (it overflows at 8,000 here);
+    // the HTML parser itself is slow on deeper markup (a known limit).
+    const deep = `<html><body>${'<div>'.repeat(8_000)}${judgeme}</body></html>`
+    expect(() => pageReviews(deep, shopPage, now)).not.toThrow()
+  }, 20_000)
 })
 
 describe('the words a reader sees', () => {
