@@ -5,13 +5,24 @@ vi.mock('server-only', () => ({}))
 vi.mock('./setup-actions', () => ({
   connectSetupKlaviyo: vi.fn(async () => ({})),
   saveSetupDiscount: vi.fn(async () => ({})),
-  addSetupCode: vi.fn(async () => ({}))
+  addSetupCode: vi.fn(async () => ({})),
+  followRival: vi.fn(async () => ({})),
+  followSuggestion: vi.fn(async () => ({})),
+  hideRival: vi.fn(async () => ({})),
+  skipRivals: vi.fn(async () => ({})),
+  finishSetup: vi.fn(async () => ({}))
 }))
 
 import type { KlaviyoState } from '@/features/settings/read-model'
 import type { SetupView } from './flow'
 import { setupFlow } from './flow-model'
-import { DiscountStep, KlaviyoStep } from './setup-steps'
+import type { SetupRivals } from './rivals'
+import {
+  DiscountStep,
+  FinishStep,
+  KlaviyoStep,
+  RivalsStep
+} from './setup-steps'
 
 afterEach(cleanup)
 
@@ -193,6 +204,116 @@ describe('DiscountStep (UI-ONBd)', () => {
   it('gives staff the saved discount only', () => {
     render(<DiscountStep view={view({ owner: false })} />)
     expect(screen.getByText('Not set')).toBeVisible()
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+})
+
+const rivals = (over: Partial<SetupRivals> = {}): SetupRivals => ({
+  sample: true,
+  following: [],
+  suggestions: [
+    {
+      captureId: 'cap-1',
+      domain: 'northwind.example',
+      name: 'Northwind',
+      industry: 'apparel',
+      reason: 'Sells apparel like you',
+      followable: true
+    },
+    {
+      captureId: 'cap-2',
+      domain: 'realbrand.com',
+      name: 'Real Brand',
+      industry: 'apparel',
+      reason: 'Sells apparel like you',
+      followable: false
+    }
+  ],
+  ...over
+})
+
+describe('RivalsStep (UI-ONBe)', () => {
+  it('suggests brands like the store with Follow (sample brands only) and Hide, and a website field', () => {
+    render(<RivalsStep view={view()} rivals={rivals()} />)
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Your rivals' })
+    ).toBeVisible()
+    expect(screen.getByText('Northwind')).toBeVisible()
+    expect(screen.getAllByRole('button', { name: 'Follow' })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: 'Hide' })).toHaveLength(2)
+    expect(screen.getByLabelText('A brand’s website')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Skip for now' })).toBeVisible()
+    expect(screen.queryByRole('link', { name: 'Continue' })).toBeNull()
+  })
+
+  it('gives a real store no website field (real brands are not followed yet)', () => {
+    render(
+      <RivalsStep
+        view={view()}
+        rivals={rivals({ sample: false, suggestions: [] })}
+      />
+    )
+    expect(screen.queryByLabelText('A brand’s website')).toBeNull()
+    expect(screen.getByText('No brands to suggest yet.')).toBeVisible()
+  })
+
+  it('lists the brands followed, with Continue', () => {
+    render(
+      <RivalsStep
+        view={view()}
+        rivals={rivals({ following: ['northwind.example'] })}
+      />
+    )
+    expect(screen.getByText('northwind.example')).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Continue' })).toHaveAttribute(
+      'href',
+      '/setup'
+    )
+    expect(screen.queryByRole('button', { name: 'Skip for now' })).toBeNull()
+  })
+
+  it('says when rivals or suggestions cannot be read, and gives staff no buttons', () => {
+    render(<RivalsStep view={view()} rivals={null} />)
+    expect(
+      screen.getByText(/Your rivals could not be read just now/)
+    ).toBeVisible()
+    cleanup()
+    render(<RivalsStep view={view()} rivals={rivals({ suggestions: null })} />)
+    expect(
+      screen.getByText('Suggestions could not be read just now.')
+    ).toBeVisible()
+    cleanup()
+    render(<RivalsStep view={view({ owner: false })} rivals={rivals()} />)
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+})
+
+describe('FinishStep (UI-ONBe)', () => {
+  it('sums up what was set, with Finish setup for the owner only', () => {
+    render(
+      <FinishStep
+        view={view({
+          klaviyo: klaviyo(),
+          offers: {
+            maxDiscountPercent: 0,
+            grossMarginPercent: null,
+            marginFloorPercent: null,
+            revision: 1,
+            codes: []
+          }
+        })}
+      />
+    )
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Ready to plan' })
+    ).toBeVisible()
+    expect(screen.getByText('cedarlane.example')).toBeVisible()
+    expect(screen.getByText('Cedar Lane sample')).toBeVisible()
+    expect(screen.getByText('0%')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Finish setup' })).toBeVisible()
+    cleanup()
+    render(<FinishStep view={view({ owner: false })} />)
     expect(screen.queryByRole('button')).toBeNull()
   })
 })

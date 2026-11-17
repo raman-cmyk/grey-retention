@@ -297,5 +297,5 @@ export async function createWorkspace(
     path: '/',
     maxAge: 60 * 60 * 24 * 30
   })
-  redirect('/get-started')
+  redirect('/setup')
 }

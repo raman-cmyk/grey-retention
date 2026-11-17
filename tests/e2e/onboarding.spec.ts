@@ -1,10 +1,12 @@
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import { expect, test } from '@playwright/test'
 
-test('a new owner creates a workspace and resumes saved brand setup', async ({
+// UI-ONBe: a new owner creates a workspace, lands on /setup and walks the
+// five steps to Home. Sample Klaviyo only: the key's format is checked.
+test('a new owner creates a workspace and sets up the store to Home', async ({
   page
-}, info) => {
+}) => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   if (
     process.env.GREY_LOCAL_E2E !== '1' ||
@@ -27,54 +29,45 @@ test('a new owner creates a workspace and resumes saved brand setup', async ({
   })
   expect(result.error).toBeNull()
 
-  await page.goto('/get-started')
-  await expect(page).toHaveURL(/\/login$/)
+  await page.goto('/setup')
+  await expect(page).toHaveURL(/\/login/)
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page).toHaveURL(/\/onboarding$/)
-  await page
-    .getByLabel('What is your brand called?')
-    .fill(`Setup ${suffix.slice(0, 8)}`)
+  const name = `Setup ${suffix.slice(0, 8)}`
+  await page.getByLabel('What is your brand called?').fill(name)
   await page.getByRole('button', { name: 'Continue', exact: true }).click()
-  await expect(page).toHaveURL(/\/get-started$/)
+
+  // A new workspace lands on the setup flow, at Store.
+  await expect(page).toHaveURL(/\/setup$/)
   await expect(
-    page.getByRole('heading', { name: 'Which store is yours?' })
+    page.getByRole('heading', { level: 1, name: 'Your store' })
   ).toBeVisible()
-  await page.getByLabel('Store website (optional)').fill('setup-store.example')
-  await page.getByText('Brand voice and rules · optional').click()
-  await page.getByLabel('How should your emails sound?').fill('Warm and clear')
-  await page.getByLabel('Anything we should avoid?').fill('No medical claims')
-  await page.getByRole('button', { name: 'Save brand details' }).click()
-  await expect(
-    page.getByRole('heading', { name: 'Start with one email.' })
-  ).toBeVisible()
-  await page.reload()
-  await expect(
-    page.getByRole('heading', { name: 'Start with one email.' })
-  ).toBeVisible()
-  await page.getByRole('link', { name: /Your brand/ }).click()
-  await expect(page.getByLabel('Store website (optional)')).toHaveValue(
-    'setup-store.example'
-  )
-  await page.getByText('Brand voice and rules · optional').click()
-  await expect(page.getByLabel('How should your emails sound?')).toHaveValue(
-    'Warm and clear'
-  )
-  await expect(page.getByLabel('Anything we should avoid?')).toHaveValue(
-    'No medical claims'
-  )
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth
+  await expect(page.getByLabel('Store name')).toHaveValue(name)
+  await page.getByLabel('Website').fill('setup-store.example')
+  await page.getByRole('button', { name: 'Save store' }).click()
+  await page.getByRole('button', { name: 'Confirm brand' }).click()
+  await page
+    .getByLabel('Private API key')
+    .fill(
+      `pk_${randomBytes(24).toString('base64url').replace(/[-_]/g, 'x').slice(0, 30)}`
     )
-  ).toBe(true)
-  await page.getByText('Brand voice and rules · optional').click()
-  await page.screenshot({
-    path: `.audit/onboarding-${info.project.name}.png`,
-    fullPage: true
-  })
-  await page.getByRole('link', { name: 'Exit setup' }).click()
+  await page.getByRole('button', { name: 'Connect Klaviyo' }).click()
+  await page.getByLabel('Biggest discount, in percent').fill('0')
+  await page.getByRole('button', { name: 'Save discount' }).click()
+
+  // A real store cannot follow a real brand yet: it skips.
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Your rivals' })
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Skip for now' }).click()
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Ready to plan' })
+  ).toBeVisible()
+  await expect(page.getByText('setup-store.example')).toBeVisible()
+  await expect(page.getByText('0%')).toBeVisible()
+  await page.getByRole('button', { name: 'Finish setup' }).click()
   await expect(page).toHaveURL(/\/home$/)
   await expect(
     page.getByRole('heading', {
@@ -82,4 +75,15 @@ test('a new owner creates a workspace and resumes saved brand setup', async ({
       name: /^Good (morning|afternoon|evening), /
     })
   ).toBeVisible()
+
+  // Finished: setup alone goes Home; a done step still opens.
+  await page.goto('/setup')
+  await expect(page).toHaveURL(/\/home$/)
+  await page.goto('/setup?step=store')
+  await expect(page.getByLabel('Website')).toHaveValue('setup-store.example')
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth
+    )
+  ).toBe(true)
 })

@@ -7,13 +7,16 @@ import { requireRequestContext } from '@/features/auth/application/request-conte
 import { getServerEnvironment } from '@/lib/env/server'
 import { createClient } from '@/lib/supabase/server'
 import { connectKlaviyo } from '@/features/connections/actions'
+import { trackDomain } from '@/features/library/inspirations/actions'
 import { addDiscountCode, saveMaxDiscount } from '@/features/offers/actions'
 import { startAdsReading } from './ads/start'
 import { startCatalogReading } from './catalog/start'
-import { websiteOf } from './flow-model'
+import { setupReadModel } from './flow'
+import { setupSteps, websiteOf } from './flow-model'
 import { startHistoryReading } from './history/start'
 import { startReviewsReading } from './reviews/start'
 import { startSiteReading } from './site/start'
+import { setBrandHidden } from './suggested-competitors'
 
 /**
  * The onboarding steps' commands (UI-ONBb). Each checks the owner again on
@@ -210,4 +213,98 @@ export async function addSetupCode(
   if (added.error) return { error: added.error }
   revalidatePath(setupPath)
   return { message: added.message }
+}
+
+/** Rivals: follow a brand, by the Inspiration page's own action. */
+async function follow(form: FormData): Promise<SetupAnswer> {
+  const session = await ownerSession()
+  if ('error' in session) return { error: session.error }
+  const followed = await trackDomain({}, form)
+  if (!followed.error) revalidatePath(setupPath)
+  return followed
+}
+
+/** Rivals: a website the owner types; its refusal goes under the field. */
+export async function followRival(
+  _state: SetupAnswer,
+  form: FormData
+): Promise<SetupAnswer> {
+  const followed = await follow(form)
+  return followed.error
+    ? { fields: { domain: followed.error } }
+    : { message: followed.message }
+}
+
+/** Rivals: Follow on a suggested brand's row. */
+export async function followSuggestion(
+  _state: SetupAnswer,
+  form: FormData
+): Promise<SetupAnswer> {
+  const followed = await follow(form)
+  return followed.error ? { error: followed.error } : {}
+}
+
+const capture = z.uuid()
+
+/** Rivals: Hide on a suggested brand's row (never suggested again). */
+export async function hideRival(
+  _state: SetupAnswer,
+  form: FormData
+): Promise<SetupAnswer> {
+  const session = await ownerSession()
+  if ('error' in session) return { error: session.error }
+  const id = capture.safeParse(form.get('capture'))
+  if (!id.success) return { error: 'Reload the page and try again.' }
+  try {
+    await setBrandHidden(session.db, session.context.tenantId, id.data, true)
+  } catch {
+    return { error: 'We could not hide this brand. Try again.' }
+  }
+  revalidatePath(setupPath)
+  return {}
+}
+
+/** Rivals: the owner skips following a brand for now. */
+export async function skipRivals(): Promise<SetupAnswer> {
+  const session = await ownerSession()
+  if ('error' in session) return { error: session.error }
+  const saved = await session.db.rpc('save_onboarding_step', {
+    t: session.context.tenantId,
+    step: 'rivals'
+  })
+  if (saved.error) return { error: 'We could not save this step. Try again.' }
+  revalidatePath(setupPath)
+  redirect(setupPath)
+}
+
+/** The step a refused finish names, in the owner's words. */
+const stepName = (key: string | undefined) =>
+  setupSteps.find((s) => s.key === key)?.name ?? 'every'
+
+/**
+ * Finish: only once every step is done, as the screen reads it (Klaviyo
+ * with the live-key rule) and as the database checks it again. Lands on
+ * Home.
+ */
+export async function finishSetup(): Promise<SetupAnswer> {
+  const session = await ownerSession()
+  if ('error' in session) return { error: session.error }
+  const view = await setupReadModel(session.context)
+  if (!view.flow)
+    return { error: 'We could not read your setup. Try again in a minute.' }
+  const todo = view.flow.steps.find((s) => !s.done)
+  if (todo) return { error: `Finish the ${todo.name} step first.` }
+  const saved = await session.db.rpc('save_onboarding_step', {
+    t: session.context.tenantId,
+    step: 'finish'
+  })
+  if (saved.error)
+    return {
+      error:
+        saved.error.code === 'PT409'
+          ? `Finish the ${stepName(saved.error.details)} step first.`
+          : 'We could not finish setup. Try again.'
+    }
+  revalidatePath(setupPath)
+  redirect('/home' as Route)
 }

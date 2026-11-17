@@ -13,6 +13,9 @@ const mocks = vi.hoisted(() => ({
   connectKlaviyo: vi.fn(),
   saveMaxDiscount: vi.fn(),
   addDiscountCode: vi.fn(),
+  trackDomain: vi.fn(),
+  setBrandHidden: vi.fn(),
+  setupReadModel: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn((to: string) => {
     throw Object.assign(new Error('NEXT_REDIRECT'), { to })
@@ -33,6 +36,13 @@ vi.mock('./history/start', () => ({ startHistoryReading: mocks.history }))
 vi.mock('@/features/connections/actions', () => ({
   connectKlaviyo: mocks.connectKlaviyo
 }))
+vi.mock('@/features/library/inspirations/actions', () => ({
+  trackDomain: mocks.trackDomain
+}))
+vi.mock('./suggested-competitors', () => ({
+  setBrandHidden: mocks.setBrandHidden
+}))
+vi.mock('./flow', () => ({ setupReadModel: mocks.setupReadModel }))
 vi.mock('@/features/offers/actions', () => ({
   saveMaxDiscount: mocks.saveMaxDiscount,
   addDiscountCode: mocks.addDiscountCode
@@ -40,13 +50,19 @@ vi.mock('@/features/offers/actions', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }))
 
+import { setupFlow } from './flow-model'
 import {
   addSetupCode,
   confirmBrand,
   connectSetupKlaviyo,
+  finishSetup,
+  followRival,
+  followSuggestion,
+  hideRival,
   readStoreAgain,
   saveSetupDiscount,
-  saveStore
+  saveStore,
+  skipRivals
 } from './setup-actions'
 
 const owner = { tenantId: 'tenant-1', tenantRole: 'owner' }
@@ -171,11 +187,19 @@ describe('setup actions (UI-ONBb)', () => {
       expect(await addSetupCode({}, form({ code: 'WELCOME10' }))).toEqual(
         answer
       )
+      expect(await followSuggestion({}, form({ domain: 'a.example' }))).toEqual(
+        answer
+      )
+      expect(await hideRival({}, form({ capture: 'x' }))).toEqual(answer)
+      expect(await skipRivals()).toEqual(answer)
+      expect(await finishSetup()).toEqual(answer)
     }
     expect(mocks.createClient).not.toHaveBeenCalled()
     expect(mocks.connectKlaviyo).not.toHaveBeenCalled()
     expect(mocks.saveMaxDiscount).not.toHaveBeenCalled()
     expect(mocks.addDiscountCode).not.toHaveBeenCalled()
+    expect(mocks.trackDomain).not.toHaveBeenCalled()
+    expect(mocks.setBrandHidden).not.toHaveBeenCalled()
   })
 
   it('says plainly when the save is refused, and starts no reader', async () => {
@@ -274,6 +298,92 @@ describe('setup actions (UI-ONBb)', () => {
     })
     expect(await addSetupCode({}, form({ code: 'WELCOME10' }))).toEqual({
       error: 'WELCOME10 is already in your list.'
+    })
+  })
+
+  it('follows a brand with the Inspiration action, by its website or its row', async () => {
+    mocks.createClient.mockResolvedValue(database().db)
+    mocks.trackDomain.mockResolvedValue({ message: 'Tracking a.example.' })
+    const site = form({ domain: 'a.example' })
+    expect(await followRival({}, site)).toEqual({
+      message: 'Tracking a.example.'
+    })
+    expect(mocks.trackDomain).toHaveBeenCalledWith({}, site)
+    expect(await followSuggestion({}, site)).toEqual({})
+    mocks.trackDomain.mockResolvedValue({ error: 'That is not a domain.' })
+    expect(await followRival({}, site)).toEqual({
+      fields: { domain: 'That is not a domain.' }
+    })
+    expect(await followSuggestion({}, site)).toEqual({
+      error: 'That is not a domain.'
+    })
+  })
+
+  it('hides a suggested brand with the owner’s client, and checks its id', async () => {
+    const { db } = database()
+    mocks.createClient.mockResolvedValue(db)
+    const capture = '00000000-0000-4000-8000-000000000999'
+    expect(await hideRival({}, form({ capture }))).toEqual({})
+    expect(mocks.setBrandHidden).toHaveBeenCalledWith(
+      db,
+      'tenant-1',
+      capture,
+      true
+    )
+    expect(await hideRival({}, form({ capture: 'not-an-id' }))).toEqual({
+      error: 'Reload the page and try again.'
+    })
+    mocks.setBrandHidden.mockRejectedValue({ code: '23514' })
+    expect(await hideRival({}, form({ capture }))).toEqual({
+      error: 'We could not hide this brand. Try again.'
+    })
+  })
+
+  it('skips Rivals with the owner’s mark', async () => {
+    const { db, calls } = database()
+    mocks.createClient.mockResolvedValue(db)
+    expect(await redirected(skipRivals())).toBe('/setup')
+    expect(calls.rpc).toEqual([
+      ['save_onboarding_step', { t: 'tenant-1', step: 'rivals' }]
+    ])
+  })
+
+  it('finishes only when every step is done, then lands on Home', async () => {
+    const records = {
+      domain: 'cedarlane.example',
+      confirmedSite: 'cedarlane.example',
+      klaviyoWorking: true,
+      maxDiscountSet: true,
+      following: 0,
+      rivalsSkipped: false,
+      finished: false
+    }
+    const { db, calls } = database()
+    mocks.createClient.mockResolvedValue(db)
+    mocks.setupReadModel.mockResolvedValue({ flow: setupFlow(records) })
+    expect(await finishSetup()).toEqual({
+      error: 'Finish the Rivals step first.'
+    })
+    expect(calls.rpc).toEqual([])
+    mocks.setupReadModel.mockResolvedValue({
+      flow: setupFlow({ ...records, rivalsSkipped: true })
+    })
+    expect(await redirected(finishSetup())).toBe('/home')
+    expect(calls.rpc).toEqual([
+      ['save_onboarding_step', { t: 'tenant-1', step: 'finish' }]
+    ])
+    mocks.createClient.mockResolvedValue(
+      database({
+        data: null,
+        error: { code: 'PT409', details: 'klaviyo' }
+      }).db
+    )
+    expect(await finishSetup()).toEqual({
+      error: 'Finish the Klaviyo step first.'
+    })
+    mocks.setupReadModel.mockResolvedValue({ flow: null })
+    expect(await finishSetup()).toEqual({
+      error: 'We could not read your setup. Try again in a minute.'
     })
   })
 })
