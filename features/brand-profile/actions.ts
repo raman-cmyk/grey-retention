@@ -67,7 +67,7 @@ function refresh() {
   for (const path of [
     '/brand',
     '/connections',
-    '/dashboard',
+    '/home',
     '/get-started',
     '/campaign-agent'
   ])

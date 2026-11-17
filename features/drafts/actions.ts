@@ -86,7 +86,7 @@ export async function createFirstDraft(
               ? 'Choose a future date and check the draft details.'
               : 'We could not save this draft. Your inputs are still here; try again.'
     }
-  for (const path of ['/get-started', '/campaign-agent', '/dashboard'])
+  for (const path of ['/get-started', '/campaign-agent', '/home'])
     revalidatePath(path)
   redirect(`/campaigns/${result.data}` as Route)
 }

@@ -21,7 +21,7 @@ describe('authorization policy', () => {
   })
 
   it('lands each identity in its own surface', () => {
-    expect(authLanding('client')).toBe('/dashboard')
+    expect(authLanding('client')).toBe('/home')
     expect(authLanding('admin')).toBe('/admin/dashboard')
     expect(authLanding('designer')).toBe('/designer/dashboard')
   })
