@@ -69,7 +69,6 @@ const knownAttrs = tags(
 )
 
 class Refused extends Error {}
-/** The one deadline, read at a named check (a test's clock tells them apart). */
 /**
  * One email's deadline: by its clock (a test's may run out at one check),
  * and by real time, which a passed clock can never extend.
@@ -564,7 +563,7 @@ function cleanTree(doc: T.Document, r: Rules, until: Deadline) {
       if (parent) parents.add(parent)
       continue
     }
-    // A tag named like the person, or not a plain name ("<sam@x.com>"),
+    // A tag named like the person, or not a plain name ("<sam@x.example>"),
     // goes; what is inside it stays.
     if (!plainName.test(n.tagName) || named(n.tagName)) {
       unwrapped.add(n)

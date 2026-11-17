@@ -500,7 +500,7 @@ describe('cleanEmail', () => {
     // Huge: half a megabyte of newsletters, and 800 KB of words followed by
     // thousands of small texts (each once read the words before it).
     expect(cleanEmailHtml(klaviyo.repeat(250), me)).not.toMatch(person)
-    const crowd = `<p>${'x '.repeat(400_000)}${'<b>a@b.cd</b> <b>Sam</b> '.repeat(6_000)}</p>`
+    const crowd = `<p>${'x '.repeat(400_000)}${'<b>a@b.example</b> <b>Sam</b> '.repeat(6_000)}</p>`
     const crowded = cleanEmailHtml(crowd, me)
     expect(crowded).not.toBeNull()
     expect(crowded).not.toMatch(/a@b|b\.cd|Sam/)
@@ -873,9 +873,14 @@ describe('ordinary copy stays as written', () => {
       'Buy 3@20 each',
       'Shirts 2@50% off',
       'Save 20%25 today',
-      'Use code FALL%40'
+      'Use code FALL%40',
+      'Prices: 2@1.99 each, 3@4.50',
+      'Doors open at 10 dot com launch'
     ])
       expect(cleanEmailText(text, me)).toBe(text)
+    expect(cleanEmailText('Email us: support at shop dot com', me)).toBe(
+      'Email us:'
+    )
   })
 
   it('keeps CSS strings that are words, not links', () => {
@@ -889,6 +894,18 @@ describe('ordinary copy stays as written', () => {
     expect(
       body(cleanEmailHtml(`<p style="font-family:'Hi \\53 am'">x</p>`, me))
     ).toBe(`<p style="font-family:'Hi '">x</p>`)
+  })
+
+  it('keeps a katakana word that only starts with a katakana name', () => {
+    const sam = { addresses: [], names: ['\u{30b5}\u{30e0}'] }
+    expect(
+      cleanEmailText(
+        '\u{30b5}\u{30e0}\u{30b9}\u{30f3}\u{306e}\u{65b0}\u{88fd}\u{54c1}\u{3001}\u{30b5}\u{30e0}\u{3055}\u{3093}',
+        sam
+      )
+    ).toBe(
+      '\u{30b5}\u{30e0}\u{30b9}\u{30f3}\u{306e}\u{65b0}\u{88fd}\u{54c1}\u{3001}\u{3055}\u{3093}'
+    )
   })
 
   it('takes out only the name when it is cut by tags in a script without spaces', () => {
@@ -911,7 +928,12 @@ describe('ordinary copy stays as written', () => {
   it('removes what touches an address cut by tags, on both sides', () => {
     // Addresses back to back: the match ends inside the next one.
     expect(
-      body(cleanEmailHtml('<p>Mail <b>a@b.cd</b><b>a@b.cd</b> now</p>', me))
+      body(
+        cleanEmailHtml(
+          '<p>Mail <b>a@b.example</b><b>a@b.example</b> now</p>',
+          me
+        )
+      )
     ).toBe('<p>Mail <b></b><b></b> now</p>')
     // The inbox's own address cut by a tag, written out.
     const sample = { addresses: ['capture@inbox.example'], names: [] }

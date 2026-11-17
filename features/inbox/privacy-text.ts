@@ -85,7 +85,9 @@ const localChars = String.raw`\p{L}\p{M}\p{N}._%+'=!#$&*/?^\x60{|}~-`
 const local = String.raw`(?<![${localChars}])[${localChars}]+`
 const at = String.raw`[@\u{fe6b}]`
 const host = String.raw`[\p{L}\p{M}\p{N}-]+`
-const domain = String.raw`${host}(?:\.${host})+`
+/** A host's last label has a letter: "1.99" is a price, not a host. */
+const top = String.raw`(?=[\p{M}\p{N}-]*\p{L})${host}`
+const domain = String.raw`${host}(?:\.${host})*\.${top}`
 
 const sentTo = new RegExp(
   String.raw`(?<!\p{L})(?:(?:this|the|your)\s+(?:e-?mail|message|newsletter|mail)\s+(?:was\s+|is\s+|has\s+been\s+)?(?:(?:sent|addressed|delivered)\s+to|intended\s+for)|(?:sent|delivered)\s+to:?)(?=\s*[^\s@]{1,64}${at})(?:[^\n.!?]|[.!?](?=\S)){0,400}[.!?]?`,
@@ -113,7 +115,7 @@ const tlds =
   'com|net|org|io|co|uk|us|ca|au|de|fr|nl|es|it|info|biz|me|email|example|test'
 /** name [at] domain [dot] com, name at gmail.com, name at x dot com. */
 export const obfuscated = new RegExp(
-  String.raw`${local}(?:${bracket('(?:at|@)')}${host}(?:(?:${bracket('dot')}|\.)${host})+|\s+at\s+(?:(?:${mailHosts})\.(?:${tlds})|${host}(?:\s+dot\s+${host}){0,3}\s+dot\s+(?:${tlds}))(?!${word}))`,
+  String.raw`${local}(?:${bracket('(?:at|@)')}${host}(?:(?:${bracket('dot')}|\.)${host})+|\s+at\s+(?:(?:${mailHosts})\.(?:${tlds})|${top}(?:\s+dot\s+${host}){0,3}\s+dot\s+(?:${tlds}))(?!${word}))`,
   'giu'
 )
 const greeting = new RegExp(
@@ -200,7 +202,13 @@ function fragment(name: string, how: Reading) {
   return out
 }
 
-/** Whole words; a name in a script without spaces anywhere it stands. */
+/** Katakana, the script of names from other languages ("サム"). */
+const kana = String.raw`[\p{Script=Katakana}\u{30fc}]`
+
+/**
+ * Whole words; a name in a script without spaces anywhere it stands, but a
+ * katakana name never inside a longer katakana word ("サムスン").
+ */
 function anyOf(words: string[], how: Reading) {
   const pattern = (set: string[]) =>
     [...set]
@@ -213,7 +221,14 @@ function anyOf(words: string[], how: Reading) {
     ...(spaced.length
       ? [String.raw`(?<!${word})(?:${pattern(spaced)})(?:['’][sS])?(?!${word})`]
       : []),
-    ...(plain.length ? [pattern(plain)] : [])
+    ...plain
+      .sort((a, b) => b.length - a.length)
+      .map(
+        (w) =>
+          (/^\p{Script=Katakana}/u.test(w) ? `(?<!${kana})` : '') +
+          fragment(w, how) +
+          (/\p{Script=Katakana}\p{M}*$/u.test(w) ? `(?!${kana})` : '')
+      )
   ]
   return alternatives.length ? new RegExp(alternatives.join('|'), 'gu') : null
 }
