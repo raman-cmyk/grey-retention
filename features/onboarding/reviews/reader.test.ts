@@ -193,8 +193,10 @@ describe('the photos customers posted with their reviews (REL-ONB2 part e)', () 
     expect(JSON.stringify(found)).not.toMatch(/Maya|soft/)
   })
 
-  it('never keeps a photo of a review left out: three stars or less, no one’s name, rounded stars', () => {
+  it('never keeps a photo of a review left out: no stars, three stars or less, no one’s name, rounded stars', () => {
     for (const over of [
+      // A photo shows the product: only a happy customer's, with stars.
+      { rating: null },
       { rating: 3 },
       { rating: 1 },
       { author: 'Verified Buyer' },
@@ -227,7 +229,7 @@ describe('the photos customers posted with their reviews (REL-ONB2 part e)', () 
     expect(customerPhotos(many)).toHaveLength(maxReviewPhotos)
   })
 
-  it('keeps a photo once by its host and path, and Shopify CDN photos of one store folder, as the database does', () => {
+  it('keeps a photo once at any size or address, and Shopify CDN and Judge.me photos of one folder each, as the database does', () => {
     const cdn = (folder: string, n: number) =>
       `https://cdn.shopify.com/s/files/1/${folder}/files/${n}.jpg`
     expect(
@@ -235,17 +237,20 @@ describe('the photos customers posted with their reviews (REL-ONB2 part e)', () 
         customerPhotos([
           review({
             photos: [
-              shot(1, '?auto=format'),
-              shot(1, '?auto=compress'),
+              shot(1, '?w=200'),
+              shot(1, '?w=1200&dpr=2&fit=crop'),
               cdn('0123/4567/8901', 2),
+              // The same Shopify file on the store's own address.
+              'https://cedar-lane.example/cdn/shop/files/2.jpg',
               cdn('9999/9999', 3),
-              cdn('0123/4567/8901', 4)
+              cdn('0123/4567/8901', 4),
+              'https://judgeme.imgix.net/other-shop/5__photo.jpg'
             ]
           })
         ])
       )
     ).toEqual([
-      shot(1, '?auto=format'),
+      shot(1, '?w=200'),
       cdn('0123/4567/8901', 2),
       cdn('0123/4567/8901', 4)
     ])

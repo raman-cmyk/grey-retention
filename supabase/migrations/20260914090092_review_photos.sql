@@ -15,12 +15,15 @@
 --   code (`pass` `code`), on a page read here, on the store's own domain
 --   (or a subdomain), a store's folder on Shopify's CDN
 --   (`/s/files/1/…/`) or the one review app image host confirmed
---   (Judge.me's `judgeme.imgix.net`), each once (by its host and path),
---   and all its Shopify CDN photos in one folder. A photo's address has a
---   plain host (letters, digits, hyphens and dots: never a `\`, a `%` or a
---   name and password) and only URL-safe characters (`photo_url_ok`). The
---   reader also checks that the folder is the one the product's own
---   pictures use and that the page loads the app.
+--   (Judge.me's `judgeme.imgix.net`), each once at any size or format
+--   (`review_photo_key`: no query; a Shopify file by its path, whichever
+--   host serves it), and all its Shopify CDN photos in one folder, all its
+--   Judge.me photos in one folder. A photo's address has a plain host
+--   (letters, digits, hyphens and dots: never a `\`, a `%` or a name and
+--   password), only URL-safe characters and never an `@` or `%40`
+--   (`photo_url_ok`). The reader also checks that the folders are the
+--   store's own (its product pictures' on Shopify's CDN, its Shopify name
+--   on Judge.me's) and that the page's own scripts load the app.
 --
 -- Everything else as before (20260914090062, 20260914090089). Locks: the
 -- tenant first, then the job (`private.onboarding_lease`). RLS unchanged.
@@ -37,15 +40,32 @@ alter table public.brand_findings drop constraint brand_findings_topic_check,
 -- A customer's photo's address as it is kept: https, a plain host of
 -- lower-case labels (nothing a browser reads another way: no `\`, `%`, `@`
 -- or port), a path, query and fragment of URL-safe characters only (no
--- space, quote, `<`, `>` or `\`), a JPEG or PNG, at most 500 characters.
+-- space, quote, `<`, `>` or `\`; never an `@` or `%40`, an email address),
+-- a JPEG or PNG, at most 500 characters.
 create or replace function private.photo_url_ok(url text)
 returns boolean language sql immutable set search_path = '' as $$
-  select coalesce(length(url) <= 500
+  select coalesce(length(url) <= 500 and url !~ '%40'
     and url ~ ('^https://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+'
-      || '/[A-Za-z0-9._~!$&''()*+,;=:@%/-]*\.([jJ][pP][eE]?[gG]|[pP][nN][gG])'
-      || '(\?[A-Za-z0-9._~!$&''()*+,;=:@%/?-]*)?(#[A-Za-z0-9._~!$&''()*+,;=:@%/?-]*)?$'), false);
+      || '/[A-Za-z0-9._~!$&''()*+,;=:%/-]*\.([jJ][pP][eE]?[gG]|[pP][nN][gG])'
+      || '(\?[A-Za-z0-9._~!$&''()*+,;=:%/?-]*)?(#[A-Za-z0-9._~!$&''()*+,;=:%/?-]*)?$'), false);
 $$;
 revoke all on function private.photo_url_ok(text) from public, anon, authenticated;
+
+-- One picture at any size or format, as the reader compares them: its
+-- host (lower case) and path without the query, and a Shopify file by its
+-- path after `/cdn/shop/` or after a store's folder on Shopify's CDN,
+-- whichever host serves it. (The reader also takes out a size in the
+-- file's name, `_800x`: it is never less strict than this.)
+create or replace function private.review_photo_key(url text)
+returns text language sql immutable set search_path = '' as $$
+  select case
+    when url ~ '^https://[^/?#]+/cdn/shop/[^?#]' then 'shopify:' || substring(url from '^https://[^/?#]+/cdn/shop/([^?#]+)')
+    when url ~ '^https://cdn\.shopify\.com/s/files/1/[0-9]{4}/[0-9]{4}/([0-9]{4}/)?[A-Za-z]'
+      then 'shopify:' || substring(url from '^https://cdn\.shopify\.com/s/files/1/[0-9]{4}/[0-9]{4}/(?:[0-9]{4}/)?([A-Za-z][^?#]*)')
+    else lower(private.https_host(url)) || coalesce(substring(url from '^https://[^/?#]*(/[^?#]*)'), '')
+  end;
+$$;
+revoke all on function private.review_photo_key(text) from public, anon, authenticated;
 
 -- The value each topic holds, as before (20260914090089), with customers'
 -- photos.
@@ -225,13 +245,15 @@ begin
           or length(f->'evidence'->>'quote') not between 1 and 300))
         -- A quotable review names the page it is on.
         or (f->>'topic' = 'quotable_review' and f->'value'->>'url' is distinct from f->'evidence'->>'url'))
-    -- At most 12 customers' photos a read, each once (its host in lower
-    -- case and its path), and those on Shopify's CDN in one store's folder.
+    -- At most 12 customers' photos a read, each once at any size or format
+    -- (`review_photo_key`), those on Shopify's CDN in one store's folder and
+    -- those on Judge.me's host in one folder.
     or (select count(*) from jsonb_array_elements(findings) f where f->>'topic' = 'customer_photo') > 12
-    or (select count(*) - count(distinct lower(private.https_host(f->'value'->>'url'))
-        || coalesce(substring(f->'value'->>'url' from '^https://[^/?#]*(/[^?#]*)'), ''))
+    or (select count(*) - count(distinct private.review_photo_key(f->'value'->>'url'))
       from jsonb_array_elements(findings) f where f->>'topic' = 'customer_photo') > 0
     or (select count(distinct substring(f->'value'->>'url' from '^https://cdn\.shopify\.com/s/files/1/[0-9]{4}/[0-9]{4}/(?:[0-9]{4}/)?'))
+      from jsonb_array_elements(findings) f where f->>'topic' = 'customer_photo') > 1
+    or (select count(distinct lower(substring(f->'value'->>'url' from '^https://judgeme\.imgix\.net/([^/?#]+)/')))
       from jsonb_array_elements(findings) f where f->>'topic' = 'customer_photo') > 1 then
     raise exception 'Invalid finding' using errcode = '23514';
   end if;

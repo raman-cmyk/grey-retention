@@ -1,5 +1,5 @@
 begin;
-select plan(51);
+select plan(56);
 
 -- REL-ONB2 part e: the photos customers posted with their reviews, kept by
 -- the Reviews reader (`customer_photo`). Workspace 101 is a synthetic brand
@@ -14,7 +14,7 @@ create function pg_temp.job(tenant text, key text, mode text, domain text) retur
     returning id::text
 $$;
 create function pg_temp.page() returns text language sql as $$ select 'https://north-studio.com/products/knit' $$;
-create function pg_temp.photo(url text default 'https://north-studio.com/cdn/shop/files/maya.jpg', extra jsonb default '{}')
+create function pg_temp.photo(url text default 'https://north-studio.com/cdn/shop/files/knit-1.jpg', extra jsonb default '{}')
 returns jsonb language sql as $$
   select jsonb_build_object('source','reviews','topic','customer_photo',
     'statement','A photo a customer posted with their review on the store''s own page.',
@@ -54,7 +54,10 @@ select ok(not private.finding_value_ok('customer_photo', v), 'photo '||left(v::t
   ('{"url":"https://NORTH-STUDIO.com/m.jpg","page":"https://north-studio.com/p"}'),
   ('{"url":"https://north-studio.com/m a.jpg","page":"https://north-studio.com/p"}'),
   ('{"url":"https://north-studio.com/<m>.jpg","page":"https://north-studio.com/p"}'),
-  ('{"url":"https://north-studio.com/m\\x.jpg","page":"https://north-studio.com/p"}'))
+  ('{"url":"https://north-studio.com/m\\x.jpg","page":"https://north-studio.com/p"}'),
+  -- An email address in it, as written or escaped.
+  ('{"url":"https://north-studio.com/jo.lee@mail.example.jpg","page":"https://north-studio.com/p"}'),
+  ('{"url":"https://north-studio.com/m.jpg?by=jo%40mail.example","page":"https://north-studio.com/p"}'))
   as x(v);
 
 -- Recording, as the worker: refused unless code's, of a live read, citing
@@ -63,10 +66,10 @@ set local role service_role;
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
 select throws_ok(format('select pg_temp.record(jsonb_build_array(%L::jsonb))', bad),'23514','Invalid finding','refused: '||why)
   from (values
-    (pg_temp.photo('https://images.example-cdn.com/maya.jpg'), 'another host'),
-    (pg_temp.photo('https://north-studio.com.evil.com/maya.jpg'), 'a look-alike of the store'),
-    (pg_temp.photo('https://cdn.shopify.com/assets/maya.jpg'), 'Shopify''s CDN outside a store''s folder'),
-    (pg_temp.photo('https://loox.io/uploads/maya.jpg'), 'an app host not confirmed'),
+    (pg_temp.photo('https://images.example-cdn.com/knit-1.jpg'), 'another host'),
+    (pg_temp.photo('https://north-studio.com.evil.com/knit-1.jpg'), 'a look-alike of the store'),
+    (pg_temp.photo('https://cdn.shopify.com/assets/knit-1.jpg'), 'Shopify''s CDN outside a store''s folder'),
+    (pg_temp.photo('https://loox.io/uploads/knit-1.jpg'), 'an app host not confirmed'),
     -- Host tricks: a browser reads `\` as `/`, so these load from evil.example.
     (pg_temp.photo('https://evil.example\.north-studio.com/m.jpg'), 'a backslash before the store''s name'),
     (pg_temp.photo('https://evil.example%2f.north-studio.com/m.jpg'), 'an escaped slash before the store''s name'),
@@ -92,6 +95,15 @@ select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.photo(), pg_t
 select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.photo('https://north-studio.com/m.jpg?w=400'),
   pg_temp.photo('https://north-studio.com/m.jpg?w=800')))$$,'23514','Invalid finding',
   'refused: the same photo twice at another size (its host and path)');
+select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.photo('https://judgeme.imgix.net/north-studio/1__p.jpg?w=200'),
+  pg_temp.photo('https://judgeme.imgix.net/north-studio/1__p.jpg?w=1200&dpr=2&fit=crop')))$$,'23514','Invalid finding',
+  'refused: one Judge.me photo at two imgix sizes');
+select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.photo('https://north-studio.com/cdn/shop/products/x.jpg'),
+  pg_temp.photo('https://cdn.shopify.com/s/files/1/0123/4567/8901/products/x.jpg')))$$,'23514','Invalid finding',
+  'refused: one Shopify file on the store''s address and on Shopify''s CDN');
+select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.photo('https://judgeme.imgix.net/north-studio/1__p.jpg'),
+  pg_temp.photo('https://judgeme.imgix.net/other-shop/2__p.jpg')))$$,'23514','Invalid finding',
+  'refused: photos in two Judge.me folders');
 select throws_ok($$select pg_temp.record(jsonb_build_array(pg_temp.photo('https://cdn.shopify.com/s/files/1/0123/4567/8901/files/a.jpg'),
   pg_temp.photo('https://cdn.shopify.com/s/files/1/9999/9999/files/other-store.jpg')))$$,'23514','Invalid finding',
   'refused: photos in two stores'' folders on Shopify''s CDN');
@@ -105,7 +117,7 @@ select throws_ok(format('select pg_temp.record(jsonb_build_array(%L::jsonb),%L,f
   '23514','Invalid finding','refused: a sample read''s, '||pass)
   from unnest(array['sample','code']) pass;
 select is(pg_temp.record((select jsonb_agg(pg_temp.photo(u)) from unnest(array[
-    'https://north-studio.com/cdn/shop/files/maya.jpg','https://shop.north-studio.com/m2.png',
+    'https://north-studio.com/cdn/shop/files/knit-1.jpg','https://shop.north-studio.com/m2.png',
     'https://cdn.shopify.com/s/files/1/0123/4567/8901/files/m3.jpg','https://cdn.shopify.com/s/files/1/0123/4567/8901/products/m4.jpg',
     'https://judgeme.imgix.net/north-studio/1700000000__m5.jpg']
   || (select array_agg('https://north-studio.com/m'||n||'.jpg') from generate_series(6, 12) n)) u))->>'findings','12',

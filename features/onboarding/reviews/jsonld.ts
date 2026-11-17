@@ -4,9 +4,19 @@ import {
   type PlatformRating,
   type ReadReview
 } from '@/lib/providers/review-source'
-import { photoKey } from '../site/photos'
 import { wellFormed } from '../words'
-import { maxPhotosPerReview, reviewPhoto, shopifyFolder } from './photos'
+import {
+  appsLoaded,
+  maxPhotosPerReview,
+  reviewPhoto,
+  reviewPhotoKey,
+  shopifyFolder,
+  type PhotoStore
+} from './photos'
+
+/** Reviews a page is looked at for photos, and product pictures it knows. */
+const maxPhotoReviews = 100
+const maxPictures = 1_000
 
 /**
  * The reviews a product page publishes as structured data (schema.org
@@ -193,50 +203,81 @@ function* objects(v: Json, depth = 0): Generator<Record<string, Json>> {
     if (v[key] !== undefined) yield* objects(v[key], depth + 1)
 }
 
-/** Most characters of markup read for the review apps a page loads. */
-const maxMarks = 1_000_000
+/** Scripts and styles a page loads, read for their hosts, at most. */
+const maxSources = 500
+/** Most characters of the page's own scripts read for its Shopify name. */
+const maxInline = 1_000_000
+/** Shopify's own word of the store's name: `Shopify.shop = "name.myshopify.com"`. */
+const shopifyShop =
+  /\bShopify\.shop\s*=\s*["']([a-z0-9][a-z0-9-]*)\.myshopify\.com["']/i
+const scriptTypes = /^(?:|text\/javascript|application\/javascript|module)$/i
 
 /**
- * The page's structured-data scripts, and its markup outside them (every
- * attribute, every other script), where the review apps it loads show: a
- * review's data never vouches for its own photos' host.
+ * The page's structured-data scripts, the hosts of the scripts and styles
+ * it loads (`<script src>`, `<link href>`: how a review app is known to be
+ * loaded, never any other text, so a review never vouches for its own
+ * photos' host) and the store's Shopify name as Shopify's own script
+ * states it (the first, in a script of the page's own). Walked without
+ * recursion, and only until every part is full.
  */
-function scripts(html: string): { bodies: string[]; marks: string } {
+function scripts(
+  html: string,
+  page: string
+): { bodies: string[]; hosts: string[]; shop: string | null } {
   const found: string[] = []
-  const marks: string[] = []
+  const hosts = new Set<string>()
   let size = 0
-  let marked = 0
-  const mark = (text: string) => {
-    if (marked >= maxMarks) return
-    marks.push(text.slice(0, maxMarks - marked))
-    marked += text.length
-  }
+  let inline = 0
+  let shop: string | null = null
   const body = (n: T.Element) =>
     children(n)
       .map((c) => ('value' in c ? String(c.value) : ''))
       .join('')
-  const walk = (n: Node) => {
-    if (
-      isElement(n) &&
-      n.tagName === 'script' &&
-      (attr(n, 'type') ?? '').trim().toLowerCase() === 'application/ld+json'
-    ) {
-      if (found.length >= maxScripts || size >= maxScriptChars) return
-      const data = body(n)
-      if (size + data.length <= maxScriptChars) {
-        found.push(data)
-        size += data.length
-      }
-      return
+  const hostOf = (link: string | null) => {
+    try {
+      if (link) hosts.add(new URL(link.trim(), page).hostname)
+    } catch {
+      // Not an address: no host.
     }
-    if (isElement(n)) {
-      for (const a of n.attrs) mark(a.value)
-      if (n.tagName === 'script') mark(body(n))
-    }
-    for (const c of children(n)) walk(c)
   }
-  walk(parse(html.slice(0, 2_000_000)))
-  return { bodies: found, marks: marks.join(' ') }
+  const full = () =>
+    (found.length >= maxScripts || size >= maxScriptChars) &&
+    hosts.size >= maxSources &&
+    (shop !== null || inline >= maxInline)
+  const stack: Node[] = [parse(html.slice(0, 2_000_000))]
+  while (stack.length && !full()) {
+    const n = stack.pop()!
+    if (isElement(n) && n.tagName === 'script') {
+      const type = (attr(n, 'type') ?? '').trim()
+      if (type.toLowerCase() === 'application/ld+json') {
+        const data = body(n)
+        if (
+          found.length < maxScripts &&
+          size < maxScriptChars &&
+          size + data.length <= maxScriptChars
+        ) {
+          found.push(data)
+          size += data.length
+        }
+      } else if (attr(n, 'src') !== null) {
+        if (hosts.size < maxSources) hostOf(attr(n, 'src'))
+      } else if (
+        scriptTypes.test(type) &&
+        shop === null &&
+        inline < maxInline
+      ) {
+        const code = body(n).slice(0, maxInline - inline)
+        inline += code.length
+        shop = shopifyShop.exec(code)?.[1]?.toLowerCase() ?? null
+      }
+      continue
+    }
+    if (isElement(n) && n.tagName === 'link' && hosts.size < maxSources)
+      hostOf(attr(n, 'href'))
+    const kids = children(n)
+    for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]!)
+  }
+  return { bodies: found, hosts: [...hosts], shop }
 }
 
 /** Picture types (never a video's or a sound's). */
@@ -283,11 +324,14 @@ export type PageReviews = {
  * only when the page loads exactly one.
  *
  * REL-ONB2 part e: a review's own photos (its `image` and
- * `associatedMedia`, never its author's picture), at most five, each once
- * at any size and never one of the product's own pictures, only where
- * `reviewPhoto` allows them: the store's `domain`, the store's folder on
- * Shopify's CDN that its product's pictures on this page use, or the
- * confirmed host of a review app the page's markup loads.
+ * `associatedMedia`, never its author's picture), only of a review of a
+ * product (never a testimonial of nothing), at most five, each once at any
+ * size (`reviewPhotoKey`) and never one of the product's own pictures, only
+ * where `reviewPhoto` allows them: the store's `domain`, the store's folder
+ * on Shopify's CDN that its product's pictures on this page use, or the
+ * confirmed host of a review app the page's own scripts load, in the
+ * store's folder there. At most `maxPhotoReviews` reviews and
+ * `maxPictures` product pictures are looked at.
  */
 export function pageReviews(
   html: string,
@@ -297,7 +341,7 @@ export function pageReviews(
 ): PageReviews {
   const reviews: Omit<ReadReview, 'id'>[] = []
   const seen = new Set<string>()
-  const { bodies, marks } = scripts(html)
+  const { bodies, hosts, shop } = scripts(html, url)
   const data: Json[] = []
   for (const body of bodies)
     try {
@@ -307,31 +351,46 @@ export function pageReviews(
     }
   // The product's own pictures: never a customer's, and they show the
   // store's folder on Shopify's CDN.
-  const pictures = data
-    .flatMap((d) => [...objects(d)])
-    .flatMap((o) => (isProduct(o) ? [o] : [o.itemReviewed].flat()))
-    .filter((o) => isObj(o) && isProduct(o))
-    .flatMap((o) => links((o as Record<string, Json>).image))
-    .flatMap((link) => onPage(link, url) ?? [])
-  const productKeys = new Set(pictures.map(photoKey))
-  const store = {
+  const pictures: string[] = []
+  for (const d of data)
+    for (const o of objects(d)) {
+      if (pictures.length >= maxPictures) break
+      for (const p of isProduct(o) ? [o] : [o.itemReviewed].flat())
+        if (isObj(p) && isProduct(p))
+          for (const link of links(p.image)) {
+            const href = onPage(link, url)
+            if (href && pictures.length < maxPictures) pictures.push(href)
+          }
+    }
+  const productKeys = new Set(pictures.map(reviewPhotoKey))
+  const store: PhotoStore = {
     domain,
     folders: new Set(pictures.flatMap((p) => shopifyFolder(p) ?? [])),
-    apps: apps.filter(([pattern]) => pattern.test(marks)).map(([, n]) => n)
+    apps: appsLoaded(hosts),
+    // The store's Shopify name: as Shopify's script says it, or its own.
+    shop: shop ?? /^([a-z0-9-]+)\.myshopify\.com$/.exec(domain)?.[1] ?? null
   }
-  const photosOf = (r: Record<string, Json>) => {
+  let looked = 0
+  const photosOf = (r: Record<string, Json>, author: string) => {
+    if (r.image === undefined && r.associatedMedia === undefined) return []
+    if (++looked > maxPhotoReviews) return []
     const kept: string[] = []
-    const keys = new Set(productKeys)
+    const keys = new Set<string>()
     for (const link of links([r.image, r.associatedMedia].flat())) {
-      const photo = reviewPhoto(link, url, store)
-      if (!photo || keys.has(photoKey(photo))) continue
       if (kept.length >= maxPhotosPerReview) break
-      keys.add(photoKey(photo))
+      const photo = reviewPhoto(link, url, store, author)
+      const key = photo && reviewPhotoKey(photo)
+      if (!photo || !key || productKeys.has(key) || keys.has(key)) continue
+      keys.add(key)
       kept.push(photo)
     }
     return kept
   }
-  const add = (r: Record<string, Json>, product: string | null) => {
+  const add = (
+    r: Record<string, Json>,
+    product: string | null,
+    ofProduct = true
+  ) => {
     const words = fold(text(r.reviewBody) || text(r.description))
     if (!words) return
     const author = wellFormed(fold(text(r.author)).slice(0, 80))
@@ -339,7 +398,7 @@ export function pageReviews(
     if (seen.has(key)) return
     seen.add(key)
     const { rating, unclear, exact } = stars(r)
-    const photos = photosOf(r)
+    const photos = ofProduct ? photosOf(r, author) : []
     reviews.push({
       author,
       text: wellFormed(words.slice(0, maxReviewText)),
@@ -363,7 +422,13 @@ export function pageReviews(
         // page): never one that says it is of a shop or a company.
         if (items.some((i) => types(i).length && !isProduct(i))) continue
         const item = items[0] ?? o.itemReviewed
-        add(o, wellFormed(fold(text(item)).slice(0, 120)) || null)
+        // Its photos only when it says it is of a product (a theme's
+        // testimonial of nothing may show the brand's own pictures).
+        add(
+          o,
+          wellFormed(fold(text(item)).slice(0, 120)) || null,
+          items.some(isProduct)
+        )
       }
     }
   }
