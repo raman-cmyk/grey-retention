@@ -2,7 +2,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ActionAnswers, ActionButton } from './action'
+import { ActionAnswers, ActionButton, useCardAnswer } from './action'
 
 afterEach(cleanup)
 
@@ -40,6 +40,53 @@ describe('ActionButton (UI-HOMEb)', () => {
     expect(button).toHaveAccessibleDescription(
       'Only this workspace’s owner creates emails.'
     )
+  })
+
+  it('can say which item it is for, always starting with its visible words (UI-LRNb)', () => {
+    const action = async () => ({})
+    render(
+      <>
+        <ActionButton
+          action={action}
+          label="Pin"
+          spokenLabel="Lead with one product"
+        />
+        <ActionButton
+          action={action}
+          label="Remove"
+          spokenLabel="Remove: All caps subjects"
+        />
+        <ActionButton action={action} label="Unpin" />
+        {/* Rule text that happens to start with the button's word. */}
+        <ActionButton
+          action={action}
+          label="Remove"
+          spokenLabel="Remove the code from the subject"
+        />
+        <ActionButton
+          action={action}
+          label="Pin"
+          spokenLabel="Pinpoint one product"
+        />
+      </>
+    )
+    expect(
+      screen.getByRole('button', { name: 'Pin: Lead with one product' })
+    ).toHaveTextContent(/^Pin$/)
+    expect(
+      screen.getByRole('button', { name: 'Remove: All caps subjects' })
+    ).toHaveTextContent(/^Remove$/)
+    expect(screen.getByRole('button', { name: 'Unpin' })).not.toHaveAttribute(
+      'aria-label'
+    )
+    expect(
+      screen.getByRole('button', {
+        name: 'Remove: Remove the code from the subject'
+      })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Pin: Pinpoint one product' })
+    ).toBeInTheDocument()
   })
 
   it('shows no error after a success', async () => {
@@ -243,5 +290,41 @@ describe('ActionButton (UI-HOMEb)', () => {
       screen.getByRole('button', { name: 'Add' })
     ).not.toHaveAccessibleDescription()
     expect(zone).toHaveTextContent('Choose a timezone.')
+  })
+
+  it('lets a card’s own form answer in the card’s one line (UI-SETb)', async () => {
+    const user = userEvent.setup()
+    function Own() {
+      const card = useCardAnswer()
+      return (
+        <>
+          <button onClick={() => card?.tell({ message: 'Invite saved.' })}>
+            Invite
+          </button>
+          <p>
+            {card === null ? 'alone' : card.othersAnswered ? 'others' : 'mine'}
+          </p>
+        </>
+      )
+    }
+    const { container } = render(
+      <ActionAnswers>
+        <Own />
+        <ActionButton
+          action={async () => ({ message: 'Renewed.' })}
+          label="Resend"
+        />
+      </ActionAnswers>
+    )
+    const line = container.querySelector('p[aria-live]')!
+    await user.click(screen.getByRole('button', { name: 'Invite' }))
+    await waitFor(() => expect(line).toHaveTextContent('Invite saved.'))
+    expect(screen.getByText('mine')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Resend' }))
+    await waitFor(() => expect(line).toHaveTextContent('Renewed.'))
+    expect(screen.getByText('others')).toBeVisible()
+    cleanup()
+    render(<Own />)
+    expect(screen.getByText('alone')).toBeVisible()
   })
 })

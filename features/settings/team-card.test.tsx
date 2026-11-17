@@ -114,7 +114,7 @@ const answerLine = () =>
   card().querySelector<HTMLElement>('p[aria-live][tabindex="-1"]')!
 
 describe('Team card on Settings (UI-SETb)', () => {
-  it('shows a manager the team, the open invites and the buttons that change them', () => {
+  it('shows a manager the team, the pending invites and the buttons that change them', () => {
     render(teamCard())
     const c = card()
     expect(within(c).getByText('Members').parentElement).toHaveTextContent(
@@ -174,8 +174,10 @@ describe('Team card on Settings (UI-SETb)', () => {
     })
 
     const invites = within(
-      within(c).getByRole('list', { name: 'Open invites' })
+      within(c).getByRole('list', { name: 'Pending invites' })
     ).getAllByRole('listitem')
+    // The tile counts open invites; the list also shows the expired one.
+    expect(invites).toHaveLength(2)
     expect(invites[0]).toHaveTextContent(
       'new@cedarlane.exampleInvited as Manager · Expires in 3 days'
     )
@@ -203,7 +205,20 @@ describe('Team card on Settings (UI-SETb)', () => {
     expect(
       within(c).getByRole('button', { name: 'Invite as Manager' }).className
     ).toContain('gros-button-outline')
-    expect(c).toHaveTextContent('No email is sent yet.')
+    // What each role may do, by its button; the hint describes Email.
+    expect(
+      within(c).getByRole('button', { name: 'Invite as Staff' })
+    ).toHaveAccessibleDescription(
+      'Staff work on campaigns but cannot manage the team.'
+    )
+    expect(
+      within(c).getByRole('button', { name: 'Invite as Manager' })
+    ).toHaveAccessibleDescription(
+      'Managers can invite people, change their access and see reports and usage. Only the owner approves copy, designs and sending.'
+    )
+    expect(within(c).getByLabelText('Email')).toHaveAccessibleDescription(
+      'No email is sent yet. Ask them to sign up with this address.'
+    )
     expect(
       within(c).getByRole('link', { name: 'See team changes' })
     ).toHaveAttribute('href', '/team')
@@ -245,11 +260,11 @@ describe('Team card on Settings (UI-SETb)', () => {
     expect(within(card()).queryByRole('link')).toBeNull()
   })
 
-  it('still lets a manager invite when the open invites could not be read', () => {
+  it('still lets a manager invite when the pending invites could not be read', () => {
     render(teamCard({ invites: null, openInvites: null }))
     const c = card()
     expect(c).toHaveTextContent(
-      'The open invites could not be read just now. Open Settings again in a minute.'
+      'The pending invites could not be read just now. Open Settings again in a minute.'
     )
     expect(within(c).queryByText('Open invites')).toBeNull()
     expect(within(c).getByRole('list', { name: 'Members' })).toBeVisible()
@@ -274,11 +289,13 @@ describe('Team card on Settings (UI-SETb)', () => {
       email: 'ana@example.com',
       role: 'admin'
     })
-    expect(
-      await within(card()).findByText(
+    // In the card's one line, which is a live region.
+    await waitFor(() =>
+      expect(answerLine()).toHaveTextContent(
         'Invite saved for ana@example.com as Manager.'
       )
-    ).toHaveAttribute('aria-live', 'polite')
+    )
+    expect(answerLine()).toHaveAttribute('aria-live', 'polite')
     await waitFor(() => expect(email).toHaveValue(''))
     expect(email).not.toHaveAttribute('aria-invalid')
     expect(email).toHaveFocus()
@@ -287,7 +304,8 @@ describe('Team card on Settings (UI-SETb)', () => {
   it('invites as Staff with Enter; a refusal stays under Email, which keeps what was typed', async () => {
     const user = userEvent.setup()
     team.inviteTeammate.mockResolvedValue({
-      error: 'This person is already on the team.'
+      error: 'This person is already on the team.',
+      field: 'email'
     })
     render(teamCard())
     const email = within(card()).getByLabelText('Email')
@@ -302,10 +320,75 @@ describe('Team card on Settings (UI-SETb)', () => {
     )
     expect(email).toHaveAttribute('aria-invalid', 'true')
     expect(email).toHaveAccessibleDescription(
-      'This person is already on the team.'
+      'No email is sent yet. Ask them to sign up with this address. This person is already on the team.'
     )
     expect(email).toHaveValue('sam@cedarlane.example')
     expect(email).toHaveFocus()
+    expect(answerLine()).toHaveTextContent('')
+  })
+
+  it('says a refusal about the session in the card’s line, not on Email', async () => {
+    const user = userEvent.setup()
+    team.inviteTeammate.mockResolvedValue({ error: 'Please sign in again.' })
+    render(teamCard())
+    const email = within(card()).getByLabelText('Email')
+    await user.type(email, 'ana@example.com')
+    await user.click(
+      within(card()).getByRole('button', { name: 'Invite as Staff' })
+    )
+    await waitFor(() =>
+      expect(answerLine()).toHaveTextContent('Please sign in again.')
+    )
+    expect(answerLine().className).toContain('text-[var(--signal-ink)]')
+    expect(within(card()).queryByRole('alert')).toBeNull()
+    expect(email).not.toHaveAttribute('aria-invalid')
+    expect(email).toHaveValue('ana@example.com')
+  })
+
+  it('shows one answer at a time: a row’s answer replaces the invite’s, and its error', async () => {
+    const user = userEvent.setup()
+    team.inviteTeammate
+      .mockResolvedValueOnce({ message: 'Invite saved for ana@example.com.' })
+      .mockResolvedValueOnce({
+        error: 'Enter an email address like name@company.com.',
+        field: 'email'
+      })
+    team.resendInvite.mockResolvedValue({
+      message: 'Invite renewed for 7 more days.'
+    })
+    render(teamCard())
+    const email = within(card()).getByLabelText('Email')
+    const invite = within(card()).getByRole('button', {
+      name: 'Invite as Staff'
+    })
+    const resend = within(card()).getByRole('button', {
+      name: 'Resend: new@cedarlane.example'
+    })
+    await user.type(email, 'ana@example.com')
+    await user.click(invite)
+    await waitFor(() =>
+      expect(answerLine()).toHaveTextContent(
+        'Invite saved for ana@example.com.'
+      )
+    )
+    await user.click(resend)
+    await waitFor(() =>
+      expect(answerLine()).toHaveTextContent('Invite renewed for 7 more days.')
+    )
+    expect(card()).not.toHaveTextContent('Invite saved')
+    // A refusal about the address clears the line, and goes when a row answers.
+    await user.type(email, 'nope')
+    await user.click(invite)
+    expect(await within(card()).findByRole('alert')).toHaveTextContent(
+      'Enter an email address like name@company.com.'
+    )
+    expect(answerLine()).toHaveTextContent('')
+    await user.click(resend)
+    await waitFor(() =>
+      expect(answerLine()).toHaveTextContent('Invite renewed for 7 more days.')
+    )
+    expect(within(card()).queryByRole('alert')).toBeNull()
+    expect(email).not.toHaveAttribute('aria-invalid')
   })
 
   it('resends an invite and answers in the card; a refusal answers there too', async () => {
@@ -427,5 +510,28 @@ describe('Team card on Settings (UI-SETb)', () => {
         ][]
       )
     ).toMatchObject({ id: 'm-gone', change: 'reactivate', status: 'active' })
+  })
+
+  it('keeps the row when Cancel invite is refused, and the cursor on its button', async () => {
+    const user = userEvent.setup()
+    team.cancelInvite.mockResolvedValue({
+      error: 'This invite was already cancelled or accepted. Reload the page.'
+    })
+    render(teamCard())
+    const cancel = within(card()).getByRole('button', {
+      name: 'Cancel invite: new@cedarlane.example'
+    })
+    await user.click(cancel)
+    await waitFor(() =>
+      expect(answerLine()).toHaveTextContent(
+        'This invite was already cancelled or accepted. Reload the page.'
+      )
+    )
+    expect(answerLine().className).toContain('text-[var(--signal-ink)]')
+    expect(card()).toHaveTextContent('new@cedarlane.example')
+    expect(cancel).toHaveAccessibleDescription(
+      'This invite was already cancelled or accepted. Reload the page.'
+    )
+    expect(cancel).toHaveFocus()
   })
 })

@@ -144,7 +144,8 @@ export async function settingsReadModel(
   const [offers, klaviyo, team, account] = await Promise.all([
     settle(offersPage(context)),
     settle(klaviyoState(db, context.tenantId)),
-    settle(teamPage(context)),
+    // Who changed what is not on Settings yet (UI-SETc): no team events.
+    settle(teamPage(context, Date.now(), { events: false })),
     settle(profilePageData())
   ])
   const teamReady = team && team.state === 'ready' ? team : null

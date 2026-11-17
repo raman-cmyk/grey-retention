@@ -1,33 +1,54 @@
 'use client'
 
-import { useActionState, useEffect, useRef } from 'react'
+import { useActionState, useEffect, useId, useRef } from 'react'
 import { useFormStatus } from 'react-dom'
-import type { ActionResult } from '@/components/gros/action'
+import { useCardAnswer } from '@/components/gros/action'
 import { Button } from '@/components/gros/button'
 import { Field } from '@/components/gros/input'
 import { useHydrated } from '@/components/ui/use-hydrated'
-import { inviteTeammate } from '@/features/team/actions'
+import { inviteTeammate, type InviteResult } from '@/features/team/actions'
+import { ownerOnlyNote, roleHelp } from '@/features/team/rules'
 
 /**
  * Invite a teammate on the Team card (UI-SETb): their email, then Invite as
  * Staff or Invite as Manager (BRAND.md has no select, so the two roles are
- * two buttons; Enter invites as Staff). The action checks again that this
- * person may manage the team. A refusal is the email field's own error and
- * keeps what was typed; a saved invite empties the field for the next one
- * and says so in a live region. Either way the cursor goes back to Email.
+ * two buttons; Enter invites as Staff), each described by what the role
+ * may do. The action checks again that this person may manage the team.
+ * A refusal about the address is the Email field's own error and keeps
+ * what was typed; every other answer (a saved invite, no right, signed
+ * out) shows in the card's one line, so the card never shows two. A saved
+ * invite empties Email for the next one. No email is sent yet.
  */
 export function InviteForm() {
-  const [state, dispatch, pending] = useActionState<ActionResult, FormData>(
-    inviteTeammate,
+  const id = useId()
+  const card = useCardAnswer()
+  const tell = card?.tell
+  const [state, dispatch, pending] = useActionState<InviteResult, FormData>(
+    async (previous, data) => {
+      const result = await inviteTeammate(previous, data)
+      tell?.(result.field === 'email' ? {} : result)
+      return result
+    },
     {}
   )
+  // A new try hides the card's last answer until its own arrives.
+  useEffect(() => {
+    if (pending) tell?.({})
+  }, [pending, tell])
   const form = useRef<HTMLFormElement>(null)
   useEffect(() => {
     const field = form.current?.elements.namedItem('email')
     if (!(field instanceof HTMLInputElement)) return
     if (state.message && !state.error) field.value = ''
-    if (state.message || state.error) field.focus()
+    // Back to Email for the next invite, or to fix the address.
+    if (state.message || state.field === 'email') field.focus()
   }, [state])
+  // A refusal about the address, until another button of the card answers.
+  const fieldError =
+    !pending && state.field === 'email' && !card?.othersAnswered
+      ? (state.error ?? null)
+      : null
+  const answer = pending || state.field === 'email' ? null : state
   return (
     <form
       ref={form}
@@ -39,30 +60,47 @@ export function InviteForm() {
       onReset={(event) => event.preventDefault()}
       className="flex flex-col gap-[var(--space-4)]"
     >
-      <Field
-        label="Email"
-        name="email"
-        type="email"
-        inputMode="email"
-        autoComplete="off"
-        spellCheck={false}
-        maxLength={254}
-        required
-        error={pending ? null : (state.error ?? null)}
-      />
-      <Buttons />
+      <div className="flex flex-col gap-[var(--space-2)]">
+        <Field
+          label="Email"
+          name="email"
+          type="email"
+          inputMode="email"
+          autoComplete="off"
+          spellCheck={false}
+          maxLength={254}
+          required
+          aria-describedby={`${id}-sent`}
+          error={fieldError}
+        />
+        <p id={`${id}-sent`} className="type-caption text-[var(--stone)]">
+          No email is sent yet. Ask them to sign up with this address.
+        </p>
+      </div>
+      <Buttons id={id} />
       <p className="type-caption text-[var(--stone)]">
-        No email is sent yet. Ask them to sign up with this address.
+        <span id={`${id}-staff`}>{roleHelp.staff}</span>{' '}
+        <span id={`${id}-admin`}>{roleHelp.admin}</span>{' '}
+        <span id={`${id}-owner`}>{ownerOnlyNote}</span>
       </p>
-      {/* Always on the page, so screen readers hear a saved invite. */}
-      <p aria-live="polite" className="type-caption text-[var(--ink)]">
-        {pending ? '' : (state.message ?? '')}
-      </p>
+      {card ? null : (
+        // Alone (outside a card's answers), the form answers here.
+        <p
+          aria-live="polite"
+          className={
+            answer?.error
+              ? 'type-caption text-[var(--signal-ink)]'
+              : 'type-caption text-[var(--ink)]'
+          }
+        >
+          {answer?.error ?? answer?.message ?? ''}
+        </p>
+      )}
     </form>
   )
 }
 
-function Buttons() {
+function Buttons({ id }: { id: string }) {
   // Keep their words while working, and wait for the page's JavaScript.
   const { pending } = useFormStatus()
   const hydrated = useHydrated()
@@ -75,6 +113,7 @@ function Buttons() {
         value="staff"
         label="Invite as Staff"
         disabled={off}
+        aria-describedby={`${id}-staff`}
       />
       <Button
         type="submit"
@@ -83,6 +122,7 @@ function Buttons() {
         label="Invite as Manager"
         kind="outline"
         disabled={off}
+        aria-describedby={`${id}-admin ${id}-owner`}
       />
     </div>
   )

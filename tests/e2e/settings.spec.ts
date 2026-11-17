@@ -118,7 +118,7 @@ test('UI-SETb the owner invites, resends and cancels on the Team card', async ({
   await expect(team.getByText(/no email was sent/)).toBeVisible()
   await expect(email).toHaveValue('')
   const invite = team
-    .getByRole('list', { name: 'Open invites' })
+    .getByRole('list', { name: 'Pending invites' })
     .getByRole('listitem')
     .filter({ hasText: newcomer })
   await expect(invite).toContainText('Invited as Manager · Expires in')

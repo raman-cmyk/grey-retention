@@ -76,26 +76,50 @@ const text = (form: FormData, key: string) => {
   return typeof value === 'string' ? value : ''
 }
 
+/**
+ * An invite's answer. `field: 'email'` marks a refusal about the address
+ * (not an address, already on the team or invited), which a form shows
+ * under its Email field; the others (no right, signed out, a failed save)
+ * are about the session, not what was typed.
+ */
+export type InviteResult = FormResult & { field?: 'email' }
+const aboutTheAddress = [
+  'Already a member',
+  'Deactivated member',
+  'Already invited'
+]
+
 /** "Send invite". Email delivery is simulated: nothing is sent. */
 export async function inviteTeammate(
   _state: FormResult,
   form: FormData
-): Promise<FormResult> {
+): Promise<InviteResult> {
   const session = await managerSession()
   if ('error' in session) return { error: session.error }
   const parsed = inviteSchema.safeParse({
     email: text(form, 'email'),
     role: text(form, 'role')
   })
-  if (!parsed.success)
-    return { error: parsed.error.issues[0]?.message ?? 'Check the invite.' }
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]
+    return {
+      error: issue?.message ?? 'Check the invite.',
+      ...(issue?.path[0] === 'email' ? { field: 'email' as const } : {})
+    }
+  }
   const { context, db } = session
   const saved = await db.rpc('invite_team', {
     t: context.tenantId,
     email: parsed.data.email,
     role: parsed.data.role
   })
-  if (saved.error) return failed(saved.error)
+  if (saved.error) {
+    const answer = failed(saved.error)
+    return saved.error.code === 'PT409' &&
+      aboutTheAddress.some((t) => says(saved.error, t))
+      ? { ...answer, field: 'email' }
+      : answer
+  }
   refresh()
   return {
     message: `Invite saved for ${parsed.data.email} as ${roleLabel[parsed.data.role]}. Email sending is not switched on yet, so no email was sent.`
