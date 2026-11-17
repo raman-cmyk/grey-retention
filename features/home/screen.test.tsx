@@ -173,7 +173,7 @@ describe('Home screen (UI-HOMEb)', () => {
     const form = create.closest('form')!
     expect(
       Object.fromEntries(new FormData(form) as unknown as [string, string][])
-    ).toEqual({ run: 'run-1', slot: '1' })
+    ).toEqual({ run: 'run-1', slot: '1', mode: 'scratch' })
     expect(create.className).toContain('bg-[var(--forest)]')
     // Other rows that can be made get an outline button; one being made, its step.
     expect(
@@ -181,6 +181,34 @@ describe('Home screen (UI-HOMEb)', () => {
     ).toContain('gros-button-outline')
     expect(rows[1]).toHaveTextContent('Sun 22, 9:30 am')
     expect(within(rows[2]!).getByText('Designing')).toBeInTheDocument()
+  })
+
+  it('asks how a designed email is made next to its Create email, as Plan does (D25)', () => {
+    const { container } = render(<HomeScreen view={view()} />)
+    const rows = within(card('Next emails')).getAllByRole('listitem')
+    const designed = within(rows[0]!)
+      .getByRole('button', { name: 'Create email' })
+      .closest('form')!
+    const pick = designed.querySelector(
+      'select[name="mode"]'
+    ) as HTMLSelectElement
+    expect(pick).not.toBeNull()
+    expect(pick.value).toBe('scratch')
+    expect(pick).toHaveAccessibleName('How to make The fall edit')
+    expect(designed.querySelector(`label[for="${pick.id}"]`)?.textContent).toBe(
+      'How to make it'
+    )
+    pick.value = 'remix'
+    expect(new FormData(designed).get('mode')).toBe('remix')
+    // A text email has no choice; one being made has no button at all.
+    const text = within(rows[1]!)
+      .getByRole('button', { name: 'Create email' })
+      .closest('form')!
+    expect(text.querySelector('select[name="mode"]')).toBeNull()
+    expect(rows[2]!.querySelector('select')).toBeNull()
+    // One choice per row: the ids never repeat.
+    const ids = [...container.querySelectorAll('select')].map((s) => s.id)
+    expect(new Set(ids).size).toBe(ids.length)
   })
 
   it('offers Plan next 15 days with no plan, a failed one or one that is over', () => {

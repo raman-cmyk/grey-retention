@@ -1,6 +1,6 @@
 begin;
 select no_plan();
--- UI-ONBa (migration 20260914090089). Tenant 101 (website cedar-lane.example):
+-- UI-ONBa (migration 20260914090091). Tenant 101 (website cedar-lane.example):
 -- owner ...001, admin ...006, staff ...005. Tenant 102 (north-studio.example)
 -- owner ...004. Synthetic seed only.
 

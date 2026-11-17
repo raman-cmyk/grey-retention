@@ -9,6 +9,7 @@ import { AppPage, CardRow, defaultAssistant } from '@/components/gros/nav'
 import { Status } from '@/components/gros/status'
 import { createEmail } from '@/features/email-build/actions'
 import { startPlan } from '@/features/strategy/actions'
+import { ModePick } from '@/features/strategy/mode-pick'
 import type { HomeSlot, HomeView } from './read-model'
 
 /**
@@ -225,7 +226,12 @@ function SlotEnd({
         kind={next ? 'main' : 'outline'}
         size="row"
         fields={{ run: runId, slot: String(slot.slot) }}
-      />
+      >
+        {/* DST-002b part c (D25): how a designed email is made, as on Plan. */}
+        {slot.format === 'designed' ? (
+          <ModePick slot={slot.slot} title={slot.title} />
+        ) : null}
+      </ActionButton>
     )
   if (slot.status === 'working')
     return <Status kind="working" word={slot.stepWords ?? 'Working'} />
