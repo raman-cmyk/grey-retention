@@ -109,27 +109,73 @@ describe('readBrandSite keeps the fonts (FONT-b)', () => {
     expect(JSON.stringify(warn.mock.calls)).not.toContain('Site fonts not kept')
   })
 
-  it('reads no stylesheet without the time one may take, and keeps the pages’ own fonts', async () => {
-    quiet()
-    const { db, fonts } = database({ data: true, error: null })
+  /** A read of the live site with the clock moved as each page or sheet arrives. */
+  const readAt = async (
+    times: { page?: number; sheet?: number; callMs?: number },
+    change: (site: SiteFetcher) => Partial<SiteFetcher> = () => ({})
+  ) => {
+    const { db, calls, fonts } = database({ data: true, error: null })
     const site = liveSite()
     let now = 0
-    await readBrandSite(db, job, {
+    const run = await readBrandSite(db, job, {
       fetcher: () => ({
         ...site,
-        // The home page arrives with too little time left for a sheet.
         fetch: async (url) => {
-          now = 28_000
-          const got = await site.fetch(url)
-          const own = '<style>h2 { font-family: "Home Serif" }</style>'
-          return got.ok ? { ...got, html: got.html + own } : got
-        }
+          now = times.page ?? now
+          return site.fetch(url)
+        },
+        stylesheet: async (url) => {
+          now = times.sheet ?? now
+          return site.stylesheet!(url)
+        },
+        ...change(site)
       }),
       askFor: () => sampleAsk,
+      callMs: times.callMs ?? 0,
       now: () => now
     })
-    expect(site.asked).toEqual([])
-    expect(fonts()!.map((f) => f.family)).toEqual(['Home Serif'])
+    return { run, calls, fonts: fonts(), asked: site.asked }
+  }
+
+  it('keeps the earlier fonts when no stylesheet could be read, too slow or failed', async () => {
+    quiet()
+    // The home page arrives with too little time left for a sheet.
+    const slow = await readAt({ page: 28_000 })
+    expect(slow.asked).toEqual([])
+    const failed = await readAt({}, () => ({ stylesheet: async () => null }))
+    for (const read of [slow, failed]) {
+      expect(read.fonts).toBeUndefined()
+      expect(read.run.fonts).toBeUndefined()
+      expect(read.calls.at(-1)!.name).toBe('record_site_findings')
+    }
+  })
+
+  it('reads no fonts from a page too large to parse quickly, or without the time a model call may take', async () => {
+    quiet()
+    const own = '<style>h2 { font-family: "Home Serif" }</style>'
+    const huge = await readAt({}, (site) => ({
+      fetch: async (url) => {
+        const got = await site.fetch(url)
+        return got.ok && url === 'https://cedarlane.com/'
+          ? { ...got, html: got.html + own + ' '.repeat(1_000_001) }
+          : got
+      }
+    }))
+    // The product page's fonts only.
+    expect(huge.fonts!.map((f) => f.family)).toEqual([
+      'Cedar Serif',
+      'Inline Sans'
+    ])
+    const late = await readAt({ page: 25_000, callMs: 10_000 })
+    expect(late.asked).toEqual([])
+    expect(late.fonts).toBeUndefined()
+  })
+
+  it('starts no last read of a page after the deadline', async () => {
+    quiet()
+    const read = await readAt({ sheet: 31_000 })
+    expect(read.asked).toContain(theme)
+    expect(read.fonts).toBeUndefined()
   })
 
   it('keeps none from the sample site, and still stores the findings when the fonts cannot be kept', async () => {

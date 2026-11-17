@@ -268,7 +268,7 @@ export async function readBrandSite(
   }
   // Each live page's fonts, in page order (FONT-b): read with the
   // stylesheets it links while its facts are asked for; under the photos'
-  // limits.
+  // limits, and no further read of a page after the deadline.
   const stylesheet = fetcher.stylesheet?.bind(fetcher)
   const sheets =
     fetcher.live && stylesheet
@@ -281,7 +281,7 @@ export async function readBrandSite(
       page.html.length <= maxPhotoPage &&
       now() + callMs <= deadline
     )
-      fontPages[n] = pageFonts(page, sheets)
+      fontPages[n] = pageFonts(page, sheets, () => now() > deadline)
   }
   const home = homeUrl(domain)
   if (!home) skip(`https://${domain || 'unknown'}/`, 'home', 'no_domain')
@@ -393,6 +393,8 @@ export async function readBrandSite(
     else if (kept.data === true) run.photos = photos.length
   }
   const pageFontsFound = await Promise.all(fontPages)
+  // None: no page could be read with its stylesheets, so the fonts kept
+  // earlier stay (as the logos do), never a weaker list.
   if (pageFontsFound.some((f) => f)) {
     // One set for the site: each family once, heading fonts first.
     const fonts = mergeSiteFonts(pageFontsFound)
