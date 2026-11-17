@@ -68,6 +68,8 @@ export const config = {
     '/store/:path*',
     '/campaign-agent/:path*',
     '/plan/:path*',
+    // UI-RES-b: Results, a read with no server actions.
+    '/results/:path*',
     // Retired by D17 (RET-002): answered with a 404 above.
     '/copy-review/:path*',
     '/competitor-agent/:path*',

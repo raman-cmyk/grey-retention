@@ -62,7 +62,7 @@ test('UIR-014 owner updates details and changes password with inline checks', as
 }, info) => {
   const { email, password } = await freshOwner(page)
   // The account menu and drawer are on the old shell (Home has the GROS bar).
-  await page.goto('/plan')
+  await page.goto('/holidays')
   if (info.project.name.startsWith('mobile')) {
     // The drawer links here and closes after the click.
     await page.getByRole('button', { name: 'Open navigation' }).click()
