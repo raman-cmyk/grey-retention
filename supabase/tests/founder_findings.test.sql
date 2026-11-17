@@ -1,5 +1,5 @@
 begin;
-select plan(37);
+select plan(40);
 
 -- REL-ONB2 part d1: the Site reader's founder finding, its note whole
 -- sentences of the About page (`whole: true`). Owner ...01 and staff ...05
@@ -46,8 +46,9 @@ select ok(not private.finding_value_ok('founder', v), 'founder '||v::text) from 
 -- Recording: the mark only on a founder's note from the About page, and always on one.
 set local role service_role;
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
-select throws_ok(format('select pg_temp.record(%L,%L)',current_setting('test.job'),jsonb_build_array(bad)),'23514',null,
-  'refused: '||why)
+-- Each refused by the function's own rule.
+select throws_ok(format('select pg_temp.record(%L,%L)',current_setting('test.job'),jsonb_build_array(bad)),'23514',
+  'Invalid finding','refused: '||why)
   from (values
     (pg_temp.founder('{}','{"whole":null}') #- '{evidence,whole}', 'a founder''s note without the mark'),
     (pg_temp.founder('{}','{"whole":false}'), 'the mark as false'),
@@ -57,11 +58,15 @@ select throws_ok(format('select pg_temp.record(%L,%L)',current_setting('test.job
     (pg_temp.founder('{}','{"page":"returns","url":"https://cedar-lane.example/pages/returns"}'), 'or the returns page'),
     (pg_temp.returns('{"whole":true}'), 'the mark on another topic'),
     (pg_temp.founder('{}','{"sentences":2}'), 'another evidence key'),
-    (pg_temp.founder('{"value":{"name":"Maya Lee","photo":"x"}}'), 'a value of another shape'),
-    (pg_temp.founder('{"value":{}}'), 'a founder without a name'),
     (pg_temp.founder('{}',jsonb_build_object('quote',repeat('I',301))), 'a note over 300 characters'),
     (pg_temp.founder('{}','{"url":"https://other.example/pages/about"}'), 'a note from another website'),
-    (pg_temp.founder('{}','"x"'), 'evidence that is no object')) as x(bad, why);
+    (jsonb_set(pg_temp.founder(),'{evidence}','"x"'), 'evidence that is no object')) as x(bad, why);
+-- Each refused by the value's own shape (`finding_value_ok`).
+select throws_ok(format('select pg_temp.record(%L,%L)',current_setting('test.job'),jsonb_build_array(bad)),'23514',
+  'new row for relation "brand_findings" violates check constraint "brand_findings_check"','refused: '||why)
+  from (values
+    (pg_temp.founder('{"value":{"name":"Maya Lee","photo":"x"}}'), 'a value of another shape'),
+    (pg_temp.founder('{"value":{}}'), 'a founder without a name')) as x(bad, why);
 select is((select count(*)::int from public.brand_findings where tenant_id='00000000-0000-4000-8000-000000000101'),0,
   'a refused run stores nothing');
 
@@ -75,12 +80,19 @@ select is((select evidence ? 'whole' from public.brand_findings where run_id=cur
 reset role;
 
 -- The table holds the same rule for any writer.
-select throws_ok($$insert into public.brand_findings(tenant_id,run_id,source,topic,statement,value,evidence,confidence,pass)
-  select tenant_id,run_id,source,topic,statement,value,evidence - 'whole',confidence,pass from public.brand_findings
-    where run_id=current_setting('test.job')::uuid and topic='founder'$$,'23514',null,'a founder row needs the mark');
-select throws_ok($$insert into public.brand_findings(tenant_id,run_id,source,topic,statement,value,evidence,confidence,pass)
-  select tenant_id,run_id,source,topic,statement,value,evidence || '{"whole":true}',confidence,pass from public.brand_findings
-    where run_id=current_setting('test.job')::uuid and topic='returns'$$,'23514',null,'no other row carries it');
+create function pg_temp.copy(topic text, evidence text) returns text language sql as $$
+  select format($q$insert into public.brand_findings(tenant_id,run_id,source,topic,statement,value,evidence,confidence,pass)
+    select tenant_id,run_id,source,topic,statement,value,%s,confidence,pass from public.brand_findings
+      where run_id=current_setting('test.job')::uuid and topic=%L$q$, evidence, topic)
+$$;
+select throws_ok(pg_temp.copy(t, e),'23514',
+  'new row for relation "brand_findings" violates check constraint "brand_findings_founder_whole"',why)
+  from (values
+    ('founder', $$evidence - 'whole'$$, 'a founder row needs the mark'),
+    ('founder', $$evidence || '{"whole":false}'$$, 'never the mark as false'),
+    ('founder', $$evidence || '{"whole":"true"}'$$, 'or as words'),
+    ('founder', $$evidence || '{"page":"home"}'$$, 'only from the About page'),
+    ('returns', $$evidence || '{"whole":true}'$$, 'no other row carries it')) as x(t, e, why);
 select throws_ok($$insert into public.brand_findings(tenant_id,run_id,source,topic,statement,value,evidence,confidence,pass)
   select tenant_id,run_id,'reviews',topic,statement,value,evidence,confidence,pass from public.brand_findings
     where run_id=current_setting('test.job')::uuid and topic='founder'$$,'23514',null,'only the Site reader states a founder');
