@@ -3293,6 +3293,7 @@ export type Database = {
           klaviyo_campaign_id: string | null
           lease_token: string | null
           lease_until: string | null
+          mode: string
           not_before: string | null
           progress: Json
           push_key: string
@@ -3315,6 +3316,7 @@ export type Database = {
           klaviyo_campaign_id?: string | null
           lease_token?: string | null
           lease_until?: string | null
+          mode?: string
           not_before?: string | null
           progress?: Json
           push_key?: string
@@ -3337,6 +3339,7 @@ export type Database = {
           klaviyo_campaign_id?: string | null
           lease_token?: string | null
           lease_until?: string | null
+          mode?: string
           not_before?: string | null
           progress?: Json
           push_key?: string
@@ -7616,7 +7619,7 @@ export type Database = {
         Returns: string
       }
       create_email_build: {
-        Args: { run: string; slot: number; t: string }
+        Args: { mode?: string; run: string; slot: number; t: string }
         Returns: string
       }
       create_email_result: {
