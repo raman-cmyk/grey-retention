@@ -256,7 +256,10 @@ describe('Settings page model (UI-SETa)', () => {
       order: 'activity',
       limit: 200
     })
-    expect(loaders.feedbackPage).toHaveBeenCalledWith(context, now.getTime())
+    expect(loaders.feedbackPage).toHaveBeenCalledWith(context, now.getTime(), {
+      order: 'activity',
+      limit: 10
+    })
 
     loaders.brandTimezone.mockResolvedValue(zone)
     loaders.settingsReadModel.mockRejectedValue(new Error('down'))

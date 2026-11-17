@@ -72,7 +72,8 @@ describe('Feature requests on Settings (UI-SETd)', () => {
             status: 'done',
             subject: 'Old idea'
           }
-        ]
+        ],
+        more: false
       })
     )
     const items = within(card()).getAllByRole('heading', { level: 3 })
@@ -97,7 +98,7 @@ describe('Feature requests on Settings (UI-SETd)', () => {
     feedback.sendFeatureRequest
       .mockResolvedValueOnce({ error: 'Subject: at least 2 characters.' })
       .mockResolvedValueOnce({ message: 'Thanks — your request was sent.' })
-    render(requestsCard({ items: [] }))
+    render(requestsCard({ items: [], more: false }))
     expect(card()).toHaveTextContent('No requests yet.')
     const send = within(card()).getByRole('button', { name: 'Send request' })
     expect(send.className).toContain('bg-[var(--forest)]')
@@ -143,6 +144,23 @@ describe('Feature requests on Settings (UI-SETd)', () => {
       details: 'Blank preview'
     })
     expect(within(card()).getByLabelText('Subject')).toHaveValue('')
+  })
+
+  it('offers Show older when there are more, and names each field alone', () => {
+    render(requestsCard({ items: [planned], more: true }))
+    expect(
+      within(card()).getByRole('link', { name: 'Show older' })
+    ).toHaveAttribute('href', '/settings?requests=all#requests')
+    expect(
+      screen.getByRole('heading', { name: 'Feature requests' })
+    ).toHaveAttribute('id', 'requests')
+    // The label alone names each field (not the options' words).
+    expect(within(card()).getByLabelText('Type', { exact: true }).tagName).toBe(
+      'SELECT'
+    )
+    expect(
+      within(card()).getByLabelText('Details', { exact: true }).tagName
+    ).toBe('TEXTAREA')
   })
 
   it('shows only why when the requests could not be read (also the demo)', () => {

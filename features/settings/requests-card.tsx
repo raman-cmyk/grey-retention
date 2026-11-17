@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { ActionAnswers, ActionButton } from '@/components/gros/action'
+import { ButtonLink } from '@/components/gros/button'
 import { Card } from '@/components/gros/card'
 import { Field } from '@/components/gros/input'
 import { sendFeatureRequest } from '@/features/feedback/actions'
@@ -14,8 +15,9 @@ import { Messages, TextBox } from './support-card'
 
 /**
  * Feature requests on Settings (UI-SETd): ask the team for something new,
- * a better way, a fix or anything else, and follow what was asked, newest
- * first, with its type, status (Open, Planned, Done), the details and the
+ * a better way, a fix or anything else, and follow what was asked, latest
+ * activity first (Show older lists them all), with its type, status (Open,
+ * Planned, Done), the details and the
  * team's replies. Any member sends one; `sendFeatureRequest` checks the
  * session again. BRAND.md has no select or multi-line field: the type and
  * the details are plain controls on the GROS tokens until design gives
@@ -31,12 +33,14 @@ export function RequestsCard({
 }) {
   const title = 'Feature requests'
   const requests = view.requests
-  const zone = view.timezone?.saved ?? 'UTC'
+  const zone = view.timezone?.saved ?? null
   return (
     <Card label={title}>
       <div className="flex flex-col gap-[var(--space-5)]">
         <ActionAnswers>
-          <h2 className="type-heading">{title}</h2>
+          <h2 id="requests" className="type-heading">
+            {title}
+          </h2>
           {!requests ? (
             unread
           ) : (
@@ -65,7 +69,8 @@ export function RequestsCard({
                               ? categoryLabel[request.category]
                               : '',
                             statusLabel[request.status],
-                            formatBrandDate(request.createdAt, zone) ?? ''
+                            formatBrandDate(request.createdAt, zone ?? 'UTC') ??
+                              ''
                           ]
                             .filter(Boolean)
                             .join(' · ')}
@@ -76,12 +81,23 @@ export function RequestsCard({
                   ))}
                 </ul>
               )}
+              {requests.more ? (
+                <ButtonLink
+                  href="/settings?requests=all#requests"
+                  label="Show older"
+                  kind="quiet"
+                />
+              ) : null}
               <ActionButton action={sendFeatureRequest} label="Send request">
-                <label className="flex flex-col gap-[var(--space-2)]">
-                  <span className="gros-field-label text-[var(--ink)]">
+                <div className="flex flex-col gap-[var(--space-2)]">
+                  <label
+                    htmlFor="request-category"
+                    className="gros-field-label text-[var(--ink)]"
+                  >
                     Type
-                  </span>
+                  </label>
                   <select
+                    id="request-category"
                     name="category"
                     defaultValue="feature"
                     className="type-body min-h-[var(--control-sm)] w-full rounded-[var(--radius-md)] border-2 border-transparent bg-[var(--mist)] px-[var(--space-4)] text-[var(--ink)] focus:border-[var(--forest)] focus:bg-[var(--white)] focus:outline-none"
@@ -92,7 +108,7 @@ export function RequestsCard({
                       </option>
                     ))}
                   </select>
-                </label>
+                </div>
                 <Field
                   label="Subject"
                   name="subject"
@@ -100,7 +116,12 @@ export function RequestsCard({
                   maxLength={200}
                   required
                 />
-                <TextBox label="Details" name="details" rows={4} />
+                <TextBox
+                  id="request-details"
+                  label="Details"
+                  name="details"
+                  rows={4}
+                />
               </ActionButton>
             </>
           )}
