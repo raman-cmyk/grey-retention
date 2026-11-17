@@ -4,7 +4,7 @@ import type { FallbackLog } from '@/features/fallback/log'
 import { keyPart } from '@/features/fallback/entry'
 import { blockTypes, type BlockType } from '@/features/blocks/catalog'
 import { blockHeight, emailHeight } from '@/features/blocks/heights'
-import { minProducts } from '@/features/assembly/assemble'
+import { maxBlocks, minProducts } from '@/features/assembly/assemble'
 import {
   layoutSequence,
   type CompetitorLayout,
@@ -154,6 +154,21 @@ export function copyPlan(input: SectionInput): SectionPlan {
           purpose: 'Your logo at the top.'
         }
       ]
+  // The header code adds counts too: emails have at most `maxBlocks`
+  // blocks, so the last content section before the footer gives way.
+  // The offer's section never gives way: the email's discount stays.
+  while (header.length + steps.length > maxBlocks) {
+    const at = steps.findLastIndex(
+      (s, i) => i < steps.length - 1 && s.type !== 'offer_banner'
+    )
+    if (at < 0) break
+    const [cut] = steps.splice(at, 1)
+    dropped.push({
+      index: cut.index ?? -1,
+      section: cut.from,
+      reason: `Emails have at most ${maxBlocks} blocks.`
+    })
+  }
   return {
     mode: 'copy',
     sections: [
