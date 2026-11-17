@@ -127,7 +127,6 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
           { label: 'Settings', href: '/settings', icon: 'settings' },
           { label: 'Holidays & Events', href: '/holidays', icon: 'holidays' },
           { label: 'Connections', href: '/connections', icon: 'connections' },
-          { label: 'Team', href: '/team', icon: 'team' },
           {
             label: 'Request a Feature',
             href: '/feedback',

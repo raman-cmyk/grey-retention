@@ -5,11 +5,15 @@ import type { ClientRequestContext } from '@/features/auth/domain/types'
 import { offersPage } from '@/features/offers/data'
 import { profilePageData } from '@/features/profile/data'
 import { teamPage } from '@/features/team/data'
-import type { PendingInvite, TeamMember } from '@/features/team/rules'
+import {
+  canManageTeam,
+  type PendingInvite,
+  type TeamMember
+} from '@/features/team/rules'
 import { getServerEnvironment } from '@/lib/env/server'
 import type { Database } from '@/lib/supabase/database.types'
 import { createClient } from '@/lib/supabase/server'
-import { listChangeHistory, type Change } from './change-history'
+import { listChangeHistory, mergeChanges, type Change } from './change-history'
 
 type Db = SupabaseClient<Database>
 
@@ -57,7 +61,12 @@ export type SettingsReadModel = {
     now: number
   } | null
   account: { name: string; email: string } | null
-  history: Change[] | null
+  /**
+   * Who changed what (UI-SETc): the offers, Klaviyo, the Brand book and
+   * the team, newest first; `partial` when one record could not be read.
+   * Null for staff, who do not see it, or when neither could be read.
+   */
+  changes: { items: Change[]; partial: boolean } | null
   /** Not stored yet: it comes with the design studio (D25). */
   brandKit: { available: false; reason: string }
 }
@@ -128,7 +137,7 @@ export async function settingsReadModel(
     klaviyo: null,
     team: null,
     account: null,
-    history: null,
+    changes: null,
     brandKit
   }
   if (getServerEnvironment().AUTH_MODE === 'demo')
@@ -144,18 +153,21 @@ export async function settingsReadModel(
   const [offers, klaviyo, team, account] = await Promise.all([
     settle(offersPage(context)),
     settle(klaviyoState(db, context.tenantId)),
-    // Who changed what is not on Settings yet (UI-SETc): no team events.
-    settle(teamPage(context, Date.now(), { events: false })),
+    settle(teamPage(context)),
     settle(profilePageData())
   ])
   const teamReady = team && team.state === 'ready' ? team : null
+  // Who changed what is for the owner and managers only: staff read none.
   // Without the team, the changes still show (names then read "someone").
-  const history = await settle(
-    listChangeHistory(db, context.tenantId, teamReady?.members ?? [], {
-      limit: 20,
-      timeZone: context.timezone
-    })
-  )
+  const manager = canManageTeam(context.tenantRole)
+  const history = manager
+    ? await settle(
+        listChangeHistory(db, context.tenantId, teamReady?.members ?? [], {
+          limit: 20,
+          timeZone: context.timezone
+        })
+      )
+    : null
   return {
     state: 'ready',
     offers,
@@ -177,7 +189,7 @@ export async function settingsReadModel(
         }
       : null,
     account: account ? { name: account.name, email: account.email } : null,
-    history,
+    changes: manager ? mergeChanges(history, teamReady?.events ?? null) : null,
     brandKit
   }
 }

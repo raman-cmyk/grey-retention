@@ -13,10 +13,6 @@ export const roleLabel: Record<TeamRole, string> = {
   admin: 'Manager',
   staff: 'Staff'
 }
-export const assignableRoles: { value: AssignableRole; label: string }[] = [
-  { value: 'staff', label: 'Staff' },
-  { value: 'admin', label: 'Manager' }
-]
 export const roleHelp: Record<AssignableRole, string> = {
   admin:
     'Managers can invite people, change their access and see reports and usage.',
@@ -133,6 +129,3 @@ export function expiryText(expiresAt: string, now: number) {
   if (days === 0) return 'Expires today'
   return `Expires in ${days} day${days === 1 ? '' : 's'}`
 }
-
-export const isExpired = (expiresAt: string, now: number) =>
-  !(Date.parse(expiresAt) - now > 0)

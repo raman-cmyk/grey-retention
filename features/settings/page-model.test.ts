@@ -50,7 +50,10 @@ const read = {
     now: 0
   },
   account: { name: 'Sam', email: 'owner@cedarlane.example' },
-  history: [],
+  changes: {
+    items: [{ id: 'e1', text: 'Code WELCOME15 added', by: 'you', at: '' }],
+    partial: false
+  },
   brandKit: { available: false as const, reason: '' }
 }
 const zone = {
@@ -78,6 +81,7 @@ describe('Settings page model (UI-SETa)', () => {
       klaviyo: read.klaviyo,
       team: read.team,
       account: read.account,
+      changes: read.changes,
       unread: []
     })
     expect(view.timezone).toEqual({
@@ -112,6 +116,15 @@ describe('Settings page model (UI-SETa)', () => {
       })
     expect(as('admin')).toMatchObject({ owner: false, editor: true })
     expect(as('staff')).toMatchObject({ owner: false, editor: false })
+    // Staff do not see the changes, so they are never missing for them.
+    const staff = settingsView({
+      context: { tenantRole: 'staff' },
+      now,
+      read: { ...read, changes: null },
+      zone,
+      liveKeys: false
+    })
+    expect(staff.unread).toEqual([])
   })
 
   it('marks each part that could not be read, and the demo', () => {
@@ -134,14 +147,15 @@ describe('Settings page model (UI-SETa)', () => {
           offers: null,
           klaviyo: null,
           team: null,
-          account: null
+          account: null,
+          changes: null
         },
         zone,
         liveKeys: false
       })
     ).toMatchObject({
       demo: true,
-      unread: ['offers', 'klaviyo', 'team', 'account']
+      unread: ['offers', 'klaviyo', 'team', 'account', 'changes']
     })
   })
 
@@ -155,7 +169,13 @@ describe('Settings page model (UI-SETa)', () => {
     loaders.brandTimezone.mockResolvedValue(zone)
     loaders.settingsReadModel.mockRejectedValue(new Error('down'))
     const noRead = await settingsPageModel(context, now)
-    expect(noRead.unread).toEqual(['offers', 'klaviyo', 'team', 'account'])
+    expect(noRead.unread).toEqual([
+      'offers',
+      'klaviyo',
+      'team',
+      'account',
+      'changes'
+    ])
     expect(noRead.timezone?.saved).toBe('Asia/Kathmandu')
   })
 

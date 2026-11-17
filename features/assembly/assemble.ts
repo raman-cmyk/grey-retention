@@ -868,6 +868,8 @@ export function fill(
   productIds: string[]
   printed: Written
   problems: CopyFeedback[]
+  /** The brand's name, for the word checks (REL-ONB2 part d2). */
+  brandName: string
 } {
   const products = eligibleProducts(input)
   const productIds: string[] = []
@@ -996,10 +998,10 @@ export function fill(
         break
       }
       case 'founder_note':
-        // Only the founder's own words, never the model's.
+        // Only the founder's own words, never the model's or code's: no
+        // greeting they did not write (REL-ONB2 part d2).
         content = {
           photo: c.founder?.photo,
-          greeting: 'Hi,',
           paras: c.founder?.note,
           signoff: c.founder?.name,
           role: c.founder?.role
@@ -1048,7 +1050,8 @@ export function fill(
     kept,
     productIds,
     printed: { ...written, blocks: printed },
-    problems
+    problems,
+    brandName: brand.name
   }
 }
 
@@ -1069,6 +1072,17 @@ const phrase = (text: string) =>
     'giu'
   )
 
+/** "I", "I'm", "me", "my", "mine", "myself": a person writing, not the store. */
+const firstPersonSingular =
+  /(?<![\p{L}\p{N}'’])(?:I(?:['’](?:m|ve|d|ll))?|[Mm](?:y|e|ine|yself))(?![\p{L}\p{N}'’])/u
+/**
+ * A Roman numeral "I", never a person: after a capitalised word that takes
+ * one ("Part I", "Henry I"), at the end, before punctuation or a capital
+ * ("Part I: Wool"), never "the part I love".
+ */
+const numeralI =
+  /(?<![\p{L}\p{N}])(?:Part|Chapter|Vol\.?|Volume|Book|Act|Henry|Louis|George|Charles|Edward|William|Elizabeth)\s+I(?=$|[^\p{L}\p{N}\s'’]|\s+\p{Lu})/gu
+
 /**
  * The engine's word checks on what the email will print. Masked first, so
  * they are not read as claims: the titles of the products the email shows,
@@ -1080,8 +1094,29 @@ const phrase = (text: string) =>
 export function wordProblems(
   printed: Written,
   input: AssemblyInput,
-  placed: { productIds: readonly string[]; offerShown: boolean }
+  placed: {
+    productIds: readonly string[]
+    offerShown: boolean
+    /** The brand's name: never the writer's own words ("My Little Fern"). */
+    brandName?: string
+    /** A founder note is placed (for a subject judged without the blocks). */
+    besideNote?: boolean
+  }
 ): CopyFeedback[] {
+  const brand =
+    placed.brandName && normal(placed.brandName).length >= 2
+      ? phrase(placed.brandName)
+      : null
+  // REL-ONB2 part d2: the writer's person beside the founder's note ("our
+  // owner", "the creator", "owner of <brand>"), a role only the page gives.
+  const roleWords = new RegExp(
+    String.raw`(?<![\p{L}\p{N}])(?:(?:our|the)\s+(?:owner|creator)s?${
+      placed.brandName && normal(placed.brandName).length >= 2
+        ? `|(?:owner|creator)s?\s+of\s+${escapeRegExp(normal(placed.brandName))}`
+        : ''
+    })(?![\p{L}\p{N}])`,
+    'iu'
+  )
   const shown = eligibleProducts(input).filter((p) =>
     placed.productIds.includes(p.id)
   )
@@ -1098,23 +1133,33 @@ export function wordProblems(
     .filter((p) => normal(p.title).length >= 3)
   const code = placed.offerShown ? usableCode(input) : null
   const facts = factLines(input.facts)
-  const fields: [string, string][] = [
+  // The third: an FAQ's question, which states nothing of the writer's.
+  const fields: [string, string, boolean?][] = [
     ['subject', printed.subject],
     ['preheader', printed.preheader]
   ]
   printed.blocks.forEach((b, i) => {
     for (const [k, v] of Object.entries(b.words)) {
       const values = Array.isArray(v) ? v.flat() : [v]
-      for (const value of values)
+      values.forEach((value, n) => {
         if (typeof value === 'string')
-          fields.push([`block ${i + 1} (${b.type}) ${k}`, value])
+          fields.push([
+            `block ${i + 1} (${b.type}) ${k}`,
+            value,
+            b.type === 'faq' && k === 'items' && n % 2 === 0
+          ])
+      })
     }
   })
   const out: CopyFeedback[] = []
+  // REL-ONB2 part d2: beside the founder's own note, the writer's words
+  // could read as theirs, so the writer writes as the store, never "I".
+  const besideNote =
+    placed.besideNote ?? printed.blocks.some((b) => b.type === 'founder_note')
   const factHint = facts.length
     ? ` Use a fact word for word: ${facts.map((f) => `"${f}"`).join(' ')}`
     : ' The facts sheet confirms none.'
-  for (const [field, raw] of fields) {
+  for (const [field, raw, question] of fields) {
     const masked = masks.reduce((t, m) => t.replace(m, ' '), normal(raw))
     // A question ("Can I return it?") claims nothing; its answer may.
     const text = masked.replace(/[^.!?]*\?/g, ' ')
@@ -1166,6 +1211,21 @@ export function wordProblems(
       )
     )
       say("Tell no founder or origin story; only the founder's own note may.")
+    // The writer's own words: the brand's name, an FAQ's question ("How do
+    // I wash it?") and a Roman numeral aside; any other question is theirs
+    // ("Can I tell you a secret?").
+    const own = (brand ? masked.replace(brand, ' ') : masked).replace(
+      numeralI,
+      ' '
+    )
+    if (besideNote && !question && firstPersonSingular.test(own))
+      say(
+        'The founder’s own note is in this email: write as the store ("we"), never "I", "me" or "my", so none of your words read as theirs.'
+      )
+    if (besideNote && roleWords.test(own))
+      say(
+        'Give the person who wrote the note no role: only their own page gives it, beside their name.'
+      )
     for (const banned of input.facts.bannedPhrases)
       if (normal(banned).length >= 2 && phrase(banned).test(text))
         say(`"${oneLine(banned, 40)}" is on the brand's banned list.`)
@@ -1264,17 +1324,25 @@ export function finish(
     })),
     ...wordProblems(filled.printed, writersOnly(input, source), {
       productIds: filled.productIds,
-      offerShown
+      offerShown,
+      brandName: filled.brandName
     })
   ]
   // PIC-26 part 2: an idea is kept only when the word checks the subject
   // passes find nothing in it either (a percent not the offer's, shipping,
   // a claim, a banned word).
+  // Judged as the email's own subject is: beside the founder's note, with
+  // the brand's name as the store's.
+  const besideNote = filled.printed.blocks.some(
+    (b) => b.type === 'founder_note'
+  )
   const ideas = (written.subjectIdeas ?? []).filter(
     (idea) =>
       !wordProblems({ ...filled.printed, subject: idea, blocks: [] }, input, {
         productIds: filled.productIds,
-        offerShown
+        offerShown,
+        brandName: filled.brandName,
+        besideNote
       }).some((p) => p.field === 'subject')
   )
   const draft: Draft = {

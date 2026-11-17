@@ -68,6 +68,20 @@ test('UI-SETa the owner sets the biggest discount and adds and removes a code', 
     codes.getByText('Removed. New emails will not use it.')
   ).toBeVisible()
 
+  // Who changed what, newest first, each by you (UI-SETc).
+  await page.reload()
+  const changes = page
+    .getByRole('region', { name: 'Recent changes' })
+    .getByRole('listitem')
+  for (const [i, text] of [
+    'Code WELCOME15 retired',
+    'Code WELCOME15 added (15% off)',
+    'Max discount set to 20%'
+  ].entries()) {
+    await expect(changes.nth(i)).toContainText(text)
+    await expect(changes.nth(i)).toContainText('by you')
+  }
+
   // Klaviyo is not connected here; the team and the account link on.
   const klaviyo = page.getByRole('region', { name: 'Klaviyo', exact: true })
   await expect(klaviyo.getByText('Needs you')).toBeVisible()
@@ -142,13 +156,19 @@ test('UI-SETb the owner invites, resends and cancels on the Team card', async ({
   await expect(team.getByText('Invite cancelled.')).toBeVisible()
   await page.reload()
   await expect(team.getByText(newcomer)).toHaveCount(0)
-  // Who changed what is still on the old Team page (UI-SETc).
-  await team.getByRole('link', { name: 'See team changes' }).click()
-  await expect(page).toHaveURL(/\/team$/)
+  // Recent changes says so, by you (UI-SETc).
   await expect(
     page
-      .getByRole('region', { name: 'Recent team changes' })
-      .getByText(`Invite to ${newcomer} cancelled`, { exact: false })
+      .getByRole('region', { name: 'Recent changes' })
+      .getByRole('listitem')
+      .filter({ hasText: `Invite to ${newcomer} cancelled` })
+  ).toContainText('by you')
+  // The old Team page is retired: its address opens Settings (UI-SETc).
+  await expect(team.getByRole('link')).toHaveCount(0)
+  await page.goto('/team')
+  await expect(page).toHaveURL(/\/settings$/)
+  await expect(
+    page.getByRole('heading', { name: 'Settings', level: 1 })
   ).toBeVisible()
 })
 
@@ -229,6 +249,10 @@ test('UI-SETa staff see Settings without the owner’s controls', async ({
     page.getByText('Only the workspace owner can change Klaviyo.')
   ).toBeVisible()
   await expect(page.getByLabel('Change timezone')).toHaveCount(0)
+  // Who changed what is for the owner and managers only (UI-SETc).
+  await expect(
+    page.getByRole('region', { name: 'Recent changes' })
+  ).toHaveCount(0)
 })
 
 test('UI-SETa Settings fits 375px', async ({ page }, info) => {
