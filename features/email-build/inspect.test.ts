@@ -24,6 +24,8 @@ import {
   copyWork,
   emailChecks,
   emailInspectorAgent,
+  mask,
+  phrase,
   priceChecks,
   rewriteRounds,
   savedWork,
@@ -764,6 +766,20 @@ describe('the subject ideas, judged with the email (PIC-26 part 3a)', () => {
 })
 
 describe('the email checks (code)', () => {
+  it('mask store text as whole words only, so a short name never hides the writer’s words (REL-ONB2 part d2)', () => {
+    expect(mask('Click here for a lifetime of warmth.', ['Li'])).toBe(
+      'Click here for a lifetime of warmth.'
+    )
+    expect(mask('Li knits. With love, li.', ['Li'])).toBe(
+      '  knits. With love,  .'
+    )
+    expect(mask('“I knit.” said Ana', ['“I knit.”', 'Ana'])).toBe('  said  ')
+    // A founder named "Li" leaves the writer's spam words judged.
+    expect(
+      phrase(mask('Click here to act now.', ['Li', 'Lee']), 'click here')
+    ).toBe(true)
+  })
+
   it('send back a preview that repeats the subject, never one that names only the brand again (DST-PIC #27)', async () => {
     const locked = await lock()
     const draft = await draftOf(locked)

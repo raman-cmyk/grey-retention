@@ -80,13 +80,29 @@ export type LetterCopy = {
   written?: boolean
 }
 
+/**
+ * REL-ONB2 part d2: the store's confirmed founder is its About page's, and
+ * only their own words there are theirs, while every word of a letter is
+ * the Letter writer's. So a letter never carries the founder: it is signed
+ * by the store's team, never written as the founder ("I") and never a
+ * founder note, as before any founder was confirmed. No letter says
+ * something the founder did not write.
+ */
+const withoutFounder = (locked: LockedContent): LockedContent => {
+  const confirmed = locked.input.confirmed
+  if (!confirmed?.founder) return locked
+  const rest = { ...confirmed }
+  delete rest.founder
+  return { ...locked, input: { ...locked.input, confirmed: rest } }
+}
+
 /** The letter's brief from the locked content. */
 const briefOf = (
   store: Store,
   locked: LockedContent,
   kind?: LetterKind
 ): LetterBrief => ({
-  locked,
+  locked: withoutFounder(locked),
   brandName: store.brand.name,
   site: store.brand.site,
   ...(kind ? { kind } : {}),
