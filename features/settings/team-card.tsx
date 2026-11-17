@@ -18,12 +18,13 @@ import type { SettingsView } from './page-model'
 /**
  * The Team card on Settings (UI-SETb): who is on the team and the pending
  * invites (open or expired; the tile counts the open ones), and for the
- * owner and managers the buttons that change them
- * (invite, resend, cancel), each calling the Team page's server actions,
- * which check the role again. Staff see the list only. The rows' answers
- * show in one place (`ActionAnswers`), so an answer stays when its row
- * goes with the change it made (a cancelled invite). "Who changed what" is
- * still on the old Team page until UI-SETc.
+ * owner and managers the buttons that change them (invite, resend,
+ * cancel), each calling the Team page's server actions, which check the
+ * role again. Staff see the list only. The card's answers show in one line
+ * after the invite form (`ActionAnswers`), so an answer stays when its row
+ * goes with the change it made (a cancelled invite), and a new answer
+ * replaces the last; only a refusal about the address stays under Email.
+ * "Who changed what" is still on the old Team page until UI-SETc.
  */
 export function TeamCard({
   view,
@@ -73,18 +74,16 @@ export function TeamCard({
                   again in a minute.
                 </p>
               )}
+              {team.canManage ? <InviteForm /> : null}
             </ActionAnswers>
             {team.canManage ? (
-              <>
-                <InviteForm />
-                {/* Until UI-SETc brings who changed what onto Settings. */}
-                <ButtonLink
-                  href="/team"
-                  label="See team changes"
-                  kind="quiet"
-                  size="row"
-                />
-              </>
+              // Until UI-SETc brings who changed what onto Settings.
+              <ButtonLink
+                href="/team"
+                label="See team changes"
+                kind="quiet"
+                size="row"
+              />
             ) : (
               <p className="type-body text-[var(--stone)]">
                 Only the owner or a manager can invite people and change access.
