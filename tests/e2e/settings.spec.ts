@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { login } from './accounts'
 import { newOwner } from './new-owner'
 
-test('UIR-011 owner sets campaign defaults on every tab and saves once', async ({
+test('UI-SETa the owner sets the biggest discount and adds and removes a code', async ({
   page
 }) => {
   await newOwner(page, { prefix: 'settings', name: 'Settings studio' })
@@ -11,78 +11,79 @@ test('UIR-011 owner sets campaign defaults on every tab and saves once', async (
     page.getByRole('heading', { name: 'Settings', level: 1 })
   ).toBeVisible()
   await expect(page).toHaveTitle(/Settings/)
+  await expect(page.getByRole('link', { name: 'Settings' })).toHaveAttribute(
+    'aria-current',
+    'page'
+  )
 
-  // The timezone is the workspace's (the same one the Dashboard uses).
-  await expect(page.getByText('Asia/Kathmandu (UTC+05:45)')).toBeVisible()
-  await expect(page.locator('time')).toHaveText(
+  // The timezone is the workspace's, with the store's time now.
+  const zone = page.getByRole('region', { name: 'Timezone' })
+  await expect(zone.getByText('Asia/Kathmandu (UTC+05:45)')).toBeVisible()
+  await expect(zone.locator('time')).toHaveText(
     /^[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2} \d{4} · \d{1,2}:\d{2} [AP]M$/
   )
 
-  // Opens on Featured Product; this workspace has no products yet.
+  const max = page.getByRole('region', { name: 'Biggest discount' })
+  await expect(max).toContainText('Not set')
+  await max.getByLabel('Percent off, 0 to 100').fill('120')
+  await max.getByRole('button', { name: 'Save biggest discount' }).click()
   await expect(
-    page.getByRole('tab', { name: 'Featured Product' })
-  ).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByText(/No products yet/)).toBeVisible()
+    max.getByText('Enter a whole number from 0 to 100.')
+  ).toBeVisible()
+  // A refusal keeps what was typed.
+  await expect(max.getByLabel('Percent off, 0 to 100')).toHaveValue('120')
+  await max.getByLabel('Percent off, 0 to 100').fill('20')
+  await max.getByRole('button', { name: 'Save biggest discount' }).click()
+  await expect(
+    max.getByText('Saved. New emails offer at most 20% off.')
+  ).toBeVisible()
+  await page.reload()
+  await expect(max.getByText('20%', { exact: true })).toBeVisible()
 
-  await page.getByRole('tab', { name: 'Sender Name' }).click()
-  await page
-    .getByRole('textbox', { name: 'Sender name', exact: true })
-    .fill('Settings Studio Team')
-  await page.getByRole('tab', { name: 'Primary Link' }).click()
-  const link = page.getByRole('textbox', { name: 'Primary link', exact: true })
-  await link.fill('settings-studio.example/new')
-  // Save from another tab: the error must bring the owner back to the link.
-  await page.getByRole('tab', { name: 'Email Settings' }).click()
-  await page.getByRole('button', { name: 'Save defaults' }).click()
-  await expect(page.getByRole('tab', { name: 'Primary Link' })).toHaveAttribute(
-    'aria-selected',
-    'true'
+  const codes = page.getByRole('region', { name: 'Discount codes' })
+  await expect(codes.getByText('No codes yet.', { exact: false })).toBeVisible()
+  await codes.getByLabel('Code', { exact: true }).fill('WELCOME15')
+  await codes.getByLabel('Percent off', { exact: true }).fill('15')
+  await codes.getByRole('button', { name: 'Add code' }).click()
+  await expect(
+    codes.getByText('Added WELCOME15. Agents can use it in new emails.')
+  ).toBeVisible()
+  const row = codes.getByRole('listitem').filter({ hasText: 'WELCOME15' })
+  await expect(row).toContainText('15% off · No end date')
+  // The same code again is refused, and the fields keep it.
+  await codes.getByLabel('Code', { exact: true }).fill('WELCOME15')
+  await codes.getByLabel('Percent off', { exact: true }).fill('15')
+  await codes.getByRole('button', { name: 'Add code' }).click()
+  await expect(
+    codes.getByText('WELCOME15 is already in your list.')
+  ).toBeVisible()
+  await expect(codes.getByLabel('Code', { exact: true })).toHaveValue(
+    'WELCOME15'
   )
-  await expect(link).toBeFocused()
-  await expect(link).toHaveAttribute('aria-invalid', 'true')
+  await codes.getByRole('button', { name: 'Remove: WELCOME15' }).click()
+  await expect(row).toHaveCount(0)
+  // The answer stays though its row has gone.
   await expect(
-    page.getByText('Primary link: use a full address that starts with https://')
-  ).toHaveCount(2)
-  await link.fill('https://settings-studio.example/new')
-
-  // Audiences come from Klaviyo; it is not connected in this workspace.
-  await page.getByRole('tab', { name: 'Audience' }).click()
-  await expect(
-    page.getByText('Connect Klaviyo to choose lists and segments.').first()
+    codes.getByText('Removed. New emails will not use it.')
   ).toBeVisible()
 
-  await page.getByRole('tab', { name: 'Email Settings' }).click()
-  await page.getByLabel(/Include footer/).uncheck()
-  await expect(page.getByText('Applies to new campaigns only.')).toBeVisible()
-  await page.getByRole('button', { name: 'Save defaults' }).click()
-  const saved = page.getByText(
-    'Defaults saved. The new campaign editor will use them.'
-  )
-  await expect(saved).toBeVisible()
-
-  // A second save works without reloading the page.
-  await page.getByRole('tab', { name: 'Sender Name' }).click()
+  // Klaviyo is not connected here; the team and the account link on.
+  const klaviyo = page.getByRole('region', { name: 'Klaviyo', exact: true })
+  await expect(klaviyo.getByText('Needs you')).toBeVisible()
+  await expect(
+    klaviyo.getByRole('button', { name: 'Connect Klaviyo' })
+  ).toBeVisible()
+  await expect(
+    page.getByRole('region', { name: 'Team' }).getByText('Members')
+  ).toBeVisible()
   await page
-    .getByRole('textbox', { name: 'Sender name', exact: true })
-    .fill('Settings Studio')
-  await page.getByRole('button', { name: 'Save defaults' }).click()
-  await expect(saved).toBeVisible()
-  await expect(page.getByText(/changed in another window/)).toHaveCount(0)
-
-  await page.reload()
-  await page.getByRole('tab', { name: 'Sender Name' }).click()
-  await expect(
-    page.getByRole('textbox', { name: 'Sender name', exact: true })
-  ).toHaveValue('Settings Studio')
-  await page.getByRole('tab', { name: 'Primary Link' }).click()
-  await expect(
-    page.getByRole('textbox', { name: 'Primary link', exact: true })
-  ).toHaveValue('https://settings-studio.example/new')
-  await page.getByRole('tab', { name: 'Email Settings' }).click()
-  await expect(page.getByLabel(/Include footer/)).not.toBeChecked()
+    .getByRole('region', { name: 'Account' })
+    .getByRole('link', { name: 'Change' })
+    .click()
+  await expect(page).toHaveURL(/\/profile$/)
 })
 
-test('UIR-011 staff see the defaults but cannot change them', async ({
+test('UI-SETa staff see Settings without the owner’s controls', async ({
   page
 }, info) => {
   test.skip(
@@ -92,34 +93,35 @@ test('UIR-011 staff see the defaults but cannot change them', async ({
   await login(page, 'staff')
   await page.goto('/settings')
   await expect(
-    page.getByText('Only the workspace owner can change these.')
+    page.getByRole('heading', { name: 'Settings', level: 1 })
   ).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Save defaults' })).toHaveCount(
-    0
-  )
-  // Staff can still look through the tabs; the fields are read-only.
-  await page.getByRole('tab', { name: 'Sender Name' }).click()
+  for (const name of [
+    'Save biggest discount',
+    'Add code',
+    'Remove',
+    'Connect Klaviyo',
+    'Change key',
+    'Disconnect',
+    'Save timezone'
+  ])
+    await expect(page.getByRole('button', { name })).toHaveCount(0)
   await expect(
-    page.getByRole('textbox', { name: 'Sender name', exact: true })
-  ).toBeDisabled()
+    page.getByText('Only the workspace owner can change Klaviyo.')
+  ).toBeVisible()
+  await expect(page.getByLabel('Change timezone')).toHaveCount(0)
 })
 
-test('UIR-011 Settings fits 375px and the tabs work by keyboard', async ({
-  page
-}, info) => {
+test('UI-SETa Settings fits 375px', async ({ page }, info) => {
   test.skip(info.project.name.startsWith('mobile'), 'Sets its own viewport')
   await page.setViewportSize({ width: 375, height: 812 })
   await login(page, 'owner')
   await page.goto('/settings')
+  await expect(
+    page.getByRole('heading', { name: 'Settings', level: 1 })
+  ).toBeVisible()
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth
     )
   ).toBe(true)
-  await page.getByRole('tab', { name: 'Featured Product' }).focus()
-  await page.keyboard.press('ArrowRight')
-  await expect(page.getByRole('tab', { name: 'Sender Name' })).toBeFocused()
-  await expect(
-    page.getByRole('textbox', { name: 'Sender name', exact: true })
-  ).toBeVisible()
 })

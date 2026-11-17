@@ -12,7 +12,7 @@ import { FocusShell, StepCards, onboardingSteps } from './steps'
 afterEach(cleanup)
 
 describe('TopBar and AppPage (UI-DS)', () => {
-  it('has the menu items whose screens exist, the current one marked, and Ask GROS and Settings', () => {
+  it('has the five menu items, the current one marked, and Ask GROS and Settings', () => {
     render(<TopBar current="inspiration" title="Inspiration" />)
     expect(
       screen.getByRole('heading', { level: 1, name: 'Inspiration' })
@@ -22,7 +22,7 @@ describe('TopBar and AppPage (UI-DS)', () => {
       'Home',
       'Plan',
       'Inspiration',
-      // Audiences has no screen yet, so it is left out rather than a dead link.
+      'Audiences',
       'Results'
     ])
     const here = menu.getByRole('link', { name: 'Inspiration' })
@@ -256,6 +256,40 @@ describe('StepCards and FocusShell (UI-DS)', () => {
     expect(screen.getByText('Store').parentElement).toHaveTextContent(
       'Store, done'
     )
+  })
+
+  it('marks each step by its own state when given, and the step shown as current (UI-ONBb)', () => {
+    render(
+      <StepCards
+        current={0}
+        shown={0}
+        steps={[
+          { name: 'Store' },
+          { name: 'Brand', done: false },
+          { name: 'Klaviyo', done: true },
+          { name: 'Discount', done: true, href: '/setup' as Route }
+        ]}
+      />
+    )
+    const card = (name: string) => screen.getByText(name).closest('li')!
+    expect(card('Store')).toHaveAttribute('aria-current', 'step')
+    expect(card('Brand')).toHaveTextContent(', to do')
+    expect(card('Klaviyo')).toHaveTextContent(', done')
+    // A done step is a link only where the caller gives one.
+    expect(screen.getByRole('link', { name: /Discount/ })).toBeVisible()
+    cleanup()
+    render(
+      <StepCards
+        current={1}
+        shown={0}
+        steps={[{ name: 'Store', href: '/setup' as Route }, { name: 'Brand' }]}
+      />
+    )
+    expect(screen.getByText('Store').closest('li')).toHaveAttribute(
+      'aria-current',
+      'step'
+    )
+    expect(screen.getByText('Brand').closest('li')).toHaveTextContent(', now')
   })
 
   it('puts the steps in the lime panel and the one task on the right', () => {

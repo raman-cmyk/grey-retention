@@ -38,8 +38,9 @@ const summaryEmailLimit = 1000
 
 /** The latest sends per competitor shown in the library (spec §9). */
 export const latestPerDomain = 20
-/** The most tracked domains at a time (the database checks it too). */
-export const domainLimit = 10
+// The most followed brands at a time lives with the domain rules, so the
+// follow action reads it without this server-only module.
+export { domainLimit } from '@/features/library/inspirations/domain'
 
 /**
  * LIVE once emails have arrived (a capture with fewer than 10 is still

@@ -1006,8 +1006,9 @@ export function fill(
         }
         break
       case 'review_strip':
-        // Only the client's verified reviews, word for word.
-        content = { heading: 'What customers say', reviews: c.reviews }
+        // Only the store's own confirmed reviews, word for word with their
+        // own stars, under a heading code fixes (`reviewStripHeading`).
+        content = { heading: reviewStripHeading, reviews: c.reviews }
         break
       case 'ugc_grid': {
         const photos = c.customerPhotos
@@ -1377,6 +1378,9 @@ export function blockWords(block: Block): string[] {
   walk(block.content, '')
   return out
 }
+
+/** The review strip's heading: fixed by code, never the writer's words. */
+export const reviewStripHeading = 'What customers say'
 
 /**
  * The draft in copy QA's shape (`checkCopy`, ASM-002): subject, preview

@@ -38,7 +38,14 @@ export type SetupView = {
   workspaceName: string
   flow: SetupFlow | null
   /** The brand as saved, with its revision for the next save. */
-  brand: { name: string; domain: string; revision: number } | null
+  brand: {
+    name: string
+    domain: string
+    revision: number
+    /** How emails should sound and what to avoid, as saved (optional). */
+    voice: string
+    prohibitions: string
+  } | null
   klaviyo: KlaviyoState | null
   /** A key is checked with Klaviyo itself (KLAVIYO_MODE=live), else its format only. */
   liveKeys: boolean
@@ -54,7 +61,7 @@ export async function setupRecords(db: Db, tenantId: string) {
   const [brand, marks, following, klaviyo] = await Promise.all([
     db
       .from('brand_profiles')
-      .select('brand_name,domain,revision')
+      .select('brand_name,domain,revision,voice,prohibitions')
       .eq('tenant_id', tenantId)
       .maybeSingle(),
     db
@@ -136,7 +143,9 @@ export async function setupReadModel(
       ? {
           name: brand.brand_name,
           domain: brand.domain,
-          revision: brand.revision
+          revision: brand.revision,
+          voice: brand.voice,
+          prohibitions: brand.prohibitions
         }
       : null,
     klaviyo: records.klaviyo,

@@ -74,6 +74,36 @@ const failed = async (c: Partial<ReleaseCandidate>, checkLink?: LinkChecker) =>
   (await run(c, checkLink)).checks.filter((x) => !x.pass).map((x) => x.id)
 
 describe('runReleaseQa', () => {
+  it('lets a strip of the store’s own reviews show their own stars, and no other stars (REL-ONB2 part b)', async () => {
+    const review = {
+      quote: 'So soft on dry skin, I use it every night.',
+      author: 'Priya S.',
+      rating: 5
+    }
+    const withStrip = (shown: typeof review) =>
+      ({
+        ...draft,
+        blocks: [
+          ...draft.blocks,
+          {
+            type: 'review_strip',
+            content: { heading: 'What customers say', reviews: [shown] }
+          }
+        ]
+      }) as unknown as Draft
+    // No verified review source (`unknownFacts`): only the store's own pass.
+    expect(
+      await failed({ draft: withStrip(review), confirmedReviews: [review] })
+    ).toEqual([])
+    expect(await failed({ draft: withStrip(review) })).toEqual(['copy'])
+    expect(
+      await failed({
+        draft: withStrip({ ...review, rating: 4 }),
+        confirmedReviews: [review]
+      })
+    ).toEqual(['copy'])
+  })
+
   it('passes a clean email and reports every check in words', async () => {
     const result = await run()
     expect(result.pass).toBe(true)

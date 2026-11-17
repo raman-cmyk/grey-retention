@@ -7,7 +7,9 @@ import { requireRequestContext } from '@/features/auth/application/request-conte
 import { getServerEnvironment } from '@/lib/env/server'
 import { createClient } from '@/lib/supabase/server'
 import { startAdsReading } from './ads/start'
-import { websiteOf } from './flow-model'
+import { startCatalogReading } from './catalog/start'
+import { startHistoryReading } from './history/start'
+import { maxBrandWords, maxWebsite, websiteOf } from './flow-model'
 import { startReviewsReading } from './reviews/start'
 import { startSiteReading } from './site/start'
 
@@ -18,10 +20,15 @@ import { startSiteReading } from './site/start'
  */
 export type SetupAnswer = {
   error?: string
-  fields?: Partial<Record<'name' | 'website', string>>
+  /** What was done, when the step stays open. */
+  message?: string
+  /** An error for one field, by the field's name. */
+  fields?: Record<string, string>
 }
 
-const ownerOnly = 'Only the workspace owner can set up GROS.'
+const ownerOnly = 'Only the workspace owner can set up your store.'
+const changedWebsite =
+  'Your website was changed in another window. Look at what was found again.'
 const setupPath = '/setup' as Route
 
 async function ownerSession() {
@@ -45,7 +52,8 @@ const store = z.object({
     .max(120, 'Enter your store’s name, 2 to 120 letters.'),
   website: z
     .string()
-    .max(300, 'Enter your store’s website, like cedarlane.com.')
+    .trim()
+    .max(maxWebsite, 'Enter your store’s website, like cedarlane.com.')
 })
 
 /** The readers that need only the website: the site, its ads, its reviews. */
@@ -120,19 +128,75 @@ export async function saveStore(
   redirect(setupPath)
 }
 
-/** Brand: the owner confirms what was found on the saved website. */
-export async function confirmBrand(): Promise<SetupAnswer> {
+const brandWords = z
+  .string()
+  .trim()
+  .max(maxBrandWords, `Keep it under ${maxBrandWords} characters.`)
+
+/**
+ * Brand: the owner confirms what was found on the website he was shown
+ * (`site`: a change from another window is refused, never confirmed
+ * blind), with how his emails should sound and what to avoid (optional),
+ * saved with the brand profile's own command when they changed.
+ */
+export async function confirmBrand(
+  _state: SetupAnswer,
+  form: FormData
+): Promise<SetupAnswer> {
   const session = await ownerSession()
   if ('error' in session) return { error: session.error }
-  const saved = await session.db.rpc('save_onboarding_step', {
-    t: session.context.tenantId,
-    step: 'brand'
+  const voice = brandWords.safeParse(form.get('voice') ?? '')
+  const rules = brandWords.safeParse(form.get('prohibitions') ?? '')
+  if (!voice.success || !rules.success)
+    return {
+      fields: {
+        ...(voice.success ? {} : { voice: voice.error.issues[0]!.message }),
+        ...(rules.success
+          ? {}
+          : { prohibitions: rules.error.issues[0]!.message })
+      }
+    }
+  const site = String(form.get('site') ?? '')
+  const { context, db } = session
+  const current = await db
+    .from('brand_profiles')
+    .select('revision,brand_name,domain,positioning,voice,prohibitions')
+    .eq('tenant_id', context.tenantId)
+    .maybeSingle()
+  if (current.error || !current.data)
+    return { error: 'Save your store’s website first.' }
+  const brand = current.data
+  if (brand.domain !== site) return { error: changedWebsite }
+  if (brand.voice !== voice.data || brand.prohibitions !== rules.data) {
+    const words = await db.rpc('save_brand', {
+      t: context.tenantId,
+      expected_revision: brand.revision,
+      brand_name: brand.brand_name,
+      domain: brand.domain,
+      positioning: brand.positioning,
+      voice: voice.data,
+      prohibitions: rules.data
+    })
+    if (words.error)
+      return {
+        error:
+          words.error.code === '40001'
+            ? changedWebsite
+            : 'We could not save this step. Try again.'
+      }
+  }
+  const saved = await db.rpc('save_onboarding_step', {
+    t: context.tenantId,
+    step: 'brand',
+    site_shown: site
   })
   if (saved.error)
     return {
       error:
         saved.error.code === 'PT409'
-          ? 'Save your store’s website first.'
+          ? saved.error.details === 'changed'
+            ? changedWebsite
+            : 'Save your store’s website first.'
           : saved.error.code === '42501'
             ? ownerOnly
             : 'We could not save this step. Try again.'
@@ -141,11 +205,24 @@ export async function confirmBrand(): Promise<SetupAnswer> {
   redirect(setupPath)
 }
 
-/** Reads the store again: a reader that failed, or never started. */
+/**
+ * Reads the store again: every reader that failed or never started. The
+ * Klaviyo readers (catalog, history) start only once Klaviyo is connected;
+ * before that their refusal is no failure.
+ */
 export async function readStoreAgain(): Promise<SetupAnswer> {
   const session = await ownerSession()
   if ('error' in session) return { error: session.error }
-  if (!(await startReaders(session)))
+  const { context, db } = session
+  const [own, catalog, history] = await Promise.all([
+    startReaders(session),
+    startCatalogReading(db, context.tenantId),
+    startHistoryReading(db, context.tenantId)
+  ])
+  const klaviyoOk = [catalog, history].every(
+    (s) => s.ok || s.code === 'connect_klaviyo'
+  )
+  if (!own || !klaviyoOk)
     return {
       error: 'We could not start reading your store. Try again in a minute.'
     }

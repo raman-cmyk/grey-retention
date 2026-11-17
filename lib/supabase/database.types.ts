@@ -898,6 +898,45 @@ export type Database = {
           }
         ]
       }
+      brand_fonts: {
+        Row: {
+          domain: string
+          fonts: Json
+          read_at: string
+          run_id: string
+          tenant_id: string
+        }
+        Insert: {
+          domain: string
+          fonts: Json
+          read_at?: string
+          run_id: string
+          tenant_id: string
+        }
+        Update: {
+          domain?: string
+          fonts?: Json
+          read_at?: string
+          run_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_fonts_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_fonts_tenant_id_run_id_fkey'
+            columns: ['tenant_id', 'run_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       brand_kits: {
         Row: {
           approved_by: string | null
@@ -8255,6 +8294,10 @@ export type Database = {
         }
         Returns: Json
       }
+      record_site_fonts: {
+        Args: { fonts: Json; job: string; lease: string }
+        Returns: boolean
+      }
       record_site_logos: {
         Args: {
           job: string
@@ -8574,7 +8617,7 @@ export type Database = {
         Returns: undefined
       }
       save_onboarding_step: {
-        Args: { step: string; t: string }
+        Args: { site_shown?: string; step: string; t: string }
         Returns: undefined
       }
       save_own_template: {
