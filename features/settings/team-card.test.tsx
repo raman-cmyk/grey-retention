@@ -219,9 +219,8 @@ describe('Team card on Settings (UI-SETb)', () => {
     expect(within(c).getByLabelText('Email')).toHaveAccessibleDescription(
       'No email is sent yet. Ask them to sign up with this address.'
     )
-    expect(
-      within(c).getByRole('link', { name: 'See team changes' })
-    ).toHaveAttribute('href', '/team')
+    // Who changed what is the Recent changes card: no link to /team.
+    expect(within(c).queryByRole('link')).toBeNull()
   })
 
   it('never lets a manager change the owner or their own access', () => {

@@ -6,7 +6,6 @@ import {
   expiryText,
   initial,
   inviteSchema,
-  isExpired,
   roleLabel
 } from './rules'
 
@@ -116,7 +115,5 @@ describe('team rules', () => {
     expect(expiryText('2026-11-07T13:00:00Z', now)).toBe('Expires in 1 day')
     expect(expiryText('2026-11-06T18:00:00Z', now)).toBe('Expires today')
     expect(expiryText('2026-11-06T11:00:00Z', now)).toBe('Expired')
-    expect(isExpired('2026-11-06T11:00:00Z', now)).toBe(true)
-    expect(isExpired('2026-11-06T13:00:00Z', now)).toBe(false)
   })
 })

@@ -67,10 +67,7 @@ function failed(error: DbError): FormResult {
   return { error: 'We could not save this. Nothing was changed. Try again.' }
 }
 
-const refresh = () => {
-  revalidatePath('/team')
-  revalidatePath('/settings')
-}
+const refresh = () => revalidatePath('/settings')
 const text = (form: FormData, key: string) => {
   const value = form.get(key)
   return typeof value === 'string' ? value : ''
