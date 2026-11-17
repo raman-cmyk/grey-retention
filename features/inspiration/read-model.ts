@@ -19,8 +19,12 @@ import { validTimezone } from '@/lib/brand-time'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 
-/** The latest emails shown, newest first. */
-export const latestEmails = 12
+/**
+ * The latest emails shown, newest first: as many as the library reads of
+ * the store's own uploads, so one followed brand's newsletters never crowd
+ * out another's in a busy week (a "show more" comes with the polish).
+ */
+export const latestEmails = 40
 
 export type InspirationSuggestion = CompetitorSuggestion & {
   /** A sample brand: this workspace can follow it now. */
