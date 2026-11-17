@@ -41,7 +41,14 @@ const read = {
     checkedAt: null,
     missingLater: []
   },
-  team: { members: 2, openInvites: 0, canManage: true },
+  team: {
+    members: 2,
+    openInvites: 0,
+    canManage: true,
+    roster: [],
+    invites: [],
+    now: 0
+  },
   account: { name: 'Sam', email: 'owner@cedarlane.example' },
   history: [],
   brandKit: { available: false as const, reason: '' }

@@ -5,6 +5,7 @@ import type { ClientRequestContext } from '@/features/auth/domain/types'
 import { offersPage } from '@/features/offers/data'
 import { profilePageData } from '@/features/profile/data'
 import { teamPage } from '@/features/team/data'
+import type { PendingInvite, TeamMember } from '@/features/team/rules'
 import { getServerEnvironment } from '@/lib/env/server'
 import type { Database } from '@/lib/supabase/database.types'
 import { createClient } from '@/lib/supabase/server'
@@ -42,12 +43,18 @@ export type SettingsReadModel = {
   /**
    * Active members, invites not yet expired (null for staff, who do not see
    * invites, or when they could not be read), and whether this person may
-   * manage the team.
+   * manage the team (UI-SETb: the Team card's buttons).
    */
   team: {
     members: number
     openInvites: number | null
     canManage: boolean
+    /** Everyone on the team, deactivated people too. */
+    roster: TeamMember[]
+    /** Open and expired invites: null for staff, or when they could not be read. */
+    invites: PendingInvite[] | null
+    /** When the team was read, for "Expires in 6 days". */
+    now: number
   } | null
   account: { name: string; email: string } | null
   history: Change[] | null
@@ -137,7 +144,8 @@ export async function settingsReadModel(
   const [offers, klaviyo, team, account] = await Promise.all([
     settle(offersPage(context)),
     settle(klaviyoState(db, context.tenantId)),
-    settle(teamPage(context)),
+    // Who changed what is not on Settings yet (UI-SETc): no team events.
+    settle(teamPage(context, Date.now(), { events: false })),
     settle(profilePageData())
   ])
   const teamReady = team && team.state === 'ready' ? team : null
@@ -162,7 +170,10 @@ export async function settingsReadModel(
                   (i) => Date.parse(i.expiresAt) > teamReady.now
                 ).length
               : null,
-          canManage: teamReady.canManage
+          canManage: teamReady.canManage,
+          roster: teamReady.members,
+          invites: teamReady.canManage ? teamReady.invites : null,
+          now: teamReady.now
         }
       : null,
     account: account ? { name: account.name, email: account.email } : null,

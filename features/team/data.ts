@@ -18,7 +18,10 @@ export type TeamPage = {
    * they could not be loaded.
    */
   invites: PendingInvite[] | null
-  /** Recent team changes (managers only); null when they could not load. */
+  /**
+   * Recent team changes (managers only; empty when not asked for); null
+   * when they could not load.
+   */
   events: TeamEvent[] | null
   /** When the page was built, for "Expires in N days". */
   now: number
@@ -88,10 +91,14 @@ async function teamEvents(
   })
 }
 
-/** What one workspace's Team page shows. */
+/**
+ * What one workspace's Team page shows. `events: false` skips the recent
+ * changes (Settings does not show them yet: UI-SETc).
+ */
 export async function teamPage(
   context: { tenantId: string; tenantRole: string },
-  now = Date.now()
+  now = Date.now(),
+  { events = true }: { events?: boolean } = {}
 ): Promise<TeamPage> {
   const canManage = canManageTeam(context.tenantRole)
   const base = { canManage, members: [], invites: [], events: [], now }
@@ -130,7 +137,8 @@ export async function teamPage(
   return {
     ...base,
     state: 'ready',
-    events: canManage ? await teamEvents(db, context.tenantId, list) : [],
+    events:
+      canManage && events ? await teamEvents(db, context.tenantId, list) : [],
     members: list,
     invites: invites.error
       ? null
