@@ -209,7 +209,8 @@ function imageUrl(value: string, r: Rules) {
   const stored = r.images.get(v)
   if (stored !== undefined) return stored
   return r.stored.has(v) ||
-    /^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z\d+/=\s]*$/i.test(v)
+    (v.length <= 140_000 &&
+      /^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z\d+/=\s]*$/i.test(v))
     ? value
     : ''
 }
@@ -263,6 +264,15 @@ const unescapeCss = (css: string) =>
         : '\u{fffd}'
     }
   )
+
+/** A CSS string that is a link: a scheme, //, a path, or a file's name. */
+const cssLink =
+  /^\s*(?:[a-z][a-z\d+.-]*:\/\/|\/\/|(?:data|cid|javascript|vbscript|blob|file):|\/(?![\s/]))|\.(?:css|png|jpe?g|gif|webp|svg|woff2?|ttf|otf|eot)(?:[?#]|\s*$)/i
+/** A CSS string's words written back, quotes and backslashes escaped. */
+const cssQuote = (s: string, q: string) =>
+  s
+    .replace(/[\\\n\r\f]/g, (c) => (c === '\\' ? '\\\\' : ' '))
+    .replaceAll(q, `\\${q}`)
 
 /** How often CSS loads a file (an escape can hide one). */
 const loads = (css: string) =>
@@ -326,9 +336,16 @@ function cssStrings(css: string, r: Rules, until: Deadline) {
     const plain = unescapeCss(value)
     out += css.slice(i, start)
     if (j >= css.length || /\\[\n\r\f]/.test(value)) out += `${q}${q}`
-    else if (/^\s*(?:[a-z][a-z\d+.-]*:|\/)|[?#]/i.test(plain))
+    else if (
+      cssLink.test(plain) ||
+      /@import\s*$/i.test(css.slice(Math.max(0, start - 16), start))
+    )
       out += `${q}${imageUrl(plain, r)}${q}`
-    else out += `${q}${scrub(value, r)}${q}`
+    else {
+      // Read with its escapes ("Hi \53 am"): written plain when it changes.
+      const cleaned = scrub(plain, r)
+      out += `${q}${cleaned === plain ? value : cssQuote(cleaned, q)}${q}`
+    }
     i = j + 1
   }
   return out
@@ -419,10 +436,10 @@ function cleanBlock(nodes: (T.TextNode | '\n')[], r: Rules, until: Deadline) {
     }
     // Only what spans pieces: within one, each text's own cleaning (with
     // its greeting) does it.
-    const cuts = ranges(joined, [...addressRules(r), r.names], r).filter(
-      ([a, b]) => piece(a) !== piece(b - 1)
-    )
-    if (cuts.length) {
+    const across = ([a, b]: [number, number]) => piece(a) !== piece(b - 1)
+    const cuts = ranges(joined, addressRules(r), r).filter(across)
+    const names = ranges(joined, [r.names], r).filter(across)
+    if (cuts.length || names.length) {
       // Each match widens to the whole word it touches, so no piece of an
       // address is left beside it. One sweep: no character is read twice.
       const gone = new Uint8Array(joined.length)
@@ -435,6 +452,7 @@ function cleanBlock(nodes: (T.TextNode | '\n')[], r: Rules, until: Deadline) {
         gone.fill(1, Math.max(a, reach), b)
         reach = b
       }
+      for (const [a, b] of names) gone.fill(1, a, b)
       let at = 0
       nodes.forEach((n, k) => {
         const v = parts[k]!
@@ -611,12 +629,12 @@ function serialize(doc: T.Document, r: Rules, until: Deadline) {
 }
 
 /**
- * One round. The size limit holds for the email itself (`first`): escaping
- * may make the cleaned HTML longer, and that is read again as it is.
+ * One round. Every round holds the size limit, the last one too (it reads
+ * the cleaned copy), so a result is never longer than an email may be
+ * (escaping can make HTML longer): cleaned again, it is never refused.
  */
-function cleanOnce(html: string, r: Rules, until: Deadline, first: boolean) {
-  if ((first && html.length > r.limits.html) || !scannable(html, r, until))
-    return null
+function cleanOnce(html: string, r: Rules, until: Deadline) {
+  if (html.length > r.limits.html || !scannable(html, r, until)) return null
   const doc = parse(html, {
     scriptingEnabled: false,
     treeAdapter: guarded(r, until)
@@ -661,9 +679,7 @@ export function cleanEmailHtml(
     hard: Date.now() + privacyLimits.htmlMs
   }
   try {
-    return settle(cleanOnce(html, r, until, true), (out) =>
-      cleanOnce(out, r, until, false)
-    )
+    return settle(cleanOnce(html, r, until), (out) => cleanOnce(out, r, until))
   } catch (error) {
     if (error instanceof Refused) return null
     throw error

@@ -92,7 +92,7 @@ const url = new RegExp(
  * blanks (NBSP, a line break) around @, a dot as well.
  */
 export const address = new RegExp(
-  String.raw`(?:${local}|"[^"\n]{1,64}")(?:${at}(?:${host}(?:\.${host})*|\[[\d.:a-f]{2,45}\])|\s{1,2}${at}\s{0,2}${domain}|${at}\s{1,2}${domain})`,
+  String.raw`(?:${local}|"[^"\n]{1,64}")(?:${at}(?:${domain}|\[[\d.:a-f]{2,45}\])|\s{1,2}${at}\s{0,2}${domain}|${at}\s{1,2}${domain})`,
   'giu'
 )
 const bracket = (w: string) =>
@@ -182,7 +182,7 @@ function compile(identity: InboxIdentity, options: CleanOptions): Rules {
   const local = locals.length
     ? String.raw`(?:${locals.join('|')})(?:\+[\p{L}\p{N}._-]+)?`
     : null
-  // "capture at inbox.example", "samriv [at] gmail": its own domain (or
+  // "capture at inbox.example", "samriv [at] example": its own domain (or
   // the domain's first word) after any at sign, so a short one goes too.
   const blank = String.raw`\s{0,3}`
   const atSign = String.raw`(?:${blank}${at}${blank}|${blank}[[({]${blank}(?:at|@)${blank}[\])}]${blank}|\s{1,3}at\s{1,3})`
@@ -278,7 +278,7 @@ const unseen = /^[\p{Cf}\p{Default_Ignorable_Code_Point}]$/u
 const special = /[^\x00-\x7f]|[&%]/
 /** HTML character references in a text part ("samriv&#64;example.com"). */
 const entity =
-  /&(?:#(\d{1,7});?|#x([\da-f]{1,6});?|(commat|nbsp|amp|period|plus|lowbar|hyphen|dash|apos));/iy
+  /&(?:#(\d{1,7});?|#x([\da-f]{1,6});?|(commat|nbsp|amp|period|plus|lowbar|hyphen|dash|apos);)/iy
 /** A run of percent escapes ("%D0%90", "%2540"). */
 const percents = /(?:%(?:25)*[\da-f]{2})+/iy
 const named: Record<string, string> = {
@@ -562,8 +562,17 @@ function cut(value: string, max: number) {
   return (at > max / 2 ? s.slice(0, at) : s).trimEnd()
 }
 
-const read = (value: string, max: number, r: Rules) =>
-  cut(value, max * r.limits.readFactor)
+/**
+ * The part read: cut at a blank, so no piece of a word (of an address)
+ * is left at its end; one long word is not read at all.
+ */
+function read(value: string, max: number, r: Rules) {
+  const limit = Math.max(0, Math.floor(max * r.limits.readFactor))
+  if (value.length <= limit) return value
+  const s = value.slice(0, limit)
+  if (/\s/.test(value[limit]!)) return s
+  return s.slice(0, Math.max(s.lastIndexOf(' '), s.lastIndexOf('\n'), 0))
+}
 
 export function cleanEmailText(
   text: string,
