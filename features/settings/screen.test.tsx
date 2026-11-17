@@ -327,6 +327,15 @@ describe('Settings screen (UI-SETa)', () => {
       within(team).getByRole('button', { name: 'Invite as Staff' })
     ).toBeVisible()
     expect(within(team).queryByRole('link')).toBeNull()
+    // Holidays and events have their own page under Settings (UI-SETd).
+    expect(card('Holidays and events')).toHaveTextContent(
+      'Your own dates, and the holidays GROS plans around.'
+    )
+    expect(
+      within(card('Holidays and events')).getByRole('link', {
+        name: 'Open holidays'
+      })
+    ).toHaveAttribute('href', '/settings/holidays')
     const account = card('Account')
     expect(account).toHaveTextContent('Sam Cedar')
     expect(account).toHaveTextContent('owner@cedarlane.example')

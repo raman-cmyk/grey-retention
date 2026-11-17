@@ -55,7 +55,13 @@ const nextConfig: NextConfig = {
       },
       // UI-SETc: the old Team page is retired; the team and who changed
       // what are on Settings.
-      { source: '/team', destination: '/settings', permanent: false }
+      { source: '/team', destination: '/settings', permanent: false },
+      // UI-SETd: holidays and events are a page under Settings.
+      {
+        source: '/holidays',
+        destination: '/settings/holidays',
+        permanent: false
+      }
     ]
   },
   async headers() {

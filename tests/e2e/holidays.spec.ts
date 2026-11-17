@@ -14,106 +14,77 @@ function soon(days = 14) {
   }).format(at)
 }
 
-test('UIR-012 owner adds, edits and deletes an entry and picks a country', async ({
+test('UI-SETd the owner adds, edits and deletes a date and picks a country', async ({
   page
 }) => {
   await newOwner(page, { prefix: 'holidays', name: 'Holidays studio' })
-  // The sidebar links here now (not to Settings).
-  // (A page still on the old shell: Home has the GROS top bar.)
-  await page.goto('/feedback')
-  await expect(
-    page
-      .locator('a[href="/holidays"]', { hasText: 'Holidays & Events' })
-      .first()
-  ).toBeAttached()
+  // Settings opens the page; the old address does too.
+  await page.goto('/settings')
+  await page
+    .getByRole('region', { name: 'Holidays and events' })
+    .getByRole('link', { name: 'Open holidays' })
+    .click()
+  await expect(page).toHaveURL(/\/settings\/holidays$/)
   await page.goto('/holidays')
+  await expect(page).toHaveURL(/\/settings\/holidays$/)
+  await expect(page).toHaveTitle(/Holidays and events/)
   await expect(
-    page.getByRole('heading', { name: 'Holidays & Events', level: 1 })
+    page.getByRole('heading', { name: 'Holidays and events', level: 1 })
   ).toBeVisible()
-  await expect(page).toHaveTitle(/Holidays & Events/)
-  await expect(
-    page.getByText('Nothing yet — add your first on the left.')
-  ).toBeVisible()
+  const dates = page.getByRole('region', { name: 'Your dates' })
+  await expect(dates.getByText('No dates yet.')).toBeVisible()
 
-  // Platform list: managed by the product (white-label), country guessed.
-  const platform = page.getByRole('region', { name: /Platform holidays/ })
-  await expect(platform.getByRole('heading')).toContainText(
-    'managed by Grey Retention'
-  )
-  await expect(platform.getByText(/Guessed from your timezone/)).toBeVisible()
+  // The country: guessed from the timezone, then the owner's choice.
+  const platform = page.getByRole('region', { name: 'Holidays in the plan' })
+  await expect(platform).toContainText('Guessed from your timezone')
+  await expect(platform).toContainText('kept up to date by Grey Retention')
   await platform.getByLabel('Country').selectOption('AU')
   await platform.getByRole('button', { name: 'Save country' }).click()
   await expect(platform.getByText('Country saved.')).toBeVisible()
-  // The dropdown keeps the new country (it used to jump back).
   await expect(platform.getByLabel('Country')).toHaveValue('AU')
-  await expect(platform.getByText(/Guessed from your timezone/)).toHaveCount(0)
+  await expect(platform).not.toContainText('Guessed from your timezone')
   await page.reload()
-  await expect(
-    page
-      .getByRole('region', { name: /Platform holidays/ })
-      .getByLabel('Country')
-  ).toHaveValue('AU')
-  expect(
-    await page
-      .getByRole('list', { name: 'Platform holidays' })
-      .getByRole('listitem')
-      .count()
-  ).toBeGreaterThan(0)
+  await expect(platform.getByLabel('Country')).toHaveValue('AU')
+  expect(await platform.getByRole('listitem').count()).toBeGreaterThan(0)
 
   // Add.
   const name = `Summer drop ${randomUUID().slice(0, 6)}`
-  const add = page.getByRole('region', { name: 'Add an entry' })
+  const add = page.getByRole('region', { name: 'Add a date' })
   await add.getByLabel('Name', { exact: true }).fill(name)
   await add.getByLabel('Date', { exact: true }).fill(soon())
   await add.getByLabel('Type', { exact: true }).selectOption('event')
-  await add.getByRole('checkbox', { name: /Repeats annually/ }).check()
+  await add.getByRole('checkbox', { name: 'Every year' }).check()
   await add
-    .getByLabel('Notes for the AI strategist (optional)')
+    .getByLabel('Notes for GROS (optional)')
     .fill('Tease it a week early.')
-  await add.getByRole('button', { name: 'Add entry' }).click()
+  await add.getByRole('button', { name: 'Add date' }).click()
   await expect(add.getByText(`Added “${name}”.`)).toBeVisible()
   await expect(add.getByLabel('Name', { exact: true })).toHaveValue('')
-  const yours = page.getByRole('region', { name: 'Yours' })
-  await expect(yours.getByText('1 total')).toBeVisible()
-  const row = yours.getByRole('listitem').filter({ hasText: name })
-  await expect(row.getByText('Event', { exact: true })).toBeVisible()
-  await expect(row.getByText('Every year')).toBeVisible()
-  await expect(row.getByText('Tease it a week early.')).toBeVisible()
+  const row = dates.getByRole('listitem').filter({ hasText: name })
+  await expect(row).toContainText('Event · Every year · Tease it a week early.')
 
-  // Edit.
-  await row.getByRole('button', { name: `Edit ${name}` }).click()
+  // Edit: the form opens with its values, and says it saved.
+  await row.getByRole('link', { name: `Edit: ${name}` }).click()
+  await expect(page).toHaveURL(/\?edit=/)
+  const edit = page.getByRole('region', { name: `Edit ${name}` })
+  await expect(edit.getByLabel('Name', { exact: true })).toHaveValue(name)
   const renamed = `${name} sale`
-  await yours.getByLabel('Name', { exact: true }).fill(renamed)
-  await yours.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(yours.getByText('Saved.')).toBeVisible()
-  await expect(yours.getByText(renamed, { exact: true })).toBeVisible()
-  await expect(
-    yours.getByRole('button', { name: `Edit ${renamed}` })
-  ).toBeFocused()
-  await page.reload()
-  await expect(
-    page.getByRole('region', { name: 'Yours' }).getByText(renamed, {
-      exact: true
-    })
-  ).toBeVisible()
+  await edit.getByLabel('Name', { exact: true }).fill(renamed)
+  await edit.getByRole('button', { name: 'Save date' }).click()
+  const saved = page.getByRole('region', { name: `Edit ${renamed}` })
+  await expect(saved.getByText('Saved.', { exact: true })).toBeVisible()
+  await expect(dates.getByText(renamed, { exact: true })).toBeVisible()
+  await saved.getByRole('link', { name: 'Stop editing' }).click()
+  await expect(page.getByRole('region', { name: 'Add a date' })).toBeVisible()
 
-  // Delete, after confirming.
-  await page
-    .getByRole('region', { name: 'Yours' })
-    .getByRole('button', { name: `Delete ${renamed}` })
-    .click()
-  const dialog = page.getByRole('alertdialog')
-  await expect(dialog.getByText(`Delete “${renamed}”?`)).toBeVisible()
-  await dialog.getByRole('button', { name: 'Delete', exact: true }).click()
-  await expect(
-    page.getByText('Nothing yet — add your first on the left.')
-  ).toBeVisible()
-  await expect(
-    page.getByRole('region', { name: 'Yours' }).getByText('Deleted.')
-  ).toBeVisible()
+  // Delete, after the confirm; the answer stays though the row has gone.
+  page.once('dialog', (dialog) => void dialog.accept())
+  await dates.getByRole('button', { name: `Delete: ${renamed}` }).click()
+  await expect(dates.getByText('Deleted.', { exact: true })).toBeVisible()
+  await expect(dates.getByText('No dates yet.')).toBeVisible()
 })
 
-test('UIR-012 staff see the entries but cannot change them', async ({
+test('UI-SETd staff see the dates but cannot change them', async ({
   page
 }, info) => {
   test.skip(
@@ -121,28 +92,27 @@ test('UIR-012 staff see the entries but cannot change them', async ({
     'Role check; one layout is enough'
   )
   await login(page, 'staff')
-  await page.goto('/holidays')
+  await page.goto('/settings/holidays')
   await expect(
-    page.getByRole('heading', { name: 'Holidays & Events', level: 1 })
+    page.getByRole('heading', { name: 'Holidays and events', level: 1 })
   ).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Add an entry' })).toHaveCount(
-    0
-  )
+  await expect(page.getByRole('region', { name: 'Add a date' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /^Delete/ })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: /^Edit:/ })).toHaveCount(0)
+  await expect(page.getByLabel('Country')).toHaveCount(0)
   await expect(
-    page.getByRole('button', { name: /^(Edit|Delete) / })
-  ).toHaveCount(0)
-  await expect(
-    page
-      .getByRole('region', { name: /Platform holidays/ })
-      .getByLabel('Country')
-  ).toHaveCount(0)
+    page.getByRole('region', { name: 'Holidays in the plan' })
+  ).toBeVisible()
 })
 
-test('UIR-012 Holidays fits 375px', async ({ page }, info) => {
+test('UI-SETd Holidays fits 375px', async ({ page }, info) => {
   test.skip(info.project.name.startsWith('mobile'), 'Sets its own viewport')
   await page.setViewportSize({ width: 375, height: 812 })
   await login(page, 'owner')
-  await page.goto('/holidays')
+  await page.goto('/settings/holidays')
+  await expect(
+    page.getByRole('heading', { name: 'Holidays and events', level: 1 })
+  ).toBeVisible()
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth
