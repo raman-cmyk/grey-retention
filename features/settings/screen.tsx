@@ -20,6 +20,7 @@ import type { ManagedCode } from '@/features/offers/source'
 import { formatBrandDate } from '@/lib/brand-time'
 import type { SettingsPart, SettingsView } from './page-model'
 import { ChangesCard } from './changes-card'
+import { SupportCard } from './support-card'
 import { TeamCard } from './team-card'
 import { saveBrandTimezone, switchToKlaviyoTimezone } from './timezone-actions'
 
@@ -58,6 +59,7 @@ export function SettingsScreen({
       <CardRow>
         <HolidaysCard assistant={assistant} />
       </CardRow>
+      <SupportCard view={view} unread={<Unread view={view} part="support" />} />
       {/* Who changed what: the owner and managers only (UI-SETc). */}
       {view.editor ? (
         <ChangesCard
@@ -75,7 +77,8 @@ const unreadWords: Record<SettingsPart, string> = {
   timezone: 'The timezone',
   team: 'The team',
   account: 'Your account',
-  changes: 'Recent changes'
+  changes: 'Recent changes',
+  support: 'Your support questions'
 }
 
 /** Why a card has nothing to show. */

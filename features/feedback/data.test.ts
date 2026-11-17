@@ -33,6 +33,7 @@ const ticket = {
   subject: 'Duplicate campaign',
   category: 'feature',
   state: 'in_progress',
+  revision: 4,
   created_at: '2026-11-05T10:00:00Z',
   creator_id: me,
   support_messages: [
@@ -96,6 +97,7 @@ describe('feedbackPage', () => {
         subject: 'Duplicate campaign',
         category: 'feature',
         status: 'planned',
+        revision: 4,
         createdAt: '2026-11-05T10:00:00Z',
         by: 'You',
         details: 'Reuse last week.',
@@ -137,6 +139,19 @@ describe('feedbackPage', () => {
       args: ['tenant_id', tenant]
     })
     expect(calls).toContainEqual({
+      table: 'support_tickets',
+      method: 'eq',
+      args: ['kind', 'feedback']
+    })
+    // Settings' Support card reads the support threads the same way.
+    calls.length = 0
+    await feedbackPage({ tenantId: tenant, userId: me }, 1, { kind: 'support' })
+    expect(calls).toContainEqual({
+      table: 'support_tickets',
+      method: 'eq',
+      args: ['kind', 'support']
+    })
+    expect(calls).not.toContainEqual({
       table: 'support_tickets',
       method: 'eq',
       args: ['kind', 'feedback']

@@ -44,9 +44,10 @@ describe('AccountForm', () => {
     expect(email).toHaveAccessibleDescription(
       'Email is locked. Contact support if you need to change it.'
     )
+    // Support is a card on Settings (UI-SETd).
     expect(screen.getByRole('link', { name: 'support' })).toHaveAttribute(
       'href',
-      '/support'
+      '/settings#support'
     )
     expect(screen.getByLabelText('Job title')).toHaveValue('Founder')
     expect(screen.getByLabelText('Phone')).toHaveAttribute('type', 'tel')

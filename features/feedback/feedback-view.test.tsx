@@ -25,6 +25,7 @@ const request = (over: Partial<FeatureRequest>): FeatureRequest => ({
   subject: 'Duplicate campaign button',
   category: 'feature',
   status: 'open',
+  revision: 1,
   createdAt: '2026-11-05T10:00:00Z',
   by: 'You',
   details: 'So I can reuse last week’s email.',

@@ -2,6 +2,8 @@ import 'server-only'
 import { unstable_rethrow } from 'next/navigation'
 import type { ClientRequestContext } from '@/features/auth/domain/types'
 import { klaviyoMode } from '@/features/connections/live-klaviyo'
+import { feedbackPage, type FeedbackPage } from '@/features/feedback/data'
+import type { FeatureRequest } from '@/features/feedback/rules'
 import type { ManagedOffers } from '@/features/offers/source'
 import { timezoneWithOffset } from '@/lib/brand-time'
 import { localTime } from './defaults'
@@ -24,7 +26,7 @@ import {
  * admins change offers; only the owner changes Klaviyo and the timezone.
  */
 export type SettingsPart =
-  'offers' | 'klaviyo' | 'timezone' | 'team' | 'account' | 'changes'
+  'offers' | 'klaviyo' | 'timezone' | 'team' | 'account' | 'changes' | 'support'
 
 export type SettingsView = {
   /** Nothing is kept in the demo: the cards say so. */
@@ -51,16 +53,29 @@ export type SettingsView = {
   account: SettingsReadModel['account']
   /** Who changed what (UI-SETc): the owner and managers only. */
   changes: SettingsReadModel['changes']
+  /**
+   * The workspace's support questions, newest first (UI-SETd): any member
+   * asks and replies. `tenantId` goes back with a reply, as the action asks.
+   */
+  support: {
+    threads: FeatureRequest[]
+    team: string
+    tenantId: string
+  } | null
   unread: SettingsPart[]
 }
 
 export type SettingsInput = {
-  context: Pick<ClientRequestContext, 'tenantRole'>
+  context: Pick<ClientRequestContext, 'tenantRole' | 'tenantId'>
   now: Date
   read: SettingsReadModel | null
   zone: BrandTimezone | null
+  support: FeedbackPage | null
   liveKeys: boolean
 }
+
+/** The support threads Settings shows, newest first. */
+export const supportLimit = 10
 
 /** The Settings view from its parts. Pure, for tests. */
 export function settingsView(input: SettingsInput): SettingsView {
@@ -93,6 +108,14 @@ export function settingsView(input: SettingsInput): SettingsView {
     team: read?.team ?? null,
     account: read?.account ?? null,
     changes: read?.changes ?? null,
+    support:
+      input.support?.state === 'ready'
+        ? {
+            threads: input.support.requests.slice(0, supportLimit),
+            team: input.support.team,
+            tenantId: input.context.tenantId
+          }
+        : null,
     unread: []
   }
   for (const part of [
@@ -100,7 +123,8 @@ export function settingsView(input: SettingsInput): SettingsView {
     'klaviyo',
     'timezone',
     'team',
-    'account'
+    'account',
+    'support'
   ] as const)
     if (view[part] === null) view.unread.push(part)
   // Staff do not see the changes, so they are never missing for them.
@@ -120,15 +144,17 @@ export async function settingsPageModel(
   context: ClientRequestContext,
   now = new Date()
 ): Promise<SettingsView> {
-  const [read, zone] = await Promise.all([
+  const [read, zone, support] = await Promise.all([
     settle(settingsReadModel(context)),
-    settle(brandTimezone(context))
+    settle(brandTimezone(context)),
+    settle(feedbackPage(context, now.getTime(), { kind: 'support' }))
   ])
   return settingsView({
     context,
     now,
     read,
     zone,
+    support,
     liveKeys: klaviyoMode() === 'live'
   })
 }

@@ -61,7 +61,9 @@ const nextConfig: NextConfig = {
         source: '/holidays',
         destination: '/settings/holidays',
         permanent: false
-      }
+      },
+      // UI-SETd: support is a card on Settings.
+      { source: '/support', destination: '/settings', permanent: false }
     ]
   },
   async headers() {

@@ -26,10 +26,14 @@ export const messageLimit = 100
 const isCategory = (value: unknown): value is Category =>
   categories.some((c) => c.value === value)
 
-/** What one workspace's Feature Requests page shows. */
+/**
+ * One workspace's feature requests, or with `kind: 'support'` its support
+ * threads (UI-SETd): the same tickets, people and replies.
+ */
 export async function feedbackPage(
   context: { tenantId: string; userId: string },
-  now = Date.now()
+  now = Date.now(),
+  { kind = 'feedback' }: { kind?: 'feedback' | 'support' } = {}
 ): Promise<FeedbackPage> {
   const team = `${defaultBrandPresentation.productName} team`
   const empty = { requests: [], team, now }
@@ -40,10 +44,10 @@ export async function feedbackPage(
   const tickets = await db
     .from('support_tickets')
     .select(
-      'id,subject,category,state,created_at,creator_id,support_messages(id,actor_id,body,created_at)'
+      'id,subject,category,state,revision,created_at,creator_id,support_messages(id,actor_id,body,created_at)'
     )
     .eq('tenant_id', context.tenantId)
-    .eq('kind', 'feedback')
+    .eq('kind', kind)
     .order('created_at', { ascending: false })
     .order('created_at', { referencedTable: 'support_messages' })
     .limit(messageLimit, { referencedTable: 'support_messages' })
@@ -90,6 +94,7 @@ export async function feedbackPage(
         subject: row.subject,
         category: isCategory(row.category) ? row.category : null,
         status: statusOf(row.state),
+        revision: row.revision,
         createdAt: row.created_at,
         by: nameOf(row.creator_id),
         details: first?.body ?? '',

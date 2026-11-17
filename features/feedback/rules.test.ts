@@ -75,6 +75,7 @@ describe('feature request rules', () => {
       subject: 'Duplicate campaign',
       category: 'feature',
       status: 'open',
+      revision: 1,
       createdAt: '2026-11-06T10:00:00Z',
       by: 'You',
       details: 'Reuse last week',
