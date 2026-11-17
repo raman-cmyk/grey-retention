@@ -2,8 +2,9 @@ import { ActionButton } from '@/components/gros/action'
 import { ButtonLink } from '@/components/gros/button'
 import { Progress, type ProgressStep } from '@/components/gros/progress'
 import { FocusShell, StepCards } from '@/components/gros/steps'
+import { KeepFresh } from '@/features/strategy/refresh'
 import type { SetupView } from './flow'
-import type { SetupPlace } from './flow-model'
+import { maxBrandWords, maxWebsite, type SetupPlace } from './flow-model'
 import type { StepKey, StepState } from './progress'
 import { confirmBrand, readStoreAgain, saveStore } from './setup-actions'
 import { SetupError } from './setup-error'
@@ -19,12 +20,11 @@ import {
 
 /**
  * Onboarding (UI-ONBb) on the GROS focused shell: the lime panel shows the
- * five steps (a done step links back, a step ahead does not), the right
- * side the step that is open, with one title and one main button. Only
- * the owner gets the buttons; staff see where setup is.
+ * five steps, each done or not by its own record (a done step before Now
+ * links back; a step ahead never does), the right side the step that is
+ * open, with one title and one main button. Only the owner gets the
+ * buttons; staff see where setup is.
  */
-export { setupPath }
-
 export function SetupScreen({
   view,
   place,
@@ -50,14 +50,17 @@ export function SetupScreen({
         />
       </FocusShell>
     )
+  const shown = flow.steps.findIndex((s) => s.key === place)
   return (
     <FocusShell
       panel={
         <StepCards
           current={flow.current}
-          steps={flow.steps.map((s) => ({
+          shown={shown === -1 ? undefined : shown}
+          steps={flow.steps.map((s, i) => ({
             name: s.name,
-            href: s.done ? setupPath(s.key) : undefined
+            done: s.done,
+            href: s.done && i < flow.current ? setupPath(s.key) : undefined
           }))}
         />
       }
@@ -103,7 +106,7 @@ function StoreStep({ view }: { view: SetupView }) {
               inputMode: 'url',
               autoComplete: 'url',
               spellCheck: false,
-              maxLength: 300,
+              maxLength: maxWebsite,
               required: true
             }
           ]}
@@ -135,6 +138,14 @@ const skippedWords: Partial<Record<StepKey, string>> = {
   ads: 'No ads to read',
   reviews: 'No reviews to read'
 }
+/** Where each reader reads, for its reason. */
+const sourceWords: Partial<Record<StepKey, string>> = {
+  site: 'Your website',
+  ads: 'The ad library',
+  reviews: 'Your reviews',
+  catalog: 'Klaviyo',
+  history: 'Klaviyo'
+}
 const readerState: Record<StepState, ProgressStep['state']> = {
   not_started: 'next',
   waiting: 'next',
@@ -143,6 +154,20 @@ const readerState: Record<StepState, ProgressStep['state']> = {
   done: 'done',
   skipped: 'done',
   failed: 'failed'
+}
+
+/** Why a read failed, from its failure class, in the owner's words. */
+export function readerReason(key: StepKey, failure?: string): string {
+  const source = sourceWords[key] ?? 'The source'
+  if (failure === 'auth')
+    return key === 'catalog' || key === 'history'
+      ? 'Klaviyo refused the key. Reconnect Klaviyo, then try again.'
+      : `${source} refused us. Try again later.`
+  if (failure === 'rate_limit')
+    return `${source} asked us to slow down. Try again in a few minutes.`
+  if (failure === 'transient')
+    return `${source} did not answer. Try again in a minute.`
+  return `${source} could not be read. Try again.`
 }
 
 /**
@@ -175,10 +200,7 @@ export function readerSteps(view: SetupView): ProgressStep[] {
                 ? `${words[0]} stopped`
                 : words[0],
         state,
-        reason:
-          state === 'failed'
-            ? 'The store site did not answer. Try again in a minute.'
-            : undefined
+        reason: state === 'failed' ? readerReason(s.key, s.failure) : undefined
       }
     ]
   })
@@ -187,6 +209,10 @@ export function readerSteps(view: SetupView): ProgressStep[] {
 function BrandStep({ view }: { view: SetupView }) {
   const steps = readerSteps(view)
   const found = view.found
+  const running = steps.some((s) => s.state === 'now' || s.state === 'next')
+  // Never while the website is being read, nor without what was found.
+  const siteReading =
+    view.reading?.steps.find((s) => s.key === 'site')?.state === 'working'
   return (
     <>
       <Title text="Your brand" />
@@ -206,6 +232,7 @@ function BrandStep({ view }: { view: SetupView }) {
           }
         />
       ) : null}
+      {running ? <KeepFresh /> : null}
       {found ? (
         <Facts
           items={[
@@ -242,15 +269,31 @@ function BrandStep({ view }: { view: SetupView }) {
           minute.
         </p>
       )}
-      {view.owner ? (
-        <ActionButton
+      {!view.owner ? (
+        <OwnerOnly />
+      ) : found && !siteReading ? (
+        <SetupForm
           action={confirmBrand}
           label="Confirm brand"
-          size="focus"
+          hidden={{ site: view.brand?.domain ?? '' }}
+          fields={[
+            {
+              name: 'voice',
+              label: 'How should your emails sound? (optional)',
+              defaultValue: view.brand?.voice ?? '',
+              autoComplete: 'off',
+              maxLength: maxBrandWords
+            },
+            {
+              name: 'prohibitions',
+              label: 'Anything we should avoid? (optional)',
+              defaultValue: view.brand?.prohibitions ?? '',
+              autoComplete: 'off',
+              maxLength: maxBrandWords
+            }
+          ]}
         />
-      ) : (
-        <OwnerOnly />
-      )}
+      ) : null}
     </>
   )
 }

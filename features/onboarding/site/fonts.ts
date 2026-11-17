@@ -92,7 +92,8 @@ const bodyWords = set('body|base|text|paragraph|copy')
 /** Words of a custom property that names a font, and the last words of one that names a family. */
 const fontWords = set('font|type|typeface|ff|family')
 const familyEnds = set('family|stack|primary|typeface')
-const fontCdns = set(
+/** Font CDNs whose stylesheets are read (part b fetches them too). */
+export const fontCdns = set(
   'fonts.bunny.net|fast.fonts.net|cloud.typography.com|fonts.cdnfonts.com'
 )
 /** Who serves files on these hosts; any other host's are the brand's own. */
@@ -369,6 +370,10 @@ function scriptOf(range: ReturnType<typeof readRange>) {
   if ([0x142, 0x159, 0x15f].some(has)) return 1
   return has(0x1ea1) ? 2 : 3
 }
+
+/** Whether a file has the Latin letters: its range holds A, Z, a and z, or every character. */
+export const latinFile = (file: Pick<FontFile, 'unicodeRange'>) =>
+  scriptOf(readRange(file.unicodeRange ?? undefined)) === 0
 
 /** Compares two lists of numbers, first number first. */
 function byKeys(a: readonly number[], b: readonly number[]) {

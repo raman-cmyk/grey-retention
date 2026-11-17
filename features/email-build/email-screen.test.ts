@@ -74,6 +74,18 @@ describe('an email’s page (UI-EMAIL-a)', () => {
     ).toEqual({ label: 'Planning the sections', state: 'now' })
   })
 
+  it('never says a sample draft was put in Klaviyo', () => {
+    const steps = runSteps(
+      { state: 'drafted', step: 'push', sampleDraft: true },
+      'designed'
+    )
+    expect(steps.at(-1)).toEqual({
+      label: 'Kept it as a sample draft (Klaviyo is not connected)',
+      state: 'done'
+    })
+    expect(steps.some((s) => /klaviyo as a draft/i.test(s.label))).toBe(false)
+  })
+
   it('says a text email is being laid out as a letter before it is built', () => {
     const screen = emailScreen(
       row({

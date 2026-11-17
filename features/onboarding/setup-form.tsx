@@ -1,6 +1,12 @@
 'use client'
 
-import { useActionState, useId, useRef, type InputHTMLAttributes } from 'react'
+import {
+  useActionState,
+  useEffect,
+  useId,
+  useRef,
+  type InputHTMLAttributes
+} from 'react'
 import { useFormStatus } from 'react-dom'
 import { buttonClasses, type ButtonKind } from '@/components/gros/button'
 import { Field } from '@/components/gros/input'
@@ -28,7 +34,9 @@ const secret = { 'data-1p-ignore': true, 'data-lpignore': 'true' } as const
  * A setup step's form (UI-ONBb): GROS fields, each with its own error
  * under it (linked to the field), and one button that keeps its words
  * while it works. A refused answer keeps what was typed, except a key
- * (`keepOnError` false), which never stays on the page.
+ * (`keepOnError` false), which never stays on the page; when a field is
+ * refused, the focus moves to the first one, so its error is read out with
+ * its label.
  */
 export function SetupForm({
   action,
@@ -57,9 +65,18 @@ export function SetupForm({
     {}
   )
   const answerId = useId()
+  const form = useRef<HTMLFormElement>(null)
   const shown: SetupAnswer = pending ? {} : state
+  useEffect(() => {
+    const first = fields.find((f) => state.fields?.[f.name])
+    const input = first && form.current?.elements.namedItem(first.name)
+    if (input instanceof HTMLInputElement) input.focus()
+    // Only a new answer moves the focus.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state])
   return (
     <form
+      ref={form}
       action={dispatch}
       aria-busy={pending}
       onReset={(event) => {

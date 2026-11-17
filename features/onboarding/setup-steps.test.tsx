@@ -51,9 +51,16 @@ function view(over: Partial<SetupView> = {}): SetupView {
       rivalsSkipped: false,
       finished: false
     }),
-    brand: { name: 'Cedar Lane', domain: 'cedarlane.example', revision: 2 },
+    brand: {
+      name: 'Cedar Lane',
+      domain: 'cedarlane.example',
+      revision: 2,
+      voice: '',
+      prohibitions: ''
+    },
     klaviyo: klaviyo({ status: 'none', accountLabel: null, keyHint: null }),
     liveKeys: false,
+    keyCheck: 'sample',
     offers: {
       maxDiscountPercent: null,
       grossMarginPercent: null,
@@ -101,7 +108,8 @@ describe('KlaviyoStep (UI-ONBd)', () => {
       <KlaviyoStep
         view={view({
           klaviyo: klaviyo({ mode: 'live', keyStatus: 'refused' }),
-          liveKeys: true
+          liveKeys: true,
+          keyCheck: 'live'
         })}
       />
     )
@@ -113,12 +121,27 @@ describe('KlaviyoStep (UI-ONBd)', () => {
       screen.getByText('We check the key with Klaviyo, then keep it encrypted.')
     ).toBeVisible()
     cleanup()
-    render(<KlaviyoStep view={view({ klaviyo: klaviyo(), liveKeys: true })} />)
+    render(
+      <KlaviyoStep
+        view={view({ klaviyo: klaviyo(), liveKeys: true, keyCheck: 'live' })}
+      />
+    )
     expect(
       screen.getByText(
         'Sample connection. Paste your real key to connect your Klaviyo.'
       )
     ).toBeVisible()
+  })
+
+  it('says when connecting is not switched on (live adapters, no live Klaviyo)', () => {
+    render(<KlaviyoStep view={view({ keyCheck: 'off' })} />)
+    expect(
+      screen.getByText(
+        'Connecting Klaviyo is not switched on yet. Nothing was changed.'
+      )
+    ).toBeVisible()
+    expect(screen.queryByLabelText('Private API key')).toBeNull()
+    expect(screen.queryByText(/Sample mode/)).toBeNull()
   })
 
   it('gives staff the state only', () => {
@@ -239,11 +262,36 @@ describe('RivalsStep (UI-ONBe)', () => {
       screen.getByRole('heading', { level: 1, name: 'Your rivals' })
     ).toBeVisible()
     expect(screen.getByText('Northwind')).toBeVisible()
-    expect(screen.getAllByRole('button', { name: 'Follow' })).toHaveLength(2)
-    expect(screen.getAllByRole('button', { name: 'Hide' })).toHaveLength(2)
+    // Each row's buttons say the brand's name to a screen reader.
+    expect(
+      screen.getByRole('button', { name: 'Follow: Northwind' })
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: 'Follow: Real Brand' })
+    ).toBeNull()
+    expect(
+      screen.getByRole('button', { name: 'Hide: Real Brand' })
+    ).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Follow' })).toBeVisible()
     expect(screen.getByLabelText('A brand’s website')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Skip for now' })).toBeVisible()
     expect(screen.queryByRole('link', { name: 'Continue' })).toBeNull()
+  })
+
+  it('offers Follow only while there is room for another brand', () => {
+    render(
+      <RivalsStep
+        view={view()}
+        rivals={rivals({
+          following: Array.from({ length: 10 }, (_, i) => `b${i}.example`)
+        })}
+      />
+    )
+    expect(screen.queryByRole('button', { name: /^Follow/ })).toBeNull()
+    expect(screen.queryByLabelText('A brand’s website')).toBeNull()
+    expect(
+      screen.getByRole('button', { name: 'Hide: Northwind' })
+    ).toBeVisible()
   })
 
   it('gives a real store no website field (real brands are not followed yet)', () => {

@@ -45,7 +45,15 @@ const nextConfig: NextConfig = {
   // UI-HOMEb: the old dashboard is retired; its address (and old
   // bookmarks and emails pointing at it) opens Home.
   async redirects() {
-    return [{ source: '/dashboard', destination: '/home', permanent: false }]
+    return [
+      { source: '/dashboard', destination: '/home', permanent: false },
+      // UI-INSa: the old inspirations library is Inspiration now.
+      {
+        source: '/library/inspirations',
+        destination: '/inspiration',
+        permanent: false
+      }
+    ]
   },
   async headers() {
     return [

@@ -64,7 +64,7 @@ describe('trackDomain', () => {
       )
     ).toEqual({
       message:
-        'Tracking northwind.example. It shows PENDING until their emails arrive.'
+        'Following northwind.example. Its newsletters usually arrive within 1–7 days.'
     })
     // No label or rules: a stopped domain keeps its own.
     expect(rpc).toHaveBeenNthCalledWith(1, 'subscribe_competitor', {
@@ -76,17 +76,17 @@ describe('trackDomain', () => {
       kind: 'competitors.capture',
       subscription
     })
-    expect(revalidatePath).toHaveBeenCalledWith('/library/inspirations')
+    expect(revalidatePath).toHaveBeenCalledWith('/inspiration')
   })
 
   it('refuses anything that is not a domain, and real domains in sample mode', async () => {
     for (const value of ['', 'owner@brand.com', 'two words.com', 'brand'])
       expect((await trackDomain({}, form({ domain: value }))).error).toMatch(
-        /Enter a domain|not a domain/
+        /Enter a brand website|not a website/
       )
     expect(
       (await trackDomain({}, form({ domain: 'brand.com' }))).error
-    ).toMatch(/only sample domains that end in \.example/)
+    ).toMatch(/only sample brands, whose websites end in \.example/)
     expect(rpc).not.toHaveBeenCalled()
   })
 
@@ -95,7 +95,7 @@ describe('trackDomain', () => {
     tracked = { data: { id: subscription }, error: null }
     expect(
       await trackDomain({}, form({ domain: 'northwind.example' }))
-    ).toEqual({ message: 'You already track northwind.example.' })
+    ).toEqual({ message: 'You already follow northwind.example.' })
     expect(rpc).not.toHaveBeenCalledWith(
       'subscribe_competitor',
       expect.anything()
@@ -116,7 +116,7 @@ describe('trackDomain', () => {
     expect(
       (await trackDomain({}, form({ domain: 'northwind.example' }))).error
     ).toBe(
-      'Tracking northwind.example, but we could not ask for their emails yet. Click Track again to retry.'
+      'Following northwind.example, but we could not ask for their emails yet. Click Follow again to retry.'
     )
   })
 
@@ -124,7 +124,7 @@ describe('trackDomain', () => {
     expect(
       (await trackDomain({}, form({ domain: `${'a'.repeat(120)}.example` })))
         .error
-    ).toBe('That domain is too long. Use one under 120 characters.')
+    ).toBe('That website is too long. Use one under 120 characters.')
     expect(rpc).not.toHaveBeenCalled()
   })
 
@@ -132,7 +132,9 @@ describe('trackDomain', () => {
     rpc.mockResolvedValueOnce({ data: null, error: { code: 'PT409' } })
     expect(
       (await trackDomain({}, form({ domain: 'eleventh.example' }))).error
-    ).toBe('You already track 10 domains. Stop tracking one to add another.')
+    ).toBe(
+      'You follow 10 brands, the most at a time. Stop one to follow another.'
+    )
     expect(rpc).toHaveBeenCalledTimes(1)
   })
 
@@ -141,7 +143,7 @@ describe('trackDomain', () => {
       signedInAs(role)
       expect(
         (await trackDomain({}, form({ domain: 'northwind.example' }))).error
-      ).toBe('Only the workspace owner can change tracked domains.')
+      ).toBe('Only the workspace owner can change the brands you follow.')
     }
     expect(rpc).not.toHaveBeenCalled()
   })
@@ -157,7 +159,7 @@ describe('stopTracking', () => {
   it('stops tracking and keeps the owner’s private rules', async () => {
     expect(await stopTracking({}, stop)).toEqual({
       message:
-        'Stopped tracking northwind.example. Its emails left your library.'
+        'Stopped following northwind.example. Its emails left your library.'
     })
     expect(rpc).toHaveBeenCalledWith('update_competitor_subscription', {
       t: tenant,

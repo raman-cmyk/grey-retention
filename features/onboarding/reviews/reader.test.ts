@@ -148,6 +148,19 @@ describe('the reviews an email may quote (chosen by code)', () => {
       quotableReviews([review({ rating: null, ratingUnclear: true })])
     ).toEqual([])
   })
+
+  it('never quotes stars the page did not give: a rating rounded to whole stars is left out (REL-ONB2 part b)', () => {
+    // 3.5 or 4.5 stars, 8 of 10: rounded, so not the page's own stars.
+    expect(
+      quotableReviews([review({ rating: 4, ratingExact: false })])
+    ).toEqual([])
+    expect(
+      quotableReviews([review({ rating: 5, ratingExact: false })])
+    ).toEqual([])
+    expect(
+      quotableReviews([review({ rating: 5, ratingExact: true })])
+    ).toHaveLength(1)
+  })
 })
 
 describe('what the reader says about customers', () => {

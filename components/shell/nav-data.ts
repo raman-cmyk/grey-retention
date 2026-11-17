@@ -99,7 +99,7 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
       { label: `Ask ${assistantName}`, href: '/gros', icon: 'gros' },
       {
         label: 'Inspiration',
-        href: '/library/inspirations',
+        href: '/inspiration',
         icon: 'inspirations'
       },
       { label: 'Support', href: '/support', icon: 'support' }
@@ -189,7 +189,7 @@ const parentAreas: Record<string, readonly string[]> = {
   // Campaigns; Klaviyo campaigns live under `/campaigns/klaviyo/:id`.
   '/campaign-agent': ['/campaigns', '/campaign-drafts', '/calendar'],
   // The older competitor pages are part of Inspiration (UIR-009).
-  '/library/inspirations': ['/competitor-agent'],
+  '/inspiration': ['/competitor-agent'],
   // An open brief belongs to the designer's Assignments desk.
   '/designer/dashboard': ['/designer/assignments']
 }

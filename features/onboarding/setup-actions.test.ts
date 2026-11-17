@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 const mocks = vi.hoisted(() => ({
+  env: { AUTH_MODE: 'supabase' as string },
   context: vi.fn(),
   createClient: vi.fn(),
   site: vi.fn(),
@@ -14,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   saveMaxDiscount: vi.fn(),
   addDiscountCode: vi.fn(),
   trackDomain: vi.fn(),
-  setBrandHidden: vi.fn(),
+  hideBrand: vi.fn(),
   setupReadModel: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn((to: string) => {
@@ -26,7 +27,7 @@ vi.mock('@/features/auth/application/request-context', () => ({
 }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: mocks.createClient }))
 vi.mock('@/lib/env/server', () => ({
-  getServerEnvironment: () => ({ AUTH_MODE: 'supabase' })
+  getServerEnvironment: () => mocks.env
 }))
 vi.mock('./site/start', () => ({ startSiteReading: mocks.site }))
 vi.mock('./ads/start', () => ({ startAdsReading: mocks.ads }))
@@ -39,8 +40,8 @@ vi.mock('@/features/connections/actions', () => ({
 vi.mock('@/features/library/inspirations/actions', () => ({
   trackDomain: mocks.trackDomain
 }))
-vi.mock('./suggested-competitors', () => ({
-  setBrandHidden: mocks.setBrandHidden
+vi.mock('@/features/inspiration/actions', () => ({
+  hideBrand: mocks.hideBrand
 }))
 vi.mock('./flow', () => ({ setupReadModel: mocks.setupReadModel }))
 vi.mock('@/features/offers/actions', () => ({
@@ -68,23 +69,33 @@ import {
 const owner = { tenantId: 'tenant-1', tenantRole: 'owner' }
 type Answer = { data: unknown; error: unknown }
 
-function database(rpc: Answer = { data: null, error: null }) {
+function database(
+  rpc: Answer = { data: null, error: null },
+  profile: Record<string, unknown> = {},
+  tables: Record<string, unknown> = {}
+) {
   const calls: { rpc: [string, unknown][]; filters: unknown[][] } = {
     rpc: [],
     filters: []
   }
   const db = {
-    from: () => {
+    from: (table: string) => {
       const chain = {
         select: () => chain,
         eq: (...args: unknown[]) => (calls.filters.push(args), chain),
         maybeSingle: async () => ({
-          data: {
-            revision: 4,
-            positioning: 'Quiet weekends',
-            voice: 'Calm',
-            prohibitions: 'No claims'
-          },
+          data:
+            table in tables
+              ? tables[table]
+              : {
+                  revision: 4,
+                  positioning: 'Quiet weekends',
+                  voice: 'Calm',
+                  prohibitions: 'No claims',
+                  brand_name: 'Cedar Lane',
+                  domain: 'cedarlane.example',
+                  ...profile
+                },
           error: null
         })
       }
@@ -109,8 +120,15 @@ const redirected = async (work: Promise<unknown>) =>
 describe('setup actions (UI-ONBb)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.env.AUTH_MODE = 'supabase'
     mocks.context.mockResolvedValue(owner)
-    for (const start of [mocks.site, mocks.ads, mocks.reviews])
+    for (const start of [
+      mocks.site,
+      mocks.ads,
+      mocks.reviews,
+      mocks.catalog,
+      mocks.history
+    ])
       start.mockResolvedValue({ ok: true, jobId: 'job' })
   })
 
@@ -169,14 +187,18 @@ describe('setup actions (UI-ONBb)', () => {
   it('refuses staff and admins on the server', async () => {
     for (const tenantRole of ['staff', 'admin']) {
       mocks.context.mockResolvedValue({ ...owner, tenantRole })
-      const answer = { error: 'Only the workspace owner can set up GROS.' }
+      const answer = {
+        error: 'Only the workspace owner can set up your store.'
+      }
       expect(
         await saveStore(
           {},
           form({ name: 'Cedar Lane', website: 'cedarlane.example' })
         )
       ).toEqual(answer)
-      expect(await confirmBrand()).toEqual(answer)
+      expect(
+        await confirmBrand({}, form({ site: 'cedarlane.example' }))
+      ).toEqual(answer)
       expect(await readStoreAgain()).toEqual(answer)
       expect(await connectSetupKlaviyo({}, form({ apiKey: 'pk_x' }))).toEqual(
         answer
@@ -199,7 +221,7 @@ describe('setup actions (UI-ONBb)', () => {
     expect(mocks.saveMaxDiscount).not.toHaveBeenCalled()
     expect(mocks.addDiscountCode).not.toHaveBeenCalled()
     expect(mocks.trackDomain).not.toHaveBeenCalled()
-    expect(mocks.setBrandHidden).not.toHaveBeenCalled()
+    expect(mocks.hideBrand).not.toHaveBeenCalled()
   })
 
   it('says plainly when the save is refused, and starts no reader', async () => {
@@ -230,29 +252,116 @@ describe('setup actions (UI-ONBb)', () => {
     ).toBe('/setup')
   })
 
-  it('confirms the brand for the session’s own workspace', async () => {
-    const { db, calls } = database()
-    mocks.createClient.mockResolvedValue(db)
-    expect(await redirected(confirmBrand())).toBe('/setup')
-    expect(calls.rpc).toEqual([
-      ['save_onboarding_step', { t: 'tenant-1', step: 'brand' }]
-    ])
-    mocks.createClient.mockResolvedValue(
-      database({ data: null, error: { code: 'PT409' } }).db
-    )
-    expect(await confirmBrand()).toEqual({
-      error: 'Save your store’s website first.'
-    })
+  it('saves nothing in the demo', async () => {
+    mocks.env.AUTH_MODE = 'demo'
+    mocks.createClient.mockResolvedValue(database().db)
+    expect(
+      await saveStore(
+        {},
+        form({ name: 'Cedar Lane', website: 'cedarlane.example' })
+      )
+    ).toEqual({ error: 'Please sign in again. Nothing was changed.' })
+    expect(mocks.site).not.toHaveBeenCalled()
   })
 
-  it('reads the store again, and says when a reader cannot start', async () => {
+  it('confirms the brand for the website shown, saving the voice and rules when they changed', async () => {
+    const { db, calls } = database()
+    mocks.createClient.mockResolvedValue(db)
+    const shown = form({
+      site: 'cedarlane.example',
+      voice: ' Warm and clear ',
+      prohibitions: 'No claims'
+    })
+    expect(await redirected(confirmBrand({}, shown))).toBe('/setup')
+    expect(calls.rpc).toEqual([
+      [
+        'save_brand',
+        {
+          t: 'tenant-1',
+          expected_revision: 4,
+          brand_name: 'Cedar Lane',
+          domain: 'cedarlane.example',
+          positioning: 'Quiet weekends',
+          voice: 'Warm and clear',
+          prohibitions: 'No claims'
+        }
+      ],
+      [
+        'save_onboarding_step',
+        { t: 'tenant-1', step: 'brand', site_shown: 'cedarlane.example' }
+      ]
+    ])
+    // Nothing changed: only the mark.
+    const same = database()
+    mocks.createClient.mockResolvedValue(same.db)
+    await redirected(
+      confirmBrand(
+        {},
+        form({
+          site: 'cedarlane.example',
+          voice: 'Calm',
+          prohibitions: 'No claims'
+        })
+      )
+    )
+    expect(same.calls.rpc.map(([name]) => name)).toEqual([
+      'save_onboarding_step'
+    ])
+  })
+
+  it('never confirms blind: another website, a stale one, words too long', async () => {
+    const { db, calls } = database()
+    mocks.createClient.mockResolvedValue(db)
+    const changed = {
+      error:
+        'Your website was changed in another window. Look at what was found again.'
+    }
+    expect(await confirmBrand({}, form({ site: 'other.example' }))).toEqual(
+      changed
+    )
+    expect(calls.rpc).toEqual([])
+    mocks.createClient.mockResolvedValue(
+      database({ data: null, error: { code: 'PT409', details: 'changed' } }).db
+    )
+    expect(
+      await confirmBrand(
+        {},
+        form({
+          site: 'cedarlane.example',
+          voice: 'Calm',
+          prohibitions: 'No claims'
+        })
+      )
+    ).toEqual(changed)
+    expect(
+      await confirmBrand(
+        {},
+        form({ site: 'cedarlane.example', voice: 'x'.repeat(5001) })
+      )
+    ).toEqual({ fields: { voice: 'Keep it under 5000 characters.' } })
+  })
+
+  it('reads every reader again, the Klaviyo ones only once Klaviyo is connected', async () => {
     const { db } = database()
     mocks.createClient.mockResolvedValue(db)
+    mocks.catalog.mockResolvedValue({ ok: false, code: 'connect_klaviyo' })
+    mocks.history.mockResolvedValue({ ok: false, code: 'connect_klaviyo' })
     expect(await readStoreAgain()).toEqual({})
-    mocks.ads.mockResolvedValue({ ok: false, code: 'unavailable' })
+    for (const start of [
+      mocks.site,
+      mocks.ads,
+      mocks.reviews,
+      mocks.catalog,
+      mocks.history
+    ])
+      expect(start).toHaveBeenCalledWith(db, 'tenant-1')
+    mocks.catalog.mockResolvedValue({ ok: false, code: 'unavailable' })
     expect(await readStoreAgain()).toEqual({
       error: 'We could not start reading your store. Try again in a minute.'
     })
+    mocks.catalog.mockResolvedValue({ ok: true, jobId: 'job' })
+    mocks.ads.mockResolvedValue({ ok: false, code: 'unavailable' })
+    expect((await readStoreAgain()).error).toBeDefined()
   })
 
   it('connects Klaviyo with the Klaviyo card’s action, then reads the catalog and history', async () => {
@@ -286,17 +395,39 @@ describe('setup actions (UI-ONBb)', () => {
     })
   })
 
+  it('says each wrong code field under the field, before the Settings action', async () => {
+    mocks.createClient.mockResolvedValue(database().db)
+    mocks.context.mockResolvedValue({ ...owner, timezone: 'UTC' })
+    expect(
+      await addSetupCode(
+        {},
+        form({ code: 'NO SPACES', percent: '0', expires: '2026-02-30' })
+      )
+    ).toEqual({
+      fields: {
+        code: 'Enter the code exactly as it works in your store: 3 to 40 letters, numbers, - or _.',
+        percent: 'Enter a whole percent from 1 to 100.',
+        expires: 'Choose a valid end date.'
+      }
+    })
+    expect(mocks.addDiscountCode).not.toHaveBeenCalled()
+  })
+
   it('adds a code with the Settings action and stays on the step', async () => {
     mocks.createClient.mockResolvedValue(database().db)
     mocks.addDiscountCode.mockResolvedValue({ message: 'Added WELCOME10.' })
-    expect(await addSetupCode({}, form({ code: 'WELCOME10' }))).toEqual({
+    expect(
+      await addSetupCode({}, form({ code: 'WELCOME10', percent: '10' }))
+    ).toEqual({
       message: 'Added WELCOME10.'
     })
     expect(mocks.redirect).not.toHaveBeenCalled()
     mocks.addDiscountCode.mockResolvedValue({
       error: 'WELCOME10 is already in your list.'
     })
-    expect(await addSetupCode({}, form({ code: 'WELCOME10' }))).toEqual({
+    expect(
+      await addSetupCode({}, form({ code: 'WELCOME10', percent: '10' }))
+    ).toEqual({
       error: 'WELCOME10 is already in your list.'
     })
   })
@@ -309,34 +440,60 @@ describe('setup actions (UI-ONBb)', () => {
       message: 'Tracking a.example.'
     })
     expect(mocks.trackDomain).toHaveBeenCalledWith({}, site)
-    expect(await followSuggestion({}, site)).toEqual({})
+    expect(await followSuggestion({}, site)).toEqual({
+      message: 'Tracking a.example.'
+    })
+    // Refused and not followed: under the field, or by the row.
+    mocks.createClient.mockResolvedValue(
+      database(undefined, {}, { competitor_captures: null }).db
+    )
     mocks.trackDomain.mockResolvedValue({ error: 'That is not a domain.' })
+    mocks.revalidatePath.mockClear()
     expect(await followRival({}, site)).toEqual({
       fields: { domain: 'That is not a domain.' }
     })
     expect(await followSuggestion({}, site)).toEqual({
       error: 'That is not a domain.'
     })
+    expect(mocks.revalidatePath).not.toHaveBeenCalled()
   })
 
-  it('hides a suggested brand with the owner’s client, and checks its id', async () => {
-    const { db } = database()
-    mocks.createClient.mockResolvedValue(db)
-    const capture = '00000000-0000-4000-8000-000000000999'
-    expect(await hideRival({}, form({ capture }))).toEqual({})
-    expect(mocks.setBrandHidden).toHaveBeenCalledWith(
-      db,
-      'tenant-1',
-      capture,
-      true
+  it('takes a follow that was saved but could not ask for emails yet as followed, with a note', async () => {
+    const { db, calls } = database(
+      undefined,
+      {},
+      {
+        competitor_captures: { id: 'cap-1' },
+        competitor_subscriptions: { id: 'sub-1' }
+      }
     )
-    expect(await hideRival({}, form({ capture: 'not-an-id' }))).toEqual({
-      error: 'Reload the page and try again.'
+    mocks.createClient.mockResolvedValue(db)
+    const note =
+      'Tracking a.example, but we could not ask for their emails yet. Click Track again to retry.'
+    mocks.trackDomain.mockResolvedValue({ error: note })
+    expect(await followRival({}, form({ domain: 'A.example' }))).toEqual({
+      message: note
     })
-    mocks.setBrandHidden.mockRejectedValue({ code: '23514' })
-    expect(await hideRival({}, form({ capture }))).toEqual({
-      error: 'We could not hide this brand. Try again.'
-    })
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/setup')
+    expect(calls.filters).toContainEqual(['domain', 'a.example'])
+    expect(calls.filters).toContainEqual(['tenant_id', 'tenant-1'])
+    expect(calls.filters).toContainEqual(['active', true])
+  })
+
+  it('hides a suggested brand with the Inspiration page’s action and words', async () => {
+    mocks.createClient.mockResolvedValue(database().db)
+    const capture = form({ capture: '00000000-0000-4000-8000-000000000999' })
+    mocks.hideBrand.mockResolvedValue({})
+    expect(await hideRival({}, capture)).toEqual({})
+    expect(mocks.hideBrand).toHaveBeenCalledWith({}, capture)
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/setup')
+    mocks.revalidatePath.mockClear()
+    const gone = {
+      error: 'That brand is no longer suggested. Open Inspiration again.'
+    }
+    mocks.hideBrand.mockResolvedValue(gone)
+    expect(await hideRival({}, capture)).toEqual(gone)
+    expect(mocks.revalidatePath).not.toHaveBeenCalled()
   })
 
   it('skips Rivals with the owner’s mark', async () => {
@@ -381,6 +538,10 @@ describe('setup actions (UI-ONBb)', () => {
     expect(await finishSetup()).toEqual({
       error: 'Finish the Klaviyo step first.'
     })
+    mocks.createClient.mockResolvedValue(
+      database({ data: null, error: { code: 'PT409', details: 'odd' } }).db
+    )
+    expect(await finishSetup()).toEqual({ error: 'Finish every step first.' })
     mocks.setupReadModel.mockResolvedValue({ flow: null })
     expect(await finishSetup()).toEqual({
       error: 'We could not read your setup. Try again in a minute.'

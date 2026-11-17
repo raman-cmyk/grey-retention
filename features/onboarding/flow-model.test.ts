@@ -3,6 +3,7 @@ import type { KlaviyoState } from '@/features/settings/read-model'
 import {
   klaviyoWorking,
   openPlace,
+  setupDestination,
   setupFlow,
   siteDomain,
   websiteOf,
@@ -47,6 +48,14 @@ describe('siteDomain (as the database reads a website)', () => {
   it('lowers it and drops www.', () => {
     expect(siteDomain('  WWW.CedarLane.example ')).toBe('cedarlane.example')
     expect(siteDomain('shop.cedarlane.example')).toBe('shop.cedarlane.example')
+  })
+  it('trims only spaces, as the database does, and takes at most 253 characters', () => {
+    expect(siteDomain('\tcedarlane.example')).toBeNull()
+    expect(siteDomain('cedarlane.example\n')).toBeNull()
+    const long = `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(61)}`
+    expect(long).toHaveLength(253)
+    expect(siteDomain(long)).toBe(long)
+    expect(siteDomain(`e${long}`)).toBeNull()
   })
   it('is no website for an address, a bare word, numbers or nothing', () => {
     for (const bad of [
@@ -183,5 +192,20 @@ describe('setupFlow (UI-ONBa)', () => {
     expect(openPlace(flow)).toBe('finish')
     expect(openPlace(flow, 'rivals')).toBe('rivals')
     expect(setupFlow({ ...all, finished: true }).finished).toBe(true)
+  })
+
+  it('goes Home only once finished with every step still done (UI-ONBe)', () => {
+    expect(setupDestination(setupFlow({ ...all, finished: true }))).toBe('home')
+    expect(
+      setupDestination(setupFlow({ ...all, finished: true }), 'store')
+    ).toBe('store')
+    // A finished owner changed the website: the brand is looked at again.
+    const changed = setupFlow({
+      ...all,
+      domain: 'cedarlane-two.example',
+      finished: true
+    })
+    expect(setupDestination(changed)).toBe('brand')
+    expect(setupDestination(setupFlow(all))).toBe('finish')
   })
 })

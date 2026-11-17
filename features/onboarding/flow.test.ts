@@ -167,6 +167,21 @@ describe('setupReadModel (UI-ONBa)', () => {
     expect(view.klaviyo!.status).toBe('none')
   })
 
+  it('does not count an expired Klaviyo connection', async () => {
+    const { db } = database({
+      ...ready,
+      workspace_connections: {
+        data: { ...ready.workspace_connections.data, status: 'expired' },
+        error: null
+      }
+    })
+    mocks.createClient.mockResolvedValue(db)
+    mocks.offersPage.mockResolvedValue(offers(20))
+    const flow = (await setupReadModel(context)).flow!
+    expect(flow.steps[2]!.done).toBe(false)
+    expect(flow.current).toBe(2)
+  })
+
   it('needs a real key once live keys are on', async () => {
     vi.stubEnv('KLAVIYO_MODE', 'live')
     const { db } = database(ready)

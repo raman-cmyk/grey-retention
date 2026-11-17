@@ -19,6 +19,9 @@ import {
  * only the inbox's brands are asked for with the server's client, after
  * the member's own read (`readCompetitorSuggestions`).
  */
+/** The most brands a workspace follows (`trackDomain`'s own limit). */
+export const maxFollowed = 10
+
 export type SetupRivals = {
   /** The workspace runs on sample data (a synthetic brand). */
   sample: boolean

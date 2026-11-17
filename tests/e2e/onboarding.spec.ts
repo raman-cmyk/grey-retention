@@ -81,6 +81,15 @@ test('a new owner creates a workspace and sets up the store to Home', async ({
   await expect(page).toHaveURL(/\/home$/)
   await page.goto('/setup?step=store')
   await expect(page.getByLabel('Website')).toHaveValue('setup-store.example')
+  // A new website after finishing: the brand is looked at again first, not
+  // Home; confirming it goes Home.
+  await page.getByLabel('Website').fill('setup-store-two.example')
+  await page.getByRole('button', { name: 'Save store' }).click()
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Your brand' })
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Confirm brand' }).click()
+  await expect(page).toHaveURL(/\/home$/)
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth

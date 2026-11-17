@@ -9,8 +9,9 @@ import type { KlaviyoState } from '@/features/settings/read-model'
  *   the readers read it, `siteDomain`).
  * - Brand: the owner confirmed what GROS found on that same website
  *   (`onboarding_steps.brand_site`); a website changed later needs a new
- *   look.
- * - Klaviyo: connected and working, as Settings judges it (`klaviyoWorking`).
+ *   look (the database clears the mark when the website changes).
+ * - Klaviyo: connected and working, as Settings judges it (`klaviyoWorking`;
+ *   the database also refuses a live connection without its active key).
  *   It cannot be skipped: every plan and email reads the store from it
  *   (VISION section 5 and section 10, "nothing works without it").
  * - Discount: a max discount is saved (0 counts: emails then offer none).
@@ -58,15 +59,24 @@ export type SetupFlow = {
 
 const host = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/
 
+/** The longest answer about the brand's voice or rules (the brand profile's own limit). */
+export const maxBrandWords = 5000
+
+/** The longest website, in characters: a host name's own limit, here and in the database. */
+export const maxWebsite = 253
+
 /**
  * A website as the readers read it (the database's `private.site_domain`):
- * lower case, without `www.`; null unless it is a plain host name.
+ * spaces trimmed (only spaces, as its `btrim`), lower case, without
+ * `www.`; null unless it is a plain host name of at most `maxWebsite`
+ * characters.
  */
 export function siteDomain(domain: string | null | undefined): string | null {
   const d = (domain ?? '')
-    .trim()
+    .replace(/^ +| +$/g, '')
     .toLowerCase()
     .replace(/^www\./, '')
+  if (d.length > maxWebsite) return null
   return host.test(d) && !/^[0-9.]+$/.test(d) ? d : null
 }
 
@@ -127,4 +137,17 @@ export function openPlace(flow: SetupFlow, asked?: string | null): SetupPlace {
   const index = flow.steps.findIndex((s) => s.key === asked)
   if (index !== -1 && index <= flow.current) return flow.steps[index]!.key
   return flow.steps[flow.current]?.key ?? 'finish'
+}
+
+/**
+ * Where `/setup` goes (UI-ONBe): Home only once setup is finished and every
+ * step still done (a finished owner who changed his website confirms the
+ * brand again first); else the place `openPlace` opens.
+ */
+export function setupDestination(
+  flow: SetupFlow,
+  asked?: string | null
+): SetupPlace | 'home' {
+  if (flow.finished && flow.allDone && !asked) return 'home'
+  return openPlace(flow, asked)
 }

@@ -45,6 +45,7 @@ export async function newOwner(
   await page.getByLabel('Email', { exact: true }).fill(email)
   await page.getByLabel('Password', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await expect(page).toHaveURL(/\/home$/)
+  // UI-ONBe: an owner whose setup is not finished lands on it.
+  await expect(page).toHaveURL(/\/setup$/)
   return db
 }

@@ -1,11 +1,11 @@
 import { Store, TicketPercent } from 'lucide-react'
-import { ActionButton } from '@/components/gros/action'
+import { ActionAnswers, ActionButton } from '@/components/gros/action'
 import { ButtonLink } from '@/components/gros/button'
 import { ListRow, RowList } from '@/components/gros/list-row'
 import { formatBrandDate } from '@/lib/brand-time'
 import type { SetupView } from './flow'
 import { klaviyoWorking } from './flow-model'
-import type { SetupRivals } from './rivals'
+import { maxFollowed, type SetupRivals } from './rivals'
 import {
   addSetupCode,
   connectSetupKlaviyo,
@@ -63,6 +63,10 @@ export function KlaviyoStep({ view }: { view: SetupView }) {
         <OwnerOnly />
       ) : working ? (
         <ButtonLink href={setupPath()} label="Continue" size="focus" />
+      ) : view.keyCheck === 'off' ? (
+        <p className="type-body text-[var(--stone)]">
+          Connecting Klaviyo is not switched on yet. Nothing was changed.
+        </p>
       ) : (
         <>
           <SetupForm
@@ -81,7 +85,7 @@ export function KlaviyoStep({ view }: { view: SetupView }) {
             ]}
           />
           <p className="type-caption text-[var(--stone)]">
-            {view.liveKeys
+            {view.keyCheck === 'live'
               ? 'We check the key with Klaviyo, then keep it encrypted.'
               : 'Sample mode: we check the key’s format only and keep a masked hint.'}
           </p>
@@ -203,6 +207,8 @@ export function RivalsStep({
   rivals: SetupRivals | null
 }) {
   const following = rivals?.following ?? []
+  // Follow only while there is room (the Inspiration page's own limit).
+  const room = following.length < maxFollowed
   return (
     <>
       <Title text="Your rivals" />
@@ -241,41 +247,45 @@ export function RivalsStep({
                 No brands to suggest yet.
               </p>
             ) : (
-              <RowList label="Brands like yours">
-                {rivals.suggestions.map((s) => (
-                  <ListRow
-                    key={s.captureId}
-                    thumbnail={<Thumb icon={Store} />}
-                    title={s.name}
-                    details={[s.domain, s.reason]}
-                    end={
-                      view.owner ? (
-                        <div className="flex flex-wrap gap-[var(--space-2)]">
-                          {s.followable ? (
+              <ActionAnswers>
+                <RowList label="Brands like yours">
+                  {rivals.suggestions.map((s) => (
+                    <ListRow
+                      key={s.captureId}
+                      thumbnail={<Thumb icon={Store} />}
+                      title={s.name}
+                      details={[s.domain, s.reason]}
+                      end={
+                        view.owner ? (
+                          <div className="flex flex-wrap gap-[var(--space-2)]">
+                            {s.followable && room ? (
+                              <ActionButton
+                                action={followSuggestion}
+                                label="Follow"
+                                spokenLabel={s.name}
+                                kind="outline"
+                                size="row"
+                                fields={{ domain: s.domain }}
+                              />
+                            ) : null}
                             <ActionButton
-                              action={followSuggestion}
-                              label="Follow"
-                              kind="outline"
+                              action={hideRival}
+                              label="Hide"
+                              spokenLabel={s.name}
+                              kind="quiet"
                               size="row"
-                              fields={{ domain: s.domain }}
+                              fields={{ capture: s.captureId }}
                             />
-                          ) : null}
-                          <ActionButton
-                            action={hideRival}
-                            label="Hide"
-                            kind="quiet"
-                            size="row"
-                            fields={{ capture: s.captureId }}
-                          />
-                        </div>
-                      ) : null
-                    }
-                  />
-                ))}
-              </RowList>
+                          </div>
+                        ) : null
+                      }
+                    />
+                  ))}
+                </RowList>
+              </ActionAnswers>
             )}
           </section>
-          {view.owner && rivals.sample ? (
+          {view.owner && rivals.sample && room ? (
             <SetupForm
               action={followRival}
               label="Follow"
