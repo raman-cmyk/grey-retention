@@ -21,6 +21,12 @@ vi.mock('@/features/offers/actions', () => ({
   addDiscountCode: vi.fn(async () => ({})),
   retireDiscountCode: vi.fn(async () => ({}))
 }))
+vi.mock('@/features/team/actions', () => ({
+  inviteTeammate: vi.fn(async () => ({})),
+  resendInvite: vi.fn(async () => ({})),
+  cancelInvite: vi.fn(async () => ({})),
+  changeMember: vi.fn(async () => ({}))
+}))
 vi.mock('./timezone-actions', () => ({
   saveBrandTimezone: vi.fn(async () => ({})),
   switchToKlaviyoTimezone: vi.fn(async () => ({}))
@@ -94,6 +100,17 @@ function view(over: Partial<SettingsView> = {}): SettingsView {
       now: 0
     },
     account: { name: 'Sam Cedar', email: 'owner@cedarlane.example' },
+    changes: {
+      items: [
+        {
+          id: 'e1',
+          text: 'Max discount set to 20%',
+          by: 'you',
+          at: '2026-11-16T12:00:00Z'
+        }
+      ],
+      partial: false
+    },
     unread: [],
     ...over
   }
@@ -296,7 +313,7 @@ describe('Settings screen (UI-SETa)', () => {
     expect(card('Timezone')).not.toHaveTextContent('sample connection')
   })
 
-  it('shows the team and the account, linking to their pages', () => {
+  it('shows the team on its card and the account, linking to its page', () => {
     render(<SettingsScreen view={view()} />)
     const team = card('Team')
     expect(within(team).getByText('Members').parentElement).toHaveTextContent(
@@ -305,9 +322,11 @@ describe('Settings screen (UI-SETa)', () => {
     expect(
       within(team).getByText('Open invites').parentElement
     ).toHaveTextContent('Open invites1')
+    // The team changes here (UI-SETb); nothing leads to the old /team.
     expect(
-      within(team).getByRole('link', { name: 'Manage team' })
-    ).toHaveAttribute('href', '/team')
+      within(team).getByRole('button', { name: 'Invite as Staff' })
+    ).toBeVisible()
+    expect(within(team).queryByRole('link')).toBeNull()
     const account = card('Account')
     expect(account).toHaveTextContent('Sam Cedar')
     expect(account).toHaveTextContent('owner@cedarlane.example')
@@ -331,6 +350,10 @@ describe('Settings screen (UI-SETa)', () => {
 
   it('lets an admin change offers only, and staff change nothing', () => {
     render(<SettingsScreen view={view({ owner: false })} />)
+    // Managers see who changed what, in the brand's timezone.
+    expect(card('Recent changes')).toHaveTextContent(
+      'Max discount set to 20%by you · Nov 16, 2026 · 5:45 PM'
+    )
     expect(
       screen.getByRole('button', { name: 'Save biggest discount' })
     ).toBeVisible()
@@ -363,8 +386,7 @@ describe('Settings screen (UI-SETa)', () => {
           team: {
             ...view().team!,
             openInvites: null,
-            canManage: false,
-            invites: null
+            canManage: false
           },
           timezone: {
             ...view().timezone!,
@@ -384,9 +406,13 @@ describe('Settings screen (UI-SETa)', () => {
       'The workspace owner can switch to it.'
     )
     expect(within(card('Team')).queryByText('Open invites')).toBeNull()
-    expect(
-      within(card('Team')).getByRole('link', { name: 'See team' })
-    ).toBeVisible()
+    expect(card('Team')).toHaveTextContent(
+      'Only the owner or a manager can invite people and change access.'
+    )
+    expect(within(card('Team')).queryByRole('link')).toBeNull()
+    // Staff see nothing of who changed what.
+    expect(screen.queryByRole('region', { name: 'Recent changes' })).toBeNull()
+    expect(screen.queryByText('Max discount set to 20%')).toBeNull()
   })
 
   it('says which parts could not be read, and that the demo keeps nothing', () => {
@@ -396,7 +422,8 @@ describe('Settings screen (UI-SETa)', () => {
       timezone: null,
       team: null,
       account: null,
-      unread: ['offers', 'klaviyo', 'timezone', 'team', 'account']
+      changes: null,
+      unread: ['offers', 'klaviyo', 'timezone', 'team', 'account', 'changes']
     })
     render(<SettingsScreen view={unread} />)
     for (const [name, words] of [
@@ -405,7 +432,8 @@ describe('Settings screen (UI-SETa)', () => {
       ['Klaviyo', 'The Klaviyo connection could not be read just now.'],
       ['Timezone', 'The timezone could not be read just now.'],
       ['Team', 'The team could not be read just now.'],
-      ['Account', 'Your account could not be read just now.']
+      ['Account', 'Your account could not be read just now.'],
+      ['Recent changes', 'Recent changes could not be read just now.']
     ])
       expect(card(name)).toHaveTextContent(words)
     expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
@@ -413,7 +441,7 @@ describe('Settings screen (UI-SETa)', () => {
     ])
     cleanup()
     render(<SettingsScreen view={{ ...unread, demo: true }} />)
-    expect(screen.getAllByText('Nothing is kept in the demo.')).toHaveLength(6)
+    expect(screen.getAllByText('Nothing is kept in the demo.')).toHaveLength(7)
     cleanup()
     // The demo's timezone shows, but cannot be saved.
     render(

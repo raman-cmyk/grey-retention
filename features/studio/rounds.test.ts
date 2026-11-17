@@ -18,6 +18,7 @@ import {
   roundWaits
 } from './rounds'
 import type { BuildRender } from './waits'
+import { matchTarget } from './match'
 
 const photo = 'https://cdn.shop.example/images/tray.jpg'
 const brief = (id: string): SectionBrief => ({
@@ -470,5 +471,110 @@ describe('the design studio’s rounds (DST-006c)', () => {
         'https://db.example/x.jpg'
       )
     ).toBeNull()
+  })
+})
+
+describe('the match score in the rounds (DST-004b)', () => {
+  const copy = (over: Partial<SectionBrief> = {}): SectionBrief => ({
+    ...brief('s2'),
+    mode: 'copy',
+    reference: { tone: 'dark', height: 640 },
+    ...over
+  })
+  /** The second claim of a section whose picture uuid(1) is drawn. */
+  const judge = async (b: SectionBrief, match?: StudioPorts['match']) => {
+    const first = waitOf(await studioRound([b], null, ports()))
+    const p = { ...ports({ renders: [drawn(1)] }), ...(match ? { match } : {}) }
+    const out = await studioRound([b], first, p)
+    return { out, p }
+  }
+
+  it('takes a Copy section that looks like its reference', async () => {
+    const match = vi.fn<NonNullable<StudioPorts['match']>>(
+      async () => matchTarget
+    )
+    const { out } = await judge(copy(), match)
+    expect(doneOf(out).sections[0]).toMatchObject({ state: 'done' })
+    expect(match).toHaveBeenCalledWith(copy(), image)
+  })
+
+  it('designs a Copy section again, told how to come closer, when it looks too little like it', async () => {
+    const { out, p } = await judge(copy(), async () => matchTarget - 2)
+    const work = waitOf(out)
+    expect(work.sections[0]).toMatchObject({ round: 2, state: 'drawing' })
+    expect(work.sections[0]!.problems).toEqual([
+      expect.stringMatching(
+        new RegExp(
+          `^It looks too little like the reference section \\(match ${matchTarget - 2} of 10`
+        )
+      )
+    ])
+    expect(p.design).toHaveBeenCalledWith(
+      copy(),
+      expect.objectContaining({
+        problems: [expect.stringMatching(/too little like the reference/)]
+      })
+    )
+  })
+
+  it('keeps the critic’s verdict when the match cannot be measured', async () => {
+    const { out } = await judge(copy(), async () => null)
+    expect(doneOf(out).sections[0]).toMatchObject({ state: 'done' })
+  })
+
+  it('measures only a Copy section with a reference', async () => {
+    const match = vi.fn<NonNullable<StudioPorts['match']>>(async () => 1)
+    for (const b of [
+      brief('s2'),
+      { ...brief('s2'), mode: 'remix' as const },
+      copy({ reference: undefined })
+    ]) {
+      const { out } = await judge(b, match)
+      expect(doneOf(out).sections[0]).toMatchObject({ state: 'done' })
+    }
+    expect(match).not.toHaveBeenCalled()
+    // No match port: never measured.
+    const { out } = await judge(copy())
+    expect(doneOf(out).sections[0]).toMatchObject({ state: 'done' })
+  })
+
+  it('keeps the critic’s verdict, once, when the port fails or answers no score', async () => {
+    const answers: (() => Promise<number | null>)[] = [
+      async () => {
+        throw new Error('The grid cannot be compared: bad values')
+      },
+      async () => Number.NaN,
+      async () => 0.8,
+      async () => 11
+    ]
+    for (const answer of answers) {
+      const { out, p } = await judge(copy(), answer)
+      expect(doneOf(out).sections[0]).toMatchObject({ state: 'done' })
+      // The critic is never asked again for the same picture.
+      expect(p.critique).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('codes a Copy section that still looks too little like it after its last round, and says so', async () => {
+    let work: StudioWork = waitOf(await studioRound([copy()], null, ports()))
+    const low = async () => 2
+    for (let round = 1; round <= maxRounds; round++) {
+      const next = {
+        ...ports({
+          renders: [{ ...drawn(round), id: uuid(round) }],
+          request: [uuid(round + 1)]
+        }),
+        match: low
+      }
+      const out = await studioRound([copy()], work, next)
+      if (round < maxRounds) {
+        work = waitOf(out)
+        continue
+      }
+      expect(doneOf(out).sections[0]).toMatchObject({ state: 'coded' })
+      // The critic passed it: the owner’s log says the match failed.
+      expect(next.coded).toHaveBeenCalledWith('s2', 'match_failed')
+      expect(next.coded).not.toHaveBeenCalledWith('s2', 'critic_failed')
+    }
   })
 })

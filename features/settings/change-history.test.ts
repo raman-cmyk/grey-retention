@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { changeKinds, changeText, listChangeHistory } from './change-history'
+import {
+  changeKinds,
+  changeText,
+  listChangeHistory,
+  mergeChanges
+} from './change-history'
 
 describe('a recorded change in plain words', () => {
   it.each([
@@ -288,5 +293,37 @@ describe('the workspace’s change history', () => {
     const { client, chain } = db({ data: [], error: null })
     await listChangeHistory(client, 'tenant-1', members, { limit: 5000 })
     expect(chain.limit).toHaveBeenCalledWith(200)
+  })
+})
+
+describe('Recent changes: the record and the team’s together (UI-SETc)', () => {
+  const at = (id: string, when: string) => ({
+    id,
+    text: id,
+    by: 'you',
+    at: when
+  })
+  const record = [
+    at('code', '2026-11-14T09:00:00Z'),
+    at('max', '2026-11-12T09:00:00Z')
+  ]
+  const team = [at('invite', '2026-11-13T09:00:00Z')]
+
+  it('lists both, newest first, at most the limit', () => {
+    expect(mergeChanges(record, team)).toEqual({
+      items: [record[0], team[0], record[1]],
+      partial: false
+    })
+    expect(mergeChanges(record, team, 2)?.items.map((c) => c.id)).toEqual([
+      'code',
+      'invite'
+    ])
+  })
+
+  it('says when one could not be read, and is null when neither could', () => {
+    expect(mergeChanges(null, team)).toEqual({ items: team, partial: true })
+    expect(mergeChanges(record, null)?.partial).toBe(true)
+    expect(mergeChanges([], [])).toEqual({ items: [], partial: false })
+    expect(mergeChanges(null, null)).toBeNull()
   })
 })
