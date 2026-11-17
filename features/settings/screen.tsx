@@ -1,7 +1,7 @@
 import { TicketPercent } from 'lucide-react'
 import { ActionAnswers, ActionButton } from '@/components/gros/action'
 import { Button, ButtonLink } from '@/components/gros/button'
-import { Card, Tile } from '@/components/gros/card'
+import { Card } from '@/components/gros/card'
 import { Field } from '@/components/gros/input'
 import { ListRow, RowList } from '@/components/gros/list-row'
 import { AppPage, CardRow, defaultAssistant } from '@/components/gros/nav'
@@ -19,6 +19,7 @@ import {
 import type { ManagedCode } from '@/features/offers/source'
 import { formatBrandDate } from '@/lib/brand-time'
 import type { SettingsPart, SettingsView } from './page-model'
+import { TeamCard } from './team-card'
 import { saveBrandTimezone, switchToKlaviyoTimezone } from './timezone-actions'
 
 /**
@@ -26,9 +27,10 @@ import { saveBrandTimezone, switchToKlaviyoTimezone } from './timezone-actions'
  * Klaviyo, the timezone, the team and the account, one card each. The
  * buttons call the existing server actions, which check the role again:
  * owners and admins change offers; only the owner changes Klaviyo and the
- * timezone. A Klaviyo key is never shown back: only its masked hint. A
- * card's answers show in one place (`ActionAnswers`), so an answer stays
- * when its button goes with the change it made (Remove, Disconnect).
+ * timezone; the owner and managers change the team (UI-SETb). A Klaviyo
+ * key is never shown back: only its masked hint. A card's answers show in
+ * one place (`ActionAnswers`), so an answer stays when its button goes
+ * with the change it made (Remove, Disconnect, Cancel invite).
  */
 export function SettingsScreen({
   view,
@@ -49,7 +51,7 @@ export function SettingsScreen({
         <TimezoneCard view={view} />
       </CardRow>
       <CardRow>
-        <TeamCard view={view} />
+        <TeamCard view={view} unread={<Unread view={view} part="team" />} />
         <AccountCard view={view} />
       </CardRow>
     </AppPage>
@@ -434,33 +436,6 @@ function TimezoneCard({ view }: { view: SettingsView }) {
             </>
           )}
         </ActionAnswers>
-      </div>
-    </Card>
-  )
-}
-
-function TeamCard({ view }: { view: SettingsView }) {
-  const title = 'Team'
-  const team = view.team
-  return (
-    <Card size="small" label={title}>
-      <div className="flex flex-col gap-[var(--space-5)]">
-        <Title text={title} />
-        {!team ? (
-          <Unread view={view} part="team" />
-        ) : (
-          <div className="grid grid-cols-2 gap-[var(--space-3)]">
-            <Tile label="Members" value={team.members} />
-            {team.openInvites !== null ? (
-              <Tile label="Open invites" value={team.openInvites} />
-            ) : null}
-          </div>
-        )}
-        <ButtonLink
-          href="/team"
-          label={team?.canManage ? 'Manage team' : 'See team'}
-          kind="outline"
-        />
       </div>
     </Card>
   )
