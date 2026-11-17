@@ -292,6 +292,50 @@ describe('StepCards and FocusShell (UI-DS)', () => {
     expect(screen.getByText('Brand').closest('li')).toHaveTextContent(', now')
   })
 
+  it('shows a waiting step’s words, links it back and keeps Now on the next step (UI-ONBc)', () => {
+    render(
+      <StepCards
+        current={2}
+        shown={2}
+        steps={[
+          { name: 'Store', done: true, href: '/setup?step=store' as Route },
+          {
+            name: 'Brand',
+            done: false,
+            waiting: 'Reading your website',
+            href: '/setup?step=brand' as Route
+          },
+          { name: 'Klaviyo', done: false },
+          { name: 'Discount', done: false }
+        ]}
+      />
+    )
+    const brand = screen.getByRole('link', { name: /Brand/ })
+    expect(brand).toHaveAttribute('href', '/setup?step=brand')
+    expect(brand).toHaveTextContent('Brand, Reading your website')
+    expect(brand).not.toHaveTextContent('to do')
+    expect(screen.getByText('Reading your website')).toBeVisible()
+    expect(screen.getByText('Klaviyo').closest('li')).toHaveAttribute(
+      'aria-current',
+      'step'
+    )
+    expect(screen.getAllByRole('link')).toHaveLength(2)
+    // Without a page it is no link, and its words still show.
+    cleanup()
+    render(
+      <StepCards
+        current={2}
+        steps={[
+          { name: 'Store', done: true },
+          { name: 'Brand', waiting: 'Reading your website' },
+          { name: 'Klaviyo' }
+        ]}
+      />
+    )
+    expect(screen.queryAllByRole('link')).toEqual([])
+    expect(screen.getByText('Reading your website')).toBeVisible()
+  })
+
   it('puts the steps in the lime panel and the one task on the right', () => {
     const { container } = render(
       <FocusShell panel={<StepCards current={0} steps={[{ name: 'Store' }]} />}>

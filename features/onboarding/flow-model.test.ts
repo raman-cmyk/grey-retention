@@ -214,3 +214,69 @@ describe('setupFlow (UI-ONBa)', () => {
     expect(setupDestination(setupFlow(all))).toBe('finish')
   })
 })
+
+describe('a waiting Brand (the website is read first, VISION section 5)', () => {
+  const reading: SetupRecords = {
+    ...none,
+    domain: 'cedarlane.example',
+    siteReading: true
+  }
+  const waiting = (records: SetupRecords) =>
+    setupFlow(records)
+      .steps.filter((s) => s.waiting)
+      .map((s) => s.key)
+
+  it('is not Now while the website is read: Now moves to the next step', () => {
+    const flow = setupFlow(reading)
+    expect(waiting(reading)).toEqual(['brand'])
+    expect(flow.steps[1]!.done).toBe(false)
+    expect(flow.current).toBe(2)
+    expect(openPlace(flow)).toBe('klaviyo')
+    // Brand can be opened (to see the read); a step ahead of Now cannot.
+    expect(openPlace(flow, 'brand')).toBe('brand')
+    expect(openPlace(flow, 'store')).toBe('store')
+    expect(openPlace(flow, 'discount')).toBe('klaviyo')
+  })
+
+  it('lets the steps after it be done meanwhile', () => {
+    const flow = setupFlow({
+      ...reading,
+      klaviyoWorking: true,
+      maxDiscountSet: true
+    })
+    expect(flow.current).toBe(4)
+    expect(openPlace(flow)).toBe('rivals')
+    expect(openPlace(flow, 'klaviyo')).toBe('klaviyo')
+    expect(openPlace(flow, 'discount')).toBe('discount')
+  })
+
+  it('withholds the finish while it waits, with every other step done', () => {
+    const flow = setupFlow({ ...all, confirmedSite: null, siteReading: true })
+    expect(waiting({ ...all, confirmedSite: null, siteReading: true })).toEqual(
+      ['brand']
+    )
+    expect(flow.current).toBe(5)
+    expect(flow.allDone).toBe(false)
+    expect(openPlace(flow)).toBe('finish')
+    expect(openPlace(flow, 'brand')).toBe('brand')
+  })
+
+  it('is Now again once the website was read, or its read failed', () => {
+    const flow = setupFlow({
+      ...reading,
+      siteReading: false,
+      klaviyoWorking: true,
+      maxDiscountSet: true
+    })
+    expect(waiting({ ...reading, siteReading: false })).toEqual([])
+    expect(flow.current).toBe(1)
+    expect(openPlace(flow)).toBe('brand')
+  })
+
+  it('never waits without a website, or once confirmed', () => {
+    expect(waiting({ ...none, siteReading: true })).toEqual([])
+    expect(setupFlow({ ...none, siteReading: true }).current).toBe(0)
+    expect(waiting({ ...all, siteReading: true })).toEqual([])
+    expect(setupFlow({ ...all, siteReading: true }).allDone).toBe(true)
+  })
+})

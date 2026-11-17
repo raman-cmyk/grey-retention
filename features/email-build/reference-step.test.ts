@@ -82,9 +82,22 @@ const loads = (emails: ReferenceEmail[]) => async () => ({
 
 describe('the sections step and the owner’s mode (DST-002b)', () => {
   it('copies the picked inbox email’s order, and keeps what it picked and why', async () => {
+    const pictured = reference()
     const { output, log } = await run({
       mode: 'copy',
-      load: loads([reference()])
+      load: loads([
+        {
+          ...pictured,
+          sections: pictured.sections.map((s, i) =>
+            i === 0
+              ? {
+                  ...s,
+                  image: 'sect/00000000-0000-4000-8000-0000000000a1/0.jpg'
+                }
+              : s
+          )
+        }
+      ])
     })
     expect(output.layout.mode).toBe('copy')
     expect(output.layout.source).toBe('copy')
@@ -109,7 +122,9 @@ describe('the sections step and the owner’s mode (DST-002b)', () => {
     expect(output.reference).toMatchObject({
       emailId: 'ref-1',
       mode: 'copy',
-      refIndex: [0, 1, 2, null]
+      refIndex: [0, 1, 2, null],
+      // DST-004b: each reference section's stored picture, for the match score.
+      images: ['sect/00000000-0000-4000-8000-0000000000a1/0.jpg', null, null]
     })
     expect(output.reference?.reason).toMatch(
       /^We copy Pine & Co’s email “The cedar sale”/

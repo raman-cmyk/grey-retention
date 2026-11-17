@@ -29,7 +29,9 @@ type Db = SupabaseClient<Database>
  * record: when one cannot be read, the flow is unreadable and the screen
  * says so, never a guess. Once a website is saved it also reads what was
  * found there (`readBrandFound`) and the readers' progress (UI-ONBc); each
- * is null when it cannot be read, and the steps still show.
+ * is null when it cannot be read, and the steps still show. While the
+ * website's read is queued or under way, Brand waits (`siteReading`) and
+ * the owner goes on with the next steps.
  */
 export type SetupView = {
   state: 'ready' | 'demo' | 'unreadable'
@@ -139,6 +141,7 @@ export async function setupReadModel(
         settle(readOnboardingProgress(db, context.tenantId))
       ])
     : [null, null]
+  const siteRead = reading?.steps.find((s) => s.key === 'site')?.state
   return {
     ...view,
     state: 'ready',
@@ -150,6 +153,7 @@ export async function setupReadModel(
       following: records.following,
       rivalsSkipped: !!marks?.rivals_skipped_at,
       finished: !!marks?.finished_at,
+      siteReading: siteRead === 'waiting' || siteRead === 'working',
       tracked: !!marks
     }),
     brand: brand
