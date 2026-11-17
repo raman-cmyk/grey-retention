@@ -40,4 +40,5 @@ GitHub rounds every job up to a whole minute. Rough cost per pull request update
 
 - Open the pull request → "Checks" → the red job → the failing step. When the browser job fails it uploads the HTML Playwright report and test output (screenshots, traces of retried tests) as an artifact named `playwright-report`, kept 7 days. Traces can show the random passwords and secret of that run's throwaway local stack; they stop working when the run ends, and the hidden `.audit/` folder is never uploaded.
 - Reproduce locally with the same commands: `pnpm verify`; `pnpm supabase:start && pnpm supabase:reset && pnpm test:db`; `pnpm supabase:reset && pnpm test:e2e`.
+- `supabase start` failing with "address already in use" means a host port of the local stack (54320-54329) was taken by an outgoing connection: those ports sit in Linux's default outgoing range. Both workflows lower that range before the stack starts (CI-006); if it comes back, check that step is still above `supabase start`.
 - Never skip, disable or quarantine a test to make a check green.
