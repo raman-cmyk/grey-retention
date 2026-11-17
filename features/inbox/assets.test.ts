@@ -474,7 +474,7 @@ describe('keepInboxImages', () => {
       jobs: ['m1'],
       messages: {
         m1: {
-          html: `${'<div>'.repeat(100_000)}<img src="https://mail.northwind.example/hero.png">`
+          html: `${'<div>'.repeat(40_000)}<img src="https://mail.northwind.example/hero.png">`
         }
       }
     })

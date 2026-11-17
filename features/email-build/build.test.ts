@@ -561,17 +561,18 @@ describe('the store’s own material (REL-ONB2)', () => {
       Record<string, unknown> | undefined
   }
 
-  it('quotes the reviews as written only once the brand has a verified review source, and makes the email', async () => {
+  it('quotes the store’s own reviews as written, with their own stars, with or without a verified review source, and makes the email', async () => {
     const confirmed = { reviews }
-    expect(
-      (await block('review_strip', { confirmed, facts }))?.reviews
-    ).toEqual(reviews)
-    expect(await block('review_strip', { confirmed })).toBeUndefined()
-    const built = await buildEmail(
-      await input({ confirmed, facts }, 'launch'),
-      ctx()
+    // The sample store has no verified review source (REL-ONB2 part b:
+    // the store's own reviews need none).
+    expect((await sampleStoreSource.read(tenantId)).facts.reviewsVerified).toBe(
+      false
     )
-    expect(built.ok && built.email.html).toContain(cosy)
+    for (const over of [{ confirmed, facts }, { confirmed }]) {
+      expect((await block('review_strip', over))?.reviews).toEqual(reviews)
+      const built = await buildEmail(await input(over, 'launch'), ctx())
+      expect(built.ok && built.email.html).toContain(cosy)
+    }
   })
 
   it('leaves out a review the Brand inspector would refuse, so the email is still made', async () => {
@@ -613,6 +614,21 @@ describe('the store’s own material (REL-ONB2)', () => {
       ctx()
     )
     expect(built.ok && built.email.html).toContain(cosy)
+  })
+
+  it('heads a story email with the store’s lifestyle photo, as kept, and makes the email (REL-ONB2 part c)', async () => {
+    const hills = 'https://cdn.shopify.com/s/files/1/hills.jpg'
+    const confirmed = {
+      lifestylePhoto: { image: hills, alt: 'A walk in the hills at dusk' }
+    }
+    expect(await block('hero_image', { confirmed }, 'story')).toMatchObject({
+      image: hills,
+      alt: 'A walk in the hills at dusk'
+    })
+    for (const type of ['story', 'gift guide'] as const) {
+      const built = await buildEmail(await input({ confirmed }, type), ctx())
+      expect(built.ok && built.email.html, type).toContain(hills)
+    }
   })
 
   it('has no material block without the material', async () => {

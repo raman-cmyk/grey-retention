@@ -1,5 +1,9 @@
 import { hiddenChars, oneLine } from '@/features/assembly/assemble'
-import type { AssemblyInput, ConfirmedReview } from '@/features/assembly/inputs'
+import type {
+  AssemblyInput,
+  ConfirmedPhoto,
+  ConfirmedReview
+} from '@/features/assembly/inputs'
 import { hostOf } from '@/features/brand-profile/mismatch'
 import { checkCopy, type BrandFacts } from '@/features/copy-qa/check'
 import {
@@ -11,6 +15,7 @@ import {
 import { onDomain } from '@/lib/providers/ad-library'
 import { bodyWords, namesSomeone, resultWords } from './customer-words'
 import type { Finding } from './findings'
+import { emailPhotoUrl, photoKey } from './site/photos'
 import { claims } from './words'
 
 /**
@@ -24,9 +29,12 @@ import { claims } from './words'
  *   ONB-105), with their own stars, their exact words (at most `maxQuote`
  *   characters, never cut) and the reviewer's first name and last initial
  *   (`reviewerName`), best rated and newest first, at most 3.
- * - Only while the brand has a verified review source (copy QA's
- *   `reviewsVerified`): the strip shows each review's stars, and copy QA
- *   refuses stars without one.
+ * - With or without a verified review source (REL-ONB2 part b, the
+ *   owner's rule of 16 November: from the store's own sources only,
+ *   nothing invented): each review is the store's own words with its own
+ *   stars, so the strip may show them. Copy QA's `reviewsVerified` still
+ *   guards ratings and counts anywhere else ("4.9 from 2,000 reviews"),
+ *   and the Brand inspector lets only the strip's own stars through.
  * - Never a quote naming someone (another customer, a member of staff, the
  *   reviewer themself: `namesIn`), never spam words, and every word judged
  *   by copy QA at least as strictly as the Brand inspector will judge the
@@ -35,12 +43,18 @@ import { claims } from './words'
  *   too, and still misses a first name that starts a sentence before a
  *   verb it cannot tell ("Emily gave it to me.").
  *
+ * - A lifestyle photo (`hero_image`, part c): the first lifestyle photo
+ *   the Site reader kept from the store's current website (ONB-059b, page
+ *   order) that an email can show (`emailPhotoUrl`) and that is no catalog
+ *   picture (`photoKey`: any size of one), described by its own words when
+ *   they pass as the store's, else by the brand's name. Never for a sample
+ *   workspace (no live read kept it), never made up.
+ *
  * Not here: customer photos (`ugc_grid`; no reader keeps customers' own
- * photos, and a brand photo is never one), a note in the brand's words
+ * photos, and a brand photo is never one) and a note in the brand's words
  * (`founder_note`; the Site reader does not yet mark a quote as a whole
- * sentence of the page in its own letters) and a lifestyle photo
- * (`hero_image`; part b). Without reviews the material is absent, so the
- * review strip stays disallowed (`allowedBlockTypes`).
+ * sentence of the page in its own letters). A block whose material is
+ * absent stays disallowed (`allowedBlockTypes`).
  */
 
 /** The longest review quoted, in characters (a longer one is left out). */
@@ -60,7 +74,39 @@ export type MaterialParts = {
   facts: BrandFacts
   /** The catalog's titles: capitalised words a quote may use (never a name). */
   productNames: readonly string[]
+  /** The catalog's pictures: never a lifestyle photo (part c). */
+  catalogImages?: readonly string[]
+  /** The Site reader's photos of this same website, in page order. */
+  photos?: readonly SitePhotoRow[]
 }
+
+/** A photo the Site reader kept (`brand_photos`). */
+export type SitePhotoRow = {
+  url: string
+  kind: string
+  alt: string | null
+  /** Where on the page: `schema`, `share` (a social card) or `page`. */
+  source?: string
+}
+
+/** The longest photo description kept (the hero block's own limit). */
+const maxAlt = 160
+
+/**
+ * Words that say a price, a discount or an offer: a photo described so
+ * most likely has them drawn into it, where copy QA cannot read them, so
+ * it never heads an email (VISION rule 6; the block catalog: pictures carry
+ * no text).
+ */
+const offerWords =
+  /[$€£¥₹%]|\b\d+\s*(?:percent|per\s*cent)\b|\b(?:sale|sales|discount\w*|off|deal|deals|offer\w*|promo\w*|coupon\w*|code|free|clearance|bogo|black\s+friday|cyber\s+monday|save|savings)\b/i
+
+/** A description that is a file's or a widget's name, not words. */
+const notWords = (text: string) =>
+  /\.(?:jpe?g|png|webp|gif|avif|svg)$/i.test(text) ||
+  /[_/\\]/.test(text) ||
+  /^(?:img|dsc|image|photo|banner|slide|hero)[\s-]*\d*$/i.test(text) ||
+  text.split(/\s+/).length < 2
 
 /** Store words as they are: one line, no markup, link, price or hidden character. */
 const clean = (text: string) =>
@@ -211,7 +257,6 @@ const signs = (quote: string, author: string) =>
     .some((w) => phrase(quote, w))
 
 function reviews(parts: MaterialParts): ConfirmedReview[] {
-  if (!parts.facts.reviewsVerified) return []
   const seen = new Set<string>()
   return parts.findings
     .flatMap((f) => {
@@ -228,8 +273,10 @@ function reviews(parts: MaterialParts): ConfirmedReview[] {
       if (!author || value.rating === undefined) return []
       if (Array.from(quote).length > maxQuote || signs(quote, value.author))
         return []
-      // Judged as the Brand inspector will (`copyDraftOf`: name and stars too).
-      const shown = `${quote}\n${author}\nRated ${value.rating} out of 5`
+      // Judged as the Brand inspector will (`copyDraftOf`: the name too).
+      // The strip's own stars are the review's, never a claim (they pass
+      // the inspector; `brandCopyDraft`), so they are not judged here.
+      const shown = `${quote}\n${author}`
       if (!safe(quote, parts, shown) || claims.test(author)) return []
       const review = { quote, author, rating: value.rating }
       return [{ review, date: value.date ?? '' }]
@@ -248,8 +295,63 @@ function reviews(parts: MaterialParts): ConfirmedReview[] {
     .map(({ review }) => review)
 }
 
+/** Any size of the same picture is one picture; a bad address is its own. */
+const keyOf = (url: string) => {
+  try {
+    return photoKey(url)
+  } catch {
+    return url
+  }
+}
+
+/**
+ * The first lifestyle photo of the store's own pages an email may show:
+ * never a social card (`share`: often a logo or text graphic), a catalog
+ * picture or a picture on another website's host than the store's own or
+ * its catalog's, and never one described with a price, a discount or an
+ * offer (`offerWords`, or what copy QA's own facts refuse). Its own words
+ * describe it when they pass as the store's; the brand's name when they
+ * are empty, too long, a file's name or a person's name.
+ */
+function lifestylePhoto(parts: MaterialParts): ConfirmedPhoto | undefined {
+  if (!parts.live) return undefined
+  const catalogImages = parts.catalogImages ?? []
+  const catalog = new Set(catalogImages.map(keyOf))
+  // The store's own hosts, and those its catalog pictures already use.
+  const catalogHosts = new Set(catalogImages.map(hostOf).filter(Boolean))
+  const ownHost = (url: string) => {
+    const host = hostOf(url)
+    return !!host && (onDomain(host, parts.host) || catalogHosts.has(host))
+  }
+  const name = parts.brandName.trim()
+  const brandAlt =
+    name && Array.from(name).length <= maxAlt && safe(name, parts) ? name : ''
+  for (const p of parts.photos ?? []) {
+    if (p.kind !== 'lifestyle' || p.source === 'share') continue
+    if (!emailPhotoUrl(p.url) || !ownHost(p.url)) continue
+    if (catalog.has(keyOf(p.url))) continue
+    const own = (p.alt ?? '').trim()
+    // A price or an offer in its words: one drawn in it, never a hero.
+    if (offerWords.test(own) || strayPrices(own, new Set()).length > 0) continue
+    const alt =
+      own &&
+      Array.from(own).length <= maxAlt &&
+      !notWords(own) &&
+      safe(own, parts)
+        ? own
+        : brandAlt
+    if (alt) return { image: p.url, alt }
+  }
+  return undefined
+}
+
 /** The store's material, or undefined when it has none. Pure. */
 export function storeMaterial(parts: MaterialParts): Material | undefined {
   const quoted = reviews(parts)
-  return quoted.length ? { reviews: quoted } : undefined
+  const photo = lifestylePhoto(parts)
+  const material: Material = {
+    ...(quoted.length ? { reviews: quoted } : {}),
+    ...(photo ? { lifestylePhoto: photo } : {})
+  }
+  return Object.keys(material).length ? material : undefined
 }

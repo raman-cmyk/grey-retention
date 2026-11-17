@@ -4,11 +4,18 @@ import { z } from 'zod'
 import type { FormResult } from '@/components/ui/action-form'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { createClient } from '@/lib/supabase/server'
-import { domainShape, isSampleDomain, trackedDomainOf } from './domain'
+import {
+  domainLimit,
+  domainShape,
+  isSampleDomain,
+  trackedDomainOf
+} from './domain'
 
-const ownerOnly = 'Only the workspace owner can change tracked domains.'
+const ownerOnly = 'Only the workspace owner can change the brands you follow.'
+// Following real brands comes with REAL-01 part b; until then only the
+// sample brands can be followed, in every workspace.
 const sampleOnly =
-  'This workspace uses sample data, so only sample domains that end in .example can be tracked, for example northwind.example.'
+  'For now you can follow only sample brands, whose websites end in .example, for example northwind.example.'
 
 async function ownerSession() {
   const context = await requireRequestContext('client')
@@ -19,7 +26,7 @@ async function ownerSession() {
   return { context, db } as const
 }
 
-const refresh = () => revalidatePath('/library/inspirations')
+const refresh = () => revalidatePath('/inspiration')
 
 type Db = NonNullable<Awaited<ReturnType<typeof createClient>>>
 
@@ -34,9 +41,9 @@ async function requestEmails(db: Db, tenantId: string, subscription: string) {
 }
 
 const retryText = (domain: string) =>
-  `Tracking ${domain}, but we could not ask for their emails yet. Click Track again to retry.`
+  `Following ${domain}, but we could not ask for their emails yet. Click Follow again to retry.`
 
-/** "+ Track": follow a competitor's emails, then ask for their emails. */
+/** Follow a brand's emails by its website, then ask for its emails. */
 export async function trackDomain(
   _state: FormResult,
   form: FormData
@@ -45,15 +52,15 @@ export async function trackDomain(
   if ('error' in session) return { error: session.error }
   const raw = form.get('domain')
   if (typeof raw !== 'string' || !raw.trim())
-    return { error: 'Enter a domain, for example brand.com.' }
+    return { error: 'Enter a brand website, for example brand.com.' }
   const domain = trackedDomainOf(raw)
   if (raw.length > 300 || !domainShape.test(domain))
     return {
-      error: 'That is not a domain. Enter one like brand.com, without spaces.'
+      error: 'That is not a website. Enter one like brand.com, without spaces.'
     }
   // The domain is also its label, which holds up to 120 characters.
   if (domain.length > 120)
-    return { error: 'That domain is too long. Use one under 120 characters.' }
+    return { error: 'That website is too long. Use one under 120 characters.' }
   if (!isSampleDomain(domain)) return { error: sampleOnly }
   const { context, db } = session
   // Already tracked: say so, and change nothing (its label, rules and any
@@ -75,7 +82,7 @@ export async function trackDomain(
       // Ask for their emails again (the same request is never queued twice).
       const queued = await requestEmails(db, context.tenantId, tracked.data.id)
       return queued
-        ? { message: `You already track ${domain}.` }
+        ? { message: `You already follow ${domain}.` }
         : { error: retryText(domain) }
     }
   }
@@ -88,18 +95,18 @@ export async function trackDomain(
   if (saved.error) {
     if (saved.error.code === 'PT409')
       return {
-        error: 'You already track 10 domains. Stop tracking one to add another.'
+        error: `You follow ${domainLimit} brands, the most at a time. Stop one to follow another.`
       }
     if (saved.error.code === '42501') return { error: ownerOnly }
     if (saved.error.code === '23514') return { error: sampleOnly }
-    return { error: 'We could not track this domain. Nothing was changed.' }
+    return { error: 'We could not follow this brand. Nothing was changed.' }
   }
   // Ask for their emails now; the scheduled worker brings them in.
   const queued = await requestEmails(db, context.tenantId, saved.data)
   refresh()
   if (!queued) return { error: retryText(domain) }
   return {
-    message: `Tracking ${domain}. It shows PENDING until their emails arrive.`
+    message: `Following ${domain}. Its newsletters usually arrive within 1–7 days.`
   }
 }
 
@@ -109,7 +116,7 @@ const stopForm = z.object({
   domain: z.string().max(200)
 })
 
-/** "✕ Remove", after the confirm: stop tracking a domain. */
+/** Stop following a brand. */
 export async function stopTracking(
   _state: FormResult,
   form: FormData
@@ -139,13 +146,13 @@ export async function stopTracking(
     return saved.error.code === 'PT409'
       ? {
           error:
-            'This domain changed in another window. Reload the page, then try again.'
+            'This brand changed in another window. Reload the page, then try again.'
         }
       : saved.error.code === '42501'
         ? { error: ownerOnly }
-        : { error: 'We could not stop tracking. Nothing was changed.' }
+        : { error: 'We could not stop following. Nothing was changed.' }
   refresh()
   return {
-    message: `Stopped tracking ${current.data.label}. Its emails left your library.`
+    message: `Stopped following ${current.data.label}. Its emails left your library.`
   }
 }

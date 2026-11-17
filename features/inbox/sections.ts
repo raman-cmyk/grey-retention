@@ -1,10 +1,11 @@
 import { serializeOuter, type DefaultTreeAdapterTypes as T } from 'parse5'
 import {
   checkTime,
-  deadline,
   guardedParse,
-  parseLimits,
+  guardFor,
   ParseRefused,
+  type Guard,
+  type GuardOptions,
   type ParseRefusal
 } from './parse-guard'
 
@@ -362,9 +363,12 @@ const proseTags = new Set([
  * Without a layout table, consecutive plain paragraphs stay one text
  * section (a letter is one block, not one block per paragraph).
  */
-export function sectionEmail(html: string): SectionedEmail {
+export function sectionEmail(
+  html: string,
+  guard?: GuardOptions
+): SectionedEmail {
   try {
-    return sectioned(html)
+    return sectioned(html, guardFor(guard))
   } catch (error) {
     // HTML the parser would be slow on (INB-SEC), or a tree too odd to
     // read, is kept whole: the email simply has no sections, and says why.
@@ -413,11 +417,10 @@ function marked(html: string, groups: { rows: T.Element[] }[]) {
   return parts.join('')
 }
 
-function sectioned(html: string): SectionedEmail {
+function sectioned(html: string, g: Guard): SectionedEmail {
   // Longer HTML is cut (its sections are in the part read), then read
   // behind the parse guard, all within one deadline.
-  const until = deadline()
-  const doc = guardedParse(html.slice(0, parseLimits.html), until, {
+  const doc = guardedParse(html.slice(0, g.limits.html), g, {
     sourceCodeLocationInfo: true
   })
   let body: T.Element | null = null
@@ -441,7 +444,7 @@ function sectioned(html: string): SectionedEmail {
       else groups.push({ rows: [row], prose })
     }
   const kept = groups.slice(0, maxSections)
-  checkTime(until)
+  checkTime(g, 'walk')
   const sections = kept.map((g, i) => sectionOf(g.rows, i + 1))
   return {
     sections,

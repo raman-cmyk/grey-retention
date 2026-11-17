@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { parseLimits } from './parse-guard'
 import { maxSections, sectionEmail } from './sections'
 
 /** A Klaviyo-style newsletter: a full-width table around a 600px table. */
@@ -265,8 +264,9 @@ describe('sectionEmail behind the parse guard (INB-SEC)', () => {
 
   it('refuses, fast, HTML the parser would be slow on, and says why', () => {
     for (const [html, refused] of [
-      ['<div>'.repeat(100_000), 'too_deep'],
-      ['<div/>'.repeat(150_000), 'too_deep'],
+      ['<div>'.repeat(100_000), 'too_many_tags'],
+      ['<div>'.repeat(40_000), 'too_deep'],
+      ['<div/>'.repeat(40_000), 'too_deep'],
       [
         `<p${Array.from({ length: 999 }, (_, i) => ` xx${i}=""`).join('')}>`.repeat(
           665
@@ -277,7 +277,7 @@ describe('sectionEmail behind the parse guard (INB-SEC)', () => {
         Array.from({ length: 20_000 }, (_, i) => `<body a${i}>`).join(''),
         'merged_attributes'
       ],
-      ['<p>x</p>'.repeat(120_000), 'too_many_tags']
+      [`<p>${'S<!---->'.repeat(60_000)}</p>`, 'too_many_tags']
     ] as const) {
       const started = Date.now()
       expect(sectionEmail(html)).toEqual({
@@ -294,7 +294,7 @@ describe('sectionEmail behind the parse guard (INB-SEC)', () => {
   it('reads a huge flat email in time', () => {
     const started = Date.now()
     const flat = sectionEmail(
-      `<div>${'<p>Linen for long days.</p>'.repeat(90_000)}</div>`
+      `<div>${'<p>Linen for long days.</p>'.repeat(24_000)}</div>`
     )
     expect(flat.refused).toBeUndefined()
     expect(flat.sections).toHaveLength(1)
@@ -302,12 +302,16 @@ describe('sectionEmail behind the parse guard (INB-SEC)', () => {
   })
 
   it('stops at the deadline', () => {
-    const was = parseLimits.ms
-    parseLimits.ms = -1
-    try {
-      expect(sectionEmail(klaviyo).refused).toBe('out_of_time')
-    } finally {
-      parseLimits.ms = was
-    }
+    expect(sectionEmail(klaviyo, { limits: { ms: -1 } }).refused).toBe(
+      'out_of_time'
+    )
+    // Each check alone stops it: a clock that has run out there only.
+    for (const check of ['scan', 'element', 'walk'])
+      expect(
+        sectionEmail(klaviyo, {
+          clock: (at) => (at === check ? Infinity : 0)
+        }).refused,
+        check
+      ).toBe('out_of_time')
   })
 })

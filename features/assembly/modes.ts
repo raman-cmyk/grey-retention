@@ -129,7 +129,13 @@ const productNeed = (type: BlockType, left: number): number | null => {
   return left >= min ? min : null
 }
 
-export type LayoutStep = { type: BlockType; from: BlockType; reason: string }
+export type LayoutStep = {
+  type: BlockType
+  from: BlockType
+  reason: string
+  /** Copy: its place in the competitor's sections (none for the footer added at the end, or a step not from a competitor). */
+  index?: number
+}
 export type DroppedSection = { index: number; section: string; reason: string }
 
 /**
@@ -172,6 +178,7 @@ export function layoutSequence(
     steps.push({
       type,
       from: section,
+      index,
       reason:
         type === section
           ? `Same section as the competitor email: ${article(name(section))}.`
