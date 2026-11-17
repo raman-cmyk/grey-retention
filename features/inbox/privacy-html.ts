@@ -14,6 +14,7 @@ import {
   ranges,
   rulesFor,
   scrub,
+  privacyLimits,
   type CleanOptions,
   type DeadlineCheck,
   type InboxIdentity,
@@ -69,8 +70,13 @@ const knownAttrs = tags(
 
 class Refused extends Error {}
 /** The one deadline, read at a named check (a test's clock tells them apart). */
-const late = (r: Rules, until: number, check: DeadlineCheck) =>
-  r.now(check) > until
+/**
+ * One email's deadline: by its clock (a test's may run out at one check),
+ * and by real time, which a passed clock can never extend.
+ */
+type Deadline = { at: number; hard: number }
+const late = (r: Rules, until: Deadline, check: DeadlineCheck) =>
+  r.now(check) > until.at || Date.now() > until.hard
 
 const space = (c: string | undefined) =>
   c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f'
@@ -82,7 +88,7 @@ const space = (c: string | undefined) =>
  * since each one splits the words into one more piece to clean. Attributes
  * are counted as the tokenizer splits them (blanks, "/", after a quote).
  */
-function scannable(html: string, r: Rules, until: number) {
+function scannable(html: string, r: Rules, until: Deadline) {
   let count = 0
   let work = 0
   for (let i = html.indexOf('<'); i >= 0; i = html.indexOf('<', i)) {
@@ -128,7 +134,10 @@ function scannable(html: string, r: Rules, until: number) {
  * any email, too many attributes merged onto one element (repeated <html>
  * or <body> tags) or the deadline stop it.
  */
-function guarded(r: Rules, until: number): TreeAdapter<DefaultTreeAdapterMap> {
+function guarded(
+  r: Rules,
+  until: Deadline
+): TreeAdapter<DefaultTreeAdapterMap> {
   const depth = new WeakMap<object, number>()
   const place = (parent: object, child: object) => {
     const d = (depth.get(parent) ?? 0) + 1
@@ -267,11 +276,16 @@ const loads = (css: string) =>
  * Every url(...) (brackets and quotes inside included): its stored copy,
  * or none.
  */
-function cssLinks(css: string, r: Rules) {
+function cssLinks(css: string, r: Rules, until: Deadline) {
   const lower = css.toLowerCase()
   let out = ''
   let from = 0
-  for (let i = lower.indexOf('url('); i >= 0; i = lower.indexOf('url(', from)) {
+  for (
+    let i = lower.indexOf('url('), n = 0;
+    i >= 0;
+    i = lower.indexOf('url(', from), n++
+  ) {
+    if ((n & 1023) === 0 && late(r, until, 'css')) throw new Refused()
     let j = i + 3
     for (let depth = 0, q = ''; j < css.length; j++) {
       const c = css[j]
@@ -297,9 +311,10 @@ function cssLinks(css: string, r: Rules) {
  * (@import, image-set) is its stored copy or nothing; any other loses
  * addresses and names (a font named like the person).
  */
-function cssStrings(css: string, r: Rules) {
+function cssStrings(css: string, r: Rules, until: Deadline) {
   let out = ''
-  for (let i = 0; i < css.length;) {
+  for (let i = 0, n = 0; i < css.length; n++) {
+    if ((n & 1023) === 0 && late(r, until, 'strings')) throw new Refused()
     const a = css.indexOf('"', i)
     const b = css.indexOf("'", i)
     const start = a < 0 ? b : b < 0 ? a : Math.min(a, b)
@@ -328,13 +343,18 @@ function cssStrings(css: string, r: Rules) {
  * removed. Names go only from strings: a name may also be a CSS word
  * ("Georgia", "max-width").
  */
-function cleanCss(css: string, r: Rules) {
+function cleanCss(css: string, r: Rules, until: Deadline) {
   if (loads(unescapeCss(css)) > loads(css)) return ''
   const plain = dropComments(css).replace(/<(?=[a-z/!?])/gi, '')
-  return scrub(cssStrings(cssLinks(plain, r), r), r, false)
+  return scrub(cssStrings(cssLinks(plain, r, until), r, until), r, false)
 }
 
-function cleanAttrs(el: T.Element, r: Rules, named: (s: string) => boolean) {
+function cleanAttrs(
+  el: T.Element,
+  r: Rules,
+  named: (s: string) => boolean,
+  until: Deadline
+) {
   const tag = el.tagName
   el.attrs = el.attrs.flatMap((a): T.Element['attrs'] => {
     const name = a.name
@@ -354,7 +374,11 @@ function cleanAttrs(el: T.Element, r: Rules, named: (s: string) => boolean) {
     } else if (name === 'src' || name === 'background' || name === 'poster')
       value = imageUrl(value, r)
     else if (name === 'srcset') value = srcset(value, r)
-    else if (name === 'style') value = cleanCss(value, r)
+    else if (name === 'style') value = cleanCss(value, r, until)
+    // Class names, ids and font faces lose addresses but never names: a
+    // persona called "Max Georgia" keeps "max-w" and "Georgia".
+    else if (name === 'class' || name === 'id' || name === 'face')
+      value = scrub(value, r, false)
     else value = clean(value, r)
     return [value === a.value ? a : { ...a, value }]
   })
@@ -375,7 +399,7 @@ const wordish = /[\p{L}\p{N}@%\u{ff20}\u{fe6b}]/u
  * joined words first and every piece is removed; then each text is
  * cleaned, a name in its own tag after a greeting too ("Hi <b>Sam</b>,").
  */
-function cleanBlock(nodes: (T.TextNode | '\n')[], r: Rules, until: number) {
+function cleanBlock(nodes: (T.TextNode | '\n')[], r: Rules, until: Deadline) {
   const parts = nodes.map((n) => (n === '\n' ? n : n.value))
   if (parts.length > 1) {
     const joined = parts.join('')
@@ -450,7 +474,7 @@ function cleanBlock(nodes: (T.TextNode | '\n')[], r: Rules, until: number) {
 }
 
 /** Walks the tree with a list (never recursion) and cleans it in place. */
-function cleanTree(doc: T.Document, r: Rules, until: number) {
+function cleanTree(doc: T.Document, r: Rules, until: Deadline) {
   const gone = new Set<Node>()
   const unwrapped = new Set<Node>()
   const parents = new Set<T.ParentNode>()
@@ -482,7 +506,7 @@ function cleanTree(doc: T.Document, r: Rules, until: number) {
     if (n.nodeName === '#text') {
       const parent = (n as T.TextNode).parentNode
       if (parent && isElement(parent) && parent.tagName === 'style')
-        (n as T.TextNode).value = cleanCss((n as T.TextNode).value, r)
+        (n as T.TextNode).value = cleanCss((n as T.TextNode).value, r, until)
       else block.push(n as T.TextNode)
       continue
     }
@@ -506,7 +530,7 @@ function cleanTree(doc: T.Document, r: Rules, until: number) {
       blockTags.has(n.tagName) &&
       !/(?:^|;)\s*display\s*:\s*inline/i.test(attr(n, 'style') ?? '')
     if (isBlock) endBlock()
-    cleanAttrs(n, r, namedAttr)
+    cleanAttrs(n, r, namedAttr, until)
     // A form keeps its look as a plain box, raw-text blocks become <pre>
     // (written escaped, so their words can never turn into tags).
     if (n.tagName === 'form') n.tagName = n.nodeName = 'div'
@@ -550,7 +574,7 @@ const doctypes: Record<T.Document['mode'], string> = {
 }
 
 /** The HTML again, without recursion; comments are never written. */
-function serialize(doc: T.Document, r: Rules, until: number) {
+function serialize(doc: T.Document, r: Rules, until: Deadline) {
   const out: string[] = []
   const stack: (Node | string)[] = [...children(doc)].reverse()
   for (let steps = 0; stack.length; steps++) {
@@ -590,7 +614,7 @@ function serialize(doc: T.Document, r: Rules, until: number) {
  * One round. The size limit holds for the email itself (`first`): escaping
  * may make the cleaned HTML longer, and that is read again as it is.
  */
-function cleanOnce(html: string, r: Rules, until: number, first: boolean) {
+function cleanOnce(html: string, r: Rules, until: Deadline, first: boolean) {
   if ((first && html.length > r.limits.html) || !scannable(html, r, until))
     return null
   const doc = parse(html, {
@@ -632,7 +656,10 @@ export function cleanEmailHtml(
 ) {
   const r = rulesFor(identity, options)
   // One deadline for every round of this email.
-  const until = r.now('start') + r.limits.htmlMs
+  const until: Deadline = {
+    at: r.now('start') + r.limits.htmlMs,
+    hard: Date.now() + privacyLimits.htmlMs
+  }
   try {
     return settle(cleanOnce(html, r, until, true), (out) =>
       cleanOnce(out, r, until, false)
