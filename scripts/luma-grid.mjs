@@ -13,8 +13,11 @@
 
 /** As `gridBudget` in features/studio/match.ts (a test keeps them equal). */
 export const gridBudget = { columns: 48, rows: 128 }
-/** The largest crop fetched: a section picture is at most 3 MiB. */
-export const maxCropBytes = 3 * 1024 * 1024
+/**
+ * The largest crop fetched: the inbox keeps a section's crop up to
+ * 9.5 MiB (scripts/inbox-screenshots.mjs), so a little more.
+ */
+export const maxCropBytes = 10 * 1024 * 1024
 /** How long fetching the crop may take. */
 export const cropMs = 15_000
 
@@ -59,13 +62,21 @@ export function averageGrid(rgba, width, height, budget) {
  */
 export async function lumaGrid(browser, jpeg, timeoutMs = 10_000) {
   let context
+  let timer
   try {
-    context = await browser.newContext({ javaScriptEnabled: true })
+    // Its own context, offline, every request refused: the picture is data.
+    context = await browser.newContext({ offline: true })
     const page = await context.newPage()
-    // Nothing leaves the page: the picture is data.
     await page.route('**/*', (route) => route.abort())
-    page.setDefaultTimeout(timeoutMs)
-    const grid = await page.evaluate(
+    // A page call has no time limit of its own: past the time, the page is
+    // closed, which ends whatever it was doing.
+    const late = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        context?.close().catch(() => {})
+        reject(new Error('late'))
+      }, timeoutMs)
+    })
+    const reading = page.evaluate(
       async ([source, base64, budget]) => {
         const average = new Function(`return (${source})`)()
         const img = new Image()
@@ -83,12 +94,15 @@ export async function lumaGrid(browser, jpeg, timeoutMs = 10_000) {
       },
       [averageGrid.toString(), Buffer.from(jpeg).toString('base64'), gridBudget]
     )
+    reading.catch(() => {})
+    const grid = await Promise.race([reading, late])
     return grid && grid.values?.length === grid.width * grid.height
       ? grid
       : null
   } catch {
     return null
   } finally {
+    clearTimeout(timer)
     await context?.close().catch(() => {})
   }
 }

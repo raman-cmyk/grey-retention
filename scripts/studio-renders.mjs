@@ -162,6 +162,8 @@ export async function run({
 }) {
   const counts = { drawn: 0, failed: 0, lost: 0 }
   const views = { drawn: 0, failed: 0, lost: 0 }
+  // DST-004b2c: the grids read with the sections recorded (counts only).
+  const grids = { read: 0, reference: 0, asked: 0 }
   const until = now() + runBudgetMs
   const alive = () => !browser.isConnected || browser.isConnected()
   let n = 0
@@ -198,7 +200,14 @@ export async function run({
           )
           if (!recorded) tally.lost++
           else if ('failure' in report) tally.failed++
-          else tally.drawn++
+          else {
+            tally.drawn++
+            if (kind === kinds.section) {
+              if (report.grid) grids.read++
+              if (job.reference) grids.asked++
+              if (report.referenceGrid) grids.reference++
+            }
+          }
         }
       }
   } finally {
@@ -207,6 +216,9 @@ export async function run({
     )
     log(
       `Email views drawn: ${views.drawn}. Failed: ${views.failed}. Not recorded: ${views.lost}.`
+    )
+    log(
+      `Grids read: ${grids.read}. Reference grids read: ${grids.reference} of ${grids.asked}.`
     )
   }
   return { ...counts, views }

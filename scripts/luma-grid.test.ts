@@ -161,6 +161,20 @@ describe('reading a picture in its own page', () => {
     // No browser at all.
     expect(await lumaGrid({} as Browser, new Uint8Array([1]))).toBeNull()
   })
+
+  it('gives up on a page that never answers, closing it, within its time', async () => {
+    const { browser, seen } = fakeBrowser(() => new Promise(() => {}))
+    const started = Date.now()
+    expect(await lumaGrid(browser, new Uint8Array([1]), 50)).toBeNull()
+    expect(Date.now() - started).toBeLessThan(2_000)
+    expect(seen.closed).toBe(true)
+  })
+
+  it('opens its page offline, as a second guard', async () => {
+    const { browser, seen } = fakeBrowser(async () => grid)
+    await lumaGrid(browser, new Uint8Array([1]))
+    expect(seen.options).toEqual({ offline: true })
+  })
 })
 
 describe('fetching the reference crop through its link', () => {
@@ -201,6 +215,10 @@ describe('fetching the reference crop through its link', () => {
           })
       ],
       ['empty', async () => answer(new Uint8Array([]))],
+      [
+        'too large, with no length said',
+        async () => answer(new Uint8Array(maxCropBytes + 1))
+      ],
       [
         'the request fails',
         async () => {

@@ -127,8 +127,9 @@ const none = { drawn: 0, failed: 0, lost: 0 }
 /** The run's two lines: its sections, then its email views. */
 const counts = (
   line: string,
-  views = 'Email views drawn: 0. Failed: 0. Not recorded: 0.'
-) => [[line], [views]]
+  views = 'Email views drawn: 0. Failed: 0. Not recorded: 0.',
+  grids = 'Grids read: 0. Reference grids read: 0 of 0.'
+) => [[line], [views], [grids]]
 
 describe('the section browser job (DST-001c)', () => {
   afterEach(() => {
@@ -485,6 +486,31 @@ describe('the section browser job (DST-001c)', () => {
       referenceGrid: theirs
     })
     expect(JSON.stringify(log.mock.calls)).not.toContain('SECRET')
+    // Counts only: both grids read, for the one section that asked.
+    expect(log.mock.calls.at(-1)).toEqual([
+      'Grids read: 1. Reference grids read: 1 of 1.'
+    ])
+  })
+
+  it('leaves the crop out when the lease runs short after its own grid', async () => {
+    const calls = app({ jobs: 1, reference: 'https://db.test/sign/x' })
+    draw.renderSection.mockResolvedValue(picture)
+    // Reading its own grid takes most of what is left of the lease.
+    let t = 0
+    grids.lumaGrid.mockImplementation(async () => {
+      t += 80_000
+      return { width: 1, height: 1, values: [3] }
+    })
+    const log = vi.fn()
+    await run({ base, secret, browser, log, now: () => t })
+    expect(grids.lumaGrid).toHaveBeenCalledTimes(1)
+    expect(grids.fetchCrop).not.toHaveBeenCalled()
+    expect(calls.find((c) => c.method === 'POST')?.body).toMatchObject({
+      grid: { width: 1, height: 1, values: [3] }
+    })
+    expect(log.mock.calls.at(-1)).toEqual([
+      'Grids read: 1. Reference grids read: 0 of 1.'
+    ])
   })
 
   it('reports the picture with what grids it could read: none, or only its own', async () => {
