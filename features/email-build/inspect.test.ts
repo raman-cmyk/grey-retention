@@ -904,10 +904,11 @@ describe('the email checks (code)', () => {
     })
     const locked = await lock(raw)
     const answer = words()
+    // The strip has no words of the writer's: code fills it.
     answer.blocks.splice(3, 0, {
       type: 'review_strip',
       reason: 'Reviews.',
-      words: { heading: 'What people say' }
+      words: {}
     })
     const draft = await draftOf(locked, answer)
     const unverified = (d: Draft) =>
@@ -923,9 +924,58 @@ describe('the email checks (code)', () => {
     expect(unverified(other).map((f) => f.field)).toEqual([
       `block:${strip + 1}-review_strip`
     ])
-    // Stars written anywhere else are still refused.
+    // Words, name and stars must all be the store's own; and every review
+    // of the strip, not one of them.
+    for (const changed of [
+      [{ ...review, author: 'Ann' }],
+      [{ ...review, quote: 'So cosy on cold nights.' }],
+      [review, { ...review, quote: 'Warm and soft, I love it.' }]
+    ]) {
+      const not = structuredClone(draft)
+      ;(not.blocks[strip]!.content as { reviews: (typeof review)[] }).reviews =
+        changed
+      expect(
+        unverified(not).map((f) => f.field),
+        JSON.stringify(changed)
+      ).toEqual([`block:${strip + 1}-review_strip`])
+    }
+    // Stars written anywhere else are still refused, a strip of the
+    // store's own reviews next to them or not.
     const claim = { ...draft, subject: 'Rated 5 stars by our customers' }
     expect(unverified(claim).map((f) => f.field)).toEqual(['subject'])
+    const grid = draft.blocks.findIndex((b) => b.type === 'product_grid_2col')
+    expect(grid).toBeGreaterThanOrEqual(0)
+    const elsewhere = structuredClone(draft)
+    const block = elsewhere.blocks[grid]!.content as Record<string, unknown>
+    block.heading = 'Rated 5 out of 5'
+    expect(unverified(elsewhere).map((f) => f.field)).toEqual([
+      `block:${grid + 1}-product_grid_2col`
+    ])
+    // The inspectors are shown the email as code judges it: the strip's
+    // words without its star lines, and its heading is the store's.
+    const task = { draft, locked, brandName: brand.name, problems: [] }
+    const shown = JSON.parse(brandInspectorAgent.task(task)).email.blocks
+    expect(JSON.stringify(shown)).toContain('So cosy on cold mornings.')
+    expect(JSON.stringify(shown)).not.toContain('Rated 5 out of 5')
+    expect(
+      checkInspection(
+        {
+          problems: [
+            {
+              field: `${strip + 1}-review_strip`,
+              quote: 'What customers say',
+              reason: 'Too plain.',
+              fix: 'Our customers'
+            }
+          ]
+        },
+        draft,
+        locked,
+        brand.name
+      )
+    ).toEqual([
+      "Problem 1: those words come from the store (a product, price, code, review or note) and cannot change; judge only the writer's words."
+    ])
   })
 
   it('check subject and preview lengths', async () => {

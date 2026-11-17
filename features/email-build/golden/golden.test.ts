@@ -443,7 +443,7 @@ describe('the golden properties catch a worse email', () => {
       author: 'Priya S.',
       rating: 5
     }
-    const stars = async (shown: typeof own) => {
+    const stars = async (shown: typeof own, elsewhere = '') => {
       const run = structuredClone(r.run)
       if (!run.result.ok) throw new Error('launch did not build')
       run.store = { ...run.store, confirmed: { reviews: [own] } }
@@ -453,7 +453,7 @@ describe('the golden properties catch a worse email', () => {
       } as (typeof run.result.draft.blocks)[number])
       run.result.email.html = run.result.email.html.replace(
         '</body>',
-        `<table><tr data-block="review_strip"><td><span role="img" aria-label="${shown.rating} out of 5 stars">${'★'.repeat(shown.rating)}${'☆'.repeat(5 - shown.rating)}</span><p>${shown.quote}</p><p>${shown.author}</p></td></tr></table></body>`
+        `<table><tr data-block="review_strip"><td><span role="img" aria-label="${shown.rating} out of 5 stars">${'★'.repeat(shown.rating)}${'☆'.repeat(5 - shown.rating)}</span><p>${shown.quote}</p><p>${shown.author}</p></td></tr>${elsewhere}</table></body>`
       )
       return goldenProblems(r.brief, run).filter((p) =>
         p.includes('unverified_review')
@@ -462,6 +462,11 @@ describe('the golden properties catch a worse email', () => {
     expect(await stars(own)).toEqual([])
     // Another review's stars, as drafted and as drawn: refused.
     expect(await stars({ ...own, rating: 4 })).toHaveLength(2)
+    // Stars drawn outside the strip are refused, the strip of the store's
+    // own reviews or not.
+    expect(
+      await stars(own, '<tr data-block="text"><td><p>★★★★★</p></td></tr>')
+    ).toHaveLength(1)
   })
 
   it('a build that stopped, a code in the log', async () => {

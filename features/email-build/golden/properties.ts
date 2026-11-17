@@ -8,7 +8,10 @@ import type { BuiltEmail, SectionsOutput } from '../build'
 import type { Store } from '../ports'
 import { goldenCodes, type GoldenBrief } from './briefs'
 import { drawnText } from '../drawn-text'
-import { brandCopyDraft, ownStripReviews } from '../inspect'
+import {
+  brandCopyDraft,
+  ownStripReviews
+} from '@/features/assembly/own-reviews'
 import { previewRepeat } from '../preview-pair'
 
 export { drawnText }
