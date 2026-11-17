@@ -14,6 +14,16 @@ vi.mock('./preview-jobs', () => ({
   requestEmailRender: previews.requestEmailRender
 }))
 const emailCritic = vi.hoisted(() => ({ critiqueEmail: vi.fn() }))
+// DST-004c: the inbox's stored section crops.
+const crops = vi.hoisted(() => ({
+  pictureTimeoutMs: 3_000,
+  storedPicture: vi.fn(
+    async (): Promise<
+      { mediaType: 'image/jpeg'; base64: string } | undefined
+    > => undefined
+  )
+}))
+vi.mock('@/features/inbox/pictures', () => crops)
 vi.mock('./email-critic', () => emailCritic)
 const agents = vi.hoisted(() => ({
   storyboardFor: vi.fn(),
@@ -637,5 +647,62 @@ describe('the whole-email check’s ports in the build (DST-006d part 2a)', () =
       callerKey: `email-build:${build}`,
       ai
     })
+  })
+
+  it('shows the Section designer and the critic the crop a Copy section rebuilds, read once a claim (DST-004c)', async () => {
+    const crop = 'sect/00000000-0000-4000-8000-0000000000a1/1.jpg'
+    const picture = { mediaType: 'image/jpeg' as const, base64: 'AAAA' }
+    crops.storedPicture.mockResolvedValue(picture)
+    const s = storage()
+    const p = ports(s).ports
+    const copy = {
+      mode: 'copy',
+      image: { url: 'https://cdn.shop.example/p.jpg' },
+      reference: { tone: 'dark', height: 640, image: crop }
+    }
+    await p.design(copy as never, undefined)
+    expect(agents.designSection.mock.calls[0]![3]).toEqual(picture)
+    await p.critique(copy as never, {} as never)
+    expect(agents.critiqueSection.mock.calls[0]![0]).toMatchObject({
+      reference: picture
+    })
+    // Read once, from the inbox, within the picture's time limit.
+    expect(crops.storedPicture).toHaveBeenCalledTimes(1)
+    expect(crops.storedPicture).toHaveBeenCalledWith(s.db, crop, 3_000)
+  })
+
+  it('shows no crop for Scratch or Remix, a path that is not a crop, one that cannot be read, or no time', async () => {
+    const crop = 'sect/00000000-0000-4000-8000-0000000000a1/1.jpg'
+    const brief = (over: Record<string, unknown>) => ({
+      mode: 'copy',
+      image: { url: 'https://cdn.shop.example/p.jpg' },
+      reference: { tone: 'dark', height: 640, image: crop },
+      ...over
+    })
+    crops.storedPicture.mockResolvedValue({
+      mediaType: 'image/jpeg',
+      base64: 'AAAA'
+    })
+    for (const b of [
+      brief({ mode: 'scratch' }),
+      brief({ mode: 'remix' }),
+      brief({ reference: { tone: 'dark', height: 640, image: 'shot/x.jpg' } }),
+      brief({ reference: { tone: 'dark', height: 640 } })
+    ]) {
+      const p = ports(storage()).ports
+      await p.design(b as never, undefined)
+      expect(agents.designSection.mock.calls.at(-1)![3]).toBeUndefined()
+    }
+    expect(crops.storedPicture).not.toHaveBeenCalled()
+    // It cannot be read: the agents go without it, never a failed step.
+    crops.storedPicture.mockRejectedValueOnce(new Error('down'))
+    const p = ports(storage()).ports
+    await p.design(brief({}) as never, undefined)
+    expect(agents.designSection.mock.calls.at(-1)![3]).toBeUndefined()
+    // No time left for it before the critic's calls: not read.
+    crops.storedPicture.mockClear()
+    const tight = ports(storage(), { until: 47_500 }).ports
+    await tight.critique(brief({}) as never, {} as never)
+    expect(crops.storedPicture).not.toHaveBeenCalled()
   })
 })
