@@ -9,7 +9,7 @@ import type { EmailType } from '@/features/strategy/plan'
 import type { SectionBrief } from './designer'
 import type { EmailViewPorts } from './email-check'
 import type { BuildRender } from './waits'
-import { plannedReference } from './reference'
+import { isPicturePath, plannedReference } from './reference'
 import { heroPicture, studioRound, type StudioPorts } from './rounds'
 import {
   codeStoryboard,
@@ -53,6 +53,8 @@ export type StudioStepInput = {
     mode: 'copy' | 'remix'
     reference: NonNullable<StoryboardInput['reference']>
     refIndex: readonly (number | null)[]
+    /** DST-004b: each reference section's stored picture, for the match score. */
+    images?: readonly (string | null)[]
   }
 }
 
@@ -154,6 +156,7 @@ function briefFor(
     story.mode === 'copy' && ref !== undefined
       ? story.reference?.[ref]
       : undefined
+  const picture = ref === undefined ? undefined : input.reference?.images?.[ref]
   return {
     mode: story.mode,
     slot: { emailType: input.slot.emailType, angle: input.slot.angle },
@@ -172,7 +175,16 @@ function briefFor(
       radius: b.radius
     },
     fonts: [],
-    ...(kept ? { reference: { tone: kept.tone, height: kept.height } } : {})
+    ...(kept
+      ? {
+          reference: {
+            tone: kept.tone,
+            height: kept.height,
+            // DST-004b: its stored picture, for the match score only.
+            ...(isPicturePath(picture) ? { image: picture } : {})
+          }
+        }
+      : {})
   }
 }
 

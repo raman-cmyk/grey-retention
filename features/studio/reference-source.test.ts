@@ -55,7 +55,8 @@ const sectionsOf = (id: string, heights = [80, 600, 700]) =>
     owner_block_type: owner,
     height: heights[i],
     purpose: null,
-    styles: null
+    styles: null,
+    image_path: null
   }))
 
 const rows = (over: Partial<ReferenceRows> = {}): ReferenceRows => ({
@@ -93,15 +94,23 @@ describe('toReferences', () => {
             blockType: 'product_grid_2col',
             height: 700,
             purpose: null,
-            styles: []
+            styles: [],
+            image: null
           },
           {
             blockType: 'product_feature',
             height: 600,
             purpose: null,
-            styles: []
+            styles: [],
+            image: null
           },
-          { blockType: 'header_logo', height: 80, purpose: null, styles: [] }
+          {
+            blockType: 'header_logo',
+            height: 80,
+            purpose: null,
+            styles: [],
+            image: null
+          }
         ]
       }
     ])
@@ -145,7 +154,9 @@ describe('toReferences', () => {
             owner_block_type: null,
             height: null,
             purpose: 'offer',
-            styles: ['dark']
+            styles: ['dark'],
+            // DST-004b: the section's stored picture, for the match score.
+            image_path: 'sect/m-e1/1.jpg'
           }
         ]
       }),
@@ -153,7 +164,13 @@ describe('toReferences', () => {
     )
     expect(emails.map((e) => e.id)).toEqual(['e1'])
     expect(emails[0].sections).toEqual([
-      { blockType: 'unsure', height: null, purpose: 'offer', styles: ['dark'] }
+      {
+        blockType: 'unsure',
+        height: null,
+        purpose: 'offer',
+        styles: ['dark'],
+        image: 'sect/m-e1/1.jpg'
+      }
     ])
   })
 
@@ -360,7 +377,8 @@ describe('readReferenceRows', () => {
               owner_block_type: null,
               height: 100,
               purpose: null,
-              styles: null
+              styles: null,
+              image_path: null
             }))
           )
         }
