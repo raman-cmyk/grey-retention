@@ -16,6 +16,8 @@ import {
   amount,
   assembleEmail,
   blockWords,
+  fill,
+  finish,
   checkAssembled,
   copyDraftOf,
   endsText,
@@ -1182,15 +1184,22 @@ describe('the phrases the owner takes out (PIC-29 part 2c)', () => {
     )
   })
 
-  it('reads only the writer’s own statements beside the note: never the brand’s name, a question or a Roman numeral (REL-ONB2 part d2)', () => {
-    const problems = (body: string, brandName = 'My Little Fern') =>
+  it('reads the writer’s own words beside the note: the brand’s name, an FAQ’s question and a Roman numeral aside (REL-ONB2 part d2)', () => {
+    const reason =
+      'The founder’s own note is in this email: write as the store ("we"), never "I", "me" or "my", so none of your words read as theirs.'
+    const problems = (
+      body: string,
+      brandName = 'My Little Fern',
+      more: { type: string; words: Record<string, unknown> }[] = []
+    ) =>
       wordProblems(
         {
           subject: 'Warm knits for winter',
           preheader: 'For the colder nights ahead.',
           blocks: [
             { type: 'founder_note', words: {} },
-            { type: 'text', words: { body } }
+            { type: 'text', words: { body } },
+            ...more
           ]
         } as never,
         input(),
@@ -1198,21 +1207,91 @@ describe('the phrases the owner takes out (PIC-29 part 2c)', () => {
       ).map((p) => p.reason)
     for (const body of [
       'With love, My Little Fern',
-      'Can I wear it in the rain? Yes, every day.',
-      'How do I wash my scarf? Gently, by hand.',
-      '“Where do I start?” Here.',
-      'Part I of our winter knits.'
+      'Part I: winter knits.',
+      'Since the days of Henry I.'
     ])
       expect(problems(body), body).toEqual([])
     expect(problems('Knit Me a winter.', 'Knit Me')).toEqual([])
-    expect(problems('I knit this one for you.')).toHaveLength(1)
-    // No role for the note's writer the page did not give.
-    expect(problems('A note from the owner.')).toEqual([
-      'Give the person who wrote the note no role: only their own page gives it, beside their name.'
+    // An FAQ's questions are no one's statement; its answers are the writer's.
+    const faq = (q: string, a: string) => [
+      { type: 'faq', words: { items: [[q, a]] } }
+    ]
+    for (const q of [
+      'Can I wear it in the rain?',
+      'How do I wash my scarf?',
+      '“Where do I start?”'
     ])
+      expect(problems('Warm nights.', undefined, faq(q, 'Yes.')), q).toEqual([])
+    expect(
+      problems('Warm nights.', undefined, faq('Is it warm?', 'I think so.'))
+    ).toContain(reason)
+    // Any other question, and a numeral word that is no numeral, are theirs.
+    for (const body of [
+      'I knit this one for you.',
+      'I knit this one by hand, would you like one?',
+      'Can I tell you a secret?',
+      'Did I mention it washes well?',
+      'Have I told you how warm it is?',
+      'The part I love most is the collar.',
+      'This is the book I knit from.',
+      'It is the act I am proudest of.'
+    ])
+      expect(problems(body), body).toContain(reason)
+    // No role for the note's writer the page did not give.
+    const role =
+      'Give the person who wrote the note no role: only their own page gives it, beside their name.'
+    for (const body of [
+      'A note from the owner.',
+      'From our creator.',
+      'A word from the owner of My Little Fern.'
+    ])
+      expect(problems(body), body).toContain(role)
+    for (const body of ['For dog owners.', 'Loved by content creators.'])
+      expect(problems(body), body).not.toContain(role)
     expect(
       problems('A note from our founder.').some((r) => r.includes('founder'))
     ).toBe(true)
+  })
+
+  it('never keeps a subject idea in the first person beside the founder’s note (REL-ONB2 part d2)', () => {
+    const fern = { ...sampleBrand, name: 'My Little Fern' }
+    const note = 'I’m Maya Lee. I started the shop in my spare room in 2016.'
+    const withNote = input({
+      brief: { campaignType: 'Story', goal: 'Our story.' },
+      confirmed: { founder: { name: 'Maya Lee', note: [note] } }
+    })
+    const written = (blocks: string[]) => ({
+      subject: 'Warm knits from My Little Fern',
+      preheader: 'For the colder nights ahead, from our shop.',
+      subjectIdeas: [
+        'I knit this one for you',
+        'My Little Fern: warm knits',
+        'Warm knits for colder nights'
+      ],
+      blocks: blocks.map((type) => ({
+        type,
+        reason: 'A section.',
+        words:
+          type === 'text'
+            ? { heading: 'Warm knits', paras: ['For the colder nights.'] }
+            : type === 'cta'
+              ? { label: 'Shop now' }
+              : {}
+      }))
+    })
+    const ideasOf = (blocks: string[]) => {
+      const w = written(blocks) as never
+      const made = finish(withNote, w, fill(w, withNote, fern), [], 'model')
+      return made.status === 'ready' ? made.draft.subjectIdeas : made.status
+    }
+    expect(
+      ideasOf(['header_logo', 'founder_note', 'text', 'cta', 'footer'])
+    ).toEqual(['My Little Fern: warm knits', 'Warm knits for colder nights'])
+    expect(ideasOf(['header_logo', 'text', 'cta', 'footer'])).toEqual([
+      'I knit this one for you',
+      'My Little Fern: warm knits',
+      'Warm knits for colder nights'
+    ])
   })
 
   it('makes the plain email with the founder’s note ready for a brand named “My Little Fern” (D16), saying no role the page did not give', () => {
