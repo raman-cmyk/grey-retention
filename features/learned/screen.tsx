@@ -44,13 +44,13 @@ export function LearnedScreen({
             <CardRow>
               <RuleCard
                 title="Do"
-                empty={`${assistant} uses no do rule yet.`}
+                empty="No Do rules yet."
                 items={view.do}
                 owner={view.owner}
               />
               <RuleCard
                 title="Avoid"
-                empty={`${assistant} uses no avoid rule yet.`}
+                empty="No Avoid rules yet."
                 items={view.avoid}
                 owner={view.owner}
               />
@@ -80,12 +80,13 @@ function RuleCard({
         {items.length === 0 ? (
           <p className="type-body text-[var(--stone)]">{empty}</p>
         ) : (
-          <RowList label={title}>
+          <RowList>
             {items.map((item) => (
               <ListRow
                 key={item.id}
                 thumbnail={null}
                 title={item.rule}
+                wrap
                 details={[
                   item.pinned ? 'Pinned' : '',
                   item.sourceWords,

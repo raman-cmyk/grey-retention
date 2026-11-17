@@ -69,6 +69,15 @@ const hidden = (button: HTMLElement) =>
   )
 
 describe('Learned screen (UI-LRNb)', () => {
+  it('shows a long rule in full, never cut to one line', () => {
+    const rule =
+      'Avoid subject lines longer than 45 characters on lists where most people read on their phones'
+    render(<LearnedScreen view={view({ do: [item({ rule })], avoid: [] })} />)
+    const words = within(card('Do')).getByText(rule)
+    expect(words).not.toHaveClass('truncate')
+    expect(words).toHaveClass('break-words')
+  })
+
   it('is titled Learned, with no menu item current', () => {
     render(<LearnedScreen view={view()} />)
     expect(
@@ -126,7 +135,7 @@ describe('Learned screen (UI-LRNb)', () => {
 
   it('says plainly when no rule is in use, in a card or on the whole page', () => {
     render(<LearnedScreen view={view({ avoid: [] })} />)
-    expect(card('Avoid')).toHaveTextContent('GROS uses no avoid rule yet.')
+    expect(card('Avoid')).toHaveTextContent('No Avoid rules yet.')
     cleanup()
     render(<LearnedScreen view={view({ do: [], avoid: [] })} />)
     expect(

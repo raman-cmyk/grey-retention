@@ -91,7 +91,7 @@ test('UI-LRNb owner pins, unpins and removes what GROS learned, and hears each a
     page.getByText('Removed. GROS no longer uses this rule.')
   ).toBeVisible()
   await expect(page.getByText(caps)).toHaveCount(0)
-  await expect(avoidCard).toContainText('GROS uses no avoid rule yet.')
+  await expect(avoidCard).toContainText('No Avoid rules yet.')
 
   // Removing the last rule swaps in the empty page; the answer stays.
   await page
