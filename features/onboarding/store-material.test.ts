@@ -404,6 +404,18 @@ describe('storeMaterial: the founder’s own note (REL-ONB2 part d2)', () => {
       material([founder('Hi, I’m Maya. I knit every sample myself.')])?.founder
         ?.note
     ).toEqual(['Hi, I’m Maya. I knit every sample myself.'])
+    // Thanking the reader names no one; the brand's name may hold theirs.
+    for (const kept of [
+      'Thank you for supporting my small business!',
+      'I started Maya’s Knits in my spare room in 2016.'
+    ])
+      expect(
+        material([founder(kept)], { brandName: 'Maya’s Knits' })?.founder?.note,
+        kept
+      ).toEqual([kept])
+    expect(
+      material([founder('Thanks Tom, I could not have done it alone.')])
+    ).toBeUndefined()
     // Without a role on the page, none.
     expect(material([founder(note, { role: undefined })])?.founder).toEqual({
       name: 'Maya Lee',
@@ -458,7 +470,36 @@ describe('storeMaterial: the founder’s own note (REL-ONB2 part d2)', () => {
     ['a link for a name', founder(note, { name: 'maya.example' })],
     ['two people', founder(note, { name: 'Maya and Sam' })],
     ['a team', founder(note, { name: 'The Cedar Lane team' })],
-    ['the brand for a name', founder(note, { name: 'Cedar Lane' })]
+    ['the brand for a name', founder(note, { name: 'Cedar Lane' })],
+    // A role or a common word for a name (REL-ONB2 part d review).
+    ['“Founder” for a name', founder(note, { name: 'Founder' })],
+    ['“Our story” for a name', founder(note, { name: 'Our story' })],
+    ['“I” for a name', founder(note, { name: 'I' })],
+    // The founder written about, or someone else quoted.
+    ['the founder teaching', founder('Maya taught me to knit in 2018.')],
+    [
+      'the founder named by a third person',
+      founder('Our founder, Maya, taught me everything I know about wool.')
+    ],
+    [
+      'the founder and someone',
+      founder('Maya and I started the shop in a tiny flat.')
+    ],
+    [
+      'the founder quoted',
+      founder('“I wanted something that lasted,” says Maya.')
+    ],
+    ['in her words', founder('In her words: “I make things that last.”')],
+    [
+      'a bio with her',
+      founder(
+        'Maya Lee began knitting at ten. Her grandmother gave her my old needles.'
+      )
+    ],
+    [
+      'a bio with they',
+      founder('Maya Lee grew up in Leeds and they still call my shop home.')
+    ]
   ])('leaves the note out: %s', (_why, finding) => {
     expect(material([finding])).toBeUndefined()
   })

@@ -1069,6 +1069,10 @@ const phrase = (text: string) =>
     'giu'
   )
 
+/** "I", "I'm", "me", "my", "mine", "myself": a person writing, not the store. */
+const firstPersonSingular =
+  /(?<![\p{L}\p{N}'’])(?:I(?:['’](?:m|ve|d|ll))?|[Mm](?:y|e|ine|yself))(?![\p{L}\p{N}'’])/u
+
 /**
  * The engine's word checks on what the email will print. Masked first, so
  * they are not read as claims: the titles of the products the email shows,
@@ -1111,6 +1115,9 @@ export function wordProblems(
     }
   })
   const out: CopyFeedback[] = []
+  // REL-ONB2 part d2: beside the founder's own note, the writer's words
+  // could read as theirs, so the writer writes as the store, never "I".
+  const besideNote = printed.blocks.some((b) => b.type === 'founder_note')
   const factHint = facts.length
     ? ` Use a fact word for word: ${facts.map((f) => `"${f}"`).join(' ')}`
     : ' The facts sheet confirms none.'
@@ -1166,6 +1173,10 @@ export function wordProblems(
       )
     )
       say("Tell no founder or origin story; only the founder's own note may.")
+    if (besideNote && firstPersonSingular.test(masked))
+      say(
+        'The founder’s own note is in this email: write as the store ("we"), never "I", "me" or "my", so none of your words read as theirs.'
+      )
     for (const banned of input.facts.bannedPhrases)
       if (normal(banned).length >= 2 && phrase(banned).test(text))
         say(`"${oneLine(banned, 40)}" is on the brand's banned list.`)

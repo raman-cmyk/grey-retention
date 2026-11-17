@@ -15,7 +15,7 @@ import {
 import { onDomain } from '@/lib/providers/ad-library'
 import { bodyWords, namesSomeone, resultWords } from './customer-words'
 import type { Finding } from './findings'
-import { firstPerson } from './site/founder'
+import { firstPerson, personName } from './site/founder'
 import { emailPhotoUrl, photoKey } from './site/photos'
 import { claims } from './words'
 
@@ -317,12 +317,20 @@ function reviews(parts: MaterialParts): ConfirmedReview[] {
  * still is ("Hi Tom, …" leaves "Tom, …").
  */
 const ungreeted = (sentence: string) =>
-  sentence.replace(/^(["“‘']?)(?:hi|hello|hey)(?:[,!.]\s*|\s+(?=I\b))/iu, '$1')
+  sentence
+    .replace(/^(["“‘']?)(?:hi|hello|hey)(?:[,!.]\s*|\s+(?=I\b))/iu, '$1')
+    // Thanking the reader for something names no one ("Thank you for
+    // supporting my small business!"); "Thanks Tom" still does.
+    .replace(
+      /(?<![\p{L}\p{N}])(?:thanks|thank you)(?=\s+for(?![\p{L}\p{N}]))/giu,
+      ''
+    )
 
 /**
  * A founder as an email signs them: one person's plain name, as the page
- * writes it (no digit, @, link or sign; at most 4 words; never the brand,
- * a product, a team or a pair), else null.
+ * writes it (`personName`: every word a capital and two letters or more,
+ * never a common or role word; no digit, @, link or sign; at most 4 words;
+ * never the brand, a product, a team or a pair), else null.
  */
 function founderName(name: string, parts: MaterialParts): string | null {
   const n = name.trim()
@@ -331,6 +339,7 @@ function founderName(name: string, parts: MaterialParts): string | null {
     t.trim().toLowerCase()
   )
   return clean(n) &&
+    personName(n) &&
     Array.from(n).length <= 60 &&
     !/[\p{N}@]/u.test(n) &&
     words.length <= 4 &&
@@ -366,7 +375,7 @@ function founder(parts: MaterialParts): Material['founder'] {
         f.evidence.whole === true &&
         f.evidence.page === 'about'
     )
-    // Newest first (`listFindings`' order kept between notes of one read).
+    // Newest first; a read keeps one note, the first on its page (part d1).
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
   for (const f of notes) {
     const value = f.value as { name: string; role?: string }
@@ -376,7 +385,8 @@ function founder(parts: MaterialParts): Material['founder'] {
       !name ||
       !note ||
       Array.from(note).length > 600 ||
-      !firstPerson(note, name) ||
+      // The brand's own name may hold theirs ("Maya's Knits").
+      !firstPerson(note, name, [parts.brandName]) ||
       offerWords.test(note) ||
       strayPrices(note, new Set()).length > 0
     )

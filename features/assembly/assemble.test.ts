@@ -1150,6 +1150,36 @@ describe('the phrases the owner takes out (PIC-29 part 2c)', () => {
     ).toEqual([])
   })
 
+  it('sends “I” back beside the founder’s own note, so no words of the writer read as theirs (REL-ONB2 part d2)', () => {
+    const placed = { productIds: [], offerShown: false }
+    const reason =
+      'The founder’s own note is in this email: write as the store ("we"), never "I", "me" or "my", so none of your words read as theirs.'
+    const problems = (body: string, note = true) =>
+      wordProblems(
+        {
+          subject: 'Warm knits for winter',
+          preheader: 'For the colder nights ahead.',
+          blocks: [
+            ...(note ? [{ type: 'founder_note', words: {} }] : []),
+            { type: 'text', words: { body } }
+          ]
+        } as never,
+        input(),
+        placed
+      ).map((p) => p.reason)
+    for (const body of [
+      'I knit this one for the colder nights, and I hope it keeps you warm.',
+      'Tell me what you think.',
+      'It is my favourite.',
+      'I’m so glad you are here.'
+    ])
+      expect(problems(body), body).toContain(reason)
+    expect(problems('We knit this one for the colder nights.')).toEqual([])
+    expect(problems('I knit this one for the colder nights.', false)).toEqual(
+      []
+    )
+  })
+
   it('sends a live writer’s draft back through the engine, never the sample writer’s', async () => {
     const learned = news({ neverWords: ['hello there'] })
     const rewrite = await build(learned, live(said(['Hello there.'])))
