@@ -15,7 +15,7 @@ const migrations = path.join(process.cwd(), 'supabase/migrations')
 // The findings migrations in order: a later one may widen a list.
 const sql = readdirSync(migrations)
   .filter((f) =>
-    /_(brand_findings|klaviyo_history|ads_reading|reviews_reading)\.sql$/.test(
+    /_(brand_findings|klaviyo_history|ads_reading|reviews_reading|founder_findings)\.sql$/.test(
       f
     )
   )
@@ -116,7 +116,8 @@ describe('the findings contract', () => {
           rating: 5,
           date: '2026-10-01'
         }
-      ]
+      ],
+      founder: [{ name: 'Maya Lee' }, { name: 'Maya Lee', role: 'Founder' }]
     }
     const bad: Record<string, unknown[]> = {
       free_shipping: [
@@ -157,6 +158,15 @@ describe('the findings contract', () => {
         { author: 'Maya', url: 'https://cedar-lane.example/p', rating: 4.5 },
         { author: 'Maya', url: 'https://cedar-lane.example/p', date: 'Oct 1' },
         { author: 'Maya', url: 'https://cedar-lane.example/p', text: 'x' }
+      ],
+      founder: [
+        {},
+        { name: '' },
+        { name: '   ' },
+        { name: 'm'.repeat(61) },
+        { name: 'Maya', role: '' },
+        { name: 'Maya', role: 'r'.repeat(61) },
+        { name: 'Maya', note: 'I knit.' }
       ]
     }
     for (const [topic, values] of Object.entries(good))
@@ -191,6 +201,36 @@ describe('the findings contract', () => {
       findingInput.safeParse(finding({ evidence: { ref: 'catalog:item:1' } }))
         .success
     ).toBe(true)
+  })
+
+  it("marks a founder's note, and only it, as whole sentences of the About page", () => {
+    const about = {
+      url: 'https://cedar-lane.example/pages/about',
+      quote: 'I started Cedar Lane in my spare room.',
+      page: 'about'
+    }
+    const founder = (evidence: Record<string, unknown>) =>
+      finding({ topic: 'founder', value: { name: 'Maya Lee' }, evidence })
+    expect(
+      findingInput.safeParse(founder({ ...about, whole: true })).success
+    ).toBe(true)
+    for (const evidence of [
+      about,
+      { ...about, whole: false },
+      { ...about, whole: 'true' },
+      { ...about, page: 'home', whole: true }
+    ])
+      expect(
+        findingInput.safeParse(founder(evidence)).success,
+        JSON.stringify(evidence)
+      ).toBe(false)
+    expect(
+      findingInput.safeParse(
+        finding({
+          evidence: { ...finding().evidence, whole: true }
+        })
+      ).success
+    ).toBe(false)
   })
 })
 
