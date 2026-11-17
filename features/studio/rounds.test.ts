@@ -578,3 +578,26 @@ describe('the match score in the rounds (DST-004b)', () => {
     }
   })
 })
+
+describe('asking for a Copy section’s picture with its reference (DST-004b2b)', () => {
+  const crop = 'sect/00000000-0000-4000-8000-0000000000a1/1.jpg'
+  it('asks with the inbox crop a copied section rebuilds, and none otherwise', async () => {
+    const copied: SectionBrief = {
+      ...brief('s2'),
+      mode: 'copy',
+      reference: { tone: 'dark', height: 640, image: crop }
+    }
+    const p = ports()
+    await studioRound([copied], null, p)
+    expect(p.request.mock.calls[0]![0]).toMatchObject({ reference: crop })
+    for (const b of [
+      brief('s2'),
+      { ...copied, mode: 'remix' as const },
+      { ...copied, reference: { tone: 'dark' as const, height: 640 } }
+    ]) {
+      const q = ports()
+      await studioRound([b], null, q)
+      expect(q.request.mock.calls[0]![0]).not.toHaveProperty('reference')
+    }
+  })
+})

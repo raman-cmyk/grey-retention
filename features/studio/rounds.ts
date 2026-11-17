@@ -144,6 +144,8 @@ export type StudioPorts = {
     key: string
     section: DesignedSection
     hosts: string[]
+    /** DST-004b2b: in Copy mode, the inbox section crop it rebuilds. */
+    reference?: string
   }) => Promise<string>
   /** The build's pictures, in its own workspace (`buildRenders`). */
   renders: () => Promise<BuildRender[]>
@@ -377,7 +379,11 @@ export async function studioRound(
       render = await ports.request({
         key: renderKey(s.id, s.round, made.section),
         section: made.section,
-        hosts: briefHosts(brief)
+        hosts: briefHosts(brief),
+        // The match score reads the crop it rebuilds (Copy mode only).
+        ...(brief.mode === 'copy' && brief.reference?.image
+          ? { reference: brief.reference.image }
+          : {})
       })
     } catch (error) {
       const reason = refusal(error)
