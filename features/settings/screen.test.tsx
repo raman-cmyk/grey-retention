@@ -85,7 +85,14 @@ function view(over: Partial<SettingsView> = {}): SettingsView {
       klaviyo: null,
       options: ['Asia/Kathmandu', 'Europe/London']
     },
-    team: { members: 3, openInvites: 1, canManage: true },
+    team: {
+      members: 3,
+      openInvites: 1,
+      canManage: true,
+      roster: [],
+      invites: [],
+      now: 0
+    },
     account: { name: 'Sam Cedar', email: 'owner@cedarlane.example' },
     unread: [],
     ...over
@@ -353,7 +360,12 @@ describe('Settings screen (UI-SETa)', () => {
         view={view({
           owner: false,
           editor: false,
-          team: { members: 3, openInvites: null, canManage: false },
+          team: {
+            ...view().team!,
+            openInvites: null,
+            canManage: false,
+            invites: null
+          },
           timezone: {
             ...view().timezone!,
             klaviyo: {
