@@ -47,6 +47,14 @@ describe('siteDomain (as the database reads a website)', () => {
     expect(siteDomain('  WWW.CedarLane.example ')).toBe('cedarlane.example')
     expect(siteDomain('shop.cedarlane.example')).toBe('shop.cedarlane.example')
   })
+  it('trims only spaces, as the database does, and takes at most 253 characters', () => {
+    expect(siteDomain('\tcedarlane.example')).toBeNull()
+    expect(siteDomain('cedarlane.example\n')).toBeNull()
+    const long = `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(61)}`
+    expect(long).toHaveLength(253)
+    expect(siteDomain(long)).toBe(long)
+    expect(siteDomain(`e${long}`)).toBeNull()
+  })
   it('is no website for an address, a bare word, numbers or nothing', () => {
     for (const bad of [
       'https://cedarlane.example',
