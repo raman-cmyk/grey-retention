@@ -101,8 +101,8 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
         label: 'Inspiration',
         href: '/inspiration',
         icon: 'inspirations'
-      },
-      { label: 'Support', href: '/support', icon: 'support' }
+      }
+      // UI-SETd: support is a card on Settings (Workspace, below).
     ],
     groups: [
       {

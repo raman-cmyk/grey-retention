@@ -49,6 +49,8 @@ export type FeatureRequest = {
   subject: string
   category: Category | null
   status: RequestStatus
+  /** The ticket's version, sent back with a reply (UI-SETd). */
+  revision: number
   createdAt: string
   by: string
   details: string

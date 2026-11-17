@@ -90,7 +90,7 @@ test('UIR-014 owner updates details and changes password with inline checks', as
   await expect(emailField).toHaveValue(email)
   await expect(
     page.getByRole('link', { name: 'support', exact: true })
-  ).toHaveAttribute('href', '/support')
+  ).toHaveAttribute('href', '/settings#support')
   await page.getByLabel('Name', { exact: true }).fill('Rae Sample Owner')
   await page.getByLabel('Job title').fill('Founder')
   await page.getByLabel('Phone').fill('+977 1 555 0101')

@@ -172,21 +172,26 @@ test('UC-18 team invitation audit, event and support response survive refresh', 
   await expect(
     page.getByText(`Synthetic event ${info.project.name}`, { exact: true })
   ).toBeVisible()
+  // Support is a card on Settings (UI-SETd).
   await page.goto('/support')
+  await expect(page).toHaveURL(/\/settings$/)
   const subject = `Synthetic support ${info.project.name}`
-  await page.getByLabel('Ticket subject').fill(subject)
-  await page
-    .getByLabel('Support message')
+  const support = page.getByRole('region', { name: 'Support' })
+  await support.getByLabel('Subject', { exact: true }).fill(subject)
+  await support
+    .getByLabel('Your question', { exact: true })
     .fill('Original synthetic workflow question.')
-  await page
-    .getByRole('button', { name: 'Save support request', exact: true })
+  await support
+    .getByRole('button', { name: 'Send to support', exact: true })
     .click()
   await expect(
-    page.getByRole('heading', {
-      name: `${subject} · support · open`,
-      exact: true
-    })
+    support.getByText('Sent to support. Their reply shows here.')
   ).toBeVisible()
+  const question = support
+    .getByRole('listitem')
+    .filter({ has: page.getByRole('heading', { name: subject, exact: true }) })
+    .first()
+  await expect(question).toContainText('Open')
   await page.context().clearCookies()
   await login(page, 'admin')
   await page.goto('/admin/operations')
@@ -216,19 +221,25 @@ test('UC-18 team invitation audit, event and support response survive refresh', 
   ).toHaveCount(0)
   await page.context().clearCookies()
   await login(page)
-  await page.goto('/support')
+  await page.goto('/settings')
   await expect(
-    page
-      .getByText('Original operator response; fixture outcome inspected.', {
+    question.getByText(
+      'Original operator response; fixture outcome inspected.',
+      {
         exact: true
-      })
-      .last()
+      }
+    )
   ).toBeVisible()
   await page.reload()
-  await expect(
-    page.getByRole('heading', {
-      name: `${subject} · support · closed`,
-      exact: true
-    })
-  ).toBeVisible()
+  await expect(question).toContainText('Closed')
+  // A member's reply opens the closed thread again.
+  await question
+    .getByLabel(`Your reply to ${subject}`, { exact: true })
+    .fill('Thanks, that answers it.')
+  await question
+    .getByRole('button', { name: `Send reply: ${subject}`, exact: true })
+    .click()
+  await expect(support.getByText('Reply sent.')).toBeVisible()
+  await expect(question).toContainText('Thanks, that answers it.')
+  await expect(question).toContainText('Open')
 })
