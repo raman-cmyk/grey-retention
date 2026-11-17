@@ -384,6 +384,54 @@ describe('loading an email’s page (UI-EMAIL-a)', () => {
     ])
   })
 
+  it('says first which inspiration email it follows (DST-002b)', async () => {
+    const reason =
+      'We copy Pine & Co’s email “The cedar sale” (10 Nov 2026). It is the same industry (home) and the same kind of email.'
+    const { db, calls } = fakeDb({
+      email_builds: [
+        { data: buildRow({ referenceReason: reason }), error: null }
+      ],
+      strategy_runs: [plan],
+      agent_fallbacks: [
+        {
+          data: [fallback('inspector_busy', '2026-11-16T10:00:02Z')],
+          error: null
+        },
+        { data: [], error: null }
+      ]
+    })
+    const out = await loadEmailScreen(db, tenant, buildId)
+    if (!out.ok || out.screen?.kind !== 'email')
+      throw new Error('expected email')
+    expect(out.screen.notes[0]).toBe(reason)
+    expect(out.screen.notes).toContain(
+      'Reason inspector_busy. Instead inspector_busy.'
+    )
+    // Read from the sections step's saved reference.
+    expect(
+      calls.find(([t, n]) => t === 'email_builds' && n === 'select')?.[2][0]
+    ).toMatch(/referenceReason:progress->sections->reference->>reason/)
+  })
+
+  it('shows nothing about an inspiration email when it was made from scratch', async () => {
+    const { db } = fakeDb({
+      email_builds: [
+        { data: buildRow({ referenceReason: null }), error: null }
+      ],
+      strategy_runs: [plan],
+      agent_fallbacks: [
+        { data: [], error: null },
+        { data: [], error: null }
+      ]
+    })
+    const out = await loadEmailScreen(db, tenant, buildId)
+    if (!out.ok || out.screen?.kind !== 'email')
+      throw new Error('expected email')
+    expect(
+      out.screen.notes.some((n) => /inspiration|We copy|We remix/.test(n))
+    ).toBe(false)
+  })
+
   it('keeps the newest 20 lines, and a text email’s steps before it is built', async () => {
     const many = Array.from({ length: 25 }, (_, i) =>
       fallback(`c${i}`, `2026-11-16T10:00:${String(i).padStart(2, '0')}Z`)
