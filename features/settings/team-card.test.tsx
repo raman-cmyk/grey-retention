@@ -114,7 +114,7 @@ const answerLine = () =>
   card().querySelector<HTMLElement>('p[aria-live][tabindex="-1"]')!
 
 describe('Team card on Settings (UI-SETb)', () => {
-  it('shows a manager the team, the open invites and the buttons that change them', () => {
+  it('shows a manager the team, the pending invites and the buttons that change them', () => {
     render(teamCard())
     const c = card()
     expect(within(c).getByText('Members').parentElement).toHaveTextContent(
@@ -138,8 +138,10 @@ describe('Team card on Settings (UI-SETb)', () => {
     expect(rows[3]).toHaveTextContent('Staff · Deactivated')
 
     const invites = within(
-      within(c).getByRole('list', { name: 'Open invites' })
+      within(c).getByRole('list', { name: 'Pending invites' })
     ).getAllByRole('listitem')
+    // The tile counts open invites; the list also shows the expired one.
+    expect(invites).toHaveLength(2)
     expect(invites[0]).toHaveTextContent(
       'new@cedarlane.exampleInvited as Manager · Expires in 3 days'
     )
@@ -199,11 +201,11 @@ describe('Team card on Settings (UI-SETb)', () => {
     expect(within(card()).queryByRole('link')).toBeNull()
   })
 
-  it('still lets a manager invite when the open invites could not be read', () => {
+  it('still lets a manager invite when the pending invites could not be read', () => {
     render(teamCard({ invites: null, openInvites: null }))
     const c = card()
     expect(c).toHaveTextContent(
-      'The open invites could not be read just now. Open Settings again in a minute.'
+      'The pending invites could not be read just now. Open Settings again in a minute.'
     )
     expect(within(c).queryByText('Open invites')).toBeNull()
     expect(within(c).getByRole('list', { name: 'Members' })).toBeVisible()

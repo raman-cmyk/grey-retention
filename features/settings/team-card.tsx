@@ -16,8 +16,9 @@ import { InviteForm } from './invite-form'
 import type { SettingsView } from './page-model'
 
 /**
- * The Team card on Settings (UI-SETb): who is on the team and the open
- * invites, and for the owner and managers the buttons that change them
+ * The Team card on Settings (UI-SETb): who is on the team and the pending
+ * invites (open or expired; the tile counts the open ones), and for the
+ * owner and managers the buttons that change them
  * (invite, resend, cancel), each calling the Team page's server actions,
  * which check the role again. Staff see the list only. The rows' answers
  * show in one place (`ActionAnswers`), so an answer stays when its row
@@ -56,7 +57,7 @@ export function TeamCard({
               </RowList>
               {!team.canManage ? null : team.invites ? (
                 team.invites.length ? (
-                  <RowList label="Open invites">
+                  <RowList label="Pending invites">
                     {team.invites.map((invite) => (
                       <InviteRow
                         key={invite.id}
@@ -68,7 +69,7 @@ export function TeamCard({
                 ) : null
               ) : (
                 <p className="type-body text-[var(--stone)]">
-                  The open invites could not be read just now. Open Settings
+                  The pending invites could not be read just now. Open Settings
                   again in a minute.
                 </p>
               )}

@@ -292,7 +292,14 @@ function LearnedCard({
   return (
     <Card size="small" label={title}>
       <div className="flex flex-col gap-[var(--space-4)]">
-        <h2 className="type-heading">{title}</h2>
+        <div className="flex items-center justify-between gap-[var(--space-3)]">
+          <h2 className="type-heading">{title}</h2>
+          <ButtonLink
+            href="/learned"
+            label={`Open what ${assistant} learned`}
+            kind="round"
+          />
+        </div>
         {view.unread.includes('learned') ? (
           <p className="type-body text-[var(--stone)]">
             What it learned could not be read just now.
