@@ -8574,7 +8574,7 @@ export type Database = {
         Returns: undefined
       }
       save_onboarding_step: {
-        Args: { step: string; t: string }
+        Args: { site_shown?: string; step: string; t: string }
         Returns: undefined
       }
       save_own_template: {
