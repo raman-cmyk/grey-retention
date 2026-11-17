@@ -67,6 +67,13 @@ jobs:
             sleep 20
           done
           echo "::warning::apt unavailable; using the runner's preinstalled libraries"
+      # The local stack binds fixed host ports (54320-54329, supabase/config.toml).
+      # They sit in Linux's default range for outgoing connections (32768-60999),
+      # so while the images download, one of them can be taken and the start
+      # fails with "address already in use" (seen on #562 and #582). Keep the
+      # outgoing range below them.
+      - name: Keep the local stack's ports free
+        run: sudo sysctl -w net.ipv4.ip_local_port_range="32768 54000"
       # Only the services the journeys use: database, auth, REST, storage, mail.
       - run: pnpm exec supabase start -x studio,logflare,vector,imgproxy,edge-runtime,realtime,postgres-meta,supavisor
       - run: pnpm supabase:reset

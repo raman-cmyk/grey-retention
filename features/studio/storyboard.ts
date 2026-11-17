@@ -68,6 +68,14 @@ const refRange = (height: number): [number, number] => [
     Math.min(designedHeight.max, Math.floor(height * (1 + refSlack)))
   )
 ]
+/**
+ * Copy mode: the reference heights a designed section can keep (DST-002b):
+ * beyond these, no designed height is both allowed and within its slack.
+ */
+export const copyKeepable = {
+  min: Math.ceil(designedHeight.min / (1 + refSlack)),
+  max: Math.floor(designedHeight.max / (1 - refSlack))
+}
 /** A live section's height: as it is drawn, with its products. */
 const liveHeight = (s: {
   family: BlockType
