@@ -213,6 +213,16 @@ describe('setupFlow (UI-ONBa)', () => {
     expect(setupDestination(changed)).toBe('brand')
     expect(setupDestination(setupFlow(all))).toBe('finish')
   })
+
+  it('keeps /setup on the finish, never Home, while Brand waits', () => {
+    const waiting = { ...all, confirmedSite: null, siteReading: true }
+    expect(setupDestination(setupFlow(waiting))).toBe('finish')
+    // A finished owner whose new website is read first: not Home either.
+    expect(setupDestination(setupFlow({ ...waiting, finished: true }))).toBe(
+      'finish'
+    )
+    expect(setupDestination(setupFlow(waiting), 'brand')).toBe('brand')
+  })
 })
 
 describe('a waiting Brand (the website is read first, VISION section 5)', () => {

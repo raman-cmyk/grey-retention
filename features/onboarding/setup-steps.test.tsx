@@ -431,4 +431,43 @@ describe('FinishStep (UI-ONBe)', () => {
     render(<FinishStep view={view({ owner: false })} />)
     expect(screen.queryByRole('button')).toBeNull()
   })
+
+  it('withholds Finish while Brand waits for the website, with Home as the way on', () => {
+    const waiting = view({
+      klaviyo: klaviyo(),
+      flow: setupFlow({
+        domain: 'cedarlane.example',
+        confirmedSite: null,
+        siteReading: true,
+        klaviyoWorking: true,
+        maxDiscountSet: true,
+        following: 0,
+        rivalsSkipped: true,
+        finished: false
+      })
+    })
+    render(<FinishStep view={waiting} />)
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Almost ready' })
+    ).toBeVisible()
+    expect(
+      screen.getByText(
+        'We’ll ask you to confirm your brand once your website is read.'
+      )
+    ).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Finish setup' })).toBeNull()
+    expect(screen.getByRole('link', { name: 'Open Home' })).toHaveAttribute(
+      'href',
+      '/home'
+    )
+    cleanup()
+    render(<FinishStep view={{ ...waiting, owner: false }} />)
+    expect(
+      screen.getByText(
+        'We’ll ask you to confirm your brand once your website is read.'
+      )
+    ).toBeVisible()
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
+  })
 })

@@ -83,6 +83,22 @@ describe('setupLanding (UI-ONBe)', () => {
     expect(await setupLanding(context)).toBe('/setup')
   })
 
+  it('lands him Home while only a waiting Brand is left, and on /setup once it was read', async () => {
+    const waiting = { confirmedSite: null, siteReading: true }
+    mocks.setupReadModel.mockResolvedValue(
+      view({ ...waiting, rivalsSkipped: true })
+    )
+    expect(await setupLanding(context)).toBe('/home')
+    // Brand waits, but Rivals is still to do: setup.
+    mocks.setupReadModel.mockResolvedValue(view(waiting))
+    expect(await setupLanding(context)).toBe('/setup')
+    // Read, or its read failed: Brand is Now again.
+    mocks.setupReadModel.mockResolvedValue(
+      view({ ...waiting, siteReading: false, rivalsSkipped: true })
+    )
+    expect(await setupLanding(context)).toBe('/setup')
+  })
+
   it('lands staff, admins and an unreadable setup on Home', async () => {
     mocks.setupReadModel.mockResolvedValue(view({}))
     expect(await setupLanding({ ...context, tenantRole: 'staff' })).toBe(

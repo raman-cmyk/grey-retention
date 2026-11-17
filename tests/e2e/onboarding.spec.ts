@@ -4,7 +4,8 @@ import { expect, test } from '@playwright/test'
 import { runReaders } from './readers'
 
 // UI-ONBe: a new owner creates a workspace, lands on /setup and walks the
-// five steps to Home. Sample Klaviyo only: the key's format is checked.
+// five steps to Home, doing Klaviyo and the discount while his website is
+// still being read. Sample Klaviyo only: the key's format is checked.
 test('a new owner creates a workspace and sets up the store to Home', async ({
   page,
   request
@@ -49,13 +50,16 @@ test('a new owner creates a workspace and sets up the store to Home', async ({
   await expect(page.getByLabel('Store name')).toHaveValue(name)
   await page.getByLabel('Website').fill('setup-store.example')
   await page.getByRole('button', { name: 'Save store' }).click()
-  // Confirm brand waits for the website to be read.
+  // The website is read first (it can take hours): Brand waits, and he
+  // goes on with Klaviyo and the discount meanwhile.
   await expect(
-    page.getByRole('heading', { level: 1, name: 'Your brand' })
+    page.getByRole('heading', { level: 1, name: 'Connect Klaviyo' })
   ).toBeVisible()
-  await runReaders(request)
-  await page.reload()
-  await page.getByRole('button', { name: 'Confirm brand' }).click()
+  await expect(
+    page
+      .getByRole('list', { name: 'Steps' })
+      .getByRole('link', { name: /Brand.*Reading your website/ })
+  ).toBeVisible()
   await page
     .getByLabel('Private API key')
     .fill(
@@ -70,6 +74,29 @@ test('a new owner creates a workspace and sets up the store to Home', async ({
     page.getByRole('heading', { level: 1, name: 'Your rivals' })
   ).toBeVisible()
   await page.getByRole('button', { name: 'Skip for now' }).click()
+  // Only the waiting Brand is left: no Finish yet, and Home is the way on.
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Almost ready' })
+  ).toBeVisible()
+  await expect(
+    page.getByText(
+      'We’ll ask you to confirm your brand once your website is read.'
+    )
+  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Finish setup' })).toHaveCount(
+    0
+  )
+  await page.getByRole('link', { name: 'Open Home' }).click()
+  await expect(page).toHaveURL(/\/home$/)
+
+  // Once the website was read, Brand is Now again; confirming it opens
+  // the finish.
+  await runReaders(request)
+  await page.goto('/setup')
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Your brand' })
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Confirm brand' }).click()
   await expect(
     page.getByRole('heading', { level: 1, name: 'Ready to plan' })
   ).toBeVisible()

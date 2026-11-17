@@ -326,11 +326,17 @@ export function RivalsStep({
   )
 }
 
+/**
+ * The finish, once no step is left. While Brand still waits for the website
+ * to be read, Finish is not offered (it needs the brand confirmed, here and
+ * in the database): the owner is told when it comes, and Home is the way on.
+ */
 export function FinishStep({ view }: { view: SetupView }) {
   const max = view.offers?.maxDiscountPercent ?? null
+  const waiting = !!view.flow?.steps.some((s) => s.waiting)
   return (
     <>
-      <Title text="Ready to plan" />
+      <Title text={waiting ? 'Almost ready' : 'Ready to plan'} />
       <Facts
         items={[
           ['Store', view.brand?.domain || 'Not saved'],
@@ -338,10 +344,17 @@ export function FinishStep({ view }: { view: SetupView }) {
           ['Biggest discount', max === null ? 'Not set' : `${max}%`]
         ]}
       />
-      {view.owner ? (
-        <ActionButton action={finishSetup} label="Finish setup" size="focus" />
-      ) : (
+      {waiting ? (
+        <p className="type-body text-[var(--stone)]">
+          We’ll ask you to confirm your brand once your website is read.
+        </p>
+      ) : null}
+      {!view.owner ? (
         <OwnerOnly />
+      ) : waiting ? (
+        <ButtonLink href="/home" label="Open Home" size="focus" />
+      ) : (
+        <ActionButton action={finishSetup} label="Finish setup" size="focus" />
       )}
     </>
   )

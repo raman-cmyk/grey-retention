@@ -8,8 +8,10 @@ import { setupReadModel } from './flow'
  * Where an owner lands after signing in (UI-ONBe): `/setup` while his
  * workspace goes through onboarding (it has its row, so it was made after
  * UI-ONBa) and has neither finished setup nor done every step, else Home.
- * Not when the step that is Now is Klaviyo and connecting is switched off
- * (he could do nothing there). Staff and admins always land on Home (setup
+ * Not when the step that is Now is Klaviyo and connecting is switched off,
+ * nor when only a waiting Brand is left (its website is still being read):
+ * he could do nothing there. Once the read is done or failed, Brand is Now
+ * and he lands on `/setup` again. Staff and admins always land on Home (setup
  * is the owner's); a setup that cannot be read lands on Home too. Only the
  * workspace's own row is read first: a workspace from before onboarding,
  * or one that finished, needs nothing more.
@@ -31,7 +33,10 @@ export async function setupLanding(
     const flow = view.flow
     if (!flow || !flow.tracked || flow.finished || flow.allDone) return '/home'
     const now = flow.steps[flow.current]?.key
-    return now === 'klaviyo' && view.keyCheck === 'off' ? '/home' : '/setup'
+    // Nothing he can do yet: only a waiting Brand is left (its website is
+    // still being read), or Klaviyo with connecting switched off.
+    if (!now || (now === 'klaviyo' && view.keyCheck === 'off')) return '/home'
+    return '/setup'
   } catch {
     return '/home'
   }
