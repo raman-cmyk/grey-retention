@@ -36,7 +36,8 @@ type Db = SupabaseClient<Database>
 const bucket = 'studio-renders'
 /**
  * The studio's design step's time in one claim: the Art director's or the
- * critic's 3 tries, the product's photo and the picture read back fit,
+ * critic's 3 tries, the product's photo (with, in Copy mode, the
+ * reference crop, read at the same time) and the picture read back fit,
  * inside the click's 110 s and the studio job's 105 s (the claims' own
  * deadlines still bound it; the sweep never runs the studio).
  */
@@ -200,9 +201,12 @@ export function studioPortsFor(
       // The product's own photo, so print on it is not read as drawn
       // words; without it (unreadable, too large, slow), the print counts
       // (the safe side).
-      const photo = await photoFor(brief.image.url)
-      // DST-004c: in Copy mode, the reference section it rebuilds, side by side.
-      const reference = await referenceFor(brief, criticCalls)
+      // DST-004c: in Copy mode, also the reference section it rebuilds,
+      // side by side; both read at once.
+      const [photo, reference] = await Promise.all([
+        photoFor(brief.image.url),
+        referenceFor(brief, criticCalls)
+      ])
       return critiqueSection(
         {
           brief,
