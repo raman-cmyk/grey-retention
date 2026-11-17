@@ -868,6 +868,8 @@ export function fill(
   productIds: string[]
   printed: Written
   problems: CopyFeedback[]
+  /** The brand's name, for the word checks (REL-ONB2 part d2). */
+  brandName: string
 } {
   const products = eligibleProducts(input)
   const productIds: string[] = []
@@ -1048,7 +1050,8 @@ export function fill(
     kept,
     productIds,
     printed: { ...written, blocks: printed },
-    problems
+    problems,
+    brandName: brand.name
   }
 }
 
@@ -1072,6 +1075,14 @@ const phrase = (text: string) =>
 /** "I", "I'm", "me", "my", "mine", "myself": a person writing, not the store. */
 const firstPersonSingular =
   /(?<![\p{L}\p{N}'’])(?:I(?:['’](?:m|ve|d|ll))?|[Mm](?:y|e|ine|yself))(?![\p{L}\p{N}'’])/u
+/** A Roman numeral "I", never a person ("Part I", "Henry I"). */
+const numeralI =
+  /(?<![\p{L}\p{N}])(?:part|chapter|vol\.?|volume|book|act|henry|louis|george|charles|edward|william|elizabeth)\s+I(?![\p{L}\p{N}'’])/giu
+/**
+ * A role for the note's writer that the page did not give ("the owner";
+ * "founder" is sent back in every email, as a founder story).
+ */
+const roleWords = /(?<![\p{L}\p{N}])(?:owners?|creators?)(?![\p{L}\p{N}])/iu
 
 /**
  * The engine's word checks on what the email will print. Masked first, so
@@ -1084,8 +1095,17 @@ const firstPersonSingular =
 export function wordProblems(
   printed: Written,
   input: AssemblyInput,
-  placed: { productIds: readonly string[]; offerShown: boolean }
+  placed: {
+    productIds: readonly string[]
+    offerShown: boolean
+    /** The brand's name: never the writer's own words ("My Little Fern"). */
+    brandName?: string
+  }
 ): CopyFeedback[] {
+  const brand =
+    placed.brandName && normal(placed.brandName).length >= 2
+      ? phrase(placed.brandName)
+      : null
   const shown = eligibleProducts(input).filter((p) =>
     placed.productIds.includes(p.id)
   )
@@ -1173,9 +1193,16 @@ export function wordProblems(
       )
     )
       say("Tell no founder or origin story; only the founder's own note may.")
-    if (besideNote && firstPersonSingular.test(masked))
+    // The writer's own statements: the brand's name, questions ("How do I
+    // wash it?") and a Roman numeral aside.
+    const own = (brand ? text.replace(brand, ' ') : text).replace(numeralI, ' ')
+    if (besideNote && firstPersonSingular.test(own))
       say(
         'The founder’s own note is in this email: write as the store ("we"), never "I", "me" or "my", so none of your words read as theirs.'
+      )
+    if (besideNote && roleWords.test(own))
+      say(
+        'Give the person who wrote the note no role: only their own page gives it, beside their name.'
       )
     for (const banned of input.facts.bannedPhrases)
       if (normal(banned).length >= 2 && phrase(banned).test(text))
@@ -1275,7 +1302,8 @@ export function finish(
     })),
     ...wordProblems(filled.printed, writersOnly(input, source), {
       productIds: filled.productIds,
-      offerShown
+      offerShown,
+      brandName: filled.brandName
     })
   ]
   // PIC-26 part 2: an idea is kept only when the word checks the subject

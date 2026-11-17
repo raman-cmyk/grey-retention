@@ -15,6 +15,7 @@ import {
   AiRunError,
   amount,
   assembleEmail,
+  blockWords,
   checkAssembled,
   copyDraftOf,
   endsText,
@@ -31,6 +32,7 @@ import {
   writtenSchema,
   type RunAi
 } from './assemble'
+import { assembleLockedPlain } from './modes'
 import {
   allowedBlockTypes,
   assemblyInputSchema,
@@ -1178,6 +1180,64 @@ describe('the phrases the owner takes out (PIC-29 part 2c)', () => {
     expect(problems('I knit this one for the colder nights.', false)).toEqual(
       []
     )
+  })
+
+  it('reads only the writer’s own statements beside the note: never the brand’s name, a question or a Roman numeral (REL-ONB2 part d2)', () => {
+    const problems = (body: string, brandName = 'My Little Fern') =>
+      wordProblems(
+        {
+          subject: 'Warm knits for winter',
+          preheader: 'For the colder nights ahead.',
+          blocks: [
+            { type: 'founder_note', words: {} },
+            { type: 'text', words: { body } }
+          ]
+        } as never,
+        input(),
+        { productIds: [], offerShown: false, brandName }
+      ).map((p) => p.reason)
+    for (const body of [
+      'With love, My Little Fern',
+      'Can I wear it in the rain? Yes, every day.',
+      'How do I wash my scarf? Gently, by hand.',
+      '“Where do I start?” Here.',
+      'Part I of our winter knits.'
+    ])
+      expect(problems(body), body).toEqual([])
+    expect(problems('Knit Me a winter.', 'Knit Me')).toEqual([])
+    expect(problems('I knit this one for you.')).toHaveLength(1)
+    // No role for the note's writer the page did not give.
+    expect(problems('A note from the owner.')).toEqual([
+      'Give the person who wrote the note no role: only their own page gives it, beside their name.'
+    ])
+    expect(
+      problems('A note from our founder.').some((r) => r.includes('founder'))
+    ).toBe(true)
+  })
+
+  it('makes the plain email with the founder’s note ready for a brand named “My Little Fern” (D16), saying no role the page did not give', () => {
+    const fern = { ...sampleBrand, name: 'My Little Fern' }
+    const note = 'I’m Maya Lee. I started the shop in my spare room in 2016.'
+    const plain = assembleLockedPlain(
+      input({
+        brief: { campaignType: 'Story', goal: 'Our story.' },
+        confirmed: { founder: { name: 'Maya Lee', note: [note] } }
+      }),
+      fern,
+      [
+        { type: 'header_logo', reason: 'Brand first.' },
+        { type: 'founder_note', reason: 'The founder’s own note.' },
+        { type: 'text', reason: 'A short note.' },
+        { type: 'cta', reason: 'One action.' },
+        { type: 'signoff', reason: 'Closes.' },
+        { type: 'footer', reason: 'Links.' }
+      ]
+    )
+    expect(plain.status).toBe('ready')
+    if (plain.status !== 'ready') return
+    const block = plain.draft.blocks.find((b) => b.type === 'founder_note')!
+    expect(block.content).toEqual({ paras: [note], signoff: 'Maya Lee' })
+    expect(blockWords(block).join(' ')).not.toMatch(/founder|owner/i)
   })
 
   it('sends a live writer’s draft back through the engine, never the sample writer’s', async () => {
