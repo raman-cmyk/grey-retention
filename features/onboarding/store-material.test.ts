@@ -271,18 +271,59 @@ describe('storeMaterial (REL-ONB2 part a)', () => {
         alt: 'A walk in the hills at dusk'
       }
     })
-    // Its own words only when they pass as the store's; else the brand's.
+    // Its own words only when they pass as the store's; else the brand's:
+    // none, too long, a file's name, one word or a claim.
     for (const alt of [
       null,
       ' ',
       'Our organic wool, naturally',
-      'Only $25 this week',
-      'x'.repeat(161)
+      'x'.repeat(161),
+      'IMG_2034',
+      'banner_1_desktop',
+      'woman-in-sweater.jpg',
+      'Jordan'
     ])
       expect(
         withPhotos([photo(`${cdn}/hills.jpg`, { alt })])?.lifestylePhoto?.alt,
         String(alt)
       ).toBe('Cedar Lane')
+    // A price, a discount or an offer in its words: it has them drawn in
+    // (copy QA cannot read a picture), so it never heads the email.
+    for (const alt of [
+      'Only $25 this week',
+      'Black Friday 50% off everything',
+      'Get 20 percent off',
+      'Our winter sale is on',
+      'Free shipping on knits',
+      'Use code WARM10'
+    ])
+      expect(
+        withPhotos([photo(`${cdn}/hills.jpg`, { alt })]),
+        alt
+      ).toBeUndefined()
+    // The next photo is taken instead.
+    expect(
+      withPhotos([
+        photo(`${cdn}/sale.jpg`, { alt: 'Winter sale' }),
+        photo(`${cdn}/hills.jpg`)
+      ])?.lifestylePhoto?.image
+    ).toBe(`${cdn}/hills.jpg`)
+    // Never a social card (often a logo or words), never another website's
+    // picture than the store's own hosts and its catalog's.
+    expect(
+      withPhotos([
+        photo(`${cdn}/card.jpg`, { source: 'share' }),
+        photo('https://images.pexels.com/photos/1/stock.jpeg'),
+        photo('https://otherbrand.com/press/feature.jpg'),
+        photo(`${cdn}/hills.jpg`, { source: 'page' })
+      ])?.lifestylePhoto?.image
+    ).toBe(`${cdn}/hills.jpg`)
+    // The brand's name is used only when it passes as the store's words.
+    expect(
+      withPhotos([photo(`${cdn}/hills.jpg`, { alt: null })], {
+        brandName: 'Save $5 Shop'
+      })
+    ).toBeUndefined()
     // A sample workspace never gets a live read's photo; none kept, none.
     expect(
       withPhotos([photo(`${cdn}/hills.jpg`)], { live: false })

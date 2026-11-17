@@ -81,10 +81,32 @@ export type MaterialParts = {
 }
 
 /** A photo the Site reader kept (`brand_photos`). */
-export type SitePhotoRow = { url: string; kind: string; alt: string | null }
+export type SitePhotoRow = {
+  url: string
+  kind: string
+  alt: string | null
+  /** Where on the page: `schema`, `share` (a social card) or `page`. */
+  source?: string
+}
 
-/** The longest photo description kept (the block's own limit is 200). */
+/** The longest photo description kept (the hero block's own limit). */
 const maxAlt = 160
+
+/**
+ * Words that say a price, a discount or an offer: a photo described so
+ * most likely has them drawn into it, where copy QA cannot read them, so
+ * it never heads an email (VISION rule 6; the block catalog: pictures carry
+ * no text).
+ */
+const offerWords =
+  /[$€£¥₹%]|\b\d+\s*(?:percent|per\s*cent)\b|\b(?:sale|sales|discount\w*|off|deal|deals|offer\w*|promo\w*|coupon\w*|code|free|clearance|bogo|black\s+friday|cyber\s+monday|save|savings)\b/i
+
+/** A description that is a file's or a widget's name, not words. */
+const notWords = (text: string) =>
+  /\.(?:jpe?g|png|webp|gif|avif|svg)$/i.test(text) ||
+  /[_/\\]/.test(text) ||
+  /^(?:img|dsc|image|photo|banner|slide|hero)[\s-]*\d*$/i.test(text) ||
+  text.split(/\s+/).length < 2
 
 /** Store words as they are: one line, no markup, link, price or hidden character. */
 const clean = (text: string) =>
@@ -282,22 +304,42 @@ const keyOf = (url: string) => {
   }
 }
 
-/** The first lifestyle photo of the store's own pages an email may show. */
+/**
+ * The first lifestyle photo of the store's own pages an email may show:
+ * never a social card (`share`: often a logo or text graphic), a catalog
+ * picture or a picture on another website's host than the store's own or
+ * its catalog's, and never one described with a price, a discount or an
+ * offer (`offerWords`, or what copy QA's own facts refuse). Its own words
+ * describe it when they pass as the store's; the brand's name when they
+ * are empty, too long, a file's name or a person's name.
+ */
 function lifestylePhoto(parts: MaterialParts): ConfirmedPhoto | undefined {
   if (!parts.live) return undefined
-  const catalog = new Set((parts.catalogImages ?? []).map(keyOf))
+  const catalogImages = parts.catalogImages ?? []
+  const catalog = new Set(catalogImages.map(keyOf))
+  // The store's own hosts, and those its catalog pictures already use.
+  const catalogHosts = new Set(catalogImages.map(hostOf).filter(Boolean))
+  const ownHost = (url: string) => {
+    const host = hostOf(url)
+    return !!host && (onDomain(host, parts.host) || catalogHosts.has(host))
+  }
+  const name = parts.brandName.trim()
+  const brandAlt =
+    name && Array.from(name).length <= maxAlt && safe(name, parts) ? name : ''
   for (const p of parts.photos ?? []) {
-    if (p.kind !== 'lifestyle' || !emailPhotoUrl(p.url)) continue
+    if (p.kind !== 'lifestyle' || p.source === 'share') continue
+    if (!emailPhotoUrl(p.url) || !ownHost(p.url)) continue
     if (catalog.has(keyOf(p.url))) continue
     const own = (p.alt ?? '').trim()
-    const name = parts.brandName.trim()
-    // Its own words when they pass as the store's, else the brand's name.
+    // A price or an offer in its words: one drawn in it, never a hero.
+    if (offerWords.test(own) || strayPrices(own, new Set()).length > 0) continue
     const alt =
-      Array.from(own).length <= maxAlt && safe(own, parts)
+      own &&
+      Array.from(own).length <= maxAlt &&
+      !notWords(own) &&
+      safe(own, parts)
         ? own
-        : Array.from(name).length <= maxAlt && clean(name)
-          ? name
-          : ''
+        : brandAlt
     if (alt) return { image: p.url, alt }
   }
   return undefined

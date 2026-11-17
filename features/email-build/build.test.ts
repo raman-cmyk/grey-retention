@@ -625,8 +625,10 @@ describe('the store’s own material (REL-ONB2)', () => {
       image: hills,
       alt: 'A walk in the hills at dusk'
     })
-    const built = await buildEmail(await input({ confirmed }, 'story'), ctx())
-    expect(built.ok && built.email.html).toContain(hills)
+    for (const type of ['story', 'gift guide'] as const) {
+      const built = await buildEmail(await input({ confirmed }, type), ctx())
+      expect(built.ok && built.email.html, type).toContain(hills)
+    }
   })
 
   it('has no material block without the material', async () => {

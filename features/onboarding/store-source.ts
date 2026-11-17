@@ -135,7 +135,7 @@ async function siteLifestylePhotos(
   // The set's own photos only, never another read's.
   const photos = await db
     .from('brand_photos')
-    .select('url,kind,alt')
+    .select('url,kind,alt,source')
     .eq('tenant_id', tenantId)
     .eq('run_id', set.data.run_id)
     .eq('kind', 'lifestyle')
@@ -387,7 +387,7 @@ export function ownStoreSource(db: Db): StoreSource {
         }),
         // REL-ONB2 part c: optional; without them no photo hero.
         siteLifestylePhotos(db, tenantId).catch((error: unknown) => {
-          logger.warn('Site photos unreadable', {
+          logger.warn('Lifestyle photos unreadable for the email', {
             code: String((error as { code?: unknown })?.code ?? 'unknown')
           })
           return null
