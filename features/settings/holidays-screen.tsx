@@ -46,12 +46,15 @@ export function HolidaysScreen({
   page,
   owner,
   editing,
+  focusAdd = false,
   assistant = defaultAssistant
 }: {
   page: HolidaysPage
   owner: boolean
   /** The date the owner opened with Edit, if any. */
   editing: OwnEntry | null
+  /** Back from editing (Stop editing): the cursor goes to Add a date's Name. */
+  focusAdd?: boolean
   assistant?: string
 }) {
   return (
@@ -66,7 +69,14 @@ export function HolidaysScreen({
       <CardRow>
         <DatesCard page={page} owner={owner} />
         {owner && page.own ? (
-          <EntryCard entry={editing} assistant={assistant} />
+          <EntryCard
+            // Adding and editing each start with their own answer line, so
+            // Stop editing leaves no Saved. behind.
+            key={editing?.id ?? 'new'}
+            entry={editing}
+            focus={focusAdd && !editing}
+            assistant={assistant}
+          />
         ) : null}
       </CardRow>
       <PlatformCard page={page} owner={owner && page.state === 'ready'} />
@@ -168,9 +178,11 @@ const control =
 /** Add a date, or edit the one opened with Edit. */
 function EntryCard({
   entry,
+  focus,
   assistant
 }: {
   entry: OwnEntry | null
+  focus: boolean
   assistant: string
 }) {
   const title = entry ? `Edit ${entry.name}` : 'Add a date'
@@ -196,6 +208,8 @@ function EntryCard({
               autoComplete="off"
               maxLength={200}
               defaultValue={entry?.name}
+              // Only when the owner comes back from Edit (Stop editing).
+              autoFocus={focus}
               required
             />
             <Field
@@ -205,9 +219,15 @@ function EntryCard({
               defaultValue={entry?.date}
               required
             />
-            <label className="flex flex-col gap-[var(--space-2)]">
-              <span className="gros-field-label text-[var(--ink)]">Type</span>
+            <div className="flex flex-col gap-[var(--space-2)]">
+              <label
+                htmlFor="holiday-kind"
+                className="gros-field-label text-[var(--ink)]"
+              >
+                Type
+              </label>
               <select
+                id="holiday-kind"
                 name="kind"
                 defaultValue={entry?.kind ?? 'event'}
                 className={`${control} min-h-[var(--control-sm)]`}
@@ -215,32 +235,37 @@ function EntryCard({
                 <option value="event">Event</option>
                 <option value="holiday">Holiday</option>
               </select>
-            </label>
-            <label className="type-body flex min-h-[var(--control-sm)] items-center gap-[var(--space-3)]">
+            </div>
+            <div className="type-body flex min-h-[var(--control-sm)] items-center gap-[var(--space-3)]">
               <input
+                id="holiday-repeats"
                 type="checkbox"
                 name="repeats"
                 defaultChecked={entry?.repeatsAnnually ?? false}
                 className="size-[var(--space-5)] accent-[var(--forest)]"
               />
-              Every year
-            </label>
-            <label className="flex flex-col gap-[var(--space-2)]">
-              <span className="gros-field-label text-[var(--ink)]">
+              <label htmlFor="holiday-repeats">Every year</label>
+            </div>
+            <div className="flex flex-col gap-[var(--space-2)]">
+              <label
+                htmlFor="holiday-notes"
+                className="gros-field-label text-[var(--ink)]"
+              >
                 Notes for {assistant} (optional)
-              </span>
+              </label>
               <textarea
+                id="holiday-notes"
                 name="notes"
                 rows={3}
                 maxLength={2000}
                 defaultValue={entry?.notes}
                 className={`${control} py-[var(--space-3)]`}
               />
-            </label>
+            </div>
           </ActionButton>
           {entry ? (
             <ButtonLink
-              href="/settings/holidays"
+              href="/settings/holidays?from=edit"
               label="Stop editing"
               kind="quiet"
             />
@@ -309,11 +334,15 @@ function PlatformCard({ page, owner }: { page: HolidaysPage; owner: boolean }) {
               label="Save country"
               kind="outline"
             >
-              <label className="flex flex-col gap-[var(--space-2)]">
-                <span className="gros-field-label text-[var(--ink)]">
+              <div className="flex flex-col gap-[var(--space-2)]">
+                <label
+                  htmlFor="holiday-country"
+                  className="gros-field-label text-[var(--ink)]"
+                >
                   Country
-                </span>
+                </label>
                 <select
+                  id="holiday-country"
                   name="country"
                   defaultValue={page.country}
                   className={`${control} min-h-[var(--control-sm)]`}
@@ -324,7 +353,7 @@ function PlatformCard({ page, owner }: { page: HolidaysPage; owner: boolean }) {
                     </option>
                   ))}
                 </select>
-              </label>
+              </div>
             </ActionButton>
           ) : null}
         </ActionAnswers>

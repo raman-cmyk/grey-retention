@@ -117,8 +117,13 @@ function view(over: Partial<SettingsView> = {}): SettingsView {
       ],
       partial: false
     },
-    support: { threads: [], team: 'Grey Retention team', tenantId: 't1' },
-    requests: { items: [] },
+    support: {
+      threads: [],
+      more: false,
+      team: 'Grey Retention team',
+      tenantId: 't1'
+    },
+    requests: { items: [], more: false },
     unread: [],
     ...over
   }

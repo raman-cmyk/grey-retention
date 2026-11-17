@@ -53,12 +53,15 @@ const closed = thread({
 })
 
 /** The card as Settings draws it; it reads the threads and the timezone. */
-const supportCard = (support: SettingsView['support']) => (
+const supportCard = (
+  support: SettingsView['support'],
+  timezone: string | null = 'Asia/Kathmandu'
+) => (
   <SupportCard
     view={
       {
         support,
-        timezone: { saved: 'Asia/Kathmandu' }
+        timezone: timezone ? { saved: timezone } : null
       } as unknown as SettingsView
     }
     unread={<p>Your support questions could not be read just now.</p>}
@@ -69,8 +72,9 @@ const fieldsOf = (button: HTMLElement) =>
   Object.fromEntries(
     new FormData(button.closest('form')!) as unknown as [string, string][]
   )
-const ready = (threads: FeatureRequest[]) => ({
+const ready = (threads: FeatureRequest[], more = false) => ({
   threads,
+  more,
   team: 'Grey Retention team',
   tenantId: tenant
 })
@@ -102,7 +106,7 @@ describe('Support on Settings (UI-SETd)', () => {
   it('shows each thread with who wrote what and when, and a reply under it', () => {
     render(supportCard(ready([answered, closed])))
     const threads = within(
-      within(card()).getByRole('list', { name: 'Your questions' })
+      within(card()).getByRole('list', { name: 'Support threads' })
     ).getAllByRole('listitem', { name: undefined })
     const first = threads[0]!
     expect(
@@ -137,6 +141,26 @@ describe('Support on Settings (UI-SETd)', () => {
         within(card()).getByRole('button', { name: 'Send reply: Old question' })
       )
     ).toMatchObject({ id: closed.id, revision: '5', state: 'open' })
+    // Each reply is named after its thread, and the question stays apart.
+    expect(
+      within(first).getByLabelText('Your reply to Klaviyo drafts').tagName
+    ).toBe('TEXTAREA')
+    expect(
+      within(card()).getAllByLabelText('Your question', { exact: true })
+    ).toHaveLength(1)
+    expect(
+      within(card()).queryByRole('link', { name: 'Show older' })
+    ).toBeNull()
+  })
+
+  it('offers Show older when there are more, and says UTC when the timezone is unknown', () => {
+    render(supportCard(ready([answered], true), null))
+    expect(
+      within(card()).getByRole('link', { name: 'Show older' })
+    ).toHaveAttribute('href', '/settings?support=all#support')
+    expect(card()).toHaveTextContent(
+      'You · Nov 16, 2026 · 10:00 AM UTCWhere do my drafts go?'
+    )
   })
 
   it('answers in the card, and keeps a refused question to fix', async () => {

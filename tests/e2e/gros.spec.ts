@@ -179,7 +179,7 @@ test('UC-18 team invitation audit, event and support response survive refresh', 
   const support = page.getByRole('region', { name: 'Support' })
   await support.getByLabel('Subject', { exact: true }).fill(subject)
   await support
-    .getByLabel('Your question')
+    .getByLabel('Your question', { exact: true })
     .fill('Original synthetic workflow question.')
   await support
     .getByRole('button', { name: 'Send to support', exact: true })
@@ -233,7 +233,9 @@ test('UC-18 team invitation audit, event and support response survive refresh', 
   await page.reload()
   await expect(question).toContainText('Closed')
   // A member's reply opens the closed thread again.
-  await question.getByLabel('Your reply').fill('Thanks, that answers it.')
+  await question
+    .getByLabel(`Your reply to ${subject}`, { exact: true })
+    .fill('Thanks, that answers it.')
   await question
     .getByRole('button', { name: `Send reply: ${subject}`, exact: true })
     .click()

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
 import { sampleBlocks, sampleBrand } from '@/features/blocks/samples'
 import type { Block } from '@/features/blocks/catalog'
+import { sectionDesignerAgent } from './designer'
 import {
   studioDesignStep,
   type StudioStepInput,
@@ -64,7 +65,12 @@ const followed = (
     { family: 'product_grid_2col', tone: 'light', height: 700 },
     { family: 'text', tone: 'light', height: 200 }
   ],
-  refIndex: [0, 1, 2, null]
+  refIndex: [0, 1, 2, null],
+  images: [
+    'sect/00000000-0000-4000-8000-0000000000a1/1.jpg',
+    'sect/00000000-0000-4000-8000-0000000000a1/2.jpg',
+    null
+  ]
 })
 
 function ports(over: Partial<StudioStepPorts> = {}): StudioStepPorts {
@@ -148,6 +154,41 @@ describe('the design studio follows the reference email (DST-002b)', () => {
     expect(brief.board.height).toBeGreaterThanOrEqual(525)
     expect(brief.board.height).toBeLessThanOrEqual(875)
     expect(p.coded).not.toHaveBeenCalled()
+  })
+
+  it('gives a copied hero its reference picture for the match score, never to an agent (DST-004b)', async () => {
+    const p = ports()
+    await studioDesignStep(input(followed('copy', 700, 'dark')), p)
+    const brief = briefOf(p)
+    expect(brief.reference).toEqual({
+      tone: 'dark',
+      height: 700,
+      image: 'sect/00000000-0000-4000-8000-0000000000a1/1.jpg'
+    })
+    const sent = sectionDesignerAgent.task({ brief, problems: [] })
+    expect(sent).not.toContain('sect/')
+    expect(JSON.parse(sent).section.reference).toEqual({
+      tone: 'dark',
+      height: 700
+    })
+    // An unsafe path, none, or pictures out of step with the reference
+    // (another section's picture) give no picture.
+    for (const images of [
+      ['../x.jpg', null, null],
+      ['shot/00000000-0000-4000-8000-0000000000a1.jpg', null, null],
+      ['sect/00000000-0000-4000-8000-0000000000a1/9.jpg'],
+      undefined
+    ]) {
+      const q = ports()
+      await studioDesignStep(
+        input({
+          ...followed('copy', 700, 'dark'),
+          ...(images ? { images } : { images: undefined })
+        }),
+        q
+      )
+      expect(briefOf(q).reference).not.toHaveProperty('image')
+    }
   })
 
   it('remixes: its own plan follows no section, the Art director sees the whole reference, the hero is free', async () => {

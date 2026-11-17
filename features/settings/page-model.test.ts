@@ -8,7 +8,8 @@ const loaders = vi.hoisted(() => ({
   feedbackPage: vi.fn()
 }))
 vi.mock('@/features/feedback/data', () => ({
-  feedbackPage: loaders.feedbackPage
+  feedbackPage: loaders.feedbackPage,
+  requestLimit: 200
 }))
 vi.mock('./read-model', () => ({
   settingsReadModel: loaders.settingsReadModel
@@ -81,7 +82,8 @@ const thread = {
   replies: []
 }
 const support = {
-  requests: Array.from({ length: 12 }, (_, i) => ({ ...thread, id: `t${i}` })),
+  requests: Array.from({ length: 10 }, (_, i) => ({ ...thread, id: `t${i}` })),
+  more: true,
   team: 'Grey Retention team',
   now: 0,
   state: 'ready' as const
@@ -116,8 +118,10 @@ describe('Settings page model (UI-SETa)', () => {
       changes: read.changes,
       unread: []
     })
-    // The ten newest support threads, with the workspace for a reply.
+    // The threads as read, whether older ones exist, and the workspace for
+    // a reply.
     expect(view.support?.threads).toHaveLength(10)
+    expect(view.support?.more).toBe(true)
     expect(view.support).toMatchObject({
       team: 'Grey Retention team',
       tenantId: context.tenantId
@@ -239,8 +243,18 @@ describe('Settings page model (UI-SETa)', () => {
     expect(noZone.unread).toEqual(['timezone'])
     expect(noZone.offers).toEqual(read.offers)
     expect(loaders.settingsReadModel).toHaveBeenCalledWith(context)
+    // Ten threads by latest activity, read in the query; all with Show older.
     expect(loaders.feedbackPage).toHaveBeenCalledWith(context, now.getTime(), {
-      kind: 'support'
+      kind: 'support',
+      order: 'activity',
+      limit: 10
+    })
+    loaders.feedbackPage.mockClear()
+    await settingsPageModel(context, now, { allSupport: true })
+    expect(loaders.feedbackPage).toHaveBeenCalledWith(context, now.getTime(), {
+      kind: 'support',
+      order: 'activity',
+      limit: 200
     })
     expect(loaders.feedbackPage).toHaveBeenCalledWith(context, now.getTime())
 
