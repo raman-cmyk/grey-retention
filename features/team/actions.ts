@@ -40,7 +40,7 @@ function failed(error: DbError): FormResult {
     if (says(error, 'Already invited'))
       return {
         error:
-          'This person already has an invite. Use Resend in the list below.'
+          'This person already has an invite. Use Resend on their invite instead.'
       }
     if (says(error, 'This invite was cancelled or accepted'))
       return {

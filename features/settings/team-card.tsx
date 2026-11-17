@@ -1,8 +1,10 @@
 import { Mail } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { ActionAnswers, ActionButton } from '@/components/gros/action'
 import { ButtonLink } from '@/components/gros/button'
 import { Card, Tile } from '@/components/gros/card'
 import { ListRow, RowList } from '@/components/gros/list-row'
+import { cancelInvite, resendInvite } from '@/features/team/actions'
 import {
   expiryText,
   initial,
@@ -10,12 +12,17 @@ import {
   type PendingInvite,
   type TeamMember
 } from '@/features/team/rules'
+import { InviteForm } from './invite-form'
 import type { SettingsView } from './page-model'
 
 /**
- * The Team card on Settings (UI-SETb): who is on the team and, for the
- * owner and managers, the open invites. Staff see the members only. The
- * changes are still made on the old Team page.
+ * The Team card on Settings (UI-SETb): who is on the team and the open
+ * invites, and for the owner and managers the buttons that change them
+ * (invite, resend, cancel), each calling the Team page's server actions,
+ * which check the role again. Staff see the list only. The rows' answers
+ * show in one place (`ActionAnswers`), so an answer stays when its row
+ * goes with the change it made (a cancelled invite). "Who changed what" is
+ * still on the old Team page until UI-SETc.
  */
 export function TeamCard({
   view,
@@ -41,32 +48,49 @@ export function TeamCard({
                 <Tile label="Open invites" value={team.openInvites} />
               ) : null}
             </div>
-            <RowList label="Members">
-              {team.roster.map((member) => (
-                <MemberRow key={member.id} member={member} />
-              ))}
-            </RowList>
-            {!team.canManage ? null : team.invites ? (
-              team.invites.length ? (
-                <RowList label="Open invites">
-                  {team.invites.map((invite) => (
-                    <InviteRow key={invite.id} invite={invite} now={team.now} />
-                  ))}
-                </RowList>
-              ) : null
+            <ActionAnswers>
+              <RowList label="Members">
+                {team.roster.map((member) => (
+                  <MemberRow key={member.id} member={member} />
+                ))}
+              </RowList>
+              {!team.canManage ? null : team.invites ? (
+                team.invites.length ? (
+                  <RowList label="Open invites">
+                    {team.invites.map((invite) => (
+                      <InviteRow
+                        key={invite.id}
+                        invite={invite}
+                        now={team.now}
+                      />
+                    ))}
+                  </RowList>
+                ) : null
+              ) : (
+                <p className="type-body text-[var(--stone)]">
+                  The open invites could not be read just now. Open Settings
+                  again in a minute.
+                </p>
+              )}
+            </ActionAnswers>
+            {team.canManage ? (
+              <>
+                <InviteForm />
+                {/* Until UI-SETc brings who changed what onto Settings. */}
+                <ButtonLink
+                  href="/team"
+                  label="See team changes"
+                  kind="quiet"
+                  size="row"
+                />
+              </>
             ) : (
               <p className="type-body text-[var(--stone)]">
-                The open invites could not be read just now. Open Settings again
-                in a minute.
+                Only the owner or a manager can invite people and change access.
               </p>
             )}
           </>
         )}
-        <ButtonLink
-          href="/team"
-          label={team?.canManage ? 'Manage team' : 'See team'}
-          kind="outline"
-        />
       </div>
     </Card>
   )
@@ -100,7 +124,7 @@ function MemberRow({ member }: { member: TeamMember }) {
   )
 }
 
-/** An open or expired invite: the address, the role, when it expires. */
+/** An open or expired invite, with Resend (7 more days) and Cancel invite. */
 function InviteRow({ invite, now }: { invite: PendingInvite; now: number }) {
   return (
     <ListRow
@@ -114,7 +138,26 @@ function InviteRow({ invite, now }: { invite: PendingInvite; now: number }) {
         `Invited as ${roleLabel[invite.role]}`,
         expiryText(invite.expiresAt, now)
       ]}
-      end={null}
+      end={
+        <div className="flex flex-wrap gap-[var(--space-3)]">
+          <ActionButton
+            action={resendInvite}
+            label="Resend"
+            spokenLabel={invite.email}
+            kind="outline"
+            size="row"
+            fields={{ id: invite.id }}
+          />
+          <ActionButton
+            action={cancelInvite}
+            label="Cancel invite"
+            spokenLabel={invite.email}
+            kind="quiet"
+            size="row"
+            fields={{ id: invite.id }}
+          />
+        </div>
+      }
     />
   )
 }

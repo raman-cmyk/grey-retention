@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { test, expect } from '@playwright/test'
 import { login } from './accounts'
 import { newOwner } from './new-owner'
@@ -83,6 +84,74 @@ test('UI-SETa the owner sets the biggest discount and adds and removes a code', 
   await expect(page).toHaveURL(/\/profile$/)
 })
 
+test('UI-SETb the owner invites, resends and cancels on the Team card', async ({
+  page
+}) => {
+  await newOwner(page, { prefix: 'settings-team', name: 'Settings team' })
+  await page.goto('/settings')
+  const team = page.getByRole('region', { name: 'Team' })
+  const me = team.getByRole('list', { name: 'Members' }).getByRole('listitem')
+  await expect(me).toHaveCount(1)
+  await expect(me).toContainText('(you)')
+  await expect(me).toContainText('Owner')
+  // Nobody changes their own access.
+  await expect(me.getByRole('button')).toHaveCount(0)
+
+  // A refusal stays under Email, which keeps what was typed.
+  const email = team.getByLabel('Email', { exact: true })
+  await email.fill('not-an-email')
+  await team.getByRole('button', { name: 'Invite as Staff' }).click()
+  await expect(team.getByRole('alert')).toHaveText(
+    'Enter an email address like name@company.com.'
+  )
+  await expect(email).toHaveAttribute('aria-invalid', 'true')
+  await expect(email).toHaveValue('not-an-email')
+
+  const newcomer = `newcomer-${randomUUID().slice(0, 8)}@example.com`
+  await email.fill(newcomer)
+  await team.getByRole('button', { name: 'Invite as Manager' }).click()
+  await expect(
+    team.getByText(`Invite saved for ${newcomer} as Manager.`, {
+      exact: false
+    })
+  ).toBeVisible()
+  await expect(team.getByText(/no email was sent/)).toBeVisible()
+  await expect(email).toHaveValue('')
+  const invite = team
+    .getByRole('list', { name: 'Open invites' })
+    .getByRole('listitem')
+    .filter({ hasText: newcomer })
+  await expect(invite).toContainText('Invited as Manager · Expires in')
+  await expect(
+    team.getByText('Open invites', { exact: true }).locator('..')
+  ).toHaveText('Open invites1')
+  // A second invite to the same address is refused.
+  await email.fill(newcomer)
+  await team.getByRole('button', { name: 'Invite as Staff' }).click()
+  await expect(team.getByRole('alert')).toContainText('already has an invite')
+
+  await invite.getByRole('button', { name: `Resend: ${newcomer}` }).click()
+  await expect(
+    team.getByText('Invite renewed for 7 more days. No email was sent.')
+  ).toBeVisible()
+  await invite
+    .getByRole('button', { name: `Cancel invite: ${newcomer}` })
+    .click()
+  await expect(invite).toHaveCount(0)
+  // The answer stays though its row has gone.
+  await expect(team.getByText('Invite cancelled.')).toBeVisible()
+  await page.reload()
+  await expect(team.getByText(newcomer)).toHaveCount(0)
+  // Who changed what is still on the old Team page (UI-SETc).
+  await team.getByRole('link', { name: 'See team changes' }).click()
+  await expect(page).toHaveURL(/\/team$/)
+  await expect(
+    page
+      .getByRole('region', { name: 'Recent team changes' })
+      .getByText(`Invite to ${newcomer} cancelled`, { exact: false })
+  ).toBeVisible()
+})
+
 test('UI-SETa staff see Settings without the owner’s controls', async ({
   page
 }, info) => {
@@ -102,9 +171,21 @@ test('UI-SETa staff see Settings without the owner’s controls', async ({
     'Connect Klaviyo',
     'Change key',
     'Disconnect',
-    'Save timezone'
+    'Save timezone',
+    // UI-SETb: staff see the team, but no button changes it.
+    'Invite as',
+    'Resend',
+    'Cancel invite'
   ])
     await expect(page.getByRole('button', { name })).toHaveCount(0)
+  const team = page.getByRole('region', { name: 'Team' })
+  await expect(
+    team
+      .getByRole('list', { name: 'Members' })
+      .getByRole('listitem')
+      .filter({ hasText: '(you)' })
+  ).toContainText('Staff')
+  await expect(team.getByLabel('Email', { exact: true })).toHaveCount(0)
   await expect(
     page.getByText('Only the workspace owner can change Klaviyo.')
   ).toBeVisible()
