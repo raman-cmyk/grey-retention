@@ -631,6 +631,46 @@ describe('the store’s own material (REL-ONB2)', () => {
     }
   })
 
+  it('places the founder’s own note word for word, signed by them, with no word of anyone else’s, and makes the email (REL-ONB2 part d2)', async () => {
+    const note = 'I’m Maya Lee. I started Cedar Lane in my spare room in 2016.'
+    const confirmed = storeMaterial({
+      brandName: 'Cedar Lane',
+      host: 'shop.example',
+      live: true,
+      findings: [
+        {
+          topic: 'founder',
+          source: 'site',
+          statement: 'Maya Lee writes why she started the store.',
+          value: { name: 'Maya Lee', role: 'Founder' },
+          evidence: {
+            url: 'https://shop.example/pages/about',
+            quote: note,
+            page: 'about',
+            whole: true
+          },
+          confidence: 0.8,
+          pass: 'model',
+          createdAt: '2026-11-17T08:00:00.000Z'
+        } as unknown as Finding
+      ],
+      facts,
+      productNames: []
+    })
+    // The founder's own words only: no greeting they did not write.
+    expect(await block('founder_note', { confirmed }, 'story')).toEqual({
+      paras: [note],
+      signoff: 'Maya Lee',
+      role: 'Founder'
+    })
+    for (const type of ['story', 'launch'] as const) {
+      const built = await buildEmail(await input({ confirmed }, type), ctx())
+      expect(built.ok && built.email.html, type).toContain(
+        'I’m Maya Lee. I started Cedar Lane'
+      )
+    }
+  })
+
   it('has no material block without the material', async () => {
     for (const type of ['story', 'launch'] as const)
       for (const family of [
