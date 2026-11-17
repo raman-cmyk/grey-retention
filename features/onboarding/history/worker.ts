@@ -28,6 +28,8 @@ import {
   type ReportRow
 } from '@/lib/providers/klaviyo/history'
 import { recordVoiceSamples } from '@/features/letter/voice/samples'
+import { recordNeverWords } from '@/features/copy-qa/never-words-store'
+import { readOwnerEdits, type EditsRead } from './edits'
 import { findingInput, type FindingInput } from '../findings'
 import { klaviyoCallMs } from '../catalog/worker'
 import {
@@ -401,18 +403,46 @@ export async function readBrandHistory(
   let voice: VoiceRead | null = null
   const voiceMore = () =>
     now() + klaviyoMs + voiceExcerptMs + deps.callMs <= deadline
+  let inputs: Awaited<ReturnType<typeof voiceInputs>> | null = null
   if (sent.length && voiceMore())
     try {
+      inputs = await voiceInputs(db, job.tenant_id, brand.data.brand_name)
       voice = await readOwnerVoice({
         client: deps.client,
         more: voiceMore,
         sent: sentRead.records,
         sentComplete: parts.sent,
-        ...(await voiceInputs(db, job.tenant_id, brand.data.brand_name))
+        ...inputs
       })
     } catch (error) {
       // A bug or the database: logged as such, and the history goes on.
       logger.error('History read: the voice read left out', {
+        code: codeOf(error),
+        name: nameOf(error)
+      })
+    }
+  // PIC-29 part 2b: what the owner took out of GROS's sent emails, while
+  // time is left (an extra, as the voice); never after Klaviyo refused the
+  // key or asked to wait.
+  let edits: EditsRead | null = null
+  if (
+    inputs &&
+    voice?.stopped !== 'rate_limited' &&
+    voice?.stopped !== 'bad_key' &&
+    voiceMore()
+  )
+    try {
+      edits = await readOwnerEdits({
+        db,
+        tenantId: job.tenant_id,
+        client: deps.client,
+        more: voiceMore,
+        sent: sentRead.records,
+        sentComplete: parts.sent,
+        own: inputs.own
+      })
+    } catch (error) {
+      logger.error('History read: the edits read left out', {
         code: codeOf(error),
         name: nameOf(error)
       })
@@ -523,6 +553,34 @@ export async function readBrandHistory(
       )
     } catch (error) {
       logger.error('History read: voice samples not kept', {
+        code: codeOf(error),
+        name: nameOf(error)
+      })
+    }
+  // Only a read of every sent GROS email replaces the list (PIC-29 part 2a).
+  if (edits)
+    try {
+      const kept = edits.learned
+        ? await recordNeverWords(
+            db,
+            { id: job.id, lease: job.lease_token! },
+            edits.learned
+          )
+        : null
+      logger.info(
+        kept === null
+          ? 'History read: never words kept as they were'
+          : 'History read: never words',
+        {
+          tried: edits.tried,
+          edits: edits.edits,
+          left: edits.left,
+          kept: kept ?? 0,
+          stopped: edits.stopped ?? 'none'
+        }
+      )
+    } catch (error) {
+      logger.error('History read: never words not kept', {
         code: codeOf(error),
         name: nameOf(error)
       })
