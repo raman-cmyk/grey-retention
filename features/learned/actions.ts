@@ -3,18 +3,23 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import type { ActionResult } from '@/components/gros/action'
+import { inUse } from '@/features/agents/memory'
 import { requireRequestContext } from '@/features/auth/application/request-context'
+import { defaultBrandPresentation } from '@/lib/branding/presentation'
 import { createClient } from '@/lib/supabase/server'
 
 /**
- * The owner's Remove and Pin on the Learned page (UI-LRNa). Only the
- * workspace's owner; the database checks it again, keeps each command to
- * the workspace's own rules and refuses a stale page (PT409).
+ * The owner's Remove and Pin on the Learned page (UI-LRNa, UI-LRNb). Only
+ * the workspace's owner; the database checks it again, keeps each command
+ * to the workspace's own rules and refuses a stale page (PT409). Each
+ * answer says what was done, in plain words, so the page can say it after
+ * the rule's row is gone.
  */
-const ownerOnly = 'Only this workspace’s owner can change what GROS learned.'
+const assistant = defaultBrandPresentation.assistantName
+const ownerOnly = `Only this workspace’s owner can change what ${assistant} learned.`
 const stale =
   'This rule changed in another window. Open Learned again, then try again.'
-const gone = 'GROS no longer uses this rule. Open Learned again.'
+const gone = `${assistant} no longer uses this rule. Open Learned again.`
 
 const ruleForm = z.object({
   rule: z.uuid(),
@@ -30,7 +35,8 @@ async function ownerCommand<F extends z.infer<typeof ruleForm>>(
   form: FormData,
   schema: z.ZodType<F>,
   run: (db: Db, args: Args, input: F) => PromiseLike<{ error: Failure }>,
-  failed: (input: F) => string
+  failed: (input: F) => string,
+  done: (db: Db, args: Args, input: F) => Promise<string>
 ): Promise<ActionResult> {
   const context = await requireRequestContext('client')
   if (context.tenantRole !== 'owner') return { error: ownerOnly }
@@ -55,12 +61,14 @@ async function ownerCommand<F extends z.infer<typeof ruleForm>>(
               ? gone
               : stale
       }
-    if (error.code === '42501') return { error: ownerOnly }
+    // The owner was checked above: the rule is not this workspace's (any more).
+    if (error.code === '42501') return { error: gone }
     return { error: failed(input) }
   }
+  const message = await done(db, args, input)
   revalidatePath('/learned')
   revalidatePath('/home')
-  return {}
+  return { message }
 }
 
 /** "Remove": agents stop using the rule. It is kept, marked as removed by the owner. */
@@ -72,7 +80,31 @@ export async function retireRule(
     form,
     ruleForm,
     (db, args) => db.rpc('retire_memory_rule', args),
-    () => 'We could not remove the rule. Nothing was changed.'
+    () => 'We could not remove the rule. Nothing was changed.',
+    async () => `Removed. ${assistant} no longer uses this rule.`
+  )
+}
+
+/**
+ * Whether agents still use a rule just unpinned: an unsure or ended rule
+ * stays only while pinned. Unknown when it cannot be read.
+ */
+async function stillUsed(db: Db, args: Args) {
+  const { data, error } = await db
+    .from('agent_memory_rules')
+    .select('status,confidence,expires_at')
+    .eq('tenant_id', args.t)
+    .eq('id', args.rule)
+    .maybeSingle()
+  if (error || !data) return null
+  return inUse(
+    {
+      status: data.status === 'active' ? 'active' : 'retired',
+      pinned: false,
+      confidence: Number(data.confidence),
+      expiresAt: data.expires_at
+    },
+    Date.now()
   )
 }
 
@@ -87,6 +119,16 @@ export async function pinRule(
     (db, args, input) =>
       db.rpc('pin_memory_rule', { ...args, pinned: input.pinned === 'true' }),
     (input) =>
-      `We could not ${input.pinned === 'true' ? 'pin' : 'unpin'} the rule. Nothing was changed.`
+      `We could not ${input.pinned === 'true' ? 'pin' : 'unpin'} the rule. Nothing was changed.`,
+    async (db, args, input) => {
+      if (input.pinned === 'true')
+        return `Pinned. ${assistant} keeps using this rule.`
+      const used = await stillUsed(db, args)
+      return used === false
+        ? `Unpinned. ${assistant} stopped using this rule: it is not sure enough of it, or its time ended.`
+        : used
+          ? `Unpinned. ${assistant} still uses this rule.`
+          : 'Unpinned.'
+    }
   )
 }

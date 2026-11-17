@@ -1,10 +1,19 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 vi.mock('./actions', () => ({
   pinRule: vi.fn(async () => ({})),
-  retireRule: vi.fn(async () => ({}))
+  retireRule: vi.fn(async () => ({
+    message: 'Removed. GROS no longer uses this rule.'
+  }))
 }))
 
 import type { LearnedItem, LearnedView } from './read-model'
@@ -76,11 +85,12 @@ describe('Learned screen (UI-LRNb)', () => {
     expect(rules).toHaveLength(2)
     expect(rules[0]).toHaveTextContent('Show the price in the subject')
     expect(rules[0]).toHaveTextContent('Pinned · From your edits · 9 Nov')
-    expect(rules[1]).toHaveTextContent('More clicks over 6 sends')
-    expect(rules[1]).toHaveTextContent(/^.*From your results · 9 Nov/)
+    expect(rules[1]).toHaveTextContent(
+      /^Lead with one productFrom your results · 9 Nov/
+    )
     expect(rules[1]).not.toHaveTextContent('Pinned')
     expect(card('Avoid')).toHaveTextContent(
-      'All caps subjectsMore clicks over 6 sendsFrom the email checks · 9 Nov'
+      'All caps subjectsFrom the email checks · 9 Nov'
     )
   })
 
@@ -123,7 +133,34 @@ describe('Learned screen (UI-LRNb)', () => {
       screen.getByRole('heading', { level: 2, name: 'No rules in use' })
     ).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Do' })).toBeNull()
-    expect(within(screen.getByRole('main')).queryByRole('button')).toBeNull()
+    // One button: Home, where the owner plans and creates the emails.
+    const main = within(screen.getByRole('main'))
+    expect(main.queryByRole('button')).toBeNull()
+    expect(main.getByRole('link', { name: 'Open Home' })).toHaveAttribute(
+      'href',
+      '/home'
+    )
+  })
+
+  it('says what Remove did, and keeps saying it when the last rule goes', async () => {
+    const user = userEvent.setup()
+    const only = view({ do: [], avoid: [item({ id: 'r3', kind: 'dont' })] })
+    const { rerender } = render(<LearnedScreen view={only} />)
+    const remove = screen.getByRole('button', {
+      name: 'Remove: Lead with one product'
+    })
+    await waitFor(() => expect(remove).toBeEnabled())
+    await user.click(remove)
+    const answer = await screen.findByText(
+      'Removed. GROS no longer uses this rule.'
+    )
+    // The refreshed page has no rules: the empty state, and the answer stays.
+    rerender(<LearnedScreen view={view({ do: [], avoid: [] })} />)
+    expect(
+      screen.getByRole('heading', { name: 'No rules in use' })
+    ).toBeInTheDocument()
+    expect(answer).toBeInTheDocument()
+    expect(answer).toHaveTextContent('Removed. GROS no longer uses this rule.')
   })
 
   it('says when the rules could not be read, with Try again', () => {
