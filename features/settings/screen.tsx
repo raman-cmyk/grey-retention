@@ -55,6 +55,9 @@ export function SettingsScreen({
         <TeamCard view={view} unread={<Unread view={view} part="team" />} />
         <AccountCard view={view} />
       </CardRow>
+      <CardRow>
+        <HolidaysCard assistant={assistant} />
+      </CardRow>
       {/* Who changed what: the owner and managers only (UI-SETc). */}
       {view.editor ? (
         <ChangesCard
@@ -445,6 +448,26 @@ function TimezoneCard({ view }: { view: SettingsView }) {
             </>
           )}
         </ActionAnswers>
+      </div>
+    </Card>
+  )
+}
+
+/** Holidays and events have their own page under Settings (UI-SETd). */
+function HolidaysCard({ assistant }: { assistant: string }) {
+  const title = 'Holidays and events'
+  return (
+    <Card size="small" label={title}>
+      <div className="flex flex-col gap-[var(--space-5)]">
+        <Title text={title} />
+        <p className="type-body text-[var(--stone)]">
+          Your own dates, and the holidays {assistant} plans around.
+        </p>
+        <ButtonLink
+          href="/settings/holidays"
+          label="Open holidays"
+          kind="outline"
+        />
       </div>
     </Card>
   )

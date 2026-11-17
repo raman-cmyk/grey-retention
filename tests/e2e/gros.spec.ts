@@ -154,16 +154,18 @@ test('UC-18 team invitation audit, event and support response survive refresh', 
       .getByRole('region', { name: 'Recent changes' })
       .getByText(`Invite to ${email} cancelled`, { exact: false })
   ).toBeVisible()
-  await page.goto('/holidays')
-  await page
+  // Holidays and events are a page under Settings (UI-SETd).
+  await page.goto('/settings/holidays')
+  const add = page.getByRole('region', { name: 'Add a date' })
+  await add
     .getByLabel('Name', { exact: true })
     .fill(`Synthetic event ${info.project.name}`)
-  await page.getByLabel('Date', { exact: true }).fill('2027-01-01')
-  await page.getByLabel('Type', { exact: true }).selectOption('event')
-  await page
-    .getByLabel('Notes for the AI strategist (optional)')
+  await add.getByLabel('Date', { exact: true }).fill('2027-01-01')
+  await add.getByLabel('Type', { exact: true }).selectOption('event')
+  await add
+    .getByLabel('Notes for GROS (optional)')
     .fill('Original fixture event.')
-  await page.getByRole('button', { name: 'Add entry', exact: true }).click()
+  await add.getByRole('button', { name: 'Add date', exact: true }).click()
   await expect(
     page.getByText(`Added “Synthetic event ${info.project.name}”.`)
   ).toBeVisible()

@@ -139,9 +139,8 @@ describe('sidebar (expanded)', () => {
       'href',
       '/settings'
     )
-    expect(
-      nav.getByRole('link', { name: 'Holidays & Events' })
-    ).toHaveAttribute('href', '/holidays')
+    // UI-SETd: holidays and events are a page under Settings.
+    expect(nav.queryByRole('link', { name: 'Holidays & Events' })).toBeNull()
     expect(nav.getByRole('link', { name: 'Connections' })).toHaveAttribute(
       'href',
       '/connections'
@@ -227,9 +226,12 @@ describe('sidebar (expanded)', () => {
       'aria-current',
       'page'
     )
+    // Only one entry is current (Holidays & Events, which shared it, is gone).
     expect(
-      nav.getByRole('link', { name: 'Holidays & Events' })
-    ).not.toHaveAttribute('aria-current')
+      nav
+        .getAllByRole('link')
+        .filter((link) => link.getAttribute('aria-current') === 'page')
+    ).toHaveLength(1)
   })
 })
 
