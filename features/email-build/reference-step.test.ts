@@ -197,6 +197,41 @@ describe('the sections step and the owner’s mode (DST-002b)', () => {
     expect(both.output.reference?.emailId).toBe('ref-1')
   })
 
+  it('does not copy an email whose offer is only on its hero', async () => {
+    const heroOffer = reference({
+      sections: [
+        { blockType: 'hero_image', height: 640, purpose: 'offer' },
+        { blockType: 'product_grid_2col', height: 700 },
+        { blockType: 'text', height: 200 }
+      ]
+    })
+    const { output, log } = await run({
+      mode: 'copy',
+      load: loads([heroOffer])
+    })
+    expect(output).not.toHaveProperty('reference')
+    expect(log.map((e) => e.reasonCode)).toEqual(['reference_no_offer'])
+  })
+
+  it('keeps the offer when a long email is cut to 12 blocks', async () => {
+    const long = reference({
+      sections: [
+        ...Array.from({ length: 14 }, () => ({
+          blockType: 'text',
+          height: 200
+        })),
+        { blockType: 'offer_banner', height: 120, purpose: 'offer' },
+        { blockType: 'footer', height: 200 }
+      ]
+    })
+    const { output } = await run({ mode: 'copy', load: loads([long]) })
+    expect(output.reference?.emailId).toBe('ref-1')
+    expect(output.layout.sections.length).toBeLessThanOrEqual(12)
+    expect(output.layout.sections.map((s) => s.family)).toContain(
+      'offer_banner'
+    )
+  })
+
   it('never copies more than an email’s 12 blocks', async () => {
     const long = reference({
       sections: [

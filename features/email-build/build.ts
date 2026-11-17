@@ -518,16 +518,7 @@ export async function sectionsStep(
       ...(planned.offer ? { offerCode: planned.offer.code } : {})
     }
   })
-  // DST-002b: Copy or Remix from the inbox email picked for it, else Scratch.
-  const chosen = await chooseReference(
-    planned,
-    store,
-    ctx,
-    (ctx.clock ?? Date.now)()
-  )
-  const sectionInput = {
-    mode: chosen?.saved.mode ?? ('scratch' as const),
-    ...(chosen ? { competitor: chosen.layout } : {}),
+  const base = {
     industry: store.industry,
     slot: {
       emailType: planned.emailType,
@@ -537,6 +528,19 @@ export async function sectionsStep(
     },
     allowed,
     library: seedVariants
+  }
+  // DST-002b: Copy or Remix from the inbox email picked for it, else Scratch.
+  const chosen = await chooseReference(
+    planned,
+    store,
+    ctx,
+    (ctx.clock ?? Date.now)(),
+    (competitor) => copyPlan({ ...base, mode: 'copy', competitor })
+  )
+  const sectionInput = {
+    mode: chosen?.saved.mode ?? ('scratch' as const),
+    ...(chosen ? { competitor: chosen.layout } : {}),
+    ...base
   }
   // REL-AI part 2: the Section planner when the agents are on (it checks,
   // retries and falls back to the safe plan itself, logged); else code. A
@@ -559,16 +563,16 @@ export async function sectionsStep(
           : codeSectionPlan(sectionInput)
   // Remix keeps its reference only when the planner remixed it: its own
   // safe layout is not a remix (D16, said in the run log).
-  const kept =
-    chosen && chosen.saved.mode === 'remix' && layout.source !== 'agent'
-      ? (await scratchNote(
-          ctx,
-          'remix',
-          'reference_remix_planner',
-          scratchWords.reference_remix_planner
-        ),
-        null)
-      : chosen
+  let kept = chosen
+  if (chosen?.saved.mode === 'remix' && layout.source !== 'agent') {
+    await scratchNote(
+      ctx,
+      'remix',
+      'reference_remix_planner',
+      scratchWords.reference_remix_planner
+    )
+    kept = null
+  }
   return {
     ok: true,
     output: {
@@ -1088,12 +1092,6 @@ async function scratchNote(
     .catch(() => undefined)
 }
 
-/** An email that shows an offer (or a section that stands in for one). */
-const showsOffer = (e: ReferenceEmail) =>
-  e.sections.some(
-    (s) => s.blockType === 'offer_banner' || s.purpose === 'offer'
-  )
-
 /**
  * DST-002b: the reference for a designed email the owner asked to copy or
  * remix, or null (from scratch) with the reason in the run log (D16).
@@ -1106,7 +1104,9 @@ async function chooseReference(
   planned: PlannedEmail,
   store: Store,
   ctx: BuildCtx,
-  now: number
+  now: number,
+  /** Copy's plan from a reference's layout (the step's own input). */
+  copyOf: (layout: ReturnType<typeof referenceDna>['layout']) => SectionPlan
 ): Promise<{
   saved: NonNullable<SectionsOutput['reference']>
   layout: ReturnType<typeof referenceDna>['layout']
@@ -1144,12 +1144,17 @@ async function chooseReference(
     { mode: want.mode, now, followed: loaded.followed }
   )
   if (!picks.length) return scratch('reference_none', reason)
-  const fit = picks.filter((p) =>
+  // Copy: an email with an offer keeps its offer, so the plan Copy would
+  // make from the reference must hold the offer's section. Remix: the
+  // reference needs an idea (its angle) to remix.
+  const pick = picks.find((p) =>
     want.mode === 'copy'
-      ? !planned.offer || showsOffer(p.email)
-      : !!p.email.angle
+      ? !planned.offer ||
+        copyOf(referenceDna(p.email).layout).sections.some(
+          (s) => s.family === 'offer_banner'
+        )
+      : !!p.email.angle?.trim()
   )
-  const pick = fit[0]
   if (!pick)
     return scratch(
       want.mode === 'copy' ? 'reference_no_offer' : 'reference_no_idea'

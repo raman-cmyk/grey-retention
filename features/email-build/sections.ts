@@ -156,8 +156,13 @@ export function copyPlan(input: SectionInput): SectionPlan {
       ]
   // The header code adds counts too: emails have at most `maxBlocks`
   // blocks, so the last content section before the footer gives way.
-  while (header.length + steps.length > maxBlocks && steps.length > 1) {
-    const [cut] = steps.splice(steps.length - 2, 1)
+  // The offer's section never gives way: the email's discount stays.
+  while (header.length + steps.length > maxBlocks) {
+    const at = steps.findLastIndex(
+      (s, i) => i < steps.length - 1 && s.type !== 'offer_banner'
+    )
+    if (at < 0) break
+    const [cut] = steps.splice(at, 1)
     dropped.push({
       index: cut.index ?? -1,
       section: cut.from,
