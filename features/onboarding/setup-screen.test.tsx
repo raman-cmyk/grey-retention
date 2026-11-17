@@ -68,7 +68,8 @@ function view(over: Partial<SetupView> = {}, r = records): SetupView {
       logo: 'https://cedarlane.example/logo.png',
       colors: ['#1f3a2b', '#f4efe6'],
       fonts: ['Lora'],
-      products: []
+      products: [],
+      catalogRead: false
     },
     reading: {
       signedUpAt: '2026-11-16T10:00:00Z',
@@ -186,13 +187,14 @@ describe('SetupScreen (UI-ONBb)', () => {
     expect(now).toHaveTextContent(', now')
   })
 
-  it('moves the focus to the new step’s title when the step changes', () => {
+  it('moves the focus to the new step’s title only when the step changes', () => {
     const { rerender } = render(
       <SetupScreen view={view({}, { ...records, domain: '' })} place="store" />
     )
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'Your store' })
-    ).toHaveFocus()
+    const store = screen.getByRole('heading', { level: 1, name: 'Your store' })
+    // The first time setup opens, nothing moves the focus.
+    expect(store).not.toHaveFocus()
+    expect(store).toHaveAttribute('tabindex', '-1')
     rerender(<SetupScreen view={view()} place="brand" />)
     expect(
       screen.getByRole('heading', { level: 1, name: 'Your brand' })
@@ -239,11 +241,71 @@ describe('the Brand step (UI-ONBc)', () => {
     expect(screen.queryByRole('button', { name: 'Confirm brand' })).toBeNull()
   })
 
+  it('waits for the website to be read before Confirm brand, in words', () => {
+    const waiting = view()
+    waiting.reading!.steps[0] = reader('site', 'waiting')
+    render(<SetupScreen view={waiting} place="brand" />)
+    expect(
+      screen.getByText('Reading your website. This can take a few minutes.')
+    ).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Confirm brand' })).toBeNull()
+    expect(
+      screen.queryByLabelText('How should your emails sound? (optional)')
+    ).toBeNull()
+    cleanup()
+    // A read that failed lets him confirm what there is.
+    const failed = view()
+    failed.reading!.steps[0] = reader('site', 'failed')
+    render(<SetupScreen view={failed} place="brand" />)
+    expect(screen.getByRole('button', { name: 'Confirm brand' })).toBeVisible()
+  })
+
+  it('keeps the form and what was found through a refresh', () => {
+    const { rerender } = render(<SetupScreen view={view()} place="brand" />)
+    const voice = screen.getByLabelText(
+      'How should your emails sound? (optional)'
+    )
+    fireEvent.change(voice, { target: { value: 'Warm and half typed' } })
+    // A refresh: the website is read again, and the found read fails.
+    const again = view({ found: null })
+    again.reading!.steps[0] = reader('site', 'working')
+    rerender(<SetupScreen view={again} place="brand" />)
+    expect(
+      screen.getByLabelText('How should your emails sound? (optional)')
+    ).toHaveValue('Warm and half typed')
+    expect(screen.getByText('Lora')).toBeVisible()
+    expect(screen.queryByText(/What we found could not be read/)).toBeNull()
+  })
+
+  it('says when the Klaviyo catalog was read and has no products', () => {
+    render(
+      <SetupScreen
+        view={view({
+          found: {
+            logo: null,
+            colors: [],
+            fonts: [],
+            products: [],
+            catalogRead: true
+          }
+        })}
+        place="brand"
+      />
+    )
+    expect(screen.getByText('No products found in Klaviyo yet.')).toBeVisible()
+  })
+
   it('says Not found for what was not found', () => {
     render(
       <SetupScreen
         view={view({
-          found: { logo: null, colors: [], fonts: [], products: [] }
+          found: {
+            logo: null,
+            colors: [],
+            fonts: [],
+            products: [],
+            catalogRead: false
+          }
         })}
         place="brand"
       />

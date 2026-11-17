@@ -17,6 +17,8 @@ export type BrandFound = {
   fonts: string[]
   /** Product titles, best sellers first, at most `maxProducts`. */
   products: string[]
+  /** The Klaviyo catalog was read (so no products means it has none). */
+  catalogRead: boolean
 }
 
 export const maxProducts = 4
@@ -73,6 +75,7 @@ export async function readBrandFound(
         : null,
     colors: (kit.data?.colors ?? []).filter((c) => hex.test(c)),
     fonts: (kit.data?.fonts ?? []).filter((f) => fontName.test(f)),
-    products
+    products,
+    catalogRead: !!status.data
   }
 }

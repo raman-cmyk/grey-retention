@@ -44,10 +44,28 @@ do $$ begin
   end if;
 end $$;
 
+-- A workspace made from now on gets its row at once, unfinished, so the
+-- app knows it goes through onboarding. Workspaces that existed before
+-- UI-ONBa have no row: they are not sent to setup (no existing data is
+-- written). The seeded demo workspaces are marked finished in seed.sql.
+create or replace function private.onboarding_steps_for_new_workspace()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  insert into public.onboarding_steps (tenant_id) values (new.id)
+    on conflict (tenant_id) do nothing;
+  return new;
+end $$;
+revoke all on function private.onboarding_steps_for_new_workspace() from public, anon, authenticated, service_role;
+create trigger onboarding_steps_for_new_workspace
+  after insert on public.tenants
+  for each row execute function private.onboarding_steps_for_new_workspace();
+
 -- Klaviyo counts for onboarding: connected, and when the connection is
 -- live, with its live key still active (a refused or deleted key does not
--- count). The sample connection counts here; with live keys switched on
--- (KLAVIYO_MODE=live, which only the app knows) the app also refuses it.
+-- count). The database does not enforce "live keys only": a sample
+-- connection, or a live one whose key was only format-checked, counts here
+-- (KLAVIYO_MODE is the app's), and the app's `finishSetup` re-checks it
+-- with the live-key rule before it calls this command.
 create or replace function private.onboarding_klaviyo_ready(t uuid)
 returns boolean language sql stable security definer set search_path = '' as $$
   select exists (
@@ -60,8 +78,8 @@ $$;
 revoke all on function private.onboarding_klaviyo_ready(uuid) from public, anon, authenticated, service_role;
 
 -- The owner saves a step: `brand` (confirms what was found on the saved
--- website; `site` is the website the owner was shown, and another one, a
--- change from another window, is a conflict), `rivals` (skips following a
+-- website; `site_shown`, needed, is the website the owner was shown, and
+-- another one, a change from another window, is a conflict), `rivals` (skips following a
 -- brand) or `finish`. Saving again is
 -- fine and keeps the first time; a finished workspace stays finished, so a
 -- retry of `finish` returns at once. A step whose record is missing is a
@@ -85,7 +103,10 @@ begin
     if site is null then
       raise exception 'Save your store first' using errcode = 'PT409', detail = 'store';
     end if;
-    if site_shown is not null and private.site_domain(site_shown) is distinct from site then
+    if site_shown is null then
+      raise exception 'The website shown is needed' using errcode = '23514';
+    end if;
+    if private.site_domain(site_shown) is distinct from site then
       raise exception 'The website changed' using errcode = 'PT409', detail = 'changed';
     end if;
     if s.brand_site is distinct from site then

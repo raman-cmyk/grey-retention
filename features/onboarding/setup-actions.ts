@@ -118,7 +118,7 @@ export async function saveStore(
       error:
         saved.error.code === '42501'
           ? ownerOnly
-          : saved.error.code === '40001'
+          : saved.error.code === 'PT409' || saved.error.code === '40001'
             ? 'Your store was changed in another window. Open setup again.'
             : 'We could not save your store. Nothing was changed. Try again.'
     }
@@ -180,7 +180,7 @@ export async function confirmBrand(
     if (words.error)
       return {
         error:
-          words.error.code === '40001'
+          words.error.code === 'PT409' || words.error.code === '40001'
             ? changedWebsite
             : 'We could not save this step. Try again.'
       }

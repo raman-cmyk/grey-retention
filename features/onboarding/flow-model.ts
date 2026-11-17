@@ -47,6 +47,11 @@ export type SetupRecords = {
   following: number
   rivalsSkipped: boolean
   finished: boolean
+  /**
+   * The workspace has its onboarding row: made after UI-ONBa. One from
+   * before has none and is never sent to setup.
+   */
+  tracked?: boolean
 }
 
 export type SetupFlow = {
@@ -55,6 +60,8 @@ export type SetupFlow = {
   current: number
   allDone: boolean
   finished: boolean
+  /** The workspace goes through onboarding (it has its row). */
+  tracked: boolean
 }
 
 const host = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/
@@ -124,7 +131,8 @@ export function setupFlow(records: SetupRecords): SetupFlow {
     steps,
     current: now === -1 ? steps.length : now,
     allDone: now === -1,
-    finished: records.finished
+    finished: records.finished,
+    tracked: records.tracked ?? false
   }
 }
 

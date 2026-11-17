@@ -167,6 +167,20 @@ describe('setup actions (UI-ONBb)', () => {
     expect(mocks.createClient).not.toHaveBeenCalled()
   })
 
+  it('says the store changed in another window for a stale save (PT409)', async () => {
+    mocks.createClient.mockResolvedValue(
+      database({ data: null, error: { code: 'PT409' } }).db
+    )
+    expect(
+      await saveStore(
+        {},
+        form({ name: 'Cedar Lane', website: 'cedarlane.example' })
+      )
+    ).toEqual({
+      error: 'Your store was changed in another window. Open setup again.'
+    })
+  })
+
   it('says plainly when the save is refused, and starts no reader', async () => {
     const { db } = database({ data: null, error: { code: '40001' } })
     mocks.createClient.mockResolvedValue(db)
@@ -282,6 +296,21 @@ describe('setup actions (UI-ONBb)', () => {
         form({ site: 'cedarlane.example', voice: 'x'.repeat(5001) })
       )
     ).toEqual({ fields: { voice: 'Keep it under 5000 characters.' } })
+  })
+
+  it('says the website changed when the brand save is stale (PT409)', async () => {
+    mocks.createClient.mockResolvedValue(
+      database({ data: null, error: { code: 'PT409' } }).db
+    )
+    expect(
+      await confirmBrand(
+        {},
+        form({ site: 'cedarlane.example', voice: 'New words' })
+      )
+    ).toEqual({
+      error:
+        'Your website was changed in another window. Look at what was found again.'
+    })
   })
 
   it('reads every reader again, the Klaviyo ones only once Klaviyo is connected', async () => {

@@ -137,7 +137,8 @@ export async function setupReadModel(
       maxDiscountSet: offers.maxDiscountPercent !== null,
       following: records.following,
       rivalsSkipped: !!marks?.rivals_skipped_at,
-      finished: !!marks?.finished_at
+      finished: !!marks?.finished_at,
+      tracked: !!marks
     }),
     brand: brand
       ? {
