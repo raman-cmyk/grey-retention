@@ -72,7 +72,7 @@ describe('the match score of a drawn section against its reference (DST-004b)', 
     expect(matchScore(busy, plain)).toBeLessThan(matchTarget)
   })
 
-  it('never counts what the photo shows: the brand’s own photo in the same place matches', () => {
+  it('never counts what a textured photo shows: the brand’s own in the same place matches', () => {
     // Textured photos, different in every cell (a seeded random walk).
     const photoOf = (seed: number) => {
       let n = seed
@@ -95,14 +95,60 @@ describe('the match score of a drawn section against its reference (DST-004b)', 
         `photo ${width * 100}% wide`
       ).toBeGreaterThanOrEqual(matchTarget)
     }
-    // A full-bleed photo with the headline over it.
-    const bleed = (photo: (x: number, y: number) => number) =>
-      paint(120, 120, (x, y) =>
-        y > 0.4 && y < 0.48 && x > 0.1 && x < 0.9 ? 250 : photo(x, y)
-      )
-    expect(
-      matchScore(bleed(photoOf(3)), bleed(photoOf(11)))
-    ).toBeGreaterThanOrEqual(matchTarget)
+  })
+
+  it('never counts what a smooth photo shows: a soft full-bleed photo, with the headline over it or not', () => {
+    // Soft photos (a wall, a sky): a few slow waves, each seed its own.
+    const smooth = (seed: number) => {
+      let n = seed
+      const next = () => (n = (n * 16807) % 2147483647) / 2147483647
+      const waves = Array.from({ length: 4 }, () => [
+        next(),
+        next(),
+        next() * 6.28,
+        next() * 40
+      ])
+      return (x: number, y: number) =>
+        Math.max(
+          0,
+          Math.min(
+            255,
+            120 +
+              waves.reduce(
+                (a, [fx, fy, ph, am]) =>
+                  a + am! * Math.sin(fx! * x * 6.28 + fy! * y * 6.28 + ph!),
+                0
+              )
+          )
+        )
+    }
+    const headline = (x: number, y: number) =>
+      y > 0.4 && y < 0.48 && x > 0.1 && x < 0.9
+    for (let seed = 1; seed <= 12; seed++) {
+      const drawn = smooth(seed + 500)
+      const reference = smooth(seed)
+      expect(
+        matchScore(paint(120, 120, drawn), paint(120, 120, reference)),
+        `seed ${seed}`
+      ).toBeGreaterThanOrEqual(matchTarget)
+      expect(
+        matchScore(
+          paint(120, 120, (x, y) => (headline(x, y) ? 250 : drawn(x, y))),
+          paint(120, 120, (x, y) => (headline(x, y) ? 250 : reference(x, y)))
+        ),
+        `seed ${seed} with its headline`
+      ).toBeGreaterThanOrEqual(matchTarget)
+    }
+  })
+
+  it('is low for a photo that fills a section whose reference has a flat background', () => {
+    const half = paint(120, 120, (x, y) =>
+      x < 0.5 && y > 0.1 && y < 0.9 ? 60 + ((x * 400) % 120) : hero(x, y)
+    )
+    const filled = paint(120, 120, (x, y) => 40 + ((x * 300 + y * 200) % 150))
+    expect(matchScore(filled, half)).toBeLessThan(matchTarget)
+    // And the other way round: a flat picture for a full-bleed photo.
+    expect(matchScore(half, filled)).toBeLessThan(matchTarget)
   })
 
   it('is low when the content sits elsewhere, at the same brightness', () => {

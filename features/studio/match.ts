@@ -105,16 +105,21 @@ const reach = 1
 const band = 16
 /** A background is real when this share of the cells is at its level. */
 const realGround = 0.25
-/** How close to the background level a flat background's cells are. */
-const flatStep = 10
+/**
+ * How close to the background level a flat background's cells are: a
+ * drawn flat colour stays within a level or two once made smaller; a
+ * smooth photo (a soft wall, a sky) does not.
+ */
+const flatStep = 2
+/** One picture with a flat background, the other filled: about half alike. */
+const mixedGround = 0.6
 
 /**
  * The picture’s background level: the grey level most of its edge cells
  * share (the band holding the most of them, then the middle value inside
  * it), and whether it is a real background (a quarter of all the cells
- * within `flatStep` of its level, as a flat colour is). A photo spreads
- * over many levels; a section's background is one. A section the photo
- * fills has none, so its tone is not compared.
+ * within `flatStep` of its level, as a flat colour is). A photo spreads over many levels; a section's background
+ * is one. A section the photo fills has none, so its tone is not compared.
  */
 function backgroundOf(values: readonly number[], w: number, h: number) {
   const bands = new Map<number, number[]>()
@@ -140,14 +145,17 @@ function backgroundOf(values: readonly number[], w: number, h: number) {
  * Where the picture has content (a photo, words, a shape): a cell that
  * stands out from the background, or has texture (its neighbours differ
  * from it), is 1, else 0; then each is spread over its neighbours
- * (`reach`), so a small move costs a little, not everything. What the
- * content looks like inside (the photo) never counts.
+ * (`reach`), so a small move costs a little, not everything. A picture
+ * with no flat background (a photo fills it) is content everywhere. What
+ * the content looks like inside (the photo) never counts.
  */
 function contentMap(values: readonly number[], w: number, h: number) {
   const bg = backgroundOf(values, w, h)
   const ground = bg.level
   const at = (x: number, y: number) => values[y * w + x]!
   const solid: number[] = []
+  // No flat background: the content fills it all.
+  if (!bg.real) return { ground, real: false, spread: values.map(() => 1) }
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
       const v = at(x, y)
@@ -187,7 +195,8 @@ function contentMap(values: readonly number[], w: number, h: number) {
  * How much two pictures of the same size share their layout, 0 to 1:
  * where their content sits (the weighted overlap of their content maps;
  * two empty pictures share it fully), times how close their backgrounds
- * are (a light background against a dark one shares nothing).
+ * are: a light background against a dark one shares nothing, and a flat
+ * background against a picture a photo fills about half (`mixedGround`).
  */
 export function layoutShare(
   a: readonly number[],
@@ -208,7 +217,9 @@ export function layoutShare(
   const tone =
     ma.real && mb.real
       ? 1 - Math.min(1, (2 * Math.abs(ma.ground - mb.ground)) / 255)
-      : 1
+      : ma.real || mb.real
+        ? mixedGround
+        : 1
   return overlap * tone
 }
 
