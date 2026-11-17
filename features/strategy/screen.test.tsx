@@ -153,6 +153,13 @@ describe('the Plan screen (UI-PLAN-b)', () => {
     expect(
       screen.getByRole('button', { name: 'Try again' })
     ).toBeInTheDocument()
+    // A new try may be made another way (DST-002b).
+    expect(
+      screen
+        .getByRole('button', { name: 'Try again' })
+        .closest('form')
+        ?.querySelector('select[name="mode"]')
+    ).not.toBeNull()
   })
 
   it('lets the owner pick the offers, and tells staff only the owner can', () => {
@@ -231,6 +238,7 @@ describe('the Plan screen (UI-PLAN-b)', () => {
   it('shows staff the plan without any button the server would refuse', () => {
     render(<PlanScreen view={planScreen(run(), { owner: false })} />)
     expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.queryByRole('combobox')).toBeNull()
     expect(
       within(screen.getByRole('list', { name: 'The emails' })).getAllByRole(
         'listitem'
@@ -319,6 +327,10 @@ describe('the Plan screen (UI-PLAN-b)', () => {
     expect(pick).not.toBeNull()
     expect(pick.value).toBe('scratch')
     expect(pick.getAttribute('aria-label')).toMatch(/^How to make /)
+    // A real label, seen as well as heard.
+    expect(designed.querySelector(`label[for="${pick.id}"]`)?.textContent).toBe(
+      'How to make it'
+    )
     expect([...pick.options].map((o) => [o.value, o.text])).toEqual([
       ['scratch', 'From scratch'],
       ['copy', 'Copy an inspiration email'],

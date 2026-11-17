@@ -254,7 +254,9 @@ function EmailEnd({ email: e, runId }: { email: PlanEmail; runId: string }) {
         kind={e.next ? 'main' : 'outline'}
         fields={{ run: runId, slot: String(e.slot) }}
       >
-        {e.format === 'designed' ? <ModePick title={e.title} /> : null}
+        {e.format === 'designed' ? (
+          <ModePick slot={e.slot} title={e.title} />
+        ) : null}
       </ActionButton>
     )
   if (action?.kind === 'open' && e.status.kind !== 'working')

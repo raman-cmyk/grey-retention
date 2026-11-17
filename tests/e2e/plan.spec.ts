@@ -62,13 +62,16 @@ test('UI-PLAN-b owner plans the next 15 days, picks an offer and creates an emai
 
   // Create email on the next planned email builds it and puts it into
   // Klaviyo as a draft (the fake pusher: a sample draft, never In Klaviyo).
-  // DST-002b: the owner asks to copy an inspiration email. The sample store
-  // has no tagged inspiration emails, so it is made from scratch and says so.
-  await emails
-    .getByRole('combobox', { name: /^How to make / })
+  // DST-002b: the owner asks to copy an inspiration email, on the first
+  // designed email (the one with the choice), and creates that one.
+  const designed = emails
+    .getByRole('listitem')
+    .filter({ has: page.getByRole('combobox') })
     .first()
+  await designed
+    .getByRole('combobox', { name: /^How to make / })
     .selectOption('copy')
-  await emails.getByRole('button', { name: 'Create email' }).first().click()
+  await designed.getByRole('button', { name: 'Create email' }).click()
   await expect(
     emails.getByText(/Sample draft, not in Klaviyo/).first()
   ).toBeVisible({ timeout: 30_000 })
