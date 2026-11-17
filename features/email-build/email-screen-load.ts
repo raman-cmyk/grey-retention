@@ -36,7 +36,7 @@ export async function loadEmailScreen(
   const build = await db
     .from('email_builds')
     .select(
-      'id,run_id,slot,state,step,email,klaviyo_campaign_id,sample_draft,error_code,push_key'
+      'id,run_id,slot,state,step,email,klaviyo_campaign_id,sample_draft,error_code,push_key,referenceReason:progress->sections->reference->>reason'
     )
     .eq('tenant_id', tenantId)
     .eq('id', buildId)
@@ -94,7 +94,12 @@ export async function loadEmailScreen(
         format: slotFormat(run.data?.plan ?? null, row.slot),
         klaviyoCampaignId: row.klaviyo_campaign_id,
         sampleDraft: row.sample_draft,
-        reason: row.state === 'failed' ? buildReason(row.error_code) : null
+        reason: row.state === 'failed' ? buildReason(row.error_code) : null,
+        // DST-002b: one short line of the owner's words, never more.
+        referenceReason:
+          typeof row.referenceReason === 'string'
+            ? row.referenceReason.slice(0, 600)
+            : null
       },
       log
     )
