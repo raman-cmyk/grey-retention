@@ -374,6 +374,28 @@ describe('the fix loop', () => {
     expect(plain.draft.subject.length).toBeLessThanOrEqual(60)
   })
 
+  it('never refuses plain copy for a phrase the owner takes out: code’s own words (PIC-29 part 2c)', async () => {
+    const locked = await lock()
+    const first = assembleLockedPlain(locked.input, brand, sectionsOf(locked))
+    expect(first.status).toBe('ready')
+    if (first.status !== 'ready') return
+    // Two words the plain copy itself uses, learned as never used.
+    const used = first.draft.preheader
+      .toLowerCase()
+      .replace(/[^a-z' ]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 1)
+      .slice(0, 2)
+      .join(' ')
+    expect(used.split(' ')).toHaveLength(2)
+    const plain = assembleLockedPlain(
+      { ...locked.input, neverWords: [used] },
+      brand,
+      sectionsOf(locked)
+    )
+    expect(plain.status).toBe('ready')
+  })
+
   it('goes plain at once with the fake writer or no allowance, and says why', async () => {
     const locked = await lock()
     const fake = vi.fn<RunAi>(async () => ({

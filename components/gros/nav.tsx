@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { MessageCircle, Settings } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
+import { Card } from './card'
 import { grosRoot } from './font'
 import { Mark } from './mark'
 
@@ -21,7 +22,7 @@ export const navItems = [
   { key: 'plan', label: 'Plan', href: '/plan' },
   { key: 'inspiration', label: 'Inspiration', href: '/library/inspirations' },
   { key: 'audiences', label: 'Audiences', href: null },
-  { key: 'results', label: 'Results', href: '/reports' }
+  { key: 'results', label: 'Results', href: '/results' }
 ] as const satisfies readonly {
   key: string
   label: string
@@ -133,6 +134,41 @@ export function AppPage({
         >
           {children}
         </main>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A GROS page while its data is read (a route's `loading.tsx`): the bar at
+ * once and one card saying what opens. It draws no `<main>` and no skip
+ * link: while the page streams in, Next keeps the page hidden beside this
+ * fallback, and the page alone holds the one `main#main-content` (two
+ * would confuse screen readers and the browser tests).
+ */
+export function LoadingPage({
+  current,
+  title,
+  words,
+  assistant
+}: {
+  current?: NavPlace
+  title: string
+  /** What is opening, in the owner's words: "Opening Home". */
+  words: string
+  assistant?: string
+}) {
+  return (
+    <div className={grosRoot('min-h-dvh')}>
+      <div className="mx-auto w-full max-w-[calc(var(--page-max)+var(--space-6)*2)] px-[var(--space-6)] pb-[var(--space-12)]">
+        <TopBar current={current} title={title} assistant={assistant} />
+        <div aria-busy="true" className="flex flex-col gap-[var(--space-5)]">
+          <Card>
+            <p aria-live="polite" className="type-heading">
+              {words}
+            </p>
+          </Card>
+        </div>
       </div>
     </div>
   )

@@ -23,6 +23,7 @@ import {
   writerGuide,
   writerRules,
   customerWordsRules,
+  neverWordsRules,
   writtenSchema,
   type Assembled,
   type CopyFeedback,
@@ -218,6 +219,7 @@ export function fixedWriterRequest(
     }),
     ...writerRules,
     ...customerWordsRules(input),
+    ...neverWordsRules(input),
     ...(keepAngle
       ? [`${strategyRule} Keep that structure, in the client's own voice.`]
       : []),

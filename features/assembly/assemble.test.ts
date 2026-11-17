@@ -23,6 +23,10 @@ import {
   maxWriterPhrases,
   maxWriterPhraseLength,
   maxSubjectIdeas,
+  maxWriterNeverWords,
+  neverWordsKey,
+  neverWordsRule,
+  wordProblems,
   subjectIdeasOf,
   writtenSchema,
   type RunAi
@@ -1096,5 +1100,67 @@ describe('the subject ideas (PIC-26 part 2)', () => {
       '15% off the balm',
       'Ready for winter?'
     ])
+  })
+})
+
+describe('the phrases the owner takes out (PIC-29 part 2c)', () => {
+  it('gives the writer the first ones with their rule, never in the instructions', () => {
+    const neverWords = [
+      'truly amazing',
+      'x',
+      ...Array.from({ length: 25 }, (_, i) => `word ${i}`)
+    ]
+    const request = writerRequest(input({ neverWords }), [
+      'header_logo',
+      'text',
+      'footer'
+    ])
+    expect(request.system).toContain(neverWordsRule)
+    expect(request.system).not.toContain('truly amazing')
+    const data = JSON.parse(request.user.replace(/^Data \(JSON\): /, ''))
+    expect(data[neverWordsKey]).toHaveLength(maxWriterNeverWords)
+    expect(data[neverWordsKey][0]).toBe('truly amazing')
+    const none = writerRequest(input(), ['header_logo', 'text', 'footer'])
+    expect(none.user).not.toContain(neverWordsKey)
+    expect(none.system).not.toContain(neverWordsRule)
+  })
+
+  it('sends the writer’s own words back for one, either apostrophe, never for a product’s title', () => {
+    const printed = (subject: string, text = 'Warm nights.') => ({
+      subject,
+      preheader: 'For cold evenings.',
+      blocks: [{ type: 'text', words: { body: text } }]
+    })
+    const withWords = input({ neverWords: ['truly amazing', "it's magic"] })
+    const placed = { productIds: [], offerShown: false }
+    const problems = (subject: string, text?: string) =>
+      wordProblems(printed(subject, text) as never, withWords, placed).map(
+        (p) => p.reason
+      )
+    expect(problems('A Truly Amazing candle')).toEqual([
+      '"truly amazing" is a phrase the owner takes out of these emails: use other words.'
+    ])
+    expect(problems('Our candle', 'It’s magic on a cold night.')).toEqual([
+      '"it\'s magic" is a phrase the owner takes out of these emails: use other words.'
+    ])
+    expect(problems('Truly amazingly warm')).toEqual([])
+    expect(
+      wordProblems(printed('A truly amazing candle') as never, input(), placed)
+    ).toEqual([])
+  })
+
+  it('sends a live writer’s draft back through the engine, never the sample writer’s', async () => {
+    const learned = news({ neverWords: ['hello there'] })
+    const rewrite = await build(learned, live(said(['Hello there.'])))
+    expect(rewrite.status).toBe('rewrite')
+    expect(reasons(rewrite)).toContain(
+      '"hello there" is a phrase the owner takes out of these emails: use other words.'
+    )
+    // The sample writer's words are code's own: no throw, still a sample.
+    const fake = await build(
+      { ...input(), neverWords: ['meet the', 'picked for you'] },
+      sample
+    )
+    expect(fake.status).toBe('sample')
   })
 })
