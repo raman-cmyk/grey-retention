@@ -11,10 +11,12 @@ import {
   pageTimeoutMs,
   type SiteFetcher
 } from './fetch'
+import type { SiteFont } from './fonts'
 import { logoCandidates, logoTone, pickLogos } from './logos'
 import { pagesToRead, readPage, type ReadPage } from './pages'
 import { photoKey, sitePhotos, type SitePhoto } from './photos'
 import { readSitePage } from './reader'
+import { mergeSiteFonts, pageFonts, sheetReader } from './site-fonts'
 
 type Db = SupabaseClient<Database>
 type Job = Database['public']['Tables']['job_runs']['Row']
@@ -42,6 +44,8 @@ export type SiteRun = {
   logos?: { onLight: boolean; onDark: boolean }
   /** How many photos were kept (ONB-059b); absent when none were looked for. */
   photos?: number
+  /** How many font families were kept (FONT-b); absent when none were looked for. */
+  fonts?: number
 }
 
 export type PickedLogos = { onLight: string | null; onDark: string | null }
@@ -49,8 +53,8 @@ export type PickedLogos = { onLight: string | null; onDark: string | null }
 /** Most photos kept for a site (the database keeps no more). */
 export const maxSitePhotos = 200
 /**
- * Largest page read for its photos: the parser is slow on huge pages, and
- * its work cannot be cut off once started.
+ * Largest page read for its photos and fonts: the parser is slow on huge
+ * pages, and its work cannot be cut off once started.
  */
 const maxPhotoPage = 1_000_000
 
@@ -158,7 +162,9 @@ const maxUrl = 500
  * all, is logged and skipped (D16). When no page could be read, nothing
  * earlier is replaced. A live read also keeps the logos of the home page
  * (ONB-060b, `record_site_logos`, before the findings); logos that cannot
- * be kept are logged, and the emails show the brand's name instead.
+ * be kept are logged, and the emails show the brand's name instead. It
+ * also keeps the photos (ONB-059b) and the fonts (FONT-b, with the
+ * stylesheets the pages link) of every page read.
  */
 export async function readBrandSite(
   db: Db,
@@ -260,6 +266,23 @@ export async function readBrandSite(
       })
     }
   }
+  // Each live page's fonts, in page order (FONT-b): read with the
+  // stylesheets it links while its facts are asked for; under the photos'
+  // limits, and no further read of a page after the deadline.
+  const stylesheet = fetcher.stylesheet?.bind(fetcher)
+  const sheets =
+    fetcher.live && stylesheet
+      ? sheetReader(stylesheet, { now, deadline })
+      : null
+  const fontPages: Promise<SiteFont[] | null>[] = []
+  const fontsOf = (n: number, page: { html: string; url: string }) => {
+    if (
+      sheets &&
+      page.html.length <= maxPhotoPage &&
+      now() + callMs <= deadline
+    )
+      fontPages[n] = pageFonts(page, sheets, () => now() > deadline)
+  }
   const home = homeUrl(domain)
   if (!home) skip(`https://${domain || 'unknown'}/`, 'home', 'no_domain')
   else if (!ask) skip(home, 'home', 'no_model')
@@ -269,6 +292,7 @@ export async function readBrandSite(
     else {
       const homePage = readPage(first.html, first.url, 'home')
       photosOf(0, first, 'home')
+      fontsOf(0, first)
       // The logos are looked for while the other pages are read.
       const picture = fetcher.picture?.bind(fetcher)
       if (fetcher.live && picture)
@@ -294,6 +318,7 @@ export async function readBrandSite(
         const fetched = await fetcher.fetch(target.url)
         if (!fetched.ok) return { ...target, reason: fetched.failure }
         photosOf(n + 1, fetched, target.kind)
+        fontsOf(n + 1, fetched)
         const outcome = await read(
           readPage(fetched.html, fetched.url, target.kind),
           n + 1
@@ -367,6 +392,22 @@ export async function readBrandSite(
     // False: a newer read of the site already kept its own.
     else if (kept.data === true) run.photos = photos.length
   }
+  const pageFontsFound = await Promise.all(fontPages)
+  // None: no page could be read with its stylesheets, so the fonts kept
+  // earlier stay (as the logos do), never a weaker list.
+  if (pageFontsFound.some((f) => f)) {
+    // One set for the site: each family once, heading fonts first.
+    const fonts = mergeSiteFonts(pageFontsFound)
+    const kept = await db.rpc('record_site_fonts', {
+      job: job.id,
+      lease: job.lease_token!,
+      fonts: fonts as unknown as Json
+    })
+    if (kept.error)
+      logger.warn('Site fonts not kept', { code: kept.error.code })
+    // False: a newer read of the site already kept its own.
+    else if (kept.data === true) run.fonts = fonts.length
+  }
   const recorded = await db.rpc('record_site_findings', {
     job: job.id,
     lease: job.lease_token!,
@@ -391,7 +432,8 @@ export async function readBrandSite(
     live: run.live,
     logoOnLight: run.logos?.onLight ?? null,
     logoOnDark: run.logos?.onDark ?? null,
-    photos: run.photos ?? null
+    photos: run.photos ?? null,
+    fonts: run.fonts ?? null
   })
   return run
 }
