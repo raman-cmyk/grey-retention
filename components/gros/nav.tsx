@@ -21,7 +21,7 @@ export const navItems = [
   { key: 'plan', label: 'Plan', href: '/plan' },
   { key: 'inspiration', label: 'Inspiration', href: '/inspiration' },
   { key: 'audiences', label: 'Audiences', href: null },
-  { key: 'results', label: 'Results', href: '/reports' }
+  { key: 'results', label: 'Results', href: '/results' }
 ] as const satisfies readonly {
   key: string
   label: string

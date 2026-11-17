@@ -6,11 +6,9 @@ test('workspace sidebar, account menu and mobile drawer work with keyboard and s
 }, info) => {
   await login(page)
   // Sign-in lands on Home (the GROS top bar); the old shell is on the
-  // screens not rebuilt yet, such as the plan.
-  await page.goto('/plan')
-  await expect(
-    page.getByRole('heading', { name: 'Plan next 15 days', level: 1 })
-  ).toBeVisible()
+  // screens not rebuilt yet, such as Brand & Store.
+  await page.goto('/brand')
+  await expect(page).toHaveTitle(/Brand Intelligence/)
   const mobile = info.project.name === 'mobile-chromium'
 
   if (!mobile) {
@@ -23,7 +21,7 @@ test('workspace sidebar, account menu and mobile drawer work with keyboard and s
       name: 'Client workspace navigation'
     })
     await expect(
-      nav.getByRole('link', { name: 'Plan next 15 days', exact: true })
+      nav.getByRole('link', { name: 'Brand & Store', exact: true })
     ).toHaveAttribute('aria-current', 'page')
     const agents = nav.getByRole('button', { name: 'Agents', exact: true })
     await agents.click()
@@ -37,14 +35,12 @@ test('workspace sidebar, account menu and mobile drawer work with keyboard and s
     await page.reload()
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')
     const rail = page.getByRole('link', {
-      name: 'Plan next 15 days',
+      name: 'Brand & Store',
       exact: true
     })
     await expect(rail).toHaveAttribute('aria-current', 'page')
     await rail.hover()
-    await expect(page.getByTestId('rail-tooltip')).toHaveText(
-      'Plan next 15 days'
-    )
+    await expect(page.getByTestId('rail-tooltip')).toHaveText('Brand & Store')
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-expanded', 'true')
     // The open Agents group survived the reload.
