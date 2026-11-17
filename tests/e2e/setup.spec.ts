@@ -1,6 +1,11 @@
+import { randomBytes } from 'node:crypto'
 import { expect, test } from '@playwright/test'
 import { login } from './accounts'
 import { newOwner } from './new-owner'
+
+// A made-up key in the private key's format: sample mode checks the format only.
+const sampleKey = () =>
+  `pk_${randomBytes(24).toString('base64url').replace(/[-_]/g, 'x').slice(0, 30)}`
 
 const noSidewaysScroll = () =>
   document.documentElement.scrollWidth <= innerWidth
@@ -61,6 +66,31 @@ test('UI-ONBb a new owner saves the store and comes back to the step that is Now
     page.getByRole('heading', { level: 1, name: 'Connect Klaviyo' })
   ).toBeVisible()
   await expect(steps.getByRole('link')).toHaveCount(2)
+
+  // UI-ONBd: a wrong key is said under its field; the sample key connects.
+  await page.getByLabel('Private API key').fill('not a key')
+  await page.getByRole('button', { name: 'Connect Klaviyo' }).click()
+  await expect(
+    page.getByText('That is not a Klaviyo private API key', { exact: false })
+  ).toBeVisible()
+  await expect(page.getByLabel('Private API key')).toHaveValue('')
+  await page.getByLabel('Private API key').fill(sampleKey())
+  await page.getByRole('button', { name: 'Connect Klaviyo' }).click()
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Your discount' })
+  ).toBeVisible()
+
+  // An optional code stays on the step; the biggest discount ends it.
+  await page.getByLabel('Code', { exact: true }).fill('WELCOME10')
+  await page.getByLabel('Percent off', { exact: true }).fill('10')
+  await page.getByRole('button', { name: 'Add code' }).click()
+  await expect(page.getByText('10% off · No end date')).toBeVisible()
+  await page.getByLabel('Biggest discount, in percent').fill('20')
+  await page.getByRole('button', { name: 'Save discount' }).click()
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Your rivals' })
+  ).toBeVisible()
+  await expect(steps.getByRole('link')).toHaveCount(4)
 })
 
 test('UI-ONBb staff see where setup is, with no buttons', async ({ page }) => {

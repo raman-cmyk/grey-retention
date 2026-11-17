@@ -8,6 +8,11 @@ const mocks = vi.hoisted(() => ({
   site: vi.fn(),
   ads: vi.fn(),
   reviews: vi.fn(),
+  catalog: vi.fn(),
+  history: vi.fn(),
+  connectKlaviyo: vi.fn(),
+  saveMaxDiscount: vi.fn(),
+  addDiscountCode: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn((to: string) => {
     throw Object.assign(new Error('NEXT_REDIRECT'), { to })
@@ -23,10 +28,26 @@ vi.mock('@/lib/env/server', () => ({
 vi.mock('./site/start', () => ({ startSiteReading: mocks.site }))
 vi.mock('./ads/start', () => ({ startAdsReading: mocks.ads }))
 vi.mock('./reviews/start', () => ({ startReviewsReading: mocks.reviews }))
+vi.mock('./catalog/start', () => ({ startCatalogReading: mocks.catalog }))
+vi.mock('./history/start', () => ({ startHistoryReading: mocks.history }))
+vi.mock('@/features/connections/actions', () => ({
+  connectKlaviyo: mocks.connectKlaviyo
+}))
+vi.mock('@/features/offers/actions', () => ({
+  saveMaxDiscount: mocks.saveMaxDiscount,
+  addDiscountCode: mocks.addDiscountCode
+}))
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }))
 
-import { confirmBrand, readStoreAgain, saveStore } from './setup-actions'
+import {
+  addSetupCode,
+  confirmBrand,
+  connectSetupKlaviyo,
+  readStoreAgain,
+  saveSetupDiscount,
+  saveStore
+} from './setup-actions'
 
 const owner = { tenantId: 'tenant-1', tenantRole: 'owner' }
 type Answer = { data: unknown; error: unknown }
@@ -141,8 +162,20 @@ describe('setup actions (UI-ONBb)', () => {
       ).toEqual(answer)
       expect(await confirmBrand()).toEqual(answer)
       expect(await readStoreAgain()).toEqual(answer)
+      expect(await connectSetupKlaviyo({}, form({ apiKey: 'pk_x' }))).toEqual(
+        answer
+      )
+      expect(await saveSetupDiscount({}, form({ percent: '20' }))).toEqual(
+        answer
+      )
+      expect(await addSetupCode({}, form({ code: 'WELCOME10' }))).toEqual(
+        answer
+      )
     }
     expect(mocks.createClient).not.toHaveBeenCalled()
+    expect(mocks.connectKlaviyo).not.toHaveBeenCalled()
+    expect(mocks.saveMaxDiscount).not.toHaveBeenCalled()
+    expect(mocks.addDiscountCode).not.toHaveBeenCalled()
   })
 
   it('says plainly when the save is refused, and starts no reader', async () => {
@@ -195,6 +228,52 @@ describe('setup actions (UI-ONBb)', () => {
     mocks.ads.mockResolvedValue({ ok: false, code: 'unavailable' })
     expect(await readStoreAgain()).toEqual({
       error: 'We could not start reading your store. Try again in a minute.'
+    })
+  })
+
+  it('connects Klaviyo with the Klaviyo card’s action, then reads the catalog and history', async () => {
+    const { db } = database()
+    mocks.createClient.mockResolvedValue(db)
+    mocks.connectKlaviyo.mockResolvedValue({ message: 'Klaviyo connected.' })
+    const key = form({ apiKey: 'pk_sample_key' })
+    expect(await redirected(connectSetupKlaviyo({}, key))).toBe('/setup')
+    expect(mocks.connectKlaviyo).toHaveBeenCalledWith({}, key)
+    expect(mocks.catalog).toHaveBeenCalledWith(db, 'tenant-1')
+    expect(mocks.history).toHaveBeenCalledWith(db, 'tenant-1')
+    mocks.connectKlaviyo.mockResolvedValue({
+      error: 'That is not a Klaviyo private key.'
+    })
+    expect(await connectSetupKlaviyo({}, key)).toEqual({
+      fields: { apiKey: 'That is not a Klaviyo private key.' }
+    })
+  })
+
+  it('saves the biggest discount with the Settings action, its refusal under the field', async () => {
+    mocks.createClient.mockResolvedValue(database().db)
+    mocks.saveMaxDiscount.mockResolvedValue({ message: 'Saved.' })
+    const discount = form({ percent: '20', revision: '0' })
+    expect(await redirected(saveSetupDiscount({}, discount))).toBe('/setup')
+    expect(mocks.saveMaxDiscount).toHaveBeenCalledWith({}, discount)
+    mocks.saveMaxDiscount.mockResolvedValue({
+      error: 'Enter a whole number from 0 to 100.'
+    })
+    expect(await saveSetupDiscount({}, discount)).toEqual({
+      fields: { percent: 'Enter a whole number from 0 to 100.' }
+    })
+  })
+
+  it('adds a code with the Settings action and stays on the step', async () => {
+    mocks.createClient.mockResolvedValue(database().db)
+    mocks.addDiscountCode.mockResolvedValue({ message: 'Added WELCOME10.' })
+    expect(await addSetupCode({}, form({ code: 'WELCOME10' }))).toEqual({
+      message: 'Added WELCOME10.'
+    })
+    expect(mocks.redirect).not.toHaveBeenCalled()
+    mocks.addDiscountCode.mockResolvedValue({
+      error: 'WELCOME10 is already in your list.'
+    })
+    expect(await addSetupCode({}, form({ code: 'WELCOME10' }))).toEqual({
+      error: 'WELCOME10 is already in your list.'
     })
   })
 })

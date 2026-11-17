@@ -36,6 +36,8 @@ export type SetupView = {
   owner: boolean
   /** The workspace's name: the store's name until one is saved. */
   workspaceName: string
+  /** The store's timezone, for dates (a code's end). */
+  timezone: string
   flow: SetupFlow | null
   /** The brand as saved, with its revision for the next save. */
   brand: { name: string; domain: string; revision: number } | null
@@ -94,6 +96,7 @@ export async function setupReadModel(
     state: 'unreadable',
     owner: context.tenantRole === 'owner',
     workspaceName: context.tenantName,
+    timezone: context.timezone,
     flow: null,
     brand: null,
     klaviyo: null,

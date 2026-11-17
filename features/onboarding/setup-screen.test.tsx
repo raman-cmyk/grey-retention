@@ -38,6 +38,7 @@ function view(over: Partial<SetupView> = {}, r = records): SetupView {
     state: 'ready',
     owner: true,
     workspaceName: 'Cedar Lane studio',
+    timezone: 'America/New_York',
     flow: setupFlow(r),
     brand: { name: 'Cedar Lane', domain: 'cedarlane.example', revision: 2 },
     klaviyo: null,

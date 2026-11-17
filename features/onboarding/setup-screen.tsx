@@ -1,15 +1,16 @@
 import type { Route } from 'next'
-import type { ReactNode } from 'react'
 import { ActionButton } from '@/components/gros/action'
 import { ButtonLink } from '@/components/gros/button'
 import { Progress, type ProgressStep } from '@/components/gros/progress'
 import { FocusShell, StepCards } from '@/components/gros/steps'
 import type { SetupView } from './flow'
-import type { SetupPlace, SetupStepKey } from './flow-model'
+import type { SetupPlace } from './flow-model'
 import type { StepKey, StepState } from './progress'
 import { confirmBrand, readStoreAgain, saveStore } from './setup-actions'
 import { SetupError } from './setup-error'
-import { StoreForm } from './setup-form'
+import { SetupForm } from './setup-form'
+import { Facts, OwnerOnly, setupPath, Title } from './setup-parts'
+import { DiscountStep, KlaviyoStep } from './setup-steps'
 
 /**
  * Onboarding (UI-ONBb) on the GROS focused shell: the lime panel shows the
@@ -17,6 +18,8 @@ import { StoreForm } from './setup-form'
  * side the step that is open, with one title and one main button. Only
  * the owner gets the buttons; staff see where setup is.
  */
+export { setupPath }
+
 export function SetupScreen({
   view,
   place
@@ -55,25 +58,14 @@ export function SetupScreen({
         <StoreStep view={view} />
       ) : place === 'brand' ? (
         <BrandStep view={view} />
+      ) : place === 'klaviyo' ? (
+        <KlaviyoStep view={view} />
+      ) : place === 'discount' ? (
+        <DiscountStep view={view} />
       ) : (
         <LaterStep place={place} />
       )}
     </FocusShell>
-  )
-}
-
-export const setupPath = (step?: SetupStepKey) =>
-  (step ? `/setup?step=${step}` : '/setup') as Route
-
-function Title({ text }: { text: string }) {
-  return <h1 className="type-title">{text}</h1>
-}
-
-function OwnerOnly() {
-  return (
-    <p className="type-body text-[var(--stone)]">
-      Only the workspace owner can change this.
-    </p>
   )
 }
 
@@ -82,10 +74,29 @@ function StoreStep({ view }: { view: SetupView }) {
     <>
       <Title text="Your store" />
       {view.owner ? (
-        <StoreForm
+        <SetupForm
           action={saveStore}
-          name={view.brand?.name || view.workspaceName}
-          website={view.brand?.domain ?? ''}
+          label="Save store"
+          fields={[
+            {
+              name: 'name',
+              label: 'Store name',
+              defaultValue: view.brand?.name || view.workspaceName,
+              autoComplete: 'organization',
+              maxLength: 120,
+              required: true
+            },
+            {
+              name: 'website',
+              label: 'Website',
+              defaultValue: view.brand?.domain ?? '',
+              inputMode: 'url',
+              autoComplete: 'url',
+              spellCheck: false,
+              maxLength: 300,
+              required: true
+            }
+          ]}
         />
       ) : (
         <>
@@ -99,23 +110,6 @@ function StoreStep({ view }: { view: SetupView }) {
         </>
       )}
     </>
-  )
-}
-
-/** Small mist boxes inside the white shell, a label over each value. */
-function Facts({ items }: { items: [string, ReactNode][] }) {
-  return (
-    <dl className="grid w-full gap-[var(--space-3)] sm:grid-cols-2">
-      {items.map(([label, value]) => (
-        <div
-          key={label}
-          className="gros-tile flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] bg-[var(--mist)]"
-        >
-          <dt className="type-label text-[var(--stone)]">{label}</dt>
-          <dd className="type-body-strong">{value}</dd>
-        </div>
-      ))}
-    </dl>
   )
 }
 
@@ -273,22 +267,13 @@ function Swatches({ colors }: { colors: string[] }) {
   )
 }
 
-/** Klaviyo, Discount, Rivals and the finish, still to be built here (UI-ONBd). */
-const later: Record<
-  Exclude<SetupPlace, 'store' | 'brand'>,
-  [string, string, Route]
-> = {
-  klaviyo: ['Connect Klaviyo', 'Open connections', '/connections'],
-  discount: ['Your discount', 'Open settings', '/settings'],
+/** Rivals and the finish, still to be built here (UI-ONBe). */
+const later: Record<'rivals' | 'finish', [string, string, Route]> = {
   rivals: ['Your rivals', 'Open inspiration', '/library/inspirations'],
   finish: ['You are set', 'Go to Home', '/home']
 }
 
-function LaterStep({
-  place
-}: {
-  place: Exclude<SetupPlace, 'store' | 'brand'>
-}) {
+function LaterStep({ place }: { place: 'rivals' | 'finish' }) {
   const [title, button, href] = later[place]
   return (
     <>

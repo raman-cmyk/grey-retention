@@ -6,8 +6,12 @@ import { z } from 'zod'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { getServerEnvironment } from '@/lib/env/server'
 import { createClient } from '@/lib/supabase/server'
+import { connectKlaviyo } from '@/features/connections/actions'
+import { addDiscountCode, saveMaxDiscount } from '@/features/offers/actions'
 import { startAdsReading } from './ads/start'
+import { startCatalogReading } from './catalog/start'
 import { websiteOf } from './flow-model'
+import { startHistoryReading } from './history/start'
 import { startReviewsReading } from './reviews/start'
 import { startSiteReading } from './site/start'
 
@@ -18,7 +22,10 @@ import { startSiteReading } from './site/start'
  */
 export type SetupAnswer = {
   error?: string
-  fields?: Partial<Record<'name' | 'website', string>>
+  /** What was done, when the step stays open (a code added). */
+  message?: string
+  /** An error for one field, by the field's name. */
+  fields?: Record<string, string>
 }
 
 const ownerOnly = 'Only the workspace owner can set up GROS.'
@@ -151,4 +158,56 @@ export async function readStoreAgain(): Promise<SetupAnswer> {
     }
   revalidatePath(setupPath)
   return {}
+}
+
+/**
+ * Klaviyo: the key, checked and kept by the Klaviyo card's own action
+ * (`connectKlaviyo`: its format in sample mode, with Klaviyo itself once
+ * `KLAVIYO_MODE=live`). Then the readers that need Klaviyo start: the
+ * catalog and what the store already sent. Its refusal goes under the key.
+ */
+export async function connectSetupKlaviyo(
+  _state: SetupAnswer,
+  form: FormData
+): Promise<SetupAnswer> {
+  const session = await ownerSession()
+  if ('error' in session) return { error: session.error }
+  const connected = await connectKlaviyo({}, form)
+  if (connected.error) return { fields: { apiKey: connected.error } }
+  // A reader that does not start now starts the next time Klaviyo is connected.
+  await Promise.all([
+    startCatalogReading(session.db, session.context.tenantId),
+    startHistoryReading(session.db, session.context.tenantId)
+  ])
+  revalidatePath(setupPath)
+  redirect(setupPath)
+}
+
+/**
+ * Discount: the biggest discount, saved by the Settings card's own action
+ * (`saveMaxDiscount`, which checks the revision the page read).
+ */
+export async function saveSetupDiscount(
+  _state: SetupAnswer,
+  form: FormData
+): Promise<SetupAnswer> {
+  const session = await ownerSession()
+  if ('error' in session) return { error: session.error }
+  const saved = await saveMaxDiscount({}, form)
+  if (saved.error) return { fields: { percent: saved.error } }
+  revalidatePath(setupPath)
+  redirect(setupPath)
+}
+
+/** A real discount code, optional, added by the Settings card's own action. */
+export async function addSetupCode(
+  _state: SetupAnswer,
+  form: FormData
+): Promise<SetupAnswer> {
+  const session = await ownerSession()
+  if ('error' in session) return { error: session.error }
+  const added = await addDiscountCode({}, form)
+  if (added.error) return { error: added.error }
+  revalidatePath(setupPath)
+  return { message: added.message }
 }
