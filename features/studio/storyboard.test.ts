@@ -440,6 +440,27 @@ describe('the Art director (DST-002)', () => {
       })
     )
     expect(copy.sections[1].reference).toEqual(reference[0])
+    expect(copy).not.toHaveProperty('reference_email')
+    expect(scratch).not.toHaveProperty('reference_email')
+    // Remix (DST-002b): its own plan follows no section; it sees the email.
+    const remix = JSON.parse(
+      artDirectorAgent.task({
+        input: {
+          ...launch,
+          mode: 'remix',
+          reference: [
+            ...reference,
+            { family: 'text', tone: 'light', height: 200 }
+          ]
+        },
+        problems: []
+      })
+    )
+    expect(remix.reference_email).toEqual([
+      { kind: 'hero_product', tone: 'dark', height: 500 },
+      { kind: 'text', tone: 'light', height: 200 }
+    ])
+    expect(artDirectorAgent.instructions).toMatch(/^Remix: reference_email/m)
     expect(copy.fix_these_problems_from_your_last_answer).toEqual(['Too tall.'])
     expect(artDirectorAgent.purpose).toBe('plan')
     expect(artDirectorAgent.instructions).toMatch(
