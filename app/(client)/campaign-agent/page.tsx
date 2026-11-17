@@ -2,6 +2,7 @@ import type { Route } from 'next'
 import { PageHeading, Panel, Notice } from '@/components/ui/workspace'
 import { BrandCheck } from '@/features/brand-profile/brand-check'
 import { CampaignEditor } from '@/features/campaigns/editor'
+import { PolicyPanel } from '@/features/delivery/panels'
 import { plannerView } from '@/features/planner/load'
 import { Planner } from '@/features/planner/planner'
 import { PlanningPanel } from '@/features/planning/panels'
@@ -91,6 +92,11 @@ export default async function CampaignAgentPage({
                 audiences={data.audiences}
               />
             </Panel>
+          </div>
+          {/* The old delivery workflow's policy (L0 or L1), moved here from
+              the old Settings page (UI-SETa) until Plan retires this page. */}
+          <div className="mt-6">
+            <PolicyPanel tenantId={context.tenantId} owner={owner} />
           </div>
         </>
       )}

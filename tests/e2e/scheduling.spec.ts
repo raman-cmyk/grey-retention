@@ -114,7 +114,8 @@ test('UC-09 persisted timeout reconciliation, reschedule, cancellation and L1 se
     .getByRole('button', { name: 'Run queued fixture jobs', exact: true })
     .click()
   await expect(page.getByText(/Campaign delivery: cancelled/)).toBeVisible()
-  await page.goto('/settings')
+  // The old delivery policy moved to the Campaigns page (UI-SETa).
+  await page.goto('/campaign-agent')
   await page
     .getByRole('button', { name: 'Review delivery policy', exact: true })
     .click()
