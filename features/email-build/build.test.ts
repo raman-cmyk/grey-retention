@@ -616,6 +616,19 @@ describe('the store’s own material (REL-ONB2)', () => {
     expect(built.ok && built.email.html).toContain(cosy)
   })
 
+  it('heads a story email with the store’s lifestyle photo, as kept, and makes the email (REL-ONB2 part c)', async () => {
+    const hills = 'https://cdn.shopify.com/s/files/1/hills.jpg'
+    const confirmed = {
+      lifestylePhoto: { image: hills, alt: 'A walk in the hills at dusk' }
+    }
+    expect(await block('hero_image', { confirmed }, 'story')).toMatchObject({
+      image: hills,
+      alt: 'A walk in the hills at dusk'
+    })
+    const built = await buildEmail(await input({ confirmed }, 'story'), ctx())
+    expect(built.ok && built.email.html).toContain(hills)
+  })
+
   it('has no material block without the material', async () => {
     for (const type of ['story', 'launch'] as const)
       for (const family of [

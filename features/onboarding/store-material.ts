@@ -1,5 +1,9 @@
 import { hiddenChars, oneLine } from '@/features/assembly/assemble'
-import type { AssemblyInput, ConfirmedReview } from '@/features/assembly/inputs'
+import type {
+  AssemblyInput,
+  ConfirmedPhoto,
+  ConfirmedReview
+} from '@/features/assembly/inputs'
 import { hostOf } from '@/features/brand-profile/mismatch'
 import { checkCopy, type BrandFacts } from '@/features/copy-qa/check'
 import {
@@ -11,6 +15,7 @@ import {
 import { onDomain } from '@/lib/providers/ad-library'
 import { bodyWords, namesSomeone, resultWords } from './customer-words'
 import type { Finding } from './findings'
+import { emailPhotoUrl, photoKey } from './site/photos'
 import { claims } from './words'
 
 /**
@@ -38,12 +43,18 @@ import { claims } from './words'
  *   too, and still misses a first name that starts a sentence before a
  *   verb it cannot tell ("Emily gave it to me.").
  *
+ * - A lifestyle photo (`hero_image`, part c): the first lifestyle photo
+ *   the Site reader kept from the store's current website (ONB-059b, page
+ *   order) that an email can show (`emailPhotoUrl`) and that is no catalog
+ *   picture (`photoKey`: any size of one), described by its own words when
+ *   they pass as the store's, else by the brand's name. Never for a sample
+ *   workspace (no live read kept it), never made up.
+ *
  * Not here: customer photos (`ugc_grid`; no reader keeps customers' own
- * photos, and a brand photo is never one), a note in the brand's words
+ * photos, and a brand photo is never one) and a note in the brand's words
  * (`founder_note`; the Site reader does not yet mark a quote as a whole
- * sentence of the page in its own letters) and a lifestyle photo
- * (`hero_image`; part b). Without reviews the material is absent, so the
- * review strip stays disallowed (`allowedBlockTypes`).
+ * sentence of the page in its own letters). A block whose material is
+ * absent stays disallowed (`allowedBlockTypes`).
  */
 
 /** The longest review quoted, in characters (a longer one is left out). */
@@ -63,7 +74,17 @@ export type MaterialParts = {
   facts: BrandFacts
   /** The catalog's titles: capitalised words a quote may use (never a name). */
   productNames: readonly string[]
+  /** The catalog's pictures: never a lifestyle photo (part c). */
+  catalogImages?: readonly string[]
+  /** The Site reader's photos of this same website, in page order. */
+  photos?: readonly SitePhotoRow[]
 }
+
+/** A photo the Site reader kept (`brand_photos`). */
+export type SitePhotoRow = { url: string; kind: string; alt: string | null }
+
+/** The longest photo description kept (the block's own limit is 200). */
+const maxAlt = 160
 
 /** Store words as they are: one line, no markup, link, price or hidden character. */
 const clean = (text: string) =>
@@ -252,8 +273,43 @@ function reviews(parts: MaterialParts): ConfirmedReview[] {
     .map(({ review }) => review)
 }
 
+/** Any size of the same picture is one picture; a bad address is its own. */
+const keyOf = (url: string) => {
+  try {
+    return photoKey(url)
+  } catch {
+    return url
+  }
+}
+
+/** The first lifestyle photo of the store's own pages an email may show. */
+function lifestylePhoto(parts: MaterialParts): ConfirmedPhoto | undefined {
+  if (!parts.live) return undefined
+  const catalog = new Set((parts.catalogImages ?? []).map(keyOf))
+  for (const p of parts.photos ?? []) {
+    if (p.kind !== 'lifestyle' || !emailPhotoUrl(p.url)) continue
+    if (catalog.has(keyOf(p.url))) continue
+    const own = (p.alt ?? '').trim()
+    const name = parts.brandName.trim()
+    // Its own words when they pass as the store's, else the brand's name.
+    const alt =
+      Array.from(own).length <= maxAlt && safe(own, parts)
+        ? own
+        : Array.from(name).length <= maxAlt && clean(name)
+          ? name
+          : ''
+    if (alt) return { image: p.url, alt }
+  }
+  return undefined
+}
+
 /** The store's material, or undefined when it has none. Pure. */
 export function storeMaterial(parts: MaterialParts): Material | undefined {
   const quoted = reviews(parts)
-  return quoted.length ? { reviews: quoted } : undefined
+  const photo = lifestylePhoto(parts)
+  const material: Material = {
+    ...(quoted.length ? { reviews: quoted } : {}),
+    ...(photo ? { lifestylePhoto: photo } : {})
+  }
+  return Object.keys(material).length ? material : undefined
 }

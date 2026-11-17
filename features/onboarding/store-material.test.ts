@@ -238,4 +238,79 @@ describe('storeMaterial (REL-ONB2 part a)', () => {
     expect(material(sample, { live: false })?.reviews).toHaveLength(1)
     expect(material(sample)).toBeUndefined()
   })
+
+  const cdn = 'https://cdn.shopify.com/s/files/1'
+  const photo = (url: string, over: Record<string, unknown> = {}) => ({
+    url,
+    kind: 'lifestyle',
+    alt: 'A walk in the hills at dusk',
+    ...over
+  })
+  const withPhotos = (
+    photos: ReturnType<typeof photo>[],
+    over: Partial<MaterialParts> = {}
+  ) =>
+    storeMaterial(
+      parts({ catalogImages: [`${cdn}/knit.jpg`], photos, ...over })
+    )
+
+  it('heads the email with the first lifestyle photo of the store’s own pages an email can show (REL-ONB2 part c)', () => {
+    expect(
+      withPhotos([
+        // A catalog picture at another size, one an email cannot show, a
+        // product's photo: none is a lifestyle photo for the hero.
+        photo(`${cdn}/knit_800x.jpg`),
+        photo(`${cdn}/hills.webp`),
+        photo(`${cdn}/shelf.jpg`, { kind: 'product' }),
+        photo(`${cdn}/hills.jpg`),
+        photo(`${cdn}/beach.jpg`)
+      ])
+    ).toEqual({
+      lifestylePhoto: {
+        image: `${cdn}/hills.jpg`,
+        alt: 'A walk in the hills at dusk'
+      }
+    })
+    // Its own words only when they pass as the store's; else the brand's.
+    for (const alt of [
+      null,
+      ' ',
+      'Our organic wool, naturally',
+      'Only $25 this week',
+      'x'.repeat(161)
+    ])
+      expect(
+        withPhotos([photo(`${cdn}/hills.jpg`, { alt })])?.lifestylePhoto?.alt,
+        String(alt)
+      ).toBe('Cedar Lane')
+    // A sample workspace never gets a live read's photo; none kept, none.
+    expect(
+      withPhotos([photo(`${cdn}/hills.jpg`)], { live: false })
+    ).toBeUndefined()
+    expect(withPhotos([])).toBeUndefined()
+    expect(storeMaterial(parts())).toBeUndefined()
+  })
+
+  it('carries reviews and the photo together, and allows exactly their blocks', () => {
+    const both = withPhotos([photo(`${cdn}/hills.jpg`)], {
+      findings: [review(warm)]
+    })
+    expect(both?.reviews).toHaveLength(1)
+    expect(both?.lifestylePhoto?.image).toBe(`${cdn}/hills.jpg`)
+    const allowed = allowedBlockTypes({
+      brief: { campaignType: 'story', goal: 'Our story' },
+      products: [],
+      codes: [],
+      maxDiscountPercent: 0,
+      sendAt: '2026-12-01T10:00:00Z',
+      timezone: 'UTC',
+      facts,
+      confirmed: both
+    })
+    expect(allowed).toEqual(
+      expect.arrayContaining(['review_strip', 'hero_image'])
+    )
+    expect(allowed).not.toContain('founder_note')
+    expect(allowed).not.toContain('ugc_grid')
+  })
 })

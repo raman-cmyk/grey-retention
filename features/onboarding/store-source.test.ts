@@ -418,6 +418,34 @@ describe('storeFrom (ONB-057b part 2)', () => {
       await sampleStoreFrom('2026-11-16').read(tenantId)
     ).not.toHaveProperty('confirmed')
   })
+
+  it('heads "Create email" with a lifestyle photo the Site reader kept from this same website (REL-ONB2 part c)', () => {
+    const cdn = 'https://cdn.shopify.com/s/files/1'
+    const sitePhotos = (domain: string) => ({
+      domain,
+      photos: [
+        {
+          url: `${cdn}/hills.jpg`,
+          kind: 'lifestyle',
+          alt: 'A walk in the hills at dusk'
+        }
+      ]
+    })
+    const live = (over: Partial<Parts> = {}) =>
+      storeFrom(parts({ status: { live: true, currency: 'USD' }, ...over }))
+    for (const domain of ['shop.example', 'www.shop.example'])
+      expect(live({ sitePhotos: sitePhotos(domain) }).confirmed).toEqual({
+        lifestylePhoto: {
+          image: `${cdn}/hills.jpg`,
+          alt: 'A walk in the hills at dusk'
+        }
+      })
+    // Read from the website before the owner changed it, or none kept.
+    expect(
+      live({ sitePhotos: sitePhotos('old-shop.example') })
+    ).not.toHaveProperty('confirmed')
+    expect(live({ sitePhotos: null })).not.toHaveProperty('confirmed')
+  })
 })
 
 type Answer = { data: unknown; error: unknown }
@@ -490,8 +518,48 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
       ['brand_logos', 'eq', 'tenant_id', tenantId],
       ['klaviyo_history', 'eq', 'tenant_id', tenantId],
       ['brand_voice_samples', 'eq', 'tenant_id', tenantId],
-      ['brand_never_words', 'eq', 'tenant_id', tenantId]
+      ['brand_never_words', 'eq', 'tenant_id', tenantId],
+      ['brand_photo_sets', 'eq', 'tenant_id', tenantId]
     ])
+  })
+
+  it('reads the kept set’s own lifestyle photos, and makes the store without them when they cannot be read (REL-ONB2 part c)', async () => {
+    const cdn = 'https://cdn.shopify.com/s/files/1'
+    const photos = {
+      brand_photo_sets: {
+        data: { domain: 'shop.example', run_id: 'run-7' },
+        error: null
+      },
+      brand_photos: {
+        data: [{ url: `${cdn}/hills.jpg`, kind: 'lifestyle', alt: 'Hills' }],
+        error: null
+      }
+    }
+    const read = async (answers: Record<string, Answer>) => {
+      reads.catalog.mockResolvedValueOnce([...parts().catalog])
+      reads.findings.mockResolvedValueOnce([...parts().findings])
+      reads.corrections.mockResolvedValueOnce([])
+      const made = fakeDb({ catalog_status: status(), ...own, ...answers })
+      return { store: await ownStoreSource(made.db).read(tenantId), ...made }
+    }
+    const { store, asked } = await read(photos)
+    expect(store.confirmed).toEqual({
+      lifestylePhoto: { image: `${cdn}/hills.jpg`, alt: 'Hills' }
+    })
+    expect(asked.filter((a) => a[0] === 'brand_photos')).toEqual([
+      ['brand_photos', 'url,kind,alt'],
+      ['brand_photos', 'eq', 'tenant_id', tenantId],
+      ['brand_photos', 'eq', 'run_id', 'run-7'],
+      ['brand_photos', 'eq', 'kind', 'lifestyle']
+    ])
+    for (const broken of [
+      { brand_photo_sets: failed },
+      { ...photos, brand_photos: failed }
+    ]) {
+      const { store: without } = await read(broken)
+      expect(without).not.toHaveProperty('confirmed')
+      expect(without.products).toHaveLength(4)
+    }
   })
 
   it('gives the writers the phrases the owner takes out, apart from the banned ones (PIC-29 part 2c)', async () => {
