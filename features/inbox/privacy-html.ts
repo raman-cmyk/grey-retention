@@ -12,11 +12,11 @@ import {
   hit,
   isName,
   obfuscated,
-  privacyLimits,
   ranges,
   rulesFor,
   scrub,
   type CleanOptions,
+  type DeadlineCheck,
   type InboxIdentity,
   type Rules
 } from './privacy-text'
@@ -54,7 +54,9 @@ const linkAttrs = tags(
 const plainName = /^[a-z][a-z\d-]*$/
 
 class Refused extends Error {}
-const late = (until: number) => Date.now() > until
+/** The one deadline, read at a named check (a test's clock tells them apart). */
+const late = (r: Rules, until: number, check: DeadlineCheck) =>
+  r.now(check) > until
 
 const space = (c: string | undefined) =>
   c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f'
@@ -62,20 +64,26 @@ const space = (c: string | undefined) =>
 /**
  * Whether the tokenizer stays fast: it checks each attribute against the
  * tag's others (quadratic), so the attributes squared, summed over the
- * email's tags, are capped, and so are its tags. Attributes are counted as
- * the tokenizer splits them (blanks, "/", right after a quote).
+ * email's tags, are capped. So are its tags, comments and other markup,
+ * since each one splits the words into one more piece to clean. Attributes
+ * are counted as the tokenizer splits them (blanks, "/", after a quote).
  */
-function scannable(html: string, until: number) {
+function scannable(html: string, r: Rules, until: number) {
   let count = 0
   let work = 0
   for (let i = html.indexOf('<'); i >= 0; i = html.indexOf('<', i)) {
     let j = i + (html[i + 1] === '/' ? 2 : 1)
-    if (!/[a-z]/i.test(html[j] ?? '')) {
+    const tag = /[a-z]/i.test(html[j] ?? '')
+    if (!tag && !'!?/'.includes(html[i + 1] ?? '')) {
       i = j
       continue
     }
-    if (++count > privacyLimits.tags || ((count & 4095) === 0 && late(until)))
-      return false
+    if (++count > r.limits.tags) return false
+    if ((count & 4095) === 1 && late(r, until, 'scan')) throw new Refused()
+    if (!tag) {
+      i = j
+      continue
+    }
     while (j < html.length && !space(html[j]) && !'/>'.includes(html[j]!)) j++
     let attrs = 0
     for (;;) {
@@ -95,7 +103,7 @@ function scannable(html: string, until: number) {
         j = end < 0 ? html.length : end + 1
       } else while (j < html.length && !space(html[j]) && html[j] !== '>') j++
     }
-    if ((work += attrs * attrs) > privacyLimits.attributeWork) return false
+    if ((work += attrs * attrs) > r.limits.attributeWork) return false
     i = j + 1
   }
   return true
@@ -106,17 +114,17 @@ function scannable(html: string, until: number) {
  * any email, too many attributes merged onto one element (repeated <html>
  * or <body> tags) or the deadline stop it.
  */
-function guarded(until: number): TreeAdapter<DefaultTreeAdapterMap> {
+function guarded(r: Rules, until: number): TreeAdapter<DefaultTreeAdapterMap> {
   const depth = new WeakMap<object, number>()
   const place = (parent: object, child: object) => {
     const d = (depth.get(parent) ?? 0) + 1
-    if (d > privacyLimits.depth) throw new Refused()
+    if (d > r.limits.depth) throw new Refused()
     depth.set(child, d)
   }
   return {
     ...defaultTreeAdapter,
     createElement(tagName, namespace, attrs) {
-      if (late(until)) throw new Refused()
+      if (late(r, until, 'element')) throw new Refused()
       return defaultTreeAdapter.createElement(tagName, namespace, attrs)
     },
     appendChild(parent, child) {
@@ -132,7 +140,7 @@ function guarded(until: number): TreeAdapter<DefaultTreeAdapterMap> {
       defaultTreeAdapter.setTemplateContent(template, content)
     },
     adoptAttributes(element, attrs) {
-      if (element.attrs.length + attrs.length > privacyLimits.tagAttributes)
+      if (element.attrs.length + attrs.length > r.limits.tagAttributes)
         throw new Refused()
       defaultTreeAdapter.adoptAttributes(element, attrs)
     }
@@ -315,7 +323,7 @@ const wordish = /[\p{L}\p{N}@%\u{ff20}\u{fe6b}]/u
  * joined words first and every piece is removed; then each text is
  * cleaned, a name in its own tag after a greeting too ("Hi <b>Sam</b>,").
  */
-function cleanBlock(nodes: (T.TextNode | '\n')[], r: Rules) {
+function cleanBlock(nodes: (T.TextNode | '\n')[], r: Rules, until: number) {
   const parts = nodes.map((n) => (n === '\n' ? n : n.value))
   if (parts.length > 1) {
     const joined = parts.join('')
@@ -366,7 +374,9 @@ function cleanBlock(nodes: (T.TextNode | '\n')[], r: Rules) {
     }
   }
   let before: T.TextNode | null = null
-  for (const n of nodes) {
+  for (let k = 0; k < nodes.length; k++) {
+    if ((k & 1023) === 0 && late(r, until, 'block')) throw new Refused()
+    const n = nodes[k]!
     if (n === '\n') {
       before = null
       continue
@@ -403,11 +413,11 @@ function cleanTree(doc: T.Document, r: Rules, until: number) {
   }
   let block: (T.TextNode | '\n')[] = []
   const endBlock = () => {
-    cleanBlock(block, r)
+    cleanBlock(block, r, until)
     block = []
   }
   for (let steps = 0; stack.length; steps++) {
-    if ((steps & 1023) === 0 && late(until)) throw new Refused()
+    if ((steps & 1023) === 0 && late(r, until, 'walk')) throw new Refused()
     const n = stack.pop()!
     if (n === 'end') {
       endBlock()
@@ -481,11 +491,11 @@ const doctypes: Record<T.Document['mode'], string> = {
 }
 
 /** The HTML again, without recursion; comments are never written. */
-function serialize(doc: T.Document, until: number) {
+function serialize(doc: T.Document, r: Rules, until: number) {
   const out: string[] = []
   const stack: (Node | string)[] = [...children(doc)].reverse()
   for (let steps = 0; stack.length; steps++) {
-    if ((steps & 4095) === 0 && late(until)) throw new Refused()
+    if ((steps & 4095) === 0 && late(r, until, 'writer')) throw new Refused()
     const n = stack.pop()!
     if (typeof n === 'string') out.push(n)
     else if (n.nodeName === '#documentType') out.push(doctypes[doc.mode])
@@ -517,14 +527,19 @@ function serialize(doc: T.Document, until: number) {
   return out.join('')
 }
 
-function cleanOnce(html: string, r: Rules, until: number) {
-  if (html.length > privacyLimits.html || !scannable(html, until)) return null
+/**
+ * One round. The size limit holds for the email itself (`first`): escaping
+ * may make the cleaned HTML longer, and that is read again as it is.
+ */
+function cleanOnce(html: string, r: Rules, until: number, first: boolean) {
+  if ((first && html.length > r.limits.html) || !scannable(html, r, until))
+    return null
   const doc = parse(html, {
     scriptingEnabled: false,
-    treeAdapter: guarded(until)
+    treeAdapter: guarded(r, until)
   })
   cleanTree(doc, r, until)
-  return serialize(doc, until)
+  return serialize(doc, r, until)
 }
 
 /**
@@ -557,9 +572,12 @@ export function cleanEmailHtml(
   options?: CleanOptions
 ) {
   const r = rulesFor(identity, options)
-  const until = Date.now() + privacyLimits.htmlMs
+  // One deadline for every round of this email.
+  const until = r.now('start') + r.limits.htmlMs
   try {
-    return settle(cleanOnce(html, r, until), (out) => cleanOnce(out, r, until))
+    return settle(cleanOnce(html, r, until, true), (out) =>
+      cleanOnce(out, r, until, false)
+    )
   } catch (error) {
     if (error instanceof Refused) return null
     throw error

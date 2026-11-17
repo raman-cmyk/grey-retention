@@ -10,7 +10,6 @@ import {
   cleanEmailSubject,
   cleanEmailText,
   inboxIdentity,
-  privacyLimits,
   settle,
   type InboxIdentity
 } from './privacy'
@@ -27,21 +26,6 @@ const leaks =
 /** The words of the body only. */
 const body = (html: string | null) =>
   html?.replace(/^.*<body>|<\/body>.*$/gs, '') ?? null
-
-/** Lowers one limit for a test, to prove that the guard holds. */
-function withLimit(
-  key: keyof typeof privacyLimits,
-  value: number,
-  run: () => void
-) {
-  const was = privacyLimits[key]
-  privacyLimits[key] = value
-  try {
-    run()
-  } finally {
-    privacyLimits[key] = was
-  }
-}
 
 /** A Klaviyo-style newsletter, with everything a subscriber's copy has. */
 const klaviyo = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
@@ -285,14 +269,40 @@ Northwind Outdoor, 1 Sample Street`)
     const text = cleanEmailText(`${'linen '.repeat(20_000)}end`, me)
     expect(text.length).toBeLessThanOrEqual(10_000)
     expect(text.endsWith('linen')).toBe(true)
-    withLimit('readFactor', 0.5, () =>
-      expect(cleanEmailText('linen '.repeat(2_000), me).length).toBeLessThan(
-        5_001
-      )
-    )
+    const half = { limits: { readFactor: 0.5 } }
+    expect(
+      cleanEmailText('linen '.repeat(2_000), me, half).length
+    ).toBeLessThan(5_001)
     const subject = cleanEmailSubject('Hi Sam, '.repeat(40), me)
     expect(subject.length).toBeLessThanOrEqual(200)
     expect(subject.endsWith('Hi there,')).toBe(true)
+    // Never half a character, and one line.
+    const emoji = cleanEmailSubject(`${'a'.repeat(199)}\u{1f600}b`, me)
+    expect([emoji.length, emoji.isWellFormed()]).toEqual([199, true])
+    expect(cleanEmailSubject('Spring\n\n  sale', me)).toBe('Spring sale')
+    expect(cleanEmailPreview('Spring\n\n  sale', me)).toBe('Spring sale')
+  })
+
+  it('removes names written in Cyrillic or Greek, in any case', () => {
+    for (const name of ['Анна', 'Дмитрий', 'Μαρία', 'Ζήνων', 'Λήδα', 'Юлия']) {
+      const them = { addresses: [], names: [name] }
+      expect(cleanEmailText(`Hi ${name}, thanks ${name}!`, them), name).toBe(
+        'Hi there, thanks!'
+      )
+      expect(cleanEmailSubject(`${name}, 20% off`, them), name).toBe('20% off')
+      expect(cleanEmailText(`Hi ${name.toUpperCase()},`, them), name).toBe(
+        'Hi there,'
+      )
+    }
+  })
+
+  it('reads full-width letters and at signs as plain ones', () => {
+    expect(cleanEmailText('Thanks, \u{ff33}\u{ff41}\u{ff4d}!', me)).toBe(
+      'Thanks!'
+    )
+    expect(
+      cleanEmailText('Write to help\u{fe6b}northwind.example today', me)
+    ).toBe('Write to today')
   })
 })
 
@@ -404,6 +414,34 @@ describe('cleanEmailHtml', () => {
     )
   })
 
+  it('writes only plain tag and attribute names, and href only on links', () => {
+    for (const [html, out] of [
+      ['<p>Hi <abc!def>Linen</abc!def></p>', '<p>Hi Linen</p>'],
+      ['<p><sampleinbox>Linen</sampleinbox></p>', '<p>Linen</p>'],
+      ['<p a!b="1" class="x">Linen</p>', '<p class="x">Linen</p>'],
+      ['<div href="https://x.example/?t=1">Linen</div>', '<div>Linen</div>'],
+      [
+        `<p title='say "hi"'>Linen</p>`,
+        '<p title="say &quot;hi&quot;">Linen</p>'
+      ]
+    ])
+      expect(body(cleanEmailHtml(html!, me)), html).toBe(out)
+  })
+
+  it('reads <br> as a line break between the pieces of a block', () => {
+    for (const [html, out] of [
+      // Separate lines are not one word, and no greeting crosses them.
+      ['<p>Sa<br>m</p>', '<p>Sa<br>m</p>'],
+      ['<p>Hello<br>Sam,</p>', '<p>Hello<br>,</p>'],
+      // An address cut by a tag goes with the whole word around it.
+      [
+        '<p>Write to:sample#in<b>box@gmail.com</b> today</p>',
+        '<p>Write <b></b> today</p>'
+      ]
+    ])
+      expect(body(cleanEmailHtml(html!, me)), html).toBe(out)
+  })
+
   it('accepts a result only once cleaning it again changes nothing', () => {
     expect(settle('a', (s) => s)).toBe('a')
     expect(settle('a', () => 'b')).toBe('b')
@@ -463,10 +501,10 @@ describe('cleanEmail', () => {
       ).not.toBeNull()
       expect(cleanEmailHtml(`<style>${text}</style>`, me)).not.toBeNull()
     }
-    // Huge: half a megabyte of newsletters, and 2 MB of words followed by
+    // Huge: half a megabyte of newsletters, and 800 KB of words followed by
     // thousands of small texts (each once read the words before it).
     expect(cleanEmailHtml(klaviyo.repeat(250), me)).not.toMatch(person)
-    const crowd = `<p>${'x '.repeat(825_000)}${'<b>a@b.cd</b> <b>Sam</b> '.repeat(12_250)}</p>`
+    const crowd = `<p>${'x '.repeat(400_000)}${'<b>a@b.cd</b> <b>Sam</b> '.repeat(6_000)}</p>`
     const crowded = cleanEmailHtml(crowd, me)
     expect(crowded).not.toBeNull()
     expect(crowded).not.toMatch(/a@b|b\.cd|Sam/)
@@ -488,16 +526,47 @@ describe('cleanEmail', () => {
 
   it('refuses HTML over each limit', () => {
     expect(cleanEmailHtml(klaviyo, me)).not.toBeNull()
-    for (const [key, value] of [
-      ['htmlMs', -1],
-      ['tags', 5],
-      ['html', 100],
-      ['attributeWork', 3],
-      ['depth', 3]
-    ] as const)
-      withLimit(key, value, () =>
-        expect(cleanEmailHtml(klaviyo, me), key).toBeNull()
-      )
+    for (const limits of [
+      { htmlMs: -1 },
+      { tags: 5 },
+      { html: 100 },
+      { attributeWork: 3 },
+      { depth: 3 }
+    ])
+      expect(
+        cleanEmailHtml(klaviyo, me, { limits }),
+        Object.keys(limits)[0]
+      ).toBeNull()
+    // 1 MB: far above any newsletter (Gmail clips at 102 KB).
+    expect(cleanEmailHtml(klaviyo.repeat(700), me)).toBeNull()
+    // Comments split the words too, so they count as tags.
+    const started = Date.now()
+    expect(cleanEmailHtml(`<p>${'S<!---->'.repeat(60_000)}</p>`, me)).toBeNull()
+    expect(Date.now() - started).toBeLessThan(1_500)
+    // Escaping may grow the cleaned HTML past 1 MB: it is still read back.
+    expect(cleanEmailHtml(`<p>${'&'.repeat(900_000)}</p>`, me)).not.toBeNull()
+  })
+
+  it('checks its one deadline at every step of every round', () => {
+    // A clock that has run out at one kind of check only: each check
+    // alone stops the cleaning.
+    for (const check of ['scan', 'element', 'walk', 'block', 'writer']) {
+      const clock = (at: string) => (at === check ? Infinity : 0)
+      expect(cleanEmailHtml(klaviyo, me, { clock }), check).toBeNull()
+    }
+    // Time passes at each check; the first round alone fits in the time,
+    // both rounds do not: the deadline is shared.
+    let ticks = 0
+    const clock = () => ticks++
+    expect(cleanEmailHtml(klaviyo, me, { clock })).not.toBeNull()
+    const both = ticks
+    ticks = 0
+    expect(
+      cleanEmailHtml(klaviyo, me, {
+        clock,
+        limits: { htmlMs: Math.round(both * 0.75) }
+      })
+    ).toBeNull()
   })
 })
 

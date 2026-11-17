@@ -19,18 +19,28 @@ export type CleanOptions = {
    * path. Any other picture is emptied (only stored copies are shown).
    */
   images?: { ref: string; path: string }[]
+  /** Lower limits for this call (how a test proves each guard). */
+  limits?: Partial<PrivacyLimits>
+  /** The clock the HTML deadline is read from, by check (`Date.now`). */
+  clock?: (check: DeadlineCheck) => number
 }
 
-/** Read on every call, so a test can lower one to prove it holds. */
-export const privacyLimits = {
+/** The limits; a call may lower them (`CleanOptions.limits`). */
+export const privacyLimits = Object.freeze({
   subject: 200,
   preview: 300,
   text: 10_000,
   /** Text read before cleaning, per limit (cut after a whole word). */
   readFactor: 4,
-  html: 4_000_000,
-  /** Start and end tags in one email. */
-  tags: 200_000,
+  /**
+   * HTML characters read. Gmail clips an email at 102 KB, so a newsletter
+   * is far below 1 MB; above it, it is refused, which keeps every guard
+   * below cheap. Escaping may make the cleaned HTML longer: later rounds
+   * are not held to it.
+   */
+  html: 1_000_000,
+  /** Tags, comments and other markup: each splits the words in pieces. */
+  tags: 50_000,
   /** Attributes merged onto one element (repeated <html> or <body>). */
   tagAttributes: 1_000,
   /** Attributes squared, summed over tags (the tokenizer's own work). */
@@ -38,20 +48,26 @@ export const privacyLimits = {
   /** Elements inside each other (emails nest a few dozen deep). */
   depth: 256,
   /** One deadline for all the rounds of one email's HTML. */
-  htmlMs: 8_000,
+  htmlMs: 3_000,
   /**
    * The inbox's bare local part ("sampleinbox") is removed as a word only
    * from this length on: a shorter one may be an ordinary word. With a
    * +alias, dots or an @ it always goes.
    */
   localLength: 8
+})
+export type PrivacyLimits = {
+  -readonly [K in keyof typeof privacyLimits]: number
 }
+/** Where the HTML deadline is read (a test's clock tells them apart). */
+export type DeadlineCheck =
+  'start' | 'scan' | 'element' | 'walk' | 'block' | 'writer'
 
 export const escape = (s: string) => s.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&')
 const word = String.raw`[\p{L}\p{N}]`
 const localChars = String.raw`\p{L}\p{N}._%+'=-`
 const local = String.raw`(?<![${localChars}])[${localChars}]+`
-const at = String.raw`[@\u{ff20}\u{fe6b}]`
+const at = String.raw`[@\u{fe6b}]`
 const host = String.raw`[\p{L}\p{N}-]+`
 const domain = String.raw`${host}(?:\.${host})+`
 
@@ -99,6 +115,8 @@ export type Rules = {
   keep: RegExp | null
   images: Map<string, string>
   stored: Set<string>
+  limits: PrivacyLimits
+  now: (check: DeadlineCheck) => number
 }
 
 const anyOf = (alternatives: string[]) =>
@@ -113,7 +131,9 @@ const anyOf = (alternatives: string[]) =>
 function nameWords(names: string[]) {
   const all = new Set<string>()
   for (const raw of names.slice(0, 20)) {
-    const name = raw.normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase()
+    const name = skeleton(
+      raw.normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase()
+    ).text
     if (name.length < 2) continue
     all.add(name)
     for (const w of name.split(' ')) if (w.length >= 2) all.add(w)
@@ -161,7 +181,9 @@ function compile(identity: InboxIdentity, options: CleanOptions): Rules {
     nameSet: nameWords(identity.names),
     keep: anyOf(phrases(new Set(keep.filter(Boolean)))),
     images,
-    stored: new Set(images.values())
+    stored: new Set(images.values()),
+    limits: { ...privacyLimits, ...options.limits },
+    now: options.clock ?? (() => Date.now())
   }
 }
 
@@ -192,11 +214,23 @@ const isFormat = (c: number) =>
   (c >= 0xfff9 && c <= 0xfffb)
 const special =
   /[\u{ad}\u{600}-\u{605}\u{61c}\u{6dd}\u{70f}\u{180e}\u{200b}-\u{200f}\u{202a}-\u{202e}\u{2060}-\u{206f}\u{feff}\u{fff9}-\u{fffb}\u{370}-\u{52f}\u{ff01}-\u{ff5e}]/u
-/** Cyrillic and Greek letters that look Latin, and what they look like. */
+/**
+ * Cyrillic and Greek letters that look Latin, capital and small alike, so
+ * a name and the text fold the same way whatever their case.
+ */
 const lookalikes = new Map(
   [
-    ...'\u{410}\u{412}\u{415}\u{41a}\u{41c}\u{41d}\u{41e}\u{420}\u{421}\u{422}\u{425}\u{430}\u{435}\u{43e}\u{440}\u{441}\u{443}\u{445}\u{405}\u{455}\u{406}\u{456}\u{408}\u{458}\u{4bb}\u{501}\u{391}\u{392}\u{395}\u{396}\u{397}\u{399}\u{39a}\u{39c}\u{39d}\u{39f}\u{3a1}\u{3a4}\u{3a5}\u{3a7}\u{3b1}\u{3bf}'
-  ].map((c, i) => [c, 'ABEKMHOPCTXaeopcyxSsIiJjhdABEZHIKMNOPTYXao'[i]!])
+    // Cyrillic: A B E K M H O P C T X Y S I J (and h, d).
+    '\u{410}\u{430}a \u{412}\u{432}b \u{415}\u{435}e \u{41a}\u{43a}k \u{41c}\u{43c}m \u{41d}\u{43d}h \u{41e}\u{43e}o \u{420}\u{440}p \u{421}\u{441}c \u{422}\u{442}t \u{425}\u{445}x \u{423}\u{443}y \u{405}\u{455}s \u{406}\u{456}i \u{408}\u{458}j \u{4ba}\u{4bb}h \u{500}\u{501}d',
+    // Greek: A B E Z H I K M N O P T Y X.
+    '\u{391}\u{3b1}a \u{392}\u{3b2}b \u{395}\u{3b5}e \u{396}\u{3b6}z \u{397}\u{3b7}h \u{399}\u{3b9}i \u{39a}\u{3ba}k \u{39c}\u{3bc}m \u{39d}\u{3bd}n \u{39f}\u{3bf}o \u{3a1}\u{3c1}p \u{3a4}\u{3c4}t \u{3a5}\u{3c5}y \u{3a7}\u{3c7}x'
+  ]
+    .join(' ')
+    .split(' ')
+    .flatMap(([big, small, latin]) => [
+      [big!, latin!.toUpperCase()],
+      [small!, latin!]
+    ])
 )
 
 /**
@@ -222,8 +256,8 @@ function skeleton(s: string) {
 }
 
 /** The bare local part counts only when long enough (see `localLength`). */
-const ownLocal = (m: string) =>
-  /[+.]/.test(m) || m.length >= privacyLimits.localLength
+const ownLocal = (m: string, r: Rules) =>
+  /[+.]/.test(m) || m.length >= r.limits.localLength
 
 /** Where the patterns match, read as a reader sees the text. */
 export function ranges(
@@ -235,7 +269,7 @@ export function ranges(
   const cuts: [number, number][] = []
   for (const re of patterns)
     for (const m of re ? sk.text.matchAll(re) : [])
-      if (m[0] && (re !== r.locals || ownLocal(m[0])))
+      if (m[0] && (re !== r.locals || ownLocal(m[0], r)))
         cuts.push([sk.at(m.index), sk.at(m.index + m[0].length - 1) + 1])
   return cuts.sort((a, b) => a[0] - b[0])
 }
@@ -256,17 +290,9 @@ function remove(s: string, patterns: (RegExp | null)[], r: Rules) {
 export const scrub = (s: string, r: Rules) =>
   remove(s, [address, obfuscated, r.locals, r.names], r)
 
-/** Whether a value (a tag or attribute name, a link) names the person. */
-export function hit(value: string, r: Rules) {
-  let s = value
-  for (let i = 0; i < 3 && /%[\da-f]{2}/i.test(s); i++)
-    try {
-      s = decodeURIComponent(s)
-    } catch {
-      s = unescape(s)
-    }
-  return ranges(s, [address, obfuscated, r.locals, r.names], r).length > 0
-}
+/** Whether a tag or attribute name names the person. */
+export const hit = (value: string, r: Rules) =>
+  ranges(value, [address, obfuscated, r.locals, r.names], r).length > 0
 
 /** One of the inbox's names or its local part (any case, any lookalike). */
 export function isName(r: Rules, candidate: string) {
@@ -352,30 +378,26 @@ function cut(value: string, max: number) {
   return (at > max / 2 ? s.slice(0, at) : s).trimEnd()
 }
 
-const read = (value: string, max: number) =>
-  cut(value, max * privacyLimits.readFactor)
+const read = (value: string, max: number, r: Rules) =>
+  cut(value, max * r.limits.readFactor)
 
-export const cleanEmailText = (
+export function cleanEmailText(
   text: string,
   identity: InboxIdentity,
   options?: CleanOptions
-) =>
-  cut(
-    clean(read(text, privacyLimits.text), rulesFor(identity, options)),
-    privacyLimits.text
-  )
+) {
+  const r = rulesFor(identity, options)
+  return cut(clean(read(text, r.limits.text, r), r), r.limits.text)
+}
 
 /** A subject or preview line: one line, cleaned, cut to its limit. */
 const oneLine =
   (limit: 'subject' | 'preview') =>
-  (value: string, identity: InboxIdentity, options?: CleanOptions) =>
-    cut(
-      clean(
-        read(value, privacyLimits[limit]).replace(/\s+/g, ' ').trim(),
-        rulesFor(identity, options)
-      ),
-      privacyLimits[limit]
-    )
+  (value: string, identity: InboxIdentity, options?: CleanOptions) => {
+    const r = rulesFor(identity, options)
+    const max = r.limits[limit]
+    return cut(clean(read(value, max, r).replace(/\s+/g, ' ').trim(), r), max)
+  }
 
 export const cleanEmailSubject = oneLine('subject')
 export const cleanEmailPreview = oneLine('preview')
