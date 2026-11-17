@@ -118,7 +118,7 @@ export async function workflowAction(
     if (v.kind === 'run_jobs') {
       const processed = await runFixtureJobs(db, context.tenantId)
       revalidatePath('/campaigns', 'layout')
-      revalidatePath('/dashboard')
+      revalidatePath('/home')
       revalidatePath('/campaign-agent')
       return {
         message: `Processed ${processed} fixture job${processed === 1 ? '' : 's'}. Inspect persisted status below.`
@@ -126,7 +126,7 @@ export async function workflowAction(
     }
     if (result?.error) throw result.error
     revalidatePath('/campaigns', 'layout')
-    revalidatePath('/dashboard')
+    revalidatePath('/home')
     revalidatePath('/campaign-agent')
     revalidatePath('/designer/dashboard')
     revalidatePath('/admin/designers')

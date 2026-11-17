@@ -54,13 +54,15 @@ async function signIn(page: Page, email: string, password: string) {
   await page.getByLabel('Email', { exact: true }).fill(email)
   await page.getByLabel('Password', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await expect(page).toHaveURL(/\/(dashboard|get-started)/)
+  await expect(page).toHaveURL(/\/(home|get-started)/)
 }
 
 test('UIR-014 owner updates details and changes password with inline checks', async ({
   page
 }, info) => {
   const { email, password } = await freshOwner(page)
+  // The account menu and drawer are on the old shell (Home has the GROS bar).
+  await page.goto('/holidays')
   if (info.project.name.startsWith('mobile')) {
     // The drawer links here and closes after the click.
     await page.getByRole('button', { name: 'Open navigation' }).click()

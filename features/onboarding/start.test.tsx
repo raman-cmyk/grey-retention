@@ -60,7 +60,7 @@ describe('Getting started', () => {
     ).not.toHaveAttribute('open')
     expect(screen.getByRole('link', { name: 'Exit setup' })).toHaveAttribute(
       'href',
-      '/dashboard'
+      '/home'
     )
   })
   it('resumes from saved data and lets the owner revisit brand rules without losing them', async () => {
