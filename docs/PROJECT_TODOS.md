@@ -66,6 +66,7 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - Which segment events/fields are reliably available in the initial Klaviyo integration?
 - What belongs in the central chat versus dedicated campaign/audience tools?
 - Which layout, component system and navigation best deliver the selected calm, minimal light direction?
+- Design (proposal, UI-RES-b, 16 Nov): BRAND.md has four statuses. A Results row for a deleted or not-sent email fits none, so it shows no pill for now; and a sample draft shows Planned on Home, Plan and Results though BRAND.md's Planned means "not created yet". Does either need a fifth look?
 
 ## Discussion log
 
