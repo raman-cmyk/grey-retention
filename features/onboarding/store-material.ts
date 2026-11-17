@@ -15,6 +15,7 @@ import {
 import { onDomain } from '@/lib/providers/ad-library'
 import { bodyWords, namesSomeone, resultWords } from './customer-words'
 import type { Finding } from './findings'
+import { reviewPhotoHost } from './reviews/photos'
 import { firstPerson, personName } from './site/founder'
 import { emailPhotoUrl, photoKey } from './site/photos'
 import { claims } from './words'
@@ -58,9 +59,13 @@ import { claims } from './words'
  *   as the reviews' are (`safe`), with no offer word or price, naming no
  *   one but the founder. Never for a sample workspace, never made up.
  *
- * Not here: customer photos (`ugc_grid`; no reader keeps customers' own
- * photos, and a brand photo is never one). A block whose material is
- * absent stays disallowed (`allowedBlockTypes`).
+ * - Customers' own photos (`ugc_grid`, part e): those the Reviews reader
+ *   kept with the reviews on the store's own product pages, at least 3 (else
+ *   none), never a catalog picture or a brand photo, described in neutral
+ *   words ("A customer's photo of Weekend Knit"), never the reviewer's
+ *   name or words. Never for a sample workspace.
+ *
+ * A block whose material is absent stays disallowed (`allowedBlockTypes`).
  */
 
 /** The longest review quoted, in characters (a longer one is left out). */
@@ -460,15 +465,66 @@ function lifestylePhoto(parts: MaterialParts): ConfirmedPhoto | undefined {
   return undefined
 }
 
+/** Fewest customers' photos a grid shows (`ugc_grid`: 3 or 6), and most kept. */
+const minCustomerPhotos = 3
+const maxCustomerPhotos = 12
+
+/**
+ * A customer's photo described in neutral words, never the reviewer's name
+ * or the review's: "A customer's photo of <product>" when the catalog has
+ * the product the page names (its title as the catalog writes it, and
+ * only when the words pass as the store's), else "A customer's photo".
+ */
+function customerAlt(product: string | undefined, parts: MaterialParts) {
+  const plain = "A customer's photo"
+  const named = (product ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
+  const title = parts.productNames.find(
+    (t) => named && t.trim().replace(/\s+/g, ' ').toLowerCase() === named
+  )
+  const alt = title ? `${plain} of ${title.trim()}` : plain
+  return Array.from(alt).length <= maxAlt && safe(alt, parts) ? alt : plain
+}
+
+/**
+ * Customers' own photos for the photo grid (`ugc_grid`, part e): those
+ * the Reviews reader kept with a review on the store's current website
+ * (`customer_photo`, by code, of a live read, as sure as a fact), each an
+ * email can show (`emailPhotoUrl`) on a host that may be the store's
+ * (`reviewPhotoHost`), never a catalog picture at any size and each once
+ * (`photoKey`), at most 12. Fewer than 3 is none (the grid needs 3), so
+ * the block stays disallowed. Never for a sample workspace.
+ */
+function customerPhotos(parts: MaterialParts): ConfirmedPhoto[] {
+  if (!parts.live) return []
+  const seen = new Set((parts.catalogImages ?? []).map(keyOf))
+  const photos = parts.findings.flatMap((f) => {
+    if (f.topic !== 'customer_photo' || f.source !== 'reviews') return []
+    if (f.pass !== 'code' || f.confidence < minConfidence) return []
+    const value = f.value as { url: string; page: string; product?: string }
+    if (!onDomain(hostOf(value.page), parts.host)) return []
+    if (!emailPhotoUrl(value.url) || !reviewPhotoHost(value.url, parts.host))
+      return []
+    const key = keyOf(value.url)
+    if (seen.has(key)) return []
+    seen.add(key)
+    return [{ image: value.url, alt: customerAlt(value.product, parts) }]
+  })
+  return photos.length >= minCustomerPhotos
+    ? photos.slice(0, maxCustomerPhotos)
+    : []
+}
+
 /** The store's material, or undefined when it has none. Pure. */
 export function storeMaterial(parts: MaterialParts): Material | undefined {
   const quoted = reviews(parts)
   const photo = lifestylePhoto(parts)
   const note = founder(parts)
+  const shared = customerPhotos(parts)
   const material: Material = {
     ...(quoted.length ? { reviews: quoted } : {}),
     ...(photo ? { lifestylePhoto: photo } : {}),
-    ...(note ? { founder: note } : {})
+    ...(note ? { founder: note } : {}),
+    ...(shared.length ? { customerPhotos: shared } : {})
   }
   return Object.keys(material).length ? material : undefined
 }

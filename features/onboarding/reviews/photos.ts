@@ -72,3 +72,22 @@ export function reviewPhoto(
     store.apps.some((a) => reviewAppPhotoHosts[a]?.includes(host))
   return own ? href : null
 }
+
+/**
+ * Whether a kept photo's host may be the store's at all, as the database
+ * checks it (`private.review_photo_host_ok`): its own domain (or a
+ * subdomain), a store's folder on Shopify's CDN, or a confirmed review app
+ * host. A stored photo is read again with it.
+ */
+export function reviewPhotoHost(url: string, domain: string): boolean {
+  try {
+    const host = new URL(url).hostname
+    return (
+      onDomain(host, domain) ||
+      shopifyFolder(url) !== null ||
+      Object.values(reviewAppPhotoHosts).some((h) => h.includes(host))
+    )
+  } catch {
+    return false
+  }
+}

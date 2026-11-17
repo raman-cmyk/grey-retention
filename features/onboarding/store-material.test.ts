@@ -546,3 +546,105 @@ describe('storeMaterial: the founder’s own note (REL-ONB2 part d2)', () => {
     ).toBe(true)
   })
 })
+
+describe('storeMaterial: customers’ own photos (REL-ONB2 part e)', () => {
+  const imgix = 'https://judgeme.imgix.net/cedar'
+  const folder = 'https://cdn.shopify.com/s/files/1/0123/4567/8901/files'
+  const shot = (url: string, value: Over = {}, over: Over = {}) =>
+    ({
+      topic: 'customer_photo',
+      source: 'reviews',
+      statement: 'A photo a customer posted with their review.',
+      value: { url, page: `${site}/p/1`, product: 'Weekend Knit', ...value },
+      evidence: { ref: `review-data:${site}/p/1` },
+      confidence: 0.9,
+      pass: 'code',
+      ...over
+    }) as unknown as Finding
+  const three = [1, 2, 3].map((n) => shot(`${imgix}/${n}.jpg`))
+  const photos = (findings: Finding[], over: Partial<MaterialParts> = {}) =>
+    material(findings, { catalogImages: [`${folder}/knit.jpg`], ...over })
+      ?.customerPhotos
+  const grid = (findings: Finding[]) =>
+    allowedBlockTypes({
+      brief: { campaignType: 'launch', goal: 'New knit' },
+      products: [],
+      codes: [],
+      maxDiscountPercent: 0,
+      sendAt: '2026-12-01T10:00:00Z',
+      timezone: 'UTC',
+      facts,
+      confirmed: material(findings, { catalogImages: [`${folder}/knit.jpg`] })
+    }).includes('ugc_grid')
+
+  it('gives the photo grid three or more, described in neutral words, never the reviewer’s', () => {
+    expect(
+      photos([
+        three[0]!,
+        shot(`${imgix}/2.jpg`, { product: ' weekend  KNIT ' }),
+        shot(`${folder}/3.png`, { product: undefined }),
+        shot(`${imgix}/4.jpg`, { product: 'Jordan’s favourite knit' })
+      ])
+    ).toEqual([
+      { image: `${imgix}/1.jpg`, alt: "A customer's photo of Weekend Knit" },
+      { image: `${imgix}/2.jpg`, alt: "A customer's photo of Weekend Knit" },
+      { image: `${folder}/3.png`, alt: "A customer's photo" },
+      { image: `${imgix}/4.jpg`, alt: "A customer's photo" }
+    ])
+    expect(grid(three)).toBe(true)
+  })
+
+  it('gives none with fewer than three, so the grid stays off', () => {
+    expect(photos(three.slice(0, 2))).toBeUndefined()
+    expect(grid(three.slice(0, 2))).toBe(false)
+    // A catalog picture at another size, and the same photo twice, count once.
+    const repeated = [
+      three[0]!,
+      shot(`${imgix}/1.jpg?width=400`),
+      shot(`${folder}/knit_800x.jpg`)
+    ]
+    expect(photos(repeated)).toBeUndefined()
+    expect(grid(repeated)).toBe(false)
+    expect(photos([...repeated, three[1]!, three[2]!])).toHaveLength(3)
+  })
+
+  it('never takes a photo from a sample workspace, another website, a host off the list or a model', () => {
+    expect(photos(three, { live: false })).toBeUndefined()
+    expect(grid(three.map((f) => ({ ...f, pass: 'sample' })))).toBe(false)
+    for (const [value, over] of [
+      [{ page: 'https://other.example/p/1' }, {}],
+      [{ url: 'https://images.example-cdn.com/1.jpg' }, {}],
+      [{ url: 'https://loox.io/uploads/1.jpg' }, {}],
+      [{ url: 'https://cdn.shopify.com/assets/1.jpg' }, {}],
+      [{ url: `${imgix}/1.webp` }, {}],
+      [{ url: 'http://judgeme.imgix.net/cedar/9.jpg' }, {}],
+      [{}, { pass: 'sample' }],
+      [{}, { pass: 'model' }],
+      [{}, { confidence: 0.5 }],
+      [{}, { source: 'site' }]
+    ] as [Over, Over][])
+      expect(
+        photos([shot(`${imgix}/9.jpg`, value, over), three[0]!, three[1]!]),
+        JSON.stringify([value, over])
+      ).toBeUndefined()
+  })
+
+  it('names a product only as the catalog writes it, in words that pass as the store’s', () => {
+    const alt = (product: string, productNames?: string[]) =>
+      photos(
+        three.map((f) => shot((f.value as { url: string }).url, { product })),
+        productNames ? { productNames } : {}
+      )?.[0]?.alt
+    expect(alt('Weekend Knit')).toBe("A customer's photo of Weekend Knit")
+    expect(alt('So soft, Jordan loves it')).toBe("A customer's photo")
+    const long = `Knit ${'x'.repeat(150)}`
+    expect(alt(long, [long])).toBe("A customer's photo")
+  })
+
+  it('keeps at most 12', () => {
+    const many = Array.from({ length: 15 }, (_, n) =>
+      shot(`${imgix}/${n + 1}.jpg`)
+    )
+    expect(photos(many)).toHaveLength(12)
+  })
+})
