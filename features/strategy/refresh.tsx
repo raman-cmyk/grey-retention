@@ -3,8 +3,11 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-/** Refreshes the page every few seconds while a plan step is running. */
-export function PlanProgress({ message }: { message: string }) {
+/**
+ * While the planner or an email's agents work, the Plan screen reads itself
+ * again every few seconds (at most two minutes), and says when it is slow.
+ */
+export function KeepFresh() {
   const router = useRouter()
   const [slow, setSlow] = useState(false)
   useEffect(() => {
@@ -17,15 +20,9 @@ export function PlanProgress({ message }: { message: string }) {
     }, 3000)
     return () => clearInterval(timer)
   }, [router])
-  return (
-    <p
-      role="status"
-      aria-live="polite"
-      className="rounded-lg bg-[var(--brand-soft)] p-4 text-sm leading-6 text-[var(--brand-ink)]"
-    >
-      {message}
-      {slow &&
-        ' This is taking longer than usual; you can leave this page and come back.'}
+  return slow ? (
+    <p role="status" className="type-caption text-[var(--stone)]">
+      This is taking longer than usual. You can leave this page and come back.
     </p>
-  )
+  ) : null
 }
