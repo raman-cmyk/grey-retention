@@ -156,7 +156,12 @@ function briefFor(
     story.mode === 'copy' && ref !== undefined
       ? story.reference?.[ref]
       : undefined
-  const picture = ref === undefined ? undefined : input.reference?.images?.[ref]
+  // Pictures only in step with the reference: never another section's.
+  const images =
+    input.reference?.images?.length === input.reference?.reference.length
+      ? input.reference?.images
+      : undefined
+  const picture = ref === undefined ? undefined : images?.[ref]
   return {
     mode: story.mode,
     slot: { emailType: input.slot.emailType, angle: input.slot.angle },

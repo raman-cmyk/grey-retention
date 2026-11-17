@@ -89,7 +89,12 @@ describe('the sections step and the owner’s mode (DST-002b)', () => {
         {
           ...pictured,
           sections: pictured.sections.map((s, i) =>
-            i === 0 ? { ...s, image: 'sect/m-ref/0.jpg' } : s
+            i === 0
+              ? {
+                  ...s,
+                  image: 'sect/00000000-0000-4000-8000-0000000000a1/0.jpg'
+                }
+              : s
           )
         }
       ])
@@ -119,7 +124,7 @@ describe('the sections step and the owner’s mode (DST-002b)', () => {
       mode: 'copy',
       refIndex: [0, 1, 2, null],
       // DST-004b: each reference section's stored picture, for the match score.
-      images: ['sect/m-ref/0.jpg', null, null]
+      images: ['sect/00000000-0000-4000-8000-0000000000a1/0.jpg', null, null]
     })
     expect(output.reference?.reason).toMatch(
       /^We copy Pine & Co’s email “The cedar sale”/

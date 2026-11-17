@@ -688,7 +688,7 @@ describe('the design step judges the studio’s email whole (DST-006d part 2c)',
           blockType: 'hero_image',
           height: 640,
           styles: ['dark'],
-          image: 'sect/m1/0.jpg'
+          image: 'sect/00000000-0000-4000-8000-0000000000a1/0.jpg'
         },
         { blockType: 'text', height: 200 },
         { blockType: 'product_grid_2col', height: 700 },
@@ -713,7 +713,11 @@ describe('the design step judges the studio’s email whole (DST-006d part 2c)',
     expect(vi.mocked(studio.design).mock.calls[0]![0]).toMatchObject({
       mode: 'copy',
       // DST-004b: with its stored picture, saved by the sections step.
-      reference: { tone: 'dark', height: 640, image: 'sect/m1/0.jpg' }
+      reference: {
+        tone: 'dark',
+        height: 640,
+        image: 'sect/00000000-0000-4000-8000-0000000000a1/0.jpg'
+      }
     })
     // Scratch, as before, without one.
     const plain = await beforeDesign()

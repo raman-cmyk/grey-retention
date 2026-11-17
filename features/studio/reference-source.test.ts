@@ -163,6 +163,19 @@ describe('toReferences', () => {
       at
     )
     expect(emails.map((e) => e.id)).toEqual(['e1'])
+    // Only this email's own crop of this section is kept.
+    const other = toReferences(
+      rows({
+        sections: [
+          {
+            ...sectionsOf('e1')[0]!,
+            image_path: 'sect/m-e2/0.jpg'
+          }
+        ]
+      }),
+      at
+    )
+    expect(other.emails[0]?.sections[0]?.image).toBeNull()
     expect(emails[0].sections).toEqual([
       {
         blockType: 'unsure',

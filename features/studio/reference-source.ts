@@ -133,7 +133,11 @@ export function toReferences(
           height: s.height,
           purpose: s.purpose,
           styles: s.styles ?? [],
-          image: s.image_path
+          // Only this email's own crop of this section.
+          image:
+            s.image_path === `sect/${s.inbox_message_id}/${s.ordinal}.jpg`
+              ? s.image_path
+              : null
         }))
     })
   }

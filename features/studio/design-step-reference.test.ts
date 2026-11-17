@@ -66,7 +66,11 @@ const followed = (
     { family: 'text', tone: 'light', height: 200 }
   ],
   refIndex: [0, 1, 2, null],
-  images: ['sect/m1/1.jpg', 'sect/m1/2.jpg', null]
+  images: [
+    'sect/00000000-0000-4000-8000-0000000000a1/1.jpg',
+    'sect/00000000-0000-4000-8000-0000000000a1/2.jpg',
+    null
+  ]
 })
 
 function ports(over: Partial<StudioStepPorts> = {}): StudioStepPorts {
@@ -159,16 +163,22 @@ describe('the design studio follows the reference email (DST-002b)', () => {
     expect(brief.reference).toEqual({
       tone: 'dark',
       height: 700,
-      image: 'sect/m1/1.jpg'
+      image: 'sect/00000000-0000-4000-8000-0000000000a1/1.jpg'
     })
     const sent = sectionDesignerAgent.task({ brief, problems: [] })
-    expect(sent).not.toContain('sect/m1/')
+    expect(sent).not.toContain('sect/')
     expect(JSON.parse(sent).section.reference).toEqual({
       tone: 'dark',
       height: 700
     })
-    // An unsafe path, or none, gives no picture.
-    for (const images of [['../x.jpg', null, null], undefined]) {
+    // An unsafe path, none, or pictures out of step with the reference
+    // (another section's picture) give no picture.
+    for (const images of [
+      ['../x.jpg', null, null],
+      ['shot/00000000-0000-4000-8000-0000000000a1.jpg', null, null],
+      ['sect/00000000-0000-4000-8000-0000000000a1/9.jpg'],
+      undefined
+    ]) {
       const q = ports()
       await studioDesignStep(
         input({

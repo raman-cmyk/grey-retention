@@ -75,7 +75,7 @@ export type SectionBrief = {
   /**
    * Copy mode: the reference section's tone and height, and (DST-004b)
    * where its picture is stored, for the match score; the path is never
-   * sent to an agent.
+   * sent to an agent (members can read it with the build's saved steps).
    */
   reference?: { tone: Tone; height: number; image?: string }
 }

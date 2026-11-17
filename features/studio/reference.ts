@@ -32,17 +32,20 @@ export type ReferenceSection = {
   styles?: readonly string[]
   /**
    * DST-004b: where the section's picture is stored (`inbox-assets`),
-   * for the match score; never sent to an agent.
+   * for the match score; never sent to an agent (workspace members can
+   * read it with the build's saved steps, as they can the email's id).
    */
   image?: string | null
 }
 
-/** A stored picture's path as the inbox writes them (no `..`, no scheme). */
+/**
+ * A section picture's path exactly as the inbox stores it
+ * (`sect/<message id>/<ordinal>.jpg`, the `email_sections.image_path`
+ * check): never a whole email's screenshot (`shot/`) or a kept image
+ * (`img/`).
+ */
 export const isPicturePath = (p: unknown): p is string =>
-  typeof p === 'string' &&
-  p.length <= 300 &&
-  /^[A-Za-z0-9][A-Za-z0-9/_.-]*$/.test(p) &&
-  !p.split('/').includes('..')
+  typeof p === 'string' && /^sect\/[0-9a-f-]{36}\/[0-9]{1,2}\.jpg$/.test(p)
 
 /**
  * An inbox email that could be the reference. Only a brand the workspace
