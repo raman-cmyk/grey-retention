@@ -279,6 +279,74 @@ describe('introduced', () => {
       expect(quoted(credit), credit).toBe(false)
   })
 
+  it('refuses a note a short caption after it gives to someone else (review round 4)', () => {
+    const worn = 'I wear my scarf every single day.'
+    const page = (after: string) =>
+      `<h2>Hi, I’m Maya!</h2><p>${worn}</p>${after}`
+    expect(tied(page(''), worn)).toBe(true)
+    expect(tied(page('<p>Every knit is made to last.</p>'), worn)).toBe(true)
+    for (const caption of [
+      'Anna K.',
+      'Anna K., Leeds',
+      'Anna from Leeds',
+      'Anna (Leeds)',
+      '★★★★★ Anna',
+      'Verified buyer'
+    ])
+      expect(tied(page(`<p>${caption}</p>`), worn), caption).toBe(false)
+    // In its own block after it, too.
+    expect(tied(`<h2>Hi, I’m Maya!</h2><p>${worn} Anna K.</p>`, worn)).toBe(
+      false
+    )
+  })
+
+  it('refuses a note under a short heading naming someone else, and after a letter to the store (review round 4)', () => {
+    const packed = 'I pack every order by hand.'
+    const page = (heading: string) =>
+      `<h3>${heading}</h3><p>${packed}</p><p>— Maya, founder</p>`
+    for (const heading of ['Our story', 'Meet Maya'])
+      expect(tied(page(heading), packed), heading).toBe(true)
+    for (const heading of [
+      'Meet Tom',
+      'Tom Hart — head packer',
+      'Our packer, Tom',
+      'Tom (packing)'
+    ])
+      expect(tied(page(heading), packed), heading).toBe(false)
+    expect(
+      tied(`<p>Dear Cedar Lane,</p><p>${packed}</p><p>— Maya</p>`, packed)
+    ).toBe(false)
+    expect(
+      tied(`<p>Dear friends,</p><p>${packed}</p><p>— Maya</p>`, packed)
+    ).toBe(true)
+  })
+
+  it('reads a block quote, an inline quote and a captioned figure as a quotation, as the page’s text holds them (review round 4)', () => {
+    const worn = 'I wear my scarf every single day.'
+    for (const html of [
+      `<blockquote>I wear my scarf every single <em>day</em>.</blockquote>`,
+      `<blockquote>I wear my sc<b>arf</b> every single day.</blockquote>`,
+      `<p><q>${worn}</q></p>`,
+      `<figure><p>${worn}</p><figcaption>Our customer</figcaption></figure>`
+    ]) {
+      expect(
+        readPage(`<main>${html}</main>`, aboutUrl, 'about').quotes?.some((q) =>
+          q.includes(worn)
+        ),
+        html
+      ).toBe(true)
+      expect(tied(`<h2>Hi, I’m Maya Lee!</h2>${html}`, worn), html).toBe(false)
+    }
+    // A figure without a caption is a picture's frame, no quotation.
+    expect(
+      readPage(
+        `<main><figure><p>${worn}</p></figure></main>`,
+        aboutUrl,
+        'about'
+      ).quotes
+    ).toEqual([])
+  })
+
   it('refuses a note no introduction of theirs gives them, or that someone else is named before or after', () => {
     // Another block's words: a team member's line under their name.
     expect(

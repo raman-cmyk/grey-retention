@@ -302,6 +302,57 @@ const plainStarts = new Set(
 const capitals = /(?<![\p{L}\p{N}])\p{Lu}[\p{L}\p{M}'’-]*/gu
 const mine = /^I(?:['’](?:m|ve|d|ll))?$/u
 
+/** Capitalised words a heading or caption is made of, never a name. */
+const everyday = new Set([
+  ...notNames,
+  ...[...plainStarts].map((w) => w.toLowerCase()),
+  ...(
+    'meet about values mission vision people hands workshop made handmade since all new free more see read ' +
+    'browse shipping returns care guide size sizes materials process how why what where who you yours ' +
+    'sincerely warmly cheers best regards head lead chief'
+  ).split(' ')
+])
+/** What a review's credit carries: stars, "verified", "customer", "buyer", "review". */
+const reviewed =
+  /[★☆⭐✩✪✫✬✭✮✯]|(?<![\p{L}\p{N}])(?:verified|customers?|buyers?|reviews?|reviewers?|reviewed)(?![\p{L}\p{N}])/iu
+/** A capitalised word, or an initial with its dot ("Anna", "K."). */
+const nameTokens =
+  /(?<![\p{L}\p{N}])\p{Lu}(?:\.(?=$|[\s,;)])|[\p{L}\p{M}'’-]*)/gu
+
+/**
+ * Whether a short line names or credits someone else: a review's marks, or
+ * a capitalised word or initial that is not the founder's, the store's or
+ * an everyday word ("Anna K.", "Anna from Leeds", "★★★★★ Anna", "Meet Tom",
+ * "Our packer, Tom", "Verified buyer").
+ */
+function namesSomeoneElse(
+  line: string,
+  name: string,
+  own: ReadonlySet<string>
+): boolean {
+  if (reviewed.test(line)) return true
+  const initials = nameWords(name).map((w) => Array.from(w)[0])
+  for (const [w] of line.matchAll(nameTokens)) {
+    if (w.endsWith('.')) {
+      if (!initials.includes(w[0])) return true
+      continue
+    }
+    if (
+      Array.from(w).length === 1 ||
+      own.has(w) ||
+      mine.test(w) ||
+      everyday.has(w.toLowerCase())
+    )
+      continue
+    return true
+  }
+  return false
+}
+
+/** How many words a heading or a caption has at most. */
+const shortLine = 8
+const short = (line: string) => fold(line).split(' ').length <= shortLine
+
 const dash = /^[–—-]\s*/u
 /** Short closings before a sign-off's name ("Love, Maya", "xx Maya"). */
 const closing =
@@ -354,9 +405,7 @@ function creditOf(
   const founder = nameForms(name).includes(person)
   if (signed)
     return founder && roleOnly(rest.join(','), own) ? 'founder' : 'other'
-  return !founder && t.split(' ').length <= 8 && personName(person)
-    ? 'other'
-    : null
+  return short(t) && namesSomeoneElse(t, name, own) ? 'other' : null
 }
 
 /**
@@ -405,22 +454,33 @@ export function introduced(
     )
   )
   const tail = spot.after.trim()
+  // A letter to the store before it is a customer's ("Dear Cedar Lane,").
+  const toStore = (text: string | undefined) => {
+    const to = /^["“]?dear\s+(.+)$/iu.exec(fold(text ?? ''))?.[1] ?? ''
+    return !!to && allowed.some((a) => a.trim() && to.includes(fold(a)))
+  }
   if (
     /^,?\s*(?:says|said|writes|wrote)(?![\p{L}\p{N}])/iu.test(tail) ||
     // Someone else introduced or named before it.
     namesAnother(spot.previous, name, own, true) ||
-    namesAnother(spot.before, name, own, false)
+    namesAnother(spot.before, name, own, false) ||
+    toStore(spot.previous) ||
+    toStore(spot.before)
+  )
+    return false
+  // A credit at its own end or in the block after it, or a caption there
+  // naming anyone else, gives it to them.
+  const tailCredit = dash.test(tail) ? creditOf(tail, name, own) : null
+  const nextCredit =
+    spot.next !== undefined ? creditOf(spot.next, name, own) : null
+  if (
+    tailCredit === 'other' ||
+    nextCredit === 'other' ||
+    (tail && !tailCredit && short(tail) && namesSomeoneElse(tail, name, own))
   )
     return false
   // Signed at its own end, or in the block right after it when it ends its own.
-  const credit = tail
-    ? dash.test(tail)
-      ? creditOf(tail, name, own)
-      : null
-    : spot.next !== undefined
-      ? creditOf(spot.next, name, own)
-      : null
-  if (credit === 'other') return false
+  const credit = tailCredit ?? (tail ? null : nextCredit)
   if (credit === 'founder' || new RegExp(intro.source, 'u').test(spot.note))
     return true
   // Introduced just before it: in its block, or in the block right before

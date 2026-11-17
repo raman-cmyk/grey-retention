@@ -15,8 +15,9 @@ export type ReadPage = {
   text: string
   links: { href: string; text: string }[]
   /**
-   * The words of its block quotes (REL-ONB2 part d: someone quoted, never
-   * a note the page's writer introduced), at most 50.
+   * The words of its quotations (REL-ONB2 part d: someone quoted, never a
+   * note the page's writer introduced): block quotes, inline quotes and
+   * figures with a caption, built as `text` is, at most 50.
    */
   quotes?: string[]
 }
@@ -97,7 +98,8 @@ export function readPage(
   let language = 'en'
   const parts: string[] = []
   const links: ReadPage['links'] = []
-  const quotes: string[] = []
+  // Where each quotation's words are among the parts, as the walk finds them.
+  const quoted: [number, number][] = []
   // The title and description come from the page's head only (an icon's
   // own <title> in the body is not the page's).
   const head = (n: Node) => {
@@ -123,8 +125,11 @@ export function readPage(
         continue
       }
       if (!isElement(c) || unseen.has(c.tagName) || hidden(c)) continue
-      if (c.tagName === 'blockquote' && quotes.length < 50)
-        quotes.push(fold(textOf(c)))
+      const quotation =
+        c.tagName === 'blockquote' ||
+        c.tagName === 'q' ||
+        (c.tagName === 'figure' && captioned(c))
+      const from = parts.length
       if (c.tagName === 'a') {
         const href = attr(c, 'href')
         if (href) links.push({ href, text: fold(textOf(c)).slice(0, 80) })
@@ -132,6 +137,7 @@ export function readPage(
       if (blocks.has(c.tagName)) parts.push('\n')
       walk(c)
       if (blocks.has(c.tagName)) parts.push('\n')
+      if (quotation && quoted.length < 50) quoted.push([from, parts.length])
     }
   }
   head(doc)
@@ -143,8 +149,27 @@ export function readPage(
     .filter(Boolean)
     .join('\n')
     .slice(0, maxPageText)
+  // A quotation's words as the page's text holds them (no space added
+  // between its child nodes: "sc<b>arf</b>" is "scarf").
+  const quotes = quoted
+    .map(([from, to]) =>
+      parts
+        .slice(from, to)
+        .join('')
+        .split('\n')
+        .map(fold)
+        .filter(Boolean)
+        .join(' ')
+    )
+    .filter(Boolean)
   return { url, kind, title, description, language, text, links, quotes }
 }
+
+/** A figure with a caption: a quotation and who said it, or a captioned picture. */
+const captioned = (n: Node): boolean =>
+  children(n).some(
+    (c) => isElement(c) && (c.tagName === 'figcaption' || captioned(c))
+  )
 
 function textOf(n: Node): string {
   if (n.nodeName === '#text') return (n as T.TextNode).value
