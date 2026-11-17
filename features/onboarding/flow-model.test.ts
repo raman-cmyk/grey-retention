@@ -160,6 +160,11 @@ describe('setupFlow (UI-ONBa)', () => {
     expect(openPlace(flow, null)).toBe('discount')
   })
 
+  it('says whether the workspace has its onboarding row', () => {
+    expect(setupFlow(none).tracked).toBe(false)
+    expect(setupFlow({ ...none, tracked: true }).tracked).toBe(true)
+  })
+
   it('opens the finish once every step is done, any step still open', () => {
     const flow = setupFlow(all)
     expect(flow.allDone).toBe(true)
