@@ -684,7 +684,12 @@ describe('the design step judges the studio’s email whole (DST-006d part 2c)',
       receivedAt: '2026-02-20T09:00:00Z',
       winner: false,
       sections: [
-        { blockType: 'hero_image', height: 640, styles: ['dark'] },
+        {
+          blockType: 'hero_image',
+          height: 640,
+          styles: ['dark'],
+          image: 'sect/00000000-0000-4000-8000-0000000000a1/0.jpg'
+        },
         { blockType: 'text', height: 200 },
         { blockType: 'product_grid_2col', height: 700 },
         { blockType: 'footer', height: 200 }
@@ -707,7 +712,12 @@ describe('the design step judges the studio’s email whole (DST-006d part 2c)',
     // The hero's brief keeps the reference's tone and height.
     expect(vi.mocked(studio.design).mock.calls[0]![0]).toMatchObject({
       mode: 'copy',
-      reference: { tone: 'dark', height: 640 }
+      // DST-004b: with its stored picture, saved by the sections step.
+      reference: {
+        tone: 'dark',
+        height: 640,
+        image: 'sect/00000000-0000-4000-8000-0000000000a1/0.jpg'
+      }
     })
     // Scratch, as before, without one.
     const plain = await beforeDesign()
