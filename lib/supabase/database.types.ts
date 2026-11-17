@@ -914,6 +914,45 @@ export type Database = {
           }
         ]
       }
+      brand_fonts: {
+        Row: {
+          domain: string
+          fonts: Json
+          read_at: string
+          run_id: string
+          tenant_id: string
+        }
+        Insert: {
+          domain: string
+          fonts: Json
+          read_at?: string
+          run_id: string
+          tenant_id: string
+        }
+        Update: {
+          domain?: string
+          fonts?: Json
+          read_at?: string
+          run_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'brand_fonts_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'brand_fonts_tenant_id_run_id_fkey'
+            columns: ['tenant_id', 'run_id']
+            isOneToOne: false
+            referencedRelation: 'job_runs'
+            referencedColumns: ['tenant_id', 'id']
+          }
+        ]
+      }
       brand_kits: {
         Row: {
           approved_by: string | null
@@ -3270,6 +3309,7 @@ export type Database = {
           klaviyo_campaign_id: string | null
           lease_token: string | null
           lease_until: string | null
+          mode: string
           not_before: string | null
           progress: Json
           push_key: string
@@ -3292,6 +3332,7 @@ export type Database = {
           klaviyo_campaign_id?: string | null
           lease_token?: string | null
           lease_until?: string | null
+          mode?: string
           not_before?: string | null
           progress?: Json
           push_key?: string
@@ -3314,6 +3355,7 @@ export type Database = {
           klaviyo_campaign_id?: string | null
           lease_token?: string | null
           lease_until?: string | null
+          mode?: string
           not_before?: string | null
           progress?: Json
           push_key?: string
@@ -7593,7 +7635,7 @@ export type Database = {
         Returns: string
       }
       create_email_build: {
-        Args: { run: string; slot: number; t: string }
+        Args: { mode?: string; run: string; slot: number; t: string }
         Returns: string
       }
       create_email_result: {
@@ -8234,6 +8276,10 @@ export type Database = {
           pages: Json
         }
         Returns: Json
+      }
+      record_site_fonts: {
+        Args: { fonts: Json; job: string; lease: string }
+        Returns: boolean
       }
       record_site_logos: {
         Args: {
