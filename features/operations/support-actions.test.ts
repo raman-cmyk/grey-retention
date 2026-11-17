@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const rpc = vi.fn()
 const auth = vi.hoisted(() => ({ requireRequestContext: vi.fn() }))
-vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+const cache = vi.hoisted(() => ({ revalidatePath: vi.fn() }))
+vi.mock('next/cache', () => cache)
 vi.mock('next/headers', () => ({ cookies: async () => ({ set: vi.fn() }) }))
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }))
 vi.mock('@/lib/supabase/server', () => ({
@@ -41,6 +42,7 @@ const reply = {
 }
 
 beforeEach(() => {
+  cache.revalidatePath.mockReset()
   rpc.mockReset()
   rpc.mockResolvedValue({ data: null, error: null })
   auth.requireRequestContext.mockResolvedValue({
@@ -90,5 +92,57 @@ describe('support on Settings (UI-SETd)', () => {
     expect((await operationAction({}, form(reply))).error).toBe(
       'This ticket is not open to you any more. Reload the page.'
     )
+  })
+
+  it('keeps the admins’ queue and other kinds on their old answers', async () => {
+    const old =
+      'Authorized operation persisted. External delivery and billing remain simulated.'
+    auth.requireRequestContext.mockResolvedValue({ kind: 'admin' })
+    // An admin's reply in the support queue keeps its words.
+    expect(
+      await operationAction({}, form({ ...reply, surface: 'admin' }))
+    ).toEqual({ message: old })
+    expect(rpc).toHaveBeenLastCalledWith('reply_support', {
+      t: tenant,
+      ticket,
+      expected_revision: 2,
+      body: 'Thanks, found them.',
+      state: 'open'
+    })
+    expect(
+      (
+        await operationAction(
+          {},
+          form({ ...reply, surface: 'admin', body: ' ' })
+        )
+      ).error
+    ).toBe('Check the operation fields.')
+    rpc.mockResolvedValueOnce({ data: null, error: { code: '42501' } })
+    expect(
+      (await operationAction({}, form({ ...reply, surface: 'admin' }))).error
+    ).toBe('Permission denied.')
+    // Another kind keeps its answer, and both pages still refresh.
+    cache.revalidatePath.mockClear()
+    expect(
+      await operationAction(
+        {},
+        form({
+          surface: 'admin',
+          kind: 'define_package',
+          name: 'Starter',
+          allocation: '5000',
+          daily: '1000'
+        })
+      )
+    ).toEqual({ message: old })
+    expect(cache.revalidatePath.mock.calls.map(([path]) => path)).toEqual([
+      '/settings',
+      '/admin/operations'
+    ])
+    // A kind that is not a support one never takes their words.
+    expect(
+      (await operationAction({}, form({ surface: 'client', kind: 'toString' })))
+        .error
+    ).toBe('Check the operation fields.')
   })
 })

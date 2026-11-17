@@ -15,6 +15,8 @@ export type FeedbackPage = {
   team: string
   /** When the page was built (for "this year" in dates). */
   now: number
+  /** More than `limit` exist (Settings offers Show older). */
+  more: boolean
   state: 'ready' | 'demo' | 'no_database' | 'missing_column' | 'load_failed'
 }
 
@@ -28,15 +30,26 @@ const isCategory = (value: unknown): value is Category =>
 
 /**
  * One workspace's feature requests, or with `kind: 'support'` its support
- * threads (UI-SETd): the same tickets, people and replies.
+ * threads (UI-SETd): the same tickets, people and replies. `order:
+ * 'activity'` puts the latest reply or change first (else the newest
+ * ticket); `limit` is read in the query, one more to know of older ones.
  */
 export async function feedbackPage(
   context: { tenantId: string; userId: string },
   now = Date.now(),
-  { kind = 'feedback' }: { kind?: 'feedback' | 'support' } = {}
+  {
+    kind = 'feedback',
+    order = 'created',
+    limit = requestLimit
+  }: {
+    kind?: 'feedback' | 'support'
+    order?: 'created' | 'activity'
+    limit?: number
+  } = {}
 ): Promise<FeedbackPage> {
   const team = `${defaultBrandPresentation.productName} team`
-  const empty = { requests: [], team, now }
+  const empty = { requests: [], team, now, more: false }
+  const take = Math.max(1, Math.min(limit, requestLimit))
   if (getServerEnvironment().AUTH_MODE === 'demo')
     return { ...empty, state: 'demo' }
   const db = await createClient()
@@ -48,16 +61,19 @@ export async function feedbackPage(
     )
     .eq('tenant_id', context.tenantId)
     .eq('kind', kind)
-    .order('created_at', { ascending: false })
+    .order(order === 'activity' ? 'updated_at' : 'created_at', {
+      ascending: false
+    })
     .order('created_at', { referencedTable: 'support_messages' })
     .limit(messageLimit, { referencedTable: 'support_messages' })
-    .limit(requestLimit)
+    .limit(take + 1)
   if (tickets.error)
     return {
       ...empty,
       state: missing.has(tickets.error.code) ? 'missing_column' : 'load_failed'
     }
-  const rows = tickets.data ?? []
+  const read = tickets.data ?? []
+  const rows = read.slice(0, take)
   if (rows.length === 0) return { ...empty, state: 'ready' }
   const actors = [
     ...new Set(
@@ -86,6 +102,7 @@ export async function feedbackPage(
   return {
     team,
     now,
+    more: read.length > take,
     state: 'ready',
     requests: rows.map((row) => {
       const [first, ...rest] = row.support_messages

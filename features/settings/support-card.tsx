@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { ActionAnswers, ActionButton } from '@/components/gros/action'
+import { ButtonLink } from '@/components/gros/button'
 import { Card } from '@/components/gros/card'
 import { Field } from '@/components/gros/input'
 import type { RequestStatus } from '@/features/feedback/rules'
@@ -9,7 +10,8 @@ import type { SettingsView } from './page-model'
 
 /**
  * Support on Settings (UI-SETd): ask the team a question and follow its
- * threads, newest first, with each message's author and time in the
+ * threads, latest activity first (Show older lists them all), with each
+ * message's author and time in the
  * brand's timezone and a reply under each. Any member may ask and reply;
  * the support commands check membership again. The heading is the
  * `#support` the old menu opens. BRAND.md has no multi-line field: the
@@ -25,7 +27,7 @@ export function SupportCard({
 }) {
   const title = 'Support'
   const support = view.support
-  const zone = view.timezone?.saved ?? 'UTC'
+  const zone = view.timezone?.saved ?? null
   return (
     <Card label={title}>
       <div className="flex flex-col gap-[var(--space-5)]">
@@ -43,7 +45,7 @@ export function SupportCard({
                 </p>
               ) : (
                 <ul
-                  aria-label="Your questions"
+                  aria-label="Support threads"
                   className="flex flex-col gap-[var(--space-3)]"
                 >
                   {support.threads.map((thread) => (
@@ -74,10 +76,7 @@ export function SupportCard({
                             className="flex flex-col gap-[var(--space-1)]"
                           >
                             <p className="type-caption text-[var(--stone)]">
-                              {[
-                                message.author,
-                                formatBrandDateTime(message.createdAt, zone)
-                              ]
+                              {[message.author, timeIn(message.createdAt, zone)]
                                 .filter(Boolean)
                                 .join(' · ')}
                             </p>
@@ -107,7 +106,8 @@ export function SupportCard({
                         }}
                       >
                         <TextBox
-                          label="Your reply"
+                          id={`support-reply-${thread.id}`}
+                          label={`Your reply to ${thread.subject}`}
                           name="body"
                           rows={2}
                           onTile
@@ -117,6 +117,13 @@ export function SupportCard({
                   ))}
                 </ul>
               )}
+              {support.more ? (
+                <ButtonLink
+                  href="/settings?support=all#support"
+                  label="Show older"
+                  kind="quiet"
+                />
+              ) : null}
               <ActionButton
                 action={operationAction}
                 label="Send to support"
@@ -133,7 +140,12 @@ export function SupportCard({
                   maxLength={200}
                   required
                 />
-                <TextBox label="Your question" name="body" rows={4} />
+                <TextBox
+                  id="support-question"
+                  label="Your question"
+                  name="body"
+                  rows={4}
+                />
               </ActionButton>
             </>
           )}
@@ -156,30 +168,45 @@ const stateOf: Record<RequestStatus, string> = {
 }
 
 /**
- * A multi-line field with a real label, on the GROS tokens: mist on the
- * white card, white on a mist tile.
+ * A time in the brand's timezone, or in UTC (said so) when the timezone
+ * could not be read.
+ */
+export function timeIn(at: string, zone: string | null) {
+  const text = formatBrandDateTime(at, zone ?? 'UTC')
+  return text && !zone ? `${text} UTC` : (text ?? '')
+}
+
+/**
+ * A multi-line field with a real label (by its id, so the label alone
+ * names it), on the GROS tokens: mist on the white card, white on a mist
+ * tile.
  */
 function TextBox({
+  id,
   label,
   name,
   rows,
   onTile = false
 }: {
+  id: string
   label: string
   name: string
   rows: number
   onTile?: boolean
 }) {
   return (
-    <label className="flex flex-col gap-[var(--space-2)]">
-      <span className="gros-field-label text-[var(--ink)]">{label}</span>
+    <div className="flex flex-col gap-[var(--space-2)]">
+      <label htmlFor={id} className="gros-field-label text-[var(--ink)]">
+        {label}
+      </label>
       <textarea
+        id={id}
         name={name}
         rows={rows}
         maxLength={5000}
         required
         className={`type-body w-full rounded-[var(--radius-md)] border-2 border-transparent px-[var(--space-4)] py-[var(--space-3)] text-[var(--ink)] focus:border-[var(--forest)] focus:bg-[var(--white)] focus:outline-none ${onTile ? 'bg-[var(--white)]' : 'bg-[var(--mist)]'}`}
       />
-    </label>
+    </div>
   )
 }

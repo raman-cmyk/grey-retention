@@ -2,7 +2,11 @@ import 'server-only'
 import { unstable_rethrow } from 'next/navigation'
 import type { ClientRequestContext } from '@/features/auth/domain/types'
 import { klaviyoMode } from '@/features/connections/live-klaviyo'
-import { feedbackPage, type FeedbackPage } from '@/features/feedback/data'
+import {
+  feedbackPage,
+  requestLimit,
+  type FeedbackPage
+} from '@/features/feedback/data'
 import type { FeatureRequest } from '@/features/feedback/rules'
 import type { ManagedOffers } from '@/features/offers/source'
 import { timezoneWithOffset } from '@/lib/brand-time'
@@ -54,11 +58,13 @@ export type SettingsView = {
   /** Who changed what (UI-SETc): the owner and managers only. */
   changes: SettingsReadModel['changes']
   /**
-   * The workspace's support questions, newest first (UI-SETd): any member
-   * asks and replies. `tenantId` goes back with a reply, as the action asks.
+   * The workspace's support questions, latest activity first (UI-SETd):
+   * any member asks and replies. `more` when older ones are not shown;
+   * `tenantId` goes back with a reply, as the action asks.
    */
   support: {
     threads: FeatureRequest[]
+    more: boolean
     team: string
     tenantId: string
   } | null
@@ -74,8 +80,10 @@ export type SettingsInput = {
   liveKeys: boolean
 }
 
-/** The support threads Settings shows, newest first. */
+/** How many support threads Settings shows until Show older. */
 export const supportLimit = 10
+/** What Settings shows in full (`?support=all`). */
+export type SettingsShow = { allSupport?: boolean }
 
 /** The Settings view from its parts. Pure, for tests. */
 export function settingsView(input: SettingsInput): SettingsView {
@@ -111,7 +119,8 @@ export function settingsView(input: SettingsInput): SettingsView {
     support:
       input.support?.state === 'ready'
         ? {
-            threads: input.support.requests.slice(0, supportLimit),
+            threads: input.support.requests,
+            more: input.support.more,
             team: input.support.team,
             tenantId: input.context.tenantId
           }
@@ -142,12 +151,20 @@ const settle = <T>(work: Promise<T>) =>
 /** Settings for the signed-in member's workspace. */
 export async function settingsPageModel(
   context: ClientRequestContext,
-  now = new Date()
+  now = new Date(),
+  show: SettingsShow = {}
 ): Promise<SettingsView> {
   const [read, zone, support] = await Promise.all([
     settle(settingsReadModel(context)),
     settle(brandTimezone(context)),
-    settle(feedbackPage(context, now.getTime(), { kind: 'support' }))
+    // The latest activity first, so a reply on an old thread shows.
+    settle(
+      feedbackPage(context, now.getTime(), {
+        kind: 'support',
+        order: 'activity',
+        limit: show.allSupport ? requestLimit : supportLimit
+      })
+    )
   ])
   return settingsView({
     context,

@@ -37,14 +37,20 @@ const schema = z.discriminatedUnion('kind', [
     package: z.uuid()
   })
 ])
-/** Plain words for a support question and a reply (UI-SETd, Settings). */
-const ticketWords: Record<string, { invalid: string; done: string }> = {
-  open_ticket: {
-    invalid: 'Write a subject of at least 2 characters, and your question.',
-    done: 'Sent to support. Their reply shows here.'
-  },
-  reply_ticket: { invalid: 'Write your reply first.', done: 'Reply sent.' }
-}
+/**
+ * Plain words for a member's support question and reply on Settings
+ * (UI-SETd). The admins' queue keeps its own answers.
+ */
+const ticketWords = new Map<string, { invalid: string; done: string }>([
+  [
+    'open_ticket',
+    {
+      invalid: 'Write a subject of at least 2 characters, and your question.',
+      done: 'Sent to support. Their reply shows here.'
+    }
+  ],
+  ['reply_ticket', { invalid: 'Write your reply first.', done: 'Reply sent.' }]
+])
 export async function operationAction(
   _: FormResult,
   form: FormData
@@ -52,7 +58,10 @@ export async function operationAction(
   const surface = form.get('surface') === 'admin' ? 'admin' : 'client',
     ctx = await requireRequestContext(surface),
     v = schema.safeParse(Object.fromEntries(form)),
-    words = ticketWords[String(form.get('kind'))]
+    words =
+      surface === 'client'
+        ? ticketWords.get(String(form.get('kind')))
+        : undefined
   if (!v.success)
     return { error: words?.invalid ?? 'Check the operation fields.' }
   const db = await createClient()
