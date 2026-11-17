@@ -48,3 +48,41 @@ export async function newOwner(
   await expect(page).toHaveURL(/\/home$/)
   return db
 }
+
+/**
+ * A fresh owner (signed in) with one Staff teammate, Sam Teammate, added
+ * directly on the disposable local database (test-only).
+ */
+export async function ownerWithTeammate(
+  page: Page,
+  { prefix = 'team', name = 'Team studio' } = {}
+) {
+  const owner = await newOwner(page, { prefix, name })
+  const tenant = await owner.from('tenants').select('id').single()
+  expect(tenant.error).toBeNull()
+  const service = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  )
+  const email = `team-mate-${randomUUID()}@grey-retention.test`
+  const user = await service.auth.admin.createUser({
+    email,
+    password: randomUUID(),
+    email_confirm: true,
+    user_metadata: { full_name: 'Sam Teammate' }
+  })
+  expect(user.error).toBeNull()
+  expect(
+    (
+      await service.from('tenant_memberships').insert({
+        tenant_id: tenant.data!.id,
+        profile_id: user.data.user!.id,
+        role: 'staff',
+        status: 'active',
+        accepted_at: new Date().toISOString()
+      })
+    ).error
+  ).toBeNull()
+  return { email }
+}
