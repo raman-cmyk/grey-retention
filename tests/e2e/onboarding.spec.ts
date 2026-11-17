@@ -1,11 +1,13 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import { expect, test } from '@playwright/test'
+import { runReaders } from './readers'
 
 // UI-ONBe: a new owner creates a workspace, lands on /setup and walks the
 // five steps to Home. Sample Klaviyo only: the key's format is checked.
 test('a new owner creates a workspace and sets up the store to Home', async ({
-  page
+  page,
+  request
 }) => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   if (
@@ -47,6 +49,12 @@ test('a new owner creates a workspace and sets up the store to Home', async ({
   await expect(page.getByLabel('Store name')).toHaveValue(name)
   await page.getByLabel('Website').fill('setup-store.example')
   await page.getByRole('button', { name: 'Save store' }).click()
+  // Confirm brand waits for the website to be read.
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Your brand' })
+  ).toBeVisible()
+  await runReaders(request)
+  await page.reload()
   await page.getByRole('button', { name: 'Confirm brand' }).click()
   await page
     .getByLabel('Private API key')
@@ -88,6 +96,8 @@ test('a new owner creates a workspace and sets up the store to Home', async ({
   await expect(
     page.getByRole('heading', { level: 1, name: 'Your brand' })
   ).toBeVisible()
+  await runReaders(request)
+  await page.reload()
   await page.getByRole('button', { name: 'Confirm brand' }).click()
   await expect(page).toHaveURL(/\/home$/)
   expect(

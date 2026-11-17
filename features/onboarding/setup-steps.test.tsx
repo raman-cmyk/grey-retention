@@ -1,4 +1,11 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
@@ -7,8 +14,12 @@ vi.mock('./setup-actions', () => ({
   saveSetupDiscount: vi.fn(async () => ({})),
   addSetupCode: vi.fn(async () => ({})),
   followRival: vi.fn(async () => ({})),
-  followSuggestion: vi.fn(async () => ({})),
-  hideRival: vi.fn(async () => ({})),
+  followSuggestion: vi.fn(async () => ({
+    message: 'Tracking northwind.example.'
+  })),
+  hideRival: vi.fn(async () => ({
+    message: 'Hidden. GROS will not suggest it again.'
+  })),
   skipRivals: vi.fn(async () => ({})),
   finishSetup: vi.fn(async () => ({}))
 }))
@@ -136,10 +147,13 @@ describe('KlaviyoStep (UI-ONBd)', () => {
   it('says when connecting is not switched on (live adapters, no live Klaviyo)', () => {
     render(<KlaviyoStep view={view({ keyCheck: 'off' })} />)
     expect(
-      screen.getByText(
-        'Connecting Klaviyo is not switched on yet. Nothing was changed.'
-      )
+      screen.getByText('Connecting Klaviyo is not switched on yet.')
     ).toBeVisible()
+    // Not a dead end: Klaviyo cannot be skipped, so Home is one click away.
+    expect(screen.getByRole('link', { name: 'Open Home' })).toHaveAttribute(
+      'href',
+      '/home'
+    )
     expect(screen.queryByLabelText('Private API key')).toBeNull()
     expect(screen.queryByText(/Sample mode/)).toBeNull()
   })
@@ -334,6 +348,59 @@ describe('RivalsStep (UI-ONBe)', () => {
     render(<RivalsStep view={view({ owner: false })} rivals={rivals()} />)
     expect(screen.queryByRole('button')).toBeNull()
     expect(screen.queryByRole('textbox')).toBeNull()
+  })
+})
+
+describe('RivalsStep answers (UI-ONBe)', () => {
+  const one = (followable: boolean) =>
+    rivals({
+      suggestions: [
+        {
+          captureId: 'cap-1',
+          domain: 'northwind.example',
+          name: 'Northwind',
+          industry: 'apparel',
+          reason: 'Sells apparel like you',
+          followable
+        }
+      ]
+    })
+
+  it('keeps the answer when the last suggestion is hidden and the list empties', async () => {
+    const { rerender } = render(
+      <RivalsStep view={view()} rivals={one(false)} />
+    )
+    const hide = screen.getByRole('button', { name: 'Hide: Northwind' })
+    await waitFor(() => expect(hide).toBeEnabled())
+    await act(async () => fireEvent.click(hide))
+    await waitFor(() =>
+      expect(
+        screen.getByText('Hidden. GROS will not suggest it again.')
+      ).toBeVisible()
+    )
+    rerender(<RivalsStep view={view()} rivals={rivals({ suggestions: [] })} />)
+    expect(screen.getByText('No brands to suggest yet.')).toBeVisible()
+    expect(
+      screen.getByText('Hidden. GROS will not suggest it again.')
+    ).toBeVisible()
+  })
+
+  it('keeps the answer when the last suggestion is followed', async () => {
+    const { rerender } = render(<RivalsStep view={view()} rivals={one(true)} />)
+    const follow = screen.getByRole('button', { name: 'Follow: Northwind' })
+    await waitFor(() => expect(follow).toBeEnabled())
+    await act(async () => fireEvent.click(follow))
+    await waitFor(() =>
+      expect(screen.getByText('Tracking northwind.example.')).toBeVisible()
+    )
+    rerender(
+      <RivalsStep
+        view={view()}
+        rivals={rivals({ suggestions: [], following: ['northwind.example'] })}
+      />
+    )
+    expect(screen.getByText('Tracking northwind.example.')).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Continue' })).toBeVisible()
   })
 })
 

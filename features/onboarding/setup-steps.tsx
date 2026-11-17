@@ -64,9 +64,12 @@ export function KlaviyoStep({ view }: { view: SetupView }) {
       ) : working ? (
         <ButtonLink href={setupPath()} label="Continue" size="focus" />
       ) : view.keyCheck === 'off' ? (
-        <p className="type-body text-[var(--stone)]">
-          Connecting Klaviyo is not switched on yet. Nothing was changed.
-        </p>
+        <>
+          <p className="type-body text-[var(--stone)]">
+            Connecting Klaviyo is not switched on yet.
+          </p>
+          <ButtonLink href="/home" label="Open Home" size="focus" />
+        </>
       ) : (
         <>
           <SetupForm
@@ -212,42 +215,44 @@ export function RivalsStep({
   return (
     <>
       <Title text="Your rivals" />
-      {!rivals ? (
-        <p className="type-body text-[var(--stone)]">
-          Your rivals could not be read just now. Open setup again in a minute.
-        </p>
-      ) : (
-        <>
-          {following.length ? (
-            <RowList label="Brands you follow">
-              {following.map((label) => (
-                <ListRow
-                  key={label}
-                  thumbnail={<Thumb icon={Store} />}
-                  title={label}
-                  details={['Following']}
-                  end={null}
-                />
-              ))}
-            </RowList>
-          ) : null}
-          <section
-            aria-labelledby="setup-suggested"
-            className="flex w-full flex-col gap-[var(--space-4)]"
-          >
-            <h2 id="setup-suggested" className="type-heading">
-              Brands like yours
-            </h2>
-            {rivals.suggestions === null ? (
-              <p className="type-body text-[var(--stone)]">
-                Suggestions could not be read just now.
-              </p>
-            ) : rivals.suggestions.length === 0 ? (
-              <p className="type-body text-[var(--stone)]">
-                No brands to suggest yet.
-              </p>
-            ) : (
-              <ActionAnswers>
+      {/* One place for the rows' answers, kept when the list empties. */}
+      <ActionAnswers>
+        {!rivals ? (
+          <p className="type-body text-[var(--stone)]">
+            Your rivals could not be read just now. Open setup again in a
+            minute.
+          </p>
+        ) : (
+          <>
+            {following.length ? (
+              <RowList label="Brands you follow">
+                {following.map((label) => (
+                  <ListRow
+                    key={label}
+                    thumbnail={<Thumb icon={Store} />}
+                    title={label}
+                    details={['Following']}
+                    end={null}
+                  />
+                ))}
+              </RowList>
+            ) : null}
+            <section
+              aria-labelledby="setup-suggested"
+              className="flex w-full flex-col gap-[var(--space-4)]"
+            >
+              <h2 id="setup-suggested" className="type-heading">
+                Brands like yours
+              </h2>
+              {rivals.suggestions === null ? (
+                <p className="type-body text-[var(--stone)]">
+                  Suggestions could not be read just now.
+                </p>
+              ) : rivals.suggestions.length === 0 ? (
+                <p className="type-body text-[var(--stone)]">
+                  No brands to suggest yet.
+                </p>
+              ) : (
                 <RowList label="Brands like yours">
                   {rivals.suggestions.map((s) => (
                     <ListRow
@@ -282,41 +287,41 @@ export function RivalsStep({
                     />
                   ))}
                 </RowList>
-              </ActionAnswers>
-            )}
-          </section>
-          {view.owner && rivals.sample && room ? (
-            <SetupForm
-              action={followRival}
-              label="Follow"
-              kind="outline"
-              fields={[
-                {
-                  name: 'domain',
-                  label: 'A brand’s website',
-                  inputMode: 'url',
-                  autoComplete: 'off',
-                  spellCheck: false,
-                  maxLength: 300,
-                  required: true
-                }
-              ]}
-            />
-          ) : null}
-        </>
-      )}
-      {!view.owner ? (
-        <OwnerOnly />
-      ) : following.length ? (
-        <ButtonLink href={setupPath()} label="Continue" size="focus" />
-      ) : (
-        <ActionButton
-          action={skipRivals}
-          label="Skip for now"
-          kind="outline"
-          size="focus"
-        />
-      )}
+              )}
+            </section>
+            {view.owner && rivals.sample && room ? (
+              <SetupForm
+                action={followRival}
+                label="Follow"
+                kind="outline"
+                fields={[
+                  {
+                    name: 'domain',
+                    label: 'A brand’s website',
+                    inputMode: 'url',
+                    autoComplete: 'off',
+                    spellCheck: false,
+                    maxLength: 300,
+                    required: true
+                  }
+                ]}
+              />
+            ) : null}
+          </>
+        )}
+        {!view.owner ? (
+          <OwnerOnly />
+        ) : following.length ? (
+          <ButtonLink href={setupPath()} label="Continue" size="focus" />
+        ) : (
+          <ActionButton
+            action={skipRivals}
+            label="Skip for now"
+            kind="outline"
+            size="focus"
+          />
+        )}
+      </ActionAnswers>
     </>
   )
 }

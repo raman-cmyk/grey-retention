@@ -29,16 +29,29 @@ select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-0
 select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','finish')$$,'PT409',null,'finishing before the Brand step is a conflict');
 select is((select count(*) from public.onboarding_steps),0::bigint,'a refused step saves nothing');
 select is(pg_temp.todo('00000000-0000-4000-8000-000000000101'),'brand','the conflict names Brand as the step to do');
+reset role;
+update public.brand_profiles set domain='' where tenant_id='00000000-0000-4000-8000-000000000101';
+set local role authenticated;
+select is(pg_temp.todo('00000000-0000-4000-8000-000000000101'),'store','with no website the conflict names Store');
+reset role;
+update public.brand_profiles set domain='cedar-lane.example' where tenant_id='00000000-0000-4000-8000-000000000101';
+set local role authenticated;
 
 -- Brand: confirmed for the saved website; again is fine and keeps the first time.
-select lives_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','brand')$$,'the owner confirms the brand');
+select lives_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','brand','cedar-lane.example')$$,'the owner confirms the brand');
 select is((select brand_site from public.onboarding_steps),'cedar-lane.example','the mark keeps the website');
-select set_config('test.confirmed',(select brand_confirmed_at::text from public.onboarding_steps),true);
-select lives_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','brand')$$,'confirming twice is fine');
+select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','brand')$$,'23514',null,'Brand needs the website shown');
+reset role;
+update public.onboarding_steps set brand_confirmed_at=now()-interval '1 day' where tenant_id='00000000-0000-4000-8000-000000000101';
+select set_config('test.confirmed',(select brand_confirmed_at::text from public.onboarding_steps where tenant_id='00000000-0000-4000-8000-000000000101'),true);
+set local role authenticated;
+select lives_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','brand','cedar-lane.example')$$,'confirming twice is fine');
 select lives_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','brand','WWW.Cedar-Lane.example')$$,'confirming the website shown, written another way');
 select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','brand','other-site.example')$$,'PT409',null,'a website changed in another window is not confirmed blind');
 select is((select brand_confirmed_at::text from public.onboarding_steps),current_setting('test.confirmed'),'a retry keeps the first time');
 select is((select count(*) from public.onboarding_steps),1::bigint,'one row a workspace');
+select lives_ok($$select public.save_brand('00000000-0000-4000-8000-000000000101',(select revision from public.brand_profiles where tenant_id='00000000-0000-4000-8000-000000000101'),'Cedar Lane','cedar-lane.example','','Calm','')$$,'the owner saves the brand with the same website');
+select is((select brand_site from public.onboarding_steps),'cedar-lane.example','the same website keeps the Brand mark');
 
 -- Klaviyo: not connected, then expired, both block; connected counts.
 select is(pg_temp.todo('00000000-0000-4000-8000-000000000101'),'klaviyo','then Klaviyo is the step to do');
@@ -73,7 +86,7 @@ select is((select brand_site from public.onboarding_steps),'cedar-lane.example',
 select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','rivals')$$,'42501',null,'staff cannot skip Rivals');
 select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','finish')$$,'42501',null,'staff cannot finish');
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000006","role":"authenticated"}',true);
-select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','brand')$$,'42501',null,'an admin cannot confirm the brand (owner only)');
+select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','brand','cedar-lane.example')$$,'42501',null,'an admin cannot confirm the brand (owner only)');
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
 select is((select count(*) from public.onboarding_steps),0::bigint,'another workspace sees no marks');
 select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','rivals')$$,'42501',null,'another workspace cannot skip Rivals');
@@ -87,13 +100,18 @@ select throws_ok($$delete from public.onboarding_steps$$,'42501',null,'no direct
 
 -- Rivals skipped (no brand followed): Finish passes; both keep their first time.
 select lives_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','rivals')$$,'the owner skips Rivals');
-select set_config('test.skipped',(select rivals_skipped_at::text from public.onboarding_steps),true);
+reset role;
+update public.onboarding_steps set rivals_skipped_at=now()-interval '1 day' where tenant_id='00000000-0000-4000-8000-000000000101';
+select set_config('test.skipped',(select rivals_skipped_at::text from public.onboarding_steps where tenant_id='00000000-0000-4000-8000-000000000101'),true);
+set local role authenticated;
 select lives_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','rivals')$$,'skipping twice is fine');
 select is((select rivals_skipped_at::text from public.onboarding_steps),current_setting('test.skipped'),'a retry keeps the first skip');
 select is((select count(*) from public.competitor_subscriptions where tenant_id='00000000-0000-4000-8000-000000000101' and active),0::bigint,'no brand followed');
 select lives_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','finish')$$,'Finish after a Rivals skip');
 select ok((select finished_at is not null from public.onboarding_steps),'finished');
-select set_config('test.finished',(select finished_at::text from public.onboarding_steps),true);
+reset role;
+update public.onboarding_steps set finished_at=now()-interval '1 day' where tenant_id='00000000-0000-4000-8000-000000000101';
+select set_config('test.finished',(select finished_at::text from public.onboarding_steps where tenant_id='00000000-0000-4000-8000-000000000101'),true);
 
 -- A new website clears the Brand mark; a finished workspace stays finished.
 reset role;
@@ -102,7 +120,7 @@ set local role authenticated;
 select ok((select brand_site is null and brand_confirmed_at is null from public.onboarding_steps),'a new website clears the Brand mark');
 select lives_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','finish')$$,'a finish retry returns at once');
 select is((select finished_at::text from public.onboarding_steps),current_setting('test.finished'),'and keeps the first finish');
-select lives_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','brand')$$,'the owner confirms the new website');
+select lives_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','brand','cedar-lane-two.example')$$,'the owner confirms the new website');
 select is((select brand_site from public.onboarding_steps),'cedar-lane-two.example','the mark takes the new website, as the readers write it');
 reset role;
 update public.brand_profiles set domain='cedar-lane-two.example' where tenant_id='00000000-0000-4000-8000-000000000101';
@@ -111,7 +129,7 @@ select is((select brand_site from public.onboarding_steps),'cedar-lane-two.examp
 
 -- Tenant 102: the Brand undo, A then B then A, and Finish by following a brand.
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
-select lives_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000102','brand')$$,'the owner confirms website A');
+select lives_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000102','brand','north-studio.example')$$,'the owner confirms website A');
 reset role;
 update public.brand_profiles set domain='north-studio-b.example' where tenant_id='00000000-0000-4000-8000-000000000102';
 set local role authenticated;
@@ -120,7 +138,7 @@ reset role;
 update public.brand_profiles set domain='north-studio.example' where tenant_id='00000000-0000-4000-8000-000000000102';
 set local role authenticated;
 select is(pg_temp.todo('00000000-0000-4000-8000-000000000102'),'brand','back to website A: Brand still needs a new look');
-select lives_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000102','brand')$$,'the owner confirms website A again');
+select lives_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000102','brand','north-studio.example')$$,'the owner confirms website A again');
 select lives_ok($$select public.set_fixture_connection('00000000-0000-4000-8000-000000000102','klaviyo','connected')$$,'Klaviyo');
 select lives_ok($$select public.set_max_discount('00000000-0000-4000-8000-000000000102',10,0)$$,'a max discount');
 select lives_ok($$select public.subscribe_competitor('00000000-0000-4000-8000-000000000102','northwind.example')$$,'the owner follows a brand');
@@ -131,12 +149,12 @@ select ok((select rivals_skipped_at is null and finished_at is not null from pub
 reset role;
 update public.brand_profiles set domain='' where tenant_id='00000000-0000-4000-8000-000000000102';
 set local role authenticated;
-select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000102','brand')$$,'PT409',null,'no website, no Brand');
+select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000102','brand','north-studio.example')$$,'PT409',null,'no website, no Brand');
 reset role;
 update public.brand_profiles set domain=repeat('a',63)||'.'||repeat('b',63)||'.'||repeat('c',63)||'.'||repeat('d',62)
   where tenant_id='00000000-0000-4000-8000-000000000102';
 set local role authenticated;
-select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000102','brand')$$,'PT409',null,'a website over 253 characters is no website');
+select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000102','brand','north-studio.example')$$,'PT409',null,'a website over 253 characters is no website');
 
 -- The worker reads, but never writes or calls the owner's command.
 reset role;
@@ -153,14 +171,24 @@ update public.tenants set status='paused' where id='00000000-0000-4000-8000-0000
 update public.brand_profiles set domain='north-studio.example' where tenant_id='00000000-0000-4000-8000-000000000102';
 select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000004","role":"authenticated"}',true);
 set local role authenticated;
-select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000102','brand')$$,'42501',null,'a paused workspace cannot save a step');
+select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000102','brand','north-studio.example')$$,'42501',null,'a paused workspace cannot save a step');
+
+-- A new workspace gets its unfinished row at once; one from before
+-- UI-ONBa (its row gone, as it never had one) has none, so it is not sent
+-- to setup.
+reset role;
+insert into public.tenants(id,slug,name,timezone) values('00000000-0000-4000-8000-000000000199','new-onboarding','New onboarding','UTC');
+select ok((select finished_at is null and brand_site is null and rivals_skipped_at is null from public.onboarding_steps where tenant_id='00000000-0000-4000-8000-000000000199'),'a new workspace gets an unfinished row');
+delete from public.onboarding_steps where tenant_id='00000000-0000-4000-8000-000000000199';
+select is((select count(*) from public.onboarding_steps where tenant_id='00000000-0000-4000-8000-000000000199'),0::bigint,'a workspace from before onboarding has no row');
+select is((select finished_at::text from public.onboarding_steps where tenant_id='00000000-0000-4000-8000-000000000101'),current_setting('test.finished'),'a new workspace changes no other mark');
 
 -- No sign-in, no access.
 reset role;
 select set_config('request.jwt.claims','{}',true);
 set local role anon;
 select throws_ok($$select count(*) from public.onboarding_steps$$,'42501',null,'anonymous callers cannot read the marks');
-select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','brand')$$,'42501',null,'anonymous callers are refused');
+select throws_ok($$select public.save_onboarding_step('00000000-0000-4000-8000-000000000101','brand','cedar-lane.example')$$,'42501',null,'anonymous callers are refused');
 
 select * from finish();
 rollback;

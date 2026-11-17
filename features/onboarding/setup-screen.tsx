@@ -11,12 +11,14 @@ import { SetupError } from './setup-error'
 import { SetupForm } from './setup-form'
 import { Facts, OwnerOnly, setupPath, Title } from './setup-parts'
 import type { SetupRivals } from './rivals'
+import { KeepLast, KeepShown } from './setup-keep'
 import {
   DiscountStep,
   FinishStep,
   KlaviyoStep,
   RivalsStep
 } from './setup-steps'
+import { StepFocus } from './setup-title'
 
 /**
  * Onboarding (UI-ONBb) on the GROS focused shell: the lime panel shows the
@@ -65,19 +67,21 @@ export function SetupScreen({
         />
       }
     >
-      {place === 'store' ? (
-        <StoreStep view={view} />
-      ) : place === 'brand' ? (
-        <BrandStep view={view} />
-      ) : place === 'klaviyo' ? (
-        <KlaviyoStep view={view} />
-      ) : place === 'discount' ? (
-        <DiscountStep view={view} />
-      ) : place === 'rivals' ? (
-        <RivalsStep view={view} rivals={rivals} />
-      ) : (
-        <FinishStep view={view} />
-      )}
+      <StepFocus step={place}>
+        {place === 'store' ? (
+          <StoreStep view={view} />
+        ) : place === 'brand' ? (
+          <BrandStep view={view} />
+        ) : place === 'klaviyo' ? (
+          <KlaviyoStep view={view} />
+        ) : place === 'discount' ? (
+          <DiscountStep view={view} />
+        ) : place === 'rivals' ? (
+          <RivalsStep view={view} rivals={rivals} />
+        ) : (
+          <FinishStep view={view} />
+        )}
+      </StepFocus>
     </FocusShell>
   )
 }
@@ -210,9 +214,10 @@ function BrandStep({ view }: { view: SetupView }) {
   const steps = readerSteps(view)
   const found = view.found
   const running = steps.some((s) => s.state === 'now' || s.state === 'next')
-  // Never while the website is being read, nor without what was found.
-  const siteReading =
-    view.reading?.steps.find((s) => s.key === 'site')?.state === 'working'
+  // Confirm brand only once the website was read (or its read failed):
+  // never while it waits or reads.
+  const site = view.reading?.steps.find((s) => s.key === 'site')?.state
+  const siteReading = site === 'waiting' || site === 'working'
   return (
     <>
       <Title text="Your brand" />
@@ -233,67 +238,82 @@ function BrandStep({ view }: { view: SetupView }) {
         />
       ) : null}
       {running ? <KeepFresh /> : null}
-      {found ? (
-        <Facts
-          items={[
-            ['Name', view.brand?.name || 'Not found'],
-            [
-              'Logo',
-              found.logo ? (
-                // eslint-disable-next-line @next/next/no-img-element -- the logo the Site reader kept, shown as is
-                <img
-                  src={found.logo}
-                  alt={`${view.brand?.name ?? 'Your'} logo`}
-                  className="max-h-[var(--control-md)] max-w-full object-contain"
-                />
-              ) : (
-                'Not found'
-              )
-            ],
-            ['Colors', <Swatches key="colors" colors={found.colors} />],
-            [
-              'Fonts',
-              found.fonts.length ? found.fonts.join(', ') : 'Not found'
-            ],
-            [
-              'Products',
-              found.products.length
-                ? found.products.join(', ')
-                : 'Read from Klaviyo next'
-            ]
-          ]}
-        />
-      ) : (
-        <p className="type-body text-[var(--stone)]">
-          What we found could not be read just now. Open setup again in a
-          minute.
-        </p>
-      )}
+      <KeepLast
+        fallback={
+          <p className="type-body text-[var(--stone)]">
+            What we found could not be read just now. Open setup again in a
+            minute.
+          </p>
+        }
+      >
+        {found ? (
+          <Facts
+            items={[
+              ['Name', view.brand?.name || 'Not found'],
+              [
+                'Logo',
+                found.logo ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- the logo the Site reader kept, shown as is
+                  <img
+                    src={found.logo}
+                    alt={`${view.brand?.name ?? 'Your'} logo`}
+                    className="max-h-[var(--control-md)] max-w-full object-contain"
+                  />
+                ) : (
+                  'Not found'
+                )
+              ],
+              ['Colors', <Swatches key="colors" colors={found.colors} />],
+              [
+                'Fonts',
+                found.fonts.length ? found.fonts.join(', ') : 'Not found'
+              ],
+              [
+                'Products',
+                found.products.length
+                  ? found.products.join(', ')
+                  : found.catalogRead
+                    ? 'No products found in Klaviyo yet.'
+                    : 'Read from Klaviyo next'
+              ]
+            ]}
+          />
+        ) : null}
+      </KeepLast>
       {!view.owner ? (
         <OwnerOnly />
-      ) : found && !siteReading ? (
-        <SetupForm
-          action={confirmBrand}
-          label="Confirm brand"
-          hidden={{ site: view.brand?.domain ?? '' }}
-          fields={[
-            {
-              name: 'voice',
-              label: 'How should your emails sound? (optional)',
-              defaultValue: view.brand?.voice ?? '',
-              autoComplete: 'off',
-              maxLength: maxBrandWords
-            },
-            {
-              name: 'prohibitions',
-              label: 'Anything we should avoid? (optional)',
-              defaultValue: view.brand?.prohibitions ?? '',
-              autoComplete: 'off',
-              maxLength: maxBrandWords
-            }
-          ]}
-        />
-      ) : null}
+      ) : (
+        <>
+          {siteReading ? (
+            <p className="type-body text-[var(--stone)]">
+              Reading your website. This can take a few minutes.
+            </p>
+          ) : null}
+          <KeepShown show={!!found && !siteReading}>
+            <SetupForm
+              action={confirmBrand}
+              label="Confirm brand"
+              hidden={{ site: view.brand?.domain ?? '' }}
+              fields={[
+                {
+                  name: 'voice',
+                  label: 'How should your emails sound? (optional)',
+                  defaultValue: view.brand?.voice ?? '',
+                  autoComplete: 'off',
+                  maxLength: maxBrandWords
+                },
+                {
+                  name: 'prohibitions',
+                  label: 'Anything we should avoid? (optional)',
+                  defaultValue: view.brand?.prohibitions ?? '',
+                  autoComplete: 'off',
+                  maxLength: maxBrandWords
+                }
+              ]}
+            />
+          </KeepShown>
+        </>
+      )}
     </>
   )
 }

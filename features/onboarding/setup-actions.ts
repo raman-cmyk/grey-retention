@@ -10,6 +10,7 @@ import { connectKlaviyo } from '@/features/connections/actions'
 import { trackDomain } from '@/features/library/inspirations/actions'
 import { trackedDomainOf } from '@/features/library/inspirations/domain'
 import { hideBrand } from '@/features/inspiration/actions'
+import { defaultAssistant } from '@/components/gros/nav'
 import { addDiscountCode, saveMaxDiscount } from '@/features/offers/actions'
 import { parseCode, parseExpiry, parsePercent } from '@/features/offers/fields'
 import { startAdsReading } from './ads/start'
@@ -34,6 +35,8 @@ export type SetupAnswer = {
 }
 
 const ownerOnly = 'Only the workspace owner can set up your store.'
+/** The Settings action's words for an end date that has passed. */
+const passedDate = 'That end date has passed. Choose a later one.'
 const changedWebsite =
   'Your website was changed in another window. Look at what was found again.'
 const setupPath = '/setup' as Route
@@ -125,7 +128,7 @@ export async function saveStore(
       error:
         saved.error.code === '42501'
           ? ownerOnly
-          : saved.error.code === '40001'
+          : saved.error.code === 'PT409' || saved.error.code === '40001'
             ? 'Your store was changed in another window. Open setup again.'
             : 'We could not save your store. Nothing was changed. Try again.'
     }
@@ -187,7 +190,7 @@ export async function confirmBrand(
     if (words.error)
       return {
         error:
-          words.error.code === '40001'
+          words.error.code === 'PT409' || words.error.code === '40001'
             ? changedWebsite
             : 'We could not save this step. Try again.'
       }
@@ -291,10 +294,13 @@ export async function addSetupCode(
       'Enter the code exactly as it works in your store: 3 to 40 letters, numbers, - or _.'
   if (parsePercent(form.get('percent'), 1) === null)
     fields.percent = 'Enter a whole percent from 1 to 100.'
-  if (parseExpiry(form.get('expires'), session.context.timezone) === undefined)
-    fields.expires = 'Choose a valid end date.'
+  const expiry = parseExpiry(form.get('expires'), session.context.timezone)
+  if (expiry === undefined) fields.expires = 'Choose a valid end date.'
+  else if (expiry && Date.parse(expiry) <= Date.now())
+    fields.expires = passedDate
   if (Object.keys(fields).length) return { fields }
   const added = await addDiscountCode({}, form)
+  if (added.error === passedDate) return { fields: { expires: passedDate } }
   if (added.error) return { error: added.error }
   revalidatePath(setupPath)
   return { message: added.message }
@@ -334,7 +340,16 @@ async function follow(
   const saved = !followed.error || (await follows(session, form.get('domain')))
   if (!saved) return { error: followed.error }
   revalidatePath(setupPath)
-  return { message: followed.error ?? followed.message, saved }
+  // Saved, but its emails were not asked for yet: the brand is already
+  // under the brands followed, so say what happens next, not "try again".
+  const typed = form.get('domain')
+  const domain = typeof typed === 'string' ? trackedDomainOf(typed) : ''
+  return {
+    message: followed.error
+      ? `Following ${domain}. We will try to read its emails again soon.`
+      : followed.message,
+    saved
+  }
 }
 
 /** Rivals: a website the owner types; its refusal goes under the field. */
@@ -370,8 +385,15 @@ export async function hideRival(
   const session = await ownerSession()
   if ('error' in session) return { error: session.error }
   const hidden = await hideBrand({}, form)
-  if (!hidden.error) revalidatePath(setupPath)
-  return hidden
+  if (hidden.error)
+    return {
+      // Inspiration's words point to Inspiration; here they point to setup.
+      error: hidden.error.startsWith('That brand is no longer suggested')
+        ? 'That brand is no longer suggested here. Open setup again.'
+        : hidden.error
+    }
+  revalidatePath(setupPath)
+  return { message: `Hidden. ${defaultAssistant} will not suggest it again.` }
 }
 
 /** Rivals: the owner skips following a brand for now. */
