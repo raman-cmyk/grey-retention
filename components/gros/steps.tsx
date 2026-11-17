@@ -15,7 +15,9 @@ import { defaultAssistant } from './nav'
  * A step's own `done` says whether it is done (a step after Now can be
  * done too); without it, the steps before Now are. `aria-current` marks
  * the step shown (`shown`, Now by default), and each card says its state
- * in words.
+ * in words. A step that waits for GROS (`waiting`: Brand while the website
+ * is read) is not Now: its words show under its name, and it can be opened
+ * like a done step.
  */
 export const onboardingSteps = [
   'Store',
@@ -25,7 +27,13 @@ export const onboardingSteps = [
   'Rivals'
 ] as const
 
-export type Step = { name: string; href?: Route; done?: boolean }
+export type Step = {
+  name: string
+  href?: Route
+  done?: boolean
+  /** What the step waits for, in words ("Reading your website"). */
+  waiting?: string
+}
 
 export function StepCards({
   steps,
@@ -42,23 +50,37 @@ export function StepCards({
     <ol aria-label="Steps" className="gros-steps grid">
       {steps.map((step, i) => {
         const state =
-          i === current ? 'now' : (step.done ?? i < current) ? 'done' : 'todo'
+          i === current
+            ? 'now'
+            : step.waiting
+              ? 'waiting'
+              : (step.done ?? i < current)
+                ? 'done'
+                : 'todo'
         const body = (
           <>
             <span
               aria-hidden
               className={cn(
                 'gros-step-circle gros-mark flex items-center justify-center rounded-[var(--radius-pill)]',
-                state === 'todo'
+                state === 'todo' || state === 'waiting'
                   ? 'gros-step-circle-todo text-[var(--forest)]'
                   : 'bg-[var(--forest)] text-[var(--white)]'
               )}
             >
               {state === 'done' ? <Check size={18} strokeWidth={2} /> : i + 1}
             </span>
-            <span className="type-body-strong">{step.name}</span>
+            {state === 'waiting' ? (
+              <span className="flex flex-col">
+                <span className="type-body-strong">{step.name}</span>
+                <span className="sr-only">, </span>
+                <span className="type-caption">{step.waiting}</span>
+              </span>
+            ) : (
+              <span className="type-body-strong">{step.name}</span>
+            )}
             {/* The step shown is said by aria-current; each state in words. */}
-            {state !== 'now' || i !== shown ? (
+            {state !== 'waiting' && (state !== 'now' || i !== shown) ? (
               <span className="sr-only">
                 {state === 'done'
                   ? ', done'
@@ -77,7 +99,7 @@ export function StepCards({
         )
         return (
           <li key={step.name} aria-current={i === shown ? 'step' : undefined}>
-            {state === 'done' && step.href ? (
+            {(state === 'done' || state === 'waiting') && step.href ? (
               <Link href={step.href} className={look}>
                 {body}
               </Link>

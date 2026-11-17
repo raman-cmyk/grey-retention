@@ -32,42 +32,56 @@ test('UI-ONBb a new owner saves the store and comes back to the step that is Now
 
   await page.getByLabel('Website').fill('https://www.setup-store.example/')
   await page.getByRole('button', { name: 'Save store' }).click()
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Your brand' })
-  ).toBeVisible()
+  // UI-ONBc: the website is read first, so Brand waits and Klaviyo is Now.
+  const klaviyo = page.getByRole('heading', {
+    level: 1,
+    name: 'Connect Klaviyo'
+  })
+  await expect(klaviyo).toBeVisible()
 
   // Coming back opens the step that is Now; a done step opens again.
   await page.reload()
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Your brand' })
-  ).toBeVisible()
+  await expect(klaviyo).toBeVisible()
   await steps.getByRole('link', { name: /Store/ }).click()
   await expect(page.getByLabel('Website')).toHaveValue('setup-store.example')
   await page.goto('/setup?step=rivals')
+  await expect(klaviyo).toBeVisible()
+
+  // Store, and Brand waiting while the website is read, open again.
+  await expect(steps.getByRole('link')).toHaveCount(2)
+  expect(await page.evaluate(noSidewaysScroll)).toBe(true)
+  await steps.getByRole('link', { name: /Brand.*Reading your website/ }).click()
   await expect(
     page.getByRole('heading', { level: 1, name: 'Your brand' })
   ).toBeVisible()
 
-  await expect(steps.getByRole('link')).toHaveCount(1)
-  expect(await page.evaluate(noSidewaysScroll)).toBe(true)
-
-  // UI-ONBc: the readers are queued, and Progress says so in words.
+  // The readers are queued, and Progress says so in words.
+  const main = page.getByRole('main')
   await expect(
-    page.getByRole('heading', { name: 'Reading your store' })
+    main.getByRole('heading', { name: 'Reading your store' })
   ).toBeVisible()
   await expect(
-    page.getByText('Reading your website', { exact: true })
+    main.getByText('Reading your website', { exact: true })
   ).toBeVisible()
-  await expect(page.getByText('Products')).toBeVisible()
-  // Confirm brand waits for the website to be read.
+  await expect(main.getByText('Products')).toBeVisible()
+  // Confirm brand waits for the website to be read; he can go on meanwhile.
   await expect(
-    page.getByText('Reading your website. This can take a few minutes.')
+    main.getByText(
+      'Reading your website. This can take a few hours. Go on with the next steps; we’ll ask you to confirm your brand when it’s read.'
+    )
   ).toBeVisible()
+  await expect(
+    main.getByRole('link', { name: 'Go on to Klaviyo' })
+  ).toHaveAttribute('href', '/setup?step=klaviyo')
   await expect(page.getByRole('button', { name: 'Confirm brand' })).toHaveCount(
     0
   )
   await runReaders(request)
-  await page.reload()
+  // Read: Brand is Now again.
+  await page.goto('/setup')
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Your brand' })
+  ).toBeVisible()
   // How emails should sound and what to avoid (VISION's brand facts) are
   // asked here, optional, and kept.
   await page
@@ -77,9 +91,7 @@ test('UI-ONBb a new owner saves the store and comes back to the step that is Now
     .getByLabel('Anything we should avoid? (optional)')
     .fill('No medical claims')
   await page.getByRole('button', { name: 'Confirm brand' }).click()
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Connect Klaviyo' })
-  ).toBeFocused()
+  await expect(klaviyo).toBeFocused()
   await expect(steps.getByRole('link')).toHaveCount(2)
   await steps.getByRole('link', { name: /Brand/ }).click()
   await expect(

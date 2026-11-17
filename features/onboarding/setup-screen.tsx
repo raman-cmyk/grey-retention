@@ -53,7 +53,12 @@ export function SetupScreen({
           steps={flow.steps.map((s, i) => ({
             name: s.name,
             done: s.done,
-            href: s.done && i < flow.current ? setupPath(s.key) : undefined
+            // Brand waits while the website is read; it opens like a done step.
+            waiting: s.waiting ? 'Reading your website' : undefined,
+            href:
+              (s.done || s.waiting) && i < flow.current
+                ? setupPath(s.key)
+                : undefined
           }))}
         />
       }
@@ -269,11 +274,7 @@ function BrandStep({ view }: { view: SetupView }) {
         <OwnerOnly />
       ) : (
         <>
-          {siteReading ? (
-            <p className="type-body text-[var(--stone)]">
-              Reading your website. This can take a few minutes.
-            </p>
-          ) : null}
+          {siteReading ? <ReadingWebsite view={view} /> : null}
           <KeepShown show={!!found && !siteReading}>
             <SetupForm
               action={confirmBrand}
@@ -298,6 +299,33 @@ function BrandStep({ view }: { view: SetupView }) {
             />
           </KeepShown>
         </>
+      )}
+    </>
+  )
+}
+
+/**
+ * While the website is read (it can take hours: the readers run a few
+ * times a day), Brand waits and the owner goes on: one main button to the
+ * step that is Now, or Home when nothing else is left. He confirms the
+ * brand once it was read (VISION section 5).
+ */
+function ReadingWebsite({ view }: { view: SetupView }) {
+  const next = view.flow?.steps[view.flow.current]
+  return (
+    <>
+      <p className="type-body text-[var(--stone)]">
+        Reading your website. This can take a few hours. Go on with the next
+        steps; we’ll ask you to confirm your brand when it’s read.
+      </p>
+      {next ? (
+        <ButtonLink
+          href={setupPath(next.key)}
+          label={`Go on to ${next.name}`}
+          size="focus"
+        />
+      ) : (
+        <ButtonLink href="/home" label="Open Home" size="focus" />
       )}
     </>
   )
