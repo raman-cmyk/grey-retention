@@ -68,8 +68,25 @@ test('UI-PLAN-b owner plans the next 15 days, picks an offer and creates an emai
   ).toBeVisible({ timeout: 30_000 })
   await emails.getByRole('link', { name: 'Open' }).first().click()
   await expect(page).toHaveURL(/\/plan\/email\/[0-9a-f-]{36}$/)
+  // UI-EMAIL-b: the email's own page on the GROS screen.
   await expect(page.getByText(/this is a sample draft/)).toBeVisible()
-  await page.goto('/plan')
+  await expect(page.getByText('Subject', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Open in Klaviyo' })).toHaveCount(
+    0
+  )
+  for (const view of ['Phone', 'Dark', 'Desktop']) {
+    await page.getByRole('button', { name: view, exact: true }).first().click()
+    await expect(
+      page.locator(`iframe[title$=", ${view.toLowerCase()} view"]`).first()
+    ).toBeVisible()
+  }
+  if (process.env.PLAN_SHOT)
+    await page.screenshot({
+      path: `${process.env.PLAN_SHOT}/email-${info.project.name}.png`,
+      fullPage: true
+    })
+  await page.getByRole('link', { name: 'Back to the plan' }).click()
+  await expect(page).toHaveURL(/\/plan$/)
 
   // Reloading keeps the plan; a new plan can start.
   await page.reload()
