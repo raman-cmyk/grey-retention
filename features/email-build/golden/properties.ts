@@ -1,9 +1,5 @@
 import { checkCopy } from '@/features/copy-qa/check'
-import {
-  copyDraftOf,
-  hiddenChars,
-  type Draft
-} from '@/features/assembly/assemble'
+import { hiddenChars, type Draft } from '@/features/assembly/assemble'
 import type { BlockType } from '@/features/blocks/catalog'
 import type { FallbackEntry } from '@/features/fallback/entry'
 import { footerProblems, preflight } from '@/features/klaviyo-push/html'
@@ -12,6 +8,10 @@ import type { BuiltEmail, SectionsOutput } from '../build'
 import type { Store } from '../ports'
 import { goldenCodes, type GoldenBrief } from './briefs'
 import { drawnText } from '../drawn-text'
+import {
+  brandCopyDraft,
+  ownStripReviews
+} from '@/features/assembly/own-reviews'
 import { previewRepeat } from '../preview-pair'
 
 export { drawnText }
@@ -195,7 +195,11 @@ export function goldenProblems(brief: GoldenBrief, run: GoldenRun): string[] {
     }).failures.map(
       (f) => `Copy check (${f.rule}) on ${where}${f.field}: ${f.reason}`
     )
-  problems.push(...qa(copyDraftOf(draft), ''))
+  // The store's own reviews show their own stars (REL-ONB2 part b), as the
+  // Brand inspector lets them (`brandCopyDraft`); no other stars.
+  const ownReviews = store.confirmed?.reviews ?? []
+  const ownStrip = draft.blocks.some((b) => ownStripReviews(b, ownReviews))
+  problems.push(...qa(brandCopyDraft(draft, ownReviews), ''))
   // Block by block, as drawn, so words of two blocks never join.
   problems.push(
     ...qa(
@@ -204,7 +208,15 @@ export function goldenProblems(brief: GoldenBrief, run: GoldenRun): string[] {
         preview: '',
         blocks: body
           .split(/(?=<tr\b[^>]*\sdata-block=)/i)
-          .map((part, i) => ({ id: `drawn-${i}`, text: mask(drawnText(part)) }))
+          .map((part, i) => {
+            const text = drawnText(part)
+            const stars =
+              ownStrip && /^<tr\b[^>]*\sdata-block="review_strip"/i.test(part)
+            return {
+              id: `drawn-${i}`,
+              text: mask(stars ? text.replace(/[★☆]+/g, ' ') : text)
+            }
+          })
           .filter((b) => b.text.trim())
       },
       'the drawn email, '

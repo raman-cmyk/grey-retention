@@ -228,7 +228,8 @@ export function quotableReviews(reviews: ReadReview[]): CustomerFinding[] {
         !personal.test(text) &&
         !markup.test(text) &&
         !r.ratingUnclear &&
-        (r.rating === null || r.rating >= 4)
+        // Quoted with stars only when they are the page's own, unrounded.
+        (r.rating === null || (r.rating >= 4 && r.ratingExact !== false))
     )
     .sort(
       (a, b) =>
