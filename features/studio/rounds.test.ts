@@ -18,6 +18,7 @@ import {
   roundWaits
 } from './rounds'
 import type { BuildRender } from './waits'
+import { matchTarget } from './match'
 
 const photo = 'https://cdn.shop.example/images/tray.jpg'
 const brief = (id: string): SectionBrief => ({
@@ -470,5 +471,70 @@ describe('the design studio’s rounds (DST-006c)', () => {
         'https://db.example/x.jpg'
       )
     ).toBeNull()
+  })
+})
+
+describe('the match score in the rounds (DST-004b)', () => {
+  const copy = (over: Partial<SectionBrief> = {}): SectionBrief => ({
+    ...brief('s2'),
+    mode: 'copy',
+    reference: { tone: 'dark', height: 640 },
+    ...over
+  })
+  /** The second claim of a section whose picture uuid(1) is drawn. */
+  const judge = async (b: SectionBrief, match?: StudioPorts['match']) => {
+    const first = waitOf(await studioRound([b], null, ports()))
+    const p = { ...ports({ renders: [drawn(1)] }), ...(match ? { match } : {}) }
+    const out = await studioRound([b], first, p)
+    return { out, p }
+  }
+
+  it('takes a Copy section that looks like its reference', async () => {
+    const match = vi.fn<NonNullable<StudioPorts['match']>>(
+      async () => matchTarget
+    )
+    const { out } = await judge(copy(), match)
+    expect(doneOf(out).sections[0]).toMatchObject({ state: 'done' })
+    expect(match).toHaveBeenCalledWith(copy(), image)
+  })
+
+  it('designs a Copy section again, told how to come closer, when it looks too little like it', async () => {
+    const { out, p } = await judge(copy(), async () => matchTarget - 2)
+    const work = waitOf(out)
+    expect(work.sections[0]).toMatchObject({ round: 2, state: 'drawing' })
+    expect(work.sections[0]!.problems).toEqual([
+      expect.stringMatching(
+        new RegExp(
+          `^It looks too little like the reference section \\(match ${matchTarget - 2} of 10`
+        )
+      )
+    ])
+    expect(p.design).toHaveBeenCalledWith(
+      copy(),
+      expect.objectContaining({
+        problems: [expect.stringMatching(/too little like the reference/)]
+      })
+    )
+  })
+
+  it('keeps the critic’s verdict when the match cannot be measured', async () => {
+    const { out } = await judge(copy(), async () => null)
+    expect(doneOf(out).sections[0]).toMatchObject({ state: 'done' })
+  })
+
+  it('measures only a Copy section with a reference', async () => {
+    const match = vi.fn<NonNullable<StudioPorts['match']>>(async () => 1)
+    for (const b of [
+      brief('s2'),
+      { ...brief('s2'), mode: 'remix' as const },
+      copy({ reference: undefined })
+    ]) {
+      const { out } = await judge(b, match)
+      expect(doneOf(out).sections[0]).toMatchObject({ state: 'done' })
+    }
+    expect(match).not.toHaveBeenCalled()
+    // No match port: never measured.
+    const { out } = await judge(copy())
+    expect(doneOf(out).sections[0]).toMatchObject({ state: 'done' })
   })
 })

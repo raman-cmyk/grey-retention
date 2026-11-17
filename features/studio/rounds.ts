@@ -5,6 +5,7 @@ import type { Verdict } from './critic'
 import { briefHosts, type DesignedResult, type SectionBrief } from './designer'
 import { maxSectionBytes, type RenderedSection } from './renderer'
 import { SectionNotDrawable, studioWaits } from './limits'
+import { withMatch } from './match'
 import type { DesignedSection } from './section'
 import type { BuildRender } from './waits'
 
@@ -156,6 +157,15 @@ export type StudioPorts = {
     image: RenderedSection
   ) => Promise<Verdict | null>
   /**
+   * DST-004b: in Copy mode, how much the drawn section looks like its
+   * reference section (`matchScore`, 1 to 10); null when it cannot be
+   * measured (then the critic's verdict stands). Missing: never measured.
+   */
+  match?: (
+    brief: SectionBrief,
+    image: RenderedSection
+  ) => Promise<number | null>
+  /**
    * A section drawn as its coded block, with why: one line for the owner's
    * log per section (the agents log their own failures as well).
    */
@@ -294,11 +304,17 @@ export async function studioRound(
         await code(s, 'picture_unusable')
         continue
       }
-      const verdict = await ports.critique(brief, picture)
-      if (!verdict) {
+      const judged = await ports.critique(brief, picture)
+      if (!judged) {
         await code(s, 'critic_unavailable')
         continue
       }
+      // DST-004b: a Copy section must also look like its reference.
+      const match =
+        brief.mode === 'copy' && brief.reference && ports.match
+          ? await ports.match(brief, picture)
+          : null
+      const verdict = match === null ? judged : withMatch(judged, match)
       if (verdict.pass) {
         s.state = 'done'
         s.height = render.height
