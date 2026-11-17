@@ -198,6 +198,27 @@ describe('CI workflows', () => {
       expect(database).not.toContain(needed)
   })
 
+  it('keeps the local stack’s fixed ports out of the outgoing-connection range before it starts (CI-006)', () => {
+    for (const name of ['database.yml', 'browser.yml']) {
+      const text = read(name)
+      const range = /net\.ipv4\.ip_local_port_range="(\d+) (\d+)"/.exec(text)
+      expect(range, name).not.toBeNull()
+      // Every port supabase/config.toml binds lies above the range.
+      const ports = [
+        ...readFileSync(join(root, 'supabase', 'config.toml'), 'utf8').matchAll(
+          /^(?:port|shadow_port) = (\d+)$/gm
+        )
+      ].map((m) => Number(m[1]))
+      expect(ports.length).toBeGreaterThan(4)
+      for (const port of ports.filter((p) => p >= 32768))
+        expect(port, `${name}: ${port}`).toBeGreaterThan(Number(range![2]))
+      // Set before the stack starts (the image pulls open the connections).
+      expect(text.indexOf('ip_local_port_range'), name).toBeLessThan(
+        text.indexOf('supabase start')
+      )
+    }
+  })
+
   it('skips drafts for the slow checks and starts them when marked ready', () => {
     for (const name of ['database.yml', 'browser.yml']) {
       const text = read(name)

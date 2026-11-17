@@ -6,16 +6,19 @@ import { newOwner } from './new-owner'
 const sampleKey = () =>
   `pk_${randomBytes(24).toString('base64url').replace(/[-_]/g, 'x').slice(0, 30)}`
 
+/** Connects from the Klaviyo card in Settings; the key is never shown back. */
 async function connectSampleKlaviyo(page: Page) {
-  await page.goto('/connections')
-  const card = page.locator('section', {
-    has: page.getByRole('heading', { name: 'Klaviyo', exact: true })
-  })
-  await card.getByLabel('Private API key', { exact: true }).fill(sampleKey())
-  await card.getByRole('button', { name: 'Connect', exact: true }).click()
+  await page.goto('/settings')
+  const card = page.getByRole('region', { name: 'Klaviyo', exact: true })
+  const key = sampleKey()
+  await card.getByLabel('Private API key', { exact: true }).fill(key)
+  await card.getByRole('button', { name: 'Connect Klaviyo' }).click()
   await expect(
-    page.getByText(/Klaviyo connected with sample data/)
+    card.getByText(/Klaviyo connected with sample data/)
   ).toBeVisible()
+  await expect(card.getByText('Needs you')).toHaveCount(0)
+  await expect(card.getByLabel(/private API key/)).toHaveValue('')
+  await expect(card.getByText(`Key ${key.slice(0, 8)}••••••••`)).toBeVisible()
 }
 
 test('UIR-023 Klaviyo sets the brand timezone; the owner can change it and switch back', async ({
@@ -37,16 +40,15 @@ test('UIR-023 Klaviyo sets the brand timezone; the owner can change it and switc
   ).toBeVisible()
 
   // The owner picks another one; it stays after a reload.
-  await card.getByLabel('Change timezone').selectOption('Europe/London')
+  await card.getByLabel('Change timezone').fill('Europe/London')
   await card.getByRole('button', { name: 'Save timezone' }).click()
   await expect(
     card.getByText(
       'Saved. The brand timezone is now Europe/London. New plans use it. Campaigns already planned still send at the same moment.'
     )
   ).toBeVisible()
-  // The cursor stays on the picker, which shows the new choice.
+  // The field keeps the new choice.
   await expect(card.getByLabel('Change timezone')).toHaveValue('Europe/London')
-  await expect(card.getByLabel('Change timezone')).toBeFocused()
   await page.reload()
   await expect(card.getByText(/^Europe\/London \(UTC/)).toBeVisible()
   await expect(card.getByText('Chosen by you.')).toBeVisible()
@@ -74,6 +76,19 @@ test('UIR-023 Klaviyo sets the brand timezone; the owner can change it and switc
   ).toBeVisible()
   await expect(
     card.getByText('From your Klaviyo account (sample connection).')
+  ).toBeVisible()
+
+  // Disconnect asks first, then says what happened to the key.
+  const klaviyo = page.getByRole('region', { name: 'Klaviyo', exact: true })
+  page.once('dialog', (dialog) => void dialog.accept())
+  await klaviyo.getByRole('button', { name: 'Disconnect' }).click()
+  await expect(
+    klaviyo.getByText(
+      /The key is deleted here; it still works in Klaviyo until you delete it there\./
+    )
+  ).toBeVisible()
+  await expect(
+    klaviyo.getByRole('button', { name: 'Connect Klaviyo' })
   ).toBeVisible()
 })
 
