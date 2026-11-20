@@ -11,21 +11,24 @@ import { rewriteAvailability } from '@/features/email-generation/config'
 import { connectionsEmptyText, rewriteStatus } from './provider-status'
 import { modelsInUseNow, retirementWatch } from '@/features/ai/retirement-watch'
 
-/** Owner pick #83: the models the app would call now, and when they end. */
-function RetirementWatch() {
-  const inUse = modelsInUseNow()
-  const lines = retirementWatch(inUse, new Date().toISOString().slice(0, 10))
+/**
+ * Owner pick #83: the models the app would call now, and when their
+ * providers shut them down (whole UTC days). Its own panel: it needs no
+ * database, so it shows even when the diagnostics cannot be read.
+ */
+export async function RetirementWatchPanel() {
+  await requireRequestContext('admin')
+  const lines = retirementWatch(
+    modelsInUseNow(),
+    new Date().toISOString().slice(0, 10)
+  )
   return (
-    <div className="mt-4">
-      <h3 className="text-sm font-semibold">Model retirement watch</h3>
+    <Panel title="Model retirement watch">
       {lines.length ? (
-        <ul className="mt-2 space-y-2 text-sm">
+        <ul className="space-y-2 text-sm">
           {lines.map((l) => (
-            <li
-              key={`${l.provider}-${l.model}`}
-              className="flex flex-wrap gap-x-2"
-            >
-              <span className="font-medium">{l.model}</span>
+            <li key={l.name} className="flex flex-wrap gap-x-2">
+              <span className="font-medium">{l.name}</span>
               <span
                 className={
                   l.state === 'ok'
@@ -39,11 +42,12 @@ function RetirementWatch() {
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-sm text-[var(--text-muted)]">
-          No AI model is in use: the fake answers every call.
+        <p className="text-sm text-[var(--text-muted)]">
+          No AI model is in use: GROS’s agents run on the fake, and the older
+          email rewriting is off.
         </p>
       )}
-    </div>
+    </Panel>
   )
 }
 const money = (value: number) =>
@@ -329,7 +333,6 @@ export async function OperatorPanel() {
             )
           })}
         </ul>
-        <RetirementWatch />
         {data.data.connections.length === 0 && (
           <p className="mt-4 text-sm text-[var(--text-muted)]">
             {connectionsEmptyText}

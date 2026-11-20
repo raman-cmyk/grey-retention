@@ -1,5 +1,8 @@
 import { PageHeading } from '@/components/ui/workspace'
-import { OperatorPanel } from '@/features/operations/panels'
+import {
+  OperatorPanel,
+  RetirementWatchPanel
+} from '@/features/operations/panels'
 import { FallbackLogPanel } from '@/features/fallback/panel'
 import type { Metadata } from 'next'
 
@@ -12,6 +15,7 @@ export default function Page() {
         description="The fallback log, sanitized jobs, provider health, immutable fixture packages and tenant support."
       />
       <FallbackLogPanel />
+      <RetirementWatchPanel />
       <OperatorPanel />
     </div>
   )
