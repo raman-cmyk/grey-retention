@@ -26,6 +26,15 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - Open question for design (17 Nov 2026, UI-SETb; built as noted until decided): on Settings' Team card an invite's row has two buttons, Resend (outline) and Cancel invite (quiet), and a teammate's row two, Make Manager or Make Staff (outline) and Deactivate (quiet), where BRAND.md says one action per row. A role change, Deactivate and Reactivate ask first with the browser's own confirm. BRAND.md has no select, so the role at invite is two buttons, Invite as Staff (main) and Invite as Manager (outline).
 - Open question for design (17 Nov 2026, UI-SETd; built as noted until decided): BRAND.md has no select, checkbox or multi-line field, but Holidays (type, country, every year, notes), Support and Feature requests need them. They are plain controls on the GROS tokens (mist fill, radius md, forest focus), like DST-002c's mode pick. Holidays and events is its own page under Settings, reached from a small card with one sentence and Open holidays.
 
+## Picture work: what truly needs an outside service
+
+Owner picks #4, #12 and #15, built as one adapter with an honest fake (IMG-ADAPTER, 20 Nov 2026, `lib/providers/image-work.ts`). Status: **the adapter is built; no service is wired; each job returns `not_available` and the store's original picture is used.** Originals are always kept.
+
+- **Product cut-outs (#4): needs a service.** Removing a photo's background means finding the product's outline, pixel by pixel. That takes a segmentation model: a paid background-removal API, or an image model beyond the Gemini cap. The browser and code we have cannot do it.
+- **Smart crop (#12): needs a service.** Cropping "around the product or a face" means finding them in the photo. That takes a vision model (paid AI) or an image service. A plain crop to a size, from the centre, needs nothing: the email layout already does it.
+- **Dark-mode backplate (#15): needs the cut-out first.** The plate itself (a light panel behind the product) is plain layout code. But it only helps a picture with a see-through background, so it waits for #4. A store photo that is already a see-through PNG could get a plate without any service; that needs the photo library to note see-through pictures first (a code follow-up, no service).
+- **Asked (Blocked, needs Raman):** which service, if any, or to leave these until the design studio is turned on.
+
 ## Hard design rules and current scope
 
 [DESIGN_RULES.md](DESIGN_RULES.md) is mandatory. Desktop/laptop first; defer dedicated mobile-layout design. Minimal motion: the owner confirmed the listed animation recipes/effects are unwanted. No decorative gradients/glow, meaningless badges/pills, nested cards, excessive typography/dividers/borders or redundant copy. See the rulebook for the full list.
