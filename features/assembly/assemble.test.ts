@@ -246,6 +246,18 @@ describe('what the email may use', () => {
     ).not.toContain('founder_note')
   })
 
+  it('offers the customer photo grid only with three or more photos it can show (REL-ONB2 part e)', () => {
+    const shot = (n: number, scheme = 'https') => ({
+      image: `${scheme}://judgeme.imgix.net/cedar/${n}.jpg`,
+      alt: "A customer's photo"
+    })
+    const grid = (customerPhotos: ReturnType<typeof shot>[]) =>
+      allowedBlockTypes(input({ confirmed: { customerPhotos } }))
+    expect(grid([shot(1), shot(2)])).not.toContain('ugc_grid')
+    expect(grid([shot(1), shot(2), shot(3, 'http')])).not.toContain('ugc_grid')
+    expect(grid([shot(1), shot(2), shot(3)])).toContain('ugc_grid')
+  })
+
   it('checks stored input at the job boundary', () => {
     expect(assemblyInputSchema.safeParse(input()).success).toBe(true)
     for (const bad of [

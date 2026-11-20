@@ -385,8 +385,61 @@ describe('the Brand step (UI-ONBc)', () => {
     never.reading!.steps[0] = reader('site', 'not_started')
     expect(readerSteps(never)[0]).toMatchObject({
       state: 'failed',
-      text: 'Your website is not read yet'
+      notice: true,
+      text: 'Your website is not read yet',
+      reason: 'Press Try again to read it.'
     })
+    expect(readerSteps({ ...never, owner: false })[0]).toMatchObject({
+      text: 'Your website is not read yet',
+      reason: 'Only the workspace owner can start reading it.'
+    })
+  })
+
+  it('says the ads and reviews are not read yet when none of their reads is this website’s (ONB-SITEa)', () => {
+    // Website A read, then changed to B: the website's read waits, and
+    // A's ads and reviews reads do not count for B.
+    const changed = view()
+    changed.reading!.steps = [
+      reader('site', 'waiting'),
+      reader('catalog', 'not_started'),
+      reader('history', 'not_started'),
+      reader('ads', 'not_started'),
+      reader('reviews', 'not_started'),
+      reader('plan', 'not_started')
+    ]
+    expect(readerSteps(changed)).toEqual([
+      { text: 'Reading your website', state: 'next', reason: undefined },
+      {
+        text: 'Your ads are not read yet',
+        state: 'failed',
+        notice: true,
+        reason: 'Press Try again to read them.'
+      },
+      {
+        text: 'Your reviews are not read yet',
+        state: 'failed',
+        notice: true,
+        reason: 'Press Try again to read them.'
+      }
+    ])
+    const { unmount } = render(<SetupScreen view={changed} place="brand" />)
+    expect(screen.queryByText('Read your ads')).toBeNull()
+    expect(screen.getByText('Your ads are not read yet')).toBeVisible()
+    expect(screen.getByText('Your reviews are not read yet')).toBeVisible()
+    // One Try again starts them again; nothing is an error, so no alert.
+    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1)
+    expect(screen.queryByRole('alert')).toBeNull()
+    unmount()
+    // Staff have no Try again, so they are not told to press it.
+    const staff = { ...changed, owner: false }
+    expect(readerSteps(staff).map((s) => s.reason)).toEqual([
+      undefined,
+      'Only the workspace owner can start reading them.',
+      'Only the workspace owner can start reading them.'
+    ])
+    render(<SetupScreen view={staff} place="brand" />)
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+    expect(screen.queryByText(/Press Try again/)).toBeNull()
   })
 
   it('gives staff no Confirm brand and no Try again', () => {
