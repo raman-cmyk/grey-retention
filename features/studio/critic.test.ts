@@ -4,6 +4,7 @@ import { InMemoryMemoryStore } from '@/features/agents/memory'
 import { InMemoryRunLog, type AiCall } from '@/features/agents/runtime'
 import { memoryFallbackLog } from '@/features/fallback/log'
 import {
+  critique,
   criticProblems,
   critiqueSection,
   designCriticAgent,
@@ -215,6 +216,18 @@ describe('the words the critic reads (DST-004a)', () => {
 })
 
 describe('the critic’s verdict (DST-004a)', () => {
+  it('fails a picture that shows another brand’s logo or name (DST-004c)', () => {
+    const verdict = criticProblems({ ...good, otherBrand: true }, brief, false)
+    expect(verdict.pass).toBe(false)
+    expect(verdict.problems).toEqual([
+      'The picture shows another brand’s logo or name: draw only this brand’s name and the words given.'
+    ])
+    // An answer without it reads as none seen.
+    expect(critique.parse(good).otherBrand).toBe(false)
+    expect(criticProblems(good, brief, false).pass).toBe(true)
+    expect(designCriticAgent.schema.definition.required).toContain('otherBrand')
+  })
+
   it('passes a section that scores 8 or more everywhere and shows only the copy', () => {
     expect(criticProblems(good, brief, false)).toEqual({
       pass: true,
@@ -346,7 +359,13 @@ describe('the Design critic (DST-004a)', () => {
       pictures: ['the section as drawn', 'the original photo']
     })
     expect(designCriticAgent.purpose).toBe('review')
-    expect(designCriticAgent.instructions).toMatch(/never read or repeat/)
+    expect(designCriticAgent.instructions).toMatch(
+      /never repeat the reference’s words/
+    )
+    // DST-004c: a word the reference shows too is still listed as drawn.
+    expect(designCriticAgent.instructions).toMatch(
+      /Every word drawn in the first picture goes in texts, also a word the reference shows too/
+    )
   })
 
   it('gives its verdict, and the drawn picture goes with the call', async () => {

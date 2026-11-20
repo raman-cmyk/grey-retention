@@ -51,6 +51,8 @@ export type ProgressStep = {
   finishedAt: string | null
   /** How long it took, or has taken so far; null before it starts. */
   seconds: number | null
+  /** Why a failed read failed (`job_runs.failure_class`), when known. */
+  failure?: string
 }
 
 export type OnboardingProgress = {
@@ -77,6 +79,7 @@ const labels: Record<StepKey, string> = {
 export type JobRow = {
   kind: string
   status: string
+  failure_class?: string | null
   checkpoint: unknown
   created_at: string
   updated_at: string
@@ -166,13 +169,16 @@ export function progressFrom(input: {
     const state = known === 'done' && skipped(job) ? 'skipped' : known
     const finished =
       state === 'done' || state === 'skipped' || state === 'failed'
-    return step(
+    const read = step(
       key,
       state,
       job.created_at,
       finished ? job.updated_at : null,
       now
     )
+    return state === 'failed' && job.failure_class
+      ? { ...read, failure: job.failure_class }
+      : read
   })
   const planned = input.firstPlanned
   const latest = input.newestPlan
@@ -246,7 +252,7 @@ export async function readOnboardingProgress(
     ...Object.values(readerKinds).map((kind) =>
       db
         .from('job_runs')
-        .select('kind,status,checkpoint,created_at,updated_at')
+        .select('kind,status,checkpoint,failure_class,created_at,updated_at')
         .eq('tenant_id', tenantId)
         .eq('kind', kind)
         .order('created_at', { ascending: false })

@@ -81,6 +81,7 @@ export const config = {
     '/onboarding/:path*',
     '/profile/:path*',
     '/settings/:path*',
+    '/setup/:path*',
     '/admin/:path*',
     '/designer/:path*'
   ]

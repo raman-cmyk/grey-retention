@@ -32,7 +32,8 @@ export type ReferenceSection = {
   styles?: readonly string[]
   /**
    * DST-004b: where the section's picture is stored (`inbox-assets`),
-   * for the match score; never sent to an agent (workspace members can
+   * for the match score and (DST-004c) for the designer and critic to
+   * look at; the path is never sent to an agent (workspace members can
    * read it with the build's saved steps, as they can the email's id).
    */
   image?: string | null

@@ -5378,6 +5378,51 @@ export type Database = {
           }
         ]
       }
+      onboarding_steps: {
+        Row: {
+          brand_confirmed_at: string | null
+          brand_site: string | null
+          finished_at: string | null
+          rivals_skipped_at: string | null
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          brand_confirmed_at?: string | null
+          brand_site?: string | null
+          finished_at?: string | null
+          rivals_skipped_at?: string | null
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          brand_confirmed_at?: string | null
+          brand_site?: string | null
+          finished_at?: string | null
+          rivals_skipped_at?: string | null
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'onboarding_steps_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'onboarding_steps_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       ops_tasks: {
         Row: {
           created_at: string
@@ -8618,6 +8663,10 @@ export type Database = {
           required_sends?: number
           t: string
         }
+        Returns: undefined
+      }
+      save_onboarding_step: {
+        Args: { site_shown?: string; step: string; t: string }
         Returns: undefined
       }
       save_own_template: {
