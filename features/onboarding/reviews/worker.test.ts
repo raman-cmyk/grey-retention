@@ -290,6 +290,77 @@ describe('readBrandReviews', () => {
     }
   })
 
+  it('stores the photos of kept reviews, by code, of a live read only (REL-ONB2 part e)', async () => {
+    const answer = (host: string): ReviewAnswer => {
+      const page = `https://${host}/products/a`
+      const r = {
+        author: 'Maya R.',
+        rating: 5,
+        ratingUnclear: false,
+        date: null,
+        url: page,
+        product: 'Knit'
+      }
+      return {
+        ok: true,
+        pages: [page],
+        complete: true,
+        platforms: [],
+        reviews: [
+          {
+            ...r,
+            id: 'r1',
+            text: 'So soft and warm, I wear it every day.',
+            photos: [`https://${host}/cdn/shop/files/r1.jpg`]
+          },
+          {
+            ...r,
+            id: 'r2',
+            rating: 2,
+            text: 'It arrived torn and the seams came apart.',
+            photos: [`https://${host}/cdn/shop/files/r2.jpg`]
+          }
+        ]
+      }
+    }
+    const live = database()
+    await readBrandReviews(live.db, jobFor('real-brand.com'), {
+      reviews: () => ({
+        live: true,
+        reviews: async () => answer('real-brand.com')
+      }),
+      social: socialSourceFor,
+      askFor: () => null
+    })
+    expect(
+      recorded(live.calls)
+        .findings.filter((f) => f.topic === 'customer_photo')
+        .map((f) => [f.pass, f.model, (f as { value?: unknown }).value])
+    ).toEqual([
+      [
+        'code',
+        null,
+        {
+          url: 'https://real-brand.com/cdn/shop/files/r1.jpg',
+          page: 'https://real-brand.com/products/a',
+          product: 'Knit'
+        }
+      ]
+    ])
+    const sample = database()
+    await readBrandReviews(sample.db, jobFor(), {
+      reviews: () => ({
+        live: false,
+        reviews: async () => answer('cedar-lane.example')
+      }),
+      social: () => sampleSocialSource,
+      askFor: () => sampleAsk
+    })
+    expect(recorded(sample.calls).findings.map((f) => f.topic)).not.toContain(
+      'customer_photo'
+    )
+  })
+
   it('says a source the reader did not look at is skipped, not none', async () => {
     const page = 'https://cedar-lane.example/products/weekend-knit'
     const { db, calls } = database()

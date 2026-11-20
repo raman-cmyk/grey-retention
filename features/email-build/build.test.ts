@@ -671,6 +671,37 @@ describe('the store’s own material (REL-ONB2)', () => {
     }
   })
 
+  it('shows the photos customers posted with their reviews in the grid, and makes the email (REL-ONB2 part e)', async () => {
+    const shots = [1, 2, 3].map(
+      (n) => `https://judgeme.imgix.net/cedar/${n}__photo.jpg`
+    )
+    const confirmed = storeMaterial({
+      brandName: 'Cedar Lane',
+      host: 'shop.example',
+      live: true,
+      findings: shots.map(
+        (url) =>
+          ({
+            topic: 'customer_photo',
+            source: 'reviews',
+            statement: 'A photo a customer posted with their review.',
+            value: { url, page: 'https://shop.example/p/1' },
+            evidence: { ref: 'review-data:https://shop.example/p/1' },
+            confidence: 0.9,
+            pass: 'code'
+          }) as unknown as Finding
+      ),
+      facts,
+      productNames: []
+    })
+    expect(await block('ugc_grid', { confirmed })).toMatchObject({
+      photos: shots.map((image) => ({ image, alt: "A customer's photo" }))
+    })
+    const built = await buildEmail(await input({ confirmed }, 'launch'), ctx())
+    for (const shot of shots)
+      expect(built.ok && built.email.html).toContain(shot)
+  })
+
   it('has no material block without the material', async () => {
     for (const type of ['story', 'launch'] as const)
       for (const family of [
