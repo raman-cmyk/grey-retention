@@ -2,6 +2,7 @@ import { EMAIL_WIDTH } from '@/features/blocks/render'
 import { footerProblems } from '@/features/klaviyo-push/html'
 import { gmailClipBytes } from '@/features/release-qa/checks'
 import { drawnText } from './drawn-text'
+import { spamProblem, spamScore } from './spam-score'
 
 /**
  * DST-005 part 1: the hard checks on a built email's HTML, in the real
@@ -19,6 +20,8 @@ import { drawnText } from './drawn-text'
  * - The offer: no discount drawn (in the text or a picture's alt) above
  *   the owner's max, read as copy QA reads one (its words around the
  *   percent; product names and approved claims left out).
+ * - Spam (owner pick #93): under `spamLimit` points on the spam check,
+ *   read with the subject and preview line (`spamScore`).
  *
  * Contrast is kept by construction: the blocks draw text in a colour
  * readable on its background (WCAG 4.5, 3 for large text, `readableOn`),
@@ -26,7 +29,7 @@ import { drawnText } from './drawn-text'
  */
 
 export type HardCheck =
-  'weight' | 'width' | 'alt' | 'links' | 'footer' | 'offer'
+  'weight' | 'width' | 'alt' | 'links' | 'footer' | 'offer' | 'spam'
 
 export type HardProblem = { check: HardCheck; problem: string }
 
@@ -87,6 +90,15 @@ export function hardProblems(
     known?: readonly string[]
     /** The store's hosts (its site, its products'); none: any https link. */
     storeHosts?: readonly string[]
+    /** The subject and preview line, for the spam check (none: empty). */
+    subject?: string
+    preheader?: string
+    /**
+     * The spam check: the store's own words it leaves out (with `known`:
+     * its reviews, its founder's note, the code) and its name (its logo).
+     */
+    storeText?: readonly string[]
+    brandName?: string
   }
 ): HardProblem[] {
   const problems: HardProblem[] = []
@@ -162,5 +174,20 @@ export function hardProblems(
         ? `The email shows ${Math.max(...over)}% though no discount is allowed.`
         : `The email shows ${Math.max(...over)}%, over your max of ${max}%.`
     )
+  const spam = spamProblem(
+    spamScore(
+      {
+        subject: input.subject ?? '',
+        preheader: input.preheader ?? '',
+        html
+      },
+      {
+        text: [...(input.known ?? []), ...(input.storeText ?? [])],
+        name: input.brandName,
+        hosts: store
+      }
+    )
+  )
+  if (spam) add('spam', spam)
   return problems
 }
