@@ -9,6 +9,43 @@ import { operationAction, acceptInvite } from './actions'
 import { z } from 'zod'
 import { rewriteAvailability } from '@/features/email-generation/config'
 import { connectionsEmptyText, rewriteStatus } from './provider-status'
+import { modelsInUseNow, retirementWatch } from '@/features/ai/retirement-watch'
+
+/** Owner pick #83: the models the app would call now, and when they end. */
+function RetirementWatch() {
+  const inUse = modelsInUseNow()
+  const lines = retirementWatch(inUse, new Date().toISOString().slice(0, 10))
+  return (
+    <div className="mt-4">
+      <h3 className="text-sm font-semibold">Model retirement watch</h3>
+      {lines.length ? (
+        <ul className="mt-2 space-y-2 text-sm">
+          {lines.map((l) => (
+            <li
+              key={`${l.provider}-${l.model}`}
+              className="flex flex-wrap gap-x-2"
+            >
+              <span className="font-medium">{l.model}</span>
+              <span
+                className={
+                  l.state === 'ok'
+                    ? 'text-[var(--text)]'
+                    : 'font-medium text-[var(--danger-ink)]'
+                }
+              >
+                · {l.detail}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-sm text-[var(--text-muted)]">
+          No AI model is in use: the fake answers every call.
+        </p>
+      )}
+    </div>
+  )
+}
 const money = (value: number) =>
   new Intl.NumberFormat('en', {
     style: 'currency',
@@ -292,6 +329,7 @@ export async function OperatorPanel() {
             )
           })}
         </ul>
+        <RetirementWatch />
         {data.data.connections.length === 0 && (
           <p className="mt-4 text-sm text-[var(--text-muted)]">
             {connectionsEmptyText}
