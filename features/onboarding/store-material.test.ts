@@ -672,6 +672,26 @@ describe('storeMaterial: customers’ own photos (REL-ONB2 part e)', () => {
     )
   })
 
+  it('never takes the hero at its www or bare address, or with its letters escaped', () => {
+    const store = 'https://cedar.myshopify.com'
+    const own = (url: string) => shot(url, { page: `${store}/products/knit` })
+    const hero = `https://www.cedar.myshopify.com/files/heroA.jpg`
+    const shots = [1, 2, 3].map((n) => `${imgix}/${n}.jpg`)
+    const grid = material(
+      [
+        ...shots.map(own),
+        own(`${store}/files/hero%41.jpg`),
+        own(`${store}/k.jpg`)
+      ],
+      {
+        host: 'cedar.myshopify.com',
+        catalogImages: [`${folder}/knit.jpg`],
+        photos: [{ url: hero, kind: 'lifestyle', alt: null }]
+      }
+    )?.customerPhotos?.map((p) => p.image)
+    expect(grid).toEqual([...shots, `${store}/k.jpg`])
+  })
+
   it('takes Shopify CDN photos only in the catalog’s own folder, and Judge.me photos of one folder', () => {
     expect(
       photos([
