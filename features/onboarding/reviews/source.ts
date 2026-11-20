@@ -128,7 +128,7 @@ export function siteReviewSource(
       for (const page of read) {
         if (!pageOk(page.url, domain) || pages.includes(page.url)) continue
         pages.push(page.url)
-        const found = pageReviews(page.html, page.url)
+        const found = pageReviews(page.html, page.url, Date.now(), domain)
         for (const r of found.reviews) {
           // A review shown on every page (a shop-wide carousel) is one review.
           const key = `${r.author.toLowerCase()}\n${r.text.toLowerCase()}`
