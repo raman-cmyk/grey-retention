@@ -10,6 +10,7 @@ import {
   metricsPath,
   readCatalogItems,
   readEvents,
+  readOrderReturns,
   storeLocale
 } from './catalog'
 import {
@@ -75,11 +76,110 @@ describe('the catalog read, against recorded Klaviyo answers', () => {
     expect(await findStoreMetrics(client(transport), always)).toEqual({
       placedOrder: 'PlcdOr',
       viewedProduct: 'VwdPrd',
+      // No Cancelled or Refunded Order metric: the store has none of them.
+      cancelledOrder: null,
+      refundedOrder: null,
       // The recorded store has no Clicked Email metric (LRN-001's own does).
       clickedEmail: null,
       complete: true
     })
     expect(transport.calls).toEqual([`GET ${metricsPath}`])
+  })
+
+  it("finds the store's Cancelled and Refunded Order metrics, in either spelling", async () => {
+    expect(
+      await findStoreMetrics(
+        client(recordedCatalogTransport({ now, returns: true })),
+        always
+      )
+    ).toMatchObject({ cancelledOrder: 'CnclOr', refundedOrder: 'RfndOr' })
+    const metric = (id: string, name: string) => ({
+      type: 'metric',
+      id,
+      attributes: { name, integration: { name: 'API' } }
+    })
+    const transport: KlaviyoTransport = async () => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({
+        data: [
+          metric('PlcdOr', 'Placed Order'),
+          metric('Cncl1', 'Canceled Order')
+        ],
+        links: { next: null }
+      })
+    })
+    expect(await findStoreMetrics(client(transport), always)).toMatchObject({
+      cancelledOrder: 'Cncl1',
+      refundedOrder: null
+    })
+  })
+
+  it('reads the cancels and refunds of the window in Shopify’s shape, and none without the metrics', async () => {
+    const transport = recordedCatalogTransport({ now, returns: true })
+    const since = new Date(now.getTime() - 90 * 86_400_000)
+    const metrics = { cancelledOrder: 'CnclOr', refundedOrder: 'RfndOr' }
+    const read = await readOrderReturns(
+      client(transport),
+      metrics,
+      since,
+      always
+    )
+    expect(read.cancels).toMatchObject({ complete: true, skipped: 0 })
+    expect(read.cancels.records.map((e) => e.props.$event_id)).toEqual([
+      '1001',
+      '100120'
+    ])
+    expect(read.refunds.records[0]!.props).toMatchObject({
+      $event_id: '10014',
+      $value: 90,
+      $extra: { line_items: [{ product_id: 7003, quantity: 2 }] }
+    })
+    expect(transport.calls).toEqual([
+      `GET ${eventsPath('CnclOr', since)}`,
+      `GET ${eventsPath('RfndOr', since)}`
+    ])
+    const none = recordedCatalogTransport({ now })
+    expect(
+      await readOrderReturns(
+        client(none),
+        { cancelledOrder: null, refundedOrder: null },
+        since,
+        always
+      )
+    ).toEqual({
+      cancels: { records: [], complete: true, skipped: 0 },
+      refunds: { records: [], complete: true, skipped: 0 }
+    })
+    expect(none.calls).toEqual([])
+  })
+
+  it('leaves a refused cancels read unread, but never waits out the pace', async () => {
+    const since = new Date(now.getTime() - 90 * 86_400_000)
+    const metrics = { cancelledOrder: 'CnclOr', refundedOrder: 'RfndOr' }
+    const refused = recordedCatalogTransport({
+      now,
+      returns: true,
+      fail: {
+        on: 'returns',
+        with: { status: 400, headers: {}, body: '{"errors":[{"status":400}]}' }
+      }
+    })
+    const read = await readOrderReturns(client(refused), metrics, since, always)
+    expect(read.cancels.complete).toBe(false)
+    expect(read.refunds.complete).toBe(false)
+    const throttled = recordedCatalogTransport({
+      now,
+      returns: true,
+      fail: { on: 'returns', with: recorded.throttled(5) }
+    })
+    expect(
+      (
+        await failure(
+          readOrderReturns(client(throttled), metrics, since, always)
+        )
+      ).kind
+    ).toBe('rate_limited')
   })
 
   it('reads the events of the last 90 days, newest first, with their properties', async () => {
