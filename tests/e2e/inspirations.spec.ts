@@ -1,7 +1,35 @@
 import { randomBytes } from 'node:crypto'
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { login } from './accounts'
 import { newOwner } from './new-owner'
+
+/** A sample brand's website, unique to the run (letters only). */
+const sampleDomain = (name: string) =>
+  `${name}-${randomBytes(4)
+    .toString('hex')
+    .replace(/[0-9]/g, (d) => 'ghijklmnop'[Number(d)]!)}.example`
+
+/**
+ * Fits a phone: no sideways scroll, every control on the page at least
+ * 44 px tall and inside the screen's width, and no words cut short.
+ */
+async function fitsPhone(page: Page) {
+  const found = await page.evaluate(() => ({
+    sideways: document.documentElement.scrollWidth > innerWidth,
+    small: [...document.querySelectorAll<HTMLElement>('a, button, input')]
+      .filter((el) => {
+        const box = el.getBoundingClientRect()
+        if (box.width === 0 || el.closest('.sr-only')) return false
+        return box.height < 44 || box.right > innerWidth
+      })
+      .map((el) => el.textContent?.trim() || el.getAttribute('aria-label')),
+    cut: [...document.querySelectorAll<HTMLElement>('main *')]
+      .filter((el) => el.scrollWidth > el.clientWidth + 1)
+      .filter((el) => getComputedStyle(el).textOverflow === 'ellipsis')
+      .map((el) => el.textContent)
+  }))
+  expect(found).toEqual({ sideways: false, small: [], cut: [] })
+}
 
 test('UI-INSa owner follows a brand, sees its emails, builds from one and stops', async ({
   page
@@ -38,9 +66,7 @@ test('UI-INSa owner follows a brand, sees its emails, builds from one and stops'
   ).toBeVisible()
   await expect(field).toHaveValue('brand.com')
 
-  const domain = `northwind-${randomBytes(4)
-    .toString('hex')
-    .replace(/[0-9]/g, (d) => 'ghijklmnop'[Number(d)]!)}.example`
+  const domain = sampleDomain('northwind')
   await field.fill(`https://www.${domain}/`)
   await page.getByRole('button', { name: 'Follow', exact: true }).click()
   await expect(page.getByText(`Following ${domain}.`)).toBeVisible()
@@ -97,17 +123,46 @@ test('UI-INSa staff see Inspiration but cannot follow, stop, hide or build', asy
   )
 })
 
-test('UI-INSa Inspiration fits 375px', async ({ page }, info) => {
+test('UI-INSa Inspiration fits 375px: empty, then a followed brand and its emails', async ({
+  page
+}, info) => {
   test.skip(info.project.name.startsWith('mobile'), 'Sets its own viewport')
+  test.setTimeout(90_000)
   await page.setViewportSize({ width: 375, height: 812 })
-  await login(page, 'owner')
+  await newOwner(page, {
+    prefix: 'inspire-phone',
+    name: 'Inspiration phone studio'
+  })
   await page.goto('/inspiration')
+  const followed = page.getByRole('region', { name: 'Brands you follow' })
+  const latest = page.getByRole('region', { name: 'Latest emails' })
+  await expect(followed.getByText('No brands followed yet.')).toBeVisible()
+  await expect(latest.getByText(/No emails yet/)).toBeVisible()
+  // A whole website fits the field: on a phone Follow goes under it.
+  const field = page.getByLabel('Brand website', { exact: true })
+  const follow = page.getByRole('button', { name: 'Follow', exact: true })
+  const fieldBox = (await field.boundingBox())!
+  expect((await follow.boundingBox())!.y).toBeGreaterThanOrEqual(
+    fieldBox.y + fieldBox.height
+  )
+  await fitsPhone(page)
+
+  // A brand with a long website, and its 10 sample emails.
+  const domain = sampleDomain('northwind-outdoor-supply-company')
+  await field.fill(domain)
+  await follow.click()
+  await expect(page.getByText(`Following ${domain}.`)).toBeVisible()
+  await page.goto('/competitor-agent')
+  await page.getByRole('button', { name: 'Run reference fixture jobs' }).click()
   await expect(
-    page.getByRole('heading', { name: 'Brands you follow' })
+    page.getByText('Reference job pass completed. Inspect persisted evidence.')
   ).toBeVisible()
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth
-    )
-  ).toBe(true)
+  await page.goto('/inspiration')
+  await expect(followed.getByText(domain, { exact: true })).toBeVisible()
+  const emails = latest.getByRole('listitem')
+  await expect(emails).toHaveCount(10)
+  await fitsPhone(page)
+  const last = emails.last().getByRole('link', { name: 'Use this design' })
+  await last.scrollIntoViewIfNeeded()
+  await expect(last).toBeInViewport()
 })

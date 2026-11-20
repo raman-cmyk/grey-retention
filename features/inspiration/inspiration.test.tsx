@@ -1,4 +1,5 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
@@ -34,6 +35,8 @@ vi.mock('@/features/library/inspirations/actions', () => ({
   stopTracking: vi.fn(async () => ({}))
 }))
 
+import InspirationError from '@/app/(gros)/inspiration/error'
+import InspirationLoading from '@/app/(gros)/inspiration/loading'
 import type { ReferenceLibraryData } from '@/features/library/reference-library/data'
 import { hideBrand } from './actions'
 import {
@@ -401,16 +404,6 @@ describe('Inspiration screen (UI-INSa)', () => {
     expect(region('Brands like yours')).toHaveTextContent('No suggestions yet.')
     expect(region('Latest emails')).toHaveTextContent('No emails yet.')
     cleanup()
-    render(
-      <InspirationScreen
-        view={inspirationView(input({ library: null, suggestions: null }))}
-        timezone="UTC"
-      />
-    )
-    expect(region('Brands you follow')).toHaveTextContent('could not be read')
-    expect(region('Brands like yours')).toHaveTextContent('could not be read')
-    expect(screen.queryByLabelText('Brand website')).toBeNull()
-    cleanup()
     const full = library({
       tracked: Array.from({ length: 10 }, (_, i) => ({
         ...library().tracked[0]!,
@@ -433,5 +426,152 @@ describe('Inspiration screen (UI-INSa)', () => {
         name: 'Follow'
       })
     ).toBeNull()
+  })
+})
+
+describe('Inspiration states (UI-INSb)', () => {
+  const later = 'Open Inspiration again in a minute.'
+
+  it('says which part could not be read, what to do, and still shows the rest', () => {
+    render(
+      <InspirationScreen
+        view={inspirationView(input({ library: null }))}
+        timezone="UTC"
+      />
+    )
+    expect(region('Brands you follow')).toHaveTextContent(
+      `The brands you follow could not be read just now. ${later}`
+    )
+    expect(region('Latest emails')).toHaveTextContent(
+      `The emails could not be read just now. ${later}`
+    )
+    // Nothing to follow into while the followed brands are unread.
+    expect(screen.queryByLabelText('Brand website')).toBeNull()
+    expect(region('Brands like yours')).toHaveTextContent('Bark Co')
+    cleanup()
+    render(
+      <InspirationScreen
+        view={inspirationView(input({ suggestions: null }))}
+        timezone="UTC"
+      />
+    )
+    expect(region('Brands like yours')).toHaveTextContent(
+      `Suggestions could not be read just now. ${later}`
+    )
+    expect(region('Brands you follow')).toHaveTextContent('Northwind')
+    expect(screen.getByLabelText('Brand website')).toBeInTheDocument()
+  })
+
+  it('is one error with Try again when nothing could be read', () => {
+    render(
+      <InspirationScreen
+        view={inspirationView(input({ library: null, suggestions: null }))}
+        timezone="UTC"
+      />
+    )
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Inspiration did not open')
+    expect(alert).toHaveTextContent(
+      'Nothing was changed. Try again in a minute.'
+    )
+    expect(screen.getByRole('link', { name: 'Try again' })).toHaveAttribute(
+      'href',
+      '/inspiration'
+    )
+    expect(
+      screen.queryByRole('region', { name: 'Brands you follow' })
+    ).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Latest emails' })).toBeNull()
+  })
+
+  it('tells staff only that no emails came yet: following is the owner’s', () => {
+    const empty = (tenantRole: 'owner' | 'staff') =>
+      inspirationView(
+        input({
+          context: { ...context, tenantRole },
+          library: library({ items: [], tracked: [] }),
+          suggestions: []
+        })
+      )
+    render(<InspirationScreen view={empty('staff')} timezone="UTC" />)
+    expect(region('Latest emails')).toHaveTextContent(
+      /^Latest emailsNo emails yet\.$/
+    )
+    cleanup()
+    render(<InspirationScreen view={empty('owner')} timezone="UTC" />)
+    expect(region('Latest emails')).toHaveTextContent(
+      'No emails yet. Follow a brand and its emails arrive here.'
+    )
+  })
+
+  it('shows long brand names, subjects and their details whole, never cut to one line', () => {
+    const long = 'The Northwind Outdoor Supply Company and Friends'
+    const subject =
+      'Our autumn walking boots are back, and this time they come in three new colours'
+    const tracked = library().tracked[0]!
+    render(
+      <InspirationScreen
+        view={inspirationView(
+          input({
+            library: library({
+              tracked: [{ ...tracked, label: long }],
+              items: [item('long', '2026-11-12T10:00:00Z', { title: subject })]
+            }),
+            suggestions: [{ ...suggestions[0]!, name: `${long} Two` }]
+          })
+        )}
+        timezone="UTC"
+      />
+    )
+    for (const [card, words] of [
+      ['Brands you follow', long],
+      ['Brands like yours', `${long} Two`],
+      ['Latest emails', subject]
+    ] as const) {
+      const title = within(region(card)).getByText(words)
+      expect(title).not.toHaveClass('truncate')
+      expect(title).toHaveClass('break-words')
+      const details = title.nextElementSibling
+      expect(details).not.toHaveClass('truncate')
+      expect(details).toHaveClass('break-words')
+    }
+  })
+
+  it('opens on the loading page: the bar with Inspiration current, its words, busy, and no main', () => {
+    const { container } = render(<InspirationLoading />)
+    expect(
+      within(screen.getByRole('navigation', { name: 'Main' })).getByRole(
+        'link',
+        { name: 'Inspiration' }
+      )
+    ).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByText('Opening Inspiration')).toHaveAttribute(
+      'aria-live',
+      'polite'
+    )
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
+    // The page brings the one main while it streams in.
+    expect(container.querySelector('main')).toBeNull()
+  })
+
+  it('says plainly when the page did not open, with Try again and the bar as a way out', async () => {
+    const retry = vi.fn()
+    render(<InspirationError retry={retry} />)
+    expect(screen.getAllByRole('main')).toHaveLength(1)
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Inspiration did not open')
+    expect(alert).toHaveTextContent('Nothing was changed.')
+    expect(alert).not.toHaveTextContent(/Something went wrong|error/i)
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(retry).toHaveBeenCalledTimes(1)
+    const menu = within(screen.getByRole('navigation', { name: 'Main' }))
+    expect(menu.getByRole('link', { name: 'Home' })).toHaveAttribute(
+      'href',
+      '/home'
+    )
+    expect(menu.getByRole('link', { name: 'Inspiration' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    )
   })
 })
