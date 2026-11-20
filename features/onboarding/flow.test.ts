@@ -300,6 +300,7 @@ describe('setupReadModel (UI-ONBa)', () => {
             {
               kind: 'brand.read_site',
               status,
+              domain: 'cedarlane.example',
               checkpoint: {},
               failure_class: null,
               created_at: '2026-11-17T09:00:00Z',
@@ -322,6 +323,147 @@ describe('setupReadModel (UI-ONBa)', () => {
       // Klaviyo and Discount are done here: while Brand waits, Rivals is Now.
       expect(flow.current).toBe(waits ? 4 : 1)
     }
+  })
+
+  it('waits for the website saved now, and hides the old website’s logo (ONB-SITEa)', async () => {
+    const read = (
+      domain: string,
+      status: string,
+      at: string,
+      kind = 'brand.read_site'
+    ) => ({
+      kind,
+      status,
+      domain,
+      checkpoint: {},
+      failure_class: null,
+      created_at: at,
+      updated_at: at
+    })
+    const readA = read(
+      'cedar-lane.example',
+      'succeeded',
+      '2026-11-17T09:00:00Z'
+    )
+    // A's ads and reviews were read too.
+    const ownA = [
+      readA,
+      read(
+        'cedar-lane.example',
+        'succeeded',
+        '2026-11-17T09:01:00Z',
+        'brand.read_ads'
+      ),
+      read(
+        'cedar-lane.example',
+        'succeeded',
+        '2026-11-17T09:02:00Z',
+        'brand.read_reviews'
+      )
+    ]
+    const view = (website: string, reads: unknown[]) => {
+      const { db, calls } = database({
+        ...ready,
+        brand_profiles: {
+          data: { brand_name: 'Cedar Lane', domain: website, revision: 4 },
+          error: null
+        },
+        // A changed website cleared the Brand mark (the database's trigger).
+        onboarding_steps: {
+          data: {
+            brand_site: null,
+            rivals_skipped_at: null,
+            finished_at: null
+          },
+          error: null
+        },
+        tenants: {
+          data: { created_at: '2026-11-17T08:00:00Z', timezone: 'UTC' },
+          error: null
+        },
+        strategy_runs: { data: [], error: null },
+        job_runs: { data: reads, error: null },
+        brand_logos: {
+          data: {
+            domain: 'cedar-lane.example',
+            on_light: 'https://cedar-lane.example/logo.png'
+          },
+          error: null
+        },
+        // The owner's own kit: it keeps no website, and is shown for any.
+        brand_kits: {
+          data: { colors: ['#1F3A2B'], fonts: ['Lora'] },
+          error: null
+        }
+      })
+      mocks.createClient.mockResolvedValue(db)
+      return { calls }
+    }
+    mocks.offersPage.mockResolvedValue(offers(20))
+    const state = (
+      v: Awaited<ReturnType<typeof setupReadModel>>,
+      key = 'site'
+    ) => v.reading!.steps.find((s) => s.key === key)!.state
+    const kit = { colors: ['#1F3A2B'], fonts: ['Lora'] }
+
+    // Website A was read, then changed to B: B's read is queued.
+    const queuedB = read('north-loft.example', 'queued', '2026-11-17T10:00:01Z')
+    const { calls } = view('north-loft.example', [...ownA, queuedB])
+    let v = await setupReadModel(context)
+    expect(state(v)).toBe('waiting')
+    // A's ads and reviews are not B's: not read yet.
+    expect([state(v, 'ads'), state(v, 'reviews')]).toEqual([
+      'not_started',
+      'not_started'
+    ])
+    expect(v.flow!.steps[1]).toMatchObject({ done: false, waiting: true })
+    expect(v.flow!.current).toBe(4)
+    // A's logo is not B's; the owner's kit is shown as it is.
+    expect(v.found).toMatchObject({ logo: null, ...kit })
+    for (const kind of [
+      'brand.read_site',
+      'brand.read_ads',
+      'brand.read_reviews'
+    ])
+      expect(
+        calls.find(
+          (c) =>
+            c.table === 'job_runs' &&
+            c.filters.some((f) => f[1] === 'kind' && f[2] === kind)
+        )!.filters
+      ).toContainEqual(['eq', 'input->>domain', 'north-loft.example'])
+    // The brand profile's saves are not read: the kit has no age rule.
+    expect(calls.some((c) => c.table === 'brand_versions')).toBe(false)
+
+    // No read of B at all: not read yet (Try again), never A's.
+    view('north-loft.example', [readA])
+    v = await setupReadModel(context)
+    expect(state(v)).toBe('not_started')
+    expect(v.flow!.steps[1]).toMatchObject({ done: false, waiting: false })
+    expect(v.flow!.current).toBe(1)
+
+    // B read: Brand is Now.
+    view('north-loft.example', [
+      readA,
+      read('north-loft.example', 'succeeded', '2026-11-17T11:00:00Z')
+    ])
+    v = await setupReadModel(context)
+    expect(state(v)).toBe('done')
+    expect(v.flow!.current).toBe(1)
+    expect(v.found).toMatchObject({ logo: null, ...kit })
+
+    // Then back to A: A's own reads count again (B's newer one does not),
+    // and A's logo shows again.
+    view('cedar-lane.example', [...ownA, queuedB])
+    v = await setupReadModel(context)
+    expect(state(v)).toBe('done')
+    expect([state(v, 'ads'), state(v, 'reviews')]).toEqual(['done', 'done'])
+    expect(v.flow!.steps[1]).toMatchObject({ done: false, waiting: false })
+    expect(v.flow!.current).toBe(1)
+    expect(v.found).toMatchObject({
+      logo: 'https://cedar-lane.example/logo.png',
+      ...kit
+    })
   })
 
   it('reads nothing found before a website is saved', async () => {
