@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   campaignNextStep,
   campaignReview,
@@ -22,6 +22,14 @@ const approved = {
 } as OverviewCampaign
 
 describe('campaign overview priorities', () => {
+  // The fixture's send date is fixed (20 November 2026): the clock is held
+  // at `now`, so the checks that read today never see it pass.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(now)
+  })
+  afterEach(() => vi.useRealTimers())
+
   it('excludes completed, scheduled and historical campaigns from review', () => {
     expect(campaignReview(campaign)).toBe('Design review')
     expect(
