@@ -197,12 +197,12 @@ describe('the text checks (TXT-001)', () => {
         links: [{ url: 'https://a.example/1' }, { url: 'https://a.example/2' }]
       })
     ).toEqual(['The letter has 3 links; use one or two.'])
-    expect(reasons({ body: [`${words(80)} [here](2).`] })).toEqual([
-      '“here” points to a link that does not exist: use (1).'
+    expect(reasons({ body: [`${words(80)} [the tray](2).`] })).toEqual([
+      '“the tray” points to a link that does not exist: use (1).'
     ])
-    expect(reasons({ body: [`${words(80)} [here](1).`], links: [] })).toEqual([
-      'There is no link to point to: write “here” without one.'
-    ])
+    expect(
+      reasons({ body: [`${words(80)} [the tray](1).`], links: [] })
+    ).toEqual(['There is no link to point to: write “the tray” without one.'])
     for (const text of [
       'Visit cedar-lane.com today.',
       'See https://cedar-lane.example.',
@@ -258,6 +258,11 @@ describe('the text checks (TXT-001)', () => {
     ])
     expect(rules({ signoff: 'See [you](2)' })).toEqual(['link_outside_letter'])
     expect(rules({ body: [`${words(80)} [ ](1)`] })).toEqual(['empty_link'])
+    // Owner pick #96: a screen reader reads a link's words alone.
+    for (const vague of ['here', 'Read more', 'learn more'])
+      expect(rules({ body: [`${words(80)} [${vague}](1)`] }), vague).toEqual([
+        'vague_link'
+      ])
     expect(rules({ body: [`${words(80)} [0](0)`] })).toEqual(['unknown_link'])
     // Prose with brackets is prose.
     expect(rules({ body: [`${words(80)} The [sic] (really) word.`] })).toEqual(
@@ -267,9 +272,9 @@ describe('the text checks (TXT-001)', () => {
     expect(rules({ body: [words(90)] })).toEqual([])
     expect(
       letterProblems(
-        letter({ body: [`${words(80)} [here](3) and [here](3)`] })
+        letter({ body: [`${words(80)} [the tray](3) and [the tray](3)`] })
       ).map((p) => p.reason)
-    ).toEqual(['“here” points to a link that does not exist: use (1).'])
+    ).toEqual(['“the tray” points to a link that does not exist: use (1).'])
   })
 
   it('checks the name that signs like every other part, unless it is the store’s', () => {
