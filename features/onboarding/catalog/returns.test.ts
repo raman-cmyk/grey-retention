@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { StoreEvent } from '@/lib/providers/klaviyo/catalog'
 import { salesFrom } from './clean'
-import { matchReturns, orderIds } from './returns'
+import { matchReturns, orderId, returnsState } from './returns'
 
 const now = Date.parse('2026-11-11T12:00:00Z')
 const day = 86_400_000
@@ -109,12 +109,105 @@ describe('matchReturns', () => {
     expect(matchReturns([a], [], []).byOrder.size).toBe(0)
   })
 
-  it('reads the order ids an integration and Shopify send', () => {
-    expect(orderIds({ OrderId: 1234, $event_id: '1234' })).toEqual(['1234'])
-    expect(orderIds({ OrderId: 'X-1', $event_id: 'R-1' })).toEqual([
-      'X-1',
-      'R-1'
-    ])
-    expect(orderIds({ $event_id: '', OrderId: { id: 1 } })).toEqual([])
+  it('takes a negative amount as the amount, and nothing off for a refund of 0', () => {
+    for (const value of [-10, '-10.00'])
+      expect(
+        matchReturns(
+          [b],
+          [],
+          [event(1, { OrderId: 'B1', $value: value })]
+        ).byOrder.get(b)
+      ).toEqual({ whole: false, value: 10, units: new Map() })
+    const lines = { Items: [{ ProductID: 1, Quantity: 2 }] }
+    const zero = matchReturns(
+      [b],
+      [],
+      [event(1, { OrderId: 'B1', $value: 0, ...lines })]
+    )
+    expect(zero).toMatchObject({ refunded: 0 })
+    expect(zero.byOrder.size).toBe(0)
+  })
+
+  it('takes only the lines a refund lists when it says no amount: their prices, or no money', () => {
+    const priced = matchReturns(
+      [b],
+      [],
+      [
+        event(1, {
+          OrderId: 'B1',
+          Items: [{ ProductID: 1, Quantity: 1, ItemPrice: 10 }]
+        })
+      ]
+    )
+    expect(priced.byOrder.get(b)).toEqual({
+      whole: false,
+      value: 10,
+      units: new Map([['1', 1]])
+    })
+    const unpriced = matchReturns(
+      [b],
+      [],
+      [event(1, { OrderId: 'B1', Items: [{ ProductID: 1, Quantity: 2 }] })]
+    )
+    expect(unpriced.byOrder.get(b)).toEqual({
+      whole: false,
+      value: 0,
+      units: new Map([['1', 2]])
+    })
+    // An order that said no value counted none: no money comes off it.
+    const noValue = order('N1', 2, 0, [line(1, 2)])
+    delete noValue.props.$value
+    expect(
+      matchReturns(
+        [noValue],
+        [],
+        [event(1, { OrderId: 'N1', $value: 5 })]
+      ).byOrder.get(noValue)
+    ).toMatchObject({ whole: false, value: 0 })
+  })
+
+  it('matches an OrderId only to that order, and Shopify’s $event_id otherwise', () => {
+    expect(orderId({ OrderId: 1234, $event_id: 'R-1' })).toBe('1234')
+    expect(orderId({ $event_id: 'A1' })).toBe('A1')
+    expect(orderId({ OrderId: { id: 1 }, $event_id: 'A1' })).toBeNull()
+    // A refund whose own OrderId is another order's never falls back.
+    const other = matchReturns(
+      [a],
+      [],
+      [event(1, { OrderId: 'X-9', $event_id: 'A1', $value: 40 })]
+    )
+    expect(other).toMatchObject({ refunded: 0, unmatched: 1 })
+  })
+})
+
+describe('returnsState', () => {
+  const read = (records: number, complete: boolean, skipped = 0) => ({
+    records: Array.from({ length: records }, () => event(1, {})),
+    complete,
+    skipped
+  })
+  const none = matchReturns([], [], [])
+  const unmatched = { ...none, unmatched: 1 }
+
+  it('is whole when every part was read and each found its order, or all the orders were read', () => {
+    expect(returnsState([read(2, true), read(0, true)], none, false)).toBe(
+      'whole'
+    )
+    expect(returnsState([read(2, true)], unmatched, true)).toBe('whole')
+  })
+
+  it('is partial when a part was cut short, a record skipped or one left unmatched in a cut read', () => {
+    expect(returnsState([read(2, false)], none, true)).toBe('partial')
+    expect(returnsState([read(2, true, 1)], none, true)).toBe('partial')
+    expect(returnsState([read(2, true)], unmatched, false)).toBe('partial')
+    expect(returnsState([read(0, false), read(1, true)], none, true)).toBe(
+      'partial'
+    )
+  })
+
+  it('is unread when Klaviyo answered none of the parts', () => {
+    expect(returnsState([read(0, false), read(0, false)], none, true)).toBe(
+      'unread'
+    )
   })
 })
