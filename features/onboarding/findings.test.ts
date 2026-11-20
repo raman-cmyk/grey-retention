@@ -10,12 +10,13 @@ import {
   sourceTopics,
   topicValues
 } from './findings'
+import { reviewAppPhotoHosts } from './reviews/photos'
 
 const migrations = path.join(process.cwd(), 'supabase/migrations')
 // The findings migrations in order: a later one may widen a list.
 const sql = readdirSync(migrations)
   .filter((f) =>
-    /_(brand_findings|klaviyo_history|ads_reading|reviews_reading|founder_findings)\.sql$/.test(
+    /_(brand_findings|klaviyo_history|ads_reading|reviews_reading|founder_findings|review_photos)\.sql$/.test(
       f
     )
   )
@@ -70,9 +71,21 @@ describe('the findings contract', () => {
       ).toEqual([...sourceTopics[source]])
     for (const topic of findingTopics)
       expect(sql, topic).toMatch(new RegExp(`'${topic}'`))
+    // Customers' photos: the review app hosts the reader confirmed.
+    expect(
+      [
+        ...sql.matchAll(
+          /review_photo_host_ok\([^)]*\)\s+returns[\s\S]*?https_host\(url\) in \(([^)]+)\)/g
+        )
+      ]
+        .at(-1)?.[1]
+        ?.match(/'[^']+'/g)
+        ?.map((h) => h.slice(1, -1))
+    ).toEqual(Object.values(reviewAppPhotoHosts).flat())
   })
 
   it('gives each topic one value shape, money in major units with its currency', () => {
+    const shop = 'https://cedar-lane.example'
     const good: Record<string, unknown[]> = {
       free_shipping: [
         { kind: 'always' },
@@ -117,7 +130,15 @@ describe('the findings contract', () => {
           date: '2026-10-01'
         }
       ],
-      founder: [{ name: 'Maya Lee' }, { name: 'Maya Lee', role: 'Founder' }]
+      founder: [{ name: 'Maya Lee' }, { name: 'Maya Lee', role: 'Founder' }],
+      customer_photo: [
+        { url: `${shop}/m.jpg`, page: `${shop}/products/knit` },
+        {
+          url: 'https://judgeme.imgix.net/cedar/1__photo.PNG?w=800',
+          page: `${shop}/products/knit`,
+          product: 'Weekend Knit'
+        }
+      ]
     }
     const bad: Record<string, unknown[]> = {
       free_shipping: [
@@ -167,6 +188,35 @@ describe('the findings contract', () => {
         { name: 'Maya', role: '' },
         { name: 'Maya', role: 'r'.repeat(61) },
         { name: 'Maya', note: 'I knit.' }
+      ],
+      customer_photo: [
+        { url: `${shop}/m.jpg` },
+        { url: 'http://cedar-lane.example/m.jpg', page: `${shop}/p` },
+        { url: `${shop}/m.webp`, page: `${shop}/p` },
+        { url: `${shop}/m.jpg`, page: 'http://cedar-lane.example/p' },
+        { url: `${shop}/m.jpg`, page: `${shop}/p`, product: ' ' },
+        { url: `${shop}/m.jpg`, page: `${shop}/p`, author: 'Maya R.' },
+        { url: `${shop}/m.jpg`, page: `${shop}/p`, quote: 'So soft.' },
+        {
+          // Each short enough, too long together for the database.
+          url: `${shop}/${'m'.repeat(420)}.jpg`,
+          page: `${shop}/${'p'.repeat(440)}`
+        },
+        // A host a browser reads another way, or characters no URL has,
+        // as the database refuses them (`private.photo_url_ok`).
+        ...[
+          'https://evil.example\\.cedar-lane.example/m.jpg',
+          'https://evil.example%2f.cedar-lane.example/m.jpg',
+          'https://CEDAR-LANE.example/m.jpg',
+          'https://cedar-lane.example/m a.jpg',
+          'https://cedar-lane.example/<m>.jpg',
+          'https://cedar-lane.example/m\\x.jpg',
+          'https://cedar-lane.example/m.jpg?a=b\\c',
+          // An email address, as written or escaped.
+          'https://cedar-lane.example/jo.lee@mail.example.jpg',
+          'https://cedar-lane.example/m.jpg?by=jo%40mail.example',
+          'https://cedar-lane.example/m.jpg?by=jo%2540mail.example'
+        ].map((url) => ({ url, page: `${shop}/p` }))
       ]
     }
     for (const [topic, values] of Object.entries(good))
@@ -201,6 +251,22 @@ describe('the findings contract', () => {
       findingInput.safeParse(finding({ evidence: { ref: 'catalog:item:1' } }))
         .success
     ).toBe(true)
+  })
+
+  it("cites a customer's photo by the page's review data, never words", () => {
+    const page = 'https://cedar-lane.example/products/knit'
+    const photo = (evidence: Record<string, unknown>) =>
+      finding({
+        topic: 'customer_photo',
+        value: { url: 'https://cedar-lane.example/m.jpg', page },
+        evidence
+      })
+    expect(
+      findingInput.safeParse(photo({ ref: `review-data:${page}` })).success
+    ).toBe(true)
+    expect(
+      findingInput.safeParse(photo({ url: page, quote: 'So soft.' })).success
+    ).toBe(false)
   })
 
   it("marks a founder's note, and only it, as whole sentences of the About page", () => {
