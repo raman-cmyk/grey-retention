@@ -3,6 +3,28 @@ import { createClient } from '@supabase/supabase-js'
 import { test, expect, type Page } from '@playwright/test'
 import { newOwner } from './new-owner'
 
+/**
+ * Fits a phone: no sideways scroll, every control on the page at least
+ * 44 px tall and inside the screen's width, and no words cut short.
+ */
+async function fitsPhone(page: Page) {
+  const found = await page.evaluate(() => ({
+    sideways: document.documentElement.scrollWidth > innerWidth,
+    small: [...document.querySelectorAll<HTMLElement>('a, button, input')]
+      .filter((el) => {
+        const box = el.getBoundingClientRect()
+        if (box.width === 0 || el.closest('.sr-only')) return false
+        return box.height < 44 || box.right > innerWidth
+      })
+      .map((el) => el.textContent?.trim() || el.getAttribute('aria-label')),
+    cut: [...document.querySelectorAll<HTMLElement>('main *')]
+      .filter((el) => el.scrollWidth > el.clientWidth + 1)
+      .filter((el) => getComputedStyle(el).textOverflow === 'ellipsis')
+      .map((el) => el.textContent)
+  }))
+  expect(found).toEqual({ sideways: false, small: [], cut: [] })
+}
+
 // UI-LRNb: what GROS learned, with the owner's Pin, Unpin and Remove. Each
 // test makes its own workspace and writes its rules as the learning worker
 // does (service role, on the disposable local stack only: `newOwner`
@@ -24,13 +46,21 @@ async function workspaceWithRules(
   })
   const tenant = await owner.from('tenants').select('id').single()
   expect(tenant.error).toBeNull()
+  return addRules(tenant.data!.id, rules)
+}
+
+/** Writes rules as the learning worker does (service role, local only). */
+async function addRules(
+  tenantId: string,
+  rules: { kind: 'do' | 'dont'; rule: string; source?: string }[]
+) {
   const admin = service()
   for (const r of rules)
     expect(
       (
         await admin.rpc('add_memory_rule', {
           r: {
-            tenantId: tenant.data!.id,
+            tenantId,
             kind: r.kind,
             rule: r.rule,
             why: 'Seen over 6 sends',
@@ -41,7 +71,7 @@ async function workspaceWithRules(
         })
       ).error
     ).toBeNull()
-  return { tenantId: tenant.data!.id, admin }
+  return { tenantId, admin }
 }
 
 const unique = (words: string) => `${words} ${randomUUID().slice(0, 6)}`
@@ -151,28 +181,43 @@ test('UI-LRNb staff see what GROS learned without the owner’s buttons', async 
   ).toHaveCount(0)
 })
 
-test('UI-LRNb Learned fits a 375 px phone', async ({ page }, info) => {
+test('UI-LRNb Learned fits a 375 px phone: no rules yet, then Do and Avoid', async ({
+  page
+}, info) => {
   test.skip(info.project.name.startsWith('mobile'), 'Sets its own viewport')
   await page.setViewportSize({ width: 375, height: 812 })
-  await workspaceWithRules(page, [
+  const { tenantId } = await workspaceWithRules(page, [])
+  // A new store: nothing learned yet, one way on (Home).
+  await page.goto('/learned')
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Learned' })
+  ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'No rules in use' })
+  ).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Open Home' })).toBeInViewport()
+  await fitsPhone(page)
+
+  await addRules(tenantId, [
     {
       kind: 'do',
       rule: unique(
         'Open with the newest arrival and one clear reason to look today'
       )
     },
-    { kind: 'dont', rule: unique('Never stack two discounts in one email') }
+    {
+      kind: 'dont',
+      rule: unique('Never stack two discounts in one email'),
+      source: 'seed'
+    }
   ])
   await page.goto('/learned')
   await expect(
-    page.getByRole('heading', { level: 1, name: 'Learned' })
-  ).toBeVisible()
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth
-    )
-  ).toBe(true)
-  await expect(
-    page.getByRole('button', { name: /^Remove: Never stack/ })
-  ).toBeVisible()
+    page.getByRole('region', { name: 'Avoid', exact: true })
+  ).toContainText('From the starting rules')
+  // Each rule's words, source and date show whole; its buttons fit.
+  await fitsPhone(page)
+  const remove = page.getByRole('button', { name: /^Remove: Never stack/ })
+  await remove.scrollIntoViewIfNeeded()
+  await expect(remove).toBeInViewport()
 })
