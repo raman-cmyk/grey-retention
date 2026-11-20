@@ -68,9 +68,14 @@ export const critique = z.strictObject({
   /** Words printed on the product or photo itself, also in the original photo. */
   photoText: z.array(z.string().max(200)).max(10),
   /** Exact fixes, one sentence each. */
-  fixes: z.array(z.string().trim().min(3).max(200)).max(6)
+  fixes: z.array(z.string().trim().min(3).max(200)).max(6),
+  /**
+   * DST-004c: the drawn picture shows a logo, wordmark or brand name that
+   * is not this brand's (the reference's, say). Missing: none seen.
+   */
+  otherBrand: z.boolean().default(false)
 })
-export type Critique = z.infer<typeof critique>
+export type Critique = z.input<typeof critique>
 
 /** At most `n` UTF-16 units, never half a character. */
 const cut = (text: string, n: number) =>
@@ -211,6 +216,11 @@ export function criticProblems(
     problems.push(
       'The headline cannot be read in the picture: draw it whole, large and clear.'
     )
+  // DST-004c: never another brand's mark in this brand's email.
+  if (answer.otherBrand)
+    problems.push(
+      'The picture shows another brand’s logo or name: draw only this brand’s name and the words given.'
+    )
   const low = checklist.filter((k) => answer.scores[k] < passScore)
   for (const k of low)
     problems.push(`${labels[k]} scored ${answer.scores[k]} of 10.`)
@@ -240,13 +250,14 @@ const pictureNames = (t: Pick<CriticTask, 'reference' | 'photo'>) => [
 
 export const designCriticAgent: AgentDefinition<CriticTask, Critique> = {
   name: 'design-critic',
-  version: '2026-11-15.3',
+  version: '2026-11-17.1',
   // AGENT_MAP.md models: the Design critic runs on Flash with screenshots.
   purpose: 'review',
   instructions: [
     'You are the Design critic for a marketing email of a small online store. The first picture is one designed section as drawn: shown 600 px wide in the email (drawn at 1,200) and about 375 px wide on a phone. Its button is live HTML below it, not in the picture.',
     `Score the first picture from 1 (poor) to 10 (excellent) on each item, every time: ${checklist.map((k) => labels[k]).join('; ')}. Be strict: ${passScore} means ready to send.`,
-    'In Copy mode the next picture is the reference section it rebuilds: compare the two, but never read or repeat the reference’s words. When the original photo is given, it is the last picture.',
+    'In Copy mode the next picture is the reference section it rebuilds: compare the two, but never repeat the reference’s words. Every word drawn in the first picture goes in texts, also a word the reference shows too. When the original photo is given, it is the last picture.',
+    'otherBrand: true when the first picture shows a logo, a wordmark or a brand name that is not this store’s brand (for example the reference’s), else false.',
     'texts: every separate block of text drawn in the first picture (a block is a headline, a line or a paragraph: keep its lines together, joined with spaces), exactly as drawn, with every mark ($, %, stars, emoji); an empty list when there is none. Never add notes such as [logo] or (photo).',
     'photoText: words printed on the product or photo itself (a label, packaging) that you can also see in the original photo, left out of texts; an empty list when no original photo is given.',
     'fixes: at most 6, one sentence each, for what scored below 8 (none when everything scored 8 or more). Fix layout, size, colour, spacing and crop only: never ask to add words, prices, buttons or pictures.',
@@ -301,9 +312,10 @@ export const designCriticAgent: AgentDefinition<CriticTask, Critique> = {
           type: 'array',
           maxItems: 6,
           items: { type: 'string', minLength: 3, maxLength: 200 }
-        }
+        },
+        otherBrand: { type: 'boolean' }
       },
-      required: ['scores', 'texts', 'photoText', 'fixes']
+      required: ['scores', 'texts', 'photoText', 'fixes', 'otherBrand']
     }
   },
   output: critique,

@@ -185,7 +185,8 @@ function briefFor(
           reference: {
             tone: kept.tone,
             height: kept.height,
-            // DST-004b: its stored picture, for the match score only.
+            // DST-004b: its stored picture, for the match score and (DST-004c)
+            // the designer's and critic's look at it.
             ...(isPicturePath(picture) ? { image: picture } : {})
           }
         }
