@@ -1,7 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import { localDateTime } from '@/lib/local-time'
-import { siteDomain } from './flow-model'
 
 /**
  * Onboarding progress (owner pick #66, ONB-066): where the workspace is on
@@ -189,10 +188,10 @@ export function progressFrom(input: {
       input.jobs.filter(
         (j) =>
           j.kind === readerKinds[key] &&
-          // Compared as the database writes it (`private.site_domain`).
-          (!websiteKinds.has(key) ||
-            site === undefined ||
-            siteDomain(j.domain) === site)
+          // The job keeps the domain already as `private.site_domain`
+          // wrote it, and `site` is the same rule's (`siteDomain`): the
+          // two are compared as they are, never normalised again.
+          (!websiteKinds.has(key) || site === undefined || j.domain === site)
       )
     )
     const job = reads.find((j) => j.status === 'succeeded') ?? reads[0]

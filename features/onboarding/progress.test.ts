@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { siteDomain } from './flow-model'
 import {
   progressFrom,
   readOnboardingProgress,
@@ -235,14 +236,19 @@ describe('progressFrom (ONB-066)', () => {
         'cedar-lane.example'
       ).state
     ).toBe('done')
-    // Compared as the database writes it (`private.site_domain`); a read
-    // that names no website is no website's.
-    expect(
-      site(
-        [read(' WWW.Cedar-Lane.example', 'running', 1)],
-        'cedar-lane.example'
-      ).state
-    ).toBe('working')
+    // The job keeps the domain as `private.site_domain` wrote it, and the
+    // saved website comes through the same rule (`siteDomain`): compared
+    // as they are. "www.www.example.com" is kept as "www.example.com", which
+    // normalising again would wrongly turn into "example.com".
+    const twice = siteDomain('www.www.example.com')!
+    expect(twice).toBe('www.example.com')
+    expect(site([read('www.example.com', 'running', 1)], twice).state).toBe(
+      'working'
+    )
+    expect(site([read('example.com', 'succeeded', 1, 2)], twice).state).toBe(
+      'not_started'
+    )
+    // A read that names no website is no website's.
     expect(
       site([job(readerKinds.site, 'succeeded', 1, 2)], 'cedar-lane.example')
         .state

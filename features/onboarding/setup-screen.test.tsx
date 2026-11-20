@@ -385,7 +385,13 @@ describe('the Brand step (UI-ONBc)', () => {
     never.reading!.steps[0] = reader('site', 'not_started')
     expect(readerSteps(never)[0]).toMatchObject({
       state: 'failed',
-      text: 'Your website is not read yet'
+      notice: true,
+      text: 'Your website is not read yet',
+      reason: 'Press Try again to read it.'
+    })
+    expect(readerSteps({ ...never, owner: false })[0]).toMatchObject({
+      text: 'Your website is not read yet',
+      reason: 'Only the workspace owner can start reading it.'
     })
   })
 
@@ -406,20 +412,34 @@ describe('the Brand step (UI-ONBc)', () => {
       {
         text: 'Your ads are not read yet',
         state: 'failed',
+        notice: true,
         reason: 'Press Try again to read them.'
       },
       {
         text: 'Your reviews are not read yet',
         state: 'failed',
+        notice: true,
         reason: 'Press Try again to read them.'
       }
     ])
-    render(<SetupScreen view={changed} place="brand" />)
+    const { unmount } = render(<SetupScreen view={changed} place="brand" />)
     expect(screen.queryByText('Read your ads')).toBeNull()
     expect(screen.getByText('Your ads are not read yet')).toBeVisible()
     expect(screen.getByText('Your reviews are not read yet')).toBeVisible()
-    // One Try again starts them again.
+    // One Try again starts them again; nothing is an error, so no alert.
     expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1)
+    expect(screen.queryByRole('alert')).toBeNull()
+    unmount()
+    // Staff have no Try again, so they are not told to press it.
+    const staff = { ...changed, owner: false }
+    expect(readerSteps(staff).map((s) => s.reason)).toEqual([
+      undefined,
+      'Only the workspace owner can start reading them.',
+      'Only the workspace owner can start reading them.'
+    ])
+    render(<SetupScreen view={staff} place="brand" />)
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+    expect(screen.queryByText(/Press Try again/)).toBeNull()
   })
 
   it('gives staff no Confirm brand and no Try again', () => {

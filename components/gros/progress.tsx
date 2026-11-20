@@ -8,6 +8,9 @@ import { cn } from '@/lib/utils'
  * per finished step and never fakes movement: no spinner, no percentage,
  * no time estimate. A failed step turns into the error state (what
  * happened and what to do, then one Try again); finished steps stay done.
+ * A failed step that is no error (`notice`: something not started yet
+ * that the owner starts with Try again) looks the same but is not read
+ * out as an alert, so several never interrupt at once.
  */
 export type ProgressState = 'done' | 'now' | 'next' | 'failed'
 export type ProgressStep = {
@@ -16,6 +19,11 @@ export type ProgressStep = {
   state: ProgressState
   /** For a failed step: what happened and what to do. */
   reason?: string
+  /**
+   * A failed step that is no error, only not started yet (a website not
+   * read yet): plain text, never `role="alert"`.
+   */
+  notice?: boolean
 }
 
 const words: Record<Exclude<ProgressState, 'failed'>, string> = {
@@ -72,7 +80,7 @@ export function Progress({
               <div className="flex flex-1 flex-col items-start gap-[var(--space-3)]">
                 {/* Only what happened and what to do is read out. */}
                 <div
-                  role="alert"
+                  role={step.notice ? undefined : 'alert'}
                   className="flex flex-col gap-[var(--space-1)]"
                 >
                   <p className="type-body-strong text-[var(--signal-ink)]">

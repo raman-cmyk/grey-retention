@@ -12,7 +12,6 @@ vi.mock('@/features/offers/data', () => ({ offersPage: mocks.offersPage }))
 vi.mock('@/lib/env/server', () => ({ getServerEnvironment: () => mocks.env }))
 
 import type { ManagedOffers } from '@/features/offers/source'
-import { websiteSavedAt } from './brand-found'
 import { setupReadModel } from './flow'
 
 const context = {
@@ -248,18 +247,7 @@ describe('setupReadModel (UI-ONBa)', () => {
     const { db, calls } = database({
       ...ready,
       brand_kits: {
-        data: {
-          colors: ['#1F3A2B', 'red; x', '#abc'],
-          fonts: ['Lora', '<b>'],
-          updated_at: '2026-11-17T09:00:00Z'
-        },
-        error: null
-      },
-      // The website was saved before the kit.
-      brand_versions: {
-        data: [
-          { created_at: '2026-11-17T08:30:00Z', domain: 'cedarlane.example' }
-        ],
+        data: { colors: ['#1F3A2B', 'red; x', '#abc'], fonts: ['Lora', '<b>'] },
         error: null
       },
       brand_logos: {
@@ -337,7 +325,7 @@ describe('setupReadModel (UI-ONBa)', () => {
     }
   })
 
-  it('waits for the website saved now, and hides what was found on the old one (ONB-SITEa)', async () => {
+  it('waits for the website saved now, and hides the old website’s logo (ONB-SITEa)', async () => {
     const read = (
       domain: string,
       status: string,
@@ -373,12 +361,7 @@ describe('setupReadModel (UI-ONBa)', () => {
         'brand.read_reviews'
       )
     ]
-    const view = (
-      website: string,
-      reads: unknown[],
-      saves: { created_at: string; domain: string }[],
-      kitAt = '2026-11-17T08:45:00Z'
-    ) => {
+    const view = (website: string, reads: unknown[]) => {
       const { db, calls } = database({
         ...ready,
         brand_profiles: {
@@ -407,39 +390,27 @@ describe('setupReadModel (UI-ONBa)', () => {
           },
           error: null
         },
+        // The owner's own kit: it keeps no website, and is shown for any.
         brand_kits: {
-          data: { colors: ['#1F3A2B'], fonts: ['Lora'], updated_at: kitAt },
+          data: { colors: ['#1F3A2B'], fonts: ['Lora'] },
           error: null
-        },
-        brand_versions: { data: saves, error: null }
+        }
       })
       mocks.createClient.mockResolvedValue(db)
       return { calls }
     }
     mocks.offersPage.mockResolvedValue(offers(20))
-    const savedA = {
-      created_at: '2026-11-17T08:30:00Z',
-      domain: 'cedar-lane.example'
-    }
-    const savedB = {
-      created_at: '2026-11-17T10:00:00Z',
-      domain: 'north-loft.example'
-    }
     const state = (
       v: Awaited<ReturnType<typeof setupReadModel>>,
       key = 'site'
     ) => v.reading!.steps.find((s) => s.key === key)!.state
-    const site = (v: Awaited<ReturnType<typeof setupReadModel>>) => state(v)
+    const kit = { colors: ['#1F3A2B'], fonts: ['Lora'] }
 
     // Website A was read, then changed to B: B's read is queued.
     const queuedB = read('north-loft.example', 'queued', '2026-11-17T10:00:01Z')
-    const { calls } = view(
-      'north-loft.example',
-      [...ownA, queuedB],
-      [savedB, savedA]
-    )
+    const { calls } = view('north-loft.example', [...ownA, queuedB])
     let v = await setupReadModel(context)
-    expect(site(v)).toBe('waiting')
+    expect(state(v)).toBe('waiting')
     // A's ads and reviews are not B's: not read yet.
     expect([state(v, 'ads'), state(v, 'reviews')]).toEqual([
       'not_started',
@@ -447,8 +418,8 @@ describe('setupReadModel (UI-ONBa)', () => {
     ])
     expect(v.flow!.steps[1]).toMatchObject({ done: false, waiting: true })
     expect(v.flow!.current).toBe(4)
-    // A's logo, and the kit saved while the website was A, are not B's.
-    expect(v.found).toMatchObject({ logo: null, colors: [], fonts: [] })
+    // A's logo is not B's; the owner's kit is shown as it is.
+    expect(v.found).toMatchObject({ logo: null, ...kit })
     for (const kind of [
       'brand.read_site',
       'brand.read_ads',
@@ -461,74 +432,38 @@ describe('setupReadModel (UI-ONBa)', () => {
             c.filters.some((f) => f[1] === 'kind' && f[2] === kind)
         )!.filters
       ).toContainEqual(['eq', 'input->>domain', 'north-loft.example'])
+    // The brand profile's saves are not read: the kit has no age rule.
+    expect(calls.some((c) => c.table === 'brand_versions')).toBe(false)
 
     // No read of B at all: not read yet (Try again), never A's.
-    view('north-loft.example', [readA], [savedB, savedA])
+    view('north-loft.example', [readA])
     v = await setupReadModel(context)
-    expect(site(v)).toBe('not_started')
+    expect(state(v)).toBe('not_started')
     expect(v.flow!.steps[1]).toMatchObject({ done: false, waiting: false })
     expect(v.flow!.current).toBe(1)
 
-    // B read: Brand is Now, with B's own kit once saved since B.
-    view(
-      'north-loft.example',
-      [readA, read('north-loft.example', 'succeeded', '2026-11-17T11:00:00Z')],
-      [savedB, savedA],
-      '2026-11-17T10:30:00Z'
-    )
+    // B read: Brand is Now.
+    view('north-loft.example', [
+      readA,
+      read('north-loft.example', 'succeeded', '2026-11-17T11:00:00Z')
+    ])
     v = await setupReadModel(context)
-    expect(site(v)).toBe('done')
+    expect(state(v)).toBe('done')
     expect(v.flow!.current).toBe(1)
-    expect(v.found).toMatchObject({
-      logo: null,
-      colors: ['#1F3A2B'],
-      fonts: ['Lora']
-    })
+    expect(v.found).toMatchObject({ logo: null, ...kit })
 
-    // Then back to A: A's own read counts again (B's newer one does not)
-    // and A's logo shows; the kit saved before A was saved again does not.
-    view(
-      'cedar-lane.example',
-      [...ownA, queuedB],
-      [
-        { created_at: '2026-11-17T12:00:00Z', domain: 'cedar-lane.example' },
-        savedB,
-        savedA
-      ]
-    )
+    // Then back to A: A's own reads count again (B's newer one does not),
+    // and A's logo shows again.
+    view('cedar-lane.example', [...ownA, queuedB])
     v = await setupReadModel(context)
-    expect(site(v)).toBe('done')
+    expect(state(v)).toBe('done')
     expect([state(v, 'ads'), state(v, 'reviews')]).toEqual(['done', 'done'])
     expect(v.flow!.steps[1]).toMatchObject({ done: false, waiting: false })
     expect(v.flow!.current).toBe(1)
     expect(v.found).toMatchObject({
       logo: 'https://cedar-lane.example/logo.png',
-      colors: [],
-      fonts: []
+      ...kit
     })
-  })
-
-  it('shows the kit only when it was saved since the website was', () => {
-    const at = (h: number) => `2026-11-17T${String(h).padStart(2, '0')}:00:00Z`
-    expect(
-      websiteSavedAt(
-        [
-          { created_at: at(12), domain: 'cedar-lane.example' },
-          { created_at: at(11), domain: 'WWW.Cedar-Lane.example' },
-          { created_at: at(10), domain: 'north-loft.example' },
-          { created_at: at(9), domain: 'cedar-lane.example' }
-        ],
-        'cedar-lane.example'
-      )
-    ).toBe(at(11))
-    // The newest save holds another website, or none: never saved.
-    expect(
-      websiteSavedAt(
-        [{ created_at: at(12), domain: 'north-loft.example' }],
-        'cedar-lane.example'
-      )
-    ).toBeNull()
-    expect(websiteSavedAt([], 'cedar-lane.example')).toBeNull()
   })
 
   it('reads nothing found before a website is saved', async () => {
