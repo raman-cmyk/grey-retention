@@ -1,5 +1,5 @@
 begin;
-select plan(56);
+select plan(57);
 
 -- REL-ONB2 part e: the photos customers posted with their reviews, kept by
 -- the Reviews reader (`customer_photo`). Workspace 101 is a synthetic brand
@@ -57,7 +57,8 @@ select ok(not private.finding_value_ok('customer_photo', v), 'photo '||left(v::t
   ('{"url":"https://north-studio.com/m\\x.jpg","page":"https://north-studio.com/p"}'),
   -- An email address in it, as written or escaped.
   ('{"url":"https://north-studio.com/jo.lee@mail.example.jpg","page":"https://north-studio.com/p"}'),
-  ('{"url":"https://north-studio.com/m.jpg?by=jo%40mail.example","page":"https://north-studio.com/p"}'))
+  ('{"url":"https://north-studio.com/m.jpg?by=jo%40mail.example","page":"https://north-studio.com/p"}'),
+  ('{"url":"https://north-studio.com/m.jpg?by=jo%2540mail.example","page":"https://north-studio.com/p"}'))
   as x(v);
 
 -- Recording, as the worker: refused unless code's, of a live read, citing

@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { fold, pageReviews } from './jsonld'
+import { fold, pageReviews, shopifyNames } from './jsonld'
+import { reviewPhoto, reviewPhotoKey } from './photos'
 
 const url = 'https://cedar-lane.example/products/weekend-knit'
 const now = Date.UTC(2026, 10, 12, 12)
@@ -484,6 +485,82 @@ describe("a review's own photos (REL-ONB2 part e)", () => {
     expect(custom(shop, imgix)).toBeUndefined()
     // No word of the store's Shopify name: no folder is the store's.
     expect(custom('', own)).toBeUndefined()
+    const evil = 'https://judgeme.imgix.net/evil/1__photo.jpg'
+    // A name quoted in a review's words or in a comment is no statement.
+    for (const spoof of [
+      `<script>window.rv={"body":"Shopify.shop = 'evil.myshopify.com'"}</script>`,
+      '<script>/* Shopify.shop = "evil.myshopify.com"; */</script>',
+      '<script>// Shopify.shop = "evil.myshopify.com";\n</script>',
+      '<script>var x = 1 + Shopify.shop = "evil.myshopify.com"</script>'
+    ]) {
+      expect(custom(`${spoof}${shop}`, own), spoof).toEqual([own])
+      expect(custom(`${spoof}${shop}`, evil), spoof).toBeUndefined()
+    }
+    // Two names: the page cannot say which is the store's, so none.
+    const two = '<script>Shopify.shop = "evil.myshopify.com";</script>'
+    expect(custom(`${two}${shop}`, own)).toBeUndefined()
+    expect(custom(`${two}${shop}`, evil)).toBeUndefined()
+    // The store's own myshopify.com domain wins over any name the page states.
+    expect(photos(imgix, {}, `${judgeme}${two}`)).toEqual([imgix])
+    expect(
+      photos('https://judgeme.imgix.net/evil/2.jpg', {}, `${judgeme}${two}`)
+    ).toBeUndefined()
+  })
+
+  it('reads Shopify names only as statements of their own', () => {
+    expect(
+      shopifyNames(
+        'var Shopify = Shopify || {};\nShopify.shop = "Cedar.myshopify.com";\n' +
+          "if (a) { Shopify.shop='two-b.myshopify.com' }"
+      )
+    ).toEqual(['cedar', 'two-b'])
+    for (const code of [
+      'x = "Shopify.shop = \'evil.myshopify.com\'"',
+      'x = `${a}Shopify.shop = "evil.myshopify.com"`',
+      '/* Shopify.shop = "evil.myshopify.com" */',
+      'a.Shopify.shop = "evil.myshopify.com"',
+      'Shopify.shop = "evil.myshopify.com\'',
+      'Shopify.shop = "evil.example.com"'
+    ])
+      expect(shopifyNames(code), code).toEqual([])
+  })
+
+  it('reads an escaped @ however often it is escaped, and a name with its accents off or run together', () => {
+    const store = {
+      domain: 'cedar.myshopify.com',
+      folders: new Set<string>(),
+      apps: [],
+      shop: null
+    }
+    const own = (path: string, author = 'José Li Wu') =>
+      reviewPhoto(
+        `https://cedar.myshopify.com/${path}`,
+        shopPage,
+        store,
+        author
+      )
+    expect(own('knit-1.jpg')).toBe('https://cedar.myshopify.com/knit-1.jpg')
+    for (const path of [
+      'r.jpg?by=jo%2540mail.example',
+      'r%25.jpg',
+      'jose-1.jpg',
+      'Jos%C3%A9.jpg',
+      'joseliwu.jpg',
+      '1__JoseLiWu__original.jpg'
+    ])
+      expect(own(path), path).toBeNull()
+    expect(own('MayaR-1.jpg', 'Maya R.')).toBeNull()
+    expect(own('maya-1.jpg', 'Dr. Maya')).toBeNull()
+  })
+
+  it('keys one picture the same on www and the bare domain, and with its letters escaped', () => {
+    expect(reviewPhotoKey('https://www.cedar.myshopify.com/k%41.jpg')).toBe(
+      reviewPhotoKey('https://cedar.myshopify.com/kA.jpg')
+    )
+    // An escaped slash stays escaped: another path.
+    expect(reviewPhotoKey('https://cedar.myshopify.com/a%2Fb.jpg')).not.toBe(
+      reviewPhotoKey('https://cedar.myshopify.com/a/b.jpg')
+    )
   })
 
   it('keeps photos only of a review of a product, never a testimonial of nothing', () => {

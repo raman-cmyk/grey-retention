@@ -77,34 +77,71 @@ export function appFolder(url: string): string | null {
  * (`private.review_photo_key`): its host and path without any query
  * (imgix's `w`, `dpr`, `fit`, Shopify's `width`, `v`…) or size in its name
  * (`_800x`), and a Shopify file by its path after `/cdn/shop/` or after the
- * store's folder on Shopify's CDN, whichever host serves it.
+ * store's folder on Shopify's CDN, whichever host serves it. Stricter than
+ * the database (never the other way): `www.` and the bare domain are one
+ * host, and an escaped letter, digit or `-._~` is the character (`%41` is
+ * `A`).
  */
 export function reviewPhotoKey(url: string): string {
   const u = new URL(url)
-  const path = photoKey(`${u.origin}${u.pathname}`).slice(u.hostname.length)
+  const path = photoKey(`${u.origin}${unescaped(u.pathname)}`).slice(
+    u.hostname.length
+  )
   const file =
     /^\/cdn\/shop\/(.+)$/.exec(path)?.[1] ??
     (u.hostname === shopifyCdn
       ? new RegExp(`${shopFolder.source}(.+)$`, 'i').exec(path)?.[1]
       : undefined)
-  return file ? `shopify:${file}` : `${u.hostname}${path}`
+  return file ? `shopify:${file}` : `${u.hostname.replace(/^www\./, '')}${path}`
 }
 
-/** The words of a reviewer's name (two letters or more), in lower case. */
-const nameWords = (author: string) =>
-  (author.toLowerCase().match(/\p{L}{2,}/gu) ?? []).filter(
-    (w) => !['dr', 'mr', 'mrs', 'ms'].includes(w)
-  )
-/** The words of an address's path and query, decoded, in lower case. */
-const addressWords = (url: URL) => {
-  let text = `${url.pathname} ${url.search}`
-  try {
-    text = decodeURIComponent(text.replace(/\+/g, ' '))
-  } catch {
-    // Kept as written: its words still count.
+/** Escapes of letters, digits and `-._~` read as the characters (`%41` is `A`). */
+const unescaped = (path: string) =>
+  path.replace(/%([0-9a-f]{2})/gi, (all, hex: string) => {
+    const c = String.fromCharCode(Number.parseInt(hex, 16))
+    return /[A-Za-z0-9._~-]/.test(c) ? c : all
+  })
+
+/** Text with every escape read, as often as it takes (`%2540` is `@`). */
+export const decoded = (text: string) => {
+  let t = text
+  for (let i = 0; i < 5; i++) {
+    let next: string
+    try {
+      next = decodeURIComponent(t)
+    } catch {
+      break
+    }
+    if (next === t) break
+    t = next
   }
-  return new Set(text.toLowerCase().match(/\p{L}+/gu) ?? [])
+  return t
 }
+
+/** Lower case, accents taken off ("José" is "jose"). */
+const plainLetters = (text: string) =>
+  text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+
+/**
+ * The words of a reviewer's name (two letters or more, never a title) and
+ * all of them run together ("mayar" for "Maya R.", "liwu" for "Li Wu").
+ */
+const nameWords = (author: string) => {
+  const runs = (plainLetters(author).match(/\p{L}+/gu) ?? []).filter(
+    (w) => !['dr', 'mr', 'mrs', 'ms', 'miss', 'prof'].includes(w)
+  )
+  return [
+    ...runs.filter((w) => w.length >= 2),
+    ...(runs.length >= 2 ? [runs.join('')] : [])
+  ]
+}
+/** The words of an address's path and query, read and lower case, no accents. */
+const addressWords = (url: URL) =>
+  new Set(
+    plainLetters(
+      decoded(`${url.pathname} ${url.search}`.replace(/\+/g, ' '))
+    ).match(/\p{L}+/gu) ?? []
+  )
 
 export type PhotoStore = {
   /** The store's domain, lower case, without `www.`. */
@@ -146,7 +183,9 @@ export function reviewPhoto(
   if (
     href.length > maxReviewPhotoUrl ||
     !photoUrlPattern.test(href) ||
-    !emailPhotoUrl(href)
+    !emailPhotoUrl(href) ||
+    // An email address, however often it is escaped.
+    decoded(href).includes('@')
   )
     return null
   const words = addressWords(url)

@@ -207,17 +207,55 @@ function* objects(v: Json, depth = 0): Generator<Record<string, Json>> {
 const maxSources = 500
 /** Most characters of the page's own scripts read for its Shopify name. */
 const maxInline = 1_000_000
-/** Shopify's own word of the store's name: `Shopify.shop = "name.myshopify.com"`. */
+/** Shopify's own statement of the store's name: `Shopify.shop = "name.myshopify.com"`. */
 const shopifyShop =
-  /\bShopify\.shop\s*=\s*["']([a-z0-9][a-z0-9-]*)\.myshopify\.com["']/i
+  /^Shopify\.shop\s*=\s*(["'])([a-z0-9][a-z0-9-]*)\.myshopify\.com\1/i
 const scriptTypes = /^(?:|text\/javascript|application\/javascript|module)$/i
+
+/**
+ * The Shopify names a script states, each as a statement of its own
+ * (`Shopify.shop = "name.myshopify.com"` where a statement starts, after
+ * `;`, `{`, `}` or a new line), read past comments and never inside a
+ * string ("Shopify.shop = …" quoted in a review's words is no statement).
+ * One pass, no backtracking.
+ */
+export function shopifyNames(code: string): string[] {
+  const names: string[] = []
+  let start = true
+  for (let i = 0; i < code.length;) {
+    const c = code[i]!
+    const next = code[i + 1]
+    if (c === '/' && next === '*') {
+      const end = code.indexOf('*/', i + 2)
+      i = end < 0 ? code.length : end + 2
+    } else if (c === '/' && next === '/') {
+      const end = code.indexOf('\n', i + 2)
+      i = end < 0 ? code.length : end
+    } else if (c === '"' || c === "'" || c === '`') {
+      let j = i + 1
+      while (j < code.length && code[j] !== c) j += code[j] === '\\' ? 2 : 1
+      i = j + 1
+      start = false
+    } else if (start && c === 'S' && code.startsWith('Shopify.shop', i)) {
+      const m = shopifyShop.exec(code.slice(i, i + 120))
+      if (m) names.push(m[2]!.toLowerCase())
+      i += m ? m[0].length : 1
+      start = false
+    } else {
+      if (c === ';' || c === '{' || c === '}' || c === '\n') start = true
+      else if (!/\s/.test(c)) start = false
+      i++
+    }
+  }
+  return names
+}
 
 /**
  * The page's structured-data scripts, the hosts of the scripts and styles
  * it loads (`<script src>`, `<link href>`: how a review app is known to be
  * loaded, never any other text, so a review never vouches for its own
- * photos' host) and the store's Shopify name as Shopify's own script
- * states it (the first, in a script of the page's own). Walked without
+ * photos' host) and the store's Shopify name as the page's own scripts
+ * state it (`shopifyNames`; none when they state two). Walked without
  * recursion, and only until every part is full.
  */
 function scripts(
@@ -228,7 +266,7 @@ function scripts(
   const hosts = new Set<string>()
   let size = 0
   let inline = 0
-  let shop: string | null = null
+  const shops = new Set<string>()
   const body = (n: T.Element) =>
     children(n)
       .map((c) => ('value' in c ? String(c.value) : ''))
@@ -243,7 +281,7 @@ function scripts(
   const full = () =>
     (found.length >= maxScripts || size >= maxScriptChars) &&
     hosts.size >= maxSources &&
-    (shop !== null || inline >= maxInline)
+    inline >= maxInline
   const stack: Node[] = [parse(html.slice(0, 2_000_000))]
   while (stack.length && !full()) {
     const n = stack.pop()!
@@ -261,14 +299,10 @@ function scripts(
         }
       } else if (attr(n, 'src') !== null) {
         if (hosts.size < maxSources) hostOf(attr(n, 'src'))
-      } else if (
-        scriptTypes.test(type) &&
-        shop === null &&
-        inline < maxInline
-      ) {
+      } else if (scriptTypes.test(type) && inline < maxInline) {
         const code = body(n).slice(0, maxInline - inline)
         inline += code.length
-        shop = shopifyShop.exec(code)?.[1]?.toLowerCase() ?? null
+        for (const name of shopifyNames(code)) shops.add(name)
       }
       continue
     }
@@ -277,7 +311,12 @@ function scripts(
     const kids = children(n)
     for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]!)
   }
-  return { bodies: found, hosts: [...hosts], shop }
+  // Two names: the page cannot say which is the store's, so none.
+  return {
+    bodies: found,
+    hosts: [...hosts],
+    shop: shops.size === 1 ? [...shops][0]! : null
+  }
 }
 
 /** Picture types (never a video's or a sound's). */
@@ -367,8 +406,9 @@ export function pageReviews(
     domain,
     folders: new Set(pictures.flatMap((p) => shopifyFolder(p) ?? [])),
     apps: appsLoaded(hosts),
-    // The store's Shopify name: as Shopify's script says it, or its own.
-    shop: shop ?? /^([a-z0-9-]+)\.myshopify\.com$/.exec(domain)?.[1] ?? null
+    // The store's Shopify name: its own `myshopify.com` domain first, else
+    // the one name the page's own scripts state.
+    shop: /^([a-z0-9-]+)\.myshopify\.com$/.exec(domain)?.[1] ?? shop
   }
   let looked = 0
   const photosOf = (r: Record<string, Json>, author: string) => {
