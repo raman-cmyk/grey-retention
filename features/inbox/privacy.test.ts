@@ -1191,8 +1191,11 @@ describe('what the sixth review found', () => {
       ['Join #TeamSam today', 'Join #Team today'],
       // Ordinary words stay.
       ['Samsung, Samba and #TeamSamsung', 'Samsung, Samba and #TeamSamsung'],
-      // A byte that is no UTF-8 does not join a name to a word.
-      ['Thanks, Sam%FF!', 'Thanks, %FF!']
+      // A byte that is no UTF-8 does not join a name to a word, nor does
+      // an escape read as a letter.
+      ['Thanks, Sam%FF!', 'Thanks, %FF!'],
+      ['Thanks, %41Sam!', 'Thanks, %41!'],
+      ['Thanks, Sam%61!', 'Thanks, %61!']
     ])
       expect(cleanEmailText(text!, me), text).toBe(clean)
     // In a picture's address, a name inside a longer word is enough.

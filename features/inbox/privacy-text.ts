@@ -599,6 +599,8 @@ function fold(ch: string) {
     .replace(/[\u{2018}\u{2019}]/gu, "'")
 }
 
+const nonAscii = /[^\x00-\x7f]/
+const asciiEnd = /[^\x00-\x7f]/g
 /** Where plain ASCII (but "&" and "%", which are read) ends. */
 const plainEnd = /[^\x00-\x24\x27-\x7f]/g
 
@@ -610,8 +612,8 @@ const plainEnd = /[^\x00-\x24\x27-\x7f]/g
  * position back to the characters it came from. The deadline is read every
  * 4,096 characters.
  */
-function skeleton(s: string, check?: Check, bad?: string) {
-  if (!special.test(s))
+function skeleton(s: string, check?: Check, bad?: string, raw = false) {
+  if (!(raw ? nonAscii : special).test(s))
     return { text: s, at: (i: number) => i, end: (i: number) => i + 1 }
   // Each character of the skeleton, and where it came from (at most four
   // for one character read).
@@ -641,9 +643,10 @@ function skeleton(s: string, check?: Check, bad?: string) {
   for (let i = 0, n = 0; i < s.length; n++) {
     if ((n & 4095) === 4095) check?.('fold')
     const c = s.charCodeAt(i)
-    if (c < 0x80 && c !== 0x25 && c !== 0x26) {
-      plainEnd.lastIndex = i
-      const j = plainEnd.exec(s)?.index ?? s.length
+    if (c < 0x80 && (raw || (c !== 0x25 && c !== 0x26))) {
+      const end = raw ? asciiEnd : plainEnd
+      end.lastIndex = i
+      const j = end.exec(s)?.index ?? s.length
       room(j - i)
       for (; i < j; i++) {
         units[t] = s.charCodeAt(i)
@@ -708,6 +711,13 @@ export function ranges(
   if (highByte.test(s))
     for (const [a, b] of near(s, percentRuns, (m) => highByte.test(m)))
       views.push({ sk: skeleton(s.slice(a, b), r.check, '\u{fffd}'), from: a })
+  // Escapes are also read as they are written: "%41Sam" shows Sam.
+  if (/[%&]/.test(s))
+    for (const [a, b] of near(s, escapes))
+      views.push({
+        sk: skeleton(s.slice(a, b), r.check, undefined, true),
+        from: a
+      })
   const cuts: [number, number][] = []
   for (const { sk, from } of views)
     for (const re of patterns)
@@ -723,6 +733,7 @@ export function ranges(
 
 const mark = /\p{M}/u
 const percentRuns = new RegExp(percents.source, 'gi')
+const escapes = new RegExp(`${entity.source}|${percents.source}`, 'gi')
 
 /** The parts around what `pattern` finds (and `keep` keeps), merged. */
 function near(
