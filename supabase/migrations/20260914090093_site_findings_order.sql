@@ -15,25 +15,37 @@
 --
 -- 1. Its website is not the brand's website now (the job's domain, as
 --    the start functions write it, against `private.site_domain` of the
---    saved website): all its findings are kept for the record, already
---    replaced, and it replaces nothing.
+--    saved website; no website saved, or one that is no name, is never
+--    its website): all its findings are kept for the record, already
+--    replaced, and it replaces nothing. Its job records that its findings
+--    were not made current (`checkpoint.current`).
 -- 2. Otherwise, for each kind of page it read: a newer read of the same
---    website (asked for later, of the same workspace) that has finished
---    and read that kind of page wins: the read's findings from it are kept
---    already replaced, and it replaces nothing of that kind. No such read:
---    its findings from it are current, and replace the earlier ones of
---    that kind, as an in-order read would. "Read" is what each finished
---    read recorded on its job (its `pages`, the ones marked `read`, of a
---    kind the reader reads), so a newer read that read a page and found
---    nothing there still wins.
+--    website (asked for later, of the same workspace) that has finished,
+--    made its findings current and read that kind of page wins: the
+--    read's findings from it are kept already replaced, and it replaces
+--    nothing of that kind. No such read: its findings from it are
+--    current, and replace the earlier ones of that kind, as an in-order
+--    read would. "Read" is what each finished read recorded on its job
+--    (its `pages`, the ones marked `read`, of a kind the reader reads),
+--    so a newer read that read a page and found nothing there still
+--    wins; a newer read kept only for the record (rule 1, while the
+--    website was another) takes nothing; a read recorded before this
+--    rule (no `current`) counts as made current, as it was.
 -- 3. And it replaces every current site finding of the workspace that
 --    came from a read of another website (one whose job names its
---    domain): those facts are not the brand's website's.
+--    domain): those facts are not the brand's website's. Only site
+--    findings: the ads and reviews readers keep their own.
 --
 -- So for the brand's website the current findings are, for each kind of
--- page, those of its newest finished read of that page, whatever order
--- the reads finish in, and none of another website's once one of its own
--- read finishes.
+-- page, those of its newest finished read of that page that was made
+-- current, whatever order the reads finish in, and none of another
+-- website's once one of its own reads finishes.
+--
+-- `start_site_reading` reads the website again the same day when the
+-- owner went to another website and back: today's finished read of the
+-- saved website is queued again when a read of another website finished
+-- after it (otherwise another website's findings would stay current
+-- until the next day). Once a day otherwise, as before.
 --
 -- Only these rules change; everything else as before (20260914090089).
 -- Locks: the tenant first, then the job (`private.onboarding_lease`, which
@@ -100,6 +112,9 @@ begin
           then r.checkpoint->'pages' else '[]'::jsonb end) p
       where r.tenant_id = j.tenant_id and r.kind = 'brand.read_site' and r.status = 'succeeded'
         and r.input->>'domain' = j.input->>'domain' and r.created_at > j.created_at
+        -- Only a read whose findings were made current (one recorded
+        -- before this rule was).
+        and coalesce((r.checkpoint->>'current')::boolean, true)
         and jsonb_typeof(p) = 'object' and p->>'state' = 'read' and p->>'kind' = any(kinds);
     -- The kinds only this run read since: it replaces the earlier findings from them.
     select coalesce(array_agg(k), '{}') into fresh from unnest(read_kinds) k where not (k = any(taken));
@@ -125,9 +140,41 @@ begin
   get diagnostics n = row_count;
   update public.job_runs
     set status = 'succeeded', lease_token = null, lease_until = null, error_code = null, updated_at = now(),
-        checkpoint = jsonb_build_object('pages', pages, 'findings', n, 'live', live)
+        checkpoint = jsonb_build_object('pages', pages, 'findings', n, 'live', live, 'current', own)
     where id = j.id;
   return jsonb_build_object('findings', n, 'pages', jsonb_array_length(pages));
 end $$;
 revoke all on function public.record_site_findings(uuid, uuid, jsonb, jsonb, boolean) from public, anon, authenticated;
 grant execute on function public.record_site_findings(uuid, uuid, jsonb, jsonb, boolean) to service_role;
+
+-- The owner starts a read of the brand's own website, as before
+-- (20260914090055): at most once a day, asking again the same day returns
+-- the same job, and today's failed read is started again. New: today's
+-- finished read is queued again too when a read of another website
+-- finished after it (the owner went to another website and back), so the
+-- saved website's findings are made current again the same day. Locks:
+-- the tenant first (`private.require_member`), then the job.
+create or replace function public.start_site_reading(t uuid)
+returns uuid language plpgsql security definer set search_path = '' as $$
+declare d text; j uuid;
+begin
+  perform private.require_member(t, true);
+  select private.site_domain(domain) into d from public.brand_profiles where tenant_id = t;
+  if d is null then raise exception 'Add the brand''s website first' using errcode = '23514'; end if;
+  insert into public.job_runs(tenant_id, kind, idempotency_key, input, created_by)
+    values (t, 'brand.read_site', 'brand.read_site:' || d || ':' || to_char(now() at time zone 'UTC', 'YYYY-MM-DD'),
+      jsonb_build_object('domain', d), auth.uid())
+    on conflict (tenant_id, idempotency_key) do update set idempotency_key = excluded.idempotency_key
+    returning id into j;
+  -- Today's read failed, or finished before a read of another website
+  -- did: asking again starts it again, with all its tries.
+  update public.job_runs r set status = 'queued', attempt = 0, available_at = now(), failure_class = null, error_code = null,
+      lease_token = null, lease_until = null, updated_at = now()
+    where r.id = j and (r.status in ('failed', 'cancelled')
+      or (r.status = 'succeeded' and exists (select 1 from public.job_runs o
+        where o.tenant_id = t and o.kind = 'brand.read_site' and o.status = 'succeeded'
+          and o.input->>'domain' is distinct from d and o.updated_at > r.updated_at)));
+  return j;
+end $$;
+revoke all on function public.start_site_reading(uuid) from public, anon;
+grant execute on function public.start_site_reading(uuid) to authenticated;
