@@ -33,6 +33,7 @@ const ticket = {
   subject: 'Duplicate campaign',
   category: 'feature',
   state: 'in_progress',
+  revision: 4,
   created_at: '2026-11-05T10:00:00Z',
   creator_id: me,
   support_messages: [
@@ -96,6 +97,7 @@ describe('feedbackPage', () => {
         subject: 'Duplicate campaign',
         category: 'feature',
         status: 'planned',
+        revision: 4,
         createdAt: '2026-11-05T10:00:00Z',
         by: 'You',
         details: 'Reuse last week.',
@@ -126,6 +128,43 @@ describe('feedbackPage', () => {
     ])
   })
 
+  it('reads as many as asked, by latest activity, and says when there are older ones (UI-SETd)', async () => {
+    supabase.createClient.mockResolvedValue(
+      database({
+        support_tickets: {
+          data: [ticket, { ...ticket, id: 't2' }, { ...ticket, id: 't3' }],
+          error: null
+        }
+      })
+    )
+    const page = await feedbackPage({ tenantId: tenant, userId: me }, 1, {
+      kind: 'support',
+      order: 'activity',
+      limit: 2
+    })
+    expect(calls).toContainEqual({
+      table: 'support_tickets',
+      method: 'order',
+      args: ['updated_at', { ascending: false }]
+    })
+    expect(calls).toContainEqual({
+      table: 'support_tickets',
+      method: 'limit',
+      args: [3]
+    })
+    expect(page.requests.map((r) => r.id)).toEqual(['t1', 't2'])
+    expect(page.more).toBe(true)
+    // By default, the newest tickets first and nothing more.
+    calls.length = 0
+    const all = await feedbackPage({ tenantId: tenant, userId: me })
+    expect(calls).toContainEqual({
+      table: 'support_tickets',
+      method: 'order',
+      args: ['created_at', { ascending: false }]
+    })
+    expect(all.more).toBe(false)
+  })
+
   it('reads this workspace’s feedback only, with limits', async () => {
     supabase.createClient.mockResolvedValue(
       database({ support_tickets: { data: [ticket], error: null } })
@@ -141,10 +180,24 @@ describe('feedbackPage', () => {
       method: 'eq',
       args: ['kind', 'feedback']
     })
+    // Settings' Support card reads the support threads the same way.
+    calls.length = 0
+    await feedbackPage({ tenantId: tenant, userId: me }, 1, { kind: 'support' })
+    expect(calls).toContainEqual({
+      table: 'support_tickets',
+      method: 'eq',
+      args: ['kind', 'support']
+    })
+    expect(calls).not.toContainEqual({
+      table: 'support_tickets',
+      method: 'eq',
+      args: ['kind', 'feedback']
+    })
+    // One more than the limit, to know of older ones.
     expect(calls).toContainEqual({
       table: 'support_tickets',
       method: 'limit',
-      args: [requestLimit]
+      args: [requestLimit + 1]
     })
     expect(calls).toContainEqual({
       table: 'support_tickets',

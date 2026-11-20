@@ -5378,6 +5378,51 @@ export type Database = {
           }
         ]
       }
+      onboarding_steps: {
+        Row: {
+          brand_confirmed_at: string | null
+          brand_site: string | null
+          finished_at: string | null
+          rivals_skipped_at: string | null
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          brand_confirmed_at?: string | null
+          brand_site?: string | null
+          finished_at?: string | null
+          rivals_skipped_at?: string | null
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          brand_confirmed_at?: string | null
+          brand_site?: string | null
+          finished_at?: string | null
+          rivals_skipped_at?: string | null
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'onboarding_steps_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'onboarding_steps_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       ops_tasks: {
         Row: {
           created_at: string
@@ -6482,10 +6527,13 @@ export type Database = {
           etag: string | null
           failure: string | null
           finished_at: string | null
+          grid: Json | null
           height: number | null
           id: string
           origins: string[]
           path: string | null
+          reference_grid: Json | null
+          reference_path: string | null
           section: Json
           section_key: string
           state: string
@@ -6498,10 +6546,13 @@ export type Database = {
           etag?: string | null
           failure?: string | null
           finished_at?: string | null
+          grid?: Json | null
           height?: number | null
           id?: string
           origins: string[]
           path?: string | null
+          reference_grid?: Json | null
+          reference_path?: string | null
           section: Json
           section_key: string
           state?: string
@@ -6514,10 +6565,13 @@ export type Database = {
           etag?: string | null
           failure?: string | null
           finished_at?: string | null
+          grid?: Json | null
           height?: number | null
           id?: string
           origins?: string[]
           path?: string | null
+          reference_grid?: Json | null
+          reference_path?: string | null
           section?: Json
           section_key?: string
           state?: string
@@ -8255,7 +8309,14 @@ export type Database = {
         Returns: Json
       }
       record_section_render: {
-        Args: { bytes: number; height: number; job: string; lease: string }
+        Args: {
+          bytes: number
+          grid?: Json
+          height: number
+          job: string
+          lease: string
+          reference_grid?: Json
+        }
         Returns: undefined
       }
       record_section_tags: {
@@ -8364,6 +8425,7 @@ export type Database = {
           build: string
           lease: string
           origins: string[]
+          reference?: string
           section: Json
           section_key: string
         }
@@ -8601,6 +8663,10 @@ export type Database = {
           required_sends?: number
           t: string
         }
+        Returns: undefined
+      }
+      save_onboarding_step: {
+        Args: { site_shown?: string; step: string; t: string }
         Returns: undefined
       }
       save_own_template: {

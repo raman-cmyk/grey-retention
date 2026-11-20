@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const signInWithPassword = vi.fn()
 const createClient = vi.fn()
 const resolveRequestContext = vi.fn()
+const setupLanding = vi.fn()
 class Redirected extends Error {
   constructor(readonly to: string) {
     super(to)
@@ -21,6 +22,10 @@ vi.mock('@/lib/supabase/server', () => ({
 vi.mock('../application/request-context', () => ({
   activeTenantCookieName: 'active_tenant',
   resolveRequestContext: () => resolveRequestContext()
+}))
+
+vi.mock('@/features/onboarding/landing', () => ({
+  setupLanding: (context: unknown) => setupLanding(context)
 }))
 
 import { signIn } from './actions'
@@ -51,6 +56,8 @@ beforeEach(() => {
   signInWithPassword.mockResolvedValue({ error: null })
   createClient.mockResolvedValue({ auth: { signInWithPassword } })
   resolveRequestContext.mockResolvedValue({ kind: 'client' })
+  setupLanding.mockReset()
+  setupLanding.mockResolvedValue('/home')
 })
 
 describe('signing in after the session ran out', () => {
@@ -81,5 +88,14 @@ describe('signing in after the session ran out', () => {
   it('goes nowhere when the password is wrong', async () => {
     signInWithPassword.mockResolvedValue({ error: { status: 400 } })
     expect(await landsOn('client', form('/plan'))).toBeNull()
+  })
+
+  it('lands an owner whose setup is neither finished nor done on /setup (UI-ONBe)', async () => {
+    setupLanding.mockResolvedValue('/setup')
+    expect(await landsOn('client', form())).toBe('/setup')
+    expect(setupLanding).toHaveBeenCalledWith({ kind: 'client' })
+    // A page to go back to still wins.
+    expect(await landsOn('client', form('/plan'))).toBe('/plan')
+    expect(await landsOn('admin', form())).toBe('/admin/dashboard')
   })
 })

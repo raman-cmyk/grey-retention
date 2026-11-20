@@ -214,7 +214,8 @@ describe('the findings contract', () => {
           'https://cedar-lane.example/m.jpg?a=b\\c',
           // An email address, as written or escaped.
           'https://cedar-lane.example/jo.lee@mail.example.jpg',
-          'https://cedar-lane.example/m.jpg?by=jo%40mail.example'
+          'https://cedar-lane.example/m.jpg?by=jo%40mail.example',
+          'https://cedar-lane.example/m.jpg?by=jo%2540mail.example'
         ].map((url) => ({ url, page: `${shop}/p` }))
       ]
     }

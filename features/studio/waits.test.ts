@@ -178,13 +178,53 @@ describe('reading a build’s pictures (DST-006b)', () => {
     ])
     expect(d.calls).toEqual([
       ['from', 'section_renders'],
-      ['select', 'id,section_key,state,failure,path,height,bytes,etag'],
+      [
+        'select',
+        'id,section_key,state,failure,path,height,bytes,etag,reference_path,grid,reference_grid'
+      ],
       ['eq', 'tenant_id', tenant],
       ['eq', 'build_id', build],
       ['order', 'created_at'],
       ['order', 'id'],
       ['limit', 12]
     ])
+  })
+
+  it('keeps a drawn picture’s two grids and its crop, only when each is what the score reads (DST-004b2d)', async () => {
+    const crop = 'sect/00000000-0000-4000-8000-0000000000a1/1.jpg'
+    const grid = { width: 2, height: 1, values: [10, 20] }
+    const drawn = {
+      state: 'drawn',
+      path: `render/${id(1)}.jpg`,
+      height: 640,
+      bytes: 1,
+      etag: 'e'
+    }
+    const read = async (change: Record<string, unknown>) => {
+      const d = database({
+        data: [row(1, { ...drawn, ...change })],
+        error: null
+      })
+      return (await buildRenders(db(d), { tenant, build }))[0]
+    }
+    expect(
+      await read({ reference_path: crop, grid, reference_grid: grid })
+    ).toMatchObject({
+      state: 'drawn',
+      grids: { drawn: grid, reference: grid, referencePath: crop }
+    })
+    for (const change of [
+      { reference_path: null, grid, reference_grid: grid },
+      { reference_path: 'shot/x.jpg', grid, reference_grid: grid },
+      { reference_path: crop, grid, reference_grid: null },
+      {
+        reference_path: crop,
+        grid: { width: 2, height: 2, values: [1] },
+        reference_grid: grid
+      },
+      {}
+    ])
+      expect(await read(change)).not.toHaveProperty('grids')
   })
 
   it('reads a row it cannot trust as failed, never as drawn, and leaves out one it cannot read', async () => {

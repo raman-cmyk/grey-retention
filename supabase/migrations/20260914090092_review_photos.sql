@@ -40,11 +40,11 @@ alter table public.brand_findings drop constraint brand_findings_topic_check,
 -- A customer's photo's address as it is kept: https, a plain host of
 -- lower-case labels (nothing a browser reads another way: no `\`, `%`, `@`
 -- or port), a path, query and fragment of URL-safe characters only (no
--- space, quote, `<`, `>` or `\`; never an `@` or `%40`, an email address),
--- a JPEG or PNG, at most 500 characters.
+-- space, quote, `<`, `>` or `\`; never an `@`, `%40` or `%25`: an email
+-- address, escaped once or more), a JPEG or PNG, at most 500 characters.
 create or replace function private.photo_url_ok(url text)
 returns boolean language sql immutable set search_path = '' as $$
-  select coalesce(length(url) <= 500 and url !~ '%40'
+  select coalesce(length(url) <= 500 and url !~ '%(40|25)'
     and url ~ ('^https://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+'
       || '/[A-Za-z0-9._~!$&''()*+,;=:%/-]*\.([jJ][pP][eE]?[gG]|[pP][nN][gG])'
       || '(\?[A-Za-z0-9._~!$&''()*+,;=:%/?-]*)?(#[A-Za-z0-9._~!$&''()*+,;=:%/?-]*)?$'), false);

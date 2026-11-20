@@ -68,3 +68,11 @@ where id in ('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000
 on conflict(provider_id,provider) do nothing;
 update auth.identities set created_at=coalesce(created_at,now()),updated_at=coalesce(updated_at,now())
 where user_id in ('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000004','00000000-0000-4000-8000-000000000005','00000000-0000-4000-8000-000000000006');
+
+-- UI-ONBa: the seeded workspaces were set up before onboarding existed, so
+-- they count as finished (sign-in lands them on Home, not on /setup). The
+-- new-workspace trigger already gave them an unfinished row.
+insert into public.onboarding_steps(tenant_id,finished_at) values
+('00000000-0000-4000-8000-000000000101',now()),
+('00000000-0000-4000-8000-000000000102',now())
+on conflict (tenant_id) do update set finished_at = excluded.finished_at;

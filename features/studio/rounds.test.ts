@@ -495,7 +495,7 @@ describe('the match score in the rounds (DST-004b)', () => {
     )
     const { out } = await judge(copy(), match)
     expect(doneOf(out).sections[0]).toMatchObject({ state: 'done' })
-    expect(match).toHaveBeenCalledWith(copy(), image)
+    expect(match).toHaveBeenCalledWith(copy(), drawn(1))
   })
 
   it('designs a Copy section again, told how to come closer, when it looks too little like it', async () => {
@@ -515,6 +515,41 @@ describe('the match score in the rounds (DST-004b)', () => {
         problems: [expect.stringMatching(/too little like the reference/)]
       })
     )
+  })
+
+  it('keeps the last score with the section, for the design proof (DST-004b2d)', async () => {
+    const { out } = await judge(copy(), async () => matchTarget + 1)
+    expect(doneOf(out).sections[0]).toMatchObject({
+      state: 'done',
+      match: matchTarget + 1
+    })
+    // A failed score goes with its picture: the next round has none yet.
+    const low = waitOf((await judge(copy(), async () => 2)).out)
+    expect(low.sections[0]).toMatchObject({ round: 2 })
+    expect(low.sections[0]).not.toHaveProperty('match')
+    // Not measured: no score kept, even over one saved before.
+    const saved = waitOf(await studioRound([copy()], null, ports()))
+    saved.sections[0]!.match = 3
+    const none = await studioRound([copy()], saved, {
+      ...ports({ renders: [drawn(1)] }),
+      match: async () => null
+    })
+    expect(doneOf(none).sections[0]).not.toHaveProperty('match')
+  })
+
+  it('codes a section with no score but the one that failed it (DST-004b2d)', async () => {
+    // Coded for another reason (here the picture cannot be read): no score.
+    const saved = waitOf(await studioRound([copy()], null, ports()))
+    saved.sections[0]!.match = 3
+    const out = await studioRound([copy()], saved, {
+      ...ports({ renders: [drawn(1)], picture: [null] }),
+      match: async () => 9
+    })
+    expect(doneOf(out).sections[0]).toMatchObject({
+      state: 'coded',
+      reason: 'picture_unusable'
+    })
+    expect(doneOf(out).sections[0]).not.toHaveProperty('match')
   })
 
   it('keeps the critic’s verdict when the match cannot be measured', async () => {
@@ -571,10 +606,48 @@ describe('the match score in the rounds (DST-004b)', () => {
         work = waitOf(out)
         continue
       }
-      expect(doneOf(out).sections[0]).toMatchObject({ state: 'coded' })
+      // Coded because of the match: its last score stays with it.
+      expect(doneOf(out).sections[0]).toMatchObject({
+        state: 'coded',
+        reason: 'match_failed',
+        match: 2
+      })
       // The critic passed it: the owner’s log says the match failed.
       expect(next.coded).toHaveBeenCalledWith('s2', 'match_failed')
       expect(next.coded).not.toHaveBeenCalledWith('s2', 'critic_failed')
+    }
+  })
+})
+
+describe('asking for a Copy section’s picture with its reference (DST-004b2b)', () => {
+  const crop = 'sect/00000000-0000-4000-8000-0000000000a1/1.jpg'
+  it('asks with the inbox crop a copied section rebuilds, and none otherwise', async () => {
+    const copied: SectionBrief = {
+      ...brief('s2'),
+      mode: 'copy',
+      reference: { tone: 'dark', height: 640, image: crop }
+    }
+    const p = ports()
+    await studioRound([copied], null, p)
+    expect(p.request.mock.calls[0]![0]).toMatchObject({
+      reference: crop,
+      // Another reference is another render; none keeps the old key.
+      key: renderKey('s2', 1, designed('s2').section, crop)
+    })
+    expect(renderKey('s2', 1, designed('s2').section, crop)).not.toBe(
+      renderKey('s2', 1, designed('s2').section)
+    )
+    expect(
+      renderKey('s2', 1, designed('s2').section, crop.replace('1.jpg', '2.jpg'))
+    ).not.toBe(renderKey('s2', 1, designed('s2').section, crop))
+    for (const b of [
+      brief('s2'),
+      { ...copied, mode: 'remix' as const },
+      { ...copied, reference: { tone: 'dark' as const, height: 640 } }
+    ]) {
+      const q = ports()
+      await studioRound([b], null, q)
+      expect(q.request.mock.calls[0]![0]).not.toHaveProperty('reference')
     }
   })
 })

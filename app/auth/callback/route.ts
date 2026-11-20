@@ -1,4 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import { resolveRequestContext } from '@/features/auth/application/request-context'
+import { setupLanding } from '@/features/onboarding/landing'
 import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
@@ -22,6 +24,11 @@ export async function GET(request: NextRequest) {
         if (!data?.[0]) {
           return NextResponse.redirect(new URL('/onboarding', request.url))
         }
+        // An owner whose setup is not finished lands on it (UI-ONBe).
+        const context = await resolveRequestContext('client')
+        const landing =
+          context?.kind === 'client' ? await setupLanding(context) : '/home'
+        return NextResponse.redirect(new URL(landing, request.url))
       }
       return NextResponse.redirect(new URL(next, request.url))
     }

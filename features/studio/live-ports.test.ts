@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { matchScore } from './match'
 import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -13,6 +14,16 @@ vi.mock('./preview-jobs', () => ({
   requestEmailRender: previews.requestEmailRender
 }))
 const emailCritic = vi.hoisted(() => ({ critiqueEmail: vi.fn() }))
+// DST-004c: the inbox's stored section crops.
+const crops = vi.hoisted(() => ({
+  pictureTimeoutMs: 3_000,
+  storedPicture: vi.fn(
+    async (): Promise<
+      { mediaType: 'image/jpeg'; base64: string } | undefined
+    > => undefined
+  )
+}))
+vi.mock('@/features/inbox/pictures', () => crops)
 vi.mock('./email-critic', () => emailCritic)
 const agents = vi.hoisted(() => ({
   storyboardFor: vi.fn(),
@@ -222,7 +233,12 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
     expect(await ports(s).ports.sign(drawn)).toBe(
       `https://db.example/storage/v1/object/sign/studio-renders/${final}?token=t`
     )
-    expect(reads.buildRenders).toHaveBeenCalledWith(s.db, { tenant, build })
+    // Only to check the picture: never its grids (DST-004b2d).
+    expect(reads.buildRenders).toHaveBeenCalledWith(
+      s.db,
+      { tenant, build },
+      { grids: false }
+    )
     // Copied from the picture as recorded, checked before and after, and
     // the copy linked: no upload link reaches it.
     expect(s.calls.filter((c) => c[0] !== 'bucket')).toEqual([
@@ -389,6 +405,66 @@ describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
     expect(p.fits(4)).toBe(false)
     const late = ports(storage(), { until: 16_999 }).ports
     expect(late.fits()).toBe(false)
+  })
+
+  it('scores a render’s two grids, only for the crop the brief rebuilds (DST-004b2d)', async () => {
+    const { ports: p } = ports(storage())
+    const crop = 'sect/00000000-0000-4000-8000-0000000000a1/1.jpg'
+    const grid = {
+      width: 24,
+      height: 12,
+      values: Array.from({ length: 288 }, (_, i) => (i % 24 < 12 ? 40 : 245))
+    }
+    const render = {
+      id: '00000001-3333-4333-8333-333333333333',
+      key: 's2-r1-x',
+      state: 'drawn' as const,
+      path: 'render/00000001-3333-4333-8333-333333333333.jpg',
+      height: 320,
+      bytes: 1,
+      etag: 'e',
+      grids: { drawn: grid, reference: grid, referencePath: crop }
+    }
+    const copied = {
+      mode: 'copy',
+      reference: { tone: 'dark', height: 320, image: crop }
+    } as unknown as Parameters<NonNullable<typeof p.match>>[0]
+    expect(await p.match!(copied, render)).toBe(10)
+    // The drawing against the crop, never the other way round: the score
+    // takes its rows from the reference's proportions.
+    const wide = {
+      width: 24,
+      height: 4,
+      values: Array.from({ length: 96 }, (_, i) => (i % 24 < 12 ? 40 : 245))
+    }
+    const tall = {
+      width: 24,
+      height: 48,
+      values: Array.from({ length: 1152 }, (_, i) =>
+        Math.floor(i / 24) < 24 ? 40 : 245
+      )
+    }
+    const asked = await p.match!(copied, {
+      ...render,
+      grids: { drawn: wide, reference: tall, referencePath: crop }
+    })
+    expect(asked).toBe(matchScore(wide, tall))
+    expect(asked).not.toBe(matchScore(tall, wide))
+    // Another crop's grids, or none: not measured.
+    expect(
+      await p.match!(
+        {
+          ...copied,
+          reference: {
+            tone: 'dark',
+            height: 320,
+            image: crop.replace('1.jpg', '2.jpg')
+          }
+        },
+        render
+      )
+    ).toBeNull()
+    expect(await p.match!(copied, { ...render, grids: undefined })).toBeNull()
   })
 
   it('logs each coded section once, in the owner’s words', async () => {
@@ -571,5 +647,62 @@ describe('the whole-email check’s ports in the build (DST-006d part 2a)', () =
       callerKey: `email-build:${build}`,
       ai
     })
+  })
+
+  it('shows the Section designer and the critic the crop a Copy section rebuilds, read once a claim (DST-004c)', async () => {
+    const crop = 'sect/00000000-0000-4000-8000-0000000000a1/1.jpg'
+    const picture = { mediaType: 'image/jpeg' as const, base64: 'AAAA' }
+    crops.storedPicture.mockResolvedValue(picture)
+    const s = storage()
+    const p = ports(s).ports
+    const copy = {
+      mode: 'copy',
+      image: { url: 'https://cdn.shop.example/p.jpg' },
+      reference: { tone: 'dark', height: 640, image: crop }
+    }
+    await p.design(copy as never, undefined)
+    expect(agents.designSection.mock.calls[0]![3]).toEqual(picture)
+    await p.critique(copy as never, {} as never)
+    expect(agents.critiqueSection.mock.calls[0]![0]).toMatchObject({
+      reference: picture
+    })
+    // Read once, from the inbox, within the picture's time limit.
+    expect(crops.storedPicture).toHaveBeenCalledTimes(1)
+    expect(crops.storedPicture).toHaveBeenCalledWith(s.db, crop, 3_000)
+  })
+
+  it('shows no crop for Scratch or Remix, a path that is not a crop, one that cannot be read, or no time', async () => {
+    const crop = 'sect/00000000-0000-4000-8000-0000000000a1/1.jpg'
+    const brief = (over: Record<string, unknown>) => ({
+      mode: 'copy',
+      image: { url: 'https://cdn.shop.example/p.jpg' },
+      reference: { tone: 'dark', height: 640, image: crop },
+      ...over
+    })
+    crops.storedPicture.mockResolvedValue({
+      mediaType: 'image/jpeg',
+      base64: 'AAAA'
+    })
+    for (const b of [
+      brief({ mode: 'scratch' }),
+      brief({ mode: 'remix' }),
+      brief({ reference: { tone: 'dark', height: 640, image: 'shot/x.jpg' } }),
+      brief({ reference: { tone: 'dark', height: 640 } })
+    ]) {
+      const p = ports(storage()).ports
+      await p.design(b as never, undefined)
+      expect(agents.designSection.mock.calls.at(-1)![3]).toBeUndefined()
+    }
+    expect(crops.storedPicture).not.toHaveBeenCalled()
+    // It cannot be read: the agents go without it, never a failed step.
+    crops.storedPicture.mockRejectedValueOnce(new Error('down'))
+    const p = ports(storage()).ports
+    await p.design(brief({}) as never, undefined)
+    expect(agents.designSection.mock.calls.at(-1)![3]).toBeUndefined()
+    // No time left for it before the critic's calls: not read.
+    crops.storedPicture.mockClear()
+    const tight = ports(storage(), { until: 47_500 }).ports
+    await tight.critique(brief({}) as never, {} as never)
+    expect(crops.storedPicture).not.toHaveBeenCalled()
   })
 })

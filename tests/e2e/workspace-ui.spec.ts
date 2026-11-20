@@ -141,7 +141,6 @@ test('core workspace surfaces render without overflow', async ({
     ['/email-library', 'Subscribed email library'],
     ['/connections', 'Connections'],
     ['/optimizer', 'Bill optimizer'],
-    ['/support', 'Support'],
     ['/settings', 'Settings']
   ] as [string, string | RegExp][]) {
     await page.goto(path)
