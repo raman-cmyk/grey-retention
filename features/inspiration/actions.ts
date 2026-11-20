@@ -8,10 +8,20 @@ import { setBrandHidden } from '@/features/onboarding/suggested-competitors'
 import { defaultBrandPresentation } from '@/lib/branding/presentation'
 import { createClient } from '@/lib/supabase/server'
 
+/**
+ * The brand's name, for the answer only: never trusted for anything and
+ * never a reason to refuse the hide. Anything that is not text is dropped,
+ * and a long name (a domain can be 253 characters) is cut to 120 whole
+ * characters, so an emoji is never split.
+ */
+function answerName(value: unknown) {
+  if (typeof value !== 'string') return undefined
+  return Array.from(value.trim()).slice(0, 120).join('') || undefined
+}
+
 const hideForm = z.object({
   capture: z.uuid(),
-  /** The brand's name, for the answer only (never trusted for anything). */
-  name: z.string().trim().max(120).optional()
+  name: z.unknown().optional().transform(answerName)
 })
 
 /**

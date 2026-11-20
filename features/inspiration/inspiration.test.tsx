@@ -234,6 +234,29 @@ describe('hideBrand (UI-INSa)', () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/inspiration')
   })
 
+  it('never refuses the hide because of the name, and cuts a long one whole', async () => {
+    mocks.requireRequestContext.mockResolvedValue(context)
+    mocks.createClient.mockResolvedValue({})
+    // A brand with no name is shown by its domain, which can be 253 long.
+    const long = form(id)
+    long.set('name', `${'a'.repeat(240)}.example`)
+    expect(await hideBrand({}, long)).toEqual({
+      message: `Hidden. GROS won’t suggest ${'a'.repeat(120)} again.`
+    })
+    // 119 letters and an emoji are 120 characters but 121 UTF-16 units.
+    const emoji = form(id)
+    emoji.set('name', `${'b'.repeat(119)}🐾 and more`)
+    expect(await hideBrand({}, emoji)).toEqual({
+      message: `Hidden. GROS won’t suggest ${'b'.repeat(119)}🐾 again.`
+    })
+    const blank = form(id)
+    blank.set('name', '   ')
+    expect(await hideBrand({}, blank)).toEqual({
+      message: 'Hidden. GROS won’t suggest this brand again.'
+    })
+    expect(mocks.setBrandHidden).toHaveBeenCalledTimes(3)
+  })
+
   it('refuses staff and a bad brand id, and says when it failed', async () => {
     mocks.requireRequestContext.mockResolvedValue({
       ...context,
