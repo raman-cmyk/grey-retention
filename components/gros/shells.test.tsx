@@ -407,4 +407,39 @@ describe('Progress (UI-DS)', () => {
     expect(alert).not.toContainElement(retry[0]!)
     expect(screen.getByText('Done')).toBeInTheDocument()
   })
+
+  it('shows a step not started yet with Try again, never as an alert', () => {
+    render(
+      <Progress
+        title="Reading your store"
+        steps={[
+          {
+            text: 'Your ads are not read yet',
+            state: 'failed',
+            reason: 'Press Try again to read them.',
+            notice: true
+          },
+          {
+            text: 'Your reviews are not read yet',
+            state: 'failed',
+            reason: 'Press Try again to read them.',
+            notice: true
+          },
+          { text: 'Reading your reviews stopped', state: 'failed' }
+        ]}
+        retry={<Button label="Try again" />}
+      />
+    )
+    // Only the real failure is read out at once.
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Reading your reviews stopped'
+    )
+    expect(screen.getByText('Your ads are not read yet')).toBeVisible()
+    // The one Try again sits on the first of them.
+    const retry = screen.getByRole('button', { name: 'Try again' })
+    expect(
+      screen.getByText('Your ads are not read yet').closest('li')
+    ).toContainElement(retry)
+  })
 })
