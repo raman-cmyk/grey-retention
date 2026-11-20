@@ -154,6 +154,12 @@ describe('matchReturns', () => {
       value: 0,
       units: new Map([['1', 2]])
     })
+    // Lines of products the order does not have take nothing off.
+    const elsewhere = event(1, {
+      OrderId: 'B1',
+      Items: [{ ProductID: 9, Quantity: 1, ItemPrice: 5 }]
+    })
+    expect(matchReturns([b], [], [elsewhere]).byOrder.size).toBe(0)
     // An order that said no value counted none: no money comes off it.
     const noValue = order('N1', 2, 0, [line(1, 2)])
     delete noValue.props.$value

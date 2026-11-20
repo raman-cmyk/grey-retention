@@ -108,12 +108,13 @@ export function matchReturns(
       // A refund of nothing takes nothing off.
       if (said === 0) continue
       // Its own lines, unless it only repeats the whole order's.
-      const lines = orderLines(e.props).filter((l) => own.has(l.id))
-      const listed = lines.length > 0 && !same(unitsOf(e), own)
+      const all = orderLines(e.props)
+      const repeats = all.length > 0 && same(unitsOf(e), own)
+      const lines = repeats ? [] : all.filter((l) => own.has(l.id))
       // A refund that does not say how much nor which lines is of the
       // whole order (Shopify sends only full refunds).
-      if (said === null && !listed) full = true
-      if (listed)
+      if (said === null && (!all.length || repeats)) full = true
+      if (lines.length)
         for (const l of lines)
           units.set(
             l.id,
