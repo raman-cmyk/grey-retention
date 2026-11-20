@@ -31,7 +31,9 @@ type Db = SupabaseClient<Database>
  * found there (`readBrandFound`) and the readers' progress (UI-ONBc); each
  * is null when it cannot be read, and the steps still show. While the
  * website's read is queued or under way, Brand waits (`siteReading`) and
- * the owner goes on with the next steps.
+ * the owner goes on with the next steps. Both are for the website saved
+ * now (ONB-SITEa): a read of a website the owner changed since, however
+ * new, counts as no read, and what was found there is not shown.
  */
 export type SetupView = {
   state: 'ready' | 'demo' | 'unreadable'
@@ -138,7 +140,8 @@ export async function setupReadModel(
   const [found, reading] = site
     ? await Promise.all([
         settle(readBrandFound(db, context.tenantId, site)),
-        settle(readOnboardingProgress(db, context.tenantId))
+        // Only this website's reads: one of a website changed since is not its read.
+        settle(readOnboardingProgress(db, context.tenantId, new Date(), site))
       ])
     : [null, null]
   const siteRead = reading?.steps.find((s) => s.key === 'site')?.state
