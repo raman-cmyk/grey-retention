@@ -2,25 +2,37 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/supabase/database.types'
 import { logger } from '@/lib/logger'
-import { fingerprints } from '@/features/klaviyo-push/fingerprints'
+import {
+  fingerprints,
+  shownOf,
+  type Shown
+} from '@/features/klaviyo-push/fingerprints'
 import { findStoreMetrics } from '@/lib/providers/klaviyo/catalog'
 import {
   KlaviyoError,
   type KlaviyoClient
 } from '@/lib/providers/klaviyo/client'
-import { readDraft } from '@/lib/providers/klaviyo/drafts'
+import { readDraft, type DraftVariation } from '@/lib/providers/klaviyo/drafts'
 import {
   maxReportCampaigns,
   readCampaignResults,
   readLinkClicks,
+  readTemplate,
   type LinkClicks,
   type VariationResult
 } from '@/lib/providers/klaviyo/results'
+import {
+  changedBefore,
+  ownHtml,
+  variationMap,
+  type ClickMap
+} from './click-map'
 import { emailSections } from './sections'
 import {
   afterStatus,
   attributionMs,
   dayMs,
+  designOf,
   hourMs,
   pauseMs,
   pausedPatch,
@@ -28,6 +40,7 @@ import {
   resultsPatch,
   sampleResults,
   sampleStatus,
+  sampleVariation,
   sendTimeOf,
   type ReadContext,
   type ResultPatch,
@@ -79,16 +92,27 @@ type Context = {
   builtAt: number
   templates: { approach?: unknown; variation?: unknown; deleted?: unknown }[]
   written: string | null
+  /** What each variation showed when PSH-001 last left it. */
+  shown: Shown
+  /** Our own HTML of each variation PSH-001 put our template on (`ownHtml`). */
+  own: Map<string, string>
 }
 
-/** Each claimed email's built HTML and its push (our templates, what we last wrote). */
+const text = (v: unknown) => (typeof v === 'string' ? v : null)
+
+/**
+ * Each claimed email's built HTML (each design's) and its push (our
+ * templates, what we last wrote, what each variation showed).
+ */
 async function contexts(
   db: Db,
   rows: ResultRow[]
 ): Promise<Map<string, Context>> {
   const builds = await db
     .from('email_builds')
-    .select('id,push_key,created_at,html:email->>html')
+    .select(
+      'id,push_key,created_at,html:email->>html,designA:email->>designA,text:email->>text'
+    )
     .in(
       'id',
       rows.map((r) => r.build_id)
@@ -98,25 +122,37 @@ async function contexts(
   const pushes = keys.length
     ? await db
         .from('klaviyo_draft_pushes')
-        .select('tenant_id,push_key,templates,written')
+        .select('tenant_id,push_key,templates,written,shown,images')
         .in('push_key', keys)
     : { data: [], error: null }
   if (pushes.error) throw pushes.error
   const found = new Map<string, Context>()
   for (const row of rows) {
-    const build = builds.data?.find((b) => b.id === row.build_id)
+    const build = builds.data?.find((b) => b.id === row.build_id) as
+      { push_key: string; created_at: string; [k: string]: unknown } | undefined
     const push = pushes.data?.find(
       (p) => p.push_key === build?.push_key && p.tenant_id === row.tenant_id
     )
-    const html = (build as { html?: unknown } | undefined)?.html
     const builtAt = Date.parse(build?.created_at ?? row.created_at)
+    const templates = Array.isArray(push?.templates)
+      ? (push.templates as Context['templates'])
+      : []
+    const images =
+      push?.images && typeof push.images === 'object'
+        ? (push.images as Record<string, string>)
+        : {}
     found.set(row.build_id, {
-      html: typeof html === 'string' ? html : '',
+      html: text(build?.html) ?? '',
       builtAt: Number.isFinite(builtAt) ? builtAt : Date.parse(row.created_at),
-      templates: Array.isArray(push?.templates)
-        ? (push.templates as Context['templates'])
-        : [],
-      written: push?.written ?? null
+      templates,
+      written: push?.written ?? null,
+      shown: shownOf(push?.shown ?? null),
+      own: ownHtml(
+        templates as { variation?: unknown; hash?: unknown }[],
+        [text(build?.html), text(build?.designA)],
+        images,
+        text(build?.text)
+      )
     })
   }
   return found
@@ -269,7 +305,16 @@ export async function runEmailResults(
         {
           ...sample,
           templates: [],
-          sections,
+          // One design, ours: the sample's clicks come from its own links.
+          maps: [
+            {
+              variation: sampleVariation,
+              design: 'A',
+              sections: sections.length ? sections : null,
+              from: sections.length ? 'build' : null,
+              changed: false
+            }
+          ],
           context: {
             conversion: 'placed_order',
             attributionOpen: t < Date.parse(sentAt) + attributionMs,
@@ -308,6 +353,7 @@ export async function runEmailResults(
       dueAt: number
       read: Extract<StatusRead, { found: true }>
       trackingParams: string[]
+      variations: DraftVariation[]
     }
     const due: Due[] = []
     const patchOf = (row: ResultRow) =>
@@ -334,7 +380,8 @@ export async function runEmailResults(
       results: VariationResult[] | null,
       clicks: LinkClicks[] | null,
       complete: boolean,
-      readContext: ReadContext
+      readContext: ReadContext,
+      maps: ClickMap[] = []
     ) => {
       const ctx = context.get(d.row.build_id)!
       done.add(d.row.build_id)
@@ -348,13 +395,48 @@ export async function runEmailResults(
             clicks,
             complete,
             templates: ctx.templates,
-            sections: emailSections(ctx.html),
+            maps,
             trackingParams: d.trackingParams,
             context: readContext
           },
           now()
         )
       })
+    }
+    /**
+     * Each variation's sections (`variationMap`), its template read now:
+     * one that cannot be read for this email alone keeps its own HTML, else
+     * no sections; a failure of the account stops the account.
+     */
+    const clickMaps = async (d: Due) => {
+      const ctx = context.get(d.row.build_id)!
+      const before = changedBefore(d.row.context)
+      const maps: ClickMap[] = []
+      for (const v of d.variations.slice(0, 8)) {
+        let read: Awaited<ReturnType<typeof readTemplate>> = null
+        if (v.templateId)
+          try {
+            read = await timed(() => readTemplate(client, v.templateId!))
+          } catch (error) {
+            if (!(error instanceof KlaviyoError) || stopsAccount(error))
+              throw error
+            logger.warn('Email template unreadable', {
+              endpoint: error.details.endpoint,
+              status: error.details.status ?? 0
+            })
+          }
+        maps.push(
+          variationMap({
+            variation: v,
+            design: designOf(ctx.templates, v.id, v.name),
+            own: ctx.own.get(v.id),
+            shown: Object.hasOwn(ctx.shown, v.id) ? ctx.shown[v.id] : undefined,
+            read,
+            before: before.has(v.id)
+          })
+        )
+      }
+      return maps
     }
     // Sent emails first: their results are what is due.
     const ordered = [...live].sort(
@@ -417,7 +499,8 @@ export async function runEmailResults(
             sentAt,
             dueAt: checked.dueAt,
             read,
-            trackingParams: draft?.trackingParams ?? []
+            trackingParams: draft?.trackingParams ?? [],
+            variations: draft?.variations ?? []
           })
         else {
           done.add(row.build_id)
@@ -525,6 +608,16 @@ export async function runEmailResults(
         let clicksComplete = !!metrics.clickedEmail && metrics.complete
         let clicksBy: ReadContext['clicksBy'] = null
         let bots = 0
+        // Each variation's own sections, from its template as it is now.
+        let maps: ClickMap[] = []
+        if (metrics.clickedEmail && !clicksStopped)
+          try {
+            maps = await clickMaps(d)
+          } catch (error) {
+            if (!(error instanceof TimeUp)) throw error
+            // Out of time: the results stand, the earlier clicks are kept.
+            clicksStopped = true
+          }
         if (metrics.clickedEmail && !clicksStopped) {
           // By the message, else (none found though people clicked) by the campaign.
           for (const [index, [key, by]] of keys.entries()) {
@@ -618,7 +711,8 @@ export async function runEmailResults(
             clicksBy,
             botsLeftOut: Math.min(999_999_999, bots),
             reported: report.rows.length > 0
-          }
+          },
+          maps
         )
       }
     } catch (error) {

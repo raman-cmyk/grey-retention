@@ -1,13 +1,16 @@
 import 'server-only'
 import { z } from 'zod'
 import { KlaviyoError, type KlaviyoClient } from './client'
+import { templateParts } from './drafts'
 import { reportRows } from './history'
 
 /**
  * The results of the emails we pushed (LRN-001), in the shapes revision
  * 2026-10-15 publishes: the campaign report per A/B variation (opens,
  * clicks, orders, revenue) and the Clicked Email counts per link. Both are
- * questions Klaviyo takes as a POST; nothing is written. The report allows
+ * questions Klaviyo takes as a POST; nothing is written. Each variation's
+ * template is read too (LRN-001b), so its clicks are mapped with its own
+ * HTML as it is now. The report allows
  * 2 questions a minute (225 a day), so one question covers every due
  * campaign of an account (at most 100).
  */
@@ -120,6 +123,27 @@ export async function readCampaignResults(
     ]
   })
   return { rows, complete: read.complete }
+}
+
+/** A template's HTML longer than this is not read for its links (an email is far smaller). */
+export const maxTemplateChars = 500_000
+
+/**
+ * The template a variation shows now (LRN-001b: Klaviyo's copy of ours,
+ * or one put on it in Klaviyo), its HTML and plain text; null when
+ * Klaviyo no longer has it. A GET only (`templates:read`); an id not of
+ * Klaviyo's shape or an HTML too long to be an email is an answer we
+ * cannot read.
+ */
+export async function readTemplate(
+  client: KlaviyoClient,
+  templateId: string
+): Promise<{ html: string; text: string | null } | null> {
+  if (!kid.test(templateId)) throw invalid('/api/templates/')
+  const parts = await templateParts(client, templateId)
+  if (parts && parts.html.length > maxTemplateChars)
+    throw invalid('/api/templates/')
+  return parts
 }
 
 export type LinkClicks = {

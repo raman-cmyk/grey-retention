@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 import { fingerprints } from '@/features/klaviyo-push/fingerprints'
+import { designHash, htmlHash } from '@/features/klaviyo-push/html'
 import {
   klaviyoClient,
   type KlaviyoTransport
@@ -66,8 +67,16 @@ function database(
   options: {
     written?: Record<string, string | null>
     refuse?: Record<string, string>
+    /** A build's designs (B is `html`); both `html` by default. */
+    designs?: Record<string, { html: string; designA?: string }>
+    /** A build's push templates' fingerprints, by design (its designs' by default). */
+    hashes?: Record<string, { A?: string; B?: string }>
+    /** What PSH-001 recorded each variation showing. */
+    shown?: Record<string, string>
   } = {}
 ) {
+  const designsOf = (build: string) =>
+    options.designs?.[build] ?? { html, designA: undefined }
   const all = batches.flat()
   const saved: { build: string; lease: string; patch: ResultPatch }[] = []
   const claims: number[] = []
@@ -97,25 +106,39 @@ function database(
               id: r.build_id,
               push_key: `push-${r.build_id}`,
               created_at: '2026-11-15T00:00:00.000Z',
-              html
+              ...designsOf(r.build_id),
+              text: null
             }))
-          : all.map((r) => ({
-              tenant_id: r.tenant_id,
-              push_key: `push-${r.build_id}`,
-              templates: [
-                {
-                  approach: 'A',
-                  id: 'T1',
-                  variation: 'VarA01',
-                  deleted: false
-                },
-                { approach: 'B', id: 'T2', variation: 'VarB01', deleted: false }
-              ],
-              written:
-                options.written && r.build_id in options.written
-                  ? options.written[r.build_id]
-                  : null
-            }))
+          : all.map((r) => {
+              const d = designsOf(r.build_id)
+              const hash = options.hashes?.[r.build_id]
+              return {
+                tenant_id: r.tenant_id,
+                push_key: `push-${r.build_id}`,
+                templates: [
+                  {
+                    approach: 'A',
+                    id: 'T1',
+                    variation: 'VarA01',
+                    hash: hash?.A ?? designHash(d.designA ?? d.html),
+                    deleted: false
+                  },
+                  {
+                    approach: 'B',
+                    id: 'T2',
+                    variation: 'VarB01',
+                    hash: hash?.B ?? designHash(d.html),
+                    deleted: false
+                  }
+                ],
+                written:
+                  options.written && r.build_id in options.written
+                    ? options.written[r.build_id]
+                    : null,
+                shown: options.shown?.[r.build_id] ?? null,
+                images: {}
+              }
+            })
       )
   } as unknown as Db
   return { db, saved, claims }
@@ -856,9 +879,11 @@ describe('the hourly results run', () => {
       callMs: 6_000,
       wait: async () => {}
     })
-    // Every due read is read; few statuses wait for the next run.
+    // Every due read is read; few statuses wait for the next run (each due
+    // read also asks for its two designs' templates, LRN-001b: one
+    // workspace's drafts at most).
     expect(saved.filter((s) => s.patch.pulls === 1)).toHaveLength(4)
-    expect(result.deferred).toBeLessThanOrEqual(6)
+    expect(result.deferred).toBeLessThanOrEqual(9)
     expect(result.checked + result.deferred).toBe(40)
   })
 
@@ -1001,5 +1026,184 @@ describe('the hourly results run', () => {
     // email asks again by its campaign: none came by its message).
     expect(saved).toHaveLength(2)
     expect(waits).toEqual([350, 350])
+  })
+})
+
+describe('each design’s clicks under its own HTML (LRN-001b)', () => {
+  // The same product in both designs, in another section of each.
+  const htmlB =
+    '<table><tr data-block="text_block"><td><a href="https://cedar.example/p/2">B</a></td></tr>' +
+    '<tr data-block="product_grid"><td><a href="https://cedar.example/p/1">A</a></td></tr></table>'
+  const edited =
+    '<table><tr data-block="hero_product"><td><a href="https://cedar.example/p/1">New</a></td></tr></table>'
+  const designs = { b1: { html: htmlB, designA: html } }
+  const both: RecordedClick[] = [
+    { ...clicks[0]!, url: 'https://cedar.example/p/1' },
+    {
+      ...clicks[0]!,
+      variationId: 'VarB01',
+      url: 'https://cedar.example/p/1',
+      count: [3],
+      unique: [3]
+    }
+  ]
+  const sentRead = (
+    a: ReturnType<typeof account>,
+    over: Parameters<typeof database>[1] = {},
+    r: ResultRow = row()
+  ) => {
+    const { db, saved } = database([[r]], { designs, ...over })
+    return run(
+      db,
+      live(
+        recordedResultsTransport({
+          rest: a.transport,
+          variations,
+          clicks: both
+        })
+      )
+    ).then(() => saved)
+  }
+  const blocks = (patch: ResultPatch) =>
+    patch.clicks!.map((c) => [c.variation, c.section, c.block])
+
+  it('maps design A’s clicks with A’s HTML and design B’s with B’s, never the other’s', async () => {
+    const a = account('Sent', iso(now - dayMs - hourMs))
+    const saved = await sentRead(a)
+    expect(blocks(saved[0]!.patch)).toEqual([
+      ['VarA01', 0, 'hero_product'],
+      ['VarB01', 1, 'product_grid']
+    ])
+    expect(saved[0]!.patch.context!.sections).toEqual([
+      { variation: 'VarA01', design: 'A', from: 'build', changed: false },
+      { variation: 'VarB01', design: 'B', from: 'build', changed: false }
+    ])
+    // Each design's template is read (a GET), to see it unchanged.
+    expect(a.calls).toContain('GET /api/templates/T2')
+    expect(saved[0]!.patch).not.toHaveProperty('changed')
+  })
+
+  it('reads design B’s template from Klaviyo when its own HTML is not kept', async () => {
+    const a = account('Sent', iso(now - dayMs - hourMs))
+    a.templates.set('T2', { name: 'B', html: htmlB, created: iso(now) })
+    const saved = await sentRead(a, { hashes: { b1: { B: 'f'.repeat(64) } } })
+    expect(blocks(saved[0]!.patch)[1]).toEqual(['VarB01', 1, 'product_grid'])
+    expect(saved[0]!.patch.context!.sections![1]).toMatchObject({
+      from: 'klaviyo',
+      changed: false
+    })
+  })
+
+  it('keeps design B’s clicks with no section when neither is there, and says so', async () => {
+    const a = account('Sent', iso(now - dayMs - hourMs))
+    const saved = await sentRead(a, { hashes: { b1: { B: 'f'.repeat(64) } } })
+    const patch = saved[0]!.patch
+    expect(blocks(patch)).toEqual([
+      ['VarA01', 0, 'hero_product'],
+      ['VarB01', null, null]
+    ])
+    expect(patch.clicks![1]).toMatchObject({ clicks: 3, design: 'B' })
+    expect(patch.results!.map((r) => r.design)).toEqual(['A', 'B'])
+    expect(patch.context!.sections![1]).toEqual({
+      variation: 'VarB01',
+      design: 'B',
+      from: null,
+      changed: false
+    })
+  })
+
+  it('sees a template changed in Klaviyo, marks the email changed, and maps with the HTML it has now', async () => {
+    const a = account('Sent', iso(now - dayMs - hourMs))
+    a.templates.set('T1', { name: 'A', html, created: iso(now) })
+    a.templates.set('T2', { name: 'B', html: edited, created: iso(now) })
+    const shown = `VarA01:T1:${htmlHash(html).slice(0, 16)},VarB01:T2:${htmlHash(htmlB).slice(0, 16)}`
+    const saved = await sentRead(a, { shown: { b1: shown } })
+    const patch = saved[0]!.patch
+    expect(patch.changed).toBe(true)
+    expect(blocks(patch)).toEqual([
+      ['VarA01', 0, 'hero_product'],
+      ['VarB01', 0, 'hero_product']
+    ])
+    expect(patch.context!.sections).toEqual([
+      { variation: 'VarA01', design: 'A', from: 'build', changed: false },
+      { variation: 'VarB01', design: 'B', from: 'klaviyo', changed: true }
+    ])
+    // From then on: its template unreadable at the next read, its sections
+    // are unknown, never our old HTML.
+    const next = account('Sent', iso(now - 2 * dayMs - 13 * hourMs))
+    const later = await sentRead(
+      next,
+      { shown: { b1: shown } },
+      sent({
+        sent_at: iso(now - 2 * dayMs - 13 * hourMs),
+        pulls: 1,
+        results_at: iso(now - dayMs - 13 * hourMs),
+        changed: true,
+        context: patch.context as ResultRow['context']
+      })
+    )
+    expect(blocks(later[0]!.patch)[1]).toEqual(['VarB01', null, null])
+    expect(later[0]!.patch.context!.sections![1]).toMatchObject({
+      from: null,
+      changed: true
+    })
+  })
+
+  it('pauses like the other reads when a template read is refused or rate-limited, keeping the earlier results', async () => {
+    const sentAt = iso(now - dayMs - hourMs)
+    const limited = account('Sent', sentAt)
+    limited.faults.rateLimit = '/api/templates'
+    limited.faults.retryAfter = 120
+    expect((await sentRead(limited))[0]!.patch).toEqual({
+      status: 'sent',
+      sent_at: sentAt,
+      paused: 'rate_limited',
+      next_check_at: iso(now + 120_000)
+    })
+    const a = account('Sent', sentAt)
+    const scope: KlaviyoTransport = async (request) =>
+      request.url.includes('/api/templates/')
+        ? {
+            status: 403,
+            headers: {},
+            body: JSON.stringify({ errors: [{ code: 'permission_denied' }] })
+          }
+        : a.transport(request)
+    const { db, saved } = database([[row()]], { designs })
+    await run(
+      db,
+      live(recordedResultsTransport({ rest: scope, variations, clicks: both }))
+    )
+    expect(saved[0]!.patch).toMatchObject({
+      status: 'sent',
+      paused: 'klaviyo_scope_missing'
+    })
+    expect(saved[0]!.patch).not.toHaveProperty('pulls')
+  })
+
+  it('keeps the earlier clicks when no time is left for the templates, the results standing', async () => {
+    let t = now
+    const a = account('Sent', iso(now - dayMs - hourMs))
+    const answers = recordedResultsTransport({
+      rest: a.transport,
+      variations,
+      clicks: both
+    })
+    const transport: KlaviyoTransport = async (request) => {
+      const answer = await answers(request)
+      // The report takes almost all the time left.
+      if (request.url.includes('/api/campaign-values-reports')) t = now + 29_500
+      return answer
+    }
+    const { db, saved } = database([[row()]], { designs })
+    await run(db, live(transport), { now: () => t })
+    expect(saved[0]!.patch).toMatchObject({
+      pulls: 1,
+      results: [{ design: 'A' }, { design: 'B' }],
+      clicks: [],
+      complete: false,
+      context: { clicksKept: true }
+    })
+    expect(a.calls.some((c) => c.includes('/api/templates/'))).toBe(false)
   })
 })

@@ -305,15 +305,17 @@ select throws_ok(format('select pg_temp.save(%L, %L)', '201', x),'23514',null,'r
   ]) x;
 select lives_ok(format($$select pg_temp.save('201', '{"pulls":1,"complete":false,"next_check_at":%s,
   "context":{"reportFrom":"2026-11-18T12:00:00.000Z","reportTo":"2026-11-21T12:00:00.000Z","currency":"USD","conversion":"placed_order",
-    "attributionOpen":true,"sendStrategy":"static","sentAtFrom":"send_time","abSplit":true,"clicksBy":"message","botsLeftOut":3,"reported":true},
+    "attributionOpen":true,"sendStrategy":"static","sentAtFrom":"send_time","abSplit":true,"clicksBy":"message","botsLeftOut":3,"reported":true,
+    "sections":[{"variation":"VarA01","design":"A","from":"build","changed":false},{"variation":"VarB01","design":"B","from":null,"changed":true}]},
   "results":[{"variation":"VarA01","name":"Design A","design":"A","statistics":{"recipients":600,"open_rate":0.42,"conversion_value":90.5}},
              {"variation":"VarB01","name":"Design B","design":"B","statistics":{"recipients":590}}],
   "clicks":[{"variation":"VarA01","design":"A","url":"https://cedar-lane.example/p/1?utm_source=klaviyo","section":0,"block":"hero_product","clicks":11,"unique":10},
             {"variation":null,"design":null,"url":"http://manage.kmail-lists.com/u","section":null,"block":null,"clicks":1,"unique":1}]}')$$,
   pg_temp.next(24)),'the first read, a day after the send, is saved with each design''s results, each link''s clicks and how it was read');
 select is((select row(pulls, jsonb_array_length(results), jsonb_array_length(clicks), results_at is not null, complete,
-  context->>'currency', final)::text from public.klaviyo_email_results where build_id = pg_temp.b('201')),
-  '(1,2,2,t,f,USD,f)', 'one read stored');
+  context->>'currency', final, context->'sections'->1->>'from' is null)::text
+  from public.klaviyo_email_results where build_id = pg_temp.b('201')),
+  '(1,2,2,t,f,USD,f,t)', 'one read stored, with how each variation''s clicks were put in sections (LRN-001b)');
 
 -- The next a day after the last read, even when the send was long ago.
 reset role;

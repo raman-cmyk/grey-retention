@@ -12,8 +12,10 @@ import {
 } from './recorded-results'
 import {
   maxLinkRows,
+  maxTemplateChars,
   readCampaignResults,
   readLinkClicks,
+  readTemplate,
   resultStatistics
 } from './results'
 
@@ -348,6 +350,64 @@ describe('the link clicks of one email, against recorded answers', () => {
     ])
       expect((await failure(call)).kind).toBe('invalid_response')
     expect(transport).not.toHaveBeenCalled()
+  })
+})
+
+describe('a variation’s template as it is now (LRN-001b), against recorded answers', () => {
+  const account = () => {
+    const a = fakeDraftAccount()
+    a.templates.set('TplCopy1', {
+      name: 'GROS 1 B',
+      html: '<table><tr data-block="hero_product"></tr></table>',
+      text: 'Hi',
+      created: '2026-11-15T00:00:00Z'
+    })
+    return a
+  }
+
+  it('reads its HTML and plain text with a GET only, and null once Klaviyo has it no more', async () => {
+    const a = account()
+    expect(await readTemplate(client(a.transport), 'TplCopy1')).toEqual({
+      html: '<table><tr data-block="hero_product"></tr></table>',
+      text: 'Hi'
+    })
+    expect(await readTemplate(client(a.transport), 'TplGone')).toBeNull()
+    expect(a.calls).toEqual([
+      'GET /api/templates/TplCopy1',
+      'GET /api/templates/TplGone'
+    ])
+  })
+
+  it('never asks for an id that is not one, and refuses HTML too long to be an email', async () => {
+    const a = account()
+    expect(
+      (await failure(readTemplate(client(a.transport), 'Tpl/../x'))).kind
+    ).toBe('invalid_response')
+    expect(a.calls).toEqual([])
+    a.templates.get('TplCopy1')!.html = 'x'.repeat(maxTemplateChars + 1)
+    expect(
+      (await failure(readTemplate(client(a.transport), 'TplCopy1'))).kind
+    ).toBe('invalid_response')
+  })
+
+  it('passes Klaviyo’s refusals and its pace on', async () => {
+    const limited = fakeDraftAccount({
+      faults: { rateLimit: '/api/templates', retryAfter: 120 }
+    })
+    expect(
+      await failure(readTemplate(client(limited.transport), 'TplCopy1'))
+    ).toMatchObject({
+      kind: 'rate_limited',
+      details: { retryAfterSeconds: 120 }
+    })
+    const refused: KlaviyoTransport = async () => ({
+      status: 403,
+      headers: {},
+      body: JSON.stringify({ errors: [{ code: 'permission_denied' }] })
+    })
+    expect(
+      (await failure(readTemplate(client(refused), 'TplCopy1'))).kind
+    ).toBe('missing_scope')
   })
 })
 

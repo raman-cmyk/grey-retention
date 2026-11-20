@@ -1,6 +1,13 @@
 import 'server-only'
 import { logger } from '@/lib/logger'
-import { fingerprints, norm, seen } from './fingerprints'
+import {
+  fingerprints,
+  norm,
+  seen,
+  shownOf,
+  showsRecorded,
+  type Shown
+} from './fingerprints'
 import {
   KlaviyoError,
   type KlaviyoClient
@@ -257,22 +264,6 @@ function designsOf(input: DraftInput): Design[] {
 
 const setOf = (s: string | null) => new Set(s ? s.split(',') : [])
 
-/**
- * `shown` read: per variation, the template on it (Klaviyo's copy), a
- * fingerprint of that template's HTML as Klaviyo keeps it (not always byte
- * for byte what we sent), and whether we were changing it (`w`).
- */
-type Shown = Record<
-  string,
-  { template: string; html: string; writing: boolean }
->
-const shownOf = (s: string | null): Shown =>
-  Object.fromEntries(
-    (s ? s.split(',') : []).map((entry) => {
-      const [variation, template, html, w] = entry.split(':')
-      return [variation!, { template: template!, html: html!, writing: !!w }]
-    })
-  )
 const shownText = (m: Shown) =>
   Object.keys(m)
     .sort()
@@ -314,11 +305,7 @@ async function stillOurs(
   fingerprint: string
 ) {
   const parts = await templateParts(client, templateId)
-  return (
-    parts !== null &&
-    (htmlHash(parts.html).slice(0, 16) === fingerprint ||
-      designHash(parts.html, parts.text ?? '').slice(0, 16) === fingerprint)
-  )
+  return parts !== null && showsRecorded(parts, fingerprint)
 }
 
 /** The client, refusing to start a request that might not end in time. */

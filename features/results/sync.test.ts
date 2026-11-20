@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { emailSections } from './sections'
+import type { ClickMap } from './click-map'
+import { emailSections, type EmailSection } from './sections'
 import {
   afterStatus,
   cut,
@@ -18,6 +19,13 @@ import {
 } from './sync'
 
 const now = Date.parse('2026-11-20T12:00:00Z')
+const mapOf = (variation: string, sections: EmailSection[]): ClickMap => ({
+  variation,
+  design: null,
+  sections,
+  from: 'build',
+  changed: false
+})
 const iso = (ms: number) => new Date(ms).toISOString()
 const row = (over: Partial<ResultRow> = {}): ResultRow => ({
   tenant_id: 't1',
@@ -188,7 +196,7 @@ describe('a results read', () => {
         ],
         complete: true,
         templates,
-        sections,
+        maps: [mapOf('VarB01', sections)],
         context: { reported: true }
       },
       now
@@ -225,7 +233,13 @@ describe('a results read', () => {
         }
       ],
       complete: true,
-      context: { reported: true, abSplit: null },
+      context: {
+        reported: true,
+        abSplit: null,
+        sections: [
+          { variation: 'VarB01', design: null, from: 'build', changed: false }
+        ]
+      },
       final: false,
       next_check_at: iso(Date.parse(sentAt) + 2 * dayMs)
     })
@@ -240,7 +254,7 @@ describe('a results read', () => {
         clicks: [],
         complete: true,
         templates,
-        sections,
+        maps: [],
         context: {}
       },
       now
@@ -446,7 +460,7 @@ describe('what the database can keep', () => {
         clicks: many,
         complete: true,
         templates: [],
-        sections: [],
+        maps: [],
         context: {}
       },
       now
@@ -479,7 +493,7 @@ describe('what the database can keep', () => {
         ],
         complete: true,
         templates: [],
-        sections,
+        maps: [mapOf('VarA01', sections)],
         trackingParams: ['ref'],
         context: {}
       },
@@ -528,7 +542,7 @@ describe('a read that could not read everything', () => {
         clicks: null,
         complete: true,
         templates: [],
-        sections: [],
+        maps: [],
         context: { reported: false }
       },
       now
@@ -571,7 +585,7 @@ describe('a read that could not read everything', () => {
         ],
         complete: true,
         templates: [],
-        sections: [],
+        maps: [],
         context: {}
       },
       now
@@ -606,7 +620,7 @@ describe('a read that could not read everything', () => {
         ],
         complete: true,
         templates: [],
-        sections: [],
+        maps: [],
         context: {}
       },
       now
@@ -630,5 +644,110 @@ describe('a read that could not read everything', () => {
   it('never calls an email that was sending stale', () => {
     const r = row({ status: 'sending', planned: { date: '2026-10-01' } })
     expect(afterStatus(r, seen('draft'), now).patch.status).toBe('draft')
+  })
+})
+
+describe('each design’s clicks under its own HTML (LRN-001b)', () => {
+  const sentAt = iso(now - dayMs)
+  // The same product in both designs, in another section of each.
+  const a = emailSections(
+    '<table><tr data-block="hero_product"><td><a href="https://shop.example/p/1">A</a></td></tr>' +
+      '<tr data-block="product_grid"><td><a href="https://shop.example/p/2">B</a></td></tr></table>'
+  )
+  const b = emailSections(
+    '<table><tr data-block="text_block"><td><a href="https://shop.example/p/2">B</a></td></tr>' +
+      '<tr data-block="product_grid"><td><a href="https://shop.example/p/1">A</a></td></tr></table>'
+  )
+  const click = (variationId: string | null, url: string) => ({
+    variationId,
+    url,
+    clicks: 2,
+    unique: 2
+  })
+  const read = (
+    maps: ClickMap[],
+    clicks: ReturnType<typeof click>[] | null,
+    over: Partial<ResultRow> = {}
+  ) =>
+    resultsPatch(
+      row({ status: 'sent', sent_at: sentAt, ...over }),
+      sentAt,
+      {
+        results: [],
+        clicks,
+        complete: true,
+        templates: [],
+        maps,
+        context: {}
+      },
+      now
+    )
+
+  it('puts each design’s clicks in its own sections, never the other design’s', () => {
+    const patch = read(
+      [mapOf('VarA01', a), mapOf('VarB01', b)],
+      [
+        click('VarA01', 'https://shop.example/p/1'),
+        click('VarB01', 'https://shop.example/p/1')
+      ]
+    )
+    expect(patch.clicks!.map((c) => [c.variation, c.block])).toEqual([
+      ['VarA01', 'hero_product'],
+      ['VarB01', 'product_grid']
+    ])
+  })
+
+  it('keeps the clicks of a design whose sections are unknown, in no section, and says so', () => {
+    const patch = read(
+      [
+        mapOf('VarA01', a),
+        { ...mapOf('VarB01', b), sections: null, from: null }
+      ],
+      [click('VarB01', 'https://shop.example/p/1')]
+    )
+    expect(patch.clicks).toMatchObject([
+      { variation: 'VarB01', clicks: 2, section: null, block: null }
+    ])
+    expect(patch.context!.sections).toEqual([
+      { variation: 'VarA01', design: null, from: 'build', changed: false },
+      { variation: 'VarB01', design: null, from: null, changed: false }
+    ])
+  })
+
+  it('places a click Klaviyo gives no variation of ours for only where every design agrees', () => {
+    const patch = read(
+      [mapOf('VarA01', a), mapOf('VarB01', a)],
+      [click(null, 'https://shop.example/p/1')]
+    )
+    expect(patch.clicks![0]).toMatchObject({ block: 'hero_product' })
+    const apart = read(
+      [mapOf('VarA01', a), mapOf('VarB01', b)],
+      [click('VarZZ', 'https://shop.example/p/1')]
+    )
+    expect(apart.clicks![0]).toMatchObject({ section: null, block: null })
+  })
+
+  it('marks the email changed when a design’s template was changed in Klaviyo', () => {
+    const patch = read(
+      [{ ...mapOf('VarB01', b), from: 'klaviyo', changed: true }],
+      []
+    )
+    expect(patch).toMatchObject({ changed: true })
+    expect(read([mapOf('VarB01', b)], [])).not.toHaveProperty('changed')
+  })
+
+  it('keeps how the earlier clicks were put in sections when they are kept, with a change seen now', () => {
+    const earlier = [
+      { variation: 'VarB01', design: 'B', from: 'build', changed: false }
+    ]
+    const patch = read(
+      [{ ...mapOf('VarB01', b), from: 'klaviyo', changed: true }],
+      null,
+      { context: { sections: earlier } }
+    )
+    expect(patch.context).toMatchObject({
+      clicksKept: true,
+      sections: [{ ...earlier[0], changed: true }]
+    })
   })
 })

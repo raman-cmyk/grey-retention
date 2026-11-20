@@ -5,6 +5,7 @@ import type {
   ResultStatistic,
   VariationResult
 } from '@/lib/providers/klaviyo/results'
+import type { ClickMap } from './click-map'
 import { keptUrl, sectionOf, type EmailSection } from './sections'
 
 /**
@@ -44,6 +45,19 @@ export type ReadContext = {
   /** This read could not read the results (or clicks): the earlier ones are kept. */
   resultsKept?: boolean
   clicksKept?: boolean
+  /**
+   * How each variation's clicks were put in sections (LRN-001b): with our
+   * own HTML (`build`), its template as read now (`klaviyo`), or not at all
+   * (null: its clicks are kept without a section); `changed` when its
+   * template was changed in Klaviyo since the push.
+   */
+  sections?: SectionsFrom[]
+}
+export type SectionsFrom = {
+  variation: string
+  design: 'A' | 'B' | null
+  from: 'build' | 'klaviyo' | null
+  changed: boolean
 }
 
 /** What `save_klaviyo_result` takes. */
@@ -349,11 +363,36 @@ const variationId = /^[A-Za-z0-9_-]{1,64}$/
 const whole = (n: number) => Math.min(999_999_999, Math.max(0, Math.round(n)))
 
 /**
+ * A clicked address's section with its own variation's map; for a click
+ * Klaviyo names no variation of ours for, only where every variation's
+ * map agrees (the same design twice, a subject test). Else none.
+ */
+function sectionIn(
+  maps: ClickMap[],
+  variation: string | null,
+  url: string,
+  trackingParams?: string[]
+) {
+  const at = (sections: EmailSection[] | null) =>
+    sections ? sectionOf(sections, url, trackingParams) : null
+  const own = maps.find((m) => m.variation === variation)
+  if (own) return at(own.sections)
+  const found = maps.map((m) => (m.sections ? at(m.sections) : undefined))
+  const first = found[0]
+  return first &&
+    found.every((f) => f?.section === first.section && f.block === first.block)
+    ? first
+    : null
+}
+
+/**
  * One results read, as the row stores it (`save_klaviyo_result` checks
  * it): each variation's counts under our design, each address's clicks
- * under its section (the clicker's own parameters left out), what the row
- * can hold and no more. Not complete when Klaviyo had more, a part was
- * not read, or the two designs of an A/B draft were not read apart.
+ * under its section of that variation's own HTML (the clicker's own
+ * parameters left out), what the row can hold and no more. Not complete
+ * when Klaviyo had more, a part was not read, or the two designs of an
+ * A/B draft were not read apart. A template changed in Klaviyo marks the
+ * email changed.
  */
 export function resultsPatch(
   row: ResultRow,
@@ -365,7 +404,8 @@ export function resultsPatch(
     clicks: LinkClicks[] | null
     complete: boolean
     templates: Template[]
-    sections: EmailSection[]
+    /** Each variation's sections (`variationMap`). */
+    maps: ClickMap[]
     trackingParams?: string[]
     context: ReadContext
   },
@@ -434,9 +474,9 @@ export function resultsPatch(
       cutShort = true
       break
     }
-    const at = sectionOf(read.sections, c.url, read.trackingParams)
     const variation =
       c.variationId && variationId.test(c.variationId) ? c.variationId : null
+    const at = sectionIn(read.maps, variation, c.url, read.trackingParams)
     const click: StoredClick = {
       variation,
       design:
@@ -461,8 +501,27 @@ export function resultsPatch(
     planned === 'both'
       ? ['A', 'B'].every((d) => stored.some((r) => r.design === d))
       : null
+  // How the clicks kept were put in sections: this read's maps, else the
+  // earlier read's (its clicks are kept), with any change seen now.
+  const earlier = (row.context as { sections?: unknown } | null)?.sections
+  const seenNow = new Set(
+    read.maps.filter((m) => m.changed).map((m) => m.variation)
+  )
+  const sections: SectionsFrom[] | undefined = read.clicks
+    ? read.maps.slice(0, maxResults).map((m) => ({
+        variation: m.variation,
+        design: m.design,
+        from: m.from,
+        changed: m.changed
+      }))
+    : Array.isArray(earlier)
+      ? (earlier as SectionsFrom[]).map((s) =>
+          seenNow.has(s.variation) ? { ...s, changed: true } : s
+        )
+      : undefined
   return {
     status: 'sent',
+    ...(read.maps.some((m) => m.changed) ? { changed: true } : {}),
     pulls,
     results: stored,
     clicks: read.clicks ? clicks : kept.clicks,
@@ -477,7 +536,8 @@ export function resultsPatch(
       ...read.context,
       abSplit,
       ...(read.results ? {} : { resultsKept: true }),
-      ...(read.clicks ? {} : { clicksKept: true })
+      ...(read.clicks ? {} : { clicksKept: true }),
+      ...(sections ? { sections } : {})
     },
     final,
     next_check_at: iso(
