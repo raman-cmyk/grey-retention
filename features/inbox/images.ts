@@ -146,7 +146,19 @@ export function sniffImage(bytes: Uint8Array): ImageType | null {
 }
 
 /** PNG chunks that carry only text: words, a date, camera data. */
-const pngText = new Set(['tEXt', 'zTXt', 'iTXt', 'eXIf', 'tIME'])
+const pngText = new Set(
+  ['tEXt', 'zTXt', 'iTXt', 'eXIf', 'tIME'].map(
+    (t) =>
+      ((t.charCodeAt(0) << 24) |
+        (t.charCodeAt(1) << 16) |
+        (t.charCodeAt(2) << 8) |
+        t.charCodeAt(3)) >>>
+      0
+  )
+)
+const pngEnd = 0x49454e44
+const u32 = (b: Uint8Array, i: number) =>
+  ((b[i]! << 24) | (b[i + 1]! << 16) | (b[i + 2]! << 8) | b[i + 3]!) >>> 0
 
 /**
  * REAL-1b1: a stored picture without the text a file can carry, which a
@@ -168,23 +180,24 @@ export function stripMetadata(bytes: Uint8Array): Uint8Array {
 }
 
 function stripPng(b: Uint8Array) {
-  const kept: Uint8Array[] = [b.subarray(0, 8)]
+  const kept = new Spans(b, 8)
   for (let i = 8; i < b.length;) {
     if (i + 12 > b.length) return null
-    const length =
-      ((b[i]! << 24) | (b[i + 1]! << 16) | (b[i + 2]! << 8) | b[i + 3]!) >>> 0
-    const end = i + 12 + length
+    const end = i + 12 + u32(b, i)
     if (end > b.length) return null
-    const type = String.fromCharCode(...b.subarray(i + 4, i + 8))
-    if (!pngText.has(type)) kept.push(b.subarray(i, end))
+    const type = u32(b, i + 4)
+    if (pngText.has(type)) kept.skip(i, end)
     i = end
-    if (type === 'IEND') break
+    if (type === pngEnd) {
+      kept.end(i)
+      break
+    }
   }
-  return join(kept)
+  return kept.bytes()
 }
 
 function stripJpeg(b: Uint8Array) {
-  const kept: Uint8Array[] = [b.subarray(0, 2)]
+  const kept = new Spans(b, 2)
   for (let i = 2; i < b.length;) {
     if (b[i] !== 0xff) return null
     let m = i + 1
@@ -193,7 +206,6 @@ function stripJpeg(b: Uint8Array) {
     if (marker === undefined) return null
     // Markers without a length: restart markers and TEM.
     if ((marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) {
-      kept.push(b.subarray(i, m + 1))
       i = m + 1
       continue
     }
@@ -201,24 +213,52 @@ function stripJpeg(b: Uint8Array) {
     const end = m + 1 + ((b[m + 1]! << 8) | b[m + 2]!)
     if (end > b.length) return null
     // The picture's data follows the start of scan to the end: kept whole.
-    if (marker === 0xda) {
-      kept.push(b.subarray(i))
-      break
-    }
+    if (marker === 0xda) break
     const app = marker >= 0xe0 && marker <= 0xef
     const look = marker === 0xe0 || marker === 0xe2 || marker === 0xee
-    if ((!app || look) && marker !== 0xfe) kept.push(b.subarray(i, end))
+    if ((app && !look) || marker === 0xfe) kept.skip(i, end)
     i = end
   }
-  return join(kept)
+  return kept.bytes()
 }
 
-function join(parts: Uint8Array[]) {
-  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
-  let at = 0
-  for (const p of parts) {
-    out.set(p, at)
-    at += p.length
+/** The file with some spans left out, copied once (the same file if none). */
+class Spans {
+  private gaps: [number, number][] = []
+  private stop: number
+
+  constructor(
+    private file: Uint8Array,
+    private from: number
+  ) {
+    this.stop = file.length
   }
-  return out
+
+  skip(a: number, b: number) {
+    const last = this.gaps.at(-1)
+    if (last && last[1] === a) last[1] = b
+    else this.gaps.push([a, b])
+  }
+
+  end(at: number) {
+    this.stop = at
+  }
+
+  bytes() {
+    if (!this.gaps.length && this.stop === this.file.length) return this.file
+    const parts: Uint8Array[] = []
+    let at = 0
+    for (const [a, b] of this.gaps) {
+      parts.push(this.file.subarray(at, a))
+      at = b
+    }
+    parts.push(this.file.subarray(at, this.stop))
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
+    let to = 0
+    for (const p of parts) {
+      out.set(p, to)
+      to += p.length
+    }
+    return out
+  }
 }

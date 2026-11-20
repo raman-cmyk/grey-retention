@@ -99,7 +99,9 @@ describe('stripMetadata', () => {
       chunk('tEXt', Buffer.from('Comment\0Hi Sam Rivera')),
       chunk('iTXt', Buffer.from('Author\0\0\0\0\0Sam')),
       chunk('IDAT', Buffer.from('pixels')),
-      chunk('IEND', Buffer.alloc(0))
+      chunk('IEND', Buffer.alloc(0)),
+      // Nothing after the end is kept either.
+      Buffer.from('Sam Rivera')
     ])
     const png = Buffer.from(stripMetadata(Uint8Array.from(picture)))
     expect(png.includes('Sam')).toBe(false)
