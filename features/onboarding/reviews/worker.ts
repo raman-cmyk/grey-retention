@@ -16,6 +16,7 @@ import {
 import { maxReviewPages, pageOk } from './source'
 import {
   analyseCustomers,
+  customerPhotos,
   platformFindings,
   quotableReviews,
   type CustomerFinding
@@ -242,7 +243,9 @@ export async function readBrandReviews(
   const findings: (CustomerFinding & { pass: string; model: string | null })[] =
     [
       ...quotableReviews(reviews),
-      ...platformFindings(reviewed.ok ? reviewed.platforms : [])
+      ...platformFindings(reviewed.ok ? reviewed.platforms : []),
+      // REL-ONB2 part e: customers' own photos, of a live read only.
+      ...(run.live ? customerPhotos(reviews) : [])
     ].map((f) => ({ ...f, pass, model: null }))
   if (reviews.length || comments.length) {
     const ask = deps.askFor(run.live)

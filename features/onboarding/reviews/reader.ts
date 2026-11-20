@@ -9,6 +9,12 @@ import type {
 import { findingInput, type FindingInput } from '../findings'
 import { fold } from '../site/pages'
 import { asWritten, claims, plain, wellFormed } from '../words'
+import {
+  appFolder,
+  maxReviewPhotos,
+  reviewPhotoKey,
+  shopifyFolder
+} from './photos'
 
 /** The Reviews + social reader's prompt version. */
 export const reviewsReaderVersion = 'reviews-v1'
@@ -214,6 +220,78 @@ const noName =
  * newest first.
  */
 export function quotableReviews(reviews: ReadReview[]): CustomerFinding[] {
+  return keptReviews(reviews)
+    .slice(0, maxQuotable)
+    .flatMap(({ r, text, author }) => {
+      const finding = findingInput.safeParse({
+        topic: 'quotable_review',
+        statement: `A review by ${author} that an email may quote with its source.`,
+        value: {
+          author,
+          url: r.url,
+          ...(r.rating !== null ? { rating: r.rating } : {}),
+          ...(r.date ? { date: r.date } : {})
+        },
+        evidence: { url: r.url, quote: text },
+        confidence: 0.9
+      })
+      return finding.success
+        ? [{ ...finding.data, source: 'reviews' as const }]
+        : []
+    })
+}
+
+/**
+ * REL-ONB2 part e: the photos customers posted with the reviews kept by
+ * the rules above (`keptReviews`: never a photo of a review left out),
+ * and only of a review with four or five whole stars of the page's own
+ * (never one without stars: a photo shows the product, so only a happy
+ * customer's), in their order, each once at any size or format
+ * (`reviewPhotoKey`, the database's rule), those on Shopify's CDN or a
+ * review app's host in the first folder there only (the database keeps
+ * one a read), at most `maxReviewPhotos`. Each is stored on its own with
+ * the page and product it is of, never the reviewer's name or words.
+ */
+export function customerPhotos(reviews: ReadReview[]): CustomerFinding[] {
+  const seen = new Set<string>()
+  const found: CustomerFinding[] = []
+  const folders = new Map<string, string>()
+  for (const { r } of keptReviews(reviews)) {
+    if (r.rating === null || r.rating < 4 || r.ratingExact === false) continue
+    for (const url of r.photos ?? []) {
+      if (found.length >= maxReviewPhotos) return found
+      if (!URL.canParse(url)) continue
+      const key = reviewPhotoKey(url)
+      const host = new URL(url).hostname
+      const folder = shopifyFolder(url) ?? appFolder(url)
+      if (seen.has(key)) continue
+      if (folder && (folders.get(host) ?? folder) !== folder) continue
+      const value = { url, page: r.url }
+      const product = r.product?.trim()
+      // The product when the page names it (left out when too long).
+      const finding = [...(product ? [{ ...value, product }] : []), value]
+        .map((v) =>
+          findingInput.safeParse({
+            topic: 'customer_photo',
+            statement:
+              "A photo a customer posted with their review on the store's own page.",
+            value: v,
+            evidence: { ref: `review-data:${r.url}`.slice(0, 200) },
+            confidence: 0.9
+          })
+        )
+        .find((f) => f.success)
+      if (!finding?.success) continue
+      seen.add(key)
+      if (folder) folders.set(host, folder)
+      found.push({ ...finding.data, source: 'reviews' })
+    }
+  }
+  return found
+}
+
+/** The reviews part b keeps (real, own words and stars), best and newest first. */
+function keptReviews(reviews: ReadReview[]) {
   return reviews
     .map((r) => ({ r, text: fold(r.text), author: fold(r.author) }))
     .filter(
@@ -237,24 +315,6 @@ export function quotableReviews(reviews: ReadReview[]): CustomerFinding[] {
         (b.r.date ?? '').localeCompare(a.r.date ?? '') ||
         a.r.id.localeCompare(b.r.id, undefined, { numeric: true })
     )
-    .slice(0, maxQuotable)
-    .flatMap(({ r, text, author }) => {
-      const finding = findingInput.safeParse({
-        topic: 'quotable_review',
-        statement: `A review by ${author} that an email may quote with its source.`,
-        value: {
-          author,
-          url: r.url,
-          ...(r.rating !== null ? { rating: r.rating } : {}),
-          ...(r.date ? { date: r.date } : {})
-        },
-        evidence: { url: r.url, quote: text },
-        confidence: 0.9
-      })
-      return finding.success
-        ? [{ ...finding.data, source: 'reviews' as const }]
-        : []
-    })
 }
 
 /**
