@@ -389,6 +389,39 @@ describe('the Brand step (UI-ONBc)', () => {
     })
   })
 
+  it('says the ads and reviews are not read yet when none of their reads is this website’s (ONB-SITEa)', () => {
+    // Website A read, then changed to B: the website's read waits, and
+    // A's ads and reviews reads do not count for B.
+    const changed = view()
+    changed.reading!.steps = [
+      reader('site', 'waiting'),
+      reader('catalog', 'not_started'),
+      reader('history', 'not_started'),
+      reader('ads', 'not_started'),
+      reader('reviews', 'not_started'),
+      reader('plan', 'not_started')
+    ]
+    expect(readerSteps(changed)).toEqual([
+      { text: 'Reading your website', state: 'next', reason: undefined },
+      {
+        text: 'Your ads are not read yet',
+        state: 'failed',
+        reason: 'Press Try again to read them.'
+      },
+      {
+        text: 'Your reviews are not read yet',
+        state: 'failed',
+        reason: 'Press Try again to read them.'
+      }
+    ])
+    render(<SetupScreen view={changed} place="brand" />)
+    expect(screen.queryByText('Read your ads')).toBeNull()
+    expect(screen.getByText('Your ads are not read yet')).toBeVisible()
+    expect(screen.getByText('Your reviews are not read yet')).toBeVisible()
+    // One Try again starts them again.
+    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1)
+  })
+
   it('gives staff no Confirm brand and no Try again', () => {
     const failed = view({ owner: false })
     failed.reading!.steps[0] = reader('site', 'failed')

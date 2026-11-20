@@ -338,8 +338,13 @@ describe('setupReadModel (UI-ONBa)', () => {
   })
 
   it('waits for the website saved now, and hides what was found on the old one (ONB-SITEa)', async () => {
-    const read = (domain: string, status: string, at: string) => ({
-      kind: 'brand.read_site',
+    const read = (
+      domain: string,
+      status: string,
+      at: string,
+      kind = 'brand.read_site'
+    ) => ({
+      kind,
       status,
       domain,
       checkpoint: {},
@@ -352,6 +357,22 @@ describe('setupReadModel (UI-ONBa)', () => {
       'succeeded',
       '2026-11-17T09:00:00Z'
     )
+    // A's ads and reviews were read too.
+    const ownA = [
+      readA,
+      read(
+        'cedar-lane.example',
+        'succeeded',
+        '2026-11-17T09:01:00Z',
+        'brand.read_ads'
+      ),
+      read(
+        'cedar-lane.example',
+        'succeeded',
+        '2026-11-17T09:02:00Z',
+        'brand.read_reviews'
+      )
+    ]
     const view = (
       website: string,
       reads: unknown[],
@@ -404,32 +425,42 @@ describe('setupReadModel (UI-ONBa)', () => {
       created_at: '2026-11-17T10:00:00Z',
       domain: 'north-loft.example'
     }
-    const site = (v: Awaited<ReturnType<typeof setupReadModel>>) =>
-      v.reading!.steps.find((s) => s.key === 'site')!.state
+    const state = (
+      v: Awaited<ReturnType<typeof setupReadModel>>,
+      key = 'site'
+    ) => v.reading!.steps.find((s) => s.key === key)!.state
+    const site = (v: Awaited<ReturnType<typeof setupReadModel>>) => state(v)
 
     // Website A was read, then changed to B: B's read is queued.
     const queuedB = read('north-loft.example', 'queued', '2026-11-17T10:00:01Z')
     const { calls } = view(
       'north-loft.example',
-      [readA, queuedB],
+      [...ownA, queuedB],
       [savedB, savedA]
     )
     let v = await setupReadModel(context)
     expect(site(v)).toBe('waiting')
+    // A's ads and reviews are not B's: not read yet.
+    expect([state(v, 'ads'), state(v, 'reviews')]).toEqual([
+      'not_started',
+      'not_started'
+    ])
     expect(v.flow!.steps[1]).toMatchObject({ done: false, waiting: true })
     expect(v.flow!.current).toBe(4)
     // A's logo, and the kit saved while the website was A, are not B's.
     expect(v.found).toMatchObject({ logo: null, colors: [], fonts: [] })
-    const siteReads = calls.find(
-      (c) =>
-        c.table === 'job_runs' &&
-        c.filters.some((f) => f[1] === 'kind' && f[2] === 'brand.read_site')
-    )!
-    expect(siteReads.filters).toContainEqual([
-      'eq',
-      'input->>domain',
-      'north-loft.example'
+    for (const kind of [
+      'brand.read_site',
+      'brand.read_ads',
+      'brand.read_reviews'
     ])
+      expect(
+        calls.find(
+          (c) =>
+            c.table === 'job_runs' &&
+            c.filters.some((f) => f[1] === 'kind' && f[2] === kind)
+        )!.filters
+      ).toContainEqual(['eq', 'input->>domain', 'north-loft.example'])
 
     // No read of B at all: not read yet (Try again), never A's.
     view('north-loft.example', [readA], [savedB, savedA])
@@ -458,7 +489,7 @@ describe('setupReadModel (UI-ONBa)', () => {
     // and A's logo shows; the kit saved before A was saved again does not.
     view(
       'cedar-lane.example',
-      [readA, queuedB],
+      [...ownA, queuedB],
       [
         { created_at: '2026-11-17T12:00:00Z', domain: 'cedar-lane.example' },
         savedB,
@@ -467,6 +498,7 @@ describe('setupReadModel (UI-ONBa)', () => {
     )
     v = await setupReadModel(context)
     expect(site(v)).toBe('done')
+    expect([state(v, 'ads'), state(v, 'reviews')]).toEqual(['done', 'done'])
     expect(v.flow!.steps[1]).toMatchObject({ done: false, waiting: false })
     expect(v.flow!.current).toBe(1)
     expect(v.found).toMatchObject({

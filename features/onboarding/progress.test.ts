@@ -247,20 +247,33 @@ describe('progressFrom (ONB-066)', () => {
       site([job(readerKinds.site, 'succeeded', 1, 2)], 'cedar-lane.example')
         .state
     ).toBe('not_started')
-    // Only the website's step: the other readers are as before.
+    // The website's ads and reviews too: A's reads are not B's, B's own
+    // are. The Klaviyo readers keep no website and are as before.
+    const of = (kind: string, domain: string | null, status = 'succeeded') => ({
+      ...job(kind, status, 1, 2),
+      domain
+    })
+    const statesForB = (jobs: JobRow[]) =>
+      states(progress({ jobs, site: 'north-loft.example' }))
     expect(
-      states(
-        progress({
-          jobs: [
-            {
-              ...job(readerKinds.ads, 'succeeded', 1, 2),
-              domain: 'cedar-lane.example'
-            }
-          ],
-          site: 'north-loft.example'
-        })
-      ).ads
-    ).toBe('done')
+      statesForB([
+        of(readerKinds.ads, 'cedar-lane.example'),
+        of(readerKinds.reviews, 'cedar-lane.example'),
+        of(readerKinds.catalog, null)
+      ])
+    ).toMatchObject({
+      ads: 'not_started',
+      reviews: 'not_started',
+      catalog: 'done'
+    })
+    expect(
+      statesForB([
+        of(readerKinds.ads, 'cedar-lane.example'),
+        of(readerKinds.ads, 'north-loft.example', 'queued'),
+        of(readerKinds.reviews, 'cedar-lane.example'),
+        of(readerKinds.reviews, 'north-loft.example')
+      ])
+    ).toMatchObject({ ads: 'waiting', reviews: 'done' })
     // Without the website, every site read counts, as before.
     expect(states(progress({ jobs: [a] })).site).toBe('done')
   })
@@ -343,7 +356,7 @@ describe('readOnboardingProgress (ONB-066)', () => {
     ).toEqual(Object.values(readerKinds))
   })
 
-  it('given the website, asks only for its own site reads (ONB-SITEa)', async () => {
+  it('given the website, asks only for its readers’ own reads (ONB-SITEa)', async () => {
     const { client, calls } = db(rows)
     const p = await readOnboardingProgress(
       client,
@@ -354,12 +367,17 @@ describe('readOnboardingProgress (ONB-066)', () => {
     // The database's answer, checked again: the read is this website's.
     expect(p!.steps[0]!.state).toBe('done')
     const reads = calls.filter((c) => c.table === 'job_runs')
-    const site = reads.find((c) =>
-      c.eq.some(([k, v]) => k === 'kind' && v === readerKinds.site)
-    )!
-    expect(site.eq).toContainEqual(['input->>domain', 'cedar-lane.example'])
-    for (const other of reads.filter((c) => c !== site))
-      expect(other.eq.some(([k]) => k === 'input->>domain')).toBe(false)
+    const of = (kind: string) =>
+      reads.find((c) => c.eq.some(([k, v]) => k === 'kind' && v === kind))!
+    // The website, its ads and its reviews: this website's reads only.
+    for (const kind of [readerKinds.site, readerKinds.ads, readerKinds.reviews])
+      expect(of(kind).eq).toContainEqual([
+        'input->>domain',
+        'cedar-lane.example'
+      ])
+    // The Klaviyo readers keep no website.
+    for (const kind of [readerKinds.catalog, readerKinds.history])
+      expect(of(kind).eq.some(([k]) => k === 'input->>domain')).toBe(false)
     // Without it, no website is asked for.
     const plain = db(rows)
     await readOnboardingProgress(plain.client, tenantId, new Date(at(9)))

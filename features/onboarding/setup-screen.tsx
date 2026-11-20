@@ -147,6 +147,12 @@ const skippedWords: Partial<Record<StepKey, string>> = {
   ads: 'No ads to read',
   reviews: 'No reviews to read'
 }
+/** A website reader with no read of the website saved now. */
+const unreadWords: Partial<Record<StepKey, [string, string]>> = {
+  site: ['Your website is not read yet', 'Press Try again to read it.'],
+  ads: ['Your ads are not read yet', 'Press Try again to read them.'],
+  reviews: ['Your reviews are not read yet', 'Press Try again to read them.']
+}
 /** Where each reader reads, for its reason. */
 const sourceWords: Partial<Record<StepKey, string>> = {
   site: 'Your website',
@@ -181,22 +187,19 @@ export function readerReason(key: StepKey, failure?: string): string {
 
 /**
  * The readers as Progress rows: the website's three always, the Klaviyo
- * ones once started. A website never read is a failed row (Try again).
+ * ones once started. A website reader with no read of the website saved
+ * now (never read, or only an old website's: ONB-SITEa) is a failed row
+ * that says it is not read yet (Try again).
  */
 export function readerSteps(view: SetupView): ProgressStep[] {
   return (view.reading?.steps ?? []).flatMap((s): ProgressStep[] => {
     const words = readerWords[s.key]
     if (!words) return []
-    const own = s.key === 'site' || s.key === 'ads' || s.key === 'reviews'
-    if (!own && s.state === 'not_started') return []
-    if (s.key === 'site' && s.state === 'not_started')
-      return [
-        {
-          text: 'Your website is not read yet',
-          state: 'failed',
-          reason: 'Press Try again to read it.'
-        }
-      ]
+    const unread = unreadWords[s.key]
+    if (s.state === 'not_started') {
+      if (!unread) return []
+      return [{ text: unread[0], state: 'failed', reason: unread[1] }]
+    }
     const state = readerState[s.state]
     return [
       {
