@@ -6,6 +6,7 @@ import {
   imageWorkerFor,
   notAvailableWords,
   pictureAfter,
+  safeResultUrl,
   type ImageWorkResult
 } from './image-work'
 
@@ -86,5 +87,51 @@ describe('picture work (IMG-ADAPTER, owner picks #4, #12, #15)', () => {
         reason: 'The picture work failed, so the original is used.'
       }
     })
+  })
+
+  it('falls back to the original for a done result of another job, or at an unsafe address', async () => {
+    const done =
+      (result: string, job: ImageWorkResult['job'] = 'cutout') =>
+      async () =>
+        ({
+          job,
+          status: 'done',
+          original: photo.url,
+          result
+        }) as ImageWorkResult
+    const good = 'https://cdn.shop.example/oak-tray-cut.png'
+    // A done result for another job than the one asked for.
+    expect(
+      (await pictureAfter(done(good, 'smart_crop'), 'cutout', photo.url)).url
+    ).toBe(photo.url)
+    for (const bad of [
+      'not a url',
+      'https://',
+      'https://user:pass@cdn.example/x.png',
+      'https://user@cdn.example/x.png',
+      'https://127.0.0.1/x.png',
+      'https://2130706433/x.png',
+      'https://10.1.2.3/x.png',
+      'https://172.16.0.9/x.png',
+      'https://192.168.1.4/x.png',
+      'https://169.254.169.254/latest',
+      'https://localhost/x.png',
+      'https://studio.localhost/x.png',
+      'https://[::1]/x.png',
+      'https://[fe80::1]/x.png',
+      'https://[fd00::1]/x.png',
+      'https://[::ffff:127.0.0.1]/x.png',
+      'https://intranet/x.png',
+      'https://files.internal/x.png',
+      'ftp://cdn.example/x.png'
+    ]) {
+      expect(safeResultUrl(bad), bad).toBe(false)
+      expect(
+        (await pictureAfter(done(bad), 'cutout', photo.url)).url,
+        bad
+      ).toBe(photo.url)
+    }
+    expect(safeResultUrl(good)).toBe(true)
+    expect(safeResultUrl('https://[2606:4700::1111]/x.png')).toBe(true)
   })
 })

@@ -108,9 +108,59 @@ export function imageWorkerFor(env: NodeJS.ProcessEnv = process.env): {
 }
 
 /**
- * The picture to use after a job: its result when done and it is a safe
- * https address, else the original as it is. Never throws: a worker that
- * throws counts as failed.
+ * A result's address this module accepts: an absolute https URL with no
+ * user or password, on a public host name (never localhost, a bare
+ * loopback, private or link-local address, or an internal-only name).
+ * This is only a first gate: whatever draws the picture into an email
+ * still applies its own allowlist (the design studio takes only its own
+ * stored files, DST-003b), so a result is never trusted for being https.
+ */
+export function safeResultUrl(value: string): boolean {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    return false
+  }
+  if (url.protocol !== 'https:' || url.username || url.password) return false
+  if (/[\s"'<>]/.test(value)) return false
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  if (!host || host === 'localhost' || host.endsWith('.localhost')) return false
+  if (/\.(?:local|internal|lan|home|corp)$/.test(host) || !host.includes('.'))
+    return host.includes(':') ? !privateIpv6(host) : false
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host)
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])]
+    return !(
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      a >= 224
+    )
+  }
+  return true
+}
+
+/** Loopback, unique-local, link-local or unspecified IPv6. */
+function privateIpv6(host: string) {
+  return (
+    host === '::1' ||
+    host === '::' ||
+    /^f[cd][0-9a-f]{2}:/.test(host) ||
+    /^fe[89ab][0-9a-f]:/.test(host) ||
+    /^::ffff:/.test(host)
+  )
+}
+
+/**
+ * The picture to use after a job: its result when the job asked for is
+ * done, for this original, at an address `safeResultUrl` accepts; else
+ * the original as it is. Never throws: a worker that throws counts as
+ * failed.
  */
 export async function pictureAfter(
   run: () => Promise<ImageWorkResult>,
@@ -130,8 +180,9 @@ export async function pictureAfter(
   }
   const safe =
     result.status === 'done' &&
+    result.job === job &&
     result.original === original &&
-    /^https:\/\/[^\s"'<>]+$/i.test(result.result)
+    safeResultUrl(result.result)
   return {
     url: safe ? (result as { result: string }).result : original,
     result
