@@ -7,8 +7,15 @@ import { decode } from './images'
  * lookbehind) and never rescans it, so each is linear on long runs.
  */
 
-/** The inbox's own addresses and the names it subscribed with. */
-export type InboxIdentity = { addresses: string[]; names: string[] }
+/**
+ * The inbox's own addresses and the names it subscribed with, and the
+ * hosts of picture services that draw a subscriber into a picture.
+ */
+export type InboxIdentity = {
+  addresses: string[]
+  names: string[]
+  imageHosts?: readonly string[]
+}
 
 /** Treated as unchanging: the rules made from them are kept. */
 export type CleanOptions = {
@@ -130,12 +137,12 @@ export type Rules = {
   /** The bare local part at any length (for picture addresses). */
   localsAnyLength: RegExp | null
   local: RegExp | null
-  /** The names in words: exactly in any case, or written like a name. */
+  /** The names in words (see `anyOf`), and glued to other text. */
   names: RegExp[]
-  /** The names in any case, an accent or ß they have missing or not. */
-  anyName: RegExp | null
   /** A name inside a longer word (pictures only). */
   inside: RegExp | null
+  /** Hosts whose pictures are drawn for each subscriber. */
+  imageHosts: RegExp | null
   /** One name or word of one, nothing else (`isName`). */
   whole: RegExp | null
   /** The inbox's own address, however its local part and domain are spaced. */
@@ -153,38 +160,29 @@ const spaceless =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Thai}]/u
 
 /**
- * How a name is read, one way only: `exact` with every accent it has (as
- * marks, see `fold`); `loose` with any of its accents, or ß as ss, missing
- * (José as Jose, Strauß as STRAUSS) but never one it lacks added (Noel is
- * not Noël, Weiss not Weiß); `capitals` loose, starting with a capital
- * (written like a name: "Angel", not the word "angel"). Any case, read
- * without /i, which would take the letter ι for a mark.
+ * One letter of a name in either case, or only as a capital (`upper`).
+ * Case is read without /i, which would take the letter ι for a mark.
  */
-type Reading = 'exact' | 'loose' | 'capitals'
-
-/** One letter of a name in either case, or only as a capital. */
-function cased(c: string, capital: boolean, how: Reading) {
+function cased(c: string, upper: boolean) {
   if (c === '\u{df}')
-    return how === 'exact'
-      ? capital
-        ? '\u{1e9e}'
-        : '[\u{df}\u{1e9e}]'
-      : capital
-        ? '(?:\u{1e9e}|SS)'
-        : '(?:[\u{df}\u{1e9e}]|[sS]{2})'
+    return upper ? '(?:\u{1e9e}|SS)' : '(?:[\u{df}\u{1e9e}]|[sS]{2})'
   const up = c.toUpperCase()
   const big = [...up].length === 1 ? up : c
-  if (capital) return escape(big)
+  if (upper) return escape(big)
   const forms = [...new Set([c, big, ...(c === '\u{3c3}' ? ['\u{3c2}'] : [])])]
   return forms.length > 1 ? `[${forms.map(escape).join('')}]` : escape(c)
 }
 
-/** A name (folded, small letters) as a pattern, read as `how` says. */
-function fragment(name: string, how: Reading) {
+/**
+ * A name (folded, small letters) as a pattern that reads it one way only:
+ * any of its accents (marks, see `fold`), or ß as ss, may be missing
+ * (José as Jose or jose, Strauß as STRAUSS), but never one it lacks added
+ * (Noel is not Noël, Weiss not Weiß).
+ */
+function fragment(name: string, upper = false) {
   const chars = [...name]
   let out = ''
   for (let i = 0; i < chars.length;) {
-    const first = i === 0
     const c = chars[i++]!
     if (c === ' ') {
       out += String.raw`\s{1,5}`
@@ -192,12 +190,9 @@ function fragment(name: string, how: Reading) {
     }
     const marks: string[] = []
     while (/\p{M}/u.test(chars[i] ?? '')) marks.push(chars[i++]!)
-    out += cased(c, first && how === 'capitals', how)
+    out += cased(c, upper)
     if (marks.length)
-      out +=
-        how === 'exact'
-          ? marks.map(escape).join('')
-          : `(?:${marks.map(escape).join('|')}){0,${marks.length}}`
+      out += `(?:${marks.map(escape).join('|')}){0,${marks.length}}`
     // No accent the name does not have.
     out += String.raw`(?!\p{M})`
   }
@@ -208,69 +203,72 @@ function fragment(name: string, how: Reading) {
 const kana = String.raw`[\p{Script=Katakana}\u{30fc}]`
 
 /**
- * Whole words; a name in a script without spaces anywhere it stands, but a
- * katakana name never inside a longer katakana word ("サムスン").
+ * Where a name word starts and ends: at a word's edge (also # and @), at a
+ * digit, or where a small letter meets a capital ("HappyBirthdaySam",
+ * "SamStyle", "#TeamSam"). Digits after it go with it ("SAM20"), and so
+ * does "'s".
  */
-function anyOf(words: string[], how: Reading) {
-  const pattern = (set: string[]) =>
-    [...set]
-      .sort((a, b) => b.length - a.length)
-      .map((w) => fragment(w, how))
-      .join('|')
-  const spaced = words.filter((w) => !spaceless.test(w))
-  const plain = words.filter((w) => spaceless.test(w))
+const nameStart = String.raw`(?:(?<![\p{L}\p{M}\p{N}])|(?<=\p{N})|(?<=[\p{Ll}\p{M}])(?=\p{Lu}))`
+const nameEnd = String.raw`(?:['’][sS])?(?:\d+|(?![\p{L}\p{M}\p{N}])|(?<=[\p{Ll}\p{M}])(?=\p{Lu}))`
+
+/**
+ * Names as words (see `nameStart`); a name in a script without spaces
+ * anywhere it stands, but a katakana name never inside a longer katakana
+ * word ("サムスン").
+ */
+function anyOf(words: string[]) {
+  const spaced = words
+    .filter((w) => !spaceless.test(w))
+    .sort((a, b) => b.length - a.length)
+  const plain = words
+    .filter((w) => spaceless.test(w))
+    .sort((a, b) => b.length - a.length)
   const alternatives = [
     ...(spaced.length
       ? [
-          String.raw`(?<!${word})(?:${pattern(spaced)})(?:['’][sS]|\d+)?(?!${word})`
+          `${nameStart}(?:${spaced.map((w) => fragment(w)).join('|')})${nameEnd}`
         ]
       : []),
-    ...plain
-      .sort((a, b) => b.length - a.length)
-      .map(
-        (w) =>
-          (/^\p{Script=Katakana}/u.test(w) ? `(?<!${kana})` : '') +
-          fragment(w, how) +
-          (/\p{Script=Katakana}\p{M}*$/u.test(w) ? `(?!${kana})` : '')
-      )
+    ...plain.map(
+      (w) =>
+        (/^\p{Script=Katakana}/u.test(w) ? `(?<!${kana})` : '') +
+        fragment(w) +
+        (/\p{Script=Katakana}\p{M}*$/u.test(w) ? `(?!${kana})` : '')
+    )
   ]
   return alternatives.length ? new RegExp(alternatives.join('|'), 'gu') : null
 }
 
 /**
- * The person's own name with its words joined (a merge field without a
- * blank): at a capital ("SamRivera") or digits ("Sam2Rivera").
+ * The person's own name with its words run together, in any case
+ * ("samrivera", "SamRivera"; with digits between, each word has an edge).
  */
 function joinedNames(words: string[]) {
   return words
     .filter((w) => w.includes(' ') && !spaceless.test(w))
-    .map((w) => {
-      const [first, ...rest] = w.split(' ')
-      return (
-        fragment(first!, 'loose') +
-        rest
-          .map(
-            (n) => `(?:\\d+${fragment(n, 'loose')}|${fragment(n, 'capitals')})`
-          )
-          .join('')
-      )
-    })
+    .map((w) =>
+      w
+        .split(' ')
+        .map((n) => fragment(n))
+        .join('')
+    )
 }
 
 /**
- * Joined names as words (digits may follow), and a name word in a
- * hashtag at a capital ("#TeamSam"; "#TeamSamsung" stays).
+ * Names glued to other text: the joined name (see `joinedNames`) as a
+ * word, and a name word in capitals with up to three more capitals before
+ * or after it ("SAMVIP", "VIPSAM"; "SAMSUNG" and "MAXIMUM" stay).
  */
-function joinedOf(words: string[]) {
+function gluedOf(words: string[]) {
   const joined = joinedNames(words)
-  const single = words.filter((w) => !w.includes(' ') && !spaceless.test(w))
+  const single = words
+    .filter((w) => !w.includes(' ') && !spaceless.test(w))
+    .sort((a, b) => b.length - a.length)
   const alternatives = [
-    ...(joined.length
-      ? [String.raw`(?<!${word})(?:${joined.join('|')})\d*(?!${word})`]
-      : []),
+    ...(joined.length ? [`${nameStart}(?:${joined.join('|')})${nameEnd}`] : []),
     ...(single.length
       ? [
-          String.raw`#[\p{L}\p{M}\p{N}_]*?(?<=[\p{Ll}\p{N}_])(?:${single.map((w) => fragment(w, 'capitals')).join('|')})(?![\p{Ll}\p{M}])`
+          String.raw`(?<![\p{L}\p{M}])\p{Lu}{0,3}(?:${single.map((w) => fragment(w, true)).join('|')})\p{Lu}{0,3}(?![\p{L}\p{M}])`
         ]
       : [])
   ]
@@ -291,7 +289,7 @@ function insideOf(words: string[]) {
     )
   ].sort((a, b) => b.length - a.length)
   return parts.length
-    ? new RegExp(parts.map((w) => fragment(w, 'loose')).join('|'), 'gu')
+    ? new RegExp(parts.map((w) => fragment(w)).join('|'), 'gu')
     : null
 }
 
@@ -355,8 +353,6 @@ function compile(identity: InboxIdentity, options: CleanOptions): Rules {
       : []
   })
   const words = nameWords(identity.names)
-  // Only a name with an accent or ß can be read loosely.
-  const marked = words.filter((w) => /[\p{M}\u{df}]/u.test(w))
   const images = new Map<string, string>()
   const rules: Rules = {
     locals: local
@@ -366,16 +362,20 @@ function compile(identity: InboxIdentity, options: CleanOptions): Rules {
       ? new RegExp(String.raw`(?<![\p{L}\p{N}])${local}(?![\p{L}\p{N}])`, 'giu')
       : null,
     local: local ? new RegExp(`^${local}$`, 'iu') : null,
-    names: [
-      anyOf(words, 'exact'),
-      anyOf(marked, 'capitals'),
-      joinedOf(words)
-    ].filter((re): re is RegExp => re !== null),
+    names: [anyOf(words), gluedOf(words)].filter(
+      (re): re is RegExp => re !== null
+    ),
     inside: insideOf(words),
-    anyName: anyOf(words, 'loose'),
+    imageHosts: identity.imageHosts?.length
+      ? new RegExp(
+          `(?:^|\\.)(?:${identity.imageHosts
+            .map((h) => escape(h.toLowerCase()).replace(/\\\*/g, '[a-z\\d-]*'))
+            .join('|')})$`
+        )
+      : null,
     whole: words.length
       ? new RegExp(
-          `^(?:${[...words.map((w) => fragment(w, 'loose')), ...joinedNames(words)].join('|')})$`,
+          `^(?:${[...words.map((w) => fragment(w)), ...joinedNames(words)].join('|')})$`,
           'u'
         )
       : null,
@@ -705,8 +705,9 @@ export function ranges(
   // A byte that is no UTF-8 is read as Latin-1 ("Jos%E9") and also as a
   // break, so it can neither hide a name nor join one to a word ("Sam%FF"):
   // the second reading covers only the escapes and what is next to them.
-  for (const [a, b] of nearHighBytes(s))
-    views.push({ sk: skeleton(s.slice(a, b), r.check, '\u{fffd}'), from: a })
+  if (highByte.test(s))
+    for (const [a, b] of near(s, percentRuns, (m) => highByte.test(m)))
+      views.push({ sk: skeleton(s.slice(a, b), r.check, '\u{fffd}'), from: a })
   const cuts: [number, number][] = []
   for (const { sk, from } of views)
     for (const re of patterns)
@@ -723,20 +724,23 @@ export function ranges(
 const mark = /\p{M}/u
 const percentRuns = new RegExp(percents.source, 'gi')
 
-/** The parts around percent escapes of bytes that are not ASCII. */
-function nearHighBytes(s: string) {
-  const near: [number, number][] = []
-  if (!highByte.test(s)) return near
-  percentRuns.lastIndex = 0
-  for (let m; (m = percentRuns.exec(s));) {
-    if (!highByte.test(m[0])) continue
+/** The parts around what `pattern` finds (and `keep` keeps), merged. */
+function near(
+  s: string,
+  pattern: RegExp,
+  keep: (m: string) => boolean = () => true
+) {
+  const parts: [number, number][] = []
+  pattern.lastIndex = 0
+  for (let m; (m = pattern.exec(s));) {
+    if (!keep(m[0])) continue
     const a = Math.max(0, m.index - 512)
     const b = Math.min(s.length, m.index + m[0].length + 512)
-    const last = near.at(-1)
+    const last = parts.at(-1)
     if (last && a <= last[1]) last[1] = b
-    else near.push([a, b])
+    else parts.push([a, b])
   }
-  return near
+  return parts
 }
 
 function remove(s: string, patterns: (RegExp | null)[], r: Rules) {
@@ -780,7 +784,8 @@ const utf8 = new TextDecoder()
  * at its own place), as UTF-8 and as Latin-1.
  */
 export function pictureNames(ref: string, r: Rules): boolean {
-  const all = [...addressRules(r), r.localsAnyLength, r.anyName, r.inside]
+  if (drawnFor(ref, r)) return true
+  const all = [...addressRules(r), r.localsAnyLength, ...r.names, r.inside]
   if (ranges(ref, all, r).length) return true
   const plain = ref.replace(new RegExp(percents.source, 'gi'), (run) =>
     percentRun(run)
@@ -800,6 +805,31 @@ export function pictureNames(ref: string, r: Rules): boolean {
         if (ranges(text, all, r).length || ranges(bytes, all, r).length)
           return true
       }
+  return false
+}
+
+/** A query key that names one recipient: rid, uid, email_id, contact … */
+const recipientKey =
+  /^(?:rid|uid|sub|e?mail|email_?id|mi_(?:u|email|name)|(?:recipient|subscriber|contact|user|member|customer|profile|person)(?:_?id)?)$/i
+/** A value that looks like an id: six or more id characters. */
+const recipientValue = /^[\p{L}\p{N}_.@%+=:-]{6,}$/u
+
+/**
+ * Whether a picture is drawn for each recipient, so it may show them: it
+ * comes from a personalised picture service (`imageHosts`), or its query
+ * carries a recipient's id.
+ */
+function drawnFor(ref: string, r: Rules) {
+  let link: URL
+  try {
+    link = new URL(ref.trim(), 'https://image.invalid/')
+  } catch {
+    return false
+  }
+  if (r.imageHosts?.test(link.hostname.toLowerCase())) return true
+  for (const [key, value] of link.searchParams)
+    if (recipientKey.test(key.replace(/-/g, '_')) && recipientValue.test(value))
+      return true
   return false
 }
 

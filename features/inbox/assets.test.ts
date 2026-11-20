@@ -173,6 +173,33 @@ describe('keepImages', () => {
     })
   })
 
+  it('stores a picture without the text its file carries', async () => {
+    const chunk = (type: string, data: Buffer) => {
+      const length = Buffer.alloc(4)
+      length.writeUInt32BE(data.length)
+      return Buffer.concat([length, Buffer.from(type), data, Buffer.alloc(4)])
+    }
+    const named = Uint8Array.from(
+      Buffer.concat([
+        Buffer.from('89504e470d0a1a0a', 'hex'),
+        chunk('IHDR', Buffer.alloc(13)),
+        chunk('tEXt', Buffer.from('Comment\0Hi Sam Rivera')),
+        chunk('IEND', Buffer.alloc(0))
+      ])
+    )
+    const db = database()
+    const [record] = await keepImages(
+      db as unknown as Db,
+      '<img src="https://cdn.shop.test/hi.png">',
+      async () => new Uint8Array(),
+      fetcher({ 'https://cdn.shop.test/hi.png': named }),
+      later()
+    )
+    const kept = Buffer.from([...db.stored.values()][0]!)
+    expect(kept.includes('Sam')).toBe(false)
+    expect(record).toMatchObject({ state: 'stored', bytes: kept.length })
+  })
+
   it('reads cid: images from the email itself', async () => {
     const raw = [
       'From: a@shop.example',

@@ -1,6 +1,12 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { dataUri, imageRefs, maxImages, sniffImage } from './images'
+import {
+  dataUri,
+  imageRefs,
+  maxImages,
+  sniffImage,
+  stripMetadata
+} from './images'
 
 const png = Uint8Array.from(Buffer.from('89504e470d0a1a0a0000', 'hex'))
 
@@ -75,5 +81,75 @@ describe('sniffImage and dataUri', () => {
     expect(dataUri('data:image/png;base64,iVBORw0KGgo=')?.[0]).toBe(0x89)
     expect(dataUri('data:text/html;base64,PGI+')).toBeNull()
     expect(dataUri('data:image/svg+xml,<svg/>')).toBeNull()
+  })
+})
+
+describe('stripMetadata', () => {
+  const chunk = (type: string, data: Buffer) => {
+    const length = Buffer.alloc(4)
+    length.writeUInt32BE(data.length)
+    return Buffer.concat([length, Buffer.from(type), data, Buffer.alloc(4)])
+  }
+  const signature = Buffer.from('89504e470d0a1a0a', 'hex')
+
+  it('keeps no text in a PNG or a JPEG, and the picture whole', () => {
+    const picture = Buffer.concat([
+      signature,
+      chunk('IHDR', Buffer.alloc(13)),
+      chunk('tEXt', Buffer.from('Comment\0Hi Sam Rivera')),
+      chunk('iTXt', Buffer.from('Author\0\0\0\0\0Sam')),
+      chunk('IDAT', Buffer.from('pixels')),
+      chunk('IEND', Buffer.alloc(0))
+    ])
+    const png = Buffer.from(stripMetadata(Uint8Array.from(picture)))
+    expect(png.includes('Sam')).toBe(false)
+    expect(
+      png.equals(
+        Buffer.concat([
+          signature,
+          chunk('IHDR', Buffer.alloc(13)),
+          chunk('IDAT', Buffer.from('pixels')),
+          chunk('IEND', Buffer.alloc(0))
+        ])
+      )
+    ).toBe(true)
+    const segment = (marker: number, data: string) => {
+      const length = Buffer.alloc(2)
+      length.writeUInt16BE(data.length + 2)
+      return Buffer.concat([
+        Buffer.from([0xff, marker]),
+        length,
+        Buffer.from(data)
+      ])
+    }
+    const jfif = segment(0xe0, 'JFIF\0')
+    const scan = Buffer.concat([
+      segment(0xda, 'scan'),
+      Buffer.from('data Sam?'),
+      Buffer.from([0xff, 0xd9])
+    ])
+    const jpeg = Buffer.from(
+      stripMetadata(
+        Uint8Array.from(
+          Buffer.concat([
+            Buffer.from([0xff, 0xd8]),
+            jfif,
+            segment(0xe1, 'Exif\0\0Sam Rivera'),
+            segment(0xfe, 'Hi Sam'),
+            scan
+          ])
+        )
+      )
+    )
+    expect(
+      jpeg.equals(Buffer.concat([Buffer.from([0xff, 0xd8]), jfif, scan]))
+    ).toBe(true)
+    // Another format, or a broken file, stays as it is.
+    const gif = new TextEncoder().encode('GIF89a Sam')
+    expect(stripMetadata(gif)).toBe(gif)
+    const broken = Uint8Array.from(
+      Buffer.concat([signature, Buffer.from([0, 0, 9])])
+    )
+    expect(stripMetadata(broken)).toBe(broken)
   })
 })
