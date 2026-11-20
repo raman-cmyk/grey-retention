@@ -162,4 +162,172 @@ describe('the screenshot browser', () => {
     ])
     expect(JSON.stringify(log.mock.calls)).not.toMatch(/token|db\.test|sss/)
   })
+
+  // INB-002b: the same guard as the designed-section browser (DST-001).
+  it('takes only https links (and loopback for tests) as the job’s own origins', () => {
+    expect([
+      ...allowedOrigins({
+        html: 'http://db.test/sign/x.html?token=t',
+        images: [
+          { ref: 'a', url: 'https://db.test/sign/a?token=1' },
+          { ref: 'b', url: 'http://127.0.0.1:54321/sign/b?token=2' }
+        ]
+      })
+    ]).toEqual(['https://db.test', 'http://127.0.0.1:54321'])
+  })
+
+  it('never follows a redirect: an allowed link that redirects is refused, wherever it points', async () => {
+    type Handler = (route: unknown) => Promise<unknown>
+    let handler: Handler | undefined
+    const page = {
+      route: async (_: string, h: Handler) => {
+        handler = h
+      },
+      setContent: async () => {},
+      url: () => 'about:blank',
+      context: () => ({
+        newCDPSession: async () => ({
+          send: async () => ({ cssContentSize: { width: 600, height: 900 } }),
+          detach: async () => {}
+        })
+      }),
+      screenshot: async () => Buffer.from([0xff, 0xd8, 0xff])
+    }
+    const browser = {
+      newContext: async () => ({
+        newPage: async () => page,
+        close: async () => {}
+      })
+    } as unknown as Browser
+    await render(browser, job, '<p>x</p>')
+    const routed = async (
+      url: string,
+      { status = 200, fails = false, navigation = false } = {}
+    ) => {
+      let done = ''
+      const fetch = vi.fn(async () => {
+        if (fails) throw new Error('net::ERR_FAILED')
+        return { status: () => status }
+      })
+      await handler!({
+        request: () => ({
+          url: () => url,
+          isNavigationRequest: () => navigation
+        }),
+        continue: async () => {
+          done = 'continue'
+        },
+        abort: async () => {
+          done = 'abort'
+        },
+        fetch,
+        fulfill: async () => {
+          done = 'fulfill'
+        }
+      })
+      return { done, fetch }
+    }
+    const own = await routed('https://db.test/sign/a?token=1')
+    expect(own.done).toBe('fulfill')
+    expect(own.fetch).toHaveBeenCalledWith({ maxRedirects: 0, timeout: 20_000 })
+    // To another host, a private address or the next link of a chain: the
+    // browser is never told where, the answer is refused.
+    for (const status of [301, 302, 303, 307, 308])
+      expect((await routed('https://db.test/sign/r', { status })).done).toBe(
+        'abort'
+      )
+    expect((await routed('https://db.test/sign/x', { fails: true })).done).toBe(
+      'abort'
+    )
+    expect((await routed('data:image/png;base64,AAAA')).done).toBe('continue')
+    for (const url of [
+      'https://cdn.shop.test/a.png',
+      'http://169.254.169.254/latest/meta-data',
+      'http://10.0.0.1/a.png',
+      'http://db.test/sign/a',
+      'not a link'
+    ])
+      expect((await routed(url)).done).toBe('abort')
+    expect(
+      (await routed('https://db.test/sign/next', { navigation: true })).done
+    ).toBe('abort')
+  })
+
+  it('fetches the email and sends each upload without following a redirect', async () => {
+    const sectioned = {
+      ...job,
+      sections: [{ ordinal: 1, upload: 'https://db.test/upload/s1.jpg' }]
+    }
+    const moved = { ...job, job: 'j2', html: 'https://db.test/moved.html' }
+    const inits: Record<string, RequestInit | undefined> = {}
+    const reports: unknown[] = []
+    let handedOut = false
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.endsWith('/api/internal/inbox/screenshots')) {
+          if (init?.method === 'POST') {
+            reports.push(JSON.parse(String(init.body)))
+            return new Response(JSON.stringify({ ok: true }))
+          }
+          const jobs = handedOut ? [] : [sectioned, moved]
+          handedOut = true
+          return new Response(JSON.stringify({ jobs }))
+        }
+        inits[`${init?.method ?? 'GET'} ${url}`] = init
+        // A stored email that redirects: fetch refuses it (redirect: error).
+        if (url === moved.html)
+          throw new TypeError('fetch failed: unexpected redirect')
+        if (url === job.html) return new Response('<p>Hello</p>')
+        return new Response(null, { status: 200 })
+      })
+    )
+    const page = {
+      route: async () => {},
+      setContent: async () => {},
+      url: () => 'about:blank',
+      context: () => ({
+        newCDPSession: async () => ({
+          send: async () => ({ cssContentSize: { width: 600, height: 900 } }),
+          detach: async () => {}
+        })
+      }),
+      screenshot: async () => Buffer.from([0xff, 0xd8, 0xff]),
+      locator: () => ({
+        all: async () => [
+          { boundingBox: async () => ({ x: 0, y: 0, width: 600, height: 120 }) }
+        ]
+      })
+    }
+    const browser = {
+      newContext: async () => ({
+        newPage: async () => page,
+        close: async () => {}
+      })
+    } as unknown as Browser
+    const counts = await run({
+      base: 'https://app.test',
+      secret: 's'.repeat(40),
+      browser,
+      log: () => {}
+    })
+    expect(counts).toEqual({ taken: 1, failed: 1 })
+    for (const key of [
+      `GET ${job.html}`,
+      `PUT ${job.upload}`,
+      'PUT https://db.test/upload/s1.jpg',
+      `GET ${moved.html}`
+    ])
+      expect(inits[key]).toMatchObject({ redirect: 'error' })
+    expect(reports).toEqual([
+      {
+        job: 'j1',
+        lease: 'l1',
+        width: 600,
+        height: 900,
+        boxes: [{ ordinal: 1, top: 0, height: 120 }]
+      },
+      { job: 'j2', lease: 'l1', failure: 'html_unreadable' }
+    ])
+  })
 })

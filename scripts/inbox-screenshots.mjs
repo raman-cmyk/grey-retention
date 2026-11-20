@@ -12,8 +12,14 @@
  * request and every navigation is blocked), uploads a full-height JPEG
  * through the job's signed upload link and reports the size back. It
  * prints counts only: never a link, never the secret.
+ *
+ * INB-002b: like the designed-section browser (DST-001), it never follows
+ * a redirect: an allowed address that redirects is refused, so nothing
+ * reaches another host or a private address through it; the email and the
+ * uploads are fetched the same way.
  */
 import { pathToFileURL } from 'node:url'
+import { loadableOrigins } from './section-render.mjs'
 
 export const width = 600
 export const maxWidth = 2000
@@ -48,12 +54,20 @@ export function prepareHtml(html, images) {
   return out
 }
 
-/** The only origins a job may load from: its own signed links. */
+/**
+ * The only origins a job may load from: its own signed links, https only
+ * (loopback http for tests), as the designed-section browser allows.
+ */
 export function allowedOrigins(job) {
-  return new Set(
+  return loadableOrigins(
     [job.html, ...job.images.map((i) => i.url)].map((u) => new URL(u).origin)
   )
 }
+
+/** A redirect is an error: the address asked for is the one answered. */
+const once = { redirect: 'error' }
+/** How long one picture or style may take to load. */
+const loadMs = 20_000
 
 /** The whole page's size, also when the email's CSS says height:100%. */
 async function contentSize(page) {
@@ -122,7 +136,7 @@ export async function render(
   })
   try {
     const page = await context.newPage()
-    await page.route('**/*', (route) => {
+    await page.route('**/*', async (route) => {
       const request = route.request()
       const url = request.url()
       // The page itself is set below; it may never go anywhere else.
@@ -134,7 +148,21 @@ export async function render(
       } catch {
         // An unreadable link is blocked like any other.
       }
-      return origins.has(origin) ? route.continue() : route.abort()
+      if (!origins.has(origin)) return route.abort()
+      // The browser would follow a redirect without asking again (the
+      // route sees only the first address): fetch it here, never following
+      // one, and refuse an answer that redirects.
+      try {
+        const response = await route.fetch({
+          maxRedirects: 0,
+          timeout: loadMs
+        })
+        if (response.status() >= 300 && response.status() < 400)
+          return route.abort()
+        return route.fulfill({ response })
+      } catch {
+        return route.abort()
+      }
     })
     await page.setContent(html, { waitUntil: 'load', timeout: 30_000 })
     if (page.url() !== 'about:blank') throw new Error('navigated')
@@ -192,6 +220,7 @@ export async function run({ base, secret, browser, log = console.log }) {
       let html
       try {
         const got = await fetch(job.html, {
+          ...once,
           signal: AbortSignal.timeout(20_000)
         })
         if (!got.ok) throw new Error('html')
@@ -210,6 +239,7 @@ export async function run({ base, secret, browser, log = console.log }) {
         continue
       }
       const uploaded = await fetch(job.upload, {
+        ...once,
         method: 'PUT',
         headers: { 'content-type': 'image/jpeg', 'x-upsert': 'true' },
         body: shot.image,
@@ -228,6 +258,7 @@ export async function run({ base, secret, browser, log = console.log }) {
         const target = job.sections.find((s) => s.ordinal === crop.ordinal)
         const put = target
           ? await fetch(target.upload, {
+              ...once,
               method: 'PUT',
               headers: { 'content-type': 'image/jpeg', 'x-upsert': 'true' },
               body: crop.image,
