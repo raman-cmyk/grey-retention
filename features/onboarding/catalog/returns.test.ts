@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { StoreEvent } from '@/lib/providers/klaviyo/catalog'
 import { salesFrom } from './clean'
-import { matchReturns, orderIds } from './returns'
+import { matchReturns, netReport, orderIds } from './returns'
 
 const now = Date.parse('2026-11-11T12:00:00Z')
 const day = 86_400_000
@@ -18,10 +18,12 @@ const order = (
   id: string,
   days: number,
   value: number,
-  lines: ReturnType<typeof line>[]
+  lines: ReturnType<typeof line>[],
+  credit: Partial<Pick<StoreEvent, 'messages' | 'flows'>> = {}
 ): StoreEvent => ({
   at: at(days),
-  props: { $event_id: id, $value: value, $extra: { line_items: lines } }
+  props: { $event_id: id, $value: value, $extra: { line_items: lines } },
+  ...credit
 })
 const event = (days: number, props: Record<string, unknown>): StoreEvent => ({
   at: at(days),
@@ -116,5 +118,69 @@ describe('matchReturns', () => {
       'R-1'
     ])
     expect(orderIds({ $event_id: '', OrderId: { id: 1 } })).toEqual([])
+  })
+})
+
+describe('netReport', () => {
+  const row = (
+    key: string,
+    id: string,
+    conversions: number,
+    value: number
+  ) => ({
+    groupings: { [key]: id },
+    statistics: {
+      recipients: 1000,
+      conversions,
+      conversion_value: value,
+      revenue_per_recipient: value / 1000
+    }
+  })
+  const email = order('A1', 3, 400, [line(1, 1)], { messages: ['Msg1'] })
+  const partly = order('B1', 3, 200, [line(1, 1)], { messages: ['Msg1'] })
+  const flowOrder = order('C1', 30, 300, [line(1, 1)], { flows: ['Flw1'] })
+  const old = order('D1', 120, 100, [line(1, 1)], { flows: ['Flw1'] })
+  const returns = matchReturns(
+    [email, partly, flowOrder, old],
+    [event(1, { $event_id: 'A1' }), event(1, { $event_id: 'D1' })],
+    [
+      event(1, { OrderId: 'B1', $value: 50 }),
+      event(1, { $event_id: 'C1', $value: 300 })
+    ]
+  )
+
+  it('takes each order off the email credited with it, and its revenue per recipient', () => {
+    const [netted, other] = netReport(
+      [
+        row('campaign_message_id', 'Msg1', 10, 1000),
+        row('campaign_message_id', 'Msg2', 5, 500)
+      ],
+      returns,
+      'campaign_message_id',
+      now - 365 * day
+    )
+    expect(netted!.statistics).toEqual({
+      recipients: 1000,
+      conversions: 9,
+      conversion_value: 550,
+      revenue_per_recipient: 0.55
+    })
+    expect(other!.statistics.conversions).toBe(5)
+  })
+
+  it("takes a flow's orders off its rows in turn, never below 0, only within the report's days", () => {
+    const rows = netReport(
+      [row('flow_id', 'Flw1', 1, 120), row('flow_id', 'Flw1', 4, 500)],
+      returns,
+      'flow_id',
+      now - 90 * day
+    )
+    // The 120-day-old order was not in the 90 days: only the $300 one.
+    expect(
+      rows.map((r) => [r.statistics.conversions, r.statistics.conversion_value])
+    ).toEqual([
+      [0, 0],
+      [4, 320]
+    ])
   })
 })

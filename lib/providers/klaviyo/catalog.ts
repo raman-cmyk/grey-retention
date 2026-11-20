@@ -50,6 +50,12 @@ export type StoreEvent = {
   /** ISO time of the event. */
   at: string
   props: Record<string, unknown>
+  /**
+   * ONB-ORD: the campaign messages and flows Klaviyo credits with this
+   * order (only when its attributions were asked for).
+   */
+  messages?: string[]
+  flows?: string[]
 }
 
 export type PagedRead<T> = {
@@ -355,42 +361,96 @@ export async function findStoreMetrics(
 
 const eventRecord = z.object({
   type: z.literal('event'),
+  id: z.string().nullish(),
   attributes: z.object({
     datetime: z.iso.datetime({ offset: true }),
     // Klaviyo may send no properties: the event then says nothing.
     event_properties: z.record(z.string(), z.unknown()).nullish()
-  })
+  }),
+  relationships: z
+    .object({
+      attributions: z
+        .object({ data: z.array(z.object({ id: z.string() })).nullish() })
+        .nullish()
+    })
+    .nullish()
 })
+const related = z
+  .object({ data: z.object({ id: z.string() }).nullish() })
+  .nullish()
+/** Whom Klaviyo credits with an event (`include=attributions`). */
+const attributionRecord = z.object({
+  type: z.literal('attribution'),
+  id: z.string(),
+  relationships: z
+    .object({ event: related, 'campaign-message': related, flow: related })
+    .partial()
+    .nullish()
+})
+const kid = (id: string | undefined) =>
+  id && /^[A-Za-z0-9]{1,64}$/.test(id) ? [id] : []
 
-/** One metric's events since `since`, newest first. */
+/**
+ * One metric's events since `since`, newest first. With `attributions`,
+ * each event names the campaign messages and flows Klaviyo credits with
+ * it; `until` asks for no next page once the events read are enough.
+ */
 export function readEvents(
   client: KlaviyoClient,
   metricId: string,
   since: Date,
   more: MorePages,
-  maxPages = maxEventPages
+  maxPages = maxEventPages,
+  options: {
+    attributions?: boolean
+    until?: (read: StoreEvent[]) => boolean
+  } = {}
 ): Promise<PagedRead<StoreEvent>> {
+  const read: StoreEvent[] = []
   return readPages(
     client,
-    eventsPath(metricId, since),
+    eventsPath(metricId, since) +
+      (options.attributions ? '&include=attributions' : ''),
     'events:read',
     maxPages,
-    more,
+    () => !options.until?.(read) && more(),
     (body) => {
       let skipped = 0
+      const credits = new Map<string, z.infer<typeof attributionRecord>>()
+      for (const raw of options.attributions ? (body.included ?? []) : []) {
+        const a = attributionRecord.safeParse(raw)
+        if (a.success) credits.set(a.data.id, a.data)
+      }
       const records = body.data.flatMap((raw) => {
         const e = eventRecord.safeParse(raw)
         if (!e.success) {
           skipped++
           return []
         }
-        return [
-          {
-            at: new Date(e.data.attributes.datetime).toISOString(),
-            props: e.data.attributes.event_properties ?? {}
-          }
-        ]
+        const event: StoreEvent = {
+          at: new Date(e.data.attributes.datetime).toISOString(),
+          props: e.data.attributes.event_properties ?? {}
+        }
+        if (options.attributions) {
+          // Its attributions: those it lists, and those that name it.
+          const own = [...credits.values()].filter(
+            (a) =>
+              (e.data.id && a.relationships?.event?.data?.id === e.data.id) ||
+              e.data.relationships?.attributions?.data?.some(
+                (r) => r.id === a.id
+              )
+          )
+          const ids = (name: 'campaign-message' | 'flow') => [
+            ...new Set(
+              own.flatMap((a) => kid(a.relationships?.[name]?.data?.id))
+            )
+          ]
+          event.messages = ids('campaign-message')
+          event.flows = ids('flow')
+        }
+        return [event]
       })
+      read.push(...records)
       return { records, skipped }
     }
   )
