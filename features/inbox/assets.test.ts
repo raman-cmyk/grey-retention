@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
+import { logger } from '@/lib/logger'
 import type { ImageFetcher } from '@/lib/providers/image-fetch'
 import { keepImages, keepInboxImages } from './assets'
 import { sampleImageFetcher } from './image-fetch'
@@ -465,6 +466,27 @@ describe('keepInboxImages', () => {
     ).toMatchObject({
       error_code: 'stored_copy_missing'
     })
+  })
+
+  it('records no sections for HTML too deep to read, logs why and goes on', async () => {
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+    const db = database({
+      jobs: ['m1'],
+      messages: {
+        m1: {
+          html: `${'<div>'.repeat(40_000)}<img src="https://mail.northwind.example/hero.png">`
+        }
+      }
+    })
+    const run = await sweep(db)
+    expect(run).toEqual({ emails: 1, stored: 1, failed: 0, retried: 0 })
+    expect(
+      db.calls.find((c) => c.name === 'record_inbox_sections')!.args
+    ).toMatchObject({ marked_path: null, sections: [] })
+    expect(warn).toHaveBeenCalledWith('Inbox sections refused', {
+      code: 'too_deep'
+    })
+    warn.mockRestore()
   })
 
   it('takes no job once its time is up', async () => {

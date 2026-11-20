@@ -1,8 +1,13 @@
+import { serializeOuter, type DefaultTreeAdapterTypes as T } from 'parse5'
 import {
-  parse,
-  serializeOuter,
-  type DefaultTreeAdapterTypes as T
-} from 'parse5'
+  checkTime,
+  guardedParse,
+  guardFor,
+  ParseRefused,
+  type Guard,
+  type GuardOptions,
+  type ParseRefusal
+} from './parse-guard'
 
 /**
  * Cuts an email into sections from its HTML structure (INB-003, VISION
@@ -36,6 +41,11 @@ export type SectionedEmail = {
   preheader: string | null
   /** Share of text sections (0..1), or null without sections. */
   textRatio: number | null
+  /**
+   * INB-SEC: why the HTML was not read (too large, too deep, too slow…);
+   * the email then has no sections.
+   */
+  refused?: ParseRefusal | 'unreadable'
 }
 
 type Node = T.ChildNode | T.ParentNode
@@ -193,12 +203,14 @@ function column(el: T.Element) {
  * The content column: the outermost 500–760px container that holds most of
  * the email. MJML and similar builders stack one 600px box per section
  * instead; then all of those boxes, in order, are the content. The body
- * when there is neither.
+ * when there is neither. Each level weighs its own boxes again (columns
+ * nested in columns), so the deadline is read at each.
  */
-function contentRoots(body: T.Element): T.Element[] {
+function contentRoots(body: T.Element, g: Guard): T.Element[] {
   const total = weight(body)
   let best: T.Element[] | null = null
   const visit = (el: T.Element) => {
+    checkTime(g, 'column')
     if (best || hidden(el)) return false
     const stacked = elements(el).filter(column)
     if (
@@ -353,13 +365,22 @@ const proseTags = new Set([
  * Without a layout table, consecutive plain paragraphs stay one text
  * section (a letter is one block, not one block per paragraph).
  */
-export function sectionEmail(html: string): SectionedEmail {
+export function sectionEmail(
+  html: string,
+  guard?: GuardOptions
+): SectionedEmail {
   try {
-    return sectioned(html)
-  } catch {
-    // A tree too odd to read (for example nested thousands deep) is kept
-    // whole: the email simply has no sections.
-    return { sections: [], markedHtml: html, preheader: null, textRatio: null }
+    return sectioned(html, guardFor(guard))
+  } catch (error) {
+    // HTML the parser would be slow on (INB-SEC), or a tree too odd to
+    // read, is kept whole: the email simply has no sections, and says why.
+    return {
+      sections: [],
+      markedHtml: html,
+      preheader: null,
+      textRatio: null,
+      refused: error instanceof ParseRefused ? error.code : 'unreadable'
+    }
   }
 }
 
@@ -398,8 +419,13 @@ function marked(html: string, groups: { rows: T.Element[] }[]) {
   return parts.join('')
 }
 
-function sectioned(html: string): SectionedEmail {
-  const doc = parse(html.slice(0, 2_000_000), { sourceCodeLocationInfo: true })
+function sectioned(html: string, g: Guard): SectionedEmail {
+  // Longer HTML is cut (its sections are in the part read), then read
+  // behind the parse guard. The deadline is read while the content column
+  // is found and once the rows are; what follows is one pass over them.
+  const doc = guardedParse(html.slice(0, g.limits.html), g, {
+    sourceCodeLocationInfo: true
+  })
   let body: T.Element | null = null
   walk(doc, (el) => {
     if (el.tagName === 'body') {
@@ -410,7 +436,7 @@ function sectioned(html: string): SectionedEmail {
   if (!body)
     return { sections: [], markedHtml: html, preheader: null, textRatio: null }
   const groups: { rows: T.Element[]; prose: boolean }[] = []
-  for (const root of contentRoots(body))
+  for (const root of contentRoots(body, g))
     for (const row of rowsOf(root)) {
       const prose =
         root.tagName !== 'table' &&
@@ -421,6 +447,7 @@ function sectioned(html: string): SectionedEmail {
       else groups.push({ rows: [row], prose })
     }
   const kept = groups.slice(0, maxSections)
+  checkTime(g, 'walk')
   const sections = kept.map((g, i) => sectionOf(g.rows, i + 1))
   return {
     sections,

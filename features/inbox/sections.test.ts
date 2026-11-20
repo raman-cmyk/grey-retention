@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { maxSections, sectionEmail } from './sections'
 
@@ -230,5 +231,98 @@ describe('sectionEmail', () => {
     sectionEmail('<table width="600"><tr><td>'.repeat(5_000))
     sectionEmail(`<div>${'<p>x</p>'.repeat(50_000)}</div>`)
     expect(Date.now() - started).toBeLessThan(5_000)
+  })
+})
+
+describe('sectionEmail behind the parse guard (INB-SEC)', () => {
+  const fingerprint = (html: string) =>
+    createHash('sha256')
+      .update(JSON.stringify(sectionEmail(html)))
+      .digest('hex')
+
+  it('sections ordinary newsletters exactly as before', () => {
+    const many = `<table width="600">${Array.from(
+      { length: 60 },
+      (_, i) => `<tr><td>Row ${i}</td></tr>`
+    ).join('')}</table>`
+    // Taken from sectionEmail before the guard existed.
+    expect(
+      Object.fromEntries(
+        Object.entries({ klaviyo, mailchimp, mjml, divs, letter, many }).map(
+          ([name, html]) => [name, fingerprint(html).slice(0, 16)]
+        )
+      )
+    ).toEqual({
+      klaviyo: '4d2317e5c5d343c0',
+      mailchimp: 'd2ce7ff8fcd512dd',
+      mjml: 'b70836cfa2c1b639',
+      divs: '02f6a723d72904e7',
+      letter: 'ee86cc91950cdf0f',
+      many: '3e219f549ef66be6'
+    })
+  })
+
+  it('refuses, fast, HTML the parser would be slow on, and says why', () => {
+    for (const [html, refused] of [
+      ['<div>'.repeat(100_000), 'too_many_tags'],
+      ['<div>'.repeat(40_000), 'too_deep'],
+      ['<div/>'.repeat(40_000), 'too_deep'],
+      [
+        `<p${Array.from({ length: 999 }, (_, i) => ` xx${i}=""`).join('')}>`.repeat(
+          665
+        ),
+        'attribute_flood'
+      ],
+      [
+        Array.from({ length: 20_000 }, (_, i) => `<body a${i}>`).join(''),
+        'merged_attributes'
+      ],
+      [`<p>${'S<!---->'.repeat(60_000)}</p>`, 'too_many_tags']
+    ] as const) {
+      const started = Date.now()
+      expect(sectionEmail(html)).toEqual({
+        sections: [],
+        markedHtml: html,
+        preheader: null,
+        textRatio: null,
+        refused
+      })
+      expect(Date.now() - started, refused).toBeLessThan(1_500)
+    }
+  })
+
+  it('reads columns nested in columns in time', () => {
+    // Each level is a 600px box under 60% of the words: every level is
+    // weighed again, so the deadline is read at each.
+    const depth = 199
+    const words = (n: number) => 'linen '.repeat(n)
+    const html = `<html><body><p>${words(66_000)}</p>${'<div style="width:600px">'.repeat(depth)}${words(96_000)}${'</div>'.repeat(depth)}</body></html>`
+    const started = Date.now()
+    sectionEmail(html)
+    expect(Date.now() - started).toBeLessThan(4_500)
+  })
+
+  it('reads a huge flat email in time', () => {
+    const started = Date.now()
+    const flat = sectionEmail(
+      `<div>${'<p>Linen for long days.</p>'.repeat(24_000)}</div>`
+    )
+    expect(flat.refused).toBeUndefined()
+    expect(flat.sections).toHaveLength(1)
+    expect(Date.now() - started).toBeLessThan(5_000)
+  })
+
+  it('stops at the deadline', () => {
+    expect(sectionEmail(klaviyo, { limits: { ms: -1 } }).refused).toBe(
+      'out_of_time'
+    )
+    // Each check alone stops it: a clock that has run out there only.
+    for (const check of ['scan', 'element', 'column', 'walk'])
+      expect(
+        sectionEmail(klaviyo, {
+          clock: (at) => (at === check ? Infinity : 0)
+        }).refused,
+        check
+      ).toBe('out_of_time')
   })
 })

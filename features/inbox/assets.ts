@@ -201,6 +201,9 @@ export async function keepSections(
   htmlPath: string
 ) {
   const cut = sectionEmail(html)
+  // INB-SEC: HTML too large, deep or slow to read gets no sections; the
+  // email goes on (images, screenshot, labels) and the reason is logged.
+  if (cut.refused) logger.warn('Inbox sections refused', { code: cut.refused })
   let markedPath: string | null = null
   if (cut.sections.length) {
     const mailbox = htmlPath.slice(0, htmlPath.indexOf('/'))

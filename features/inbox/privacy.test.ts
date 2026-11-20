@@ -523,7 +523,7 @@ describe('cleanEmail', () => {
   it('refuses HTML over each limit', () => {
     expect(cleanEmailHtml(klaviyo, me)).not.toBeNull()
     for (const limits of [
-      { htmlMs: -1 },
+      { ms: -1 },
       { tags: 5 },
       { html: 100 },
       { attributeWork: 3 },
@@ -565,7 +565,7 @@ describe('cleanEmail', () => {
       expect(
         cleanEmailHtml(html, me, {
           clock,
-          limits: { htmlMs: Math.round(both * 0.75) }
+          limits: { ms: Math.round(both * 0.75) }
         }),
         html.slice(0, 20)
       ).toBeNull()
@@ -1000,7 +1000,7 @@ describe('what the fifth review found', () => {
     // the clock as it goes, a short one fits in the same time.
     let ticks = 0
     const clock = () => ticks++
-    const limits = { htmlMs: 30 }
+    const limits = { ms: 30 }
     expect(cleanEmailHtml('<p>linen</p>', me, { clock, limits })).not.toBeNull()
     ticks = 0
     expect(
@@ -1170,7 +1170,7 @@ describe('what the sixth review found', () => {
     expect(
       cleanEmailHtml(`<p>${'%E9'.repeat(200_000)}</p>`, me, {
         clock,
-        limits: { htmlMs: 30 }
+        limits: { ms: 30 }
       })
     ).toBeNull()
     // In real time: a million characters of bytes that are no UTF-8.
