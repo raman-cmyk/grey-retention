@@ -276,6 +276,9 @@ const metricRecord = z.object({
 export type StoreMetrics = {
   placedOrder: string | null
   viewedProduct: string | null
+  /** ONB-ORD: Cancelled (or Canceled) Order; null when the store has none. */
+  cancelledOrder: string | null
+  refundedOrder: string | null
   /** Klaviyo's own Clicked Email metric (a campaign's link clicks, LRN-001). */
   clickedEmail: string | null
   /** False when not every page of metrics was read. */
@@ -329,13 +332,16 @@ export async function findStoreMetrics(
         ? storePlatforms.length
         : storePlatforms.length + 1
   }
-  const pick = (name: string) =>
+  const pick = (...names: string[]) =>
     read.records
-      .filter((m) => m.attributes.name === name)
+      .filter((m) => names.includes(m.attributes.name))
       .sort((a, b) => rank(a) - rank(b))[0]?.id ?? null
   return {
     placedOrder: pick('Placed Order'),
     viewedProduct: pick('Viewed Product'),
+    // Shopify's name, and the one Klaviyo's guide for other stores uses.
+    cancelledOrder: pick('Cancelled Order', 'Canceled Order'),
+    refundedOrder: pick('Refunded Order'),
     // Klaviyo's own Clicked Email, never one another integration sends.
     clickedEmail:
       read.records.find(
@@ -388,6 +394,45 @@ export function readEvents(
       return { records, skipped }
     }
   )
+}
+
+export type OrderReturnsRead = {
+  cancels: PagedRead<StoreEvent>
+  refunds: PagedRead<StoreEvent>
+}
+
+/**
+ * ONB-ORD: the store's Cancelled and Refunded Order events since `since`,
+ * each within the events' page cap. A store without one of the metrics has
+ * none of them (not an error). Klaviyo refusing one of the reads (a query
+ * or an answer it does not take) leaves it unread, so the read is not
+ * whole; its pace, a bad key or a missing scope still throw.
+ */
+export async function readOrderReturns(
+  client: KlaviyoClient,
+  metrics: Pick<StoreMetrics, 'cancelledOrder' | 'refundedOrder'>,
+  since: Date,
+  more: MorePages
+): Promise<OrderReturnsRead> {
+  const one = async (metricId: string | null) => {
+    const unread = { records: [], complete: false, skipped: 0 }
+    if (!metricId) return { ...unread, complete: true }
+    if (!more()) return unread
+    try {
+      return await readEvents(client, metricId, since, more)
+    } catch (error) {
+      if (
+        error instanceof KlaviyoError &&
+        ['rejected', 'invalid_response'].includes(error.kind)
+      )
+        return unread
+      throw error
+    }
+  }
+  return {
+    cancels: await one(metrics.cancelledOrder),
+    refunds: await one(metrics.refundedOrder)
+  }
 }
 
 const accountLocale = z.object({
