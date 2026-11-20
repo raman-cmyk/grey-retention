@@ -181,6 +181,29 @@ test('UI-LRNb staff see what GROS learned without the owner’s buttons', async 
   ).toHaveCount(0)
 })
 
+test('UI-LRNc on a laptop each rule keeps Pin and Remove on its own line', async ({
+  page
+}, info) => {
+  test.skip(info.project.name.startsWith('mobile'), 'Sets its own viewport')
+  await page.setViewportSize({ width: 1280, height: 800 })
+  const rule = unique('Open with the newest arrival and one clear reason')
+  await workspaceWithRules(page, [{ kind: 'do', rule }])
+  await page.goto('/learned')
+  const words = page
+    .getByRole('region', { name: 'Do', exact: true })
+    .getByText(rule, { exact: true })
+  const remove = page.getByRole('button', {
+    name: `Remove: ${rule}`,
+    exact: true
+  })
+  const text = (await words.boundingBox())!
+  const button = (await remove.boundingBox())!
+  // Beside the rule, not under it (a phone puts it under the words).
+  expect(button.x).toBeGreaterThanOrEqual(text.x + text.width)
+  expect(button.y).toBeLessThan(text.y + text.height)
+  expect(button.y + button.height).toBeGreaterThan(text.y)
+})
+
 test('UI-LRNb Learned fits a 375 px phone: no rules yet, then Do and Avoid', async ({
   page
 }, info) => {
