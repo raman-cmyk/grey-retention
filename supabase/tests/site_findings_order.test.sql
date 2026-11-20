@@ -1,11 +1,12 @@
 begin;
-select plan(24);
+select plan(39);
 
 -- ONB-SITEb: a site read that finishes after a newer one. Workspace 101
 -- reads cedar-lane.example, workspace 102 north-studio.example (the seed's
--- synthetic brands). Each read is started at its own time (its age), and
--- for each kind of page the newest read of it wins, whatever order the
--- reads finish in.
+-- synthetic brands, each its saved website). Each read is asked for at its
+-- own time (its age); for each kind of page the newest read of it wins,
+-- whatever order the reads finish in, and a read of a website the brand no
+-- longer has never makes its findings current.
 create function pg_temp.job(tenant text, key text, domain text, age interval) returns uuid language sql as $$
   insert into public.job_runs(tenant_id,kind,idempotency_key,input,created_by,created_at)
     values (tenant::uuid,'brand.read_site',key,jsonb_build_object('domain',domain),
@@ -160,6 +161,115 @@ select is(pg_temp.current('00000000-0000-4000-8000-000000000102'),
 select is((select count(*)::int from public.brand_findings where tenant_id = '00000000-0000-4000-8000-000000000102'
     and source = 'site' and superseded_at is null and run_id = current_setting('test.t1')::uuid),1,
   'the older read keeps only the page the newer one did not read');
+
+-- A newer finished read that recorded no page at all, or whose job holds
+-- no pages, takes nothing.
+select set_config('test.x0',pg_temp.job('00000000-0000-4000-8000-000000000102','brand.read_site:order:x0','north-studio.example','9 minutes')::text,true);
+select set_config('test.x1',pg_temp.job('00000000-0000-4000-8000-000000000102','brand.read_site:order:x1','north-studio.example','8 minutes')::text,true);
+select set_config('test.x2',pg_temp.job('00000000-0000-4000-8000-000000000102','brand.read_site:order:x2','north-studio.example','7 minutes')::text,true);
+select pg_temp.lease(current_setting(x)::uuid) from unnest(array['test.x0','test.x1']) x;
+update public.job_runs set status = 'succeeded', checkpoint = '{"findings": 0}' where id = current_setting('test.x2')::uuid;
+set local role service_role;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+select is(pg_temp.record(current_setting('test.x1')::uuid,'[]','[]'),'{"pages": 0, "findings": 0}'::jsonb,
+  'a newer read is recorded with no page at all');
+select is(pg_temp.record(current_setting('test.x0')::uuid, jsonb_build_array(
+    pg_temp.fd('north-studio.example','home','tone','Calm and kind.')),
+  pg_temp.pages('north-studio.example','home')),'{"pages": 1, "findings": 1}'::jsonb,
+  'an older read finishes after it, and after one whose job holds no pages');
+reset role;
+select is((select statement from public.brand_findings where run_id = current_setting('test.x0')::uuid and superseded_at is null),
+  'Calm and kind.','neither of them takes its home page');
+
+-- The website changes. In order: the new website's read replaces every
+-- finding of the old one, from the pages it did not read too.
+select set_config('test.w0',pg_temp.job('00000000-0000-4000-8000-000000000101','brand.read_site:order:w0','cedar-lane.example','8 minutes')::text,true);
+-- The old website's read of the day, which failed.
+select set_config('test.wa',pg_temp.job('00000000-0000-4000-8000-000000000101',
+  'brand.read_site:cedar-lane.example:'||to_char(now() at time zone 'UTC','YYYY-MM-DD'),'cedar-lane.example','7 minutes')::text,true);
+update public.job_runs set status = 'failed', attempt = 4 where id = current_setting('test.wa')::uuid;
+update public.brand_profiles set domain = 'cedar-lane-two.example' where tenant_id = '00000000-0000-4000-8000-000000000101';
+select set_config('test.w1',pg_temp.job('00000000-0000-4000-8000-000000000101','brand.read_site:order:w1','cedar-lane-two.example','5 minutes')::text,true);
+select pg_temp.lease(current_setting(x)::uuid) from unnest(array['test.w0','test.w1']) x;
+set local role service_role;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+select is(pg_temp.record(current_setting('test.w1')::uuid, jsonb_build_array(
+    pg_temp.fd('cedar-lane-two.example','home','tone','Bright and quick.')),
+  pg_temp.pages('cedar-lane-two.example','home')),'{"pages": 1, "findings": 1}'::jsonb,'the new website''s read');
+reset role;
+select is(pg_temp.current('00000000-0000-4000-8000-000000000101'),'home: Bright and quick.',
+  'it replaces every finding of the old website, its about, returns and shipping pages too');
+-- Late: a read of the old website finishing after it.
+set local role service_role;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+select is(pg_temp.record(current_setting('test.w0')::uuid, jsonb_build_array(
+    pg_temp.fd('cedar-lane.example','faq','contact','Write to help@cedar-lane.example.'),
+    pg_temp.fd('cedar-lane.example','shipping','shipping','We ship from Leeds.')),
+  pg_temp.pages('cedar-lane.example','faq','shipping')),'{"pages": 2, "findings": 2}'::jsonb,
+  'a late read of the old website is recorded');
+reset role;
+select is(pg_temp.current('00000000-0000-4000-8000-000000000101'),'home: Bright and quick.',
+  'it replaces nothing of the website saved now');
+select is((select count(*)::int from public.brand_findings where run_id = current_setting('test.w0')::uuid and superseded_at is null),0,
+  'and its own findings are all kept, already replaced');
+-- Back to the first website the same day: its failed read is asked for
+-- again, keeping its row and so its first time, older than the other
+-- website's read.
+update public.brand_profiles set domain = 'cedar-lane.example' where tenant_id = '00000000-0000-4000-8000-000000000101';
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select is(public.start_site_reading('00000000-0000-4000-8000-000000000101')::text,current_setting('test.wa'),
+  'the first website''s read of the day is asked for again');
+reset role;
+select is((select status||'/'||(created_at < (select created_at from public.job_runs where id = current_setting('test.w1')::uuid))
+    from public.job_runs where id = current_setting('test.wa')::uuid),'queued/true',
+  'queued again, still older than the other website''s read');
+select pg_temp.lease(current_setting('test.wa')::uuid);
+set local role service_role;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+select is(pg_temp.record(current_setting('test.wa')::uuid, jsonb_build_array(
+    pg_temp.fd('cedar-lane.example','home','tone','Warm and calm.'),
+    pg_temp.fd('cedar-lane.example','about','offering','Everyday layers.')),
+  pg_temp.pages('cedar-lane.example','home','about')),'{"pages": 2, "findings": 2}'::jsonb,'it finishes');
+reset role;
+select is(pg_temp.current('00000000-0000-4000-8000-000000000101'),'about: Everyday layers. | home: Warm and calm.',
+  'its findings are current: the other website''s newer read takes none of its pages');
+select is((select count(*)::int from public.brand_findings where run_id = current_setting('test.w1')::uuid and superseded_at is null),0,
+  'and the other website''s findings are replaced');
+
+-- One pair of reads, finished in both orders: workspace 101 finishes the
+-- newer one first, workspace 102 the older one first. Earlier findings
+-- are cleared, so only the pair is compared.
+update public.brand_findings set superseded_at = now() where source = 'site' and superseded_at is null
+  and tenant_id in ('00000000-0000-4000-8000-000000000101','00000000-0000-4000-8000-000000000102');
+create function pg_temp.older(host text) returns jsonb language sql as $$
+  select jsonb_build_array(pg_temp.fd(host,'faq','contact','Call us any weekday.'),
+    pg_temp.fd(host,'product','offering','Hand-made vases.'))
+$$;
+create function pg_temp.newer(host text) returns jsonb language sql as $$
+  select jsonb_build_array(pg_temp.fd(host,'faq','contact','Write to us any time.'),
+    pg_temp.fd(host,'about','audience','For quiet homes.'))
+$$;
+select set_config('test.p1a',pg_temp.job('00000000-0000-4000-8000-000000000101','brand.read_site:order:p1','cedar-lane.example','2 minutes')::text,true);
+select set_config('test.p2a',pg_temp.job('00000000-0000-4000-8000-000000000101','brand.read_site:order:p2','cedar-lane.example','1 minute')::text,true);
+select set_config('test.p1b',pg_temp.job('00000000-0000-4000-8000-000000000102','brand.read_site:order:p1','north-studio.example','2 minutes')::text,true);
+select set_config('test.p2b',pg_temp.job('00000000-0000-4000-8000-000000000102','brand.read_site:order:p2','north-studio.example','1 minute')::text,true);
+select pg_temp.lease(current_setting(x)::uuid) from unnest(array['test.p1a','test.p2a','test.p1b','test.p2b']) x;
+set local role service_role;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+select pg_temp.record(current_setting('test.p2a')::uuid,pg_temp.newer('cedar-lane.example'),
+  pg_temp.pages('cedar-lane.example','faq','about'));
+select pg_temp.record(current_setting('test.p1a')::uuid,pg_temp.older('cedar-lane.example'),
+  pg_temp.pages('cedar-lane.example','faq','product'));
+select pg_temp.record(current_setting('test.p1b')::uuid,pg_temp.older('north-studio.example'),
+  pg_temp.pages('north-studio.example','faq','product'));
+select pg_temp.record(current_setting('test.p2b')::uuid,pg_temp.newer('north-studio.example'),
+  pg_temp.pages('north-studio.example','faq','about'));
+reset role;
+select is(pg_temp.current('00000000-0000-4000-8000-000000000101'),pg_temp.current('00000000-0000-4000-8000-000000000102'),
+  'the same reads finished in both orders give the same findings');
+select is(pg_temp.current('00000000-0000-4000-8000-000000000102'),
+  'about: For quiet homes. | faq: Write to us any time. | product: Hand-made vases.','the newest read of each page');
 
 -- A lost lease records nothing, as before.
 set local role service_role;
