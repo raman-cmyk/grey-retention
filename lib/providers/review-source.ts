@@ -34,6 +34,12 @@ export type ReadReview = {
   /** The brand's own page it was read on. */
   url: string
   product: string | null
+  /**
+   * REL-ONB2 part e: the photos the customer posted with it, as the page's
+   * review data links them (https, on the store's own hosts or its review
+   * app's confirmed one), at most five. Absent when none.
+   */
+  photos?: string[]
 }
 
 /**
