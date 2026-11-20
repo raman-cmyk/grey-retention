@@ -5,9 +5,14 @@ import { z } from 'zod'
 import type { ActionResult } from '@/components/gros/action'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { setBrandHidden } from '@/features/onboarding/suggested-competitors'
+import { defaultBrandPresentation } from '@/lib/branding/presentation'
 import { createClient } from '@/lib/supabase/server'
 
-const hideForm = z.object({ capture: z.uuid() })
+const hideForm = z.object({
+  capture: z.uuid(),
+  /** The brand's name, for the answer only (never trusted for anything). */
+  name: z.string().trim().max(120).optional()
+})
 
 /**
  * Hide a suggested brand (REAL-01a, the owner's rule of 16 November: the
@@ -40,5 +45,9 @@ export async function hideBrand(
     return { error: 'That brand could not be hidden. Try again.' }
   }
   revalidatePath('/inspiration')
-  return {}
+  // Said in the card's answer place, which stays when the row leaves.
+  const brand = parsed.data.name || 'this brand'
+  return {
+    message: `Hidden. ${defaultBrandPresentation.assistantName} won’t suggest ${brand} again.`
+  }
 }

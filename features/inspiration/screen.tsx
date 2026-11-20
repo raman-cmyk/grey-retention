@@ -1,5 +1,5 @@
 import type { Route } from 'next'
-import { ActionButton } from '@/components/gros/action'
+import { ActionAnswers, ActionButton } from '@/components/gros/action'
 import { ButtonLink } from '@/components/gros/button'
 import { Card } from '@/components/gros/card'
 import {
@@ -86,64 +86,67 @@ function FollowedCard({ view }: { view: InspirationView }) {
   return (
     <Card label={title}>
       <div className="flex flex-col gap-[var(--space-5)]">
-        <h2 className="type-heading">{title}</h2>
-        {view.unread.includes('library') ? (
-          <p className="type-body text-[var(--stone)]">
-            The brands you follow could not be read just now. Open Inspiration
-            again in a minute.
-          </p>
-        ) : view.tracked.length === 0 ? (
-          <p className="type-body text-[var(--stone)]">
-            No brands followed yet.
-          </p>
-        ) : (
-          <RowList label={title}>
-            {view.tracked.map((t) => {
-              const summary = view.summaries[t.domain]
-              return (
-                <ListRow
-                  key={t.subscriptionId}
-                  thumbnail={<BrandThumb name={t.label} />}
-                  title={t.label}
-                  wrap
-                  details={[
-                    t.label === t.domain ? '' : t.domain,
-                    t.emails === 1 ? '1 email' : `${t.emails} emails`,
-                    summary ? `Sends ${perWeek(summary.perWeek)}` : '',
-                    // In words, for everyone: these are not email statuses.
-                    followWords[t.status],
-                    t.sample ? 'Sample' : ''
-                  ]}
-                  end={
-                    view.owner ? (
-                      <ActionButton
-                        action={stopTracking}
-                        label="Stop"
-                        kind="outline"
-                        size="row"
-                        fields={{
-                          subscription: t.subscriptionId,
-                          revision: String(t.revision),
-                          domain: t.domain
-                        }}
-                      />
-                    ) : null
-                  }
-                />
-              )
-            })}
-          </RowList>
-        )}
-        {view.owner && !view.unread.includes('library') ? (
-          view.slotsLeft > 0 ? (
-            <FollowForm />
-          ) : (
-            <p className="type-caption text-[var(--stone)]">
-              You follow {view.limit} brands, the most at a time. Stop one to
-              follow another.
+        {/* Stop's answer stays when its row leaves (ActionAnswers). */}
+        <ActionAnswers>
+          <h2 className="type-heading">{title}</h2>
+          {view.unread.includes('library') ? (
+            <p className="type-body text-[var(--stone)]">
+              The brands you follow could not be read just now. Open Inspiration
+              again in a minute.
             </p>
-          )
-        ) : null}
+          ) : view.tracked.length === 0 ? (
+            <p className="type-body text-[var(--stone)]">
+              No brands followed yet.
+            </p>
+          ) : (
+            <RowList label={title}>
+              {view.tracked.map((t) => {
+                const summary = view.summaries[t.domain]
+                return (
+                  <ListRow
+                    key={t.subscriptionId}
+                    thumbnail={<BrandThumb name={t.label} />}
+                    title={t.label}
+                    wrap
+                    details={[
+                      t.label === t.domain ? '' : t.domain,
+                      t.emails === 1 ? '1 email' : `${t.emails} emails`,
+                      summary ? `Sends ${perWeek(summary.perWeek)}` : '',
+                      // In words, for everyone: these are not email statuses.
+                      followWords[t.status],
+                      t.sample ? 'Sample' : ''
+                    ]}
+                    end={
+                      view.owner ? (
+                        <ActionButton
+                          action={stopTracking}
+                          label="Stop"
+                          kind="outline"
+                          size="row"
+                          fields={{
+                            subscription: t.subscriptionId,
+                            revision: String(t.revision),
+                            domain: t.domain
+                          }}
+                        />
+                      ) : null
+                    }
+                  />
+                )
+              })}
+            </RowList>
+          )}
+          {view.owner && !view.unread.includes('library') ? (
+            view.slotsLeft > 0 ? (
+              <FollowForm />
+            ) : (
+              <p className="type-caption text-[var(--stone)]">
+                You follow {view.limit} brands, the most at a time. Stop one to
+                follow another.
+              </p>
+            )
+          ) : null}
+        </ActionAnswers>
       </div>
     </Card>
   )
@@ -154,52 +157,55 @@ function SuggestionsCard({ view }: { view: InspirationView }) {
   return (
     <Card label={title}>
       <div className="flex flex-col gap-[var(--space-5)]">
-        <h2 className="type-heading">{title}</h2>
-        {view.unread.includes('suggestions') ? (
-          <p className="type-body text-[var(--stone)]">
-            Suggestions could not be read just now. Open Inspiration again in a
-            minute.
-          </p>
-        ) : view.suggestions.length === 0 ? (
-          <p className="type-body text-[var(--stone)]">
-            No suggestions yet. They come from brands of your industry that send
-            newsletters.
-          </p>
-        ) : (
-          <RowList label={title}>
-            {view.suggestions.map((s) => (
-              <ListRow
-                key={s.captureId}
-                thumbnail={<BrandThumb name={s.name} />}
-                title={s.name}
-                wrap
-                details={[s.domain, s.reason]}
-                end={
-                  view.owner ? (
-                    <div className="flex flex-wrap items-center gap-[var(--space-2)]">
-                      {s.followable && view.slotsLeft > 0 ? (
+        {/* Hide's and Follow's answers stay when the row leaves. */}
+        <ActionAnswers>
+          <h2 className="type-heading">{title}</h2>
+          {view.unread.includes('suggestions') ? (
+            <p className="type-body text-[var(--stone)]">
+              Suggestions could not be read just now. Open Inspiration again in
+              a minute.
+            </p>
+          ) : view.suggestions.length === 0 ? (
+            <p className="type-body text-[var(--stone)]">
+              No suggestions yet. They come from brands of your industry that
+              send newsletters.
+            </p>
+          ) : (
+            <RowList label={title}>
+              {view.suggestions.map((s) => (
+                <ListRow
+                  key={s.captureId}
+                  thumbnail={<BrandThumb name={s.name} />}
+                  title={s.name}
+                  wrap
+                  details={[s.domain, s.reason]}
+                  end={
+                    view.owner ? (
+                      <div className="flex flex-wrap items-center gap-[var(--space-2)]">
+                        {s.followable && view.slotsLeft > 0 ? (
+                          <ActionButton
+                            action={trackDomain}
+                            label="Follow"
+                            kind="outline"
+                            size="row"
+                            fields={{ domain: s.domain }}
+                          />
+                        ) : null}
                         <ActionButton
-                          action={trackDomain}
-                          label="Follow"
-                          kind="outline"
+                          action={hideBrand}
+                          label="Hide"
+                          kind="quiet"
                           size="row"
-                          fields={{ domain: s.domain }}
+                          fields={{ capture: s.captureId, name: s.name }}
                         />
-                      ) : null}
-                      <ActionButton
-                        action={hideBrand}
-                        label="Hide"
-                        kind="quiet"
-                        size="row"
-                        fields={{ capture: s.captureId }}
-                      />
-                    </div>
-                  ) : null
-                }
-              />
-            ))}
-          </RowList>
-        )}
+                      </div>
+                    ) : null
+                  }
+                />
+              ))}
+            </RowList>
+          )}
+        </ActionAnswers>
       </div>
     </Card>
   )

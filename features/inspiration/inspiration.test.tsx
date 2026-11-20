@@ -1,4 +1,10 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -37,6 +43,7 @@ vi.mock('@/features/library/inspirations/actions', () => ({
 
 import InspirationError from '@/app/(gros)/inspiration/error'
 import InspirationLoading from '@/app/(gros)/inspiration/loading'
+import { stopTracking } from '@/features/library/inspirations/actions'
 import type { ReferenceLibraryData } from '@/features/library/reference-library/data'
 import { hideBrand } from './actions'
 import {
@@ -164,7 +171,8 @@ describe('inspirationView (UI-INSa)', () => {
     expect(view.unread).toEqual(['library', 'suggestions'])
     expect(view.tracked).toEqual([])
     expect(view.emails).toEqual([])
-    expect(view.slotsLeft).toBe(10)
+    // Unknown while unread: no Follow is offered anywhere (UI-INSb review).
+    expect(view.slotsLeft).toBe(0)
   })
 })
 
@@ -214,7 +222,14 @@ describe('hideBrand (UI-INSa)', () => {
     const db = {}
     mocks.requireRequestContext.mockResolvedValue(context)
     mocks.createClient.mockResolvedValue(db)
-    expect(await hideBrand({}, form(id))).toEqual({})
+    expect(await hideBrand({}, form(id))).toEqual({
+      message: 'Hidden. GROS won’t suggest this brand again.'
+    })
+    const named = form(id)
+    named.set('name', 'Bark Co')
+    expect(await hideBrand({}, named)).toEqual({
+      message: 'Hidden. GROS won’t suggest Bark Co again.'
+    })
     expect(mocks.setBrandHidden).toHaveBeenCalledWith(db, 'tenant-1', id, true)
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/inspiration')
   })
@@ -305,7 +320,7 @@ describe('Inspiration screen (UI-INSa)', () => {
       Object.fromEntries(
         new FormData(hide.closest('form')!) as unknown as [string, string][]
       )
-    ).toEqual({ capture: 'c2' })
+    ).toEqual({ capture: 'c2', name: 'Wild Paws' })
 
     const rows = within(region('Latest emails')).getAllByRole('listitem')
     expect(rows).toHaveLength(3)
@@ -478,10 +493,12 @@ describe('Inspiration states (UI-INSb)', () => {
       'href',
       '/inspiration'
     )
-    expect(
-      screen.queryByRole('region', { name: 'Brands you follow' })
-    ).toBeNull()
-    expect(screen.queryByRole('region', { name: 'Latest emails' })).toBeNull()
+    for (const name of [
+      'Brands you follow',
+      'Brands like yours',
+      'Latest emails'
+    ])
+      expect(screen.queryByRole('region', { name })).toBeNull()
   })
 
   it('tells staff only that no emails came yet: following is the owner’s', () => {
@@ -573,5 +590,91 @@ describe('Inspiration states (UI-INSb)', () => {
       'aria-current',
       'page'
     )
+  })
+})
+
+describe('Inspiration answers (UI-INSb review)', () => {
+  it('offers no Follow on a suggestion while the followed brands are unread, only Hide', () => {
+    render(
+      <InspirationScreen
+        view={inspirationView(input({ library: null }))}
+        timezone="UTC"
+      />
+    )
+    const suggested = region('Brands like yours')
+    expect(
+      within(suggested).queryByRole('button', { name: 'Follow' })
+    ).toBeNull()
+    // Followed brands unknown: every suggestion stays, each only hideable.
+    expect(
+      within(suggested).getAllByRole('button', { name: 'Hide' })
+    ).toHaveLength(3)
+  })
+
+  it('keeps saying Stop’s answer in its card when the brand’s row leaves', async () => {
+    const user = userEvent.setup()
+    vi.mocked(stopTracking).mockResolvedValue({
+      message: 'Stopped following Northwind. Its emails left your library.'
+    })
+    const { rerender } = render(
+      <InspirationScreen view={inspirationView(input())} timezone="UTC" />
+    )
+    const stop = within(region('Brands you follow')).getByRole('button', {
+      name: 'Stop'
+    })
+    await waitFor(() => expect(stop).toBeEnabled())
+    await user.click(stop)
+    const answer = await within(region('Brands you follow')).findByText(
+      'Stopped following Northwind. Its emails left your library.'
+    )
+    // The refreshed page has no followed brand: the answer stays, read out.
+    rerender(
+      <InspirationScreen
+        view={inspirationView(
+          input({ library: library({ tracked: [], items: [] }) })
+        )}
+        timezone="UTC"
+      />
+    )
+    expect(region('Brands you follow')).toHaveTextContent(
+      'No brands followed yet.'
+    )
+    expect(answer).toBeInTheDocument()
+    expect(answer).toHaveAttribute('aria-live', 'polite')
+  })
+
+  it('says Hide’s answer in plain words, and keeps it when the brand leaves the suggestions', async () => {
+    const user = userEvent.setup()
+    mocks.requireRequestContext.mockResolvedValue(context)
+    mocks.createClient.mockResolvedValue({})
+    mocks.setBrandHidden.mockResolvedValue(undefined)
+    // A real suggestion's id is a capture's uuid.
+    const wild = {
+      ...suggestions[1]!,
+      captureId: '00000000-0000-4000-8000-0000000000c2'
+    }
+    const { rerender } = render(
+      <InspirationScreen
+        view={inspirationView(input({ suggestions: [suggestions[0]!, wild] }))}
+        timezone="UTC"
+      />
+    )
+    const [, real] = within(region('Brands like yours')).getAllByRole(
+      'listitem'
+    )
+    const hide = within(real!).getByRole('button', { name: 'Hide' })
+    await waitFor(() => expect(hide).toBeEnabled())
+    await user.click(hide)
+    const answer = await within(region('Brands like yours')).findByText(
+      'Hidden. GROS won’t suggest Wild Paws again.'
+    )
+    rerender(
+      <InspirationScreen
+        view={inspirationView(input({ suggestions: [suggestions[0]!] }))}
+        timezone="UTC"
+      />
+    )
+    expect(region('Brands like yours')).not.toHaveTextContent('Wild Paws Also')
+    expect(answer).toBeInTheDocument()
   })
 })

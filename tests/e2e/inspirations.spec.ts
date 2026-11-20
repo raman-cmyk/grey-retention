@@ -95,6 +95,12 @@ test('UI-INSa owner follows a brand, sees its emails, builds from one and stops'
   // Stop: its emails leave the library.
   await brands.getByRole('button', { name: 'Stop' }).click()
   await expect(followed.getByText('No brands followed yet.')).toBeVisible()
+  // The answer stays in the card after the row has gone (UI-INSb review).
+  await expect(
+    followed.getByText(
+      `Stopped following ${domain}. Its emails left your library.`
+    )
+  ).toBeVisible()
   await page.reload()
   await expect(
     page
