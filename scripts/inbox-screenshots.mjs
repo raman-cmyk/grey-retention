@@ -16,7 +16,11 @@
  * INB-002b: like the designed-section browser (DST-001), it never follows
  * a redirect: an allowed address that redirects is refused, so nothing
  * reaches another host or a private address through it; the email and the
- * uploads are fetched the same way.
+ * uploads are fetched the same way. What skips the route guard (a <link>
+ * prefetch, a <meta> refresh, a <base>) is made inert before the page is
+ * drawn. The printed counts include how many of the job's own pictures or
+ * styles were refused or failed (a storage that starts redirecting shows
+ * there instead of silently dropping every picture).
  */
 import { pathToFileURL } from 'node:url'
 import { loadableOrigins } from './section-render.mjs'
@@ -37,15 +41,21 @@ export const cropBudgetMs = 70_000
 export const uploadBudgetMs = 90_000
 
 /**
+ * Tags that reach out on their own, past request interception: <link>
+ * (prefetch, preconnect and DNS prefetch skip it; email apps ignore <link>
+ * anyway), <meta> (a refresh navigates after the page loads) and <base>
+ * (it moves every relative address). Each is renamed wherever it is
+ * written, so the browser reads an unknown, inert tag: a pattern over a
+ * whole tag misses one whose attribute holds a "<" (INB-002b review).
+ */
+const inertTags = /<(link|meta|base)\b/gi
+
+/**
  * Puts each stored image in place of the reference the HTML uses, and
- * removes what would reach out on its own: meta refresh (it navigates
- * after the page loads) and every <link> (prefetch, preconnect and DNS
- * prefetch skip request interception; email apps ignore <link> anyway).
+ * makes inert what would reach out on its own (`inertTags`).
  */
 export function prepareHtml(html, images) {
-  let out = html
-    .replace(/<meta\b[^<>]*http-equiv\s*=\s*["']?refresh[^<>]*>/gi, '')
-    .replace(/<link\b[^<>]*>/gi, '')
+  let out = html.replace(inertTags, (_, tag) => `<gr-${tag.toLowerCase()}`)
   // Longest first, so a reference that contains another is replaced whole.
   for (const { ref, url } of [...images].sort(
     (a, b) => b.ref.length - a.ref.length
@@ -66,8 +76,13 @@ export function allowedOrigins(job) {
 
 /** A redirect is an error: the address asked for is the one answered. */
 const once = { redirect: 'error' }
-/** How long one picture or style may take to load. */
-const loadMs = 20_000
+/**
+ * How long one picture or style may take (`loadMs`) and the whole page
+ * (`pageMs`); tests pass shorter ones.
+ */
+export const timing = { loadMs: 20_000, pageMs: 30_000 }
+/** A route answered after its page closed: nothing is left to tell. */
+const quietly = (answer) => answer.catch(() => {})
 
 /** The whole page's size, also when the email's CSS says height:100%. */
 async function contentSize(page) {
@@ -121,9 +136,12 @@ export async function render(
   browser,
   job,
   html,
-  until = Date.now() + cropBudgetMs
+  until = Date.now() + cropBudgetMs,
+  { loadMs, pageMs } = timing
 ) {
   const origins = allowedOrigins(job)
+  // The job's own pictures and styles refused (a redirect) or failed.
+  let unloaded = 0
   const context = await browser.newContext({
     viewport: { width, height: 800 },
     deviceScaleFactor: 1,
@@ -140,15 +158,15 @@ export async function render(
       const request = route.request()
       const url = request.url()
       // The page itself is set below; it may never go anywhere else.
-      if (request.isNavigationRequest()) return route.abort()
-      if (url.startsWith('data:')) return route.continue()
+      if (request.isNavigationRequest()) return quietly(route.abort())
+      if (url.startsWith('data:')) return quietly(route.continue())
       let origin = ''
       try {
         origin = new URL(url).origin
       } catch {
         // An unreadable link is blocked like any other.
       }
-      if (!origins.has(origin)) return route.abort()
+      if (!origins.has(origin)) return quietly(route.abort())
       // The browser would follow a redirect without asking again (the
       // route sees only the first address): fetch it here, never following
       // one, and refuse an answer that redirects.
@@ -157,14 +175,17 @@ export async function render(
           maxRedirects: 0,
           timeout: loadMs
         })
-        if (response.status() >= 300 && response.status() < 400)
-          return route.abort()
-        return route.fulfill({ response })
+        if (response.status() >= 300 && response.status() < 400) {
+          unloaded++
+          return quietly(route.abort())
+        }
+        return quietly(route.fulfill({ response }))
       } catch {
-        return route.abort()
+        unloaded++
+        return quietly(route.abort())
       }
     })
-    await page.setContent(html, { waitUntil: 'load', timeout: 30_000 })
+    await page.setContent(html, { waitUntil: 'load', timeout: pageMs })
     if (page.url() !== 'about:blank') throw new Error('navigated')
     const size = await contentSize(page)
     const full = {
@@ -182,7 +203,12 @@ export async function render(
     let image = await shoot(80)
     if (image.byteLength > maxBytes) image = await shoot(50)
     if (image.byteLength > maxBytes) throw new Error('too_large')
-    return { image, ...full, sections: await crops(page, job, full, until) }
+    return {
+      image,
+      ...full,
+      sections: await crops(page, job, full, until),
+      unloaded
+    }
   } finally {
     await context.close()
   }
@@ -203,8 +229,14 @@ async function call(base, secret, init = {}) {
 }
 
 /** One run: one job at a time, until none is left (at most `perRun`). */
-export async function run({ base, secret, browser, log = console.log }) {
-  const counts = { taken: 0, failed: 0 }
+export async function run({
+  base,
+  secret,
+  browser,
+  log = console.log,
+  times = timing
+}) {
+  const counts = { taken: 0, failed: 0, unloaded: 0 }
   for (let n = 0; n < perRun; n++) {
     const { jobs } = await call(base, secret)
     if (!jobs.length) break
@@ -232,7 +264,8 @@ export async function run({ base, secret, browser, log = console.log }) {
       }
       let shot
       try {
-        shot = await render(browser, job, html, started + cropBudgetMs)
+        shot = await render(browser, job, html, started + cropBudgetMs, times)
+        counts.unloaded += shot.unloaded
       } catch {
         counts.failed++
         await report({ failure: 'render_failed' })
@@ -277,7 +310,9 @@ export async function run({ base, secret, browser, log = console.log }) {
       else counts.failed++
     }
   }
-  log(`Screenshots taken: ${counts.taken}. Failed: ${counts.failed}.`)
+  log(
+    `Screenshots taken: ${counts.taken}. Failed: ${counts.failed}. Stored pictures or styles refused or failed: ${counts.unloaded}.`
+  )
   return counts
 }
 

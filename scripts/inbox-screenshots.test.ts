@@ -36,19 +36,29 @@ describe('the screenshot browser', () => {
     )
   })
 
-  it('removes meta refresh, which would navigate away after loading', () => {
+  it('makes every link, meta and base inert, however it is written (INB-002b review)', () => {
     expect(
       prepareHtml(
-        '<head><META HTTP-EQUIV="Refresh" content="0;url=https://elsewhere.test"><meta charset="utf-8"></head>',
+        '<head><META HTTP-EQUIV="Refresh" content="0;url=https://elsewhere.test"><meta charset="utf-8"><base href="https://x.test/"></head>',
         []
       )
-    ).toBe('<head><meta charset="utf-8"></head>')
-    expect(
-      prepareHtml(
-        '<link rel="prefetch" href="https://x.test/p"><link rel=stylesheet href=https://x.test/s.css><p>Hi</p>',
-        []
-      )
-    ).toBe('<p>Hi</p>')
+    ).toBe(
+      '<head><gr-meta HTTP-EQUIV="Refresh" content="0;url=https://elsewhere.test"><gr-meta charset="utf-8"><gr-base href="https://x.test/"></head>'
+    )
+    for (const tag of [
+      '<link rel="prefetch" href="https://x.test/p">',
+      '<link rel=stylesheet href=https://x.test/s.css>',
+      // A "<" inside an attribute kept these past a whole-tag pattern.
+      '<link rel=prefetch href="https://x.test/pf?<">',
+      '<LINK\nrel=prefetch\ntitle="<"\nhref=https://x.test/p>',
+      '<svg><foreignObject><link rel="prefetch" href="https://x.test/s?<"></foreignObject></svg>',
+      '<link/rel=prefetch href=https://x.test/p>'
+    ])
+      expect(prepareHtml(tag, [])).not.toMatch(/<link\b/i)
+    // Only those three tags: <linkx>, <metadata> and text are left alone.
+    expect(prepareHtml('<metadata></metadata><p>link meta base</p>', [])).toBe(
+      '<metadata></metadata><p>link meta base</p>'
+    )
   })
 
   it('may load only from the job’s own signed links', () => {
@@ -149,7 +159,7 @@ describe('the screenshot browser', () => {
       browser: browser as unknown as Browser,
       log
     })
-    expect(counts).toEqual({ taken: 1, failed: 1 })
+    expect(counts).toEqual({ taken: 1, failed: 1, unloaded: 0 })
     const reports = calls
       .filter((c) => c.method === 'POST')
       .map((c) => JSON.parse(c.body!))
@@ -161,6 +171,10 @@ describe('the screenshot browser', () => {
       job.upload
     ])
     expect(JSON.stringify(log.mock.calls)).not.toMatch(/token|db\.test|sss/)
+    // Counts only, the job's own refused or failed loads among them.
+    expect(log).toHaveBeenCalledWith(
+      'Screenshots taken: 1. Failed: 1. Stored pictures or styles refused or failed: 0.'
+    )
   })
 
   // INB-002b: the same guard as the designed-section browser (DST-001).
@@ -205,6 +219,7 @@ describe('the screenshot browser', () => {
       { status = 200, fails = false, navigation = false } = {}
     ) => {
       let done = ''
+      let fulfilled: unknown
       const fetch = vi.fn(async () => {
         if (fails) throw new Error('net::ERR_FAILED')
         return { status: () => status }
@@ -221,15 +236,23 @@ describe('the screenshot browser', () => {
           done = 'abort'
         },
         fetch,
-        fulfill: async () => {
+        fulfill: async (options: unknown) => {
           done = 'fulfill'
+          fulfilled = options
         }
       })
-      return { done, fetch }
+      return { done, fetch, fulfilled }
     }
     const own = await routed('https://db.test/sign/a?token=1')
     expect(own.done).toBe('fulfill')
-    expect(own.fetch).toHaveBeenCalledWith({ maxRedirects: 0, timeout: 20_000 })
+    // The browser gets the answer fetched here, never one it fetched itself.
+    expect(own.fulfilled).toEqual({
+      response: await own.fetch.mock.results[0]!.value
+    })
+    expect(own.fetch).toHaveBeenCalledWith({
+      maxRedirects: 0,
+      timeout: 20_000
+    })
     // To another host, a private address or the next link of a chain: the
     // browser is never told where, the answer is refused.
     for (const status of [301, 302, 303, 307, 308])
@@ -311,7 +334,7 @@ describe('the screenshot browser', () => {
       browser,
       log: () => {}
     })
-    expect(counts).toEqual({ taken: 1, failed: 1 })
+    expect(counts).toEqual({ taken: 1, failed: 1, unloaded: 0 })
     for (const key of [
       `GET ${job.html}`,
       `PUT ${job.upload}`,
