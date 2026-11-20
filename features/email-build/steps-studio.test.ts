@@ -323,6 +323,28 @@ describe('the design step with the design studio (DST-006c part 2b)', () => {
     ])
   })
 
+  it('stops a coded email that reads as spam, logged in fixed words (owner pick #93)', async () => {
+    const { store, progress, blocks, hero } = await beforeDesign()
+    const draft = (progress.copy as { draft: { subject: string } }).draft
+    draft.subject = 'RE: you have been selected'
+    ;(blocks[hero]!.content as { headline: string }).headline =
+      'Click here and act now'
+    const fallbacks = memoryFallbackLog()
+    expect(await step(store, progress, undefined, fallbacks)).toEqual({
+      ok: false,
+      code: 'hard_check_failed'
+    })
+    expect(fallbacks.entries()).toEqual([
+      expect.objectContaining({
+        agent: 'email-checks',
+        reasonCode: 'hard_check_spam',
+        reason: expect.stringMatching(/^The email scores [\d.]+ on the spam/),
+        fallback: 'No email was stored; trying again makes it again.'
+      })
+    ])
+    expect(fallbacks.entries()[0]!.reason).not.toMatch(/selected|act now/i)
+  })
+
   it('stops a coded email that fails a hard check, in plain words, logged; a studio one that fails with it says nothing more (DST-005)', async () => {
     const { store, progress, blocks, hero } = await beforeDesign()
     // An offer drawn over the max (none here), in the hero's own words.

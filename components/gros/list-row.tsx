@@ -20,8 +20,9 @@ export function ListRow({
   thumbnail: ReactNode
   title: string
   /**
-   * The whole title shows, on as many lines as it needs (a rule the owner
-   * may remove for good is read in full); otherwise it is cut to one line.
+   * The whole title and its details show, on as many lines as they need (a
+   * rule the owner may remove for good is read in full, and a long name or
+   * its details on a phone); otherwise each is cut to one line.
    */
   wrap?: boolean
   /** Joined with a middle dot: Fri 20 · Past buyers. */
@@ -38,7 +39,12 @@ export function ListRow({
       )}
     >
       {thumbnail}
-      <div className="gros-row-words flex min-w-0 flex-1 flex-col gap-[var(--space-1)]">
+      {/*
+        The words keep their least width (`.gros-row-words`; no `min-w-0`,
+        whose utility would win over it), so on a phone the action wraps
+        under them instead of squeezing them to a few letters a line.
+      */}
+      <div className="gros-row-words flex flex-1 flex-col gap-[var(--space-1)]">
         <p
           className={cn('type-body-strong', wrap ? 'break-words' : 'truncate')}
         >
@@ -46,7 +52,8 @@ export function ListRow({
         </p>
         <p
           className={cn(
-            'type-caption truncate',
+            'type-caption',
+            wrap ? 'break-words' : 'truncate',
             next ? 'text-[var(--ink-soft)]' : 'text-[var(--stone)]'
           )}
         >
