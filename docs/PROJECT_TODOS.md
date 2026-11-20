@@ -42,7 +42,7 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 | UX-RESET-004     | Define tokens, components, states and responsive behavior; map approved Figma components to code                  | Not started                                                       |
 | BLK-SCALE-001    | Define type/variant/template taxonomy, counting, provenance, deduplication and quality toward 2,000+ blocks       | Taxonomy and count proposed (#440); owner to confirm the rule     |
 | SEG-STRATEGY-001 | Define strategic segment rules using supported Klaviyo data, refresh behavior and exclusions                      | Rule set proposed (#427); Klaviyo mapping is SEG-STRATEGY-001b    |
-| SEG-EXPOSURE-001 | Define frequency window/cap, overlap resolution, priorities and external-send accounting                          | Owner decisions and design required                               |
+| SEG-EXPOSURE-001 | Define frequency window/cap, overlap resolution, priorities and external-send accounting                          | Proposal built (SEG-EXP-a); Raman’s OK on the numbers pending     |
 | SEG-CHAT-001     | Design and build chat → explicit rules → estimated membership/overlap preview → approval                          | Not started                                                       |
 | CHAT-CORE-001    | Define central AI workspace context, tools, evidence, permissions and quality evaluation                          | Not started; no model chosen                                      |
 | PLAN-SEG-001     | Carry approved audiences and exposure constraints through strategy, calendar, QA, weekly approval and results     | Not started                                                       |
@@ -68,6 +68,7 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 
 - What counts as one reusable block: type, structural variant or template?
 - What exposure cap/window and campaign priorities should apply? An average of 12 does not answer this.
+- Exposure (SEG-EXPOSURE-001, 20 Nov 2026): **a proposal Raman can change in Settings.** These defaults were chosen for this implementation; Raman has not supplied numbers. At most 3 marketing emails per profile per rolling 7 days, editable per workspace (1 to 30 days, 1 to 14 emails); suppressed and unsubscribed profiles are left out first; each profile is counted once across overlapping segments; a segment set first in Settings wins an overlap, then the earliest scheduled slot, then the segment id; transactional mail never counts toward the cap. Built: the policy and the engine that enforces it (SEG-EXP-a); next the wiring (SEG-EXP-b) and the Settings card (SEG-EXP-c). Still asked: how sends made outside the app count (today every marketing send in a profile's history counts).
 - Which segment events/fields are reliably available in the initial Klaviyo integration?
 - What belongs in the central chat versus dedicated campaign/audience tools?
 - Which layout, component system and navigation best deliver the selected calm, minimal light direction?
