@@ -1,5 +1,4 @@
 import { randomBytes } from 'node:crypto'
-import { createClient } from '@supabase/supabase-js'
 import { expect, test, type Page } from '@playwright/test'
 import { newOwner } from './new-owner'
 
@@ -114,22 +113,18 @@ test('UI-AUDb Audiences fits a 375 px phone: not connected, the segments and lis
   await last.scrollIntoViewIfNeeded()
   await expect(last).toBeInViewport()
 
-  // A key that stopped working, marked as the key check marks it (service
-  // role, on the disposable local stack only: `newOwner` refuses any other).
+  // A sample connection whose key stopped working: the owner's own fixture
+  // command marks it expired (sample connections only; a live one changes
+  // only through its key check).
   const tenant = await owner.from('tenants').select('id').single()
   expect(tenant.error).toBeNull()
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  )
   expect(
     (
-      await admin
-        .from('workspace_connections')
-        .update({ status: 'expired' })
-        .eq('tenant_id', tenant.data!.id)
-        .eq('provider', 'klaviyo')
+      await owner.rpc('set_fixture_connection', {
+        t: tenant.data!.id,
+        provider: 'klaviyo',
+        status: 'expired'
+      })
     ).error
   ).toBeNull()
   await page.goto('/audiences')
