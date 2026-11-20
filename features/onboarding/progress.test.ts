@@ -201,6 +201,70 @@ describe('progressFrom (ONB-066)', () => {
     ).toBeNull()
   })
 
+  it('counts only the saved website’s own reads (ONB-SITEa)', () => {
+    const read = (
+      domain: string,
+      status: string,
+      from: number,
+      to = from
+    ): JobRow => ({ ...job(readerKinds.site, status, from, to), domain })
+    const site = (jobs: JobRow[], site: string) =>
+      progress({ jobs, site, nowMin: 30 }).steps[0]!
+    // Website A read, then changed to B: B's read waits, A's is not B's.
+    const a = read('cedar-lane.example', 'succeeded', 1, 2)
+    expect(
+      site([a, read('north-loft.example', 'queued', 3)], 'north-loft.example')
+    ).toMatchObject({ state: 'waiting', startedAt: null })
+    // No read of B at all: not read yet, though A's is newer than nothing.
+    expect(site([a], 'north-loft.example').state).toBe('not_started')
+    // A newer read of another website never stands in for this one's.
+    expect(
+      site(
+        [a, read('north-loft.example', 'succeeded', 10, 11)],
+        'cedar-lane.example'
+      )
+    ).toMatchObject({ state: 'done', startedAt: at(1), finishedAt: at(2) })
+    // A, then B, then A again: A's own read counts again.
+    expect(
+      site(
+        [
+          a,
+          read('north-loft.example', 'queued', 3),
+          read('cedar-lane.example', 'queued', 4)
+        ],
+        'cedar-lane.example'
+      ).state
+    ).toBe('done')
+    // Compared as the database writes it (`private.site_domain`); a read
+    // that names no website is no website's.
+    expect(
+      site(
+        [read(' WWW.Cedar-Lane.example', 'running', 1)],
+        'cedar-lane.example'
+      ).state
+    ).toBe('working')
+    expect(
+      site([job(readerKinds.site, 'succeeded', 1, 2)], 'cedar-lane.example')
+        .state
+    ).toBe('not_started')
+    // Only the website's step: the other readers are as before.
+    expect(
+      states(
+        progress({
+          jobs: [
+            {
+              ...job(readerKinds.ads, 'succeeded', 1, 2),
+              domain: 'cedar-lane.example'
+            }
+          ],
+          site: 'north-loft.example'
+        })
+      ).ads
+    ).toBe('done')
+    // Without the website, every site read counts, as before.
+    expect(states(progress({ jobs: [a] })).site).toBe('done')
+  })
+
   it('never counts negative time', () => {
     const p = progressFrom({
       signedUpAt,
@@ -252,7 +316,12 @@ describe('readOnboardingProgress (ONB-066)', () => {
     return {
       data:
         kind === readerKinds.site
-          ? [job(readerKinds.site, 'succeeded', 0, 2)]
+          ? [
+              {
+                ...job(readerKinds.site, 'succeeded', 0, 2),
+                domain: 'cedar-lane.example'
+              }
+            ]
           : [],
       error: null
     }
@@ -272,6 +341,29 @@ describe('readOnboardingProgress (ONB-066)', () => {
         .filter((c) => c.table === 'job_runs')
         .map((c) => c.eq.find(([k]) => k === 'kind')?.[1])
     ).toEqual(Object.values(readerKinds))
+  })
+
+  it('given the website, asks only for its own site reads (ONB-SITEa)', async () => {
+    const { client, calls } = db(rows)
+    const p = await readOnboardingProgress(
+      client,
+      tenantId,
+      new Date(at(9)),
+      'cedar-lane.example'
+    )
+    // The database's answer, checked again: the read is this website's.
+    expect(p!.steps[0]!.state).toBe('done')
+    const reads = calls.filter((c) => c.table === 'job_runs')
+    const site = reads.find((c) =>
+      c.eq.some(([k, v]) => k === 'kind' && v === readerKinds.site)
+    )!
+    expect(site.eq).toContainEqual(['input->>domain', 'cedar-lane.example'])
+    for (const other of reads.filter((c) => c !== site))
+      expect(other.eq.some(([k]) => k === 'input->>domain')).toBe(false)
+    // Without it, no website is asked for.
+    const plain = db(rows)
+    await readOnboardingProgress(plain.client, tenantId, new Date(at(9)))
+    expect(JSON.stringify(plain.calls)).not.toContain('input->>domain')
   })
 
   it('is null when any read fails or the workspace is not there', async () => {
