@@ -26,6 +26,10 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - Open question for design (17 Nov 2026, UI-SETb; built as noted until decided): on Settings' Team card an invite's row has two buttons, Resend (outline) and Cancel invite (quiet), and a teammate's row two, Make Manager or Make Staff (outline) and Deactivate (quiet), where BRAND.md says one action per row. A role change, Deactivate and Reactivate ask first with the browser's own confirm. BRAND.md has no select, so the role at invite is two buttons, Invite as Staff (main) and Invite as Manager (outline).
 - Open question for design (17 Nov 2026, UI-SETd; built as noted until decided): BRAND.md has no select, checkbox or multi-line field, but Holidays (type, country, every year, notes), Support and Feature requests need them. They are plain controls on the GROS tokens (mist fill, radius md, forest focus), like DST-002c's mode pick. Holidays and events is its own page under Settings, reached from a small card with one sentence and Open holidays.
 
+## Legal pages (proposal)
+
+**Proposal, not approved** (POLICY-DRAFT, 20 Nov 2026): drafts of the Privacy Policy and the Terms of Service at `/privacy` and `/terms`, written from what the app really does with data, with every business fact not yet confirmed shown as a visible `[NEEDS RAMAN: …]` field. They show only with `LEGAL_DRAFTS=on` and are not linked from sign-up. The operator's legal entity and registered address are the first field: not confirmed, never published until they are. Every field is listed in [docs/legal/CHECKLIST.md](legal/CHECKLIST.md).
+
 ## Hard design rules and current scope
 
 [DESIGN_RULES.md](DESIGN_RULES.md) is mandatory. Desktop/laptop first; defer dedicated mobile-layout design. Minimal motion: the owner confirmed the listed animation recipes/effects are unwanted. No decorative gradients/glow, meaningless badges/pills, nested cards, excessive typography/dividers/borders or redundant copy. See the rulebook for the full list.
