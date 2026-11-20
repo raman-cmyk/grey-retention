@@ -146,6 +146,7 @@ const read = async (
     voice?: Parameters<typeof database>[1]
     templatesGone?: string[]
     noTemplateScope?: boolean
+    returns?: boolean
   } = {}
 ) => {
   const recordedAnswers = recordedHistoryTransport({
@@ -154,7 +155,8 @@ const read = async (
     variationsApart: options.variationsApart,
     reportsCut: options.reportsCut,
     templatesGone: options.templatesGone,
-    noTemplateScope: options.noTemplateScope
+    noTemplateScope: options.noTemplateScope,
+    returns: options.returns
   })
   const transport = (async (request) =>
     options.instead?.(decodeURIComponent(request.url)) ??
@@ -282,6 +284,51 @@ describe('readBrandHistory', () => {
     ).toBe(false)
     // Klaviyo answers one report question a second.
     expect(waits).toEqual([1_100])
+    // ONB-ORD: no Cancelled or Refunded Order metric, so no order is read.
+    expect(transport.calls.some((c) => c.includes('/api/events'))).toBe(false)
+  })
+
+  describe('cancelled and refunded orders (ONB-ORD)', () => {
+    it('takes them off the email or flow Klaviyo credited, so the best email is true', async () => {
+      const { stored, transport } = await read({ returns: true })
+      const email = stored.snapshot.sent.find((e) => e.id === 'MsgA02')
+      // $800 cancelled and $50 of $200 refunded: one order fewer.
+      expect(email).toMatchObject({
+        orders: 30,
+        revenue: 2270,
+        revenuePerRecipient: 0.95
+      })
+      expect(stored.snapshot.sent.find((e) => e.id === 'MsgA01')).toMatchObject(
+        { orders: 14, revenue: 1420 }
+      )
+      // $80 of the abandoned cart's orders refunded in full.
+      expect(stored.snapshot.flows[0]).toMatchObject({
+        name: 'Abandoned cart',
+        orders90d: 51,
+        revenue90d: 5270.5
+      })
+      expect(stored.findings.map((f) => f.statement)).toContain(
+        'The email "Last chance: 15% off overshirts" earned the most per recipient in the last year.'
+      )
+      // The cancel of an order placed before the year changes nothing, and
+      // the read is still whole.
+      expect(stored.summary).toMatchObject({ complete: true })
+      // The orders asked for once, with their attributions.
+      expect(
+        transport.calls.filter((c) => c.includes('include=attributions'))
+      ).toHaveLength(1)
+    })
+
+    it('leaves the results as Klaviyo counted them, not whole, when the orders cannot be read', async () => {
+      const { stored } = await read({
+        returns: true,
+        fail: { on: 'returns', with: refused(400) }
+      })
+      expect(stored.snapshot.sent.find((e) => e.id === 'MsgA02')).toMatchObject(
+        { orders: 31, revenue: 3120 }
+      )
+      expect(stored.summary).toMatchObject({ complete: false })
+    })
   })
 
   it("reads every day and hour in the workspace's timezone, when it has one", async () => {

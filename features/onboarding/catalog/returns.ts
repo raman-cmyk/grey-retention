@@ -1,4 +1,5 @@
 import type { StoreEvent } from '@/lib/providers/klaviyo/catalog'
+import type { ReportRow } from '@/lib/providers/klaviyo/history'
 import { moneyOf, orderLines } from './clean'
 
 /**
@@ -119,4 +120,45 @@ export function matchReturns(
     refunded: [...refunded.keys()].filter((o) => !cancelled.has(o)).length,
     unmatched
   }
+}
+
+/**
+ * A report's rows with the cancelled and refunded orders taken off the
+ * email or flow Klaviyo credited with each (orders placed since `since`,
+ * the report's own timeframe): one order for each cancelled or fully
+ * refunded one, and the money. A flow's rows are taken from in turn; none
+ * goes below 0, and revenue per recipient is counted again.
+ */
+export function netReport(
+  rows: ReportRow[],
+  returns: Returns,
+  key: 'campaign_message_id' | 'flow_id',
+  since: number
+): ReportRow[] {
+  const off = new Map<string, { orders: number; value: number }>()
+  for (const [order, undo] of returns.byOrder) {
+    if (Date.parse(order.at) < since) continue
+    for (const id of (key === 'flow_id' ? order.flows : order.messages) ?? []) {
+      const o = off.get(id) ?? { orders: 0, value: 0 }
+      o.orders += undo.whole ? 1 : 0
+      o.value += undo.value
+      off.set(id, o)
+    }
+  }
+  return rows.map((row) => {
+    const o = off.get(row.groupings[key] ?? '')
+    if (!o) return row
+    const s = { ...row.statistics }
+    const take = (name: string, want: number) => {
+      if (s[name] === undefined) return 0
+      const n = Math.min(s[name], want)
+      s[name] -= n
+      return n
+    }
+    o.orders -= take('conversions', o.orders)
+    o.value -= take('conversion_value', o.value)
+    if (s.revenue_per_recipient !== undefined && s.recipients)
+      s.revenue_per_recipient = (s.conversion_value ?? 0) / s.recipients
+    return { ...row, statistics: s }
+  })
 }

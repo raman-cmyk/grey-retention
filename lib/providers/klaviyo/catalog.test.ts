@@ -21,6 +21,7 @@ import {
 } from './client'
 import { recorded } from './recorded'
 import { catalogRecordings, recordedCatalogTransport } from './recorded-catalog'
+import { recordedHistoryTransport } from './recorded-history'
 
 const key = 'pk_SAMPLE0123456789abcdefghij'
 const now = new Date('2026-11-11T12:00:00Z')
@@ -180,6 +181,51 @@ describe('the catalog read, against recorded Klaviyo answers', () => {
         )
       ).kind
     ).toBe('rate_limited')
+  })
+
+  it('reads orders with the emails and flows Klaviyo credits them to, and stops once enough are read', async () => {
+    const transport = recordedHistoryTransport({ now, returns: true })
+    const since = new Date(now.getTime() - 365 * 86_400_000)
+    const orders = await readEvents(
+      client(transport),
+      'PlcdOr',
+      since,
+      always,
+      8,
+      {
+        attributions: true
+      }
+    )
+    expect(
+      orders.records.map((o) => [o.props.$event_id, o.messages, o.flows])
+    ).toEqual([
+      ['H1004', ['MsgA01'], []],
+      ['H1002', ['MsgA02'], []],
+      ['H1001', ['MsgA02'], []],
+      // Named only by its attribution.
+      ['H1003', [], ['FlwCart']]
+    ])
+    expect(transport.calls).toEqual([
+      `GET ${eventsPath('PlcdOr', since)}&include=attributions`
+    ])
+    const many: KlaviyoTransport = async () => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({
+        data: [],
+        links: { next: 'https://a.klaviyo.com/api/events/?page[cursor]=p2' }
+      })
+    })
+    const calls: string[] = []
+    const counted: KlaviyoTransport = async (request) => {
+      calls.push(request.url)
+      return many(request)
+    }
+    const read = await readEvents(client(counted), 'PlcdOr', since, always, 8, {
+      until: () => true
+    })
+    expect(read.complete).toBe(false)
+    expect(calls).toHaveLength(1)
   })
 
   it('reads the events of the last 90 days, newest first, with their properties', async () => {
