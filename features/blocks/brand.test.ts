@@ -102,4 +102,20 @@ describe('brandFromKit (roles from an unordered scraped list)', () => {
       dark: '#121212'
     })
   })
+
+  it('keeps text readable on a middle colour, in pure black or white (owner pick #96)', () => {
+    for (const color of ['#d64545', '#e0218a', '#7a7a7a', '#1976d2', '#808080'])
+      expect(contrast(color, inkOn(color)), color).toBeGreaterThanOrEqual(4.5)
+    expect(inkOn('#ffffff')).toBe('#1a1a1a')
+    // The accent a kit gives is chosen as before: a middle pink is passed
+    // over for the green.
+    expect(
+      brandFromKit({
+        name: 'Kit',
+        fonts: [],
+        colors: ['#ffffff', '#111111', '#2e7d32', '#e0218a']
+      }).accent
+    ).toBe('#2e7d32')
+    expect(inkOn('#000000')).toBe('#ffffff')
+  })
 })

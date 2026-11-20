@@ -505,6 +505,7 @@ const letterRuleWords: Record<string, string> = {
   too_many_links: 'too many links',
   unknown_link: 'a link the letter does not have',
   empty_link: 'a link on no words',
+  vague_link: 'a link that says only "here"',
   broken_link: 'a broken link',
   link_outside_letter: 'a link outside the paragraphs',
   empty_ps: 'an empty P.S.',
