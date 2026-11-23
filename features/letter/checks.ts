@@ -7,6 +7,7 @@ import {
   subjectMax,
   typedLink
 } from '@/features/email-build/inspect'
+import { vagueLinkWords } from '@/features/email-build/accessibility'
 import {
   brokenMark,
   letterText,
@@ -84,6 +85,12 @@ export function letterProblems(
     add(
       'empty_link',
       'Put each link on a few words a reader can see, as [the words](1).'
+    )
+  // Owner pick #96: a screen reader reads a link's words alone.
+  if (uses.some((u) => vagueLinkWords(u.words)))
+    add(
+      'vague_link',
+      'Put each link on words that say where it goes, as [the candle](1), never only "here" or "click here".'
     )
   if (read.some((t) => brokenMark.test(t.replace(linkMark, ' '))))
     add(
