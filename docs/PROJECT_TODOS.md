@@ -27,6 +27,10 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - Open question for design (17 Nov 2026, UI-SETd; built as noted until decided): BRAND.md has no select, checkbox or multi-line field, but Holidays (type, country, every year, notes), Support and Feature requests need them. They are plain controls on the GROS tokens (mist fill, radius md, forest focus), like DST-002c's mode pick. Holidays and events is its own page under Settings, reached from a small card with one sentence and Open holidays.
 - Open question for design (20 Nov 2026, UI-AUDb, UI-INSb, UI-LRNc; built as noted until decided): BRAND.md's ListRow keeps a title to one line, but at 375 px a segment's, brand's, email's or rule's name and its details were cut to a few letters. Built: on Audiences, Inspiration and Learned a row's name and details show whole, on as many lines as they need, and on a phone a row's button drops under its words (as ListRow already meant). Other lists still cut a title to one line. At 1280 px and wider nothing moves. Between 1024 and about 1180 px, Home's designed-email rows (the mode pick and Create email) and Settings' Team member and invite rows now put their buttons under the words; before, the words were squeezed to "Autumn…".
 
+## Legal pages (proposal)
+
+**Proposal, not approved** (POLICY-DRAFT, 20 Nov 2026): drafts of the Privacy Policy and the Terms of Service at `/privacy` and `/terms`, written from what the app really does with data, with every business fact not yet confirmed shown as a visible `[NEEDS RAMAN: …]` field. They show only with `LEGAL_DRAFTS=on` and are not linked from sign-up. The operator's legal entity and registered address are the first field: not confirmed, never published until they are. Every field is listed in [docs/legal/CHECKLIST.md](legal/CHECKLIST.md).
+
 ## Picture work: what truly needs an outside service
 
 Owner picks #4, #12 and #15 (IMG-ADAPTER, 20 Nov 2026, `lib/providers/image-work.ts`). Status: **adapter ready, not wired, fake only.** Every job returns `not_available`, and the store's original picture is kept and used. This does not close picture work.
