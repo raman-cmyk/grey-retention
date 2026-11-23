@@ -18,7 +18,7 @@ function arrival(h: {
   deliveredTo?: string
   to: string
   from: string
-  id: string
+  id?: string
   extra?: string[]
 }) {
   return new TextEncoder().encode(
@@ -28,7 +28,7 @@ function arrival(h: {
       `From: "News" <${h.from}>`,
       `To: ${h.to}`,
       'Subject: New arrivals',
-      `Message-ID: <${h.id}>`,
+      ...(h.id ? [`Message-ID: <${h.id}>`] : []),
       'MIME-Version: 1.0',
       'Content-Type: text/plain; charset=utf-8',
       '',
@@ -50,7 +50,7 @@ async function read(raw: Uint8Array) {
 }
 
 describe('pilot arrivals', () => {
-  it('a known slug: the +alias and the sending subdomain', async () => {
+  it('reads the +alias from Delivered-To and the From subdomain as the sender', async () => {
     const got = await read(
       arrival({
         deliveredTo: 'sample-inbox+cedar-lane@gmail.com',
@@ -150,6 +150,20 @@ describe('pilot arrivals', () => {
       })
     )
     expect(again.messageKey).toBe(first.messageKey)
+  })
+
+  it('without a Message-ID, only a byte-identical copy is the same email', async () => {
+    const base = {
+      to: 'sample-inbox+cedar-lane@gmail.com',
+      from: 'hello@cedarlane.test'
+    }
+    const first = await read(arrival(base))
+    const same = await read(arrival(base))
+    const relayed = await read(
+      arrival({ ...base, extra: ['Received: from relay.test by mx.test'] })
+    )
+    expect(same.messageKey).toBe(first.messageKey)
+    expect(relayed.messageKey).not.toBe(first.messageKey)
   })
 
   it("the pilot's niche words map to their industries", () => {

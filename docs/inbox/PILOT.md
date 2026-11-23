@@ -9,6 +9,7 @@ This answers owner pick #45, "Grow the inbox fast" (`docs/AGENT_MAP.md`, the lin
 - 62 public brands in 8 approved industries, each with its own plus-address. Checked on 20 November 2026.
 - Proposed first industry: **skincare**. Raman picks.
 - A person signs up by hand, from the inbox account, after Raman's OK. At most 3 brands a day.
+- **Before the first sign-up:** INB-006 (the shared-domain guard) is merged, and Raman has decided whether to keep the inbox address, which is already public.
 - What arrives is checked with what INB-001 to INB-004 already built (the admin page `/admin/inbox`).
 - A stop rule pauses everything. Only Raman restarts it.
 
@@ -46,7 +47,7 @@ Anything that could not be checked this way was dropped (see 2.10). Offers and f
 
 All of these are large, well-known brands. VISION asks for competitors "of similar size" to our stores. Big brands come first because they are easy to check and send often. Later rounds add smaller brands of the same industries.
 
-The **plus-address** column uses placeholders. `<inbox-local>` and `<inbox-domain>` are the two halves of the inbox's own address, which comes from configuration and is never written in this repository (see section 3).
+The **plus-address** column uses placeholders. `<inbox-local>` and `<inbox-domain>` are the two halves of the inbox's own address, which comes from configuration. This page adds no real address (but the base address is already public: see section 3).
 
 ### 2.1 Skincare (8)
 
@@ -203,9 +204,9 @@ Left out before checking: brands whose main products carry health or drug claims
 
 Every brand gets one address: `<inbox-local>+<slug>@<inbox-domain>`.
 
-- **The base address is never in this repository.** It comes from the server setting `INBOX_IMAP_USER` (`features/inbox/config.ts`, `inboxConfig`, line 34; split into its two halves in `features/inbox/imap.ts`, lines 85 to 93). The admin brand directory at `/admin/inbox` shows each brand's full address, built from that setting (`aliasAddress`, `features/inbox/admin/data.ts`, line 50). Copy it from there on the day. Never write a real address into this repo, an issue or a pull request.
+- **This page adds no real address, but the base address is already public.** Decision D4 (`docs/BUILD_BRIEF.md`, line 31, and again in section 7, line 123) and `.github/project/roadmap.json` show it, and git history keeps it. So anyone can write to any `+alias`, which is why the sender domains in step 1 of section 4 are required, not optional. Whether to move to a new inbox address before the pilot is Raman's call (ledger, Blocked). In the app, the address comes from the server setting `INBOX_IMAP_USER` (`features/inbox/config.ts`, `inboxConfig`, line 34; split into its two halves in `features/inbox/imap.ts`, lines 85 to 93). The admin brand directory at `/admin/inbox` shows each brand's full address, built from that setting (`aliasAddress`, `features/inbox/admin/data.ts`, line 50). Copy it from there on the day. Never add a real address to this repo, an issue or a pull request.
 - **Slug shape:** `^[a-z0-9][a-z0-9-]{1,39}$` (`features/inbox/addresses.ts`, line 4): 2 to 40 characters, lowercase letters, digits and dashes, starting with a letter or digit. The database checks the same shape and allows each slug for one brand only. All 62 slugs above match the shape and are unique. None is a sample brand's slug (`northwind`, `juniper`, `cedar-lane`, `cedar`).
-- **How an arrival finds its brand.** The poll worker (`features/inbox/worker.ts`, lines 182 and 183) reads the recipients in this order: Delivered-To, X-Original-To, To, Cc (`features/inbox/mime.ts`, lines 138 to 144). `aliasSlug` (`features/inbox/addresses.ts`, lines 30 to 50) takes the first recipient that is the inbox's own address with a `+tag`, and returns the tag in lowercase when it has the slug shape. Gmail ignores dots in the name and treats `googlemail.com` as `gmail.com`, and so does the code (lines 16 to 23). A tag with a second `+`, an underscore, or the wrong length gives no slug. The database (`record_inbox_message`, `supabase/migrations/20260914090039_inbox_capture_commands.sql`, lines 104 to 168) then looks for the brand with that `alias_slug`. Example: Gmail delivers a newsletter to `<inbox-local>+tatcha@<inbox-domain>`. The slug is `tatcha`, so the email goes to the Tatcha brand in the directory.
+- **How an arrival finds its brand.** The poll worker (`features/inbox/worker.ts`, lines 182 and 183) reads the recipients in this order: Delivered-To, X-Original-To, To, Cc (`features/inbox/mime.ts`, lines 138 to 144). `aliasSlug` (`features/inbox/addresses.ts`, lines 30 to 50) looks at the recipients in turn and returns, in lowercase, the first `+tag` on the inbox's own address that has the slug shape. A recipient with a bad tag is skipped and the next one is tried. Gmail ignores dots in the name and treats `googlemail.com` as `gmail.com`, and so does the code (lines 16 to 23). A tag with a second `+`, an underscore, or the wrong length gives no slug from that recipient. The database (`record_inbox_message`, `supabase/migrations/20260914090039_inbox_capture_commands.sql`, lines 104 to 168) then looks for the brand with that `alias_slug`. Example: Gmail delivers a newsletter to `<inbox-local>+tatcha@<inbox-domain>`. The slug is `tatcha`, so the email goes to the Tatcha brand in the directory.
 - **Why sender domains matter.** Anyone can guess a `+alias`. So when a brand has registered sender domains, an email to its alias from any other domain is held for a person instead of being assigned (lines 153 to 159). Registering the brand's own root domain also covers all its subdomains (`mail.brand.com`).
 
 ## 4. The pilot plan
@@ -220,13 +221,19 @@ Every brand gets one address: `<inbox-local>+<slug>@<inbox-domain>`.
 
 **Proposed order for the rest:** jewelry, apparel, home, fitness, kitchen, pet, beauty tools. This is a proposal: jewelry and apparel come next because they are common niches for the small online stores VISION aims at. Supplements and baby come only after Raman rules on them (2.9).
 
+### Before the first sign-up (preconditions)
+
+1. **INB-006 is merged**: shared, provider and public-suffix domains can no longer become a brand's sender, and a wrong sender can be removed.
+2. **Raman has decided about the inbox address** (keep it, or move to a new one first; section 3).
+3. **Raman has given the OK** and picked the first industry.
+
 ### Who signs up
 
 A **person, by hand**, signed in to the inbox account in a normal browser, **after Raman's OK**. Not the app, not a script, not a Claude session. Signing up is an outside action in the owner's name (ledger, Blocked).
 
 ### Each sign-up, step by step
 
-1. **A platform admin adds the brand** in the brand directory at `/admin/inbox`, on the same day as the sign-up. Fill in: the domain, the slug as the alias, the brand name, the niche word exactly as in section 1 (for example `beauty tools`), and as sender domains the brand's own domain plus any extra domain from 2.11. Saving sets the brand to "pending" (`admin_save_inbox_brand`, same migration, line 324). Add the brand first: otherwise its first emails wait in the ops queue.
+1. **A platform admin adds the brand** in the brand directory at `/admin/inbox`, on the same day as the sign-up. Fill in: the domain, the slug as the alias, the brand name, the niche word exactly as in section 1 (for example `beauty tools`), and as sender domains the brand's own domain plus any extra domain from 2.11. Saving a new brand sets it to "pending" (`admin_save_inbox_brand`, same migration, line 324); saving a brand that already exists keeps its status. Add the brand first: otherwise its first emails wait in the ops queue.
 2. **The person opens the brand's own website** and finds the newsletter box (footer or pop-up).
 3. **They type only the brand's plus-address**, copied from the directory. No name, birthday, phone or ZIP code. No text-message (SMS) sign-up. No account, no purchase, no partner offers. A spin-to-win pop-up is fine if it asks only for the email.
 4. **If the form needs more than an email, they skip the brand** and record why.
@@ -237,7 +244,7 @@ A **person, by hand**, signed in to the inbox account in a normal browser, **aft
 
 - **At most 3 sign-ups a day**, one industry at a time. Skincare takes 3 days.
 - Start the next industry only after the previous industry's 7-day check (section 5) has passed.
-- About 62 brands in 6 to 8 weeks. The target of 200+ per industry (#45) comes in later rounds, with smaller brands, once this pilot has worked.
+- Each industry takes about 10 days: 3 days of sign-ups, then its 7-day check. The 8 industries take about 11 to 12 weeks. The target of 200+ per industry (#45) comes in later rounds, with smaller brands, once this pilot has worked.
 
 ### What is recorded per sign-up
 
@@ -253,7 +260,7 @@ Everything below already exists in INB-001 to INB-004. A person looks at `/admin
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | The alias slug matches the brand | The email's `+slug` is the brand's alias, so it is assigned "by alias"                                                                                                                                                                                                                                                                                                                           | Directory: the brand's last email and newsletter count go up; its status becomes "subscribed"                                                 |
 | The sender domain matches        | The From domain is the brand's domain, a subdomain, or a registered extra domain. An email to the alias from any other domain is held: "Email to +slug from …, a sender not registered for that brand". Assign it only when that domain really sends that brand's mail (its own other domain). Never assign a shared domain (`gmail.com`, an email service's shared sending domain; see INB-006) | Ops queue ("Needs a person")                                                                                                                  |
-| No duplicates                    | Each email is stored once, keyed by its Message-ID, or by its bytes when it has none (`messageKey`, `features/inbox/addresses.ts`, lines 68 to 74). A re-delivered copy is counted as a duplicate, not a new email                                                                                                                                                                               | The count does not jump on a re-delivery                                                                                                      |
+| No duplicates                    | Each email is stored once, keyed by its Message-ID, or by its bytes when it has none (`messageKey`, `features/inbox/addresses.ts`, lines 68 to 74). A re-delivered copy is counted as a duplicate, not a new email. An email without a Message-ID is a duplicate only when its bytes are identical                                                                                               | The count does not jump on a re-delivery                                                                                                      |
 | The sections parse               | INB-002 keeps each email's images and takes a 600px screenshot; INB-003 cuts an email with HTML into sections, crops a picture of each and labels them                                                                                                                                                                                                                                           | No page shows section counts yet; a platform admin can read the brand's `email_sections`. The tracker follow-up should show a count per brand |
 | The admin inbox shows it         | The brand row shows "subscribed", a last email date and a count                                                                                                                                                                                                                                                                                                                                  | Directory                                                                                                                                     |
 
@@ -292,24 +299,26 @@ Unreadable and oversized emails are not "unassigned": they get their own tasks (
 
 On `/admin/inbox`, under "Needs a person" (`features/inbox/admin/views.tsx`, lines 39 to 48 for the words, 150 to 180 for the form):
 
+**Until INB-006 is merged, the only allowed action on an unknown-sender task, including the 2 live ones, is Dismiss**, unless the sender is a pilot brand's own domain. A wrong "Assign to this brand" cannot be undone from the page (section 7, item 7).
+
 1. **Look at what it is** before doing anything.
 2. **A pilot brand's newsletter, brand not in the directory yet:** add the brand first (section 4, step 1).
 3. **Then "Assign to this brand"** on the task (`admin_assign_sender`, `supabase/migrations/20260914090045_inbox_ops_locks.sql`, line 58). It registers that sender domain for the brand, assigns every waiting email from it and its subdomains, and closes the task. Later emails from that domain go to the brand by themselves.
 4. **Not a brand newsletter** (the email provider's own notice, a personal email, spam): **Dismiss** with a note. Never assign it. A person's name or address in a brand's library would break REAL-01a.
-5. **From a shared domain** (`gmail.com`, an email service's shared sending domain): do not assign it, because every later email from that domain would follow. Dismiss with a note (INB-006).
+5. **From a shared domain** (`gmail.com`, `google.com` or `accounts.google.com`, an email service's shared sending domain, a public suffix such as `co.uk`): never assign it, because every later email from that domain would follow. Dismiss with a note (INB-006).
 6. **No sender domain:** the page offers no Assign button, only Mark done or Dismiss (INB-005).
 
 ### Checked on fixtures
 
-`features/inbox/arrivals.test.ts` (new, 8 tests) feeds synthetic arrivals through the same functions the worker uses (`readInboxMessage`, `aliasSlug`, `senderDomain`, `messageKey`), with reserved `.test` sender domains and inbox names that cannot be real Gmail addresses (Gmail names have no dash):
+`features/inbox/arrivals.test.ts` (new, 9 tests) feeds synthetic arrivals through the same functions the worker uses (`readInboxMessage`, `aliasSlug`, `senderDomain`, `messageKey`), with reserved `.test` sender domains and inbox names that cannot be real Gmail addresses (Gmail names have no dash):
 
-- a known slug and a sending subdomain;
+- the `+alias` read from Delivered-To, and the From subdomain passed on as the sender domain;
 - an unknown slug, passed on as it is (the database then tries the sender);
 - no tag: no slug, only the sender domain;
 - Gmail dots, capitals and `googlemail.com`;
 - the slug read from Delivered-To when To shows the brand's list address;
 - another inbox, an underscore, one character and 41 characters: no slug;
-- a re-delivered copy keeps its key;
+- a re-delivered copy keeps its key, and an email without a Message-ID is a duplicate only when byte-identical;
 - the ten D7 niche words map to their industries.
 
 The database side is covered by `supabase/tests/inbox_capture.test.sql` (lines 82 to 100): the alias of a brand without senders, a sender's subdomain, an alias from a registered sender, an alias from an unregistered sender (held, with its reason), real mail never in a sample brand, a duplicate recorded once, and an unknown sender as one counted task. No database test names an unknown slug; the code treats it like no tag (INB-005 adds the test).
@@ -317,7 +326,7 @@ The database side is covered by `supabase/tests/inbox_capture.test.sql` (lines 8
 ### Gaps found (follow-up rows, not built here)
 
 - **INB-005:** the page cannot assign one email by itself. The command `admin_assign_inbox_message` and the `assign_message` action exist (`features/inbox/admin/actions.ts`, line 28), but the page shows no button for them. So an arrival with no readable sender domain cannot be assigned. The row also adds a database test for an unknown slug.
-- **INB-006:** nothing stops a shared domain (`gmail.com`, `googlemail.com`, an email service's shared sending domain) from becoming one brand's sender, through "Assign to this brand" or the brand form. One click would send every later email from that domain, people's own mail included, to that brand.
+- **INB-006 (a precondition for the first sign-up):** nothing stops a shared or provider domain (`gmail.com`, `googlemail.com`, `google.com` and `accounts.google.com`, an email service's shared sending domain) or a public suffix (`co.uk`) from becoming one brand's sender, through "Assign to this brand" or the brand form. One click would send every later email from that domain, people's own mail included, to that brand. "Assign to this brand" only needs one waiting email from that domain (`supabase/migrations/20260914090045_inbox_ops_locks.sql`, lines 78 to 81), and there is no command to remove a sender domain: undoing one needs SQL on production, with Raman's OK. The confirm-link auto-click would also trust that domain (`features/inbox/confirm.ts`, lines 150 to 165; `features/inbox/signals.ts`, lines 120 to 127).
 - A brand saved with **no sender domains** takes any email sent to its alias (known since INB-001). This pilot avoids it: step 1 always adds the brand's own domain.
 
 ## 7. Stop rule
@@ -330,6 +339,7 @@ The database side is covered by `supabase/tests/inbox_capture.test.sql` (lines 8
 4. **Too few deliver:** fewer than half of an industry's sign-ups deliver a newsletter within 7 days.
 5. **Login or payment:** an arrival needs an account, a login or a payment to confirm or to read it, or a "free trial" that would bill.
 6. **Legal or terms:** a site's terms forbid this kind of sign-up, a brand complains or asks us to stop, an email has no unsubscribe link, or a brand turns out to be in an excluded group (adult, gambling, alcohol, tobacco, weapons, health claims, aimed at children).
+7. **A shared or provider domain was registered as a brand's sender** (for example `gmail.com`, `google.com`, `accounts.google.com`, an email service's shared domain, or a public suffix such as `co.uk`). Until INB-006 adds a remove command, undoing it needs SQL on production, with Raman's OK.
 
 **What happens then:** the person stops and writes down what happened (date, slug, what was seen, with no personal data copied). Emails already arriving are left alone; unsubscribing is also an outside action, so Raman decides it.
 
@@ -340,5 +350,5 @@ The database side is covered by `supabase/tests/inbox_capture.test.sql` (lines 8
 - **No sign-up was performed.** No form was filled in, no email was sent or opened, and no confirm link was clicked.
 - **The industry and the go-ahead still come from Raman**, and so does the choice of who signs up. Supplements and baby wait for his ruling.
 - **No live provider was switched on.** No live data or real inbox was read. The live numbers in section 6 are the supervisor's observation.
-- **No real email address is in this repository.** The addresses above are placeholders.
-- **Not built:** the sign-up tracker (a later row, after Raman's OK), INB-005 and INB-006 (follow-up rows in the ledger).
+- **This page adds no real email address.** The plus-addresses above are placeholders. The inbox base address was already public in D4 and `roadmap.json` before this page (section 3).
+- **Not built:** the sign-up tracker (a later row, after Raman's OK), INB-005 (a follow-up row) and INB-006 (a precondition, built in its own pull request).
