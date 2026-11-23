@@ -220,10 +220,12 @@ function studioHero(
   return (
     row(
       type,
-      linked(
+      // The picture is the email's first heading (owner pick #96): a
+      // screen reader names the h1 by the picture's words.
+      `<h1 style="margin:0;padding:0;${alt}">${linked(
         c.url,
         image(picture.src, picture.alt, EMAIL_WIDTH, ctx, alt, picture.height)
-      ),
+      )}</h1>`,
       { padding: '0', pad: false, bg }
     ) + row(type, button(c.cta, c.url, ctx), { padding: '20px 24px 32px', bg })
   )
