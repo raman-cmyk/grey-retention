@@ -59,6 +59,8 @@ export type StudioStepInput = {
 }
 
 export type StudioStepPorts = StudioPorts & {
+  /** Current workspace's collected web fonts, loaded once before briefs are hashed. */
+  fonts?: () => Promise<SectionBrief['fonts']>
   /** The Art director (`storyboardFor`): null when no storyboard fits. */
   storyboard: (input: StoryboardInput) => Promise<Storyboard | null>
   /**
@@ -128,7 +130,8 @@ function briefFor(
   input: StudioStepInput,
   story: StoryboardInput,
   board: Storyboard['sections'][number],
-  i: number
+  i: number,
+  fonts: SectionBrief['fonts']
 ): SectionBrief | null {
   const block = input.blocks[i]
   if (!block || !designable.includes(block.type)) return null
@@ -179,7 +182,7 @@ function briefFor(
       dark: b.dark,
       radius: b.radius
     },
-    fonts: [],
+    fonts,
     ...(kept
       ? {
           reference: {
@@ -301,10 +304,12 @@ export async function studioDesignStep(
     }
   }
   const designed: { i: number; brief: SectionBrief }[] = []
+  let fonts: SectionBrief['fonts'] | undefined
   for (const b of storyboard?.sections ?? []) {
     if (b.render !== 'designed') continue
+    fonts ??= (await ports.fonts?.()) ?? []
     const i = Number(/^s(\d+)$/.exec(b.id)?.[1] ?? 0) - 1
-    const brief = i >= 0 ? briefFor(input, board, b, i) : null
+    const brief = i >= 0 ? briefFor(input, board, b, i, fonts) : null
     if (brief) designed.push({ i, brief })
     else await ports.coded(b.id, 'not_designable')
   }

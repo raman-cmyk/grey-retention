@@ -23,6 +23,11 @@ import { buildRenders, buildViews, type BuildRender } from './waits'
 import type { ImageFetcher } from '@/lib/providers/image-fetch'
 import { createImageFetcher } from '@/features/inbox/image-fetch'
 import type { AiImage } from '@/lib/providers/contracts'
+import { brandFonts } from '@/features/onboarding/brand-fonts'
+import { publicHost } from '@/features/onboarding/site/photos'
+import { fontCdns } from '@/features/onboarding/site/fonts'
+import { fontFamily, maxSectionFonts } from './section'
+import type { SectionBrief } from './designer'
 
 /**
  * DST-006c part 2b: the studio's ports in the email build (D25), for the
@@ -71,6 +76,52 @@ export const studioPhotos: ImageFetcher = createImageFetcher({
 /** A sample store's photos are never fetched: the critic goes without. */
 export const noPhotos: ImageFetcher = {
   fetch: async () => ({ ok: false, failure: 'blocked' })
+}
+
+// Custom origins wait for a DNS-pinned renderer transport. Exact CDN names only:
+// never grant a collected arbitrary hostname access to the browser's network.
+const renderFontHosts = new Set([
+  'cdn.shopify.com',
+  'fonts.gstatic.com',
+  'use.typekit.net',
+  ...fontCdns
+])
+
+/** Bound the current brand's CDN faces to the renderer's existing font contract. */
+export function sectionFonts(
+  faces: readonly SectionBrief['fonts'][number][]
+): SectionBrief['fonts'] {
+  const seen = new Set<string>()
+  return faces
+    .filter((face) => {
+      if (!fontFamily.test(face.family) || face.url.length > 1_000) return false
+      let url: URL
+      try {
+        url = new URL(face.url)
+      } catch {
+        return false
+      }
+      if (
+        url.protocol !== 'https:' ||
+        url.username ||
+        url.password ||
+        url.hash ||
+        (url.port && url.port !== '443') ||
+        !publicHost(url.hostname) ||
+        !renderFontHosts.has(url.hostname) ||
+        (face.weight !== undefined &&
+          (!Number.isInteger(face.weight) ||
+            face.weight < 100 ||
+            face.weight > 900))
+      )
+        return false
+      const key = `${face.family}:${face.weight ?? 400}:${face.italic === true}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .slice(0, maxSectionFonts)
+    .map((face) => ({ ...face }))
 }
 
 /** The photo's type by its bytes, as the critic takes them; else null. */
@@ -128,6 +179,8 @@ export function studioPortsFor(
     photos: ImageFetcher
     until: number
     now: () => number
+    /** Only an explicitly real store may load its collected web fonts. */
+    sample?: boolean
   }
 ): StudioStepPorts {
   const ctx = {
@@ -189,6 +242,12 @@ export function studioPortsFor(
     return tag !== null && tag === tagOf(render.etag)
   }
   return {
+    fonts: async () => {
+      if (input.sample !== false) return []
+      return sectionFonts(
+        (await brandFonts(db, input.tenant)).flatMap((font) => font.faces)
+      )
+    },
     storyboard: (board) => storyboardFor(board, ctx),
     design: async (brief, from) =>
       designSection(

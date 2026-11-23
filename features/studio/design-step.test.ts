@@ -105,6 +105,62 @@ const waitingOf = (out: unknown) =>
   (out as { waiting: { work: object; seconds: number } }).waiting
 
 describe('the design step with the studio (DST-006c part 2a)', () => {
+  const faces = [
+    {
+      family: 'Cedar Serif',
+      url: 'https://cdn.shopify.com/cedar.woff2',
+      weight: 700
+    }
+  ]
+
+  it('passes collected faces into the actual design brief and render host allowlist', async () => {
+    const fonts = vi.fn(async () => faces)
+    const p = ports({ fonts })
+    await studioDesignStep(input(), p)
+    expect(fonts).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(p.design).mock.calls[0]![0].fonts).toEqual(faces)
+    expect(vi.mocked(p.request).mock.calls[0]![0].hosts).toContain(
+      'cdn.shopify.com'
+    )
+  })
+
+  it('keeps pending render work when the collected fonts are unchanged across claims', async () => {
+    const first = waitingOf(
+      await studioDesignStep(input(), ports({ fonts: async () => faces }))
+    )
+    const p = ports({ fonts: async () => faces }, [drawn])
+    const out = await studioDesignStep(input(first.work), p)
+    expect(p.design).not.toHaveBeenCalled()
+    expect(out).toMatchObject({ pictures: 1 })
+  })
+
+  it('invalidates the old brief when brand font faces change instead of reusing its old render', async () => {
+    const first = waitingOf(
+      await studioDesignStep(input(), ports({ fonts: async () => faces }))
+    )
+    const p = ports({ fonts: async () => [{ ...faces[0]!, weight: 400 }] }, [
+      drawn
+    ])
+    await studioDesignStep(input(first.work), p)
+    expect(p.design).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(p.design).mock.calls[0]![0].fonts[0]!.weight).toBe(400)
+  })
+
+  it('does not read fonts when the storyboard keeps every section coded', async () => {
+    const fonts = vi.fn(async () => faces)
+    const p = ports({
+      fonts,
+      storyboard: vi.fn(async () => ({
+        ...storyboard,
+        sections: storyboard.sections.map((s) => ({
+          ...s,
+          render: 'live' as const
+        }))
+      }))
+    })
+    expect(await studioDesignStep(input(), p)).toMatchObject({ pictures: 0 })
+    expect(fonts).not.toHaveBeenCalled()
+  })
   it('storyboards the email, designs its hero, asks for its picture and waits, keeping both', async () => {
     const p = ports()
     const out = waitingOf(await studioDesignStep(input(), p))
