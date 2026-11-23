@@ -56,6 +56,8 @@ export const buildFailureWords = {
  * never an earlier try's. Fixed words: never Klaviyo's own message.
  */
 export const pushRefusalWords = {
+  testing_write_lock:
+    'Klaviyo is connected for read-only testing. Draft changes are blocked.',
   // Before Klaviyo is called.
   sample_email:
     'It was made from the sample store, so it never goes to Klaviyo.',

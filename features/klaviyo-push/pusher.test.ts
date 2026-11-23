@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 import { klaviyoClient } from '@/lib/providers/klaviyo/client'
@@ -203,12 +203,29 @@ async function untilDone(
 }
 
 beforeEach(() => {
+  // This suite exercises draft writes against its synthetic account only.
+  vi.stubEnv('KLAVIYO_WRITE_LOCK', 'unlocked')
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
+afterEach(() => vi.unstubAllEnvs())
 
 describe('the live Klaviyo draft push', () => {
+  it('stops as a fixed refusal when testing is locked, without any write transport call', async () => {
+    vi.stubEnv('KLAVIYO_WRITE_LOCK', 'locked')
+    const { account, pusher } = setup()
+    const result = await pusher.createDraft(input())
+    expect(result).toEqual({
+      ok: false,
+      code: 'rejected',
+      reason: 'testing_write_lock',
+      checks: ['write_lock']
+    })
+    expect(account.calls.every((call) => call.startsWith('GET '))).toBe(true)
+    expect(account.campaigns.size).toBe(0)
+    expect(account.templates.size).toBe(0)
+  })
   it('checks the audience, moves the pictures, makes a template, the campaign, then its message, in that order', async () => {
     const { account, memory, pusher } = setup()
     const result = await pusher.createDraft(input())

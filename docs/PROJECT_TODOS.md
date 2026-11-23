@@ -85,3 +85,7 @@ Owner corrected the block target to 2,000+, introduced strategic segmentation an
 ### 15 November 2026 (UI direction)
 
 Owner rejected the first black-and-white minimal UI prototype. Owner decisions: (1) brand guidelines come first, then pages are designed one at a time in Claude Design before any page is built in code; (2) the look follows his three references: soft rounded white cards on a light grey page, lime green accent with deep green, big numbers, pill navigation, a split onboarding screen with step cards and a sidebar AI workspace; (3) every page is crafted with care, not batch-produced. Proposal, not yet approved: brand guidelines draft 1 (lime `#B9F26C`, forest `#14401F`, Urbanist), Onboarding step 1 and Home. This direction uses pills, tinted cards and one decorative shape per lime card, which `docs/DESIGN_RULES.md` currently forbids; update that file once the owner approves the brand sheet. Not done: the Pinterest inspiration sweep the owner asked for.
+
+### 22 November 2026 — build takeover
+
+The owner asked Codex to take over implementation of the existing agent system. Priorities from the source audit: enforce read-only Klaviyo testing, connect the existing strategy agents to owner-started planning, and complete the missing integrations before expanding scope. This authorizes implementation and review; it does not enable paid/live switches, connect accounts or authorize customer sends. KLV-LOCK-001 is prepared and locally verified; release state is tracked in its PR.

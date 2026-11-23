@@ -408,6 +408,13 @@ async function failed(
     }
   }
   if (error instanceof KlaviyoError) {
+    if (error.kind === 'write_locked')
+      return {
+        ok: false,
+        code: 'rejected',
+        reason: 'testing_write_lock',
+        checks: ['write_lock']
+      }
     logger.warn('Klaviyo push stopped', {
       build,
       kind: error.kind,

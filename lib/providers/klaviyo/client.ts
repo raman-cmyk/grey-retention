@@ -34,6 +34,8 @@ export type KlaviyoScope =
   | 'images:write'
 
 export type KlaviyoFailureKind =
+  /** Server-owned testing lock: refused before transport, regardless of key scopes. */
+  | 'write_locked'
   /** 401: a wrong, expired or revoked key. */
   | 'bad_key'
   /** 403: the key lacks the scope this endpoint needs. */
@@ -85,6 +87,7 @@ export type KlaviyoTransport = (request: {
 const maxBodyBytes = 8 * 1024 * 1024
 
 export const fetchTransport: KlaviyoTransport = async (request) => {
+  guardRequest(request)
   const response = await fetch(request.url, {
     method: request.method,
     headers: request.headers,
@@ -131,8 +134,11 @@ async function capped(response: Response, limit: number) {
  * The only addresses `query` POSTs to: Klaviyo's report questions (the
  * campaign and flow reports, and a metric's counts). Each only reads.
  */
-const reportPaths =
-  /^\/api\/(?:(?:campaign|flow)-values-reports|metric-aggregates)\/?$/
+const reportPaths = new Set([
+  '/api/campaign-values-reports',
+  '/api/flow-values-reports',
+  '/api/metric-aggregates'
+])
 
 /** Waits at most this long inside one call for a short rate limit. */
 const shortWaitSeconds = 10
@@ -179,6 +185,75 @@ export function carriesSchedule(body: unknown): boolean {
       ([k, v]) => scheduleFields.has(k) || carriesSchedule(v)
     )
   return false
+}
+
+/**
+ * Server setting only. A full-scope key, live mode and the draft-push switch
+ * never unlock testing. Only a later owner-authorized server configuration
+ * change to this exact value can permit the already restricted draft writes.
+ */
+const writesUnlocked = () => process.env.KLAVIYO_WRITE_LOCK === 'unlocked'
+
+/** Validate the original spelling before URL parsing can hide a traversal. */
+function apiUrl(path: string): URL {
+  const absolute = path.startsWith('/') ? `${klaviyoHost}${path}` : path
+  const prefix = `${klaviyoHost}/api/`
+  const pathname = absolute.slice(klaviyoHost.length).split(/[?#]/, 1)[0]!
+  if (
+    absolute.length > 8_192 ||
+    !absolute.startsWith(prefix) ||
+    pathname.length > 2_048 ||
+    !/^\/api\/[A-Za-z0-9_/-]+$/.test(pathname) ||
+    pathname.includes('//') ||
+    absolute.includes('#')
+  )
+    throw new KlaviyoError('invalid_response', { endpoint: 'request' })
+  let url: URL
+  try {
+    url = new URL(absolute)
+  } catch {
+    throw new KlaviyoError('invalid_response', { endpoint: 'request' })
+  }
+  if (
+    url.origin !== klaviyoHost ||
+    url.username ||
+    url.password ||
+    url.pathname !== pathname
+  )
+    throw new KlaviyoError('invalid_response', { endpoint: 'request' })
+  return url
+}
+
+/** Checked both before an injected transport and at the actual fetch boundary. */
+function guardRequest(request: { method: string; url: string; body?: string }) {
+  const url = apiUrl(request.url)
+  const endpoint = url.pathname
+  if (request.method === 'GET' && request.body === undefined) return
+  if (
+    request.method === 'POST' &&
+    reportPaths.has(endpoint) &&
+    !url.search &&
+    request.body !== undefined
+  )
+    return
+  if (!writesUnlocked()) throw new KlaviyoError('write_locked', { endpoint })
+  // Unlocking never expands the existing draft-only contract, even when
+  // fetchTransport is called directly instead of through klaviyoClient.
+  const method = request.method as KlaviyoWriteMethod
+  let body: unknown = null
+  try {
+    if (request.body !== undefined) body = JSON.parse(request.body)
+  } catch {
+    throw new KlaviyoError('rejected', { endpoint })
+  }
+  if (
+    url.search ||
+    !isDraftWrite(method, endpoint) ||
+    (method === 'DELETE') !== (request.body === undefined) ||
+    (method !== 'DELETE' && (!body || typeof body !== 'object')) ||
+    carriesSchedule(body)
+  )
+    throw new KlaviyoError('rejected', { endpoint })
 }
 
 export type KlaviyoClient = {
@@ -235,7 +310,7 @@ export function klaviyoClient(
     for (let tries = 0; ; tries++) {
       let response: KlaviyoResponse
       try {
-        response = await transport({
+        const request: Parameters<KlaviyoTransport>[0] = {
           method: change?.method ?? 'GET',
           url: url.toString(),
           headers: {
@@ -248,8 +323,11 @@ export function klaviyoClient(
           },
           ...(change?.body !== undefined ? { body: change.body } : {}),
           timeoutMs: options.timeoutMs ?? 10_000
-        })
-      } catch {
+        }
+        guardRequest(request)
+        response = await transport(request)
+      } catch (error) {
+        if (error instanceof KlaviyoError) throw error
         throw new KlaviyoError('unavailable', { endpoint })
       }
       if (response.status >= 200 && response.status < 300) {
@@ -298,18 +376,25 @@ export function klaviyoClient(
     }
   }
   return {
-    get: (path, scope) => send(new URL(path, klaviyoHost), scope),
+    get: async (path, scope) => send(apiUrl(path), scope),
     next: async (url, scope) => {
       let parsed: URL
       try {
-        parsed = new URL(url)
+        parsed = apiUrl(url)
       } catch {
         throw new KlaviyoError('invalid_response', { endpoint: 'next link' })
       }
       return send(parsed, scope)
     },
     write: async (method, path, body, scope) => {
-      const url = new URL(path, klaviyoHost)
+      let url: URL
+      try {
+        url = apiUrl(path)
+      } catch {
+        throw new KlaviyoError('rejected', { endpoint: 'request' })
+      }
+      if (!writesUnlocked())
+        throw new KlaviyoError('write_locked', { endpoint: url.pathname })
       if (
         url.origin !== klaviyoHost ||
         url.search !== '' ||
@@ -325,9 +410,15 @@ export function klaviyoClient(
     },
     query: async (path, body, scope) => {
       // Only Klaviyo's report questions (drafts are changed by write).
-      const url = new URL(path, klaviyoHost)
+      let url: URL
+      try {
+        url = apiUrl(path)
+      } catch {
+        throw new KlaviyoError('rejected', { endpoint: 'request' })
+      }
       if (
-        !reportPaths.test(url.pathname) ||
+        !reportPaths.has(url.pathname) ||
+        url.search !== '' ||
         body === undefined ||
         body === null
       )
