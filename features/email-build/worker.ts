@@ -280,6 +280,7 @@ export async function runEmailBuilds(
                   studio: {
                     ...studioPortsFor(db, {
                       tenant: job.tenant_id,
+                      sample: store.sample,
                       build: job.id,
                       lease: job.lease_token,
                       agents,

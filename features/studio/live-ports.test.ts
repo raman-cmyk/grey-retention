@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
+const fontSource = vi.hoisted(() => ({ brandFonts: vi.fn() }))
+vi.mock('@/features/onboarding/brand-fonts', () => fontSource)
 const jobs = vi.hoisted(() => ({ requestSectionRender: vi.fn() }))
 vi.mock('./render-jobs', () => jobs)
 const reads = vi.hoisted(() => ({ buildRenders: vi.fn(), buildViews: vi.fn() }))
@@ -49,6 +51,7 @@ import {
   emailPortsFor,
   noPhotos,
   photoOf,
+  sectionFonts,
   pictureLinkSeconds,
   studioPortsFor,
   viewKey,
@@ -144,13 +147,14 @@ const photos = {
 const ai = vi.fn()
 const ports = (
   s: ReturnType<typeof storage>,
-  over: { until?: number; now?: () => number } = {}
+  over: { until?: number; now?: () => number; sample?: boolean } = {}
 ) => {
   const fallbacks = memoryFallbackLog()
   return {
     fallbacks,
     ports: studioPortsFor(s.db, {
       tenant,
+      sample: over.sample,
       build,
       lease,
       agents: {
@@ -173,6 +177,88 @@ afterEach(() => {
 })
 
 describe('the design studio’s ports in the build (DST-006c part 2b)', () => {
+  it('loads the collected font faces only for the explicitly real leased workspace', async () => {
+    const face = {
+      family: 'Cedar Serif',
+      url: 'https://cdn.shopify.com/cedar.woff2',
+      weight: 700
+    }
+    fontSource.brandFonts.mockResolvedValue([{ faces: [face] }])
+    const s = storage()
+    expect(await ports(s).ports.fonts!()).toEqual([])
+    expect(await ports(s, { sample: true }).ports.fonts!()).toEqual([])
+    expect(fontSource.brandFonts).not.toHaveBeenCalled()
+    expect(await ports(s, { sample: false }).ports.fonts!()).toEqual([face])
+    expect(fontSource.brandFonts).toHaveBeenCalledWith(s.db, tenant)
+  })
+
+  it('keeps the existing retry behavior for a failed font read instead of silently changing brand fonts', async () => {
+    fontSource.brandFonts.mockRejectedValue(
+      new Error('synthetic database failure')
+    )
+    await expect(
+      ports(storage(), { sample: false }).ports.fonts!()
+    ).rejects.toThrow('synthetic database failure')
+  })
+
+  it('filters unsafe font URLs/names/weights, deduplicates faces and respects the renderer cap', () => {
+    const face = {
+      family: 'Cedar Serif',
+      url: 'https://cdn.shopify.com/cedar.woff2',
+      weight: 700
+    }
+    const unsafe = [
+      { ...face, family: 'bad";css' },
+      { ...face, weight: 10 },
+      ...[
+        'http://cdn.shopify.com/a.woff2',
+        'https://127.0.0.1/a.woff2',
+        'https://fonts.example.com/a.woff2',
+        'https://cdn.shopify.com.evil.example.com/a.woff2',
+        'https://localhost/a.woff2',
+        'https://192.168.1.1/a.woff2',
+        'https://user:pass@cdn.shopify.com/a.woff2',
+        'https://cdn.shopify.com:444/a.woff2',
+        'not a url',
+        'https://cdn.shopify.com/a.woff2#x'
+      ].map((url) => ({ ...face, url }))
+    ]
+    expect(
+      sectionFonts([
+        ...unsafe,
+        face,
+        { ...face, url: 'https://fonts.gstatic.com/same-face.woff2' }
+      ])
+    ).toEqual([face])
+    expect(
+      sectionFonts(
+        Array.from({ length: 8 }, (_, i) => ({
+          ...face,
+          weight: 100 + i * 100
+        }))
+      )
+    ).toHaveLength(4)
+  })
+  it('allows exact known font CDNs and excludes custom domains until renderer DNS pinning exists', () => {
+    for (const host of [
+      'cdn.shopify.com',
+      'fonts.gstatic.com',
+      'use.typekit.net',
+      'fonts.bunny.net',
+      'fast.fonts.net',
+      'cloud.typography.com',
+      'fonts.cdnfonts.com'
+    ]) {
+      const face = { family: 'Cedar Serif', url: `https://${host}/cedar.woff2` }
+      expect(sectionFonts([face])).toEqual([face])
+    }
+    expect(
+      sectionFonts([
+        { family: 'Cedar Serif', url: 'https://brand.example.com/font.woff2' }
+      ])
+    ).toEqual([])
+  })
+
   it('reads a picture back only while its tag is the one recorded, before and after', async () => {
     const ok = storage({ tags: ['abc', 'abc'] })
     expect(await ports(ok).ports.picture(drawn, 's2')).toEqual({
