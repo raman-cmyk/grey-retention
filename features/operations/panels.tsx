@@ -9,6 +9,47 @@ import { operationAction, acceptInvite } from './actions'
 import { z } from 'zod'
 import { rewriteAvailability } from '@/features/email-generation/config'
 import { connectionsEmptyText, rewriteStatus } from './provider-status'
+import { modelsInUseNow, retirementWatch } from '@/features/ai/retirement-watch'
+
+/**
+ * Owner pick #83: the models the app would call now, and when their
+ * providers shut them down (whole UTC days). Its own panel: it needs no
+ * database, so it shows even when the diagnostics cannot be read.
+ */
+export async function RetirementWatchPanel() {
+  await requireRequestContext('admin')
+  const lines = retirementWatch(
+    modelsInUseNow(),
+    new Date().toISOString().slice(0, 10)
+  )
+  return (
+    <Panel title="Model retirement watch">
+      {lines.length ? (
+        <ul className="space-y-2 text-sm">
+          {lines.map((l) => (
+            <li key={l.name} className="flex flex-wrap gap-x-2">
+              <span className="font-medium">{l.name}</span>
+              <span
+                className={
+                  l.state === 'ok'
+                    ? 'text-[var(--text)]'
+                    : 'font-medium text-[var(--danger-ink)]'
+                }
+              >
+                · {l.detail}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-[var(--text-muted)]">
+          No AI model is in use: GROS’s agents run on the fake, and the older
+          email rewriting is off.
+        </p>
+      )}
+    </Panel>
+  )
+}
 const money = (value: number) =>
   new Intl.NumberFormat('en', {
     style: 'currency',
