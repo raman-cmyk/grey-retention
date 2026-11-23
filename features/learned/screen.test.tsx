@@ -16,6 +16,8 @@ vi.mock('./actions', () => ({
   }))
 }))
 
+import LearnedError from '@/app/(gros)/learned/error'
+import LearnedLoading from '@/app/(gros)/learned/loading'
 import type { LearnedItem, LearnedView } from './read-model'
 import { LearnedScreen } from './screen'
 
@@ -76,6 +78,10 @@ describe('Learned screen (UI-LRNb)', () => {
     const words = within(card('Do')).getByText(rule)
     expect(words).not.toHaveClass('truncate')
     expect(words).toHaveClass('break-words')
+    // Its source and date too (UI-LRNc): a phone cut them to "From yo…".
+    const details = within(card('Do')).getByText('From your results · 9 Nov')
+    expect(details).not.toHaveClass('truncate')
+    expect(details).toHaveClass('break-words')
   })
 
   it('is titled Learned, with no menu item current', () => {
@@ -179,5 +185,44 @@ describe('Learned screen (UI-LRNb)', () => {
       'href',
       '/learned'
     )
+  })
+})
+
+describe('Learned while it opens or fails to (UI-LRNc)', () => {
+  it('opens on the loading page: the bar with no item current, its words, busy, and no main', () => {
+    const { container } = render(<LearnedLoading />)
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Learned' })
+    ).toBeInTheDocument()
+    for (const link of within(
+      screen.getByRole('navigation', { name: 'Main' })
+    ).getAllByRole('link'))
+      expect(link).not.toHaveAttribute('aria-current')
+    expect(screen.getByText('Opening Learned')).toHaveAttribute(
+      'aria-live',
+      'polite'
+    )
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
+    // The page brings the one main while it streams in.
+    expect(container.querySelector('main')).toBeNull()
+  })
+
+  it('says plainly when the page did not open, with Try again and the bar as a way out', async () => {
+    const retry = vi.fn()
+    render(<LearnedError retry={retry} />)
+    expect(screen.getAllByRole('main')).toHaveLength(1)
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Learned did not open')
+    expect(alert).toHaveTextContent('Its rules are safe.')
+    expect(alert).not.toHaveTextContent(/Something went wrong|error/i)
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(retry).toHaveBeenCalledTimes(1)
+    // Learned is not a menu item; Home is the way out.
+    expect(
+      within(screen.getByRole('navigation', { name: 'Main' })).getByRole(
+        'link',
+        { name: 'Home' }
+      )
+    ).toHaveAttribute('href', '/home')
   })
 })

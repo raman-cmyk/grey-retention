@@ -27,6 +27,7 @@ import {
 } from '@/features/strategy/retry'
 import type { LockedContent } from './content'
 import { previewRepeat } from './preview-pair'
+import { vagueLinkWords } from './accessibility'
 
 /**
  * EML-003, the end of layer 2 (AGENT_MAP.md §4, decisions D16 and D21): the
@@ -163,12 +164,19 @@ export function writerFields(draft: Draft, protect: readonly string[]) {
 function walk(draft: Draft) {
   const links: { index: number; url: string }[] = []
   const pictures: { index: number; alt: string }[] = []
+  /** A button's or a linked label's words (`cta` or `label` beside `url`). */
+  const labels: { index: number; words: string }[] = []
   draft.blocks.forEach((block, index) => {
     const visit = (value: unknown) => {
       if (Array.isArray(value)) value.forEach(visit)
       else if (value && typeof value === 'object') {
         const o = value as Record<string, unknown>
-        if (typeof o.url === 'string') links.push({ index, url: o.url })
+        if (typeof o.url === 'string') {
+          links.push({ index, url: o.url })
+          for (const key of ['cta', 'label'] as const)
+            if (typeof o[key] === 'string')
+              labels.push({ index, words: o[key] as string })
+        }
         if (typeof o.image === 'string')
           pictures.push({
             index,
@@ -179,7 +187,7 @@ function walk(draft: Draft) {
     }
     visit(block.content)
   })
-  return { links, pictures }
+  return { links, pictures, labels }
 }
 
 /** The links the Content locker locked: the store link and product pages. */
@@ -277,7 +285,15 @@ export function emailChecks(
       `The email has ${buttons} button sections: keep one clear action.`
     )
   const allowed = lockedLinks(locked)
-  const { links, pictures } = walk(draft)
+  const { links, pictures, labels } = walk(draft)
+  // Owner pick #96: a screen reader reads a button's words alone.
+  for (const { index, words } of labels)
+    if (vagueLinkWords(words))
+      add(
+        'vague_link',
+        fields[index + 2].field,
+        `The button says only "${words.trim()}": say where it goes, such as "Shop the candle".`
+      )
   for (const { index, url } of links)
     if (!allowed.has(url))
       add(
