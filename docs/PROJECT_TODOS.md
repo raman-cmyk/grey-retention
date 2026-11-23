@@ -27,6 +27,16 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - Open question for design (17 Nov 2026, UI-SETd; built as noted until decided): BRAND.md has no select, checkbox or multi-line field, but Holidays (type, country, every year, notes), Support and Feature requests need them. They are plain controls on the GROS tokens (mist fill, radius md, forest focus), like DST-002c's mode pick. Holidays and events is its own page under Settings, reached from a small card with one sentence and Open holidays.
 - Open question for design (20 Nov 2026, UI-AUDb, UI-INSb, UI-LRNc; built as noted until decided): BRAND.md's ListRow keeps a title to one line, but at 375 px a segment's, brand's, email's or rule's name and its details were cut to a few letters. Built: on Audiences, Inspiration and Learned a row's name and details show whole, on as many lines as they need, and on a phone a row's button drops under its words (as ListRow already meant). Other lists still cut a title to one line. At 1280 px and wider nothing moves. Between 1024 and about 1180 px, Home's designed-email rows (the mode pick and Create email) and Settings' Team member and invite rows now put their buttons under the words; before, the words were squeezed to "Autumn…".
 
+## Picture work: what truly needs an outside service
+
+Owner picks #4, #12 and #15 (IMG-ADAPTER, 20 Nov 2026, `lib/providers/image-work.ts`). Status: **adapter ready, not wired, fake only.** Every job returns `not_available`, and the store's original picture is kept and used. This does not close picture work.
+
+- **The MVP needs no service purchase.** Emails already work with the store's original pictures, as they are today.
+- **Product cut-outs (#4): need a segmentation implementation.** Removing a background means finding the product's outline pixel by pixel. That can be a paid API, or a self-hosted or open-source segmentation model that we run ourselves. Either way it is new work; the browser and code we have today cannot do it.
+- **Smart crop (#12): only the semantic crop needs detection.** Cropping "around the product or a face" means finding them in the photo, which takes a detection model (paid AI, a service or self-hosted). A simple crop to a size, from the centre, needs nothing: the email layout already does it.
+- **Dark-mode backplate (#15): existing layout code for a picture that is already a see-through PNG.** The plate (a light panel behind the product) is plain layout code. For a photo with a solid background it only helps after a cut-out, so that case waits for #4. Knowing which store photos are already see-through is a small code follow-up (the photo library noting it), with no service.
+- **Asked (Blocked, needs Raman):** which segmentation and detection route, if any: paid, self-hosted or none for now.
+
 ## Hard design rules and current scope
 
 [DESIGN_RULES.md](DESIGN_RULES.md) is mandatory. Desktop/laptop first; defer dedicated mobile-layout design. Minimal motion: the owner confirmed the listed animation recipes/effects are unwanted. No decorative gradients/glow, meaningless badges/pills, nested cards, excessive typography/dividers/borders or redundant copy. See the rulebook for the full list.
