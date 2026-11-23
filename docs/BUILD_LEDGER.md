@@ -3787,6 +3787,7 @@ Append entries using this exact shape:
 - Verification run: `pnpm verify`; `letter-steps.test.ts` (19).
 - Known issues: none. Every part already had its own tests (profile, store source, writer); this one joins them.
 - Next consumer: IMG-ADAPTER (#632), then POLICY-DRAFT.
+
 ### 2026-11-20 — IMG-001 — IMG-ADAPTER: picture work behind one adapter
 
 - Status: review
