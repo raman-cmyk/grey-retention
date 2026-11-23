@@ -843,7 +843,7 @@ describe('the email checks (code)', () => {
             alt: ' ',
             headline: 'Room',
             url: 'https://cedar.example.com',
-            cta: 'Look'
+            cta: 'Click here'
           }
         },
         ...draft.blocks.slice(4)
@@ -855,7 +855,9 @@ describe('the email checks (code)', () => {
       expect.arrayContaining([
         ['one_action', 'email'],
         ['link_not_locked', '5-cta'],
-        ['image_alt', '6-hero_image']
+        ['image_alt', '6-hero_image'],
+        // Owner pick #96: a button that says only "click here".
+        ['vague_link', '6-hero_image']
       ])
     )
     expect(emailChecks(draft, locked, brand.name)).toEqual([])

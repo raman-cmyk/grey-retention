@@ -30,6 +30,7 @@ import {
   viewKey
 } from '@/features/studio/email-check'
 import { hardProblems } from './hard-checks'
+import { spamScore, subjectBPasses } from './spam-score'
 import { letterSchema } from '@/features/letter/letter'
 import {
   letterCopyStep,
@@ -205,23 +206,78 @@ const hostOf = (url: string | undefined) => {
   }
 }
 
+/**
+ * Owner pick #93: the store's own words the spam check leaves out (as copy
+ * QA does), past the brand, products and claims: its reviews, founder's
+ * note and photos' words, and the email's code.
+ */
+function storeWords(store: Store, code?: string | null) {
+  const c = store.confirmed
+  return [
+    ...(c?.reviews ?? []).flatMap((r) => [r.quote, r.author]),
+    ...(c?.customerPhotos ?? []).map((p) => p.alt),
+    ...(c?.founder
+      ? [
+          c.founder.name,
+          ...(c.founder.role ? [c.founder.role] : []),
+          ...(c.founder.note ?? []),
+          ...(c.founder.photo ? [c.founder.photo.alt] : [])
+        ]
+      : []),
+    ...(c?.lifestylePhoto ? [c.lifestylePhoto.alt] : []),
+    ...(code ? [code] : [])
+  ]
+}
+
 /** DST-005: the hard checks on an email as drawn, before it is stored. */
 const checksFor =
-  (store: Store, rules: SectionsOutput['rules']) => (html: string) =>
+  (store: Store, rules: SectionsOutput['rules']) =>
+  (
+    html: string,
+    words: {
+      subject: string
+      preheader: string
+      code?: string | null
+      /** A text email's plain part: it is a letter (#96, no headings). */
+      text?: string
+    }
+  ) =>
     hardProblems(html, {
+      letter: words.text !== undefined,
+      subject: words.subject,
+      preheader: words.preheader,
+      brandName: store.brand.name,
+      storeText: storeWords(store, words.code),
       maxDiscountPercent: rules.maxDiscountPercent,
-      known: [
-        store.brand.name,
-        ...store.products.map((p) => p.title),
-        ...store.facts.approvedClaims
-      ],
-      storeHosts: [
-        ...new Set([
-          ...hostOf(store.brand.site),
-          ...store.products.flatMap((p) => hostOf(p.url))
-        ])
-      ]
+      known: knownWords(store),
+      storeHosts: storeHosts(store)
     })
+
+/** Product names, approved claims, the brand's name: never an offer. */
+const knownWords = (store: Store) => [
+  store.brand.name,
+  ...store.products.map((p) => p.title),
+  ...store.facts.approvedClaims
+]
+
+/** The store's hosts: its site and its products'. */
+const storeHosts = (store: Store) => [
+  ...new Set([
+    ...hostOf(store.brand.site),
+    ...store.products.flatMap((p) => hostOf(p.url))
+  ])
+]
+
+/** The lab's B keeps the email under the spam check's limit (#93). */
+function subjectBSafe(store: Store, email: BuiltEmail) {
+  const text = [...knownWords(store), ...storeWords(store, email.code)]
+  const scored = spamScore(email, {
+    text,
+    name: store.brand.name,
+    hosts: storeHosts(store)
+  })
+  return (b: string) => subjectBPasses(scored, b, text)
+}
 
 /** JSON with every object's keys in order: the same data, the same text. */
 function canonical(value: unknown): string {
@@ -475,7 +531,7 @@ export async function runBuildStep(
   // DST-005: the hard checks on the email as drawn, before it is stored.
   const checksOf = checksFor(store, sections.rules)
   let made = draw(drawn)
-  let problems = made.ok ? checksOf(made.email.html) : []
+  let problems = made.ok ? checksOf(made.email.html, made.email) : []
   const pictured = drawn.draft.blocks.some(
     (b) => (b?.content as { picture?: unknown } | undefined)?.picture
   )
@@ -487,7 +543,7 @@ export async function runBuildStep(
     // logged once they pass.
     const failed = problems
     made = draw(plain)
-    problems = made.ok ? checksOf(made.email.html) : []
+    problems = made.ok ? checksOf(made.email.html, made.email) : []
     if (made.ok && !problems.length)
       await ctx.fallbacks.record({
         tenantId: ctx.tenantId,
@@ -547,7 +603,7 @@ export async function runBuildStep(
     }
     if (!check.pass) {
       made = draw(plain)
-      problems = made.ok ? checksOf(made.email.html) : []
+      problems = made.ok ? checksOf(made.email.html, made.email) : []
       if (made.ok && !problems.length)
         await ctx.fallbacks.record({
           tenantId: ctx.tenantId,
@@ -590,7 +646,7 @@ export async function runBuildStep(
   if (made.ok && studioPassed) {
     const a = draw(plain)
     const codedHtml =
-      a.ok && !checksOf(a.email.html).length ? a.email.html : null
+      a.ok && !checksOf(a.email.html, a.email).length ? a.email.html : null
     made = {
       ok: true,
       email: {
@@ -626,7 +682,11 @@ export async function runBuildStep(
       dedupeKey: `design-studio:${keyPart(ctx.callerKey)}:${coded.key}`
     })
   return made.ok
-    ? { ok: true, done: 'design', email: withSubjectB(made.email, plain) }
+    ? {
+        ok: true,
+        done: 'design',
+        email: withSubjectB(made.email, plain, subjectBSafe(store, made.email))
+      }
     : made
 }
 
@@ -640,14 +700,24 @@ const savedLab = z.object({
  * subject, half the audience each. Never beside a design test (one test
  * an email), never on plain copy (it has no lab), never B the same as A.
  */
-function withSubjectB(email: BuiltEmail, copy: CopyOutput): BuiltEmail {
+function withSubjectB(
+  email: BuiltEmail,
+  copy: CopyOutput,
+  /** Owner pick #93: B keeps the email under the spam check's limit. */
+  spamOk: (b: string) => boolean
+): BuiltEmail {
   if (email.designA || email.text !== undefined || !copy.written) return email
   const lab = savedLab.safeParse(copy.subjectLab)
   const b = lab.success ? lab.data.b?.subject : undefined
   // Compared as the pusher compares them (spaces as one, any case), and
   // safe store text as the copy step checked it (no tag, no markup).
   const same = (x: string) => x.trim().replace(/\s+/g, ' ').toLowerCase()
-  if (!b || subjectText(b) !== b || same(b) === same(email.subject))
+  if (
+    !b ||
+    subjectText(b) !== b ||
+    same(b) === same(email.subject) ||
+    !spamOk(b)
+  )
     return email
   return { ...email, subjectB: b }
 }
@@ -701,7 +771,7 @@ async function letterDesign(
     name: emailName(planned)
   })
   if (!made.ok) return made
-  const problems = checksFor(store, sections.rules)(made.email.html)
+  const problems = checksFor(store, sections.rules)(made.email.html, made.email)
   if (problems.length) {
     await ctx.fallbacks.record({
       tenantId: ctx.tenantId,

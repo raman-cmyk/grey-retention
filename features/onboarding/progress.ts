@@ -13,7 +13,11 @@ import { localDateTime } from '@/lib/local-time'
  *
  * A reader's step is its newest read that succeeded (a later re-read never
  * makes a finished onboarding look unfinished), else its newest read. A
- * read restarted on the same day keeps its first start time.
+ * read restarted on the same day keeps its first start time. Given the
+ * saved website, the steps of the readers that read it (the website, its
+ * ads, its reviews: `websiteKinds`) count only the reads of that website
+ * (ONB-SITEa): a read of a website the owner has since changed, however
+ * new, is not his website's read, so it is "not read yet" until one is.
  */
 
 /** Ten minutes from sign-up to the first plan. */
@@ -28,6 +32,17 @@ export const readerKinds = {
 } as const
 
 export type StepKey = keyof typeof readerKinds | 'plan'
+
+/**
+ * The readers that read the brand's website: each job keeps the plain
+ * domain it reads (`input.domain`, written by `start_site_reading`,
+ * `start_ads_reading` and `start_reviews_reading`).
+ */
+export const websiteKinds: ReadonlySet<StepKey> = new Set([
+  'site',
+  'ads',
+  'reviews'
+])
 /**
  * `skipped`: finished without reading anything (no source, or not set up);
  * `needs_you`: waiting for the owner (the plan's offer choice).
@@ -79,6 +94,8 @@ const labels: Record<StepKey, string> = {
 export type JobRow = {
   kind: string
   status: string
+  /** The website a website reader's read was started for (`input.domain`). */
+  domain?: string | null
   failure_class?: string | null
   checkpoint: unknown
   created_at: string
@@ -155,13 +172,27 @@ export function progressFrom(input: {
   /** The store's date today (YYYY-MM-DD): a run whose days began is out of date. */
   today: string
   now: Date
+  /**
+   * The saved website as the readers read it (`siteDomain`): only its own
+   * reads count for the website's readers (`websiteKinds`). Left out,
+   * every read counts.
+   */
+  site?: string
 }): OnboardingProgress {
   const now = input.now.getTime()
+  const site = input.site
   const steps: ProgressStep[] = (
     Object.keys(readerKinds) as (keyof typeof readerKinds)[]
   ).map((key) => {
     const reads = newestFirst(
-      input.jobs.filter((j) => j.kind === readerKinds[key])
+      input.jobs.filter(
+        (j) =>
+          j.kind === readerKinds[key] &&
+          // The job keeps the domain already as `private.site_domain`
+          // wrote it, and `site` is the same rule's (`siteDomain`): the
+          // two are compared as they are, never normalised again.
+          (!websiteKinds.has(key) || site === undefined || j.domain === site)
+      )
     )
     const job = reads.find((j) => j.status === 'succeeded') ?? reads[0]
     if (!job) return step(key, 'not_started', null, null, now)
@@ -226,12 +257,15 @@ const readsPerKind = 20
 
 /**
  * The workspace's progress, read with a member's client (RLS keeps it to
- * the workspace) or the worker's; null when a read fails.
+ * the workspace) or the worker's; null when a read fails. Given the saved
+ * website (as `siteDomain` reads it), only that website's reads are
+ * looked at for the website's readers, so the newest few are its own.
  */
 export async function readOnboardingProgress(
   db: SupabaseClient<Database>,
   tenantId: string,
-  now = new Date()
+  now = new Date(),
+  site?: string
 ): Promise<OnboardingProgress | null> {
   const plans = () =>
     db
@@ -249,15 +283,25 @@ export async function readOnboardingProgress(
       .order('updated_at', { ascending: true })
       .limit(1),
     plans().order('created_at', { ascending: false }).limit(1),
-    ...Object.values(readerKinds).map((kind) =>
-      db
+    ...(
+      Object.entries(readerKinds) as [keyof typeof readerKinds, string][]
+    ).map(([key, kind]) => {
+      const reads = db
         .from('job_runs')
-        .select('kind,status,checkpoint,failure_class,created_at,updated_at')
+        .select(
+          'kind,status,domain:input->>domain,checkpoint,failure_class,created_at,updated_at'
+        )
         .eq('tenant_id', tenantId)
         .eq('kind', kind)
+      // A website reader's job keeps the plain domain it reads.
+      return (
+        websiteKinds.has(key) && site !== undefined
+          ? reads.eq('input->>domain', site)
+          : reads
+      )
         .order('created_at', { ascending: false })
         .limit(readsPerKind)
-    )
+    })
   ])
   if (
     tenant.error ||
@@ -279,6 +323,7 @@ export async function readOnboardingProgress(
     firstPlanned: firstPlanned.data?.[0] ?? null,
     newestPlan: newestPlan.data?.[0] ?? null,
     today,
-    now
+    now,
+    site
   })
 }
