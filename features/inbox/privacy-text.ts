@@ -1,5 +1,11 @@
 import { bareAddress, canonical } from './addresses'
 import { decode } from './images'
+import {
+  lower,
+  parseLimits,
+  type DeadlineCheck,
+  type ParseLimits
+} from './parse-guard'
 
 /**
  * REAL-1b1: the rules that find the inbox's people in words (see
@@ -28,7 +34,7 @@ export type CleanOptions = {
    * Lower limits for this call (how a test proves each guard). A limit is
    * never raised: a value above the default, or not a number, is ignored.
    */
-  limits?: Partial<PrivacyLimits>
+  limits?: Partial<PrivacyLimits & ParseLimits>
   /**
    * The clock the HTML deadline is read from, by check (`Date.now`). It
    * can only bring the deadline closer: real time still ends the work.
@@ -44,23 +50,6 @@ export const privacyLimits = Object.freeze({
   /** Text read before cleaning, per limit (cut after a whole word). */
   readFactor: 4,
   /**
-   * HTML characters read. Gmail clips an email at 102 KB, so a newsletter
-   * is far below 1 MB; above it, it is refused, which keeps every guard
-   * below cheap. Escaping may make the cleaned HTML longer: later rounds
-   * are not held to it.
-   */
-  html: 1_000_000,
-  /** Tags, comments and other markup: each splits the words in pieces. */
-  tags: 50_000,
-  /** Attributes merged onto one element (repeated <html> or <body>). */
-  tagAttributes: 1_000,
-  /** Attributes squared, summed over tags (the tokenizer's own work). */
-  attributeWork: 2_000_000,
-  /** Elements inside each other (emails nest a few dozen deep). */
-  depth: 256,
-  /** One deadline for all the rounds of one email's HTML. */
-  htmlMs: 3_000,
-  /**
    * The inbox's bare local part ("sampleinbox") is removed as a word only
    * from this length on: a shorter one may be an ordinary word. With a
    * +alias, dots or an @ it always goes.
@@ -70,18 +59,6 @@ export const privacyLimits = Object.freeze({
 export type PrivacyLimits = {
   -readonly [K in keyof typeof privacyLimits]: number
 }
-/** Where the HTML deadline is read (a test's clock tells them apart). */
-export type DeadlineCheck =
-  | 'start'
-  | 'scan'
-  | 'element'
-  | 'walk'
-  | 'block'
-  | 'css'
-  | 'strings'
-  | 'fold'
-  | 'pass'
-  | 'writer'
 /** Reads the deadline at a check: throws once it has passed. */
 export type Check = (at: DeadlineCheck) => void
 
@@ -149,7 +126,7 @@ export type Rules = {
   own: RegExp | null
   images: Map<string, string>
   stored: Set<string>
-  limits: PrivacyLimits
+  limits: PrivacyLimits & ParseLimits
   now: (check: DeadlineCheck) => number
   /** The HTML deadline, read while long text is matched (none for text). */
   check: Check
@@ -387,7 +364,7 @@ function compile(identity: InboxIdentity, options: CleanOptions): Rules {
       : null,
     images,
     stored: new Set(images.values()),
-    limits: lower(privacyLimits, options.limits),
+    limits: lower({ ...parseLimits, ...privacyLimits }, options.limits),
     now: options.clock ?? (() => Date.now()),
     check: () => {}
   }
@@ -400,20 +377,6 @@ function compile(identity: InboxIdentity, options: CleanOptions): Rules {
       for (const key of [ref.trim(), decode(ref).trim()]) images.set(key, path)
   rules.stored = new Set(images.values())
   return rules
-}
-
-/** The defaults, each lowered (never raised) by a finite given value. */
-function lower<L extends Record<string, number>>(
-  defaults: L,
-  given: Partial<Record<keyof L, unknown>> = {}
-): L {
-  const out = { ...defaults }
-  for (const key of Object.keys(defaults) as (keyof L)[]) {
-    const v = given[key]
-    if (typeof v === 'number' && Number.isFinite(v))
-      out[key] = Math.min(defaults[key], v) as L[keyof L]
-  }
-  return out
 }
 
 /** The longest picture address read (links are far shorter). */
