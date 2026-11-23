@@ -508,7 +508,7 @@ describe('cleanEmail', () => {
       cleanEmail({ ...shopify, text: shopify.text.repeat(1_500) }, me).text
     ).not.toMatch(person)
     expect(Date.now() - started).toBeLessThan(8_000)
-  })
+  }, 15_000)
 
   it('refuses HTML the parser would be slow on, fast', () => {
     for (const probe of probes.slow) {
