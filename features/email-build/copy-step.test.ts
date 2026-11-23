@@ -979,6 +979,32 @@ describe('the subject line lab on the Copywriter’s words (PIC-26 part 2)', () 
     ).not.toHaveProperty('subjectB')
   })
 
+  it('never tests a B that would make the email read as spam (owner pick #93)', async () => {
+    const { out } = await copy(['Ready for the weekend?'])
+    const s = { ...(await store()), pastSubjects: past }
+    const spammy = {
+      ...out,
+      subjectLab: {
+        ...(out.subjectLab as object),
+        b: { subject: 'RE: act now, you have been selected' }
+      }
+    }
+    const design = await runBuildStep(
+      'design',
+      {
+        planned,
+        store: s,
+        offers: sampleOffers,
+        progress: { ...(await savedSteps(s)), copy: spammy }
+      },
+      ctxWith(null)
+    )
+    expect(design).toMatchObject({ ok: true, done: 'design' })
+    expect(
+      (design as { email: Record<string, unknown> }).email
+    ).not.toHaveProperty('subjectB')
+  })
+
   it('weighs nothing for plain copy, which keeps its own subject', async () => {
     const progress = await savedSteps()
     const plain = await runBuildStep(

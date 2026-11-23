@@ -66,6 +66,22 @@ const fieldsOf = (button: HTMLElement) =>
   )
 
 describe('Holidays and events under Settings (UI-SETd)', () => {
+  // UI-AUDb review: a row shows its words whole, so a long note is its
+  // first 140 characters there; the whole note is in the Edit form.
+  it('shows a long note’s start in its row, and the whole note when editing', () => {
+    const notes = `${'Tease it a week early with the new colours. '.repeat(10)}End.`
+    const long = { ...drop, notes }
+    render(<HolidaysScreen page={page({ own: [long] })} owner editing={long} />)
+    const [row] = within(card('Your dates')).getAllByRole('listitem')
+    const details = within(row!).getByText(/^Nov 20 · Event/)
+    const shown = details.textContent!.split(' · ').at(-1)!
+    expect(shown).toHaveLength(140)
+    expect(shown.endsWith('…')).toBe(true)
+    expect(notes.startsWith(shown.slice(0, -1))).toBe(true)
+    expect(row).not.toHaveTextContent('End.')
+    expect(screen.getByLabelText(/Notes/)).toHaveValue(notes)
+  })
+
   it('lists the owner’s dates with Edit and Delete for each', () => {
     render(<HolidaysScreen page={page()} owner editing={null} />)
     expect(

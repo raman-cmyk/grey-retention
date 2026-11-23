@@ -4,10 +4,13 @@ import type { Database } from '@/lib/supabase/database.types'
 /**
  * What GROS found about the brand, for the Brand step (UI-ONBb): only what
  * is saved, never made up. The logo the Site reader kept from this same
- * website (`brand_logos`), the brand kit's colors and fonts (`brand_kits`)
- * and the first products of the Klaviyo catalog, of the kind it was last
- * read (a real store never shows the sample's). Each is empty when nothing
- * was found yet.
+ * website (`brand_logos`: never another website's, ONB-SITEa), the brand
+ * kit's colors and fonts (`brand_kits`) and the first products of the
+ * Klaviyo catalog, of the kind it was last read (a real store never shows
+ * the sample's). The kit keeps no website: it is made only from text the
+ * owner pasted himself (`brand.extract`), and Create email and the
+ * renderer use it whatever the website, so it is shown as it is. Each is
+ * empty when nothing was found yet.
  */
 export type BrandFound = {
   /** The logo for light backgrounds; null when none was kept for this website. */
