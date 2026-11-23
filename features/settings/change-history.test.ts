@@ -155,6 +155,42 @@ describe('a recorded change in plain words', () => {
     expect(changeText(kind, detail)).toBe(sentence)
   })
 
+  it('says how the email limit and segment order changed (SEG-EXP-a)', () => {
+    const set = { to_window: 7, to_cap: 3, order_changed: false }
+    expect(changeText('exposure_policy_changed', set)).toBe(
+      'Email limit set: at most 3 marketing emails per person in 7 days'
+    )
+    const changed = {
+      ...set,
+      from_window: 7,
+      from_cap: 3,
+      to_window: 1,
+      to_cap: 1
+    }
+    expect(changeText('exposure_policy_changed', changed)).toBe(
+      'Email limit changed to at most 1 marketing email per person in 1 day (was 3 in 7)'
+    )
+    expect(
+      changeText('exposure_policy_changed', { ...changed, order_changed: true })
+    ).toBe(
+      'Email limit changed to at most 1 marketing email per person in 1 day (was 3 in 7); Segment order changed'
+    )
+    const order = { from_window: 7, from_cap: 3, ...set, order_changed: true }
+    expect(changeText('exposure_policy_changed', order)).toBe(
+      'Segment order changed'
+    )
+    // Nothing readable, or nothing changed, explains nothing.
+    expect(changeText('exposure_policy_changed', { to_cap: 'x' })).toBeNull()
+    expect(
+      changeText('exposure_policy_changed', {
+        from_window: 7,
+        from_cap: 3,
+        ...set
+      })
+    ).toBeNull()
+    expect(changeKinds).toContain('exposure_policy_changed')
+  })
+
   it('gives a code’s last day in the store’s time zone', () => {
     // 23:59 on 30 Nov in Los Angeles is already 1 Dec in UTC.
     const detail = {
