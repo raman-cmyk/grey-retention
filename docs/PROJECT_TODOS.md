@@ -51,6 +51,7 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 | EML-AB-001       | Test layer 3: A coded blocks vs B designed sections (design studio), one Klaviyo draft per email with A and B     | Not started; owner picks the default                              |
 | PICKS-1115       | Build the 61 owner-picked additions (AGENT_MAP.md, D27), plus the resumable build job (#81) they need             | Approved 15 Nov; not started                                      |
 | MEM-DONT-001     | Do's and don'ts memory from results, inspector rejections and owner edits                                         | Not started                                                       |
+| SCHED-LATE-001   | Scheduled runs fire every 5.5–9 hours, not every 30 minutes (GitHub delays them); queued work can wait            | Observed 20 Nov; pg_cron is a proposal (see Open decisions)       |
 
 ## Research follow-ups
 
@@ -73,6 +74,7 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - Onboarding (16 Nov 2026, UI-ONBa): may the owner skip the Klaviyo step with "Later"? **Proposal, built as such until decided:** no. Every plan and email reads the store from Klaviyo (VISION sections 5 and 10), so the Klaviyo step is done only when Klaviyo is connected. Rivals can be skipped (following a real brand is not built yet); discount codes are optional.
 - Design (proposal, UI-ONBe, 17 Nov): a suggested brand on the Rivals step has two actions, Follow and Hide, where BRAND.md's ListRow allows one. Built with Follow as an outline button and Hide as a quiet one until design decides.
 - Design (proposal, UI-RES-b, 16 Nov): BRAND.md has four statuses. A Results row for a deleted or not-sent email fits none, so it shows no pill for now; and a sample draft shows Planned on Home, Plan and Results though BRAND.md's Planned means "not created yet". Does either need a fifth look?
+- Scheduling (proposal, 20 Nov 2026, OPS-READY; not decided): GitHub delays scheduled workflows, so the 30-minute schedule fires only every 5.5 to 9 hours and queued work can wait hours. **Proposal:** move the frequent trigger to a database-side schedule (Supabase `pg_cron`, the option in `SCHEDULED_JOBS_RUNBOOK.md`), which runs on time and costs no Actions minutes; GitHub Actions keeps the browser jobs (screenshots, renders). Turning it on touches the hosted Supabase project, so it waits for Raman's OK.
 
 ## Discussion log
 
