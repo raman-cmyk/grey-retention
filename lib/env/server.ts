@@ -16,6 +16,13 @@ const serverEnvironmentSchema = z.object({
   KLAVIYO_MODE: z.string().optional(),
   /** The owner's switch for writing drafts into Klaviyo (PSH-001): `live`, with KLAVIYO_MODE=live. */
   KLAVIYO_DRAFT_PUSH: z.string().optional(),
+  /**
+   * KLV-LOCK-001: the Klaviyo write lock, server-only (never NEXT_PUBLIC).
+   * Locked unless exactly `unlocked`; it wins over KLAVIYO_MODE and
+   * KLAVIYO_DRAFT_PUSH. Read at each request by `klaviyoWritesUnlocked`,
+   * never from this cached parse (docs/KLAVIYO_WRITE_LOCK.md).
+   */
+  KLAVIYO_WRITE_LOCK: z.string().optional(),
   /** `on` lets "Create email" ask the AI agents (REL-AI part 2), with a live model; the owner's switch, off by default. */
   EMAIL_BUILD_AGENTS: z.string().optional(),
   /** `on` lets "Create email" design its heroes as pictures (DST-006, D25), with the agents on; the owner's switch, off by default. */
@@ -45,4 +52,16 @@ let parsedEnvironment: z.infer<typeof serverEnvironmentSchema> | undefined
 export function getServerEnvironment() {
   parsedEnvironment ??= serverEnvironmentSchema.parse(process.env)
   return parsedEnvironment
+}
+
+/**
+ * KLV-LOCK-001: whether the server environment releases the Klaviyo write
+ * lock: only `KLAVIYO_WRITE_LOCK` set to exactly `unlocked`. Missing,
+ * empty, spaced, another case or any other word stays locked. Read from
+ * the environment at every call (never cached), and nothing a caller
+ * passes changes it. Only a separate, explicit owner instruction may set
+ * it; connecting a full-access key is not that instruction.
+ */
+export function klaviyoWritesUnlocked(): boolean {
+  return process.env.KLAVIYO_WRITE_LOCK === 'unlocked'
 }

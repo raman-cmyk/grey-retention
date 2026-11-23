@@ -1,4 +1,5 @@
 import 'server-only'
+import { klaviyoWritesUnlocked } from '@/lib/env/server'
 
 /**
  * The live Klaviyo client (KLV-001): JSON:API requests to Klaviyo's one
@@ -10,6 +11,8 @@ import 'server-only'
  * Writes (PSH-001) go only to the addresses that make or change a draft
  * campaign, its variations, templates and images: nothing this client can
  * call schedules or sends an email (D17: the owner schedules in Klaviyo).
+ * And none is made at all while the write lock is on (KLV-LOCK-001, the
+ * default): only reads and the read-only report questions go out.
  */
 
 export const klaviyoHost = 'https://a.klaviyo.com'
@@ -46,6 +49,11 @@ export type KlaviyoFailureKind =
   | 'rejected'
   /** A 2xx answer we cannot read (Klaviyo changed its shape). */
   | 'invalid_response'
+  /**
+   * KLV-LOCK-001: refused by the write lock before any network call (a
+   * write, or anything that is not a read, while Klaviyo is locked).
+   */
+  | 'write_locked'
 
 export class KlaviyoError extends Error {
   constructor(
@@ -84,7 +92,77 @@ export type KlaviyoTransport = (request: {
 /** A Klaviyo answer bigger than this is not read (pages are far smaller). */
 const maxBodyBytes = 8 * 1024 * 1024
 
+/**
+ * KLV-LOCK-001: the write lock, locked by default and owned by the server.
+ * While locked, the only requests made at all are an exact `GET` on
+ * Klaviyo's own origin and an exact `POST` of one of the read-only report
+ * questions below, at exactly its address (no query, no other spelling).
+ * Anything else (PATCH, PUT, DELETE, any other POST or method, any other
+ * origin) is refused as `write_locked` before any network call: by the
+ * client (`send`, `write`, `query`) and again by `fetchTransport` itself.
+ * Only the server environment's `KLAVIYO_WRITE_LOCK=unlocked`, exactly,
+ * read at each request, releases it: no option, argument or setting a
+ * caller passes can. It wins over KLAVIYO_MODE and KLAVIYO_DRAFT_PUSH
+ * (docs/KLAVIYO_WRITE_LOCK.md).
+ */
+export const reportQuestionPaths: readonly string[] = Object.freeze([
+  // The campaign report (ONB-103 history, LRN-001 results).
+  '/api/campaign-values-reports',
+  // The flow report (ONB-103 history).
+  '/api/flow-values-reports',
+  // A metric's counts (LRN-001's link clicks).
+  '/api/metric-aggregates'
+])
+
+/** Klaviyo's origin, exactly (https, its host, the default port, no user). */
+function onKlaviyo(url: string) {
+  try {
+    const u = new URL(url)
+    return u.origin === klaviyoHost && !u.username && !u.password
+  } catch {
+    return false
+  }
+}
+
+/**
+ * What the lock lets through: an exact `GET` on Klaviyo's origin, or an
+ * exact `POST` whose address is exactly one of `reportQuestionPaths`.
+ */
+export function readOnlyRequest(method: string, url: string) {
+  if (!onKlaviyo(url)) return false
+  if (method === 'GET') return true
+  return (
+    method === 'POST' &&
+    reportQuestionPaths.some((path) => url === `${klaviyoHost}${path}`)
+  )
+}
+
+/** The path of an address, for an error (never its query or a key). */
+const endpointOf = (url: string) => {
+  try {
+    return new URL(url, klaviyoHost).pathname.slice(0, 200)
+  } catch {
+    return 'request'
+  }
+}
+
+/** A path as the address it names (an address given whole stays as given). */
+const absolute = (path: string) =>
+  /^[a-z][a-z0-9+.-]*:/i.test(path) ? path : `${klaviyoHost}${path}`
+
+/** Refuses what the lock does not let through, before any network call. */
+function lockGuard(method: string, url: string) {
+  if (!klaviyoWritesUnlocked() && !readOnlyRequest(method, url))
+    throw new KlaviyoError('write_locked', { endpoint: endpointOf(url) })
+}
+
 export const fetchTransport: KlaviyoTransport = async (request) => {
+  // The lock again, from the method and address alone: code holding this
+  // transport cannot go round the client.
+  lockGuard(request.method, request.url)
+  // Klaviyo's own origin only, always: the key goes in the header.
+  if (!onKlaviyo(request.url))
+    throw new KlaviyoError('invalid_response', { endpoint: 'next link' })
   const response = await fetch(request.url, {
     method: request.method,
     headers: request.headers,
@@ -126,13 +204,6 @@ async function capped(response: Response, limit: number) {
   }
   return Buffer.concat(chunks).toString('utf8')
 }
-
-/**
- * The only addresses `query` POSTs to: Klaviyo's report questions (the
- * campaign and flow reports, and a metric's counts). Each only reads.
- */
-const reportPaths =
-  /^\/api\/(?:(?:campaign|flow)-values-reports|metric-aggregates)\/?$/
 
 /** Waits at most this long inside one call for a short rate limit. */
 const shortWaitSeconds = 10
@@ -230,13 +301,16 @@ export function klaviyoClient(
   ) => {
     if (url.origin !== klaviyoHost)
       throw new KlaviyoError('invalid_response', { endpoint: 'next link' })
+    const method = change?.method ?? 'GET'
+    // KLV-LOCK-001: the lock, from the address as sent, before any transport.
+    lockGuard(method, url.toString())
     const endpoint = url.pathname
     if (!keyShape.test(apiKey)) throw new KlaviyoError('bad_key', { endpoint })
     for (let tries = 0; ; tries++) {
       let response: KlaviyoResponse
       try {
         response = await transport({
-          method: change?.method ?? 'GET',
+          method,
           url: url.toString(),
           headers: {
             authorization: `Klaviyo-API-Key ${apiKey}`,
@@ -249,7 +323,10 @@ export function klaviyoClient(
           ...(change?.body !== undefined ? { body: change.body } : {}),
           timeoutMs: options.timeoutMs ?? 10_000
         })
-      } catch {
+      } catch (error) {
+        // The transport's own lock says so; anything else is Klaviyo unwell.
+        if (error instanceof KlaviyoError && error.kind === 'write_locked')
+          throw error
         throw new KlaviyoError('unavailable', { endpoint })
       }
       if (response.status >= 200 && response.status < 300) {
@@ -309,6 +386,8 @@ export function klaviyoClient(
       return send(parsed, scope)
     },
     write: async (method, path, body, scope) => {
+      // The lock first: while locked, nothing is written at all.
+      lockGuard(method, absolute(path))
       const url = new URL(path, klaviyoHost)
       if (
         url.origin !== klaviyoHost ||
@@ -324,13 +403,12 @@ export function klaviyoClient(
       })
     },
     query: async (path, body, scope) => {
-      // Only Klaviyo's report questions (drafts are changed by write).
+      // Only Klaviyo's report questions, at exactly their addresses (drafts
+      // are changed by write).
+      if (!reportQuestionPaths.includes(path))
+        throw new KlaviyoError('rejected', { endpoint: endpointOf(path) })
       const url = new URL(path, klaviyoHost)
-      if (
-        !reportPaths.test(url.pathname) ||
-        body === undefined ||
-        body === null
-      )
+      if (body === undefined || body === null)
         throw new KlaviyoError('rejected', { endpoint: url.pathname })
       return send(url, scope, {
         method: 'POST',
