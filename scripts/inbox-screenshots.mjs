@@ -44,18 +44,25 @@ export const uploadBudgetMs = 90_000
  * Tags that reach out on their own, past request interception: <link>
  * (prefetch, preconnect and DNS prefetch skip it; email apps ignore <link>
  * anyway), <meta> (a refresh navigates after the page loads) and <base>
- * (it moves every relative address). Each is renamed wherever it is
- * written, so the browser reads an unknown, inert tag: a pattern over a
- * whole tag misses one whose attribute holds a "<" (INB-002b review).
+ * (it moves every relative address); and the pages inside a page (<iframe>,
+ * <frame>, <object>, <embed>), which email apps drop and which today's
+ * Chromium keeps quiet only by its own rules. Each is turned, wherever it
+ * is written, into an empty hidden `<wbr>` that keeps the old attributes as
+ * plain text: a pattern over a whole tag misses one whose attribute holds a
+ * "<" (INB-002b review), and an unknown tag name would wrap everything
+ * after it, so `body > table` rules would stop matching (second review).
  */
-const inertTags = /<(link|meta|base)\b/gi
+const inertTags = /<(link|meta|base|iframe|frame|object|embed)\b/gi
 
 /**
  * Puts each stored image in place of the reference the HTML uses, and
  * makes inert what would reach out on its own (`inertTags`).
  */
 export function prepareHtml(html, images) {
-  let out = html.replace(inertTags, (_, tag) => `<gr-${tag.toLowerCase()}`)
+  let out = html.replace(
+    inertTags,
+    (_, tag) => `<wbr hidden data-gr-${tag.toLowerCase()}`
+  )
   // Longest first, so a reference that contains another is replaced whole.
   for (const { ref, url } of [...images].sort(
     (a, b) => b.ref.length - a.ref.length

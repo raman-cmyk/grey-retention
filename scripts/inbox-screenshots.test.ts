@@ -43,7 +43,7 @@ describe('the screenshot browser', () => {
         []
       )
     ).toBe(
-      '<head><gr-meta HTTP-EQUIV="Refresh" content="0;url=https://elsewhere.test"><gr-meta charset="utf-8"><gr-base href="https://x.test/"></head>'
+      '<head><wbr hidden data-gr-meta HTTP-EQUIV="Refresh" content="0;url=https://elsewhere.test"><wbr hidden data-gr-meta charset="utf-8"><wbr hidden data-gr-base href="https://x.test/"></head>'
     )
     for (const tag of [
       '<link rel="prefetch" href="https://x.test/p">',
@@ -55,6 +55,18 @@ describe('the screenshot browser', () => {
       '<link/rel=prefetch href=https://x.test/p>'
     ])
       expect(prepareHtml(tag, [])).not.toMatch(/<link\b/i)
+    // Pages inside the page become the same empty hidden tag.
+    for (const tag of [
+      '<iframe srcdoc="&lt;link rel=prefetch href=https://x.test/p&gt;">',
+      '<IFRAME src="data:text/html,<p>x</p>">',
+      '<object data="https://x.test/o">',
+      '<embed src="https://x.test/e">',
+      '<frame src="https://x.test/f">'
+    ]) {
+      const out = prepareHtml(tag, [])
+      expect(out).toMatch(/^<wbr hidden data-gr-(iframe|object|embed|frame)\b/)
+      expect(out).not.toMatch(/<(iframe|object|embed|frame)\b/i)
+    }
     // Only those three tags: <linkx>, <metadata> and text are left alone.
     expect(prepareHtml('<metadata></metadata><p>link meta base</p>', [])).toBe(
       '<metadata></metadata><p>link meta base</p>'

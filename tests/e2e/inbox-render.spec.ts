@@ -283,6 +283,40 @@ href="${outsideBase}/pf-upper">
   expect(privateHits).toEqual([])
 })
 
+test('INB-002b an email keeps its own layout once its head tags are made inert', async ({
+  browser
+}) => {
+  // Almost every email has <meta> and <link> in its head. Made inert as an
+  // unknown tag, they wrapped the whole body, so a `body > table` rule
+  // stopped matching (second review); an empty hidden <wbr> wraps nothing.
+  const html = prepareHtml(
+    `<html><head>
+       <meta charset="utf-8">
+       <meta name="viewport" content="width=device-width">
+       <link rel="stylesheet" href="${outsideBase}/font.css">
+       <style>
+         body { margin: 0; background: #fff; }
+         body > table { background: #ff0000; width: 600px; height: 200px; }
+       </style>
+     </head><body><table><tr><td></td></tr></table></body></html>`,
+    job().images
+  )
+  const page = await browser.newPage()
+  try {
+    await page.setContent(html)
+    const parent = await page.evaluate(
+      () => document.querySelector('table')?.parentElement?.tagName
+    )
+    expect(parent).toBe('BODY')
+    const color = await page.evaluate(
+      () => getComputedStyle(document.querySelector('table')!).backgroundColor
+    )
+    expect(color).toBe('rgb(255, 0, 0)')
+  } finally {
+    await page.close()
+  }
+})
+
 test('INB-002b a picture that never answers is dropped and the email still photographed; a page that outlasts its time fails alone and the run goes on', async ({
   browser
 }) => {
