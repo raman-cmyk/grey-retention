@@ -31,6 +31,16 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 
 **Proposal, not approved** (POLICY-DRAFT, 20 Nov 2026): drafts of the Privacy Policy and the Terms of Service at `/privacy` and `/terms`, written from what the app really does with data, with every business fact not yet confirmed shown as a visible `[NEEDS RAMAN: …]` field. They show only with `LEGAL_DRAFTS=on` and are not linked from sign-up. The operator's legal entity and registered address are the first field: not confirmed, never published until they are. Every field is listed in [docs/legal/CHECKLIST.md](legal/CHECKLIST.md).
 
+## Picture work: what truly needs an outside service
+
+Owner picks #4, #12 and #15 (IMG-ADAPTER, 20 Nov 2026, `lib/providers/image-work.ts`). Status: **adapter ready, not wired, fake only.** Every job returns `not_available`, and the store's original picture is kept and used. This does not close picture work.
+
+- **The MVP needs no service purchase.** Emails already work with the store's original pictures, as they are today.
+- **Product cut-outs (#4): need a segmentation implementation.** Removing a background means finding the product's outline pixel by pixel. That can be a paid API, or a self-hosted or open-source segmentation model that we run ourselves. Either way it is new work; the browser and code we have today cannot do it.
+- **Smart crop (#12): only the semantic crop needs detection.** Cropping "around the product or a face" means finding them in the photo, which takes a detection model (paid AI, a service or self-hosted). A simple crop to a size, from the centre, needs nothing: the email layout already does it.
+- **Dark-mode backplate (#15): existing layout code for a picture that is already a see-through PNG.** The plate (a light panel behind the product) is plain layout code. For a photo with a solid background it only helps after a cut-out, so that case waits for #4. Knowing which store photos are already see-through is a small code follow-up (the photo library noting it), with no service.
+- **Asked (Blocked, needs Raman):** which segmentation and detection route, if any: paid, self-hosted or none for now.
+
 ## Hard design rules and current scope
 
 [DESIGN_RULES.md](DESIGN_RULES.md) is mandatory. Desktop/laptop first; defer dedicated mobile-layout design. Minimal motion: the owner confirmed the listed animation recipes/effects are unwanted. No decorative gradients/glow, meaningless badges/pills, nested cards, excessive typography/dividers/borders or redundant copy. See the rulebook for the full list.
