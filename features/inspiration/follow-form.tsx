@@ -41,7 +41,8 @@ export function FollowForm() {
           placeholder="northwind.example"
           autoComplete="off"
           error={state.error ?? null}
-          className="min-w-0 flex-1"
+          // Room for a whole website: on a phone Follow goes under the field.
+          className="min-w-[min(100%,calc(var(--space-12)*5))] flex-1"
         />
         <Submit />
       </div>
