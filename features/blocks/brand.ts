@@ -57,10 +57,19 @@ export function contrast(a: string, b: string) {
 
 const nearBlack = '#1a1a1a'
 
-/** Near-black or white, whichever reads better on the colour. */
+/**
+ * Near-black or white, whichever reads better on the colour; on a middle
+ * colour where neither reaches 4.5 (owner pick #96), pure black or white,
+ * one of which always does.
+ */
 export function inkOn(color: string) {
-  return contrast(color, nearBlack) >= contrast(color, '#ffffff')
-    ? nearBlack
+  const ink =
+    contrast(color, nearBlack) >= contrast(color, '#ffffff')
+      ? nearBlack
+      : '#ffffff'
+  if (contrast(color, ink) >= 4.5) return ink
+  return contrast(color, '#000000') >= contrast(color, '#ffffff')
+    ? '#000000'
     : '#ffffff'
 }
 
@@ -144,7 +153,12 @@ export function brandFromKit(input: {
   const colourful = colors
     .filter((c) => c !== background && c !== ink && chroma(c) >= 0.2)
     .sort((a, b) => chroma(b) - chroma(a))
-  const accent = colourful.find((c) => contrast(c, inkOn(c)) >= 4.5) ?? ink
+  // An accent near-black or white reads on, as before owner pick #96 (its
+  // pure black or white fallback is for text only), so no brand's button
+  // colour changes.
+  const softInk = (c: string) =>
+    contrast(c, nearBlack) >= contrast(c, '#ffffff') ? nearBlack : '#ffffff'
+  const accent = colourful.find((c) => contrast(c, softInk(c)) >= 4.5) ?? ink
   const dark =
     [...colourful]
       .filter((c) => c !== accent)

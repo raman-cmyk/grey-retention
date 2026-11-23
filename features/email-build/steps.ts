@@ -234,9 +234,16 @@ const checksFor =
   (store: Store, rules: SectionsOutput['rules']) =>
   (
     html: string,
-    words: { subject: string; preheader: string; code?: string | null }
+    words: {
+      subject: string
+      preheader: string
+      code?: string | null
+      /** A text email's plain part: it is a letter (#96, no headings). */
+      text?: string
+    }
   ) =>
     hardProblems(html, {
+      letter: words.text !== undefined,
       subject: words.subject,
       preheader: words.preheader,
       brandName: store.brand.name,
