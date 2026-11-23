@@ -16,7 +16,8 @@ export const changeKinds = [
   'klaviyo_key_saved',
   'klaviyo_key_refused',
   'brand_book_corrected',
-  'brand_book_correction_withdrawn'
+  'brand_book_correction_withdrawn',
+  'exposure_policy_changed'
 ] as const
 
 /** What a Brand book line was about, in plain words (ONB-058). */
@@ -135,6 +136,27 @@ function dayIn(iso: string, timeZone: string) {
   }
 }
 
+const count = (v: unknown) =>
+  typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : null
+const emails = (cap: number, days: number) =>
+  `at most ${cap} marketing email${cap === 1 ? '' : 's'} per person in ${days} day${days === 1 ? '' : 's'}`
+
+/** The exposure policy's change (SEG-EXP-a): the cap, and the segment order. */
+function exposureText(detail: Detail): string | null {
+  const cap = count(detail.to_cap)
+  const days = count(detail.to_window)
+  if (!cap || !days) return null
+  const fromCap = count(detail.from_cap)
+  const fromDays = count(detail.from_window)
+  const order = detail.order_changed === true ? 'Segment order changed' : null
+  if (!fromCap || !fromDays) return `Email limit set: ${emails(cap, days)}`
+  const limit =
+    fromCap !== cap || fromDays !== days
+      ? `Email limit changed to ${emails(cap, days)} (was ${fromCap} in ${fromDays})`
+      : null
+  return [limit, order].filter(Boolean).join('; ') || null
+}
+
 /**
  * One recorded change in a plain sentence, or null for one not explained.
  * Dates are the store's (`timeZone`, the workspace's time zone).
@@ -227,6 +249,7 @@ export function changeText(
     if (to === 'error') return 'Klaviyo connection has a problem'
     return null
   }
+  if (kind === 'exposure_policy_changed') return exposureText(detail)
   const hint = text(detail.hint)
   if (kind === 'klaviyo_key_saved' && hint) return `Klaviyo key ${hint} saved`
   if (kind === 'klaviyo_key_refused' && hint)

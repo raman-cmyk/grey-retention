@@ -4008,6 +4008,51 @@ export type Database = {
           }
         ]
       }
+      exposure_policies: {
+        Row: {
+          max_marketing: number
+          priority: string[]
+          revision: number
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+          window_days: number
+        }
+        Insert: {
+          max_marketing: number
+          priority?: string[]
+          revision?: number
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+          window_days: number
+        }
+        Update: {
+          max_marketing?: number
+          priority?: string[]
+          revision?: number
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          window_days?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'exposure_policies_tenant_id_fkey'
+            columns: ['tenant_id']
+            isOneToOne: true
+            referencedRelation: 'tenants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'exposure_policies_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       fixture_deliveries: {
         Row: {
           created_at: string
@@ -8633,6 +8678,16 @@ export type Database = {
       }
       save_email_round: {
         Args: { build: string; lease: string; step: string; work: Json }
+        Returns: number
+      }
+      save_exposure_policy: {
+        Args: {
+          expected_revision: number
+          max_marketing: number
+          priority: string[]
+          t: string
+          window_days: number
+        }
         Returns: number
       }
       save_holiday: {

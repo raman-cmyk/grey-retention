@@ -24,8 +24,8 @@ import { z } from 'zod'
  *
  * The defaults were chosen for this implementation; Raman has not
  * supplied numbers. Pure and provider-neutral: segments are ids with
- * their profile ids. Each workspace's policy is stored and read in
- * SEG-EXP-a2 (`exposurePolicy`).
+ * their profile ids. Each workspace's policy is read with
+ * `exposurePolicy` (`./exposure-policy`).
  */
 
 /** The bounds the database checks too (`save_exposure_policy`). */
