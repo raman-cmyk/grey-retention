@@ -3789,6 +3789,7 @@ Append entries using this exact shape:
 - Review fixes: no company name is written anywhere (the checklist says only "not confirmed", and the test refuses any company-name form); the draft now also says the app keeps profile details, GROS chats, support and feature requests, uploaded and imported files, the reviewer's name and customers' review photo addresses, the Klaviyo account's details, the templates and pictures put into Klaviyo, the masked key hint; that orders are read to count what sells (counts kept); everything sent to Gemini; all three cookies; the GitHub jobs' two kinds of pictures; the copy promise softened to what code checks; the product name from the white-label default.
 - Known issues: not a lawyer's text (a review is recommended in the checklist). `LEGAL_DRAFTS` is read directly (not in `.env.example`, so it stays off unless set on purpose). Turning the pages on and linking them from sign-up waits for every checklist line.
 - Next consumer: Raman's answers to the checklist; LIVE-TEST-001 next.
+
 ### 2026-11-20 — PIC-23g — FOUNDER-VOICE: the email-only voice, end to end
 
 - Status: review
