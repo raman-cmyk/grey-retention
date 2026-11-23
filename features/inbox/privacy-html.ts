@@ -100,19 +100,16 @@ function trackingPixel(el: T.Element) {
 }
 
 /**
- * A picture's address: its stored copy's path, or a small raster data:
- * image. Anything else (a remote or cid: picture without a stored copy,
- * SVG data, another scheme) is emptied: only stored copies are shown.
+ * A picture's address: its stored copy's path. Anything else (a remote or
+ * cid: picture without a stored copy, any data: picture, whose own text
+ * may name the person, another scheme) is emptied: only stored copies are
+ * shown.
  */
 function imageUrl(value: string, r: Rules) {
   const v = value.trim()
   const stored = r.images.get(v)
   if (stored !== undefined) return stored
-  return r.stored.has(v) ||
-    (v.length <= 140_000 &&
-      /^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z\d+/=\s]*$/i.test(v))
-    ? value
-    : ''
+  return r.stored.has(v) ? value : ''
 }
 
 /** srcset candidates (a link may hold commas; one ends at a blank). */

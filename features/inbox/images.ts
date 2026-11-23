@@ -144,3 +144,121 @@ export function sniffImage(bytes: Uint8Array): ImageType | null {
     return { contentType: 'image/webp', ext: 'webp' }
   return null
 }
+
+/** PNG chunks that carry only text: words, a date, camera data. */
+const pngText = new Set(
+  ['tEXt', 'zTXt', 'iTXt', 'eXIf', 'tIME'].map(
+    (t) =>
+      ((t.charCodeAt(0) << 24) |
+        (t.charCodeAt(1) << 16) |
+        (t.charCodeAt(2) << 8) |
+        t.charCodeAt(3)) >>>
+      0
+  )
+)
+const pngEnd = 0x49454e44
+const u32 = (b: Uint8Array, i: number) =>
+  ((b[i]! << 24) | (b[i + 1]! << 16) | (b[i + 2]! << 8) | b[i + 3]!) >>> 0
+
+/**
+ * REAL-1b1: a stored picture without the text a file can carry, which a
+ * service may fill with the subscriber's name: PNG text, date and EXIF
+ * chunks; JPEG EXIF, XMP, IPTC and other application data and comments
+ * (the JFIF, colour profile and Adobe parts stay, as they change how the
+ * picture looks). A GIF, a WebP or a file that does not read as its
+ * format is kept as it is.
+ */
+export function stripMetadata(bytes: Uint8Array): Uint8Array {
+  const type = sniffImage(bytes)?.ext
+  return (
+    (type === 'png'
+      ? stripPng(bytes)
+      : type === 'jpg'
+        ? stripJpeg(bytes)
+        : null) ?? bytes
+  )
+}
+
+function stripPng(b: Uint8Array) {
+  const kept = new Spans(b, 8)
+  for (let i = 8; i < b.length;) {
+    if (i + 12 > b.length) return null
+    const end = i + 12 + u32(b, i)
+    if (end > b.length) return null
+    const type = u32(b, i + 4)
+    if (pngText.has(type)) kept.skip(i, end)
+    i = end
+    if (type === pngEnd) {
+      kept.end(i)
+      break
+    }
+  }
+  return kept.bytes()
+}
+
+function stripJpeg(b: Uint8Array) {
+  const kept = new Spans(b, 2)
+  for (let i = 2; i < b.length;) {
+    if (b[i] !== 0xff) return null
+    let m = i + 1
+    while (b[m] === 0xff) m++
+    const marker = b[m]
+    if (marker === undefined) return null
+    // Markers without a length: restart markers and TEM.
+    if ((marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) {
+      i = m + 1
+      continue
+    }
+    if (m + 2 >= b.length) return null
+    const end = m + 1 + ((b[m + 1]! << 8) | b[m + 2]!)
+    if (end > b.length) return null
+    // The picture's data follows the start of scan to the end: kept whole.
+    if (marker === 0xda) break
+    const app = marker >= 0xe0 && marker <= 0xef
+    const look = marker === 0xe0 || marker === 0xe2 || marker === 0xee
+    if ((app && !look) || marker === 0xfe) kept.skip(i, end)
+    i = end
+  }
+  return kept.bytes()
+}
+
+/** The file with some spans left out, copied once (the same file if none). */
+class Spans {
+  private gaps: [number, number][] = []
+  private stop: number
+
+  constructor(
+    private file: Uint8Array,
+    private from: number
+  ) {
+    this.stop = file.length
+  }
+
+  skip(a: number, b: number) {
+    const last = this.gaps.at(-1)
+    if (last && last[1] === a) last[1] = b
+    else this.gaps.push([a, b])
+  }
+
+  end(at: number) {
+    this.stop = at
+  }
+
+  bytes() {
+    if (!this.gaps.length && this.stop === this.file.length) return this.file
+    const parts: Uint8Array[] = []
+    let at = 0
+    for (const [a, b] of this.gaps) {
+      parts.push(this.file.subarray(at, a))
+      at = b
+    }
+    parts.push(this.file.subarray(at, this.stop))
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
+    let to = 0
+    for (const p of parts) {
+      out.set(p, to)
+      to += p.length
+    }
+    return out
+  }
+}

@@ -39,7 +39,8 @@ export function inboxIdentity(config: InboxConfig): InboxIdentity {
         ...(base ? [`${base.local}@${base.domain}`] : [])
       ])
     ],
-    names: config.subscriberNames ?? []
+    names: config.subscriberNames ?? [],
+    imageHosts: config.imageHosts ?? []
   }
 }
 

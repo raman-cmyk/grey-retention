@@ -7,7 +7,13 @@ import { mimeLimits } from '@/features/email-import/parse'
 import { InboundTransportError } from '@/lib/providers/inbound-capture'
 import type { ImageFailure, ImageFetcher } from '@/lib/providers/image-fetch'
 import { sha256 } from './addresses'
-import { dataUri, imageRefs, sniffImage, type ImageRef } from './images'
+import {
+  dataUri,
+  imageRefs,
+  sniffImage,
+  stripMetadata,
+  type ImageRef
+} from './images'
 import { sectionEmail } from './sections'
 
 type Db = SupabaseClient<Database>
@@ -162,6 +168,8 @@ export async function keepImages(
       if (bytes.byteLength > limits.maxImageBytes) return failed('too_large')
       const type = sniffImage(bytes)
       if (!type) return failed('not_image')
+      // No text in the stored copy: it may name the subscriber (REAL-1b1).
+      bytes = stripMetadata(bytes)
       if (used + bytes.byteLength > limits.maxEmailBytes) return failed('limit')
       used += bytes.byteLength
       const hash = sha256(bytes)

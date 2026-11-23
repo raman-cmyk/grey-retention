@@ -94,6 +94,18 @@ const unread: Record<HolidaysPage['state'], string> = {
     'Your dates could not be read just now. Open this page again in a minute.'
 }
 
+/**
+ * A note in a row is a preview (the row shows its words whole): its first
+ * 140 characters; the whole note is in the date's Edit form.
+ */
+export const notePreviewLength = 140
+export function notePreview(note: string) {
+  const text = note.trim()
+  return text.length > notePreviewLength
+    ? `${text.slice(0, notePreviewLength - 1).trimEnd()}…`
+    : text
+}
+
 function Thumb({ children }: { children: ReactNode }) {
   return (
     <span
@@ -135,7 +147,7 @@ function DatesCard({ page, owner }: { page: HolidaysPage; owner: boolean }) {
                     entry.kind === 'holiday' ? 'Holiday' : 'Event',
                     entry.repeatsAnnually ? 'Every year' : '',
                     entry.nextDate < page.today ? 'Past' : '',
-                    entry.notes
+                    notePreview(entry.notes)
                   ]}
                   end={
                     owner ? (

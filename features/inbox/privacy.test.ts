@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
-import { inboxConfig } from './config'
+import { inboxConfig, personalisedImageHosts } from './config'
 import {
   cleanEmail,
   cleanEmailHtml,
@@ -330,7 +330,7 @@ describe('cleanEmailHtml', () => {
       expect(html).toContain(kept)
   })
 
-  it('shows only stored pictures and small raster data images', () => {
+  it('shows only stored pictures', () => {
     expect(
       body(
         cleanEmailHtml(
@@ -340,7 +340,7 @@ describe('cleanEmailHtml', () => {
         )
       )
     ).toBe(
-      '<img src=""><img src=""><img src="data:image/png;base64,iVBO"><img src=""><img src=""><img src="img/aa.png" srcset="img/aa.png 1x">'
+      '<img src=""><img src=""><img src=""><img src=""><img src=""><img src="img/aa.png" srcset="img/aa.png 1x">'
     )
   })
 
@@ -965,9 +965,14 @@ describe('ordinary copy stays as written', () => {
     expect(cleanEmailText(text, me)).not.toMatch(/sample/)
   })
 
-  it('shows no data picture over 100 KB', () => {
-    const big = `data:image/png;base64,${'A'.repeat(150_000)}`
-    expect(body(cleanEmailHtml(`<img src="${big}">`, me))).toBe('<img src="">')
+  it('shows no data picture, small or large', () => {
+    for (const data of [
+      'data:image/png;base64,iVBORw0KGgo=',
+      `data:image/png;base64,${'A'.repeat(150_000)}`
+    ])
+      expect(body(cleanEmailHtml(`<img src="${data}">`, me))).toBe(
+        '<img src="">'
+      )
   })
 })
 
@@ -1025,7 +1030,6 @@ describe('what the fifth review found', () => {
       ['Mia', 'Esta oferta es m\u{ed}a'],
       ['Mia', '\u{39c}\u{3af}\u{3b1} \u{3c6}\u{3bf}\u{3c1}\u{3ac}'],
       ['Noel', 'Joyeux No\u{eb}l'],
-      ['\u{c1}ngel', 'Our angel collection'],
       ['Weiss', 'T-Shirt Wei\u{df}'],
       ['Gross', 'gro\u{df} und klein'],
       ['Strauss', 'Ein Strau\u{df} Rosen'],
@@ -1184,12 +1188,14 @@ describe('what the sixth review found', () => {
       ['Your code SAM20 is ready', 'Your code is ready'],
       ['Hi SamRivera,', 'Hi there,'],
       ['Thanks, Sam2Rivera!', 'Thanks!'],
-      ['Join #TeamSam today', 'Join today'],
+      ['Join #TeamSam today', 'Join #Team today'],
       // Ordinary words stay.
       ['Samsung, Samba and #TeamSamsung', 'Samsung, Samba and #TeamSamsung'],
-      ['samrivera.example', 'samrivera.example'],
-      // A byte that is no UTF-8 does not join a name to a word.
-      ['Thanks, Sam%FF!', 'Thanks, %FF!']
+      // A byte that is no UTF-8 does not join a name to a word, nor does
+      // an escape read as a letter.
+      ['Thanks, Sam%FF!', 'Thanks, %FF!'],
+      ['Thanks, %41Sam!', 'Thanks, %41!'],
+      ['Thanks, Sam%61!', 'Thanks, %61!']
     ])
       expect(cleanEmailText(text!, me), text).toBe(clean)
     // In a picture's address, a name inside a longer word is enough.
@@ -1256,13 +1262,123 @@ describe('what the sixth review found', () => {
   })
 })
 
+describe('what the seventh review found', () => {
+  const pictures = (identity: InboxIdentity, ref: string) =>
+    body(
+      cleanEmailHtml(`<img src="${ref}">`, identity, {
+        images: [{ ref, path: 'img/zz.png' }]
+      })
+    )
+
+  it('removes a name glued to other words, codes, # and @', () => {
+    for (const [text, clean] of [
+      ['#SamLovesLinen', '#LovesLinen'],
+      ['Share #SamStyle', 'Share #Style'],
+      ['SamStyle picks', 'Style picks'],
+      ['Hey SamFriend', 'Hey Friend'],
+      ['HappyBirthdaySam!', 'HappyBirthday!'],
+      ['#RiveraFamily', '#Family'],
+      ['Code SAMVIP', 'Code'],
+      ['Code VIPSAM', 'Code'],
+      ['Code 20SAM', 'Code 20'],
+      ['Welcome back, SamR.', 'Welcome back, R.'],
+      ['Follow @SamRiveraOfficial', 'Follow @Official'],
+      ['Follow @samrivera', 'Follow @'],
+      ['samrivera', ''],
+      ['Code SamRivera2024', 'Code'],
+      ['Code SAMRIVERA2024', 'Code'],
+      // Accepted: hides on the safe side.
+      ['#SamSmith', '#Smith'],
+      ['Visit samrivera.example', 'Visit.example']
+    ])
+      expect(cleanEmailText(text!, me), text).toBe(clean)
+    // Words that only start like a name stay.
+    for (const [name, text] of [
+      ['Sam Rivera', 'Samsung, Samba, Samsonite, SAMSUNG, #TeamSamsung'],
+      ['Max', 'Maxwell, MAXIMUM'],
+      ['Ann', 'Annapolis, Anniversary, #AnnualSale'],
+      ['Kai', 'Kaizen']
+    ])
+      expect(
+        cleanEmailText(text!, { addresses: [], names: [name!] }),
+        name
+      ).toBe(text)
+    expect(
+      cleanEmailText('MaxMara coat', { addresses: [], names: ['Max'] })
+    ).toBe('Mara coat')
+  })
+
+  it('removes a name without its accents, also in small letters', () => {
+    for (const [name, text] of [
+      ['Jos\u{e9}', 'Thanks jose!'],
+      ['\u{c1}ngel', 'Thanks angel!']
+    ])
+      expect(
+        cleanEmailText(text!, { addresses: [], names: [name!] }),
+        name
+      ).toBe('Thanks!')
+  })
+
+  it('shows no data: picture through any attribute or CSS', () => {
+    const data = 'data:image/png;base64,iVBORw0KGgo='
+    const html = cleanEmailHtml(
+      `<img src="${data}" srcset="${data} 1x"><video poster="${data}"></video><table background="${data}"><tr><td style="background:url(${data})">x</td></tr></table><style>a{background:image-set("${data}" 1x)}</style>`,
+      me
+    )
+    expect(html).not.toContain('data:')
+  })
+
+  it('hides every picture drawn for each subscriber', () => {
+    const drawn = { ...me, imageHosts: personalisedImageHosts }
+    for (const ref of [
+      'https://img1.niftyimages.com/abc/def/hi.png',
+      'https://movable-ink-1234.com/p/rp/abc.png',
+      'https://cdn.x.example/hero.png?rid=ab12cd34',
+      'https://cdn.x.example/hero.png?email_id=00a1b2c3',
+      'https://cdn.x.example/hero.png?Subscriber-Id=777777'
+    ])
+      expect(pictures(drawn, ref), ref).toBe('<img src="">')
+    // An ordinary picture, or a short value, is shown.
+    for (const ref of [
+      'https://cdn.x.example/hero.png?w=600&v=2',
+      'https://cdn.x.example/hero.png?uid=12',
+      'https://notniftyimages.com/hero.png'
+    ])
+      expect(pictures(drawn, ref), ref).toBe('<img src="img/zz.png">')
+  })
+
+  it('reads a joined name in a picture address in any case', () => {
+    const joli = { addresses: [], names: ['Jo Li'] }
+    for (const ref of [
+      'https://img.x.example/p.png?n=joli',
+      'https://img.x.example/p.png?u=dearjoli'
+    ])
+      expect(pictures(joli, ref), ref).toBe('<img src="">')
+    // A two-letter word alone never counts inside a longer one.
+    expect(pictures(joli, 'https://cdn.x.example/files/hero.png')).toBe(
+      '<img src="img/zz.png">'
+    )
+    // A byte that is no UTF-8 after a name read from escapes.
+    expect(
+      cleanEmailText('Thanks, Jos%C3%A9%FF!', {
+        addresses: [],
+        names: ['Jos\u{e9}']
+      })
+    ).toBe('Thanks!')
+  })
+})
+
 describe('inboxIdentity', () => {
   it('is the inbox address and the subscriber names from the settings', () => {
     expect(
       inboxIdentity(
         inboxConfig({ INBOX_SUBSCRIBER_NAMES: ' Sam  Rivera , ,S ' })
       )
-    ).toEqual({ addresses: ['capture@inbox.example'], names: ['Sam Rivera'] })
+    ).toEqual({
+      addresses: ['capture@inbox.example'],
+      names: ['Sam Rivera'],
+      imageHosts: [...personalisedImageHosts]
+    })
     // The Gmail address counts while the inbox cannot be read yet.
     expect(
       inboxIdentity(
@@ -1271,6 +1387,10 @@ describe('inboxIdentity', () => {
           INBOX_IMAP_USER: 'SampleInbox@gmail.com'
         })
       )
-    ).toEqual({ addresses: ['sampleinbox@gmail.com'], names: [] })
+    ).toEqual({
+      addresses: ['sampleinbox@gmail.com'],
+      names: [],
+      imageHosts: [...personalisedImageHosts]
+    })
   })
 })

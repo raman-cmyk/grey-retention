@@ -98,6 +98,24 @@ const founderNote = (quote: string, over: Record<string, unknown> = {}) =>
       ...over
     }
   )
+/** REL-ONB2 part e: three photos customers posted with their reviews. */
+const customerPhotos = (over: Record<string, unknown> = {}) =>
+  [1, 2, 3].map(
+    (n) =>
+      ({
+        topic: 'customer_photo',
+        source: 'reviews',
+        statement: 'A photo a customer posted with their review.',
+        value: {
+          url: `https://judgeme.imgix.net/cedar/${n}.jpg`,
+          page: 'https://shop.example/p/1'
+        },
+        evidence: { ref: 'review-data:https://shop.example/p/1' },
+        confidence: 0.9,
+        pass: 'code',
+        ...over
+      }) as unknown as Finding
+  )
 const sells = (statement: string, over: Record<string, unknown> = {}) =>
   found('offering', {}, { statement, ...over })
 const said = (quote: string) =>
@@ -502,6 +520,28 @@ describe('storeFrom (ONB-057b part 2)', () => {
     // A live store never counts the sample rules'.
     expect(own({}, { pass: 'sample' })).not.toHaveProperty('confirmed')
   })
+
+  it('gives "Create email" the photos customers posted with reviews on this website, never the sample’s (REL-ONB2 part e)', () => {
+    const photos = (over: Partial<Parts> = {}, extra = {}) =>
+      storeFrom(
+        parts({
+          findings: [...parts().findings, ...customerPhotos(extra)],
+          ...over
+        })
+      ).confirmed?.customerPhotos
+    expect(photos()).toEqual(
+      [1, 2, 3].map((n) => ({
+        image: `https://judgeme.imgix.net/cedar/${n}.jpg`,
+        alt: "A customer's photo"
+      }))
+    )
+    // Read before the owner changed his website: none.
+    expect(photos({ domain: 'new-shop.example' })).toBeUndefined()
+    // A sample workspace never has any.
+    expect(
+      photos({ status: { live: false, currency: 'USD' } }, { pass: 'sample' })
+    ).toBeUndefined()
+  })
 })
 
 type Answer = { data: unknown; error: unknown }
@@ -658,6 +698,19 @@ describe('ownStoreSource (ONB-057b part 2)', () => {
     expect(store.confirmed).toEqual({
       founder: { name: 'Maya Lee', role: 'Founder', note: [note] }
     })
+  })
+
+  it('reads customers’ photos with the workspace’s own findings (REL-ONB2 part e)', async () => {
+    reads.catalog.mockResolvedValueOnce([...parts().catalog])
+    reads.findings.mockResolvedValueOnce([
+      ...parts().findings,
+      ...customerPhotos()
+    ])
+    reads.corrections.mockResolvedValueOnce([])
+    const { db } = fakeDb({ catalog_status: status(), ...own })
+    const store = await ownStoreSource(db).read(tenantId)
+    expect(reads.findings).toHaveBeenLastCalledWith(db, tenantId)
+    expect(store.confirmed?.customerPhotos).toHaveLength(3)
   })
 
   it('gives the writers the phrases the owner takes out, apart from the banned ones (PIC-29 part 2c)', async () => {

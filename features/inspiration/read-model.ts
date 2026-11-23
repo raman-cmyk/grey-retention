@@ -75,7 +75,8 @@ export function inspirationView(input: InspirationInput): InspirationView {
     owner: input.context.tenantRole === 'owner',
     tracked,
     limit: domainLimit,
-    slotsLeft: Math.max(0, domainLimit - tracked.length),
+    // Unknown while the followed brands are unread: no Follow is offered.
+    slotsLeft: library ? Math.max(0, domainLimit - tracked.length) : 0,
     summaries: Object.fromEntries(
       library
         ? trackedSummaries(library.tracked, library.factsByDomain, {
