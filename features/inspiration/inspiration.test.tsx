@@ -1,4 +1,11 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
@@ -34,6 +41,9 @@ vi.mock('@/features/library/inspirations/actions', () => ({
   stopTracking: vi.fn(async () => ({}))
 }))
 
+import InspirationError from '@/app/(gros)/inspiration/error'
+import InspirationLoading from '@/app/(gros)/inspiration/loading'
+import { stopTracking } from '@/features/library/inspirations/actions'
 import type { ReferenceLibraryData } from '@/features/library/reference-library/data'
 import { hideBrand } from './actions'
 import {
@@ -161,7 +171,8 @@ describe('inspirationView (UI-INSa)', () => {
     expect(view.unread).toEqual(['library', 'suggestions'])
     expect(view.tracked).toEqual([])
     expect(view.emails).toEqual([])
-    expect(view.slotsLeft).toBe(10)
+    // Unknown while unread: no Follow is offered anywhere (UI-INSb review).
+    expect(view.slotsLeft).toBe(0)
   })
 })
 
@@ -211,9 +222,39 @@ describe('hideBrand (UI-INSa)', () => {
     const db = {}
     mocks.requireRequestContext.mockResolvedValue(context)
     mocks.createClient.mockResolvedValue(db)
-    expect(await hideBrand({}, form(id))).toEqual({})
+    expect(await hideBrand({}, form(id))).toEqual({
+      message: 'Hidden. GROS won’t suggest this brand again.'
+    })
+    const named = form(id)
+    named.set('name', 'Bark Co')
+    expect(await hideBrand({}, named)).toEqual({
+      message: 'Hidden. GROS won’t suggest Bark Co again.'
+    })
     expect(mocks.setBrandHidden).toHaveBeenCalledWith(db, 'tenant-1', id, true)
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/inspiration')
+  })
+
+  it('never refuses the hide because of the name, and cuts a long one whole', async () => {
+    mocks.requireRequestContext.mockResolvedValue(context)
+    mocks.createClient.mockResolvedValue({})
+    // A brand with no name is shown by its domain, which can be 253 long.
+    const long = form(id)
+    long.set('name', `${'a'.repeat(240)}.example`)
+    expect(await hideBrand({}, long)).toEqual({
+      message: `Hidden. GROS won’t suggest ${'a'.repeat(120)} again.`
+    })
+    // 119 letters and an emoji are 120 characters but 121 UTF-16 units.
+    const emoji = form(id)
+    emoji.set('name', `${'b'.repeat(119)}🐾 and more`)
+    expect(await hideBrand({}, emoji)).toEqual({
+      message: `Hidden. GROS won’t suggest ${'b'.repeat(119)}🐾 again.`
+    })
+    const blank = form(id)
+    blank.set('name', '   ')
+    expect(await hideBrand({}, blank)).toEqual({
+      message: 'Hidden. GROS won’t suggest this brand again.'
+    })
+    expect(mocks.setBrandHidden).toHaveBeenCalledTimes(3)
   })
 
   it('refuses staff and a bad brand id, and says when it failed', async () => {
@@ -302,7 +343,7 @@ describe('Inspiration screen (UI-INSa)', () => {
       Object.fromEntries(
         new FormData(hide.closest('form')!) as unknown as [string, string][]
       )
-    ).toEqual({ capture: 'c2' })
+    ).toEqual({ capture: 'c2', name: 'Wild Paws' })
 
     const rows = within(region('Latest emails')).getAllByRole('listitem')
     expect(rows).toHaveLength(3)
@@ -401,16 +442,6 @@ describe('Inspiration screen (UI-INSa)', () => {
     expect(region('Brands like yours')).toHaveTextContent('No suggestions yet.')
     expect(region('Latest emails')).toHaveTextContent('No emails yet.')
     cleanup()
-    render(
-      <InspirationScreen
-        view={inspirationView(input({ library: null, suggestions: null }))}
-        timezone="UTC"
-      />
-    )
-    expect(region('Brands you follow')).toHaveTextContent('could not be read')
-    expect(region('Brands like yours')).toHaveTextContent('could not be read')
-    expect(screen.queryByLabelText('Brand website')).toBeNull()
-    cleanup()
     const full = library({
       tracked: Array.from({ length: 10 }, (_, i) => ({
         ...library().tracked[0]!,
@@ -433,5 +464,240 @@ describe('Inspiration screen (UI-INSa)', () => {
         name: 'Follow'
       })
     ).toBeNull()
+  })
+})
+
+describe('Inspiration states (UI-INSb)', () => {
+  const later = 'Open Inspiration again in a minute.'
+
+  it('says which part could not be read, what to do, and still shows the rest', () => {
+    render(
+      <InspirationScreen
+        view={inspirationView(input({ library: null }))}
+        timezone="UTC"
+      />
+    )
+    expect(region('Brands you follow')).toHaveTextContent(
+      `The brands you follow could not be read just now. ${later}`
+    )
+    expect(region('Latest emails')).toHaveTextContent(
+      `The emails could not be read just now. ${later}`
+    )
+    // Nothing to follow into while the followed brands are unread.
+    expect(screen.queryByLabelText('Brand website')).toBeNull()
+    expect(region('Brands like yours')).toHaveTextContent('Bark Co')
+    cleanup()
+    render(
+      <InspirationScreen
+        view={inspirationView(input({ suggestions: null }))}
+        timezone="UTC"
+      />
+    )
+    expect(region('Brands like yours')).toHaveTextContent(
+      `Suggestions could not be read just now. ${later}`
+    )
+    expect(region('Brands you follow')).toHaveTextContent('Northwind')
+    expect(screen.getByLabelText('Brand website')).toBeInTheDocument()
+  })
+
+  it('is one error with Try again when nothing could be read', () => {
+    render(
+      <InspirationScreen
+        view={inspirationView(input({ library: null, suggestions: null }))}
+        timezone="UTC"
+      />
+    )
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Inspiration did not open')
+    expect(alert).toHaveTextContent(
+      'Nothing was changed. Try again in a minute.'
+    )
+    expect(screen.getByRole('link', { name: 'Try again' })).toHaveAttribute(
+      'href',
+      '/inspiration'
+    )
+    for (const name of [
+      'Brands you follow',
+      'Brands like yours',
+      'Latest emails'
+    ])
+      expect(screen.queryByRole('region', { name })).toBeNull()
+  })
+
+  it('tells staff only that no emails came yet: following is the owner’s', () => {
+    const empty = (tenantRole: 'owner' | 'staff') =>
+      inspirationView(
+        input({
+          context: { ...context, tenantRole },
+          library: library({ items: [], tracked: [] }),
+          suggestions: []
+        })
+      )
+    render(<InspirationScreen view={empty('staff')} timezone="UTC" />)
+    expect(region('Latest emails')).toHaveTextContent(
+      /^Latest emailsNo emails yet\.$/
+    )
+    cleanup()
+    render(<InspirationScreen view={empty('owner')} timezone="UTC" />)
+    expect(region('Latest emails')).toHaveTextContent(
+      'No emails yet. Follow a brand and its emails arrive here.'
+    )
+  })
+
+  it('shows long brand names, subjects and their details whole, never cut to one line', () => {
+    const long = 'The Northwind Outdoor Supply Company and Friends'
+    const subject =
+      'Our autumn walking boots are back, and this time they come in three new colours'
+    const tracked = library().tracked[0]!
+    render(
+      <InspirationScreen
+        view={inspirationView(
+          input({
+            library: library({
+              tracked: [{ ...tracked, label: long }],
+              items: [item('long', '2026-11-12T10:00:00Z', { title: subject })]
+            }),
+            suggestions: [{ ...suggestions[0]!, name: `${long} Two` }]
+          })
+        )}
+        timezone="UTC"
+      />
+    )
+    for (const [card, words] of [
+      ['Brands you follow', long],
+      ['Brands like yours', `${long} Two`],
+      ['Latest emails', subject]
+    ] as const) {
+      const title = within(region(card)).getByText(words)
+      expect(title).not.toHaveClass('truncate')
+      expect(title).toHaveClass('break-words')
+      const details = title.nextElementSibling
+      expect(details).not.toHaveClass('truncate')
+      expect(details).toHaveClass('break-words')
+    }
+  })
+
+  it('opens on the loading page: the bar with Inspiration current, its words, busy, and no main', () => {
+    const { container } = render(<InspirationLoading />)
+    expect(
+      within(screen.getByRole('navigation', { name: 'Main' })).getByRole(
+        'link',
+        { name: 'Inspiration' }
+      )
+    ).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByText('Opening Inspiration')).toHaveAttribute(
+      'aria-live',
+      'polite'
+    )
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
+    // The page brings the one main while it streams in.
+    expect(container.querySelector('main')).toBeNull()
+  })
+
+  it('says plainly when the page did not open, with Try again and the bar as a way out', async () => {
+    const retry = vi.fn()
+    render(<InspirationError retry={retry} />)
+    expect(screen.getAllByRole('main')).toHaveLength(1)
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Inspiration did not open')
+    expect(alert).toHaveTextContent('Nothing was changed.')
+    expect(alert).not.toHaveTextContent(/Something went wrong|error/i)
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(retry).toHaveBeenCalledTimes(1)
+    const menu = within(screen.getByRole('navigation', { name: 'Main' }))
+    expect(menu.getByRole('link', { name: 'Home' })).toHaveAttribute(
+      'href',
+      '/home'
+    )
+    expect(menu.getByRole('link', { name: 'Inspiration' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    )
+  })
+})
+
+describe('Inspiration answers (UI-INSb review)', () => {
+  it('offers no Follow on a suggestion while the followed brands are unread, only Hide', () => {
+    render(
+      <InspirationScreen
+        view={inspirationView(input({ library: null }))}
+        timezone="UTC"
+      />
+    )
+    const suggested = region('Brands like yours')
+    expect(
+      within(suggested).queryByRole('button', { name: 'Follow' })
+    ).toBeNull()
+    // Followed brands unknown: every suggestion stays, each only hideable.
+    expect(
+      within(suggested).getAllByRole('button', { name: 'Hide' })
+    ).toHaveLength(3)
+  })
+
+  it('keeps saying Stop’s answer in its card when the brand’s row leaves', async () => {
+    const user = userEvent.setup()
+    vi.mocked(stopTracking).mockResolvedValue({
+      message: 'Stopped following Northwind. Its emails left your library.'
+    })
+    const { rerender } = render(
+      <InspirationScreen view={inspirationView(input())} timezone="UTC" />
+    )
+    const stop = within(region('Brands you follow')).getByRole('button', {
+      name: 'Stop'
+    })
+    await waitFor(() => expect(stop).toBeEnabled())
+    await user.click(stop)
+    const answer = await within(region('Brands you follow')).findByText(
+      'Stopped following Northwind. Its emails left your library.'
+    )
+    // The refreshed page has no followed brand: the answer stays, read out.
+    rerender(
+      <InspirationScreen
+        view={inspirationView(
+          input({ library: library({ tracked: [], items: [] }) })
+        )}
+        timezone="UTC"
+      />
+    )
+    expect(region('Brands you follow')).toHaveTextContent(
+      'No brands followed yet.'
+    )
+    expect(answer).toBeInTheDocument()
+    expect(answer).toHaveAttribute('aria-live', 'polite')
+  })
+
+  it('says Hide’s answer in plain words, and keeps it when the brand leaves the suggestions', async () => {
+    const user = userEvent.setup()
+    mocks.requireRequestContext.mockResolvedValue(context)
+    mocks.createClient.mockResolvedValue({})
+    mocks.setBrandHidden.mockResolvedValue(undefined)
+    // A real suggestion's id is a capture's uuid.
+    const wild = {
+      ...suggestions[1]!,
+      captureId: '00000000-0000-4000-8000-0000000000c2'
+    }
+    const { rerender } = render(
+      <InspirationScreen
+        view={inspirationView(input({ suggestions: [suggestions[0]!, wild] }))}
+        timezone="UTC"
+      />
+    )
+    const [, real] = within(region('Brands like yours')).getAllByRole(
+      'listitem'
+    )
+    const hide = within(real!).getByRole('button', { name: 'Hide' })
+    await waitFor(() => expect(hide).toBeEnabled())
+    await user.click(hide)
+    const answer = await within(region('Brands like yours')).findByText(
+      'Hidden. GROS won’t suggest Wild Paws again.'
+    )
+    rerender(
+      <InspirationScreen
+        view={inspirationView(input({ suggestions: [suggestions[0]!] }))}
+        timezone="UTC"
+      />
+    )
+    expect(region('Brands like yours')).not.toHaveTextContent('Wild Paws Also')
+    expect(answer).toBeInTheDocument()
   })
 })
