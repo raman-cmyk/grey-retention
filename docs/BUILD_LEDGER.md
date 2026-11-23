@@ -3781,6 +3781,7 @@ Append entries using this exact shape:
 - Verification run: `pnpm verify`; `image-work.test.ts` (4: the fake, the setting, the fallback, another job's result and 19 unsafe addresses).
 - Known issues: **adapter ready, not wired, fake only**: this does not close picture work. No service is wired and none is added (no paid account, no dependency); `docs/PROJECT_TODOS.md` ("Picture work") says which job needs what. The design studio does not call the adapter yet: with only the fake it would change nothing. When a service is chosen: its worker, the studio asking for a cut-out of the hero product, and the photo library keeping the result beside the original.
 - Next consumer: a chosen image service (Blocked, needs Raman); POLICY-DRAFT next.
+
 ### 2026-11-20 — PIC-83 — the model retirement watch
 
 - Status: review
