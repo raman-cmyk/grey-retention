@@ -33,7 +33,7 @@ export function AudiencesScreen({
           />
         ) : (
           <Card label="Klaviyo">
-            <h2 className="type-heading">Klaviyo is not connected</h2>
+            <h2 className="type-heading">Klaviyo not connected</h2>
             <p className="type-body mt-[var(--space-3)] text-[var(--stone)]">
               The store’s owner connects Klaviyo. Its segments and lists then
               show here.
@@ -131,6 +131,8 @@ function AudienceCard({
                 key={row.id}
                 thumbnail={<AudienceThumb />}
                 title={row.name}
+                // A long name and its rules show whole, on a phone too.
+                wrap
                 details={[
                   // Starred segments come first, so say why.
                   row.starred ? 'Starred' : '',
