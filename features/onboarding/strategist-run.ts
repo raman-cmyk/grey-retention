@@ -11,11 +11,7 @@ import { SupabaseBudgetLedger } from '@/features/ai/budget-ledger'
 import { runAi } from '@/features/ai/run'
 import { aiSetup, cappedAiEnv } from '@/features/ai/setup'
 import { logger } from '@/lib/logger'
-import {
-  brandBookAuthor,
-  readerKinds,
-  type BrandBookContent
-} from './brand-book'
+import { readerKinds, type BrandBookContent } from './brand-book'
 import {
   checkStrategy,
   needsStrategy,
@@ -39,8 +35,10 @@ export const strategistCallMs = 25_000
 export const maxAttempts = 2
 /** Least room a strategy needs beside the book; less, and none is asked. */
 export const minStrategyRoom = 300
-/** Newest books looked at for a missing strategy (no content read). */
-const booksChecked = 50
+/** Newest Brand book rows looked at for a missing strategy (no content read). */
+const booksChecked = 500
+/** Candidates whose content and tries are read per lookup, newest first. */
+const candidatesRead = 25
 /** Job states of a read that is not finished yet. */
 const unfinished = ['queued', 'retry_wait', 'leased', 'running']
 
@@ -74,7 +72,9 @@ export type StrategistRun =
  * strategist version is current by construction), with no onboarding read
  * still waiting or running (each read changes the book), fewer than
  * `maxAttempts` strategist calls for that version, and room beside it.
- * Only the candidates' content is read.
+ * The first read takes no content (the sample flag only); each candidate
+ * is then checked on its own, newest first, until `limit` are found, so a
+ * workspace left out (tried, no room) never hides an older one.
  */
 export async function booksNeedingStrategy(
   db: Db,
@@ -82,75 +82,59 @@ export async function booksNeedingStrategy(
 ): Promise<string[]> {
   const books = await db
     .from('brand_books')
-    .select('tenant_id,version,written_by')
+    .select('tenant_id,version,written_by,sample:content->sample')
     .order('created_at', { ascending: false })
     .limit(booksChecked)
   if (books.error) throw books.error
-  const newest = new Map<string, { version: number; writtenBy: string }>()
+  const newest = new Map<
+    string,
+    { version: number; writtenBy: string; sample: unknown }
+  >()
   for (const b of books.data ?? [])
     if (!newest.has(b.tenant_id))
-      newest.set(b.tenant_id, { version: b.version, writtenBy: b.written_by })
-  const coded = [...newest].filter(([, b]) => b.writtenBy !== strategistAuthor)
-  if (!coded.length) return []
-  const ids = coded.map(([t]) => t)
-  const [reads, runs] = await Promise.all([
-    db
-      .from('job_runs')
-      .select('tenant_id')
-      .in('tenant_id', ids)
-      .in('kind', readerKinds)
-      .in('status', unfinished)
-      .limit(1000),
-    db
-      .from('agent_runs')
-      .select('tenant_id,caller_key')
-      .eq('agent', strategistName)
-      .in('tenant_id', ids)
-      .in(
-        'caller_key',
-        coded.map(([, b]) => attemptKey(b.version))
-      )
-      .limit(1000)
-  ])
-  if (reads.error) throw reads.error
-  if (runs.error) throw runs.error
-  const reading = new Set((reads.data ?? []).map((r) => r.tenant_id))
-  const tries = new Map<string, number>()
-  for (const r of runs.data ?? []) {
-    const key = `${r.tenant_id} ${r.caller_key}`
-    tries.set(key, (tries.get(key) ?? 0) + 1)
-  }
-  const open = coded.filter(
-    ([t, b]) =>
-      !reading.has(t) &&
-      (tries.get(`${t} ${attemptKey(b.version)}`) ?? 0) < maxAttempts
+      newest.set(b.tenant_id, {
+        version: b.version,
+        writtenBy: b.written_by,
+        sample: b.sample
+      })
+  const coded = [...newest].filter(
+    ([, b]) => b.writtenBy !== strategistAuthor && b.sample !== true
   )
-  if (!open.length) return []
-  // Only now the content: sample books and books with no room are left out.
-  const content = await db
-    .from('brand_books')
-    .select('tenant_id,version,content')
+  if (!coded.length) return []
+  const reads = await db
+    .from('job_runs')
+    .select('tenant_id')
     .in(
       'tenant_id',
-      open.map(([t]) => t)
+      coded.map(([t]) => t)
     )
-    .order('version', { ascending: false })
-    .limit(open.length * 4)
-  if (content.error) throw content.error
-  const read = new Map<string, BrandBookContent>()
-  for (const row of content.data ?? [])
-    if (newest.get(row.tenant_id)?.version === row.version)
-      read.set(row.tenant_id, row.content as BrandBookContent)
-  return open
-    .flatMap(([t]) => {
-      const book = read.get(t)
-      return book &&
-        needsStrategy(book) &&
-        strategyRoom(book) >= minStrategyRoom
-        ? [t]
-        : []
-    })
-    .slice(0, limit)
+    .in('kind', readerKinds)
+    .in('status', unfinished)
+    .limit(1000)
+  if (reads.error) throw reads.error
+  const reading = new Set((reads.data ?? []).map((r) => r.tenant_id))
+  const out: string[] = []
+  for (const [t, b] of coded
+    .filter(([t]) => !reading.has(t))
+    .slice(0, candidatesRead)) {
+    if (out.length >= limit) break
+    if ((await triesFor(db, t, b.version)) >= maxAttempts) continue
+    const row = await db
+      .from('brand_books')
+      .select('content')
+      .eq('tenant_id', t)
+      .eq('version', b.version)
+      .limit(1)
+    if (row.error) throw row.error
+    const content = row.data?.[0]?.content as BrandBookContent | undefined
+    if (
+      content &&
+      needsStrategy(content) &&
+      strategyRoom(content) >= minStrategyRoom
+    )
+      out.push(t)
+  }
+  return out
 }
 
 async function latestBook(db: Db, tenantId: string) {
@@ -171,24 +155,41 @@ async function latestBook(db: Db, tenantId: string) {
     : null
 }
 
+/**
+ * Strategist calls made for one book version: the run log's rows, or the
+ * AI allowance's reservations when more (a reservation is written before
+ * the provider is called, so a call whose run-log row was never written,
+ * or came too late, still counts).
+ */
 async function triesFor(db: Db, tenantId: string, version: number) {
-  const { data, error } = await db
-    .from('agent_runs')
-    .select('id')
-    .eq('agent', strategistName)
-    .eq('tenant_id', tenantId)
-    .eq('caller_key', attemptKey(version))
-    .limit(maxAttempts)
-  if (error) throw error
-  return data?.length ?? 0
+  const [runs, reserved] = await Promise.all([
+    db
+      .from('agent_runs')
+      .select('id')
+      .eq('agent', strategistName)
+      .eq('tenant_id', tenantId)
+      .eq('caller_key', attemptKey(version))
+      .limit(maxAttempts),
+    db
+      .from('usage_reservations')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .like('operation_id', `ai:%:${strategistName}:${attemptKey(version)}:%`)
+      .limit(maxAttempts)
+  ])
+  if (runs.error) throw runs.error
+  if (reserved.error) throw reserved.error
+  return Math.max(runs.data?.length ?? 0, reserved.data?.length ?? 0)
 }
 
 /**
- * After the strategist's save: when a code write landed between the
- * version read and the save (`save_brand_book` takes no expected version),
- * the strategist's version now sits on top of newer content. That newer
- * book is saved again on top, so agents and `staleBooks` see it; its own
- * strategy is written on a later run. Returns whether it had to.
+ * After the strategist's save: when a book landed between the version read
+ * and the save (`save_brand_book` takes no expected version), the
+ * strategist's version now sits on top of newer content. Only while the
+ * strategist's own save is still the newest version, the newest version
+ * between is saved again on top, as it was (its writer, its content), so
+ * agents and `staleBooks` see it; a book written after the save is already
+ * on top and is left alone. Returns whether it had to.
  */
 async function restoreNewer(
   db: Db,
@@ -197,6 +198,8 @@ async function restoreNewer(
   saved: number
 ): Promise<boolean> {
   if (saved <= base + 1) return false
+  const top = await latestBook(db, tenantId)
+  if (!top || top.version !== saved) return false
   const { data, error } = await db
     .from('brand_books')
     .select('version,content,written_by')
@@ -204,14 +207,14 @@ async function restoreNewer(
     .gt('version', base)
     .lt('version', saved)
     .order('version', { ascending: false })
-    .limit(10)
+    .limit(1)
   if (error) throw error
-  const newer = (data ?? []).find((b) => b.written_by !== strategistAuthor)
+  const newer = data?.[0]
   if (!newer) return false
   const again = await db.rpc('save_brand_book', {
     t: tenantId,
     content: newer.content as never,
-    written_by: newer.written_by || brandBookAuthor
+    written_by: newer.written_by
   })
   if (again.error) throw again.error
   return true

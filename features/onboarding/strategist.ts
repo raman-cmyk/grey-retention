@@ -29,7 +29,7 @@ import { plain, wellFormed } from './words'
  */
 
 export const strategistName = 'brand-strategist'
-export const strategistVersion = '2026-11-24.2'
+export const strategistVersion = '2026-11-24.3'
 export { strategistAuthor }
 /**
  * The strategy's largest size as JSON. With a book at its own 7,000
@@ -122,7 +122,7 @@ export const strategistAgent: AgentDefinition<
   instructions: [
     'You are the brand strategist for a small online store. You read its Brand book and write the strategy its email team works from.',
     'In the book, "facts" and "owner" are confirmed. "observed" is what was seen on the brand\'s pages, emails and reviews: not confirmed. "unclear" is not known. "avoid" lists claims this kind of brand must not make.',
-    'positioning: one sentence on what the brand offers and for whom.',
+    'positioning: one sentence on what the brand sells and for whom.',
     `customers: up to ${maxLines} short sentences on who buys and what they care about.`,
     `heroProducts: up to ${maxHeroes} products to lead with, each copied exactly from products.bestsellers or products.newArrivals.`,
     `angles: up to ${maxLines} short sentences, the reasons to buy the emails should lead with.`,
@@ -160,12 +160,35 @@ const oneLine = (s: string) => wellFormed(s).replace(/\s+/g, ' ').trim()
 
 /**
  * Offers and policies are the confirmed facts' and the store settings'
- * (the Content locker's), never the strategist's: a line about them, or one
- * that tells the team to promise something, is not kept, whatever an
- * observed line (a review, an ad) asked for.
+ * (the Content locker's), never the strategist's: a line that speaks of an
+ * offer, a code, a sale, shipping, delivery, refunds, a policy or a
+ * promise is not kept, whatever an observed line (a review, an ad) asked
+ * for. Phrases, not bare words: "the brand offers linen", "freedom",
+ * "fragrance-free", "customers return", "a gift for someone" and "sales
+ * language" are ordinary sentences.
  */
-const offerOrPolicy =
-  /\b(free\w*|gifts?|discount\w*|offers?|sales?|coupons?|codes?|vouchers?|promo\w*|deals?|shipping|deliver\w*|returns?|refund\w*|exchange\w*|polic\w*|promis\w*|warrant\w*|price\w*|cheap\w*)\b/i
+const offerOrPolicy = new RegExp(
+  [
+    '\\bfree (gifts?|shipping|delivery|returns?|samples?|trials?|items?|products?|postage)\\b',
+    '\\b(gift|free) with (every|each|any|your)?\\s*(order|purchase)',
+    '\\b(discount|coupon|voucher|promo)\\w*',
+    '\\b(discount|promo|coupon|voucher|offer|sale) codes?\\b',
+    '\\bcodes? at checkout\\b',
+    '\\b(on|the|a|this|our|big|flash|seasonal|clearance) sale\\b',
+    '\\bsale (on|price|prices|ends)\\b',
+    '\\b(the|an|this|our|special|limited|exclusive|current|latest) offers?\\b',
+    '\\b(deals?|bargains?|clearance)\\b',
+    '\\bshipping\\b',
+    '\\bdelivery\\b',
+    '\\b(easy|free|hassle-free|no-questions-asked|extended) returns?\\b',
+    '\\b(refund|refunds|refunded|exchanges?)\\b',
+    '\\bpolic(y|ies)\\b',
+    '\\b(promise|promises|promised|guarantee\\w*|warrant(y|ies))\\b',
+    '% off\\b',
+    '\\bper ?cent off\\b'
+  ].join('|'),
+  'i'
+)
 
 /**
  * A sentence the book may keep: plain, one line, a sensible length, no

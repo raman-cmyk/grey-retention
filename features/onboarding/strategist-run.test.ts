@@ -103,6 +103,10 @@ function database(
         q.filters.push({ op: 'lt', column, value }),
         chain
       ),
+      like: (column: string, value: unknown) => (
+        q.filters.push({ op: 'like', column, value }),
+        chain
+      ),
       order: () => chain,
       limit: async () => {
         queries.push(q)
@@ -123,19 +127,35 @@ const deps = (ai: AiCall) => ({
   memory: new InMemoryMemoryStore(),
   log: new InMemoryRunLog()
 })
-/** The newest book, `tries` earlier strategist calls for it, nothing else. */
-const one =
-  (
-    newest: { version: number; content: unknown; written_by?: string } | null,
-    tries = 0,
-    later: Record<string, unknown>[] = []
-  ) =>
-  (q: Query) => {
+/**
+ * The newest book (or, by read, the books in order), `tries` earlier
+ * strategist calls in the run log, `reserved` in the allowance, and the
+ * books between two versions.
+ */
+const one = (
+  newest:
+    | { version: number; content: unknown; written_by?: string }
+    | null
+    | ((read: number) => {
+        version: number
+        content: unknown
+        written_by?: string
+      }),
+  tries = 0,
+  later: Record<string, unknown>[] = [],
+  reserved = 0
+) => {
+  let reads = 0
+  return (q: Query) => {
     if (q.table === 'agent_runs')
       return Array.from({ length: tries }, (_, i) => ({ id: `r${i}` }))
+    if (q.table === 'usage_reservations')
+      return Array.from({ length: reserved }, (_, i) => ({ id: `u${i}` }))
     if (q.filters.some((f) => f.op === 'gt')) return later
-    return newest ? [{ written_by: brandBookAuthor, ...newest }] : []
+    const row = typeof newest === 'function' ? newest(++reads) : newest
+    return row ? [{ written_by: brandBookAuthor, ...row }] : []
   }
+}
 
 describe('runBrandStrategist (ONB-106c)', () => {
   it('writes the checked strategy into a new version of the newest book', async () => {
@@ -202,6 +222,28 @@ describe('runBrandStrategist (ONB-106c)', () => {
     expect(strategistReady(live)).toBe(true)
   })
 
+  it('asks at most twice per book version, counted by the allowance too when the run log missed a call', async () => {
+    const reservedOnly = database(
+      one({ version: 7, content: book() }, 0, [], maxAttempts)
+    )
+    const notAsked = vi.fn(ok(answer))
+    expect(
+      await runBrandStrategist(reservedOnly.db, tenantId, deps(notAsked))
+    ).toBe('tried')
+    expect(notAsked).not.toHaveBeenCalled()
+    expect(
+      reservedOnly.queries.find((q) => q.table === 'usage_reservations')
+        ?.filters
+    ).toEqual([
+      { op: 'eq', column: 'tenant_id', value: tenantId },
+      {
+        op: 'like',
+        column: 'operation_id',
+        value: 'ai:%:brand-strategist:brand-book:7:%'
+      }
+    ])
+  })
+
   it('asks at most twice per book version, whatever the outcome, by the run log', async () => {
     const { db, rpc, queries } = database(
       one({ version: 7, content: book() }, maxAttempts)
@@ -235,17 +277,8 @@ describe('runBrandStrategist (ONB-106c)', () => {
         deps(ok({ ...answer, positioning: 'Free gifts with every order.' }))
       )
     ).toBe('nothing_usable')
-    let reads = 0
-    const moved = database((q) =>
-      q.table === 'agent_runs'
-        ? []
-        : [
-            {
-              version: ++reads === 1 ? 1 : 2,
-              content: b,
-              written_by: brandBookAuthor
-            }
-          ]
+    const moved = database(
+      one((read) => ({ version: read === 1 ? 1 : 2, content: b }))
     )
     expect(await runBrandStrategist(moved.db, tenantId, deps(ok(answer)))).toBe(
       'moved'
@@ -254,14 +287,15 @@ describe('runBrandStrategist (ONB-106c)', () => {
       expect(r.rpc).not.toHaveBeenCalled()
   })
 
-  it('puts a book the readers saved during its save back on top', async () => {
+  it('puts a book the readers saved during its save back on top, only while its own save is newest', async () => {
     const b = book()
     const newer = { ...b, products: { ...b.products, bestsellers: [] } }
+    const between = [
+      { version: 5, content: newer, written_by: brandBookAuthor }
+    ]
     // Read at 4; a code write took 5; the strategist's save became 6.
     const { db, rpc } = database(
-      one({ version: 4, content: b }, 0, [
-        { version: 5, content: newer, written_by: brandBookAuthor }
-      ]),
+      one((read) => ({ version: read <= 2 ? 4 : 6, content: b }), 0, between),
       [6, 7]
     )
     expect(await runBrandStrategist(db, tenantId, deps(ok(answer)))).toBe(
@@ -273,55 +307,87 @@ describe('runBrandStrategist (ONB-106c)', () => {
       content: newer,
       written_by: brandBookAuthor
     })
+    // A book written after the save (7) is on top already: left alone.
+    const after = database(
+      one((read) => ({ version: read <= 2 ? 4 : 7, content: b }), 0, between),
+      [6]
+    )
+    expect(await runBrandStrategist(after.db, tenantId, deps(ok(answer)))).toBe(
+      'saved'
+    )
+    expect(after.rpc).toHaveBeenCalledTimes(1)
   })
 })
 
 describe('booksNeedingStrategy (ONB-106c)', () => {
   const b = book()
   const current = withStrategy(b, checkStrategy(answer, b)!)
-  const books = [
-    // Newest first: one row per version.
-    { tenant_id: 'a', version: 3, written_by: brandBookAuthor, content: b },
-    {
-      tenant_id: 'b',
-      version: 2,
-      written_by: strategistAuthor,
-      content: current
-    },
-    {
-      tenant_id: 'a',
-      version: 2,
-      written_by: strategistAuthor,
-      content: current
-    },
-    {
-      tenant_id: 'c',
-      version: 1,
-      written_by: brandBookAuthor,
-      content: { ...b, sample: true }
-    },
-    { tenant_id: 'd', version: 5, written_by: brandBookAuthor, content: b },
-    { tenant_id: 'e', version: 1, written_by: brandBookAuthor, content: b },
-    { tenant_id: 'f', version: 4, written_by: brandBookAuthor, content: b }
+  const noRoom = book({
+    positioning: 'Linen for warm days. '.repeat(340),
+    voice: 'Calm.',
+    prohibitions: ''
+  })
+  type Row = {
+    tenant_id: string
+    version: number
+    written_by: string
+    content: BrandBookContent
+  }
+  const row = (
+    tenant_id: string,
+    version: number,
+    content: BrandBookContent = b,
+    written_by = brandBookAuthor
+  ): Row => ({ tenant_id, version, written_by, content })
+  // Newest first: one row per version.
+  const books: Row[] = [
+    row('a', 3),
+    row('b', 2, current, strategistAuthor),
+    row('a', 2, current, strategistAuthor),
+    row('c', 1, { ...b, sample: true }),
+    row('d', 5),
+    row('e', 1),
+    row('f', 4)
   ]
+  const eq = (q: Query, column: string) =>
+    q.filters.find((f) => f.op === 'eq' && f.column === column)?.value
   const answerFor =
-    (over: { reading?: string[]; tried?: [string, number][] } = {}) =>
+    (
+      over: {
+        rows?: Row[]
+        reading?: string[]
+        tried?: [string, number][]
+      } = {}
+    ) =>
     (q: Query) => {
+      const rows = over.rows ?? books
       if (q.table === 'job_runs')
         return (over.reading ?? []).map((tenant_id) => ({ tenant_id }))
+      if (q.table === 'usage_reservations') return []
       if (q.table === 'agent_runs')
-        return (over.tried ?? []).flatMap(([t, v]) =>
-          Array.from({ length: maxAttempts }, () => ({
-            tenant_id: t,
-            caller_key: attemptKey(v)
-          }))
+        return (over.tried ?? []).some(
+          ([t, v]) =>
+            eq(q, 'tenant_id') === t && eq(q, 'caller_key') === attemptKey(v)
         )
-      const ids = q.filters.find((f) => f.column === 'tenant_id')?.value as
-        string[] | undefined
-      return books.filter((r) => !ids || ids.includes(r.tenant_id))
+          ? Array.from({ length: maxAttempts }, (_, i) => ({ id: `r${i}` }))
+          : []
+      if (q.select === 'content')
+        return rows
+          .filter(
+            (r) =>
+              r.tenant_id === eq(q, 'tenant_id') &&
+              r.version === eq(q, 'version')
+          )
+          .map((r) => ({ content: r.content }))
+      return rows.map((r) => ({
+        tenant_id: r.tenant_id,
+        version: r.version,
+        written_by: r.written_by,
+        sample: r.content.sample
+      }))
     }
 
-  it('takes each workspace’s newest code-written real book, newest first', async () => {
+  it('takes each workspace’s newest code-written real book, newest first, reading content only for candidates', async () => {
     const { db, queries } = database(answerFor())
     expect(await booksNeedingStrategy(db, { limit: 5 })).toEqual([
       'a',
@@ -329,12 +395,20 @@ describe('booksNeedingStrategy (ONB-106c)', () => {
       'e',
       'f'
     ])
-    // Content is read only for the code-written candidates (the sample
-    // book is left out once read), never for all books.
-    const first = queries[0]!
-    expect(first.select).toBe('tenant_id,version,written_by')
-    const content = queries.find((q) => q.select.includes('content'))!
-    expect(content.filters[0]!.value).toEqual(['a', 'c', 'd', 'e', 'f'])
+    expect(queries[0]!.select).toBe(
+      'tenant_id,version,written_by,sample:content->sample'
+    )
+    // One exact book version per candidate; never the sample one.
+    expect(
+      queries
+        .filter((q) => q.select === 'content')
+        .map((q) => [eq(q, 'tenant_id'), eq(q, 'version')])
+    ).toEqual([
+      ['a', 3],
+      ['d', 5],
+      ['e', 1],
+      ['f', 4]
+    ])
   })
 
   it('leaves out a workspace still reading, or one whose book was tried twice', async () => {
@@ -348,13 +422,26 @@ describe('booksNeedingStrategy (ONB-106c)', () => {
       })
     )
     expect(await booksNeedingStrategy(db, { limit: 5 })).toEqual(['e', 'f'])
-    const jobs = queries.find((q) => q.table === 'job_runs')!
-    expect(jobs.filters).toContainEqual({
-      op: 'in',
-      column: 'status',
-      value: ['queued', 'retry_wait', 'leased', 'running']
-    })
+    expect(queries.find((q) => q.table === 'job_runs')!.filters).toContainEqual(
+      {
+        op: 'in',
+        column: 'status',
+        value: ['queued', 'retry_wait', 'leased', 'running']
+      }
+    )
     expect(await booksNeedingStrategy(db, { limit: 1 })).toEqual(['e'])
+  })
+
+  it('never lets a workspace it leaves out hide an older one', async () => {
+    const rows = [
+      row('x', 9, noRoom),
+      ...Array.from({ length: 12 }, (_, i) =>
+        row('s', 12 - i, { ...b, sample: true })
+      ),
+      row('y', 2)
+    ]
+    const { db } = database(answerFor({ rows, tried: [] }))
+    expect(await booksNeedingStrategy(db, { limit: 1 })).toEqual(['y'])
   })
 
   it('throws a failed read', async () => {

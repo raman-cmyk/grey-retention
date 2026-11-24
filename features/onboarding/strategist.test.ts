@@ -174,9 +174,32 @@ describe('the Brand strategist (ONB-106c)', () => {
       'Promise delivery before the holidays.'
     ])
       expect(usableSentence(s), s).toBeNull()
-    expect(usableSentence('Lead with how the fabric feels on a hot day.')).toBe(
-      'Lead with how the fabric feels on a hot day.'
-    )
+    for (const s of [
+      'Lead with how the fabric feels on a hot day.',
+      // Ordinary sentences that share a word with an offer or a policy.
+      'Linen & Co offers light linen clothing for people in warm places.',
+      'Customers love the freedom of movement in the fabric.',
+      'A fragrance-free range suits people with sensitive skin.',
+      'Show the comfort the fabric delivers on a long day.',
+      'Customers return for new colours each season.',
+      'Avoid pushy sales language in every email.',
+      'Many buy a throw when buying a gift for someone.',
+      'The pieces suit relaxed dress codes at work.',
+      'Price-conscious shoppers compare fabric quality closely.',
+      'A promising new range for cooler evenings.'
+    ])
+      expect(usableSentence(s), s).toBe(s)
+    for (const s of [
+      'Mention free returns in the first line.',
+      'Remind them of the discount on throws.',
+      'Give a gift with every order this month.',
+      'Use the promo code in the subject line.',
+      'Lead with the flash sale on cushions.',
+      'Push the special offer for new customers.',
+      'Talk about quick delivery to the coast.',
+      'Explain the refund rules in plain words.'
+    ])
+      expect(usableSentence(s), s).toBeNull()
   })
 
   it('fits the room left beside a long book, and asks for none when there is too little', () => {

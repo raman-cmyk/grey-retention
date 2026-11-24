@@ -138,13 +138,29 @@ describe('runSourceReadings', () => {
       ...noBooks,
       now: () => now,
       read: async () => {
-        now = routeMs - strategistCallMs - dbMarginMs + 1
+        now = routeMs - strategistCallMs - 2 * dbMarginMs + 1
         return 'read' as const
       },
       strategist: lateStrategist,
       strategyNeeded
     })
     expect(lateStrategist).not.toHaveBeenCalled()
+    // Exactly on the limit (the call and two margins end at the route's
+    // end): it still runs.
+    now = 0
+    const onTime = database(['j1'])
+    const onTimeStrategist = vi.fn(async () => 'saved')
+    await runSourceReadings(onTime.db, {
+      ...noBooks,
+      now: () => now,
+      read: async () => {
+        now = routeMs - strategistCallMs - 2 * dbMarginMs
+        return 'read' as const
+      },
+      strategist: onTimeStrategist,
+      strategyNeeded
+    })
+    expect(onTimeStrategist).toHaveBeenCalledOnce()
   })
 
   it('looks for a strategy to write only with a live plan model, never on the fake AI (ONB-106c)', async () => {
@@ -181,7 +197,7 @@ describe('runSourceReadings', () => {
       read: async () => 'read' as const,
       strategist,
       strategyNeeded: async () => {
-        now = routeMs - strategistCallMs - dbMarginMs
+        now = routeMs - strategistCallMs - 2 * dbMarginMs + 1
         return ['t1']
       }
     })

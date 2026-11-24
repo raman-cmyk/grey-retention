@@ -15,12 +15,6 @@ import type { Finding, FindingSource, FindingTopic } from './findings'
 import type { StoredHistory } from './history/read'
 import { industryInWords } from './industry'
 import type { Strategy } from './strategist'
-
-/**
- * Who wrote a version with the Brand strategist's reading (ONB-106c,
- * `brand_books.written_by`); here so the book never imports the agent.
- */
-export const strategistAuthor = 'brand-strategist@1'
 import { plain } from './words'
 
 /**
@@ -43,6 +37,12 @@ import { plain } from './words'
  * brand never gets a sample book. The strategist's own summary (AI) is
  * ONB-106c; the owner corrects lines through ONB-058.
  */
+
+/**
+ * Who wrote a version with the Brand strategist's reading (ONB-106c,
+ * `brand_books.written_by`); here so the book never imports the agent.
+ */
+export const strategistAuthor = 'brand-strategist@1'
 
 export const brandBookSchema = 2
 /** Who wrote a version (`brand_books.written_by`). */

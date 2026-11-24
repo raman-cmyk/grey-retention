@@ -161,7 +161,7 @@ export async function runSourceReadings(
    */
   async function strategize() {
     if (!strategist) return
-    if (now() - started + dbMarginMs > routeMs || !fitsStrategist()) return
+    if (!fitsStrategist()) return
     try {
       const [tenantId] = await (
         options.strategyNeeded ??
