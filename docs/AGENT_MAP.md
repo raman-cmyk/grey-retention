@@ -32,7 +32,7 @@ Loop: a low-confidence tag is re-run with the screenshot on the larger model; if
 
 Read the sources (all AI, Flash): **Site reader** (home, product, about, shipping, returns, FAQ), **Catalog analyst** (Klaviyo catalog: duplicates, bestsellers, new arrivals, price bands), **Klaviyo historian** (past campaigns, flows, segments, what made money), **Ads analyst** (Meta Ad Library, public: live offers, angles, creatives; D23), **Reviews + social reader**.
 
-Put it together: **Voice + look analyst** (AI, Flash + images; also collects the brand's real web fonts and cuts products out of their photos) → **Brand strategist** (AI, 3.8 Flash) writes the Brand book → owner adds max discount and real codes → Brand book (memory).
+Put it together: **Voice + look analyst** (AI, Flash + images; also collects the brand's real web fonts and cuts products out of their photos) → **Brand strategist** (AI, plan tier; ONB-106c: code writes the Brand book from the findings, the strategist adds its `strategy`, checked by code) writes the Brand book → owner adds max discount and real codes → Brand book (memory).
 
 Loop: when sources disagree, the strategist uses the stricter fact, never states the claim, and records the conflict.
 
