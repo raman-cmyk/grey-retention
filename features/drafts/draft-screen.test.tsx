@@ -101,15 +101,39 @@ describe('a draft in words', () => {
     expect(startedFrom('junk')).toBe('Scratch')
   })
 
-  it('maps the old statuses on the four GROS ones', () => {
-    expect(draftStatus(campaign(), now)).toBe('needs_you')
-    expect(draftStatus(campaign({ calendar_state: 'approved' }), now)).toBe(
-      'planned'
+  it('maps the old statuses honestly: never In Klaviyo from here', () => {
+    expect(draftStatus(campaign(), now)).toEqual({ kind: 'needs_you' })
+    expect(draftStatus(campaign({ calendar_state: 'approved' }), now)).toEqual({
+      kind: 'planned'
+    })
+    for (const delivery_state of ['sent', 'scheduled'])
+      expect(draftStatus(campaign({ delivery_state }), now)).toEqual({
+        words: 'Sample only'
+      })
+    expect(draftStatus(campaign({ delivery_state: 'cancelled' }), now)).toEqual(
+      { words: 'Cancelled' }
     )
-    expect(draftStatus(campaign({ delivery_state: 'sent' }), now)).toBe(
-      'in_klaviyo'
+    expect(
+      draftStatus(
+        campaign({ calendar_state: 'approved', design_state: 'assigned' }),
+        now
+      )
+    ).toEqual({ kind: 'working', word: 'Designing' })
+    expect(draftStatus(campaign({ superseded_by_plan: 'p1' }), now)).toEqual({
+      words: 'Replaced by a newer plan'
+    })
+  })
+
+  it('says each step in words, with no designer and no early copy', () => {
+    const steps = (c: Partial<Campaign>, k: Content | null = null) =>
+      Object.fromEntries(view(c, k).steps)
+    expect(steps({}).Copy).toBe('Waits for the date')
+    expect(steps({ calendar_state: 'approved' }).Copy).toBe('Not written yet')
+    expect(steps({ calendar_state: 'approved' }, content()).Copy).toBe(
+      'Written'
     )
-    expect(draftStatus(campaign({ superseded_by_plan: 'p1' }), now)).toBeNull()
+    expect(steps({ design_state: 'assigned' }).Design).toBe('Being made')
+    expect(steps({ delivery_state: 'sent' }).Delivery).toBe('Sample only')
   })
 
   it('lets only the owner act, and never on a replaced draft', () => {
@@ -182,6 +206,12 @@ describe('the draft screen', () => {
       />
     )
     const copy = screen.getByRole('region', { name: 'Copy' })
+    expect(
+      within(copy).getByText('Sample copy, written by the sample writer.')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('This draft stays here. It does not go to Klaviyo.')
+    ).toBeInTheDocument()
     expect(within(copy).getByLabelText('Subject')).toHaveValue('Winter is here')
     expect(within(copy).getByLabelText('Words')).toHaveValue(
       'Hello from Cedar Lane'

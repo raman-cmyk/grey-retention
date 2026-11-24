@@ -77,11 +77,11 @@ function AboutCard({ view }: { view: DraftView }) {
         <ActionAnswers>
           <div className="flex flex-wrap items-center justify-between gap-[var(--space-3)]">
             <h2 className="type-heading min-w-0 break-words">{view.title}</h2>
-            {view.status ? (
-              <Status kind={view.status} />
+            {'kind' in view.status ? (
+              <Status kind={view.status.kind} word={view.status.word} />
             ) : (
               <span className="type-caption text-[var(--stone)]">
-                Replaced by a newer plan
+                {view.status.words}
               </span>
             )}
           </div>
@@ -91,6 +91,10 @@ function AboutCard({ view }: { view: DraftView }) {
             </p>
           ) : null}
           <Tiles items={view.facts} />
+          {/* Honest about this page: nothing here reaches Klaviyo. */}
+          <p className="type-caption text-[var(--stone)]">
+            This draft stays here. It does not go to Klaviyo.
+          </p>
           {view.approveDate !== null ? (
             <ActionButton
               action={approveCalendar}
@@ -136,6 +140,10 @@ function CopyCard({ view }: { view: DraftView }) {
             </>
           ) : (
             <>
+              {/* The copy job runs on the sample writer only (fixture). */}
+              <p className="type-caption text-[var(--stone)]">
+                Sample copy, written by the sample writer.
+              </p>
               {copy.problems.length ? (
                 <ul className="type-body flex flex-col gap-[var(--space-1)] text-[var(--signal-ink)]">
                   {copy.problems.map((p) => (

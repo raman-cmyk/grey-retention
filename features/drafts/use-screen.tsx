@@ -3,6 +3,7 @@ import { ButtonLink } from '@/components/gros/button'
 import { Card } from '@/components/gros/card'
 import { AppPage } from '@/components/gros/nav'
 import { ErrorState } from '@/components/gros/states'
+import { toSafePreview } from '@/features/email-generation/to-safe-preview'
 import { pastedLimits, readableAtLimit } from '@/features/references/pasted'
 import {
   importedSource,
@@ -134,7 +135,8 @@ function ChosenEmail({
             title={`The email: ${subject}`}
             sandbox=""
             referrerPolicy="no-referrer"
-            srcDoc={view.reference.safe_html}
+            // Sanitized again on the server: links removed, a strict CSP.
+            srcDoc={toSafePreview(view.reference.safe_html)?.html ?? ''}
             className="h-[28rem] w-full max-w-[600px] rounded-[var(--radius-md)] bg-[var(--white)]"
           />
         ) : view.imported ? (

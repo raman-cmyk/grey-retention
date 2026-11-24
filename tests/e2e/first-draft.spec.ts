@@ -97,7 +97,8 @@ test('owner creates and reopens the same draft from scratch without integrations
 })
 
 test('Use this design on an Inspiration email starts a draft that follows it', async ({
-  page
+  page,
+  browser
 }, info) => {
   test.setTimeout(90_000)
   const db = await newOwner(page)
@@ -146,6 +147,17 @@ test('Use this design on an Inspiration email starts a draft that follows it', a
   })
   expect(result.data!.calendar_state).toBe('proposed')
 
+  // Another workspace's owner cannot open this email to build from.
+  const foreign = await browser.newContext()
+  const foreignPage = await foreign.newPage()
+  await login(foreignPage, 'other')
+  await foreignPage.goto(`/inspiration/use?reference=${referenceId}`)
+  await expect(foreignPage.getByText('This email is gone')).toBeVisible()
+  await expect(
+    foreignPage.getByRole('button', { name: 'Create draft' })
+  ).toHaveCount(0)
+  await foreign.close()
+
   // The old reference page opens the same email on "Use this design".
   await page.goto(`/email-library/${referenceId}`)
   await expect(page).toHaveURL(
@@ -184,6 +196,79 @@ test('Use this design on an Inspiration email starts a draft that follows it', a
   await expect(page.getByLabel('What should this email do?')).toHaveValue(
     'Preserve this idea if the selected reference becomes unavailable.'
   )
+})
+
+test('owner approves the date and the sample copy; staff and another workspace cannot', async ({
+  page
+}, info) => {
+  test.setTimeout(120_000)
+  // The seed workspace has an audience and an approved brand, which
+  // approving a date needs.
+  await login(page)
+  await page.goto('/inspiration/use')
+  const title = `Approved draft ${randomUUID().slice(0, 8)}`
+  await page
+    .getByLabel('What should this email do?')
+    .fill('A fictional, non-discounted update. No invented claims.')
+  await page.getByLabel('Name', { exact: true }).fill(title)
+  await page
+    .getByLabel(/^Send time/)
+    .fill(
+      info.project.name.startsWith('mobile')
+        ? '2099-06-05T10:30'
+        : '2099-05-05T10:30'
+    )
+  await page
+    .getByLabel('Audience', { exact: true })
+    .selectOption({ label: 'G | Engaged (fixture definition)' })
+  await page.getByRole('button', { name: 'Create draft' }).click()
+  await expect(page).toHaveURL(/\/plan\/draft\/[a-f0-9-]+$/)
+  const url = page.url()
+
+  // The date: approved, and still approved after a reload.
+  await page.getByRole('button', { name: 'Approve date' }).click()
+  await expect(page.getByText('Date approved.')).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Approve date' })).toHaveCount(
+    0
+  )
+  const progress = page.getByRole('region', { name: 'Progress' })
+  await expect(progress.getByText('Approved', { exact: true })).toBeVisible()
+
+  // The copy: asked for, written by the sample job, then approved.
+  await page.getByRole('button', { name: 'Write copy' }).click()
+  await expect(
+    page.getByText('The copy is being written. It shows here in a few minutes.')
+  ).toBeVisible()
+  await runWorkspaceJobs(page, 15)
+  await page.reload()
+  const copy = page.getByRole('region', { name: 'Copy' })
+  await expect(
+    copy.getByText('Sample copy, written by the sample writer.')
+  ).toBeVisible()
+  await expect(copy.getByLabel('Subject', { exact: true })).not.toHaveValue('')
+  await copy.getByRole('button', { name: 'Approve copy' }).click()
+  await expect(page.getByText('Copy approved.')).toBeVisible()
+  await page.reload()
+  await expect(copy.getByText('You approved this copy.')).toBeVisible()
+  await expect(
+    page.getByText('This draft stays here. It does not go to Klaviyo.')
+  ).toBeVisible()
+
+  // Staff open the same draft without the owner's buttons.
+  await page.context().clearCookies()
+  await login(page, 'staff')
+  await page.goto(url)
+  await expect(page.getByRole('heading', { name: title })).toBeVisible()
+  for (const name of ['Approve date', 'Write copy', 'Approve copy'])
+    await expect(page.getByRole('button', { name })).toHaveCount(0)
+
+  // Another workspace's owner gets Not found.
+  await page.context().clearCookies()
+  await login(page, 'other')
+  await page.goto(url)
+  await expect(page.getByText('Page not found')).toBeVisible()
+  await expect(page.getByRole('heading', { name: title })).toHaveCount(0)
 })
 
 test('staff can open Use this design but cannot create a draft', async ({

@@ -16,8 +16,13 @@ export type DraftView = {
   id: string
   title: string
   goal: string
-  /** One of the four GROS statuses, or null for a replaced draft. */
-  status: StatusKind | null
+  /**
+   * One of the four GROS statuses (`working` with its word), or words
+   * instead of a pill where none of the four is true: a replaced draft, a
+   * cancelled one, and a sample schedule or send (this page never reaches
+   * Klaviyo, so a draft here is never "In Klaviyo").
+   */
+  status: DraftStatus
   replaced: boolean
   facts: [string, string][]
   steps: [string, string][]
@@ -87,17 +92,41 @@ export function startedFrom(value: unknown) {
     : from
 }
 
-/** The old campaign statuses on the four GROS ones (BRAND.md rule 24). */
+export type DraftStatus =
+  { kind: Exclude<StatusKind, 'in_klaviyo'>; word?: string } | { words: string }
+
+/** The old campaign statuses on the GROS ones (BRAND.md rule 24). */
 export function draftStatus(
   campaign: Parameters<typeof campaignStatusOf>[0],
   now?: Date
-): StatusKind | null {
+): DraftStatus {
   const status = campaignStatusOf(campaign, now)
-  if (!status) return null
-  if (status === 'sent' || status === 'scheduled') return 'in_klaviyo'
-  if (status === 'with_designer') return 'working'
-  if (status === 'draft' || status === 'cancelled') return 'planned'
-  return 'needs_you'
+  if (!status) return { words: 'Replaced by a newer plan' }
+  if (status === 'sent' || status === 'scheduled')
+    return { words: 'Sample only' }
+  if (status === 'cancelled') return { words: 'Cancelled' }
+  // D3: no designer; the design is being made.
+  if (status === 'with_designer') return { kind: 'working', word: 'Designing' }
+  if (status === 'draft') return { kind: 'planned' }
+  return { kind: 'needs_you' }
+}
+
+/** A step's state in words; sample delivery is never called sent. */
+function stepWords(
+  c: Row<'campaigns'>,
+  step: 'calendar' | 'copy' | 'design' | 'delivery',
+  state: string,
+  written: boolean
+) {
+  if (step === 'copy' && state === 'draft')
+    return c.calendar_state !== 'approved'
+      ? 'Waits for the date'
+      : written
+        ? 'Written'
+        : 'Not written yet'
+  if (step === 'delivery' && (state === 'scheduled' || state === 'sent'))
+    return 'Sample only'
+  return stepStateWords(step, state)
 }
 
 /** `YYYY-MM-DDTHH:mm` in the store's timezone, or empty when unreadable. */
@@ -159,7 +188,10 @@ export function draftView(input: {
         ['Design', 'design', c.design_state],
         ['Delivery', 'delivery', c.delivery_state]
       ] as const
-    ).map(([label, step, state]) => [label, stepStateWords(step, state)]),
+    ).map(([label, step, state]) => [
+      label,
+      stepWords(c, step, state, !!content?.body)
+    ]),
     approveDate:
       input.owner && live && !dateApproved ? c.calendar_revision : null,
     copy: !dateApproved

@@ -97,7 +97,9 @@ const nextConfig: NextConfig = {
       ...oldClientPages.map(([source, destination]) => ({
         source,
         destination,
-        permanent: true
+        // Temporary, like /support and /feedback: a browser never keeps
+        // them, so a page that comes back later is not hidden.
+        permanent: false
       }))
     ]
   },

@@ -89,6 +89,8 @@ describe('the "Use this design" screen', () => {
     ).toBeInTheDocument()
     const frame = screen.getByTitle('The email: Spring sale starts now')
     expect(frame).toHaveAttribute('sandbox', '')
+    // Sanitized again on the server: a strict policy, links removed.
+    expect(frame.getAttribute('srcdoc')).toContain("default-src 'none'")
     const form = screen
       .getByRole('button', { name: 'Create draft' })
       .closest('form')!

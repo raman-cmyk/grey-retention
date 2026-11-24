@@ -31,10 +31,14 @@ function pages(dir: string): string[] {
 }
 
 describe('retired old client pages', () => {
-  it('redirect for good to the GROS screen doing their job', async () => {
+  it('redirect to the GROS screen doing their job', async () => {
     const redirects = await nextConfig.redirects!()
     for (const [source, destination] of Object.entries(expected))
-      expect(redirects).toContainEqual({ source, destination, permanent: true })
+      expect(redirects).toContainEqual({
+        source,
+        destination,
+        permanent: false
+      })
   })
 
   it('leave no page at the old address', () => {
