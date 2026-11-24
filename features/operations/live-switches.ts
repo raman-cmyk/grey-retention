@@ -100,8 +100,7 @@ export function liveSwitches(env: Env = process.env): LiveSwitch[] {
         : {
             label: planLabel,
             state: 'off',
-            detail:
-              'Off: plans are made by code only. Set STRATEGY_AGENTS=on.'
+            detail: 'Off: plans are made by code only. Set STRATEGY_AGENTS=on.'
           },
     studio && agents && live
       ? {
