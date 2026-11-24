@@ -29,30 +29,55 @@ export const deprecationPages = {
   openai: 'https://platform.openai.com/docs/deprecations'
 } as const
 
-// Not read yet: the build sessions that wrote this could not reach either
-// page (their network allows neither host). Fill each line from the pages.
+// AI-MDL-001: the Gemini lines were read from Google's deprecations page on
+// 2026-11-24. The OpenAI lines are not read yet: the build sessions that
+// wrote them could not reach that page. Fill them from it.
+const geminiCheckedOn = '2026-11-24'
 export const modelRetirements: Record<GeminiModel | RewriteModel, Retirement> =
   {
+    // Not deprecated; Google says it stays available until further notice.
     'gemini-2.5-flash-lite': {
       provider: 'gemini',
       shutdownOn: null,
-      checkedOn: null
+      checkedOn: geminiCheckedOn
     },
+    // Closed to new users; from this date Google routes its calls to
+    // 3.5 Flash-Lite, billed at that model's price.
     'gemini-2.5-flash': {
       provider: 'gemini',
-      shutdownOn: null,
-      checkedOn: null
+      shutdownOn: '2026-12-01',
+      replacement: 'gemini-3.5-flash-lite',
+      checkedOn: geminiCheckedOn
     },
-    'gemini-2.5-pro': { provider: 'gemini', shutdownOn: null, checkedOn: null },
+    // Closed to new users; from this date Google routes its calls to 3.8 Flash.
+    'gemini-2.5-pro': {
+      provider: 'gemini',
+      shutdownOn: '2026-12-01',
+      replacement: 'gemini-3.8-flash',
+      checkedOn: geminiCheckedOn
+    },
     'gemini-3.1-flash-lite': {
       provider: 'gemini',
-      shutdownOn: null,
-      checkedOn: null
+      shutdownOn: '2027-05-07',
+      replacement: 'gemini-3.5-flash-lite',
+      checkedOn: geminiCheckedOn
     },
+    // A preview with no date yet. Google names 3.6 Flash as its successor,
+    // which is not in the price table, so no replacement is named here.
     'gemini-3-flash-preview': {
       provider: 'gemini',
       shutdownOn: null,
-      checkedOn: null
+      checkedOn: geminiCheckedOn
+    },
+    'gemini-3.5-flash-lite': {
+      provider: 'gemini',
+      shutdownOn: null,
+      checkedOn: geminiCheckedOn
+    },
+    'gemini-3.8-flash': {
+      provider: 'gemini',
+      shutdownOn: null,
+      checkedOn: geminiCheckedOn
     },
     'gpt-6.1-terra': { provider: 'openai', shutdownOn: null, checkedOn: null },
     'gpt-6-luna': { provider: 'openai', shutdownOn: null, checkedOn: null }

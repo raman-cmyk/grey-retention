@@ -243,7 +243,7 @@ type BriefTask = {
 export const briefWriterAgent: AgentDefinition<BriefTask, BriefAnswer> = {
   name: 'brief-writer',
   version: '2026-11-11.2',
-  // AGENT_MAP.md models: the Brief writer runs on 2.5 Pro.
+  // AGENT_MAP.md models: the Brief writer runs on the plan model (3.8 Flash, AI-MDL-001).
   purpose: 'plan',
   usesBrandBook: true,
   instructions: [
@@ -420,7 +420,7 @@ const kindGuide = letterKinds
 export const calendarPlannerAgent: AgentDefinition<PlannerTask, SlotAnswer> = {
   name: 'calendar-planner',
   version: '2026-11-16.2',
-  // AGENT_MAP.md models: the Calendar planner runs on 2.5 Pro.
+  // AGENT_MAP.md models: the Calendar planner runs on the plan model (3.8 Flash, AI-MDL-001).
   purpose: 'plan',
   usesBrandBook: true,
   instructions: [
