@@ -87,7 +87,7 @@ export function MismatchBanner({
         {owner ? (
           <p>
             Fix the Brand Identity below, or check the account on{' '}
-            <Link href="/connections" className="font-medium underline">
+            <Link href="/settings" className="font-medium underline">
               Connections
             </Link>
             . If both are right, you can ignore this note.

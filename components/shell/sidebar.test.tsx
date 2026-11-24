@@ -78,7 +78,7 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('sidebar (expanded)', () => {
-  it('shows the workspace block and the six main pages in order', () => {
+  it('shows the workspace block and the five main pages in order', () => {
     shell()
     const top = screen.getByTestId('shell-workspace')
     expect(within(top).getByText('Northwind Coffee')).toBeInTheDocument()
@@ -89,13 +89,13 @@ describe('sidebar (expanded)', () => {
     ).toHaveAttribute('aria-expanded', 'true')
     const labels = within(desktopNav())
       .getAllByRole('link')
-      .slice(0, 6)
+      .slice(0, 5)
       .map((link) => link.textContent)
+    // UI-OLDc: the old Campaigns planner is the Plan now.
     expect(labels).toEqual([
       'Home',
       'Brand & Store',
       'Plan next 15 days',
-      'Campaigns',
       'Ask GROS',
       'Inspiration'
     ])
@@ -124,10 +124,10 @@ describe('sidebar (expanded)', () => {
         'aria-hidden'
       )
     }
-    // The fixture optimizer page exists, so Bill Optimizer is a real link.
+    // UI-OLDc: the bill optimizer is not part of v2; it left the menu.
     expect(
-      within(desktopNav()).getByRole('link', { name: 'Bill Optimizer' })
-    ).toHaveAttribute('href', '/optimizer')
+      within(desktopNav()).queryByRole('link', { name: 'Bill Optimizer' })
+    ).toBeNull()
   })
 
   it('opens Workspace by default and remembers group choices', async () => {
@@ -139,10 +139,8 @@ describe('sidebar (expanded)', () => {
     )
     // UI-SETd: holidays and events are a page under Settings.
     expect(nav.queryByRole('link', { name: 'Holidays & Events' })).toBeNull()
-    expect(nav.getByRole('link', { name: 'Connections' })).toHaveAttribute(
-      'href',
-      '/connections'
-    )
+    // UI-OLDc: the Klaviyo connection is a card on Settings.
+    expect(nav.queryByRole('link', { name: 'Connections' })).toBeNull()
     // UI-SETc: the team is on Settings.
     expect(nav.queryByRole('link', { name: 'Team' })).toBeNull()
     // UI-SETd: feature requests are a card on Settings.
@@ -157,9 +155,6 @@ describe('sidebar (expanded)', () => {
     ['/flows/abc', 'Home'],
     ['/flow-messages/abc', 'Home'],
     ['/metrics/abc', 'Home'],
-    ['/campaign-drafts', 'Campaigns'],
-    ['/campaign-drafts/new', 'Campaigns'],
-    ['/campaigns/abc', 'Campaigns'],
     ['/campaigns/klaviyo/CMPspr001', 'Home'],
     ['/gros/thread-1', 'Ask GROS']
   ])('highlights the parent area on %s', (pathname, label) => {

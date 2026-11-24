@@ -320,12 +320,11 @@ test('owner rewrites a hostile email for their brand, then recovers from a refus
     name: 'Cedar Lane'
   })
   const external = watchExternal(page)
-  await page.goto('/get-started?step=brand')
-  await page.getByLabel('Store website (optional)').fill('cedar-lane.example')
-  await page.getByRole('button', { name: 'Save brand details' }).click()
-  await expect(
-    page.getByRole('link', { name: /Complete: Your brand/ })
-  ).toBeVisible()
+  // UI-OLDc: the store's website is saved on Setup's Store step.
+  await page.goto('/setup?step=store')
+  await page.getByLabel('Website', { exact: true }).fill('cedar-lane.example')
+  await page.getByRole('button', { name: 'Save store' }).click()
+  await expect(page).toHaveURL(/\/setup$/)
   const subject = `Acme spring ${randomUUID().slice(0, 8)}`
   await pasteEmail(page, subject, html)
   await page.getByRole('button', { name: 'Rewrite for my brand' }).click()

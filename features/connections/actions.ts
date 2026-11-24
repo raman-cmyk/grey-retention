@@ -136,7 +136,6 @@ export async function connectKlaviyo(
     ...accountFacts(account)
   })
   if (saved.error) return { error: failed(saved.error.code) }
-  revalidatePath('/connections')
   revalidatePath('/settings')
   revalidatePath('/home')
   return {
@@ -167,7 +166,6 @@ async function connectLive(form: FormData): Promise<FormResult> {
     brandName: brand.data?.brand_name || context.tenantName
   })
   if (result.message) {
-    revalidatePath('/connections')
     revalidatePath('/settings')
     revalidatePath('/home')
   }
@@ -200,7 +198,6 @@ export async function disconnectKlaviyo(): Promise<FormResult> {
           ? notOwner
           : 'We could not disconnect Klaviyo. Nothing was changed. Try again.'
     }
-  revalidatePath('/connections')
   revalidatePath('/settings')
   revalidatePath('/home')
   return {

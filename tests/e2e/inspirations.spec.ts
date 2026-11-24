@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { test, expect, type Page } from '@playwright/test'
 import { login } from './accounts'
+import { runWorkspaceJobs } from './jobs'
 import { newOwner } from './new-owner'
 
 /** A sample brand's website, unique to the run (letters only). */
@@ -38,7 +39,7 @@ test('UI-INSa owner follows a brand, sees its emails, builds from one and stops'
   await newOwner(page, { prefix: 'inspire', name: 'Inspiration studio' })
   // The old shell's Inspiration link opens the new screen (a page still
   // on the old shell: Home and Plan have the GROS top bar).
-  await page.goto('/connections')
+  await page.goto('/assets')
   await expect(page.locator('a[href="/inspiration"]').first()).toBeAttached()
   // The old address still opens it.
   await page.goto('/library/inspirations')
@@ -75,12 +76,8 @@ test('UI-INSa owner follows a brand, sees its emails, builds from one and stops'
   await expect(brands.getByText(domain, { exact: true })).toBeVisible()
 
   // The sample capture brings 10 sample emails (the scheduled worker does
-  // this in the app; here the operator button runs it now).
-  await page.goto('/competitor-agent')
-  await page.getByRole('button', { name: 'Run reference fixture jobs' }).click()
-  await expect(
-    page.getByText('Reference job pass completed. Inspect persisted evidence.')
-  ).toBeVisible()
+  // this in the app; here the local fixture dispatch runs it now).
+  await runWorkspaceJobs(page)
   await page.goto('/inspiration')
   await expect(brands.getByText(/10 emails/)).toBeVisible()
   const emails = page
@@ -90,7 +87,7 @@ test('UI-INSa owner follows a brand, sees its emails, builds from one and stops'
   await expect(emails.first()).toContainText('Sample')
   await expect(
     emails.first().getByRole('link', { name: 'Use this design' })
-  ).toHaveAttribute('href', /^\/first-draft\?reference=/)
+  ).toHaveAttribute('href', /^\/inspiration\/use\?reference=/)
 
   // Stop: its emails leave the library.
   await brands.getByRole('button', { name: 'Stop' }).click()
@@ -158,11 +155,7 @@ test('UI-INSa Inspiration fits 375px: empty, then a followed brand and its email
   await field.fill(domain)
   await follow.click()
   await expect(page.getByText(`Following ${domain}.`)).toBeVisible()
-  await page.goto('/competitor-agent')
-  await page.getByRole('button', { name: 'Run reference fixture jobs' }).click()
-  await expect(
-    page.getByText('Reference job pass completed. Inspect persisted evidence.')
-  ).toBeVisible()
+  await runWorkspaceJobs(page)
   await page.goto('/inspiration')
   await expect(followed.getByText(domain, { exact: true })).toBeVisible()
   const emails = latest.getByRole('listitem')

@@ -63,7 +63,7 @@ export async function composeEmail(
   })
   if (saved.error !== undefined)
     return { error: composerMessages[saved.reason] ?? saved.error }
-  for (const path of ['/get-started', '/first-draft', '/import-reference'])
+  for (const path of ['/inspiration', '/inspiration/use', '/import-reference'])
     revalidatePath(path)
   redirect(`/create-email/${saved.id}?mode=${outcome}` as Route)
 }

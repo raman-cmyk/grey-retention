@@ -2,12 +2,12 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import type { Route } from 'next'
 import { z } from 'zod'
 import type { FormResult } from '@/components/ui/action-form'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { createClient } from '@/lib/supabase/server'
 import { resolveLocalTime } from '@/lib/local-time'
+import { draftHref } from './href'
 
 const schema = z.object({
   requestKey: z.uuid(),
@@ -86,7 +86,6 @@ export async function createFirstDraft(
               ? 'Choose a future date and check the draft details.'
               : 'We could not save this draft. Your inputs are still here; try again.'
     }
-  for (const path of ['/get-started', '/campaign-agent', '/home'])
-    revalidatePath(path)
-  redirect(`/campaigns/${result.data}` as Route)
+  for (const path of ['/home', '/plan']) revalidatePath(path)
+  redirect(draftHref(result.data))
 }

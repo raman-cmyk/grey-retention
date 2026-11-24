@@ -152,7 +152,7 @@ export async function chooseEmailOutcome(
     )
       await startRewrite(context.tenantId, generation.data.id)
   }
-  for (const path of ['/get-started', '/home', `/create-email/${x.importId}`])
+  for (const path of ['/setup', '/home', `/create-email/${x.importId}`])
     revalidatePath(path)
   redirect(`/emails/${created.data}` as Route)
 }

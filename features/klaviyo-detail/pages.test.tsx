@@ -105,7 +105,7 @@ describe('Klaviyo detail pages (§4)', () => {
     expect(frame.getAttribute('srcdoc')).not.toContain('unsubscribe')
   })
 
-  it('campaign: opened from the planner, Back returns to that planner view', async () => {
+  it('campaign: opened from the old planner, Back opens the Plan (UI-OLDc)', async () => {
     render(
       await CampaignPage({
         params: Promise.resolve({ klaviyoId: 'CMPspr001' }) as never,
@@ -117,8 +117,8 @@ describe('Klaviyo detail pages (§4)', () => {
       })
     )
     expect(
-      screen.getByRole('link', { name: /Back to Campaigns/ })
-    ).toHaveAttribute('href', '/campaign-agent?m=2026-10&view=table')
+      screen.getByRole('link', { name: /Back to the plan/ })
+    ).toHaveAttribute('href', '/plan')
   })
 
   it('campaign: says when it sends in local time, and has no stats before sending', async () => {

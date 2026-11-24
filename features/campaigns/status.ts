@@ -96,14 +96,15 @@ const stepWords: Record<Step, Record<string, string>> = {
     rejected: 'Not approved'
   },
   copy: {
-    draft: 'Being written',
+    draft: 'Not written yet',
     pending_approval: 'Waiting for your approval',
     approved: 'Approved',
     rejected: 'Changes asked'
   },
   design: {
     unassigned: 'Not started',
-    assigned: 'With a designer',
+    // D3: no designer; an assigned design is being made.
+    assigned: 'Being made',
     submitted: 'Waiting for your approval',
     revisions_requested: 'Changes asked',
     owner_approved: 'Approved'

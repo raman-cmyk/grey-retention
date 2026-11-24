@@ -154,10 +154,8 @@ test('owner uploads an .eml, copies and edits it, and downloads the exact origin
   const subject = `Autumn layers ${randomUUID().slice(0, 8)}`
   const bytes = eml(subject)
 
-  // The choice sits beside paste in setup; the default stays simple.
-  await page.goto('/get-started?step=reference')
-  await expect(page.getByRole('link', { name: 'Paste an email' })).toBeVisible()
-  await page.getByRole('link', { name: 'Upload a file' }).click()
+  // Upload sits beside paste (the old setup's links to both are retired).
+  await page.goto('/import-reference?mode=file')
   await expect(page).toHaveURL(/\/import-reference\?mode=file&attempt=/)
   if (info.project.name.startsWith('mobile'))
     await page.setViewportSize({ width: 360, height: 800 })
@@ -384,12 +382,11 @@ test('file formats are trusted: text stays text, HTML keeps exact bytes, and rew
   ).toBe(literal.toString('utf8'))
 
   // An .html with a byte order mark, CRLF and Unicode downloads byte-for-byte.
-  await page.goto('/get-started?step=brand')
-  await page.getByLabel('Store website (optional)').fill('cedar-lane.example')
-  await page.getByRole('button', { name: 'Save brand details' }).click()
-  await expect(
-    page.getByRole('link', { name: /Complete: Your brand/ })
-  ).toBeVisible()
+  // UI-OLDc: the store's website is saved on Setup's Store step.
+  await page.goto('/setup?step=store')
+  await page.getByLabel('Website', { exact: true }).fill('cedar-lane.example')
+  await page.getByRole('button', { name: 'Save store' }).click()
+  await expect(page).toHaveURL(/\/setup$/)
   const html = Buffer.concat([
     Buffer.from([0xef, 0xbb, 0xbf]),
     Buffer.from(

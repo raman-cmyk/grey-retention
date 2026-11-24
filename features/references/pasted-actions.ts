@@ -30,7 +30,7 @@ export async function importPastedReference(
   ) as PastedReferenceInput
   const saved = await savePastedReference(context, raw)
   if (saved.error !== undefined) return { error: saved.error }
-  for (const path of ['/get-started', '/first-draft', '/import-reference'])
+  for (const path of ['/inspiration', '/inspiration/use', '/import-reference'])
     revalidatePath(path)
   // Next step of the simple flow: choose to rewrite it or copy it.
   redirect(`/create-email/${saved.id}` as Route)

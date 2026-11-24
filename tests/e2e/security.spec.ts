@@ -39,7 +39,7 @@ test('UC-14 internal worker requires a secret, validates scope and rejects disab
   // GET is the scheduled sweep (Vercel cron / GitHub Actions); it needs the secret.
   const method = await page.request.get('/api/internal/jobs')
   expect(method.status()).toBe(401)
-  const secure = await page.request.get('/reports')
+  const secure = await page.request.get('/results')
   expect(secure.headers()['x-content-type-options']).toBe('nosniff')
   expect(secure.headers()['content-security-policy']).toContain(
     "frame-ancestors 'none'"

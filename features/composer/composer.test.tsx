@@ -56,7 +56,7 @@ describe('Composer', () => {
     expect(screen.getByRole('link', { name: '3 saved' })).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: 'Not set up yet' })
-    ).toHaveAttribute('href', '/connections')
+    ).toHaveAttribute('href', '/settings')
   })
 
   it('blocks a pasted link and explains why', async () => {

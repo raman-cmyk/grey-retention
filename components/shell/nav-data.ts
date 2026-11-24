@@ -95,7 +95,6 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
       { label: 'Home', href: '/home', icon: 'dashboard' },
       { label: 'Brand & Store', href: '/brand', icon: 'brand' },
       { label: 'Plan next 15 days', href: '/plan', icon: 'plan' },
-      { label: 'Campaigns', href: '/campaign-agent', icon: 'campaigns' },
       { label: `Ask ${assistantName}`, href: '/gros', icon: 'gros' },
       {
         label: 'Inspiration',
@@ -111,8 +110,6 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
         icon: 'agents',
         items: [
           { label: 'List Health', icon: 'list-health', soon: true },
-          // A fixture-backed optimizer page exists, so this one is a link.
-          { label: 'Bill Optimizer', href: '/optimizer', icon: 'bill' },
           { label: 'Flow Audit', icon: 'flow-audit', soon: true },
           { label: 'Deliverability', icon: 'deliverability', soon: true },
           { label: 'A/B Test Monitor', icon: 'ab-test', soon: true }
@@ -124,8 +121,8 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
         icon: 'workspace',
         defaultOpen: true,
         items: [
-          { label: 'Settings', href: '/settings', icon: 'settings' },
-          { label: 'Connections', href: '/connections', icon: 'connections' }
+          // UI-OLDc: the Klaviyo connection is a card on Settings.
+          { label: 'Settings', href: '/settings', icon: 'settings' }
         ]
       },
       {
@@ -134,13 +131,8 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
         icon: 'more',
         items: [
           { label: 'Get started', href: '/setup', icon: 'start' },
-          {
-            label: 'Templates & references',
-            href: '/email-library',
-            icon: 'templates'
-          },
           { label: 'Assets', href: '/assets', icon: 'assets' },
-          { label: 'Results & learning', href: '/reports', icon: 'reports' }
+          { label: 'Results', href: '/results', icon: 'reports' }
         ]
       }
     ]
@@ -163,11 +155,6 @@ const parentAreas: Record<string, readonly string[]> = {
   // Klaviyo detail pages belong to Home (until Results); segments and lists
   // are GROS pages under Audiences (UI-AUDc).
   '/home': ['/campaigns/klaviyo', '/flows', '/flow-messages', '/metrics'],
-  // `/campaigns/:id` is this workspace's own campaign page, so it belongs to
-  // Campaigns; Klaviyo campaigns live under `/campaigns/klaviyo/:id`.
-  '/campaign-agent': ['/campaigns', '/campaign-drafts', '/calendar'],
-  // The older competitor pages are part of Inspiration (UIR-009).
-  '/inspiration': ['/competitor-agent'],
   // An open brief belongs to the designer's Assignments desk.
   '/designer/dashboard': ['/designer/assignments']
 }
