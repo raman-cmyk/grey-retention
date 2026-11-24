@@ -1,26 +1,29 @@
 'use client'
 
-import Link from 'next/link'
 import type { Route } from 'next'
 import { useActionState } from 'react'
-import { Button } from '@/components/ui/button'
-import { TextField } from '@/components/ui/text-field'
+import { Button, ButtonLink } from '@/components/gros/button'
+import { Field } from '@/components/gros/input'
 import {
   initialAuthActionState,
   type AuthSurface
 } from '@/features/auth/domain/types'
 import { signIn } from '@/features/auth/presentation/actions'
-import { AuthFeedback } from './auth-feedback'
+import { AuthFeedback, AuthTitle } from './auth-feedback'
 
+/**
+ * Sign in on the GROS focused shell (UI-AUTH): one title, the email and
+ * password, one Sign in button that keeps its words while it works, the
+ * answer under it, and the quiet way to reset a password. The surface
+ * (client or admin) is fixed per page; the server checks it again.
+ */
 export function SignInPanel({
   title,
-  description,
   surface,
   resetHref = '/forgot-password',
   next
 }: {
   title: string
-  description: string
   surface: AuthSurface
   resetHref?: Route
   /** The page to go back to after signing in (checked again on the server). */
@@ -31,72 +34,38 @@ export function SignInPanel({
     initialAuthActionState
   )
   return (
-    <div>
-      <h1 className="tracking-display font-[family-name:var(--font-display)] text-4xl leading-none font-normal">
-        {title}
-      </h1>
-      <p className="mt-4 max-w-sm text-sm leading-6 text-[var(--text-muted)]">
-        {description}
-      </p>
-      <form action={formAction} className="mt-9 space-y-5">
+    <>
+      <AuthTitle text={title} />
+      <form
+        action={formAction}
+        aria-busy={pending}
+        className="flex w-full flex-col items-start gap-[var(--space-5)]"
+      >
         {next ? <input type="hidden" name="next" value={next} /> : null}
-        <label className="block">
-          <span className="mb-2 block text-sm font-medium text-[var(--text)]">
-            Email
-          </span>
-          <TextField
+        <div className="flex w-full flex-col gap-[var(--space-4)]">
+          <Field
+            label="Email"
             name="email"
             type="email"
             autoComplete="email"
             required
-            placeholder="you@company.com"
-            aria-describedby={
-              state.fieldErrors?.email ? 'email-error' : undefined
-            }
+            error={state.fieldErrors?.email?.[0]}
           />
-          {state.fieldErrors?.email && (
-            <span
-              id="email-error"
-              className="mt-2 block text-sm text-[var(--danger-ink)]"
-            >
-              {state.fieldErrors.email[0]}
-            </span>
-          )}
-        </label>
-        <label className="block">
-          <span className="mb-2 block text-sm font-medium text-[var(--text)]">
-            Password
-          </span>
-          <TextField
+          <Field
+            label="Password"
             name="password"
             type="password"
             autoComplete="current-password"
             required
-            placeholder="Enter password"
-            aria-describedby={
-              state.fieldErrors?.password ? 'password-error' : undefined
-            }
+            error={state.fieldErrors?.password?.[0]}
           />
-          {state.fieldErrors?.password && (
-            <span
-              id="password-error"
-              className="mt-2 block text-sm text-[var(--danger-ink)]"
-            >
-              {state.fieldErrors.password[0]}
-            </span>
-          )}
-        </label>
-        <Button className="w-full" type="submit" disabled={pending}>
-          {pending ? 'Signing in…' : 'Sign in'}
-        </Button>
+        </div>
+        <Button type="submit" label="Sign in" size="focus" disabled={pending} />
+        <AuthFeedback state={state} />
       </form>
-      <AuthFeedback state={state} />
-      <Link
-        className="mt-5 inline-block text-sm text-[var(--brand-secondary)] underline hover:text-[var(--brand-ink)]"
-        href={resetHref}
-      >
-        Forgot password?
-      </Link>
-    </div>
+      <div>
+        <ButtonLink href={resetHref} label="Reset password" kind="quiet" />
+      </div>
+    </>
   )
 }

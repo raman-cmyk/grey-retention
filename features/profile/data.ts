@@ -2,7 +2,7 @@ import 'server-only'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { createClient } from '@/lib/supabase/server'
 
-/** The signed-in user's own profile for /profile, or null to sign in again. */
+/** The signed-in user's own profile for Settings › Account, or null to sign in again. */
 export async function profilePageData() {
   const context = await requireRequestContext('client')
   const db = await createClient()

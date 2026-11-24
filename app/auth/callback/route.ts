@@ -1,15 +1,14 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { resolveRequestContext } from '@/features/auth/application/request-context'
+import { callbackNext } from '@/features/auth/domain/next'
 import { setupLanding } from '@/features/onboarding/landing'
 import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code')
-  const requestedNext = request.nextUrl.searchParams.get('next')
-  const next =
-    requestedNext?.startsWith('/') && !requestedNext.startsWith('//')
-      ? requestedNext
-      : '/home'
+  // The same check as sign in's `next` (UI-AUTH): `/\host` and `//host`
+  // never leave the app.
+  const next = callbackNext(request.nextUrl.searchParams.get('next'))
 
   if (code) {
     const supabase = await createClient()

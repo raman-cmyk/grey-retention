@@ -308,8 +308,9 @@ function useDismiss(
   }, [open, close, container])
 }
 
-// Profile Update links to the surface's own profile page (client: /profile,
-// spec §14) and is left out where there is none. Connections is not
+// Profile Update links to the surface's own profile page (client:
+// /settings/account since UI-AUTH, spec §14) and is left out where there
+// is none. Connections is not
 // repeated here: it is already in Workspace (OWNER_JOURNEYS.md §18.18).
 function AccountLinks({
   profileHref,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { safeNext } from './next'
+import { callbackNext, safeNext } from './next'
 
 describe('the page to go back to after signing in', () => {
   it('keeps a page of the area, with its query', () => {
@@ -50,5 +50,23 @@ describe('the page to go back to after signing in', () => {
   it('ignores anything but text', () => {
     expect(safeNext('client', null)).toBeNull()
     expect(safeNext('client', ['/plan'])).toBeNull()
+  })
+})
+
+describe('the page an email link opens after its callback (UI-AUTH)', () => {
+  it('keeps the reset page and a client page', () => {
+    expect(callbackNext('/reset-password')).toBe('/reset-password')
+    expect(callbackNext('/settings/account')).toBe('/settings/account')
+  })
+
+  it.each([
+    '/\\evil.example',
+    '//evil.example',
+    'https://evil.example',
+    '/admin/clients',
+    '/login',
+    null
+  ])('falls back to Home for %j', (value) => {
+    expect(callbackNext(value)).toBe('/home')
   })
 })

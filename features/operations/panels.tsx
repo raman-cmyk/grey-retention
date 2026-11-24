@@ -1,7 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireRequestContext } from '@/features/auth/application/request-context'
-import { Panel } from '@/components/ui/workspace'
-import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { ActionAnswers, ActionButton } from '@/components/gros/action'
 import { ButtonLink } from '@/components/gros/button'
 import { Card, Tile } from '@/components/gros/card'
@@ -10,7 +8,7 @@ import { ListRow, RowList } from '@/components/gros/list-row'
 import { ErrorState } from '@/components/gros/states'
 import { Status } from '@/components/gros/status'
 import { SelectField, TextAreaField } from '@/features/admin/fields'
-import { operationAction, acceptInvite } from './actions'
+import { operationAction } from './actions'
 import { z } from 'zod'
 import type { ReactNode } from 'react'
 import { rewriteAvailability } from '@/features/email-generation/config'
@@ -125,25 +123,6 @@ const money = (value: number) =>
     currency: 'USD',
     maximumFractionDigits: 4
   }).format(value / 1000000)
-export async function InvitationPanel() {
-  const db = await createClient()
-  if (!db) return null
-  const r = await db.rpc('my_pending_invites')
-  return r.data?.length ? (
-    <Panel title="Accept an invitation">
-      {r.data.map((i) => (
-        <ActionForm key={i.id} action={acceptInvite}>
-          <input type="hidden" name="id" value={i.id} />
-          <p className="mb-3">
-            {i.tenant_name} · {i.role}
-          </p>
-          <SubmitButton>Accept verified invitation</SubmitButton>
-        </ActionForm>
-      ))}
-    </Panel>
-  ) : null
-}
-
 /** A ticket's kind and state, in words. */
 const ticketWords: Record<string, string> = {
   support: 'Support',

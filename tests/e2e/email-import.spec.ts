@@ -310,7 +310,9 @@ test('owner uploads an .eml, copies and edits it, and downloads the exact origin
     ).status()
   ).toBe(404)
   await foreignPage.goto(`/import-reference/files/${imported.data!.id}`)
-  await expect(foreignPage.getByText('Nothing is pinned here.')).toBeVisible()
+  await expect(
+    foreignPage.getByRole('heading', { name: 'Page not found', exact: true })
+  ).toBeVisible()
   await foreign.close()
 })
 

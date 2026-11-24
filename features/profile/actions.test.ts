@@ -296,7 +296,7 @@ describe('changeEmail', () => {
       { email: 'new.owner@example.com' },
       {
         emailRedirectTo: expect.stringMatching(
-          /\/auth\/callback\?next=\/profile$/
+          /\/auth\/callback\?next=\/settings\/account$/
         )
       }
     )
