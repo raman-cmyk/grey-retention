@@ -69,7 +69,8 @@ const nextConfig: NextConfig = {
       {
         source: '/profile',
         destination: '/settings/account',
-        permanent: true
+        // Not cached by browsers while the GROS routes settle.
+        permanent: false
       }
     ]
   },

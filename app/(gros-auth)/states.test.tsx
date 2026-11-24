@@ -57,5 +57,17 @@ describe('sign-in screens and the app-wide pages (UI-AUTH)', () => {
     expect(screen.queryByText('boom')).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(retry).toHaveBeenCalledOnce()
+    expect(screen.queryByText(/^Reference:/)).toBeNull()
+  })
+
+  it('shows the error reference under the card when there is one', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    render(
+      <AppError
+        error={Object.assign(new Error('boom'), { digest: 'abc123' })}
+        retry={() => {}}
+      />
+    )
+    expect(screen.getByText('Reference: abc123')).toBeVisible()
   })
 })

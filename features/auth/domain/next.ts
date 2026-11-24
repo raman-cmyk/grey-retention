@@ -52,3 +52,15 @@ export function safeNext(surface: AuthSurface, value: unknown): string | null {
   if (!inArea(surface, path)) return null
   return `${path}${url.search}`
 }
+
+/**
+ * Where an email link's callback (`/auth/callback?next=`) leads after the
+ * code is exchanged (UI-AUTH): the reset-password page a reset email names,
+ * or a client page `safeNext` accepts (the email-change link's
+ * `/settings/account`); anything else (`//host`, `/\host`, another site)
+ * is Home.
+ */
+export function callbackNext(value: unknown): string {
+  if (value === '/reset-password') return value
+  return safeNext('client', value) ?? '/home'
+}

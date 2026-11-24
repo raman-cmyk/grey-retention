@@ -142,7 +142,7 @@ test('UIR-014 Profile fits 375px and works by keyboard', async ({
   test.skip(info.project.name.startsWith('mobile'), 'Sets its own viewport')
   await page.setViewportSize({ width: 375, height: 812 })
   await freshOwner(page)
-  // The old address still opens it (UI-AUTH: a permanent redirect).
+  // The old address still opens it (UI-AUTH: a redirect).
   await page.goto('/profile')
   await expect(page).toHaveURL(/\/settings\/account$/)
   expect(

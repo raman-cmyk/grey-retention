@@ -34,6 +34,11 @@ export default function ErrorPage({
           reason="We could not open this page just now. What you saved is safe."
           action={<Button label="Try again" onClick={retry} />}
         />
+        {error.digest ? (
+          <p className="type-caption mt-[var(--space-3)] px-[var(--space-8)] text-[var(--stone)]">
+            Reference: {error.digest}
+          </p>
+        ) : null}
       </main>
     </div>
   )

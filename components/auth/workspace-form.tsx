@@ -9,7 +9,7 @@ import { createWorkspace } from '@/features/auth/presentation/actions'
 export function workspaceSlug(name: string) {
   return name
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
