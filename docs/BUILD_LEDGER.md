@@ -4425,6 +4425,7 @@ Append entries using this exact shape:
 - Known issues: `.env.example` should list `KLAVIYO_WRITE_LOCK` absent (Blocked). A GET is allowed to any Klaviyo path while locked (Klaviyo's GETs only read).
 - Next consumer: Raman's full-access testing key (reads only), then LRN-001b.
 - Review fixes (24 Nov, merged with `main` after OPS-LIVE; #637, the other KLV-LOCK pull request, closed in favour of this one): a locked push returns the reason `testing_write_lock` (checks `write_lock`), so the build says "Writing to Klaviyo is switched off in the app for now, so no draft was made. Nothing was sent.", not that Klaviyo refused it, and still saves no push row; `klaviyoWritesUnlocked(env = process.env)` takes the environment, so the admin go-live panel shows "Klaviyo drafts" as set but not working while Klaviyo is locked (`live-switches.test.ts`). Not ported from #637: its draft-only check inside `fetchTransport` once unlocked, its lock check on every rate-limit retry and its stricter GET paths (defence in depth; today only the client calls `fetchTransport`).
+
 ### 2026-11-22 — STR-LIVE-001 — connect the existing planning agents
 
 - Status: review. Branch: `claude/str-live-001-connect-planning-agents`; local implementation, publication pending destination approval.
