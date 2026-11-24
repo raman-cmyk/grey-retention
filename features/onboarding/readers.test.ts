@@ -32,6 +32,7 @@ import {
   siteCallTimeoutMs,
   sourceRunMs
 } from './readers'
+import { strategistCallMs } from './strategist-run'
 import { pageTimeoutMs } from './site/fetch'
 import { siteRunMs } from './site/live'
 
@@ -107,6 +108,136 @@ describe('runSourceReadings', () => {
     await runSourceReadings(db, { read, book, staleBooks: async () => [] })
     expect(book).toHaveBeenCalledOnce()
     expect(book).toHaveBeenCalledWith(db, 't1')
+  })
+
+  it('asks the Brand strategist once, after the reads, when its call still ends inside the route (ONB-106c)', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const order: string[] = []
+    const { db } = database(['j1'])
+    const strategist = vi.fn(async (_db: unknown, t: string) => {
+      order.push(`strategist ${t}`)
+      return 'saved'
+    })
+    const strategyNeeded = vi.fn(async () => ['t7', 't8'])
+    await runSourceReadings(db, {
+      ...noBooks,
+      read: async () => {
+        order.push('read')
+        return 'read' as const
+      },
+      strategist,
+      strategyNeeded
+    })
+    expect(order).toEqual(['read', 'strategist t7'])
+    expect(strategist).toHaveBeenCalledWith(db, 't7')
+    // Not when the call would end past the route's limit.
+    let now = 0
+    const late = database(['j1'])
+    const lateStrategist = vi.fn(async () => 'saved')
+    await runSourceReadings(late.db, {
+      ...noBooks,
+      now: () => now,
+      read: async () => {
+        now = routeMs - strategistCallMs - 2 * dbMarginMs + 1
+        return 'read' as const
+      },
+      strategist: lateStrategist,
+      strategyNeeded
+    })
+    expect(lateStrategist).not.toHaveBeenCalled()
+    // Exactly on the limit (the call and two margins end at the route's
+    // end): it still runs.
+    now = 0
+    const onTime = database(['j1'])
+    const onTimeStrategist = vi.fn(async () => 'saved')
+    await runSourceReadings(onTime.db, {
+      ...noBooks,
+      now: () => now,
+      read: async () => {
+        now = routeMs - strategistCallMs - 2 * dbMarginMs
+        return 'read' as const
+      },
+      strategist: onTimeStrategist,
+      strategyNeeded
+    })
+    expect(onTimeStrategist).toHaveBeenCalledOnce()
+  })
+
+  it('looks for a strategy to write only with a live plan model, never on the fake AI (ONB-106c)', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const read = async () => 'read' as const
+    const needed = vi.fn(async () => [] as string[])
+    for (const env of [
+      { AI_DEFAULT_PROVIDER: 'fake', GEMINI_API_KEY: 'k' },
+      {}
+    ])
+      await runSourceReadings(database(['j1']).db, {
+        ...noBooks,
+        read,
+        env: env as unknown as NodeJS.ProcessEnv,
+        strategyNeeded: needed
+      })
+    expect(needed).not.toHaveBeenCalled()
+    await runSourceReadings(database(['j1']).db, {
+      ...noBooks,
+      read,
+      env: { GEMINI_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv,
+      strategyNeeded: needed
+    })
+    expect(needed).toHaveBeenCalledOnce()
+  })
+
+  it('checks the time again after the lookup, before the strategist’s call (ONB-106c)', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    let now = 0
+    const strategist = vi.fn(async () => 'saved')
+    await runSourceReadings(database(['j1']).db, {
+      ...noBooks,
+      now: () => now,
+      read: async () => 'read' as const,
+      strategist,
+      strategyNeeded: async () => {
+        now = routeMs - strategistCallMs - 2 * dbMarginMs + 1
+        return ['t1']
+      }
+    })
+    expect(strategist).not.toHaveBeenCalled()
+  })
+
+  it('goes on when the strategist or its lookup fails, and never asks it with nothing to do (ONB-106c)', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const read = async () => 'read' as const
+    const broken = vi.fn(async () => {
+      throw Object.assign(new Error('down'), { code: '42501' })
+    })
+    expect(
+      await runSourceReadings(database(['j1']).db, {
+        ...noBooks,
+        read,
+        strategist: broken,
+        strategyNeeded: async () => ['t1']
+      })
+    ).toMatchObject({ state: 'done', reads: 1 })
+    expect(broken).toHaveBeenCalledOnce()
+    const idle = vi.fn(async () => 'saved')
+    expect(
+      await runSourceReadings(database([]).db, {
+        ...noBooks,
+        read,
+        strategist: idle,
+        strategyNeeded: async () => {
+          throw Object.assign(new Error('down'), { code: 'XX000' })
+        }
+      })
+    ).toMatchObject({ state: 'done' })
+    await runSourceReadings(database([]).db, {
+      ...noBooks,
+      read,
+      strategist: idle,
+      strategyNeeded: async () => []
+    })
+    expect(idle).not.toHaveBeenCalled()
   })
 
   it('writes no Brand book that would not end inside the route, and goes on when one fails', async () => {

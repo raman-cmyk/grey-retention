@@ -12,6 +12,8 @@ import {
 import { estimateMicro } from '@/lib/providers/openai-pricing'
 import { InMemoryBudgetLedger, SupabaseBudgetLedger } from './budget-ledger'
 import { geminiEstimateMicro } from '@/lib/providers/gemini-pricing'
+import { deepThinkingAllowance } from '@/lib/providers/gemini'
+import { modelRetirements } from '@/lib/providers/model-retirements'
 
 const tenantId = '00000000-0000-4000-8000-000000000101'
 const env = (values: Record<string, string>) =>
@@ -53,19 +55,32 @@ describe('aiSetup', () => {
     })
   })
 
-  it('picks Flash-Lite for labels and Flash for copy (D5)', () => {
+  it('picks 2.5 Flash-Lite for labels and 3.5 Flash-Lite for copy and review (D5, AI-MDL-001)', () => {
     expect(aiSetup('label', live)).toMatchObject({
       provider: 'gemini',
       model: 'gemini-2.5-flash-lite'
     })
-    expect(aiSetup('copy', live)).toMatchObject({
-      provider: 'gemini',
-      model: 'gemini-2.5-flash'
-    })
+    for (const purpose of ['copy', 'review'] as const)
+      expect(aiSetup(purpose, live)).toMatchObject({
+        provider: 'gemini',
+        model: 'gemini-3.5-flash-lite'
+      })
   })
 
-  it('uses Gemini 2.5 Pro for planning agents unless configured', () => {
-    expect(aiSetup('plan', live)).toMatchObject({ model: 'gemini-2.5-pro' })
+  it('never defaults to a model with an announced shutdown (AI-MDL-001)', () => {
+    for (const purpose of ['label', 'copy', 'review', 'plan'] as const) {
+      const setup = aiSetup(purpose, live)
+      if (setup.provider !== 'gemini' || !setup.ready)
+        throw new Error(`${purpose}: no live Gemini model`)
+      expect(modelRetirements[setup.model], setup.model).toMatchObject({
+        shutdownOn: null,
+        checkedOn: expect.any(String)
+      })
+    }
+  })
+
+  it('uses Gemini 3.8 Flash for planning agents unless configured', () => {
+    expect(aiSetup('plan', live)).toMatchObject({ model: 'gemini-3.8-flash' })
     expect(
       aiSetup(
         'plan',
@@ -303,7 +318,7 @@ describe('runAi', () => {
     expect(reserved.estimateMicro).toBeLessThan(10_000)
   })
 
-  it('sends and reserves the answer room plus the thinking budget', async () => {
+  it('sends the thinking level and reserves the answer room plus the thinking room', async () => {
     const ledger = new InMemoryBudgetLedger(10_000_000)
     const fetch = vi.fn(async () => geminiOk())
     const result = await runAi(
@@ -320,13 +335,45 @@ describe('runAi', () => {
       ((fetch.mock.calls as unknown[][])[0][1] as RequestInit).body
     )
     expect(JSON.parse(body).generationConfig).toMatchObject({
-      maxOutputTokens: 256 + 4_096,
-      thinkingConfig: { thinkingBudget: 4_096 }
+      maxOutputTokens: 256 + deepThinkingAllowance,
+      thinkingConfig: { thinkingLevel: 'MEDIUM' }
     })
     const reserved = [...ledger.reservations.values()][0]
     expect(reserved.estimateMicro).toBe(
-      geminiEstimateMicro('gemini-2.5-flash', body, 256 + 4_096)
+      geminiEstimateMicro(
+        'gemini-3.5-flash-lite',
+        body,
+        256 + deepThinkingAllowance
+      )
     )
+  })
+
+  it('still sends a thinking budget when settings choose a 2.5 model', async () => {
+    const fetch = vi.fn(async () => geminiOk())
+    await runAi(
+      {
+        tenantId,
+        callerKey: 'review:budget',
+        purpose: 'review',
+        request: { ...request, reasoningEffort: 'medium' }
+      },
+      {
+        ledger: new InMemoryBudgetLedger(10_000_000),
+        env: env({
+          GEMINI_API_KEY: 'test-key',
+          GEMINI_REVIEW_MODEL: 'gemini-2.5-flash'
+        }),
+        fetch
+      }
+    )
+    const config = JSON.parse(
+      String(((fetch.mock.calls as unknown[][])[0][1] as RequestInit).body)
+    ).generationConfig
+    expect(config).toMatchObject({
+      maxOutputTokens: 256 + 4_096,
+      temperature: 0,
+      thinkingConfig: { thinkingBudget: 4_096 }
+    })
   })
 
   it('refuses unsafe or too many pictures before reserving anything', async () => {
@@ -355,14 +402,14 @@ describe('runAi', () => {
     expect(ledger.reservations.size).toBe(0)
   })
 
-  it('uses Flash for the review tier (second tries and inspectors)', async () => {
+  it('uses 3.5 Flash-Lite for the review tier (second tries and inspectors)', async () => {
     const fetch = vi.fn(async () => geminiOk())
     await runAi(
       { tenantId, callerKey: 'review:1', purpose: 'review', request },
       { ledger: new InMemoryBudgetLedger(1_000_000), env: live, fetch }
     )
     expect(String((fetch.mock.calls as unknown[][])[0][0])).toContain(
-      'gemini-2.5-flash:generateContent'
+      'gemini-3.5-flash-lite:generateContent'
     )
   })
 

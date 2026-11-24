@@ -32,13 +32,13 @@ Loop: a low-confidence tag is re-run with the screenshot on the larger model; if
 
 Read the sources (all AI, Flash): **Site reader** (home, product, about, shipping, returns, FAQ), **Catalog analyst** (Klaviyo catalog: duplicates, bestsellers, new arrivals, price bands), **Klaviyo historian** (past campaigns, flows, segments, what made money), **Ads analyst** (Meta Ad Library, public: live offers, angles, creatives; D23), **Reviews + social reader**.
 
-Put it together: **Voice + look analyst** (AI, Flash + images; also collects the brand's real web fonts and cuts products out of their photos) → **Brand strategist** (AI, 2.5 Pro) writes the Brand book → owner adds max discount and real codes → Brand book (memory).
+Put it together: **Voice + look analyst** (ONB-106d: the look, fonts, logos, colours and photos, read by code from the site; the voice guide asked by AI in the Brand strategist's call; product cut-outs wait for an image service) → **Brand strategist** (AI, plan tier; ONB-106c: code writes the Brand book from the findings, the strategist adds its `strategy`, checked by code) writes the Brand book → owner adds max discount and real codes → Brand book (memory).
 
 Loop: when sources disagree, the strategist uses the stricter fact, never states the claim, and records the conflict.
 
 ## 3. Strategy: the next 15 days (owner clicks "Plan next 15 days")
 
-**Brand pulse** (AI, Flash): live offers, launches, stock, last results, dates → owner picks offers (optional) → **Competitor mapper** (AI, Flash): what same-size brands in the industry sent in the last 60–90 days, mapped onto our dates → **Brief writer** (AI, 2.5 Pro): calendar actions with evidence → **Calendar planner** (AI, 2.5 Pro): email type, angle, products, offer, audience, send time and format (designed or text) → Calendar rules (code, built) → **Strategy critic** (AI, Flash) against do's, don'ts and rules.
+**Brand pulse** (AI, Flash): live offers, launches, stock, last results, dates → owner picks offers (optional) → **Competitor mapper** (AI, Flash): what same-size brands in the industry sent in the last 60–90 days, mapped onto our dates → **Brief writer** (AI, 3.8 Flash): calendar actions with evidence → **Calendar planner** (AI, 3.8 Flash): email type, angle, products, offer, audience, send time and format (designed or text) → Calendar rules (code, built) → **Strategy critic** (AI, Flash) against do's, don'ts and rules.
 
 Loop: up to 2 critic rounds; slots that still fail are dropped.
 
@@ -49,8 +49,8 @@ Format (planner, owner can switch; D26): **Designed** or **Text**. Mode for desi
 - **Layer 1, plan:** Section planner (AI, Flash) picks the sequence and a block variant per section from the library, filtered by industry, email type and results. In Copy mode the reference email's sections become the plan one to one. Text emails skip this layer.
 - **Layer 2, lock the content:** Content locker (AI + code): products, prices, offer, code, end date, images, links → Copywriter (AI, Flash): section by section, or one letter for a text email → **Brand inspector** (AI, Flash + copy check code) → **Email inspector** (AI, Flash-Lite + launch check code). Both fix what they find.
 - **Layer 3, design studio (designed emails; D25):**
-  1. **Art director** (AI, 2.5 Pro + reference screenshots): storyboards the whole 600 px email, about 1,800 to 2,400 px tall: section order, light/dark rhythm, white space, one focus per section, product placement. In Copy mode it starts from the reference's design DNA.
-  2. **Section designer** (AI, 2.5 Pro): designs each section freely in HTML/CSS, like a Figma designer: the brand's real fonts, overlaps, gradients, product cut-outs. All words, prices and codes come from layer 2.
+  1. **Art director** (AI, 3.8 Flash + reference screenshots): storyboards the whole 600 px email, about 1,800 to 2,400 px tall: section order, light/dark rhythm, white space, one focus per section, product placement. In Copy mode it starts from the reference's design DNA.
+  2. **Section designer** (AI, 3.8 Flash): designs each section freely in HTML/CSS, like a Figma designer: the brand's real fonts, overlaps, gradients, product cut-outs. All words, prices and codes come from layer 2.
   3. **Image studio** (AI, Flash Image): backdrops only (lifestyle scenes, textures, props) behind the real product photo. Never text, never an invented product.
   4. **Renderer** (code, headless browser): renders each designed section to an image at 1,200 px wide, shown at 600. Buttons, product grid, key text (headline, offer, code as live text or alt text) and footer stay live HTML from block variants.
   5. **Match score** (code, Copy mode): perceptual similarity of each rendered section to the reference section.
@@ -75,7 +75,7 @@ Before the A vs B test: a **design proof**. Five emails from the Inspiration inb
 
 ## 5. Send and learn (after every send)
 
-Klaviyo sync (code): status hourly, opens, clicks and revenue for 3 days → **Performance analyst** (AI, Flash): what worked by variant, email type, offer, send time, audience → **Memory writer** (AI, Flash): do's and don'ts with evidence, also from inspector rejections and owner edits → memory.
+Klaviyo sync (code): status hourly, opens, clicks and revenue for 3 days → **Performance analyst** (AI, Flash): what worked by variant, email type, offer, send time, audience → **Memory writer** (AI, Flash): do's and don'ts with evidence, also from inspector rejections and owner edits → memory. LRN-002a (24 Nov): the analyst and the writer run as code after the hourly sync, by email type, unsubscribes (#76) and the top section; a model's reading, send time, offers, inspector rejections and owner edits come next.
 
 Loop: a rule is written only when a pattern repeats (3+ sends). Weak rules carry low confidence and expire if later results disagree. Industry-wide rules outweigh one small brand's noise.
 
@@ -88,19 +88,19 @@ Every agent call goes through `runAi` (GEM-001): model from settings (only price
 | Agent                                            | Model                                   |
 | ------------------------------------------------ | --------------------------------------- |
 | Email classifier, Section tagger                 | Gemini 2.5 Flash-Lite (with screenshot) |
-| Variant maker                                    | Gemini 2.5 Flash                        |
-| Onboarding readers and analysts                  | Gemini 2.5 Flash                        |
-| Brand strategist, Brief writer, Calendar planner | Gemini 2.5 Pro                          |
-| Brand pulse, Competitor mapper, Strategy critic  | Gemini 2.5 Flash                        |
-| Section planner, Content locker, Copywriter      | Gemini 2.5 Flash                        |
-| Brand inspector, Design critic                   | Gemini 2.5 Flash                        |
-| Art director, Section designer                   | Gemini 2.5 Pro                          |
-| Letter writer                                    | Gemini 2.5 Flash                        |
+| Variant maker                                    | Gemini 3.5 Flash-Lite                   |
+| Onboarding readers and analysts                  | Gemini 3.5 Flash-Lite                   |
+| Brand strategist, Brief writer, Calendar planner | Gemini 3.8 Flash                        |
+| Brand pulse, Competitor mapper, Strategy critic  | Gemini 3.5 Flash-Lite                   |
+| Section planner, Content locker, Copywriter      | Gemini 3.5 Flash-Lite                   |
+| Brand inspector, Design critic                   | Gemini 3.5 Flash-Lite                   |
+| Art director, Section designer                   | Gemini 3.8 Flash                        |
+| Letter writer                                    | Gemini 3.5 Flash-Lite                   |
 | Email inspector                                  | Gemini 2.5 Flash-Lite                   |
 | Image studio (backdrops only)                    | Gemini 2.5 Flash Image                  |
-| Performance analyst, Memory writer               | Gemini 2.5 Flash                        |
+| Performance analyst, Memory writer               | Gemini 3.5 Flash-Lite                   |
 
-Model names stay in settings, not code (D5). 2.5 Pro and Flash Image must be added to the price table before use.
+Model names stay in settings, not code (D5). AI-MDL-001 (24 November 2026): Google closed 2.5 Flash and 2.5 Pro to new users and shuts both down on 1 December 2026, so the defaults moved to the replacements Google names (3.5 Flash-Lite for Flash work, 3.8 Flash for the plan tier); 2.5 Flash-Lite stays for labels. Gemini 3.x models get a thinking level from each agent's effort instead of a thinking budget. Flash Image must be added to the price table before use.
 
 ## What changes in what is built
 

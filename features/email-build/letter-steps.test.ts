@@ -6,6 +6,8 @@ import type { AiRunResult } from '@/features/ai/run'
 import { klaviyoFooterTags } from '@/features/blocks/klaviyo-tags'
 import { memoryFallbackLog } from '@/features/fallback/log'
 import { plainFooterTags } from '@/features/letter/render'
+import { voiceExcerpt } from '@/features/letter/voice/excerpt'
+import { founderVoice } from '@/features/letter/voice/profile'
 import { buildEmail, builtEmail, type PlannedEmail } from './build'
 import { letterSchema } from '@/features/letter/letter'
 import {
@@ -151,6 +153,55 @@ describe('a text email in Create email (TXT-001c)', () => {
       c[0].callerKey.startsWith('letter-writer:')
     )![0]
     expect(call.request.user).toContain('"founderVoice":{"greeting":"Hi,"')
+  })
+
+  it('end to end on fixtures: the owner’s own sent letter makes a voice profile, and the Letter writer gets it (FOUNDER-VOICE)', async () => {
+    // A founder letter as the history read keeps it (PIC-23 parts 1 to 2):
+    // emails only, no Instagram.
+    const own = ['Cedar Goods', 'Linen Overshirt']
+    const kept = voiceExcerpt(
+      {
+        messageId: 'MsgA08',
+        editor: 'rich_text',
+        html: '',
+        text: 'Hi {{ first_name|default:"friend" }},\n\nI started Cedar Goods in my garage with one sewing machine and a lot of stubbornness. Every shirt still gets checked by hand before it ships.\n\nThank you for being here. If you ever have a question, just hit reply. I read every one.\n\nWarmly,\nMaya',
+        truncated: false,
+        updated: null
+      } as never,
+      own
+    )!
+    const voice = founderVoice(
+      [
+        {
+          messageId: 'MsgA08',
+          text: kept.text,
+          weight: 3,
+          words: kept.text.split(/\s+/).length,
+          sentAt: null
+        }
+      ],
+      own
+    )
+    // Part 3a: the profile, measured by code from that letter alone.
+    expect(voice).toMatchObject({ greeting: 'Hi,', signoff: 'Warmly,' })
+    expect(voice!.examples.length).toBeGreaterThan(0)
+    // Part 3b: the store carries it and the Letter writer is given it.
+    const ai = model()
+    const made = await buildEmail(
+      {
+        planned,
+        store: { ...(await store()), founderVoice: voice! },
+        offers: sampleOffers
+      },
+      ctxWith(ai)
+    )
+    expect(made.ok && made.email).toMatchObject({ format: 'text', ai: true })
+    const call = ai.mock.calls.find((c) =>
+      c[0].callerKey.startsWith('letter-writer:')
+    )![0]
+    expect(call.request.user).toContain('"founderVoice":{"greeting":"Hi,"')
+    expect(call.request.user).toContain(JSON.stringify(voice!.examples[0]))
+    expect(call.request.system).toContain('Write the way the founder writes')
   })
 
   it('never signs a letter as the store’s founder, writes it as them or makes it their note: their words are their About page’s (REL-ONB2 part d2)', async () => {
