@@ -6,6 +6,7 @@ import { requireRequestContext } from '@/features/auth/application/request-conte
 import { httpsUrl } from '@/features/workflow/domain/contracts'
 import { runFixtureJobs } from '@/features/integrations/worker'
 import type { FormResult } from '@/components/ui/action-form'
+import { plainGuard } from './guard-words'
 const base = { id: z.uuid(), revision: z.coerce.number().int().positive() }
 const schema = z.discriminatedUnion('kind', [
   z.object({
@@ -147,7 +148,7 @@ export async function workflowAction(
           : e.code === '42501'
             ? 'Permission denied.'
             : e.code === '23514'
-              ? e.message
+              ? plainGuard(e.message)
               : 'Operation failed. Inspect persisted job status and retry after resolving the cause.'
     }
   }
