@@ -12,6 +12,13 @@ import {
   type SentEmail,
   type StoredRule
 } from './patterns'
+import {
+  copyFallbackCodes,
+  findRejections,
+  rejectionDays,
+  rejectionKey,
+  rejectionRuleDays
+} from './rejections'
 
 type Db = SupabaseClient<Database>
 
@@ -217,4 +224,111 @@ export async function weeklyLearningFor(
     updatedAt: r.updated_at
   }))
   return weeklyLearning(rows, now)
+}
+
+/**
+ * LRN-002 part b for one workspace: the checks its copy kept failing
+ * (`agent_fallbacks` with `detail.rules`, the last 60 days) as "don't"
+ * rules for the writers, added once per check through `add_memory_rule`
+ * (source `inspector`) and moved with their evidence through
+ * `update_memory_rule`; they end after 90 days unless seen again. A failed
+ * read throws; a refused write is counted.
+ */
+export async function learnFromRejections(
+  db: Db,
+  tenantId: string,
+  now = Date.now()
+): Promise<LearnRun> {
+  const since = new Date(now - rejectionDays * 86_400_000).toISOString()
+  const fallbacks = await db
+    .from('agent_fallbacks')
+    .select('id,detail,last_seen_at')
+    .eq('tenant_id', tenantId)
+    .in('reason_code', copyFallbackCodes)
+    .gte('last_seen_at', since)
+    .limit(500)
+  if (fallbacks.error) throw fallbacks.error
+  const found = findRejections(
+    (fallbacks.data ?? []).map((f) => {
+      const rules = (f.detail as { rules?: unknown } | null)?.rules
+      return {
+        id: f.id,
+        rules: Array.isArray(rules)
+          ? rules.filter((r): r is string => typeof r === 'string')
+          : [],
+        lastSeenAt: f.last_seen_at
+      }
+    }),
+    now
+  )
+  const run: LearnRun = { added: 0, updated: 0, retired: 0, conflicts: 0 }
+  if (!found.length) return run
+  const stored = await db
+    .from('agent_memory_rules')
+    .select('id,revision,idempotency_key,status,confidence')
+    .eq('tenant_id', tenantId)
+    .eq('source', 'inspector')
+    .limit(500)
+  if (stored.error) throw stored.error
+  const byKey = new Map((stored.data ?? []).map((r) => [r.idempotency_key, r]))
+  for (const p of found) {
+    const key = rejectionKey(tenantId, p.check)
+    const rule = byKey.get(key)
+    if (!rule) {
+      const added = await db.rpc('add_memory_rule', {
+        r: {
+          tenantId,
+          industry: null,
+          kind: 'dont',
+          rule: p.rule,
+          why: p.why,
+          appliesTo: p.appliesTo,
+          confidence: p.confidence,
+          source: 'inspector',
+          evidenceCount: p.evidence.length,
+          evidence: p.evidence,
+          expiresAt: new Date(
+            now + rejectionRuleDays * 86_400_000
+          ).toISOString(),
+          idempotencyKey: key
+        }
+      })
+      if (added.error) run.conflicts++
+      else run.added++
+      continue
+    }
+    if (
+      rule.status !== 'active' ||
+      Math.abs(Number(rule.confidence) - p.confidence) < 0.05
+    )
+      continue
+    const updated = await db.rpc('update_memory_rule', {
+      rule_id: rule.id,
+      expected_revision: rule.revision,
+      new_status: 'active',
+      new_confidence: p.confidence
+    })
+    if (updated.error) run.conflicts++
+    else run.updated++
+  }
+  return run
+}
+
+/**
+ * After a build finished: what the checks' rejections teach this
+ * workspace (part b). Code only and cheap; never throws.
+ */
+export async function learnAfterBuild(
+  db: Db,
+  tenantId: string,
+  now = Date.now()
+) {
+  try {
+    return await learnFromRejections(db, tenantId, now)
+  } catch (error) {
+    logger.warn('Learning from rejections failed', {
+      code: (error as { code?: string })?.code ?? 'learning_error'
+    })
+    return null
+  }
 }
