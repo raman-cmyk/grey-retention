@@ -193,7 +193,7 @@ describe('Audiences screen (UI-AUDa)', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: 'Connect Klaviyo' })
-    ).toHaveAttribute('href', '/connections')
+    ).toHaveAttribute('href', '/settings')
     cleanup()
     render(<AudiencesScreen view={{ state: 'not_connected' }} owner={false} />)
     expect(screen.queryByRole('link', { name: 'Connect Klaviyo' })).toBeNull()
@@ -213,7 +213,7 @@ describe('Audiences screen (UI-AUDa)', () => {
     )
     expect(screen.getByRole('link', { name: 'Reconnect' })).toHaveAttribute(
       'href',
-      '/connections'
+      '/settings'
     )
     cleanup()
     render(<AudiencesScreen view={{ state: 'reconnect' }} owner={false} />)

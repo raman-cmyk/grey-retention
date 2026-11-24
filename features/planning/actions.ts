@@ -86,8 +86,8 @@ export async function planningAction(
       r = await db.rpc('enqueue_review_reminders', { t })
     if (v.kind === 'run') await runFixtureJobs(db, t)
     if (r?.error) return { error: r.error.message }
-    for (const path of ['/campaign-agent', '/campaigns', '/home'])
-      revalidatePath(path, path === '/campaigns' ? 'layout' : 'page')
+    for (const path of ['/plan', '/plan/draft', '/home'])
+      revalidatePath(path, path === '/plan/draft' ? 'layout' : 'page')
     return {
       message:
         v.kind === 'run'

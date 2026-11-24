@@ -94,7 +94,7 @@ export async function grosAction(
     if (r?.error) throw r.error
     revalidatePath('/gros')
     revalidatePath('/campaigns', 'layout')
-    revalidatePath('/campaign-agent')
+    revalidatePath('/plan')
   } catch (e) {
     const x = e as { code?: string; message?: string }
     return {

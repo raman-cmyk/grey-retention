@@ -1,12 +1,12 @@
 'use server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import type { Route } from 'next'
 import { z } from 'zod'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { can } from '@/features/workflow/domain/policy'
 import { createClient } from '@/lib/supabase/server'
 import type { FormResult } from '@/components/ui/action-form'
+import { draftHref } from '@/features/drafts/href'
 import { campaignInputSchema, revisionSchema } from './schema'
 
 async function access(ownerOnly = false) {
@@ -68,10 +68,9 @@ export async function saveCampaign(
   } catch (e) {
     return failure(e)
   }
-  revalidatePath('/campaign-agent')
   revalidatePath('/home')
-  revalidatePath(`/campaigns/${id}`)
-  redirect(`/campaigns/${id}` as Route)
+  revalidatePath(draftHref(id))
+  redirect(draftHref(id))
 }
 export async function approveCalendar(
   _state: FormResult,
@@ -87,10 +86,9 @@ export async function approveCalendar(
       expected_revision
     })
     if (error) throw error
-    revalidatePath(`/campaigns/${id}`)
-    revalidatePath('/campaign-agent')
+    revalidatePath(draftHref(id))
     revalidatePath('/home')
-    return { message: 'Calendar version approved.' }
+    return { message: 'Date approved.' }
   } catch (e) {
     return failure(e)
   }
@@ -109,7 +107,7 @@ export async function addNote(
       body
     })
     if (error) throw error
-    revalidatePath(`/campaigns/${id}`)
+    revalidatePath(draftHref(id))
     return { message: 'Note saved.' }
   } catch (e) {
     return failure(e)

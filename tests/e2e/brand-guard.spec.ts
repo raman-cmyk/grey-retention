@@ -7,18 +7,13 @@ import { newOwner } from './new-owner'
 const key = (suffix: string) =>
   `pk_${randomBytes(24).toString('base64url').replace(/[-_]/g, 'x').slice(0, 26)}${suffix}`
 
+/** Connects (or changes the key) on Settings' Klaviyo card (UI-OLDc). */
 async function connectKlaviyo(page: Page, apiKey: string) {
-  await page.goto('/connections')
-  const card = page.locator('section', {
-    has: page.getByRole('heading', { name: 'Klaviyo', exact: true })
-  })
-  const update = card.getByRole('button', { name: 'Update API key' })
-  const fresh = card.getByLabel('Private API key', { exact: true })
-  await expect(update.or(fresh)).toBeVisible()
-  if (await update.isVisible()) await update.click()
+  await page.goto('/settings')
+  const card = page.getByRole('region', { name: 'Klaviyo', exact: true })
   await card.getByLabel(/^(New private|Private) API key$/).fill(apiKey)
   await card
-    .getByRole('button', { name: /^(Connect|Validate & swap key)$/ })
+    .getByRole('button', { name: /^(Connect Klaviyo|Change key|Reconnect)$/ })
     .click()
   await expect(page.getByText(/connected with sample data/)).toBeVisible()
 }
@@ -51,8 +46,6 @@ test('UIR-021 the brand check warns before AI steps when Klaviyo is another bran
   ).toHaveCount(0)
   await page.goto('/gros')
   await expect(page.getByRole('note', { name: 'Brand check' })).toHaveCount(0)
-  await page.goto('/campaign-agent')
-  await expect(page.getByRole('note', { name: 'Brand check' })).toHaveCount(0)
 
   // Another brand's sample account: the Brand page and GROS both warn.
   await connectKlaviyo(page, key('0000'))
@@ -70,11 +63,6 @@ test('UIR-021 the brand check warns before AI steps when Klaviyo is another bran
   await expect(check).toContainText(brandName)
   await check.getByRole('link', { name: 'Open the Brand profile' }).click()
   await expect(page).toHaveURL(/\/brand$/)
-  // The planner warns too, before GROS plans or writes campaigns.
-  await page.goto('/campaign-agent')
-  await expect(page.getByRole('note', { name: 'Brand check' })).toContainText(
-    'Check your Brand profile before GROS plans or writes your campaigns.'
-  )
 
   // Trying the other brand's sample does not move the brand timezone.
   await page.goto('/settings')

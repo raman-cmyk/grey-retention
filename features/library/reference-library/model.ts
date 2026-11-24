@@ -1,3 +1,5 @@
+import type { Route } from 'next'
+import { startDraftHref } from '@/features/drafts/href'
 import type { SafePreview } from '@/features/email-generation/safe-preview'
 
 /**
@@ -114,14 +116,14 @@ export const pageSize = 20
 export const latestUploads = 40
 
 /**
- * Where "Use this design" leads from the Inspiration page: a new draft with
- * the reference already chosen (competitor emails and uploads), or the
- * templates page for a saved layout.
+ * Where "Use this design" leads from the Inspiration page (UI-OLDc): the
+ * GROS "Use this design" screen with the email already chosen (competitor
+ * emails and uploads), or Inspiration itself for a saved layout (which
+ * Inspiration does not list).
  */
 export function referenceHref(item: Pick<LibraryItem, 'id' | 'source'>) {
   if (item.source === 'competitor')
-    return `/first-draft?reference=${encodeURIComponent(item.id)}`
-  if (item.source === 'import')
-    return `/first-draft?imported=${encodeURIComponent(item.id)}`
-  return '/email-library'
+    return startDraftHref({ reference: item.id })
+  if (item.source === 'import') return startDraftHref({ imported: item.id })
+  return '/inspiration' as Route
 }

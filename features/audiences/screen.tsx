@@ -9,7 +9,7 @@ import type { AudienceRow, AudiencesView } from './read-model'
 
 // Klaviyo is connected on Connections today (the detail pages say "Go to
 // Connections" too); the GROS Settings screen takes this over later.
-const connectHref: Route = '/connections'
+const connectHref: Route = '/settings'
 const audiencesHref: Route = '/audiences'
 
 /**

@@ -39,10 +39,10 @@ export default async function ImportReferencePage({
   return (
     <div>
       <Link
-        href="/get-started?step=reference"
+        href="/inspiration"
         className="text-xs text-[var(--text-muted)] underline"
       >
-        Back to setup
+        Back to Inspiration
       </Link>
       <h1 className="mt-7 text-3xl font-semibold tracking-tight">
         Add an email you like.

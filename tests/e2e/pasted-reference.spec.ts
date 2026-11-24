@@ -41,8 +41,7 @@ test('owner pastes a hostile email, recovers from failure, replays safely and re
     name: 'Original paste studio'
   })
   const external = watchExternal(page)
-  await page.goto('/get-started?step=reference')
-  await page.getByRole('link', { name: 'Paste an email' }).click()
+  await page.goto('/import-reference')
   await expect(page).toHaveURL(/\/import-reference\?attempt=[a-f0-9-]+$/)
   const attemptUrl = page.url()
   const subject = `Original paste ${randomUUID().slice(0, 8)}`
@@ -114,13 +113,13 @@ test('owner pastes a hostile email, recovers from failure, replays safely and re
   expect(saved.data![0].readable_text).toContain(
     '<script>shown as text</script>'
   )
-  await expect(page.getByLabel('Start with')).toHaveValue(
+  // UI-OLDc: the outline link opens "Use this design" with the email.
+  await expect(page.locator('input[name="source"]')).toHaveValue(
     `imported:${importedId}`
   )
   await expect(page.getByText(/Added by you/)).toContainText(
     'A fictional newsletter'
   )
-  await page.getByText('See the email you added', { exact: true }).click()
   await expect(page.getByText(/Fresh layers for slow weekends/)).toBeVisible()
   expect(await page.locator('form').locator(embedded).count()).toBe(0)
   await page.screenshot({
@@ -131,15 +130,11 @@ test('owner pastes a hostile email, recovers from failure, replays safely and re
   await page
     .getByLabel('What should this email do?')
     .fill('Adapt this outline using our original brand facts.')
-  await page.getByText('Plan details · optional').click()
-  await page.getByLabel('Give it a name').fill(title)
-  await page.getByRole('button', { name: 'Create my draft' }).click()
-  await expect(page).toHaveURL(/\/campaigns\/[a-f0-9-]+$/)
+  await page.getByLabel('Name', { exact: true }).fill(title)
+  await page.getByRole('button', { name: 'Create draft' }).click()
+  await expect(page).toHaveURL(/\/plan\/draft\/[a-f0-9-]+$/)
   const campaignUrl = page.url()
-  await expect(
-    page.getByRole('heading', { name: 'Starting point · email you added' })
-  ).toBeVisible()
-  await expect(page.getByText(/were not copied/)).toBeVisible()
+  await expect(page.getByText(/^An email you added/)).toBeVisible()
   const campaign = await db
     .from('campaigns')
     .select('lineage,calendar_state,copy_state,delivery_state')
@@ -158,13 +153,10 @@ test('owner pastes a hostile email, recovers from failure, replays safely and re
       copyReusable: false
     }
   })
-  // The old dashboard's campaign list is retired with it (UI-HOMEb): the
-  // saved campaign keeps its own page.
+  // The saved draft keeps its own GROS page.
   await page.goto(campaignUrl)
   await page.reload()
-  await expect(
-    page.getByRole('heading', { name: 'Starting point · email you added' })
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: title })).toBeVisible()
   await page.screenshot({
     path: `test-results/ref-002/campaign-${info.project.name}.png`,
     fullPage: true
@@ -211,12 +203,11 @@ test('a pasted email stays in its workspace for two-workspace and foreign owners
       .context()
       .addCookies([{ name: 'gr-active-tenant', value: id, url: origin }])
   await useTenant(second)
+  // UI-OLDc: "Use this design" (the old /first-draft) says the email is
+  // gone in a workspace that does not have it, and offers nothing of it.
   await page.goto(`/first-draft?imported=${imported.data}`)
-  await expect(
-    page.getByText('This reference is unavailable here.', { exact: false })
-  ).toBeVisible()
-  await expect(page.getByLabel('Start with')).toHaveValue('original')
-  await expect(page.getByRole('option', { name: /added by you/ })).toHaveCount(
+  await expect(page.getByText('This email is gone')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Create draft' })).toHaveCount(
     0
   )
   await page.goto('/import-reference')
@@ -242,18 +233,14 @@ test('a pasted email stays in its workspace for two-workspace and foreign owners
   expect(crossed.error?.code).toBe('42501')
   await useTenant(first)
   await page.goto(`/first-draft?imported=${imported.data}`)
-  await expect(page.getByLabel('Start with')).toHaveValue(
+  await expect(page.locator('input[name="source"]')).toHaveValue(
     `imported:${imported.data}`
   )
   const foreign = await browser.newContext()
   const foreignPage = await foreign.newPage()
   await login(foreignPage, 'other')
   await foreignPage.goto(`/first-draft?imported=${imported.data}`)
-  await expect(
-    foreignPage.getByText('This reference is unavailable here.', {
-      exact: false
-    })
-  ).toBeVisible()
+  await expect(foreignPage.getByText('This email is gone')).toBeVisible()
   await expect(
     foreignPage.getByText('Workspace-private pasted note')
   ).toHaveCount(0)
@@ -291,10 +278,9 @@ test('a long paste keeps the full original and labels the limited preview after 
     saved.data!.readable_text.endsWith(`a${String.fromCodePoint(0x2026)}`)
   ).toBe(true)
   await page.goto(`/first-draft?imported=${longId}`)
-  await page.getByText('See the email you added', { exact: true }).click()
-  await expect(
-    page.getByText(/Preview limited to the first 20,000/)
-  ).toContainText('is saved unchanged')
+  await expect(page.getByText(/Shown up to the first 20,000/)).toContainText(
+    'is saved unchanged'
+  )
 })
 
 test('staff can see setup but cannot add reference emails', async ({
@@ -308,8 +294,4 @@ test('staff can see setup but cannot add reference emails', async ({
   await expect(
     page.getByRole('button', { name: 'Save and use this email' })
   ).toHaveCount(0)
-  await page.goto('/get-started?step=reference')
-  await expect(page.getByRole('link', { name: 'Paste an email' })).toHaveCount(
-    0
-  )
 })

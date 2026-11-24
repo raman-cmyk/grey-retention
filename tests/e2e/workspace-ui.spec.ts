@@ -132,15 +132,12 @@ test('core workspace surfaces render without overflow', async ({
   page.on('pageerror', (error) => errors.push(error.message))
   for (const [path, heading] of [
     ['/home', /^Good (morning|afternoon|evening), /],
-    ['/campaign-agent', 'Campaigns'],
+    ['/plan', 'Plan'],
     ['/brand', 'Brand & Store'],
     ['/assets', 'Brand assets'],
     ['/gros', 'Ask GROS'],
-    ['/competitor-agent', 'Competitor intelligence'],
-    ['/reports', 'Results & learning'],
-    ['/email-library', 'Subscribed email library'],
-    ['/connections', 'Connections'],
-    ['/optimizer', 'Bill optimizer'],
+    ['/inspiration', 'Inspiration'],
+    ['/results', 'Results'],
     ['/settings', 'Settings']
   ] as [string, string | RegExp][]) {
     await page.goto(path)
@@ -153,11 +150,7 @@ test('core workspace surfaces render without overflow', async ({
       ),
       path
     ).toBe(true)
-    if (
-      ['/home', '/campaign-agent', '/assets', '/gros', '/reports'].includes(
-        path
-      )
-    ) {
+    if (['/home', '/plan', '/assets', '/gros', '/results'].includes(path)) {
       await page.screenshot({
         path: `.audit/ui-002-${path.slice(1)}-${info.project.name}.png`,
         fullPage: path === '/home' || path === '/gros'
@@ -167,24 +160,9 @@ test('core workspace surfaces render without overflow', async ({
   expect(errors).toEqual([])
 })
 
-test('guided setup can be revisited without changing saved brand details', async ({
-  page
-}) => {
+test('the old guided setup address opens Setup (UI-OLDc)', async ({ page }) => {
   await login(page)
+  // A finished workspace's /setup goes on to Home.
   await page.goto('/get-started?step=brand')
-  await expect(
-    page.getByRole('heading', { name: 'Which store is yours?' })
-  ).toBeVisible()
-  await expect(
-    page.getByRole('navigation', { name: 'Setup progress' })
-  ).toBeVisible()
-  await expect(page.getByLabel('Brand name')).not.toHaveValue('')
-  await expect(page.getByText('Brand voice and rules · optional')).toBeVisible()
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth
-    )
-  ).toBe(true)
-  await page.getByRole('link', { name: 'Exit setup' }).click()
-  await expect(page).toHaveURL(/\/home$/)
+  await expect(page).toHaveURL(/\/(setup|home)(\?|$)/)
 })

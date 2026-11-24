@@ -59,7 +59,7 @@ describe('Pasted reference import command', () => {
       }
     })
     expect(redirect).toHaveBeenCalledWith(`/create-email/${referenceId}`)
-    expect(revalidatePath).toHaveBeenCalledWith('/get-started')
+    expect(revalidatePath).toHaveBeenCalledWith('/inspiration')
   })
   it('keeps CRLF in the original, normalizes only the preview and replays identically', async () => {
     const requestKey = crypto.randomUUID()

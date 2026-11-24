@@ -1,10 +1,10 @@
 'use server'
 import { redirect } from 'next/navigation'
-import type { Route } from 'next'
 import { z } from 'zod'
 import type { FormResult } from '@/components/ui/action-form'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { createClient } from '@/lib/supabase/server'
+import { draftHref } from '@/features/drafts/href'
 const schema = z.object({
   source: z.enum(['own_template', 'reference_structure']),
   sourceId: z.uuid(),
@@ -50,5 +50,5 @@ export async function libraryDraftAction(
             ? r.error.message
             : 'Draft could not be created.'
     }
-  redirect(`/campaigns/${r.data}` as Route)
+  redirect(draftHref(r.data))
 }

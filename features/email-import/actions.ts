@@ -161,7 +161,7 @@ export async function uploadEmailFile(
       return { error: `The upload did not finish. ${keepFile}` }
   }
   await processFile(context.tenantId, admission.import_id)
-  for (const path of ['/import-reference', '/get-started', '/first-draft'])
+  for (const path of ['/import-reference', '/inspiration', '/inspiration/use'])
     revalidatePath(path)
   redirect(await destination(db, context.tenantId, admission.import_id))
 }

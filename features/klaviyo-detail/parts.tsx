@@ -62,7 +62,7 @@ export function NotConnected({
         {data.state === 'not_connected' && (
           <>
             {' '}
-            <Link href="/connections" className="underline underline-offset-4">
+            <Link href="/settings" className="underline underline-offset-4">
               Go to Connections
             </Link>
           </>

@@ -102,7 +102,7 @@ export async function deliveryAction(
       })
     if (r?.error) throw r.error
     revalidatePath('/campaigns', 'layout')
-    revalidatePath('/campaign-agent')
+    revalidatePath('/plan')
     revalidatePath('/home')
     return {
       message:

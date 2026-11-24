@@ -98,7 +98,7 @@ export async function optimizerAction(
         if (advanced.error) throw advanced.error
         await runFixtureJobs(db, ctx.tenantId)
       }
-    revalidatePath('/optimizer')
+    revalidatePath('/settings')
     return {
       message:
         'Fixture optimizer operation persisted. No real message, suppression or billing change.'

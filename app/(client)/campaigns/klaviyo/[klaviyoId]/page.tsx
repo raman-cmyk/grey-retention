@@ -64,14 +64,14 @@ export default async function KlaviyoCampaignPage({
   params: Promise<{ klaviyoId: string }>
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const [{ klaviyoId }, query, { timezone, now, data }] = await Promise.all([
+  const [{ klaviyoId }, query, { timezone, data }] = await Promise.all([
     params,
     searchParams,
     loadKlaviyo()
   ])
   const from = query.from
-  // Opened from the Campaigns planner: Back returns to that exact view.
-  const back = plannerBack(query, timezone, now)
+  // Opened from the old Campaigns planner: Back opens the Plan.
+  const back = plannerBack(query)
   if (data.state !== 'sample')
     return <NotConnected from={from} back={back} data={data} />
   const campaign = data.snapshot.campaigns.find((c) => c.id === klaviyoId)

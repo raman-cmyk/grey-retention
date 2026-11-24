@@ -1,26 +1,39 @@
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { expect, test } from '@playwright/test'
 import { login } from './accounts'
+import { runWorkspaceJobs } from './jobs'
 import { newOwner } from './new-owner'
 
-test('owner creates and reopens the same original draft without integrations', async ({
+/**
+ * UI-OLDc: "Use this design" and the draft it saves are GROS screens
+ * (`/inspiration/use`, `/plan/draft/<id>`); the old `/first-draft` and
+ * `/campaigns/<id>` addresses open them.
+ */
+
+/** A sample brand's website, unique to the run (letters only). */
+const sampleDomain = (name: string) =>
+  `${name}-${randomBytes(4)
+    .toString('hex')
+    .replace(/[0-9]/g, (d) => 'ghijklmnop'[Number(d)]!)}.example`
+
+test('owner creates and reopens the same draft from scratch without integrations', async ({
   page
 }, info) => {
   const db = await newOwner(page)
   await page.goto('/first-draft')
-  await expect(page).toHaveURL(/\/first-draft\?attempt=[a-f0-9-]+$/)
+  await expect(page).toHaveURL(/\/inspiration\/use\?attempt=[a-f0-9-]+$/)
   const attemptUrl = page.url()
   await page.reload()
   await expect(page).toHaveURL(attemptUrl)
+  await expect(
+    page.getByRole('heading', { name: 'New draft', level: 1 })
+  ).toBeVisible()
   const title = `Original first draft ${randomUUID()}`
   await page
     .getByLabel('What should this email do?')
     .fill('Introduce our original studio to new subscribers.')
-  await page.getByText('Plan details · optional').click()
-  await page.getByLabel('Give it a name').fill(title)
-  await page
-    .getByLabel('Planned date and time · Asia/Kathmandu')
-    .fill('2099-04-05T10:30')
+  await page.getByLabel('Name', { exact: true }).fill(title)
+  await page.getByLabel('Send time (Asia/Kathmandu)').fill('2099-04-05T10:30')
   if (info.project.name.startsWith('mobile'))
     await page.setViewportSize({ width: 320, height: 800 })
   expect(
@@ -28,21 +41,22 @@ test('owner creates and reopens the same original draft without integrations', a
       () => document.documentElement.scrollWidth <= innerWidth
     )
   ).toBe(true)
-  await page.getByText('Plan details · optional').click()
   await page.screenshot({
     path: `.audit/first-draft-${info.project.name}.png`,
     fullPage: true
   })
-  await page.getByRole('button', { name: 'Create my draft' }).click()
-  await expect(page).toHaveURL(/\/campaigns\/[a-f0-9-]+$/)
+  await page.getByRole('button', { name: 'Create draft' }).click()
+  await expect(page).toHaveURL(/\/plan\/draft\/[a-f0-9-]+$/)
   const savedUrl = page.url()
+  const id = savedUrl.split('/').at(-1)!
   await expect(
     page.getByRole('heading', { name: title, exact: true })
   ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Approve date' })).toBeVisible()
   const saved = await db
     .from('campaigns')
     .select('planned_at,calendar_state,copy_state,delivery_state,audience_id')
-    .eq('id', savedUrl.split('/').at(-1)!)
+    .eq('id', id)
     .single()
   expect(saved.error).toBeNull()
   expect(new Date(saved.data!.planned_at).toISOString()).toBe(
@@ -54,63 +68,61 @@ test('owner creates and reopens the same original draft without integrations', a
     delivery_state: 'not_ready',
     audience_id: null
   })
-  // The old dashboard's campaign list is retired with it (UI-HOMEb): the
-  // saved campaign keeps its own page.
-  await page.goto(savedUrl)
+  // The old campaign address opens the same GROS draft.
+  await page.goto(`/campaigns/${id}`)
+  await expect(page).toHaveURL(savedUrl)
   await page.reload()
   await expect(
     page.getByRole('heading', { name: title, exact: true })
   ).toBeVisible()
+  // The date is approved only with an audience: the command says so.
+  await page.getByRole('button', { name: 'Approve date' }).click()
+  await expect(page.getByText('Select an audience first')).toBeVisible()
+  // The details change on the same page; the send time stays in the
+  // store's timezone.
+  const renamed = `${title} (renamed)`
+  await page.getByLabel('Name', { exact: true }).fill(renamed)
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(
+    page.getByRole('heading', { name: renamed, exact: true })
+  ).toBeVisible()
+  await expect(page.getByLabel('Send time (Asia/Kathmandu)')).toHaveValue(
+    '2099-04-05T10:30'
+  )
+  await page.getByLabel('Add a note').fill('Use the winter photos')
+  await page.getByRole('button', { name: 'Save note' }).click()
+  await expect(page.getByText('Note saved.')).toBeVisible()
+  await page.reload()
+  await expect(page.getByText('Use the winter photos')).toBeVisible()
 })
 
-test('an authorized reference preview starts a structural draft with source lineage', async ({
+test('Use this design on an Inspiration email starts a draft that follows it', async ({
   page
 }, info) => {
+  test.setTimeout(90_000)
   const db = await newOwner(page)
-  await page.goto('/competitor-agent')
+  await page.goto('/inspiration')
+  const domain = sampleDomain('composer')
+  await page.getByLabel('Brand website', { exact: true }).fill(domain)
+  await page.getByRole('button', { name: 'Follow', exact: true }).click()
+  await expect(page.getByText(`Following ${domain}.`)).toBeVisible()
+  await runWorkspaceJobs(page)
+  await page.goto('/inspiration')
   await page
-    .getByLabel('Fictional capture domain')
-    .fill(`composer-${randomUUID()}.example`)
-  await page
-    .getByLabel('Reference label', { exact: true })
-    .fill('Original composer sample')
-  await page
-    .getByRole('button', { name: 'Save private subscription', exact: true })
-    .click()
-  await expect(
-    page.getByRole('heading', { name: 'Original composer sample', exact: true })
-  ).toBeVisible()
-  await page
-    .getByRole('button', {
-      name: 'Queue fixture capture for Original composer sample',
-      exact: true
-    })
-    .click()
-  await expect(
-    page.getByRole('button', {
-      name: 'Queue fixture capture for Original composer sample',
-      exact: true
-    })
-  ).toBeEnabled()
-  await page
-    .getByRole('button', { name: 'Run reference fixture jobs', exact: true })
-    .click()
-  await expect(
-    page.getByText('10/10 captured emails', { exact: true })
-  ).toBeVisible()
-  await page.goto('/email-library')
-  await page
-    .getByRole('link', { name: 'Open safe preview and evidence' })
+    .getByRole('region', { name: 'Latest emails' })
+    .getByRole('link', { name: 'Use this design' })
     .first()
     .click()
-  await expect(page).toHaveURL(/\/email-library\/[a-f0-9-]+$/)
-  const referenceId = page.url().split('/').at(-1)!
-  await page.getByRole('link', { name: 'Use for my brand' }).click()
-  await expect(page.getByLabel('Start with')).toHaveValue(referenceId)
-  await page.getByText('See the original email', { exact: true }).click()
-  const frame = page.frameLocator('iframe[title="Selected reference preview"]')
-  await expect(frame.locator('body')).toContainText('Original fictional')
-  expect(await frame.locator('script, img, form').count()).toBe(0)
+  await expect(page).toHaveURL(
+    /\/inspiration\/use\?attempt=[a-f0-9-]+&reference=[a-f0-9-]+$/
+  )
+  const referenceId = new URL(page.url()).searchParams.get('reference')!
+  await expect(
+    page.getByRole('heading', { name: 'Use this design', level: 1 })
+  ).toBeVisible()
+  const frame = page.frameLocator('iframe[title^="The email: "]')
+  await expect(frame.locator('body')).not.toBeEmpty()
+  expect(await frame.locator('script, form').count()).toBe(0)
   await page.screenshot({
     path: `.audit/first-draft-reference-${info.project.name}.png`,
     fullPage: true
@@ -118,8 +130,9 @@ test('an authorized reference preview starts a structural draft with source line
   await page
     .getByLabel('What should this email do?')
     .fill('Adapt the section order using our original brand facts.')
-  await page.getByRole('button', { name: 'Create my draft' }).click()
-  await expect(page).toHaveURL(/\/campaigns\/[a-f0-9-]+$/)
+  await page.getByRole('button', { name: 'Create draft' }).click()
+  await expect(page).toHaveURL(/\/plan\/draft\/[a-f0-9-]+$/)
+  await expect(page.getByText(/^An Inspiration email/)).toBeVisible()
   const result = await db
     .from('campaigns')
     .select('lineage,calendar_state')
@@ -132,8 +145,12 @@ test('an authorized reference preview starts a structural draft with source line
     copyReusable: false
   })
   expect(result.data!.calendar_state).toBe('proposed')
-  await page.goto(`/first-draft?reference=${referenceId}`)
-  await expect(page.getByLabel('Start with')).toHaveValue(referenceId)
+
+  // The old reference page opens the same email on "Use this design".
+  await page.goto(`/email-library/${referenceId}`)
+  await expect(page).toHaveURL(
+    new RegExp(`/inspiration/use\\?.*reference=${referenceId}`)
+  )
   await page
     .getByLabel('What should this email do?')
     .fill('Preserve this idea if the selected reference becomes unavailable.')
@@ -158,7 +175,7 @@ test('an authorized reference preview starts a structural draft with source line
       })
     ).error
   ).toBeNull()
-  await page.getByRole('button', { name: 'Create my draft' }).click()
+  await page.getByRole('button', { name: 'Create draft' }).click()
   await expect(
     page.getByText(
       'This source is no longer available. Choose another reference or start from scratch.'
@@ -167,21 +184,16 @@ test('an authorized reference preview starts a structural draft with source line
   await expect(page.getByLabel('What should this email do?')).toHaveValue(
     'Preserve this idea if the selected reference becomes unavailable.'
   )
-  await expect(page.getByLabel('Start with')).toHaveValue(referenceId)
-  await page.getByLabel('Start with').selectOption('original')
-  await page.getByRole('button', { name: 'Create my draft' }).click()
-  await expect(page).toHaveURL(/\/campaigns\/[a-f0-9-]+$/)
 })
 
-test('staff can view setup but cannot open owner composer controls', async ({
+test('staff can open Use this design but cannot create a draft', async ({
   page
 }) => {
   await login(page, 'staff')
   await page.goto('/first-draft')
-  await expect(
-    page.getByText('Ask your workspace owner to create a draft.')
-  ).toBeVisible()
-  await expect(
-    page.getByRole('button', { name: 'Create my draft' })
-  ).toHaveCount(0)
+  await expect(page).toHaveURL(/\/inspiration\/use\?attempt=/)
+  await expect(page.getByText('Only the owner creates drafts')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Create draft' })).toHaveCount(
+    0
+  )
 })

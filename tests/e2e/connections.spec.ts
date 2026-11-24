@@ -5,8 +5,9 @@ test('UC-01/02 fixture Drive and commerce jobs persist real private artifacts an
 }, info) => {
   test.setTimeout(90_000)
   await login(page, info.project.name.startsWith('mobile') ? 'other' : 'owner')
-  await page.goto('/connections')
-  // The sample-data test controls sit in a collapsed section below the cards.
+  // UI-OLDc: the sample-data test controls moved from the retired
+  // Connections page to Assets, in a collapsed section at the end.
+  await page.goto('/assets')
   await page.getByText('Sample data tools', { exact: true }).click()
   // The product fixture is called "sample catalog" (v2 is Klaviyo only).
   for (const provider of ['klaviyo', 'sample catalog', 'drive']) {
@@ -95,7 +96,7 @@ test('UC-01/02 fixture Drive and commerce jobs persist real private artifacts an
     page.getByText('✓ Classified usable assets', { exact: true })
   ).toBeVisible()
   await expect(page.getByText(/LIVE competitor evidence$/)).toBeVisible()
-  await page.goto('/connections')
+  await page.goto('/assets')
   await page.getByText('Sample data tools', { exact: true }).click()
   // Only the two sources whose sample sync jobs ran show a sync time;
   // connecting Klaviyo alone never claims one.

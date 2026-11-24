@@ -80,13 +80,7 @@ export async function referenceAction(
           ? result.error.message
           : 'Reference command denied or unavailable.'
       }
-    for (const p of [
-      '/competitor-agent',
-      '/email-library',
-      '/brand',
-      '/connections',
-      '/campaign-agent'
-    ])
+    for (const p of ['/inspiration', '/brand', '/settings', '/plan'])
       revalidatePath(p)
     return {
       message:

@@ -63,7 +63,7 @@ export async function renderAction(
           })
   if (r.error) return { error: r.error.message }
   revalidatePath('/campaigns', 'layout')
-  revalidatePath('/campaign-agent')
+  revalidatePath('/plan')
   return {
     message:
       v.kind === 'render'

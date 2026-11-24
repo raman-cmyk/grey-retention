@@ -110,7 +110,7 @@ export async function reportingAction(
     if (r?.error) throw r.error
     if (['clock', 'learn', 'run'].includes(x.kind))
       await runFixtureJobs(db, ctx.tenantId)
-    revalidatePath('/reports')
+    revalidatePath('/results')
     revalidatePath('/campaigns', 'layout')
     revalidatePath('/settings')
     revalidatePath('/home')
