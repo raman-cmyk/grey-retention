@@ -282,4 +282,68 @@ describe('netReport', () => {
       [4, 320]
     ])
   })
+
+  it("scales Klaviyo's own revenue per recipient by the money left, and never makes one up", () => {
+    const own = {
+      groupings: { campaign_message_id: 'Msg1' },
+      // Klaviyo's figure, not conversion_value / recipients.
+      statistics: {
+        recipients: 1000,
+        conversions: 10,
+        conversion_value: 1000,
+        revenue_per_recipient: 1.2
+      }
+    }
+    const noValue = {
+      groupings: { campaign_message_id: 'Msg1' },
+      statistics: {
+        recipients: 1000,
+        conversions: 10,
+        revenue_per_recipient: 1
+      }
+    }
+    const net = (r: typeof own | typeof noValue) =>
+      netReport([r], returns, 'campaign_message_id', now - 365 * day)[0]
+    const [scaled, kept] = [net(own), net(noValue)]
+    expect(scaled!.statistics.revenue_per_recipient).toBeCloseTo(0.66)
+    // No conversion_value to scale by: its count comes off, its revenue
+    // per recipient stays Klaviyo's.
+    expect(kept!.statistics).toEqual({
+      recipients: 1000,
+      conversions: 9,
+      revenue_per_recipient: 1
+    })
+  })
+
+  it('takes an order in another currency off the count but not the money', () => {
+    const euro = order('E1', 3, 400, [line(1, 1)], { messages: ['Msg1'] })
+    euro.props.$currency_code = 'eur'
+    const dollar = order('U1', 3, 100, [line(1, 1)], { messages: ['Msg1'] })
+    dollar.props.$currency_code = 'USD'
+    const undone = matchReturns(
+      [euro, dollar],
+      [event(1, { $event_id: 'E1' }), event(1, { $event_id: 'U1' })],
+      []
+    )
+    const report = [row('campaign_message_id', 'Msg1', 10, 1000)]
+    const [usd] = netReport(
+      report,
+      undone,
+      'campaign_message_id',
+      now - 365 * day,
+      'USD'
+    )
+    expect(usd!.statistics).toMatchObject({
+      conversions: 8,
+      conversion_value: 900
+    })
+    // Without the account's currency, every order's money comes off.
+    const [unknown] = netReport(
+      report,
+      undone,
+      'campaign_message_id',
+      now - 365 * day
+    )
+    expect(unknown!.statistics.conversion_value).toBe(500)
+  })
 })

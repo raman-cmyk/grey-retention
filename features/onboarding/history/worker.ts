@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger'
 import type { Ask } from '@/features/intelligence/passes'
 import {
   accountPath,
+  correctionLeftOut,
   findStoreMetrics,
   maxEventPages,
   readEvents,
@@ -126,7 +127,10 @@ type Finding = FindingInput & {
  * call; a read cut short is stored as incomplete, and one that found
  * nothing in time is tried again. Klaviyo refusing the key, a needed scope
  * or the pace throws (`KlaviyoError`): the job is paused by its runner.
- * Missing Flows access only leaves the flows out.
+ * Missing Flows access only leaves the flows out. The cancels, refunds and
+ * orders read only to correct the results (ONB-ORD) are left out on any
+ * other failure (`correctionLeftOut`), and never make the history
+ * incomplete.
  */
 export async function readBrandHistory(
   db: Db,
@@ -345,7 +349,6 @@ export async function readBrandHistory(
   // Klaviyo credited with them, matched by the order's id. The orders are
   // read with their attributions only when there is something to take
   // off, and only until each cancel and refund has found its order.
-  let returnsWhole = true
   if (
     metrics.placedOrder &&
     (metrics.cancelledOrder || metrics.refundedOrder) &&
@@ -377,11 +380,9 @@ export async function readBrandHistory(
             )
           : unread()
       } catch (error) {
-        if (
-          !(error instanceof KlaviyoError) ||
-          !['rejected', 'invalid_response'].includes(error.kind)
-        )
-          throw error
+        // Only a correction: any failure but a refused key or Klaviyo's
+        // pace leaves the results as Klaviyo counted them.
+        if (!correctionLeftOut(error)) throw error
         orders = unread()
       }
     const undone = matchReturns(
@@ -393,17 +394,21 @@ export async function readBrandHistory(
       campaignReport,
       undone,
       'campaign_message_id',
-      since.getTime()
+      since.getTime(),
+      currency
     )
     flowReport = netReport(
       flowReport,
       undone,
       'flow_id',
-      started - windowRead.flowDays * day
+      started - windowRead.flowDays * day,
+      currency
     )
     // A cancel or refund still unmatched after every order of the year
-    // was read is of an order placed before it: nothing to take off.
-    returnsWhole =
+    // was read is of an order placed before it: nothing to take off. Only
+    // logged: the correction never makes the history itself incomplete
+    // (`complete` feeds whether Plan may use the history).
+    const returnsWhole =
       returns.cancels.complete &&
       returns.refunds.complete &&
       returns.cancels.skipped + returns.refunds.skipped + orders.skipped ===
@@ -441,8 +446,7 @@ export async function readBrandHistory(
   const complete =
     metrics.complete &&
     Object.values(parts).every(Boolean) &&
-    unknownContent === 0 &&
-    returnsWhole
+    unknownContent === 0
 
   const sent = sentEmails(sentRead.records, campaignReport, started)
   const scheduled = scheduledEmails(

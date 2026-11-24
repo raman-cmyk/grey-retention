@@ -10,6 +10,7 @@ import {
   type HistoryFailure
 } from '@/lib/providers/klaviyo/recorded-history'
 import type { KlaviyoResponse } from '@/lib/providers/klaviyo/client'
+import { maxEventPages } from '@/lib/providers/klaviyo/catalog'
 import type { HistorySnapshot } from './facts'
 import { planFromHistory, unknownAudience } from './read'
 import { historyRunMs, readBrandHistory } from './worker'
@@ -319,15 +320,74 @@ describe('readBrandHistory', () => {
       ).toHaveLength(1)
     })
 
-    it('leaves the results as Klaviyo counted them, not whole, when the orders cannot be read', async () => {
+    it('leaves the results as Klaviyo counted them, and the history whole, when the orders cannot be read', async () => {
+      // Refused, or Klaviyo down or too slow: only the correction is lost.
+      for (const answer of [refused(400), refused(503)]) {
+        const { stored, run } = await read({
+          returns: true,
+          fail: { on: 'returns', with: answer }
+        })
+        expect(run).toMatchObject({ state: 'ready' })
+        expect(
+          stored.snapshot.sent.find((e) => e.id === 'MsgA02')
+        ).toMatchObject({ orders: 31, revenue: 3120 })
+        expect(stored.snapshot.flows[0]).toMatchObject({ revenue90d: 5350.5 })
+        // The correction never makes the history incomplete (Plan would
+        // then use the sample store).
+        expect(stored.summary).toMatchObject({ complete: true })
+      }
+    })
+
+    it('keeps the history whole when a cancels read fails, taking off the refunds it has', async () => {
       const { stored } = await read({
         returns: true,
-        fail: { on: 'returns', with: refused(400) }
+        instead: (url) =>
+          url.includes('metric_id,"CnclOr"') ? refused(503) : null
       })
+      // The $800 cancel is unread; the $50 refund still comes off.
+      expect(stored.snapshot.sent.find((e) => e.id === 'MsgA02')).toMatchObject(
+        { orders: 31, revenue: 3070 }
+      )
+      expect(stored.summary).toMatchObject({ complete: true })
+    })
+
+    it('keeps the history whole when the orders read is cut short', async () => {
+      // Every page says there is another and finds no order: the read
+      // stops at the events' page cap.
+      const pages: string[] = []
+      const { stored } = await read({
+        returns: true,
+        instead: (url) => {
+          if (!url.includes('include=attributions')) return null
+          pages.push(url)
+          const next = url.replace(/&page_cursor=\d+$/, '')
+          return {
+            status: 200,
+            headers: { 'content-type': 'application/vnd.api+json' },
+            body: JSON.stringify({
+              data: [],
+              links: { self: url, next: `${next}&page_cursor=${pages.length}` }
+            })
+          }
+        }
+      })
+      expect(pages.length).toBe(maxEventPages)
       expect(stored.snapshot.sent.find((e) => e.id === 'MsgA02')).toMatchObject(
         { orders: 31, revenue: 3120 }
       )
-      expect(stored.summary).toMatchObject({ complete: false })
+      expect(stored.summary).toMatchObject({ complete: true })
+    })
+
+    it("still stops the job on Klaviyo's pace or a refused key while reading the orders", async () => {
+      for (const status of [401, 429])
+        await expect(
+          read({
+            returns: true,
+            fail: { on: 'returns', with: refused(status) }
+          })
+        ).rejects.toMatchObject({
+          kind: status === 401 ? 'bad_key' : 'rate_limited'
+        })
     })
   })
 
