@@ -40,7 +40,9 @@ test('a new owner creates a workspace and sets up the store to Home', async ({
   await expect(page).toHaveURL(/\/onboarding$/)
   const name = `Setup ${suffix.slice(0, 8)}`
   await page.getByLabel('What is your brand called?').fill(name)
-  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await page
+    .getByRole('button', { name: 'Create workspace', exact: true })
+    .click()
 
   // A new workspace lands on the setup flow, at Store.
   await expect(page).toHaveURL(/\/setup$/)

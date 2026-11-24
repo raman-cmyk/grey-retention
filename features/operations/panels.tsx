@@ -5,7 +5,7 @@ import { TextField } from '@/components/ui/text-field'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DataTable } from '@/components/ui/data-table'
-import { operationAction, acceptInvite } from './actions'
+import { operationAction } from './actions'
 import { z } from 'zod'
 import { rewriteAvailability } from '@/features/email-generation/config'
 import { connectionsEmptyText, rewriteStatus } from './provider-status'
@@ -86,24 +86,6 @@ const money = (value: number) =>
     currency: 'USD',
     maximumFractionDigits: 4
   }).format(value / 1000000)
-export async function InvitationPanel() {
-  const db = await createClient()
-  if (!db) return null
-  const r = await db.rpc('my_pending_invites')
-  return r.data?.length ? (
-    <Panel title="Accept an invitation">
-      {r.data.map((i) => (
-        <ActionForm key={i.id} action={acceptInvite}>
-          <input type="hidden" name="id" value={i.id} />
-          <p className="mb-3">
-            {i.tenant_name} · {i.role}
-          </p>
-          <SubmitButton>Accept verified invitation</SubmitButton>
-        </ActionForm>
-      ))}
-    </Panel>
-  ) : null
-}
 export async function SupportPanel({ admin = false }: { admin?: boolean }) {
   const ctx = await requireRequestContext(admin ? 'admin' : 'client'),
     db = await createClient()

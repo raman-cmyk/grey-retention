@@ -59,29 +59,17 @@ async function signIn(page: Page, email: string, password: string) {
 
 test('UIR-014 owner updates details and changes password with inline checks', async ({
   page
-}, info) => {
+}) => {
   const { email, password } = await freshOwner(page)
-  // The account menu and drawer are on the old shell (Home has the GROS
-  // bar, and /holidays is a GROS page under Settings now).
-  await page.goto('/connections')
-  if (info.project.name.startsWith('mobile')) {
-    // The drawer links here and closes after the click.
-    await page.getByRole('button', { name: 'Open navigation' }).click()
-    const drawer = page.locator('dialog[open]')
-    await drawer.getByRole('link', { name: 'Profile Update' }).click()
-    await expect(page.locator('dialog[open]')).toHaveCount(0)
-  } else {
-    // The account menu links here (it was "coming soon" before) and closes.
-    const menu = page
-      .getByRole('button', { name: /^Open account menu for / })
-      .first()
-    await menu.click()
-    await page.getByRole('link', { name: 'Profile Update' }).click()
-    await expect(menu).toHaveAttribute('aria-expanded', 'false')
-  }
-  await expect(page).toHaveURL(/\/profile$/)
+  // UI-AUTH: Account is a GROS page under Settings; its Change opens it.
+  await page.goto('/settings')
+  await page
+    .getByRole('region', { name: 'Account' })
+    .getByRole('link', { name: 'Change' })
+    .click()
+  await expect(page).toHaveURL(/\/settings\/account$/)
   await expect(
-    page.getByRole('heading', { name: 'Profile', level: 1 })
+    page.getByRole('heading', { name: 'Account', level: 1 })
   ).toBeVisible()
 
   // Account information.
@@ -154,7 +142,9 @@ test('UIR-014 Profile fits 375px and works by keyboard', async ({
   test.skip(info.project.name.startsWith('mobile'), 'Sets its own viewport')
   await page.setViewportSize({ width: 375, height: 812 })
   await freshOwner(page)
+  // The old address still opens it (UI-AUTH: a permanent redirect).
   await page.goto('/profile')
+  await expect(page).toHaveURL(/\/settings\/account$/)
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth

@@ -64,7 +64,13 @@ const nextConfig: NextConfig = {
       },
       // UI-SETd: support and feature requests are cards on Settings.
       { source: '/support', destination: '/settings', permanent: false },
-      { source: '/feedback', destination: '/settings', permanent: false }
+      { source: '/feedback', destination: '/settings', permanent: false },
+      // UI-AUTH: the old Profile page is Account, a GROS page under Settings.
+      {
+        source: '/profile',
+        destination: '/settings/account',
+        permanent: true
+      }
     ]
   },
   async headers() {

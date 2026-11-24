@@ -34,9 +34,8 @@ describe('AccountForm', () => {
     expect(
       screen.getByRole('heading', { name: 'Account information' })
     ).toBeVisible()
-    expect(
-      screen.getByText('Name, job title, and contact phone.')
-    ).toBeVisible()
+    // A GROS card: one heading, no subtitle (BRAND.md rule 16).
+    expect(screen.queryByText('Name, job title, and contact phone.')).toBeNull()
     expect(screen.getByLabelText('Name')).toHaveValue('Rae Owner')
     const email = screen.getByLabelText('Email')
     expect(email).toBeDisabled()
@@ -86,10 +85,12 @@ describe('PasswordForm', () => {
     })
     render(<PasswordForm email="owner@example.com" />)
     expect(
-      screen.getByText(
-        "At least 12 characters. We'll verify your current password first."
-      )
+      screen.getByRole('heading', { name: 'Change password' })
     ).toBeVisible()
+    expect(screen.getByLabelText('New password')).toHaveAttribute(
+      'minlength',
+      '12'
+    )
     for (const label of [
       'Current password',
       'New password',

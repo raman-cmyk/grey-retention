@@ -251,7 +251,7 @@ export async function changeEmail(
   const updated = await current.db.auth.updateUser(
     { email: parsed.data.email },
     {
-      emailRedirectTo: `${clientEnvironment.NEXT_PUBLIC_APP_URL}/auth/callback?next=/profile`
+      emailRedirectTo: `${clientEnvironment.NEXT_PUBLIC_APP_URL}/auth/callback?next=/settings/account`
     }
   )
   const error = updated.error as

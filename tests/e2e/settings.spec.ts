@@ -95,7 +95,7 @@ test('UI-SETa the owner sets the biggest discount and adds and removes a code', 
     .getByRole('region', { name: 'Account' })
     .getByRole('link', { name: 'Change' })
     .click()
-  await expect(page).toHaveURL(/\/profile$/)
+  await expect(page).toHaveURL(/\/settings\/account$/)
 })
 
 test('UI-SETb the owner invites, resends and cancels on the Team card', async ({

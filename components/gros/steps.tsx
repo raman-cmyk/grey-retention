@@ -129,6 +129,55 @@ export function FocusShell({
   children: ReactNode
 }) {
   return (
+    <FocusFrame panel={panel} assistant={assistant}>
+      <main className="flex flex-col justify-center gap-[var(--space-7)] p-[var(--space-8)]">
+        {children}
+      </main>
+    </FocusFrame>
+  )
+}
+
+/**
+ * A focused screen while it opens (a route's `loading.tsx`): the same
+ * shell, and in place of the form one line saying what opens. No `<main>`:
+ * while the page streams in, Next keeps it hidden beside this fallback,
+ * and the page alone holds the one `main`.
+ */
+export function FocusLoading({
+  words,
+  panel,
+  assistant = defaultAssistant
+}: {
+  /** What is opening, in the owner's words: "Opening sign in". */
+  words: string
+  panel?: ReactNode
+  assistant?: string
+}) {
+  return (
+    <FocusFrame panel={panel} assistant={assistant}>
+      <div
+        aria-busy="true"
+        className="flex flex-col justify-center gap-[var(--space-7)] p-[var(--space-8)]"
+      >
+        <p aria-live="polite" className="type-heading">
+          {words}
+        </p>
+      </div>
+    </FocusFrame>
+  )
+}
+
+/** The white shell and its lime panel; the right side is the caller's. */
+function FocusFrame({
+  panel,
+  assistant,
+  children
+}: {
+  panel?: ReactNode
+  assistant: string
+  children: ReactNode
+}) {
+  return (
     <div
       className={grosRoot(
         'flex min-h-dvh items-center justify-center px-[var(--space-6)] py-[var(--space-12)]'
@@ -145,9 +194,7 @@ export function FocusShell({
           </div>
           <div className="relative">{panel}</div>
         </aside>
-        <main className="flex flex-col justify-center gap-[var(--space-7)] p-[var(--space-8)]">
-          {children}
-        </main>
+        {children}
       </div>
     </div>
   )

@@ -132,7 +132,7 @@ test('UC-03/04 shared synthetic capture, safe preview and private evidence playb
   await login(page, otherRole)
   await page.goto(privateUrl)
   await expect(
-    page.getByRole('heading', { name: 'Nothing is pinned here.', exact: true })
+    page.getByRole('heading', { name: 'Page not found', exact: true })
   ).toBeVisible()
   const hiddenSubscription = await other
     .from('competitor_subscriptions')
