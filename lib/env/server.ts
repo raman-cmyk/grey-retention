@@ -62,6 +62,8 @@ export function getServerEnvironment() {
  * passes changes it. Only a separate, explicit owner instruction may set
  * it; connecting a full-access key is not that instruction.
  */
-export function klaviyoWritesUnlocked(): boolean {
-  return process.env.KLAVIYO_WRITE_LOCK === 'unlocked'
+export function klaviyoWritesUnlocked(
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  return env.KLAVIYO_WRITE_LOCK === 'unlocked'
 }

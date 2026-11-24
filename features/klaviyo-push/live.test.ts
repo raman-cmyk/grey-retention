@@ -86,7 +86,9 @@ describe('the pusher "Create email" uses', () => {
     // before the key is even read.
     expect(await pusher.createDraft(input)).toEqual({
       ok: false,
-      code: 'rejected'
+      code: 'rejected',
+      checks: ['write_lock'],
+      reason: 'testing_write_lock'
     })
     expect(rpc).not.toHaveBeenCalled()
     // Released for this test only: a workspace without a live, connected

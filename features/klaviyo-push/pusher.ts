@@ -425,9 +425,17 @@ async function failed(
         code: 'rate_limited',
         retryAfterSeconds: error.details.retryAfterSeconds ?? 60
       }
-    // Locked (KLV-LOCK-001): refused for good, never tried again.
-    if (error.kind === 'rejected' || error.kind === 'write_locked')
-      return { ok: false, code: 'rejected' }
+    // Locked (KLV-LOCK-001): refused for good, never tried again, with
+    // its own reason (the app's lock, never "Klaviyo refused it"), and no
+    // push row is saved: nothing was tried.
+    if (error.kind === 'write_locked')
+      return {
+        ok: false,
+        code: 'rejected',
+        checks: ['write_lock'],
+        reason: 'testing_write_lock'
+      }
+    if (error.kind === 'rejected') return { ok: false, code: 'rejected' }
     return { ok: false, code: 'unavailable' }
   }
   logger.error('Klaviyo push failed', {

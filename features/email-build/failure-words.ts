@@ -57,6 +57,8 @@ export const buildFailureWords = {
  */
 export const pushRefusalWords = {
   // Before Klaviyo is called.
+  testing_write_lock:
+    'Writing to Klaviyo is switched off in the app for now, so no draft was made. Nothing was sent.',
   sample_email:
     'It was made from the sample store, so it never goes to Klaviyo.',
   audience_not_in_klaviyo:

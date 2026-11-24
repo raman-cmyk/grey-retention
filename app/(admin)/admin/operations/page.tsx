@@ -1,5 +1,6 @@
 import { PageHeading } from '@/components/ui/workspace'
 import {
+  LiveSwitchesPanel,
   OperatorPanel,
   RetirementWatchPanel
 } from '@/features/operations/panels'
@@ -12,8 +13,9 @@ export default function Page() {
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeading
         title="Operations"
-        description="The fallback log, sanitized jobs, provider health, immutable fixture packages and tenant support."
+        description="The go-live switches, the fallback log, sanitized jobs, provider health, immutable fixture packages and tenant support."
       />
+      <LiveSwitchesPanel />
       <FallbackLogPanel />
       <RetirementWatchPanel />
       <OperatorPanel />

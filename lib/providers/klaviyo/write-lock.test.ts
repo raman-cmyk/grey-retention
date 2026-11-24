@@ -153,7 +153,12 @@ describe('while Klaviyo is locked (the default)', () => {
       lease: { build: '00000000-0000-4000-8000-00000000b101', token: 'l' },
       contentChecked: true
     })
-    expect(result).toEqual({ ok: false, code: 'rejected' })
+    expect(result).toEqual({
+      ok: false,
+      code: 'rejected',
+      checks: ['write_lock'],
+      reason: 'testing_write_lock'
+    })
     expect(source.client).not.toHaveBeenCalled()
     expect(store.save).not.toHaveBeenCalled()
   })

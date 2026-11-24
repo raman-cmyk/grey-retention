@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { rewriteAvailability } from '@/features/email-generation/config'
 import { connectionsEmptyText, rewriteStatus } from './provider-status'
 import { modelsInUseNow, retirementWatch } from '@/features/ai/retirement-watch'
+import { liveSwitches } from './live-switches'
 
 /**
  * Owner pick #83: the models the app would call now, and when their
@@ -47,6 +48,35 @@ export async function RetirementWatchPanel() {
           email rewriting is off.
         </p>
       )}
+    </Panel>
+  )
+}
+/**
+ * OPS-LIVE: which live switches the live app has on (its Vercel settings),
+ * in plain words; never a value. Needs no database.
+ */
+export async function LiveSwitchesPanel() {
+  await requireRequestContext('admin')
+  return (
+    <Panel title="Go-live switches">
+      <ul className="space-y-2 text-sm">
+        {liveSwitches().map((s) => (
+          <li key={s.label} className="flex flex-wrap gap-x-2">
+            <span className="font-medium">{s.label}</span>
+            <span
+              className={
+                s.state === 'on'
+                  ? 'text-[var(--text)]'
+                  : s.state === 'attention'
+                    ? 'font-medium text-[var(--danger-ink)]'
+                    : 'text-[var(--text-muted)]'
+              }
+            >
+              · {s.detail}
+            </span>
+          </li>
+        ))}
+      </ul>
     </Panel>
   )
 }
