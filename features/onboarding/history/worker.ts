@@ -5,8 +5,13 @@ import { logger } from '@/lib/logger'
 import type { Ask } from '@/features/intelligence/passes'
 import {
   accountPath,
+  correctionLeftOut,
   findStoreMetrics,
-  type PagedRead
+  maxEventPages,
+  readEvents,
+  readOrderReturns,
+  type PagedRead,
+  type StoreEvent
 } from '@/lib/providers/klaviyo/catalog'
 import { accountFacts } from '@/lib/providers/klaviyo/check-key'
 import {
@@ -32,6 +37,7 @@ import { recordNeverWords } from '@/features/copy-qa/never-words-store'
 import { readOwnerEdits, type EditsRead } from './edits'
 import { findingInput, type FindingInput } from '../findings'
 import { klaviyoCallMs } from '../catalog/worker'
+import { matchReturns, netReport, orderId } from '../catalog/returns'
 import {
   audienceList,
   bestEmails,
@@ -112,15 +118,19 @@ type Finding = FindingInput & {
  * timezone), the store's Placed Order metric, the emails sent in the last
  * year and those scheduled, the scheduled campaigns' audiences, the
  * campaign report, the flows and their report (when the key can read
- * flows), the lists and segments; counts the history in code; asks the
- * historian to put it into words; and stores it all at once
+ * flows), the lists and segments, and the cancelled and refunded orders to
+ * take off what each email and flow made (ONB-ORD); counts the history in
+ * code; asks the historian to put it into words; and stores it all at once
  * (`record_klaviyo_history`, which also finishes the job).
  *
  * A page is asked for only while there is time for it and the historian's
  * call; a read cut short is stored as incomplete, and one that found
  * nothing in time is tried again. Klaviyo refusing the key, a needed scope
  * or the pace throws (`KlaviyoError`): the job is paused by its runner.
- * Missing Flows access only leaves the flows out.
+ * Missing Flows access only leaves the flows out. The cancels, refunds and
+ * orders read only to correct the results (ONB-ORD) are left out on any
+ * other failure (`correctionLeftOut`), and never make the history
+ * incomplete.
  */
 export async function readBrandHistory(
   db: Db,
@@ -168,7 +178,13 @@ export async function readBrandHistory(
   }
   const metrics = more()
     ? await findStoreMetrics(deps.client, more)
-    : { placedOrder: null, viewedProduct: null, complete: false }
+    : {
+        placedOrder: null,
+        viewedProduct: null,
+        cancelledOrder: null,
+        refundedOrder: null,
+        complete: false
+      }
 
   const sentRead: PagedRead<CampaignMessage> = more()
     ? await readCampaignMessages(
@@ -328,6 +344,83 @@ export async function readBrandHistory(
   const segments: PagedRead<Audience> = more()
     ? await readAudiences(deps.client, 'segment', more)
     : unread()
+
+  // ONB-ORD: cancelled and refunded orders come off the emails and flows
+  // Klaviyo credited with them, matched by the order's id. The orders are
+  // read with their attributions only when there is something to take
+  // off, and only until each cancel and refund has found its order.
+  if (
+    metrics.placedOrder &&
+    (metrics.cancelledOrder || metrics.refundedOrder) &&
+    (campaignReport.length || flowReport.length)
+  ) {
+    const since = new Date(started - historyDays * day)
+    const returns = await readOrderReturns(deps.client, metrics, since, more)
+    const asked = [...returns.cancels.records, ...returns.refunds.records]
+    let orders: PagedRead<StoreEvent> = none()
+    if (asked.length)
+      try {
+        orders = more()
+          ? await readEvents(
+              deps.client,
+              metrics.placedOrder,
+              since,
+              more,
+              maxEventPages,
+              {
+                attributions: true,
+                until: (read) => {
+                  const ids = new Set(read.map((o) => orderId(o.props)))
+                  return asked.every((e) => {
+                    const id = orderId(e.props)
+                    return id !== null && ids.has(id)
+                  })
+                }
+              }
+            )
+          : unread()
+      } catch (error) {
+        // Only a correction: any failure but a refused key or Klaviyo's
+        // pace leaves the results as Klaviyo counted them.
+        if (!correctionLeftOut(error)) throw error
+        orders = unread()
+      }
+    const undone = matchReturns(
+      orders.records,
+      returns.cancels.records,
+      returns.refunds.records
+    )
+    campaignReport = netReport(
+      campaignReport,
+      undone,
+      'campaign_message_id',
+      since.getTime(),
+      currency
+    )
+    flowReport = netReport(
+      flowReport,
+      undone,
+      'flow_id',
+      started - windowRead.flowDays * day,
+      currency
+    )
+    // A cancel or refund still unmatched after every order of the year
+    // was read is of an order placed before it: nothing to take off. Only
+    // logged: the correction never makes the history itself incomplete
+    // (`complete` feeds whether Plan may use the history).
+    const returnsWhole =
+      returns.cancels.complete &&
+      returns.refunds.complete &&
+      returns.cancels.skipped + returns.refunds.skipped + orders.skipped ===
+        0 &&
+      (orders.complete || undone.unmatched === 0)
+    logger.info('History read: cancelled and refunded orders taken off', {
+      cancelled: undone.cancelled,
+      refunded: undone.refunded,
+      unmatched: undone.unmatched,
+      whole: returnsWhole
+    })
+  }
 
   const noSendTime = sentRead.records.filter((m) => m.sendAt === null).length
   const reads = [
