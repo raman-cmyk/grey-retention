@@ -185,11 +185,7 @@ describe('askReadModel (UI-ASK)', () => {
       chat_proposals: { data: [], error: null }
     })
     mocks.createClient.mockResolvedValue(db)
-    const view = await askReadModel(
-      context,
-      { chatId: chatB, before: 151 },
-      now
-    )
+    const view = await askReadModel(context, { chat: chatB, before: 151 }, now)
     expect(view).toMatchObject({
       kind: 'ready',
       missing: false,
@@ -217,9 +213,43 @@ describe('askReadModel (UI-ASK)', () => {
       campaigns: { data: [], error: null }
     })
     mocks.createClient.mockResolvedValue(db)
-    const view = await askReadModel(context, { chatId: chatB }, now)
+    const view = await askReadModel(context, { chat: chatB }, now)
     expect(view).toMatchObject({ kind: 'ready', missing: true, open: null })
     expect(calls.some((c) => c.table === 'chat_messages')).toBe(false)
+  })
+
+  it('never opens the newest chat for a malformed chat, and reads no chat for it', async () => {
+    for (const chat of ['chat-1', [chatA], '']) {
+      const { db, calls } = database({
+        conversations: { data: [conversation(chatA)], error: null },
+        campaigns: { data: [], error: null }
+      })
+      mocks.createClient.mockResolvedValue(db)
+      expect(await askReadModel(context, { chat }, now)).toMatchObject({
+        kind: 'ready',
+        missing: true,
+        open: null
+      })
+      expect(calls.filter((c) => c.table === 'conversations')).toHaveLength(1)
+      expect(calls.some((c) => c.table === 'chat_messages')).toBe(false)
+    }
+  })
+
+  it('ignores a page cursor without a chat (the newest chat opens at its latest)', async () => {
+    const { db, calls } = database({
+      conversations: { data: [conversation(chatA)], error: null },
+      campaigns: { data: [], error: null },
+      chat_messages: { data: [], error: null },
+      chat_proposals: { data: [], error: null }
+    })
+    mocks.createClient.mockResolvedValue(db)
+    expect(await askReadModel(context, { before: 51 }, now)).toMatchObject({
+      missing: false,
+      open: { id: chatA, paged: false }
+    })
+    expect(
+      calls.find((c) => c.table === 'chat_messages')!.steps
+    ).toContainEqual(['lt', 'message_index', Number.MAX_SAFE_INTEGER])
   })
 
   it('cannot read without a sign-in or when a read fails', async () => {

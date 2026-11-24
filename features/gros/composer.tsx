@@ -1,8 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ActionButton } from '@/components/gros/action'
-import { grosAction } from './actions'
+import { GrosButton } from './gros-button'
 import { Choice, TextBox } from './fields'
 
 /**
@@ -40,11 +39,7 @@ export function Composer({
       : [])
   ]
   return (
-    <ActionButton
-      action={grosAction}
-      label="Send"
-      fields={{ kind: 'ask', chat }}
-    >
+    <GrosButton label="Send" fields={{ kind: 'ask', chat }}>
       <Choice
         id="ask-campaign"
         label="Campaign"
@@ -87,6 +82,6 @@ export function Composer({
         name="question"
         rows={3}
       />
-    </ActionButton>
+    </GrosButton>
   )
 }

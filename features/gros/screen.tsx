@@ -1,7 +1,7 @@
 import type { Route } from 'next'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { ActionAnswers, ActionButton } from '@/components/gros/action'
+import { ActionAnswers } from '@/components/gros/action'
 import { ButtonLink } from '@/components/gros/button'
 import { Card } from '@/components/gros/card'
 import { AppPage, defaultAssistant } from '@/components/gros/nav'
@@ -9,7 +9,7 @@ import { EmptyState, ErrorState } from '@/components/gros/states'
 import { Status } from '@/components/gros/status'
 import { Field } from '@/components/gros/input'
 import { cn } from '@/lib/utils'
-import { grosAction } from './actions'
+import { GrosButton } from './gros-button'
 import { Composer } from './composer'
 import { Choice } from './fields'
 import type { AskView, ChatItem, ChatProposal, OpenChat } from './read-model'
@@ -54,8 +54,7 @@ export function AskScreen({
               <EmptyState
                 title="No chats yet"
                 action={
-                  <ActionButton
-                    action={grosAction}
+                  <GrosButton
                     label="Start a chat"
                     fields={{
                       kind: 'create',
@@ -161,11 +160,7 @@ function ChatsCard({
             </ul>
           </nav>
         ) : null}
-        <ActionButton
-          action={grosAction}
-          label="Start chat"
-          fields={{ kind: 'create' }}
-        >
+        <GrosButton label="Start chat" fields={{ kind: 'create' }}>
           <Field
             label="Chat name"
             name="title"
@@ -183,7 +178,7 @@ function ChatsCard({
               { value: 'shared', label: 'Everyone in the workspace' }
             ]}
           />
-        </ActionButton>
+        </GrosButton>
       </div>
     </Card>
   )
@@ -216,8 +211,7 @@ function ChatCard({
             </div>
             {/* Only the member who started a chat changes who sees it. */}
             {chat.mine ? (
-              <ActionButton
-                action={grosAction}
+              <GrosButton
                 label={chat.shared ? 'Make private' : 'Share chat'}
                 kind="quiet"
                 fields={{
@@ -300,6 +294,17 @@ function ChatCard({
 }
 
 /**
+ * What Confirm change asks first, for a change that reaches Klaviyo: the
+ * owner's yes records the request; it is not Klaviyo's answer.
+ */
+const confirmWords: Partial<Record<string, string>> = {
+  schedule:
+    'Schedule this email? GROS records the request; Klaviyo still has to accept it.',
+  cancel:
+    'Cancel this email? GROS records the cancellation; Klaviyo still has to accept it.'
+}
+
+/**
  * The chat's exact proposals, newest first. Only the member who asked can
  * confirm or reject one, while it is pending (15 minutes); the command
  * checks the exact change and every campaign version again.
@@ -342,12 +347,12 @@ function ProposalsCard({ proposals }: { proposals: readonly ChatProposal[] }) {
                 </details>
                 {p.canDecide ? (
                   <div className="flex flex-wrap items-start gap-[var(--space-2)]">
-                    <ActionButton
-                      action={grosAction}
+                    <GrosButton
                       label="Confirm change"
                       spokenLabel={p.title}
                       kind={p.id === first ? 'main' : 'outline'}
                       size="row"
+                      confirm={confirmWords[p.kind]}
                       fields={{
                         kind: 'decide',
                         proposal: p.id,
@@ -355,8 +360,7 @@ function ProposalsCard({ proposals }: { proposals: readonly ChatProposal[] }) {
                         decision: 'confirmed'
                       }}
                     />
-                    <ActionButton
-                      action={grosAction}
+                    <GrosButton
                       label="Reject change"
                       spokenLabel={p.title}
                       kind="quiet"

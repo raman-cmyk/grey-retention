@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { defaultAssistant } from '@/components/gros/nav'
 import { requireRequestContext } from '@/features/auth/application/request-context'
 import { BrandNote } from '@/features/gros/brand-note'
-import { validChatId, validMessageCursor } from '@/features/gros/params'
+import { validMessageCursor } from '@/features/gros/params'
 import { askReadModel } from '@/features/gros/read-model'
 import { AskScreen } from '@/features/gros/screen'
 
@@ -25,7 +25,7 @@ export default async function AskPage({
     searchParams
   ])
   const view = await askReadModel(context, {
-    chatId: validChatId(params.chat),
+    chat: params.chat,
     before: validMessageCursor(params.before)
   })
   return (

@@ -1,4 +1,10 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -13,6 +19,8 @@ vi.mock('./actions', () => ({
 import AskError from '@/app/(gros)/gros/error'
 import AskLoading from '@/app/(gros)/gros/loading'
 import type { AskView, ChatProposal, OpenChat } from './read-model'
+import { grosAction } from './actions'
+import { plainAnswer } from './gros-button'
 import { AskScreen } from './screen'
 
 afterEach(cleanup)
@@ -22,6 +30,7 @@ const chatB = '00000000-0000-4000-8000-00000000000b'
 
 const proposal = (over: Partial<ChatProposal> = {}): ChatProposal => ({
   id: 'p1',
+  kind: 'edit_goal',
   title: 'Goal change',
   status: 'pending',
   state: 'Waiting for you',
@@ -228,6 +237,76 @@ describe('Ask GROS (UI-ASK)', () => {
     expect(items[2]).toHaveTextContent('Waiting for the person who asked')
     expect(items[3]).toHaveTextContent('Confirmed')
     expect(items[3]).not.toHaveTextContent('Ends')
+  })
+
+  it('asks first before confirming a change that reaches Klaviyo', async () => {
+    const user = userEvent.setup()
+    vi.mocked(grosAction).mockClear()
+    const ask = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(
+      <AskScreen
+        view={ready({
+          open: open({
+            proposals: [
+              proposal({ kind: 'schedule', title: 'Scheduling' }),
+              proposal({ id: 'p2', kind: 'cancel', title: 'Cancellation' })
+            ]
+          })
+        })}
+      />
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Confirm change: Scheduling' })
+    )
+    expect(ask).toHaveBeenLastCalledWith(
+      'Schedule this email? GROS records the request; Klaviyo still has to accept it.'
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Confirm change: Cancellation' })
+    )
+    expect(ask).toHaveBeenLastCalledWith(
+      'Cancel this email? GROS records the cancellation; Klaviyo still has to accept it.'
+    )
+    // No stops it; a goal change is confirmed without asking.
+    expect(grosAction).not.toHaveBeenCalled()
+    ask.mockRestore()
+  })
+
+  it('answers in plain words, not the command’s record line', async () => {
+    const user = userEvent.setup()
+    render(<AskScreen view={ready()} />)
+    await user.selectOptions(screen.getByLabelText('Campaign'), 'c1')
+    await user.type(screen.getByLabelText('Your question'), 'Where is it?')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() =>
+      expect(
+        within(
+          screen.getByRole('region', { name: 'Winter questions' })
+        ).getByText('Sent.')
+      ).toBeInTheDocument()
+    )
+    expect(screen.queryByText(/persisted/)).toBeNull()
+    const form = (fields: Record<string, string>) => {
+      const f = new FormData()
+      for (const [k, v] of Object.entries(fields)) f.set(k, v)
+      return f
+    }
+    const done = { message: 'Conversation operation persisted.' }
+    expect(plainAnswer(form({ kind: 'visibility' }), done)).toEqual({
+      message: 'Saved.'
+    })
+    expect(
+      plainAnswer(form({ kind: 'decide', decision: 'confirmed' }), done)
+    ).toEqual({ message: 'Confirmed.' })
+    expect(
+      plainAnswer(form({ kind: 'decide', decision: 'rejected' }), done)
+    ).toEqual({ message: 'Rejected.' })
+    // A refusal keeps its words: they say what to fix.
+    expect(
+      plainAnswer(form({ kind: 'ask' }), {
+        error: 'Check the conversation fields.'
+      })
+    ).toEqual({ error: 'Check the conversation fields.' })
   })
 
   it('lets only the starter of a chat change who sees it', () => {

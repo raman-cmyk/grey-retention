@@ -3,6 +3,7 @@ import type { ClientRequestContext } from '@/features/auth/domain/types'
 import { formatBrandDateTime } from '@/lib/brand-time'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Json } from '@/lib/supabase/database.types'
+import { validChatId } from './params'
 import { conversationReferenceChoices } from './reference-choices'
 
 /**
@@ -32,6 +33,8 @@ export type ProposalStatus = 'pending' | 'confirmed' | 'rejected' | 'expired'
 
 export type ChatProposal = {
   id: string
+  /** The command's kind: edit_goal, select_reference, schedule, cancel… */
+  kind: string
   /** What it changes, in the owner's words: Goal change. */
   title: string
   status: ProposalStatus
@@ -128,6 +131,7 @@ export function proposalItem(
   const canDecide = status === 'pending' && mine
   return {
     id: p.id,
+    kind: p.kind,
     title: proposalTitles[p.kind] ?? 'Change',
     status,
     state:
@@ -151,12 +155,19 @@ export function proposalItem(
   }
 }
 
-/** Reads the screen for one member (`chatId` and `before` are checked). */
+/**
+ * Reads the screen for one member. `chat` is the address's raw parameter:
+ * a malformed one is a chat that is not available (never the newest chat
+ * instead), and `before` (already checked) counts only with a chat.
+ */
 export async function askReadModel(
   context: ClientRequestContext,
-  { chatId, before }: { chatId?: string; before?: number },
+  { chat, before: cursor }: { chat?: unknown; before?: number },
   now = new Date()
 ): Promise<AskView> {
+  const asked = chat !== undefined
+  const chatId = validChatId(chat)
+  const before = chatId ? cursor : undefined
   const db = await createClient()
   if (!db)
     return {
@@ -193,7 +204,7 @@ export async function askReadModel(
     if (chats.error || campaigns.error || selected.error || references.error)
       return { kind: 'unread', reason: unreadReason }
     const list = (chats.data ?? []) as Conversation[]
-    const active = chatId
+    const active = asked
       ? ((selected.data as Conversation | null) ?? null)
       : (list[0] ?? null)
     let open: OpenChat | null = null
@@ -242,7 +253,7 @@ export async function askReadModel(
       owner: context.tenantRole === 'owner',
       chats: list.map((c) => chatItem(c, context.userId)),
       open,
-      missing: !!chatId && !active,
+      missing: asked && !active,
       campaigns: (campaigns.data ?? []).map((c) => ({
         id: c.id,
         title: c.title
