@@ -182,16 +182,39 @@ test('Use this design runs Create email on a planned email, with the chosen insp
     mode: 'remix',
     reference_id: referenceId
   })
-  // The sample brand's emails are not tagged by the inbox: the build says
-  // so and makes the email from scratch, never from another email (D16).
+  // The build runs right after the click (as Create email on the Plan).
+  // On the sample store it cannot follow the chosen email: Remix needs the
+  // AI planner (off with the fake providers), and the sample brand's emails
+  // are never tagged by the inbox. The page says why, naming the owner's
+  // choice, and the email is made from scratch, never from another email.
   await expect(async () => {
     await page.reload()
     await expect(
       page
-        .getByText(/The email you chose in Inspiration cannot be followed/)
+        .getByText(/the email you chose in Inspiration.*designed from scratch/i)
         .first()
     ).toBeVisible()
   }).toPass({ timeout: 60_000 })
+  // Its saved sections step (saved right after the line above is written).
+  const sectionsStep = async () => {
+    const read = await db
+      .from('email_builds')
+      .select('progress')
+      .eq('id', buildId)
+      .single()
+    expect(read.error).toBeNull()
+    return (
+      read.data!.progress as {
+        sections?: { layout?: { mode?: string }; reference?: unknown }
+      }
+    ).sections
+  }
+  await expect
+    .poll(async () => (await sectionsStep())?.layout?.mode, {
+      timeout: 30_000
+    })
+    .toBe('scratch')
+  expect(await sectionsStep()).not.toHaveProperty('reference')
 
   // Another workspace's owner cannot use this email.
   const foreign = await browser.newContext()

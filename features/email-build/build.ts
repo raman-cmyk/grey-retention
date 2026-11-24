@@ -1076,6 +1076,8 @@ const scratchWords = {
     'None of the matching emails from the brands you follow has a clear idea to remix, so this email is designed from scratch.',
   reference_remix_planner:
     'The AI email planner could not remix the chosen email, so this email is designed from scratch.',
+  reference_chosen_remix_no_ai:
+    'Remixing the email you chose in Inspiration needs the AI email planner, which could not be used for this email, so it is designed from scratch.',
   reference_chosen_no_offer:
     'The email you chose in Inspiration shows no offer, and this email has one, so it is designed from scratch.',
   reference_chosen_no_idea:
@@ -1140,8 +1142,12 @@ async function chooseReference(
     )
     return null
   }
+  // UI-USE: the owner's chosen email is named, so the page says why his
+  // choice was not followed.
   if (want.mode === 'remix' && !ctx.agents)
-    return scratch('reference_remix_no_ai')
+    return scratch(
+      want.chosen ? 'reference_chosen_remix_no_ai' : 'reference_remix_no_ai'
+    )
   // The step goes on from scratch (D16); the read's code (never its words)
   // stays in the run log's detail for the team.
   let cause = ''

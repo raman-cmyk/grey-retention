@@ -407,6 +407,27 @@ describe('the inspiration email the owner chose (UI-USE)', () => {
     )
   })
 
+  it('names the chosen email when Remix cannot run without the AI planner', async () => {
+    let read = false
+    const { output, log } = await run({
+      mode: 'remix',
+      chosen: 'ref-1',
+      load: async () => {
+        read = true
+        return { emails: [reference()], followed: new Set() }
+      }
+    })
+    expect(output.layout.mode).toBe('scratch')
+    expect(output).not.toHaveProperty('reference')
+    expect(read).toBe(false)
+    expect(log.map((e) => e.reasonCode)).toEqual([
+      'reference_chosen_remix_no_ai'
+    ])
+    expect(log[0].reason).toBe(
+      'Remixing the email you chose in Inspiration needs the AI email planner, which could not be used for this email, so it is designed from scratch.'
+    )
+  })
+
   it('never uses another email in its place: from scratch, and says why', async () => {
     // The chosen email was not read (still being read, or unfollowed).
     const gone = await run({
