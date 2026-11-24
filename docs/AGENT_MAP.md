@@ -32,7 +32,7 @@ Loop: a low-confidence tag is re-run with the screenshot on the larger model; if
 
 Read the sources (all AI, Flash): **Site reader** (home, product, about, shipping, returns, FAQ), **Catalog analyst** (Klaviyo catalog: duplicates, bestsellers, new arrivals, price bands), **Klaviyo historian** (past campaigns, flows, segments, what made money), **Ads analyst** (Meta Ad Library, public: live offers, angles, creatives; D23), **Reviews + social reader**.
 
-Put it together: **Voice + look analyst** (AI, Flash + images; also collects the brand's real web fonts and cuts products out of their photos) → **Brand strategist** (AI, plan tier; ONB-106c: code writes the Brand book from the findings, the strategist adds its `strategy`, checked by code) writes the Brand book → owner adds max discount and real codes → Brand book (memory).
+Put it together: **Voice + look analyst** (ONB-106d: the look, fonts, logos, colours and photos, read by code from the site; the voice guide asked by AI in the Brand strategist's call; product cut-outs wait for an image service) → **Brand strategist** (AI, plan tier; ONB-106c: code writes the Brand book from the findings, the strategist adds its `strategy`, checked by code) writes the Brand book → owner adds max discount and real codes → Brand book (memory).
 
 Loop: when sources disagree, the strategist uses the stricter fact, never states the claim, and records the conflict.
 
@@ -75,7 +75,7 @@ Before the A vs B test: a **design proof**. Five emails from the Inspiration inb
 
 ## 5. Send and learn (after every send)
 
-Klaviyo sync (code): status hourly, opens, clicks and revenue for 3 days → **Performance analyst** (AI, Flash): what worked by variant, email type, offer, send time, audience → **Memory writer** (AI, Flash): do's and don'ts with evidence, also from inspector rejections and owner edits → memory.
+Klaviyo sync (code): status hourly, opens, clicks and revenue for 3 days → **Performance analyst** (AI, Flash): what worked by variant, email type, offer, send time, audience → **Memory writer** (AI, Flash): do's and don'ts with evidence, also from inspector rejections and owner edits → memory. LRN-002a (24 Nov): the analyst and the writer run as code after the hourly sync, by email type, unsubscribes (#76) and the top section; a model's reading, send time, offers, inspector rejections and owner edits come next.
 
 Loop: a rule is written only when a pattern repeats (3+ sends). Weak rules carry low confidence and expire if later results disagree. Industry-wide rules outweigh one small brand's noise.
 
