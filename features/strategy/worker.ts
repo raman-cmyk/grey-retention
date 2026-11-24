@@ -8,10 +8,16 @@ import {
   offerFact,
   offerPick,
   offersToPlan,
-  readPulseInput
+  readPulseInput,
+  runBrandPulse
 } from './pulse'
-import { codeMoves, mapPatterns, readMapperInput } from './competitors'
-import { samplePlan, unusedOffersNote } from './plan'
+import {
+  codeMoves,
+  mapPatterns,
+  readMapperInput,
+  runCompetitorMapper
+} from './competitors'
+import { planFifteenDays, samplePlan, unusedOffersNote } from './plan'
 import { sampleStrategyData, type StrategyData } from './data'
 import { storedPulse } from './stored'
 import { SupabaseOfferSource } from '@/features/offers/source'
@@ -32,6 +38,11 @@ import { databaseFallbackLog, type FallbackLog } from '@/features/fallback/log'
 import { outsideWindowEntry, outsideWindowNote, slotsInWindow } from './dates'
 import { keyPart } from '@/features/fallback/entry'
 import { planCode, type PlanFailureCode } from './failure-words'
+import {
+  boundedStrategyAgents,
+  strategyBudgetMs,
+  type StrategyAgents
+} from './agents'
 
 type Db = SupabaseClient<Database>
 
@@ -46,9 +57,10 @@ type Db = SupabaseClient<Database>
  * the code-only path: the pulse, competitor moves and plan from code, with
  * no AI call, nothing metered and nothing logged as a fallback. It is fast
  * and bounded, so the cron sweep and the owner's click can both run it.
- * The agents (STR-001..003, built on MEM-001's runAgent) are wired in here
- * together with the first real store reader, with their own time limit and
- * a lease long enough for paid steps.
+ * The owner action can supply metered STR-001..003 agents, behind the
+ * separate STRATEGY_AGENTS switch. Only a real own-store read uses them;
+ * calls have a deadline and failures use the existing logged fallback.
+ * The ordinary sweep never supplies agents and remains code-only.
  *
  * Offers (#379) come from what the owner saved in Settings, by the same
  * rule as "Create email" (`features/strategy/offers.ts`), in the
@@ -64,6 +76,8 @@ export async function runStrategyRuns(
     saved?: SavedOffers
     /** Default: the database fallback log (`agent_fallbacks`). */
     fallbacks?: FallbackLog
+    /** Owner action only. Cron and sample stores stay code-only by default. */
+    agents?: StrategyAgents | null
     /** Run only this plan (the owner's click), once. */
     run?: string
     /** Steps to run at most. */
@@ -81,6 +95,7 @@ export async function runStrategyRuns(
       logger.warn('Fallback could not be recorded', lost)
     )
   const now = deps.now ?? Date.now
+  const until = Math.min(deps.deadline ?? Infinity, now() + strategyBudgetMs)
   const limit = deps.run ? 1 : (deps.limit ?? 2)
   let ran = 0
   for (let n = 0; n < limit; n++) {
@@ -97,6 +112,19 @@ export async function runStrategyRuns(
         tenantId: run.tenant_id,
         start: run.start_on
       })
+      // Never charge AI for a demo/fallback store, or from the ordinary
+      // scheduled sweep, which does not supply agents. Identity is always
+      // the leased row's tenant, never a browser-supplied model argument.
+      const agentCtx =
+        deps.agents && store.own === true && !store.sample
+          ? {
+              ...boundedStrategyAgents(deps.agents, until, now),
+              tenantId: run.tenant_id,
+              callerKey: `strategy:${keyPart(run.id)}:${run.state}`,
+              now: new Date(now()).toISOString(),
+              fallbacks
+            }
+          : null
       const timezone = await workspaceTimezone(db, run.tenant_id)
       let offers: PlanOffers
       let unreadable = false
@@ -139,16 +167,17 @@ export async function runStrategyRuns(
         // The owner's offers (or the sample's when nothing is saved), never
         // the store data's own codes; a code ending too early says why.
         const listed = pulseCodes(offers, run.start_on, timezone)
-        const gathered = codePulse(
-          gatherEvidence({
-            ...input,
-            brand: {
-              ...input.brand,
-              maxDiscountPercent: offers.maxDiscountPercent
-            },
-            codes: listed.codes
-          })
-        )
+        const pulseInput = {
+          ...input,
+          brand: {
+            ...input.brand,
+            maxDiscountPercent: offers.maxDiscountPercent
+          },
+          codes: listed.codes
+        }
+        const gathered = agentCtx
+          ? (await runBrandPulse(pulseInput, agentCtx)).pulse
+          : codePulse(gatherEvidence(pulseInput))
         const pulse = {
           ...gathered,
           leftOut: [...gathered.leftOut, ...listed.leftOut],
@@ -210,13 +239,19 @@ export async function runStrategyRuns(
               : []
           })
         }
-        const made = samplePlan({
+        const moves = agentCtx
+          ? (await runCompetitorMapper(mapper, agentCtx)).moves
+          : codeMoves(mapPatterns(mapper))
+        const planInput = {
           ...store.plan,
           start: run.start_on,
           pulse,
           offers: usable,
-          moves: codeMoves(mapPatterns(mapper))
-        })
+          moves
+        }
+        const made = agentCtx
+          ? await planFifteenDays(planInput, agentCtx)
+          : samplePlan(planInput)
         // REL-OFF: every offer email works at its own send time, as "Create
         // email" will check it. One that would not (a guard: the plan's last
         // send days ensure it) keeps its day without the offer, named in the
