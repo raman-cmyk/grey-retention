@@ -150,8 +150,9 @@ export function listView(
       name: f.name,
       details: [
         'Flow',
-        f.status === 'live' ? 'Live' : 'Draft',
-        'Starts when someone joins'
+        ...(f.status === 'live'
+          ? ['Live', 'Starts when someone joins']
+          : ['Draft', 'Would start when someone joins'])
       ]
     }))
   return {

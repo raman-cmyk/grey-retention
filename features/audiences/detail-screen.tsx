@@ -178,7 +178,7 @@ function PeopleCard({
   )
 }
 
-/** When Klaviyo made it and last changed it, and its Klaviyo ID. */
+/** When Klaviyo made it and last changed it. */
 function DatesCard({ audience }: { audience: SegmentDetail | ListDetail }) {
   const title = 'Dates'
   const { created, updated } = audience
@@ -193,8 +193,7 @@ function DatesCard({ audience }: { audience: SegmentDetail | ListDetail }) {
         <p className="type-caption break-words text-[var(--stone)]">
           {[
             created ? `Created ${created.ago}` : '',
-            updated ? `changed ${updated.ago}` : '',
-            `Klaviyo ID ${audience.id}`
+            updated ? `changed ${updated.ago}` : ''
           ]
             .filter(Boolean)
             .join(' · ')}

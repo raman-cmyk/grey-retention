@@ -98,7 +98,12 @@ describe('segment and list views (UI-AUDc)', () => {
     expect(l.signUp.label).toBe('Double opt-in')
     const flows = l.usedBy.filter((u) => u.kind === 'flow')
     expect(flows.length).toBeGreaterThan(0)
-    expect(flows[0]!.details).toContain('Starts when someone joins')
+    for (const f of flows)
+      expect(f.details).toContain(
+        f.details.includes('Live')
+          ? 'Starts when someone joins'
+          : 'Would start when someone joins'
+      )
     expect(l.usedBy.some((u) => u.kind === 'campaign')).toBe(true)
   })
 
@@ -150,7 +155,8 @@ describe('the segment and list pages (UI-AUDc)', () => {
     expect(rules).toHaveTextContent('Klaviyo adds and removes people')
     expect(rules).not.toHaveTextContent('condition_groups')
     const dates = screen.getByRole('region', { name: 'Dates' })
-    expect(dates).toHaveTextContent('Klaviyo ID SEGeng030')
+    // Klaviyo's own ids are not the owner's words (BRAND.md rule 20).
+    expect(dates).not.toHaveTextContent('SEGeng030')
     expect(dates).toHaveTextContent(/Created/)
     expect(dates).toHaveTextContent(/Last changed/)
     expect(screen.getByRole('region', { name: 'Used by' })).toBeInTheDocument()

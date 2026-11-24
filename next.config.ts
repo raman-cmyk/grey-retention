@@ -70,12 +70,13 @@ const nextConfig: NextConfig = {
       {
         source: '/segments/:segmentId',
         destination: '/audiences/segments/:segmentId',
-        permanent: true
+        // Not permanent while the routes settle (a browser keeps a 308).
+        permanent: false
       },
       {
         source: '/lists/:listId',
         destination: '/audiences/lists/:listId',
-        permanent: true
+        permanent: false
       }
     ]
   },
