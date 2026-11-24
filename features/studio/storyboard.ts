@@ -455,7 +455,7 @@ export const artDirectorAgent: AgentDefinition<
 > = {
   name: 'art-director',
   version: '2026-11-17.1',
-  // AGENT_MAP.md models: the Art director runs on 2.5 Pro.
+  // AGENT_MAP.md models: the Art director runs on the plan model (3.8 Flash, AI-MDL-001).
   purpose: 'plan',
   instructions: [
     'You are the Art director for a marketing email of a small online store.',
