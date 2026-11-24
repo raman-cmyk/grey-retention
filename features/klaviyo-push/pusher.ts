@@ -1,4 +1,5 @@
 import 'server-only'
+import { klaviyoWritesUnlocked } from '@/lib/env/server'
 import { logger } from '@/lib/logger'
 import { fingerprints, norm, seen } from './fingerprints'
 import {
@@ -424,6 +425,16 @@ async function failed(
         code: 'rate_limited',
         retryAfterSeconds: error.details.retryAfterSeconds ?? 60
       }
+    // Locked (KLV-LOCK-001): refused for good, never tried again, with
+    // its own reason (the app's lock, never "Klaviyo refused it"), and no
+    // push row is saved: nothing was tried.
+    if (error.kind === 'write_locked')
+      return {
+        ok: false,
+        code: 'rejected',
+        checks: ['write_lock'],
+        reason: 'testing_write_lock'
+      }
     if (error.kind === 'rejected') return { ok: false, code: 'rejected' }
     return { ok: false, code: 'unavailable' }
   }
@@ -456,6 +467,10 @@ async function push(input: DraftInput, deps: Deps): Promise<DraftResult> {
   const withText = input.text !== undefined
   const ref = refOf(input)
   if (!ref) throw new Refused('no_push_lease', ['lease'])
+  // KLV-LOCK-001: no push starts while Klaviyo is locked (its key is not
+  // even read); the client refuses every write again on its own.
+  if (!klaviyoWritesUnlocked())
+    throw new KlaviyoError('write_locked', { endpoint: 'push' })
 
   const live = await deps.source.client(input.tenantId)
   if (!live) return { ok: false, code: 'auth' }

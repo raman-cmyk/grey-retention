@@ -1,20 +1,73 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireRequestContext } from '@/features/auth/application/request-context'
-import { Panel, Notice, Field, controlClass } from '@/components/ui/workspace'
-import { TextField } from '@/components/ui/text-field'
+import { Panel } from '@/components/ui/workspace'
 import { ActionForm, SubmitButton } from '@/components/ui/action-form'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { DataTable } from '@/components/ui/data-table'
+import { ActionAnswers, ActionButton } from '@/components/gros/action'
+import { ButtonLink } from '@/components/gros/button'
+import { Card, Tile } from '@/components/gros/card'
+import { Field } from '@/components/gros/input'
+import { ListRow, RowList } from '@/components/gros/list-row'
+import { ErrorState } from '@/components/gros/states'
+import { Status } from '@/components/gros/status'
+import { SelectField, TextAreaField } from '@/features/admin/fields'
 import { operationAction, acceptInvite } from './actions'
 import { z } from 'zod'
+import type { ReactNode } from 'react'
 import { rewriteAvailability } from '@/features/email-generation/config'
 import { connectionsEmptyText, rewriteStatus } from './provider-status'
 import { modelsInUseNow, retirementWatch } from '@/features/ai/retirement-watch'
 import { liveSwitches } from './live-switches'
 
 /**
+ * The admin Operations page's cards (UI-ADM): GROS white cards of rows
+ * and tiles. A line that needs the admin carries the Needs you pill; the
+ * rest say their state in words.
+ */
+function OpsCard({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <Card label={title}>
+      <div className="flex flex-col gap-[var(--space-5)]">
+        <h2 className="type-heading">{title}</h2>
+        {children}
+      </div>
+    </Card>
+  )
+}
+
+/** A line of words in a card: a fact, or what is not there yet. */
+function Quiet({ children }: { children: ReactNode }) {
+  return <p className="type-body break-words text-[var(--stone)]">{children}</p>
+}
+
+/** A row with no thumbnail and nothing to press: its words and a pill. */
+function FactRow({
+  title,
+  details,
+  needsYou = false,
+  status
+}: {
+  title: string
+  details: string[]
+  needsYou?: boolean
+  status?: ReactNode
+}) {
+  return (
+    <ListRow
+      thumbnail={null}
+      title={title}
+      details={details}
+      wrap
+      end={needsYou ? <Status kind="needs_you" /> : (status ?? null)}
+    />
+  )
+}
+
+/** The Operations page can try again: the address it reloads. */
+const operationsHref = '/admin/operations' as const
+
+/**
  * Owner pick #83: the models the app would call now, and when their
- * providers shut them down (whole UTC days). Its own panel: it needs no
+ * providers shut them down (whole UTC days). Its own card: it needs no
  * database, so it shows even when the diagnostics cannot be read.
  */
 export async function RetirementWatchPanel() {
@@ -24,31 +77,25 @@ export async function RetirementWatchPanel() {
     new Date().toISOString().slice(0, 10)
   )
   return (
-    <Panel title="Model retirement watch">
+    <OpsCard title="Model retirement watch">
       {lines.length ? (
-        <ul className="space-y-2 text-sm">
+        <RowList label="Models in use">
           {lines.map((l) => (
-            <li key={l.name} className="flex flex-wrap gap-x-2">
-              <span className="font-medium">{l.name}</span>
-              <span
-                className={
-                  l.state === 'ok'
-                    ? 'text-[var(--text)]'
-                    : 'font-medium text-[var(--danger-ink)]'
-                }
-              >
-                · {l.detail}
-              </span>
-            </li>
+            <FactRow
+              key={l.name}
+              title={l.name}
+              details={[l.detail]}
+              needsYou={l.state !== 'ok'}
+            />
           ))}
-        </ul>
+        </RowList>
       ) : (
-        <p className="text-sm text-[var(--text-muted)]">
+        <Quiet>
           No AI model is in use: GROS’s agents run on the fake, and the older
           email rewriting is off.
-        </p>
+        </Quiet>
       )}
-    </Panel>
+    </OpsCard>
   )
 }
 /**
@@ -58,26 +105,18 @@ export async function RetirementWatchPanel() {
 export async function LiveSwitchesPanel() {
   await requireRequestContext('admin')
   return (
-    <Panel title="Go-live switches">
-      <ul className="space-y-2 text-sm">
+    <OpsCard title="Go-live switches">
+      <RowList label="Go-live switches">
         {liveSwitches().map((s) => (
-          <li key={s.label} className="flex flex-wrap gap-x-2">
-            <span className="font-medium">{s.label}</span>
-            <span
-              className={
-                s.state === 'on'
-                  ? 'text-[var(--text)]'
-                  : s.state === 'attention'
-                    ? 'font-medium text-[var(--danger-ink)]'
-                    : 'text-[var(--text-muted)]'
-              }
-            >
-              · {s.detail}
-            </span>
-          </li>
+          <FactRow
+            key={s.label}
+            title={s.label}
+            details={[s.detail]}
+            needsYou={s.state === 'attention'}
+          />
         ))}
-      </ul>
-    </Panel>
+      </RowList>
+    </OpsCard>
   )
 }
 const money = (value: number) =>
@@ -104,17 +143,31 @@ export async function InvitationPanel() {
     </Panel>
   ) : null
 }
-export async function SupportPanel({ admin = false }: { admin?: boolean }) {
-  const ctx = await requireRequestContext(admin ? 'admin' : 'client'),
-    db = await createClient()
+
+/** A ticket's kind and state, in words. */
+const ticketWords: Record<string, string> = {
+  support: 'Support',
+  feedback: 'Feedback',
+  open: 'Open',
+  in_progress: 'In progress',
+  closed: 'Closed'
+}
+const ticketWord = (value: string) => ticketWords[value] ?? value
+
+/**
+ * The members' support questions, for the platform admins: each thread's
+ * messages and a reply that can change its state. Members ask and reply
+ * on Settings (UI-SETd).
+ */
+export async function SupportPanel() {
+  await requireRequestContext('admin')
+  const db = await createClient()
   if (!db) return null
-  let q = db
+  const tickets = await db
     .from('support_tickets')
     .select('*')
     .order('updated_at', { ascending: false })
     .limit(30)
-  if (ctx.kind === 'client') q = q.eq('tenant_id', ctx.tenantId)
-  const tickets = await q
   const messages = tickets.data?.length
     ? await db
         .from('support_messages')
@@ -125,96 +178,89 @@ export async function SupportPanel({ admin = false }: { admin?: boolean }) {
         )
         .order('created_at')
     : { data: [], error: null }
+  if (tickets.error || messages.error)
+    return (
+      <ErrorState
+        title="Support did not open"
+        reason="Support data unavailable. Reload the page to try again."
+        action={<ButtonLink href={operationsHref} label="Try again" />}
+      />
+    )
   return (
-    <div className="space-y-6">
-      {!admin && (
-        <Panel title="Open support or share feedback">
-          <ActionForm action={operationAction} className="grid gap-3">
-            <input name="kind" type="hidden" value="open_ticket" />
-            <Field label="Request type">
-              <select name="ticketKind" className={controlClass}>
-                <option value="support">Support</option>
-                <option value="feedback">Feedback</option>
-              </select>
-            </Field>
-            <Field label="Ticket subject">
-              <TextField name="subject" required maxLength={200} />
-            </Field>
-            <Field label="Support message">
-              <textarea
-                name="body"
-                className={controlClass}
-                rows={4}
-                required
-                maxLength={5000}
-              />
-            </Field>
-            <SubmitButton>Save support request</SubmitButton>
-          </ActionForm>
-        </Panel>
-      )}
-      <Panel title={admin ? 'Tenant support queue' : 'Support threads'}>
-        {tickets.error || messages.error ? (
-          <Notice error>Support data unavailable.</Notice>
-        ) : tickets.data?.length ? (
-          tickets.data.map((t) => (
-            <article
-              className="mb-5 rounded-lg border border-[var(--line)] p-4"
-              key={t.id}
-            >
-              <h3 className="font-semibold">
-                {t.subject} · {t.kind} · {t.state}
-              </h3>
-              <ul className="my-4 space-y-3 text-sm">
-                {messages.data
-                  ?.filter((m) => m.ticket_id === t.id)
-                  .map((m) => (
-                    <li className="break-words whitespace-pre-wrap" key={m.id}>
-                      {m.body}
-                    </li>
-                  ))}
-              </ul>
-              <ActionForm action={operationAction} className="grid gap-3">
-                <input
-                  name="surface"
-                  type="hidden"
-                  value={admin ? 'admin' : 'client'}
-                />
-                <input name="kind" type="hidden" value="reply_ticket" />
-                <input name="tenant" type="hidden" value={t.tenant_id} />
-                <input name="id" type="hidden" value={t.id} />
-                <input name="revision" type="hidden" value={t.revision} />
-                <Field label="Thread reply">
-                  <textarea
+    <OpsCard title="Support queue">
+      <ActionAnswers>
+        {tickets.data?.length ? (
+          <ul
+            aria-label="Support threads"
+            className="flex flex-col gap-[var(--space-3)]"
+          >
+            {tickets.data.map((t) => (
+              <li
+                key={t.id}
+                className="gros-tile flex flex-col gap-[var(--space-4)] rounded-[var(--radius-md)] bg-[var(--mist)]"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-[var(--space-3)]">
+                  <div className="flex min-w-0 flex-col gap-[var(--space-1)]">
+                    <h3 className="type-body-strong break-words">
+                      {t.subject}
+                    </h3>
+                    <p className="type-caption text-[var(--stone)]">
+                      {ticketWord(t.kind)} · {ticketWord(t.state)}
+                    </p>
+                  </div>
+                  {t.state === 'open' ? <Status kind="needs_you" /> : null}
+                </div>
+                <ul className="flex flex-col gap-[var(--space-3)]">
+                  {messages.data
+                    ?.filter((m) => m.ticket_id === t.id)
+                    .map((m) => (
+                      <li
+                        className="type-body break-words whitespace-pre-wrap"
+                        key={m.id}
+                      >
+                        {m.body}
+                      </li>
+                    ))}
+                </ul>
+                <ActionButton
+                  action={operationAction}
+                  label="Save thread reply"
+                  spokenLabel={t.subject}
+                  kind="outline"
+                  size="row"
+                  fields={{
+                    surface: 'admin',
+                    kind: 'reply_ticket',
+                    tenant: t.tenant_id,
+                    id: t.id,
+                    revision: String(t.revision)
+                  }}
+                >
+                  <TextAreaField
+                    label="Thread reply"
                     name="body"
-                    className={controlClass}
                     rows={2}
-                    required
-                    maxLength={5000}
+                    onTile
                   />
-                </Field>
-                <Field label="Ticket state">
-                  <select
+                  <SelectField
+                    label="Ticket state"
                     name="state"
-                    className={controlClass}
                     defaultValue={t.state}
-                  >
-                    <option>open</option>
-                    <option>in_progress</option>
-                    <option>closed</option>
-                  </select>
-                </Field>
-                <SubmitButton variant="secondary">
-                  Save thread reply
-                </SubmitButton>
-              </ActionForm>
-            </article>
-          ))
+                    onTile
+                    options={['open', 'in_progress', 'closed'].map((s) => ({
+                      value: s,
+                      label: ticketWord(s)
+                    }))}
+                  />
+                </ActionButton>
+              </li>
+            ))}
+          </ul>
         ) : (
-          <Notice>No support threads yet.</Notice>
+          <Quiet>No support threads yet.</Quiet>
         )}
-      </Panel>
-    </div>
+      </ActionAnswers>
+    </OpsCard>
   )
 }
 const diagnostics = z.object({
@@ -258,6 +304,24 @@ const diagnostics = z.object({
   ),
   chats: z.object({ count: z.number(), privateCount: z.number() })
 })
+
+/** A job's state as a pill: failed needs a person, waiting or running is working. */
+const jobWords: Record<string, string> = {
+  queued: 'Queued',
+  leased: 'Starting',
+  running: 'Running',
+  retry_wait: 'Retrying',
+  succeeded: 'Succeeded',
+  failed: 'Failed',
+  cancelled: 'Cancelled'
+}
+function JobStatus({ status }: { status: string }) {
+  if (status === 'failed') return <Status kind="needs_you" />
+  if (['queued', 'leased', 'running', 'retry_wait'].includes(status))
+    return <Status kind="working" word={jobWords[status]} />
+  return null
+}
+
 export async function OperatorPanel() {
   const ctx = await requireRequestContext('admin'),
     db = await createClient()
@@ -268,159 +332,187 @@ export async function OperatorPanel() {
     ]),
     data = diagnostics.safeParse(r.data)
   if (r.error || !data.success || p.error)
-    return <Notice error>Sanitized diagnostics unavailable.</Notice>
+    return (
+      <ErrorState
+        title="Diagnostics did not open"
+        reason="Sanitized diagnostics unavailable. Reload the page to try again."
+        action={<ButtonLink href={operationsHref} label="Try again" />}
+      />
+    )
+  const d = data.data
+  const tenantName = (id: string) => d.tenants.find((t) => t.id === id)?.name
+  const superAdmin = ctx.adminRole === 'super_admin'
+  const packages = (p.data ?? []).map((x) => ({
+    value: x.id,
+    label: `${x.name} · revision ${x.revision}`
+  }))
   return (
-    <div className="space-y-6">
-      <Panel title="Scoped workspace operations">
-        <Notice>
-          Sanitized diagnostics contain states and identifiers. Private chats,
-          job inputs, provider payloads and secrets are excluded.{' '}
-          {data.data.chats.count} conversations ({data.data.chats.privateCount}{' '}
-          private) are represented only by counts.
-        </Notice>
-        <div className="mt-4 space-y-4">
-          {data.data.tenants.map((t) => (
-            <div
-              key={t.id}
-              className="rounded-lg border border-[var(--line)] p-4"
-            >
-              <p className="font-semibold">
-                {t.name} · {t.status} · {t.timezone}
-              </p>
-              <p className="my-3 text-sm">
-                {t.package ?? 'No cycle initialized'} ·{' '}
-                {money(t.usedMicro ?? 0)} used / {money(t.allocationMicro ?? 0)}{' '}
-                synthetic allowance.
-              </p>
-              {ctx.adminRole === 'super_admin' && (
-                <ConfirmDialog
-                  label={`Review package for ${t.name}`}
-                  title="Confirm fixture package assignment"
-                  description="Create an immutable cycle snapshot. Outstanding reservations must be resolved first. No payment is collected."
-                >
-                  <ActionForm action={operationAction}>
-                    <input name="surface" type="hidden" value="admin" />
-                    <input name="kind" type="hidden" value="assign_package" />
-                    <input name="tenant" type="hidden" value={t.id} />
-                    <Field label="Fixture package">
-                      <select name="package" className={controlClass}>
-                        {p.data?.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} · revision {p.revision}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                    <SubmitButton>Assign fixture package</SubmitButton>
-                  </ActionForm>
-                </ConfirmDialog>
-              )}
-            </div>
-          ))}
+    <>
+      <OpsCard title="Workspaces">
+        {/*
+          Sanitized: states and identifiers only. Private chats, job inputs,
+          provider payloads and secrets are excluded; conversations are
+          counts.
+        */}
+        <div className="grid grid-cols-2 gap-[var(--space-3)] sm:max-w-md">
+          <Tile label="Conversations" value={d.chats.count} />
+          <Tile label="Private" value={d.chats.privateCount} />
         </div>
-      </Panel>
-      <Panel title="Job diagnostics">
-        <DataTable
-          caption="Sanitized durable jobs"
-          headers={['Tenant', 'Operation', 'State', 'Attempts', 'Code']}
-        >
-          {data.data.jobs.map((j) => (
-            <tr key={j.id}>
-              <td className="p-3">
-                {data.data.tenants.find((t) => t.id === j.tenant_id)?.name}
-              </td>
-              <td className="p-3">{j.kind}</td>
-              <td className="p-3">{j.status}</td>
-              <td className="p-3">{j.attempt}/4</td>
-              <td className="p-3">{j.error_code ?? '—'}</td>
-            </tr>
-          ))}
-        </DataTable>
-      </Panel>
-      <Panel title="Provider health">
-        <ul className="space-y-3 text-sm">
-          {data.data.tenants.map((t) => {
+        <ActionAnswers>
+          {d.tenants.length ? (
+            <ul
+              aria-label="Workspaces"
+              className="flex flex-col gap-[var(--space-3)]"
+            >
+              {d.tenants.map((t) => (
+                <li
+                  key={t.id}
+                  className="gros-tile flex flex-col gap-[var(--space-4)] rounded-[var(--radius-md)] bg-[var(--mist)]"
+                >
+                  <div className="flex flex-col gap-[var(--space-1)]">
+                    <h3 className="type-body-strong break-words">{t.name}</h3>
+                    <p className="type-caption break-words text-[var(--stone)]">
+                      {[
+                        t.status,
+                        t.timezone,
+                        t.package ?? 'No cycle initialized',
+                        `${money(t.usedMicro ?? 0)} used of ${money(t.allocationMicro ?? 0)} synthetic allowance`
+                      ].join(' · ')}
+                    </p>
+                  </div>
+                  {superAdmin ? (
+                    <ActionButton
+                      action={operationAction}
+                      label="Assign fixture package"
+                      spokenLabel={t.name}
+                      kind="outline"
+                      size="row"
+                      confirm={`Assign this fixture package to ${t.name}? It makes a fixed cycle snapshot. Outstanding reservations must be resolved first. No payment is collected.`}
+                      fields={{
+                        surface: 'admin',
+                        kind: 'assign_package',
+                        tenant: t.id
+                      }}
+                    >
+                      <SelectField
+                        label={`Fixture package for ${t.name}`}
+                        name="package"
+                        onTile
+                        options={packages}
+                      />
+                    </ActionButton>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Quiet>No workspaces yet.</Quiet>
+          )}
+        </ActionAnswers>
+      </OpsCard>
+      <OpsCard title="Job diagnostics">
+        {d.jobs.length ? (
+          <RowList label="Sanitized durable jobs">
+            {d.jobs.map((j) => (
+              <FactRow
+                key={j.id}
+                title={j.kind}
+                details={[
+                  tenantName(j.tenant_id) ?? '',
+                  jobWords[j.status] ?? j.status,
+                  `${j.attempt}/4 tries`,
+                  j.error_code ? `Code ${j.error_code}` : ''
+                ]}
+                status={<JobStatus status={j.status} />}
+              />
+            ))}
+          </RowList>
+        ) : (
+          <Quiet>No jobs yet.</Quiet>
+        )}
+      </OpsCard>
+      <OpsCard title="Provider health">
+        <RowList label="Email rewriting">
+          {d.tenants.map((t) => {
             const s = rewriteStatus(
               rewriteAvailability(t.id),
-              data.data.jobs.filter((j) => j.tenant_id === t.id)
+              d.jobs.filter((j) => j.tenant_id === t.id)
             )
             return (
-              <li key={`ai-${t.id}`} className="flex flex-wrap gap-x-2">
-                <span className="font-medium">{t.name}</span>
-                <span>· {s.label} ·</span>
-                <span
-                  className={
-                    s.state === 'ok'
-                      ? 'text-[var(--text)]'
-                      : s.state === 'attention'
-                        ? 'font-medium text-[var(--danger-ink)]'
-                        : 'text-[var(--text-muted)]'
-                  }
-                >
-                  {s.detail}
-                </span>
-              </li>
+              <FactRow
+                key={`ai-${t.id}`}
+                title={t.name}
+                details={[s.label, s.detail]}
+                needsYou={s.state === 'attention'}
+              />
             )
           })}
-        </ul>
-        {data.data.connections.length === 0 && (
-          <p className="mt-4 text-sm text-[var(--text-muted)]">
-            {connectionsEmptyText}
-          </p>
+        </RowList>
+        {d.connections.length === 0 ? (
+          <Quiet>{connectionsEmptyText}</Quiet>
+        ) : (
+          <RowList label="Connections">
+            {d.connections.map((c) => (
+              <FactRow
+                key={c.tenant_id + c.provider}
+                title={`${tenantName(c.tenant_id) ?? ''} · ${c.provider}`}
+                details={[
+                  c.status,
+                  `Last fixture sync ${c.last_sync_at ?? 'never'}`
+                ]}
+              />
+            ))}
+          </RowList>
         )}
-        <ul className="mt-4 space-y-3 text-sm">
-          {data.data.connections.map((c) => (
-            <li key={c.tenant_id + c.provider}>
-              {data.data.tenants.find((t) => t.id === c.tenant_id)?.name} ·{' '}
-              {c.provider} · {c.status} · last fixture sync{' '}
-              {c.last_sync_at ?? 'never'}
-            </li>
-          ))}
-        </ul>
-        <ul className="mt-5 space-y-2 text-sm">
-          {data.data.assignmentRequests.map((a) => (
-            <li key={a.id}>
-              Pending assignment · campaign {a.campaign_id} ·{' '}
-              {data.data.tenants.find((t) => t.id === a.tenant_id)?.name}. Use
-              the designer assignment workspace.
-            </li>
-          ))}
-        </ul>
-      </Panel>
-      {ctx.adminRole === 'super_admin' && (
-        <Panel title="Fixture package definitions">
-          <ActionForm
+        {d.assignmentRequests.length ? (
+          <RowList label="Pending assignments">
+            {d.assignmentRequests.map((a) => (
+              <FactRow
+                key={a.id}
+                title="Pending assignment"
+                details={[
+                  `Campaign ${a.campaign_id}`,
+                  tenantName(a.tenant_id) ?? ''
+                ]}
+              />
+            ))}
+          </RowList>
+        ) : null}
+      </OpsCard>
+      {superAdmin ? (
+        <OpsCard title="Fixture packages">
+          <ActionButton
             action={operationAction}
-            className="grid gap-3 sm:grid-cols-3"
+            label="Save fixture package revision"
+            fields={{ surface: 'admin', kind: 'define_package' }}
           >
-            <input name="surface" type="hidden" value="admin" />
-            <input name="kind" type="hidden" value="define_package" />
-            <Field label="Package name">
-              <TextField name="name" required />
-            </Field>
-            <Field label="Cycle allowance (micro USD)">
-              <TextField
+            <div className="grid grid-cols-1 gap-[var(--space-4)] lg:grid-cols-3">
+              <Field
+                label="Package name"
+                name="name"
+                required
+                autoComplete="off"
+              />
+              <Field
+                label="Cycle allowance (micro USD)"
                 name="allocation"
                 type="number"
                 min={1000}
                 defaultValue={20000000}
                 required
               />
-            </Field>
-            <Field label="Daily allowance (micro USD)">
-              <TextField
+              <Field
+                label="Daily allowance (micro USD)"
                 name="daily"
                 type="number"
                 min={1000}
                 defaultValue={2000000}
                 required
               />
-            </Field>
-            <SubmitButton>Save fixture package revision</SubmitButton>
-          </ActionForm>
-        </Panel>
-      )}
-      <SupportPanel admin />
-    </div>
+            </div>
+          </ActionButton>
+        </OpsCard>
+      ) : null}
+    </>
   )
 }
