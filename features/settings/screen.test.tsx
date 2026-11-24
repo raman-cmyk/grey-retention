@@ -216,6 +216,19 @@ describe('Settings screen (UI-SETa)', () => {
     expect(klaviyo).not.toHaveTextContent('more access')
   })
 
+  it('anchors the Klaviyo card for Audiences’ Connect Klaviyo (UI-AUDc)', () => {
+    render(<SettingsScreen view={view()} />)
+    expect(
+      within(card('Klaviyo')).getByRole('heading', { name: 'Klaviyo' })
+    ).toHaveAttribute('id', 'klaviyo')
+    cleanup()
+    // An unread card keeps the anchor, so the link still lands on it.
+    render(<SettingsScreen view={view({ klaviyo: null })} />)
+    expect(
+      within(card('Klaviyo')).getByRole('heading', { name: 'Klaviyo' })
+    ).toHaveAttribute('id', 'klaviyo')
+  })
+
   it('asks before Disconnect, and names what the key cannot do yet', async () => {
     const ask = vi.spyOn(window, 'confirm').mockReturnValue(false)
     render(

@@ -98,8 +98,13 @@ function Unread({ view, part }: { view: SettingsView; part: SettingsPart }) {
   )
 }
 
-function Title({ text }: { text: string }) {
-  return <h2 className="type-heading">{text}</h2>
+/** A card's title; `id` is the anchor other pages open (`/settings#klaviyo`). */
+function Title({ text, id }: { text: string; id?: string }) {
+  return (
+    <h2 id={id} className="type-heading">
+      {text}
+    </h2>
+  )
 }
 
 function MaxDiscountCard({ view }: { view: SettingsView }) {
@@ -256,6 +261,9 @@ const secret = {
   'data-lpignore': 'true'
 } as const
 
+/** Audiences' Connect Klaviyo and Reconnect open this card (UI-AUDc). */
+const klaviyoAnchor = 'klaviyo'
+
 function KlaviyoCard({
   view,
   assistant
@@ -269,7 +277,7 @@ function KlaviyoCard({
     return (
       <Card label={title}>
         <div className="flex flex-col gap-[var(--space-5)]">
-          <Title text={title} />
+          <Title text={title} id={klaviyoAnchor} />
           <Unread view={view} part="klaviyo" />
         </div>
       </Card>
@@ -301,7 +309,7 @@ function KlaviyoCard({
       <div className="flex flex-col gap-[var(--space-5)]">
         <ActionAnswers>
           <div className="flex flex-wrap items-center justify-between gap-[var(--space-3)]">
-            <Title text={title} />
+            <Title text={title} id={klaviyoAnchor} />
             {/* A working connection needs no pill (In Klaviyo is a draft's
               word); Needs you only when the owner must act. */}
             {!working && view.owner ? <Status kind="needs_you" /> : null}

@@ -71,6 +71,19 @@ const nextConfig: NextConfig = {
         destination: '/settings/account',
         // Not cached by browsers while the GROS routes settle.
         permanent: false
+      },
+      // UI-AUDc: a segment's and a list's page are under Audiences, on the
+      // GROS screens; old links (and bookmarks) open the new page.
+      {
+        source: '/segments/:segmentId',
+        destination: '/audiences/segments/:segmentId',
+        // Not permanent while the routes settle (a browser keeps a 308).
+        permanent: false
+      },
+      {
+        source: '/lists/:listId',
+        destination: '/audiences/lists/:listId',
+        permanent: false
       }
     ]
   },
