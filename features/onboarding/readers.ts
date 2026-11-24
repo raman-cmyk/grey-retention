@@ -5,11 +5,11 @@ import { logger } from '@/lib/logger'
 import { workspaceTimezone } from '@/features/strategy/offers'
 import { staleBooks, within, writeBrandBook } from './brand-book'
 import { listCorrections } from './brand-book-corrections'
-import { aiSetup } from '@/features/ai/setup'
 import {
   booksNeedingStrategy,
   runBrandStrategist,
-  strategistCallMs
+  strategistCallMs,
+  strategistReady
 } from './strategist-run'
 import { listCatalog } from './catalog/read'
 import { listFindings } from './findings'
@@ -145,27 +145,37 @@ export async function runSourceReadings(
   const env = options.env ?? process.env
   const strategist =
     options.strategist ??
-    (aiSetup('plan', env).provider !== 'fake'
+    (strategistReady(env)
       ? (d: Db, t: string) => runBrandStrategist(d, t, { env })
       : null)
+  // The strategist's call and its database work, with one more margin
+  // kept free before the route's end.
+  const fitsStrategist = () =>
+    now() - started + strategistCallMs + 2 * dbMarginMs <= routeMs
   /**
    * ONB-106c: one Brand strategist call per run, for the newest book that
-   * needs one, only when the call (`strategistCallMs`) and the database
-   * margin still end inside the route. A failure is logged, never thrown.
+   * needs one (`booksNeedingStrategy`), only with a live plan model and only
+   * when the lookup, the call (`strategistCallMs`) and the database margins
+   * still end inside the route, checked again after the lookup. A failure
+   * is logged, never thrown.
    */
   async function strategize() {
     if (!strategist) return
-    if (now() - started + strategistCallMs + dbMarginMs > routeMs) return
+    if (now() - started + dbMarginMs > routeMs || !fitsStrategist()) return
     try {
       const [tenantId] = await (
         options.strategyNeeded ??
         ((d: Db) => booksNeedingStrategy(d, { limit: 1 }))
       )(db)
-      if (tenantId)
-        await within(strategist(db, tenantId), strategistCallMs + dbMarginMs)
+      if (!tenantId || !fitsStrategist()) return
+      await within(strategist(db, tenantId), strategistCallMs + dbMarginMs)
     } catch (error) {
+      const code = (error as { code?: string })?.code
       logger.warn('Brand strategist not run', {
-        code: (error as { code?: string })?.code ?? 'brand_strategist_error'
+        code:
+          code === 'brand_book_timeout'
+            ? 'brand_strategist_timeout'
+            : (code ?? 'brand_strategist_error')
       })
     }
   }

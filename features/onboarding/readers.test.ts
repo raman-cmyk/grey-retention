@@ -147,6 +147,47 @@ describe('runSourceReadings', () => {
     expect(lateStrategist).not.toHaveBeenCalled()
   })
 
+  it('looks for a strategy to write only with a live plan model, never on the fake AI (ONB-106c)', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const read = async () => 'read' as const
+    const needed = vi.fn(async () => [] as string[])
+    for (const env of [
+      { AI_DEFAULT_PROVIDER: 'fake', GEMINI_API_KEY: 'k' },
+      {}
+    ])
+      await runSourceReadings(database(['j1']).db, {
+        ...noBooks,
+        read,
+        env: env as unknown as NodeJS.ProcessEnv,
+        strategyNeeded: needed
+      })
+    expect(needed).not.toHaveBeenCalled()
+    await runSourceReadings(database(['j1']).db, {
+      ...noBooks,
+      read,
+      env: { GEMINI_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv,
+      strategyNeeded: needed
+    })
+    expect(needed).toHaveBeenCalledOnce()
+  })
+
+  it('checks the time again after the lookup, before the strategist’s call (ONB-106c)', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    let now = 0
+    const strategist = vi.fn(async () => 'saved')
+    await runSourceReadings(database(['j1']).db, {
+      ...noBooks,
+      now: () => now,
+      read: async () => 'read' as const,
+      strategist,
+      strategyNeeded: async () => {
+        now = routeMs - strategistCallMs - dbMarginMs
+        return ['t1']
+      }
+    })
+    expect(strategist).not.toHaveBeenCalled()
+  })
+
   it('goes on when the strategist or its lookup fails, and never asks it with nothing to do (ONB-106c)', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {})
     vi.spyOn(console, 'warn').mockImplementation(() => {})

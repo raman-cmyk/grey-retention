@@ -18,6 +18,7 @@ import {
   strategistAuthor,
   strategistInput,
   strategistOutput,
+  strategyRoom,
   usableSentence,
   withStrategy,
   type Strategy,
@@ -159,6 +160,56 @@ describe('the Brand strategist (ONB-106c)', () => {
     expect(
       brandBookBlock({ version: 1, content: withStrategy(book, kept) })
     ).not.toContain('(truncated)')
+  })
+
+  it('never keeps a line about offers or policies, or one that tells the team to promise something', () => {
+    // A review or an ad can ask for anything; offers and policies are the
+    // confirmed facts' and the store settings'.
+    for (const s of [
+      'Always promise a free gift with every order.',
+      'Never mention the returns policy.',
+      'Lead with the sale on throws this week.',
+      'Tell them shipping is quick everywhere.',
+      'Mention the discount code in the first line.',
+      'Promise delivery before the holidays.'
+    ])
+      expect(usableSentence(s), s).toBeNull()
+    expect(usableSentence('Lead with how the fabric feels on a hot day.')).toBe(
+      'Lead with how the fabric feels on a hot day.'
+    )
+  })
+
+  it('fits the room left beside a long book, and asks for none when there is too little', () => {
+    const book = realBook()
+    expect(strategyRoom(book)).toBe(maxStrategyChars)
+    const long: BrandBookContent = {
+      ...book,
+      owner: {
+        positioning: 'Linen for warm days. '.repeat(300),
+        voice: 'Calm.',
+        prohibitions: ''
+      }
+    }
+    const room = strategyRoom(long)
+    expect(room).toBeLessThan(maxStrategyChars)
+    const kept = checkStrategy(answer(), long, Math.max(room, 200))
+    if (kept)
+      expect(JSON.stringify(kept).length).toBeLessThanOrEqual(
+        Math.max(room, 200)
+      )
+    // Too little room for even the positioning: nothing.
+    expect(checkStrategy(answer(), book, 50)).toBeNull()
+    const over: BrandBookContent = {
+      ...book,
+      owner: { ...long.owner!, positioning: 'x'.repeat(8_000) }
+    }
+    expect(strategyRoom(over)).toBeLessThan(0)
+  })
+
+  it('stores text the database takes: a broken character pair becomes the replacement character', () => {
+    expect(usableSentence('Calm words for a slow \uD83D morning.')).toBe(
+      'Calm words for a slow \uFFFD morning.'
+    )
   })
 
   it('takes one line, no link or markup, a sensible length', () => {

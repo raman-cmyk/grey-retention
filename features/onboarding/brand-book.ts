@@ -15,6 +15,12 @@ import type { Finding, FindingSource, FindingTopic } from './findings'
 import type { StoredHistory } from './history/read'
 import { industryInWords } from './industry'
 import type { Strategy } from './strategist'
+
+/**
+ * Who wrote a version with the Brand strategist's reading (ONB-106c,
+ * `brand_books.written_by`); here so the book never imports the agent.
+ */
+export const strategistAuthor = 'brand-strategist@1'
 import { plain } from './words'
 
 /**
@@ -429,7 +435,7 @@ const changesRead = 1000
 const workspacesChecked = 100
 
 /** The onboarding readers' jobs (a read that finished changes the book). */
-const readerKinds = [
+export const readerKinds = [
   'brand.read_site',
   'brand.read_catalog',
   'brand.read_history',
@@ -485,7 +491,7 @@ export async function staleBooks(
     .slice(0, workspacesChecked)
   const books = await db
     .from('brand_books')
-    .select('tenant_id,created_at')
+    .select('tenant_id,created_at,written_by')
     .in(
       'tenant_id',
       changed.map(([t]) => t)
@@ -495,7 +501,10 @@ export async function staleBooks(
   if (books.error) throw books.error
   const written = new Map<string, string>()
   for (const b of books.data ?? [])
-    if (!written.has(b.tenant_id)) written.set(b.tenant_id, b.created_at)
+    // ONB-106c: a strategist version carries the book it read, not a newer
+    // read or correction, so it never makes a book up to date.
+    if (!written.has(b.tenant_id) && b.written_by !== strategistAuthor)
+      written.set(b.tenant_id, b.created_at)
   return changed
     .filter(
       ([t, at]) =>
