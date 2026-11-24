@@ -64,7 +64,20 @@ const nextConfig: NextConfig = {
       },
       // UI-SETd: support and feature requests are cards on Settings.
       { source: '/support', destination: '/settings', permanent: false },
-      { source: '/feedback', destination: '/settings', permanent: false }
+      { source: '/feedback', destination: '/settings', permanent: false },
+      // UI-AUDc: a segment's and a list's page are under Audiences, on the
+      // GROS screens; old links (and bookmarks) open the new page.
+      {
+        source: '/segments/:segmentId',
+        destination: '/audiences/segments/:segmentId',
+        // Not permanent while the routes settle (a browser keeps a 308).
+        permanent: false
+      },
+      {
+        source: '/lists/:listId',
+        destination: '/audiences/lists/:listId',
+        permanent: false
+      }
     ]
   },
   async headers() {
