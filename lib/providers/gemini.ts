@@ -37,22 +37,70 @@ const proMinThinking = 128
  * does not think unless asked.
  */
 export const selfThinkingAllowance = 4_096
+/**
+ * AI-MDL-001: room kept for a 3.x model asked to think at `MEDIUM`, or left
+ * to its own default (`MEDIUM` on 3.8 Flash, `HIGH` on 3 Flash Preview). A
+ * level caps depth, not tokens, and Google says 3.8 Flash uses more tokens
+ * by design, so the answer room of a planning agent (2,000 to 3,000) would
+ * otherwise be eaten by thinking and come back `incomplete`. Not measured
+ * yet: the paid live run of the golden set checks it.
+ */
+export const deepThinkingAllowance = 16_384
 /** The largest answer the supported models give. */
 const maxModelOutput = 65_536
 
+/** 2.5 models take a thinking budget; 3.x models take a level instead. */
+const isGemini25 = (model: string) => model.startsWith('gemini-2.5')
+
+/**
+ * Models that still take `temperature`. Google ignores it from 3.6 Flash and
+ * 3.5 Flash-Lite on and says later models will refuse it (read 2026-11-24),
+ * so a model added to the price table gets none unless listed here.
+ */
+const takesTemperature = (model: string) =>
+  isGemini25(model) ||
+  model === 'gemini-3.1-flash-lite' ||
+  model === 'gemini-3-flash-preview'
+
+/**
+ * The 3.x models that take the `MINIMAL` thinking level (Google's thinking
+ * guide, read 2026-11-24). 3.8 Flash refuses it, so "none" asks it for `LOW`.
+ */
+const minimalThinkingModels = new Set([
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  'gemini-3-flash-preview'
+])
+
 /**
  * The thinking budget sent for this request, or null when none is sent
- * (3.x models choose their own; no effort means the model's default).
+ * (3.x models take a level instead; no effort means the model's default).
  */
 export function geminiThinkingBudget(
   request: Pick<AiProviderRequest, 'model' | 'reasoningEffort'>
 ): number | null {
-  if (!request.reasoningEffort || !request.model.startsWith('gemini-2.5'))
-    return null
+  if (!request.reasoningEffort || !isGemini25(request.model)) return null
   const budget = thinkingBudgets[request.reasoningEffort]
   return request.model.startsWith('gemini-2.5-pro')
     ? Math.max(budget, proMinThinking)
     : budget
+}
+
+/**
+ * AI-MDL-001: the thinking level sent to a 3.x model, or null when none is
+ * sent (2.5 models, which refuse a level, or no effort: the model's
+ * default). Without a level 3 Flash Preview thinks at `HIGH` by default,
+ * which ran past the 15-second agent call cap in the first live run
+ * (24 November 2026). The effort maps to the level of the same name; "none"
+ * is `MINIMAL` where the model has it and `LOW` where it does not.
+ */
+export function geminiThinkingLevel(
+  request: Pick<AiProviderRequest, 'model' | 'reasoningEffort'>
+): 'MINIMAL' | 'LOW' | 'MEDIUM' | null {
+  if (!request.reasoningEffort || isGemini25(request.model)) return null
+  if (request.reasoningEffort === 'medium') return 'MEDIUM'
+  if (request.reasoningEffort === 'low') return 'LOW'
+  return minimalThinkingModels.has(request.model) ? 'MINIMAL' : 'LOW'
 }
 
 /** Output kept for thinking on this request. */
@@ -62,7 +110,11 @@ function thinkingRoom(
   const budget = geminiThinkingBudget(request)
   if (budget !== null) return budget
   if (request.model.startsWith('gemini-2.5-flash-lite')) return 0
-  return selfThinkingAllowance
+  if (isGemini25(request.model)) return selfThinkingAllowance
+  const level = geminiThinkingLevel(request)
+  return level === 'MINIMAL' || level === 'LOW'
+    ? selfThinkingAllowance
+    : deepThinkingAllowance
 }
 
 /**
@@ -92,6 +144,7 @@ export function geminiRequestBody(request: AiProviderRequest) {
       diagnostic: 'schema_required'
     })
   const budget = geminiThinkingBudget(request)
+  const level = geminiThinkingLevel(request)
   return JSON.stringify({
     systemInstruction: { parts: [{ text: request.system }] },
     contents: [
@@ -107,15 +160,20 @@ export function geminiRequestBody(request: AiProviderRequest) {
     ],
     generationConfig: {
       maxOutputTokens: geminiOutputTokens(request),
-      temperature: request.temperature,
+      ...(takesTemperature(request.model)
+        ? { temperature: request.temperature }
+        : {}),
       ...(request.responseKind === 'json'
         ? {
             responseMimeType: 'application/json',
             responseJsonSchema: request.schema!.definition
           }
         : {}),
-      // Thinking budgets apply to 2.5 models; 3.x models choose their own.
-      ...(budget !== null ? { thinkingConfig: { thinkingBudget: budget } } : {})
+      // 2.5 models take a thinking budget, 3.x models a thinking level.
+      ...(budget !== null
+        ? { thinkingConfig: { thinkingBudget: budget } }
+        : {}),
+      ...(level !== null ? { thinkingConfig: { thinkingLevel: level } } : {})
     }
   })
 }
