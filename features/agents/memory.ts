@@ -145,7 +145,8 @@ export const brandBookHeader = (version: number) =>
     '"facts" and "owner" are confirmed: never contradict them.',
     '"observed" is what was seen on the brand\'s own pages, emails and reviews: use it for tone and ideas, never state it as a fact.',
     '"unclear" lists what is not known: never make a claim about it.',
-    '"avoid" lists words and claims the brand never uses.'
+    '"avoid" lists words and claims the brand never uses.',
+    '"strategy", when present, is the brand strategist\'s reading of this book: follow its direction, never state it as a fact.'
   ].join(' ')
 
 /** Test and local double. */
