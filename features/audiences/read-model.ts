@@ -50,8 +50,17 @@ const byPeople = (a: AudienceRow, b: AudienceRow) =>
 /** Klaviyo's rule text without its closing full stop (it sits in a row). */
 const phrase = (text: string) => text.trim().replace(/\.+$/, '')
 
-/** The view from the Klaviyo data. Pure, for tests. */
-export function audiencesView(data: KlaviyoData, now: Date): AudiencesView {
+/** Why Klaviyo's audiences cannot be shown (Audiences and their pages). */
+export type AudiencesProblem = Exclude<AudiencesView, { state: 'ready' }>
+
+/**
+ * Why Klaviyo data that is not readable cannot be shown: the same answer on
+ * Audiences and on a segment's or a list's page (UI-AUDc). Pure.
+ */
+export function audiencesProblem(
+  data: Exclude<KlaviyoData, { state: 'sample' }>,
+  now: Date
+): AudiencesProblem {
   if (data.state === 'not_connected') {
     if (data.reason === 'expired' || data.reason === 'error')
       return { state: 'reconnect' }
@@ -64,8 +73,12 @@ export function audiencesView(data: KlaviyoData, now: Date): AudiencesView {
       }
     return { state: 'not_connected' }
   }
-  if (data.state !== 'sample')
-    return { state: 'unavailable', reason: sourceLine(data, now), retry: false }
+  return { state: 'unavailable', reason: sourceLine(data, now), retry: false }
+}
+
+/** The view from the Klaviyo data. Pure, for tests. */
+export function audiencesView(data: KlaviyoData, now: Date): AudiencesView {
+  if (data.state !== 'sample') return audiencesProblem(data, now)
   const snapshot = data.snapshot
   return {
     state: 'ready',

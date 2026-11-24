@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { StoreEvent } from '@/lib/providers/klaviyo/catalog'
 import { salesFrom } from './clean'
-import { matchReturns, orderId, returnsState } from './returns'
+import { matchReturns, netReport, orderId, returnsState } from './returns'
 
 const now = Date.parse('2026-11-11T12:00:00Z')
 const day = 86_400_000
@@ -18,10 +18,12 @@ const order = (
   id: string,
   days: number,
   value: number,
-  lines: ReturnType<typeof line>[]
+  lines: ReturnType<typeof line>[],
+  credit: Partial<Pick<StoreEvent, 'messages' | 'flows'>> = {}
 ): StoreEvent => ({
   at: at(days),
-  props: { $event_id: id, $value: value, $extra: { line_items: lines } }
+  props: { $event_id: id, $value: value, $extra: { line_items: lines } },
+  ...credit
 })
 const event = (days: number, props: Record<string, unknown>): StoreEvent => ({
   at: at(days),
@@ -215,5 +217,133 @@ describe('returnsState', () => {
     expect(returnsState([read(0, false), read(0, false)], none, true)).toBe(
       'unread'
     )
+  })
+})
+
+describe('netReport', () => {
+  const row = (
+    key: string,
+    id: string,
+    conversions: number,
+    value: number
+  ) => ({
+    groupings: { [key]: id },
+    statistics: {
+      recipients: 1000,
+      conversions,
+      conversion_value: value,
+      revenue_per_recipient: value / 1000
+    }
+  })
+  const email = order('A1', 3, 400, [line(1, 1)], { messages: ['Msg1'] })
+  const partly = order('B1', 3, 200, [line(1, 1)], { messages: ['Msg1'] })
+  const flowOrder = order('C1', 30, 300, [line(1, 1)], { flows: ['Flw1'] })
+  const old = order('D1', 120, 100, [line(1, 1)], { flows: ['Flw1'] })
+  const returns = matchReturns(
+    [email, partly, flowOrder, old],
+    [event(1, { $event_id: 'A1' }), event(1, { $event_id: 'D1' })],
+    [
+      event(1, { OrderId: 'B1', $value: 50 }),
+      event(1, { $event_id: 'C1', $value: 300 })
+    ]
+  )
+
+  it('takes each order off the email credited with it, and its revenue per recipient', () => {
+    const [netted, other] = netReport(
+      [
+        row('campaign_message_id', 'Msg1', 10, 1000),
+        row('campaign_message_id', 'Msg2', 5, 500)
+      ],
+      returns,
+      'campaign_message_id',
+      now - 365 * day
+    )
+    expect(netted!.statistics).toEqual({
+      recipients: 1000,
+      conversions: 9,
+      conversion_value: 550,
+      revenue_per_recipient: 0.55
+    })
+    expect(other!.statistics.conversions).toBe(5)
+  })
+
+  it("takes a flow's orders off its rows in turn, never below 0, only within the report's days", () => {
+    const rows = netReport(
+      [row('flow_id', 'Flw1', 1, 120), row('flow_id', 'Flw1', 4, 500)],
+      returns,
+      'flow_id',
+      now - 90 * day
+    )
+    // The 120-day-old order was not in the 90 days: only the $300 one.
+    expect(
+      rows.map((r) => [r.statistics.conversions, r.statistics.conversion_value])
+    ).toEqual([
+      [0, 0],
+      [4, 320]
+    ])
+  })
+
+  it("scales Klaviyo's own revenue per recipient by the money left, and never makes one up", () => {
+    const own = {
+      groupings: { campaign_message_id: 'Msg1' },
+      // Klaviyo's figure, not conversion_value / recipients.
+      statistics: {
+        recipients: 1000,
+        conversions: 10,
+        conversion_value: 1000,
+        revenue_per_recipient: 1.2
+      }
+    }
+    const noValue = {
+      groupings: { campaign_message_id: 'Msg1' },
+      statistics: {
+        recipients: 1000,
+        conversions: 10,
+        revenue_per_recipient: 1
+      }
+    }
+    const net = (r: typeof own | typeof noValue) =>
+      netReport([r], returns, 'campaign_message_id', now - 365 * day)[0]
+    const [scaled, kept] = [net(own), net(noValue)]
+    expect(scaled!.statistics.revenue_per_recipient).toBeCloseTo(0.66)
+    // No conversion_value to scale by: its count comes off, its revenue
+    // per recipient stays Klaviyo's.
+    expect(kept!.statistics).toEqual({
+      recipients: 1000,
+      conversions: 9,
+      revenue_per_recipient: 1
+    })
+  })
+
+  it('takes an order in another currency off the count but not the money', () => {
+    const euro = order('E1', 3, 400, [line(1, 1)], { messages: ['Msg1'] })
+    euro.props.$currency_code = 'eur'
+    const dollar = order('U1', 3, 100, [line(1, 1)], { messages: ['Msg1'] })
+    dollar.props.$currency_code = 'USD'
+    const undone = matchReturns(
+      [euro, dollar],
+      [event(1, { $event_id: 'E1' }), event(1, { $event_id: 'U1' })],
+      []
+    )
+    const report = [row('campaign_message_id', 'Msg1', 10, 1000)]
+    const [usd] = netReport(
+      report,
+      undone,
+      'campaign_message_id',
+      now - 365 * day,
+      'USD'
+    )
+    expect(usd!.statistics).toMatchObject({
+      conversions: 8,
+      conversion_value: 900
+    })
+    // Without the account's currency, every order's money comes off.
+    const [unknown] = netReport(
+      report,
+      undone,
+      'campaign_message_id',
+      now - 365 * day
+    )
+    expect(unknown!.statistics.conversion_value).toBe(500)
   })
 })

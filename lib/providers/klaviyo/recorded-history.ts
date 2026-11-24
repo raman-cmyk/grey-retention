@@ -10,7 +10,7 @@ import {
   variationsPath
 } from './history'
 import { recorded } from './recorded'
-import { catalogRecordings } from './recorded-catalog'
+import { catalogRecordings, withReturnMetrics } from './recorded-catalog'
 
 /**
  * Recorded answers of what a made-up Klaviyo account sent (revision
@@ -211,6 +211,13 @@ export type HistoryScenario = {
   templatesGone?: string[]
   /** PIC-23: the key cannot read templates (403). */
   noTemplateScope?: boolean
+  /**
+   * ONB-ORD: the store has Cancelled and Refunded Order metrics. An $800
+   * order credited to the knitwear email was cancelled and a $200 one
+   * refunded $50; an $80 order credited to the abandoned cart was refunded
+   * in full; a cancel is of an order placed before the year read.
+   */
+  returns?: boolean
 }
 
 /**
@@ -322,6 +329,73 @@ export function historyRecordings(options: HistoryScenario = {}) {
       ...extra,
       links: { self: 'https://a.klaviyo.com/api/', next: null }
     })
+  // ONB-ORD: orders with the attributions Klaviyo keeps for each (the
+  // email or flow credited), and their cancels and refunds.
+  const stamp = (days: number) =>
+    new Date(now - days * day).toISOString().replace(/\.\d{3}Z$/, '+00:00')
+  const order = (id: string, value: number) => ({
+    $event_id: id,
+    $value: value,
+    $currency_code: 'USD',
+    Items: ['Weekend Knit']
+  })
+  // Newest first, as Klaviyo sorts them.
+  const credited = [
+    ['H1004', 2, 60, { 'campaign-message': 'MsgA01', campaign: 'CmpA01' }],
+    ['H1002', 4, 200, { 'campaign-message': 'MsgA02', campaign: 'CmpA02' }],
+    ['H1001', 5, 800, { 'campaign-message': 'MsgA02', campaign: 'CmpA02' }],
+    ['H1003', 20, 80, { flow: 'FlwCart', 'flow-message': 'FmC1' }]
+  ] as const
+  const event = (id: string, days: number, props: object) => ({
+    type: 'event',
+    id,
+    attributes: { datetime: stamp(days), event_properties: props }
+  })
+  const returns = {
+    orders: page(
+      credited.map(([id, days, value]) => ({
+        ...event(`evt-${id}`, days, order(id, value)),
+        // The flow's order is named only by its attribution.
+        ...(id === 'H1003'
+          ? {}
+          : {
+              relationships: {
+                attributions: {
+                  data: [{ type: 'attribution', id: `att-${id}` }]
+                }
+              }
+            })
+      })),
+      {
+        included: credited.map(([id, , , to]) => ({
+          type: 'attribution',
+          id: `att-${id}`,
+          relationships: {
+            event: { data: { type: 'event', id: `evt-${id}` } },
+            'attributed-event': { data: { type: 'event', id: `click-${id}` } },
+            ...Object.fromEntries(
+              Object.entries(to).map(([type, id]) => [
+                type,
+                { data: { type, id } }
+              ])
+            )
+          }
+        }))
+      }
+    ),
+    cancelled: page([
+      event('cancel-H1001', 3, { ...order('H1001', 800), Reason: 'fraud' }),
+      event('cancel-H0999', 1, order('H0999', 120))
+    ]),
+    refunded: page([
+      event('refund-H1002', 2, {
+        OrderId: 'H1002',
+        $event_id: 'R1',
+        $value: 50
+      }),
+      event('refund-H1003', 10, order('H1003', 80))
+    ])
+  }
   const reportLinks = (path: string) => ({
     self: `https://a.klaviyo.com${path}`,
     ...(options.reportsCut
@@ -330,6 +404,7 @@ export function historyRecordings(options: HistoryScenario = {}) {
   })
 
   return {
+    returns,
     sent: page(
       sentEmails.map((e) => message(e, 'sent')),
       { included: included(sentEmails) }
@@ -544,6 +619,8 @@ const sentQuery = new RegExp(
   )}$`
 )
 const scheduledQuery = messagesPath('scheduled', null)
+const eventsQuery =
+  /^\/api\/events\?fields\[event\]=event_properties,datetime&filter=equals\(metric_id,"([A-Za-z0-9]+)"\),greater-than\(datetime,\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\)&sort=-datetime(&include=attributions)?$/
 const audiencesQuery =
   /^\/api\/campaigns\?fields\[campaign\]=definition\.name&fields\[campaign-audience\]=definition\.included,definition\.excluded&filter=any\(id,\[("[A-Za-z0-9]+",?)+\]\)&include=campaign-audiences&page\[size\]=100$/
 
@@ -558,6 +635,7 @@ export type HistoryFailure =
   | 'segments'
   | 'variations'
   | 'templates'
+  | 'returns'
 
 /**
  * A transport answering from the recordings, like Klaviyo: the account,
@@ -587,7 +665,15 @@ export function recordedHistoryTransport(
     }
     if (path.startsWith('/api/accounts?')) return recorded.account
     if (path === '/api/metrics?fields[metric]=name,integration')
-      return catalogRecordings({ now: options.now }).metrics
+      return options.returns
+        ? withReturnMetrics(catalogRecordings({ now: options.now }).metrics)
+        : catalogRecordings({ now: options.now }).metrics
+    // ONB-ORD: the orders (with their attributions), cancels and refunds.
+    const events = options.returns ? eventsQuery.exec(path) : null
+    if (events?.[1] === 'PlcdOr' && events[2])
+      return fail('returns') ?? r.returns.orders
+    if (events?.[1] === 'CnclOr' && !events[2]) return r.returns.cancelled
+    if (events?.[1] === 'RfndOr' && !events[2]) return r.returns.refunded
     if (sentQuery.test(path)) return fail('sent') ?? r.sent
     if (path === scheduledQuery) return fail('scheduled') ?? r.scheduled
     if (audiencesQuery.test(path))

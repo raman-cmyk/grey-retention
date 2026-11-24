@@ -5,12 +5,18 @@ import { Card } from '@/components/gros/card'
 import { ListRow, RowList } from '@/components/gros/list-row'
 import { AppPage, CardRow } from '@/components/gros/nav'
 import { EmptyState, ErrorState } from '@/components/gros/states'
-import type { AudienceRow, AudiencesView } from './read-model'
+import type { AudienceRow, AudiencesProblem, AudiencesView } from './read-model'
 
-// Klaviyo is connected on Connections today (the detail pages say "Go to
-// Connections" too); the GROS Settings screen takes this over later.
-const connectHref: Route = '/connections'
-const audiencesHref: Route = '/audiences'
+// Klaviyo is connected on the Klaviyo card of the GROS Settings (UI-AUDc).
+export const connectKlaviyoHref: Route = '/settings#klaviyo'
+export const audiencesHref: Route = '/audiences'
+
+/** A segment's own page (UI-AUDc). */
+export const segmentHref = (id: string) =>
+  `/audiences/segments/${encodeURIComponent(id)}` as Route
+/** A list's own page (UI-AUDc). */
+export const listHref = (id: string) =>
+  `/audiences/lists/${encodeURIComponent(id)}` as Route
 
 /**
  * Audiences (UI-AUDa): the store's Klaviyo segments and lists with their
@@ -25,44 +31,11 @@ export function AudiencesScreen({
 }) {
   return (
     <AppPage current="audiences" title="Audiences">
-      {view.state === 'not_connected' ? (
-        owner ? (
-          <EmptyState
-            title="Klaviyo not connected"
-            action={<ButtonLink href={connectHref} label="Connect Klaviyo" />}
-          />
-        ) : (
-          <Card label="Klaviyo">
-            <h2 className="type-heading">Klaviyo not connected</h2>
-            <p className="type-body mt-[var(--space-3)] text-[var(--stone)]">
-              The store’s owner connects Klaviyo. Its segments and lists then
-              show here.
-            </p>
-          </Card>
-        )
-      ) : view.state === 'reconnect' ? (
-        <ErrorState
-          title="Klaviyo key stopped working"
-          reason={
-            owner
-              ? 'Reconnect Klaviyo with a new private key to see your segments and lists.'
-              : 'The store’s owner reconnects Klaviyo with a new private key.'
-          }
-          action={
-            owner ? <ButtonLink href={connectHref} label="Reconnect" /> : null
-          }
-        />
-      ) : view.state === 'unavailable' ? (
-        <ErrorState
-          title="Audiences could not be read"
-          reason={
-            view.retry ? `${view.reason} Try again in a minute.` : view.reason
-          }
-          action={
-            view.retry ? (
-              <ButtonLink href={audiencesHref} label="Try again" />
-            ) : null
-          }
+      {view.state !== 'ready' ? (
+        <AudiencesProblemCard
+          problem={view}
+          owner={owner}
+          retryHref={audiencesHref}
         />
       ) : (
         <CardRow>
@@ -71,14 +44,14 @@ export function AudiencesScreen({
             empty="No segments in Klaviyo yet."
             source={view.source}
             rows={view.segments}
-            href={(id) => `/segments/${encodeURIComponent(id)}` as Route}
+            href={segmentHref}
           />
           <AudienceCard
             title="Lists"
             empty="No lists in Klaviyo yet."
             source={view.source}
             rows={view.lists}
-            href={(id) => `/lists/${encodeURIComponent(id)}` as Route}
+            href={listHref}
           />
         </CardRow>
       )}
@@ -86,7 +59,70 @@ export function AudiencesScreen({
   )
 }
 
-const people = (n: number) =>
+/**
+ * Why Klaviyo's audiences cannot be shown, with the one button that fixes
+ * it, on Audiences and on a segment's or a list's page alike: the owner
+ * connects or reconnects Klaviyo on Settings; staff are told who does.
+ */
+export function AudiencesProblemCard({
+  problem,
+  owner,
+  retryHref
+}: {
+  problem: AudiencesProblem
+  owner: boolean
+  /** The page Try again opens again. */
+  retryHref: Route
+}) {
+  if (problem.state === 'not_connected')
+    return owner ? (
+      <EmptyState
+        title="Klaviyo not connected"
+        action={
+          <ButtonLink href={connectKlaviyoHref} label="Connect Klaviyo" />
+        }
+      />
+    ) : (
+      <Card label="Klaviyo">
+        <h2 className="type-heading">Klaviyo not connected</h2>
+        <p className="type-body mt-[var(--space-3)] text-[var(--stone)]">
+          The store’s owner connects Klaviyo. Its segments and lists then show
+          here.
+        </p>
+      </Card>
+    )
+  if (problem.state === 'reconnect')
+    return (
+      <ErrorState
+        title="Klaviyo key stopped working"
+        reason={
+          owner
+            ? 'Reconnect Klaviyo with a new private key to see your segments and lists.'
+            : 'The store’s owner reconnects Klaviyo with a new private key.'
+        }
+        action={
+          owner ? (
+            <ButtonLink href={connectKlaviyoHref} label="Reconnect" />
+          ) : null
+        }
+      />
+    )
+  return (
+    <ErrorState
+      title="Audiences could not be read"
+      reason={
+        problem.retry
+          ? `${problem.reason} Try again in a minute.`
+          : problem.reason
+      }
+      action={
+        problem.retry ? <ButtonLink href={retryHref} label="Try again" /> : null
+      }
+    />
+  )
+}
+
+export const people = (n: number) =>
   n === 1 ? '1 person' : `${new Intl.NumberFormat('en-US').format(n)} people`
 
 function AudienceThumb() {

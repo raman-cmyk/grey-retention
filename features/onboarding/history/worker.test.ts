@@ -10,6 +10,7 @@ import {
   type HistoryFailure
 } from '@/lib/providers/klaviyo/recorded-history'
 import type { KlaviyoResponse } from '@/lib/providers/klaviyo/client'
+import { maxEventPages } from '@/lib/providers/klaviyo/catalog'
 import type { HistorySnapshot } from './facts'
 import { planFromHistory, unknownAudience } from './read'
 import { historyRunMs, readBrandHistory } from './worker'
@@ -146,6 +147,7 @@ const read = async (
     voice?: Parameters<typeof database>[1]
     templatesGone?: string[]
     noTemplateScope?: boolean
+    returns?: boolean
   } = {}
 ) => {
   const recordedAnswers = recordedHistoryTransport({
@@ -154,7 +156,8 @@ const read = async (
     variationsApart: options.variationsApart,
     reportsCut: options.reportsCut,
     templatesGone: options.templatesGone,
-    noTemplateScope: options.noTemplateScope
+    noTemplateScope: options.noTemplateScope,
+    returns: options.returns
   })
   const transport = (async (request) =>
     options.instead?.(decodeURIComponent(request.url)) ??
@@ -282,6 +285,110 @@ describe('readBrandHistory', () => {
     ).toBe(false)
     // Klaviyo answers one report question a second.
     expect(waits).toEqual([1_100])
+    // ONB-ORD: no Cancelled or Refunded Order metric, so no order is read.
+    expect(transport.calls.some((c) => c.includes('/api/events'))).toBe(false)
+  })
+
+  describe('cancelled and refunded orders (ONB-ORD)', () => {
+    it('takes them off the email or flow Klaviyo credited, so the best email is true', async () => {
+      const { stored, transport } = await read({ returns: true })
+      const email = stored.snapshot.sent.find((e) => e.id === 'MsgA02')
+      // $800 cancelled and $50 of $200 refunded: one order fewer.
+      expect(email).toMatchObject({
+        orders: 30,
+        revenue: 2270,
+        revenuePerRecipient: 0.95
+      })
+      expect(stored.snapshot.sent.find((e) => e.id === 'MsgA01')).toMatchObject(
+        { orders: 14, revenue: 1420 }
+      )
+      // $80 of the abandoned cart's orders refunded in full.
+      expect(stored.snapshot.flows[0]).toMatchObject({
+        name: 'Abandoned cart',
+        orders90d: 51,
+        revenue90d: 5270.5
+      })
+      expect(stored.findings.map((f) => f.statement)).toContain(
+        'The email "Last chance: 15% off overshirts" earned the most per recipient in the last year.'
+      )
+      // The cancel of an order placed before the year changes nothing, and
+      // the read is still whole.
+      expect(stored.summary).toMatchObject({ complete: true })
+      // The orders asked for once, with their attributions.
+      expect(
+        transport.calls.filter((c) => c.includes('include=attributions'))
+      ).toHaveLength(1)
+    })
+
+    it('leaves the results as Klaviyo counted them, and the history whole, when the orders cannot be read', async () => {
+      // Refused, or Klaviyo down or too slow: only the correction is lost.
+      for (const answer of [refused(400), refused(503)]) {
+        const { stored, run } = await read({
+          returns: true,
+          fail: { on: 'returns', with: answer }
+        })
+        expect(run).toMatchObject({ state: 'ready' })
+        expect(
+          stored.snapshot.sent.find((e) => e.id === 'MsgA02')
+        ).toMatchObject({ orders: 31, revenue: 3120 })
+        expect(stored.snapshot.flows[0]).toMatchObject({ revenue90d: 5350.5 })
+        // The correction never makes the history incomplete (Plan would
+        // then use the sample store).
+        expect(stored.summary).toMatchObject({ complete: true })
+      }
+    })
+
+    it('keeps the history whole when a cancels read fails, taking off the refunds it has', async () => {
+      const { stored } = await read({
+        returns: true,
+        instead: (url) =>
+          url.includes('metric_id,"CnclOr"') ? refused(503) : null
+      })
+      // The $800 cancel is unread; the $50 refund still comes off.
+      expect(stored.snapshot.sent.find((e) => e.id === 'MsgA02')).toMatchObject(
+        { orders: 31, revenue: 3070 }
+      )
+      expect(stored.summary).toMatchObject({ complete: true })
+    })
+
+    it('keeps the history whole when the orders read is cut short', async () => {
+      // Every page says there is another and finds no order: the read
+      // stops at the events' page cap.
+      const pages: string[] = []
+      const { stored } = await read({
+        returns: true,
+        instead: (url) => {
+          if (!url.includes('include=attributions')) return null
+          pages.push(url)
+          const next = url.replace(/&page_cursor=\d+$/, '')
+          return {
+            status: 200,
+            headers: { 'content-type': 'application/vnd.api+json' },
+            body: JSON.stringify({
+              data: [],
+              links: { self: url, next: `${next}&page_cursor=${pages.length}` }
+            })
+          }
+        }
+      })
+      expect(pages.length).toBe(maxEventPages)
+      expect(stored.snapshot.sent.find((e) => e.id === 'MsgA02')).toMatchObject(
+        { orders: 31, revenue: 3120 }
+      )
+      expect(stored.summary).toMatchObject({ complete: true })
+    })
+
+    it("still stops the job on Klaviyo's pace or a refused key while reading the orders", async () => {
+      for (const status of [401, 429])
+        await expect(
+          read({
+            returns: true,
+            fail: { on: 'returns', with: refused(status) }
+          })
+        ).rejects.toMatchObject({
+          kind: status === 401 ? 'bad_key' : 'rate_limited'
+        })
+    })
   })
 
   it("reads every day and hour in the workspace's timezone, when it has one", async () => {
