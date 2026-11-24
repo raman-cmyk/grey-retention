@@ -176,11 +176,17 @@ const batches = <T>(items: readonly T[], size: number) =>
     items.slice(i * size, (i + 1) * size)
   )
 
-/** Reads the workspace's reference rows; throws when a read fails. */
+/**
+ * Reads the workspace's reference rows; throws when a read fails. UI-USE:
+ * `chosen`, the inspiration email the owner chose, is read too when it is
+ * not among the latest, on the same terms (tagged, within the year, of a
+ * brand the workspace follows, or a sample brand for a sample workspace).
+ */
 export async function readReferenceRows(
   db: Db,
   tenantId: string,
-  now: number
+  now: number,
+  chosen?: string
 ): Promise<ReferenceRows> {
   const since = new Date(now - maxAgeDays * dayMs).toISOString()
   const [subs, hiddenRows, profile] = await Promise.all([
@@ -214,7 +220,7 @@ export async function readReferenceRows(
       .eq('labels_state', 'tagged')
       .gte('received_at', since)
       .not('inbox_message_id', 'is', null)
-  const [own, samples] = await Promise.all([
+  const [own, samples, picked] = await Promise.all([
     followed.length
       ? recent()
           .in('capture_id', followed)
@@ -231,12 +237,22 @@ export async function readReferenceRows(
           .order('received_at', { ascending: false })
           .order('id', { ascending: true })
           .limit(maxSampleEmails)
+      : { data: [], error: null },
+    chosen && (followed.length || sampleStore)
+      ? recent().eq('id', chosen).limit(1)
       : { data: [], error: null }
   ])
   if (own.error) throw failed('email', own.error)
   if (samples.error) throw failed('email', samples.error)
+  if (picked.error) throw failed('email', picked.error)
+  // The chosen email only on the terms the others are read on.
+  const pickedShown = picked.data.filter(
+    (e) =>
+      !hidden.includes(e.capture_id) &&
+      (followed.includes(e.capture_id) || (sampleStore && e.synthetic))
+  )
   const seen = new Set<string>()
-  const emails = [...own.data, ...samples.data].filter(
+  const emails = [...own.data, ...samples.data, ...pickedShown].filter(
     (e) => !seen.has(e.id) && !!seen.add(e.id)
   )
   const messageIds = emails

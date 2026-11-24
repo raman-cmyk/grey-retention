@@ -14,7 +14,7 @@ vi.mock('next/server', () => ({ after }))
 vi.mock('./worker', () => ({ runEmailBuilds: vi.fn() }))
 
 import { redirect } from 'next/navigation'
-import { createEmail } from './actions'
+import { createEmail, createEmailFromInspiration } from './actions'
 
 const tenantId = '00000000-0000-4000-8000-000000000101'
 const run = '00000000-0000-4000-8000-0000000000aa'
@@ -153,5 +153,151 @@ describe('creating an email', () => {
       error: 'Creating emails is unavailable right now.'
     })
     expect(after).not.toHaveBeenCalled()
+  })
+})
+
+describe('creating an email from an inspiration email (UI-USE)', () => {
+  const reference = '00000000-0000-4000-8000-0000000000cc'
+  const use = (over: Record<string, string> = {}) =>
+    form({ run, slot: '3', mode: 'copy', reference, ...over })
+  // The build the command returned, read back with the owner's session.
+  const made = vi.fn()
+  const reads: unknown[][] = []
+  beforeEach(() => {
+    reads.length = 0
+    made.mockResolvedValue({
+      data: { mode: 'copy', reference_id: reference },
+      error: null
+    })
+    const chain: Record<string, unknown> = {}
+    for (const op of ['select', 'eq'])
+      chain[op] = (...a: unknown[]) => {
+        reads.push([op, ...a])
+        return chain
+      }
+    chain.maybeSingle = made
+    supabase.createClient.mockResolvedValue({
+      rpc,
+      from: (table: string) => {
+        reads.push(['from', table])
+        return chain
+      }
+    })
+  })
+
+  it('tells the owner, instead of opening it, when that email is already being made another way', async () => {
+    for (const data of [
+      { mode: 'copy', reference_id: null },
+      { mode: 'copy', reference_id: '00000000-0000-4000-8000-0000000000dd' },
+      { mode: 'remix', reference_id: reference }
+    ]) {
+      made.mockResolvedValue({ data, error: null })
+      expect(await createEmailFromInspiration({}, use())).toEqual({
+        error:
+          'This email is already being made from another design. Open it on your plan.'
+      })
+    }
+    expect(reads).toEqual(
+      expect.arrayContaining([
+        ['from', 'email_builds'],
+        ['select', 'mode,reference_id'],
+        ['eq', 'id', build],
+        ['eq', 'tenant_id', tenantId]
+      ])
+    )
+    expect(redirect).not.toHaveBeenCalled()
+    expect(after).not.toHaveBeenCalled()
+  })
+
+  it('creates it for the owner with the chosen email, builds it, and opens its page', async () => {
+    expect(await createEmailFromInspiration({}, use())).toBeUndefined()
+    expect(rpc).toHaveBeenCalledWith('create_email_build', {
+      t: tenantId,
+      run,
+      slot: 3,
+      mode: 'copy',
+      reference
+    })
+    expect(after).toHaveBeenCalledOnce()
+    expect(redirect).toHaveBeenCalledWith(`/plan/email/${build}`)
+    await createEmailFromInspiration({}, use({ mode: 'remix' }))
+    expect(rpc).toHaveBeenLastCalledWith(
+      'create_email_build',
+      expect.objectContaining({ mode: 'remix', reference })
+    )
+  })
+
+  it('is the owner’s only, before anything is read', async () => {
+    auth.requireRequestContext.mockResolvedValue({
+      tenantId,
+      tenantRole: 'staff'
+    })
+    expect(await createEmailFromInspiration({}, use())).toEqual({
+      error: 'Only this workspace’s owner creates emails.'
+    })
+    expect(supabase.createClient).not.toHaveBeenCalled()
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('refuses a broken form: a missing email, a planned email, or Copy or Remix', async () => {
+    const cases: [Record<string, string>, string][] = [
+      [{ reference: 'x' }, 'Choose an email in Inspiration first.'],
+      [{ reference: '' }, 'Choose an email in Inspiration first.'],
+      [{ slot: '' }, 'Choose a planned email.'],
+      [{ slot: '20' }, 'Choose a planned email.'],
+      [{ run: 'x' }, 'Choose a planned email.'],
+      // Scratch follows no email.
+      [{ mode: 'scratch' }, 'Choose Copy or Remix.'],
+      [{ mode: '' }, 'Choose Copy or Remix.']
+    ]
+    for (const [over, error] of cases)
+      expect(await createEmailFromInspiration({}, use(over))).toEqual({
+        error
+      })
+    const none = new FormData()
+    none.append('run', run)
+    none.append('reference', reference)
+    expect(await createEmailFromInspiration({}, none)).toEqual({
+      error: 'Choose a planned email.'
+    })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('says why it could not, from the command’s hints', async () => {
+    const cases = [
+      [
+        {
+          code: '22023',
+          message: 'This inspiration email is not one you can use',
+          hint: 'build_reference_unknown'
+        },
+        'This email is no longer in your Inspiration. Choose another one there.'
+      ],
+      [
+        {
+          code: '22023',
+          message: 'Choose Copy or Remix for an inspiration email',
+          hint: 'build_mode_reference'
+        },
+        'Choose Copy or Remix.'
+      ],
+      [
+        { code: '22023', hint: 'build_mode_text' },
+        'A text email is written as a letter, not copied or remixed. Create it as it is.'
+      ],
+      [
+        { code: 'PT409' },
+        'This email’s day has passed or the plan has changed. Plan again to create it.'
+      ],
+      [{ code: '42501' }, 'We could not create the email. Try again.']
+    ] as const
+    for (const [error, message] of cases) {
+      rpc.mockResolvedValue({ data: null, error })
+      expect(await createEmailFromInspiration({}, use())).toEqual({
+        error: message
+      })
+    }
+    expect(after).not.toHaveBeenCalled()
+    expect(redirect).not.toHaveBeenCalled()
   })
 })

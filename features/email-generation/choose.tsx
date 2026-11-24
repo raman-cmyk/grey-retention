@@ -290,7 +290,7 @@ export async function ChooseOutcome({
         href={startDraftHref({ imported: importId })}
         className="mt-6 block text-xs text-[var(--text-muted)] underline underline-offset-4"
       >
-        Use only its outline in a new plan
+        Save a draft that follows its outline
       </Link>
     </div>
   )

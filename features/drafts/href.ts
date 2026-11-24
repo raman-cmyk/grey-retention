@@ -1,9 +1,11 @@
 import type { Route } from 'next'
 
 /**
- * UI-OLDc: the GROS addresses of a draft made from an Inspiration email.
- * `/inspiration/use` starts it (the old `/first-draft`), and the draft
- * opens at `/plan/draft/<id>` (the old `/campaigns/<id>`).
+ * UI-OLDc: the GROS addresses of "Use this design" and of a saved draft.
+ * `/inspiration/use` (the old `/first-draft`) runs Create email on a
+ * planned email for a followed brand's email (UI-USE), or starts a draft
+ * for an email the owner added; a draft opens at `/plan/draft/<id>` (the
+ * old `/campaigns/<id>`).
  */
 export const startDraftPath = '/inspiration/use'
 

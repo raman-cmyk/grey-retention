@@ -349,3 +349,161 @@ describe('the sections step and the owner’s mode (DST-002b)', () => {
     expect(read).toBe(false)
   })
 })
+
+describe('the inspiration email the owner chose (UI-USE)', () => {
+  it('copies the chosen email, even one the build would not pick itself', async () => {
+    // Another industry and kind: never picked by the ranking, but chosen.
+    const chosen = reference({
+      id: 'chosen',
+      industry: 'pet',
+      emailType: 'story',
+      receivedAt: new Date(Date.now() - 200 * 86_400_000).toISOString()
+    })
+    const { output, log } = await run({
+      mode: 'copy',
+      chosen: 'chosen',
+      load: loads([reference(), chosen])
+    })
+    expect(output.layout.mode).toBe('copy')
+    expect(output.reference?.emailId).toBe('chosen')
+    expect(output.reference?.reason).toMatch(
+      /^We copy Pine & Co’s email “The cedar sale” \(.+\), the email you chose in Inspiration\.$/
+    )
+    expect(log).toEqual([])
+  })
+
+  it('remixes the chosen email’s idea when the planner answers', async () => {
+    const safe = (await run(undefined)).output.layout.sections
+    const ai = vi.fn<AiCall>(async () => ({
+      ok: true,
+      content: {
+        sections: safe.map((s) => ({
+          variantId: s.variantId,
+          purpose: s.purpose
+        }))
+      },
+      provider: 'fake',
+      model: 'fake',
+      costMicro: 0,
+      inputTokens: 10,
+      outputTokens: 10,
+      settled: true
+    }))
+    const { output } = await run(
+      {
+        mode: 'remix',
+        chosen: 'chosen',
+        load: loads([
+          reference(),
+          reference({ id: 'chosen', angle: 'a gift for every room' })
+        ])
+      },
+      {},
+      ai
+    )
+    expect(output.reference).toMatchObject({ emailId: 'chosen', mode: 'remix' })
+    expect(JSON.parse(ai.mock.calls[0][0].request.user).strategyNote).toBe(
+      'a gift for every room'
+    )
+  })
+
+  it('names the chosen email when Remix cannot run without the AI planner', async () => {
+    let read = false
+    const { output, log } = await run({
+      mode: 'remix',
+      chosen: 'ref-1',
+      load: async () => {
+        read = true
+        return { emails: [reference()], followed: new Set() }
+      }
+    })
+    expect(output.layout.mode).toBe('scratch')
+    expect(output).not.toHaveProperty('reference')
+    expect(read).toBe(false)
+    expect(log.map((e) => e.reasonCode)).toEqual([
+      'reference_chosen_remix_no_ai'
+    ])
+    expect(log[0].reason).toBe(
+      'Remixing the email you chose in Inspiration needs the AI email planner, which could not be used for this email, so it is designed from scratch.'
+    )
+  })
+
+  it('never uses another email in its place: from scratch, and says why', async () => {
+    // The chosen email was not read (still being read, or unfollowed).
+    const gone = await run({
+      mode: 'copy',
+      chosen: 'missing',
+      load: loads([reference()])
+    })
+    expect(gone.output.layout.mode).toBe('scratch')
+    expect(gone.output).not.toHaveProperty('reference')
+    expect(gone.log.map((e) => e.reasonCode)).toEqual(['reference_chosen'])
+    expect(gone.log[0].reason).toMatch(
+      /^The email you chose in Inspiration cannot be followed: it is still being read.*so this email is designed from scratch\.$/
+    )
+    // A brand that is neither followed nor a sample is not followed.
+    const unfollowed = await run({
+      mode: 'copy',
+      chosen: 'ref-1',
+      load: loads([reference({ synthetic: false })])
+    })
+    expect(unfollowed.log.map((e) => e.reasonCode)).toEqual([
+      'reference_chosen'
+    ])
+  })
+
+  it('keeps every check on the chosen email: its age, its layout, its heights', async () => {
+    const cases: [Partial<ReferenceEmail>, RegExp][] = [
+      [
+        { receivedAt: new Date(Date.now() - 400 * 86_400_000).toISOString() },
+        /it is more than a year old/
+      ],
+      [
+        { sections: [{ blockType: 'hero_image', height: 640 }] },
+        /its layout is too short to follow/
+      ],
+      [
+        {
+          sections: [
+            { blockType: 'hero_image', height: 40 },
+            { blockType: 'offer_banner', height: 120, purpose: 'offer' },
+            { blockType: 'product_grid_2col', height: 700 }
+          ]
+        },
+        /its top pictures are too short or too tall to copy/
+      ]
+    ]
+    for (const [over, words] of cases) {
+      const { output, log } = await run({
+        mode: 'copy',
+        chosen: 'ref-1',
+        load: loads([reference(over), reference({ id: 'other' })])
+      })
+      expect(output.layout.mode).toBe('scratch')
+      expect(log.map((e) => e.reasonCode)).toEqual(['reference_chosen'])
+      expect(log[0].reason).toMatch(words)
+    }
+  })
+
+  it('copies an email with an offer only when the chosen one shows one', async () => {
+    const { output, log } = await run({
+      mode: 'copy',
+      chosen: 'ref-1',
+      load: loads([
+        reference({
+          sections: [
+            { blockType: 'hero_image', height: 640 },
+            { blockType: 'product_grid_2col', height: 700 },
+            { blockType: 'text', height: 200 }
+          ]
+        }),
+        reference({ id: 'with-offer' })
+      ])
+    })
+    expect(output.layout.mode).toBe('scratch')
+    expect(log.map((e) => e.reasonCode)).toEqual(['reference_chosen_no_offer'])
+    expect(log[0].reason).toBe(
+      'The email you chose in Inspiration shows no offer, and this email has one, so it is designed from scratch.'
+    )
+  })
+})

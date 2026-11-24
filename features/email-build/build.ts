@@ -23,6 +23,7 @@ import {
   type SectionPlan
 } from './sections'
 import {
+  chosenReference,
   rankReferences,
   referenceDna,
   type ReferenceEmail
@@ -1050,6 +1051,12 @@ export type BuildCtx = {
    */
   reference?: {
     mode: 'copy' | 'remix'
+    /**
+     * UI-USE: the inspiration email the owner chose ("Use this design"):
+     * the build follows it or none (`chosenReference`). Missing: the build
+     * picks one itself (`rankReferences`).
+     */
+    chosen?: string
     load: () => Promise<{
       emails: readonly ReferenceEmail[]
       followed: ReadonlySet<string>
@@ -1068,7 +1075,13 @@ const scratchWords = {
   reference_no_idea:
     'None of the matching emails from the brands you follow has a clear idea to remix, so this email is designed from scratch.',
   reference_remix_planner:
-    'The AI email planner could not remix the chosen email, so this email is designed from scratch.'
+    'The AI email planner could not remix the chosen email, so this email is designed from scratch.',
+  reference_chosen_remix_no_ai:
+    'Remixing the email you chose in Inspiration needs the AI email planner, which could not be used for this email, so it is designed from scratch.',
+  reference_chosen_no_offer:
+    'The email you chose in Inspiration shows no offer, and this email has one, so it is designed from scratch.',
+  reference_chosen_no_idea:
+    'The email you chose in Inspiration has no clear idea to remix, so this email is designed from scratch.'
 } as const
 
 /** Records why a Copy or Remix email is made from scratch (D16). */
@@ -1116,7 +1129,7 @@ async function chooseReference(
   const want = ctx.reference
   if (!want || planned.format === 'text') return null
   const scratch = async (
-    code: keyof typeof scratchWords | 'reference_none',
+    code: keyof typeof scratchWords | 'reference_none' | 'reference_chosen',
     reason?: string,
     cause?: string
   ) => {
@@ -1129,8 +1142,12 @@ async function chooseReference(
     )
     return null
   }
+  // UI-USE: the owner's chosen email is named, so the page says why his
+  // choice was not followed.
   if (want.mode === 'remix' && !ctx.agents)
-    return scratch('reference_remix_no_ai')
+    return scratch(
+      want.chosen ? 'reference_chosen_remix_no_ai' : 'reference_remix_no_ai'
+    )
   // The step goes on from scratch (D16); the read's code (never its words)
   // stays in the run log's detail for the team.
   let cause = ''
@@ -1140,11 +1157,20 @@ async function chooseReference(
     return null
   })
   if (!loaded) return scratch('reference_unreadable', undefined, cause)
-  const { picks, reason } = rankReferences(
-    loaded.emails,
-    { industry: store.industry, emailType: planned.emailType },
-    { mode: want.mode, now, followed: loaded.followed }
-  )
+  const options = { mode: want.mode, now, followed: loaded.followed }
+  // UI-USE: the owner's own choice is followed or none is (D16: the email
+  // is still made, from scratch, and the run log says why).
+  const chosen = want.chosen
+    ? chosenReference(loaded.emails, want.chosen, options)
+    : null
+  if (chosen && !chosen.email) return scratch('reference_chosen', chosen.reason)
+  const { picks, reason } = chosen?.email
+    ? { picks: [{ email: chosen.email, reason: chosen.reason }], reason: '' }
+    : rankReferences(
+        loaded.emails,
+        { industry: store.industry, emailType: planned.emailType },
+        options
+      )
   if (!picks.length) return scratch('reference_none', reason)
   // Copy: an email with an offer keeps its offer, so the plan Copy would
   // make from the reference must hold the offer's section. Remix: the
@@ -1159,7 +1185,13 @@ async function chooseReference(
   )
   if (!pick)
     return scratch(
-      want.mode === 'copy' ? 'reference_no_offer' : 'reference_no_idea'
+      want.chosen
+        ? want.mode === 'copy'
+          ? 'reference_chosen_no_offer'
+          : 'reference_chosen_no_idea'
+        : want.mode === 'copy'
+          ? 'reference_no_offer'
+          : 'reference_no_idea'
     )
   const dna = referenceDna(pick.email)
   return {

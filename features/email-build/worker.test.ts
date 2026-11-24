@@ -695,8 +695,9 @@ describe('saved steps (REL-081)', () => {
         .filter((c) => c.fn.startsWith('email_builds.'))
         .map((c) => [c.fn, ...(c.args.args as unknown[])])
     ).toEqual([
-      // DST-002b: the build's mode, once, at the sections step.
-      ['email_builds.select', 'mode'],
+      // DST-002b: the build's mode (UI-USE: and its chosen email), once,
+      // at the sections step.
+      ['email_builds.select', 'mode,reference_id'],
       ['email_builds.eq', 'id', 'build-1'],
       ['email_builds.eq', 'tenant_id', tenant],
       [
@@ -798,6 +799,82 @@ describe('saved steps (REL-081)', () => {
     expect(sections.layout.mode).toBe('copy')
     expect(sections.reference).toMatchObject({ emailId: 'ref-1' })
     expect(calls.find((c) => c.fn === 'finish_email_build')).toBeDefined()
+  })
+
+  it('follows the inspiration email the owner chose, read by its id (UI-USE)', async () => {
+    const { db, calls } = fakeDb(
+      [step()],
+      {},
+      { email_builds: [{ mode: 'copy', reference_id: 'chosen' }] }
+    )
+    const asked: (string | undefined)[] = []
+    const email = (id: string, emailType: string) => ({
+      id,
+      brandId: 'pine',
+      brand: 'Pine & Co',
+      synthetic: true,
+      subject: `Email ${id}`,
+      industry: 'home',
+      emailType,
+      angle: null,
+      receivedAt: new Date(Date.now() - 86_400_000).toISOString(),
+      winner: false,
+      sections: [
+        { blockType: 'hero_product', height: 600 },
+        { blockType: 'product_feature', height: 500 },
+        { blockType: 'text', height: 200 }
+      ]
+    })
+    await runEmailBuilds(db, {
+      limit: 1,
+      fallbacks: memoryFallbackLog(),
+      references: async (_tenant, chosen) => {
+        asked.push(chosen)
+        // The build's own pick would be `match` (the same kind of email).
+        return {
+          emails: [email('match', 'launch'), email('chosen', 'story')],
+          followed: new Set<string>()
+        }
+      }
+    })
+    expect(asked).toEqual(['chosen'])
+    const done = calls.find((c) => c.fn === 'finish_email_step')!.args
+    expect(done.output).toMatchObject({
+      layout: { mode: 'copy' },
+      reference: { emailId: 'chosen', mode: 'copy' }
+    })
+  })
+
+  it('goes on without a choice while the column is not there yet (UI-USE)', async () => {
+    // 42703: the app went live before the migration that adds the column.
+    let reads = 0
+    const { db: base } = fakeDb([step()])
+    const db = {
+      rpc: (base as { rpc: unknown }).rpc,
+      from: (table: string) => {
+        const answer = () =>
+          table !== 'email_builds'
+            ? { data: [], error: null }
+            : reads++ === 0
+              ? { data: null, error: { code: '42703' } }
+              : { data: [{ mode: 'copy' }], error: null }
+        const query: Record<string, unknown> = {}
+        for (const m of ['select', 'eq', 'neq', 'or']) query[m] = () => query
+        query.then = (done: (r: unknown) => unknown) =>
+          Promise.resolve(answer()).then(done)
+        return query
+      }
+    }
+    const asked: (string | undefined)[] = []
+    await runEmailBuilds(db as never, {
+      limit: 1,
+      fallbacks: memoryFallbackLog(),
+      references: async (_tenant, chosen) => {
+        asked.push(chosen)
+        return { emails: [], followed: new Set<string>() }
+      }
+    })
+    expect(asked).toEqual([undefined])
   })
 
   it('tries the step again when the build’s mode cannot be read, and saves nothing', async () => {

@@ -5,7 +5,7 @@ select plan(79);
 select ok(not has_table_privilege('authenticated','public.email_builds','insert,update,delete,truncate'),'members cannot write builds directly');
 select ok(not has_table_privilege('service_role','public.email_builds','insert,update,delete,truncate,maintain'),'jobs write builds only through the commands');
 select ok(not has_table_privilege('anon','public.email_builds','select'),'anon cannot read builds');
-select ok(not has_function_privilege('anon','public.create_email_build(uuid,uuid,integer,text)','execute'),'anon cannot create an email');
+select ok(not has_function_privilege('anon','public.create_email_build(uuid,uuid,integer,text,uuid)','execute'),'anon cannot create an email');
 select ok(not has_function_privilege('authenticated','public.claim_email_build(uuid)','execute'),'members cannot claim a build');
 select ok(not has_function_privilege('authenticated','public.finish_email_build(uuid,uuid,jsonb)','execute'),'members cannot finish a build');
 select ok(not has_function_privilege('authenticated','public.finish_email_push(uuid,uuid,text,boolean)','execute'),'members cannot finish a push');

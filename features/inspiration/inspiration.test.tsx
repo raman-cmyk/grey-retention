@@ -351,9 +351,10 @@ describe('Inspiration screen (UI-INSa)', () => {
       within(rows[0]!).getByRole('link', { name: 'Use this design' })
     ).toHaveAttribute('href', '/inspiration/use?reference=b')
     expect(rows[1]).toHaveTextContent('Added by you')
+    // UI-USE: Create email follows only a followed brand's email.
     expect(
-      within(rows[1]!).getByRole('link', { name: 'Use this design' })
-    ).toHaveAttribute('href', '/inspiration/use?imported=i')
+      within(rows[1]!).queryByRole('link', { name: 'Use this design' })
+    ).toBeNull()
     expect(
       within(rows[2]!).getByRole('img', { name: 'Screenshot of Email a' })
     ).toHaveAttribute('src', 'https://cdn.example/a.jpg')

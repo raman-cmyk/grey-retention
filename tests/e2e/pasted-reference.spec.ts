@@ -83,7 +83,7 @@ test('owner pastes a hostile email, recovers from failure, replays safely and re
   await page.getByRole('button', { name: 'Save and use this email' }).click()
   await expect(page).toHaveURL(new RegExp(`/create-email/${importedId}\\?`))
   await page
-    .getByRole('link', { name: 'Use only its outline in a new plan' })
+    .getByRole('link', { name: 'Save a draft that follows its outline' })
     .click()
   await expect(page).toHaveURL(new RegExp(`imported=${importedId}`))
   const saved = await db

@@ -5,9 +5,10 @@ import { runWorkspaceJobs } from './jobs'
 import { newOwner } from './new-owner'
 
 /**
- * UI-OLDc: "Use this design" and the draft it saves are GROS screens
+ * UI-OLDc: the draft form and the draft it saves are GROS screens
  * (`/inspiration/use`, `/plan/draft/<id>`); the old `/first-draft` and
- * `/campaigns/<id>` addresses open them.
+ * `/campaigns/<id>` addresses open them. UI-USE: "Use this design" on a
+ * followed brand's email runs Create email on a planned email instead.
  */
 
 /** A sample brand's website, unique to the run (letters only). */
@@ -101,11 +102,11 @@ test('owner creates and reopens the same draft from scratch without integrations
   await expect(page.getByText('Use the winter photos')).toBeVisible()
 })
 
-test('Use this design on an Inspiration email starts a draft that follows it', async ({
+test('Use this design runs Create email on a planned email, with the chosen inspiration email', async ({
   page,
   browser
 }, info) => {
-  test.setTimeout(90_000)
+  test.setTimeout(150_000)
   const db = await newOwner(page)
   await page.goto('/inspiration')
   const domain = sampleDomain('composer')
@@ -119,58 +120,122 @@ test('Use this design on an Inspiration email starts a draft that follows it', a
     .getByRole('link', { name: 'Use this design' })
     .first()
     .click()
-  await expect(page).toHaveURL(
-    /\/inspiration\/use\?attempt=[a-f0-9-]+&reference=[a-f0-9-]+$/
-  )
-  const referenceId = new URL(page.url()).searchParams.get('reference')!
+  // UI-USE: no draft request key; Create email is idempotent per planned email.
+  await expect(page).toHaveURL(/\/inspiration\/use\?reference=[a-f0-9-]+$/)
+  const useUrl = page.url()
+  const referenceId = new URL(useUrl).searchParams.get('reference')!
   await expect(
     page.getByRole('heading', { name: 'Use this design', level: 1 })
   ).toBeVisible()
   const frame = page.frameLocator('iframe[title^="The email: "]')
   await expect(frame.locator('body')).not.toBeEmpty()
   expect(await frame.locator('script, form').count()).toBe(0)
+
+  // No plan yet: one button plans the next 15 days.
+  await expect(page.getByRole('heading', { name: 'No plan yet' })).toBeVisible()
+  await page.getByRole('button', { name: 'Plan next 15 days' }).click()
+  await expect(page).toHaveURL(/\/plan$/)
+  await expect(
+    page.getByRole('heading', { name: 'Which offers should we run?' })
+  ).toBeVisible({ timeout: 30_000 })
+  await page.getByRole('button', { name: 'Plan the 15 days' }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Your next 15 days' })
+  ).toBeVisible({ timeout: 30_000 })
+
+  // Back on the chosen email: the planned emails with no email yet.
+  await page.goto(useUrl)
+  const pick = page.getByRole('region', { name: 'Choose a planned email' })
+  await expect(pick.getByRole('radio').first()).toBeChecked()
+  // The sample brand's emails are never tagged by the inbox: the page says
+  // so before Create email, and Remix is the choice (UI-USE review).
+  await expect(
+    page.getByText(
+      'This email is still being read, so GROS will make the email from scratch.'
+    )
+  ).toBeVisible()
+  await expect(pick.getByLabel('Remix this email')).toBeChecked()
+  if (info.project.name.startsWith('mobile'))
+    await page.setViewportSize({ width: 320, height: 800 })
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth
+    )
+  ).toBe(true)
   await page.screenshot({
-    path: `.audit/first-draft-reference-${info.project.name}.png`,
+    path: `.audit/use-design-${info.project.name}.png`,
     fullPage: true
   })
-  await page
-    .getByLabel('What should this email do?')
-    .fill('Adapt the section order using our original brand facts.')
-  await page.getByRole('button', { name: 'Create draft' }).click()
-  await expect(page).toHaveURL(/\/plan\/draft\/[a-f0-9-]+$/)
-  await expect(page.getByText(/^An Inspiration email/)).toBeVisible()
-  const result = await db
-    .from('campaigns')
-    .select('lineage,calendar_state')
-    .eq('id', page.url().split('/').at(-1)!)
-    .single()
-  expect(result.error).toBeNull()
-  expect(result.data!.lineage).toMatchObject({
-    structureId: referenceId,
-    structureSource: 'reference_structure',
-    copyReusable: false
+  await pick.getByRole('button', { name: 'Create email' }).click()
+  // The email's own page (its progress), made from the chosen email.
+  await expect(page).toHaveURL(/\/plan\/email\/[0-9a-f-]{36}$/, {
+    timeout: 30_000
   })
-  expect(result.data!.calendar_state).toBe('proposed')
+  const buildId = page.url().split('/').at(-1)!
+  const saved = await db
+    .from('email_builds')
+    .select('*')
+    .eq('id', buildId)
+    .single()
+  expect(saved.error).toBeNull()
+  expect(saved.data).toMatchObject({
+    mode: 'remix',
+    reference_id: referenceId
+  })
+  // The build runs right after the click (as Create email on the Plan).
+  // On the sample store it cannot follow the chosen email: Remix needs the
+  // AI planner (off with the fake providers), and the sample brand's emails
+  // are never tagged by the inbox. The page says why, naming the owner's
+  // choice, and the email is made from scratch, never from another email.
+  await expect(async () => {
+    await page.reload()
+    await expect(
+      page
+        .getByText(/the email you chose in Inspiration.*designed from scratch/i)
+        .first()
+    ).toBeVisible()
+  }).toPass({ timeout: 60_000 })
+  // Its saved sections step (saved right after the line above is written).
+  const sectionsStep = async () => {
+    const read = await db
+      .from('email_builds')
+      .select('progress')
+      .eq('id', buildId)
+      .single()
+    expect(read.error).toBeNull()
+    return (
+      read.data!.progress as {
+        sections?: { layout?: { mode?: string }; reference?: unknown }
+      }
+    ).sections
+  }
+  await expect
+    .poll(async () => (await sectionsStep())?.layout?.mode, {
+      timeout: 30_000
+    })
+    .toBe('scratch')
+  expect(await sectionsStep()).not.toHaveProperty('reference')
 
-  // Another workspace's owner cannot open this email to build from.
+  // Another workspace's owner cannot use this email.
   const foreign = await browser.newContext()
   const foreignPage = await foreign.newPage()
   await login(foreignPage, 'other')
   await foreignPage.goto(`/inspiration/use?reference=${referenceId}`)
   await expect(foreignPage.getByText('This email is gone')).toBeVisible()
   await expect(
-    foreignPage.getByRole('button', { name: 'Create draft' })
+    foreignPage.getByRole('button', { name: 'Create email' })
   ).toHaveCount(0)
   await foreign.close()
 
   // The old reference page opens the same email on "Use this design".
   await page.goto(`/email-library/${referenceId}`)
   await expect(page).toHaveURL(
-    new RegExp(`/inspiration/use\\?.*reference=${referenceId}`)
+    new RegExp(`/inspiration/use\\?reference=${referenceId}$`)
   )
-  await page
-    .getByLabel('What should this email do?')
-    .fill('Preserve this idea if the selected reference becomes unavailable.')
+  await expect(
+    page.getByRole('region', { name: 'Choose a planned email' })
+  ).toBeVisible()
+  // Stop following the brand: Create email is refused, and says why.
   const capture = await db
     .from('competitor_emails')
     .select('capture_id')
@@ -192,15 +257,17 @@ test('Use this design on an Inspiration email starts a draft that follows it', a
       })
     ).error
   ).toBeNull()
-  await page.getByRole('button', { name: 'Create draft' }).click()
+  await page
+    .getByRole('region', { name: 'Choose a planned email' })
+    .getByRole('button', { name: 'Create email' })
+    .click()
   await expect(
     page.getByText(
-      'This source is no longer available. Choose another reference or start from scratch.'
+      'This email is no longer in your Inspiration. Choose another one there.'
     )
   ).toBeVisible()
-  await expect(page.getByLabel('What should this email do?')).toHaveValue(
-    'Preserve this idea if the selected reference becomes unavailable.'
-  )
+  await page.reload()
+  await expect(page.getByText('This email is gone')).toBeVisible()
 })
 
 test('owner approves the date and the sample copy; staff and another workspace cannot', async ({
