@@ -29,22 +29,45 @@ export const geminiModels = {
     input: 500_000,
     cachedInput: 50_000,
     output: 3_000_000
+  },
+  // Read 2026-11-24 from the same page. Google's named replacement for
+  // 2.5 Flash (it routes 2.5 Flash calls here from 1 December 2026), at the
+  // same price.
+  'gemini-3.5-flash-lite': {
+    input: 300_000,
+    cachedInput: 30_000,
+    output: 2_500_000
+  },
+  // Read 2026-11-24. Google's named replacement for 2.5 Pro. Google charges
+  // half of this through 31 December 2026; the 2027 price is kept so the
+  // meter never counts less than Google charges.
+  'gemini-3.8-flash': {
+    input: 1_500_000,
+    cachedInput: 150_000,
+    output: 7_500_000
   }
 } as const
 
 export type GeminiModel = keyof typeof geminiModels
 
 /**
- * Decision D5: Flash-Lite labels and classifies, Flash writes copy. The agent
- * plan (AGENT_MAP.md) adds `plan` for rare, hard reasoning (Brand strategist,
- * Brief writer, Calendar planner) on 2.5 Pro.
+ * Decision D5: a cheap model labels and classifies, a stronger one writes
+ * copy and judges it. The agent plan (AGENT_MAP.md) adds `plan` for rare,
+ * hard reasoning (Brand strategist, Brief writer, Calendar planner, Art
+ * director, Section designer).
+ *
+ * AI-MDL-001: Google closed 2.5 Flash and 2.5 Pro to new users and shuts
+ * both down on 1 December 2026 (deprecations page, read 2026-11-24), so the
+ * defaults moved to the replacements Google names: 3.5 Flash-Lite for
+ * copy and review, 3.8 Flash for plan. 2.5 Flash-Lite is not deprecated and
+ * stays the label model. Settings can still choose any priced model.
  */
 export const defaultGeminiModels = {
   label: 'gemini-2.5-flash-lite',
-  copy: 'gemini-2.5-flash',
+  copy: 'gemini-3.5-flash-lite',
   /** Judging and second tries: inspectors, low-confidence re-tags. */
-  review: 'gemini-2.5-flash',
-  plan: 'gemini-2.5-pro'
+  review: 'gemini-3.5-flash-lite',
+  plan: 'gemini-3.8-flash'
 } as const satisfies Record<string, GeminiModel>
 
 export type AiPurpose = keyof typeof defaultGeminiModels

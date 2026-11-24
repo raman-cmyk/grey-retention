@@ -25,6 +25,21 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - Open question for design (16 Nov 2026, UI-INSa; built as noted until decided): a suggested brand on Inspiration has two buttons, Follow and Hide, where BRAND.md says one action per row. Hide is the owner's rule of 16 November, so both stay for now: Follow as an outline button, Hide as a quiet one. A hidden brand cannot be shown again from the screen yet; following a sample brand by its website brings it back (real brands with REAL-01b).
 - Open question for design (17 Nov 2026, UI-SETb; built as noted until decided): on Settings' Team card an invite's row has two buttons, Resend (outline) and Cancel invite (quiet), and a teammate's row two, Make Manager or Make Staff (outline) and Deactivate (quiet), where BRAND.md says one action per row. A role change, Deactivate and Reactivate ask first with the browser's own confirm. BRAND.md has no select, so the role at invite is two buttons, Invite as Staff (main) and Invite as Manager (outline).
 - Open question for design (17 Nov 2026, UI-SETd; built as noted until decided): BRAND.md has no select, checkbox or multi-line field, but Holidays (type, country, every year, notes), Support and Feature requests need them. They are plain controls on the GROS tokens (mist fill, radius md, forest focus), like DST-002c's mode pick. Holidays and events is its own page under Settings, reached from a small card with one sentence and Open holidays.
+- Open question for design (20 Nov 2026, UI-AUDb, UI-INSb, UI-LRNc; built as noted until decided): BRAND.md's ListRow keeps a title to one line, but at 375 px a segment's, brand's, email's or rule's name and its details were cut to a few letters. Built: on Audiences, Inspiration and Learned a row's name and details show whole, on as many lines as they need, and on a phone a row's button drops under its words (as ListRow already meant). Other lists still cut a title to one line. At 1280 px and wider nothing moves. Between 1024 and about 1180 px, Home's designed-email rows (the mode pick and Create email) and Settings' Team member and invite rows now put their buttons under the words; before, the words were squeezed to "Autumn…".
+
+## Legal pages (proposal)
+
+**Proposal, not approved** (POLICY-DRAFT, 20 Nov 2026): drafts of the Privacy Policy and the Terms of Service at `/privacy` and `/terms`, written from what the app really does with data, with every business fact not yet confirmed shown as a visible `[NEEDS RAMAN: …]` field. They show only with `LEGAL_DRAFTS=on` and are not linked from sign-up. The operator's legal entity and registered address are the first field: not confirmed, never published until they are. Every field is listed in [docs/legal/CHECKLIST.md](legal/CHECKLIST.md).
+
+## Picture work: what truly needs an outside service
+
+Owner picks #4, #12 and #15 (IMG-ADAPTER, 20 Nov 2026, `lib/providers/image-work.ts`). Status: **adapter ready, not wired, fake only.** Every job returns `not_available`, and the store's original picture is kept and used. This does not close picture work.
+
+- **The MVP needs no service purchase.** Emails already work with the store's original pictures, as they are today.
+- **Product cut-outs (#4): need a segmentation implementation.** Removing a background means finding the product's outline pixel by pixel. That can be a paid API, or a self-hosted or open-source segmentation model that we run ourselves. Either way it is new work; the browser and code we have today cannot do it.
+- **Smart crop (#12): only the semantic crop needs detection.** Cropping "around the product or a face" means finding them in the photo, which takes a detection model (paid AI, a service or self-hosted). A simple crop to a size, from the centre, needs nothing: the email layout already does it.
+- **Dark-mode backplate (#15): existing layout code for a picture that is already a see-through PNG.** The plate (a light panel behind the product) is plain layout code. For a photo with a solid background it only helps after a cut-out, so that case waits for #4. Knowing which store photos are already see-through is a small code follow-up (the photo library noting it), with no service.
+- **Asked (Blocked, needs Raman):** which segmentation and detection route, if any: paid, self-hosted or none for now.
 
 ## Hard design rules and current scope
 
@@ -50,6 +65,7 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 | EML-AB-001       | Test layer 3: A coded blocks vs B designed sections (design studio), one Klaviyo draft per email with A and B     | Not started; owner picks the default                              |
 | PICKS-1115       | Build the 61 owner-picked additions (AGENT_MAP.md, D27), plus the resumable build job (#81) they need             | Approved 15 Nov; not started                                      |
 | MEM-DONT-001     | Do's and don'ts memory from results, inspector rejections and owner edits                                         | Not started                                                       |
+| SCHED-LATE-001   | Scheduled runs fire every 5.5–9 hours, not every 30 minutes (GitHub delays them); queued work can wait            | Observed 20 Nov; pg_cron is a proposal (see Open decisions)       |
 
 ## Research follow-ups
 
@@ -72,6 +88,7 @@ After each discussion, capture explicit owner to-dos here, deduplicate, and pres
 - Onboarding (16 Nov 2026, UI-ONBa): may the owner skip the Klaviyo step with "Later"? **Proposal, built as such until decided:** no. Every plan and email reads the store from Klaviyo (VISION sections 5 and 10), so the Klaviyo step is done only when Klaviyo is connected. Rivals can be skipped (following a real brand is not built yet); discount codes are optional.
 - Design (proposal, UI-ONBe, 17 Nov): a suggested brand on the Rivals step has two actions, Follow and Hide, where BRAND.md's ListRow allows one. Built with Follow as an outline button and Hide as a quiet one until design decides.
 - Design (proposal, UI-RES-b, 16 Nov): BRAND.md has four statuses. A Results row for a deleted or not-sent email fits none, so it shows no pill for now; and a sample draft shows Planned on Home, Plan and Results though BRAND.md's Planned means "not created yet". Does either need a fifth look?
+- Scheduling (proposal, 20 Nov 2026, OPS-READY; not decided): GitHub delays scheduled workflows, so the 30-minute schedule fires only every 5.5 to 9 hours and queued work can wait hours. **Proposal:** move the frequent trigger to a database-side schedule (Supabase `pg_cron`, the option in `SCHEDULED_JOBS_RUNBOOK.md`), which runs on time and costs no Actions minutes; GitHub Actions keeps the browser jobs (screenshots, renders). Turning it on touches the hosted Supabase project, so it waits for Raman's OK.
 
 ## Discussion log
 

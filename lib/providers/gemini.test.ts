@@ -7,6 +7,8 @@ import {
   geminiBaseUrl,
   geminiOutputTokens,
   geminiRequestBody,
+  geminiThinkingLevel,
+  deepThinkingAllowance,
   selfThinkingAllowance,
   geminiUsage,
   maxResponseBytes
@@ -98,18 +100,18 @@ describe('geminiRequestBody', () => {
     ])
   })
 
-  it('omits the thinking budget for 3.x models and JSON settings for text', () => {
+  it('sends 3.x models a thinking level, no budget, no temperature, and text without JSON settings', () => {
     const body = JSON.parse(
       geminiRequestBody({
         ...request,
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3.5-flash-lite',
         responseKind: 'text',
         schema: undefined
       })
     )
     expect(body.generationConfig).toEqual({
       maxOutputTokens: 256 + selfThinkingAllowance,
-      temperature: 0
+      thinkingConfig: { thinkingLevel: 'MINIMAL' }
     })
   })
 
@@ -382,10 +384,8 @@ describe('thinking room (Gemini 2.5 counts thinking as output)', () => {
     expect(config({ reasoningEffort: undefined }).maxOutputTokens).toBe(256)
   })
 
-  it('keeps room when the model decides its own thinking (3.x, or 2.5 with no effort)', () => {
+  it('keeps room when 2.5 Flash or Pro decide their own thinking', () => {
     for (const r of [
-      { model: 'gemini-3-flash-preview', reasoningEffort: 'medium' },
-      { model: 'gemini-3.1-flash-lite', reasoningEffort: undefined },
       { model: 'gemini-2.5-flash', reasoningEffort: undefined },
       { model: 'gemini-2.5-pro', reasoningEffort: undefined }
     ] as const) {
@@ -393,6 +393,32 @@ describe('thinking room (Gemini 2.5 counts thinking as output)', () => {
       expect(c.maxOutputTokens).toBe(256 + selfThinkingAllowance)
       expect(c.thinkingConfig).toBeUndefined()
     }
+  })
+
+  it('keeps the deep room for a 3.x model at MEDIUM or its own default, the usual room at MINIMAL or LOW (AI-MDL-001)', () => {
+    // A level caps depth, not tokens: 3.8 Flash at MEDIUM (the plan tier)
+    // must not spend a planning agent's whole answer room on thinking.
+    for (const r of [
+      { model: 'gemini-3.8-flash', reasoningEffort: 'medium' },
+      { model: 'gemini-3-flash-preview', reasoningEffort: 'medium' },
+      { model: 'gemini-3.8-flash', reasoningEffort: undefined },
+      { model: 'gemini-3.1-flash-lite', reasoningEffort: undefined }
+    ] as const)
+      expect(config(r).maxOutputTokens).toBe(256 + deepThinkingAllowance)
+    for (const r of [
+      { model: 'gemini-3.8-flash', reasoningEffort: 'none' },
+      { model: 'gemini-3.8-flash', reasoningEffort: 'low' },
+      { model: 'gemini-3.5-flash-lite', reasoningEffort: 'none' },
+      { model: 'gemini-3.5-flash-lite', reasoningEffort: 'low' }
+    ] as const)
+      expect(config(r).maxOutputTokens).toBe(256 + selfThinkingAllowance)
+    expect(
+      geminiOutputTokens({
+        model: 'gemini-3.8-flash',
+        reasoningEffort: 'medium',
+        maxOutputTokens: 60_000
+      })
+    ).toBe(65_536)
   })
 
   it('never asks 2.5 Pro to switch thinking off, which it refuses', () => {
@@ -426,5 +452,79 @@ describe('thinking room (Gemini 2.5 counts thinking as output)', () => {
     ).toBeGreaterThan(
       geminiEstimateMicro('gemini-2.5-flash', body, r.maxOutputTokens)
     )
+  })
+})
+
+describe('thinking level (AI-MDL-001: Gemini 3.x takes a level, not a budget)', () => {
+  const config = (r: Partial<AiProviderRequest>) =>
+    JSON.parse(geminiRequestBody({ ...request, ...r })).generationConfig
+
+  it('maps each effort to the level of the same name', () => {
+    for (const model of [
+      'gemini-3.5-flash-lite',
+      'gemini-3.8-flash',
+      'gemini-3.1-flash-lite',
+      'gemini-3-flash-preview'
+    ]) {
+      expect(geminiThinkingLevel({ model, reasoningEffort: 'low' })).toBe('LOW')
+      expect(geminiThinkingLevel({ model, reasoningEffort: 'medium' })).toBe(
+        'MEDIUM'
+      )
+    }
+  })
+
+  it('asks for MINIMAL thinking on "none" where the model has it, LOW on 3.8 Flash, which refuses MINIMAL', () => {
+    for (const model of [
+      'gemini-3.5-flash-lite',
+      'gemini-3.1-flash-lite',
+      'gemini-3-flash-preview'
+    ])
+      expect(geminiThinkingLevel({ model, reasoningEffort: 'none' })).toBe(
+        'MINIMAL'
+      )
+    expect(
+      geminiThinkingLevel({
+        model: 'gemini-3.8-flash',
+        reasoningEffort: 'none'
+      })
+    ).toBe('LOW')
+  })
+
+  it('never sends a level to a 2.5 model (Google refuses it) or a budget to a 3.x model', () => {
+    for (const model of [
+      'gemini-2.5-flash-lite',
+      'gemini-2.5-flash',
+      'gemini-2.5-pro'
+    ])
+      for (const reasoningEffort of ['none', 'low', 'medium'] as const) {
+        expect(geminiThinkingLevel({ model, reasoningEffort })).toBeNull()
+        expect(config({ model, reasoningEffort }).thinkingConfig).toEqual({
+          thinkingBudget: expect.any(Number)
+        })
+      }
+    for (const reasoningEffort of ['none', 'low', 'medium'] as const)
+      expect(
+        config({ model: 'gemini-3.8-flash', reasoningEffort }).thinkingConfig
+      ).toEqual({ thinkingLevel: expect.any(String) })
+  })
+
+  it('leaves the level to the model when no effort is set', () => {
+    expect(
+      geminiThinkingLevel({
+        model: 'gemini-3.8-flash',
+        reasoningEffort: undefined
+      })
+    ).toBeNull()
+  })
+
+  it('sends temperature only to models that still take it (Google ignores it from 3.6 Flash and 3.5 Flash-Lite on, and will refuse it)', () => {
+    for (const model of [
+      'gemini-2.5-flash',
+      'gemini-3.1-flash-lite',
+      'gemini-3-flash-preview'
+    ])
+      expect(config({ model }).temperature).toBe(0)
+    for (const model of ['gemini-3.5-flash-lite', 'gemini-3.8-flash'])
+      expect(config({ model })).not.toHaveProperty('temperature')
   })
 })

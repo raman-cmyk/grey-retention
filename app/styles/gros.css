@@ -282,9 +282,16 @@
     height: 32px;
   }
 
-  /* A row's words keep room for the title; the action wraps below them. */
+  /*
+   * A row's words keep room for the title, so the action wraps below them;
+   * on a very narrow phone (320 px) never more than is left beside the
+   * thumbnail, so the words stay beside it (UI-AUDb review).
+   */
   .gros .gros-row-words {
-    min-width: calc(var(--space-12) * 3);
+    min-width: min(
+      calc(var(--space-12) * 3),
+      calc(100% - var(--control-sm) - 14px)
+    );
   }
   /* A text email's thumbnail: three lines, the last one shorter. */
   .gros .gros-text-line,

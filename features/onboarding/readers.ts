@@ -5,6 +5,12 @@ import { logger } from '@/lib/logger'
 import { workspaceTimezone } from '@/features/strategy/offers'
 import { staleBooks, within, writeBrandBook } from './brand-book'
 import { listCorrections } from './brand-book-corrections'
+import {
+  booksNeedingStrategy,
+  runBrandStrategist,
+  strategistCallMs,
+  strategistReady
+} from './strategist-run'
 import { listCatalog } from './catalog/read'
 import { listFindings } from './findings'
 import { readKlaviyoHistory } from './history/read'
@@ -112,6 +118,13 @@ export async function runSourceReadings(
     staleBooks?: (db: Db) => Promise<string[]>
     /** The longest a Brand book write is waited for. */
     bookMs?: number
+    /**
+     * ONB-106c: the Brand strategist for one workspace, and the workspaces
+     * whose newest book needs one. By default only when a live model is set
+     * up for the plan tier (never the fake).
+     */
+    strategist?: (db: Db, tenantId: string) => Promise<unknown>
+    strategyNeeded?: (db: Db) => Promise<string[]>
   } = {}
 ): Promise<ReadersRun> {
   const now = options.now ?? Date.now
@@ -129,6 +142,43 @@ export async function runSourceReadings(
         code: (error as { code?: string })?.code ?? 'brand_book_error'
       })
     )
+  const env = options.env ?? process.env
+  const strategist =
+    options.strategist ??
+    (strategistReady(env)
+      ? (d: Db, t: string) => runBrandStrategist(d, t, { env })
+      : null)
+  // The strategist's call and its database work, with one more margin
+  // kept free before the route's end.
+  const fitsStrategist = () =>
+    now() - started + strategistCallMs + 2 * dbMarginMs <= routeMs
+  /**
+   * ONB-106c: one Brand strategist call per run, for the newest book that
+   * needs one (`booksNeedingStrategy`), only with a live plan model and only
+   * when the lookup, the call (`strategistCallMs`) and the database margins
+   * still end inside the route, checked again after the lookup. A failure
+   * is logged, never thrown.
+   */
+  async function strategize() {
+    if (!strategist) return
+    if (!fitsStrategist()) return
+    try {
+      const [tenantId] = await (
+        options.strategyNeeded ??
+        ((d: Db) => booksNeedingStrategy(d, { limit: 1 }))
+      )(db)
+      if (!tenantId || !fitsStrategist()) return
+      await within(strategist(db, tenantId), strategistCallMs + dbMarginMs)
+    } catch (error) {
+      const code = (error as { code?: string })?.code
+      logger.warn('Brand strategist not run', {
+        code:
+          code === 'brand_book_timeout'
+            ? 'brand_strategist_timeout'
+            : (code ?? 'brand_strategist_error')
+      })
+    }
+  }
   try {
     // First the books a skipped or failed write left behind (the last two
     // days), only while reads may still start.
@@ -171,6 +221,7 @@ export async function runSourceReadings(
           })
       }
     }
+    await strategize()
     logger.info('Onboarding readers run finished', run)
     return run
   } catch (error) {
