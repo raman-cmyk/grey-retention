@@ -1,4 +1,5 @@
 import type { CatalogItem, StoreEvent } from '@/lib/providers/klaviyo/catalog'
+import type { Undo } from './returns'
 
 /**
  * Cleaning the Klaviyo catalog in code (ONB-102, VISION Step 3): variant
@@ -289,20 +290,36 @@ export function orderLines(props: Record<string, unknown>): Line[] {
   return lines
 }
 
-/** Units sold per product id in the last 30 and 90 days. */
-export function salesFrom(orders: StoreEvent[], now: number) {
+/**
+ * Units sold per product id in the last 30 and 90 days: a cancelled or
+ * fully refunded order sells nothing, a partly refunded one less the
+ * units it refunded (ONB-ORD).
+ */
+export function salesFrom(
+  orders: StoreEvent[],
+  now: number,
+  returns?: Map<StoreEvent, Undo>
+) {
   const sales = new Map<string, Sales & { titles: Set<string> }>()
   for (const order of orders) {
     const age = now - Date.parse(order.at)
     if (!(age >= 0 && age <= salesWindowDays * day)) continue
+    // A product whose orders all came back still has its sales (none), so
+    // it never takes another product's by its title.
+    const undo = returns?.get(order)
+    const off = new Map(undo?.units)
     for (const line of orderLines(order.props)) {
       const s = sales.get(line.id) ?? {
         units30d: 0,
         units90d: 0,
         titles: new Set<string>()
       }
-      s.units90d += line.quantity
-      if (age <= 30 * day) s.units30d += line.quantity
+      const back = undo?.whole
+        ? line.quantity
+        : Math.min(line.quantity, off.get(line.id) ?? 0)
+      off.set(line.id, (off.get(line.id) ?? 0) - back)
+      s.units90d += line.quantity - back
+      if (age <= 30 * day) s.units30d += line.quantity - back
       if (line.title) s.titles.add(key(line.title))
       sales.set(line.id, s)
     }
