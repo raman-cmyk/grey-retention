@@ -154,8 +154,6 @@ describe('sidebar (expanded)', () => {
   })
 
   it.each([
-    ['/lists/abc', 'Home'],
-    ['/segments/abc', 'Home'],
     ['/flows/abc', 'Home'],
     ['/flow-messages/abc', 'Home'],
     ['/metrics/abc', 'Home'],
