@@ -1,22 +1,14 @@
-import { AppShell } from '@/components/shell/app-shell'
-import { adminNavigation } from '@/components/shell/nav-data'
 import { requireRequestContext } from '@/features/auth/application/request-context'
-import { shellIdentity } from '@/features/auth/presentation/shell-identity'
 
+/**
+ * The platform admin pages (UI-ADM): a platform admin only, and no old
+ * AppShell around them; each page draws the GROS admin bar itself.
+ */
 export default async function AdminLayout({
   children
 }: {
   children: React.ReactNode
 }) {
-  const context = await requireRequestContext('admin')
-  return (
-    <AppShell
-      navigation={adminNavigation}
-      workspace="Platform operations"
-      contextLabel="Admin console"
-      identity={await shellIdentity(context)}
-    >
-      {children}
-    </AppShell>
-  )
+  await requireRequestContext('admin')
+  return children
 }

@@ -147,17 +147,8 @@ export function createClientNavigation(assistantName: string): ShellNavigation {
   }
 }
 
-export const adminNavigation: ShellNavigation = {
-  primary: [
-    { label: 'Overview', href: '/admin/dashboard', icon: 'admin-overview' },
-    { label: 'Clients', href: '/admin/clients', icon: 'clients' },
-    { label: 'Prompt engine', href: '/admin/prompts', icon: 'prompts' },
-    { label: 'Templates', href: '/admin/templates', icon: 'templates' },
-    { label: 'Inspiration inbox', href: '/admin/inbox', icon: 'inspirations' },
-    { label: 'Operations', href: '/admin/operations', icon: 'operations' }
-  ],
-  groups: []
-}
+// The admin pages draw the GROS admin bar (components/gros/admin-nav.tsx,
+// UI-ADM); they no longer use this sidebar.
 
 export const designerNavigation: ShellNavigation = {
   primary: [

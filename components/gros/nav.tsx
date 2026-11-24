@@ -36,6 +36,65 @@ export const askHref: Route = '/gros'
 /** The assistant's name (the white label may rename it). */
 export const defaultAssistant = 'GROS'
 
+/** One pill of a top bar's menu. */
+export type MenuItem = { key: string; label: string; href: Route }
+
+/** The wide white pill on the right of a bar (Ask GROS). */
+export const widePillClass =
+  'type-body-strong inline-flex h-[var(--control-md)] items-center gap-[var(--space-2)] rounded-[var(--radius-pill)] bg-[var(--white)] px-[var(--space-6)] text-[var(--ink)]'
+/** A round white icon button on the right of a bar (Settings). */
+export const roundPillClass =
+  'inline-flex size-[var(--control-md)] items-center justify-center rounded-[var(--radius-pill)] bg-[var(--white)] text-[var(--ink)]'
+
+/**
+ * The frame of a top bar: the mark and the title on the left, the pill
+ * menu (the current item lime) in the middle and the round buttons on the
+ * right (`end`). The members' bar and the admin bar (UI-ADM) differ only
+ * in their items and their right side.
+ */
+export function MenuBar({
+  title,
+  items,
+  current,
+  end
+}: {
+  title: string
+  items: readonly MenuItem[]
+  current?: string
+  end: ReactNode
+}) {
+  return (
+    <header className="flex flex-wrap items-center justify-between gap-[var(--space-4)] py-[var(--space-6)]">
+      <div className="flex min-w-0 items-center gap-[var(--space-3)]">
+        <Mark size={44} />
+        {/* The whole title wraps rather than losing the store's name. */}
+        <h1 className="type-page-title min-w-0 break-words">{title}</h1>
+      </div>
+      <nav aria-label="Main">
+        <ul className="gros-menu flex flex-wrap items-center rounded-[var(--radius-pill)] bg-[var(--white)]">
+          {items.map((item) => (
+            <li key={item.key}>
+              <Link
+                href={item.href}
+                aria-current={item.key === current ? 'page' : undefined}
+                className={cn(
+                  'gros-menu-item gros-mark inline-flex items-center rounded-[var(--radius-pill)]',
+                  item.key === current
+                    ? 'bg-[var(--lime)] font-semibold text-[var(--forest)]'
+                    : 'font-medium text-[var(--stone)]'
+                )}
+              >
+                {item.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      <div className="flex items-center gap-[var(--space-2)]">{end}</div>
+    </header>
+  )
+}
+
 export function TopBar({
   current,
   title,
@@ -48,73 +107,47 @@ export function TopBar({
 }) {
   const here = (place: NavPlace) => (place === current ? 'page' : undefined)
   return (
-    <header className="flex flex-wrap items-center justify-between gap-[var(--space-4)] py-[var(--space-6)]">
-      <div className="flex min-w-0 items-center gap-[var(--space-3)]">
-        <Mark size={44} />
-        {/* The whole title wraps rather than losing the store's name. */}
-        <h1 className="type-page-title min-w-0 break-words">{title}</h1>
-      </div>
-      <nav aria-label="Main">
-        <ul className="gros-menu flex flex-wrap items-center rounded-[var(--radius-pill)] bg-[var(--white)]">
-          {navItems
-            .flatMap((item) =>
-              item.href ? [{ ...item, href: item.href }] : []
-            )
-            .map((item) => (
-              <li key={item.key}>
-                <Link
-                  href={item.href}
-                  aria-current={here(item.key)}
-                  className={cn(
-                    'gros-menu-item gros-mark inline-flex items-center rounded-[var(--radius-pill)]',
-                    item.key === current
-                      ? 'bg-[var(--lime)] font-semibold text-[var(--forest)]'
-                      : 'font-medium text-[var(--stone)]'
-                  )}
-                >
-                  {item.label}
-                </Link>
-              </li>
-            ))}
-        </ul>
-      </nav>
-      <div className="flex items-center gap-[var(--space-2)]">
-        <Link
-          href={askHref}
-          aria-current={here('ask')}
-          className="type-body-strong inline-flex h-[var(--control-md)] items-center gap-[var(--space-2)] rounded-[var(--radius-pill)] bg-[var(--white)] px-[var(--space-6)] text-[var(--ink)]"
-        >
-          <MessageCircle aria-hidden size={20} strokeWidth={2} />
-          Ask {assistant}
-        </Link>
-        <Link
-          href={settingsHref}
-          aria-label="Settings"
-          aria-current={here('settings')}
-          className="inline-flex size-[var(--control-md)] items-center justify-center rounded-[var(--radius-pill)] bg-[var(--white)] text-[var(--ink)]"
-        >
-          <Settings aria-hidden size={22} strokeWidth={2} />
-        </Link>
-      </div>
-    </header>
+    <MenuBar
+      title={title}
+      items={navItems.flatMap((item) =>
+        item.href ? [{ ...item, href: item.href }] : []
+      )}
+      current={current}
+      end={
+        <>
+          <Link
+            href={askHref}
+            aria-current={here('ask')}
+            className={widePillClass}
+          >
+            <MessageCircle aria-hidden size={20} strokeWidth={2} />
+            Ask {assistant}
+          </Link>
+          <Link
+            href={settingsHref}
+            aria-label="Settings"
+            aria-current={here('settings')}
+            className={roundPillClass}
+          >
+            <Settings aria-hidden size={22} strokeWidth={2} />
+          </Link>
+        </>
+      }
+    />
   )
 }
 
 /**
- * An app page: the mist page, a skip link, the top bar, then rows of cards
- * 20 px apart; the content at most 1320 px wide inside a 24 px gutter.
- * Cards stack in one column on a narrow screen; nothing scrolls sideways.
- * GROS screens live in their own route group (no old AppShell around them).
+ * A page's frame under any top bar (`bar`): the mist page, a skip link,
+ * the bar, then rows of cards 20 px apart; the content at most 1320 px
+ * wide inside a 24 px gutter. Cards stack in one column on a narrow
+ * screen; nothing scrolls sideways.
  */
-export function AppPage({
-  current,
-  title,
-  assistant,
+export function PageFrame({
+  bar,
   children
 }: {
-  current?: NavPlace
-  title: string
-  assistant?: string
+  bar: ReactNode
   children: ReactNode
 }) {
   return (
@@ -126,7 +159,7 @@ export function AppPage({
         Skip to content
       </a>
       <div className="mx-auto w-full max-w-[calc(var(--page-max)+var(--space-6)*2)] px-[var(--space-6)] pb-[var(--space-12)]">
-        <TopBar current={current} title={title} assistant={assistant} />
+        {bar}
         <main
           id="main-content"
           tabIndex={-1}
@@ -140,12 +173,60 @@ export function AppPage({
 }
 
 /**
- * A GROS page while its data is read (a route's `loading.tsx`): the bar at
- * once and one card saying what opens. It draws no `<main>` and no skip
- * link: while the page streams in, Next keeps the page hidden beside this
- * fallback, and the page alone holds the one `main#main-content` (two
- * would confuse screen readers and the browser tests).
+ * A page's loading frame under any top bar: the bar at once and one card
+ * saying what opens. It draws no `<main>` and no skip link: while the page
+ * streams in, Next keeps the page hidden beside this fallback, and the
+ * page alone holds the one `main#main-content` (two would confuse screen
+ * readers and the browser tests).
  */
+export function LoadingFrame({
+  bar,
+  words
+}: {
+  bar: ReactNode
+  words: string
+}) {
+  return (
+    <div className={grosRoot('min-h-dvh')}>
+      <div className="mx-auto w-full max-w-[calc(var(--page-max)+var(--space-6)*2)] px-[var(--space-6)] pb-[var(--space-12)]">
+        {bar}
+        <div aria-busy="true" className="flex flex-col gap-[var(--space-5)]">
+          <Card>
+            <p aria-live="polite" className="type-heading">
+              {words}
+            </p>
+          </Card>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * An app page: the members' top bar over the page frame. GROS screens live
+ * in their own route group (no old AppShell around them).
+ */
+export function AppPage({
+  current,
+  title,
+  assistant,
+  children
+}: {
+  current?: NavPlace
+  title: string
+  assistant?: string
+  children: ReactNode
+}) {
+  return (
+    <PageFrame
+      bar={<TopBar current={current} title={title} assistant={assistant} />}
+    >
+      {children}
+    </PageFrame>
+  )
+}
+
+/** A GROS page while its data is read (a route's `loading.tsx`). */
 export function LoadingPage({
   current,
   title,
@@ -159,18 +240,10 @@ export function LoadingPage({
   assistant?: string
 }) {
   return (
-    <div className={grosRoot('min-h-dvh')}>
-      <div className="mx-auto w-full max-w-[calc(var(--page-max)+var(--space-6)*2)] px-[var(--space-6)] pb-[var(--space-12)]">
-        <TopBar current={current} title={title} assistant={assistant} />
-        <div aria-busy="true" className="flex flex-col gap-[var(--space-5)]">
-          <Card>
-            <p aria-live="polite" className="type-heading">
-              {words}
-            </p>
-          </Card>
-        </div>
-      </div>
-    </div>
+    <LoadingFrame
+      bar={<TopBar current={current} title={title} assistant={assistant} />}
+      words={words}
+    />
   )
 }
 

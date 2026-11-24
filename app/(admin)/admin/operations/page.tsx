@@ -1,24 +1,33 @@
-import { PageHeading } from '@/components/ui/workspace'
+import type { Metadata } from 'next'
+import { AdminPage } from '@/components/gros/admin-nav'
+import { adminAlsoMember } from '@/features/auth/application/admin-member'
 import {
   LiveSwitchesPanel,
   OperatorPanel,
-  RetirementWatchPanel
+  RetirementWatchPanel,
+  SupportPanel
 } from '@/features/operations/panels'
 import { FallbackLogPanel } from '@/features/fallback/panel'
-import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Operations' }
-export default function Page() {
+
+/**
+ * Operations (UI-ADM): the go-live switches first, then the fallback log,
+ * the model retirement watch, workspaces, jobs, provider health, fixture
+ * packages and the support queue, as GROS cards.
+ */
+export default async function Page() {
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <PageHeading
-        title="Operations"
-        description="The go-live switches, the fallback log, sanitized jobs, provider health, immutable fixture packages and tenant support."
-      />
+    <AdminPage
+      current="operations"
+      title="Operations"
+      member={await adminAlsoMember()}
+    >
       <LiveSwitchesPanel />
       <FallbackLogPanel />
       <RetirementWatchPanel />
       <OperatorPanel />
-    </div>
+      <SupportPanel />
+    </AdminPage>
   )
 }
