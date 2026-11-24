@@ -8,6 +8,9 @@ import { sampleStrategyData } from './data'
 import { codePulse, gatherEvidence } from './pulse'
 import { sampleStore } from './sample'
 import { storedPulse, type StoredPlan, type StoredPulse } from './stored'
+import { storedPlan } from './stored'
+import { InMemoryMemoryStore } from '@/features/agents/memory'
+import { InMemoryRunLog, type AiCall } from '@/features/agents/runtime'
 
 const tenant = '00000000-0000-4000-8000-000000000101'
 const start = '2026-11-16'
@@ -173,6 +176,211 @@ describe('running plan steps (the code-only path)', () => {
       await runStrategyRuns(late.db, { deadline: 1000, now: () => 2000 })
     ).toEqual({ ran: 0 })
     expect(late.calls).toEqual([])
+  })
+})
+
+describe('owner-started planning with the existing agents', () => {
+  const ownData = {
+    load: async (input: { tenantId: string; start: string }) => ({
+      ...(await sampleStrategyData.load(input)),
+      sample: false,
+      own: true
+    })
+  }
+  const agents = (ai: AiCall) => ({
+    ai,
+    memory: new InMemoryMemoryStore(),
+    log: new InMemoryRunLog()
+  })
+  const answer = (content: unknown) => ({
+    ok: true as const,
+    content,
+    provider: 'fake' as const,
+    model: 'fake',
+    costMicro: 0,
+    inputTokens: 1,
+    outputTokens: 1,
+    settled: true
+  })
+  const goodAi = () =>
+    vi.fn<AiCall>(async (call) => {
+      const task = JSON.parse(call.request.user)
+      if (call.callerKey.startsWith('brand-pulse:'))
+        return answer({
+          highlights: [
+            {
+              evidenceId: task.facts[0].id,
+              why: 'Relevant to the coming plan.'
+            }
+          ],
+          summary: 'Prioritize the store’s current products and upcoming dates.'
+        })
+      if (call.callerKey.startsWith('competitor-mapper:'))
+        return answer({
+          moves: task.patterns.slice(0, 1).map((p: { id: string }) => ({
+            patternId: p.id,
+            move: 'Lead with a gift guide'
+          }))
+        })
+      if (call.callerKey.startsWith('brief-writer:'))
+        return answer({
+          actions: [
+            {
+              goal: 'Introduce the new collection to subscribers.',
+              evidenceIds: [
+                task.facts.find((f: { id: string }) =>
+                  f.id.startsWith('launch:')
+                ).id
+              ],
+              from: task.window.from,
+              to: task.window.to,
+              offerId: null
+            }
+          ]
+        })
+      if (call.callerKey.startsWith('calendar-planner:'))
+        return answer({
+          slots: [
+            {
+              actionIndex: 0,
+              date: '2026-11-20',
+              time: task.default_send_time,
+              emailType: 'launch',
+              angle: 'Meet the collection',
+              productIds: ['p-oak-tray'],
+              offerId: null,
+              audienceId: task.audiences[0].id
+            }
+          ]
+        })
+      return answer({ issues: [] })
+    })
+
+  it('saves an agent-produced pulse with the lease tenant and the owner’s real offer limits', async () => {
+    const ai = goodAi()
+    const runtime = agents(ai)
+    const { db, calls } = fakeDb([run()])
+    await runStrategyRuns(db, { data: ownData, agents: runtime, now: () => 0 })
+    const result = calls.find((c) => c.fn === 'finish_strategy_pulse')!.args
+      .result
+    expect(storedPulse.parse(result)).toMatchObject({
+      source: 'agent',
+      sample: false,
+      own: true,
+      offers: []
+    })
+    expect(ai).toHaveBeenCalledTimes(1)
+    expect(ai.mock.calls[0]![0].tenantId).toBe(tenant)
+    expect(runtime.log.entries[0]).toMatchObject({
+      tenantId: tenant,
+      agent: 'brand-pulse',
+      verdict: 'ok'
+    })
+  })
+
+  it('invokes mapper, brief writer, planner and critic and saves their checked plan', async () => {
+    const ai = goodAi()
+    const runtime = agents(ai)
+    const { db, calls } = fakeDb([
+      run({
+        state: 'plan_queued',
+        pulse: { ...pulse, sample: false, own: true },
+        offer_pick: { mode: 'none' }
+      })
+    ])
+    await runStrategyRuns(db, { data: ownData, agents: runtime, now: () => 0 })
+    const made = storedPlan.parse(
+      calls.find((c) => c.fn === 'finish_strategy_plan')!.args.result
+    )
+    expect(made.source).toEqual({
+      brief: 'agent',
+      planner: 'agent',
+      critic: 'agent'
+    })
+    expect(made.slots.length).toBeGreaterThan(0)
+    expect(made.slots.every((s) => s.offer === null)).toBe(true)
+    expect(new Set(runtime.log.entries.map((r) => r.agent))).toEqual(
+      new Set([
+        'competitor-mapper',
+        'brief-writer',
+        'calendar-planner',
+        'strategy-critic'
+      ])
+    )
+    expect(runtime.log.entries.every((r) => r.tenantId === tenant)).toBe(true)
+    expect(failure(calls)).toBeUndefined()
+  })
+
+  it('never calls AI for a sample or fallback store, even with injected agents', async () => {
+    const ai = goodAi()
+    for (const data of [
+      sampleStrategyData,
+      {
+        load: async (input: { tenantId: string; start: string }) => ({
+          ...(await ownData.load(input)),
+          sample: true
+        })
+      }
+    ]) {
+      const { db } = fakeDb([run()])
+      await runStrategyRuns(db, { data, agents: agents(ai) })
+    }
+    expect(ai).not.toHaveBeenCalled()
+  })
+
+  it('keeps a valid code plan and records the reason when the AI allowance is exhausted', async () => {
+    const ai = vi.fn<AiCall>(async () => ({ ok: false, code: 'cap_reached' }))
+    const fallbacks = memoryFallbackLog()
+    const { db, calls } = fakeDb([
+      run({
+        state: 'plan_queued',
+        pulse: { ...pulse, sample: false, own: true },
+        offer_pick: { mode: 'none' }
+      })
+    ])
+    await runStrategyRuns(db, { data: ownData, agents: agents(ai), fallbacks })
+    const made = storedPlan.parse(
+      calls.find((c) => c.fn === 'finish_strategy_plan')!.args.result
+    )
+    expect(made.source).toEqual({
+      brief: 'code',
+      planner: 'code',
+      critic: 'skipped'
+    })
+    expect(fallbacks.entries().length).toBeGreaterThan(0)
+    expect(ai.mock.calls.every(([call]) => call.tenantId === tenant)).toBe(true)
+    expect(ai.mock.calls.length).toBeLessThanOrEqual(4)
+    expect(failure(calls)).toBeUndefined()
+  })
+
+  it('falls back without any paid call when reads consume the remaining action budget', async () => {
+    const ai = goodAi()
+    let clock = 0
+    const data = {
+      load: async (input: { tenantId: string; start: string }) => {
+        clock = 99_000
+        return ownData.load(input)
+      }
+    }
+    const { db, calls } = fakeDb([run()])
+    const fallbacks = memoryFallbackLog()
+    await runStrategyRuns(db, {
+      data,
+      agents: agents(ai),
+      fallbacks,
+      now: () => clock,
+      deadline: 100_000
+    })
+    expect(ai).not.toHaveBeenCalled()
+    expect(
+      storedPulse.parse(
+        calls.find((c) => c.fn === 'finish_strategy_pulse')!.args.result
+      ).source
+    ).toBe('code')
+    expect(fallbacks.entries()[0]).toMatchObject({
+      agent: 'brand-pulse',
+      reasonCode: 'pulse_agent_failed'
+    })
   })
 })
 
