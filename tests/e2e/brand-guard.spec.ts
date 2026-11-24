@@ -64,9 +64,9 @@ test('UIR-021 the brand check warns before AI steps when Klaviyo is another bran
   await expect(banner).toContainText('northwind-outdoor.example')
   await page.goto('/gros')
   const check = page.getByRole('note', { name: 'Brand check' })
-  await expect(check).toContainText(
-    'Check your Brand profile before GROS answers.'
-  )
+  // Ask GROS (UI-ASK) shows it as a GROS card.
+  await expect(check).toContainText('Check your brand')
+  await expect(check).toContainText('Check it before GROS answers.')
   await expect(check).toContainText(brandName)
   await check.getByRole('link', { name: 'Open the Brand profile' }).click()
   await expect(page).toHaveURL(/\/brand$/)
