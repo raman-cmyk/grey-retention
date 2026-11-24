@@ -182,6 +182,16 @@ describe('building and pushing (code-only, fake pusher)', () => {
     })
   })
 
+  it('learns from the checks’ rejections after a finished build, for that workspace (LRN-002b)', async () => {
+    const { db } = fakeDb([step()])
+    const learn = vi.fn<(db: unknown, tenantId: string) => Promise<null>>(
+      async () => null
+    )
+    await runEmailBuilds(db, { fallbacks: memoryFallbackLog(), learn })
+    expect(learn).toHaveBeenCalledOnce()
+    expect(learn.mock.calls[0]![1]).toEqual(expect.any(String))
+  })
+
   it('builds in the workspace’s own timezone', async () => {
     const { db, calls } = fakeDb([step()])
     await runEmailBuilds(db, { fallbacks: memoryFallbackLog() })
