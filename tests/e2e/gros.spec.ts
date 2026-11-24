@@ -204,10 +204,13 @@ test('UC-18 team invitation audit, event and support response survive refresh', 
     })
     .first()
   await expect(thread).toContainText('Support · Open')
+  // Exact: the Save button's spoken label also says "thread reply".
   await thread
-    .getByLabel('Thread reply')
+    .getByLabel('Thread reply', { exact: true })
     .fill('Original operator response; fixture outcome inspected.')
-  await thread.getByLabel('Ticket state').selectOption('closed')
+  await thread
+    .getByLabel('Ticket state', { exact: true })
+    .selectOption('closed')
   await thread
     .getByRole('button', {
       name: `Save thread reply: ${subject}`,
