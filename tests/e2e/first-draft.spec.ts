@@ -147,7 +147,14 @@ test('Use this design runs Create email on a planned email, with the chosen insp
   await page.goto(useUrl)
   const pick = page.getByRole('region', { name: 'Choose a planned email' })
   await expect(pick.getByRole('radio').first()).toBeChecked()
-  await expect(pick.getByLabel('Copy this email')).toBeChecked()
+  // The sample brand's emails are never tagged by the inbox: the page says
+  // so before Create email, and Remix is the choice (UI-USE review).
+  await expect(
+    page.getByText(
+      'This email is still being read, so GROS will make the email from scratch.'
+    )
+  ).toBeVisible()
+  await expect(pick.getByLabel('Remix this email')).toBeChecked()
   if (info.project.name.startsWith('mobile'))
     await page.setViewportSize({ width: 320, height: 800 })
   expect(
@@ -171,7 +178,10 @@ test('Use this design runs Create email on a planned email, with the chosen insp
     .eq('id', buildId)
     .single()
   expect(saved.error).toBeNull()
-  expect(saved.data).toMatchObject({ mode: 'copy', reference_id: referenceId })
+  expect(saved.data).toMatchObject({
+    mode: 'remix',
+    reference_id: referenceId
+  })
   // The sample brand's emails are not tagged by the inbox: the build says
   // so and makes the email from scratch, never from another email (D16).
   await expect(async () => {
